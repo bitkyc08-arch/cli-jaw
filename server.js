@@ -760,9 +760,15 @@ async function orchestrate(prompt) {
         return;
     }
 
+    // Planning agent settings (5.12)
+    const planCli = settings.planning?.cli || settings.cli;
+    const planModel = settings.planning?.model || 'default';
+    const planEffort = settings.planning?.effort || '';
+    const planOpts = { agentId: 'planning', cli: planCli, model: planModel, effort: planEffort };
+
     // Round 1: Planning Agent
     broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'running' });
-    const { promise: p1 } = spawnAgent(prompt, { agentId: 'planning' });
+    const { promise: p1 } = spawnAgent(prompt, planOpts);
     const r1 = await p1;
 
     let subtasks = parseSubtasks(r1.text);
@@ -785,7 +791,7 @@ async function orchestrate(prompt) {
         const reportPrompt = `## 결과 보고 (라운드 ${round})\n${report}\n\n## 평가 기준\n- sub-agent가 응답을 보고했으면 → 완료로 판정\n- 단순 질문/인사 작업은 응답 자체가 성공적 결과입니다\n- 코드 작업은 실행 결과가 있으면 완료\n\n## 판정\n- **완료**: 사용자에게 보여줄 자연어 요약을 작성하세요. JSON 출력 절대 금지.\n- **미완료**: 구체적 사유를 밝히고 JSON subtasks를 다시 출력하세요.`;
 
         broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'evaluating' });
-        const { promise: evalP } = spawnAgent(reportPrompt, { agentId: 'planning', internal: true });
+        const { promise: evalP } = spawnAgent(reportPrompt, { ...planOpts, internal: true });
         const evalR = await evalP;
 
         subtasks = parseSubtasks(evalR.text);
@@ -859,7 +865,7 @@ app.put('/api/settings', (req, res) => {
     const prevCli = settings.cli;
 
     // Deep merge for nested objects
-    for (const key of ['perCli', 'heartbeat', 'telegram']) {
+    for (const key of ['perCli', 'planning', 'heartbeat', 'telegram']) {
         if (req.body[key] && typeof req.body[key] === 'object') {
             settings[key] = { ...settings[key], ...req.body[key] };
             delete req.body[key];

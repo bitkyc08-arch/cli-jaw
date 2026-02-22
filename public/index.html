@@ -658,6 +658,35 @@
             <button class="btn-clear" style="width:100%;margin:0;padding:8px;font-size:12px"
                 onclick="openPromptModal()">✏️ 시스템 프롬프트 편집</button>
 
+            <!-- Planning Agent (5.12) -->
+            <div class="settings-group">
+                <h4>🎯 Planning Agent</h4>
+                <div class="settings-row">
+                    <label>CLI</label>
+                    <select id="planningCli" onchange="savePlanningSettings()">
+                        <option>claude</option>
+                        <option>codex</option>
+                        <option>gemini</option>
+                        <option>opencode</option>
+                    </select>
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Model</label>
+                    <select id="planningModel" onchange="savePlanningSettings()">
+                        <option value="default" selected>default</option>
+                    </select>
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Effort</label>
+                    <select id="planningEffort" onchange="savePlanningSettings()">
+                        <option value="">— none</option>
+                        <option value="low">low</option>
+                        <option value="medium" selected>medium</option>
+                        <option value="high">high</option>
+                    </select>
+                </div>
+            </div>
+
             <!-- CLI Status moved to bottom (5.8) -->
 
             <!-- Per-CLI Models -->
@@ -1035,6 +1064,9 @@
                     if (effortEl && cfg.effort) effortEl.value = cfg.effort;
                 }
             }
+
+            // Load planning agent settings (5.12)
+            loadPlanningSettings(s);
         }
 
         async function updateSettings() {
@@ -1084,6 +1116,33 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ perCli }),
             });
+        }
+
+        // ── Planning Agent Settings (5.12) ──
+        async function savePlanningSettings() {
+            const planning = {
+                cli: document.getElementById('planningCli').value,
+                model: document.getElementById('planningModel').value,
+                effort: document.getElementById('planningEffort').value,
+            };
+            await fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ planning }),
+            });
+        }
+
+        function loadPlanningSettings(s) {
+            if (s.planning?.cli) {
+                const sel = document.getElementById('planningCli');
+                sel.value = s.planning.cli;
+            }
+            if (s.planning?.model) {
+                document.getElementById('planningModel').value = s.planning.model;
+            }
+            if (s.planning?.effort) {
+                document.getElementById('planningEffort').value = s.planning.effort;
+            }
         }
 
         // ── CLI Status + Quota (5.8: cached with interval) ──
