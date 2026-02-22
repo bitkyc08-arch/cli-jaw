@@ -22,6 +22,7 @@ const CLAW_HOME = join(os.homedir(), '.cli-claw');
 const PROMPTS_DIR = join(CLAW_HOME, 'prompts');
 const DB_PATH = join(__dirname, 'claw.db');
 const SETTINGS_PATH = join(__dirname, 'settings.json');
+const HEARTBEAT_JOBS_PATH = join(CLAW_HOME, 'heartbeat.json');
 
 // ─── Ensure directories ─────────────────────────────
 
@@ -900,7 +901,6 @@ app.put('/api/settings', (req, res) => {
 
     // 6.6: Reinit telegram if settings changed
     if (hasTelegramUpdate) initTelegram();
-    if (req.body.heartbeat) startHeartbeat();
 
     res.json(settings);
 });
@@ -1155,78 +1155,109 @@ function initTelegram() {
     console.log('[tg] Bot starting...');
 }
 
-// ─── Heartbeat (Phase 8) ─────────────────────────────
+// ─── Heartbeat (Phase 8.2) ───────────────────────────
 
-let heartbeatTimer = null;
+const heartbeatTimers = new Map();
 let heartbeatBusy = false;
 
-function buildHeartbeatPrompt() {
-    const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
-    const base = settings.heartbeat?.prompt ||
-        '정기 점검입니다. 보고할 사항이 있으면 간결하게 응답하고, 없으면 [SILENT]로 응답하세요.';
-    return `[heartbeat] 현재 시간: ${now}\n\n${base}`;
+function loadHeartbeatFile() {
+    try {
+        return JSON.parse(fs.readFileSync(HEARTBEAT_JOBS_PATH, 'utf8'));
+    } catch {
+        return { jobs: [] };
+    }
+}
+
+function saveHeartbeatFile(data) {
+    fs.writeFileSync(HEARTBEAT_JOBS_PATH, JSON.stringify(data, null, 2));
 }
 
 function startHeartbeat() {
     stopHeartbeat();
-    if (!settings.heartbeat?.enabled) {
-        console.log('[heartbeat] disabled');
-        return;
+    const { jobs } = loadHeartbeatFile();
+    for (const job of jobs) {
+        if (!job.enabled || job.schedule?.kind !== 'every') continue;
+        const ms = (job.schedule.minutes || 5) * 60_000;
+        const timer = setInterval(() => runHeartbeatJob(job), ms);
+        timer.unref?.();
+        heartbeatTimers.set(job.id, timer);
     }
-    const intervalMin = settings.heartbeat.intervalMinutes || 5;
-    const intervalMs = intervalMin * 60_000;
-    console.log(`[heartbeat] started — every ${intervalMin}min`);
-
-    heartbeatTimer = setInterval(async () => {
-        if (heartbeatBusy) {
-            console.log('[heartbeat] skipped — already running');
-            return;
-        }
-        heartbeatBusy = true;
-        try {
-            const prompt = buildHeartbeatPrompt();
-            console.log('[heartbeat] tick');
-            const result = await orchestrateAndCollect(prompt);
-
-            // [SILENT] 토큰 처리 — 할 일 없으면 무시
-            if (result.includes('[SILENT]')) {
-                console.log('[heartbeat] silent — nothing to report');
-                return;
-            }
-
-            console.log(`[heartbeat] response: ${result.slice(0, 80)}`);
-
-            // Telegram에 결과 전달
-            if (telegramBot && settings.telegram?.enabled) {
-                const chatIds = settings.telegram.allowedChatIds || [];
-                const html = markdownToTelegramHtml(result);
-                const chunks = chunkTelegramMessage(html);
-                for (const chatId of chatIds) {
-                    for (const chunk of chunks) {
-                        try {
-                            await telegramBot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
-                        } catch {
-                            await telegramBot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
-                        }
-                    }
-                }
-            }
-        } catch (err) {
-            console.error('[heartbeat] error:', err.message);
-        } finally {
-            heartbeatBusy = false;
-        }
-    }, intervalMs);
-    heartbeatTimer.unref?.();
+    const n = heartbeatTimers.size;
+    console.log(`[heartbeat] ${n} job${n !== 1 ? 's' : ''} active`);
 }
 
 function stopHeartbeat() {
-    if (heartbeatTimer) {
-        clearInterval(heartbeatTimer);
-        heartbeatTimer = null;
-        console.log('[heartbeat] stopped');
+    for (const timer of heartbeatTimers.values()) clearInterval(timer);
+    heartbeatTimers.clear();
+}
+
+async function runHeartbeatJob(job) {
+    if (heartbeatBusy) {
+        console.log(`[heartbeat:${job.name}] skipped — busy`);
+        return;
+    }
+    heartbeatBusy = true;
+    try {
+        const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+        const prompt = `[heartbeat:${job.name}] 현재 시간: ${now}\n\n${job.prompt || '정기 점검입니다. 할 일 없으면 [SILENT]로 응답.'}`;
+        console.log(`[heartbeat:${job.name}] tick`);
+        const result = await orchestrateAndCollect(prompt);
+
+        if (result.includes('[SILENT]')) {
+            console.log(`[heartbeat:${job.name}] silent`);
+            return;
+        }
+
+        console.log(`[heartbeat:${job.name}] response: ${result.slice(0, 80)}`);
+
+        // Telegram 전달
+        if (telegramBot && settings.telegram?.enabled) {
+            const chatIds = settings.telegram.allowedChatIds || [];
+            const html = markdownToTelegramHtml(result);
+            const chunks = chunkTelegramMessage(html);
+            for (const chatId of chatIds) {
+                for (const chunk of chunks) {
+                    try {
+                        await telegramBot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
+                    } catch {
+                        await telegramBot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.error(`[heartbeat:${job.name}] error:`, err.message);
+    } finally {
+        heartbeatBusy = false;
     }
 }
+
+// fs.watch — AI나 사용자가 파일 직접 편집 시 자동 리로드
+try {
+    let watchDebounce = null;
+    fs.watch(HEARTBEAT_JOBS_PATH, () => {
+        clearTimeout(watchDebounce);
+        watchDebounce = setTimeout(() => {
+            console.log('[heartbeat] file changed — reloading');
+            startHeartbeat();
+        }, 500);
+    });
+} catch { /* 파일 없으면 무시 — 첫 저장 시 생성 */ }
+
+// API endpoints
+app.get('/api/heartbeat', (req, res) => {
+    res.json(loadHeartbeatFile());
+});
+
+app.put('/api/heartbeat', (req, res) => {
+    const data = req.body;
+    if (!data || !Array.isArray(data.jobs)) {
+        return res.status(400).json({ error: 'jobs array required' });
+    }
+    saveHeartbeatFile(data);
+    startHeartbeat();
+    res.json(data);
+});
 
 // ─── Start ───────────────────────────────────────────
 

@@ -561,6 +561,134 @@
             width: auto;
             padding: 6px 20px;
         }
+
+        /* Heartbeat popup */
+        .hb-job-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 10px;
+            margin-bottom: 8px;
+        }
+
+        .hb-job-header {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            margin-bottom: 6px;
+        }
+
+        .hb-job-header input[type=text] {
+            flex: 1;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .hb-job-header select,
+        .hb-job-header input[type=number] {
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px;
+            border-radius: 4px;
+            font-size: 11px;
+        }
+
+        .hb-job-header input[type=number] {
+            width: 50px;
+        }
+
+        .hb-toggle {
+            width: 32px;
+            height: 18px;
+            border-radius: 9px;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            transition: background .2s;
+        }
+
+        .hb-toggle.on {
+            background: var(--accent);
+        }
+
+        .hb-toggle.off {
+            background: #555;
+        }
+
+        .hb-toggle::after {
+            content: '';
+            position: absolute;
+            top: 2px;
+            width: 14px;
+            height: 14px;
+            border-radius: 50%;
+            background: #fff;
+            transition: left .2s;
+        }
+
+        .hb-toggle.on::after {
+            left: 16px;
+        }
+
+        .hb-toggle.off::after {
+            left: 2px;
+        }
+
+        .hb-del {
+            background: none;
+            border: none;
+            color: #f55;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .hb-prompt {
+            width: 100%;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 4px 6px;
+            border-radius: 4px;
+            font-size: 11px;
+            resize: vertical;
+        }
+
+        .hb-add {
+            width: 100%;
+            padding: 8px;
+            background: var(--accent);
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            margin-top: 4px;
+        }
+
+        .hb-add:hover {
+            opacity: .9;
+        }
+
+        .sidebar-hb-btn {
+            width: 100%;
+            padding: 6px;
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            text-align: left;
+        }
+
+        .sidebar-hb-btn:hover {
+            border-color: var(--accent);
+        }
     </style>
 </head>
 
@@ -587,6 +715,7 @@
         </div>
 
         <button class="btn-clear" onclick="clearChat()">/clear</button>
+        <button class="sidebar-hb-btn" id="hbSidebarBtn" onclick="openHeartbeatModal()">💓 Heartbeat (0)</button>
     </div>
 
     <!-- Chat Area -->
@@ -709,27 +838,7 @@
                         style="width:100%;font-size:11px;padding:4px" onchange="saveTelegramSettings()">
                 </div>
             </div>
-            <!-- Heartbeat (Phase 8) -->
-            <div class="settings-group">
-                <h4>💓 Heartbeat</h4>
-                <div class="settings-row">
-                    <label>Enabled</label>
-                    <div>
-                        <button id="hbOff" class="perm-btn active" onclick="setHeartbeat(false)">Off</button>
-                        <button id="hbOn" class="perm-btn" onclick="setHeartbeat(true)">On</button>
-                    </div>
-                </div>
-                <div class="settings-row">
-                    <label>Interval (분)</label>
-                    <input type="number" id="hbInterval" value="5" min="1" max="1440"
-                        style="width:60px;font-size:11px;padding:4px" onchange="saveHeartbeatSettings()">
-                </div>
-                <div class="settings-row" style="flex-direction:column;align-items:stretch">
-                    <label>Prompt</label>
-                    <textarea id="hbPrompt" rows="2" style="width:100%;font-size:11px;padding:4px;resize:vertical"
-                        placeholder="정기 점검입니다..." onchange="saveHeartbeatSettings()"></textarea>
-                </div>
-            </div>
+            <!-- Heartbeat now in sidebar popup (8.2) -->
 
             <!-- CLI Status moved to bottom (5.8) -->
 
@@ -848,6 +957,21 @@
             <div class="modal-footer">
                 <button class="btn-clear" style="margin:0;padding:6px 16px" onclick="closePromptModal()">취소</button>
                 <button class="btn-save" onclick="savePromptFromModal()">저장</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Heartbeat Jobs Modal (8.2) -->
+    <div class="modal-overlay" id="heartbeatModal" onclick="closeHeartbeatModal(event)">
+        <div class="modal-box" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+            <div class="modal-header">
+                <span>💓 Heartbeat Jobs</span>
+                <button onclick="closeHeartbeatModal()"
+                    style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px">✕</button>
+            </div>
+            <div id="hbJobsList" style="padding:12px"></div>
+            <div style="padding:0 12px 12px">
+                <button class="hb-add" onclick="addHeartbeatJob()">+ 새 하트비트 추가</button>
             </div>
         </div>
     </div>
@@ -1116,7 +1240,6 @@
             loadPlanningSettings(s);
             // Load telegram settings (6.5)
             loadTelegramSettings(s);
-            loadHeartbeatSettings(s);
         }
 
         async function updateSettings() {
@@ -1228,35 +1351,91 @@
             }
         }
 
-        // ── Heartbeat settings (8) ──
-        async function saveHeartbeatSettings() {
-            const intervalMinutes = parseInt(document.getElementById('hbInterval').value, 10) || 5;
-            const prompt = document.getElementById('hbPrompt').value.trim();
-            await fetch('/api/settings', {
+        // ── Heartbeat popup (8.2) ──
+        let heartbeatJobs = [];
+
+        async function openHeartbeatModal() {
+            const r = await fetch('/api/heartbeat');
+            const data = await r.json();
+            heartbeatJobs = data.jobs || [];
+            renderHeartbeatJobs();
+            document.getElementById('heartbeatModal').classList.add('open');
+        }
+
+        function closeHeartbeatModal(e) {
+            if (e && e.target !== e.currentTarget) return;
+            document.getElementById('heartbeatModal').classList.remove('open');
+        }
+
+        function renderHeartbeatJobs() {
+            const container = document.getElementById('hbJobsList');
+            if (heartbeatJobs.length === 0) {
+                container.innerHTML = '<p style="color:var(--text-dim);font-size:12px;text-align:center">하트비트가 없습니다</p>';
+            } else {
+                container.innerHTML = heartbeatJobs.map((job, i) => `
+                    <div class="hb-job-card">
+                        <div class="hb-job-header">
+                            <input type="text" value="${job.name || ''}" placeholder="이름"
+                                onchange="heartbeatJobs[${i}].name=this.value;saveHeartbeatJobs()">
+                            <span style="font-size:11px;color:var(--text-dim)">every</span>
+                            <input type="number" value="${job.schedule?.minutes || 5}" min="1"
+                                onchange="heartbeatJobs[${i}].schedule={kind:'every',minutes:+this.value};saveHeartbeatJobs()">
+                            <span style="font-size:11px;color:var(--text-dim)">min</span>
+                            <button class="hb-toggle ${job.enabled ? 'on' : 'off'}"
+                                onclick="toggleHeartbeatJob(${i})"></button>
+                            <button class="hb-del" onclick="removeHeartbeatJob(${i})">✕</button>
+                        </div>
+                        <textarea class="hb-prompt" rows="2" placeholder="프롬프트..."
+                            onchange="heartbeatJobs[${i}].prompt=this.value;saveHeartbeatJobs()">${job.prompt || ''}</textarea>
+                    </div>
+                `).join('');
+            }
+            // 사이드바 버튼 업데이트
+            const active = heartbeatJobs.filter(j => j.enabled).length;
+            document.getElementById('hbSidebarBtn').textContent = `💓 Heartbeat (${active})`;
+        }
+
+        function addHeartbeatJob() {
+            heartbeatJobs.push({
+                id: 'hb_' + Date.now(),
+                name: '',
+                enabled: true,
+                schedule: { kind: 'every', minutes: 5 },
+                prompt: ''
+            });
+            renderHeartbeatJobs();
+            saveHeartbeatJobs();
+        }
+
+        function removeHeartbeatJob(i) {
+            heartbeatJobs.splice(i, 1);
+            renderHeartbeatJobs();
+            saveHeartbeatJobs();
+        }
+
+        function toggleHeartbeatJob(i) {
+            heartbeatJobs[i].enabled = !heartbeatJobs[i].enabled;
+            renderHeartbeatJobs();
+            saveHeartbeatJobs();
+        }
+
+        async function saveHeartbeatJobs() {
+            await fetch('/api/heartbeat', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ heartbeat: { intervalMinutes, prompt } }),
+                body: JSON.stringify({ jobs: heartbeatJobs }),
             });
         }
 
-        async function setHeartbeat(on) {
-            document.getElementById('hbOn').classList.toggle('active', on);
-            document.getElementById('hbOff').classList.toggle('active', !on);
-            await fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ heartbeat: { enabled: on } }),
-            });
-        }
-
-        function loadHeartbeatSettings(s) {
-            if (!s.heartbeat) return;
-            const hb = s.heartbeat;
-            document.getElementById('hbOn').classList.toggle('active', !!hb.enabled);
-            document.getElementById('hbOff').classList.toggle('active', !hb.enabled);
-            if (hb.intervalMinutes) document.getElementById('hbInterval').value = hb.intervalMinutes;
-            if (hb.prompt) document.getElementById('hbPrompt').value = hb.prompt;
-        }
+        // Boot: update sidebar count
+        (async () => {
+            try {
+                const r = await fetch('/api/heartbeat');
+                const d = await r.json();
+                const active = (d.jobs || []).filter(j => j.enabled).length;
+                document.getElementById('hbSidebarBtn').textContent = `💓 Heartbeat (${active})`;
+            } catch { }
+        })();
 
         // ── CLI Status + Quota (5.8: cached with interval) ──
         let cliStatusCache = null;

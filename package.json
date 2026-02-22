@@ -3,7 +3,8 @@
     "version": "0.1.0",
     "type": "module",
     "scripts": {
-        "dev": "node --dns-result-order=ipv4first server.js"
+        "dev": "node --dns-result-order=ipv4first server.js",
+        "postinstall": "node bin/postinstall.js"
     },
     "dependencies": {
         "@grammyjs/runner": "^2.0.3",
