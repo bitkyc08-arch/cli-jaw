@@ -643,21 +643,6 @@
 
             <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
 
-            <div style="display:flex;justify-content:space-between;align-items:center">
-                <div class="section-title">Sub Agents</div>
-                <button class="btn-clear" style="margin:0;padding:4px 10px;font-size:11px" onclick="addEmployee()">+
-                    Add</button>
-            </div>
-            <div id="employeesList">
-                <div style="color:var(--text-dim);font-size:11px">No agents yet</div>
-            </div>
-        </div>
-
-        <!-- Settings Tab (prompt button + CLI status + per-CLI models) -->
-        <div id="tabSettings" class="tab-content">
-            <button class="btn-clear" style="width:100%;margin:0;padding:8px;font-size:12px"
-                onclick="openPromptModal()">✏️ 시스템 프롬프트 편집</button>
-
             <!-- Planning Agent (5.12) -->
             <div class="settings-group">
                 <h4>🎯 Planning Agent</h4>
@@ -686,6 +671,23 @@
                     </select>
                 </div>
             </div>
+
+            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
+
+            <div style="display:flex;justify-content:space-between;align-items:center">
+                <div class="section-title">Sub Agents</div>
+                <button class="btn-clear" style="margin:0;padding:4px 10px;font-size:11px" onclick="addEmployee()">+
+                    Add</button>
+            </div>
+            <div id="employeesList">
+                <div style="color:var(--text-dim);font-size:11px">No agents yet</div>
+            </div>
+        </div>
+
+        <!-- Settings Tab (prompt button + CLI status + per-CLI models) -->
+        <div id="tabSettings" class="tab-content">
+            <button class="btn-clear" style="width:100%;margin:0;padding:8px;font-size:12px"
+                onclick="openPromptModal()">✏️ 시스템 프롬프트 편집</button>
 
             <!-- CLI Status moved to bottom (5.8) -->
 
