@@ -871,6 +871,7 @@ app.post('/api/clear', (_, res) => {
 app.get('/api/settings', (_, res) => res.json(settings));
 app.put('/api/settings', (req, res) => {
     const prevCli = settings.cli;
+    const hasTelegramUpdate = !!req.body.telegram; // 6.6: capture before deep merge deletes it
 
     // Deep merge for nested objects
     for (const key of ['perCli', 'planning', 'heartbeat', 'telegram']) {
@@ -898,7 +899,7 @@ app.put('/api/settings', (req, res) => {
     );
 
     // 6.6: Reinit telegram if settings changed
-    if (req.body.telegram) initTelegram();
+    if (hasTelegramUpdate) initTelegram();
 
     res.json(settings);
 });
@@ -1057,6 +1058,12 @@ function initTelegram() {
     bot.catch((err) => console.error('[tg:error]', err.message || err));
     bot.use(sequentialize((ctx) => `tg:${ctx.chat?.id || 'unknown'}`));
 
+    // Debug: log all incoming updates
+    bot.use(async (ctx, next) => {
+        console.log(`[tg:update] type=${ctx.updateType} chat=${ctx.chat?.id} text=${(ctx.message?.text || '').slice(0, 40)}`);
+        await next();
+    });
+
     // Allowlist
     bot.use(async (ctx, next) => {
         const allowed = settings.telegram.allowedChatIds;
@@ -1075,8 +1082,8 @@ function initTelegram() {
         if (text.startsWith('/')) return;
 
         console.log(`[tg:in] ${ctx.chat.id}: ${text.slice(0, 80)}`);
-        insertMessage.run('user', text, 'telegram', '');
 
+        // Don't save to DB here — spawnAgent handles message saving
         await ctx.replyWithChatAction('typing').catch(() => { });
         const typingInterval = setInterval(() => {
             ctx.replyWithChatAction('typing').catch(() => { });
@@ -1096,7 +1103,6 @@ function initTelegram() {
                 }
             }
 
-            insertMessage.run('assistant', result, 'telegram', '');
             console.log(`[tg:out] ${ctx.chat.id}: ${result.slice(0, 80)}`);
         } catch (err) {
             clearInterval(typingInterval);
@@ -1105,9 +1111,15 @@ function initTelegram() {
         }
     });
 
-    bot.start();
+    // Start polling (async — must handle errors explicitly)
+    bot.start({
+        drop_pending_updates: true,
+        onStart: (botInfo) => console.log(`[tg] ✅ Bot @${botInfo.username} polling active`),
+    }).catch(err => {
+        console.error(`[tg] ❌ Bot failed to start:`, err.message || err);
+    });
     telegramBot = bot;
-    console.log(`[tg] Bot started (allowlist: ${settings.telegram.allowedChatIds?.length || 'all'})`);
+    console.log(`[tg] Bot initializing... (allowlist: ${settings.telegram.allowedChatIds?.length || 'all'})`);
 }
 
 // ─── Start ───────────────────────────────────────────
