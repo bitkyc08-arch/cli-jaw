@@ -900,6 +900,7 @@ app.put('/api/settings', (req, res) => {
 
     // 6.6: Reinit telegram if settings changed
     if (hasTelegramUpdate) initTelegram();
+    if (req.body.heartbeat) startHeartbeat();
 
     res.json(settings);
 });
@@ -1154,6 +1155,79 @@ function initTelegram() {
     console.log('[tg] Bot starting...');
 }
 
+// ─── Heartbeat (Phase 8) ─────────────────────────────
+
+let heartbeatTimer = null;
+let heartbeatBusy = false;
+
+function buildHeartbeatPrompt() {
+    const now = new Date().toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
+    const base = settings.heartbeat?.prompt ||
+        '정기 점검입니다. 보고할 사항이 있으면 간결하게 응답하고, 없으면 [SILENT]로 응답하세요.';
+    return `[heartbeat] 현재 시간: ${now}\n\n${base}`;
+}
+
+function startHeartbeat() {
+    stopHeartbeat();
+    if (!settings.heartbeat?.enabled) {
+        console.log('[heartbeat] disabled');
+        return;
+    }
+    const intervalMin = settings.heartbeat.intervalMinutes || 5;
+    const intervalMs = intervalMin * 60_000;
+    console.log(`[heartbeat] started — every ${intervalMin}min`);
+
+    heartbeatTimer = setInterval(async () => {
+        if (heartbeatBusy) {
+            console.log('[heartbeat] skipped — already running');
+            return;
+        }
+        heartbeatBusy = true;
+        try {
+            const prompt = buildHeartbeatPrompt();
+            console.log('[heartbeat] tick');
+            const result = await orchestrateAndCollect(prompt);
+
+            // [SILENT] 토큰 처리 — 할 일 없으면 무시
+            if (result.includes('[SILENT]')) {
+                console.log('[heartbeat] silent — nothing to report');
+                return;
+            }
+
+            console.log(`[heartbeat] response: ${result.slice(0, 80)}`);
+
+            // Telegram에 결과 전달
+            if (telegramBot && settings.telegram?.enabled) {
+                const chatIds = settings.telegram.allowedChatIds || [];
+                const html = markdownToTelegramHtml(result);
+                const chunks = chunkTelegramMessage(html);
+                for (const chatId of chatIds) {
+                    for (const chunk of chunks) {
+                        try {
+                            await telegramBot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
+                        } catch {
+                            await telegramBot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
+                        }
+                    }
+                }
+            }
+        } catch (err) {
+            console.error('[heartbeat] error:', err.message);
+        } finally {
+            heartbeatBusy = false;
+        }
+    }, intervalMs);
+    heartbeatTimer.unref?.();
+}
+
+function stopHeartbeat() {
+    if (heartbeatTimer) {
+        clearInterval(heartbeatTimer);
+        heartbeatTimer = null;
+        console.log('[heartbeat] stopped');
+    }
+}
+
 // ─── Start ───────────────────────────────────────────
 
 server.listen(PORT, () => {
@@ -1164,4 +1238,5 @@ server.listen(PORT, () => {
     console.log(`  DB:     ${DB_PATH}`);
     console.log(`  Prompts: ${PROMPTS_DIR}\n`);
     initTelegram();
+    startHeartbeat();
 });

@@ -709,6 +709,27 @@
                         style="width:100%;font-size:11px;padding:4px" onchange="saveTelegramSettings()">
                 </div>
             </div>
+            <!-- Heartbeat (Phase 8) -->
+            <div class="settings-group">
+                <h4>💓 Heartbeat</h4>
+                <div class="settings-row">
+                    <label>Enabled</label>
+                    <div>
+                        <button id="hbOff" class="perm-btn active" onclick="setHeartbeat(false)">Off</button>
+                        <button id="hbOn" class="perm-btn" onclick="setHeartbeat(true)">On</button>
+                    </div>
+                </div>
+                <div class="settings-row">
+                    <label>Interval (분)</label>
+                    <input type="number" id="hbInterval" value="5" min="1" max="1440"
+                        style="width:60px;font-size:11px;padding:4px" onchange="saveHeartbeatSettings()">
+                </div>
+                <div class="settings-row" style="flex-direction:column;align-items:stretch">
+                    <label>Prompt</label>
+                    <textarea id="hbPrompt" rows="2" style="width:100%;font-size:11px;padding:4px;resize:vertical"
+                        placeholder="정기 점검입니다..." onchange="saveHeartbeatSettings()"></textarea>
+                </div>
+            </div>
 
             <!-- CLI Status moved to bottom (5.8) -->
 
@@ -1095,6 +1116,7 @@
             loadPlanningSettings(s);
             // Load telegram settings (6.5)
             loadTelegramSettings(s);
+            loadHeartbeatSettings(s);
         }
 
         async function updateSettings() {
@@ -1204,6 +1226,36 @@
             if (tg.allowedChatIds?.length) {
                 document.getElementById('tgChatIds').value = tg.allowedChatIds.join(', ');
             }
+        }
+
+        // ── Heartbeat settings (8) ──
+        async function saveHeartbeatSettings() {
+            const intervalMinutes = parseInt(document.getElementById('hbInterval').value, 10) || 5;
+            const prompt = document.getElementById('hbPrompt').value.trim();
+            await fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ heartbeat: { intervalMinutes, prompt } }),
+            });
+        }
+
+        async function setHeartbeat(on) {
+            document.getElementById('hbOn').classList.toggle('active', on);
+            document.getElementById('hbOff').classList.toggle('active', !on);
+            await fetch('/api/settings', {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ heartbeat: { enabled: on } }),
+            });
+        }
+
+        function loadHeartbeatSettings(s) {
+            if (!s.heartbeat) return;
+            const hb = s.heartbeat;
+            document.getElementById('hbOn').classList.toggle('active', !!hb.enabled);
+            document.getElementById('hbOff').classList.toggle('active', !hb.enabled);
+            if (hb.intervalMinutes) document.getElementById('hbInterval').value = hb.intervalMinutes;
+            if (hb.prompt) document.getElementById('hbPrompt').value = hb.prompt;
         }
 
         // ── CLI Status + Quota (5.8: cached with interval) ──
