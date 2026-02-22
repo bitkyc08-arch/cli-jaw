@@ -1120,9 +1120,13 @@ function initTelegram() {
         insertMessage.run('user', text, 'telegram', '');
         broadcast('new_message', { role: 'user', content: text, source: 'telegram' });
 
-        await ctx.replyWithChatAction('typing').catch(e => console.log('[tg:typing]', e.message));
+        await ctx.replyWithChatAction('typing')
+            .then(() => console.log('[tg:typing] ✅ sent'))
+            .catch(e => console.log('[tg:typing] ❌', e.message));
         const typingInterval = setInterval(() => {
-            ctx.replyWithChatAction('typing').catch(() => { });
+            ctx.replyWithChatAction('typing')
+                .then(() => console.log('[tg:typing] ✅ refresh'))
+                .catch(e => console.log('[tg:typing] ❌ refresh', e.message));
         }, 4000);
 
         try {
