@@ -10,6 +10,7 @@ import os from 'os';
 import Database from 'better-sqlite3';
 import { Bot } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
+import net from 'node:net';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -1051,6 +1052,12 @@ function initTelegram() {
     if (!settings.telegram?.enabled || !settings.telegram?.token) {
         console.log('[tg] Telegram disabled or no token');
         return;
+    }
+
+    // Node 22 workaround: autoSelectFamily allows IPv4 fallback on broken IPv6 networks
+    // Ref: openclaw-ref/src/telegram/fetch.ts, nodejs/node#54359
+    if (typeof net.setDefaultAutoSelectFamily === 'function') {
+        net.setDefaultAutoSelectFamily(true);
     }
 
     const bot = new Bot(settings.telegram.token);
