@@ -1136,9 +1136,7 @@ function initTelegram() {
                 }
             }
 
-            // Save assistant response to DB + sync to Web UI (6.2)
-            insertMessage.run('assistant', result, 'telegram', '');
-            broadcast('new_message', { role: 'assistant', content: result, source: 'telegram' });
+            // Note: assistant message already saved + broadcast as agent_done by spawnAgent
             console.log(`[tg:out] ${ctx.chat.id}: ${result.slice(0, 80)}`);
         } catch (err) {
             clearInterval(typingInterval);
