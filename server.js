@@ -363,6 +363,7 @@ let activeProcess = null;
 function makeCleanEnv() {
     const env = { ...process.env };
     delete env.CLAUDE_CODE_SSE_PORT;
+    delete env.GEMINI_SYSTEM_MD;  // Clean slate, set per-spawn
     return env;
 }
 
@@ -380,16 +381,17 @@ function buildArgs(cli, model, effort, prompt, sysPrompt) {
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['-c', `model_reasoning_effort="${effort}"`] : []),
                 '--full-auto', '--skip-git-repo-check', '--json'];
-        case 'gemini':
+        case 'gemini': {
             return ['-p', prompt || '',
                 ...(model && model !== 'default' ? ['-m', model] : []),
-                '-y', '-o', 'stream-json',
-                ...(sysPrompt ? ['--system-instruction', sysPrompt] : [])];
+                '-y', '-o', 'stream-json'];
+        }
         case 'opencode':
             return ['run',
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['--variant', effort] : []),
-                '--format', 'json'];
+                '--format', 'json',
+                prompt || ''];
         default:
             return [];
     }
@@ -418,7 +420,8 @@ function buildResumeArgs(cli, model, effort, sessionId, prompt) {
             return ['run', '-s', sessionId,
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['--variant', effort] : []),
-                '--format', 'json'];
+                '--format', 'json',
+                prompt || ''];
         default:
             return [];
     }
@@ -457,9 +460,18 @@ function spawnAgent(prompt, opts = {}) {
     const agentLabel = agentId || 'main';
     console.log(`[claw:${agentLabel}] Spawning: ${cli} ${args.join(' ').slice(0, 120)}...`);
 
+    const spawnEnv = makeCleanEnv();
+
+    // Gemini: system prompt via GEMINI_SYSTEM_MD env var (file path)
+    if (cli === 'gemini' && sysPrompt) {
+        const tmpSysFile = join(os.tmpdir(), `claw-gemini-sys-${agentLabel}.md`);
+        fs.writeFileSync(tmpSysFile, sysPrompt);
+        spawnEnv.GEMINI_SYSTEM_MD = tmpSysFile;
+    }
+
     const child = spawn(cli, args, {
         cwd: settings.workingDir,
-        env: makeCleanEnv(),
+        env: spawnEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
     });
     if (!forceNew) activeProcess = child;
@@ -470,7 +482,8 @@ function spawnAgent(prompt, opts = {}) {
     }
 
     // Stdin: system prompt + recent messages + user message
-    const skipStdin = cli === 'gemini' || (cli === 'codex' && isResume);
+    // Skip for: gemini (stdin = visible user msg), codex resume (already has context), opencode (prompt in args)
+    const skipStdin = cli === 'gemini' || cli === 'opencode' || (cli === 'codex' && isResume);
     if (!skipStdin) {
         const sysPrompt = customSysPrompt || getSystemPrompt();
         let stdinContent = `[Claw Platform Context]\n${sysPrompt}`;
@@ -542,7 +555,7 @@ function spawnAgent(prompt, opts = {}) {
                 insertMessage.run('assistant', finalContent, cli, model);
                 broadcast('agent_done', { text: finalContent });
             }
-        } else if (!forceNew) {
+        } else if (!forceNew && code !== 0) {
             let errMsg = `CLI 실행 실패 (exit ${code})`;
             if (ctx.stderrBuf.includes('429') || ctx.stderrBuf.includes('RESOURCE_EXHAUSTED')) {
                 errMsg = '⚡ API 용량 초과 (429) — 잠시 후 다시 시도해주세요';
@@ -613,10 +626,14 @@ function extractFromEvent(cli, event, ctx) {
             }
             break;
         case 'opencode':
-            if (event.type === 'text') {
-                ctx.fullText += event.content || '';
-            } else if (event.type === 'tool-call') {
-                ctx.toolLog.push({ name: event.tool || 'tool', input: '' });
+            if (event.type === 'text' && event.part?.text) {
+                ctx.fullText += event.part.text;
+            } else if (event.type === 'step_finish' && event.part) {
+                ctx.sessionId = event.sessionID;
+                if (event.part.tokens) {
+                    ctx.tokens = { input_tokens: event.part.tokens.input, output_tokens: event.part.tokens.output };
+                }
+                if (event.part.cost) ctx.cost = event.part.cost;
             }
             break;
     }
