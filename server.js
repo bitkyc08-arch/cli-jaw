@@ -1043,9 +1043,9 @@ function orchestrateAndCollect(prompt) {
 
 let telegramBot = null;
 
-function initTelegram() {
+async function initTelegram() {
     if (telegramBot) {
-        telegramBot.stop();
+        try { telegramBot.stop(); } catch { }
         telegramBot = null;
     }
     if (!settings.telegram?.enabled || !settings.telegram?.token) {
@@ -1055,16 +1055,29 @@ function initTelegram() {
 
     const bot = new Bot(settings.telegram.token);
     bot.api.config.use(apiThrottler());
-    bot.catch((err) => console.error('[tg:error]', err.message || err));
+
+    // 1. Validate token first (getMe)
+    try {
+        await bot.init();
+        console.log(`[tg] ✅ Token valid — @${bot.botInfo.username}`);
+    } catch (err) {
+        console.error(`[tg] ❌ Invalid token:`, err.message);
+        return;
+    }
+
+    // 2. Error handler (only for middleware errors, AFTER init)
+    bot.catch((err) => console.error('[tg:middleware]', err.message || err));
+
+    // 3. Sequentialize per chat
     bot.use(sequentialize((ctx) => `tg:${ctx.chat?.id || 'unknown'}`));
 
-    // Debug: log all incoming updates
+    // 4. Debug: log all incoming updates
     bot.use(async (ctx, next) => {
         console.log(`[tg:update] type=${ctx.updateType} chat=${ctx.chat?.id} text=${(ctx.message?.text || '').slice(0, 40)}`);
         await next();
     });
 
-    // Allowlist
+    // 5. Allowlist
     bot.use(async (ctx, next) => {
         const allowed = settings.telegram.allowedChatIds;
         if (allowed?.length > 0 && !allowed.includes(ctx.chat?.id)) {
@@ -1083,7 +1096,6 @@ function initTelegram() {
 
         console.log(`[tg:in] ${ctx.chat.id}: ${text.slice(0, 80)}`);
 
-        // Don't save to DB here — spawnAgent handles message saving
         await ctx.replyWithChatAction('typing').catch(() => { });
         const typingInterval = setInterval(() => {
             ctx.replyWithChatAction('typing').catch(() => { });
@@ -1111,15 +1123,10 @@ function initTelegram() {
         }
     });
 
-    // Start polling (async — must handle errors explicitly)
-    bot.start({
-        drop_pending_updates: true,
-        onStart: (botInfo) => console.log(`[tg] ✅ Bot @${botInfo.username} polling active`),
-    }).catch(err => {
-        console.error(`[tg] ❌ Bot failed to start:`, err.message || err);
-    });
+    // 6. Start polling
+    bot.start({ drop_pending_updates: true });
     telegramBot = bot;
-    console.log(`[tg] Bot initializing... (allowlist: ${settings.telegram.allowedChatIds?.length || 'all'})`);
+    console.log(`[tg] 🦞 Polling started (allowlist: ${settings.telegram.allowedChatIds?.length || 'all'})`);
 }
 
 // ─── Start ───────────────────────────────────────────
