@@ -2,6 +2,15 @@
     "name": "cli-claw",
     "version": "0.1.0",
     "type": "module",
+    "bin": {
+        "cli-claw": "bin/cli-claw.js"
+    },
+    "files": [
+        "bin/",
+        "server.js",
+        "public/",
+        "package.json"
+    ],
     "scripts": {
         "dev": "node --dns-result-order=ipv4first server.js",
         "postinstall": "node bin/postinstall.js"

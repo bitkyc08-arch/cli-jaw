@@ -20,14 +20,34 @@ const __dirname = dirname(__filename);
 const PORT = process.env.PORT || 3457;
 const CLAW_HOME = join(os.homedir(), '.cli-claw');
 const PROMPTS_DIR = join(CLAW_HOME, 'prompts');
-const DB_PATH = join(__dirname, 'claw.db');
-const SETTINGS_PATH = join(__dirname, 'settings.json');
+const DB_PATH = join(CLAW_HOME, 'claw.db');
+const SETTINGS_PATH = join(CLAW_HOME, 'settings.json');
 const HEARTBEAT_JOBS_PATH = join(CLAW_HOME, 'heartbeat.json');
+const MIGRATION_MARKER = join(CLAW_HOME, '.migrated-v1');
 
 // ─── Ensure directories ─────────────────────────────
 
 fs.mkdirSync(PROMPTS_DIR, { recursive: true });
 fs.mkdirSync(join(__dirname, 'public'), { recursive: true });
+
+// ─── 1-time migration (Phase 9.2) ───────────────────
+if (!fs.existsSync(MIGRATION_MARKER)) {
+    const legacySettings = join(__dirname, 'settings.json');
+    const legacyDb = join(__dirname, 'claw.db');
+    if (fs.existsSync(legacySettings) && !fs.existsSync(SETTINGS_PATH)) {
+        fs.copyFileSync(legacySettings, SETTINGS_PATH);
+        console.log('[migrate] settings.json → ~/.cli-claw/');
+    }
+    if (fs.existsSync(legacyDb) && !fs.existsSync(DB_PATH)) {
+        fs.copyFileSync(legacyDb, DB_PATH);
+        for (const ext of ['-wal', '-shm']) {
+            const src = legacyDb + ext;
+            if (fs.existsSync(src)) fs.copyFileSync(src, DB_PATH + ext);
+        }
+        console.log('[migrate] claw.db → ~/.cli-claw/');
+    }
+    fs.writeFileSync(MIGRATION_MARKER, JSON.stringify({ migratedAt: new Date().toISOString() }));
+}
 
 // ─── A-1 Core System Prompt (immutable) ──────────────
 
@@ -841,6 +861,21 @@ function broadcast(type, data) {
     wss.clients.forEach(c => { if (c.readyState === 1) c.send(msg); });
     for (const fn of broadcastListeners) fn(type, data);
 }
+
+// WebSocket incoming messages (for CLI chat)
+wss.on('connection', (ws) => {
+    ws.on('message', (raw) => {
+        try {
+            const msg = JSON.parse(raw.toString());
+            if (msg.type === 'send_message' && msg.text) {
+                console.log(`[ws:in] ${msg.text.slice(0, 80)}`);
+                insertMessage.run('user', msg.text, 'cli', '');
+                broadcast('new_message', { role: 'user', content: msg.text, source: 'cli' });
+                orchestrate(msg.text);
+            }
+        } catch { }
+    });
+});
 
 // ─── API Routes ──────────────────────────────────────
 
