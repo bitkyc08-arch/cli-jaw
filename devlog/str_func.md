@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-23 (server.js 593L / agent.js 360L / chat.js 468L / mcp-sync.js 461L / public/ 18파일 2504L)
+> 마지막 검증: 2026-02-23 (server.js 593L / agent.js 360L / chat.js 468L / mcp-sync.js 461L / prompt.js 348L / public/ 18파일 2504L)
 
 ---
 
@@ -18,10 +18,10 @@ cli-claw/
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (19L)
 │   ├── events.js             ← NDJSON 이벤트 파싱 (97L)
 │   ├── agent.js              ← CLI spawn + 스트림 + 큐 + 메모리 flush (360L)
-│   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (138L)
+│   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (131L)
 │   ├── telegram.js           ← Telegram 봇 + orchestrateAndCollect (267L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (91L)
-│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 메모리 주입 (310L)
+│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 주입 (348L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (122L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결
@@ -61,7 +61,7 @@ cli-claw/
 │       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
 │       └── browser.js        ← 브라우저 CLI (15개 서브커맨드)
-├── skills_ref/               ← 번들 스킬 (20+ 스킬)
+├── skills_ref/               ← 번들 스킬 (53개: OpenClaw 26 + Codex 27 폴백)
 │   └── registry.json
 └── devlog/                   ← MVP 12 Phase + Post-MVP 6개 폴더
 ```
@@ -194,7 +194,7 @@ Flow: 직원 0명→단일 agent / planning 먼저 실행 / distribute→보고�
 
 ### prompt.js — System Prompt & Skills
 
-`loadActiveSkills()` · `loadSkillRegistry()` · `getMergedSkills()` · `initPromptFiles()` · `getSystemPrompt()` — A-1 + A-2 + skills + memory + employees + heartbeat · `regenerateB()`
+`loadActiveSkills()` · `loadSkillRegistry()` · `getMergedSkills()` · `initPromptFiles()` · `getSystemPrompt()` — A-1 + A-2 + skills + memory + employees + heartbeat · `getSubAgentPrompt(emp)` — 실행자용 경량 프롬프트 (오케스트레이션 규칙 제외, 스킬/브라우저/메모리 명령어 포함) · `regenerateB()`
 
 ### memory.js — Persistent Memory
 
@@ -228,7 +228,7 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 | `toCodexToml(config)`        | Codex `config.toml` 변환       |
 | `toOpenCodeMcp(config)`      | OpenCode `opencode.json` 변환  |
 | `syncToAll(config, workDir)` | 통합 → 4개 CLI 설정 동기화     |
-| `copyDefaultSkills()`        | 2×3 Matrix 분류 + 복사         |
+| `copyDefaultSkills()`        | 2×3 분류 + Codex 폴백 자동활성 |
 | `installMcpServers(config)`  | npm -g / uv tool install       |
 
 ---
@@ -301,13 +301,14 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 
 **Post-MVP** (`devlog/260223_*/`):
 
-| 폴더                  | 주제                                    | 상태 |
-| --------------------- | --------------------------------------- | ---- |
-| `260223_권한/`        | 권한 + 모듈화 + 스킬 + 브라우저 (P1~10) | ✅    |
-| `260223_메모리 개선/` | 메모리 고도화 (embedding 계획)          | 📋    |
-| `260223_모델/`        | 모델 목록 + custom input                | ✅    |
-| `260223_프론트엔드/`  | Web UI ES Modules 모듈화 (Phase 11)     | ✅    |
-| `260224_cmd/`         | 슬래시 커맨드 통합 시스템               | 📋    |
+| 폴더                              | 주제                                    | 상태 |
+| --------------------------------- | --------------------------------------- | ---- |
+| `260223_권한/`                    | 권한 + 모듈화 + 스킬 + 브라우저 (P1~10) | ✅    |
+| `260223_메모리 개선/`             | 메모리 고도화 (embedding 계획)          | 📋    |
+| `260223_모델/`                    | 모델 목록 + custom input                | ✅    |
+| `260223_프론트엔드/`              | Web UI ES Modules 모듈화 (Phase 10)     | ✅    |
+| `260223_11_서브에이전트프롬프트/` | 서브에이전트 프롬프트 구조화 (Phase 11) | ✅    |
+| `260224_cmd/`                     | 슬래시 커맨드 통합 시스템               | 📋    |
 
 ---
 

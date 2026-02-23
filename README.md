@@ -14,7 +14,7 @@ cli-claw serve
 
 - 🤖 **Multi-CLI**: Claude Code, Codex, Gemini CLI, OpenCode 통합
 - 👥 **Sub Agents**: 역할별 에이전트 분배 (프론트, 백엔드, QA 등)
-- 📦 **Skills**: 플러그인 스킬 시스템 (2×3 분류: Active / Reference / Delete)
+- 📦 **Skills**: 플러그인 스킬 시스템 (2×3 분류: Active / Reference, Codex 폴백 번들)
 - 🧠 **Memory**: 자동 대화 요약 + 장기 기억
 - 💓 **Heartbeat**: 주기적 자동 실행
 - 📬 **Telegram**: 텔레그램 봇 연동
