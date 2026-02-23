@@ -61,6 +61,18 @@
             "requires": null,
             "install": null
         },
+        "linear": {
+            "name": "Linear",
+            "emoji": "📐",
+            "category": "productivity",
+            "description": "Linear 이슈·프로젝트 관리. CLI로 태스크 생성/조회.",
+            "requires": {
+                "bins": [
+                    "linear"
+                ]
+            },
+            "install": null
+        },
         "himalaya": {
             "name": "이메일 (Himalaya)",
             "emoji": "📧",
@@ -258,7 +270,7 @@
             "name": "브라우저 조작",
             "emoji": "🌐",
             "category": "automation",
-            "description": "Chrome 브라우저 조작. ref 스냅샷으로 페이지 요소 식별 → 클릭/입력. cli-claw 서버 필요.",
+            "description": "Chrome 브라우저 조작. ref 스냅샷으로 페이지 요소 식별 → 클릭/입력.",
             "requires": {
                 "system": [
                     "Google Chrome"
@@ -284,6 +296,213 @@
             "description": "macOS screencapture로 스크린샷/영역/윈도우 캡처. 웹캠(imagesnap).",
             "requires": null,
             "install": null
+        },
+        "atlas": {
+            "name": "ChatGPT Atlas",
+            "emoji": "🌍",
+            "category": "ai-media",
+            "description": "ChatGPT Atlas 앱 제어. macOS 전용.",
+            "requires": {
+                "bins": [
+                    "python3"
+                ]
+            },
+            "install": null
+        },
+        "cloudflare-deploy": {
+            "name": "Cloudflare Deploy",
+            "emoji": "☁️",
+            "category": "devtools",
+            "description": "Cloudflare Workers/Pages 배포. wrangler CLI.",
+            "requires": {
+                "bins": [
+                    "wrangler"
+                ]
+            },
+            "install": "npm i -g wrangler"
+        },
+        "develop-web-game": {
+            "name": "웹 게임 개발",
+            "emoji": "🎮",
+            "category": "devtools",
+            "description": "웹 게임 개발 + Playwright 테스트 루프.",
+            "requires": {
+                "bins": [
+                    "npx"
+                ]
+            },
+            "install": null
+        },
+        "figma-implement-design": {
+            "name": "Figma → 코드",
+            "emoji": "🎨",
+            "category": "devtools",
+            "description": "Figma 디자인을 1:1 코드로 변환. Figma MCP 필요.",
+            "requires": {
+                "bins": [
+                    "codex"
+                ]
+            },
+            "install": "codex mcp add figma"
+        },
+        "jupyter-notebook": {
+            "name": "Jupyter Notebook",
+            "emoji": "📓",
+            "category": "devtools",
+            "description": ".ipynb 생성/편집. 번들 Python 스크립트.",
+            "requires": {
+                "bins": [
+                    "python3"
+                ]
+            },
+            "install": null
+        },
+        "netlify-deploy": {
+            "name": "Netlify Deploy",
+            "emoji": "🔺",
+            "category": "devtools",
+            "description": "Netlify 사이트 배포. netlify CLI.",
+            "requires": {
+                "bins": [
+                    "netlify"
+                ]
+            },
+            "install": "npm i -g netlify-cli"
+        },
+        "notion-knowledge-capture": {
+            "name": "Notion 지식 캡처",
+            "emoji": "📚",
+            "category": "productivity",
+            "description": "대화→Notion 위키/FAQ/HOW-TO 캡처. Notion MCP.",
+            "requires": {
+                "env": [
+                    "NOTION_API_KEY"
+                ]
+            },
+            "install": "codex mcp add notion --url https://mcp.notion.com/mcp"
+        },
+        "notion-meeting-intelligence": {
+            "name": "Notion 회의 준비",
+            "emoji": "📊",
+            "category": "productivity",
+            "description": "회의 자료 준비 (참석자별 맥락, 어젠다). Notion MCP.",
+            "requires": {
+                "env": [
+                    "NOTION_API_KEY"
+                ]
+            },
+            "install": "codex mcp add notion --url https://mcp.notion.com/mcp"
+        },
+        "notion-research-documentation": {
+            "name": "Notion 리서치 합성",
+            "emoji": "🔬",
+            "category": "productivity",
+            "description": "Notion 다중 소스 → 보고서/비교 합성. Notion MCP.",
+            "requires": {
+                "env": [
+                    "NOTION_API_KEY"
+                ]
+            },
+            "install": "codex mcp add notion --url https://mcp.notion.com/mcp"
+        },
+        "notion-spec-to-implementation": {
+            "name": "Notion 스펙→태스크",
+            "emoji": "📋",
+            "category": "productivity",
+            "description": "PRD/스펙 → 구현계획 + 태스크 자동 생성. Notion MCP.",
+            "requires": {
+                "env": [
+                    "NOTION_API_KEY"
+                ]
+            },
+            "install": "codex mcp add notion --url https://mcp.notion.com/mcp"
+        },
+        "render-deploy": {
+            "name": "Render Deploy",
+            "emoji": "🚀",
+            "category": "devtools",
+            "description": "Render 서비스 배포. Blueprint YAML.",
+            "requires": {
+                "bins": [
+                    "render"
+                ],
+                "env": [
+                    "RENDER_API_KEY"
+                ]
+            },
+            "install": "brew install render"
+        },
+        "sentry": {
+            "name": "Sentry",
+            "emoji": "🐛",
+            "category": "devtools",
+            "description": "Sentry 이슈/이벤트 조회. 번들 Python 스크립트.",
+            "requires": {
+                "bins": [
+                    "python3"
+                ],
+                "env": [
+                    "SENTRY_AUTH_TOKEN"
+                ]
+            },
+            "install": null
+        },
+        "sora": {
+            "name": "Sora 비디오",
+            "emoji": "🎥",
+            "category": "ai-media",
+            "description": "Sora 비디오 생성/관리. OpenAI API.",
+            "requires": {
+                "bins": [
+                    "python3"
+                ],
+                "env": [
+                    "OPENAI_API_KEY"
+                ]
+            },
+            "install": null
+        },
+        "speech": {
+            "name": "OpenAI TTS",
+            "emoji": "🗣️",
+            "category": "ai-media",
+            "description": "OpenAI TTS로 음성 합성. 번들 Python 스크립트.",
+            "requires": {
+                "bins": [
+                    "python3"
+                ],
+                "env": [
+                    "OPENAI_API_KEY"
+                ]
+            },
+            "install": null
+        },
+        "transcribe": {
+            "name": "음성→텍스트",
+            "emoji": "🎤",
+            "category": "ai-media",
+            "description": "OpenAI Whisper 음성→텍스트 + 다화자 분리.",
+            "requires": {
+                "bins": [
+                    "python3"
+                ],
+                "env": [
+                    "OPENAI_API_KEY"
+                ]
+            },
+            "install": null
+        },
+        "vercel-deploy": {
+            "name": "Vercel Deploy",
+            "emoji": "▲",
+            "category": "devtools",
+            "description": "Vercel 프로젝트 배포.",
+            "requires": {
+                "bins": [
+                    "vercel"
+                ]
+            },
+            "install": "npm i -g vercel"
         }
     }
 }

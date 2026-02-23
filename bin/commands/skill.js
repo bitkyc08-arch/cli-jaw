@@ -164,7 +164,59 @@ switch (sub) {
         }
         console.log(`\n  ${c.dim}cli-claw skill install <name>  — 스킬 설치${c.reset}`);
         console.log(`  ${c.dim}cli-claw skill info <name>     — 상세 보기${c.reset}`);
-        console.log(`  ${c.dim}cli-claw skill remove <name>   — 삭제${c.reset}\n`);
+        console.log(`  ${c.dim}cli-claw skill remove <name>   — 삭제${c.reset}`);
+        console.log(`  ${c.dim}cli-claw skill reset           — 초기화 (2×3 분류 재실행)${c.reset}\n`);
+        break;
+    }
+
+    case 'reset': {
+        const force = process.argv.includes('--force');
+        if (!force) {
+            const { createInterface } = await import('node:readline');
+            const rl = createInterface({ input: process.stdin, output: process.stdout });
+            const answer = await new Promise(r => {
+                rl.question(`\n  ${c.yellow}⚠️  스킬 디렉토리를 초기화합니다.${c.reset}\n  기존 active/ref 스킬이 삭제되고 2×3 분류가 재실행됩니다.\n  계속하시겠습니까? (y/N): `, r);
+            });
+            rl.close();
+            if (answer.toLowerCase() !== 'y') {
+                console.log('  취소됨.\n');
+                break;
+            }
+        }
+
+        console.log(`\n  ${c.bold}🔄 스킬 초기화 중...${c.reset}\n`);
+
+        // 1. Clear active skills
+        if (existsSync(SKILLS_DIR)) {
+            rmSync(SKILLS_DIR, { recursive: true, force: true });
+            console.log(`  ${c.dim}✓ cleared ${SKILLS_DIR}${c.reset}`);
+        }
+        mkdirSync(SKILLS_DIR, { recursive: true });
+
+        // 2. Clear ref skills
+        const REF_DIR = join(CLAW_HOME, 'skills_ref');
+        if (existsSync(REF_DIR)) {
+            rmSync(REF_DIR, { recursive: true, force: true });
+            console.log(`  ${c.dim}✓ cleared ${REF_DIR}${c.reset}`);
+        }
+        mkdirSync(REF_DIR, { recursive: true });
+
+        // 3. Re-run copyDefaultSkills (2×3 classification)
+        try {
+            const { copyDefaultSkills } = await import('../../lib/mcp-sync.js');
+            const count = copyDefaultSkills();
+            console.log(`\n  ${c.green}✅ 초기화 완료!${c.reset}`);
+
+            // Count results
+            const activeCount = readdirSync(SKILLS_DIR, { withFileTypes: true })
+                .filter(d => d.isDirectory()).length;
+            const refCount = readdirSync(REF_DIR, { withFileTypes: true })
+                .filter(d => d.isDirectory()).length;
+            console.log(`  ${c.cyan}⚡ Active: ${activeCount}개${c.reset}`);
+            console.log(`  ${c.cyan}📦 Ref: ${refCount}개${c.reset}\n`);
+        } catch (e) {
+            console.error(`  ${c.red}❌ 초기화 실패: ${e.message}${c.reset}\n`);
+        }
         break;
     }
 

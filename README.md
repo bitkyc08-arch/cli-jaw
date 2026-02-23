@@ -140,8 +140,50 @@ cli-claw doctor [--json]                   # 설치/설정 진단
 cli-claw chat   [--raw]                    # 터미널 채팅 (REPL / ndjson)
 cli-claw mcp    [install|sync|list]        # MCP 서버 관리
 cli-claw skill  [install|remove|info]      # 스킬 관리
+cli-claw browser [snapshot|click|type...]  # 브라우저 조작 (CDP)
 cli-claw status                            # 서버 상태 확인
 ```
+
+## 🧩 Skills System
+
+cli-claw은 **스킬(SKILL.md)** 기반으로 AI 에이전트에게 도구 사용법을 주입합니다.
+
+### 스킬 분류 (2×3 Matrix)
+
+| 소스         | Active (자동 로드)             | Reference (필요 시 참조)   | 제외      |
+| ------------ | ------------------------------ | -------------------------- | --------- |
+| **Codex**    | screenshot, playwright, pdf... | cloudflare-deploy, sora... | 중복 스킬 |
+| **OpenClaw** | browser, notion                | nano-banana-pro, tts...    | —         |
+
+- `~/.cli-claw/skills/` — Active 스킬 (시스템 프롬프트에 주입)
+- `~/.cli-claw/skills_ref/` — Reference 스킬 (AI가 필요 시 읽기)
+- `skills_ref/registry.json` — 전체 스킬 카탈로그
+
+### 내장 스킬
+
+| 스킬                  | 기능                                 | 의존성                  |
+| --------------------- | ------------------------------------ | ----------------------- |
+| 🌐 **browser**         | Chrome CDP 브라우저 조작 (ref-based) | playwright-core, Chrome |
+| 🔊 **tts**             | macOS `say` 텍스트 음성 변환         | 없음 (macOS 내장)       |
+| 📸 **screen-capture**  | screencapture + imagesnap            | 없음 (macOS 내장)       |
+| 🍌 **nano-banana-pro** | Gemini 이미지 생성/편집              | uv, GEMINI_API_KEY      |
+| 📝 **notion**          | Notion API 연동                      | NOTION_API_KEY          |
+
+## 🌐 Browser Control
+
+Playwright CDP를 통한 Chrome 브라우저 조작. AI가 웹 검색, 폼 입력, 스크린샷을 직접 수행.
+
+```bash
+cli-claw browser start              # Chrome 시작 (CDP 9240)
+cli-claw browser navigate "url"     # URL 이동
+cli-claw browser snapshot           # 페이지 구조 (ref ID 포함)
+cli-claw browser click e5           # ref e5 클릭
+cli-claw browser type e3 "hello"    # ref e3에 텍스트 입력
+cli-claw browser screenshot         # 스크린샷 캡처
+cli-claw browser tabs               # 탭 목록
+```
+
+> 시스템 프롬프트에서 **Browser Control (MANDATORY)** 규칙으로 AI에게 사용 강제
 
 ## 🔌 MCP Servers
 
@@ -239,6 +281,18 @@ cli-claw mcp sync                 # 4개 CLI에 config 동기화
 | `POST`    | `/api/mcp/sync`              | 4 CLI 동기화              |
 | `POST`    | `/api/mcp/install`           | MCP 서버 전역 설치        |
 | `POST`    | `/api/stop`                  | 실행 중인 에이전트 중지   |
+| `POST`    | `/api/browser/start`         | Chrome 시작 (CDP)         |
+| `POST`    | `/api/browser/stop`          | Chrome 종료               |
+| `GET`     | `/api/browser/status`        | 브라우저 연결 상태        |
+| `GET`     | `/api/browser/snapshot`      | ref 스냅샷                |
+| `POST`    | `/api/browser/screenshot`    | 스크린샷 캡처             |
+| `POST`    | `/api/browser/act`           | 클릭/타입/호버 실행       |
+| `POST`    | `/api/browser/navigate`      | URL 이동                  |
+| `GET`     | `/api/browser/tabs`          | 탭 목록                   |
+| `POST`    | `/api/browser/evaluate`      | JS 실행                   |
+| `GET`     | `/api/browser/text`          | 페이지 텍스트 추출        |
+| `GET`     | `/api/skills`                | 스킬 목록                 |
+| `GET`     | `/api/skills/:id`            | 스킬 SKILL.md 조회        |
 
 ## Requirements
 
@@ -246,6 +300,9 @@ cli-claw mcp sync                 # 4개 CLI에 config 동기화
 - Claude Code / Codex / Gemini CLI 중 1개 이상 + 인증
 - (선택) Telegram Bot Token — [@BotFather](https://t.me/BotFather)
 - (자동설치) `@modelcontextprotocol/server-puppeteer`, `@upstash/context7-mcp`
+- (자동설치) **uv** — Python 스킬 런타임 (imagegen, pdf, speech, transcribe)
+- (자동설치) **playwright-core** — 브라우저 스킬 (CDP 연결)
+- (수동) **Google Chrome** — 브라우저 스킬 필수
 
 ## Roadmap
 
@@ -274,6 +331,23 @@ graph LR
     style P10 fill:#2d6a4f
     style P11 fill:#2d6a4f
     style P12 fill:#2d6a4f
+```
+
+### 260223 Expansion
+
+```mermaid
+graph LR
+    S6["✅ 260223-P6<br/>Skill System<br/>2×3 Classification"]
+    S7["✅ 260223-P7<br/>Browser Control<br/>CDP + Playwright"]
+    S8["✅ 260223-P8<br/>Skill Expansion<br/>TTS + Screen Capture"]
+    S9["✅ 260223-P9<br/>Auto Dependencies<br/>uv + playwright"]
+
+    S6 --> S7 --> S8 --> S9
+
+    style S6 fill:#1b4332
+    style S7 fill:#1b4332
+    style S8 fill:#1b4332
+    style S9 fill:#1b4332
 ```
 
 ---
