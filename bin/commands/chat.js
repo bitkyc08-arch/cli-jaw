@@ -83,12 +83,20 @@ if (values.raw) {
     function showInput() {
         console.log('');
         console.log(`  ${c.dim}${hr()}${c.reset}`);
+        // Print prompt, save position, print bottom hr + footer, restore position
         process.stdout.write(`  ${accent}\u276F${c.reset} `);
+        process.stdout.write('\x1b[s');  // save cursor
+        process.stdout.write(`\n  ${c.dim}${hr()}${c.reset}`);
+        process.stdout.write(`\n${footer}`);
+        process.stdout.write('\x1b[u');  // restore cursor back to prompt
     }
 
-    function showInputBottom() {
-        console.log(`  ${c.dim}${hr()}${c.reset}`);
-        console.log(footer);
+    function onInputDone() {
+        // Clear the bottom hr + footer that were below cursor (2 lines down)
+        process.stdout.write('\x1b[s');       // save current pos
+        process.stdout.write('\n\x1b[2K');    // move down, clear bottom hr
+        process.stdout.write('\n\x1b[2K');    // move down, clear footer
+        process.stdout.write('\x1b[u');       // restore
     }
 
     // ─── REPL ────────────────────────────────
@@ -141,7 +149,7 @@ if (values.raw) {
 
     rl.on('line', (line) => {
         const text = line.trim();
-        showInputBottom();
+        onInputDone();
         if (!text) { showInput(); return; }
         if (text === '/quit' || text === '/exit' || text === '/q') {
             console.log(`\n  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
