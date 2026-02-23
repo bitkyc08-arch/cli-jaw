@@ -1,7 +1,7 @@
 # CLI-Claw — Source Structure & Function Reference
 
 > 모듈화 완료 후 `server.js` + `src/*.js` 구조 기준.  
-> 마지막 검증: 2026-02-23 (server.js 593L / agent.js 360L / chat.js 468L / mcp-sync.js 461L / mcp.js 198L / actions.js 170L)
+> 마지막 검증: 2026-02-23 (server.js 593L / agent.js 360L / chat.js 468L / mcp-sync.js 461L / mcp.js 198L / actions.js 170L / public/ 18파일 2504L)
 
 ---
 
@@ -33,8 +33,28 @@ cli-claw/
 │       └── actions.js         ← snapshot/click/type/navigate
 ├── skills_ref/               ← 번들 스킬 (Phase 6, 20+ 스킬)
 │   └── registry.json          ← 스킬 카탈로그
-├── public/
-│   └── index.html             ← Web UI (SPA, single-file)
+├── public/                       ← Web UI (ES Modules, 18 files)
+│   ├── index.html             ← 순수 HTML 뼈대 (416L, inline JS/CSS 없음)
+│   ├── css/
+│   │   ├── variables.css      ← CSS 커스텀 프로퍼티, 리셋 (47L)
+│   │   ├── layout.css         ← 사이드바, 탭, 세이브바 (162L)
+│   │   ├── chat.css           ← 채팅, 메시지, 타이핑, 첨부 (265L)
+│   │   ├── sidebar.css        ← 설정, 스킬 카드, 토글 (215L)
+│   │   └── modals.css         ← 모달, 하트비트 카드 (171L)
+│   └── js/
+│       ├── main.js            ← 앱 진입점 + 이벤트 바인딩 (198L)
+│       ├── state.js           ← 공유 상태 모듈 (16L)
+│       ├── constants.js       ← MODEL_MAP, ROLE_PRESETS (23L)
+│       ├── render.js          ← renderMarkdown, escapeHtml (20L)
+│       ├── ui.js              ← DOM 조작 유틸 (138L)
+│       ├── ws.js              ← WebSocket 연결 + 메시지 라우팅 (41L)
+│       └── features/
+│           ├── chat.js        ← 전송, 첨부, 드래그앤드롭 (111L)
+│           ├── settings.js    ← 설정, CLI 상태, MCP, 프롬프트 (351L)
+│           ├── skills.js      ← 로드, 토글, 필터 (65L)
+│           ├── employees.js   ← 서브에이전트 CRUD (92L)
+│           ├── heartbeat.js   ← 하트비트 모달/작업 (83L)
+│           └── memory.js      ← 메모리 모달/설정 (90L)
 ├── bin/
 │   ├── cli-claw.js            ← CLI 엔트리 (9개 서브커맨드 라우팅)
 │   ├── postinstall.js         ← npm install 후 8단계 자동 설정 (139L)
@@ -758,7 +778,7 @@ ensureDirs() → runMigration() → loadSettings() → initPromptFiles() → reg
 | `260223_메모리 개선/`       | 메모리 고도화 (Phase B: embedding 계획)    | `plan.md`, `README.md`        |
 | `260223_모델/`              | 모델 목록 업데이트 + custom input          | *(계획 단계)*                 |
 | `260223_모델.md`            | 모델 업데이트 결과 (`59de662`)             | 단독 파일                     |
-| `260223_프론트엔드 모듈화/` | Web UI CSS/JS 모듈 분리                    | `README.md`                   |
+| `260223_프론트엔드 모듈화/` | Web UI CSS/JS 모듈 분리 (Phase 11)         | `README.md`                   |
 | `260224_cmd/`               | 슬래시 커맨드 통합 시스템                  | `slash_commands.md`           |
 
 ### Post-MVP 세부 Phase (260223_권한/ 내)

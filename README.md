@@ -137,7 +137,10 @@ src/telegram.js      Telegram bot bridge
 src/memory.js        Memory file management
 src/browser/         Chrome CDP control
 lib/mcp-sync.js      MCP config sync (4 CLI targets)
-public/index.html    Web UI (single-file)
+public/              Web UI (ES Modules)
+├── index.html       HTML skeleton (no inline JS/CSS)
+├── css/             5 stylesheets (variables, layout, chat, sidebar, modals)
+└── js/              12 modules (state, ws, ui, render + features/)
 ```
 
 ## MCP Auto-Install

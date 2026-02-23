@@ -5,875 +5,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>🦞 Claw Agent</title>
-    <style>
-        :root {
-            --bg: #0a0a0f;
-            --surface: #12121a;
-            --border: #1e1e2e;
-            --text: #e4e4ef;
-            --text-dim: #6e6e8a;
-            --accent: #ff6b6b;
-            --accent2: #ffa07a;
-            --green: #4ade80;
-            --user-bg: #1a1a2e;
-            --agent-bg: #0f0f1a;
-        }
-
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'SF Mono', 'JetBrains Mono', monospace;
-            background: var(--bg);
-            color: var(--text);
-            height: 100vh;
-            display: grid;
-            grid-template-columns: 220px 1fr 260px;
-        }
-
-        /* ── Left Sidebar ── */
-        .sidebar-left {
-            background: var(--surface);
-            border-right: 1px solid var(--border);
-            padding: 16px;
-            display: flex;
-            flex-direction: column;
-            gap: 16px;
-            overflow-y: auto;
-        }
-
-        .logo {
-            font-size: 20px;
-            font-weight: 700;
-            color: var(--accent);
-        }
-
-        .section-title {
-            font-size: 11px;
-            color: var(--text-dim);
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 4px;
-        }
-
-        .memory-list {
-            list-style: none;
-            font-size: 12px;
-        }
-
-        .memory-list li {
-            padding: 4px 0;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .memory-key {
-            color: var(--accent2);
-        }
-
-        .stat {
-            font-size: 12px;
-            color: var(--text-dim);
-            margin: 2px 0;
-        }
-
-        .status-badge {
-            display: inline-block;
-            padding: 2px 8px;
-            border-radius: 10px;
-            font-size: 11px;
-            font-weight: 600;
-        }
-
-        .status-idle {
-            background: #1a2e1a;
-            color: var(--green);
-        }
-
-        .status-running {
-            background: #2e2a1a;
-            color: #fbbf24;
-        }
-
-        .btn-clear {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            padding: 8px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            font-family: inherit;
-            margin-top: auto;
-        }
-
-        .btn-clear:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        /* ── Chat Area ── */
-        .chat-area {
-            display: flex;
-            flex-direction: column;
-            border-right: 1px solid var(--border);
-            overflow: hidden;
-            min-height: 0;
-        }
-
-        .chat-header {
-            padding: 12px 20px;
-            border-bottom: 1px solid var(--border);
-            font-size: 14px;
-            font-weight: 600;
-        }
-
-        .chat-messages {
-            flex: 1;
-            overflow-y: auto;
-            padding: 16px 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .msg {
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            line-height: 1.6;
-            max-width: 85%;
-            word-wrap: break-word;
-            overflow-wrap: break-word;
-            white-space: pre-wrap;
-        }
-
-        .msg-user {
-            background: var(--user-bg);
-            align-self: flex-end;
-            border: 1px solid var(--border);
-        }
-
-        .msg-agent {
-            background: var(--agent-bg);
-            align-self: flex-start;
-            border: 1px solid var(--border);
-        }
-
-        .msg-system {
-            background: transparent;
-            border: 1px dashed var(--border);
-            align-self: center;
-            text-align: center;
-            font-size: 11px;
-            color: var(--text-dim);
-            padding: 4px 14px;
-            max-width: 95%;
-        }
-
-        .tool-summary {
-            font-size: 11px;
-            color: var(--text-dim);
-            margin-bottom: 8px;
-            border: 1px dashed var(--border);
-            border-radius: 6px;
-            padding: 4px 10px;
-        }
-
-        .tool-summary summary {
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .tool-summary .tool-log {
-            margin-top: 4px;
-            padding-top: 4px;
-            border-top: 1px dashed var(--border);
-            white-space: pre-wrap;
-            line-height: 1.6;
-        }
-
-        .msg-label {
-            font-size: 10px;
-            color: var(--text-dim);
-            margin-bottom: 4px;
-        }
-
-        .chat-input-area {
-            padding: 12px 20px;
-            border-top: 1px solid var(--border);
-            display: flex;
-            gap: 8px;
-        }
-
-        .chat-input {
-            flex: 1;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 10px 14px;
-            border-radius: 8px;
-            font-size: 13px;
-            font-family: inherit;
-            resize: none;
-        }
-
-        .chat-input:focus {
-            outline: none;
-            border-color: var(--accent);
-        }
-
-        .btn-send {
-            background: var(--accent);
-            color: white;
-            border: none;
-            padding: 10px 18px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 13px;
-            font-weight: 600;
-            font-family: inherit;
-        }
-
-        .btn-send:hover {
-            background: var(--accent2);
-        }
-
-        .btn-send:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-
-        /* ── Phase 10: Attach + Drag & Drop ── */
-        .btn-attach {
-            background: none;
-            border: 1px solid var(--border);
-            color: var(--text-dim);
-            padding: 10px 12px;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 16px;
-            line-height: 1;
-            transition: border-color .2s, color .2s;
-        }
-
-        .btn-attach:hover {
-            border-color: var(--accent);
-            color: var(--accent);
-        }
-
-        .drag-overlay {
-            display: none;
-            position: absolute;
-            inset: 0;
-            background: rgba(255, 107, 107, 0.08);
-            border: 2px dashed var(--accent);
-            border-radius: 8px;
-            z-index: 100;
-            align-items: center;
-            justify-content: center;
-            font-size: 14px;
-            color: var(--accent);
-            pointer-events: none;
-        }
-
-        .drag-overlay.visible {
-            display: flex;
-        }
-
-        .file-preview {
-            display: none;
-            padding: 6px 20px;
-            border-top: 1px solid var(--border);
-            background: var(--surface);
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            color: var(--text-dim);
-        }
-
-        .file-preview.visible {
-            display: flex;
-        }
-
-        .file-preview img {
-            max-height: 40px;
-            border-radius: 4px;
-        }
-
-        .file-preview .remove {
-            margin-left: auto;
-            background: none;
-            border: none;
-            color: #f55;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        /* ── Loading / Typing ── */
-        .typing-indicator {
-            display: none;
-            padding: 8px 14px;
-            gap: 4px;
-            align-items: center;
-        }
-
-        .typing-indicator.active {
-            display: flex;
-        }
-
-        .typing-indicator .label {
-            font-size: 11px;
-            color: var(--text-dim);
-            margin-right: 6px;
-        }
-
-        .typing-dot {
-            width: 6px;
-            height: 6px;
-            background: var(--accent);
-            border-radius: 50%;
-            animation: bounce 1.2s infinite ease-in-out;
-        }
-
-        .typing-dot:nth-child(2) {
-            animation-delay: 0.15s;
-        }
-
-        .typing-dot:nth-child(3) {
-            animation-delay: 0.3s;
-        }
-
-        @keyframes bounce {
-
-            0%,
-            60%,
-            100% {
-                transform: translateY(0);
-                opacity: 0.4;
-            }
-
-            30% {
-                transform: translateY(-6px);
-                opacity: 1;
-            }
-        }
-
-        .status-badge.status-running {
-            animation: pulse 1.5s infinite;
-        }
-
-        @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
-        }
-
-        .chat-input:disabled {
-            opacity: 0.5;
-        }
-
-        /* ── Right Sidebar ── */
-        .sidebar-right {
-            background: var(--surface);
-            overflow-y: auto;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .tab-bar {
-            display: flex;
-            border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
-        }
-
-        .tab-btn {
-            flex: 1;
-            padding: 10px 8px;
-            background: none;
-            border: none;
-            border-bottom: 2px solid transparent;
-            color: var(--text-dim);
-            font-size: 11px;
-            font-family: inherit;
-            cursor: pointer;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-        }
-
-        .tab-btn.active {
-            color: var(--accent);
-            border-bottom-color: var(--accent);
-        }
-
-        .tab-content {
-            display: none;
-            padding: 16px;
-            flex-direction: column;
-            gap: 12px;
-        }
-
-        .tab-content.active {
-            display: flex;
-        }
-
-        label {
-            font-size: 11px;
-            color: var(--text-dim);
-            display: block;
-            margin-bottom: 4px;
-        }
-
-        select,
-        input[type="text"] {
-            width: 100%;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 6px 10px;
-            border-radius: 6px;
-            font-size: 12px;
-            font-family: inherit;
-        }
-
-        .perm-toggle {
-            display: flex;
-            gap: 8px;
-        }
-
-        .perm-btn {
-            flex: 1;
-            padding: 6px;
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            background: none;
-            color: var(--text-dim);
-            cursor: pointer;
-            font-size: 11px;
-            font-family: inherit;
-            text-align: center;
-        }
-
-        .perm-btn.active {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: #1a0a0a;
-        }
-
-        textarea.prompt-editor {
-            width: 100%;
-            height: 120px;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 8px;
-            border-radius: 6px;
-            font-size: 11px;
-            font-family: inherit;
-            resize: vertical;
-        }
-
-        /* ── Settings Tab styles ── */
-        .cli-status-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            padding: 4px 0;
-            font-size: 12px;
-        }
-
-        .cli-dot {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-            flex-shrink: 0;
-        }
-
-        .cli-dot.ok {
-            background: var(--green);
-        }
-
-        .cli-dot.missing {
-            background: #ef4444;
-        }
-
-        .cli-name {
-            flex: 1;
-        }
-
-        .cli-path {
-            font-size: 10px;
-            color: var(--text-dim);
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            max-width: 120px;
-        }
-
-        .settings-group {
-            border: 1px solid var(--border);
-            border-radius: 6px;
-            padding: 10px;
-        }
-
-        .settings-group h4 {
-            font-size: 11px;
-            color: var(--text-dim);
-            margin-bottom: 8px;
-        }
-
-        .settings-row {
-            margin-bottom: 6px;
-        }
-
-        .settings-row:last-child {
-            margin-bottom: 0;
-        }
-
-        .sub-row {
-            padding-left: 8px;
-            border-left: 2px solid var(--border);
-        }
-
-        /* ── Save Bar ── */
-        .sidebar-save-bar {
-            padding: 6px 16px;
-            border-bottom: 1px solid var(--border);
-            flex-shrink: 0;
-        }
-
-        .btn-save {
-            width: 100%;
-            padding: 6px;
-            background: var(--accent);
-            border: none;
-            border-radius: 6px;
-            color: #fff;
-            font-size: 11px;
-            font-family: inherit;
-            cursor: pointer;
-            font-weight: 600;
-        }
-
-        .btn-save:hover {
-            opacity: 0.9;
-        }
-
-        /* ── Modal ── */
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            inset: 0;
-            background: rgba(0, 0, 0, 0.6);
-            z-index: 999;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .modal-overlay.open {
-            display: flex;
-        }
-
-        .modal-box {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 10px;
-            width: 500px;
-            max-width: 90vw;
-            max-height: 80vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 12px 16px;
-            border-bottom: 1px solid var(--border);
-            font-size: 13px;
-            font-weight: 600;
-        }
-
-        .modal-textarea {
-            flex: 1;
-            min-height: 250px;
-            background: var(--bg);
-            border: none;
-            color: var(--text);
-            padding: 12px 16px;
-            font-size: 12px;
-            font-family: inherit;
-            resize: none;
-        }
-
-        .modal-footer {
-            display: flex;
-            justify-content: flex-end;
-            gap: 8px;
-            padding: 10px 16px;
-            border-top: 1px solid var(--border);
-        }
-
-        .modal-footer .btn-save {
-            width: auto;
-            padding: 6px 20px;
-        }
-
-        /* Heartbeat popup */
-        .hb-job-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 8px;
-        }
-
-        .hb-job-header {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            margin-bottom: 6px;
-        }
-
-        .hb-job-header input[type=text] {
-            flex: 1;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 4px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-
-        .hb-job-header select,
-        .hb-job-header input[type=number] {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 4px;
-            border-radius: 4px;
-            font-size: 11px;
-        }
-
-        .hb-job-header input[type=number] {
-            width: 50px;
-        }
-
-        .hb-toggle {
-            width: 32px;
-            height: 18px;
-            border-radius: 9px;
-            border: none;
-            cursor: pointer;
-            position: relative;
-            transition: background .2s;
-        }
-
-        .hb-toggle.on {
-            background: var(--accent);
-        }
-
-        .hb-toggle.off {
-            background: #555;
-        }
-
-        .hb-toggle::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #fff;
-            transition: left .2s;
-        }
-
-        .hb-toggle.on::after {
-            left: 16px;
-        }
-
-        .hb-toggle.off::after {
-            left: 2px;
-        }
-
-        .hb-del {
-            background: none;
-            border: none;
-            color: #f55;
-            cursor: pointer;
-            font-size: 14px;
-        }
-
-        .hb-prompt {
-            width: 100%;
-            background: var(--bg);
-            border: 1px solid var(--border);
-            color: var(--text);
-            padding: 4px 6px;
-            border-radius: 4px;
-            font-size: 11px;
-            resize: vertical;
-        }
-
-        .hb-add {
-            width: 100%;
-            padding: 8px;
-            background: var(--accent);
-            color: #fff;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            margin-top: 4px;
-        }
-
-        .hb-add:hover {
-            opacity: .9;
-        }
-
-        .sidebar-hb-btn {
-            width: 100%;
-            padding: 6px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            color: var(--text);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 12px;
-            text-align: left;
-        }
-
-        .sidebar-hb-btn:hover {
-            border-color: var(--accent);
-        }
-
-        /* ── Skills Tab (Phase 6) ── */
-        .skill-filter {
-            padding: 4px 10px;
-            background: none;
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            color: var(--text-dim);
-            font-size: 10px;
-            cursor: pointer;
-            font-family: inherit;
-        }
-
-        .skill-filter.active {
-            border-color: var(--accent);
-            color: var(--accent);
-            background: #1a0a0a;
-        }
-
-        .skill-card {
-            background: var(--bg);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 10px;
-            margin-bottom: 8px;
-            transition: border-color 0.2s;
-        }
-
-        .skill-card:hover {
-            border-color: var(--accent2);
-        }
-
-        .skill-card.enabled {
-            border-left: 3px solid var(--green);
-        }
-
-        .skill-card-header {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 4px;
-        }
-
-        .skill-emoji {
-            font-size: 16px;
-        }
-
-        .skill-name {
-            flex: 1;
-            font-size: 12px;
-            font-weight: 600;
-        }
-
-        .skill-toggle {
-            width: 36px;
-            height: 20px;
-            border-radius: 10px;
-            border: none;
-            cursor: pointer;
-            position: relative;
-            transition: background .2s;
-        }
-
-        .skill-toggle.on {
-            background: var(--green);
-        }
-
-        .skill-toggle.off {
-            background: #444;
-        }
-
-        .skill-toggle::after {
-            content: '';
-            position: absolute;
-            top: 3px;
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #fff;
-            transition: left .2s;
-        }
-
-        .skill-toggle.on::after {
-            left: 19px;
-        }
-
-        .skill-toggle.off::after {
-            left: 3px;
-        }
-
-        .skill-desc {
-            font-size: 11px;
-            color: var(--text-dim);
-            line-height: 1.4;
-            margin-bottom: 4px;
-        }
-
-        .skill-req {
-            font-size: 10px;
-            color: var(--accent2);
-        }
-
-        .custom-model-input {
-            width: 100%;
-            font-size: 11px;
-            padding: 4px 6px;
-            margin-top: 4px;
-            background: var(--surface);
-            color: var(--text);
-            border: 1px solid var(--accent);
-            border-radius: 4px;
-            font-family: monospace;
-        }
-
-        .custom-model-input:focus {
-            outline: none;
-            border-color: var(--accent2);
-        }
-    </style>
+    <link rel="stylesheet" href="/css/variables.css">
+    <link rel="stylesheet" href="/css/layout.css">
+    <link rel="stylesheet" href="/css/chat.css">
+    <link rel="stylesheet" href="/css/sidebar.css">
+    <link rel="stylesheet" href="/css/modals.css">
+    <link rel="modulepreload" href="/js/state.js">
+    <link rel="modulepreload" href="/js/ws.js">
+    <link rel="modulepreload" href="/js/ui.js">
 </head>
 
 <body>
@@ -888,7 +27,7 @@
 
         <div>
             <div class="section-title">Memory</div>
-            <button class="sidebar-hb-btn" id="memorySidebarBtn" onclick="openMemoryModal()">🧠 Memory (0)</button>
+            <button class="sidebar-hb-btn" id="memorySidebarBtn">🧠 Memory (0)</button>
         </div>
 
         <div>
@@ -896,8 +35,8 @@
             <p class="stat" id="statMsgs">Messages: 0</p>
         </div>
 
-        <button class="btn-clear" onclick="clearChat()">/clear</button>
-        <button class="sidebar-hb-btn" id="hbSidebarBtn" onclick="openHeartbeatModal()">💓 Heartbeat (0)</button>
+        <button class="btn-clear">/clear</button>
+        <button class="sidebar-hb-btn" id="hbSidebarBtn">💓 Heartbeat (0)</button>
     </div>
 
     <!-- Chat Area -->
@@ -914,34 +53,33 @@
         <div class="file-preview" id="filePreview">
             <span id="filePreviewName"></span>
             <img id="filePreviewImg" src="" alt="">
-            <button class="remove" onclick="clearAttachedFile()">✕</button>
+            <button class="remove">✕</button>
         </div>
         <div class="chat-input-area">
-            <button class="btn-attach" title="파일 첨부" onclick="document.getElementById('fileInput').click()">📎</button>
+            <button class="btn-attach" title="파일 첨부">📎</button>
             <input type="file" id="fileInput" hidden
                 accept="image/*,.pdf,.txt,.md,.js,.py,.json,.csv,.html,.css,.ts,.tsx,.jsx">
-            <textarea class="chat-input" id="chatInput" rows="1" placeholder="메시지 입력..."
-                onkeydown="handleKey(event)"></textarea>
-            <button class="btn-send" id="btnSend" onclick="sendMessage()">➤</button>
+            <textarea class="chat-input" id="chatInput" rows="1" placeholder="메시지 입력..."></textarea>
+            <button class="btn-send" id="btnSend">➤</button>
         </div>
     </div>
 
     <!-- Right Sidebar (Tabbed) -->
     <div class="sidebar-right">
         <div class="tab-bar">
-            <button class="tab-btn active" onclick="switchTab('agents')">🤖 Agents</button>
-            <button class="tab-btn" onclick="switchTab('skills')">📦 Skills</button>
-            <button class="tab-btn" onclick="switchTab('settings')">🔧 Settings</button>
+            <button class="tab-btn active">🤖 Agents</button>
+            <button class="tab-btn">📦 Skills</button>
+            <button class="tab-btn">🔧 Settings</button>
         </div>
         <div class="sidebar-save-bar">
-            <button class="btn-save" onclick="handleSave()">Save</button>
+            <button class="btn-save">Save</button>
         </div>
 
-        <!-- Agents Tab (active CLI config + sub-agents) -->
+        <!-- Agents Tab -->
         <div id="tabAgents" class="tab-content active">
             <div>
                 <label>Active CLI</label>
-                <select id="selCli" onchange="onCliChange()">
+                <select id="selCli">
                     <option value="claude">Claude</option>
                     <option value="codex">Codex</option>
                     <option value="gemini">Gemini</option>
@@ -951,11 +89,11 @@
 
             <div>
                 <label>Model</label>
-                <select id="selModel" onchange="saveActiveCliSettings()"></select>
+                <select id="selModel"></select>
             </div>
             <div>
                 <label>Effort</label>
-                <select id="selEffort" onchange="saveActiveCliSettings()">
+                <select id="selEffort">
                     <option value="">— none</option>
                     <option value="low">🟢 low</option>
                     <option value="medium" selected>🟡 medium</option>
@@ -966,21 +104,21 @@
             <div>
                 <label>Permissions</label>
                 <div class="perm-toggle">
-                    <button class="perm-btn" id="permSafe" onclick="setPerm('safe')">🔒 Safe</button>
-                    <button class="perm-btn active" id="permAuto" onclick="setPerm('auto')">⚡ Auto</button>
+                    <button class="perm-btn" id="permSafe">🔒 Safe</button>
+                    <button class="perm-btn active" id="permAuto">⚡ Auto</button>
                 </div>
             </div>
 
             <div>
                 <label>Working Directory</label>
-                <input type="text" id="inpCwd" value="~/" onchange="updateSettings()">
+                <input type="text" id="inpCwd" value="~/">
             </div>
 
             <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
 
             <div style="display:flex;justify-content:space-between;align-items:center">
                 <div class="section-title">Sub Agents</div>
-                <button class="btn-clear" style="margin:0;padding:4px 10px;font-size:11px" onclick="addEmployee()">+
+                <button class="btn-clear" style="margin:0;padding:4px 10px;font-size:11px" data-action="addEmployee">+
                     Add</button>
             </div>
             <div id="employeesList">
@@ -988,57 +126,54 @@
             </div>
         </div>
 
-        <!-- Skills Tab (Phase 6) -->
+        <!-- Skills Tab -->
         <div id="tabSkills" class="tab-content">
             <div style="display:flex;gap:6px;flex-wrap:wrap">
-                <button class="skill-filter active" onclick="filterSkills('all',this)">전체</button>
-                <button class="skill-filter" onclick="filterSkills('installed',this)">📦 설치됨</button>
-                <button class="skill-filter" onclick="filterSkills('productivity',this)">📝 생산성</button>
-                <button class="skill-filter" onclick="filterSkills('communication',this)">📧 커뮤</button>
-                <button class="skill-filter" onclick="filterSkills('devtools',this)">🔧 개발</button>
-                <button class="skill-filter" onclick="filterSkills('ai-media',this)">🤖 AI</button>
-                <button class="skill-filter" onclick="filterSkills('utility',this)">🌐 유틸</button>
-                <button class="skill-filter" onclick="filterSkills('smarthome',this)">🏠 홈</button>
+                <button class="skill-filter active" data-filter="all">전체</button>
+                <button class="skill-filter" data-filter="installed">📦 설치됨</button>
+                <button class="skill-filter" data-filter="productivity">📝 생산성</button>
+                <button class="skill-filter" data-filter="communication">📧 커뮤</button>
+                <button class="skill-filter" data-filter="devtools">🔧 개발</button>
+                <button class="skill-filter" data-filter="ai-media">🤖 AI</button>
+                <button class="skill-filter" data-filter="utility">🌐 유틸</button>
+                <button class="skill-filter" data-filter="smarthome">🏠 홈</button>
             </div>
             <div style="font-size:10px;color:var(--text-dim)" id="skillsCount">로딩 중...</div>
             <div id="skillsList"></div>
         </div>
 
-        <!-- Settings Tab (prompt button + CLI status + per-CLI models) -->
+        <!-- Settings Tab -->
         <div id="tabSettings" class="tab-content">
-            <button class="btn-clear" style="width:100%;margin:0;padding:8px;font-size:12px"
-                onclick="openPromptModal()">✏️ 시스템 프롬프트 편집</button>
-            <!-- Telegram Bot (6.5) -->
+            <button class="btn-clear" style="width:100%;margin:0;padding:8px;font-size:12px" data-action="openPrompt">✏️
+                시스템 프롬프트 편집</button>
+            <!-- Telegram Bot -->
             <div class="settings-group">
                 <h4>📬 Telegram</h4>
                 <div class="settings-row">
                     <label>Enabled</label>
                     <div>
-                        <button id="tgOff" class="perm-btn active" onclick="setTelegram(false)">Off</button>
-                        <button id="tgOn" class="perm-btn" onclick="setTelegram(true)">On</button>
+                        <button id="tgOff" class="perm-btn active">Off</button>
+                        <button id="tgOn" class="perm-btn">On</button>
                     </div>
                 </div>
                 <div class="settings-row sub-row">
                     <label>Bot Token</label>
                     <input type="password" id="tgToken" placeholder="123456:ABC-DEF..."
-                        style="width:100%;font-size:11px;padding:4px" onchange="saveTelegramSettings()">
+                        style="width:100%;font-size:11px;padding:4px">
                 </div>
                 <div class="settings-row sub-row">
                     <label>Allowed Chat IDs</label>
                     <input type="text" id="tgChatIds" placeholder="콤마 구분 (비워두면 전체 허용)"
-                        style="width:100%;font-size:11px;padding:4px" onchange="saveTelegramSettings()">
+                        style="width:100%;font-size:11px;padding:4px">
                 </div>
             </div>
-            <!-- Heartbeat now in sidebar popup (8.2) -->
-
-            <!-- CLI Status moved to bottom (5.8) -->
 
             <!-- Per-CLI Models -->
             <div class="settings-group">
                 <h4>🟣 Claude</h4>
                 <div class="settings-row">
                     <label>Model</label>
-                    <select id="modelClaude" onchange="handleModelSelect('claude', this)">
+                    <select id="modelClaude">
                         <option selected>claude-sonnet-4-6</option>
                         <option>claude-opus-4-6</option>
                         <option>claude-sonnet-4-6[1m]</option>
@@ -1047,11 +182,11 @@
                         <option value="__custom__">✏️ 직접 입력...</option>
                     </select>
                     <input type="text" id="customModelClaude" class="custom-model-input" placeholder="model ID 입력"
-                        style="display:none" onchange="applyCustomModel('claude', this)">
+                        style="display:none">
                 </div>
                 <div class="settings-row sub-row">
                     <label>Effort</label>
-                    <select id="effortClaude" onchange="savePerCli()">
+                    <select id="effortClaude">
                         <option value="low">🟢 low</option>
                         <option value="medium" selected>🟡 medium</option>
                         <option value="high">🔴 high</option>
@@ -1063,7 +198,7 @@
                 <h4>🟢 Codex</h4>
                 <div class="settings-row">
                     <label>Model</label>
-                    <select id="modelCodex" onchange="handleModelSelect('codex', this)">
+                    <select id="modelCodex">
                         <option selected>gpt-5.3-codex</option>
                         <option>gpt-5.3-codex-spark</option>
                         <option>gpt-5.2-codex</option>
@@ -1072,11 +207,11 @@
                         <option value="__custom__">✏️ 직접 입력...</option>
                     </select>
                     <input type="text" id="customModelCodex" class="custom-model-input" placeholder="model ID 입력"
-                        style="display:none" onchange="applyCustomModel('codex', this)">
+                        style="display:none">
                 </div>
                 <div class="settings-row sub-row">
                     <label>Effort</label>
-                    <select id="effortCodex" onchange="savePerCli()">
+                    <select id="effortCodex">
                         <option value="low">🟢 low</option>
                         <option value="medium" selected>🟡 medium</option>
                         <option value="high">🟠 high</option>
@@ -1089,7 +224,7 @@
                 <h4>🔵 Gemini</h4>
                 <div class="settings-row">
                     <label>Model</label>
-                    <select id="modelGemini" onchange="handleModelSelect('gemini', this)">
+                    <select id="modelGemini">
                         <option>gemini-3.0-pro-preview</option>
                         <option selected>gemini-2.5-pro</option>
                         <option>gemini-3.1-pro-preview</option>
@@ -1098,7 +233,7 @@
                         <option value="__custom__">✏️ 직접 입력...</option>
                     </select>
                     <input type="text" id="customModelGemini" class="custom-model-input" placeholder="model ID 입력"
-                        style="display:none" onchange="applyCustomModel('gemini', this)">
+                        style="display:none">
                 </div>
             </div>
 
@@ -1106,7 +241,7 @@
                 <h4>🟠 OpenCode</h4>
                 <div class="settings-row">
                     <label>Model</label>
-                    <select id="modelOpencode" onchange="handleModelSelect('opencode', this)">
+                    <select id="modelOpencode">
                         <option>github-copilot/claude-sonnet-4.5</option>
                         <option>github-copilot/claude-opus-4.6</option>
                         <option>github-copilot/gpt-5</option>
@@ -1120,11 +255,11 @@
                         <option value="__custom__">✏️ 직접 입력...</option>
                     </select>
                     <input type="text" id="customModelOpencode" class="custom-model-input" placeholder="model ID 입력"
-                        style="display:none" onchange="applyCustomModel('opencode', this)">
+                        style="display:none">
                 </div>
                 <div class="settings-row sub-row">
                     <label>Effort</label>
-                    <select id="effortOpencode" onchange="savePerCli()">
+                    <select id="effortOpencode">
                         <option value="">— none</option>
                         <option value="minimal">🟢 minimal</option>
                         <option value="low">🟡 low</option>
@@ -1134,31 +269,30 @@
                 </div>
             </div>
 
-            <!-- Phase 12.1: MCP Servers -->
+            <!-- MCP Servers -->
             <div class="settings-group">
                 <h4>🔌 MCP Servers</h4>
                 <div id="mcpServerList" style="font-size:11px;color:var(--text-dim);padding:4px 0">
                     Loading...
                 </div>
                 <button class="btn-clear" style="width:100%;margin:4px 0;padding:6px;font-size:11px"
-                    onclick="syncMcpServers()">🔄 Sync to all CLIs</button>
+                    data-action="syncMcp">🔄 Sync to all CLIs</button>
                 <button class="btn-clear" style="width:100%;margin:0 0 4px;padding:6px;font-size:11px"
-                    onclick="installMcpGlobal()">📦 Install Globally (npm i -g)</button>
+                    data-action="installMcp">📦 Install Globally (npm i -g)</button>
                 <div id="mcpSyncResult" style="font-size:10px;color:var(--text-dim);padding:2px 0;display:none"></div>
             </div>
 
-            <!-- CLI Status (5.8: at bottom for load priority) -->
+            <!-- CLI Status -->
             <div style="margin-top:12px">
                 <div class="section-title">CLI STATUS</div>
                 <div id="cliStatusList" style="margin-top:4px">
                     <div style="color:var(--text-dim);font-size:11px">탭 진입 시 로드됨</div>
                 </div>
                 <div style="display:flex;gap:6px;margin-top:8px;align-items:center">
-                    <button class="btn-clear" style="margin:0;flex:1;padding:6px" onclick="loadCliStatus(true)">🔄
+                    <button class="btn-clear" style="margin:0;flex:1;padding:6px" data-action="refreshCli">🔄
                         Refresh</button>
                     <select id="cliStatusInterval"
-                        style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px"
-                        onchange="localStorage.setItem('cliStatusInterval', this.value)">
+                        style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
                         <option value="60">1분</option>
                         <option value="300" selected>5분</option>
                         <option value="600">10분</option>
@@ -1170,61 +304,61 @@
     </div>
 
     <!-- Prompt Modal -->
-    <div class="modal-overlay" id="promptModal" onclick="closePromptModal(event)">
-        <div class="modal-box" onclick="event.stopPropagation()">
+    <div class="modal-overlay" id="promptModal">
+        <div class="modal-box">
             <div class="modal-header">
                 <span>System Prompt (A-2)</span>
-                <button onclick="closePromptModal()"
+                <button data-action="closePrompt"
                     style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px">✕</button>
             </div>
             <textarea class="modal-textarea" id="modalPromptEditor"></textarea>
             <div class="modal-footer">
-                <button class="btn-clear" style="margin:0;padding:6px 16px" onclick="closePromptModal()">취소</button>
-                <button class="btn-save" onclick="savePromptFromModal()">저장</button>
+                <button class="btn-clear" style="margin:0;padding:6px 16px" data-action="cancelPrompt">취소</button>
+                <button class="btn-save" data-action="savePrompt">저장</button>
             </div>
         </div>
     </div>
 
-    <!-- Heartbeat Jobs Modal (8.2) -->
-    <div class="modal-overlay" id="heartbeatModal" onclick="closeHeartbeatModal(event)">
-        <div class="modal-box" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+    <!-- Heartbeat Jobs Modal -->
+    <div class="modal-overlay" id="heartbeatModal">
+        <div class="modal-box" style="max-height:80vh;overflow-y:auto">
             <div class="modal-header">
                 <span>💓 Heartbeat Jobs</span>
-                <button onclick="closeHeartbeatModal()"
+                <button data-action="closeHeartbeat"
                     style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px">✕</button>
             </div>
             <div id="hbJobsList" style="padding:12px"></div>
             <div style="padding:0 12px 12px">
-                <button class="hb-add" onclick="addHeartbeatJob()">+ 새 하트비트 추가</button>
+                <button class="hb-add" data-action="addHeartbeat">+ 새 하트비트 추가</button>
             </div>
         </div>
     </div>
 
-    <!-- Memory Modal (Phase 11) -->
-    <div class="modal-overlay" id="memoryModal" onclick="closeMemoryModal(event)">
-        <div class="modal-box" onclick="event.stopPropagation()" style="max-height:80vh;overflow-y:auto">
+    <!-- Memory Modal -->
+    <div class="modal-overlay" id="memoryModal">
+        <div class="modal-box" style="max-height:80vh;overflow-y:auto">
             <div class="modal-header">
                 <span>🧠 Memory</span>
-                <button onclick="closeMemoryModal()"
+                <button data-action="closeMemory"
                     style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:16px">✕</button>
             </div>
             <div style="display:flex;border-bottom:1px solid var(--border);padding:0 12px">
-                <button class="mem-tab active" id="memTabBtnSettings" onclick="switchMemTab('settings')"
+                <button class="mem-tab active" id="memTabBtnSettings"
                     style="padding:6px 12px;border:none;background:none;color:var(--text);cursor:pointer;font-size:12px;border-bottom:2px solid transparent">⚙️
                     Settings</button>
-                <button class="mem-tab" id="memTabBtnFiles" onclick="switchMemTab('files')"
+                <button class="mem-tab" id="memTabBtnFiles"
                     style="padding:6px 12px;border:none;background:none;color:var(--text-dim);cursor:pointer;font-size:12px;border-bottom:2px solid transparent">📂
                     Files</button>
             </div>
             <div id="memTabSettings" style="padding:12px">
                 <div class="settings-row"><label>Enabled</label>
                     <div>
-                        <button id="memOff" class="perm-btn" onclick="setMemEnabled(false)">Off</button>
-                        <button id="memOn" class="perm-btn active" onclick="setMemEnabled(true)">On</button>
+                        <button id="memOff" class="perm-btn">Off</button>
+                        <button id="memOn" class="perm-btn active">On</button>
                     </div>
                 </div>
                 <div class="settings-row"><label>Flush Every</label>
-                    <select id="memFlushEvery" onchange="saveMemSettings()"
+                    <select id="memFlushEvery"
                         style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
                         <option value="5">5 QA</option>
                         <option value="10" selected>10 QA</option>
@@ -1233,7 +367,7 @@
                     </select>
                 </div>
                 <div class="settings-row"><label>CLI</label>
-                    <select id="memCli" onchange="saveMemSettings()"
+                    <select id="memCli"
                         style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
                         <option value="">(active CLI)</option>
                         <option>claude</option>
@@ -1243,7 +377,7 @@
                     </select>
                 </div>
                 <div class="settings-row"><label>Model</label>
-                    <select id="memModel" onchange="saveMemSettings()"
+                    <select id="memModel"
                         style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
                         <option value="">(CLI default)</option>
                         <option>claude-haiku-4-5-20251001</option>
@@ -1257,7 +391,7 @@
                         style="font-size:10px;color:var(--text-dim);font-family:monospace;word-break:break-all"></span>
                 </div>
                 <div class="settings-row"><label>Retention</label>
-                    <select id="memRetention" onchange="saveMemSettings()"
+                    <select id="memRetention"
                         style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
                         <option value="7">7 days</option>
                         <option value="30" selected>30 days</option>
@@ -1277,1099 +411,7 @@
         </div>
     </div>
 
-    <script>
-        // ── Constants (ported from claw-lite) ──
-        const MODEL_MAP = {
-            claude: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-sonnet-4-6[1m]', 'claude-opus-4-6[1m]', 'claude-haiku-4-5-20251001'],
-            codex: ['gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'],
-            gemini: ['gemini-3.0-pro-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-2.5-flash'],
-            opencode: [
-                'github-copilot/claude-sonnet-4.5', 'github-copilot/claude-opus-4.6',
-                'github-copilot/gpt-5', 'github-copilot/gemini-2.5-pro',
-                'opencode/big-pickle', 'opencode/GLM-5 Free', 'opencode/MiniMax M2.5 Free',
-                'opencode/Kimi K2.5 Free', 'opencode/GPT 5 Nano Free', 'opencode/Grok Code Fast 1 Free',
-            ],
-        };
-        const ROLE_PRESETS = [
-            { value: 'frontend', label: '🎨 프론트엔드', prompt: 'React/Vue 기반 UI 컴포넌트 개발, 스타일링' },
-            { value: 'backend', label: '⚙️ 백엔드', prompt: 'API 서버, DB 스키마, 비즈니스 로직 구현' },
-            { value: 'fullstack', label: '🔄 풀스택', prompt: '프론트엔드와 백엔드 모두 담당' },
-            { value: 'devops', label: '🚀 DevOps', prompt: 'CI/CD, Docker, 인프라 자동화' },
-            { value: 'qa', label: '🧪 QA', prompt: '테스트 작성, 버그 재현, 품질 관리' },
-            { value: 'data', label: '📊 데이터', prompt: '데이터 파이프라인, ETL, 분석 쿼리' },
-            { value: 'docs', label: '📝 테크라이터', prompt: 'API 문서화, README, 가이드 작성' },
-            { value: 'custom', label: '✏️ 커스텀...', prompt: '' },
-        ];
-
-        // ── State ──
-        let ws;
-        let agentBusy = false;
-        let employees = [];
-
-        // ── WebSocket ──
-        function connect() {
-            ws = new WebSocket(`ws://${location.host}`);
-            ws.onmessage = (e) => {
-                const msg = JSON.parse(e.data);
-                if (msg.type === 'agent_status') {
-                    // Phase 12.1.2: handle both formats
-                    if (msg.running !== undefined) {
-                        setStatus(msg.running ? 'running' : 'idle');
-                    } else {
-                        setStatus(msg.status);
-                    }
-                } else if (msg.type === 'queue_update') {
-                    updateQueueBadge(msg.pending || 0);
-                } else if (msg.type === 'round_start') {
-                    const names = (msg.subtasks || []).map(s => s.agent).join(', ');
-                    addSystemMsg(`🔄 라운드 ${msg.round} — ${(msg.subtasks || []).length}개 작업 [${names}]`);
-                } else if (msg.type === 'round_done') {
-                    if (msg.action === 'complete') {
-                        addSystemMsg(`🏁 라운드 ${msg.round} 완료`);
-                    } else {
-                        addSystemMsg(`↩️ 라운드 ${msg.round} → 재시도`);
-                    }
-                } else if (msg.type === 'agent_tool') {
-                    addSystemMsg(`${msg.icon} ${msg.label}`, 'tool-activity');
-                } else if (msg.type === 'agent_output') {
-                    appendAgentText(msg.text);
-                } else if (msg.type === 'agent_done') {
-                    finalizeAgent(msg.text, msg.toolLog);
-                } else if (msg.type === 'clear') {
-                    document.getElementById('chatMessages').innerHTML = '';
-                } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
-                    loadEmployees();
-                } else if (msg.type === 'new_message' && msg.source === 'telegram') {
-                    // 6.2: Telegram messages sync to Web UI
-                    addMessage(msg.role === 'assistant' ? 'agent' : msg.role, msg.content);
-                }
-            };
-            ws.onclose = () => setTimeout(connect, 2000);
-        }
-        connect();
-
-        // ── Tab switching ──
-        function switchTab(name) {
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
-            const tabMap = { agents: 'tabAgents', settings: 'tabSettings', skills: 'tabSkills' };
-            document.getElementById(tabMap[name]).classList.add('active');
-            event.target.classList.add('active');
-            if (name === 'settings') loadCliStatus();
-            if (name === 'agents') loadEmployees();
-            if (name === 'skills') loadSkills();
-        }
-
-        // ── Skills (Phase 6) ──
-        let allSkills = [];
-        let currentSkillFilter = 'all';
-
-        async function loadSkills() {
-            try {
-                const res = await fetch('/api/skills');
-                allSkills = await res.json();
-                renderSkills();
-            } catch (e) {
-                document.getElementById('skillsList').innerHTML =
-                    `<div style="color:var(--text-dim);font-size:11px">스킬 로드 실패</div>`;
-            }
-        }
-
-        function renderSkills() {
-            const list = document.getElementById('skillsList');
-            const count = document.getElementById('skillsCount');
-            let filtered = allSkills;
-            if (currentSkillFilter === 'installed') {
-                filtered = allSkills.filter(s => s.enabled);
-            } else if (currentSkillFilter !== 'all') {
-                filtered = allSkills.filter(s => s.category === currentSkillFilter);
-            }
-            const enabledCount = allSkills.filter(s => s.enabled).length;
-            count.textContent = `활성 ${enabledCount}개 / 전체 ${allSkills.length}개`;
-
-            list.innerHTML = filtered.map(s => {
-                const reqParts = [];
-                if (s.requires?.env) reqParts.push('🔑 ' + s.requires.env.join(', '));
-                if (s.requires?.bins) reqParts.push('⚙️ ' + s.requires.bins.join(', '));
-                if (s.install) reqParts.push(s.install);
-                return `
-                <div class="skill-card ${s.enabled ? 'enabled' : ''}">
-                    <div class="skill-card-header">
-                        <span class="skill-emoji">${s.emoji || '🔧'}</span>
-                        <span class="skill-name">${s.name || s.id}</span>
-                        <button class="skill-toggle ${s.enabled ? 'on' : 'off'}"
-                                onclick="toggleSkill('${s.id}', ${s.enabled})"></button>
-                    </div>
-                    <div class="skill-desc">${s.description || ''}</div>
-                    ${reqParts.length ? `<div class="skill-req">${reqParts.join(' · ')}</div>` : ''}
-                </div>`;
-            }).join('');
-        }
-
-        async function toggleSkill(id, currentlyEnabled) {
-            const endpoint = currentlyEnabled ? '/api/skills/disable' : '/api/skills/enable';
-            try {
-                await fetch(endpoint, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id })
-                });
-                await loadSkills();
-            } catch (e) {
-                console.error('toggleSkill error:', e);
-            }
-        }
-
-        function filterSkills(cat, btn) {
-            currentSkillFilter = cat;
-            document.querySelectorAll('.skill-filter').forEach(b => b.classList.remove('active'));
-            if (btn) btn.classList.add('active');
-            renderSkills();
-        }
-
-        // ── Save (tab-aware) ──
-        function handleSave() {
-            const isSettings = document.getElementById('tabSettings').classList.contains('active');
-            if (isSettings) {
-                savePerCli();
-            } else {
-                updateSettings();
-            }
-        }
-
-        // ── Prompt Modal ──
-        function openPromptModal() {
-            fetch('/api/prompt').then(r => r.json()).then(({ content }) => {
-                document.getElementById('modalPromptEditor').value = content;
-                document.getElementById('promptModal').classList.add('open');
-            });
-        }
-        function closePromptModal(e) {
-            if (e && e.target !== e.currentTarget) return;
-            document.getElementById('promptModal').classList.remove('open');
-        }
-        async function savePromptFromModal() {
-            const content = document.getElementById('modalPromptEditor').value;
-            await fetch('/api/prompt', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
-            });
-            document.getElementById('promptModal').classList.remove('open');
-        }
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') closePromptModal();
-        });
-
-        // ── UI Functions ──
-        function setStatus(s) {
-            const badge = document.getElementById('statusBadge');
-            const btn = document.getElementById('btnSend');
-            agentBusy = s === 'running';
-            // Phase 12.1.5: keep input enabled for queuing
-            // btn always sends — server handles queue if busy
-            btn.textContent = '➤';
-            btn.title = agentBusy ? '큐에 추가' : 'Send';
-            btn.style.background = '';
-            btn.onclick = sendMessage;
-            document.getElementById('typingIndicator').classList.toggle('active', agentBusy);
-            if (s === 'running') {
-                badge.className = 'status-badge status-running';
-                badge.textContent = '⏳ running';
-            } else {
-                badge.className = 'status-badge status-idle';
-                badge.textContent = '⚡ idle';
-                updateQueueBadge(0);
-            }
-        }
-
-        function updateQueueBadge(count) {
-            let el = document.getElementById('queueBadge');
-            if (!el) {
-                el = document.createElement('span');
-                el.id = 'queueBadge';
-                el.style.cssText = 'position:absolute;top:-6px;right:-6px;background:#f80;color:#fff;border-radius:50%;font-size:11px;min-width:18px;height:18px;display:flex;align-items:center;justify-content:center;font-weight:bold';
-                document.getElementById('btnSend').parentElement.style.position = 'relative';
-                document.getElementById('btnSend').style.position = 'relative';
-                document.getElementById('btnSend').appendChild(el);
-            }
-            el.textContent = count > 0 ? count : '';
-            el.style.display = count > 0 ? 'flex' : 'none';
-        }
-
-        async function stopAgent() {
-            await fetch('/api/stop', { method: 'POST' });
-        }
-
-        function addSystemMsg(text, extraClass) {
-            const container = document.getElementById('chatMessages');
-            const div = document.createElement('div');
-            div.className = 'msg msg-system' + (extraClass ? ' ' + extraClass : '');
-            div.textContent = text;
-            container.appendChild(div);
-            container.scrollTop = container.scrollHeight;
-        }
-
-        let currentAgentDiv = null;
-        function appendAgentText(text) {
-            if (!text) return;
-            if (!currentAgentDiv) {
-                currentAgentDiv = addMessage('agent', '');
-            }
-            const content = currentAgentDiv.querySelector('.msg-content');
-            content.textContent += text;
-            scrollToBottom();
-        }
-        function finalizeAgent(text, toolLog) {
-            // Remove real-time tool system messages (will be replaced by collapsible)
-            document.querySelectorAll('.msg-system.tool-activity').forEach(el => el.remove());
-
-            if (text) {
-                if (!currentAgentDiv) {
-                    currentAgentDiv = addMessage('agent', '');
-                }
-                const content = currentAgentDiv.querySelector('.msg-content');
-
-                // Collapsible tool summary above answer
-                let toolHtml = '';
-                if (toolLog && toolLog.length > 0) {
-                    const counts = {};
-                    toolLog.forEach(t => { counts[t.icon] = (counts[t.icon] || 0) + 1; });
-                    const summaryParts = Object.entries(counts).map(([icon, n]) => `${icon}×${n}`).join(' ');
-                    const logLines = toolLog.map(t => `${t.icon} ${escapeHtml(t.label)}`).join('\n');
-                    toolHtml = `<details class="tool-summary"><summary>${summaryParts}</summary><div class="tool-log">${logLines}</div></details>`;
-                }
-
-                content.innerHTML = toolHtml + renderMarkdown(text);
-            }
-            currentAgentDiv = null;
-            setStatus('idle');
-            loadStats();
-        }
-
-        // Simple markdown rendering
-        function renderMarkdown(text) {
-            // Strip orchestration JSON blocks (subtasks) from display
-            let cleaned = text.replace(/```json\n[\s\S]*?\n```/g, '');  // fenced
-            cleaned = cleaned.replace(/\{[\s\S]*"subtasks"\s*:\s*\[[\s\S]*?\]\s*\}/g, '').trim();  // raw
-            if (!cleaned) return '<em style="color:var(--text-dim)">🎯 작업 분배 중...</em>';
-            return escapeHtml(cleaned)
-                .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
-                .replace(/`([^`]+)`/g, '<code style="background:var(--border);padding:1px 4px;border-radius:3px">$1</code>')
-                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
-                .replace(/^### (.+)$/gm, '<div style="font-weight:700;margin:8px 0 4px">$1</div>')
-                .replace(/^## (.+)$/gm, '<div style="font-weight:700;font-size:14px;margin:10px 0 4px">$1</div>')
-                .replace(/^# (.+)$/gm, '<div style="font-weight:700;font-size:16px;margin:12px 0 4px">$1</div>')
-                .replace(/\n/g, '<br>');
-        }
-
-        function addMessage(role, text) {
-            const container = document.getElementById('chatMessages');
-            const div = document.createElement('div');
-            div.className = `msg msg-${role}`;
-            const rendered = role === 'agent' ? renderMarkdown(text) : escapeHtml(text);
-            div.innerHTML = `<div class="msg-label">${role === 'user' ? 'You' : '🦞 Claw'}</div><div class="msg-content">${rendered}</div>`;
-            container.appendChild(div);
-            scrollToBottom();
-            return div;
-        }
-
-        function scrollToBottom() {
-            const c = document.getElementById('chatMessages');
-            c.scrollTop = c.scrollHeight;
-        }
-
-        function escapeHtml(t) {
-            return t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
-
-        // ── Actions ──
-        let attachedFile = null;  // Phase 10: pending file attachment
-
-        async function sendMessage() {
-            const input = document.getElementById('chatInput');
-            const text = input.value.trim();
-            if ((!text && !attachedFile) || agentBusy) return;
-
-            if (text === '/clear') { clearChat(); input.value = ''; return; }
-
-            if (attachedFile) {
-                // Upload file first, then send prompt with path
-                const displayMsg = `[📎 ${attachedFile.name}] ${text}`;
-                addMessage('user', displayMsg);
-                input.value = '';
-                try {
-                    const filePath = await uploadFile(attachedFile);
-                    const prompt = `[사용자가 파일을 보냈습니다: ${filePath}]\n이 파일을 Read 도구로 읽고 분석해주세요.${text ? `\n\n사용자 메시지: ${text}` : ''}`;
-                    clearAttachedFile();
-                    await fetch('/api/message', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ prompt }),
-                    });
-                } catch (err) {
-                    addSystemMsg(`❌ 파일 업로드 실패: ${err.message}`);
-                    clearAttachedFile();
-                }
-            } else {
-                addMessage('user', text);
-                input.value = '';
-                await fetch('/api/message', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ prompt: text }),
-                });
-            }
-        }
-
-        function handleKey(e) {
-            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
-        }
-
-        // ── Phase 10: File Upload & Drag/Drop ──
-        async function uploadFile(file) {
-            const res = await fetch('/api/upload', {
-                method: 'POST',
-                headers: { 'X-Filename': file.name },
-                body: file,
-            });
-            if (!res.ok) throw new Error('upload failed');
-            const data = await res.json();
-            return data.path;
-        }
-
-        function attachFile(file) {
-            attachedFile = file;
-            const preview = document.getElementById('filePreview');
-            const nameEl = document.getElementById('filePreviewName');
-            const imgEl = document.getElementById('filePreviewImg');
-            nameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
-            if (file.type.startsWith('image/')) {
-                imgEl.src = URL.createObjectURL(file);
-                imgEl.style.display = 'block';
-            } else {
-                imgEl.style.display = 'none';
-            }
-            preview.classList.add('visible');
-            document.getElementById('chatInput').focus();
-        }
-
-        function clearAttachedFile() {
-            attachedFile = null;
-            const preview = document.getElementById('filePreview');
-            preview.classList.remove('visible');
-            document.getElementById('filePreviewImg').src = '';
-            document.getElementById('fileInput').value = '';
-        }
-
-        // File input click
-        document.getElementById('fileInput').addEventListener('change', (e) => {
-            if (e.target.files[0]) attachFile(e.target.files[0]);
-        });
-
-        // Drag & Drop
-        {
-            const chatArea = document.querySelector('.chat-area');
-            const overlay = document.getElementById('dragOverlay');
-            let dragCounter = 0;
-
-            chatArea.addEventListener('dragenter', (e) => {
-                e.preventDefault();
-                dragCounter++;
-                overlay.classList.add('visible');
-            });
-            chatArea.addEventListener('dragleave', (e) => {
-                e.preventDefault();
-                dragCounter--;
-                if (dragCounter <= 0) { dragCounter = 0; overlay.classList.remove('visible'); }
-            });
-            chatArea.addEventListener('dragover', (e) => e.preventDefault());
-            chatArea.addEventListener('drop', (e) => {
-                e.preventDefault();
-                dragCounter = 0;
-                overlay.classList.remove('visible');
-                const file = e.dataTransfer.files[0];
-                if (file) attachFile(file);
-            });
-        }
-
-        async function clearChat() {
-            await fetch('/api/clear', { method: 'POST' });
-            document.getElementById('chatMessages').innerHTML = '';
-        }
-
-        // ── Settings (Config tab) ──
-        async function loadSettings() {
-            const s = await (await fetch('/api/settings')).json();
-            document.getElementById('selCli').value = s.cli;
-            document.getElementById('inpCwd').value = s.workingDir;
-            document.getElementById('headerCli').textContent = s.cli;
-            setPerm(s.permissions, false);
-
-            // Load per-CLI settings
-            if (s.perCli) {
-                for (const [cli, cfg] of Object.entries(s.perCli)) {
-                    const capCli = cli.charAt(0).toUpperCase() + cli.slice(1);
-                    const modelEl = document.getElementById('model' + capCli);
-                    const effortEl = document.getElementById('effort' + capCli);
-                    if (modelEl && cfg.model) {
-                        // If saved model not in preset options, add it dynamically
-                        if (cfg.model !== '__custom__' && !Array.from(modelEl.options).some(o => o.value === cfg.model)) {
-                            const opt = document.createElement('option');
-                            opt.value = cfg.model; opt.textContent = cfg.model;
-                            const customOpt = modelEl.querySelector('option[value="__custom__"]');
-                            if (customOpt) modelEl.insertBefore(opt, customOpt);
-                            else modelEl.appendChild(opt);
-                        }
-                        modelEl.value = cfg.model;
-                    }
-                    if (effortEl && cfg.effort) effortEl.value = cfg.effort;
-                }
-            }
-
-            // Phase 12: Load active CLI model/effort from perCli
-            onCliChange(false);
-            // perCli defaults from settings
-            const activeCfg = s.perCli?.[s.cli] || {};
-            if (activeCfg.model) document.getElementById('selModel').value = activeCfg.model;
-            if (activeCfg.effort) document.getElementById('selEffort').value = activeCfg.effort;
-
-            // Load telegram settings (6.5)
-            loadTelegramSettings(s);
-
-            // Phase 12.1: Load MCP servers
-            loadMcpServers();
-        }
-
-        async function loadMcpServers() {
-            try {
-                const d = await (await fetch('/api/mcp')).json();
-                const el = document.getElementById('mcpServerList');
-                const names = Object.entries(d.servers || {});
-                if (!names.length) { el.textContent = '(no servers configured)'; return; }
-                el.innerHTML = names.map(([n, s]) =>
-                    `<div style="padding:2px 0">• <b>${n}</b> <span style="opacity:.6">${s.command} ${(s.args || []).slice(0, 2).join(' ')}</span></div>`
-                ).join('');
-            } catch { }
-        }
-
-        async function syncMcpServers() {
-            const resultEl = document.getElementById('mcpSyncResult');
-            resultEl.style.display = 'block';
-            resultEl.textContent = '동기화 중...';
-            try {
-                const d = await (await fetch('/api/mcp/sync', { method: 'POST' })).json();
-                const r = d.results || {};
-                resultEl.innerHTML = Object.entries(r).map(([k, v]) =>
-                    `${v ? '✅' : '⏭️'} ${k}`
-                ).join(' &nbsp; ');
-            } catch (e) { resultEl.textContent = '❌ ' + e.message; }
-        }
-
-        async function installMcpGlobal() {
-            const resultEl = document.getElementById('mcpSyncResult');
-            resultEl.style.display = 'block';
-            resultEl.textContent = '📦 npm i -g 설치 중... (최대 2분 소요)';
-            try {
-                const d = await (await fetch('/api/mcp/install', { method: 'POST' })).json();
-                resultEl.innerHTML = Object.entries(d.results || {}).map(([k, v]) => {
-                    const icon = v.status === 'installed' ? '✅' : v.status === 'skip' ? '⏭️' : '❌';
-                    return `${icon} <b>${k}</b>: ${v.status}${v.bin ? ' → ' + v.bin : ''}`;
-                }).join('<br>');
-                loadMcpServers(); // refresh list
-            } catch (e) { resultEl.textContent = '❌ ' + e.message; }
-        }
-
-        async function updateSettings() {
-            const s = {
-                cli: document.getElementById('selCli').value,
-                workingDir: document.getElementById('inpCwd').value,
-            };
-            document.getElementById('headerCli').textContent = s.cli;
-            await fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(s),
-            });
-        }
-
-        function setPerm(p, save = true) {
-            document.getElementById('permSafe').classList.toggle('active', p === 'safe');
-            document.getElementById('permAuto').classList.toggle('active', p === 'auto');
-            if (save) fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ permissions: p }),
-            });
-        }
-
-        // ── Custom model input helpers ──
-        function getModelValue(cli) {
-            const cap = cli[0].toUpperCase() + cli.slice(1);
-            const sel = document.getElementById('model' + cap);
-            if (sel.value === '__custom__') {
-                const inp = document.getElementById('customModel' + cap);
-                return inp?.value?.trim() || sel.options[0]?.value || 'default';
-            }
-            return sel.value;
-        }
-
-        function handleModelSelect(cli, selectEl) {
-            const cap = cli[0].toUpperCase() + cli.slice(1);
-            const customInput = document.getElementById('customModel' + cap);
-            if (selectEl.value === '__custom__') {
-                customInput.style.display = 'block';
-                customInput.focus();
-            } else {
-                customInput.style.display = 'none';
-                savePerCli();
-            }
-        }
-
-        function applyCustomModel(cli, inputEl) {
-            const cap = cli[0].toUpperCase() + cli.slice(1);
-            const val = inputEl.value.trim();
-            if (!val) return;
-            const select = document.getElementById('model' + cap);
-            // Add as a temporary option before __custom__
-            const opt = document.createElement('option');
-            opt.value = val; opt.textContent = val;
-            const customOpt = select.querySelector('option[value="__custom__"]');
-            select.insertBefore(opt, customOpt);
-            select.value = val;
-            inputEl.style.display = 'none';
-            savePerCli();
-        }
-
-        // ── Per-CLI settings ──
-        async function savePerCli() {
-            const perCli = {
-                claude: {
-                    model: getModelValue('claude'),
-                    effort: document.getElementById('effortClaude').value,
-                },
-                codex: {
-                    model: getModelValue('codex'),
-                    effort: document.getElementById('effortCodex').value,
-                },
-                gemini: {
-                    model: getModelValue('gemini'),
-                },
-                opencode: {
-                    model: getModelValue('opencode'),
-                    effort: document.getElementById('effortOpencode').value,
-                },
-            };
-            await fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ perCli }),
-            });
-        }
-
-        // ── Phase 12: Active CLI Settings ──
-        function onCliChange(save = true) {
-            const cli = document.getElementById('selCli').value;
-            const models = MODEL_MAP[cli] || [];
-            const modelSel = document.getElementById('selModel');
-            modelSel.innerHTML = models.map(m =>
-                `<option value="${m}">${m}</option>`
-            ).join('') + '<option value="__custom__">✏️ 직접 입력...</option>';
-            document.getElementById('headerCli').textContent = cli;
-
-            // Remove old custom input if present
-            const oldInput = document.getElementById('selModelCustom');
-            if (oldInput) oldInput.remove();
-            // Add custom input after selModel
-            const inp = document.createElement('input');
-            inp.type = 'text'; inp.id = 'selModelCustom';
-            inp.className = 'custom-model-input';
-            inp.placeholder = 'model ID 입력';
-            inp.style.display = 'none';
-            inp.onchange = function () {
-                const val = this.value.trim();
-                if (!val) return;
-                const opt = document.createElement('option');
-                opt.value = val; opt.textContent = val;
-                const customOpt = modelSel.querySelector('option[value="__custom__"]');
-                modelSel.insertBefore(opt, customOpt);
-                modelSel.value = val;
-                this.style.display = 'none';
-                saveActiveCliSettings();
-            };
-            modelSel.parentElement.appendChild(inp);
-            modelSel.onchange = function () {
-                if (this.value === '__custom__') {
-                    inp.style.display = 'block';
-                    inp.focus();
-                } else {
-                    inp.style.display = 'none';
-                    saveActiveCliSettings();
-                }
-            };
-
-            // Load perCli defaults for this CLI
-            fetch('/api/settings').then(r => r.json()).then(s => {
-                const cfg = s.perCli?.[cli] || {};
-                if (cfg.model) {
-                    // If model is not in MODEL_MAP, add it as option
-                    if (!models.includes(cfg.model)) {
-                        const opt = document.createElement('option');
-                        opt.value = cfg.model; opt.textContent = cfg.model;
-                        const customOpt = modelSel.querySelector('option[value="__custom__"]');
-                        modelSel.insertBefore(opt, customOpt);
-                    }
-                    modelSel.value = cfg.model;
-                }
-                if (cfg.effort) document.getElementById('selEffort').value = cfg.effort;
-            });
-
-            if (save) updateSettings();
-        }
-
-        async function saveActiveCliSettings() {
-            const cli = document.getElementById('selCli').value;
-            const perCli = {};
-            perCli[cli] = {
-                model: document.getElementById('selModel').value,
-                effort: document.getElementById('selEffort').value,
-            };
-            await fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ perCli }),
-            });
-        }
-
-        // ── Telegram settings (6.5) ──
-        async function saveTelegramSettings() {
-            const token = document.getElementById('tgToken').value.trim();
-            const chatIdsRaw = document.getElementById('tgChatIds').value.trim();
-            const allowedChatIds = chatIdsRaw
-                ? chatIdsRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
-                : [];
-            await fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ telegram: { token, allowedChatIds } }),
-            });
-        }
-        async function setTelegram(enabled) {
-            document.getElementById('tgOn').classList.toggle('active', enabled);
-            document.getElementById('tgOff').classList.toggle('active', !enabled);
-            await fetch('/api/settings', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ telegram: { enabled } }),
-            });
-        }
-        function loadTelegramSettings(s) {
-            if (!s.telegram) return;
-            const tg = s.telegram;
-            document.getElementById('tgOn').classList.toggle('active', !!tg.enabled);
-            document.getElementById('tgOff').classList.toggle('active', !tg.enabled);
-            if (tg.token) document.getElementById('tgToken').value = tg.token;
-            if (tg.allowedChatIds?.length) {
-                document.getElementById('tgChatIds').value = tg.allowedChatIds.join(', ');
-            }
-        }
-
-        // ── Heartbeat popup (8.2) ──
-        let heartbeatJobs = [];
-
-        async function openHeartbeatModal() {
-            const r = await fetch('/api/heartbeat');
-            const data = await r.json();
-            heartbeatJobs = data.jobs || [];
-            renderHeartbeatJobs();
-            document.getElementById('heartbeatModal').classList.add('open');
-        }
-
-        function closeHeartbeatModal(e) {
-            if (e && e.target !== e.currentTarget) return;
-            document.getElementById('heartbeatModal').classList.remove('open');
-        }
-
-        function renderHeartbeatJobs() {
-            const container = document.getElementById('hbJobsList');
-            if (heartbeatJobs.length === 0) {
-                container.innerHTML = '<p style="color:var(--text-dim);font-size:12px;text-align:center">하트비트가 없습니다</p>';
-            } else {
-                container.innerHTML = heartbeatJobs.map((job, i) => `
-                    <div class="hb-job-card">
-                        <div class="hb-job-header">
-                            <input type="text" value="${job.name || ''}" placeholder="이름"
-                                onchange="heartbeatJobs[${i}].name=this.value;saveHeartbeatJobs()">
-                            <span style="font-size:11px;color:var(--text-dim)">every</span>
-                            <input type="number" value="${job.schedule?.minutes || 5}" min="1"
-                                onchange="heartbeatJobs[${i}].schedule={kind:'every',minutes:+this.value};saveHeartbeatJobs()">
-                            <span style="font-size:11px;color:var(--text-dim)">min</span>
-                            <button class="hb-toggle ${job.enabled ? 'on' : 'off'}"
-                                onclick="toggleHeartbeatJob(${i})"></button>
-                            <button class="hb-del" onclick="removeHeartbeatJob(${i})">✕</button>
-                        </div>
-                        <textarea class="hb-prompt" rows="2" placeholder="프롬프트..."
-                            onchange="heartbeatJobs[${i}].prompt=this.value;saveHeartbeatJobs()">${job.prompt || ''}</textarea>
-                    </div>
-                `).join('');
-            }
-            // 사이드바 버튼 업데이트
-            const active = heartbeatJobs.filter(j => j.enabled).length;
-            document.getElementById('hbSidebarBtn').textContent = `💓 Heartbeat (${active})`;
-        }
-
-        function addHeartbeatJob() {
-            heartbeatJobs.push({
-                id: 'hb_' + Date.now(),
-                name: '',
-                enabled: true,
-                schedule: { kind: 'every', minutes: 5 },
-                prompt: ''
-            });
-            renderHeartbeatJobs();
-            saveHeartbeatJobs();
-        }
-
-        function removeHeartbeatJob(i) {
-            heartbeatJobs.splice(i, 1);
-            renderHeartbeatJobs();
-            saveHeartbeatJobs();
-        }
-
-        function toggleHeartbeatJob(i) {
-            heartbeatJobs[i].enabled = !heartbeatJobs[i].enabled;
-            renderHeartbeatJobs();
-            saveHeartbeatJobs();
-        }
-
-        // ── Memory popup (Phase 11) ──
-
-        async function openMemoryModal() {
-            const r = await fetch('/api/memory-files');
-            const data = await r.json();
-            document.getElementById('memOn').classList.toggle('active', data.enabled);
-            document.getElementById('memOff').classList.toggle('active', !data.enabled);
-            document.getElementById('memFlushEvery').value = data.flushEvery;
-            document.getElementById('memCli').value = data.cli || '';
-            document.getElementById('memModel').value = data.model || '';
-            document.getElementById('memRetention').value = data.retentionDays;
-            document.getElementById('memPath').textContent = data.path;
-            document.getElementById('memCounter').textContent = data.counter;
-            document.getElementById('memThreshold').textContent = data.flushEvery;
-            renderMemFiles(data.files);
-            document.getElementById('memorySidebarBtn').textContent = `🧠 Memory (${data.files.length})`;
-            document.getElementById('memoryModal').classList.add('open');
-        }
-
-        function closeMemoryModal(e) {
-            if (e && e.target !== e.currentTarget) return;
-            document.getElementById('memoryModal').classList.remove('open');
-        }
-
-        function switchMemTab(tab) {
-            document.getElementById('memTabSettings').style.display = tab === 'settings' ? '' : 'none';
-            document.getElementById('memTabFiles').style.display = tab === 'files' ? '' : 'none';
-            document.getElementById('memTabBtnSettings').classList.toggle('active', tab === 'settings');
-            document.getElementById('memTabBtnFiles').classList.toggle('active', tab === 'files');
-        }
-
-        async function setMemEnabled(v) {
-            document.getElementById('memOn').classList.toggle('active', v);
-            document.getElementById('memOff').classList.toggle('active', !v);
-            await fetch('/api/memory-files/settings', {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ enabled: v }),
-            });
-        }
-
-        async function saveMemSettings() {
-            await fetch('/api/memory-files/settings', {
-                method: 'PUT', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    flushEvery: +document.getElementById('memFlushEvery').value,
-                    cli: document.getElementById('memCli').value,
-                    model: document.getElementById('memModel').value,
-                    retentionDays: +document.getElementById('memRetention').value,
-                }),
-            });
-            document.getElementById('memThreshold').textContent = document.getElementById('memFlushEvery').value;
-        }
-
-        function renderMemFiles(files) {
-            const container = document.getElementById('memFilesList');
-            if (!files || files.length === 0) {
-                container.innerHTML = '<p style="color:var(--text-dim);font-size:12px;text-align:center">No memory files yet</p>';
-                return;
-            }
-            container.innerHTML = files.map(f => `
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;cursor:pointer"
-                     onclick="viewMemFile('${f.name}')">
-                    <div>
-                        <span style="font-size:12px;font-family:monospace">${f.name}</span>
-                        <span style="font-size:10px;color:var(--accent);margin-left:6px">${f.entries} entries</span>
-                    </div>
-                    <button onclick="event.stopPropagation();deleteMemFile('${f.name}')" style="background:none;border:none;color:#f55;cursor:pointer;font-size:14px">🗑️</button>
-                </div>
-            `).join('');
-        }
-
-        async function deleteMemFile(name) {
-            if (!confirm('Delete ' + name + '?')) return;
-            await fetch('/api/memory-files/' + name, { method: 'DELETE' });
-            openMemoryModal();
-        }
-
-        async function viewMemFile(name) {
-            const r = await fetch('/api/memory-files/' + name);
-            const data = await r.json();
-            const container = document.getElementById('memFilesList');
-            container.innerHTML = `
-                <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
-                    <span style="font-size:12px;font-weight:600">${data.name}</span>
-                    <button onclick="openMemoryModal()" style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">← back</button>
-                </div>
-                <pre style="background:var(--bg);padding:8px;border-radius:4px;font-size:11px;white-space:pre-wrap;max-height:50vh;overflow-y:auto;color:var(--text)">${escapeHtml(data.content)}</pre>
-            `;
-        }
-
-        async function saveHeartbeatJobs() {
-            await fetch('/api/heartbeat', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ jobs: heartbeatJobs }),
-            });
-        }
-
-        // Boot: update sidebar count
-        (async () => {
-            try {
-                const r = await fetch('/api/heartbeat');
-                const d = await r.json();
-                const active = (d.jobs || []).filter(j => j.enabled).length;
-                document.getElementById('hbSidebarBtn').textContent = `💓 Heartbeat (${active})`;
-            } catch { }
-        })();
-
-        // ── CLI Status + Quota (5.8: cached with interval) ──
-        let cliStatusCache = null;
-        let cliStatusTs = 0;
-        const CLI_STATUS_INTERVALS = { 60: '1분', 300: '5분', 600: '10분', 0: '수동만' };
-
-        async function loadCliStatus(force = false) {
-            const interval = Number(localStorage.getItem('cliStatusInterval') || 300);
-            if (!force && cliStatusCache && interval > 0 && (Date.now() - cliStatusTs) < interval * 1000) {
-                renderCliStatus(cliStatusCache);
-                return;
-            }
-
-            const el = document.getElementById('cliStatusList');
-            el.innerHTML = '<div style="color:var(--text-dim);font-size:11px">Loading...</div>';
-
-            const [cliStatus, quota] = await Promise.all([
-                (await fetch('/api/cli-status')).json(),
-                (await fetch('/api/quota')).json(),
-            ]);
-
-            cliStatusCache = { cliStatus, quota };
-            cliStatusTs = Date.now();
-            renderCliStatus(cliStatusCache);
-        }
-
-        function renderCliStatus(data) {
-            const { cliStatus, quota } = data;
-            const el = document.getElementById('cliStatusList');
-            const colors = { claude: '🟣', codex: '🟢', gemini: '🔵', opencode: '🟠' };
-            let html = '';
-
-            for (const [name, info] of Object.entries(cliStatus)) {
-                const q = quota[name];
-                const dotClass = info.available ? 'ok' : 'missing';
-
-                let accountLine = '';
-                if (q?.account) {
-                    const parts = [];
-                    if (q.account.email) parts.push(q.account.email);
-                    if (q.account.type) parts.push(q.account.type);
-                    if (q.account.plan) parts.push(q.account.plan);
-                    if (q.account.tier) parts.push(q.account.tier);
-                    if (parts.length) accountLine = `<div style="font-size:10px;color:var(--text-dim);margin:2px 0 4px 16px">${escapeHtml(parts.join(' · '))}</div>`;
-                }
-
-                let windowsHtml = '';
-                if (q?.windows?.length) {
-                    windowsHtml = q.windows.map(w => {
-                        const pct = Math.round(w.percent);
-                        const barColor = pct > 80 ? '#ef4444' : pct > 50 ? '#fbbf24' : '#38bdf8';
-                        return `
-                            <div style="display:flex;align-items:center;gap:6px;margin-left:16px;font-size:10px;color:var(--text-dim)">
-                                <span style="width:42px">${w.label}</span>
-                                <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
-                                    <div style="width:${pct}%;height:100%;background:${barColor};border-radius:2px"></div>
-                                </div>
-                                <span style="width:28px;text-align:right">${pct}%</span>
-                            </div>
-                        `;
-                    }).join('');
-                }
-
-                html += `
-                    <div class="settings-group" style="margin-bottom:6px;padding:8px 10px">
-                        <div class="cli-status-row">
-                            <span class="cli-dot ${dotClass}"></span>
-                            <span class="cli-name" style="font-weight:600">${name}</span>
-                        </div>
-                        ${accountLine}
-                        ${windowsHtml}
-                    </div>
-                `;
-            }
-
-            el.innerHTML = html;
-        }
-
-        // ── Prompt (now via modal, keep savePrompt for backward compat) ──
-        async function savePrompt() {
-            const content = document.getElementById('modalPromptEditor').value;
-            await fetch('/api/prompt', {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
-            });
-        }
-
-        // ── Memory ──
-        async function loadMemory() {
-            const items = await (await fetch('/api/memory')).json();
-            const list = document.getElementById('memoryList');
-            if (items.length === 0) {
-                list.innerHTML = '<li style="color:var(--text-dim)">No memory yet</li>';
-                return;
-            }
-            list.innerHTML = items.map(m =>
-                `<li><span class="memory-key">${escapeHtml(m.key)}</span>: ${escapeHtml(m.value)}</li>`
-            ).join('');
-        }
-
-        // ── Stats ──
-        async function loadStats() {
-            const msgs = await (await fetch('/api/messages')).json();
-            document.getElementById('statMsgs').textContent = `Messages: ${msgs.length}`;
-        }
-
-        // ── Messages (on load) ──
-        async function loadMessages() {
-            const msgs = await (await fetch('/api/messages')).json();
-            msgs.forEach(m => addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content));
-        }
-
-        // ── Init ──
-        loadSettings();
-        loadMemory();
-        loadMessages();
-        loadEmployees();
-
-        // ── Employees (sub-agents) ──
-        async function loadEmployees() {
-            employees = await (await fetch('/api/employees')).json();
-            renderEmployees();
-        }
-
-        function renderEmployees() {
-            const el = document.getElementById('employeesList');
-            if (employees.length === 0) {
-                el.innerHTML = '<div style="color:var(--text-dim);font-size:11px;padding:4px 0">에이전트를 추가하세요</div>';
-                return;
-            }
-            el.innerHTML = employees.map(a => {
-                const models = MODEL_MAP[a.cli] || [];
-                const matched = ROLE_PRESETS.find(r => r.prompt === a.role);
-                const presetVal = matched ? matched.value : (a.role ? 'custom' : 'frontend');
-                const isCustom = presetVal === 'custom';
-
-                return `
-                <div class="settings-group" style="margin-bottom:8px;padding:8px 10px">
-                    <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
-                        <span>🤖</span>
-                        <input style="flex:1;background:none;border:none;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;outline:none"
-                               value="${escapeHtml(a.name || 'Agent')}"
-                               onchange="updateEmployee('${a.id}',{name:this.value})">
-                        <button style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px" onclick="deleteEmployee('${a.id}')" title="삭제">✕</button>
-                    </div>
-                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
-                        <div>
-                            <label>CLI</label>
-                            <select onchange="onEmpCliChange('${a.id}',this.value)">
-                                ${['claude', 'codex', 'gemini', 'opencode'].map(c => `<option${a.cli === c ? ' selected' : ''}>${c}</option>`).join('')}
-                            </select>
-                        </div>
-                        <div>
-                            <label>Model</label>
-                            <select id="emp-model-${a.id}" onchange="updateEmployee('${a.id}',{model:this.value})">
-                                <option value="default"${(!a.model || a.model === 'default') ? ' selected' : ''}>default</option>
-                                ${models.map(m => `<option${a.model === m ? ' selected' : ''}>${m}</option>`).join('')}
-                            </select>
-                        </div>
-                    </div>
-                    <div>
-                        <label>Role</label>
-                        <select onchange="onEmpRoleChange('${a.id}',this.value)">
-                            ${ROLE_PRESETS.map(r => `<option value="${r.value}"${presetVal === r.value ? ' selected' : ''}>${r.label}</option>`).join('')}
-                        </select>
-                        <textarea id="emp-custom-${a.id}" style="display:${isCustom ? 'block' : 'none'};margin-top:4px;width:100%;height:40px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-size:10px;font-family:inherit;resize:vertical"
-                                  onchange="updateEmployee('${a.id}',{role:this.value})" placeholder="커스텀 역할...">${isCustom ? escapeHtml(a.role) : ''}</textarea>
-                    </div>
-                    <div style="margin-top:4px;font-size:10px;color:${a.status === 'running' ? '#fbbf24' : 'var(--green)'}">
-                        ● ${a.status || 'idle'}
-                    </div>
-                </div>`;
-            }).join('');
-        }
-
-        async function addEmployee() {
-            await fetch('/api/employees', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' });
-        }
-        async function updateEmployee(id, data) {
-            await fetch(`/api/employees/${id}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
-        }
-        async function deleteEmployee(id) {
-            await fetch(`/api/employees/${id}`, { method: 'DELETE' });
-        }
-        function onEmpCliChange(id, cli) {
-            const models = MODEL_MAP[cli] || [];
-            const sel = document.getElementById(`emp-model-${id}`);
-            sel.innerHTML = `<option value="default" selected>default</option>` + models.map(m => `<option>${m}</option>`).join('') + `<option value="__custom__">✏️ 직접 입력...</option>`;
-            sel.onchange = function () {
-                if (this.value === '__custom__') {
-                    const val = prompt('모델 ID를 입력하세요:');
-                    if (val?.trim()) {
-                        const opt = document.createElement('option');
-                        opt.value = val.trim(); opt.textContent = val.trim();
-                        const customOpt = this.querySelector('option[value="__custom__"]');
-                        this.insertBefore(opt, customOpt);
-                        this.value = val.trim();
-                        updateEmployee(id, { model: val.trim() });
-                    } else {
-                        this.value = 'default';
-                    }
-                } else {
-                    updateEmployee(id, { model: this.value });
-                }
-            };
-            updateEmployee(id, { cli, model: 'default' });
-        }
-        function onEmpRoleChange(id, presetVal) {
-            const preset = ROLE_PRESETS.find(r => r.value === presetVal);
-            const customEl = document.getElementById(`emp-custom-${id}`);
-            if (presetVal === 'custom') {
-                customEl.style.display = 'block';
-                customEl.focus();
-            } else {
-                customEl.style.display = 'none';
-                customEl.value = '';
-                updateEmployee(id, { role: preset?.prompt || '' });
-            }
-        }
-    </script>
+    <script type="module" src="/js/main.js"></script>
 </body>
 
 </html>

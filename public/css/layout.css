@@ -1,0 +1,163 @@
+/* ── Left Sidebar ── */
+.sidebar-left {
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+}
+
+.logo {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--accent);
+}
+
+.section-title {
+    font-size: 11px;
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+}
+
+.memory-list {
+    list-style: none;
+    font-size: 12px;
+}
+
+.memory-list li {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.memory-key {
+    color: var(--accent2);
+}
+
+.stat {
+    font-size: 12px;
+    color: var(--text-dim);
+    margin: 2px 0;
+}
+
+.status-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.status-idle {
+    background: #1a2e1a;
+    color: var(--green);
+}
+
+.status-running {
+    background: #2e2a1a;
+    color: #fbbf24;
+}
+
+.btn-clear {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text-dim);
+    padding: 8px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+    margin-top: auto;
+}
+
+.btn-clear:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+/* ── Right Sidebar ── */
+.sidebar-right {
+    background: var(--surface);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+
+.tab-bar {
+    display: flex;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.tab-btn {
+    flex: 1;
+    padding: 10px 8px;
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+}
+
+.tab-content {
+    display: none;
+    padding: 16px;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.tab-content.active {
+    display: flex;
+}
+
+/* ── Save Bar ── */
+.sidebar-save-bar {
+    padding: 6px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.btn-save {
+    width: 100%;
+    padding: 6px;
+    background: var(--accent);
+    border: none;
+    border-radius: 6px;
+    color: #fff;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-save:hover {
+    opacity: 0.9;
+}
+
+.sidebar-hb-btn {
+    width: 100%;
+    padding: 6px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    text-align: left;
+}
+
+.sidebar-hb-btn:hover {
+    border-color: var(--accent);
+}

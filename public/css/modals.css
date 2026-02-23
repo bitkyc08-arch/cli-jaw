@@ -1,0 +1,172 @@
+/* ── Modal ── */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 999;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay.open {
+    display: flex;
+}
+
+.modal-box {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    width: 500px;
+    max-width: 90vw;
+    max-height: 80vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.modal-textarea {
+    flex: 1;
+    min-height: 250px;
+    background: var(--bg);
+    border: none;
+    color: var(--text);
+    padding: 12px 16px;
+    font-size: 12px;
+    font-family: inherit;
+    resize: none;
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+}
+
+.modal-footer .btn-save {
+    width: auto;
+    padding: 6px 20px;
+}
+
+/* ── Heartbeat popup ── */
+.hb-job-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px;
+    margin-bottom: 8px;
+}
+
+.hb-job-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 6px;
+}
+
+.hb-job-header input[type=text] {
+    flex: 1;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.hb-job-header select,
+.hb-job-header input[type=number] {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 11px;
+}
+
+.hb-job-header input[type=number] {
+    width: 50px;
+}
+
+.hb-toggle {
+    width: 32px;
+    height: 18px;
+    border-radius: 9px;
+    border: none;
+    cursor: pointer;
+    position: relative;
+    transition: background .2s;
+}
+
+.hb-toggle.on {
+    background: var(--accent);
+}
+
+.hb-toggle.off {
+    background: #555;
+}
+
+.hb-toggle::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #fff;
+    transition: left .2s;
+}
+
+.hb-toggle.on::after {
+    left: 16px;
+}
+
+.hb-toggle.off::after {
+    left: 2px;
+}
+
+.hb-del {
+    background: none;
+    border: none;
+    color: #f55;
+    cursor: pointer;
+    font-size: 14px;
+}
+
+.hb-prompt {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 4px 6px;
+    border-radius: 4px;
+    font-size: 11px;
+    resize: vertical;
+}
+
+.hb-add {
+    width: 100%;
+    padding: 8px;
+    background: var(--accent);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 12px;
+    margin-top: 4px;
+}
+
+.hb-add:hover {
+    opacity: .9;
+}
