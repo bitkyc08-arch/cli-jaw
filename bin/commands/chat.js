@@ -221,6 +221,8 @@ if (values.simple) {
                     break;
 
                 case 'agent_status':
+                    // skip 'done' — redundant with agent_done, arrives late
+                    if (msg.status === 'done') break;
                     if (isRaw) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (msg.status === 'running') {
