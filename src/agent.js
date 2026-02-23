@@ -305,40 +305,34 @@ export function spawnAgent(prompt, opts = {}) {
 async function triggerMemoryFlush() {
     const { getMemoryDir } = await import('./prompt.js');
     const memDir = getMemoryDir();
-    const recent = getRecentMessages.all(40).reverse();
+    const threshold = settings.memory?.flushEvery ?? 20;
+    const recent = getRecentMessages.all(threshold).reverse();
     if (recent.length < 4) return;
 
-    const CHAR_BUDGET = 15000;
-    let charCount = 0;
     const lines = [];
     for (const m of recent) {
-        const line = `[${m.role}] ${m.content.slice(0, 800)}`;
-        if (charCount + line.length > CHAR_BUDGET) break;
-        lines.push(line);
-        charCount += line.length;
+        lines.push(`[${m.role}] ${m.content}`);
     }
     const convo = lines.join('\n\n');
     const date = new Date().toISOString().slice(0, 10);
     const time = new Date().toTimeString().slice(0, 5);
     const memFile = join(memDir, `${date}.md`);
 
-    const flushPrompt = `You are a conversation memory extractor.
-Summarize the conversation below into ENGLISH structured memory entries.
-Save by APPENDING to this file: ${memFile}
-Create the file and any parent directories if they don't exist.
+    const flushPrompt = `You are a memory extractor. Summarize the conversation into a short prose paragraph.
+Save by APPENDING to: ${memFile}
+Create directories if needed.
 
 Rules:
-- Output 2-5 bullet points, each 1 English sentence
-- Skip greetings, small talk, errors — only decisions, facts, preferences, project info
-- If nothing worth remembering, do NOT write any file and reply "SKIP"
-- Use this EXACT format when writing:
+- Write 1-3 SHORT English sentences capturing decisions, facts, preferences only
+- Skip greetings, errors, small talk
+- If nothing worth remembering, reply "SKIP" and do NOT write any file
+- Format:
 
-## ${time} — Memory Flush
+## ${time}
 
-- [topic]: fact or decision
-- [topic]: fact or decision
+[your 1-3 sentence summary here]
 
-Conversation to summarize:
+Conversation:
 ---
 ${convo}`;
 

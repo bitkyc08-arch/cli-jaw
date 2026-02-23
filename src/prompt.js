@@ -180,7 +180,7 @@ export function getMemoryDir() {
 
 export function loadRecentMemories() {
     try {
-        const CHAR_BUDGET = 33000;
+        const CHAR_BUDGET = 4000;
         const memDir = getMemoryDir();
         if (!fs.existsSync(memDir)) return '';
         const files = fs.readdirSync(memDir).filter(f => f.endsWith('.md')).sort().reverse();
@@ -196,8 +196,11 @@ export function loadRecentMemories() {
             }
             if (charCount >= CHAR_BUDGET) break;
         }
+        if (entries.length) {
+            console.log(`[memory] session memory loaded: ${entries.length} entries, ${charCount} chars`);
+        }
         return entries.length
-            ? '\n\n---\n## Previous Memories\n' + entries.map(e => '## ' + e).join('\n\n')
+            ? '\n\n---\n## Recent Session Memories\n' + entries.map(e => '- ' + e.split('\n')[0]).join('\n')
             : '';
     } catch { return ''; }
 }
@@ -209,8 +212,24 @@ export function getSystemPrompt() {
     const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
     let prompt = `${a1}\n\n${a2}`;
 
+    // Auto-flush memories (4000자 제한)
     const memories = loadRecentMemories();
     if (memories) prompt += memories;
+
+    // Core memory (MEMORY.md, 시스템 레벨 주입)
+    try {
+        const memPath = join(CLAW_HOME, 'memory', 'MEMORY.md');
+        if (fs.existsSync(memPath)) {
+            const coreMem = fs.readFileSync(memPath, 'utf8').trim();
+            if (coreMem && coreMem.length > 50) {
+                const truncated = coreMem.length > 1500
+                    ? coreMem.slice(0, 1500) + '\n...(use `cli-claw memory read MEMORY.md` for full)'
+                    : coreMem;
+                prompt += '\n\n---\n## Core Memory\n' + truncated;
+                console.log(`[memory] MEMORY.md loaded: ${truncated.length} chars`);
+            }
+        }
+    } catch { /* memory not ready */ }
 
     try {
         const emps = getEmployees.all();
