@@ -1,7 +1,8 @@
 /**
  * cli-claw chat — Phase 9.5
- * Three modes: default (fancy ANSI), --raw (JSON in same UI), --simple (plain text)
+ * Three modes: default (raw stdin, persistent footer), --raw (JSON in UI), --simple (plain readline)
  */
+import * as readline from 'node:readline';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import WebSocket from 'ws';
@@ -57,7 +58,7 @@ const dir = info.workingDir.replace(process.env.HOME, '~');
 const W = () => Math.max(20, Math.min((process.stdout.columns || 60) - 4, 60));
 const hrLine = () => '-'.repeat(W());
 
-// ─── Simple mode (no ANSI tricks at all) ─────
+// ─── Simple mode (plain readline, no tricks) ──
 if (values.simple) {
     console.log(`\n  cli-claw v0.1.0 · ${label} · :${values.port}\n`);
     const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: `${label} > ` });
@@ -86,7 +87,7 @@ if (values.simple) {
     rl.prompt();
 
 } else {
-    // ─── Shared UI for default + raw ─────────
+    // ─── Default + Raw — shared UI with raw stdin ──
     const isRaw = values.raw;
 
     // Banner
@@ -99,58 +100,115 @@ if (values.simple) {
     console.log('');
     console.log(`  ${c.dim}/quit to exit, /clear to reset${c.reset}`);
 
-    // Prompt string — use rl.setPrompt so readline knows its width
-    const promptStr = `  ${accent}\u276F${c.reset} `;
     const footer = `  ${c.dim}${accent}${label}${c.reset}${c.dim}  |  /quit  |  /clear${c.reset}`;
+    const promptPrefix = `  ${accent}\u276F${c.reset} `;
 
-    function showInput() {
-        console.log('');
-        console.log(`  ${c.dim}${hrLine()}${c.reset}`);
-        // Print prompt via rl so it tracks width for backspace
-        rl.setPrompt(promptStr);
-        // Pre-draw bottom hr + footer below, then cursor back up
-        process.stdout.write('\x1b[s');  // save cursor pos (will be after rl.prompt)
-        // We need to write the bottom content AFTER rl.prompt renders
-        // So schedule it in next tick
-        setImmediate(() => {
-            process.stdout.write('\x1b[s');
-            process.stdout.write(`\n  ${c.dim}${hrLine()}${c.reset}`);
-            process.stdout.write(`\n${footer}`);
-            process.stdout.write('\x1b[u');
-        });
-        rl.prompt();
-    }
-
-    function onInputDone() {
-        // Advance past the pre-drawn bottom hr + footer, clearing them
-        process.stdout.write('\n\x1b[2K');
-        process.stdout.write('\n\x1b[2K');
-    }
-
-    // ─── REPL ────────────────────────────────
-    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    // ─── State ───────────────────────────────
+    let inputBuf = '';
+    let inputActive = true;
     let streaming = false;
 
+    // Track which "row" the prompt is on (for cursor movement)
+    // We draw: [blank] [top hr] [prompt] [bottom hr] [footer]
+    // Prompt row = current cursor, bottom hr = +1, footer = +2
+
+    function drawInputBox() {
+        console.log('');
+        console.log(`  ${c.dim}${hrLine()}${c.reset}`);
+        process.stdout.write(promptPrefix);
+        // Save cursor, draw below, restore
+        process.stdout.write('\x1b[s');
+        process.stdout.write(`\n  ${c.dim}${hrLine()}${c.reset}`);
+        process.stdout.write(`\n${footer}`);
+        process.stdout.write('\x1b[u');
+    }
+
+    function redrawPromptLine() {
+        // Move to column 0 of current line, clear it, redraw prompt + buffer
+        process.stdout.write('\r\x1b[2K');
+        process.stdout.write(promptPrefix + inputBuf);
+    }
+
+    function clearBelowAndPrint() {
+        // Move down 2 lines (bottom hr + footer), clear them, move back, then go down
+        process.stdout.write('\x1b[s');
+        process.stdout.write('\n\x1b[2K\n\x1b[2K');
+        process.stdout.write('\x1b[u\n');
+    }
+
+    // ─── Raw stdin input ─────────────────────
+    process.stdin.setRawMode(true);
+    process.stdin.resume();
+    process.stdin.setEncoding('utf8');
+
+    process.stdin.on('data', (key) => {
+        if (!inputActive) return;
+
+        if (key === '\r' || key === '\n') {
+            // Enter
+            const text = inputBuf.trim();
+            inputBuf = '';
+            clearBelowAndPrint();
+
+            if (!text) { drawInputBox(); return; }
+            if (text === '/quit' || text === '/exit' || text === '/q') {
+                console.log(`  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
+                ws.close();
+                process.stdin.setRawMode(false);
+                process.exit(0);
+            }
+            if (text === '/clear') {
+                console.clear();
+                drawInputBox();
+                return;
+            }
+            ws.send(JSON.stringify({ type: 'send_message', text }));
+            inputActive = false;
+        } else if (key === '\x7f' || key === '\b') {
+            // Backspace
+            if (inputBuf.length > 0) {
+                inputBuf = inputBuf.slice(0, -1);
+                redrawPromptLine();
+            }
+        } else if (key === '\x03') {
+            // Ctrl+C
+            console.log(`\n  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
+            ws.close();
+            process.stdin.setRawMode(false);
+            process.exit(0);
+        } else if (key === '\x15') {
+            // Ctrl+U — clear line
+            inputBuf = '';
+            redrawPromptLine();
+        } else if (key.charCodeAt(0) >= 32 || key.charCodeAt(0) > 127) {
+            // Printable chars (including multibyte/Korean)
+            inputBuf += key;
+            redrawPromptLine();
+        }
+    });
+
+    // ─── WS messages ─────────────────────────
     ws.on('message', (data) => {
+        const raw = data.toString();
         try {
-            const msg = JSON.parse(data.toString());
+            const msg = JSON.parse(raw);
             switch (msg.type) {
                 case 'agent_chunk':
+                    if (isRaw) {
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
+                        break;
+                    }
                     if (!streaming) {
                         streaming = true;
                         console.log('');
-                        if (!isRaw) process.stdout.write('  ');
+                        process.stdout.write('  ');
                     }
-                    if (isRaw) {
-                        console.log(`  ${c.dim}${JSON.stringify(msg)}${c.reset}`);
-                    } else {
-                        process.stdout.write((msg.text || '').replace(/\n/g, '\n  '));
-                    }
+                    process.stdout.write((msg.text || '').replace(/\n/g, '\n  '));
                     break;
 
                 case 'agent_done':
                     if (isRaw) {
-                        console.log(`  ${c.dim}${JSON.stringify(msg)}${c.reset}`);
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (streaming) {
                         console.log('');
                     } else if (msg.text) {
@@ -158,12 +216,13 @@ if (values.simple) {
                         console.log(`  ${msg.text.replace(/\n/g, '\n  ')}`);
                     }
                     streaming = false;
-                    showInput();
+                    inputActive = true;
+                    drawInputBox();
                     break;
 
                 case 'agent_status':
                     if (isRaw) {
-                        console.log(`  ${c.dim}${JSON.stringify(msg)}${c.reset}`);
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (msg.status === 'running') {
                         const name = msg.agentName || msg.agentId || 'agent';
                         process.stdout.write(`\r  ${c.yellow}\u25CF${c.reset} ${c.dim}${name} working...${c.reset}          \r`);
@@ -172,7 +231,7 @@ if (values.simple) {
 
                 case 'new_message':
                     if (isRaw) {
-                        console.log(`  ${c.dim}${JSON.stringify(msg)}${c.reset}`);
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (msg.source && msg.source !== 'cli') {
                         console.log(`\n  ${c.dim}[${msg.source}]${c.reset} ${(msg.content || '').slice(0, 60)}`);
                     }
@@ -180,27 +239,18 @@ if (values.simple) {
 
                 default:
                     if (isRaw) {
-                        console.log(`  ${c.dim}${JSON.stringify(msg)}${c.reset}`);
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
                     }
                     break;
             }
         } catch { }
     });
 
-    rl.on('line', (line) => {
-        const text = line.trim();
-        onInputDone();
-        if (!text) { showInput(); return; }
-        if (text === '/quit' || text === '/exit' || text === '/q') {
-            console.log(`\n  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
-            ws.close(); rl.close(); process.exit(0);
-        }
-        if (text === '/clear') { console.clear(); showInput(); return; }
-        ws.send(JSON.stringify({ type: 'send_message', text }));
+    ws.on('close', () => {
+        console.log(`\n  ${c.dim}Disconnected${c.reset}\n`);
+        process.stdin.setRawMode(false);
+        process.exit(0);
     });
 
-    rl.on('close', () => { ws.close(); process.exit(0); });
-    ws.on('close', () => { console.log(`\n  ${c.dim}Disconnected${c.reset}\n`); process.exit(0); });
-
-    showInput();
+    drawInputBox();
 }
