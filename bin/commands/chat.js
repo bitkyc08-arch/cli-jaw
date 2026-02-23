@@ -1,6 +1,6 @@
 /**
- * cli-claw chat — Phase 9.5 (polished v3)
- * Claude Code style: clean lines above/below input area.
+ * cli-claw chat — Phase 9.5
+ * Three modes: default (fancy ANSI), --simple (clean text), --raw (ndjson pipe)
  */
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
@@ -11,6 +11,7 @@ const { values } = parseArgs({
     options: {
         port: { type: 'string', default: process.env.PORT || '3457' },
         raw: { type: 'boolean', default: false },
+        simple: { type: 'boolean', default: false },
     },
     strict: false,
 });
@@ -65,6 +66,45 @@ if (values.raw) {
             ws.send(JSON.stringify({ type: 'send_message', text: l }));
     });
     process.stdin.on('end', () => { ws.close(); process.exit(0); });
+
+    // ─── Simple mode ─────────────────────────────
+} else if (values.simple) {
+    console.log(`\n  cli-claw v0.1.0 · ${label} · :${values.port}\n`);
+
+    const rl = createInterface({ input: process.stdin, output: process.stdout, prompt: `${label} > ` });
+    let streaming = false;
+
+    ws.on('message', (data) => {
+        try {
+            const msg = JSON.parse(data.toString());
+            switch (msg.type) {
+                case 'agent_chunk':
+                    if (!streaming) { streaming = true; }
+                    process.stdout.write(msg.text || '');
+                    break;
+                case 'agent_done':
+                    if (streaming) { process.stdout.write('\n\n'); streaming = false; }
+                    else if (msg.text) { console.log(msg.text + '\n'); }
+                    rl.prompt();
+                    break;
+                case 'agent_status':
+                    if (msg.status === 'running') {
+                        process.stdout.write(`[${msg.agentName || msg.agentId}] working...\r`);
+                    }
+                    break;
+            }
+        } catch { }
+    });
+
+    rl.on('line', (line) => {
+        const text = line.trim();
+        if (!text) { rl.prompt(); return; }
+        if (text === '/quit' || text === '/q') { ws.close(); rl.close(); process.exit(0); }
+        ws.send(JSON.stringify({ type: 'send_message', text }));
+    });
+    rl.on('close', () => { ws.close(); process.exit(0); });
+    ws.on('close', () => { console.log('Disconnected'); process.exit(0); });
+    rl.prompt();
 
 } else {
     // ─── Banner ──────────────────────────────
