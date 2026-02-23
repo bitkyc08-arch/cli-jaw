@@ -247,7 +247,8 @@ if (values.simple) {
     process.stdin.setEncoding('utf8');
 
     process.stdin.on('data', (key) => {
-        if (!inputActive) return;
+        // ESC and Ctrl+C always work, even when agent is running
+        // Typing always works (for queue). Only Enter submission checks inputActive.
 
         // Phase 12.1.7: Option+Enter (ESC+CR/LF) → insert newline
         if (key === '\x1b\r' || key === '\x1b\n') {
@@ -370,7 +371,10 @@ if (values.simple) {
         } else if (key.charCodeAt(0) >= 32 || key.charCodeAt(0) > 127) {
             // Printable chars (including multibyte/Korean)
             // Phase 12.1.5: allow typing during agent run for queue
-            if (!inputActive) inputActive = true;
+            if (!inputActive) {
+                inputActive = true;
+                showPrompt();  // new separator + prompt before queue input
+            }
             inputBuf += key;
             redrawPromptLine();
         }
@@ -417,6 +421,14 @@ if (values.simple) {
                     } else if (msg.status === 'running') {
                         const name = msg.agentName || msg.agentId || 'agent';
                         process.stdout.write(`\r  ${c.yellow}\u25CF${c.reset} ${c.dim}${name} working...${c.reset}          \r`);
+                    }
+                    break;
+
+                case 'agent_tool':
+                    if (isRaw) {
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
+                    } else if (msg.icon && msg.label) {
+                        process.stdout.write(`\r  ${c.dim}${msg.icon} ${msg.label}${c.reset}          \r`);
                     }
                     break;
 
