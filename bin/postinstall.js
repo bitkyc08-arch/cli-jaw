@@ -103,4 +103,37 @@ for (const { pkg, bin } of MCP_PACKAGES) {
 
 if (updated) saveUnifiedMcp(config);
 
+// 8. Auto-install skill dependencies (Phase 9)
+const SKILL_DEPS = [
+    {
+        name: 'uv',
+        check: 'uv --version',
+        install: 'curl -LsSf https://astral.sh/uv/install.sh | sh',
+        why: 'Python skills (imagegen, pdf, speech, spreadsheet, transcribe)',
+    },
+    {
+        name: 'playwright-core',
+        check: 'node -e "require.resolve(\'playwright-core\')"',
+        install: 'npm i -g playwright-core',
+        why: 'Browser control skill (cli-claw browser)',
+    },
+];
+
+console.log('[claw:init] checking skill dependencies...');
+for (const dep of SKILL_DEPS) {
+    try {
+        execSync(dep.check, { stdio: 'pipe', timeout: 10000 });
+        console.log(`[claw:init] ⏭️  ${dep.name} (already installed)`);
+    } catch {
+        console.log(`[claw:init] 📦 installing ${dep.name} (${dep.why})...`);
+        try {
+            execSync(dep.install, { stdio: 'pipe', timeout: 120000 });
+            console.log(`[claw:init] ✅ ${dep.name} installed`);
+        } catch (e) {
+            console.error(`[claw:init] ⚠️  ${dep.name}: auto-install failed — install manually:`);
+            console.error(`             ${dep.install}`);
+        }
+    }
+}
+
 console.log('[claw:init] setup complete ✅');

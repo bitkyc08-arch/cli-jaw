@@ -115,6 +115,33 @@ if (process.platform === 'darwin') {
     });
 }
 
+// 9. Skill dependencies (Phase 9)
+check('uv (Python)', () => {
+    try {
+        const ver = execSync('uv --version', { encoding: 'utf8', stdio: 'pipe' }).trim();
+        return ver;
+    } catch {
+        throw new Error('WARN: not installed — run: curl -LsSf https://astral.sh/uv/install.sh | sh');
+    }
+});
+
+check('playwright-core', () => {
+    try {
+        execSync('node -e "require.resolve(\'playwright-core\')"', { stdio: 'pipe' });
+        return 'installed';
+    } catch {
+        throw new Error('WARN: not installed — run: npm i -g playwright-core');
+    }
+});
+
+if (process.platform === 'darwin') {
+    check('Google Chrome', () => {
+        if (fs.existsSync('/Applications/Google Chrome.app')) return 'installed';
+        if (fs.existsSync(path.join(os.homedir(), 'Applications/Google Chrome.app'))) return 'installed (user)';
+        throw new Error('WARN: not found — required for browser skill');
+    });
+}
+
 // Output
 if (values.json) {
     console.log(JSON.stringify({ checks: results }, null, 2));
