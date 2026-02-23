@@ -92,11 +92,10 @@ if (values.raw) {
     }
 
     function onInputDone() {
-        // Clear the bottom hr + footer that were below cursor (2 lines down)
-        process.stdout.write('\x1b[s');       // save current pos
-        process.stdout.write('\n\x1b[2K');    // move down, clear bottom hr
-        process.stdout.write('\n\x1b[2K');    // move down, clear footer
-        process.stdout.write('\x1b[u');       // restore
+        // After readline processes enter, cursor is at end of input line.
+        // Below it are the pre-drawn bottom hr + footer. Move through them, clearing.
+        process.stdout.write('\n\x1b[2K');  // advance to bottom hr line, clear
+        process.stdout.write('\n\x1b[2K');  // advance to footer line, clear
     }
 
     // ─── REPL ────────────────────────────────
