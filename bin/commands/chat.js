@@ -103,41 +103,39 @@ if (values.simple) {
     const footer = `  ${c.dim}${accent}${label}${c.reset}${c.dim}  |  /quit  |  /clear${c.reset}`;
     const promptPrefix = `  ${accent}\u276F${c.reset} `;
 
-    // ─── Scroll region: fixed input at bottom ──
+    // ─── Scroll region: fixed footer at bottom ──
     const getRows = () => process.stdout.rows || 24;
 
     function setupScrollRegion() {
         const rows = getRows();
-        // Scroll region = rows 1..(rows-3), bottom 3 rows fixed
-        process.stdout.write(`\x1b[1;${rows - 3}r`);
-        // Row N-2: top hr
-        process.stdout.write(`\x1b[${rows - 2};1H\x1b[2K  ${c.dim}${hrLine()}${c.reset}`);
-        // Row N-1: prompt
-        process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K${promptPrefix}`);
-        // Row N: footer
+        // Set scroll region to rows 1..(rows-2), leaving bottom 2 for footer
+        process.stdout.write(`\x1b[1;${rows - 2}r`);
+        // Draw fixed footer at absolute positions
+        process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K  ${c.dim}${hrLine()}${c.reset}`);
         process.stdout.write(`\x1b[${rows};1H\x1b[2K${footer}`);
-        // Move cursor to prompt line (N-1), after prefix
-        process.stdout.write(`\x1b[${rows - 1};${5}H`);
+        // Move cursor back into scroll region
+        process.stdout.write(`\x1b[${rows - 2};1H`);
     }
 
     function cleanupScrollRegion() {
         const rows = getRows();
+        // Reset scroll region to full terminal
         process.stdout.write(`\x1b[1;${rows}r`);
         process.stdout.write(`\x1b[${rows};1H\n`);
     }
 
+    // Redraw footer on terminal resize
     process.stdout.on('resize', () => setupScrollRegion());
 
-    function redrawPromptLine() {
-        const rows = getRows();
-        // Go to prompt row, clear, redraw
-        process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K${promptPrefix}${inputBuf}`);
+    function showPrompt() {
+        console.log('');
+        console.log(`  ${c.dim}${hrLine()}${c.reset}`);
+        process.stdout.write(promptPrefix);
     }
 
-    function moveCursorToScroll() {
-        const rows = getRows();
-        // Move cursor to bottom of scroll region for output
-        process.stdout.write(`\x1b[${rows - 3};1H`);
+    function redrawPromptLine() {
+        process.stdout.write('\r\x1b[2K');
+        process.stdout.write(promptPrefix + inputBuf);
     }
 
     // ─── State ───────────────────────────────
@@ -157,10 +155,9 @@ if (values.simple) {
             // Enter
             const text = inputBuf.trim();
             inputBuf = '';
-            redrawPromptLine();         // clear typed text from fixed prompt
-            moveCursorToScroll();        // output goes to scroll region
+            console.log('');  // newline after input
 
-            if (!text) return;
+            if (!text) { showPrompt(); return; }
             if (text === '/quit' || text === '/exit' || text === '/q') {
                 cleanupScrollRegion();
                 console.log(`  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
@@ -171,6 +168,7 @@ if (values.simple) {
             if (text === '/clear') {
                 console.clear();
                 setupScrollRegion();
+                showPrompt();
                 return;
             }
             ws.send(JSON.stringify({ type: 'send_message', text }));
@@ -229,7 +227,7 @@ if (values.simple) {
                     }
                     streaming = false;
                     inputActive = true;
-                    redrawPromptLine();     // clear any leftover from prompt
+                    showPrompt();
                     break;
 
                 case 'agent_status':
@@ -268,4 +266,5 @@ if (values.simple) {
     });
 
     setupScrollRegion();
+    showPrompt();
 }
