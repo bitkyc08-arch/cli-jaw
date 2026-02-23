@@ -246,6 +246,72 @@
             cursor: not-allowed;
         }
 
+        /* ── Phase 10: Attach + Drag & Drop ── */
+        .btn-attach {
+            background: none;
+            border: 1px solid var(--border);
+            color: var(--text-dim);
+            padding: 10px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            line-height: 1;
+            transition: border-color .2s, color .2s;
+        }
+
+        .btn-attach:hover {
+            border-color: var(--accent);
+            color: var(--accent);
+        }
+
+        .drag-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 107, 107, 0.08);
+            border: 2px dashed var(--accent);
+            border-radius: 8px;
+            z-index: 100;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            color: var(--accent);
+            pointer-events: none;
+        }
+
+        .drag-overlay.visible {
+            display: flex;
+        }
+
+        .file-preview {
+            display: none;
+            padding: 6px 20px;
+            border-top: 1px solid var(--border);
+            background: var(--surface);
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            color: var(--text-dim);
+        }
+
+        .file-preview.visible {
+            display: flex;
+        }
+
+        .file-preview img {
+            max-height: 40px;
+            border-radius: 4px;
+        }
+
+        .file-preview .remove {
+            margin-left: auto;
+            background: none;
+            border: none;
+            color: #f55;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
         /* ── Loading / Typing ── */
         .typing-indicator {
             display: none;
@@ -717,7 +783,8 @@
     </div>
 
     <!-- Chat Area -->
-    <div class="chat-area">
+    <div class="chat-area" style="position:relative">
+        <div class="drag-overlay" id="dragOverlay">📎 파일을 여기에 드랍하세요</div>
         <div class="chat-header">🦞 Claw Agent ● <span id="headerCli">claude</span></div>
         <div class="chat-messages" id="chatMessages"></div>
         <div class="typing-indicator" id="typingIndicator">
@@ -726,7 +793,15 @@
             <span class="typing-dot"></span>
             <span class="typing-dot"></span>
         </div>
+        <div class="file-preview" id="filePreview">
+            <span id="filePreviewName"></span>
+            <img id="filePreviewImg" src="" alt="">
+            <button class="remove" onclick="clearAttachedFile()">✕</button>
+        </div>
         <div class="chat-input-area">
+            <button class="btn-attach" title="파일 첨부" onclick="document.getElementById('fileInput').click()">📎</button>
+            <input type="file" id="fileInput" hidden
+                accept="image/*,.pdf,.txt,.md,.js,.py,.json,.csv,.html,.css,.ts,.tsx,.jsx">
             <textarea class="chat-input" id="chatInput" rows="1" placeholder="메시지 입력..."
                 onkeydown="handleKey(event)"></textarea>
             <button class="btn-send" id="btnSend" onclick="sendMessage()">➤</button>
@@ -747,11 +822,25 @@
         <div id="tabAgents" class="tab-content active">
             <div>
                 <label>Active CLI</label>
-                <select id="selCli" onchange="updateSettings()">
+                <select id="selCli" onchange="onCliChange()">
                     <option value="claude">Claude</option>
                     <option value="codex">Codex</option>
                     <option value="gemini">Gemini</option>
                     <option value="opencode">OpenCode</option>
+                </select>
+            </div>
+
+            <div>
+                <label>Model</label>
+                <select id="selModel" onchange="saveActiveCliSettings()"></select>
+            </div>
+            <div>
+                <label>Effort</label>
+                <select id="selEffort" onchange="saveActiveCliSettings()">
+                    <option value="">— none</option>
+                    <option value="low">🟢 low</option>
+                    <option value="medium" selected>🟡 medium</option>
+                    <option value="high">🔴 high</option>
                 </select>
             </div>
 
@@ -766,37 +855,6 @@
             <div>
                 <label>Working Directory</label>
                 <input type="text" id="inpCwd" value="~/" onchange="updateSettings()">
-            </div>
-
-            <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
-
-            <!-- Planning Agent (5.12) -->
-            <div class="settings-group">
-                <h4>🎯 Planning Agent</h4>
-                <div class="settings-row">
-                    <label>CLI</label>
-                    <select id="planningCli" onchange="savePlanningSettings()">
-                        <option>claude</option>
-                        <option>codex</option>
-                        <option>gemini</option>
-                        <option>opencode</option>
-                    </select>
-                </div>
-                <div class="settings-row sub-row">
-                    <label>Model</label>
-                    <select id="planningModel" onchange="savePlanningSettings()">
-                        <option value="default" selected>default</option>
-                    </select>
-                </div>
-                <div class="settings-row sub-row">
-                    <label>Effort</label>
-                    <select id="planningEffort" onchange="savePlanningSettings()">
-                        <option value="">— none</option>
-                        <option value="low">low</option>
-                        <option value="medium" selected>medium</option>
-                        <option value="high">high</option>
-                    </select>
-                </div>
             </div>
 
             <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">
@@ -1267,24 +1325,113 @@
         }
 
         // ── Actions ──
+        let attachedFile = null;  // Phase 10: pending file attachment
+
         async function sendMessage() {
             const input = document.getElementById('chatInput');
             const text = input.value.trim();
-            if (!text || agentBusy) return;
+            if ((!text && !attachedFile) || agentBusy) return;
 
             if (text === '/clear') { clearChat(); input.value = ''; return; }
 
-            addMessage('user', text);
-            input.value = '';
-            await fetch('/api/message', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ prompt: text }),
-            });
+            if (attachedFile) {
+                // Upload file first, then send prompt with path
+                const displayMsg = `[📎 ${attachedFile.name}] ${text}`;
+                addMessage('user', displayMsg);
+                input.value = '';
+                try {
+                    const filePath = await uploadFile(attachedFile);
+                    const prompt = `[사용자가 파일을 보냈습니다: ${filePath}]\n이 파일을 Read 도구로 읽고 분석해주세요.${text ? `\n\n사용자 메시지: ${text}` : ''}`;
+                    clearAttachedFile();
+                    await fetch('/api/message', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ prompt }),
+                    });
+                } catch (err) {
+                    addSystemMsg(`❌ 파일 업로드 실패: ${err.message}`);
+                    clearAttachedFile();
+                }
+            } else {
+                addMessage('user', text);
+                input.value = '';
+                await fetch('/api/message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: text }),
+                });
+            }
         }
 
         function handleKey(e) {
             if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); sendMessage(); }
+        }
+
+        // ── Phase 10: File Upload & Drag/Drop ──
+        async function uploadFile(file) {
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: { 'X-Filename': file.name },
+                body: file,
+            });
+            if (!res.ok) throw new Error('upload failed');
+            const data = await res.json();
+            return data.path;
+        }
+
+        function attachFile(file) {
+            attachedFile = file;
+            const preview = document.getElementById('filePreview');
+            const nameEl = document.getElementById('filePreviewName');
+            const imgEl = document.getElementById('filePreviewImg');
+            nameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
+            if (file.type.startsWith('image/')) {
+                imgEl.src = URL.createObjectURL(file);
+                imgEl.style.display = 'block';
+            } else {
+                imgEl.style.display = 'none';
+            }
+            preview.classList.add('visible');
+            document.getElementById('chatInput').focus();
+        }
+
+        function clearAttachedFile() {
+            attachedFile = null;
+            const preview = document.getElementById('filePreview');
+            preview.classList.remove('visible');
+            document.getElementById('filePreviewImg').src = '';
+            document.getElementById('fileInput').value = '';
+        }
+
+        // File input click
+        document.getElementById('fileInput').addEventListener('change', (e) => {
+            if (e.target.files[0]) attachFile(e.target.files[0]);
+        });
+
+        // Drag & Drop
+        {
+            const chatArea = document.querySelector('.chat-area');
+            const overlay = document.getElementById('dragOverlay');
+            let dragCounter = 0;
+
+            chatArea.addEventListener('dragenter', (e) => {
+                e.preventDefault();
+                dragCounter++;
+                overlay.classList.add('visible');
+            });
+            chatArea.addEventListener('dragleave', (e) => {
+                e.preventDefault();
+                dragCounter--;
+                if (dragCounter <= 0) { dragCounter = 0; overlay.classList.remove('visible'); }
+            });
+            chatArea.addEventListener('dragover', (e) => e.preventDefault());
+            chatArea.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dragCounter = 0;
+                overlay.classList.remove('visible');
+                const file = e.dataTransfer.files[0];
+                if (file) attachFile(file);
+            });
         }
 
         async function clearChat() {
@@ -1311,8 +1458,13 @@
                 }
             }
 
-            // Load planning agent settings (5.12)
-            loadPlanningSettings(s);
+            // Phase 12: Load active CLI model/effort from perCli
+            onCliChange(false);
+            // perCli defaults from settings
+            const activeCfg = s.perCli?.[s.cli] || {};
+            if (activeCfg.model) document.getElementById('selModel').value = activeCfg.model;
+            if (activeCfg.effort) document.getElementById('selEffort').value = activeCfg.effort;
+
             // Load telegram settings (6.5)
             loadTelegramSettings(s);
         }
@@ -1366,31 +1518,38 @@
             });
         }
 
-        // ── Planning Agent Settings (5.12) ──
-        async function savePlanningSettings() {
-            const planning = {
-                cli: document.getElementById('planningCli').value,
-                model: document.getElementById('planningModel').value,
-                effort: document.getElementById('planningEffort').value,
+        // ── Phase 12: Active CLI Settings ──
+        function onCliChange(save = true) {
+            const cli = document.getElementById('selCli').value;
+            const models = MODEL_MAP[cli] || [];
+            const modelSel = document.getElementById('selModel');
+            modelSel.innerHTML = models.map(m =>
+                `<option value="${m}">${m}</option>`
+            ).join('');
+            document.getElementById('headerCli').textContent = cli;
+
+            // Load perCli defaults for this CLI
+            fetch('/api/settings').then(r => r.json()).then(s => {
+                const cfg = s.perCli?.[cli] || {};
+                if (cfg.model) modelSel.value = cfg.model;
+                if (cfg.effort) document.getElementById('selEffort').value = cfg.effort;
+            });
+
+            if (save) updateSettings();
+        }
+
+        async function saveActiveCliSettings() {
+            const cli = document.getElementById('selCli').value;
+            const perCli = {};
+            perCli[cli] = {
+                model: document.getElementById('selModel').value,
+                effort: document.getElementById('selEffort').value,
             };
             await fetch('/api/settings', {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ planning }),
+                body: JSON.stringify({ perCli }),
             });
-        }
-
-        function loadPlanningSettings(s) {
-            if (s.planning?.cli) {
-                const sel = document.getElementById('planningCli');
-                sel.value = s.planning.cli;
-            }
-            if (s.planning?.model) {
-                document.getElementById('planningModel').value = s.planning.model;
-            }
-            if (s.planning?.effort) {
-                document.getElementById('planningEffort').value = s.planning.effort;
-            }
         }
 
         // ── Telegram settings (6.5) ──

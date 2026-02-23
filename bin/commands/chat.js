@@ -6,6 +6,8 @@ import * as readline from 'node:readline';
 import { createInterface } from 'node:readline';
 import { parseArgs } from 'node:util';
 import WebSocket from 'ws';
+import fs from 'node:fs';
+import { resolve as resolvePath } from 'node:path';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
@@ -80,6 +82,16 @@ if (values.simple) {
         const t = line.trim();
         if (!t) { rl.prompt(); return; }
         if (t === '/quit' || t === '/q') { ws.close(); rl.close(); process.exit(0); }
+        // Phase 10: /file command
+        if (t.startsWith('/file ')) {
+            const parts = t.slice(6).trim().split(/\s+/);
+            const fp = resolvePath(parts[0]);
+            const caption = parts.slice(1).join(' ');
+            if (!fs.existsSync(fp)) { console.log(`  ${c.red}파일 없음: ${fp}${c.reset}`); rl.prompt(); return; }
+            const prompt = `[사용자가 파일을 보냈습니다: ${fp}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+            ws.send(JSON.stringify({ type: 'send_message', text: prompt }));
+            return;
+        }
         ws.send(JSON.stringify({ type: 'send_message', text: t }));
     });
     rl.on('close', () => { ws.close(); process.exit(0); });
@@ -98,7 +110,7 @@ if (values.simple) {
     console.log(`  ${c.dim}directory:${c.reset}  ${c.cyan}${dir}${c.reset}`);
     console.log(`  ${c.dim}server:${c.reset}    ${c.green}\u25CF${c.reset} localhost:${values.port}`);
     console.log('');
-    console.log(`  ${c.dim}/quit to exit, /clear to reset${c.reset}`);
+    console.log(`  ${c.dim}/quit to exit, /clear to reset, /file <path> to attach${c.reset}`);
 
     const footer = `  ${c.dim}${accent}${label}${c.reset}${c.dim}  |  /quit  |  /clear${c.reset}`;
     const promptPrefix = `  ${accent}\u276F${c.reset} `;
@@ -169,6 +181,21 @@ if (values.simple) {
                 console.clear();
                 setupScrollRegion();
                 showPrompt();
+                return;
+            }
+            // Phase 10: /file command
+            if (text.startsWith('/file ')) {
+                const parts = text.slice(6).trim().split(/\s+/);
+                const fp = resolvePath(parts[0]);
+                const caption = parts.slice(1).join(' ');
+                if (!fs.existsSync(fp)) {
+                    scrollPrint(`  ${c.red}파일 없음: ${fp}${c.reset}`);
+                    showPrompt();
+                    return;
+                }
+                const prompt = `[사용자가 파일을 보냈습니다: ${fp}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+                ws.send(JSON.stringify({ type: 'send_message', text: prompt }));
+                inputActive = false;
                 return;
             }
             ws.send(JSON.stringify({ type: 'send_message', text }));

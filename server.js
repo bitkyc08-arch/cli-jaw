@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
+import { dirname, join, extname, basename } from 'path';
 import { execSync, spawn } from 'child_process';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -11,6 +11,11 @@ import Database from 'better-sqlite3';
 import { Bot } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import https from 'node:https';
+import {
+    saveUpload as _saveUpload,
+    buildMediaPrompt,
+    downloadTelegramFile,
+} from './lib/upload.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,11 +28,13 @@ const PROMPTS_DIR = join(CLAW_HOME, 'prompts');
 const DB_PATH = join(CLAW_HOME, 'claw.db');
 const SETTINGS_PATH = join(CLAW_HOME, 'settings.json');
 const HEARTBEAT_JOBS_PATH = join(CLAW_HOME, 'heartbeat.json');
+const UPLOADS_DIR = join(CLAW_HOME, 'uploads');
 const MIGRATION_MARKER = join(CLAW_HOME, '.migrated-v1');
 
 // ─── Ensure directories ─────────────────────────────
 
 fs.mkdirSync(PROMPTS_DIR, { recursive: true });
+fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 fs.mkdirSync(join(__dirname, 'public'), { recursive: true });
 
 // ─── 1-time migration (Phase 9.2) ───────────────────
@@ -227,9 +234,32 @@ const DEFAULT_SETTINGS = {
     employees: [],
 };
 
+function migrateSettings(s) {
+    // Phase 12: planning → 삭제 (Active CLI = Planning CLI)
+    if (s.planning) {
+        if (s.planning.cli && s.planning.cli !== s.cli) {
+            s.cli = s.planning.cli;
+        }
+        if (s.planning.model && s.planning.model !== 'default') {
+            const target = s.perCli?.[s.cli];
+            if (target) target.model = s.planning.model;
+        }
+        if (s.planning.effort) {
+            const target = s.perCli?.[s.cli];
+            if (target) target.effort = s.planning.effort;
+        }
+        delete s.planning;
+    }
+    return s;
+}
+
 function loadSettings() {
     try {
-        return { ...DEFAULT_SETTINGS, ...JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')) };
+        const raw = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
+        const merged = migrateSettings({ ...DEFAULT_SETTINGS, ...raw });
+        // Persist migration
+        if (raw.planning) saveSettings(merged);
+        return merged;
     } catch { return { ...DEFAULT_SETTINGS }; }
 }
 
@@ -708,6 +738,10 @@ ${convo}`;
     console.log(`[memory] flush triggered (${recent.length} msgs → ${flushCli}/${flushModel})`);
 }
 
+// ─── Phase 10: Media Upload (lib/upload.js) ─────────
+// Bind UPLOADS_DIR so callers don't need to pass it
+const saveUpload = (buffer, originalName) => _saveUpload(UPLOADS_DIR, buffer, originalName);
+
 // ─── Event Extraction (ported from claw-lite) ────────
 
 function extractSessionId(cli, event) {
@@ -892,11 +926,8 @@ async function orchestrate(prompt) {
         return;
     }
 
-    // Planning agent settings (5.12)
-    const planCli = settings.planning?.cli || settings.cli;
-    const planModel = settings.planning?.model || 'default';
-    const planEffort = settings.planning?.effort || '';
-    const planOpts = { agentId: 'planning', cli: planCli, model: planModel, effort: planEffort };
+    // Phase 12: Active CLI = Planning CLI (perCli defaults)
+    const planOpts = { agentId: 'planning' };
 
     // Round 1: Planning Agent
     broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'running' });
@@ -1018,7 +1049,7 @@ app.put('/api/settings', (req, res) => {
     const hasTelegramUpdate = !!req.body.telegram; // 6.6: capture before deep merge deletes it
 
     // Deep merge for nested objects
-    for (const key of ['perCli', 'planning', 'heartbeat', 'telegram']) {
+    for (const key of ['perCli', 'heartbeat', 'telegram', 'memory']) {
         if (req.body[key] && typeof req.body[key] === 'object') {
             settings[key] = { ...settings[key], ...req.body[key] };
             delete req.body[key];
@@ -1125,6 +1156,13 @@ app.put('/api/memory-files/settings', (req, res) => {
     settings.memory = { ...settings.memory, ...req.body };
     saveSettings(settings);
     res.json({ ok: true });
+});
+
+// Phase 10: File upload
+app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) => {
+    const filename = req.headers['x-filename'] || 'upload.bin';
+    const filePath = saveUpload(req.body, filename);
+    res.json({ path: filePath, filename: basename(filePath) });
 });
 
 // CLI detection
@@ -1293,16 +1331,11 @@ function initTelegram() {
     bot.command('start', (ctx) => ctx.reply('🦞 Claw Agent 연결됨! 메시지를 보내면 AI 에이전트가 응답합니다.'));
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat.id}</code>`, { parse_mode: 'HTML' }));
 
-    bot.on('message:text', async (ctx) => {
-        const text = ctx.message.text;
-        if (text.startsWith('/')) return;
-
-        console.log(`[tg:in] ${ctx.chat.id}: ${text.slice(0, 80)}`);
-        telegramActiveChatIds.add(ctx.chat.id);  // auto-track
-
-        // Save user message to DB + sync to Web UI (6.2)
-        insertMessage.run('user', text, 'telegram', '');
-        broadcast('new_message', { role: 'user', content: text, source: 'telegram' });
+    // Shared Telegram typing + orchestrate + reply helper (Phase 10 refactor)
+    async function tgOrchestrate(ctx, prompt, displayMsg) {
+        telegramActiveChatIds.add(ctx.chat.id);
+        insertMessage.run('user', displayMsg, 'telegram', '');
+        broadcast('new_message', { role: 'user', content: displayMsg, source: 'telegram' });
 
         await ctx.replyWithChatAction('typing')
             .then(() => console.log('[tg:typing] ✅ sent'))
@@ -1314,7 +1347,7 @@ function initTelegram() {
         }, 4000);
 
         try {
-            const result = await orchestrateAndCollect(text);
+            const result = await orchestrateAndCollect(prompt);
             clearInterval(typingInterval);
 
             const html = markdownToTelegramHtml(result);
@@ -1326,13 +1359,51 @@ function initTelegram() {
                     await ctx.reply(chunk.replace(/<[^>]+>/g, ''));
                 }
             }
-
-            // Note: assistant message already saved + broadcast as agent_done by spawnAgent
             console.log(`[tg:out] ${ctx.chat.id}: ${result.slice(0, 80)}`);
         } catch (err) {
             clearInterval(typingInterval);
             console.error('[tg:error]', err);
             await ctx.reply(`❌ Error: ${err.message}`);
+        }
+    }
+
+    bot.on('message:text', async (ctx) => {
+        const text = ctx.message.text;
+        if (text.startsWith('/')) return;
+        console.log(`[tg:in] ${ctx.chat.id}: ${text.slice(0, 80)}`);
+        await tgOrchestrate(ctx, text, text);
+    });
+
+    // Phase 10: Telegram photo handler
+    bot.on('message:photo', async (ctx) => {
+        const photos = ctx.message.photo;
+        const largest = photos[photos.length - 1];
+        const caption = ctx.message.caption || '';
+        console.log(`[tg:photo] ${ctx.chat.id}: fileId=${largest.file_id.slice(0, 20)}... caption=${caption.slice(0, 40)}`);
+        try {
+            const { buffer, ext } = await downloadTelegramFile(largest.file_id, settings.telegram.token);
+            const filePath = saveUpload(buffer, `photo${ext}`);
+            const prompt = buildMediaPrompt(filePath, caption);
+            await tgOrchestrate(ctx, prompt, `[📷 이미지] ${caption}`);
+        } catch (err) {
+            console.error('[tg:photo:error]', err);
+            await ctx.reply(`❌ 이미지 처리 실패: ${err.message}`);
+        }
+    });
+
+    // Phase 10: Telegram document handler
+    bot.on('message:document', async (ctx) => {
+        const doc = ctx.message.document;
+        const caption = ctx.message.caption || '';
+        console.log(`[tg:doc] ${ctx.chat.id}: ${doc.file_name} (${doc.file_size} bytes)`);
+        try {
+            const { buffer } = await downloadTelegramFile(doc.file_id, settings.telegram.token);
+            const filePath = saveUpload(buffer, doc.file_name || 'document');
+            const prompt = buildMediaPrompt(filePath, caption);
+            await tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);
+        } catch (err) {
+            console.error('[tg:doc:error]', err);
+            await ctx.reply(`❌ 파일 처리 실패: ${err.message}`);
         }
     });
 

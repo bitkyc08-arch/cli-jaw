@@ -157,6 +157,7 @@ cli-claw status                            # 서버 상태 확인
     └── HEARTBEAT.md     ← 하트비트 체크리스트
 
 ~/.claude/projects/<hash>/memory/  ← Claude 네이티브 메모리 (자동 flush)
+~/.cli-claw/uploads/               ← 업로드 파일 (사진/문서)
 ```
 
 ## Features
@@ -171,6 +172,7 @@ cli-claw status                            # 서버 상태 확인
 | 📟 **CLI Chat**       | 터미널 REPL + `--raw` ndjson 파이프         |
 | 🔗 **Symlink Infra**  | `.agents/skills/` 자동 연결 (postinstall)   |
 | 🔄 **Session Resume** | CLI 세션 유지 + 컨텍스트 이어가기           |
+| 📷 **Photo Input**    | Web/Telegram/CLI 사진 업로드 + 분석         |
 | 🧠 **Memory**         | 10 QA 비동기 flush → Claude 메모리 저장     |
 | 🩺 **Doctor**         | 설치 상태 자가 진단                         |
 
@@ -189,6 +191,7 @@ cli-claw status                            # 서버 상태 확인
 | `GET`     | `/api/memory-files`          | 메모리 설정 + 파일 목록   |
 | `GET/DEL` | `/api/memory-files/:file`    | 파일 열람/삭제            |
 | `PUT`     | `/api/memory-files/settings` | 메모리 설정 변경          |
+| `POST`    | `/api/upload`                | 파일 업로드 (20MB)        |
 
 ## Requirements
 
@@ -207,10 +210,11 @@ graph LR
     P7["✅ Phase 7<br/>Integration"]
     P8["✅ Phase 8<br/>Heartbeat"]
     P9["✅ Phase 9<br/>CLI Package"]
-    P10["⬜ Phase 10<br/>Photo Input"]
+    P10["✅ Phase 10<br/>Photo Input"]
     P11["✅ Phase 11<br/>Memory"]
+    P12["✅ Phase 12<br/>Settings"]
 
-    P1 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10 --> P11
+    P1 --> P4 --> P5 --> P6 --> P7 --> P8 --> P9 --> P10 --> P11 --> P12
 
     style P1 fill:#2d6a4f
     style P4 fill:#2d6a4f
@@ -219,8 +223,9 @@ graph LR
     style P7 fill:#2d6a4f
     style P8 fill:#2d6a4f
     style P9 fill:#2d6a4f
-    style P10 fill:#555
+    style P10 fill:#2d6a4f
     style P11 fill:#2d6a4f
+    style P12 fill:#2d6a4f
 ```
 
 ---
