@@ -139,6 +139,7 @@ cli-claw init   [--non-interactive]        # 초기 설정 마법사
 cli-claw doctor [--json]                   # 설치/설정 진단
 cli-claw chat   [--raw]                    # 터미널 채팅 (REPL / ndjson)
 cli-claw mcp    [install|sync|list]        # MCP 서버 관리
+cli-claw skill  [install|remove|info]      # 스킬 관리
 cli-claw status                            # 서버 상태 확인
 ```
 

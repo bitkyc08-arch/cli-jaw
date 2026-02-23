@@ -1070,6 +1070,14 @@ function broadcast(type, data) {
 
 // WebSocket incoming messages (for CLI chat)
 wss.on('connection', (ws) => {
+    // Phase 12.1.8: Send current state on connect (page refresh support)
+    if (activeProcess) {
+        ws.send(JSON.stringify({ type: 'agent_status', status: 'running', agentId: 'active' }));
+    }
+    if (messageQueue.length > 0) {
+        ws.send(JSON.stringify({ type: 'queue_update', pending: messageQueue.length }));
+    }
+
     ws.on('message', (raw) => {
         try {
             const msg = JSON.parse(raw.toString());

@@ -25,6 +25,7 @@ function printHelp() {
     doctor     설치/설정 진단
     chat       터미널 채팅 (REPL)
     mcp        MCP 서버 관리 (install/sync/list)
+    skill      스킬 관리 (install/remove/info)
     status     서버 상태 확인
 
   Options:
@@ -54,6 +55,9 @@ switch (command) {
         break;
     case 'mcp':
         await import('./commands/mcp.js');
+        break;
+    case 'skill':
+        await import('./commands/skill.js');
         break;
     case 'status':
         await import('./commands/status.js');
