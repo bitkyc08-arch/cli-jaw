@@ -2,7 +2,7 @@
 
 import { broadcast } from './bus.js';
 import { insertMessage, getEmployees } from './db.js';
-import { getSystemPrompt } from './prompt.js';
+import { getSystemPrompt, getSubAgentPrompt } from './prompt.js';
 import { spawnAgent } from './agent.js';
 
 const MAX_ROUNDS = 3;
@@ -43,14 +43,7 @@ async function distributeAndWait(subtasks) {
             return Promise.resolve();
         }
 
-        const sysPrompt = `당신은 "${emp.name}" 입니다.
-역할: ${emp.role || '범용 개발자'}
-
-## 규칙
-- 주어진 작업을 직접 실행하고 결과를 보고하세요
-- JSON subtask 출력 금지 (당신은 실행자이지 기획자가 아닙니다)
-- 작업 결과를 자연어로 간결하게 보고하세요
-- 사용자 언어로 응답하세요`;
+        const sysPrompt = getSubAgentPrompt(emp);
         broadcast('agent_status', { agentId: emp.id, agentName: emp.name, status: 'running', cli: emp.cli });
 
         const { promise } = spawnAgent(`## 작업 지시\n${st.task}`, {

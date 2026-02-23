@@ -132,7 +132,7 @@ server.js            API routes + WebSocket hub
 src/agent.js         CLI spawn + stream parser
 src/orchestrator.js  Multi-agent task distribution
 src/config.js        Settings + defaults
-src/prompt.js        System prompt generator
+src/prompt.js        System prompt + sub-agent prompt generator
 src/telegram.js      Telegram bot bridge
 src/memory.js        Memory file management
 src/browser/         Chrome CDP control
