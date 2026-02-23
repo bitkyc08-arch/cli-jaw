@@ -308,7 +308,7 @@ async function triggerMemoryFlush() {
     const recent = getRecentMessages.all(40).reverse();
     if (recent.length < 4) return;
 
-    const CHAR_BUDGET = 5000;
+    const CHAR_BUDGET = 15000;
     let charCount = 0;
     const lines = [];
     for (const m of recent) {
