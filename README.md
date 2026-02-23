@@ -139,7 +139,7 @@ cli-claw init   [--non-interactive]        # 초기 설정 마법사
 cli-claw doctor [--json]                   # 설치/설정 진단
 cli-claw chat   [--raw]                    # 터미널 채팅 (REPL / ndjson)
 cli-claw mcp    [install|sync|list]        # MCP 서버 관리
-cli-claw skill  [install|remove|info]      # 스킬 관리
+cli-claw skill  [list|install|remove|reset] # 스킬 관리
 cli-claw browser [snapshot|click|type...]  # 브라우저 조작 (CDP)
 cli-claw status                            # 서버 상태 확인
 ```
@@ -150,24 +150,39 @@ cli-claw은 **스킬(SKILL.md)** 기반으로 AI 에이전트에게 도구 사�
 
 ### 스킬 분류 (2×3 Matrix)
 
-| 소스         | Active (자동 로드)             | Reference (필요 시 참조)   | 제외      |
-| ------------ | ------------------------------ | -------------------------- | --------- |
-| **Codex**    | screenshot, playwright, pdf... | cloudflare-deploy, sora... | 중복 스킬 |
-| **OpenClaw** | browser, notion                | nano-banana-pro, tts...    | —         |
+| 소스         | ⚡ Active (12)                                                                                              | 📦 Reference (43)                                                                            | ❌ 제외                          |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- | ------------------------------- |
+| **Codex**    | screenshot, playwright, yeet, doc, pdf, spreadsheet, gh-address-comments, gh-fix-ci, openai-docs, imagegen | atlas, notion-×4, cloudflare/netlify/render/vercel-deploy, sora, speech, transcribe... (17) | —                               |
+| **OpenClaw** | browser, notion                                                                                            | weather, himalaya, trello, obsidian, tmux, spotify, openhue... (22+)                        | canvas, clawhub, voice-call (4) |
 
-- `~/.cli-claw/skills/` — Active 스킬 (시스템 프롬프트에 주입)
-- `~/.cli-claw/skills_ref/` — Reference 스킬 (AI가 필요 시 읽기)
-- `skills_ref/registry.json` — 전체 스킬 카탈로그
+- `~/.cli-claw/skills/` — Active 스킬 (CLI가 자동 트리거)
+- `~/.cli-claw/skills_ref/` — Reference 스킬 (AI가 필요 시 SKILL.md 읽기)
+- `skills_ref/registry.json` — 전체 스킬 카탈로그 (42개 메타데이터)
 
-### 내장 스킬
+### 스킬 CLI 명령
 
-| 스킬                  | 기능                                 | 의존성                  |
-| --------------------- | ------------------------------------ | ----------------------- |
-| 🌐 **browser**         | Chrome CDP 브라우저 조작 (ref-based) | playwright-core, Chrome |
-| 🔊 **tts**             | macOS `say` 텍스트 음성 변환         | 없음 (macOS 내장)       |
-| 📸 **screen-capture**  | screencapture + imagesnap            | 없음 (macOS 내장)       |
-| 🍌 **nano-banana-pro** | Gemini 이미지 생성/편집              | uv, GEMINI_API_KEY      |
-| 📝 **notion**          | Notion API 연동                      | NOTION_API_KEY          |
+```bash
+cli-claw skill                     # 설치된 스킬 목록
+cli-claw skill install <name>      # 스킬 설치 (Codex/GitHub)
+cli-claw skill remove <name>       # 스킬 삭제
+cli-claw skill info <name>         # SKILL.md 내용 보기
+cli-claw skill reset               # 🔄 초기화 (2×3 분류 재실행)
+cli-claw skill reset --force       # 확인 없이 초기화
+```
+
+> `skill reset`은 기존 사용자가 새 버전으로 업그레이드 후 스킬 분류를 재적용할 때 사용.
+
+### 카테고리별 스킬
+
+| 카테고리        | Active                             | Reference 예시                                                     |
+| --------------- | ---------------------------------- | ------------------------------------------------------------------ |
+| 🔧 devtools      | screenshot, playwright, yeet, gh-* | github, tmux, cloudflare/netlify/render/vercel-deploy, figma       |
+| 📄 utility       | doc, pdf, spreadsheet              | weather, video-frames, 1password, nano-pdf, tts                    |
+| 📝 productivity  | —                                  | notion-×5, trello, obsidian, things, apple-notes/reminders, linear |
+| 🤖 ai-media      | imagegen                           | nano-banana-pro, sora, speech, transcribe                          |
+| 📧 communication | —                                  | himalaya, gog, xurl                                                |
+| 🏠 smarthome     | —                                  | spotify-player, openhue                                            |
+| 🌐 automation    | browser                            | —                                                                  |
 
 ## 🌐 Browser Control
 
