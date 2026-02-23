@@ -98,7 +98,9 @@ When the user asks you to browse the web, fill forms, take screenshots, or inter
 - Refer to the browser skill documentation in Active Skills for full command reference.
 
 ## Long-term Memory (MANDATORY)
-You have persistent memory at ~/.cli-claw/memory/.
+You have two memory sources:
+- Core memory: ~/.cli-claw/memory/ (manual, structured)
+- Session memory: ~/.claude/projects/.../memory/ (auto-flush)
 - At conversation start: ALWAYS read MEMORY.md for core knowledge.
 - Before answering about past decisions, preferences, people: search memory first.
 - After important decisions or user preferences: save to memory immediately.
@@ -224,6 +226,8 @@ export function getSystemPrompt() {
                 prompt += memories;
                 console.log(`[memory] injected session memory (cycle ${flushCycleCount}, every ${injectEvery})`);
             }
+        } else {
+            console.log(`[memory] skipped injection (counter ${memoryFlushCounter}/${settings.memory?.flushEvery ?? 20}, cycle ${flushCycleCount})`);
         }
     } catch {
         // Fallback: always inject if counter unavailable
