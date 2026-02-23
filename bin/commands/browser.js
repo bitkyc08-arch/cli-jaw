@@ -3,9 +3,20 @@
  * Browser control via HTTP API to the server.
  */
 import { parseArgs } from 'node:util';
+import { rmSync, existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
 
 const SERVER = `http://localhost:${process.env.PORT || 3457}`;
 const sub = process.argv[3];
+const CLAW_HOME = join(homedir(), '.cli-claw');
+
+// ─── ANSI ────────────────────────────────────
+const c = {
+    reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+    red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
+    cyan: '\x1b[36m',
+};
 
 async function api(method, path, body) {
     const opts = { method, headers: { 'Content-Type': 'application/json' } };
@@ -116,6 +127,48 @@ try {
             console.log(JSON.stringify(r.result, null, 2));
             break;
         }
+        case 'reset': {
+            const force = process.argv.includes('--force');
+            if (!force) {
+                const { createInterface } = await import('node:readline');
+                const rl = createInterface({ input: process.stdin, output: process.stdout });
+                const answer = await new Promise(r => {
+                    rl.question(`\n  ${c.yellow}⚠️  브라우저를 초기화합니다.${c.reset}\n  프로필, 스크린샷, CDP 캐시가 삭제됩니다.\n  계속하시겠습니까? (y/N): `, r);
+                });
+                rl.close();
+                if (answer.toLowerCase() !== 'y') {
+                    console.log('  취소됨.\n');
+                    break;
+                }
+            }
+
+            console.log(`\n  ${c.bold}🔄 브라우저 초기화 중...${c.reset}\n`);
+
+            // 1. Stop browser (ignore errors if server not running)
+            try {
+                await api('POST', '/stop');
+                console.log(`  ${c.dim}✓ browser stopped${c.reset}`);
+            } catch {
+                console.log(`  ${c.dim}✓ browser not running${c.reset}`);
+            }
+
+            // 2. Clear browser profile
+            const profileDir = join(CLAW_HOME, 'browser-profile');
+            if (existsSync(profileDir)) {
+                rmSync(profileDir, { recursive: true, force: true });
+                console.log(`  ${c.dim}✓ cleared ${profileDir}${c.reset}`);
+            }
+
+            // 3. Clear screenshots
+            const screenshotsDir = join(CLAW_HOME, 'screenshots');
+            if (existsSync(screenshotsDir)) {
+                rmSync(screenshotsDir, { recursive: true, force: true });
+                console.log(`  ${c.dim}✓ cleared ${screenshotsDir}${c.reset}`);
+            }
+
+            console.log(`\n  ${c.green}✅ 브라우저 초기화 완료!${c.reset}\n`);
+            break;
+        }
         default:
             console.log(`
   🌐 cli-claw browser
@@ -124,6 +177,7 @@ try {
     start [--port 9240]    Start Chrome (default CDP port: 9240)
     stop                   Stop Chrome
     status                 Connection status
+    reset [--force]        Reset (clear profile + screenshots)
 
     snapshot               Page snapshot with ref IDs
       --interactive        Interactive elements only
