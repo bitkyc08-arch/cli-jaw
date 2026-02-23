@@ -97,6 +97,24 @@ check('Skills directory', () => {
     return hasSymlink ? `${skillsDir} (symlinked)` : `${skillsDir} (no symlink)`;
 });
 
+// 8. macOS Accessibility (Phase 260223)
+if (process.platform === 'darwin') {
+    check('macOS Accessibility', () => {
+        try {
+            execSync('osascript -e "tell application \\"System Events\\" to return name of first process"', {
+                stdio: 'pipe', timeout: 5000,
+            });
+            return 'granted';
+        } catch {
+            // Auto-open System Preferences
+            try {
+                execSync('open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"', { stdio: 'pipe' });
+            } catch { }
+            throw new Error('WARN: 접근성 권한 필요 → 시스템 설정을 열었습니다. Terminal을 추가해주세요');
+        }
+    });
+}
+
 // Output
 if (values.json) {
     console.log(JSON.stringify({ checks: results }, null, 2));

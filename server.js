@@ -75,7 +75,33 @@ Execute tasks on the user's computer via CLI tools.
 - Respond in the user's language
 - Report results clearly with file paths and outputs
 - Ask for clarification when ambiguous
-- If nothing needs attention on heartbeat, reply HEARTBEAT_OK
+
+## Heartbeat System
+You can register recurring scheduled tasks via ~/.cli-claw/heartbeat.json.
+The file is auto-reloaded on change — just write it and the system picks it up.
+
+### JSON Format
+\`\`\`json
+{
+  "jobs": [
+    {
+      "id": "hb_<timestamp>",
+      "name": "작업 이름",
+      "enabled": true,
+      "schedule": { "kind": "every", "minutes": 5 },
+      "prompt": "매 실행마다 보낼 프롬프트"
+    }
+  ]
+}
+\`\`\`
+
+### Rules
+- id는 "hb_" + Date.now() 형식
+- enabled: true이면 자동 실행, false면 일시정지
+- schedule.minutes: 실행 간격 (분)
+- prompt: 실행 시 에이전트에게 전달되는 프롬프트
+- 결과는 자동으로 Telegram에 전송됨
+- 할 일이 없는 heartbeat에는 [SILENT]로 응답
 `;
 
 // Ensure A-1.md exists
@@ -189,6 +215,22 @@ function getSystemPrompt() {
             prompt += '\n6. 직접 답변할 수 있는 질문이면 JSON 없이 자연어로 응답';
         }
     } catch { /* DB not ready yet */ }
+
+    // Phase 1.1: Heartbeat state injection
+    try {
+        const hbData = loadHeartbeatFile();
+        if (hbData.jobs.length > 0) {
+            const activeJobs = hbData.jobs.filter(j => j.enabled);
+            prompt += '\n\n---\n## Current Heartbeat Jobs\n';
+            for (const job of hbData.jobs) {
+                const status = job.enabled ? '✅' : '⏸️';
+                const mins = job.schedule?.minutes || '?';
+                prompt += `- ${status} "${job.name}" — every ${mins}min: ${(job.prompt || '').slice(0, 50)}\n`;
+            }
+            prompt += `\nActive: ${activeJobs.length}, Total: ${hbData.jobs.length}`;
+            prompt += '\nTo modify: edit ~/.cli-claw/heartbeat.json (auto-reloads on save)';
+        }
+    } catch { /* heartbeat.json not ready */ }
 
     return prompt;
 }
@@ -1369,7 +1411,22 @@ function orchestrateAndCollect(prompt) {
     return new Promise((resolve) => {
         let collected = '';
         let timeout;
+        const IDLE_TIMEOUT = 120000;  // 2분 *무응답* 타임아웃
+
+        function resetTimeout() {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => {
+                removeBroadcastListener(handler);
+                resolve(collected || '⏰ 시간 초과 (2분 무응답)');
+            }, IDLE_TIMEOUT);
+        }
+
         const handler = (type, data) => {
+            // JSON 이벤트 수신 → 타임아웃 리셋 (에이전트가 살아있음)
+            if (type === 'agent_chunk' || type === 'agent_tool' ||
+                type === 'agent_output' || type === 'agent_status') {
+                resetTimeout();
+            }
             if (type === 'agent_output') collected += data.text || '';
             if (type === 'agent_done') {
                 clearTimeout(timeout);
@@ -1383,10 +1440,7 @@ function orchestrateAndCollect(prompt) {
             removeBroadcastListener(handler);
             resolve(`❌ ${err.message}`);
         });
-        timeout = setTimeout(() => {
-            removeBroadcastListener(handler);
-            resolve(collected || '⏰ 시간 초과 (2분)');
-        }, 120000);
+        resetTimeout();
     });
 }
 
@@ -1479,9 +1533,38 @@ function initTelegram() {
                 .catch(e => console.log('[tg:typing] ❌ refresh', e.message));
         }, 4000);
 
+        // Phase 260223: Tool use display via editMessage
+        const showTools = settings.telegram?.showToolUse !== false;
+        let statusMsgId = null;
+        let toolLines = [];
+
+        const toolHandler = showTools ? (type, data) => {
+            if (type !== 'agent_tool' || !data.icon || !data.label) return;
+            const line = `${data.icon} ${data.label}`;
+            toolLines.push(line);
+            // Keep last 5 tools
+            const display = toolLines.slice(-5).join('\n');
+            if (!statusMsgId) {
+                ctx.reply(`🔄 ${display}`)
+                    .then(m => { statusMsgId = m.message_id; })
+                    .catch(() => { });
+            } else {
+                ctx.api.editMessageText(ctx.chat.id, statusMsgId, `🔄 ${display}`)
+                    .catch(() => { });
+            }
+        } : null;
+
+        if (toolHandler) addBroadcastListener(toolHandler);
+
         try {
             const result = await orchestrateAndCollect(prompt);
             clearInterval(typingInterval);
+            if (toolHandler) removeBroadcastListener(toolHandler);
+
+            // Delete tool status message
+            if (statusMsgId) {
+                ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => { });
+            }
 
             const html = markdownToTelegramHtml(result);
             const chunks = chunkTelegramMessage(html);
@@ -1495,6 +1578,10 @@ function initTelegram() {
             console.log(`[tg:out] ${ctx.chat.id}: ${result.slice(0, 80)}`);
         } catch (err) {
             clearInterval(typingInterval);
+            if (toolHandler) removeBroadcastListener(toolHandler);
+            if (statusMsgId) {
+                ctx.api.deleteMessage(ctx.chat.id, statusMsgId).catch(() => { });
+            }
             console.error('[tg:error]', err);
             await ctx.reply(`❌ Error: ${err.message}`);
         }

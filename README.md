@@ -204,7 +204,7 @@ cli-claw mcp sync                 # 4개 CLI에 config 동기화
 | 🤖 **Multi-CLI**      | Claude, Codex, Gemini, OpenCode 동적 전환      |
 | 🎯 **Orchestration**  | Planning agent → Sub-agent 배분 → 평가 루프    |
 | 📱 **Telegram**       | 양방향 봇 연동 + typing indicator              |
-| 💓 **Heartbeat**      | 다중 예약 작업, fs.watch 자동 리로드           |
+| 💓 **Heartbeat**      | 예약 작업 + AI 자동 등록 + fs.watch 리로드     |
 | 🌐 **Web UI**         | 실시간 채팅 + 설정 + 에이전트 관리             |
 | 📟 **CLI Chat**       | 터미널 REPL + `\`Enter 멀티라인 + `--raw`      |
 | 🔌 **MCP**            | Puppeteer + Context7 내장, 4 CLI 자동 동기화   |
@@ -212,9 +212,11 @@ cli-claw mcp sync                 # 4개 CLI에 config 동기화
 | 🔄 **Session Resume** | CLI 세션 유지 + 컨텍스트 이어가기              |
 | 📷 **Photo Input**    | Web/Telegram/CLI 사진 업로드 + 분석            |
 | 🧠 **Memory**         | 10 QA 비동기 flush → Claude 메모리 저장        |
-| 🩺 **Doctor**         | 설치 상태 자가 진단                            |
+| 🩺 **Doctor**         | 설치 자가진단 + macOS 접근성 권한 체크         |
 | ⏳ **Message Queue**  | 실행 중 메시지 대기 → 완료 후 배칭 전송        |
 | ■ **Kill/Stop**      | ESC/Ctrl+C 에이전트 중단 + Telegram auto-steer |
+| 🔧 **Tool Use**       | CLI/Telegram에서 tool 사용 상태 실시간 표시    |
+| ⏱️ **Smart Timeout**  | 무응답 2분 타임아웃 (이벤트 수신 시 리셋)      |
 
 ## API
 
