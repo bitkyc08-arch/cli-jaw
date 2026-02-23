@@ -296,6 +296,44 @@ export function getSystemPrompt() {
     return prompt;
 }
 
+// ─── Sub-Agent Prompt (orchestration-free) ───────────
+
+export function getSubAgentPrompt(emp) {
+    let prompt = `# ${emp.name}\n역할: ${emp.role || '범용 개발자'}\n`;
+
+    // ─── 핵심 규칙 (오케스트레이션 규칙 의도적 제외 → 재귀 루프 방지)
+    prompt += `\n## 규칙\n`;
+    prompt += `- 주어진 작업을 직접 실행하고 결과를 보고하세요\n`;
+    prompt += `- JSON subtask 출력 금지 (당신은 실행자이지 기획자가 아닙니다)\n`;
+    prompt += `- 작업 결과를 자연어로 간결하게 보고하세요\n`;
+    prompt += `- 사용자 언어로 응답하세요\n`;
+
+    // ─── 브라우저 명령어
+    prompt += `\n## Browser Control\n`;
+    prompt += `웹 작업 시 \`cli-claw browser\` 명령어를 반드시 사용하세요.\n`;
+    prompt += `패턴: snapshot → act → snapshot → verify\n`;
+    prompt += `시작: \`cli-claw browser start\`, 스냅샷: \`cli-claw browser snapshot\`\n`;
+    prompt += `클릭: \`cli-claw browser click <ref>\`, 입력: \`cli-claw browser type <ref> "텍스트"\`\n`;
+
+    // ─── Active Skills (동적 로딩)
+    try {
+        const activeSkills = loadActiveSkills();
+        if (activeSkills.length > 0) {
+            prompt += `\n## Active Skills (${activeSkills.length})\n`;
+            prompt += `설치된 스킬 — CLI가 자동 트리거합니다.\n`;
+            for (const s of activeSkills) {
+                prompt += `- ${s.name} (${s.id})\n`;
+            }
+        }
+    } catch { /* skills not ready */ }
+
+    // ─── 메모리 명령어
+    prompt += `\n## Memory\n`;
+    prompt += `장기 기억: \`cli-claw memory search/read/save\` 명령어 사용.\n`;
+
+    return prompt;
+}
+
 export function regenerateB() {
     fs.writeFileSync(join(PROMPTS_DIR, 'B.md'), getSystemPrompt());
     try {

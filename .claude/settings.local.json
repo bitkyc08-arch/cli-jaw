@@ -1,0 +1,9 @@
+{
+  "enabledMcpjsonServers": [
+    "puppeteer",
+    "context7",
+    "markdown-rag",
+    "tavily-remote-mcp",
+    "semantic-code-mcp"
+  ]
+}

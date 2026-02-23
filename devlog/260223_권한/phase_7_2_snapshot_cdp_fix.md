@@ -1,6 +1,7 @@
-# Phase 7.2 — Snapshot CDP 근본 수정
+# Phase 7.2 — Snapshot CDP 근본 수정 ✅
 
-> 260223 다른 Mac에서도 동일하게 실패하는 snapshot 문제의 근본 원인 수정
+> 260223 다른 Mac에서도 동일하게 실패하는 snapshot 문제의 근본 원인 수정  
+> **상태: 완료** — 로컬 스모크 테스트 + 서버 API 테스트 통과
 
 ---
 
