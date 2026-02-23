@@ -62,6 +62,9 @@ switch (command) {
     case 'status':
         await import('./commands/status.js');
         break;
+    case 'browser':
+        await import('./commands/browser.js');
+        break;
     case '--version':
     case '-v':
         console.log(`cli-claw v${pkg.version}`);

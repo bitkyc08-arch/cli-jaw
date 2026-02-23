@@ -17,6 +17,7 @@ import {
 // ─── src/ modules ────────────────────────────────────
 
 import { setWss, broadcast } from './src/bus.js';
+import * as browser from './src/browser/index.js';
 import {
     CLAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
     SKILLS_DIR, SKILLS_REF_DIR,
@@ -445,6 +446,77 @@ app.get('/api/skills/:id', (req, res) => {
     const path = fs.existsSync(activePath) ? activePath : refPath;
     if (!fs.existsSync(path)) return res.status(404).json({ error: 'not found' });
     res.type('text/markdown').send(fs.readFileSync(path, 'utf8'));
+});
+
+// ─── Browser API (Phase 7) ───────────────────────────
+
+const cdpPort = () => settings.browser?.cdpPort || 9240;
+
+app.post('/api/browser/start', async (req, res) => {
+    try {
+        await browser.launchChrome(req.body?.port || cdpPort());
+        res.json(await browser.getBrowserStatus(cdpPort()));
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/browser/stop', async (_, res) => {
+    try { await browser.closeBrowser(); res.json({ ok: true }); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/browser/status', async (_, res) => {
+    try { res.json(await browser.getBrowserStatus(cdpPort())); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/browser/snapshot', async (req, res) => {
+    try {
+        res.json({
+            nodes: await browser.snapshot(cdpPort(), {
+                interactive: req.query.interactive === 'true',
+            })
+        });
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/browser/screenshot', async (req, res) => {
+    try { res.json(await browser.screenshot(cdpPort(), req.body)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/browser/act', async (req, res) => {
+    try {
+        const { kind, ref, text, key, submit, doubleClick } = req.body;
+        let result;
+        switch (kind) {
+            case 'click': result = await browser.click(cdpPort(), ref, { doubleClick }); break;
+            case 'type': result = await browser.type(cdpPort(), ref, text, { submit }); break;
+            case 'press': result = await browser.press(cdpPort(), key); break;
+            case 'hover': result = await browser.hover(cdpPort(), ref); break;
+            default: return res.status(400).json({ error: `unknown action: ${kind}` });
+        }
+        res.json(result);
+    } catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.post('/api/browser/navigate', async (req, res) => {
+    try { res.json(await browser.navigate(cdpPort(), req.body.url)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/browser/tabs', async (_, res) => {
+    try { res.json({ tabs: await browser.listTabs(cdpPort()) }); }
+    catch { res.json({ tabs: [] }); }
+});
+
+app.post('/api/browser/evaluate', async (req, res) => {
+    try { res.json(await browser.evaluate(cdpPort(), req.body.expression)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
+});
+
+app.get('/api/browser/text', async (req, res) => {
+    try { res.json(await browser.getPageText(cdpPort(), req.query.format)); }
+    catch (e) { res.status(500).json({ error: e.message }); }
 });
 
 // ─── Start ───────────────────────────────────────────
