@@ -143,7 +143,7 @@ export function parseWorklogPending(content) {
                 pending.push({
                     agent: cols[0],
                     role: cols[1],
-                    currentPhase: phaseMatch ? +phaseMatch[1] : 3,
+                    currentPhase: phaseMatch ? +phaseMatch[1] : 1,  // fallback: 기획부터 재시작
                 });
             }
         }

@@ -87,14 +87,58 @@ subtask JSON을 출력하세요.`;
 
 ---
 
+## 3-C: 기본 서브에이전트 5명 자동 생성
+
+`cli-claw init` 또는 최초 실행 시 기본 서브에이전트 5명을 자동 추가.
+`cli-claw employee reset`으로 기본값 재설정 가능.
+
+| #   | 이름   | 역할     | CLI       | 목적              |
+| --- | ------ | -------- | --------- | ----------------- |
+| 1   | 프런트 | frontend | *default* | UI/UX 개발        |
+| 2   | 백엔드 | backend  | *default* | API/서버 로직     |
+| 3   | 데이터 | data     | *default* | 데이터 파이프라인 |
+| 4   | 문서   | docs     | *default* | 문서화            |
+| 5   | 검수   | custom   | *default* | 코드 리뷰/QA      |
+
+> [!IMPORTANT]
+> **모든 기본 에이전트는 `settings.cli` (기본 CLI)로만 세팅.**
+> 사용자가 CLI를 하나만 연결했을 수 있으므로, 개별 CLI 하드코딩 금지.
+
+```javascript
+// src/config.js 또는 bin/commands/init.js
+const DEFAULT_EMPLOYEES = [
+  { name: '프런트', role: 'UI/UX 구현, CSS, 컴포넌트 개발' },
+  { name: '백엔드', role: 'API, DB, 서버 로직 구현' },
+  { name: '데이터', role: '데이터 파이프라인, 분석, ML' },
+  { name: '문서',   role: '문서화, README, API docs' },
+  { name: '검수',   role: '코드 리뷰, 테스트 검증, QA' },
+];
+
+function seedDefaultEmployees() {
+  const cli = settings.cli;  // 전부 기본 CLI 사용
+  for (const emp of DEFAULT_EMPLOYEES) {
+    insertEmployee(emp.name, cli, emp.role);
+  }
+}
+
+// 최초 실행: employees 비어있을 때만
+if (!getEmployees().length) seedDefaultEmployees();
+
+// reset: cli-claw employee reset → 전부 삭제 후 재생성
+// deleteAllEmployees() + seedDefaultEmployees()
+```
+
+---
+
 ## 파일 변경 요약
 
-| 파일                              | 작업                                |
-| --------------------------------- | ----------------------------------- |
-| `public/js/features/employees.js` | [MODIFY] phase 뱃지 표시            |
-| `public/js/ws.js`                 | [MODIFY] 새 이벤트 핸들링           |
-| `src/orchestrator.js`             | [MODIFY] `orchestrateContinue` 추가 |
-| `server.js` (루트)                | [MODIFY] "이어서" API 엔드포인트    |
+| 파일                                        | 작업                                |
+| ------------------------------------------- | ----------------------------------- |
+| `public/js/features/employees.js`           | [MODIFY] phase 뱃지 표시            |
+| `public/js/ws.js`                           | [MODIFY] 새 이벤트 핸들링           |
+| `src/orchestrator.js`                       | [MODIFY] `orchestrateContinue` 추가 |
+| `server.js` (루트)                          | [MODIFY] "이어서" API 엔드포인트    |
+| `src/config.js` 또는 `bin/commands/init.js` | [MODIFY] 기본 서브에이전트 5명      |
 
 ---
 
