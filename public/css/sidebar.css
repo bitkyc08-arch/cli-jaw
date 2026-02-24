@@ -50,6 +50,8 @@
     font-size: 11px;
     color: var(--text-dim);
     margin-bottom: 8px;
+    font-family: var(--font-display);
+    letter-spacing: 0.5px;
 }
 
 .settings-row {

@@ -36,6 +36,10 @@ export function extractSessionId(cli, event) {
 export function extractFromEvent(cli, event, ctx, agentLabel) {
     const toolLabels = extractToolLabels(cli, event, ctx);
     for (const toolLabel of toolLabels) {
+        // Dedupe: same logic as ACP path — skip already-seen tool keys
+        const key = `${toolLabel.icon}:${toolLabel.label}`;
+        if (ctx.seenToolKeys && ctx.seenToolKeys.has(key)) continue;
+        if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
         ctx.toolLog.push(toolLabel);
         broadcast('agent_tool', { agentId: agentLabel, ...toolLabel });
     }

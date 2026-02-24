@@ -10,6 +10,7 @@
     --green: #4ade80;
     --user-bg: #1a1a2e;
     --agent-bg: #0f0f1a;
+    --font-display: 'Chakra Petch', 'Outfit', system-ui, sans-serif;
     --font-ui: 'Outfit', -apple-system, system-ui, sans-serif;
     --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
 }
