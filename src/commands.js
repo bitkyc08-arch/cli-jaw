@@ -382,14 +382,30 @@ async function resetHandler(args, ctx) {
     if ((args[0] || '').toLowerCase() !== 'confirm') {
         return {
             ok: false,
-            text: '⚠️ 세션/대화 초기화 명령입니다.\n실행하려면 /reset confirm 을 입력하세요.',
+            text: '⚠️ 전체 초기화: MCP, 스킬, 직원, 세션을 기본값으로 재설정합니다.\n실행하려면 /reset confirm 을 입력하세요.',
         };
     }
-    if (typeof ctx.clearSession !== 'function') {
-        return { ok: false, text: '❌ 이 환경에서는 세션 초기화를 지원하지 않습니다.' };
+    const results = [];
+    if (typeof ctx.resetSkills === 'function') {
+        await ctx.resetSkills();
+        results.push('스킬');
     }
-    await ctx.clearSession();
-    return { ok: true, text: '✅ 세션/대화가 초기화되었습니다.' };
+    if (typeof ctx.resetEmployees === 'function') {
+        await ctx.resetEmployees();
+        results.push('직원');
+    }
+    if (typeof ctx.syncMcp === 'function') {
+        await ctx.syncMcp();
+        results.push('MCP');
+    }
+    if (typeof ctx.clearSession === 'function') {
+        await ctx.clearSession();
+        results.push('세션');
+    }
+    if (!results.length) {
+        return { ok: false, text: '❌ 이 환경에서는 초기화가 지원되지 않습니다.' };
+    }
+    return { ok: true, text: `✅ 초기화 완료: ${results.join(', ')}` };
 }
 
 async function versionHandler(_args, ctx) {
@@ -517,7 +533,7 @@ export const COMMANDS = [
     { name: 'help', aliases: ['h'], desc: '커맨드 목록', args: '[command]', category: 'session', interfaces: ['cli', 'web', 'telegram'], handler: helpHandler },
     { name: 'status', desc: '현재 상태', category: 'session', interfaces: ['cli', 'web', 'telegram'], handler: statusHandler },
     { name: 'clear', desc: '화면 정리 (비파괴)', category: 'session', interfaces: ['cli', 'web', 'telegram'], handler: clearHandler },
-    { name: 'reset', desc: '세션/대화 초기화', args: '[confirm]', category: 'session', interfaces: ['cli', 'web', 'telegram'], handler: resetHandler },
+    { name: 'reset', desc: '전체 초기화 (MCP/스킬/직원/세션)', args: '[confirm]', category: 'session', interfaces: ['cli', 'web'], handler: resetHandler },
     { name: 'model', desc: '모델 확인/변경', args: '[name]', category: 'model', interfaces: ['cli', 'web', 'telegram'], getArgumentCompletions: modelArgumentCompletions, handler: modelHandler },
     { name: 'cli', desc: '활성 CLI 확인/변경', args: '[name]', category: 'model', interfaces: ['cli', 'web', 'telegram'], getArgumentCompletions: cliArgumentCompletions, handler: cliHandler },
     { name: 'fallback', desc: '폴백 CLI 순서 설정', args: '[cli1 cli2...|off]', category: 'model', interfaces: ['cli', 'web', 'telegram'], getArgumentCompletions: fallbackArgumentCompletions, handler: fallbackHandler },
