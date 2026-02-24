@@ -33,6 +33,11 @@
 6. `chat_id` 미지정 + active chat 없음
 - 기대: `400` (`No active Telegram chat`)
 
+7. `chat_id` 미지정 + active chat 있음
+- 기대: 정책 확인
+- `chat_id 필수` 모드면 `400`
+- `lastActiveChatId` 호환 모드면 마지막 활동 채팅으로 전송
+
 ### B. 음성 입력(STT)
 
 1. Telegram에서 짧은 음성 입력
@@ -72,11 +77,15 @@
 - `/api/telegram/send` 비활성화 플래그 준비
 - 프롬프트에서 파일 전송 지시 블록 제거 가능 상태 유지
 
+5. Network Validation (Telegram)
+- `ipv4Fetch` 환경에서 송수신 확인
+- IPv6-only 환경이면 실패 감지 및 로그 확인
+
 ---
 
 ## 사전 체크 (외부 스펙 기준)
 
-Telegram 파일 업로드는 multipart가 필요하고, 일반 API 호출은 JSON 형태를 사용한다. E2E 테스트는 content-type별 케이스를 분리해 검증해야 한다.
+Telegram 요청은 파일 포함 시 `multipart/form-data`를 사용하고, 파일이 없으면 JSON 또는 form-urlencoded 경로를 사용할 수 있다. E2E 테스트는 content-type별 케이스를 분리해 검증해야 한다.
 > 출처: [Telegram Bot API - Making requests](https://core.telegram.org/bots/api#making-requests)
 
 `sendVoice` 포맷 허용 범위(OGG OPUS, MP3, M4A)는 테스트 fixture 준비에 직접 영향을 준다.
@@ -89,7 +98,7 @@ Express 기본 파서와 Multer 책임 범위가 다르므로 multipart 테스�
 
 ## 완료 기준 (Definition of Done)
 
-- [ ] A/B 테스트 매트릭스 전 항목 실행 결과 기록
+- [ ] 테스트 매트릭스(A/B 섹션) 전 항목 실행 결과 기록
 - [ ] 실패 시나리오 3종(네트워크, 포맷, 권한) 재현 완료
 - [ ] Canary 24시간 모니터링 결과 문서화
 - [ ] 롤백 절차 리허설 1회 완료

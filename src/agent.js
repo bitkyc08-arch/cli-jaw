@@ -7,10 +7,10 @@ import { spawn } from 'child_process';
 import { broadcast } from './bus.js';
 import { settings, UPLOADS_DIR } from './config.js';
 import {
-    getSession, updateSession, insertMessage, getRecentMessages, getEmployees,
+    getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
 } from './db.js';
 import { getSystemPrompt } from './prompt.js';
-import { extractSessionId, extractFromEvent } from './events.js';
+import { extractSessionId, extractFromEvent, logEventSummary } from './events.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../lib/upload.js';
 
 // ─── State ───────────────────────────────────────────
@@ -82,6 +82,46 @@ function makeCleanEnv() {
     delete env.CLAUDE_CODE_SSE_PORT;
     delete env.GEMINI_SYSTEM_MD;
     return env;
+}
+
+function buildHistoryBlock(currentPrompt, maxSessions = 5, maxTotalChars = 8000) {
+    const recent = getRecentMessages.all(Math.max(1, maxSessions * 2));
+    if (!recent.length) return '';
+
+    const promptText = String(currentPrompt || '').trim();
+    let skipCurrentPromptBudget = 2;
+    const blocks = [];
+    let charCount = 0;
+
+    for (let i = 0; i < recent.length; i++) {
+        const row = recent[i];
+        const role = String(row.role || '');
+        const content = String(row.content || '').trim();
+
+        // Exclude the just-inserted current prompt when caller path stores user text
+        // before spawn (e.g. steer/telegram/queue paths).
+        if (promptText && i < 3 && skipCurrentPromptBudget > 0 && role === 'user' && content === promptText) {
+            skipCurrentPromptBudget--;
+            continue;
+        }
+
+        const entry = role === 'assistant' && row.trace
+            ? String(row.trace).trim()
+            : (content ? `[${role || 'user'}] ${content}` : '');
+        if (!entry) continue;
+        if (charCount + entry.length > maxTotalChars) break;
+        blocks.push(entry);
+        charCount += entry.length;
+    }
+
+    if (!blocks.length) return '';
+    return `[Recent Context]\n${blocks.reverse().join('\n\n')}`;
+}
+
+function withHistoryPrompt(prompt, historyBlock) {
+    const body = String(prompt || '');
+    if (!historyBlock) return body;
+    return `${historyBlock}\n\n---\n[Current Message]\n${body}`;
 }
 
 export function buildArgs(cli, model, effort, prompt, sysPrompt) {
@@ -172,12 +212,16 @@ export function spawnAgent(prompt, opts = {}) {
     const sysPrompt = customSysPrompt || getSystemPrompt();
 
     const isResume = !forceNew && session.session_id && session.active_cli === cli;
+    const historyBlock = !isResume ? buildHistoryBlock(prompt) : '';
+    const promptForArgs = (cli === 'gemini' || cli === 'opencode')
+        ? withHistoryPrompt(prompt, historyBlock)
+        : prompt;
     let args;
     if (isResume) {
         console.log(`[claw:resume] ${cli} session=${session.session_id.slice(0, 12)}...`);
         args = buildResumeArgs(cli, model, effort, session.session_id, prompt);
     } else {
-        args = buildArgs(cli, model, effort, prompt, sysPrompt);
+        args = buildArgs(cli, model, effort, promptForArgs, sysPrompt);
     }
 
     const agentLabel = agentId || 'main';
@@ -203,33 +247,31 @@ export function spawnAgent(prompt, opts = {}) {
         insertMessage.run('user', prompt, cli, model);
     }
 
-    const skipStdin = cli === 'gemini' || cli === 'opencode' || (cli === 'codex' && isResume);
-    if (!skipStdin) {
-        let stdinContent;
-        if (cli === 'claude') {
-            // Claude: sysPrompt already in --append-system-prompt (compact-protected)
-            // Only send user message via stdin to avoid duplication
-            stdinContent = prompt;
-        } else {
-            // Codex/others: system prompt via stdin (only delivery method)
-            const sp = customSysPrompt || getSystemPrompt();
-            stdinContent = `[Claw Platform Context]\n${sp}`;
-            if (!isResume && !forceNew) {
-                const recent = getRecentMessages.all(5).reverse();
-                if (recent.length > 0) {
-                    const history = recent.map(m => `[${m.role}] ${m.content}`).join('\n\n');
-                    stdinContent += `\n\n[Recent History]\n${history}`;
-                }
-            }
-            stdinContent += `\n\n[User Message]\n${prompt}`;
-        }
-        child.stdin.write(stdinContent);
+    if (cli === 'claude') {
+        // Claude system prompt is provided via --append-system-prompt.
+        child.stdin.write(withHistoryPrompt(prompt, historyBlock));
+    } else if (cli === 'codex' && !isResume) {
+        // Codex system prompt is loaded from .codex/AGENTS.md.
+        const codexStdin = historyBlock
+            ? `${historyBlock}\n\n[User Message]\n${prompt}`
+            : `[User Message]\n${prompt}`;
+        child.stdin.write(codexStdin);
     }
     child.stdin.end();
 
     broadcast('agent_status', { status: 'running', cli, agentId: agentLabel });
 
-    const ctx = { fullText: '', toolLog: [], sessionId: null, cost: null, turns: null, duration: null, tokens: null, stderrBuf: '' };
+    const ctx = {
+        fullText: '',
+        traceLog: [],
+        toolLog: [],
+        sessionId: null,
+        cost: null,
+        turns: null,
+        duration: null,
+        tokens: null,
+        stderrBuf: '',
+    };
     let buffer = '';
 
     child.stdout.on('data', (chunk) => {
@@ -240,8 +282,11 @@ export function spawnAgent(prompt, opts = {}) {
             if (!line.trim()) continue;
             try {
                 const event = JSON.parse(line);
-                console.log(`[claw:event:${agentLabel}] ${cli} type=${event.type}`);
-                console.log(`[claw:raw:${agentLabel}] ${line.slice(0, 300)}`);
+                if (process.env.DEBUG) {
+                    console.log(`[claw:event:${agentLabel}] ${cli} type=${event.type}`);
+                    console.log(`[claw:raw:${agentLabel}] ${line.slice(0, 300)}`);
+                }
+                logEventSummary(agentLabel, cli, event, ctx);
                 if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, event);
                 extractFromEvent(cli, event, ctx, agentLabel);
             } catch { /* non-JSON line */ }
@@ -274,9 +319,10 @@ export function spawnAgent(prompt, opts = {}) {
             const stripped = stripSubtaskJSON(ctx.fullText);
             const displayText = stripped || ctx.fullText.trim();
             const finalContent = displayText + costLine;
+            const traceText = ctx.traceLog.join('\n');
 
             if (!forceNew && !opts.internal) {
-                insertMessage.run('assistant', finalContent, cli, model);
+                insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null);
                 broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog });
 
                 memoryFlushCounter++;

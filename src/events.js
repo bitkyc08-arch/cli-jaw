@@ -2,6 +2,27 @@
 
 import { broadcast } from './bus.js';
 
+function pushTrace(ctx, line) {
+    if (!ctx?.traceLog || !line) return;
+    ctx.traceLog.push(line);
+}
+
+function logLine(line, ctx) {
+    console.log(line);
+    pushTrace(ctx, line);
+}
+
+function toSingleLine(text) {
+    return String(text || '').replace(/\s+/g, ' ').trim();
+}
+
+function toIndentedPreview(text, max = 200) {
+    const raw = String(text || '').trim();
+    if (!raw) return '';
+    const clipped = raw.length > max ? `${raw.slice(0, max)}…` : raw;
+    return clipped.replace(/\n/g, '\n  ');
+}
+
 export function extractSessionId(cli, event) {
     switch (cli) {
         case 'claude': return event.type === 'system' ? event.session_id : null;
@@ -58,6 +79,74 @@ export function extractFromEvent(cli, event, ctx, agentLabel) {
                 if (event.part.cost) ctx.cost = event.part.cost;
             }
             break;
+    }
+}
+
+export function logEventSummary(agentLabel, cli, event, ctx = null) {
+    const item = event.item || event.part || {};
+
+    if (cli === 'codex') {
+        if (event.type === 'item.started' && item.type === 'command_execution') {
+            logLine(`[${agentLabel}] cmd: ${(item.command || '').slice(0, 160)}`, ctx);
+            return;
+        }
+        if (event.type === 'item.completed') {
+            if (item.type === 'reasoning') {
+                logLine(`[${agentLabel}] reasoning: ${toSingleLine(item.text).slice(0, 200)}`, ctx);
+                return;
+            }
+            if (item.type === 'agent_message') {
+                logLine(`[${agentLabel}] agent: ${toSingleLine(item.text).slice(0, 220)}`, ctx);
+                return;
+            }
+            if (item.type === 'command_execution') {
+                const cmd = (item.command || '').slice(0, 120);
+                const exitCode = item.exit_code ?? '?';
+                logLine(`[${agentLabel}] cmd: ${cmd} → exit ${exitCode}`, ctx);
+                const outPreview = toIndentedPreview(item.aggregated_output, 260);
+                if (outPreview) logLine(`  ${outPreview}`, ctx);
+                return;
+            }
+            if (item.type === 'web_search') {
+                const query = item.query || item.action?.query || '';
+                logLine(`[${agentLabel}] search: ${toSingleLine(query).slice(0, 200)}`, ctx);
+                return;
+            }
+        }
+        if (event.type === 'turn.completed' && event.usage) {
+            const u = event.usage;
+            logLine(
+                `[${agentLabel}] tokens: in=${(u.input_tokens ?? 0).toLocaleString()} `
+                + `(cached=${(u.cached_input_tokens ?? 0).toLocaleString()}) `
+                + `out=${(u.output_tokens ?? 0).toLocaleString()}`,
+                ctx
+            );
+            return;
+        }
+    }
+
+    if (cli === 'claude') {
+        if (event.type === 'assistant' && event.message?.content) {
+            for (const block of event.message.content) {
+                if (block.type === 'tool_use') {
+                    logLine(`[${agentLabel}] tool: ${block.name}`, ctx);
+                } else if (block.type === 'thinking') {
+                    logLine(`[${agentLabel}] thinking: ${toSingleLine(block.thinking).slice(0, 160)}`, ctx);
+                }
+            }
+            return;
+        }
+        if (event.type === 'result') {
+            const cost = Number(event.total_cost_usd || 0).toFixed(4);
+            const turns = event.num_turns ?? 0;
+            const dur = ((event.duration_ms || 0) / 1000).toFixed(1);
+            logLine(`[${agentLabel}] result: $${cost} / ${turns} turns / ${dur}s`, ctx);
+            return;
+        }
+    }
+
+    if (event.type !== 'system') {
+        logLine(`[${agentLabel}] ${cli}:${event.type}`, ctx);
     }
 }
 

@@ -14,6 +14,12 @@
 3. 에이전트가 STT 스킬(`transcribe`)을 사용해 텍스트화
 4. 텍스트를 일반 응답 파이프라인으로 회신
 
+현재 기준선:
+
+- `message:photo`, `message:document`는 이미 구현되어 있다.
+- `message:voice`는 아직 구현되어 있지 않다.
+- 그래서 2.3의 본질은 "기존 photo/document 패턴을 voice로 확장"하는 것이다.
+
 ---
 
 ## 이벤트 및 포맷 근거
@@ -32,7 +38,7 @@ Telegram `Voice` 객체는 음성 메모를 `.ogg`(OPUS)로 설명한다. 수신
 Telegram voice message
 → bot.on("message:voice")
 → downloadTelegramFile(file_id)
-→ saveUpload(..., "voice.ogg")
+→ saveUpload(..., `voice_<timestamp>.ogg`)
 → build prompt with saved file path
 → transcribe skill (Whisper 등) 실행
 → text result를 일반 응답 채널로 송신
@@ -70,6 +76,10 @@ Telegram voice message
 
 3. 긴 음성(비용/시간 증가)
 - 길이 임계치 정책(예: 3~5분 초과시 분할/요약 모드) 문서화
+
+4. 동시 요청 파일명 충돌
+- 고정 파일명(`voice.ogg`) 사용 금지
+- 타임스탬프/UUID 기반 파일명으로 저장
 
 ---
 

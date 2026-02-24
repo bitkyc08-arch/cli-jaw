@@ -25,6 +25,7 @@ db.exec(`
         content     TEXT NOT NULL,
         cli         TEXT,
         model       TEXT,
+        trace       TEXT DEFAULT NULL,
         cost_usd    REAL,
         duration_ms INTEGER,
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -51,6 +52,12 @@ db.exec(`
     );
 `);
 
+// Lightweight migration for existing DBs created before `trace` column existed.
+const messageCols = db.prepare('PRAGMA table_info(messages)').all();
+if (!messageCols.some(c => c.name === 'trace')) {
+    db.exec('ALTER TABLE messages ADD COLUMN trace TEXT DEFAULT NULL');
+}
+
 // ─── Prepared Statements ─────────────────────────────
 
 export const getSession = () => db.prepare('SELECT * FROM session WHERE id = ?').get('default');
@@ -58,9 +65,11 @@ export const updateSession = db.prepare(`
     UPDATE session SET active_cli=?, session_id=?, model=?, permissions=?, working_dir=?, effort=?, updated_at=CURRENT_TIMESTAMP
     WHERE id='default'
 `);
-export const insertMessage = db.prepare('INSERT INTO messages (role, content, cli, model) VALUES (?, ?, ?, ?)');
-export const getMessages = db.prepare('SELECT * FROM messages ORDER BY id ASC');
-export const getRecentMessages = db.prepare('SELECT * FROM messages ORDER BY id DESC LIMIT ?');
+export const insertMessage = db.prepare('INSERT INTO messages (role, content, cli, model, trace) VALUES (?, ?, ?, ?, NULL)');
+export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace) VALUES (?, ?, ?, ?, ?)');
+export const getMessages = db.prepare('SELECT id, role, content, cli, model, cost_usd, duration_ms, created_at FROM messages ORDER BY id ASC');
+export const getMessagesWithTrace = db.prepare('SELECT * FROM messages ORDER BY id ASC');
+export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, created_at FROM messages ORDER BY id DESC LIMIT ?');
 export const clearMessages = db.prepare('DELETE FROM messages');
 export const getMemory = db.prepare('SELECT key, value, source FROM memory ORDER BY updated_at DESC');
 export const upsertMemory = db.prepare(`

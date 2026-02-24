@@ -28,7 +28,7 @@ import {
     detectAllCli, APP_VERSION,
 } from './src/config.js';
 import {
-    db, getSession, updateSession, insertMessage, getMessages,
+    db, getSession, updateSession, insertMessage, getMessages, getMessagesWithTrace,
     getRecentMessages, clearMessages,
     getMemory, upsertMemory, deleteMemory,
     getEmployees, insertEmployee, deleteEmployee,
@@ -272,7 +272,11 @@ function makeWebCommandCtx() {
 }
 
 app.get('/api/session', (_, res) => res.json(getSession()));
-app.get('/api/messages', (_, res) => res.json(getMessages.all()));
+app.get('/api/messages', (req, res) => {
+    const includeTrace = ['1', 'true', 'yes'].includes(String(req.query.includeTrace || '').toLowerCase());
+    const rows = includeTrace ? getMessagesWithTrace.all() : getMessages.all();
+    res.json(rows);
+});
 app.get('/api/runtime', (_, res) => res.json(getRuntimeSnapshot()));
 
 app.post('/api/command', async (req, res) => {

@@ -29,12 +29,12 @@
 
 ### API
 
-- [ ] `GET /api/commands?interface=web` → 커맨드 목록 JSON
-- [ ] `POST /api/command {"text":"/help"}` → 카테고리별 목록 반환
-- [ ] `POST /api/command {"text":"/status"}` → 서버 상태 (`ok: true`)
-- [ ] `POST /api/command {"text":"/foobar"}` → `code: unknown_command`
-- [ ] `POST /api/command {"text":"/model"}` → 현재 모델 표시
-- [ ] `POST /api/command {"text":"/model gemini-2.5-pro"}` → 모델 변경 성공
+- [x] `GET /api/commands?interface=web` → 커맨드 목록 JSON
+- [x] `POST /api/command {"text":"/help"}` → 카테고리별 목록 반환
+- [x] `POST /api/command {"text":"/status"}` → 서버 상태 (`ok: true`)
+- [x] `POST /api/command {"text":"/foobar"}` → `code: unknown_command`
+- [x] `POST /api/command {"text":"/model"}` → 현재 모델 표시
+- [x] `POST /api/command {"text":"/model gemini-2.5-pro"}` → 모델 변경 성공 (원복 확인)
 
 ### Telegram
 
@@ -96,19 +96,27 @@
 
 ### C 항목 (회귀)
 
-- [ ] `/clear` → 메시지 수 변동 없음 (비파괴)
+- [x] `/clear` → 메시지 수 변동 없음 (비파괴)
 - [ ] `/reset confirm` → 메시지 전부 삭제 (파괴적)
 - [ ] 일반 텍스트 입력 → agent에 정상 전달 (슬래시 아닌 메시지)
 
 ---
 
-## Phase 6: Prompt Injection (📋 계획 — 구현 전)
+## Phase 6: Prompt Injection
 
-> 아직 미구현. 구현 후 체크 항목 추가 예정.
+- [x] DB `messages.trace` 컬럼 생성 확인
+- [x] `GET /api/messages` 기본 응답에서 `trace` 제외 확인
+- [x] `GET /api/messages?includeTrace=1` 에서 `trace` 포함 확인
 
 - [ ] CLI별 프롬프트 삽입 정규화 확인
 - [ ] 히스토리 통합 확인
 - [ ] 시스템 프롬프트 중복 제거 확인
+
+### 자동 검증 로그 (2026-02-24)
+
+- 실행 포트: `3464`, `3465` (임시 서버 기동 후 종료)
+- 통과: `api_commands`, `help`, `status`, `unknown`, `model_query`, `model_set`, `clear_non_destructive`
+- Phase 6 통과: `trace_column`, `messages_default_hide_trace`, `messages_include_trace`
 
 ---
 

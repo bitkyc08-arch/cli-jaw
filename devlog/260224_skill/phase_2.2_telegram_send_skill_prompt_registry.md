@@ -96,6 +96,11 @@ Always include a normal text response summarizing what was sent.
 
 `initPromptFiles()`는 `A-1.md`가 없을 때만 생성한다. 따라서 기존 설치 사용자에게는 `A1_CONTENT` 수정만으로 즉시 반영되지 않는다. 2.2 완료 기준에는 "기존 사용자 반영 방식"을 반드시 포함해야 한다.
 
+추가 확인:
+
+- 런타임 프롬프트 생성(`getSystemPrompt`)은 상수 `A1_CONTENT`를 직접 쓰지 않고, 실제 파일 경로 `A1_PATH`를 읽는다.
+- 즉 "소스 코드 상수 변경만으로 기존 사용자에게 자동 반영"은 성립하지 않는다.
+
 권장안:
 
 1. 서버 시작 시 `A-1.md`에 섹션 유무를 점검

@@ -7,7 +7,7 @@
 
 ## 핵심 정리
 
-`/api/telegram/send`는 "파일 전송 전용 보조 채널"이다. 일반 응답은 기존 stdout/NDJSON 파이프라인을 그대로 사용하고, 파일 전송이 필요한 경우만 별도 REST 호출을 사용한다.
+`/api/telegram/send`는 "비텍스트 산출물 전송용 보조 채널"이다. 일반 응답은 기존 stdout/NDJSON 파이프라인을 그대로 사용하고, 파일 전송이 필요한 경우만 별도 REST 호출을 사용한다. `type=text`는 헬스체크/중간 알림용으로만 제한적으로 허용한다.
 
 Telegram Bot API는 일반 JSON 요청과 파일 업로드 요청(`multipart/form-data`)을 구분해서 다룬다. 따라서 API 설계에서 content-type 경로를 명시적으로 분리해야 한다.
 > 출처: [Telegram Bot API - Making requests](https://core.telegram.org/bots/api#making-requests)
@@ -35,10 +35,8 @@ CLI agent
 
 ### 지원 타입
 
-- `text`
-- `voice`
-- `photo`
-- `document`
+- 기본 지원: `voice`, `photo`, `document`
+- 호환 지원: `text` (헬스체크/중간 알림용)
 
 grammY 기준으로 `bot.api.sendMessage/sendVoice/sendPhoto/sendDocument` 모두 `InputFile` 또는 파일 식별자를 사용할 수 있다.
 > 출처: [grammY Guide - Files](https://grammy.dev/guide/files), [grammY API](https://grammy.dev/ref/core/api)
@@ -55,11 +53,25 @@ grammY 기준으로 `bot.api.sendMessage/sendVoice/sendPhoto/sendDocument` 모�
 
 ### 채팅 선택 규칙
 
-- 우선순위 1: `chat_id` 명시값
-- 우선순위 2: `telegramActiveChatIds`의 마지막 활성 채팅
-- 둘 다 없으면 `400`
+권장 기본 정책:
 
-`Set` 기반에서 "마지막 활성 채팅"을 쓰려면 `Array.from(set).at(-1)` 형태로 명시하는 게 안전하다.
+- `chat_id`는 요청에서 필수
+- 누락 시 `400`
+
+호환 정책(선택):
+
+- `chat_id` 미지정 시 `lastActiveChatId` 같은 별도 상태를 사용
+- 이 값은 `message:text|photo|document|voice` 이벤트마다 갱신
+
+주의:
+
+`telegramActiveChatIds`(`Set`)만으로는 "최근 활성 채팅"을 정확히 표현할 수 없다. `Set`은 삽입 순서를 유지하지만, 이미 존재하는 chat_id를 다시 `add`해도 순서를 갱신하지 않기 때문이다.
+> 출처: [MDN - Set](https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Set)
+
+대안:
+
+- 1:1 응답 모델이면 `chat_id` 필수 정책이 가장 안전
+- 다중 채팅 브로드캐스트 모델이면 `heartbeat`처럼 활성 chat 전체 순회 전송
 
 ### 음성 포맷 규칙
 
@@ -72,6 +84,10 @@ Telegram `sendVoice`는 OGG(OPUS), MP3, M4A를 허용한다. 다만 음성 메�
 - `400`: `chat_id` 미결정, 필수 필드 누락, 지원하지 않는 `type`
 - `500`: Telegram API 호출 실패, 파일 접근 실패
 
+### 런타임 네트워크 제약
+
+Telegram bot 인스턴스는 `ipv4Fetch`를 사용하도록 구성되어 있다. `/api/telegram/send`는 반드시 이 인스턴스(`telegramBot`)를 재사용해야 네트워크 동작이 일관된다.
+
 ---
 
 ## Step 1 완료 정의 (문서 기준)
@@ -80,7 +96,7 @@ Step 1을 "완료"로 보기 위한 최소 조건:
 
 1. 라우트 존재: `POST /api/telegram/send`
 2. `type` 분기 처리: `text|voice|photo|document`
-3. `chat_id` 자동 선택(마지막 활성 채팅) 또는 명시값 사용
+3. `chat_id` 정책 명시(`chat_id` 필수 또는 `lastActiveChatId` 별도 상태 기반)
 4. 실패 시 명시적 HTTP 상태코드 반환
 
 아래는 Step 1 이후에도 남는 안정화 항목(Phase 2.2+)이다.
@@ -99,6 +115,7 @@ Step 1을 "완료"로 보기 위한 최소 조건:
 4. `type=photo` + `file_path` + `caption` 전송 → 이미지/캡션 확인
 5. `type=document` + `file_path` 전송 → 파일명/다운로드 확인
 6. 잘못된 `type` 전송 → `400` 확인
+7. `chat_id` 누락 요청 → `400` 확인 (필수 정책 기준)
 
 ---
 
