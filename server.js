@@ -17,6 +17,8 @@ import {
 
 // ─── src/ modules ────────────────────────────────────
 
+import { assertSkillId, assertFilename, safeResolveUnder } from './src/security/path-guards.js';
+import { decodeFilenameSafe } from './src/security/decode.js';
 import { setWss, broadcast } from './src/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory.js';
@@ -529,14 +531,24 @@ app.get('/api/memory-files', (_, res) => {
     });
 });
 app.get('/api/memory-files/:filename', (req, res) => {
-    const fp = join(getMemoryDir(), req.params.filename);
-    if (!fp.endsWith('.md') || !fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
-    res.json({ name: req.params.filename, content: fs.readFileSync(fp, 'utf8') });
+    try {
+        const name = assertFilename(req.params.filename);
+        const fp = safeResolveUnder(getMemoryDir(), name);
+        if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
+        res.json({ name, content: fs.readFileSync(fp, 'utf8') });
+    } catch (e) {
+        res.status(e.statusCode || 400).json({ error: e.message });
+    }
 });
 app.delete('/api/memory-files/:filename', (req, res) => {
-    const fp = join(getMemoryDir(), req.params.filename);
-    if (fp.endsWith('.md') && fs.existsSync(fp)) fs.unlinkSync(fp);
-    res.json({ ok: true });
+    try {
+        const name = assertFilename(req.params.filename);
+        const fp = safeResolveUnder(getMemoryDir(), name);
+        if (fs.existsSync(fp)) fs.unlinkSync(fp);
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(e.statusCode || 400).json({ error: e.message });
+    }
 });
 app.put('/api/memory-files/settings', (req, res) => {
     settings.memory = { ...settings.memory, ...req.body };
@@ -546,10 +558,13 @@ app.put('/api/memory-files/settings', (req, res) => {
 
 // File upload
 app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) => {
-    const rawHeader = req.headers['x-filename'] || 'upload.bin';
-    const filename = decodeURIComponent(rawHeader);
-    const filePath = saveUpload(req.body, filename);
-    res.json({ path: filePath, filename: basename(filePath) });
+    try {
+        const filename = decodeFilenameSafe(req.headers['x-filename']);
+        const filePath = saveUpload(req.body, filename);
+        res.json({ path: filePath, filename: basename(filePath) });
+    } catch (e) {
+        res.status(e.statusCode || 400).json({ error: e.message });
+    }
 });
 
 // Telegram direct send (Phase 2.1)
@@ -717,41 +732,49 @@ app.get('/api/skills', (req, res) => {
 });
 
 app.post('/api/skills/enable', (req, res) => {
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: 'id required' });
-    const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
-    const dstDir = join(SKILLS_DIR, id);
-    const dstPath = join(dstDir, 'SKILL.md');
-    if (fs.existsSync(dstPath)) return res.json({ ok: true, msg: 'already enabled' });
-    if (!fs.existsSync(refPath)) return res.status(404).json({ error: 'skill not found in ref' });
-    fs.mkdirSync(dstDir, { recursive: true });
-    // Copy all files from ref skill dir
-    const refDir = join(SKILLS_REF_DIR, id);
-    for (const f of fs.readdirSync(refDir)) {
-        fs.copyFileSync(join(refDir, f), join(dstDir, f));
+    try {
+        const id = assertSkillId(req.body?.id);
+        const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
+        const dstDir = join(SKILLS_DIR, id);
+        const dstPath = join(dstDir, 'SKILL.md');
+        if (fs.existsSync(dstPath)) return res.json({ ok: true, msg: 'already enabled' });
+        if (!fs.existsSync(refPath)) return res.status(404).json({ error: 'skill not found in ref' });
+        fs.mkdirSync(dstDir, { recursive: true });
+        const refDir = join(SKILLS_REF_DIR, id);
+        for (const f of fs.readdirSync(refDir)) {
+            fs.copyFileSync(join(refDir, f), join(dstDir, f));
+        }
+        regenerateB();
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(e.statusCode || 400).json({ error: e.message });
     }
-    regenerateB();
-    res.json({ ok: true });
 });
 
 app.post('/api/skills/disable', (req, res) => {
-    const { id } = req.body;
-    if (!id) return res.status(400).json({ error: 'id required' });
-    const dstDir = join(SKILLS_DIR, id);
-    if (!fs.existsSync(dstDir)) return res.json({ ok: true, msg: 'already disabled' });
-    fs.rmSync(dstDir, { recursive: true });
-    regenerateB();
-    res.json({ ok: true });
+    try {
+        const id = assertSkillId(req.body?.id);
+        const dstDir = join(SKILLS_DIR, id);
+        if (!fs.existsSync(dstDir)) return res.json({ ok: true, msg: 'already disabled' });
+        fs.rmSync(dstDir, { recursive: true });
+        regenerateB();
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(e.statusCode || 400).json({ error: e.message });
+    }
 });
 
 app.get('/api/skills/:id', (req, res) => {
-    const { id } = req.params;
-    // Try active first, then ref
-    const activePath = join(SKILLS_DIR, id, 'SKILL.md');
-    const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
-    const path = fs.existsSync(activePath) ? activePath : refPath;
-    if (!fs.existsSync(path)) return res.status(404).json({ error: 'not found' });
-    res.type('text/markdown').send(fs.readFileSync(path, 'utf8'));
+    try {
+        const id = assertSkillId(req.params.id);
+        const activePath = join(SKILLS_DIR, id, 'SKILL.md');
+        const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
+        const p = fs.existsSync(activePath) ? activePath : refPath;
+        if (!fs.existsSync(p)) return res.status(404).json({ error: 'not found' });
+        res.type('text/markdown').send(fs.readFileSync(p, 'utf8'));
+    } catch (e) {
+        res.status(e.statusCode || 400).json({ error: e.message });
+    }
 });
 
 // ─── Skills Reset API ────────────────────────────────
@@ -775,16 +798,18 @@ app.get('/api/claw-memory/search', (req, res) => {
 
 app.get('/api/claw-memory/read', (req, res) => {
     try {
-        const content = memory.read(req.query.file, { lines: req.query.lines });
+        const file = assertFilename(req.query.file, { allowExt: ['.md', '.txt', '.json'] });
+        const content = memory.read(file, { lines: req.query.lines });
         res.json({ content });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+    } catch (e) { res.status(e.statusCode || 500).json({ error: e.message }); }
 });
 
 app.post('/api/claw-memory/save', (req, res) => {
     try {
-        const path = memory.save(req.body.file, req.body.content);
-        res.json({ ok: true, path });
-    } catch (e) { res.status(500).json({ error: e.message }); }
+        const file = assertFilename(req.body.file, { allowExt: ['.md', '.txt', '.json'] });
+        const p = memory.save(file, req.body.content);
+        res.json({ ok: true, path: p });
+    } catch (e) { res.status(e.statusCode || 500).json({ error: e.message }); }
 });
 
 app.get('/api/claw-memory/list', (_, res) => {
