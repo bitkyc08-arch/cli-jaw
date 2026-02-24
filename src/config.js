@@ -4,6 +4,12 @@ import os from 'os';
 import fs from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
+import { createRequire } from 'module';
+
+// ─── Version (single source of truth: package.json) ──
+const require = createRequire(import.meta.url);
+const pkg = require('../package.json');
+export const APP_VERSION = pkg.version;
 
 // ─── Paths ───────────────────────────────────────────
 

@@ -4,6 +4,7 @@ let cmdList = [];       // { name, desc, args, category }[]
 let filtered = [];      // currently filtered list
 let selectedIdx = -1;   // -1 = none
 let isOpen = false;
+let closeTimer = null;
 
 const dropdown = () => document.getElementById('cmdDropdown');
 const input = () => document.getElementById('chatInput');
@@ -21,9 +22,40 @@ function filterCommands(partial) {
     return cmdList.filter(c => (`/${c.name}`).startsWith(prefix));
 }
 
+function showDropdown() {
+    const el = dropdown();
+    const inp = input();
+    if (!el || !inp) return;
+
+    if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+    }
+
+    el.style.display = 'block';
+    requestAnimationFrame(() => el.classList.add('visible'));
+    isOpen = true;
+
+    inp.setAttribute('aria-expanded', 'true');
+}
+
 function render() {
     const el = dropdown();
-    if (!el || !filtered.length) { close(); return; }
+    const inp = input();
+    if (!el || !inp) return;
+
+    if (!filtered.length) {
+        if (!inp.value.startsWith('/')) { close(); return; }
+
+        el.innerHTML = `
+            <div class="cmd-item cmd-empty" role="option" aria-disabled="true">
+                일치하는 커맨드가 없습니다
+            </div>
+        `;
+        showDropdown();
+        inp.setAttribute('aria-activedescendant', '');
+        return;
+    }
 
     el.innerHTML = filtered.map((cmd, i) => {
         const selected = i === selectedIdx;
@@ -38,14 +70,8 @@ function render() {
         </div>`;
     }).join('');
 
-    el.style.display = 'block';
-    isOpen = true;
-
-    const inp = input();
-    if (inp) {
-        inp.setAttribute('aria-expanded', 'true');
-        inp.setAttribute('aria-activedescendant', selectedIdx >= 0 ? `cmd-item-${selectedIdx}` : '');
-    }
+    showDropdown();
+    inp.setAttribute('aria-activedescendant', selectedIdx >= 0 ? `cmd-item-${selectedIdx}` : '');
 
     const selected = el.querySelector('.selected');
     if (selected) selected.scrollIntoView({ block: 'nearest' });
@@ -80,9 +106,20 @@ export async function loadCommands() {
 
 export function close() {
     const el = dropdown();
-    if (!el) return;
-    el.style.display = 'none';
-    el.innerHTML = '';
+
+    if (closeTimer) {
+        clearTimeout(closeTimer);
+        closeTimer = null;
+    }
+    if (el) {
+        el.classList.remove('visible');
+        closeTimer = setTimeout(() => {
+            if (el.classList.contains('visible')) return;
+            el.style.display = 'none';
+            el.innerHTML = '';
+        }, 150);
+    }
+
     isOpen = false;
     selectedIdx = -1;
     filtered = [];
@@ -100,9 +137,9 @@ export function update(text) {
         close();
         return;
     }
+
     filtered = filterCommands(raw);
-    if (!filtered.length) { close(); return; }
-    selectedIdx = 0;
+    selectedIdx = filtered.length ? 0 : -1;
     render();
 }
 
@@ -114,6 +151,15 @@ export function handleKeydown(e) {
             selectedIdx = e.key === 'ArrowUp' ? filtered.length - 1 : 0;
             render();
             e.preventDefault();
+            return true;
+        }
+        return false;
+    }
+
+    if (!filtered.length) {
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            close();
             return true;
         }
         return false;

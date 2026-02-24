@@ -4,7 +4,7 @@ import https from 'node:https';
 import { Bot } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { broadcast, addBroadcastListener, removeBroadcastListener } from './bus.js';
-import { settings, detectAllCli } from './config.js';
+import { settings, detectAllCli, APP_VERSION } from './config.js';
 import { insertMessage, getSession, updateSession, clearMessages } from './db.js';
 import { orchestrate } from './orchestrator.js';
 import {
@@ -88,8 +88,8 @@ export function orchestrateAndCollect(prompt) {
 
 export let telegramBot = null;
 export const telegramActiveChatIds = new Set();
-const APP_VERSION = '0.1.0';
 const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
+const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // read-only on Telegram
 
 function toTelegramCommandDescription(desc) {
     const text = String(desc || '').trim();
@@ -99,7 +99,7 @@ function toTelegramCommandDescription(desc) {
 function syncTelegramCommands(bot) {
     return bot.api.setMyCommands(
         COMMANDS
-            .filter(c => c.interfaces.includes('telegram') && !RESERVED_CMDS.has(c.name))
+            .filter(c => c.interfaces.includes('telegram') && !RESERVED_CMDS.has(c.name) && !TG_EXCLUDED_CMDS.has(c.name))
             .map(c => ({
                 command: c.name,
                 description: toTelegramCommandDescription(c.desc),

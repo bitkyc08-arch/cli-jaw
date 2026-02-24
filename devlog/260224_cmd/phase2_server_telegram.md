@@ -357,14 +357,14 @@ Phase 3 이후(선택): COMMANDS 이관 검토
 
 ## 향후 개선 (Phase 2+)
 
-| 항목                    | 설명                                                                                                   | 우선순위 |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
-| `APP_VERSION` 통합      | `server.js`와 `telegram.js`에 중복 선언됨. `package.json` version에서 읽거나 `config.js`에서 export    | 🟡        |
-| `TG_EXCLUDED_CMDS`      | `/model`, `/cli`를 TG 메뉴에서 제외 (기능은 에러 반환으로 동작하나, 메뉴에 안 보이는 게 UX적으로 깔끔) | 🟡        |
-| 응답 `type` 필드        | `{ type: 'success' \| 'error' \| 'info' }` 추가 → Web UI에서 결과 색상 분기 가능 (U1)                  | 🟠        |
-| TG description 그룹핑   | `setMyCommands`의 description에 `[카테고리]` prefix (U3)                                               | 🟢        |
-| TG `parse_mode: 'HTML'` | `@grammyjs/parse-mode` 플러그인으로 리치 포매팅 (U4)                                                   | 🟢        |
-| TG `InlineKeyboard`     | `/status` 등의 결과에 "더 보기" 버튼 제공                                                              | 🟢        |
+| 항목                    | 설명                                                                                    | 상태   |
+| ----------------------- | --------------------------------------------------------------------------------------- | ------ |
+| ~~`APP_VERSION` 통합~~  | `config.js`에서 `package.json` version export, `server.js`/`telegram.js`/`chat.js` 통합 | ✅ 완료 |
+| ~~`TG_EXCLUDED_CMDS`~~  | `/model`, `/cli`를 TG 메뉴에서 제외 (`syncTelegramCommands` 필터 추가)                  | ✅ 완료 |
+| ~~응답 `type` 필드~~    | `normalizeResult`에서 자동 추론 + `helpHandler`/`statusHandler`에 `type: 'info'` 명시   | ✅ 완료 |
+| TG description 그룹핑   | `setMyCommands`의 description에 `[카테고리]` prefix (U3)                                | 🟢      |
+| TG `parse_mode: 'HTML'` | `@grammyjs/parse-mode` 플러그인으로 리치 포매팅 (U4)                                    | 🟢      |
+| TG `InlineKeyboard`     | `/status` 등의 결과에 "더 보기" 버튼 제공                                               | 🟢      |
 
 ## 리스크
 

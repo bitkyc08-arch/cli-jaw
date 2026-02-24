@@ -56,10 +56,13 @@
             <button class="remove">✕</button>
         </div>
         <div class="chat-input-area">
+            <div id="cmdDropdown" class="cmd-dropdown" role="listbox" aria-label="커맨드 목록" style="display:none"></div>
             <button class="btn-attach" title="파일 첨부">📎</button>
             <input type="file" id="fileInput" hidden
                 accept="image/*,.pdf,.txt,.md,.js,.py,.json,.csv,.html,.css,.ts,.tsx,.jsx">
-            <textarea class="chat-input" id="chatInput" rows="1" placeholder="메시지 입력..."></textarea>
+            <textarea class="chat-input" id="chatInput" rows="1" placeholder="메시지 입력..."
+                aria-haspopup="listbox" aria-expanded="false" aria-controls="cmdDropdown"
+                aria-autocomplete="list" aria-activedescendant=""></textarea>
             <button class="btn-send" id="btnSend">➤</button>
         </div>
     </div>

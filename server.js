@@ -25,7 +25,7 @@ import {
     settings, loadSettings, saveSettings, replaceSettings,
     ensureDirs, runMigration,
     loadHeartbeatFile, saveHeartbeatFile,
-    detectAllCli,
+    detectAllCli, APP_VERSION,
 } from './src/config.js';
 import {
     db, getSession, updateSession, insertMessage, getMessages,
@@ -68,7 +68,6 @@ try {
 // ─── Init ────────────────────────────────────────────
 
 const PORT = process.env.PORT || 3457;
-const APP_VERSION = '0.1.0';
 
 ensureDirs();
 fs.mkdirSync(join(__dirname, 'public'), { recursive: true });

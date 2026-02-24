@@ -46,15 +46,20 @@ function formatDuration(seconds) {
 }
 
 function normalizeResult(result) {
-    if (!result) return { ok: true, text: '' };
-    if (typeof result === 'string') return { ok: true, text: result };
-    if (typeof result === 'object') return { ok: result.ok !== false, ...result };
-    return { ok: true, text: String(result) };
+    if (!result) return { ok: true, type: 'success', text: '' };
+    if (typeof result === 'string') return { ok: true, type: 'info', text: result };
+    if (typeof result === 'object') {
+        const ok = result.ok !== false;
+        const type = result.type || (ok ? 'success' : 'error');
+        return { ok, type, ...result };
+    }
+    return { ok: true, type: 'info', text: String(result) };
 }
 
 function unknownCommand(name) {
     return {
         ok: false,
+        type: 'error',
         code: 'unknown_command',
         text: `알 수 없는 커맨드: /${name}\n/help로 사용 가능한 커맨드를 확인하세요.`,
     };
@@ -63,6 +68,7 @@ function unknownCommand(name) {
 function unsupportedCommand(cmd, iface) {
     return {
         ok: false,
+        type: 'error',
         code: 'unsupported_interface',
         text: `❌ /${cmd.name}은(는) ${iface}에서 사용할 수 없습니다.`,
     };
@@ -78,7 +84,7 @@ async function helpHandler(args, ctx) {
             `${displayUsage(target)} — ${target.desc}`,
             `interfaces: ${target.interfaces.join(', ')}`,
         ];
-        return { ok: true, text: lines.join('\n') };
+        return { ok: true, type: 'info', text: lines.join('\n') };
     }
 
     const available = sortCommands(COMMANDS.filter(c =>
@@ -101,7 +107,7 @@ async function helpHandler(args, ctx) {
         }
     }
     lines.push('\n상세 도움말: /help <command>');
-    return { ok: true, text: lines.join('\n') };
+    return { ok: true, type: 'info', text: lines.join('\n') };
 }
 
 async function statusHandler(_args, ctx) {
@@ -125,6 +131,7 @@ async function statusHandler(_args, ctx) {
 
     return {
         ok: true,
+        type: 'info',
         text: [
             `🦞 cli-claw v${ctx.version || 'unknown'}`,
             `CLI:     ${cli}`,

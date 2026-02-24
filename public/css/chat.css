@@ -90,6 +90,7 @@
     border-top: 1px solid var(--border);
     display: flex;
     gap: 8px;
+    position: relative;
 }
 
 .chat-input {
@@ -208,6 +209,84 @@
     color: #f55;
     cursor: pointer;
     font-size: 14px;
+}
+
+/* ── Slash Command Dropdown ── */
+.cmd-dropdown {
+    position: absolute;
+    bottom: calc(100% + 2px);
+    left: 20px;
+    right: 20px;
+    max-height: 280px;
+    overflow-y: auto;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px 10px 0 0;
+    box-shadow: 0 -4px 14px rgba(0, 0, 0, 0.28);
+    z-index: 150;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+    pointer-events: none;
+}
+
+.cmd-dropdown.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
+}
+
+.cmd-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    cursor: pointer;
+    border-left: 3px solid transparent;
+}
+
+.cmd-item:hover,
+.cmd-item.selected {
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.cmd-item.selected {
+    border-left-color: var(--accent);
+    scroll-margin-block: 4px;
+}
+
+.cmd-name {
+    min-width: 96px;
+    color: var(--accent);
+    font-weight: 700;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+.cmd-desc {
+    flex: 1;
+    color: var(--text-dim);
+    font-size: 12px;
+}
+
+.cmd-args {
+    color: var(--text-dim);
+    font-size: 11px;
+    opacity: 0.8;
+}
+
+.cmd-empty {
+    color: var(--text-dim);
+    font-style: italic;
+    cursor: default;
+}
+
+.cmd-dropdown::-webkit-scrollbar {
+    width: 4px;
+}
+
+.cmd-dropdown::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: 2px;
 }
 
 /* ── Loading / Typing ── */

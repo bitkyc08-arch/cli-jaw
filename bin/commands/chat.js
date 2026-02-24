@@ -31,7 +31,9 @@ const c = {
 // ─── Connect ─────────────────────────────────
 const wsUrl = `ws://localhost:${values.port}`;
 const apiUrl = `http://localhost:${values.port}`;
-const APP_VERSION = '0.1.0';
+import { createRequire } from 'node:module';
+const _require = createRequire(import.meta.url);
+const APP_VERSION = _require('../../package.json').version;
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SKILL_SCRIPT = resolvePath(__dirname, 'skill.js');

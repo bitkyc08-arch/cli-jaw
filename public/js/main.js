@@ -37,9 +37,14 @@ chatInput.addEventListener('keydown', (e) => {
     if (handleSlashKeydown(e)) return;
     handleKey(e);
 });
+let slashInputRaf = 0;
 chatInput.addEventListener('input', (e) => {
     if (e.isComposing) return;
-    updateSlashDropdown(e.target.value);
+    if (slashInputRaf) cancelAnimationFrame(slashInputRaf);
+    slashInputRaf = requestAnimationFrame(() => {
+        updateSlashDropdown(e.target.value);
+        slashInputRaf = 0;
+    });
 });
 chatInput.addEventListener('cmd-execute', () => {
     void sendMessage();
