@@ -2,7 +2,7 @@
 
 > **의존**: 없음 (독립 작업)
 > **검증일**: 2026-02-24
-> **산출물**: `src/worklog.js`, `.agents/skills/dev/`, `constants.js` 수정
+> **산출물**: `src/worklog.js`, `dev-frontend`/`dev-backend`/`dev-data`/`dev-testing` 스킬, `constants.js` 수정
 
 ---
 
@@ -99,7 +99,7 @@ export function appendToWorklog(path, section, content) {
 export function updateMatrix(path, agentPhases) {
   const PHASES = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
   const table = agentPhases.map(ap =>
-    `| ${ap.agent} | ${ap.role} | Phase ${ap.currentPhase}: ${PHASES[ap.currentPhase]} | ${ap.completed ? '✅ 완료' : ap.gatePassed ? '✅ 통과' : '⏳ 진행 중'} |`
+    `| ${ap.agent} | ${ap.role} | Phase ${ap.currentPhase}: ${PHASES[ap.currentPhase]} | ${ap.completed ? '✅ 완료' : '⏳ 진행 중'} |`
   ).join('\n');
 
   const file = fs.readFileSync(path, 'utf8');
@@ -123,25 +123,44 @@ export function updateWorklogStatus(path, status, round) {
 
 ---
 
-## 1-B: Dev 스킬 생성
+## 1-B: Dev 스킬 생성 (개별 스킬 방식)
 
-[개발스킬-설계안.md](file:///Users/jun/Developer/new/_INBOX/개발스킬-설계안.md) §3 기반:
+[개발스킬-설계안.md](file:///Users/jun/Developer/new/_INBOX/개발스킬-설계안.md) §3 기반.
+
+> [!IMPORTANT]
+> Hub-and-Spoke (`dev/SKILL.md` → `dev/reference/`) 구조 **폐기**.
+> `loadActiveSkills()`가 `SKILL.md`만 읽으므로 `reference/` 하위 파일은 자동 로딩 안 됨.
+> → 역할별 **개별 스킬**로 분리.
 
 ```
-.agents/skills/dev/
-├── SKILL.md                  ← Hub (≤100줄): 라우팅 + 공통 규칙
-└── reference/
-    ├── frontend.md           ← frontend-design ref 기반
-    ├── backend.md            ← 새로 작성
-    ├── data.md               ← 새로 작성
-    └── testing.md            ← webapp-testing ref 기반
+~/.cli-claw/skills/
+├── dev-frontend/
+│   └── SKILL.md              ← 프런트엔드 가이드 (전부 여기에)
+├── dev-backend/
+│   └── SKILL.md              ← 백엔드 가이드
+├── dev-data/
+│   └── SKILL.md              ← 데이터/사이언스 가이드
+└── dev-testing/
+    └── SKILL.md              ← 테스팅 가이드
 ```
 
-**핵심**: orchestrator가 `role` 값에 따라 해당 reference를 sub-agent 프롬프트에 주입.
+**장점**:
+- `loadActiveSkills()` 기존 로직 그대로 동작 (코드 변경 없음)
+- Orchestration 없이도 독립 사용 가능
+- Orchestrator는 role에 맞는 `SKILL.md`를 직접 읽어 주입
+
+**핵심**: `ROLE_PRESETS.skill` 값이 스킬 디렉토리 ID (`dev-frontend`)를 가리킴.
+
+> [!NOTE]
+> **`dev-testing`은 역할(role)이 아닌 과정(phase) 스킬.**
+> ROLE_PRESETS에 매핑하지 않고, **디버깅 phase (4)에서** orchestrator가 모든 역할에게 자동 주입.
+> `getSubAgentPromptV2`에서 `currentPhase === 4`일 때 `dev-testing/SKILL.md`를 추가로 로딩.
 
 ---
 
-## 1-C: `constants.js` 역할 정리
+## 1-C: `public/js/constants.js` 역할 정리
+
+> 수정 대상: [`public/js/constants.js`](file:///Users/jun/Developer/new/700_projects/cli-claw/public/js/constants.js)
 
 ```diff
  export const ROLE_PRESETS = [
@@ -153,9 +172,9 @@ export function updateWorklogStatus(path, status, round) {
 -    { value: 'data', label: '📊 데이터', prompt: '데이터 파이프라인, ETL, 분석 쿼리' },
 -    { value: 'docs', label: '📝 테크라이터', prompt: 'API 문서화, README, 가이드 작성' },
 -    { value: 'custom', label: '✏️ 커스텀...', prompt: '' },
-+    { value: 'frontend', label: '🎨 프런트엔드', prompt: 'UI/UX 구현, CSS, 컴포넌트 개발', skill: 'dev/reference/frontend.md' },
-+    { value: 'backend',  label: '⚙️ 백엔드',     prompt: 'API, DB, 서버 로직 구현',     skill: 'dev/reference/backend.md' },
-+    { value: 'data',     label: '📊 데이터',     prompt: '데이터 파이프라인, 분석, ML',   skill: 'dev/reference/data.md' },
++    { value: 'frontend', label: '🎨 프런트엔드', prompt: 'UI/UX 구현, CSS, 컴포넌트 개발', skill: 'dev-frontend' },
++    { value: 'backend',  label: '⚙️ 백엔드',     prompt: 'API, DB, 서버 로직 구현',     skill: 'dev-backend' },
++    { value: 'data',     label: '📊 데이터',     prompt: '데이터 파이프라인, 분석, ML',   skill: 'dev-data' },
 +    { value: 'docs',     label: '📝 문서작성',   prompt: '문서화, README, API docs',     skill: 'documentation' },
 +    { value: 'custom',   label: '✏️ 커스텀...',   prompt: '',                             skill: null },
  ];
@@ -170,17 +189,10 @@ export function updateWorklogStatus(path, status, round) {
 
 ## 검증된 리스크
 
-### 🔴 HIGH: Dev 스킬 경로 불일치
+### ✅ RESOLVED: Dev 스킬 경로 불일치
 
-설계 문서에서 `.agents/skills/dev/` 경로를 사용하지만, 런타임은 다른 경로:
-
-```javascript
-// src/config.js (실제 코드)
-export const SKILLS_DIR = join(CLAW_HOME, 'skills');  // ~/.cli-claw/skills
-export const SKILLS_REF_DIR = join(CLAW_HOME, 'skills_ref');
-```
-
-**해결**: dev 스킬을 `~/.cli-claw/skills/dev/`에 위치시키거나, 별도로 `SKILLS_DIR`에서 로딩하도록 `prompt.js`가 이미 처리. `.agents/skills/dev/`에 원본을 두고 `skills_ref` 번들 메커니즘으로 복사하는 기존 패턴을 따를 것.
+~~Hub-and-Spoke 구조에서 발생하던 경로 불일치~~ → **개별 스킬 방식으로 전환하여 해결.**
+`dev-frontend/SKILL.md`가 `~/.cli-claw/skills/dev-frontend/SKILL.md`에 위치하므로 `loadActiveSkills()` 기존 로직 그대로 동작.
 
 ### 🔴 HIGH: ROLE_PRESETS 변경 시 기존 데이터 깨짐
 

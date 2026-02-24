@@ -25,11 +25,17 @@
 
 ### Phase 정의
 
-| Phase | 이름     | 목적                           | Quality Gate (통과 조건)      |
-| ----- | -------- | ------------------------------ | ----------------------------- |
-| **1** | 설계검증 | plan 검증, 문서 보강/작성      | Plan Agent가 "설계 충분" 판정 |
-| **2** | 구현     | 문서 보강, **코드 작성**, 로그 | Plan Agent가 "코드 정상" 판정 |
-| **3** | 디버깅   | 디버깅, 최종 문서 작성         | Plan Agent가 "완료" 판정      |
+> [!NOTE]
+> 초기 설계에서는 3단계(설계검증→구현→디버깅)였으나, N×A 행렬 모델 도입 후 **5단계**로 확장.
+> 역할에 따라 일부 phase를 건너뛸 수 있어 실질적으로는 3~5단계 유동적.
+
+| Phase | 이름     | 목적                              | Quality Gate (통과 조건)      |
+| ----- | -------- | --------------------------------- | ----------------------------- |
+| **1** | 기획     | plan 검증, 문서 보강/작성         | Plan Agent가 "설계 충분" 판정 |
+| **2** | 기획검증 | 설계 문서 검증, 누락 보완         | Plan Agent가 "검증 완료" 판정 |
+| **3** | 개발     | 문서 참조하여 **코드 작성**, 로그 | Plan Agent가 "코드 정상" 판정 |
+| **4** | 디버깅   | 코드 실행/테스트, 버그 수정       | Plan Agent가 "버그 해결" 판정 |
+| **5** | 통합검증 | 다른 영역 통합, 최종 문서 작성    | Plan Agent가 "완료" 판정      |
 
 ### 핵심: Per-Agent 진행률
 
@@ -289,16 +295,16 @@ graph LR
 
 ### 파일 변경 요약
 
-| Phase | 파일                                | 작업                                   |
-| ----- | ----------------------------------- | -------------------------------------- |
-| **1** | `src/worklog.js`                    | [NEW] worklog CRUD + symlink           |
-| **1** | `.agents/skills/dev/SKILL.md`       | [NEW] Hub 스킬                         |
-| **1** | `.agents/skills/dev/reference/*.md` | [NEW] frontend, backend, data, testing |
-| **1** | `public/js/constants.js`            | [MODIFY] ROLE_PRESETS v2               |
-| **2** | `src/orchestrator.js`               | [MODIFY] v2 전체 리팩터링              |
-| **2** | `src/prompt.js`                     | [MODIFY] getSubAgentPromptV2 추가      |
-| **3** | `public/js/features/employees.js`   | [MODIFY] phase 뱃지 표시               |
-| **3** | `public/js/ws.js`                   | [MODIFY] 새 이벤트 핸들링              |
-| **3** | `src/orchestrator.js`               | [MODIFY] orchestrateContinue 추가      |
-| **3** | `src/server.js`                     | [MODIFY] "이어서" API 엔드포인트       |
+| Phase | 파일                                | 작업                                                   |
+| ----- | ----------------------------------- | ------------------------------------------------------ |
+| **1** | `src/worklog.js`                    | [NEW] worklog CRUD + symlink                           |
+| **1** | `~/.cli-claw/skills/dev-*/SKILL.md` | [NEW] dev-frontend, dev-backend, dev-data, dev-testing |
+| **1** | `public/js/constants.js`            | [MODIFY] ROLE_PRESETS v2 (skill 필드 추가)             |
+| **2** | `src/orchestrator.js`               | [MODIFY] v2 전체 리팩터링                              |
+| **2** | `src/prompt.js`                     | [MODIFY] getSubAgentPromptV2 추가                      |
+| **3** | `public/js/features/employees.js`   | [MODIFY] phase 뱃지 표시                               |
+| **3** | `public/js/ws.js`                   | [MODIFY] 새 이벤트 핸들링                              |
+| **3** | `src/orchestrator.js`               | [MODIFY] orchestrateContinue 추가                      |
+| **3** | `server.js` (루트)                  | [MODIFY] "이어서" API 엔드포인트                       |
+
 

@@ -57,9 +57,9 @@ sequenceDiagram
 // src/orchestrator.js v2
 import { broadcast } from './bus.js';
 import { insertMessage, getEmployees } from './db.js';
-import { getSystemPrompt, getSubAgentPromptV2 } from './prompt.js';
+import { getSubAgentPromptV2 } from './prompt.js';
 import { spawnAgent } from './agent.js';
-import { createWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, readLatestWorklog } from './worklog.js';
+import { createWorklog, appendToWorklog, updateMatrix, updateWorklogStatus } from './worklog.js';
 
 const MAX_ROUNDS = 3;
 
@@ -75,11 +75,31 @@ const PHASE_PROFILES = {
 };
 
 const PHASE_INSTRUCTIONS = {
-  1: '이 계획의 실현 가능성을 검증하세요. 문서를 보강하세요. 코드 작성 금지.',
-  2: '설계 문서를 검증하고 누락된 부분을 보완하세요.',
-  3: '문서를 참조하여 코드를 작성하세요. 변경 로그를 worklog에 기록하세요.',
-  4: '코드를 실행/테스트하고 버그를 수정하세요. 디버그 로그를 기록하세요.',
-  5: '다른 영역과의 통합을 검증하세요. 최종 문서를 작성하세요.',
+  1: `[기획] 이 계획의 실현 가능성을 검증하세요. 코드 작성 금지.
+     - 필수: 영향 범위 분석 (어떤 파일들이 변경되는가)
+     - 필수: 의존성 확인 (import/export 충돌 없는가)
+     - 필수: 엣지 케이스 목록 (null/empty/error 처리)
+     - worklog에 분석 결과를 기록하세요.`,
+  2: `[기획검증] 설계 문서를 검증하고 누락된 부분을 보완하세요.
+     - 필수: 파일 변경 목록과 실제 코드 대조 (함수명, 라인 번호)
+     - 필수: 충돌 검사 (다른 agent 작업과 같은 파일 수정하는가)
+     - 필수: 테스트 전략 수립 (verifyable 기준 정의)
+     - worklog에 검증 결과를 기록하세요.`,
+  3: `[개발] 문서를 참조하여 코드를 작성하세요.
+     - 필수: 변경된 파일 목록과 단위 당 핵심 변경 설명
+     - 필수: 기존 export/import 깨뜨리지 않았는지 확인
+     - 필수: 코드가 lint/build 에러 없이 동작하는지 검증
+     - worklog Execution Log에 변경 로그를 기록하세요.`,
+  4: `[디버깅] 코드를 실행/테스트하고 버그를 수정하세요.
+     - 필수: 실행 결과 스크린샷/로그 쳊부
+     - 필수: 발견된 버그 목록과 수정 내역
+     - 필수: 엣지 케이스 테스트 결과 (null/empty/error)
+     - worklog에 디버그 로그를 기록하세요.`,
+  5: `[통합검증] 다른 영역과의 통합을 검증하세요.
+     - 필수: 다른 agent 산출물과의 통합 테스트
+     - 필수: 최종 문서 업데이트 (README, 변경로그)
+     - 필수: 전체 워크플로우 동작 확인
+     - worklog에 최종 검증 결과를 기록하세요.`,
 };
 
 // ─── Per-Agent Phase Tracking ────────────────────────
@@ -119,13 +139,25 @@ ${prompt}
 
 ## 출력 형식 (반드시 준수)
 1. 자연어로 계획을 설명하세요.
-2. 검증 기준을 반드시 포함하세요.
+2. **검증 기준을 반드시 포함**하세요. 각 subtask별로:
+   - ✅ 성공 기준 (어떻게 되면 통과인가)
+   - ❌ 실패 기준 (어떻게 되면 재시도인가)
+   - 파일 변경 범위 (어떤 파일들이 영향받는가)
 3. subtask JSON을 아래 형식으로 출력하세요:
 
 \`\`\`json
 {
   "subtasks": [
-    { "agent": "직원이름", "role": "frontend|backend|data|docs", "task": "구체적 지시" }
+    {
+      "agent": "직원이름",
+      "role": "frontend|backend|data|docs",
+      "task": "구체적 지시",
+      "verification": {
+        "pass_criteria": "통과 기준 (1줄)",
+        "fail_criteria": "실패 기준 (1줄)",
+        "affected_files": ["src/file.js"]
+      }
+    }
   ]
 }
 \`\`\`
@@ -232,16 +264,26 @@ ${matrixStr}
 ${worklog.path} — 이 파일의 변경사항도 확인하세요.
 
 ## 판정 (각 agent별로 개별 판정)
-각 agent에 대해:
-- **PASS**: quality gate 통과 → 다음 phase로 진행
-- **FAIL**: 재시도 필요 → 같은 phase 유지, 피드백 제공
+
+### Quality Gate 루브릭
+각 agent의 현재 phase에 따라 아래 기준으로 판정:
+
+- **Phase 1 (기획)**: 영향 범위 분석 + 의존성 확인 + 엣지 케이스 목록 있는가?
+- **Phase 2 (기획검증)**: 실제 코드와 대조 확인 + 충돌 검사 + 테스트 전략 수립됐는가?
+- **Phase 3 (개발)**: 변경 파일 목록 + export/import 무결성 + 빌드 에러 없는가?
+- **Phase 4 (디버깅)**: 실행 결과 증거 + 버그 수정 내역 + 엣지 케이스 테스트 결과 있는가?
+- **Phase 5 (통합검증)**: 통합 테스트 + 문서 업데이트 + 워크플로우 동작 확인?
+
+### 판정 규칙
+- **PASS**: 해당 phase의 필수 항목 모두 충족. 구체적 근거 제시.
+- **FAIL**: 필수 항목 중 하나라도 미충족. **구체적 수정 지시** 제공 (“더 노력하세요” 금지, 구체적 행동 제시).
 
 JSON으로 출력:
 \`\`\`json
 {
   "verdicts": [
-    { "agent": "이름", "pass": true, "feedback": "..." },
-    { "agent": "이름", "pass": false, "feedback": "수정 필요: ..." }
+    { "agent": "이름", "pass": true, "feedback": "통과 근거: ..." },
+    { "agent": "이름", "pass": false, "feedback": "수정 필요: 1. ... 2. ..." }
   ],
   "allDone": false
 }
@@ -255,9 +297,17 @@ JSON으로 출력:
 
   let verdicts = null;
   try {
-    const fenced = evalR.text.match(/```json\n([\s\S]*?)\n```/);
+    // 전략 1: fenced JSON 파싱
+    const fenced = evalR.text.match(/```(?:json)?\n([\s\S]*?)\n```/);
     if (fenced) verdicts = JSON.parse(fenced[1]);
   } catch {}
+  if (!verdicts) {
+    try {
+      // 전략 2: raw JSON 파싱 (fence 없이 JSON만 응답한 경우)
+      const raw = evalR.text.match(/\{[\s\S]*"verdicts"[\s\S]*\}/);
+      if (raw) verdicts = JSON.parse(raw[0]);
+    } catch {}
+  }
 
   return { verdicts, rawText: evalR.text };
 }
@@ -340,11 +390,12 @@ export async function orchestrate(prompt) {
 export function getSubAgentPromptV2(emp, role, currentPhase) {
   let prompt = getSubAgentPrompt(emp);
 
+  // ─── Role 기반 Dev 스킬 주입 (개별 스킬 방식)
   const ROLE_SKILL_MAP = {
-    frontend: join(SKILLS_DIR, 'dev', 'reference', 'frontend.md'),
-    backend:  join(SKILLS_DIR, 'dev', 'reference', 'backend.md'),
-    data:     join(SKILLS_DIR, 'dev', 'reference', 'data.md'),
-    docs:     null,
+    frontend: join(SKILLS_DIR, 'dev-frontend', 'SKILL.md'),
+    backend:  join(SKILLS_DIR, 'dev-backend', 'SKILL.md'),
+    data:     join(SKILLS_DIR, 'dev-data', 'SKILL.md'),
+    docs:     null, // documentation 스킬은 별도 로딩
   };
 
   const skillPath = ROLE_SKILL_MAP[role];
@@ -353,9 +404,19 @@ export function getSubAgentPromptV2(emp, role, currentPhase) {
     prompt += `\n\n## Development Guide (${role})\n${skillContent}`;
   }
 
+  // ─── Phase 컨텍스트 + Quality Gate 기대치
   const PHASES = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
+  const PHASE_GATES = {
+    1: '통과 조건: 영향범위 분석 + 의존성 확인 + 엣지케이스 목록 완성',
+    2: '통과 조건: 코드 대조 확인 + 충돌검사 + 테스트전략 수립',
+    3: '통과 조건: 변경파일목록 + export/import 무결성 + 빌드에러 없음',
+    4: '통과 조건: 실행결과 증거 + 버그수정내역 + 엣지케이스 테스트 결과',
+    5: '통과 조건: 통합테스트 + 문서업데이트 + 워크플로우 동작확인',
+  };
   prompt += `\n\n## Current Phase: ${currentPhase} (${PHASES[currentPhase]})`;
   prompt += `\n당신은 지금 "${PHASES[currentPhase]}" 단계를 수행 중입니다.`;
+  prompt += `\n${PHASE_GATES[currentPhase]}`;
+  prompt += `\n\n주의: Quality Gate를 통과하려면 위 조건을 모두 충족해야 합니다. 부족한 부분이 있으면 재시도됩니다.`;
 
   return prompt;
 }
@@ -395,15 +456,27 @@ const stripped = stripSubtaskJSON(ctx.fullText);
 - Sub-agent의 worklog 직접 쓰기는 **bonus** 취급 (없어도 orchestrator가 보장)
 - 향후 고도화: `fs.appendFileSync` 사용 또는 lock file 도입
 
-### 🟡 MEDIUM: `SKILLS_DIR` 경로 주의
+### ✅ RESOLVED: `SKILLS_DIR` 경로 문제
 
-`getSubAgentPromptV2`에서 `SKILLS_DIR`을 사용할 때 경로 확인 필요:
+~~Hub-and-Spoke 구조에서 발생하던 경로 불일치~~ → **개별 스킬 방식(`dev-frontend/SKILL.md`)으로 전환하여 해결.**
+`loadActiveSkills()`가 `~/.cli-claw/skills/dev-frontend/SKILL.md`를 자동 로딩.
+
+### 🟡 MEDIUM: Verdict JSON 파서 내구성
+
+Plan Agent가 fenced JSON 없이 raw JSON으로 응답하면 파싱 실패 가능.
+
+**해결**: 이중 파싱 전략 적용완료 (위 코드 스케치 수정됨).
+1. fenced code block (``` ```json ... ``` ```) 우선 시도
+2. 실패 시 raw `{"verdicts": ...}` 파싱 폴백
+
+### 🟡 MEDIUM: `stripSubtaskJSON` / `parseSubtasks` 스케치에 없음
+
+위 v2 코드 스케치에서 `stripSubtaskJSON`과 `parseSubtasks`의 **구현체**가 빠져 있음.
+구현 시 반드시 현재 v1의 해당 함수들을 **그대로 복사**하거나 별도 util로 분리:
 
 ```javascript
-// src/config.js
-export const SKILLS_DIR = join(CLAW_HOME, 'skills');  // ~/.cli-claw/skills
+// 현재 v1의 구현을 그대로 유지 (agent.js가 import)
+export function stripSubtaskJSON(text) { ... }  // 기존 코드 복사
+export function parseSubtasks(text) { ... }      // 기존 코드 복사
 ```
 
-`dev/reference/frontend.md` 등은 `SKILLS_DIR` 하위에 있어야 런타임에서 로딩 가능.
-Phase 1에서 스킬을 `.agents/skills/dev/`에 만들면, 기존 번들 메커니즘으로 `~/.cli-claw/skills/dev/`에 복사되는지 확인 필요.
-```
