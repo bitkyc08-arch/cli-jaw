@@ -157,16 +157,27 @@ function parseVerdicts(text) {
 
 function initAgentPhases(subtasks) {
     return subtasks.map(st => {
-        const role = (st.role || 'custom').toLowerCase();  // 정규화: Frontend → frontend
-        const profile = PHASE_PROFILES[role] || [3];
+        const role = (st.role || 'custom').toLowerCase();
+        const fullProfile = PHASE_PROFILES[role] || [3];
+
+        // start_phase 지원: planning agent가 지정한 시작 phase부터
+        const startPhase = st.start_phase || fullProfile[0];
+        const profile = fullProfile.filter(p => p >= startPhase);
+        // profile이 비면 최소한 마지막 phase는 실행
+        const effectiveProfile = profile.length > 0 ? profile : [fullProfile[fullProfile.length - 1]];
+
+        if (startPhase > 1) {
+            console.log(`[claw:phase-skip] ${st.agent} (${role}): skipping to phase ${startPhase}`);
+        }
+
         return {
             agent: st.agent,
             task: st.task,
             role,
-            verification: st.verification || null,  // pass_criteria/fail_criteria 보존
-            phaseProfile: profile,
+            verification: st.verification || null,
+            phaseProfile: effectiveProfile,
             currentPhaseIdx: 0,
-            currentPhase: profile[0],
+            currentPhase: effectiveProfile[0],
             completed: false,
             history: [],
         };
@@ -198,7 +209,6 @@ ${prompt}
 - 인사, 잡담, 간단한 질문
 - 한 줄 대답으로 충분한 요청
 - 정보 확인, 상태 질문
-- 짧은 설명이나 의견 요청
 
 이 경우 subtasks를 빈 배열로 하고 direct_answer에 응답을 넣으세요:
 
@@ -210,19 +220,27 @@ ${prompt}
 \`\`\`
 
 ### 분배 필요 (subtasks 생성):
-- 코드 작성/수정/리팩토링
-- 여러 파일에 걸친 변경
-- 테스트 + 구현이 동시에 필요한 경우
 
-이 경우 아래 형식으로 계획을 세우세요:
+#### ⚠️ 에이전트 수 결정 원칙
+**필요한 최소한의 에이전트만 배정하세요:**
+- 단일 파일/영역 작업 → **1명**만
+- 프론트+백엔드 → **2명**
+- 대규모 멀티 영역 → 필요한 만큼 (보통 2~3명)
+- **5명 전원 투입은 대규모 프로젝트 초기 설계에만 해당**
+- 같은 파일을 여러 에이전트가 건드리지 않도록 주의
+
+#### ⚠️ 시작 Phase 결정
+작업 유형에 따라 **start_phase**를 지정하세요:
+- 신규 개발: start_phase = 1 (기획부터)
+- 리팩토링/수정: start_phase = 3 (개발부터)
+- 버그 수정/디버깅: start_phase = 4 (디버깅부터)
+- 검수/테스트: start_phase = 4 (디버깅부터)
+- 문서 작업: start_phase = 3 (개발부터)
 
 ## 출력 형식 (반드시 준수)
 1. 자연어로 계획을 설명하세요.
-2. **검증 기준을 반드시 포함**하세요. 각 subtask별로:
-   - ✅ 성공 기준 (어떻게 되면 통과인가)
-   - ❌ 실패 기준 (어떻게 되면 재시도인가)
-   - 파일 변경 범위 (어떤 파일들이 영향받는가)
-3. subtask JSON을 아래 형식으로 출력하세요:
+2. **검증 기준을 반드시 포함**하세요.
+3. subtask JSON:
 
 \`\`\`json
 {
@@ -231,6 +249,7 @@ ${prompt}
       "agent": "직원이름",
       "role": "frontend|backend|data|docs",
       "task": "구체적 지시",
+      "start_phase": 3,
       "verification": {
         "pass_criteria": "통과 기준 (1줄)",
         "fail_criteria": "실패 기준 (1줄)",

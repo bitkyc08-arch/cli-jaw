@@ -461,11 +461,12 @@ export function getSubAgentPromptV2(emp, role, currentPhase) {
     prompt += `\n\n## Current Phase: ${currentPhase} (${PHASES[currentPhase]})`;
     prompt += `\n당신은 지금 "${PHASES[currentPhase]}" 단계를 수행 중입니다.`;
     prompt += `\n${PHASE_GATES[currentPhase]}`;
-    prompt += `\n\n## 순차 실행`;
+    prompt += `\n\n## 순차 실행 + Phase Skip`;
     prompt += `\n에이전트는 한 명씩 순서대로 실행됩니다. 이전 에이전트의 작업 결과가 이미 파일에 반영되어 있습니다.`;
     prompt += `\n- worklog를 먼저 읽고 이전 에이전트가 뭘 했는지 파악하세요`;
     prompt += `\n- 이미 수정된 파일은 건드리지 마세요`;
     prompt += `\n- 당신의 담당 영역에만 집중하세요`;
+    prompt += `\n- 현재 Phase가 1이 아니라면, 이전 Phase는 이미 완료된 것입니다. 기획/검증을 다시 하지 마세요.`;
     prompt += `\n\n주의: Quality Gate를 통과하려면 위 조건을 모두 충족해야 합니다. 부족한 부분이 있으면 재시도됩니다.`;
 
     return prompt;

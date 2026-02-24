@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24T17:00 (server.js 843L / agent.js 427L / commands.js 647L / prompt.js 493L / public/ 19파일)
+> 마지막 검증: 2026-02-24T17:50 (server.js 844L / agent.js 427L / commands.js 647L / orchestrator.js 542L / prompt.js 499L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -21,11 +21,11 @@ cli-claw/
 │   ├── events.js             ← NDJSON 파싱 + logEventSummary + traceLog + pushTrace (185L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (647L)
 │   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush + 폴백 (427L)
-│   ├── orchestrator.js       ← Phase-based 오케스트레이션 v2 + triage + 순차실행 (523L)
+│   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + phase skip (542L)
 │   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
 │   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (382L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
-│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 v2 + 순차실행 + vision-click (498L)
+│   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + 순차실행 + phase skip (499L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)
