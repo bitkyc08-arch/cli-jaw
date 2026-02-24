@@ -11,6 +11,19 @@ const MAX_ROUNDS = 3;
 // ─── Phase 정의 ──────────────────────────────────────
 const PHASES = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
 
+// "이어서 해줘" 계열은 명시적인 짧은 명령만 continue intent로 취급
+const CONTINUE_PATTERNS = [
+    /^\/?continue$/i,
+    /^이어서(?:\s*해줘)?$/i,
+    /^계속(?:\s*해줘)?$/i,
+];
+
+export function isContinueIntent(text) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    return CONTINUE_PATTERNS.some(re => re.test(t));
+}
+
 const PHASE_PROFILES = {
     frontend: [1, 2, 3, 4, 5],
     backend: [1, 2, 3, 4, 5],

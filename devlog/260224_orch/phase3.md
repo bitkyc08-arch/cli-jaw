@@ -132,13 +132,47 @@ if (!getEmployees().length) seedDefaultEmployees();
 
 ## 파일 변경 요약
 
-| 파일                                        | 작업                                              |
-| ------------------------------------------- | ------------------------------------------------- |
-| `public/js/features/employees.js`           | [MODIFY] phase 뱃지 표시                          |
-| `public/js/ws.js`                           | [MODIFY] 새 이벤트 핸들링                         |
-| `src/orchestrator.js`                       | [MODIFY] `orchestrateContinue` 추가               |
-| `server.js` (루트)                          | [MODIFY] "이어서" API + continue감지 + reset seed |
-| `src/config.js` 또는 `bin/commands/init.js` | [MODIFY] 기본 서브에이전트 5명                    |
+| 파일                              | 작업                                                      |
+| --------------------------------- | --------------------------------------------------------- |
+| `public/js/features/employees.js` | [MODIFY] phase 뱃지 (`getAgentPhase` import)              |
+| `public/js/ws.js`                 | [MODIFY] 이벤트 핸들링 + `agentPhaseState` 추적           |
+| `src/orchestrator.js`             | [MODIFY] `orchestrateContinue` + `isContinueIntent` 추가  |
+| `server.js` (루트)                | [MODIFY] continue 라우팅 + `seedDefaultEmployees` + reset |
+
+---
+
+## 구현 노트 (리뷰 반영)
+
+### ✅ isContinueIntent — 엄격한 패턴 매칭
+
+기존 `/이어서|계속|continue/i` 광범위 regex → 명시적 짧은 명령만 매칭하도록 공용 함수 분리:
+
+```javascript
+// orchestrator.js
+const CONTINUE_PATTERNS = [
+    /^\/?continue$/i,
+    /^이어서(?:\s*해줘)?$/i,
+    /^계속(?:\s*해줘)?$/i,
+];
+export function isContinueIntent(text) { ... }
+```
+
+### ✅ Continue-before-Queue 라우팅
+
+WS 핸들러와 `/api/message`에서 `isContinueIntent()` 체크를 **큐 진입 전**에 배치.
+에이전트 실행 중 "이어서 해줘" 입력 시 큐에 넣지 않고 즉시 안내 메시지 반환.
+
+### ✅ seedDefaultEmployees 헬퍼
+
+`server.js`에 `seedDefaultEmployees({ reset })` 함수 추출:
+- `reset=false` (기본): employees 비어있을 때만 seed
+- `reset=true`: 전체 삭제 후 재생성 (`POST /api/employees/reset`)
+- `DEFAULT_EMPLOYEES` 모듈 레벨 상수로 통합 (중복 제거)
+
+### ✅ agentPhaseState 실시간 추적
+
+`ws.js`에서 `agent_status` 이벤트의 `phase/phaseLabel`을 `agentPhaseState` 맵에 저장.
+`getAgentPhase(agentId)` export → `employees.js`가 badge 렌더 시 참조.
 
 ---
 
@@ -150,34 +184,17 @@ if (!getEmployees().length) seedDefaultEmployees();
 
 **해결**: Phase 1에서 `worklog.js`에 구현 완료. fallback도 Phase 1(보수적 재시작)로 수정됨.
 
-```javascript
-export function parseWorklogPending(content) {
-  const lines = content.split('\n');
-  const pending = [];
-  let inMatrix = false;
-  for (const line of lines) {
-    if (line.includes('## Agent Status Matrix')) { inMatrix = true; continue; }
-    if (inMatrix && line.startsWith('## ')) break;
-    if (inMatrix && line.includes('⏳')) {
-      const cols = line.split('|').map(c => c.trim()).filter(Boolean);
-      if (cols.length >= 3) {
-        const phaseMatch = cols[2].match(/Phase (\d+)/);
-        pending.push({ agent: cols[0], role: cols[1], currentPhase: phaseMatch ? +phaseMatch[1] : 1 });  // fallback: Phase 1 재시작
-      }
-    }
-  }
-  return pending;
-}
-```
+### ✅ RESOLVED: `server.js` 경로
 
-### 🟡 MEDIUM: `server.js` 경로 주의
-
-파일 변경 요약에 `src/server.js`로 표기되어 있었지만 실제 서버 파일은 **루트 `server.js`**.
+파일 변경 요약에 `src/server.js`로 표기되어 있었지만 실제 서버 파일은 **루트 `server.js`**. 수정 완료.
 
 ### ✅ RESOLVED: WS 이벤트 프런트엔드 처리
 
-~~새 이벤트 (`worklog_created`, `round_start`, `round_done`)를 `ws.js`에서 핸들링 추가 필요.~~
-
-**해결**: ws.js에 핸들러 추가 완료. `agentPhases` 키 지원, `worklog_created` 표시, `action='next'` 구분.
+ws.js에 핸들러 추가 완료. `agentPhases` 키 지원, `worklog_created` 표시, `action='next'` 구분.
 `agentPhaseState`로 badge 데이터도 실시간 추적.
 
+### ✅ RESOLVED: Continue 오탐 방지
+
+~~`/이어서|계속|continue/i` 광범위 regex로 일반 문장도 resume 트리거.~~
+
+**해결**: `isContinueIntent()` 엄격 패턴 + continue-before-queue 라우팅으로 해결.

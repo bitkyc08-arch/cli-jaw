@@ -188,17 +188,31 @@ wss.on('connection', (ws) => {
         try {
             const msg = JSON.parse(raw.toString());
             if (msg.type === 'send_message' && msg.text) {
-                console.log(`[ws:in] ${msg.text.slice(0, 80)}`);
-                if (activeProcess) {
-                    enqueueMessage(msg.text, 'cli');
-                } else {
-                    insertMessage.run('user', msg.text, 'cli', '');
-                    broadcast('new_message', { role: 'user', content: msg.text, source: 'cli' });
-                    if (/이어서|계속|continue/i.test(msg.text)) {
-                        orchestrateContinue();
+                const text = String(msg.text || '').trim();
+                if (!text) return;
+                console.log(`[ws:in] ${text.slice(0, 80)}`);
+
+                // Continue intent는 큐에 넣지 않고 명시적으로 처리
+                if (isContinueIntent(text)) {
+                    if (activeProcess) {
+                        broadcast('agent_done', {
+                            text: '⚠️ 현재 작업이 진행 중입니다. 완료 후 "이어서 해줘"를 다시 요청하세요.',
+                            error: true,
+                        });
                     } else {
-                        orchestrate(msg.text);
+                        insertMessage.run('user', text, 'cli', '');
+                        broadcast('new_message', { role: 'user', content: text, source: 'cli' });
+                        orchestrateContinue();
                     }
+                    return;
+                }
+
+                if (activeProcess) {
+                    enqueueMessage(text, 'cli');
+                } else {
+                    insertMessage.run('user', text, 'cli', '');
+                    broadcast('new_message', { role: 'user', content: text, source: 'cli' });
+                    orchestrate(text);
                 }
             }
             if (msg.type === 'stop') killActiveAgent('ws');
@@ -256,7 +270,7 @@ function applySettingsPatch(rawPatch = {}, { restartTelegram = false } = {}) {
     return settings;
 }
 
-function seedDefaultEmployees({ reset = false } = {}) {
+function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     const existing = getEmployees.all();
     if (reset) {
         for (const emp of existing) deleteEmployee.run(emp.id);
@@ -268,6 +282,7 @@ function seedDefaultEmployees({ reset = false } = {}) {
     for (const emp of DEFAULT_EMPLOYEES) {
         insertEmployee.run(crypto.randomUUID(), emp.name, cli, 'default', emp.role);
     }
+    if (notify) broadcast('agent_updated', {});
     regenerateB();
     return { seeded: DEFAULT_EMPLOYEES.length, cli, skipped: false };
 }
@@ -297,7 +312,7 @@ function makeWebCommandCtx() {
         searchMemory: (q) => memory.search(q),
         getBrowserStatus: async () => browser.getBrowserStatus(settings.browser?.cdpPort || 9240),
         getBrowserTabs: async () => ({ tabs: await browser.listTabs(settings.browser?.cdpPort || 9240) }),
-        resetEmployees: async () => seedDefaultEmployees({ reset: true }),
+        resetEmployees: async () => seedDefaultEmployees({ reset: true, notify: true }),
         getPrompt: () => {
             const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
             return { content: a2 };
@@ -353,15 +368,22 @@ app.get('/api/commands', (req, res) => {
 app.post('/api/message', (req, res) => {
     const { prompt } = req.body;
     if (!prompt?.trim()) return res.status(400).json({ error: 'prompt required' });
+    const trimmed = prompt.trim();
+
+    // Continue intent는 큐에 넣지 않고 전용 경로로 처리
+    if (isContinueIntent(trimmed)) {
+        if (activeProcess) {
+            return res.status(409).json({ error: 'agent already running' });
+        }
+        orchestrateContinue();
+        return res.json({ ok: true, continued: true });
+    }
+
     if (activeProcess) {
-        enqueueMessage(prompt.trim(), 'web');
+        enqueueMessage(trimmed, 'web');
         return res.json({ ok: true, queued: true, pending: messageQueue.length });
     }
-    if (/이어서|계속|continue/i.test(prompt.trim())) {
-        orchestrateContinue();
-    } else {
-        orchestrate(prompt.trim());
-    }
+    orchestrate(trimmed);
     res.json({ ok: true });
 });
 
@@ -608,15 +630,8 @@ app.delete('/api/employees/:id', (req, res) => {
 
 // Employee reset — delete all + re-seed 5 defaults
 app.post('/api/employees/reset', (req, res) => {
-    const all = getEmployees.all();
-    for (const emp of all) deleteEmployee.run(emp.id);
-    const cli = settings.cli;
-    for (const emp of DEFAULT_EMPLOYEES) {
-        insertEmployee.run(crypto.randomUUID(), emp.name, cli, 'default', emp.role);
-    }
-    broadcast('agent_updated', {});
-    regenerateB();
-    res.json({ ok: true, seeded: DEFAULT_EMPLOYEES.length });
+    const { seeded } = seedDefaultEmployees({ reset: true, notify: true });
+    res.json({ ok: true, seeded });
 });
 
 // Heartbeat API
@@ -809,11 +824,8 @@ server.listen(PORT, () => {
     startHeartbeat();
 
     // ─── Seed default employees if none exist ────────
-    if (getEmployees.all().length === 0) {
-        const cli = settings.cli;
-        for (const emp of DEFAULT_EMPLOYEES) {
-            insertEmployee.run(crypto.randomUUID(), emp.name, cli, 'default', emp.role);
-        }
-        console.log(`  Agents: seeded ${DEFAULT_EMPLOYEES.length} default employees (CLI: ${cli})`);
+    const seeded = seedDefaultEmployees();
+    if (seeded.seeded > 0) {
+        console.log(`  Agents: seeded ${seeded.seeded} default employees (CLI: ${seeded.cli})`);
     }
 });
