@@ -87,6 +87,7 @@
                     <option value="codex">Codex</option>
                     <option value="gemini">Gemini</option>
                     <option value="opencode">OpenCode</option>
+                    <option value="copilot">Copilot</option>
                 </select>
             </div>
 
@@ -273,6 +274,36 @@
                 </div>
             </div>
 
+            <div class="settings-group">
+                <h4>💙 Copilot</h4>
+                <div class="settings-row">
+                    <label>Model</label>
+                    <select id="modelCopilot">
+                        <option selected>claude-sonnet-4.6</option>
+                        <option>claude-opus-4.6</option>
+                        <option>claude-haiku-4.5</option>
+                        <option>gpt-5.3-codex</option>
+                        <option>gpt-5.2-codex</option>
+                        <option>gpt-5.1-codex</option>
+                        <option>gpt-4.1</option>
+                        <option>gpt-5-mini</option>
+                        <option>gemini-3-pro-preview</option>
+                        <option value="__custom__">✏️ 직접 입력...</option>
+                    </select>
+                    <input type="text" id="customModelCopilot" class="custom-model-input" placeholder="model ID 입력"
+                        style="display:none">
+                </div>
+                <div class="settings-row sub-row">
+                    <label>Effort</label>
+                    <select id="effortCopilot">
+                        <option value="" selected>— none</option>
+                        <option value="low">🟢 low</option>
+                        <option value="medium">🟡 medium</option>
+                        <option value="high">🔴 high</option>
+                    </select>
+                </div>
+            </div>
+
             <!-- Fallback Order -->
             <div class="settings-group">
                 <h4>⚡ Fallback</h4>
@@ -385,6 +416,7 @@
                         <option>codex</option>
                         <option>gemini</option>
                         <option>opencode</option>
+                        <option>copilot</option>
                     </select>
                 </div>
                 <div class="settings-row"><label>Model</label>
