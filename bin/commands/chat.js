@@ -121,7 +121,7 @@ function makeCliCommandCtx() {
         getBrowserTabs: () => apiJson('/api/browser/tabs'),
         resetEmployees: () => apiJson('/api/employees/reset', { method: 'POST' }),
         getPrompt: () => apiJson('/api/prompt'),
-        resetSkills: async () => runSkillResetLocal(),
+        resetSkills: () => apiJson('/api/skills/reset', { method: 'POST' }).catch(() => { }),
     };
 }
 
@@ -195,10 +195,10 @@ if (values.simple) {
     console.log(`  ${c.dim}directory:${c.reset}  ${c.cyan}${dir}${c.reset}`);
     console.log(`  ${c.dim}server:${c.reset}    ${c.green}\u25CF${c.reset} localhost:${values.port}`);
     console.log('');
-    console.log(`  ${c.dim}/quit to exit, /clear to clear screen, /reset confirm to wipe${c.reset}`);
+    console.log(`  ${c.dim}/quit to exit, /clear to clear screen, /reset confirm to factory reset${c.reset}`);
     console.log(`  ${c.dim}/file <path> to attach${c.reset}`);
 
-    const footer = `  ${c.dim}${accent}${label}${c.reset}${c.dim}  |  /quit  |  /clear  |  /reset${c.reset}`;
+    const footer = `  ${c.dim}${accent}${label}${c.reset}${c.dim}  |  /quit  |  /clear${c.reset}`;
     const promptPrefix = `  ${accent}\u276F${c.reset} `;
 
     // ─── Scroll region: fixed footer at bottom ──

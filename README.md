@@ -13,8 +13,8 @@ cli-claw serve
 ## Features
 
 - 🤖 **Multi-CLI**: Claude Code, Codex, Gemini CLI, OpenCode 통합
-- 👥 **Sub Agents**: 역할별 에이전트 분배 (프론트, 백엔드, QA 등)
-- 📦 **Skills**: 플러그인 스킬 시스템 (2×3 분류: Active / Reference, DEDUP_EXCLUDED 좌비 차단, 100개 내장)
+- 👥 **Sub Agents**: 역할별 에이전트 분배 (프론트, 백엔드, QA 등) + Phase-based 오케스트레이션 v2
+- 📦 **Skills**: 플러그인 스킬 시스템 (2×3 분류: Active / Reference, 100개 내장)
 - 🧠 **Memory**: 자동 대화 요약 + 장기 기억
 - 💓 **Heartbeat**: 주기적 자동 실행
 - 📨 **Telegram**: 텔레그램 봇 연동 + 슬래시 커맨드 디스패치
@@ -30,6 +30,7 @@ cli-claw chat                     # 터미널 채팅 TUI
 cli-claw init                     # 초기화 마법사
 cli-claw doctor                   # 진단 (11개 체크)
 cli-claw status                   # 서버 상태 확인
+cli-claw employee reset            # 직원 기본값 재설정 (5명)
 ```
 
 ### MCP 관리
@@ -131,21 +132,22 @@ cli-claw chat   →  Terminal UI (raw stdin, footer, queue, 832L)
 ```
 
 ```
-server.js            API routes + WebSocket hub (702L)
-src/agent.js         CLI spawn + stream parser (409L)
-src/orchestrator.js  Multi-agent task distribution (130L)
-src/config.js        Settings + defaults (167L)
-src/prompt.js        System prompt + sub-agent + vision-click (413L)
-src/commands.js      Slash command registry + dispatcher (573L)
-src/telegram.js      Telegram bot bridge (358L)
+server.js            API routes + WebSocket hub (832L)
+src/agent.js         CLI spawn + stream parser (427L)
+src/orchestrator.js  Orchestration v2 + isContinueIntent (407L)
+src/worklog.js       Worklog CRUD + phase matrix (153L)
+src/config.js        Settings + defaults (169L)
+src/prompt.js        System prompt + sub-agent v2 + vision-click (493L)
+src/commands.js      Slash command registry + dispatcher (647L)
+src/telegram.js      Telegram bot bridge (382L)
 src/events.js        NDJSON parsing + logEventSummary + trace (185L)
-src/memory.js        Memory: MEMORY.md(1500자) + session(10000자, threshold/2 주입)
-src/browser/         Chrome CDP control (actions + connection + vision)
-lib/mcp-sync.js      MCP config sync (4 CLI targets, DEDUP_EXCLUDED, 481L)
-public/              Web UI (ES Modules, 19 files, ~2685L)
+src/memory.js        Memory: MEMORY.md + session
+lib/mcp-sync.js      MCP config sync (4 CLI targets)
+public/              Web UI (ES Modules, 19 files)
 ├── index.html       HTML skeleton (no inline JS/CSS)
-├── css/             5 stylesheets (variables, layout, chat, sidebar, modals)
+├── css/             5 stylesheets
 └── js/              13 modules (state, ws, ui, render + features/)
+bin/cli-claw.js      10개 서브커맨드 (serve/chat/init/doctor/status/mcp/skill/employee/memory/browser)
 ```
 
 ## MCP Auto-Install
@@ -165,6 +167,7 @@ public/              Web UI (ES Modules, 19 files, ~2685L)
 | Category  | Endpoints                                                            |
 | --------- | -------------------------------------------------------------------- |
 | Core      | `GET /api/session`, `POST /api/message`, `POST /api/stop`            |
+| Orchestr  | `POST /api/orchestrate/continue`, `POST /api/employees/reset`        |
 | Commands  | `POST /api/command`, `GET /api/commands?interface=`                  |
 | Settings  | `GET/PUT /api/settings`, `GET/PUT /api/prompt`                       |
 | Memory    | `GET/POST /api/memory`, `GET /api/claw-memory/search`                |

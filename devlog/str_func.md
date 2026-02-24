@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24T15:20 (server.js 757L / agent.js 425L / commands.js 616L / prompt.js 443L / public/ 19파일 ~2982L)
+> 마지막 검증: 2026-02-24T17:00 (server.js 843L / agent.js 427L / commands.js 647L / prompt.js 493L / public/ 19파일)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -10,7 +10,7 @@
 
 ```text
 cli-claw/
-├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (757L)
+├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (843L)
 ├── lib/
 │   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (494L)
 │   └── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
@@ -19,12 +19,13 @@ cli-claw/
 │   ├── db.js                 ← SQLite 스키마 + prepared statements + trace (84L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (18L)
 │   ├── events.js             ← NDJSON 파싱 + logEventSummary + traceLog + pushTrace (185L)
-│   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (616L)
-│   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush + 폴백 (425L)
-│   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (130L)
-│   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (381L)
+│   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (647L)
+│   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush + 폴백 (427L)
+│   ├── orchestrator.js       ← Phase-based 오케스트레이션 v2 + isContinueIntent (407L)
+│   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
+│   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (382L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
-│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 + vision-click + telegram-send 주입 (443L)
+│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 v2 + vision-click + telegram-send 주입 (493L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)
@@ -36,7 +37,7 @@ cli-claw/
 │   ├── css/                  ← 5 files (964L)
 │   └── js/                   ← 13 files (1597L)
 ├── bin/
-│   ├── cli-claw.js           ← 9개 서브커맨드 라우팅
+│   ├── cli-claw.js           ← 11개 서브커맨드 라우팅 (serve/chat/init/doctor/status/mcp/skill/employee/reset/memory/browser)
 │   ├── postinstall.js        ← npm install 후 8단계 자동 설정 (138L)
 │   └── commands/
 │       ├── serve.js          ← 서버 시작 (--port/--host/--open, .env 자동감지)
@@ -46,6 +47,8 @@ cli-claw/
 │       ├── status.js         ← 서버 상태 (--json)
 │       ├── mcp.js            ← MCP 관리 (install/sync/list/reset)
 │       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset + installFromRef)
+│       ├── employee.js       ← 직원 관리 (reset, REST API 호출, 67L)
+│       ├── reset.js          ← 전체 초기화 (MCP/스킬/직원/세션, y/N 확인)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
 │       └── browser.js        ← 브라우저 CLI (17개 서브커맨드, +vision-click, 239L)
 ├── skills_ref/               ← 번들 스킬 (101개: 기존 56 + Phase 0 확장 46개 + 1, registry.json 102항목)
@@ -151,7 +154,7 @@ graph LR
 | --------------------- | ------------------------------------------------- | ---- |
 | `260224_skill/`       | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2) | 🟡    |
 | `260224_vision/`      | Vision Click P1✅ P2✅ — P3 멀티프로바이더 미구현   | 🟡    |
-| `260224_orch/`        | 오케스트레이션 워크플로우 v2 + Fallback 설계      | 🟡    |
+| `260224_orch/`        | 오케스트레이션 v2 P0✅ P1✅ P2✅ P3✅ P4✅ P5✅         | ✅    |
 | `269999_메모리 개선/` | 메모리 고도화 (flush✅ + vector DB 📋 후순위)       | 🔜    |
 
 ---

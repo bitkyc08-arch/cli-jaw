@@ -687,6 +687,18 @@ app.get('/api/skills/:id', (req, res) => {
     res.type('text/markdown').send(fs.readFileSync(path, 'utf8'));
 });
 
+// ─── Skills Reset API ────────────────────────────────
+app.post('/api/skills/reset', (req, res) => {
+    try {
+        copyDefaultSkills();
+        ensureSkillsSymlinks(settings.workingDir);
+        regenerateB();
+        res.json({ ok: true });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 // ─── Memory API (Phase A) ────────────────────────────
 
 app.get('/api/claw-memory/search', (req, res) => {
