@@ -25,10 +25,10 @@ export const messageQueue = [];
 export function killActiveAgent(reason = 'user') {
     if (!activeProcess) return false;
     console.log(`[claw:kill] reason=${reason}`);
-    try { activeProcess.kill('SIGTERM'); } catch { }
+    try { activeProcess.kill('SIGTERM'); } catch (e) { console.warn('[agent:kill] SIGTERM failed', { pid: activeProcess?.pid, error: e.message }); }
     const proc = activeProcess;
     setTimeout(() => {
-        try { if (proc && !proc.killed) proc.kill('SIGKILL'); } catch { }
+        try { if (proc && !proc.killed) proc.kill('SIGKILL'); } catch (e) { console.warn('[agent:kill] SIGKILL failed', { pid: proc?.pid, error: e.message }); }
     }, 2000);
     return true;
 }

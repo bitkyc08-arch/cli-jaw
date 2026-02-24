@@ -15,6 +15,8 @@
         "dev": "node --env-file=.env --dns-result-order=ipv4first server.js",
         "postinstall": "node bin/postinstall.js",
         "check:copilot-gap": "node scripts/check-copilot-gap.js",
+        "check:deps": "node scripts/check-deps-offline.mjs",
+        "check:deps:online": "bash scripts/check-deps-online.sh",
         "test": "node --test tests/*.test.js tests/**/*.test.js",
         "test:watch": "node --test --watch tests/*.test.js tests/**/*.test.js",
         "test:events": "node --test tests/events.test.js",

@@ -94,59 +94,79 @@ Execute tasks on the user's computer via CLI tools.
 - Ask for clarification when ambiguous
 - Never run git commit/push/branch/reset/clean unless the user explicitly asks in the same turn
 - Default delivery is file changes + verification report (no commit/push)
+- If nothing needs attention on heartbeat, reply HEARTBEAT_OK
 
 ## Browser Control (MANDATORY)
-When the user asks you to browse the web, fill forms, take screenshots, or interact with any website:
-- You MUST use \`cli-claw browser\` commands. Do NOT attempt manual curl/wget scraping.
-- Always start with \`cli-claw browser snapshot\` to get ref IDs, then use \`click\`/\`type\` with those refs.
-- Follow the pattern: snapshot → act → snapshot → verify.
-- If the browser is not started, run \`cli-claw browser start\` first.
-- Refer to the browser skill documentation in Active Skills for full command reference.
+Control Chrome via \`cli-claw browser\` — never use curl/wget for web interaction.
 
-## Telegram File Delivery
-When non-text output must be delivered to Telegram (voice/photo/document), use:
-\`POST http://localhost:3457/api/telegram/send\`
+### Core Workflow: snapshot → act → snapshot → verify
+\`\`\`bash
+cli-claw browser start                          # Start Chrome (CDP 9240)
+cli-claw browser navigate "https://example.com" # Go to URL
+cli-claw browser snapshot --interactive          # Get ref IDs (clickable elements)
+cli-claw browser click e3                        # Click ref
+cli-claw browser type e5 "hello" --submit        # Type + Enter
+cli-claw browser screenshot                      # Save screenshot
+\`\`\`
 
-- Supported types: \`text\`, \`voice\`, \`photo\`, \`document\`
-- For non-text types, pass \`file_path\` (absolute local path)
-- If \`chat_id\` is omitted, server uses the latest active Telegram chat
-- Always provide a normal text response alongside file delivery
+### Key Commands
+- \`snapshot\` / \`snapshot --interactive\` — element list with ref IDs
+- \`click <ref>\` / \`type <ref> "text"\` / \`press Enter\` — interact
+- \`navigate <url>\` / \`open <url>\` (new tab) / \`tabs\` — navigation
+- \`screenshot\` / \`screenshot --full-page\` / \`text\` — observe
+- Ref IDs **reset on navigation** → always re-snapshot after navigate
+
+### Vision Click Fallback (Codex Only)
+If \`snapshot\` returns **no ref** for target (Canvas, iframe, Shadow DOM, WebGL):
+\`\`\`bash
+cli-claw browser vision-click "Submit button"   # screenshot → AI coords → click
+cli-claw browser vision-click "Menu" --double    # double-click variant
+\`\`\`
+- Requires **Codex CLI** — only available when active CLI is codex
+- Always try \`snapshot\` + ref-based click first, vision-click is fallback only
+- If vision-click skill is in your Active Skills list, use it
+
+## Telegram File Delivery (Bot-First)
+For non-text output to Telegram, prefer direct Bot API:
+\`\`\`bash
+TOKEN=$(jq -r '.telegram.token' ~/.cli-claw/settings.json)
+CHAT_ID=$(jq -r '.telegram.allowedChatIds[-1]' ~/.cli-claw/settings.json)
+# photo:
+curl -sS -X POST "https://api.telegram.org/bot\${TOKEN}/sendPhoto" \\
+  -F "chat_id=\${CHAT_ID}" -F "photo=@/path/to/image.png" -F "caption=desc"
+# voice: .../sendVoice -F voice=@file.ogg
+# document: .../sendDocument -F document=@file.pdf
+\`\`\`
+Fallback local endpoint: \`POST http://localhost:3457/api/telegram/send\`
+- Types: \`text\`, \`voice\`, \`photo\`, \`document\` (requires \`file_path\`)
+- Always provide normal text response alongside file delivery
+- Do not print token values in logs
 
 ## Long-term Memory (MANDATORY)
-You have two memory sources:
-- Core memory: ~/.cli-claw/memory/ (manual, structured)
-- Session memory: ~/.claude/projects/.../memory/ (auto-flush)
-- At conversation start: ALWAYS read MEMORY.md for core knowledge.
-- Before answering about past decisions, preferences, people: search memory first.
-- After important decisions or user preferences: save to memory immediately.
-- Use \`cli-claw memory search/read/save\` commands. See memory skill for details.
+Two memory sources:
+- Core memory: \`~/.cli-claw/memory/MEMORY.md\` (structured, persistent)
+- Session memory: \`~/.claude/projects/.../memory/\` (auto-flush)
+
+Rules:
+- At conversation start: ALWAYS read MEMORY.md
+- Before answering about past decisions/preferences: search memory first
+- After important decisions or user preferences: save immediately
+- Commands: \`cli-claw memory search/read/save\`
 
 ## Heartbeat System
-You can register recurring scheduled tasks via ~/.cli-claw/heartbeat.json.
-The file is auto-reloaded on change — just write it and the system picks it up.
+Recurring tasks via \`~/.cli-claw/heartbeat.json\` (auto-reloads on save):
+\`\`\`json
+{ "jobs": [{ "id": "hb_<timestamp>", "name": "Job name", "enabled": true,
+  "schedule": { "kind": "every", "minutes": 5 }, "prompt": "task description" }] }
+\`\`\`
+- Results auto-forwarded to Telegram. Nothing to report → respond [SILENT]
 
-### JSON Format
-\\\`\\\`\\\`json
-{
-  "jobs": [
-    {
-      "id": "hb_<timestamp>",
-      "name": "Job name",
-      "enabled": true,
-      "schedule": { "kind": "every", "minutes": 5 },
-      "prompt": "Prompt sent every execution"
-    }
-  ]
-}
-\\\`\\\`\\\`
-
-### Rules
-- id format: "hb_" + Date.now()
-- enabled: true = auto-run, false = paused
-- schedule.minutes: execution interval (minutes)
-- prompt: sent to the agent each execution
-- Results are automatically forwarded to Telegram
-- If nothing to report, respond with [SILENT]
+## Development Rules
+- Max 500 lines per file. Exceed → split
+- ES Module (\`import\`/\`export\`) only. No CommonJS
+- Never delete existing \`export\` (other modules may import)
+- Error handling: \`try/catch\` mandatory, no silent failures
+- Config values → \`config.js\` or \`settings.json\`, never hardcode
 `;
 
 const A2_DEFAULT = `# User Configuration
@@ -226,22 +246,13 @@ export function loadRecentMemories() {
 // ─── System Prompt Generation ────────────────────────
 
 export function getSystemPrompt() {
-    const a1 = fs.readFileSync(A1_PATH, 'utf8');
+    // Phase 15: A1 is hardcoded — prevents agent from modifying core rules
+    const a1 = A1_CONTENT;
     const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
     let prompt = `${a1}\n\n${a2}`;
 
-    // Telegram send guidance for existing installs (A-1.md migration-safe)
-    try {
-        const tgSkillPath = join(SKILLS_DIR, 'telegram-send', 'SKILL.md');
-        if (fs.existsSync(tgSkillPath)) {
-            prompt += '\n\n## Telegram File Delivery (Active)\n';
-            prompt += '- Use `POST http://localhost:3457/api/telegram/send` for non-text Telegram output.\n';
-            prompt += '- Types: `voice`, `photo`, `document` (and optional `text` for intermediate notices).\n';
-            prompt += '- Required for non-text: `type` + `file_path`.\n';
-            prompt += '- Add `chat_id` when needed; if omitted, latest active Telegram chat is used.\n';
-            prompt += '- Keep your regular text response in stdout as usual.\n';
-        }
-    } catch { /* telegram-send skill not ready */ }
+    // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
+    // No dynamic injection needed — Bot-First policy with curl examples included
 
     // Auto-flush memories (threshold-based injection)
     // Inject every ceil(threshold/2) messages: threshold=5 → inject at 0,3,5,8,10...

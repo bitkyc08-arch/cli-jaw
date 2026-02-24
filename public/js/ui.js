@@ -92,7 +92,7 @@ export function addMessage(role, text) {
     const container = document.getElementById('chatMessages');
     const div = document.createElement('div');
     div.className = `msg msg-${role}`;
-    const rendered = role === 'agent' ? renderMarkdown(text) : escapeHtml(text);
+    const rendered = renderMarkdown(text);
     div.innerHTML = `<div class="msg-label">${role === 'user' ? t('msg.you') : getAppName()}</div><div class="msg-content">${rendered}</div>`;
     container.appendChild(div);
     scrollToBottom();

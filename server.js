@@ -165,7 +165,7 @@ function readGeminiAccount() {
             const payload = JSON.parse(Buffer.from(creds.id_token.split('.')[1], 'base64url').toString());
             return { account: { email: payload.email ?? null }, windows: [] };
         }
-    } catch { }
+    } catch { /* expected: gemini creds may not exist */ }
     return null;
 }
 
@@ -220,7 +220,7 @@ wss.on('connection', (ws) => {
                 }
             }
             if (msg.type === 'stop') killActiveAgent('ws');
-        } catch { }
+        } catch (e) { console.warn('[ws:parse] message parse failed', { preview: String(raw).slice(0, 80) }); }
     });
 });
 

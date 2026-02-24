@@ -204,7 +204,7 @@ export function initTelegram() {
     if (telegramBot) {
         const old = telegramBot;
         telegramBot = null;
-        try { old.stop(); } catch { }
+        try { old.stop(); } catch (e) { console.warn('[telegram:stop] bot stop failed', { error: e.message }); }
     }
     const envToken = process.env.TELEGRAM_TOKEN;
     if (envToken) settings.telegram.token = envToken;

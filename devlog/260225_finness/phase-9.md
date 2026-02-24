@@ -1,6 +1,6 @@
 ---
 created: 2026-02-25
-status: planning
+status: in-progress
 tags: [cli-claw, finness, phase-9, backend, hardening, dependency, testing]
 ---
 # Phase 9: 백엔드 하드닝 실행 설계서 (프런트 제외)
@@ -8,6 +8,15 @@ tags: [cli-claw, finness, phase-9, backend, hardening, dependency, testing]
 > 목표: Phase 8의 감사 결과를 실제 구현으로 전환한다.
 > 범위: 백엔드 보안 입력 검증, API 계약 통일, 예외 처리 일관화, 테스트 확장, 의존성/정적분석 게이트
 > 제외: 프런트 UI/스타일/컴포넌트 변경
+>
+> **서브 문서:**
+> - [phase-9.1.md](./phase-9.1.md) — 보안 입력 검증 (WS1)
+> - [phase-9.2.md](./phase-9.2.md) — API 응답/에러 계약 (WS2)
+> - [phase-9.3.md](./phase-9.3.md) — server.js 라우트 분리 (WS3)
+> - [phase-9.4.md](./phase-9.4.md) — 테스트 확장 (WS4)
+> - [phase-9.5.md](./phase-9.5.md) — 커맨드 통합 (WS5)
+> - [phase-9.6.md](./phase-9.6.md) — catch 정책 (WS7, Phase 8.4 기반)
+> - [phase-9.7.md](./phase-9.7.md) — 의존성 검증 게이트 (WS8, Phase 8.5 기반)
 
 ---
 
@@ -526,6 +535,9 @@ semgrep --baseline-commit origin/main --json --json-output .artifacts/semgrep-ba
 - `tests/unit/orchestrator-triage.test.js`
 - `tests/unit/agent-args.test.js`
 - `tests/unit/settings-merge.test.js`
+- `tests/unit/deps-check.test.js`
+- `devlog/260225_finness/phase-9.6.md`
+- `devlog/260225_finness/phase-9.7.md`
 - `devlog/260225_finness/static-analysis-baseline.md`
 
 ### 10.3 영향 파일 (간접)

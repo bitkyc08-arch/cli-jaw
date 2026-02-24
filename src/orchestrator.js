@@ -97,11 +97,11 @@ export function parseSubtasks(text) {
     if (!text) return null;
     const fenced = text.match(/```json\n([\s\S]*?)\n```/);
     if (fenced) {
-        try { return JSON.parse(fenced[1]).subtasks || null; } catch { }
+        try { return JSON.parse(fenced[1]).subtasks || null; } catch (e) { console.debug('[orchestrator:subtask] fenced JSON parse failed', { preview: String(fenced[1]).slice(0, 80) }); }
     }
     const raw = text.match(/(\{[\s\S]*"subtasks"\s*:\s*\[[\s\S]*\]\s*\})/);
     if (raw) {
-        try { return JSON.parse(raw[1]).subtasks || null; } catch { }
+        try { return JSON.parse(raw[1]).subtasks || null; } catch (e) { console.debug('[orchestrator:subtask] raw JSON parse failed', { preview: String(raw[1]).slice(0, 80) }); }
     }
     return null;
 }
@@ -116,7 +116,7 @@ export function parseDirectAnswer(text) {
             if (obj.direct_answer && (!obj.subtasks || obj.subtasks.length === 0)) {
                 return obj.direct_answer;
             }
-        } catch { }
+        } catch { /* expected: fenced JSON may not contain direct_answer */ }
     }
     // Raw JSON
     const raw = text.match(/(\{[\s\S]*"direct_answer"\s*:[\s\S]*\})/);
@@ -126,7 +126,7 @@ export function parseDirectAnswer(text) {
             if (obj.direct_answer && (!obj.subtasks || obj.subtasks.length === 0)) {
                 return obj.direct_answer;
             }
-        } catch { }
+        } catch { /* expected: raw JSON may not contain direct_answer */ }
     }
     return null;
 }
@@ -145,11 +145,11 @@ function parseVerdicts(text) {
     try {
         const fenced = text.match(/```(?:json)?\n([\s\S]*?)\n```/);
         if (fenced) return JSON.parse(fenced[1]);
-    } catch { }
+    } catch { /* expected: fenced JSON may not exist or be malformed */ }
     try {
         const raw = text.match(/\{[\s\S]*"verdicts"[\s\S]*\}/);
         if (raw) return JSON.parse(raw[0]);
-    } catch { }
+    } catch { /* expected: raw JSON may not exist or be malformed */ }
     return null;
 }
 
@@ -380,7 +380,7 @@ ${priorSummary}
                         console.log(`[claw:phase-skip] ${ap.agent} jumped to phase ${ap.currentPhase} (completed: ${pc.phases_completed})`);
                     }
                 }
-            } catch { }
+            } catch (e) { console.debug('[orchestrator:phases] JSON parse failed'); }
         }
 
         results.push(result);
