@@ -7,7 +7,7 @@ import { broadcast, addBroadcastListener, removeBroadcastListener } from '../cor
 import { settings, detectAllCli, APP_VERSION } from '../core/config.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { insertMessage, getSession, updateSession, clearMessages } from '../core/db.js';
-import { orchestrate, orchestrateContinue, isContinueIntent } from './orchestrator/pipeline.js';
+import { orchestrate, orchestrateContinue, isContinueIntent } from '../orchestrator/pipeline.js';
 import {
     activeProcess, killActiveAgent, waitForProcessEnd,
     saveUpload, buildMediaPrompt, messageQueue,
