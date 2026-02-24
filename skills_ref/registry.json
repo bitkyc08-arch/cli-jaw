@@ -109,6 +109,18 @@
             },
             "install": null
         },
+        "telegram-send": {
+            "name": "Telegram Send",
+            "emoji": "📨",
+            "category": "communication",
+            "description": "텔레그램으로 voice/photo/document 직접 전송 (로컬 API 호출).",
+            "requires": {
+                "bins": [
+                    "curl"
+                ]
+            },
+            "install": null
+        },
         "github": {
             "name": "GitHub (범용)",
             "emoji": "🐙",

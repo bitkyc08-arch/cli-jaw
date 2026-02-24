@@ -91,6 +91,12 @@ export const telegramActiveChatIds = new Set();
 const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
 const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // read-only on Telegram
 
+function markChatActive(chatId) {
+    // Refresh insertion order so Array.from(set).at(-1) points to latest active chat.
+    telegramActiveChatIds.delete(chatId);
+    telegramActiveChatIds.add(chatId);
+}
+
 function toTelegramCommandDescription(desc) {
     const text = String(desc || '').trim();
     return text.length >= 3 ? text.slice(0, 256) : 'Run command';
@@ -232,7 +238,7 @@ export function initTelegram() {
             await waitForProcessEnd(3000);
         }
 
-        telegramActiveChatIds.add(ctx.chat.id);
+        markChatActive(ctx.chat.id);
         insertMessage.run('user', displayMsg, 'telegram', '');
         broadcast('new_message', { role: 'user', content: displayMsg, source: 'telegram' });
 
@@ -295,6 +301,7 @@ export function initTelegram() {
     }
 
     bot.on('message:text', async (ctx) => {
+        markChatActive(ctx.chat.id);
         const text = ctx.message.text;
         if (text.startsWith('/')) {
             const parsed = parseCommand(text);

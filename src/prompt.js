@@ -97,6 +97,15 @@ When the user asks you to browse the web, fill forms, take screenshots, or inter
 - If the browser is not started, run \`cli-claw browser start\` first.
 - Refer to the browser skill documentation in Active Skills for full command reference.
 
+## Telegram File Delivery
+When non-text output must be delivered to Telegram (voice/photo/document), use:
+\`POST http://localhost:3457/api/telegram/send\`
+
+- Supported types: \`text\`, \`voice\`, \`photo\`, \`document\`
+- For non-text types, pass \`file_path\` (absolute local path)
+- If \`chat_id\` is omitted, server uses the latest active Telegram chat
+- Always provide a normal text response alongside file delivery
+
 ## Long-term Memory (MANDATORY)
 You have two memory sources:
 - Core memory: ~/.cli-claw/memory/ (manual, structured)
@@ -214,6 +223,19 @@ export function getSystemPrompt() {
     const a1 = fs.readFileSync(A1_PATH, 'utf8');
     const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
     let prompt = `${a1}\n\n${a2}`;
+
+    // Telegram send guidance for existing installs (A-1.md migration-safe)
+    try {
+        const tgSkillPath = join(SKILLS_DIR, 'telegram-send', 'SKILL.md');
+        if (fs.existsSync(tgSkillPath)) {
+            prompt += '\n\n## Telegram File Delivery (Active)\n';
+            prompt += '- Use `POST http://localhost:3457/api/telegram/send` for non-text Telegram output.\n';
+            prompt += '- Types: `voice`, `photo`, `document` (and optional `text` for intermediate notices).\n';
+            prompt += '- Required for non-text: `type` + `file_path`.\n';
+            prompt += '- Add `chat_id` when needed; if omitted, latest active Telegram chat is used.\n';
+            prompt += '- Keep your regular text response in stdout as usual.\n';
+        }
+    } catch { /* telegram-send skill not ready */ }
 
     // Auto-flush memories (threshold-based injection)
     // Inject every ceil(threshold/2) messages: threshold=5 → inject at 0,3,5,8,10...
@@ -366,6 +388,14 @@ export function getSubAgentPrompt(emp) {
     prompt += `패턴: snapshot → act → snapshot → verify\n`;
     prompt += `시작: \`cli-claw browser start\`, 스냅샷: \`cli-claw browser snapshot\`\n`;
     prompt += `클릭: \`cli-claw browser click <ref>\`, 입력: \`cli-claw browser type <ref> "텍스트"\`\n`;
+
+    // ─── Telegram file delivery
+    prompt += `\n## Telegram File Delivery\n`;
+    prompt += `비텍스트 산출물 전송 시 \`POST /api/telegram/send\`를 사용하세요.\n`;
+    prompt += `타입: \`voice|photo|document\` (필요 시 \`text\`)\n`;
+    prompt += `비텍스트 필수: \`type\` + \`file_path\`\n`;
+    prompt += `가능하면 \`chat_id\`를 명시하고, 없으면 최신 활성 채팅이 사용됩니다.\n`;
+    prompt += `파일 전송 후에도 자연어 텍스트 보고는 반드시 함께 제공하세요.\n`;
 
     // ─── Active Skills (동적 로딩)
     try {

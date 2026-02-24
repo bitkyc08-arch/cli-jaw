@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24 (server.js 699L / agent.js 409L / commands.js 573L / prompt.js 413L / public/ 19파일 ~2685L)
+> 마지막 검증: 2026-02-24 (server.js 702L / agent.js 409L / commands.js 573L / prompt.js 413L / public/ 19파일 ~2685L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -10,15 +10,15 @@
 
 ```text
 cli-claw/
-├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (699L)
+├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (702L)
 ├── lib/
-│   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + 글로벌 설치 (482L)
+│   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (481L)
 │   └── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
 ├── src/
 │   ├── config.js             ← CLAW_HOME, settings, CLI 탐지, APP_VERSION (167L)
 │   ├── db.js                 ← SQLite 스키마 + prepared statements + trace (84L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (18L)
-│   ├── events.js             ← NDJSON 파싱 + logEventSummary + traceLog (185L)
+│   ├── events.js             ← NDJSON 파싱 + logEventSummary + traceLog + pushTrace (185L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (573L)
 │   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush (409L)
 │   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (130L)
@@ -48,7 +48,7 @@ cli-claw/
 │       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset + installFromRef)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
 │       └── browser.js        ← 브라우저 CLI (17개 서브커맨드, +vision-click, 238L)
-├── skills_ref/               ← 번들 스킬 (55개: OpenClaw 26 + Codex 27 폴백 + vision-click + telegram-send)
+├── skills_ref/               ← 번들 스킬 (100개: 기존 56 + Phase 0 확장 46개, registry.json 101항목)
 │   └── registry.json
 └── devlog/                   ← MVP 12 Phase + Post-MVP 8개 폴더
 ```

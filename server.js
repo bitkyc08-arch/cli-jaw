@@ -9,6 +9,7 @@ import { dirname, join, basename } from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
+import { InputFile } from 'grammy';
 import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll,
     ensureSkillsSymlinks, initMcpConfig, copyDefaultSkills,
@@ -45,7 +46,7 @@ import {
 } from './src/agent.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/commands.js';
 import { orchestrate } from './src/orchestrator.js';
-import { initTelegram } from './src/telegram.js';
+import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram.js';
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/heartbeat.js';
 
 // ─── Resolve paths ───────────────────────────────────
@@ -209,6 +210,11 @@ function clearSessionState() {
     const session = getSession();
     updateSession.run(session.active_cli, null, session.model, session.permissions, session.working_dir, session.effort);
     broadcast('clear', {});
+}
+
+function getLatestTelegramChatId() {
+    const ids = Array.from(telegramActiveChatIds);
+    return ids.at(-1) || null;
 }
 
 function applySettingsPatch(rawPatch = {}, { restartTelegram = false } = {}) {
@@ -424,6 +430,55 @@ app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) 
     const filename = decodeURIComponent(rawHeader);
     const filePath = saveUpload(req.body, filename);
     res.json({ path: filePath, filename: basename(filePath) });
+});
+
+// Telegram direct send (Phase 2.1)
+app.post('/api/telegram/send', async (req, res) => {
+    try {
+        if (!telegramBot) return res.status(503).json({ error: 'Telegram not connected' });
+
+        const type = String(req.body?.type || '').trim().toLowerCase();
+        const supportedTypes = new Set(['text', 'voice', 'photo', 'document']);
+        if (!supportedTypes.has(type)) {
+            return res.status(400).json({ error: 'type must be one of: text, voice, photo, document' });
+        }
+
+        const chatId = req.body?.chat_id || getLatestTelegramChatId();
+        if (!chatId) return res.status(400).json({ error: 'chat_id required (or send a Telegram message first)' });
+
+        if (type === 'text') {
+            const text = String(req.body?.text || '').trim();
+            if (!text) return res.status(400).json({ error: 'text required for type=text' });
+            await telegramBot.api.sendMessage(chatId, text);
+            return res.json({ ok: true, chat_id: chatId, type });
+        }
+
+        const filePath = String(req.body?.file_path || '').trim();
+        if (!filePath) return res.status(400).json({ error: 'file_path required for non-text types' });
+        if (!fs.existsSync(filePath)) return res.status(400).json({ error: `file not found: ${filePath}` });
+
+        const caption = req.body?.caption ? String(req.body.caption) : undefined;
+        const file = new InputFile(filePath);
+
+        switch (type) {
+            case 'voice':
+                await telegramBot.api.sendVoice(chatId, file, { caption });
+                break;
+            case 'photo':
+                await telegramBot.api.sendPhoto(chatId, file, { caption });
+                break;
+            case 'document':
+                await telegramBot.api.sendDocument(chatId, file, { caption });
+                break;
+            default:
+                return res.status(400).json({ error: `unsupported type: ${type}` });
+        }
+
+        return res.json({ ok: true, chat_id: chatId, type });
+    } catch (e) {
+        console.error('[telegram:send]', e);
+        return res.status(500).json({ error: e.message });
+    }
 });
 
 // MCP
