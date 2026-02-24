@@ -50,6 +50,14 @@ db.exec(`
         status      TEXT DEFAULT 'idle',
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS employee_sessions (
+        employee_id TEXT PRIMARY KEY,
+        session_id  TEXT,
+        cli         TEXT,
+        worklog_id  TEXT,
+        created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
 `);
 
 // Lightweight migration for existing DBs created before `trace` column existed.
@@ -80,5 +88,10 @@ export const deleteMemory = db.prepare('DELETE FROM memory WHERE key = ?');
 export const getEmployees = db.prepare('SELECT * FROM employees ORDER BY created_at ASC');
 export const insertEmployee = db.prepare('INSERT INTO employees (id, name, cli, model, role) VALUES (?, ?, ?, ?, ?)');
 export const deleteEmployee = db.prepare('DELETE FROM employees WHERE id = ?');
+export const getEmployeeSession = db.prepare('SELECT * FROM employee_sessions WHERE employee_id = ?');
+export const upsertEmployeeSession = db.prepare(
+    'INSERT OR REPLACE INTO employee_sessions (employee_id, session_id, cli, worklog_id) VALUES (?, ?, ?, ?)'
+);
+export const clearEmployeeSessions = db.prepare('DELETE FROM employee_sessions WHERE worklog_id = ?');
 
 export { db };

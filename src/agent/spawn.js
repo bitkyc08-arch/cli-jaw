@@ -144,8 +144,10 @@ import { AcpClient } from '../cli/acp-client.js';
 export function spawnAgent(prompt, opts = {}) {
     const { forceNew = false, agentId, sysPrompt: customSysPrompt } = opts;
     const origin = opts.origin || 'web';
+    const employeeSessionId = opts.sessionId || null;
+    const mainManaged = !forceNew && !employeeSessionId;
 
-    if (activeProcess && !forceNew) {
+    if (activeProcess && mainManaged) {
         console.log('[claw] Agent already running, skipping');
         return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
     }
@@ -163,15 +165,16 @@ export function spawnAgent(prompt, opts = {}) {
 
     const sysPrompt = customSysPrompt || getSystemPrompt();
 
-    const isResume = !forceNew && session.session_id && session.active_cli === cli;
+    const isResume = !forceNew && (employeeSessionId || (session.session_id && session.active_cli === cli));
+    const resumeSessionId = employeeSessionId || session.session_id;
     const historyBlock = !isResume ? buildHistoryBlock(prompt) : '';
     const promptForArgs = (cli === 'gemini' || cli === 'opencode')
         ? withHistoryPrompt(prompt, historyBlock)
         : prompt;
     let args;
     if (isResume) {
-        console.log(`[claw:resume] ${cli} session=${session.session_id.slice(0, 12)}...`);
-        args = buildResumeArgs(cli, model, effort, session.session_id, prompt, permissions);
+        console.log(`[claw:resume] ${cli} session=${resumeSessionId.slice(0, 12)}...`);
+        args = buildResumeArgs(cli, model, effort, resumeSessionId, prompt, permissions);
     } else {
         args = buildArgs(cli, model, effort, promptForArgs, sysPrompt, permissions);
     }
@@ -217,10 +220,10 @@ export function spawnAgent(prompt, opts = {}) {
         const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });
         acp.spawn();
         const child = acp.proc;
-        if (!forceNew) activeProcess = child;
+        if (mainManaged) activeProcess = child;
         broadcast('agent_status', { running: true, agentId: agentLabel, cli });
 
-        if (!forceNew && !opts.internal && !opts._skipInsert) {
+        if (mainManaged && !opts.internal && !opts._skipInsert) {
             insertMessage.run('user', prompt, cli, model);
         }
         broadcast('agent_status', { status: 'running', cli, agentId: agentLabel });
@@ -281,9 +284,9 @@ export function spawnAgent(prompt, opts = {}) {
                 if (process.env.DEBUG) console.log('[acp:init]', JSON.stringify(initResult).slice(0, 200));
 
                 replayMode = true;  // Phase 17.2: mute during session load
-                if (isResume && session.session_id) {
+                if (isResume && resumeSessionId) {
                     try {
-                        await acp.loadSession(session.session_id);
+                        await acp.loadSession(resumeSessionId);
                     } catch {
                         await acp.createSession(settings.workingDir);
                     }
@@ -313,12 +316,12 @@ export function spawnAgent(prompt, opts = {}) {
 
         acp.on('exit', ({ code, signal }) => {
             flushThinking();  // Flush any remaining thinking buffer
-            if (!forceNew) {
+            if (mainManaged) {
                 activeProcess = null;
                 broadcast('agent_status', { running: false, agentId: agentLabel });
             }
 
-            if (!forceNew && ctx.sessionId && code === 0) {
+            if (mainManaged && ctx.sessionId && code === 0) {
                 updateSession.run(cli, ctx.sessionId, model, settings.permissions, settings.workingDir, cfg.effort || '');
             }
 
@@ -332,12 +335,12 @@ export function spawnAgent(prompt, opts = {}) {
                 const finalContent = cleaned || ctx.fullText.trim();
                 const traceText = ctx.traceLog.join('\n');
 
-                if (!forceNew && !opts.internal) {
+                if (mainManaged && !opts.internal) {
                     insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null);
                     broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog, origin });
                     memoryFlushCounter++;
                 }
-            } else if (!forceNew && code !== 0) {
+            } else if (mainManaged && code !== 0) {
                 let errMsg = `Copilot CLI 실행 실패 (exit ${code})`;
                 if (ctx.stderrBuf.includes('auth')) errMsg = '🔐 인증 오류 — 1) gh auth login → 2) gh copilot --help → 3) copilot login';
                 else if (ctx.stderrBuf.trim()) errMsg = ctx.stderrBuf.trim().slice(0, 200);
@@ -359,7 +362,7 @@ export function spawnAgent(prompt, opts = {}) {
 
             broadcast('agent_status', { status: code === 0 ? 'done' : 'error', agentId: agentLabel });
             resolve({ text: ctx.fullText, code: code ?? 1, sessionId: ctx.sessionId, tools: ctx.toolLog });
-            if (!forceNew) processQueue();
+            if (mainManaged) processQueue();
         });
 
         return { child, promise: resultPromise };
@@ -371,10 +374,10 @@ export function spawnAgent(prompt, opts = {}) {
         env: spawnEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
     });
-    if (!forceNew) activeProcess = child;
+    if (mainManaged) activeProcess = child;
     broadcast('agent_status', { running: true, agentId: agentLabel, cli });
 
-    if (!forceNew && !opts.internal && !opts._skipInsert) {
+    if (mainManaged && !opts.internal && !opts._skipInsert) {
         insertMessage.run('user', prompt, cli, model);
     }
 
@@ -431,12 +434,12 @@ export function spawnAgent(prompt, opts = {}) {
     });
 
     child.on('close', (code) => {
-        if (!forceNew) {
+        if (mainManaged) {
             activeProcess = null;
             broadcast('agent_status', { running: false, agentId: agentLabel });
         }
 
-        if (!forceNew && ctx.sessionId && code === 0) {
+        if (mainManaged && ctx.sessionId && code === 0) {
             updateSession.run(cli, ctx.sessionId, model, settings.permissions, settings.workingDir, cfg.effort || 'medium');
             console.log(`[claw:session] saved ${cli} session=${ctx.sessionId.slice(0, 12)}...`);
         }
@@ -458,7 +461,7 @@ export function spawnAgent(prompt, opts = {}) {
             const finalContent = displayText + costLine;
             const traceText = ctx.traceLog.join('\n');
 
-            if (!forceNew && !opts.internal) {
+            if (mainManaged && !opts.internal) {
                 insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null);
                 broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog, origin });
 
@@ -470,7 +473,7 @@ export function spawnAgent(prompt, opts = {}) {
                     triggerMemoryFlush();
                 }
             }
-        } else if (!forceNew && code !== 0) {
+        } else if (mainManaged && code !== 0) {
             let errMsg = `CLI 실행 실패 (exit ${code})`;
             if (ctx.stderrBuf.includes('429') || ctx.stderrBuf.includes('RESOURCE_EXHAUSTED')) {
                 errMsg = '⚡ API 용량 초과 (429) — 잠시 후 다시 시도해주세요';
@@ -503,7 +506,7 @@ export function spawnAgent(prompt, opts = {}) {
 
         resolve({ text: ctx.fullText, code, sessionId: ctx.sessionId, cost: ctx.cost, tools: ctx.toolLog });
 
-        if (!forceNew) processQueue();
+        if (mainManaged) processQueue();
     });
 
     return { child, promise: resultPromise };

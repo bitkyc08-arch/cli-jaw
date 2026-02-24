@@ -1,7 +1,10 @@
 // ─── Orchestration v2 (Plan → Phase-aware Distribute → Quality Gate Review) ──
 
 import { broadcast } from '../core/bus.js';
-import { insertMessage, getEmployees } from '../core/db.js';
+import {
+    insertMessage, getEmployees,
+    getEmployeeSession, upsertEmployeeSession, clearEmployeeSessions,
+} from '../core/db.js';
 import { getEmployeePromptV2, clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent } from '../agent/spawn.js';
 import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from '../memory/worklog.js';
@@ -251,12 +254,20 @@ ${priorSummary}
             status: 'running', phase: ap.currentPhase, phaseLabel,
         });
 
+        const empSession = getEmployeeSession.get(emp.id);
+        const hasSession = !!(empSession?.session_id && empSession?.cli === emp.cli);
         const { promise } = spawnAgent(taskPrompt, {
             agentId: emp.id, cli: emp.cli, model: emp.model,
-            forceNew: true, sysPrompt, origin: meta.origin || 'web',
+            forceNew: !hasSession,
+            sessionId: hasSession ? empSession.session_id : undefined,
+            sysPrompt: hasSession ? undefined : sysPrompt,
+            origin: meta.origin || 'web',
         });
 
         const r = await promise;
+        if (r.code === 0 && r.sessionId) {
+            upsertEmployeeSession.run(emp.id, r.sessionId, emp.cli, worklog.path);
+        }
         const result = {
             agent: ap.agent, role: ap.role, id: emp.id,
             phase: ap.currentPhase, phaseLabel,
@@ -378,6 +389,7 @@ export async function orchestrate(prompt, meta = {}) {
             console.log(`[claw:triage] agent chose to dispatch (${lateSubtasks.length} subtasks)`);
             const worklog = createWorklog(prompt);
             broadcast('worklog_created', { path: worklog.path });
+            clearEmployeeSessions.run(worklog.path);
             const planText = stripSubtaskJSON(result.text);
             appendToWorklog(worklog.path, 'Plan', planText || '(Agent-initiated dispatch)');
             const agentPhases = initAgentPhases(lateSubtasks);
@@ -404,6 +416,7 @@ export async function orchestrate(prompt, meta = {}) {
                     const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
                     appendToWorklog(worklog.path, 'Final Summary', summary);
                     updateWorklogStatus(worklog.path, 'done', round);
+                    clearEmployeeSessions.run(worklog.path);
                     insertMessage.run('assistant', summary, 'orchestrator', '');
                     broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin });
                     return;
@@ -440,6 +453,7 @@ export async function orchestrate(prompt, meta = {}) {
 
     const worklog = createWorklog(prompt);
     broadcast('worklog_created', { path: worklog.path });
+    clearEmployeeSessions.run(worklog.path);
 
     // 1. 기획 (planning agent가 직접 응답할 수도 있음)
     const { planText, subtasks, directAnswer } = await phasePlan(prompt, worklog, { origin });
@@ -488,6 +502,7 @@ export async function orchestrate(prompt, meta = {}) {
             const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
             appendToWorklog(worklog.path, 'Final Summary', summary);
             updateWorklogStatus(worklog.path, 'done', round);
+            clearEmployeeSessions.run(worklog.path);
             insertMessage.run('assistant', summary, 'orchestrator', '');
             broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin });
             break;
