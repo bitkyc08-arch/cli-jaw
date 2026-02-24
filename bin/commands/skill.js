@@ -50,6 +50,16 @@ function installFromCodex(name) {
     return { status: 'installed', path: dst, source: 'codex' };
 }
 
+function installFromRef(name) {
+    const REF_DIR = join(CLAW_HOME, 'skills_ref');
+    const src = join(REF_DIR, name);
+    const dst = join(SKILLS_DIR, name);
+    if (existsSync(dst)) return { status: 'exists', path: dst };
+    if (!existsSync(src) || !existsSync(join(src, 'SKILL.md'))) return null;
+    cpSync(src, dst, { recursive: true });
+    return { status: 'installed', path: dst, source: 'skills_ref' };
+}
+
 function installFromGithub(name) {
     // Try known repos: openai/codex
     const repos = [
@@ -108,8 +118,16 @@ switch (sub) {
             break;
         }
 
+        // Try skills_ref (local bundled skills)
+        const refResult = installFromRef(arg);
+        if (refResult) {
+            console.log(`  ${c.green}✅ Installed from ${refResult.source}${c.reset}`);
+            console.log(`  ${c.dim}${refResult.path}${c.reset}\n`);
+            break;
+        }
+
         // Try GitHub
-        console.log(`  ${c.dim}Codex에 없음, GitHub 검색 중...${c.reset}`);
+        console.log(`  ${c.dim}Codex/Ref에 없음, GitHub 검색 중...${c.reset}`);
         const ghResult = installFromGithub(arg);
         if (ghResult) {
             console.log(`  ${c.green}✅ Installed from ${ghResult.source}${c.reset}`);

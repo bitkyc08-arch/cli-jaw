@@ -98,6 +98,19 @@ try {
             console.log(`hovered ${ref}`);
             break;
         }
+        case 'mouse-click': {
+            const x = parseInt(process.argv[4]);
+            const y = parseInt(process.argv[5]);
+            if (isNaN(x) || isNaN(y)) {
+                console.error('Usage: cli-claw browser mouse-click <x> <y> [--double]');
+                process.exit(1);
+            }
+            const opts = {};
+            if (process.argv.includes('--double')) opts.doubleClick = true;
+            const r = await api('POST', '/act', { kind: 'mouse-click', x, y, ...opts });
+            console.log(`🖱️ clicked at (${x}, ${y})`);
+            break;
+        }
         case 'navigate': {
             const r = await api('POST', '/navigate', { url: process.argv[4] });
             console.log(`navigated → ${r.url}`);
@@ -185,6 +198,7 @@ try {
       --full-page          Full page
       --ref <ref>          Specific element only
     click <ref>            Click element [--double]
+    mouse-click <x> <y>   Click at pixel coordinates [--double] (vision-click)
     type <ref> <text>      Type text [--submit]
     press <key>            Press key (Enter, Tab, Escape...)
     hover <ref>            Hover element
@@ -199,3 +213,4 @@ try {
     console.error(`❌ ${e.message}`);
     process.exitCode = 1;
 }
+

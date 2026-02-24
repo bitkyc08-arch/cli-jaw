@@ -167,3 +167,11 @@ export async function getPageText(port, format = 'text') {
     if (format === 'html') return { text: await page.content() };
     return { text: await page.innerText('body') };
 }
+
+/** Click at pixel coordinates (vision-click support) */
+export async function mouseClick(port, x, y, opts = {}) {
+    const page = await getActivePage(port);
+    if (opts.doubleClick) await page.mouse.dblclick(x, y);
+    else await page.mouse.click(x, y);
+    return { success: true, clicked: { x, y } };
+}

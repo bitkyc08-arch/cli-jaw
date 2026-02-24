@@ -628,10 +628,11 @@ app.post('/api/browser/screenshot', async (req, res) => {
 
 app.post('/api/browser/act', async (req, res) => {
     try {
-        const { kind, ref, text, key, submit, doubleClick } = req.body;
+        const { kind, ref, text, key, submit, doubleClick, x, y } = req.body;
         let result;
         switch (kind) {
             case 'click': result = await browser.click(cdpPort(), ref, { doubleClick }); break;
+            case 'mouse-click': result = await browser.mouseClick(cdpPort(), x, y, { doubleClick }); break;
             case 'type': result = await browser.type(cdpPort(), ref, text, { submit }); break;
             case 'press': result = await browser.press(cdpPort(), key); break;
             case 'hover': result = await browser.hover(cdpPort(), ref); break;

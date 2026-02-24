@@ -261,6 +261,30 @@
             "provider": "n/a",
             "status": "active"
         },
+        "vision-click": {
+            "name": "Vision Click",
+            "emoji": "👁️",
+            "category": "automation",
+            "description": "비전 기반 좌표 클릭. Codex CLI 전용. 스크린샷 → AI 좌표 추출 → 픽셀 클릭.",
+            "requires": {
+                "bins": [
+                    "codex",
+                    "cli-claw"
+                ],
+                "system": [
+                    "Google Chrome"
+                ]
+            },
+            "install": null,
+            "canonical_id": "vision-click",
+            "aliases": [
+                "vision",
+                "eye-click"
+            ],
+            "workflow": "vision_coordinate",
+            "provider": "openai",
+            "status": "active"
+        },
         "tts": {
             "name": "Text-to-Speech",
             "emoji": "🔊",

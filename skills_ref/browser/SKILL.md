@@ -172,3 +172,8 @@ cliclick t:"text input"
 - Screenshots are saved to `~/.cli-claw/screenshots/`.
 - Default CDP port is 9240 (change via `browser.cdpPort` in settings.json).
 - If Chrome is already running, `start` connects to the existing instance.
+
+## Non-DOM Elements
+
+If `snapshot` returns **no ref** for your target (Canvas, iframe, Shadow DOM, etc.),
+use the **vision-click** skill (Codex only). See `skills_ref/vision-click/SKILL.md`.

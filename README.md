@@ -18,7 +18,7 @@ cli-claw serve
 - 🧠 **Memory**: 자동 대화 요약 + 장기 기억
 - 💓 **Heartbeat**: 주기적 자동 실행
 - 📨 **Telegram**: 텔레그램 봇 연동 + 슬래시 커맨드 디스패치
-- 🌐 **Browser**: Chrome CDP 기반 브라우저 제어
+- 🌐 **Browser**: Chrome CDP 기반 브라우저 제어 + Vision Click (Codex only)
 - 🔌 **MCP**: 글로벌 MCP 서버 관리 + 4개 CLI 자동 동기화
 - ⌨️ **Slash Commands**: CLI + Web + Telegram 통합 슬래시 커맨드 (자동완성, 드롭다운)
 
@@ -47,7 +47,7 @@ cli-claw mcp reset [--force]      # 설정 초기화 + 재동기화
 
 ```
 cli-claw skill                    # 설치된 스킬 목록
-cli-claw skill install <name>     # Codex 또는 GitHub에서 설치
+cli-claw skill install <name>     # Codex, skills_ref, 또는 GitHub에서 설치
 cli-claw skill remove <name>      # 삭제
 cli-claw skill info <name>        # SKILL.md 상세 보기
 cli-claw skill reset [--force]    # 초기화 (2×3 분류 재실행)
@@ -70,11 +70,12 @@ cli-claw browser snapshot         # Accessibility tree (ariaSnapshot 기반)
 cli-claw browser screenshot       # 스크린샷
 cli-claw browser navigate <url>   # URL 이동
 cli-claw browser click <ref>      # 클릭 (snapshot ref ID)
+cli-claw browser mouse-click <x> <y>  # 픽셀 좌표 클릭 (vision-click)
 cli-claw browser type <ref> <text># 텍스트 입력
 cli-claw browser reset [--force]  # 프로필 + 스크린샷 초기화
 ```
 
-> 💡 snapshot은 `locator.ariaSnapshot()` 기반으로 CDP 연결에서도 안정 동작합니다.
+> 👁️ **Vision Click** (Codex만): snapshot에 ref가 없는 요소는 `screenshot → codex exec -i → mouse-click`으로 클릭. `cli-claw skill install vision-click`으로 활성화.
 
 ## Supported Models
 
@@ -158,17 +159,17 @@ public/              Web UI (ES Modules, stop/queue/drag-drop)
 
 주요 엔드포인트:
 
-| Category  | Endpoints                                                  |
-| --------- | ---------------------------------------------------------- |
-| Core      | `GET /api/session`, `POST /api/message`, `POST /api/stop`  |
-| Commands  | `POST /api/command`, `GET /api/commands?interface=`        |
-| Settings  | `GET/PUT /api/settings`, `GET/PUT /api/prompt`             |
-| Memory    | `GET/POST /api/memory`, `GET /api/claw-memory/search`      |
-| MCP       | `GET/PUT /api/mcp`, `POST /api/mcp/sync,install,reset`     |
-| Skills    | `GET /api/skills`, `POST /api/skills/enable,disable`       |
-| Browser   | `POST /api/browser/start,stop,act,navigate,screenshot`     |
-| Employees | `GET/POST /api/employees`, `PUT/DELETE /api/employees/:id` |
-| Quota     | `GET /api/quota` (Claude/Codex/Gemini usage)               |
+| Category  | Endpoints                                                            |
+| --------- | -------------------------------------------------------------------- |
+| Core      | `GET /api/session`, `POST /api/message`, `POST /api/stop`            |
+| Commands  | `POST /api/command`, `GET /api/commands?interface=`                  |
+| Settings  | `GET/PUT /api/settings`, `GET/PUT /api/prompt`                       |
+| Memory    | `GET/POST /api/memory`, `GET /api/claw-memory/search`                |
+| MCP       | `GET/PUT /api/mcp`, `POST /api/mcp/sync,install,reset`               |
+| Skills    | `GET /api/skills`, `POST /api/skills/enable,disable`                 |
+| Browser   | `POST /api/browser/start,stop,act(+mouse-click),navigate,screenshot` |
+| Employees | `GET/POST /api/employees`, `PUT/DELETE /api/employees/:id`           |
+| Quota     | `GET /api/quota` (Claude/Codex/Gemini usage)                         |
 
 ## License
 

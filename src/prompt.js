@@ -332,6 +332,19 @@ export function getSystemPrompt() {
         }
     } catch { /* skills not ready */ }
 
+    // ─── Vision-Click Hint (Codex only) ──────────────
+    try {
+        const session = getSession();
+        if (session.active_cli === 'codex') {
+            const visionSkillPath = join(SKILLS_DIR, 'vision-click', 'SKILL.md');
+            if (fs.existsSync(visionSkillPath)) {
+                prompt += '\n### Vision Click (Active)\n';
+                prompt += '- If browser snapshot shows no ref for target, use vision-click: screenshot → `codex exec -i` → `mouse-click <x> <y>`.\n';
+                prompt += '- See vision-click skill SKILL.md for full workflow.\n';
+            }
+        }
+    } catch { /* vision-click not ready */ }
+
     return prompt;
 }
 

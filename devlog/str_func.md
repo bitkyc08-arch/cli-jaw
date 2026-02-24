@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24 (server.js 685L / agent.js 363L / commands.js 557L / prompt.js 400L / public/ 18파일 ~2580L)
+> 마지막 검증: 2026-02-24 (server.js 687L / agent.js 363L / commands.js 557L / prompt.js 414L / public/ 18파일 ~2580L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -24,12 +24,12 @@ cli-claw/
 │   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (130L)
 │   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (358L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
-│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 주입 (400L)
+│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 + vision-click 주입 (414L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)
-│       ├── actions.js        ← snapshot/click/type/navigate/screenshot (169L)
-│       └── index.js          ← re-export hub (10L)
+│       ├── actions.js        ← snapshot/click/type/navigate/screenshot/mouseClick (178L)
+│       └── index.js          ← re-export hub (12L)
 ├── public/                   ← Web UI (ES Modules, 18 files, ~2580L)
 │   ├── index.html            ← HTML 뼈대 (421L, inline JS/CSS 없음)
 │   ├── css/                  ← 5 files (950L)
@@ -44,10 +44,10 @@ cli-claw/
 │       ├── doctor.js         ← 진단 (11개 체크, --json)
 │       ├── status.js         ← 서버 상태 (--json)
 │       ├── mcp.js            ← MCP 관리 (install/sync/list/reset)
-│       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset)
+│       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset + installFromRef)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
-│       └── browser.js        ← 브라우저 CLI (15개 서브커맨드)
-├── skills_ref/               ← 번들 스킬 (53개: OpenClaw 26 + Codex 27 폴백)
+│       └── browser.js        ← 브라우저 CLI (16개 서브커맨드, +mouse-click)
+├── skills_ref/               ← 번들 스킬 (54개: OpenClaw 26 + Codex 27 폴백 + vision-click)
 │   └── registry.json
 └── devlog/                   ← MVP 12 Phase + Post-MVP 6개 폴더
 ```
@@ -154,6 +154,7 @@ graph LR
 | `260223_프론트엔드/`              | Web UI ES Modules 모듈화 (Phase 10)                       | ✅    |
 | `260223_11_서브에이전트프롬프트/` | 서브에이전트 프롬프트 구조화 (Phase 11)                   | ✅    |
 | `260224_cmd/`                     | 슬래시 커맨드 + 프롬프트 정규화 (P1✅ P2✅ P3✅ P4📋 P5📋 P6📋) | 🟡    |
+| `260224_vision/`                  | Vision Click Phase 1 — Codex-only 비전 좌표 클릭          | ✅    |
 
 ---
 

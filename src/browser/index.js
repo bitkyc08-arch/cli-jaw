@@ -7,4 +7,5 @@ export {
 export {
     snapshot, screenshot, click, type, press,
     hover, navigate, evaluate, getPageText,
+    mouseClick,
 } from './actions.js';

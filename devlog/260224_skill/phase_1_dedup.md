@@ -1,4 +1,4 @@
-# Phase 1 — 스킬 중복 정리 + GitHub 통합
+# Phase 1 — 스킬 중복 정리 + GitHub 통합 (완료)
 
 ## 개요
 
@@ -32,11 +32,13 @@
 ## 4. 유사 스킬 유지 결정
 
 ### TTS: `tts` + `speech` → 유지 ✅
+
 - `tts`: macOS `say` (로컬, 무료, 오프라인, 39줄)
 - `speech`: OpenAI TTS API (클라우드, 유료, 고품질, 180줄+, 배치/톤/감정 제어)
 - 용도가 완전히 다름 → **각각 유지**
 
 ### 이미지 생성: `imagegen` + `nano-banana-pro` → 유지 ✅
+
 - `imagegen`: OpenAI DALL-E / `nano-banana-pro`: Gemini 3 Pro
 - API 키·모델 다름 → **각각 유지**
 
@@ -44,7 +46,7 @@
 
 ## 체크리스트
 
-- [x] 4쌍 중복 제거 + 장점 흡수
-- [x] GitHub 4개 서브스킬 통합
-- [x] registry.json 갱신 (62→54)
-- [x] TTS/이미지생성 유지 결정
+- [X] 4쌍 중복 제거 + 장점 흡수
+- [X] GitHub 4개 서브스킬 통합
+- [X] registry.json 갱신 (62→54)
+- [X] TTS/이미지생성 유지 결정
