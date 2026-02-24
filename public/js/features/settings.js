@@ -18,11 +18,12 @@ function getEffortSelect(cli) {
     return document.getElementById('effort' + toCap(cli));
 }
 
-function setSelectOptions(selectEl, values, { includeCustom = false, selected = '' } = {}) {
+function setSelectOptions(selectEl, values, { includeCustom = false, includeDefault = false, selected = '' } = {}) {
     if (!selectEl) return;
+    const defaultHtml = includeDefault ? '<option value="default">default</option>' : '';
     const customHtml = includeCustom ? '<option value="__custom__">✏️ 직접 입력...</option>' : '';
     const opts = (values || []).map(v => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join('');
-    selectEl.innerHTML = opts + customHtml;
+    selectEl.innerHTML = defaultHtml + opts + customHtml;
 
     if (selected && Array.from(selectEl.options).some(o => o.value === selected)) {
         selectEl.value = selected;
@@ -67,7 +68,7 @@ function syncPerCliModelAndEffortControls(settings = null) {
         const modelSel = getModelSelect(cli);
         if (modelSel) {
             const selected = settings?.perCli?.[cli]?.model || modelSel.value || '';
-            setSelectOptions(modelSel, MODEL_MAP[cli] || [], { includeCustom: true, selected });
+            setSelectOptions(modelSel, MODEL_MAP[cli] || [], { includeCustom: true, includeDefault: true, selected });
             if (selected && !Array.from(modelSel.options).some(o => o.value === selected)) {
                 appendCustomOption(modelSel, selected);
                 modelSel.value = selected;
@@ -254,7 +255,7 @@ export function onCliChange(save = true) {
     const cli = document.getElementById('selCli').value;
     const models = MODEL_MAP[cli] || [];
     const modelSel = document.getElementById('selModel');
-    setSelectOptions(modelSel, models, { includeCustom: true });
+    setSelectOptions(modelSel, models, { includeCustom: true, includeDefault: true });
     document.getElementById('headerCli').textContent = cli;
     syncActiveEffortOptions(cli);
 
