@@ -49,8 +49,8 @@ export const CLI_REGISTRY = {
         label: 'Copilot',
         binary: 'copilot',
         defaultModel: 'claude-sonnet-4.6',
-        defaultEffort: 'high',
-        efforts: ['low', 'medium', 'high'],
+        defaultEffort: '',
+        efforts: [],
         models: [
             'claude-sonnet-4.6',
             'claude-opus-4.6',

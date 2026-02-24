@@ -250,20 +250,6 @@ export function spawnAgent(prompt, opts = {}) {
 
     // ─── Copilot ACP branch ──────────────────────
     if (cli === 'copilot') {
-        // Write reasoning_effort to config.json (CLI flag unsupported)
-        try {
-            const cfgPath = join(os.homedir(), '.copilot', 'config.json');
-            const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-            if (effort) {
-                if (cfg.reasoning_effort !== effort) {
-                    cfg.reasoning_effort = effort;
-                    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-                }
-            } else if (cfg.reasoning_effort) {
-                delete cfg.reasoning_effort;
-                fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-            }
-        } catch (e) { console.warn('[claw:copilot] effort config.json write failed:', e.message); }
 
         const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });
         acp.spawn();

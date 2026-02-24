@@ -35,7 +35,7 @@ const FALLBACK_CLI_REGISTRY = {
     },
     copilot: {
         label: 'Copilot',
-        efforts: ['low', 'medium', 'high'],
+        efforts: [],
         models: [
             'claude-sonnet-4.6',
             'claude-opus-4.6',
