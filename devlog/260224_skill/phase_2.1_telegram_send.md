@@ -1,4 +1,4 @@
-# Phase 2.1 — `telegram-send` API 고정안 (2026-02-24)
+# (fin) Phase 2.1 — `telegram-send` API 고정안 (2026-02-24)
 
 > 목적: CLI 에이전트가 일반 텍스트 채널과 분리된 경로로 Telegram 파일(voice/photo/document)을 전송하도록 API 계약을 고정한다.
 > 상태: 사용자 보고 기준으로 Step 1은 완료. 이 문서는 Step 1을 깨지 않도록 계약을 정리하고 Step 2+가 붙을 수 있게 기준을 고정한다.

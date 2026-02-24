@@ -1,6 +1,6 @@
-# Phase 6: Prompt Injection Normalization + Log Cleanup
+# (fin) Phase 6: Prompt Injection Normalization + Log Cleanup
 
-> 상태: 📋 계획 | 날짜: 2026-02-24
+> 상태: ✅ 구현 완료 | 날짜: 2026-02-24
 > 범위: CLI별 프롬프트 삽입 정규화 — 히스토리 통합 + 시스템 프롬프트 중복 제거 + NDJSON 로그 정리
 > 선행조건: Phase 5 (Stabilization)
 > 참고: `devlog/str_func/prompt_flow.md` — 현재 프롬프트 흐름 전체 문서

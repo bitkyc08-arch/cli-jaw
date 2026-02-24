@@ -5,7 +5,7 @@ status: done
 commits: [5e17fac, 90c2142]
 ---
 
-# Vision Click Phase 1 — 상세 구현 로그
+# (fin) Vision Click Phase 1 — 상세 구현 로그
 
 > Codex-only 비전 좌표 클릭. 2026-02-24 구현.
 

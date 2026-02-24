@@ -1,4 +1,4 @@
-# Phase 1.1: Autocomplete Gap/Blank-Line Fix
+# (fin) Phase 1.1: Autocomplete Gap/Blank-Line Fix
 
 > 상태: ✅ 적용 완료
 > 날짜: 2026-02-24

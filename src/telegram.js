@@ -69,6 +69,9 @@ export function orchestrateAndCollect(prompt) {
                 resetTimeout();
             }
             if (type === 'agent_output') collected += data.text || '';
+            if (type === 'agent_done' && data.error && data.text) {
+                collected = collected || data.text;
+            }
             if (type === 'orchestrate_done') {
                 clearTimeout(timeout);
                 removeBroadcastListener(handler);
@@ -267,10 +270,11 @@ export function initTelegram() {
         const toolHandler = showTools ? (type, data) => {
             if (type === 'agent_fallback') {
                 toolLines.push(`⚡ ${data.from} → ${data.to}`);
+            } else if (type === 'agent_tool' && data.icon && data.label) {
+                toolLines.push(`${data.icon} ${data.label}`);
+            } else {
+                return;
             }
-            if (type !== 'agent_tool' || !data.icon || !data.label) return;
-            const line = `${data.icon} ${data.label}`;
-            toolLines.push(line);
             const display = toolLines.slice(-5).join('\n');
             if (!statusMsgId) {
                 ctx.reply(`🔄 ${display}`)

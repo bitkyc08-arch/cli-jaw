@@ -1,4 +1,4 @@
-# Phase 5: Stabilization & Polish
+# (fin) Phase 5: Stabilization & Polish
 
 > 상태: ✅ 구현 완료 | 날짜: 2026-02-24
 > 범위: Phase 1–4 전체 회귀 방지 + 미완료 UX 사항 + 에러 핸들링

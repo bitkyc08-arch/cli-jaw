@@ -1,4 +1,4 @@
-# 260224_cmd — Phase별 테스트 체크리스트
+# (fin) 260224_cmd — Phase별 테스트 체크리스트
 
 > 서버 재시작 후 테스트: `node bin/cli-claw serve`
 

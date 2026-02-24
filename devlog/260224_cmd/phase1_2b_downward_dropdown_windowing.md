@@ -3,7 +3,7 @@ created: 2026-02-24
 tags: [cli-claw, autocomplete, dropdown, tty-ui, scroll-region]
 aliases: [Phase 1.2b 아래 드롭다운, autocomplete windowing]
 ---
-# Phase 1.2b: 아래 방향 드롭다운 + 후보 컷오프(windowing) 계획
+# (fin) Phase 1.2b: 아래 방향 드롭다운 + 후보 컷오프(windowing) 계획
 
 이번 1.2b의 비가역 요구사항은 한 줄이다. 드롭다운은 반드시 입력창 **아래**에 떠야 한다. 위로 뜨는 방식은 폐기한다. 동시에 후보가 너무 많이 쌓여 화면을 더럽히는 문제를 해결해야 한다. 따라서 1.2b는 “아래 렌더 고정 + 표시 개수 제한 + 방향키 스크롤”의 조합으로 간다.
 
@@ -26,13 +26,13 @@ graph TD
 
 ## 기술 참조
 
-| 항목 | 1.2 현재 | 1.2b 목표 |
-| --- | --- | --- |
-| 드롭다운 방향 | 위쪽 렌더(임시 회피) | 아래쪽 렌더 고정 |
-| 표시 개수 | `maxRows` 고정, 화면 상태 고려 약함 | `visibleRows = min(hardCap, items, availableBelow)` |
-| 긴 목록 이동 | 선택 인덱스만 이동 | windowing(`windowStart`) 동반 이동 |
-| 잔상 정리 | 상대 이동 clear | popup rect 기반 정밀 clear |
-| UX 밀도 | 후보 과다 노출 | 컷오프 + 잔여 개수 힌트 |
+| 항목          | 1.2 현재                            | 1.2b 목표                                           |
+| ------------- | ----------------------------------- | --------------------------------------------------- |
+| 드롭다운 방향 | 위쪽 렌더(임시 회피)                | 아래쪽 렌더 고정                                    |
+| 표시 개수     | `maxRows` 고정, 화면 상태 고려 약함 | `visibleRows = min(hardCap, items, availableBelow)` |
+| 긴 목록 이동  | 선택 인덱스만 이동                  | windowing(`windowStart`) 동반 이동                  |
+| 잔상 정리     | 상대 이동 clear                     | popup rect 기반 정밀 clear                          |
+| UX 밀도       | 후보 과다 노출                      | 컷오프 + 잔여 개수 힌트                             |
 
 ## 핵심 정책 (확정)
 
@@ -45,13 +45,13 @@ graph TD
 
 ## 상태 모델 변경
 
-| 필드 | 설명 |
-| --- | --- |
-| `ac.items` | 전체 후보 |
-| `ac.selected` | 전체 후보 기준 선택 인덱스 |
-| `ac.windowStart` | 현재 윈도우 시작 인덱스 |
-| `ac.visibleRows` | 현재 화면에 그릴 후보 행 수 |
-| `ac.popupRect` | 마지막 렌더 영역 `{ topRow, bottomRow, rows }` |
+| 필드             | 설명                                           |
+| ---------------- | ---------------------------------------------- |
+| `ac.items`       | 전체 후보                                      |
+| `ac.selected`    | 전체 후보 기준 선택 인덱스                     |
+| `ac.windowStart` | 현재 윈도우 시작 인덱스                        |
+| `ac.visibleRows` | 현재 화면에 그릴 후보 행 수                    |
+| `ac.popupRect`   | 마지막 렌더 영역 `{ topRow, bottomRow, rows }` |
 
 ## 렌더 알고리즘 (아래 고정)
 
@@ -64,14 +64,14 @@ graph TD
 
 ## 키 처리 정책
 
-| 키 | 처리 |
-| --- | --- |
-| `↑` (`\x1b[A`, `\x1bOA`) | `selected--`, 필요 시 `windowStart--` |
-| `↓` (`\x1b[B`, `\x1bOB`) | `selected++`, 필요 시 `windowStart++` |
-| `Tab` | 선택 후보로 입력 치환 |
-| `Enter` | 선택 적용(인자 필요 시 공백 포함) |
-| `ESC` | popup close |
-| `Backspace` | 입력 갱신, `/` 제거 시 popup clear + 원복 |
+| 키                       | 처리                                      |
+| ------------------------ | ----------------------------------------- |
+| `↑` (`\x1b[A`, `\x1bOA`) | `selected--`, 필요 시 `windowStart--`     |
+| `↓` (`\x1b[B`, `\x1bOB`) | `selected++`, 필요 시 `windowStart++`     |
+| `Tab`                    | 선택 후보로 입력 치환                     |
+| `Enter`                  | 선택 적용(인자 필요 시 공백 포함)         |
+| `ESC`                    | popup close                               |
+| `Backspace`              | 입력 갱신, `/` 제거 시 popup clear + 원복 |
 
 ## 구현 단계
 
@@ -104,14 +104,14 @@ node bin/cli-claw.js chat
 
 ## 예상 공수
 
-| 작업 | 시간 |
-| --- | --- |
-| 상태/rect 모델 변경 | 25m |
-| below-anchor 렌더 전환 | 40m |
-| windowing + 키 이동 | 35m |
-| 잔여 힌트/리사이즈 보정 | 20m |
-| 수동 검증 | 20m |
-| 합계 | 약 2.3h |
+| 작업                    | 시간    |
+| ----------------------- | ------- |
+| 상태/rect 모델 변경     | 25m     |
+| below-anchor 렌더 전환  | 40m     |
+| windowing + 키 이동     | 35m     |
+| 잔여 힌트/리사이즈 보정 | 20m     |
+| 수동 검증               | 20m     |
+| 합계                    | 약 2.3h |
 
 ## 변경 기록
 

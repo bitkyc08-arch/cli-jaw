@@ -1,4 +1,4 @@
-# Slash Commands — 상세 구현 계획
+# (fin) Slash Commands — 상세 구현 계획
 
 > 상태: ✅ 구현 완료 (Phase 1–5) | 원본 계획 문서 (v3)
 

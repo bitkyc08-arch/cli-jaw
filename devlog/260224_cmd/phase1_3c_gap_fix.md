@@ -3,7 +3,7 @@ created: 2026-02-24
 tags: [cli-claw, autocomplete, gap-fix, scroll-region]
 aliases: [Phase 1.3c 팝업 갭 수정]
 ---
-# Phase 1.3c: Autocomplete 팝업 갭/잔상 수정
+# (fin) Phase 1.3c: Autocomplete 팝업 갭/잔상 수정
 
 > 상태: ✅ 적용 완료
 > 날짜: 2026-02-24

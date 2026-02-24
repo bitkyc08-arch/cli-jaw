@@ -1,4 +1,4 @@
-# Phase 1 — 스킬 중복 정리 + GitHub 통합 (완료)
+# (fin) Phase 1 — 스킬 중복 정리 + GitHub 통합 (완료)
 
 ## 개요
 

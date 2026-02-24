@@ -4,7 +4,7 @@ tags: [vision-click, phase1, codex, 구현계획]
 status: planning-v2
 ---
 
-# Vision Click — Phase 1 구현계획 (v2)
+# (fin) Vision Click — Phase 1 구현계획 (v2)
 
 > 리뷰 반영 버전. 코드 리뷰 피드백 5건 중 3건 수용, 2건 기각.
 

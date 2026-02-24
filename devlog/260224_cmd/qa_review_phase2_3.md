@@ -1,4 +1,4 @@
-# Phase 2~3 보안/QA 심층 검토
+# (fin) Phase 2~3 보안/QA 심층 검토
 
 > 검토 날짜: 2026-02-24
 > 범위: `phase2_server_telegram.md`, `phase3_web_dropdown.md`

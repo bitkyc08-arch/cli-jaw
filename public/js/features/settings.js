@@ -260,9 +260,10 @@ export function loadFallbackOrder(s) {
     if (!container) return;
     const allClis = Object.keys(s.perCli || {});
     const active = s.fallbackOrder || [];
+    const slotCount = Math.min(allClis.length - 1, 3);
 
     let html = '';
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < slotCount; i++) {
         const current = active[i] || '';
         const opts = allClis.map(cli =>
             `<option value="${cli}" ${cli === current ? 'selected' : ''}>${cli}</option>`
@@ -281,9 +282,8 @@ export function loadFallbackOrder(s) {
 }
 
 export async function saveFallbackOrder() {
-    const fb1 = document.getElementById('fallback0')?.value;
-    const fb2 = document.getElementById('fallback1')?.value;
-    const fallbackOrder = [fb1, fb2].filter(Boolean);
+    const selects = document.querySelectorAll('#fallbackOrderList select');
+    const fallbackOrder = [...selects].map(s => s.value).filter(Boolean);
     await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },

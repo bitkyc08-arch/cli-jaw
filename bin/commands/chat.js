@@ -149,6 +149,9 @@ if (values.simple) {
         try {
             const msg = JSON.parse(data.toString());
             if (msg.type === 'agent_chunk') { if (!streaming) streaming = true; process.stdout.write(msg.text || ''); }
+            else if (msg.type === 'agent_fallback') {
+                console.log(`  ⚡ ${msg.from} 실패 → ${msg.to}로 재시도`);
+            }
             else if (msg.type === 'agent_done') {
                 if (streaming) { process.stdout.write('\n\n'); streaming = false; }
                 else if (msg.text) console.log(msg.text + '\n');
@@ -794,6 +797,14 @@ if (values.simple) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (msg.icon && msg.label) {
                         process.stdout.write(`\r  ${c.dim}${msg.icon} ${msg.label}${c.reset}          \r`);
+                    }
+                    break;
+
+                case 'agent_fallback':
+                    if (isRaw) {
+                        console.log(`  ${c.dim}${raw}${c.reset}`);
+                    } else {
+                        process.stdout.write(`\r  ${c.yellow}⚡${c.reset} ${c.dim}${msg.from} → ${msg.to}${c.reset}          \r`);
                     }
                     break;
 
