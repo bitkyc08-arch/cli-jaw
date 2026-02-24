@@ -1,10 +1,10 @@
 // ── Skills Feature ──
 import { state } from '../state.js';
-import { t } from './i18n.js';
+import { t, fetchWithLocale } from './i18n.js';
 
 export async function loadSkills() {
     try {
-        const res = await fetch('/api/skills');
+        const res = await fetchWithLocale('/api/skills');
         state.allSkills = await res.json();
         renderSkills();
     } catch (e) {

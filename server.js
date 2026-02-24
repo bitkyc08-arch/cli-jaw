@@ -271,7 +271,25 @@ function applySettingsPatch(rawPatch = {}, { restartTelegram = false } = {}) {
     const prevCli = settings.cli;
     const hasTelegramUpdate = !!patch.telegram || patch.locale !== undefined;
 
-    for (const key of ['perCli', 'heartbeat', 'telegram', 'memory']) {
+    // Deep merge perCli at per-CLI level (so individual model/effort fields aren't wiped)
+    if (patch.perCli && typeof patch.perCli === 'object') {
+        settings.perCli = settings.perCli || {};
+        for (const [cli, cfg] of Object.entries(patch.perCli)) {
+            settings.perCli[cli] = { ...settings.perCli[cli], ...cfg };
+        }
+        delete patch.perCli;
+    }
+
+    // Deep merge activeOverrides at per-CLI level
+    if (patch.activeOverrides && typeof patch.activeOverrides === 'object') {
+        settings.activeOverrides = settings.activeOverrides || {};
+        for (const [cli, cfg] of Object.entries(patch.activeOverrides)) {
+            settings.activeOverrides[cli] = { ...settings.activeOverrides[cli], ...cfg };
+        }
+        delete patch.activeOverrides;
+    }
+
+    for (const key of ['heartbeat', 'telegram', 'memory']) {
         if (patch[key] && typeof patch[key] === 'object') {
             settings[key] = { ...settings[key], ...patch[key] };
             delete patch[key];
@@ -282,8 +300,10 @@ function applySettingsPatch(rawPatch = {}, { restartTelegram = false } = {}) {
     saveSettings(settings);
 
     const session = getSession();
-    const activeModel = settings.perCli?.[settings.cli]?.model || 'default';
-    const activeEffort = settings.perCli?.[settings.cli]?.effort || 'medium';
+    const ao = settings.activeOverrides?.[settings.cli] || {};
+    const pc = settings.perCli?.[settings.cli] || {};
+    const activeModel = ao.model || pc.model || 'default';
+    const activeEffort = ao.effort || pc.effort || 'medium';
     const sessionId = (settings.cli !== prevCli) ? null : session.session_id;
     if (settings.cli !== prevCli && session.session_id) {
         console.log(`[claw:session] invalidated — CLI changed ${prevCli} → ${settings.cli}`);
@@ -686,7 +706,15 @@ app.put('/api/heartbeat', (req, res) => {
 
 // ─── Skills API (Phase 6) ────────────────────────────
 
-app.get('/api/skills', (_, res) => res.json(getMergedSkills()));
+app.get('/api/skills', (req, res) => {
+    const lang = (req.query.locale || 'ko').toLowerCase();
+    const skills = getMergedSkills().map(s => ({
+        ...s,
+        name: s[`name_${lang}`] || s.name,
+        description: s[`desc_${lang}`] || s.description,
+    }));
+    res.json(skills);
+});
 
 app.post('/api/skills/enable', (req, res) => {
     const { id } = req.body;
@@ -906,4 +934,14 @@ server.listen(PORT, () => {
     if (seeded.seeded > 0) {
         console.log(`  Agents: seeded ${seeded.seeded} default employees (CLI: ${seeded.cli})`);
     }
+
+    // ─── Migrate Korean agent names → English ────────
+    const NAME_MAP = { '프런트': 'Frontend', '프론트': 'Frontend', '백엔드': 'Backend', '데이터': 'Data', '문서': 'Docs', '독스': 'Docs' };
+    const allEmps = db.prepare('SELECT id, name FROM employees').all();
+    let migrated = 0;
+    for (const emp of allEmps) {
+        const en = NAME_MAP[emp.name];
+        if (en) { db.prepare('UPDATE employees SET name = ? WHERE id = ?').run(en, emp.id); migrated++; }
+    }
+    if (migrated > 0) console.log(`  Agents: migrated ${migrated} Korean names → English`);
 });
