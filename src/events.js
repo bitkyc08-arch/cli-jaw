@@ -247,6 +247,10 @@ function extractText(content) {
             .map(c => c.text || '')
             .join('');
     }
+    // Single content object: {type: 'text', text: '...'}
+    if (content && typeof content === 'object' && content.type === 'text') {
+        return content.text || '';
+    }
     return '';
 }
 

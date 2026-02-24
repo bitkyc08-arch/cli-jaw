@@ -120,7 +120,8 @@ export class AcpClient extends EventEmitter {
             clearTimeout(p.timer);
 
             if (msg.error) {
-                p.reject(new Error(`ACP error [${msg.error.code}]: ${msg.error.message}`));
+                const details = msg.error.data ? ` ${JSON.stringify(msg.error.data)}` : '';
+                p.reject(new Error(`ACP error [${msg.error.code}]: ${msg.error.message}${details}`));
             } else {
                 p.resolve(msg.result);
             }
@@ -193,9 +194,10 @@ export class AcpClient extends EventEmitter {
     }
 
     /** Create a new session */
-    async createSession(workDir = this.workDir) {
+    async createSession(workDir = this.workDir, mcpServers = []) {
         const result = await this.request('session/new', {
-            workingDirectory: workDir,
+            cwd: workDir,
+            mcpServers,
         });
         this.sessionId = result?.sessionId;
         return result;
@@ -207,13 +209,17 @@ export class AcpClient extends EventEmitter {
         if (!sid) throw new Error('No session. Call createSession first.');
         return this.request('session/prompt', {
             sessionId: sid,
-            messages: [{ role: 'user', content: [{ type: 'text', text }] }],
+            prompt: [{ type: 'text', text }],
         }, 300000); // 5 min timeout for prompts
     }
 
     /** Resume a previous session (if agent supports loadSession capability) */
-    async loadSession(sessionId) {
-        const result = await this.request('session/load', { sessionId });
+    async loadSession(sessionId, workDir = this.workDir, mcpServers = []) {
+        const result = await this.request('session/load', {
+            sessionId,
+            cwd: workDir,
+            mcpServers,
+        });
         this.sessionId = sessionId;
         return result;
     }
