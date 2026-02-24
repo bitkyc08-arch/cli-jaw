@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24T17:50 (server.js 844L / agent.js 427L / commands.js 647L / orchestrator.js 542L / prompt.js 499L)
+> 마지막 검증: 2026-02-24T19:28 (server.js 843L / agent.js 432L / orchestrator.js 582L / prompt.js 502L / telegram.js 403L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -10,7 +10,7 @@
 
 ```text
 cli-claw/
-├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (844L)
+├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (843L)
 ├── lib/
 │   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (494L)
 │   └── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
@@ -20,12 +20,12 @@ cli-claw/
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (18L)
 │   ├── events.js             ← NDJSON 파싱 + logEventSummary + traceLog + pushTrace (185L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (647L)
-│   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush + 폴백 (427L)
-│   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + phase skip (542L)
+│   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush + 폴백 (432L)
+│   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + phase skip + self-skip (582L)
 │   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
-│   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (382L)
+│   ├── telegram.js           ← Telegram 봇 + queue-first + 4분 timeout (403L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
-│   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + 순차실행 + phase skip (499L)
+│   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + phase skip + git금지 (502L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)

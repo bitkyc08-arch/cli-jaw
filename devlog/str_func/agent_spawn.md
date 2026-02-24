@@ -4,7 +4,7 @@
 
 ---
 
-## agent.js — CLI Spawn & Queue (427L)
+## agent.js — CLI Spawn & Queue (432L)
 
 | Function                                   | 역할                                                 |
 | ------------------------------------------ | ---------------------------------------------------- |
@@ -73,7 +73,7 @@
 
 ---
 
-## orchestrator.js — Orchestration v2 + Triage + 순차실행 (523L)
+## orchestrator.js — Orchestration v2 + Triage + 순차실행 + Phase Skip + Self-Skip (582L)
 
 | Function                     | 역할                                           |
 | ---------------------------- | ---------------------------------------------- |
@@ -106,7 +106,7 @@ orchestrate(prompt)
 
 ---
 
-## prompt.js — System Prompt & Skills (498L)
+## prompt.js — System Prompt & Skills (502L)
 
 | Function                                | 역할                                                                  |
 | --------------------------------------- | --------------------------------------------------------------------- |

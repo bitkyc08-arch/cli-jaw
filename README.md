@@ -132,14 +132,14 @@ cli-claw chat   →  Terminal UI (raw stdin, footer, queue, 832L)
 ```
 
 ```
-server.js            API routes + WebSocket hub (844L)
-src/agent.js         CLI spawn + stream parser (427L)
-src/orchestrator.js  Orchestration v2 + triage + phase skip (542L)
+server.js            API routes + WebSocket hub (843L)
+src/agent.js         CLI spawn + stream parser (432L)
+src/orchestrator.js  Orchestration v2 + triage + phase skip (582L)
 src/worklog.js       Worklog CRUD + phase matrix (153L)
 src/config.js        Settings + defaults (169L)
-src/prompt.js        System prompt + sub-agent v2 + phase skip (499L)
+src/prompt.js        System prompt + sub-agent v2 + phase skip (502L)
 src/commands.js      Slash command registry + dispatcher (647L)
-src/telegram.js      Telegram bot bridge (382L)
+src/telegram.js      Telegram bot + queue-first (403L)
 src/events.js        NDJSON parsing + logEventSummary + trace (185L)
 src/memory.js        Memory: MEMORY.md + session
 lib/mcp-sync.js      MCP config sync (4 CLI targets)

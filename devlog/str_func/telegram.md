@@ -4,7 +4,7 @@
 
 ---
 
-## telegram.js — Telegram Bot (377L)
+## telegram.js — Telegram Bot + Queue-First (403L)
 
 | Function                     | 역할                                                           |
 | ---------------------------- | -------------------------------------------------------------- |
