@@ -30,7 +30,7 @@ cli-claw/
 │   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 + chatId auto-persist + 디바운스 tool 업데이트 (493L)
 │   ├── telegram-forwarder.js ← [NEW] Telegram 포워딩 헬퍼 추출 (escape, chunk, createForwarder) (105L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + pending queue + fs.watch (107L)
-│   ├── prompt.js             ← 프롬프트 + 스킬 + getMergedSkills i18n 필드 통과 + 서브에이전트 v2 + phase skip + EN defaults (501L)
+│   ├── prompt.js             ← 프롬프트 + 스킬 + getMergedSkills i18n 필드 통과 + 서브에이전트 v2 + phase skip + EN defaults + 브라우저 커맨드 인라인 + Telegram bot-first (512L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   ├── settings-merge.js     ← [P9.4] perCli/activeOverrides deep merge 추출 (46L)
 │   ├── security/             ← [P9.1] 보안 입력 검증
@@ -54,10 +54,10 @@ cli-claw/
 │   ├── css/                  ← 6 files (1355L)
 │   │   ├── variables.css     ← 커스텀 프로퍼티 + 3단 폰트 + 라이트 팔레트 + 사이드바 변수 (126L)
 │   │   ├── layout.css        ← 사이드바 + 토글 absolute + collapse + 반응형 900px (281L)
-│   │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 색상 var (149L)
+│   │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 색상 var + copy 버튼 (161L)
 │   └── js/                   ← 16 files (~2159L)
 │       ├── main.js           ← 앱 진입점 + 5개 모듈 wire (241L)
-│       ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation (200L)
+│       ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation + sanitize (217L)
 │       ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (119L)
 │       └── features/
 │           ├── sidebar.js    ← [NEW] 사이드바 접기 (이중 모드 responsive) (88L)
@@ -224,6 +224,9 @@ graph LR
 30. **[P9.5] command-contract**: `COMMANDS` 배열을 capability map으로 확장 (full/readonly/hidden/blocked per interface). `getTelegramMenuCommands()`로 Telegram 메뉴 통합
 31. **[P9.6] catch 정책**: 상 12건 warn/debug, 중 5건 warn, 낮 5건 `/* expected */` 주석. 총 22건 처리
 32. **[P9.7] deps gate**: `check-deps-offline.mjs` (ws/node-fetch advisory 대조, exit 0/1), `check-deps-online.sh` (npm audit + semgrep). `npm run check:deps`
+33. **hljs CDN v11**: CDN 404 수정 (`cdnjs.cloudflare.com` → v11.11.1), `rehighlightAll()` 폴링으로 lazy load 후 재하이라이트, 코드 복사 버튼 event delegation
+34. **User message markdown**: `ui.js` 유저 메시지에도 `renderMarkdown()` 적용 (agent 전용 → 전체 적용)
+35. **Prompt restructure**: Browser 섬션 인라인화 (snapshot→act→verify workflow), Telegram file delivery bot-first 방식, heartbeat `HEARTBEAT_OK` 응답 규칙
 
 ---
 
@@ -231,13 +234,16 @@ graph LR
 
 | 문서                                        | 범위                                                          | 파일                                  |
 | ------------------------------------------- | ------------------------------------------------------------- | ------------------------------------- |
-| [🔧 infra.md](str_func/infra.md)             | config · db · bus · memory · browser · mcp-sync · cli-registry | 의존 0 모듈 + 데이터 레이어 + symlink  |
-| [🌐 server_api.md](str_func/server_api.md)   | server.js · REST API · WebSocket · CLI 명령어                  | 라우트 + 초기화 + 40+ 엔드포인트      |
-| [⚡ commands.md](str_func/commands.md)       | commands.js · 슬래시 커맨드 · slash-commands.js                | 레지스트리 + 디스패쳐 + 동적 모델     |
+| [🔧 infra.md](str_func/infra.md)             | config · db · bus · memory · browser · mcp-sync · cli-registry · security · http · settings-merge | 의존 0 모듈 + 데이터 레이어 + Phase 9 보안/응답  |
+| [🌐 server_api.md](str_func/server_api.md)   | server.js · REST API · WebSocket · CLI 명령어                  | 라우트 + 40+ 엔드포인트 + ok/fail + guards |
+| [⚡ commands.md](str_func/commands.md)       | commands.js · 슬래시 커맨드 · command-contract · slash-commands.js | 레지스트리 + 디스패철 + capability   |
 | [🤖 agent_spawn.md](str_func/agent_spawn.md) | agent.js · events.js · orchestrator.js · prompt.js · acp-client | spawn + ACP + 스트림 + 오케스트레이션 |
 | [📱 telegram.md](str_func/telegram.md)       | telegram.js · heartbeat.js                                     | 외부 인터페이스 + lifecycle + origin   |
-| [🎨 frontend.md](str_func/frontend.md)       | public/ 전체 (19파일)                                          | ES Modules + CSS + 동적 registry      |
+| [🎨 frontend.md](str_func/frontend.md)       | public/ 전체 (23파일)                                          | ES Modules + CSS + 동적 registry      |
 | [🧠 prompt_flow.md](str_func/prompt_flow.md) | 프롬프트 조립 · CLI별 삽입 · 직원 프롬프트                      | **핵심** — 정적/동적 + Copilot ACP    |
+| [📄 prompt_basic_A1.md](str_func/prompt_basic_A1.md) | A-1 기본 프롬프트 원문 (오케스트레이션 규칙, 브라우저 커맨드, Telegram) | EN 기본 프롬프트 레퍼런스 |
+| [📄 prompt_basic_A2.md](str_func/prompt_basic_A2.md) | A-2 프롬프트 템플릿 (heartbeat, 익스텐션)                 | 사용자 편집 가능 테플릿 |
+| [📄 prompt_basic_B.md](str_func/prompt_basic_B.md) | B 프롬프트 원문 (서브에이전트 규칙, 직원 프롬프트, 위임 정책) | 서브에이전트 레퍼런스 |
 
 ---
 

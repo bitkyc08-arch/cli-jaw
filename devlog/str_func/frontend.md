@@ -17,13 +17,13 @@ public/
 │   ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var + auto-expand (408L)
 │   ├── sidebar.css       ← 설정/스킬 카드 hover + display font (224L)
 │   ├── modals.css        ← 모달, 하트비트 카드 (171L)
-│   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 var (149L)
+│   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 var + copy 버튼 (161L)
 └── js/                   ← 16 files (~2159L)
     ├── main.js           ← 앱 진입점 + 5개 모듈 wire (239L)
     ├── state.js          ← 공유 상태 모듈 (16L)
     ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (이모지 제거) (119L)
-    ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation (200L)
-    ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() + finalizeAgent guard (149L)
+    ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation + sanitize (217L)
+    ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() + finalizeAgent guard + user 마크다운 (151L)
     ├── ws.js             ← WebSocket + 메시지 라우팅 + orchestrate_done (64L)
     └── features/
         ├── chat.js       ← 전송, 첨부, 드래그앤드롭, 멈춤, 큐, auto-expand (176L)
@@ -54,8 +54,8 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy | 200 |
-| `ui.js` | DOM 유틸 + stop-mode + finalizeAgent debounce guard | 149 |
+| `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy + sanitize | 217 |
+| `ui.js` | DOM 유틸 + stop-mode + finalizeAgent guard + user 마크다운 | 151 |
 | `ws.js` | WebSocket + 메시지 라우팅 + orchestrate_done | 64 |
 
 ### Features Layer
@@ -84,7 +84,7 @@ public/
 | `chat.css` | 채팅 버블 + 애니메이션 + flex 헤더 + auto-expand | 408 |
 | `sidebar.css` | 설정/스킬 카드 hover + display font | 224 |
 | `modals.css` | 모달 + 하트비트 카드 | 171 |
-| `markdown.css` | 마크다운 렌더링 + 시맨틱 색상 var | 149 |
+| `markdown.css` | 마크다운 렌더링 + 시맨틱 색상 var + copy 버튼 스타일 | 161 |
 
 ### 테마
 
@@ -117,3 +117,5 @@ public/
 | 6.2 | 토글 absolute 통일 + 반응형 이중 모드 + collapsed/expanded 충돌 수정 |
 | 7.2 | 채팅 입력창 auto-expand (최대 8줄, 전송 후 리셋) |
 | 16 | orchestrate_done WS 핸들러 추가 + finalizeAgent 이중 호출 방지 (debounce 500ms) |
+| 16+ | hljs CDN v11 수정 + `rehighlightAll()` lazy 폴링 + 코드 복사 버튼 event delegation + `markdown.css` copy 스타일 |
+| Bug 2.1 | 유저 메시지 `renderMarkdown()` 적용 (기존: `escapeHtml()` → `renderMarkdown()`) |
