@@ -45,7 +45,7 @@ import {
     saveUpload, memoryFlushCounter,
 } from './src/agent.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/commands.js';
-import { orchestrate } from './src/orchestrator.js';
+import { orchestrate, orchestrateContinue } from './src/orchestrator.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram.js';
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/heartbeat.js';
 
@@ -330,6 +330,14 @@ app.post('/api/message', (req, res) => {
         return res.json({ ok: true, queued: true, pending: messageQueue.length });
     }
     orchestrate(prompt.trim());
+    res.json({ ok: true });
+});
+
+app.post('/api/orchestrate/continue', (req, res) => {
+    if (activeProcess) {
+        return res.status(409).json({ error: 'agent already running' });
+    }
+    orchestrateContinue();
     res.json({ ok: true });
 });
 
@@ -754,4 +762,20 @@ server.listen(PORT, () => {
 
     initTelegram();
     startHeartbeat();
+
+    // ─── Seed default employees if none exist ────────
+    if (getEmployees.all().length === 0) {
+        const DEFAULT_EMPLOYEES = [
+            { name: '프런트', role: 'UI/UX 구현, CSS, 컴포넌트 개발' },
+            { name: '백엔드', role: 'API, DB, 서버 로직 구현' },
+            { name: '데이터', role: '데이터 파이프라인, 분석, ML' },
+            { name: '문서', role: '문서화, README, API docs' },
+            { name: '검수', role: '코드 리뷰, 테스트 검증, QA' },
+        ];
+        const cli = settings.cli;
+        for (const emp of DEFAULT_EMPLOYEES) {
+            insertEmployee.run(crypto.randomUUID(), emp.name, cli, 'default', emp.role);
+        }
+        console.log(`  Agents: seeded ${DEFAULT_EMPLOYEES.length} default employees (CLI: ${cli})`);
+    }
 });

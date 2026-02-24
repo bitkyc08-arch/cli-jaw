@@ -14,12 +14,17 @@ export function connect() {
             }
         } else if (msg.type === 'queue_update') {
             updateQueueBadge(msg.pending || 0);
+        } else if (msg.type === 'worklog_created') {
+            addSystemMsg(`📋 Worklog: ${msg.path}`);
         } else if (msg.type === 'round_start') {
-            const names = (msg.subtasks || []).map(s => s.agent).join(', ');
-            addSystemMsg(`🔄 라운드 ${msg.round} — ${(msg.subtasks || []).length}개 작업 [${names}]`);
+            const agents = (msg.agentPhases || msg.subtasks || []);
+            const names = agents.map(a => a.agent || a.name).join(', ');
+            addSystemMsg(`🔄 라운드 ${msg.round} — ${agents.length}개 작업 [${names}]`);
         } else if (msg.type === 'round_done') {
             if (msg.action === 'complete') {
                 addSystemMsg(`🏁 라운드 ${msg.round} 완료`);
+            } else if (msg.action === 'next') {
+                addSystemMsg(`➡️ 라운드 ${msg.round} → 다음 라운드`);
             } else {
                 addSystemMsg(`↩️ 라운드 ${msg.round} → 재시도`);
             }

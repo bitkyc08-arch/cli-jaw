@@ -63,8 +63,9 @@ export function renderEmployees() {
                 <textarea data-emp-custom="${a.id}" style="display:${isCustom ? 'block' : 'none'};margin-top:4px;width:100%;height:40px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-size:10px;font-family:inherit;resize:vertical"
                           placeholder="커스텀 역할...">${isCustom ? escapeHtml(a.role) : ''}</textarea>
             </div>
-            <div style="margin-top:4px;font-size:10px;color:${a.status === 'running' ? '#fbbf24' : 'var(--green)'}">
-                ● ${a.status || 'idle'}
+            <div style="margin-top:4px;font-size:10px;display:flex;align-items:center;gap:6px">
+                <span style="color:${a.status === 'running' ? '#fbbf24' : 'var(--green)'}">● ${a.status || 'idle'}</span>
+                ${a.phase ? `<span style="background:${({ 1: '#60a5fa', 2: '#a78bfa', 3: '#34d399', 4: '#fbbf24', 5: '#f472b6' })[a.phase] || '#888'};color:#000;padding:1px 6px;border-radius:9px;font-size:9px">${a.phaseLabel || 'P' + a.phase}</span>` : ''}
             </div>
         </div>`;
     }).join('');

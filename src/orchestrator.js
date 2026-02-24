@@ -4,7 +4,7 @@ import { broadcast } from './bus.js';
 import { insertMessage, getEmployees } from './db.js';
 import { getSubAgentPromptV2 } from './prompt.js';
 import { spawnAgent } from './agent.js';
-import { createWorklog, appendToWorklog, updateMatrix, updateWorklogStatus } from './worklog.js';
+import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from './worklog.js';
 
 const MAX_ROUNDS = 3;
 
@@ -363,4 +363,32 @@ export async function orchestrate(prompt) {
             broadcast('orchestrate_done', { text: partial, worklog: worklog.path });
         }
     }
+}
+
+// ─── Continue (이어서 해줘) ───────────────────────────
+
+export async function orchestrateContinue() {
+    const latest = readLatestWorklog();
+    if (!latest) {
+        broadcast('orchestrate_done', { text: '이어갈 worklog가 없습니다.' });
+        return;
+    }
+
+    const pending = parseWorklogPending(latest.content);
+    if (!pending.length) {
+        broadcast('orchestrate_done', { text: '모든 작업이 이미 완료되었습니다.' });
+        return;
+    }
+
+    const resumePrompt = `## 이어서 작업
+이전 worklog를 읽고 미완료 항목을 이어서 진행하세요.
+
+Worklog: ${latest.path}
+
+미완료 항목:
+${pending.map(p => `- ${p.agent} (${p.role}): Phase ${p.currentPhase}`).join('\n')}
+
+subtask JSON을 출력하세요.`;
+
+    return orchestrate(resumePrompt);
 }
