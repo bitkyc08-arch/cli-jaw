@@ -15,12 +15,13 @@
 
 ## 설계
 
-1. **외부 라이브러리 없음** — ~160 키, 자체 구현
+1. **외부 라이브러리 없음** — ~170 키, 자체 구현
 2. **JSON 딕셔너리** — `public/locales/{ko,en}.json` (Phase 6.9에서 스켈레톤 생성)
 3. **`data-i18n` 속성** — HTML 정적 텍스트 키 바인딩
 4. **`t('key')` 함수** — JS 동적 문자열 치환 (프런트 전용, 서버 `t()`와 별도)
-5. **`localStorage` 저장** — 언어 선택 유지 + `Accept-Language` 헤더로 서버에 전달
-6. **`/api/i18n/languages`** — Phase 6.9 API로 사용 가능 언어 자동 감지
+5. **`localStorage` 저장** — 언어 선택 유지
+6. **`fetchWithLocale()` 래퍼** — 서버 요청 시 `?locale=xx` 쿼리 자동 주입 (Accept-Language 대신 명시적 파라미터)
+7. **`/api/i18n/languages`** — Phase 6.9 API로 사용 가능 언어 자동 감지
 
 ---
 
@@ -34,10 +35,11 @@
 | `loadLocale(lang)` | `fetch('/api/i18n/${lang}')` → 캐시 |
 | `t(key, params?)` | 딕셔너리 조회 + `{count}` 보간 + fallback (키 자체 표시) |
 | `applyI18n()` | `[data-i18n]` → textContent, `[data-i18n-placeholder]` → placeholder, `[data-i18n-title]` → title |
-| `setLang(lang)` | locale 교체 + `applyI18n()` + localStorage + `Accept-Language` 헤더 설정 |
+| `setLang(lang)` | locale 교체 + `applyI18n()` + localStorage |
 | `getLangs()` | `/api/i18n/languages` → 사용 가능 언어 목록 |
+| `fetchWithLocale(url, init?)` | `fetch()` 래퍼 — URL에 `?locale=xx` 쿼리 자동 추가 |
 
-#### [MODIFY] `public/locales/ko.json` (~160 키 값 채우기)
+#### [MODIFY] `public/locales/ko.json` (~170 키 값 채우기)
 - Phase 6.9에서 생성된 스켈레톤에 한국어 값 작성
 - 섹션: `cmd.*`, `skill.*`, `emp.*`, `chat.*`, `hb.*`, `mem.*`, `phase.*`, `ws.*`, `btn.*`, `status.*`
 

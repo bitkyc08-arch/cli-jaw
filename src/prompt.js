@@ -127,22 +127,22 @@ The file is auto-reloaded on change — just write it and the system picks it up
   "jobs": [
     {
       "id": "hb_<timestamp>",
-      "name": "작업 이름",
+      "name": "Job name",
       "enabled": true,
       "schedule": { "kind": "every", "minutes": 5 },
-      "prompt": "매 실행마다 보낼 프롬프트"
+      "prompt": "Prompt sent every execution"
     }
   ]
 }
 \\\`\\\`\\\`
 
 ### Rules
-- id는 "hb_" + Date.now() 형식
-- enabled: true이면 자동 실행, false면 일시정지
-- schedule.minutes: 실행 간격 (분)
-- prompt: 실행 시 에이전트에게 전달되는 프롬프트
-- 결과는 자동으로 Telegram에 전송됨
-- 할 일이 없는 heartbeat에는 [SILENT]로 응답
+- id format: "hb_" + Date.now()
+- enabled: true = auto-run, false = paused
+- schedule.minutes: execution interval (minutes)
+- prompt: sent to the agent each execution
+- Results are automatically forwarded to Telegram
+- If nothing to report, respond with [SILENT]
 `;
 
 const A2_DEFAULT = `# User Configuration
@@ -260,7 +260,7 @@ export function getSystemPrompt() {
         if (memories) prompt += memories;
     }
 
-    // Core memory (MEMORY.md, 시스템 레벨 주입)
+    // Core memory (MEMORY.md, system-level injection)
     try {
         const memPath = join(CLAW_HOME, 'memory', 'MEMORY.md');
         if (fs.existsSync(memPath)) {
@@ -279,7 +279,7 @@ export function getSystemPrompt() {
         const emps = getEmployees.all();
         if (emps.length > 0) {
             const list = emps.map(e =>
-                `- "${e.name}" (CLI: ${e.cli}) — ${e.role || '범용 개발자'}`
+                `- "${e.name}" (CLI: ${e.cli}) — ${e.role || 'general developer'}`
             ).join('\n');
             const example = emps[0].name;
             prompt += '\n\n---\n';
@@ -289,14 +289,14 @@ export function getSystemPrompt() {
             prompt += `\n\n### Available Employees\n${list}`;
             prompt += '\n\n### Dispatch Format';
             prompt += '\nTo assign work, output EXACTLY this format (triple-backtick fenced JSON block):';
-            prompt += `\n\n\\\`\\\`\\\`json\n{\n  "subtasks": [\n    {\n      "agent": "${example}",\n      "task": "구체적인 작업 지시",\n      "priority": 1\n    }\n  ]\n}\n\\\`\\\`\\\``;
+            prompt += `\n\n\\\`\\\`\\\`json\n{\n  "subtasks": [\n    {\n      "agent": "${example}",\n      "task": "Specific task instruction",\n      "priority": 1\n    }\n  ]\n}\n\\\`\\\`\\\``;
             prompt += '\n\n### CRITICAL RULES';
-            prompt += '\n1. JSON은 반드시 \\`\\`\\`json ... \\`\\`\\` 코드블럭으로 감싸야 함 (필수)';
-            prompt += '\n2. 코드블럭 없는 raw JSON 출력 금지';
-            prompt += '\n3. agent 이름은 위 목록과 정확히 일치해야 함';
-            prompt += '\n4. 실행 가능한 요청이면 반드시 subtask JSON 출력';
-            prompt += '\n5. "결과 보고"를 받으면 사용자에게 자연어로 요약';
-            prompt += '\n6. 직접 답변할 수 있는 질문이면 JSON 없이 자연어로 응답';
+            prompt += '\n1. JSON MUST be wrapped in ```json ... ``` code blocks (mandatory)';
+            prompt += '\n2. Never output raw JSON without code blocks';
+            prompt += '\n3. Agent name must exactly match the list above';
+            prompt += '\n4. If the request is actionable, always output subtask JSON';
+            prompt += '\n5. When receiving a "result report", summarize it in natural language for the user';
+            prompt += '\n6. If you can answer directly, respond in natural language without JSON';
         }
     } catch { /* DB not ready yet */ }
 
@@ -336,15 +336,13 @@ export function getSystemPrompt() {
                 }
             }
 
-            // 2. Ref skills — available for on-demand use
+            // 2. Ref skills — compact name list (full details in skills_ref/)
             if (availableRef.length > 0) {
                 prompt += `\n### Available Skills (${availableRef.length})\n`;
-                prompt += 'These skills are available but not active. ';
-                prompt += 'When the user requests a related task, read the SKILL.md file and follow its instructions.\n';
-                for (const s of availableRef) {
-                    const refPath = join(SKILLS_REF_DIR, s.id, 'SKILL.md');
-                    prompt += `- ${s.emoji || '🔧'} ${s.name}: ${s.description} → \`${refPath}\`\n`;
-                }
+                prompt += 'These are reference skills — not active yet, but ready to use on demand.\n';
+                prompt += '**How to use**: read `~/.cli-claw/skills_ref/<name>/SKILL.md` and follow its instructions.\n';
+                prompt += '**To activate permanently**: `cli-claw skill install <name>`\n\n';
+                prompt += availableRef.map(s => s.id).join(', ') + '\n';
             }
 
             // 3. Search or create instruction
@@ -375,46 +373,46 @@ export function getSystemPrompt() {
 // ─── Sub-Agent Prompt (orchestration-free) ───────────
 
 export function getSubAgentPrompt(emp) {
-    let prompt = `# ${emp.name}\n역할: ${emp.role || '범용 개발자'}\n`;
+    let prompt = `# ${emp.name}\nRole: ${emp.role || 'general developer'}\n`;
 
-    // ─── 핵심 규칙 (오케스트레이션 규칙 의도적 제외 → 재귀 루프 방지)
-    prompt += `\n## 규칙\n`;
-    prompt += `- 주어진 작업을 직접 실행하고 결과를 보고하세요\n`;
-    prompt += `- JSON subtask 출력 금지 (당신은 실행자이지 기획자가 아닙니다)\n`;
-    prompt += `- 작업 결과를 자연어로 간결하게 보고하세요\n`;
-    prompt += `- 사용자 언어로 응답하세요\n`;
-    prompt += `- 사용자 명시 요청 없이 git commit/push/branch/reset/clean 금지\n`;
+    // ─── Core rules (orchestration rules intentionally excluded → prevent recursion)
+    prompt += `\n## Rules\n`;
+    prompt += `- Execute the given task directly and report the results\n`;
+    prompt += `- Do NOT output JSON subtasks (you are an executor, not a planner)\n`;
+    prompt += `- Report results concisely in natural language\n`;
+    prompt += `- Respond in the user's language\n`;
+    prompt += `- Never run git commit/push/branch/reset/clean unless the user explicitly asks\n`;
 
-    // ─── 브라우저 명령어
+    // ─── Browser commands
     prompt += `\n## Browser Control\n`;
-    prompt += `웹 작업 시 \`cli-claw browser\` 명령어를 반드시 사용하세요.\n`;
-    prompt += `패턴: snapshot → act → snapshot → verify\n`;
-    prompt += `시작: \`cli-claw browser start\`, 스냅샷: \`cli-claw browser snapshot\`\n`;
-    prompt += `클릭: \`cli-claw browser click <ref>\`, 입력: \`cli-claw browser type <ref> "텍스트"\`\n`;
+    prompt += `For web tasks, always use \`cli-claw browser\` commands.\n`;
+    prompt += `Pattern: snapshot → act → snapshot → verify\n`;
+    prompt += `Start: \`cli-claw browser start\`, Snapshot: \`cli-claw browser snapshot\`\n`;
+    prompt += `Click: \`cli-claw browser click <ref>\`, Type: \`cli-claw browser type <ref> "text"\`\n`;
 
     // ─── Telegram file delivery
     prompt += `\n## Telegram File Delivery\n`;
-    prompt += `비텍스트 산출물 전송 시 \`POST /api/telegram/send\`를 사용하세요.\n`;
-    prompt += `타입: \`voice|photo|document\` (필요 시 \`text\`)\n`;
-    prompt += `비텍스트 필수: \`type\` + \`file_path\`\n`;
-    prompt += `가능하면 \`chat_id\`를 명시하고, 없으면 최신 활성 채팅이 사용됩니다.\n`;
-    prompt += `파일 전송 후에도 자연어 텍스트 보고는 반드시 함께 제공하세요.\n`;
+    prompt += `For non-text output, use \`POST /api/telegram/send\`.\n`;
+    prompt += `Types: \`voice|photo|document\` (optionally \`text\`)\n`;
+    prompt += `Required for non-text: \`type\` + \`file_path\`\n`;
+    prompt += `Specify \`chat_id\` when possible; if omitted, the latest active chat is used.\n`;
+    prompt += `Always provide a natural language text report alongside file delivery.\n`;
 
-    // ─── Active Skills (동적 로딩)
+    // ─── Active Skills (dynamic loading)
     try {
         const activeSkills = loadActiveSkills();
         if (activeSkills.length > 0) {
             prompt += `\n## Active Skills (${activeSkills.length})\n`;
-            prompt += `설치된 스킬 — CLI가 자동 트리거합니다.\n`;
+            prompt += `Installed skills — automatically triggered by the CLI.\n`;
             for (const s of activeSkills) {
                 prompt += `- ${s.name} (${s.id})\n`;
             }
         }
     } catch { /* skills not ready */ }
 
-    // ─── 메모리 명령어
+    // ─── Memory commands
     prompt += `\n## Memory\n`;
-    prompt += `장기 기억: \`cli-claw memory search/read/save\` 명령어 사용.\n`;
+    prompt += `Long-term memory: use \`cli-claw memory search/read/save\` commands.\n`;
 
     return prompt;
 }
@@ -453,24 +451,24 @@ export function getSubAgentPromptV2(emp, role, currentPhase) {
     }
 
     // ─── 4. Phase 컨텍스트 + Quality Gate
-    const PHASES = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
+    const PHASES = { 1: 'Planning', 2: 'Plan Review', 3: 'Development', 4: 'Debugging', 5: 'Integration' };
     const PHASE_GATES = {
-        1: '통과 조건: 영향범위 분석 + 의존성 확인 + 엣지케이스 목록 완성',
-        2: '통과 조건: 코드 대조 확인 + 충돌검사 + 테스트전략 수립',
-        3: '통과 조건: 변경파일목록 + export/import 무결성 + 빌드에러 없음',
-        4: '통과 조건: 실행결과 증거 + 버그수정내역 + 엣지케이스 테스트 결과',
-        5: '통과 조건: 통합테스트 + 문서업데이트 + 워크플로우 동작확인',
+        1: 'Gate: impact analysis + dependency check + edge case list complete',
+        2: 'Gate: code cross-check + conflict scan + test strategy established',
+        3: 'Gate: changed file list + export/import integrity + zero build errors',
+        4: 'Gate: execution evidence + bug fix log + edge case test results',
+        5: 'Gate: integration tests + docs updated + workflow verified',
     };
     prompt += `\n\n## Current Phase: ${currentPhase} (${PHASES[currentPhase]})`;
-    prompt += `\n당신은 지금 "${PHASES[currentPhase]}" 단계를 수행 중입니다.`;
+    prompt += `\nYou are currently executing the "${PHASES[currentPhase]}" phase.`;
     prompt += `\n${PHASE_GATES[currentPhase]}`;
-    prompt += `\n\n## 순차 실행 + Phase Skip`;
-    prompt += `\n에이전트는 한 명씩 순서대로 실행됩니다. 이전 에이전트의 작업 결과가 이미 파일에 반영되어 있습니다.`;
-    prompt += `\n- worklog를 먼저 읽고 이전 에이전트가 뭘 했는지 파악하세요`;
-    prompt += `\n- 이미 수정된 파일은 건드리지 마세요`;
-    prompt += `\n- 당신의 담당 영역에만 집중하세요`;
-    prompt += `\n- 현재 Phase가 1이 아니라면, 이전 Phase는 이미 완료된 것입니다. 기획/검증을 다시 하지 마세요.`;
-    prompt += `\n\n주의: Quality Gate를 통과하려면 위 조건을 모두 충족해야 합니다. 부족한 부분이 있으면 재시도됩니다.`;
+    prompt += `\n\n## Sequential Execution + Phase Skip`;
+    prompt += `\nAgents run one at a time in order. Previous agents' results are already reflected in the files.`;
+    prompt += `\n- Read the worklog first to understand what previous agents did`;
+    prompt += `\n- Do not touch files already modified by others`;
+    prompt += `\n- Focus only on your assigned area`;
+    prompt += `\n- If current Phase > 1, previous Phases are already complete. Do not redo planning/review.`;
+    prompt += `\n\nNote: You must meet ALL gate conditions above to pass the Quality Gate. Incomplete work will be retried.`;
 
     return prompt;
 }

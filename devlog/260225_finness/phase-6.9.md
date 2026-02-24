@@ -39,9 +39,26 @@ export function t(key, params = {}, lang = 'ko') {
     const dict = locales[lang] || locales['ko'] || {};
     let val = dict[key] ?? key;  // fallback: 키 자체 표시
     for (const [k, v] of Object.entries(params)) {
-        val = val.replace(`{${k}}`, v);
+        val = val.replaceAll(`{${k}}`, String(v));
     }
     return val;
+}
+
+// A-2.md Language 필드 → locale 코드 정규화
+const LANG_NORMALIZE = {
+    'korean': 'ko', '한국어': 'ko', 'ko': 'ko',
+    'english': 'en', '영어': 'en', 'en': 'en',
+    'japanese': 'ja', '일본어': 'ja', 'ja': 'ja',
+    'chinese': 'zh', '중국어': 'zh', 'zh': 'zh',
+};
+
+export function getPromptLocale(a2Path) {
+    try {
+        const a2 = fs.existsSync(a2Path) ? fs.readFileSync(a2Path, 'utf8') : '';
+        const match = a2.match(/Language\s*[:：]\s*(.+)/i);
+        const raw = (match?.[1] || '').trim().toLowerCase();
+        return LANG_NORMALIZE[raw] || 'ko';
+    } catch { return 'ko'; }
 }
 ```
 
@@ -75,8 +92,8 @@ async function modelHandler(args, ctx) {
 |------|------|
 | `src/i18n.js` | [NEW] `t()`, `loadLocales()` |
 | `src/commands.js` | 17 handler 전부 — desc + 응답에 `t()` 사용 |
-| `server.js` | `makeWebCommandCtx()`에 `locale` 추가, `/api/command` error msg |
-| `src/telegram.js` | `makeTelegramCommandCtx()`에 `locale` 추가, 에러 메시지 |
+| `server.js` | `makeWebCommandCtx()`에 `locale` 추가, `/api/command` + **`/api/commands`** 모두 locale 반영 |
+| `src/telegram.js` | `makeTelegramCommandCtx()`에 `locale` 추가, 에러 메시지, **`syncTelegramCommands()` desc locale** |
 | `bin/commands/chat.js` | `makeCliCommandCtx()`에 `locale` 추가, UI 문자열 |
 
 ---
@@ -279,21 +296,57 @@ CLI:
 모든 문자열을 i18n key로:
 
 ```js
-// commands.js
-{ name: 'help', desc: t('cmd.help.desc', {}, ctx.locale), ... },
-// 또는 desc를 key로 저장하고 표시 시 t() 호출
+// commands.js — desc를 key로 저장
 { name: 'help', descKey: 'cmd.help.desc', ... }
+
+// 표시 시 t() 호출 (getCompletionItems, handler 등)
+function getDesc(cmd, locale) {
+    return cmd.descKey ? t(cmd.descKey, {}, locale) : cmd.desc;
+}
 
 // employeeArgumentCompletions — 4명으로 수정
 return [{ value: 'reset', label: t('cmd.employee.resetLabel', {}, locale) }];
 // ko: '기본 4명 재생성', en: 'Reset to 4 defaults'
 ```
 
+#### ⚠️ `/api/commands` + Telegram `setMyCommands` locale 전파
+
+```js
+// server.js — /api/commands에 locale 파라미터 추가
+app.get('/api/commands', (req, res) => {
+    const iface = String(req.query.interface || 'web');
+    const locale = req.query.locale || settings.locale || 'ko';
+    res.json(COMMANDS
+        .filter(c => c.interfaces.includes(iface) && !c.hidden)
+        .map(c => ({
+            name: c.name,
+            desc: c.descKey ? t(c.descKey, {}, locale) : c.desc,  // ← locale 반영
+            // ...
+        }))
+    );
+});
+
+// telegram.js — syncTelegramCommands에 locale 주입
+function syncTelegramCommands(bot) {
+    const locale = settings.locale || 'ko';
+    return bot.api.setMyCommands(
+        COMMANDS
+            .filter(c => c.interfaces.includes('telegram') && ...)
+            .map(c => ({
+                command: c.name,
+                description: toTelegramCommandDescription(
+                    c.descKey ? t(c.descKey, {}, locale) : c.desc   // ← locale 반영
+                ),
+            }))
+    );
+}
+```
+
 ### 영향 범위
 
 - `commands.js` — 17 handler + 4개 completion 함수
-- `server.js` — `/api/command` 에러 2곳
-- `telegram.js` — 에러 메시지 6곳 + timeout 2곳
+- `server.js` — `/api/command` 에러 2곳 + **`/api/commands` desc locale**
+- `telegram.js` — 에러 메시지 6곳 + timeout 2곳 + **`syncTelegramCommands()` desc**
 - `bin/commands/chat.js` — UI 문자열 5곳
 - `commands-parse.test.js` — desc 문자열 체크 부분
 
@@ -329,16 +382,10 @@ UI 표시 (badge, ws message)  → t('phase.1', {}, userLocale)     → '기획'
 Agent 프롬프트 (LLM 지시문)  → promptLocale (A-2.md Language 설정) → 항상 한국어 (현재)
 ```
 
-#### A-2.md Language 파싱 모듈
+#### A-2.md Language 파싱 (정규화 포함)
 
-```js
-// src/i18n.js에 추가
-export function getPromptLocale() {
-    // A-2.md에서 Language 필드를 파싱
-    const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
-    const match = a2.match(/Language\s*[:：]\s*(\w+)/i);
-    return match?.[1]?.toLowerCase() || 'ko';
-}
+`getPromptLocale()`는 Section 0의 `src/i18n.js`에 정의됨.
+`LANG_NORMALIZE` 매핑으로 `English` → `en`, `한국어` → `ko` 등 자동 정규화.
 ```
 
 #### 프롬프트 locale 파일
@@ -423,8 +470,16 @@ function getPhaseInstruction(phase) {
 | `heartbeat.js:35` | `프롬프트...` (placeholder) | `hb.prompt` |
 | `slash-commands.js:52` | `일치하는 커맨드가 없습니다` | `cmd.noMatch` |
 | `memory.js:58` | `No memory files yet` | `mem.noFiles` |
+| `main.js:103` | `모델 ID를 입력하세요` | `model.promptInput` |
+| `settings.js:24` | `✏️ 직접 입력...` | `model.customOption` |
+| `settings.js:169` | `동기화 중...` | `mcp.syncing` |
+| `settings.js:182` | `📦 npm i -g 설치 중... (최대 2분 소요)` | `mcp.installing` |
+| `settings.js:280` | `model ID 입력` (placeholder) | `model.placeholder` |
+| `settings.js:386` | `(없음)` | `settings.none` |
+| `settings.js:434` | `첫 실행 시 브라우저 인증` | `cli.gemini.auth` |
+| `settings.js:462` | `⚠️ 설치 / 인증 필요` | `cli.authRequired` |
 
-**총 키 수: ~160개** (index.html 30 + JS 동적 25 + commands 50 + orchestrator/prompt 30 + skill registry 212 별도)
+**총 키 수: ~170개** (index.html 30 + JS 동적 33 + commands 50 + orchestrator/prompt 30 + skill registry 212 별도)
 
 ---
 
