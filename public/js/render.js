@@ -44,8 +44,14 @@ function renderMermaidBlocks() {
             const { svg } = await mermaid.render(id, code);
             el.innerHTML = svg;
             el.classList.add('mermaid-rendered');
-        } catch {
-            el.innerHTML = `<pre style="color:#ef4444">Mermaid error</pre><pre><code>${escapeHtml(code)}</code></pre>`;
+        } catch (err) {
+            const errMsg = err?.message || err?.str || 'Unknown error';
+            el.innerHTML = `
+                <div style="border:1px solid #ef4444;border-radius:6px;padding:8px;margin:4px 0">
+                    <div style="color:#ef4444;font-size:11px;margin-bottom:4px">⚠️ Mermaid 렌더링 실패</div>
+                    <div style="color:#fbbf24;font-size:10px;margin-bottom:6px">${escapeHtml(errMsg.slice(0, 200))}</div>
+                    <pre style="margin:0;font-size:11px;overflow-x:auto"><code>${escapeHtml(code)}</code></pre>
+                </div>`;
         }
     });
 }
@@ -102,7 +108,7 @@ function ensureMarked() {
 // ── Fallback regex renderer (CDN 실패 시) ──
 function renderFallback(text) {
     return escapeHtml(text)
-        .replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>')
+        .replace(/`{3,}(\w*)\n([\s\S]*?)`{3,}/g, '<pre><code>$2</code></pre>')
         .replace(/`([^`]+)`/g, '<code>$1</code>')
         .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
         .replace(/^### (.+)$/gm, '<div style="font-weight:700;margin:8px 0 4px">$1</div>')
