@@ -22,9 +22,9 @@ public/
     ├── main.js           ← 앱 진입점 + 5개 모듈 wire (239L)
     ├── state.js          ← 공유 상태 모듈 (16L)
     ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (이모지 제거) (119L)
-    ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 (161L)
-    ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() (143L)
-    ├── ws.js             ← WebSocket + 메시지 라우팅 (60L)
+    ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation (200L)
+    ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() + finalizeAgent guard (149L)
+    ├── ws.js             ← WebSocket + 메시지 라우팅 + orchestrate_done (64L)
     └── features/
         ├── chat.js       ← 전송, 첨부, 드래그앤드롭, 멈춤, 큐, auto-expand (176L)
         ├── settings.js   ← 설정 + CLI 상태 + perCli (5개 CLI) (524L)
@@ -54,9 +54,9 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 | 161 |
-| `ui.js` | DOM 유틸 + stop-mode + getAppName() | 143 |
-| `ws.js` | WebSocket + 메시지 라우팅 | 60 |
+| `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy | 200 |
+| `ui.js` | DOM 유틸 + stop-mode + finalizeAgent debounce guard | 149 |
+| `ws.js` | WebSocket + 메시지 라우팅 + orchestrate_done | 64 |
 
 ### Features Layer
 
@@ -116,3 +116,4 @@ public/
 | 6.1 | 레이아웃 리팩터 + 이모지 정리 (탭, 서브에이전트, ROLE_PRESETS) |
 | 6.2 | 토글 absolute 통일 + 반응형 이중 모드 + collapsed/expanded 충돌 수정 |
 | 7.2 | 채팅 입력창 auto-expand (최대 8줄, 전송 후 리셋) |
+| 16 | orchestrate_done WS 핸들러 추가 + finalizeAgent 이중 호출 방지 (debounce 500ms) |
