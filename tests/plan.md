@@ -1,20 +1,24 @@
 # CLI-Claw 테스트 계획
 
 > 작성일: 2026-02-25
-> 상태: 부분 구현 (2026-02-24 검증 반영)
+> 상태: Tier 1-2 구현 완료 (65 tests pass, 85ms)
 
-## 계획 검증 결과 (2026-02-24)
+## 검증 결과 (2026-02-25 00:00)
 
-- 현재 실행 중 테스트:
-  - `tests/events.test.js`
-  - `tests/events-acp.test.js`
-  - `tests/telegram-forwarding.test.js`
-- 이번 검증에서 반영한 보강:
-  - `events.js`: `extractSessionId`, `extractFromEvent`, `extractToolLabels`, `extractFromAcpUpdate` 멀티-CLI 경로 테스트 추가
-  - `telegram-forwarder.js`: skip/fallback 오탐 방지 assertion, markdown/chunk 유틸 테스트 추가
-- 아직 미구현:
-  - `cli-registry`, `bus`, `worklog`, `memory`, `commands`, `config`, `prompt` 테스트
-  - fixture 확장(`codex-events.json`, `gemini-events.json`, `opencode-events.json`) 및 integration tier
+**Total: 65 tests / 0 fail**
+
+- 기존 (Claude 작성):
+  - `tests/events.test.js` — 12 tests
+  - `tests/events-acp.test.js` — 4 tests
+  - `tests/telegram-forwarding.test.js` — 8 tests + lifecycle 2 tests
+- 추가 (Antigravity 작성):
+  - `tests/unit/cli-registry.test.js` — 8 tests (구조, 필수필드, buildDefaultPerCli, buildModelChoicesByCli)
+  - `tests/unit/bus.test.js` — 6 tests (listener add/remove, WS mock, broadcast)
+  - `tests/unit/commands-parse.test.js` — 15 tests (parseCommand, executeCommand, getCompletions, COMMANDS 무결성)
+  - `tests/unit/worklog.test.js` — 5 tests (PHASES, parseWorklogPending)
+- 미구현:
+  - `memory`, `config`, `prompt` 테스트 (integration tier)
+  - fixture 확장 및 E2E tier
 
 ## 프레임워크
 
