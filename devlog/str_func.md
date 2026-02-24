@@ -1,6 +1,6 @@
 # CLI-CLAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-25T08:52 (server.js 856L / agent.js 575L / orchestrator.js 584L / prompt.js 502L / telegram.js 413L / acp-client.js 243L / cli-registry.js 87L)
+> 마지막 검증: 2026-02-25T00:42 (server.js 856L / agent.js 578L / orchestrator.js 584L / prompt.js 502L / telegram.js 470L / acp-client.js 253L / cli-registry.js 88L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -16,17 +16,17 @@ cli-claw/
 │   ├── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
 │   └── quota-copilot.js      ← [NEW] Copilot 할당량 조회 (keychain→copilot_internal/user API) (67L)
 ├── src/
-│   ├── cli-registry.js       ← [NEW] 5개 CLI/모델 단일 소스 레지스트리 (87L)
-│   ├── acp-client.js         ← [NEW] Copilot ACP JSON-RPC 클라이언트 (243L)
+│   ├── cli-registry.js       ← [NEW] 5개 CLI/모델 단일 소스 레지스트리 + effortNote (88L)
+│   ├── acp-client.js         ← [NEW] Copilot ACP JSON-RPC 클라이언트 + optionId 폴백 (253L)
 │   ├── config.js             ← CLAW_HOME, settings, CLI 탐지 (cli-registry 기반), APP_VERSION (177L)
 │   ├── db.js                 ← SQLite 스키마 + prepared statements + trace (84L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast + removeBroadcastListener(fn) (20L)
 │   ├── events.js             ← NDJSON 파싱 + dedupe key + ACP update 파싱 + logEventSummary + test helpers (318L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (cli-registry import) (639L)
-│   ├── agent.js              ← CLI spawn + ACP 분기 + effort config.json 쓰기 + origin 전달 + 히스토리빌더 + 스트림 + 큐 + 메모리 flush (575L)
+│   ├── agent.js              ← CLI spawn + ACP 분기 + effort config.json 쓰기 + origin 전달 + 히스토리빌더 + 스트림 + 큐 + 메모리 flush (578L)
 │   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + origin 전달 + phase skip (584L)
 │   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
-│   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 (413L)
+│   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 + 디바운스 tool 업데이트 (470L)
 │   ├── telegram-forwarder.js ← [NEW] Telegram 포워딩 헬퍼 추출 (escape, chunk, createForwarder) (73L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
 │   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + phase skip + git금지 (502L)

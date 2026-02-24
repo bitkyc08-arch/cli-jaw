@@ -63,11 +63,15 @@ function normalizeRegistry(input) {
     const out = {};
     for (const [key, value] of Object.entries(input || {})) {
         if (!value || typeof value !== 'object') continue;
-        out[key] = {
+        const normalized = {
             label: value.label || key,
             efforts: Array.isArray(value.efforts) ? [...value.efforts] : [],
             models: Array.isArray(value.models) ? [...value.models] : [],
         };
+        if (typeof value.effortNote === 'string' && value.effortNote.trim()) {
+            normalized.effortNote = value.effortNote;
+        }
+        out[key] = normalized;
     }
     return out;
 }

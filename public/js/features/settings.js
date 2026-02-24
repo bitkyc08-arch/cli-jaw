@@ -97,15 +97,21 @@ function syncActiveEffortOptions(cli, selected = '') {
     const selEffort = document.getElementById('selEffort');
     if (!selEffort) return;
     const meta = getCliMeta(cli);
+    if (meta?.effortNote) {
+        // Effort managed externally (e.g. Copilot config.json) — show hint, disable
+        selEffort.innerHTML = `<option value="">${escapeHtml(meta.effortNote)}</option>`;
+        selEffort.title = meta.effortNote;
+        selEffort.disabled = true;
+        return;
+    }
     const efforts = [''].concat(meta?.efforts || []);
     const unique = [...new Set(efforts)];
-    const noneLabel = (meta?.efforts?.length === 0 && meta?.effortNote) ? meta.effortNote : '— none';
     selEffort.innerHTML = unique.map(v => {
-        if (!v) return `<option value="">${escapeHtml(noneLabel)}</option>`;
+        if (!v) return '<option value="">— none</option>';
         return `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`;
     }).join('');
-    if (meta?.effortNote) selEffort.title = meta.effortNote;
-    selEffort.disabled = (meta?.efforts?.length === 0 && !!meta?.effortNote);
+    selEffort.disabled = false;
+    selEffort.title = '';
     if (Array.from(selEffort.options).some(o => o.value === selected)) selEffort.value = selected;
 }
 

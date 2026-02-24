@@ -66,10 +66,12 @@ Editor-Version: vscode/1.95.0
 
 | 항목 | 값 |
 |------|------|
-| `cli-registry.js` copilot.efforts | `[]` (비활성) |
-| `cli-registry.js` copilot.effortNote | `~/.copilot/config.json` |
-| UI effort 드롭다운 | disabled, `~/.copilot/config.json` 표시 |
-| `agent.js` config.json 쓰기 | 제거됨 |
+| `cli-registry.js` copilot.efforts | `['low', 'medium', 'high']` |
+| `cli-registry.js` copilot.defaultEffort | `'high'` |
+| `cli-registry.js` copilot.effortNote | `'→ ~/.copilot/config.json'` (tooltip) |
+| UI per-CLI effort 드롭다운 | **활성** — low/medium/high 선택 가능 |
+| Active CLI effort 드롭다운 | **활성** — tooltip에 config.json 안내 |
+| `agent.js` config.json 쓰기 | spawn 전 자동 (`effort=''` → 필드 삭제) |
 
 > 사용자가 수동으로 `~/.copilot/config.json`에서 `reasoning_effort` 설정 가능
 
@@ -124,3 +126,4 @@ Editor-Version: vscode/1.95.0
 | `5a58057` | fix: add 'default' to Active CLI model |
 | `7f24869` | fix: effortNote hint, telegram origin, ACP optionId |
 | `2b00f0c` | fix: remove 'default' from per-CLI model |
+| `04d88be` | fix: re-enable copilot effort (per-CLI settable, config.json) |
