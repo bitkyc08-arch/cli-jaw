@@ -6,20 +6,24 @@
     width: auto;
     margin: 8px 0;
     font-size: 12px;
+    border: 1px solid #3b3f47;
 }
+
 .msg-body th,
 .msg-body td {
-    border: 1px solid var(--border);
-    padding: 4px 10px;
+    border: 1px solid #3b3f47;
+    padding: 6px 12px;
     text-align: left;
 }
+
 .msg-body th {
-    background: var(--surface);
+    background: rgba(255, 255, 255, 0.06);
     font-weight: 600;
     white-space: nowrap;
 }
+
 .msg-body tr:nth-child(even) {
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.03);
 }
 
 /* Code blocks */
@@ -32,12 +36,14 @@
     font-size: 12px;
     line-height: 1.45;
 }
+
 .msg-body pre code {
     background: none;
     padding: 0;
     border-radius: 0;
     font-family: 'SF Mono', 'Fira Code', monospace;
 }
+
 .msg-body code {
     background: var(--border);
     padding: 1px 5px;
@@ -52,15 +58,17 @@
     margin: 8px 0;
     padding: 4px 12px;
     color: var(--text-dim);
-    background: rgba(255,255,255,0.02);
+    background: rgba(255, 255, 255, 0.02);
     border-radius: 0 4px 4px 0;
 }
 
 /* Lists */
-.msg-body ul, .msg-body ol {
+.msg-body ul,
+.msg-body ol {
     margin: 4px 0;
     padding-left: 20px;
 }
+
 .msg-body li {
     margin: 2px 0;
 }
@@ -70,6 +78,7 @@
     color: #60a5fa;
     text-decoration: none;
 }
+
 .msg-body a:hover {
     text-decoration: underline;
 }
@@ -82,13 +91,24 @@
 }
 
 /* Headings inside messages */
-.msg-body h1, .msg-body h2, .msg-body h3 {
+.msg-body h1,
+.msg-body h2,
+.msg-body h3 {
     margin: 10px 0 4px;
     line-height: 1.3;
 }
-.msg-body h1 { font-size: 16px; }
-.msg-body h2 { font-size: 14px; }
-.msg-body h3 { font-size: 13px; }
+
+.msg-body h1 {
+    font-size: 16px;
+}
+
+.msg-body h2 {
+    font-size: 14px;
+}
+
+.msg-body h3 {
+    font-size: 13px;
+}
 
 /* Paragraphs */
 .msg-body p {
@@ -106,6 +126,7 @@
     margin: 8px 0;
     text-align: center;
 }
+
 .msg-body .mermaid-container svg {
     max-width: 100%;
 }
@@ -114,6 +135,7 @@
 .msg-body .code-block-wrapper {
     position: relative;
 }
+
 .msg-body .code-lang-label {
     position: absolute;
     top: 0;
@@ -121,7 +143,7 @@
     padding: 2px 8px;
     font-size: 10px;
     color: #8b949e;
-    background: rgba(255,255,255,0.05);
+    background: rgba(255, 255, 255, 0.05);
     border-radius: 0 6px 0 4px;
     font-family: 'SF Mono', monospace;
 }
