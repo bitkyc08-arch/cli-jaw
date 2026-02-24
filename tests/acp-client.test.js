@@ -123,7 +123,7 @@ test('requestWithHeartbeat resolves and cleans up timers on response', async () 
     assert.deepEqual(out, { ok: true });
 });
 
-test('requestWithHeartbeat rejects on idle timeout when no heartbeat', async () => {
+test('requestWithActivityTimeout rejects on idle timeout when no activity', async () => {
     const acp = new AcpClient();
     acp.proc = {
         stdin: {
@@ -135,4 +135,22 @@ test('requestWithHeartbeat rejects on idle timeout when no heartbeat', async () 
     const { promise } = acp.requestWithActivityTimeout('session/prompt', {}, 100, 5000);
 
     await assert.rejects(promise, /idle 0.1s/);
+});
+
+test('_handleLine resets idle timer via _activityPing on valid JSON', async () => {
+    const acp = new AcpClient();
+    let pingCount = 0;
+    acp._activityPing = () => { pingCount++; };
+
+    // Valid JSON-RPC notification → should trigger ping
+    acp._handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: {} }));
+    assert.equal(pingCount, 1);
+
+    // Another message → ping again
+    acp._handleLine(JSON.stringify({ jsonrpc: '2.0', method: 'session/update', params: { update: {} } }));
+    assert.equal(pingCount, 2);
+
+    // Invalid JSON → no ping
+    acp._handleLine('not json at all');
+    assert.equal(pingCount, 2);
 });

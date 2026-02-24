@@ -250,20 +250,26 @@ export function spawnAgent(prompt, opts = {}) {
 
     // ─── Copilot ACP branch ──────────────────────
     if (cli === 'copilot') {
-        // Write reasoning_effort to ~/.copilot/config.json (CLI flag unsupported)
+        // Write model + reasoning_effort to ~/.copilot/config.json (CLI flags unsupported)
         try {
             const cfgPath = join(os.homedir(), '.copilot', 'config.json');
             const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
-            if (effort) {
-                if (cfg.reasoning_effort !== effort) {
-                    cfg.reasoning_effort = effort;
-                    fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
-                }
-            } else if (cfg.reasoning_effort) {
-                delete cfg.reasoning_effort;
-                fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+            let changed = false;
+
+            // Sync model
+            if (model && model !== 'default') {
+                if (cfg.model !== model) { cfg.model = model; changed = true; }
             }
-        } catch (e) { console.warn('[claw:copilot] effort config.json write failed:', e.message); }
+
+            // Sync effort
+            if (effort) {
+                if (cfg.reasoning_effort !== effort) { cfg.reasoning_effort = effort; changed = true; }
+            } else if (cfg.reasoning_effort) {
+                delete cfg.reasoning_effort; changed = true;
+            }
+
+            if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
+        } catch (e) { console.warn('[claw:copilot] config.json sync failed:', e.message); }
 
         const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });
         acp.spawn();
@@ -297,9 +303,8 @@ export function spawnAgent(prompt, opts = {}) {
             ctx.thinkingBuf = '';
         }
 
-        // session/update → broadcast mapping + activity ping
+        // session/update → broadcast mapping
         acp.on('session/update', (params) => {
-            if (promptActivityPing) promptActivityPing();  // reset idle timer
             const parsed = extractFromAcpUpdate(params);
             if (!parsed) return;
 
@@ -325,7 +330,6 @@ export function spawnAgent(prompt, opts = {}) {
         });
 
         // Run ACP flow
-        let promptActivityPing = null;
         (async () => {
             try {
                 const initResult = await acp.initialize();
@@ -347,8 +351,7 @@ export function spawnAgent(prompt, opts = {}) {
                 ctx.toolLog = [];
                 ctx.seenToolKeys.clear();
 
-                const { promise: promptPromise, activityPing } = acp.prompt(prompt);
-                promptActivityPing = activityPing;
+                const { promise: promptPromise } = acp.prompt(prompt);
                 const promptResult = await promptPromise;
                 if (process.env.DEBUG) console.log('[acp:prompt:result]', JSON.stringify(promptResult).slice(0, 200));
 

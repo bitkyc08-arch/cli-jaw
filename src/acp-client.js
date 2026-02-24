@@ -43,8 +43,9 @@ export class AcpClient extends EventEmitter {
         const rl = createInterface({ input: this.proc.stdout });
         rl.on('line', (line) => this._handleLine(line));
 
-        // Capture stderr for debugging
+        // Capture stderr for debugging + heartbeat
         this.proc.stderr.on('data', (chunk) => {
+            this._activityPing?.();  // stderr activity = agent is alive
             const text = chunk.toString().trim();
             if (text && process.env.DEBUG) {
                 console.error(`[acp:stderr] ${text}`);
@@ -175,6 +176,9 @@ export class AcpClient extends EventEmitter {
             return;
         }
 
+        // Any valid JSON-RPC message = agent is alive → reset idle timer
+        this._activityPing?.();
+
         // Response to a request (has id)
         if (msg.id != null && this._pending.has(msg.id)) {
             const p = this._pending.get(msg.id);
@@ -278,7 +282,7 @@ export class AcpClient extends EventEmitter {
         return this.requestWithActivityTimeout('session/prompt', {
             sessionId: sid,
             prompt: [{ type: 'text', text }],
-        }, 120000, 1200000); // idle 2min, max 20min
+        }, 1200000, 1200000); // idle 20min, max 20min
     }
 
     /** Resume a previous session (if agent supports loadSession capability) */
