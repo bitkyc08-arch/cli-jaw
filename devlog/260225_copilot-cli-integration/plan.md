@@ -275,13 +275,13 @@ export class AcpClient extends EventEmitter {
     }
 
     async createSession(workDir) {
-        return this.request('session/create', { workingDirectory: workDir });
+        return this.request('session/new', { workingDirectory: workDir });
     }
 
     async prompt(sessionId, text) {
         return this.request('session/prompt', {
             sessionId,
-            messages: [{ role: 'user', content: text }],
+            messages: [{ role: 'user', content: [{ type: 'text', text }] }],
         });
     }
 
@@ -320,7 +320,7 @@ if (cli === 'copilot') {
         // → events.js의 extractFromAcpUpdate로 변환
     });
 
-    acp.prompt(session.id, prompt);
+    acp.prompt(prompt); // sessionId는 createSession에서 자동 저장됨
     child = acp.proc; // activeProcess용
 } else {
     child = spawn(cli, args, { ... });
@@ -338,18 +338,18 @@ if (cli === 'copilot') {
 #### 이어하기 (/continue)
 **결정: CLI `--resume` 방식 사용** (ACP 내부 resume 여부 Phase 2에서 확인)
 
-방법 A — CLI 레벨 (확실):
+방법 A — CLI 레벨:
 ```js
 spawn('copilot', ['--acp', '--resume', sessionId, ...]);
 ```
 
-방법 B — ACP 레벨 (확인 필요):
+방법 B — ACP 레벨 (**공식 스펙 확인됨**):
 ```js
-acp.request('session/resume', { sessionId });
+acp.request('session/load', { sessionId });
 ```
 
-- Phase 2 테스트에서 `--acp --resume`이 동작하는지 반드시 확인
-- 안 되면 ACP 프로세스를 유지(long-lived)하는 방식으로 전환
+- **`session/load`는 ACP 공식 메서드** (선택적 capability)
+- Phase 2 테스트에서 copilot이 `loadSession` capability 지원하는지 확인
 - sessionId는 db session 테이블의 기존 `session_id` 컬럼에 저장
 
 ---
@@ -362,28 +362,29 @@ ACP `session/update` → cli-claw broadcast 변환:
 
 ```js
 function extractFromAcpUpdate(params) {
-    // ACP update의 구조 (추정, Phase 2 테스트에서 확정)
-    const { kind, content, toolName, text } = params;
+    const update = params?.update;
+    if (!update) return null;
+    const type = update.sessionUpdate; // 공식 discriminator
 
-    switch (kind) {
-        case 'thinking':
-            return { tool: { icon: '💭', label: (text || '').slice(0, 60) } };
-        case 'tool_use':  // ← 통일: tool_use (tool_call은 사용하지 않음)
-            return { tool: { icon: '🔧', label: toolName } };
-        case 'tool_result':
-            return { tool: { icon: '✅', label: toolName } };
-        case 'text':
-            return { text: content };
-        case 'complete':
-            return { done: true };
+    switch (type) {
+        case 'agent_thought_chunk':
+            return { tool: { icon: '💭', label: extractText(update.content).slice(0, 60) } };
+        case 'tool_call':
+            return { tool: { icon: '🔧', label: update.name || 'tool' } };
+        case 'tool_call_update':
+            return { tool: { icon: '✅', label: update.name || 'done' } };
+        case 'agent_message_chunk':
+            return { text: extractText(update.content) };
+        case 'plan':
+            return { tool: { icon: '📝', label: 'planning...' } };
         default:
             return null;
     }
 }
 ```
 
-> ⚠️ ACP `session/update` 실제 스키마는 Phase 2 테스트에서 캡처하여 확정.
-> tool_use / tool_call 혼재 문제 → **tool_use로 통일** (Claude 이벤트와 일치)
+> **확정**: `update.sessionUpdate`가 discriminator (공식 schema.json)
+> Phase 4 상세 구현은 `phase-4.md` 참고
 
 #### `logEventSummary` + `extractToolLabels`
 - copilot case 추가: ACP 이벤트는 별도 함수에서 처리하므로 기존 파서 변경 최소화

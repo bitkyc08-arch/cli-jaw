@@ -20,25 +20,15 @@ const session = await acp.createSession(settings.workingDir);
 ```js
 // /continue 시
 if (cli === 'copilot' && lastSession?.session_id) {
-    const acp = new AcpClient({
-        model,
-        workDir: settings.workingDir,
-        permissions,
-        resumeId: lastSession.session_id, // → --resume 플래그
-    });
-    // ...
+    const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });
+    await acp.initialize();
+    await acp.loadSession(lastSession.session_id); // session/load (공식 ACP 메서드)
+    await acp.prompt(newPrompt);
 }
 ```
 
-AcpClient 생성자에 `resumeId` 옵션 추가:
-```diff
- const args = [
-     '--acp',
-+    ...(resumeId ? ['--resume', resumeId] : []),
-     '--model', model,
-     ...
- ];
-```
+> **`session/load`는 선택적 capability** — Phase 2에서 copilot이 지원하는지 확인
+> 미지원 시 CLI `--resume` 플래그로 fallback
 
 ---
 
@@ -52,7 +42,7 @@ AcpClient 생성자에 `resumeId` 옵션 추가:
 
 ### 스트리밍
 - [ ] WebSocket으로 agent_tool (🔧/💭) 이벤트 수신
-- [ ] agent_chunk 텍스트 스트리밍
+- [ ] agent_output 텍스트 스트리밍 (ws.js 경유)
 - [ ] agent_done 완료
 
 ### 세션
@@ -72,7 +62,7 @@ AcpClient 생성자에 `resumeId` 옵션 추가:
 - [ ] `/version` → copilot 버전 표시
 
 ### MCP
-- [ ] `/mcp reset` → `~/.copilot/mcp-config.json` 동기화
+- [ ] `/mcp sync` → `~/.copilot/mcp-config.json` 동기화
 - [ ] MCP 서버 목록이 copilot에 반영
 
 ### 에러 처리
@@ -96,30 +86,30 @@ AcpClient 생성자에 `resumeId` 옵션 추가:
 ## 5.4 커밋 전략
 
 ```bash
-# Phase 1 완료 후
-git add -A && git commit -m "[copilot] phase 1: CLI 감지 + 설정 + UI"
+# Phase 1 완료 후 (변경된 파일만 스테이징)
+git add src/config.js src/commands.js bin/postinstall.js public/ lib/mcp-sync.js
+git commit -m "[copilot] phase 1: CLI 감지 + 설정 + UI"
 
 # Phase 2 완료 후
-git add -A && git commit -m "[copilot] phase 2: ACP 클라이언트 모듈"
+git add src/acp-client.js
+git commit -m "[copilot] phase 2: ACP 클라이언트 모듈"
 
 # Phase 3 완료 후
-git add -A && git commit -m "[copilot] phase 3: agent.js ACP 통합"
+git add src/agent.js
+git commit -m "[copilot] phase 3: agent.js ACP 통합"
 
 # Phase 4 완료 후
-git add -A && git commit -m "[copilot] phase 4: events.js ACP 파싱"
+git add src/events.js
+git commit -m "[copilot] phase 4: events.js ACP 파싱"
 
 # Phase 5 완료 후 (최종 테스트 통과)
 git add -A && git commit -m "[copilot] phase 5: 테스트 완료 + 마무리"
-
-# 전체 푸시 (유저 요청 시)
-git push
 ```
 
 ---
 
 ## 5.5 알려진 리스크
 
-1. **ACP 스키마 불확실**: Phase 2 캡처 결과로 확정 필요
-2. **`--acp --resume` 미확인**: 안 되면 long-lived 프로세스 방식으로 전환
-3. **MCP config 포맷**: `~/.copilot/mcp-config.json` 포맷이 Claude `.mcp.json`과 동일한지 확인
-4. **Copilot 자동 업데이트**: 바이너리가 자동 업데이트 시 심링크 깨질 수 있음 → 심링크 타겟이 같은 경로이므로 괜찮을 것
+1. **`session/load` 지원 미확인**: Phase 2에서 copilot이 `loadSession` capability 알리는지 확인 → 미지원 시 CLI `--resume` fallback
+2. **MCP config 포맷**: `~/.copilot/mcp-config.json` 포맷이 Claude `.mcp.json`과 동일한지 확인 필요
+3. **Copilot 자동 업데이트**: 바이너리 경로 동일하므로 심링크 유지됨

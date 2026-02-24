@@ -247,13 +247,11 @@ node devlog/260225_copilot-cli-integration/test-acp.js
 ### 확인 사항
 
 - [ ] `initialize` 응답의 capabilities 구조
-- [ ] `session/create` 응답의 sessionId 필드명
-- [ ] `session/update` 이벤트의 `params` 구조 (kind, text, toolName 등)
-- [ ] tool use 발생 시 이벤트 순서
-- [ ] complete 이벤트 구조
-- [ ] `--acp --resume` 동작 여부 확인
+- [ ] `session/new` 응답의 sessionId 필드명
+- [ ] `session/update` 이벤트의 `params.update.sessionUpdate` 구조
+- [ ] `loadSession` capability 지원 여부 (초기화 응답에서 확인)
 
-> ⚠️ 이 테스트 결과로 Phase 4 (events.js 파서)의 스키마가 확정됨
+> 이 테스트 결과로 Phase 4 파서의 ContentChunk 구조가 최종 검증됨
 
 ---
 

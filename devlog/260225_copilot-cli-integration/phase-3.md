@@ -160,7 +160,7 @@ cd ~/Documents/BlogProject/cli-claw && node server.js
 # API 테스트 (포트: 3457, 경로: /api/message)
 curl -X POST http://localhost:3457/api/message \
   -H 'Content-Type: application/json' \
-  -d '{"message": "say hello", "cli": "copilot", "model": "gpt-4.1"}'
+  -d '{"prompt": "say hello"}'
 ```
 
 ### 확인 사항

@@ -7,7 +7,7 @@
 
 ## 4.1 ACP 이벤트 → cli-claw 매핑
 
-> ⚠️ 아래 `params` 구조는 Phase 2 캡처 결과로 확정. 현재는 추정.
+> `params.update.sessionUpdate` discriminator 사용 (공식 schema.json 확인됨)
 
 ```
 ACP session/update                  →  cli-claw broadcast
@@ -117,19 +117,13 @@ if (cli === 'copilot') {
 
 ---
 
-## 4.3 스키마 확정 메모 (Phase 2 이후 업데이트)
+## 4.3 ContentChunk 검증 메모 (Phase 2 이후)
 
 Phase 2 테스트에서 캡처한 실제 `session/update` 메시지:
 
 ```json
-// TODO: Phase 2 실행 후 여기에 실제 캡처 결과 붙여넣기
-{
-    "jsonrpc": "2.0",
-    "method": "session/update",
-    "params": {
-        "??": "??"
-    }
-}
+// Phase 2 실행 후 캡처된 실제 데이터로 대체 예정
+// 확인 포인트: update.content 배열 구조, ToolCall 필드명
 ```
 
 ---
@@ -142,7 +136,7 @@ Phase 2 테스트에서 캡처한 실제 `session/update` 메시지:
 # 1. tool use가 발생하는 프롬프트
 curl -X POST http://localhost:3457/api/message \
   -H 'Content-Type: application/json' \
-  -d '{"message": "list files in current directory", "cli": "copilot", "model": "gpt-4.1"}'
+  -d '{"prompt": "list files in current directory"}'
 
 # 확인:
 # - 🔧 tool 이벤트가 WebSocket으로 브로드캐스트 되는지
@@ -154,9 +148,8 @@ curl -X POST http://localhost:3457/api/message \
 # - 중간 이벤트가 Telegram에 전달되는지 확인
 ```
 
-### 확인 사항
-- [ ] thinking 이벤트 → 💭 broadcast
-- [ ] tool_use 이벤트 → 🔧 broadcast
-- [ ] text 이벤트 → agent_chunk broadcast
-- [ ] complete → agent_done broadcast
-- [ ] 알 수 없는 이벤트 → 조용히 무시 (DEBUG 시 로그)
+- [ ] agent_thought_chunk 이벤트 → 💭 broadcast
+- [ ] tool_call 이벤트 → 🔧 broadcast
+- [ ] agent_message_chunk 이벤트 → agent_output (웹) / agent_chunk (텔레그램)
+- [ ] session/prompt result → agent_done broadcast
+- [ ] 알 수 없는 sessionUpdate → 조용히 무시 (DEBUG 시 로그)
