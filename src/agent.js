@@ -289,6 +289,7 @@ export function spawnAgent(prompt, opts = {}) {
             const merged = ctx.thinkingBuf.trim();
             if (merged) {
                 const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
+                console.log(`  💭 ${display.slice(0, 120)}`);
                 const tool = { icon: '💭', label: display };
                 ctx.toolLog.push(tool);
                 broadcast('agent_tool', { agentId: agentLabel, ...tool });
