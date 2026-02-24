@@ -5,6 +5,7 @@ on:
     branches:
       - main
       - master
+      - agent
   pull_request:
 
 jobs:
@@ -25,3 +26,23 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+      - name: Deps security check
+        run: npm run check:deps
+
+      - name: File size check
+        run: |
+          echo "=== Files over 500 lines ==="
+          find . -name '*.js' -not -path './node_modules/*' -not -path './skills_ref/*' \
+            | xargs wc -l | sort -rn | awk '$1 > 500 && !/total/ { print "⚠️ " $0; found=1 } END { if (!found) print "✅ All files under 500 lines" }'
+
+      - name: CLI basic tests
+        run: node --test tests/integration/cli-basic.test.js
+
+      - name: API smoke tests (if server available)
+        run: |
+          if curl -sf http://localhost:${TEST_PORT:-3457}/api/session > /dev/null 2>&1; then
+            npm run test:smoke
+          else
+            echo "⏭️ Server not running — smoke tests skipped"
+          fi

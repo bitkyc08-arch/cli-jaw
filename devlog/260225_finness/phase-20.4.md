@@ -293,9 +293,10 @@ npm test
 
 ## 완료 기준
 
-- [ ] `test:coverage` 스크립트 추가 + 실행 가능
-- [ ] Integration smoke test 12건 작성
-- [ ] CLI basic test 4건 작성
-- [ ] CI에 deps check + file size check 추가
-- [ ] CI에 agent 브랜치 추가
-- [ ] `npm test` 통과
+- [x] `test:coverage` 스크립트 추가 + 실행 가능
+- [x] Integration smoke test 12건 작성 (서버 미기동 시 자동 skip)
+- [x] CLI basic test 4건 작성 (--help, --version, unknown, doctor)
+- [x] CI에 deps check + file size check 추가
+- [x] CI에 agent 브랜치 추가
+- [x] `npm test` 통과 (234/235, 1 skip = smoke)
+

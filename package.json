@@ -21,9 +21,11 @@
         "check:deps": "node scripts/check-deps-offline.mjs",
         "check:deps:online": "bash scripts/check-deps-online.sh",
         "test": "node --test tests/*.test.js tests/**/*.test.js",
+        "test:coverage": "node --test --experimental-test-coverage tests/*.test.js tests/**/*.test.js",
         "test:watch": "node --test --watch tests/*.test.js tests/**/*.test.js",
         "test:events": "node --test tests/events.test.js",
-        "test:telegram": "node --test tests/telegram-forwarding.test.js"
+        "test:telegram": "node --test tests/telegram-forwarding.test.js",
+        "test:smoke": "TEST_PORT=3457 node --test tests/integration/api-smoke.test.js"
     },
     "dependencies": {
         "@grammyjs/runner": "^2.0.3",
