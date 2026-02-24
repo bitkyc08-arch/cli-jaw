@@ -4,6 +4,7 @@
  *   cli-claw employee reset [--port 3457]
  */
 import { parseArgs } from 'node:util';
+import { getServerUrl } from '../../src/config.js';
 
 const sub = String(process.argv[3] || '').toLowerCase();
 const isHelpSubcommand = sub === '--help' || sub === '-h' || sub === 'help';
@@ -46,7 +47,7 @@ if (values.help || !sub || isHelpSubcommand) {
     process.exit(0);
 }
 
-const baseUrl = `http://localhost:${values.port}`;
+const baseUrl = getServerUrl(values.port);
 
 switch (sub) {
     case 'reset': {

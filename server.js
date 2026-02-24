@@ -907,6 +907,19 @@ app.get('/api/i18n/:lang', (req, res) => {
 
 watchHeartbeatFile();
 
+// ─── Graceful Shutdown ──────────────────────────────
+['SIGTERM', 'SIGINT'].forEach(sig => process.on(sig, () => {
+    console.log(`\n[server] ${sig} received, shutting down...`);
+    stopHeartbeat();
+    killActiveAgent('shutdown');
+    wss.close();
+    server.close(() => {
+        console.log('[server] closed');
+        process.exit(0);
+    });
+    setTimeout(() => process.exit(1), 5000);
+}));
+
 server.listen(PORT, () => {
     // Bootstrap i18n locale dictionaries
     loadLocales(join(__dirname, 'public', 'locales'));

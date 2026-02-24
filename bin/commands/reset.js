@@ -5,6 +5,7 @@
  */
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline';
+import { getServerUrl } from '../../src/config.js';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
@@ -51,7 +52,7 @@ if (values.help) {
     process.exit(0);
 }
 
-const baseUrl = `http://localhost:${values.port}`;
+const baseUrl = getServerUrl(values.port);
 const hasConfirm = values.yes || process.argv.slice(3).includes('confirm');
 
 // Check server is running

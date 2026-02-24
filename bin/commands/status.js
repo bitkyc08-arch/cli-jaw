@@ -3,17 +3,18 @@
  * Checks if the server is running by pinging the API.
  */
 import { parseArgs } from 'node:util';
+import { getServerUrl, DEFAULT_PORT } from '../../src/config.js';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
     options: {
-        port: { type: 'string', default: process.env.PORT || '3457' },
+        port: { type: 'string', default: process.env.PORT || DEFAULT_PORT },
         json: { type: 'boolean', default: false },
     },
     strict: false,
 });
 
-const url = `http://localhost:${values.port}/api/settings`;
+const url = `${getServerUrl(values.port)}/api/settings`;
 
 try {
     const res = await fetch(url, { signal: AbortSignal.timeout(3000) });
@@ -28,7 +29,7 @@ try {
 
             // Heartbeat status
             try {
-                const hbRes = await fetch(`http://localhost:${values.port}/api/heartbeat`, { signal: AbortSignal.timeout(2000) });
+                const hbRes = await fetch(`${getServerUrl(values.port)}/api/heartbeat`, { signal: AbortSignal.timeout(2000) });
                 const hb = await hbRes.json();
                 const active = (hb.jobs || []).filter(j => j.enabled).length;
                 console.log(`  Heartbeat: ${active} job${active !== 1 ? 's' : ''} active`);

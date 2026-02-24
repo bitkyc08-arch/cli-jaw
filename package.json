@@ -9,7 +9,10 @@
         "bin/",
         "server.js",
         "public/",
-        "package.json"
+        "package.json",
+        "src/",
+        "lib/",
+        "skills_ref/"
     ],
     "scripts": {
         "dev": "node --env-file=.env --dns-result-order=ipv4first server.js",

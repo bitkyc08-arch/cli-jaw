@@ -2,8 +2,9 @@
  * cli-claw memory — persistent memory CLI
  */
 import { parseArgs } from 'node:util';
+import { getServerUrl } from '../../src/config.js';
 
-const SERVER = `http://localhost:${process.env.PORT || 3457}`;
+const SERVER = getServerUrl();
 const sub = process.argv[3];
 
 async function api(method, path, body) {

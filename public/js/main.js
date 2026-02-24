@@ -1,6 +1,15 @@
 // ── App Entry Point ──
 // All event bindings happen here (no inline onclick in HTML)
 
+// ── Global Error Boundary ──
+window.addEventListener('unhandledrejection', (e) => {
+    console.error('[unhandled]', e.reason);
+    e.preventDefault();
+});
+window.addEventListener('error', (e) => {
+    console.error('[error]', e.message, e.filename, e.lineno);
+});
+
 import { connect } from './ws.js';
 import { switchTab, handleSave, loadStats, loadMessages, loadMemory } from './ui.js';
 import { sendMessage, handleKey, clearAttachedFile, clearChat, initDragDrop, initAutoResize } from './features/chat.js';

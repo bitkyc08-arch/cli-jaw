@@ -7,6 +7,7 @@ import { parseArgs } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { getServerUrl } from '../../src/config.js';
 import fs from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -57,7 +58,7 @@ child.on('error', (err) => {
 // --open: open browser after a short delay
 if (values.open) {
     setTimeout(() => {
-        exec(`open http://localhost:${values.port}`, (err) => {
+        exec(`open ${getServerUrl(values.port)}`, (err) => {
             if (err) console.log('  ⚠️ Could not open browser');
         });
     }, 2000);

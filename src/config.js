@@ -24,6 +24,15 @@ export const MIGRATION_MARKER = join(CLAW_HOME, '.migrated-v1');
 export const SKILLS_DIR = join(CLAW_HOME, 'skills');
 export const SKILLS_REF_DIR = join(CLAW_HOME, 'skills_ref');
 
+// ─── Server URLs ────────────────────────────────────
+export const DEFAULT_PORT = '3457';
+export function getServerUrl(port) {
+    return `http://localhost:${port || process.env.PORT || DEFAULT_PORT}`;
+}
+export function getWsUrl(port) {
+    return `ws://localhost:${port || process.env.PORT || DEFAULT_PORT}`;
+}
+
 /** Locate the cli-claw package root (for bundled skills_ref/) */
 export function getProjectDir() {
     return join(new URL('.', import.meta.url).pathname, '..');

@@ -6,8 +6,9 @@ import { parseArgs } from 'node:util';
 import { rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { getServerUrl } from '../../src/config.js';
 
-const SERVER = `http://localhost:${process.env.PORT || 3457}`;
+const SERVER = getServerUrl();
 const sub = process.argv[3];
 const CLAW_HOME = join(homedir(), '.cli-claw');
 
