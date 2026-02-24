@@ -18,6 +18,42 @@ export { isContinueIntent, needsOrchestration, parseSubtasks, parseDirectAnswer,
 // ─── Phase 정의 ──────────────────────────────────────
 const PHASES = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
 
+const PHASE_PROFILES = {
+    frontend: [1, 2, 3, 4, 5],
+    backend: [1, 2, 3, 4, 5],
+    data: [1, 2, 3, 4, 5],
+    docs: [1, 3, 5],
+    custom: [3],
+};
+
+const PHASE_INSTRUCTIONS = {
+    1: `[기획] 이 계획의 실현 가능성을 검증하세요. 코드 작성 금지.
+     - 필수: 영향 범위 분석 (어떤 파일들이 변경되는가)
+     - 필수: 의존성 확인 (import/export 충돌 없는가)
+     - 필수: 엣지 케이스 목록 (null/empty/error 처리)
+     - worklog에 분석 결과를 기록하세요.`,
+    2: `[기획검증] 설계 문서를 검증하고 누락된 부분을 보완하세요.
+     - 필수: 파일 변경 목록과 실제 코드 대조 (함수명, 라인 번호)
+     - 필수: 충돌 검사 (다른 agent 작업과 같은 파일 수정하는가)
+     - 필수: 테스트 전략 수립 (verifyable 기준 정의)
+     - worklog에 검증 결과를 기록하세요.`,
+    3: `[개발] 문서를 참조하여 코드를 작성하세요.
+     - 필수: 변경된 파일 목록과 단위 당 핵심 변경 설명
+     - 필수: 기존 export/import 깨뜨리지 않았는지 확인
+     - 필수: 코드가 lint/build 에러 없이 동작하는지 검증
+     - worklog Execution Log에 변경 로그를 기록하세요.`,
+    4: `[디버깅] 코드를 실행/테스트하고 버그를 수정하세요.
+     - 필수: 실행 결과 스크린샷/로그 첨부
+     - 필수: 발견된 버그 목록과 수정 내역
+     - 필수: 엣지 케이스 테스트 결과 (null/empty/error)
+     - worklog에 디버그 로그를 기록하세요.`,
+    5: `[통합검증] 다른 영역과의 통합을 검증하세요.
+     - 필수: 다른 agent 산출물과의 통합 테스트
+     - 필수: 최종 문서 업데이트 (README, 변경로그)
+     - 필수: 전체 워크플로우 동작 확인
+     - worklog에 최종 검증 결과를 기록하세요.`,
+};
+
 // ─── Per-Agent Phase Tracking ────────────────────────
 
 function initAgentPhases(subtasks) {
