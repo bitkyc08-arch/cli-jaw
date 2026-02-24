@@ -46,6 +46,19 @@ ensureDir(path.join(clawHome, 'uploads'));
 // 2. Skills symlinks (home-based default)
 ensureSkillsSymlinks(home);
 
+// 2b. Copilot CLI: auto-install + PATH symlink
+try {
+    const copilotBin = path.join(home, '.local', 'share', 'gh', 'copilot', 'copilot');
+    if (!fs.existsSync(copilotBin)) {
+        console.log('[claw:init] Installing Copilot CLI...');
+        execSync('gh copilot --help', { stdio: 'ignore', timeout: 30000 });
+    }
+    if (fs.existsSync(copilotBin)) {
+        ensureDir(path.join(home, '.local', 'bin'));
+        ensureSymlink(copilotBin, path.join(home, '.local', 'bin', 'copilot'));
+    }
+} catch { console.log('[claw:init] ⚠️ Copilot CLI not installed (gh not authenticated?)'); }
+
 
 // 3. ~/CLAUDE.md → ~/AGENTS.md (if AGENTS.md exists and CLAUDE.md doesn't)
 const agentsMd = path.join(home, 'AGENTS.md');
