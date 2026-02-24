@@ -1,0 +1,11 @@
+{
+  "type": "stream_event",
+  "event": {
+    "type": "content_block_start",
+    "index": 3,
+    "content_block": {
+      "type": "tool_use",
+      "name": "Bash"
+    }
+  }
+}

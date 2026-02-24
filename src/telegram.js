@@ -15,37 +15,19 @@ import { parseCommand, executeCommand, COMMANDS } from './commands.js';
 import { getMergedSkills } from './prompt.js';
 import * as memory from './memory.js';
 import { downloadTelegramFile } from '../lib/upload.js';
+import {
+    escapeHtmlTg,
+    markdownToTelegramHtml,
+    chunkTelegramMessage,
+    createTelegramForwarder,
+} from './telegram-forwarder.js';
 
-// ─── Helpers ─────────────────────────────────────────
-
-export function escapeHtmlTg(text) {
-    return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-export function markdownToTelegramHtml(md) {
-    if (!md) return '';
-    let html = escapeHtmlTg(md);
-    html = html.replace(/```(\w*)\n([\s\S]*?)```/g, '<pre><code>$2</code></pre>');
-    html = html.replace(/`([^`]+)`/g, '<code>$1</code>');
-    html = html.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-    html = html.replace(/(?<![*])\*(?![*])(.+?)(?<![*])\*(?![*])/g, '<i>$1</i>');
-    html = html.replace(/~~(.+?)~~/g, '<s>$1</s>');
-    return html;
-}
-
-export function chunkTelegramMessage(text, limit = 4096) {
-    if (text.length <= limit) return [text];
-    const chunks = [];
-    let remaining = text;
-    while (remaining.length > 0) {
-        if (remaining.length <= limit) { chunks.push(remaining); break; }
-        let splitAt = remaining.lastIndexOf('\n', limit);
-        if (splitAt < limit * 0.3) splitAt = limit;
-        chunks.push(remaining.slice(0, splitAt));
-        remaining = remaining.slice(splitAt);
-    }
-    return chunks;
-}
+export {
+    escapeHtmlTg,
+    markdownToTelegramHtml,
+    chunkTelegramMessage,
+    createTelegramForwarder,
+} from './telegram-forwarder.js';
 
 export function orchestrateAndCollect(prompt, meta = {}) {
     return new Promise((resolve) => {
@@ -111,25 +93,17 @@ function detachTelegramForwarder() {
 
 function attachTelegramForwarder(bot) {
     if (telegramForwarder) return;
-    telegramForwarder = (type, data) => {
-        if (type !== 'agent_done' || !data?.text) return;
-        if (data.error) return;
-        if (data.origin === 'telegram') return; // handled by tgOrchestrate already
-
-        const chatIds = Array.from(telegramActiveChatIds);
-        if (!chatIds.length) return;
-        const lastChatId = chatIds[chatIds.length - 1];
-
-        const preview = (data.text || '').slice(0, 200).replace(/\n/g, ' ');
-        console.log(`[tg:forward] → chat ${lastChatId}: ${preview.slice(0, 60)}...`);
-
-        const html = markdownToTelegramHtml(data.text);
-        const chunks = chunkTelegramMessage(html);
-        for (const chunk of chunks) {
-            bot.api.sendMessage(lastChatId, `📡 ${chunk}`, { parse_mode: 'HTML' })
-                .catch(() => bot.api.sendMessage(lastChatId, `📡 ${chunk.replace(/<[^>]+>/g, '')}`).catch(() => { }));
-        }
-    };
+    telegramForwarder = createTelegramForwarder({
+        bot,
+        getLastChatId: () => {
+            const chatIds = Array.from(telegramActiveChatIds);
+            return chatIds.length ? chatIds[chatIds.length - 1] : null;
+        },
+        shouldSkip: (data) => data.origin === 'telegram', // handled by tgOrchestrate already
+        log: ({ chatId, preview }) => {
+            console.log(`[tg:forward] → chat ${chatId}: ${String(preview).slice(0, 60)}...`);
+        },
+    });
     addBroadcastListener(telegramForwarder);
 }
 

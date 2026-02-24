@@ -235,6 +235,15 @@ export function extractToolLabel(cli, event) {
     return labels.length ? labels[0] : null;
 }
 
+// Test-only helpers (keep parser logic private for runtime flow)
+export function extractToolLabelsForTest(cli, event, ctx = {}) {
+    return extractToolLabels(cli, event, ctx);
+}
+
+export function makeClaudeToolKeyForTest(event, label) {
+    return makeClaudeToolKey(event, label);
+}
+
 // ─── ACP session/update → cli-claw internal event ────────────────
 // Official ACP schema: update.sessionUpdate is the discriminator field.
 // Types: agent_message_chunk, agent_thought_chunk, tool_call, tool_call_update, plan

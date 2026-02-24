@@ -1,0 +1,11 @@
+{
+  "type": "assistant",
+  "message": {
+    "content": [
+      {
+        "type": "tool_use",
+        "name": "Read"
+      }
+    ]
+  }
+}

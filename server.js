@@ -48,6 +48,7 @@ import { parseCommand, executeCommand, COMMANDS } from './src/commands.js';
 import { orchestrate, orchestrateContinue, isContinueIntent } from './src/orchestrator.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram.js';
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/heartbeat.js';
+import { fetchCopilotQuota } from './lib/quota-copilot.js';
 import { CLI_REGISTRY } from './src/cli-registry.js';
 
 // ─── Resolve paths ───────────────────────────────────
@@ -597,12 +598,13 @@ app.post('/api/mcp/reset', (req, res) => {
 app.get('/api/cli-registry', (_, res) => res.json(CLI_REGISTRY));
 app.get('/api/cli-status', (_, res) => res.json(detectAllCli()));
 app.get('/api/quota', async (_, res) => {
-    const [claude, codex] = await Promise.all([
+    const [claude, codex, copilot] = await Promise.all([
         fetchClaudeUsage(readClaudeCreds()),
         fetchCodexUsage(readCodexTokens()),
+        fetchCopilotQuota(),
     ]);
     const gemini = readGeminiAccount();
-    res.json({ claude, codex, gemini, opencode: null, copilot: null });
+    res.json({ claude, codex, gemini, opencode: null, copilot });
 });
 
 // Employees

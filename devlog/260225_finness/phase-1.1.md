@@ -9,6 +9,22 @@
 - Telegram 포워딩 회귀 최소 테스트 1세트
 - 실행 스크립트 고정(`test:events`, `test:telegram`)
 
+## 구현 반영 결과 (2026-02-24)
+- [x] `tests/events.test.js` 추가 (dedupe/fallback/stream-after-assistant 차단)
+- [x] `tests/telegram-forwarding.test.js` 추가 (telegram-origin skip, error skip, HTML fallback)
+- [x] `tests/fixtures/claude-stream-tool.json`, `tests/fixtures/claude-assistant-tool.json` 추가
+- [x] `src/events.js`에 테스트용 export 추가 (`extractToolLabelsForTest`)
+- [x] `src/telegram-forwarder.js` 신설 및 `src/telegram.js` forwarder 로직 분리
+- [x] `package.json` scripts: `test`, `test:watch`, `test:events`, `test:telegram`
+
+### 실행 검증
+```bash
+cd ~/Documents/BlogProject/cli-claw
+npm run test:events
+npm run test:telegram
+npm test
+```
+
 ## 범위
 - `tests/events.test.js`
 - `tests/telegram-forwarding.test.js`

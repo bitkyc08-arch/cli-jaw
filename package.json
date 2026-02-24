@@ -14,7 +14,11 @@
     "scripts": {
         "dev": "node --env-file=.env --dns-result-order=ipv4first server.js",
         "postinstall": "node bin/postinstall.js",
-        "check:copilot-gap": "node scripts/check-copilot-gap.js"
+        "check:copilot-gap": "node scripts/check-copilot-gap.js",
+        "test": "node --test tests/**/*.test.js",
+        "test:watch": "node --test --watch tests/**/*.test.js",
+        "test:events": "node --test tests/events.test.js",
+        "test:telegram": "node --test tests/telegram-forwarding.test.js"
     },
     "dependencies": {
         "@grammyjs/runner": "^2.0.3",
