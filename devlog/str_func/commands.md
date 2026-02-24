@@ -1,4 +1,4 @@
-# commands.js — Slash Command Registry & Dispatcher (557L)
+# commands.js — Slash Command Registry & Dispatcher (573L)
 
 > 커맨드 레지스트리 + 디스패쳐 엔진. 14개 커맨드, 3개 인터페이스 (cli/web/telegram).
 
@@ -50,7 +50,7 @@
 
 ---
 
-## slash-commands.js — Web UI 드롭다운 (219L)
+## slash-commands.js — Web UI 드롭다운 (220L)
 
 `public/js/features/slash-commands.js`
 

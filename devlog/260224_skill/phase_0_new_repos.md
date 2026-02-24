@@ -1,176 +1,322 @@
-# Phase 0 — 추가 스킬 레포 탐색 (2026-02-24)
+# Phase 0 — 스킬 전수 GO/NO 판정 (2026-02-24, 최종)
 
-> 기존 `skills_ref/` 54개와 **중복되지 않는** 유명 스킬 레포 & 개별 스킬 정리.
-
----
-
-## 주요 레포 3대장
-
-| 레포                                                                                  | ⭐ 규모                     | 특징                                                  |
-| ------------------------------------------------------------------------------------- | -------------------------- | ----------------------------------------------------- |
-| [VoltAgent/awesome-agent-skills](https://github.com/VoltAgent/awesome-agent-skills)   | 380+ 스킬, 38 contributors | 가장 큰 커뮤니티. Claude/Codex/Gemini/Cursor 호환     |
-| [ComposioHQ/awesome-codex-skills](https://github.com/ComposioHQ/awesome-codex-skills) | ~40 스킬                   | Codex 특화. Composio 앱 연동, 실무 워크플로 중심      |
-| [openai/skills](https://github.com/openai/skills)                                     | 공식 Curated               | Codex 공식 카탈로그. 대부분 `skills_ref/`에 이미 있음 |
+> **11 active + 56 ref** (Phase 1 dedup 반영, 좀비 0)
+> 보류 없음. 모든 스킬 **✅ GO** 또는 **❌ NO** 확정.
+> 원칙: 기존에 없는 기능 → GO / EXIST와 중복 → NO (통합 대상 명시)
 
 ---
 
-## 🏢 기업 공식 스킬 레포 (팀별)
+## 📦 EXIST 요약 (67개)
 
-### Anthropic (Claude 공식)
-이미 `skills_ref/`에 대부분 포함. 누락 후보:
+**Active 11**: `browser`, `docx`, `frontend-design`, `github`, `imagegen`, `memory`, `notion`, `openai-docs`, `pdf`, `screen-capture`, `xlsx`
 
-| 스킬                | 설명                     | 중복?    |
-| ------------------- | ------------------------ | -------- |
-| `algorithmic-art`   | p5.js 제너러티브 아트    | ❌ 새로움 |
-| `canvas-design`     | PNG/PDF 시각 디자인      | ❌ 새로움 |
-| `slack-gif-creator` | Slack용 GIF 생성         | ❌ 새로움 |
-| `brand-guidelines`  | 브랜드 컬러/타이포 적용  | ❌ 새로움 |
-| `internal-comms`    | 상태 보고서/뉴스레터/FAQ | ❌ 새로움 |
+**Ref 56**: `1password`, `apple-notes`, `apple-reminders`, `atlas`, `cloudflare-deploy`, `develop-web-game`, `doc-coauthoring`, `docx`, `figma-implement-design`, `frontend-design`, `github`, `gog`, `goplaces`, `himalaya`, `imagegen`, `jupyter-notebook`, `linear`, `mcp-builder`, `memory`, `nano-banana-pro`, `netlify-deploy`, `notion`, `notion-*`×4, `obsidian`, `openai-docs`, `openhue`, `pdf`, `playwright`, `pptx`, `render-deploy`, `screen-capture`, `sentry`, `skill-creator`, `sora`, `speech`, `spotify-player`, `summarize`, `theme-factory`, `things-mac`, `tmux`, `transcribe`, `trello`, `tts`, `vercel-deploy`, `video-frames`, `vision-click`, `weather`, `web-artifacts-builder`, `web-routing`, `webapp-testing`, `xlsx`, `xurl`
 
-> 출처: [anthropics/skills](https://github.com/anthropics/skills)
+---
+
+## 🌐 외부 스킬 — 최종 GO/NO (보류 없음)
+
+### Anthropic
+
+| 스킬                | 판정 | 사유                            |
+| ------------------- | ---- | ------------------------------- |
+| `algorithmic-art`   | ✅ GO | 새 기능 (p5.js 제너러티브 아트) |
+| `canvas-design`     | ✅ GO | 새 기능 (PNG/PDF 시각 디자인)   |
+| `brand-guidelines`  | ❌ NO | `theme-factory` EXIST에 통합    |
+| `slack-gif-creator` | ❌ NO | Slack 전용                      |
+| `internal-comms`    | ❌ NO | 기업 내부용                     |
 
 ### Vercel Engineering
-| 스킬                    | 설명                     | 중복? |
-| ----------------------- | ------------------------ | ----- |
-| `react-best-practices`  | React 패턴/모범사례      | ❌     |
-| `web-design-guidelines` | 웹 디자인 가이드라인     | ❌     |
-| `composition-patterns`  | React 컴포넌트 합성 패턴 | ❌     |
-| `next-best-practices`   | Next.js 권장 패턴        | ❌     |
-| `next-cache-components` | Next.js 캐싱 전략        | ❌     |
-| `next-upgrade`          | Next.js 버전 업그레이드  | ❌     |
-| `react-native-skills`   | RN 성능 가이드           | ❌     |
 
-> 출처: [vercel-labs/agent-skills](https://github.com/vercel-labs/agent-skills), [vercel-labs/next-skills](https://github.com/vercel-labs/next-skills)
+| 스킬                    | 판정 | 사유                                |
+| ----------------------- | ---- | ----------------------------------- |
+| `react-best-practices`  | ✅ GO | 새 기능 (React 코드 패턴)           |
+| `next-best-practices`   | ✅ GO | 새 기능 (Next.js 패턴)              |
+| `next-upgrade`          | ✅ GO | 새 기능 (Next.js 버전 마이그레이션) |
+| `web-design-guidelines` | ❌ NO | `frontend-design` EXIST가 커버      |
+| `composition-patterns`  | ❌ NO | `react-best-practices` GO에 포함    |
+| `next-cache-components` | ❌ NO | `next-best-practices` GO에 통합     |
+| `react-native-skills`   | ❌ NO | RN 미사용                           |
 
 ### Cloudflare
-| 스킬                                | 설명                                   | 중복?                           |
-| ----------------------------------- | -------------------------------------- | ------------------------------- |
-| `agents-sdk`                        | 스테이트풀 AI 에이전트 빌드            | ❌                               |
-| `building-mcp-server-on-cloudflare` | 리모트 MCP 서버 + OAuth                | ❌                               |
-| `durable-objects`                   | RPC + SQLite + WebSocket               | ❌                               |
-| `web-perf`                          | Core Web Vitals 감사                   | ❌                               |
-| `wrangler`                          | Workers/KV/R2/D1/Vectorize/Queues 통합 | `cloudflare-deploy`와 일부 겹침 |
 
-> 출처: [cloudflare/skills](https://github.com/cloudflare/skills)
+| 스킬                                | 판정 | 사유                                             |
+| ----------------------------------- | ---- | ------------------------------------------------ |
+| `web-perf`                          | ✅ GO | 새 기능 (Core Web Vitals 감사)                   |
+| `agents-sdk`                        | ✅ GO | 새 기능 (CF Workers AI 에이전트)                 |
+| `durable-objects`                   | ✅ GO | 새 기능 (RPC+SQLite+WebSocket 스테이트풀)        |
+| `building-mcp-server-on-cloudflare` | ❌ NO | `mcp-builder` + `cloudflare-deploy` EXIST에 통합 |
+| `wrangler`                          | ❌ NO | `cloudflare-deploy` EXIST                        |
+
+### Trail of Bits
+
+| 스킬                     | 판정 | 사유                              |
+| ------------------------ | ---- | --------------------------------- |
+| `static-analysis`        | ✅ GO | 새 기능 (CodeQL+Semgrep)          |
+| `insecure-defaults`      | ✅ GO | 새 기능 (시크릿 탐지)             |
+| `modern-python`          | ✅ GO | 새 기능 (uv+ruff+pytest)          |
+| `differential-review`    | ✅ GO | 새 기능 (보안 관점 diff 리뷰)     |
+| `property-based-testing` | ✅ GO | 새 기능 (다언어 속성 기반 테스트) |
+| `semgrep-rule-creator`   | ❌ NO | `static-analysis` GO에 통합       |
+
+### OpenAI 공식
+
+| 스킬                      | 판정 | 사유                                      |
+| ------------------------- | ---- | ----------------------------------------- |
+| `security-best-practices` | ✅ GO | 새 기능 (언어별 보안 리뷰 패턴)           |
+| `security-ownership-map`  | ✅ GO | 새 기능 (코드베이스 소유자/버스팩터 매핑) |
+| `security-threat-model`   | ✅ GO | 새 기능 (리포별 위협 모델 생성)           |
+| `figma` (fetch-only)      | ❌ NO | `figma-implement-design` EXIST            |
 
 ### HuggingFace
-| 스킬                         | 설명                          | 중복? |
-| ---------------------------- | ----------------------------- | ----- |
-| `hugging-face-cli`           | HF Hub CLI (모델/데이터셋/잡) | ❌     |
-| `hugging-face-model-trainer` | TRL: SFT, DPO, GRPO, GGUF     | ❌     |
-| `hugging-face-datasets`      | 데이터셋 관리 + SQL 쿼리      | ❌     |
-| `hugging-face-evaluation`    | vLLM/lighteval 모델 평가      | ❌     |
-| `hugging-face-trackio`       | ML 실험 추적 대시보드         | ❌     |
 
-> 출처: [huggingface/skills](https://github.com/huggingface/skills)
-
-### Trail of Bits (보안)
-| 스킬                     | 설명                             | 중복? |
-| ------------------------ | -------------------------------- | ----- |
-| `static-analysis`        | CodeQL + Semgrep + SARIF         | ❌     |
-| `differential-review`    | 보안 관점 diff 리뷰              | ❌     |
-| `semgrep-rule-creator`   | Semgrep 룰 작성                  | ❌     |
-| `insecure-defaults`      | 하드코딩된 시크릿/약한 암호 탐지 | ❌     |
-| `property-based-testing` | 다언어 속성 기반 테스트          | ❌     |
-| `modern-python`          | uv + ruff + ty + pytest 모범사례 | ❌     |
-
-> 출처: [trailofbits/skills](https://github.com/trailofbits/skills)
-
-### OpenAI 공식 (신규만)
-| 스킬                      | 설명                                | 중복?                           |
-| ------------------------- | ----------------------------------- | ------------------------------- |
-| `security-best-practices` | 언어별 보안 취약점 리뷰             | ❌                               |
-| `security-ownership-map`  | 파일별 소유자 매핑 + 버스팩터       | ❌                               |
-| `security-threat-model`   | 리포별 위협 모델 생성               | ❌                               |
-| `figma` (fetch-only)      | Figma에서 디자인 컨텍스트/에셋 추출 | `figma-implement-design`과 별도 |
-
-> 출처: [openai/skills](https://github.com/openai/skills)
+| 스킬                         | 판정 | 사유                                |
+| ---------------------------- | ---- | ----------------------------------- |
+| `hugging-face-cli`           | ✅ GO | 새 기능 (HF Hub 모델/데이터셋 관리) |
+| `hugging-face-model-trainer` | ✅ GO | 새 기능 (SFT/DPO/GRPO 학습)         |
+| `hugging-face-evaluation`    | ✅ GO | 새 기능 (vLLM/lighteval 모델 평가)  |
+| `hugging-face-datasets`      | ❌ NO | `hugging-face-cli` GO에 통합        |
+| `hugging-face-trackio`       | ❌ NO | 대규모 ML 전용                      |
 
 ### fal.ai
-| 스킬             | 설명                                        | 중복?                                      |
-| ---------------- | ------------------------------------------- | ------------------------------------------ |
-| `fal-generate`   | fal.ai 이미지/비디오 생성                   | `imagegen`/`nano-banana-pro`와 다른 플랫폼 |
-| `fal-audio`      | fal.ai TTS/STT                              | `speech`/`transcribe`와 다른 플랫폼        |
-| `fal-image-edit` | AI 이미지 편집 (스타일 전환, 오브젝트 제거) | ❌                                          |
-| `fal-upscale`    | AI 업스케일링                               | ❌                                          |
 
-> 출처: [fal-ai-community/skills](https://github.com/fal-ai-community/skills)
+| 스킬             | 판정 | 사유                                    |
+| ---------------- | ---- | --------------------------------------- |
+| `fal-image-edit` | ✅ GO | 새 기능 (AI 스타일 전환, 오브젝트 제거) |
+| `fal-generate`   | ❌ NO | `imagegen` + `nano-banana-pro` EXIST    |
+| `fal-audio`      | ❌ NO | `speech` + `transcribe` EXIST           |
+| `fal-upscale`    | ❌ NO | 니치 기능                               |
+
+### obra/superpowers ⭐⭐⭐
+
+| 스킬                          | 판정 | 사유                                       |
+| ----------------------------- | ---- | ------------------------------------------ |
+| `brainstorming`               | ✅ GO | 새 기능 (구조화된 아이디어→디자인 문서)    |
+| `writing-plans`               | ✅ GO | 새 기능 (2-5분 단위 태스크 분해)           |
+| `tdd`                         | ✅ GO | 새 기능 (RED-GREEN-REFACTOR 유닛 테스트)   |
+| `requesting-code-review`      | ✅ GO | 새 기능 (에이전트 내부 severity 리뷰)      |
+| `dispatching-parallel-agents` | ✅ GO | 새 기능 (병렬 서브에이전트)                |
+| `debugging-helpers`           | ✅ GO | 새 기능 (디버깅 보조)                      |
+| `receiving-code-review`       | ✅ GO | 새 기능 (`requesting-code-review`와 세트)  |
+| `git-worktrees`               | ✅ GO | 새 기능 (worktree 격리 브랜치)             |
+| `finishing-dev-branch`        | ❌ NO | `github` EXIST + `git-worktrees` GO에 통합 |
+| `collaboration-patterns`      | ❌ NO | `dispatching-parallel-agents` GO에 통합    |
+
+### proflead/codex-skills-library ⭐⭐
+
+| 스킬                        | 판정 | 사유                                  |
+| --------------------------- | ---- | ------------------------------------- |
+| `codebase-orientation`      | ✅ GO | 새 기능 (프로젝트 온보딩 매핑)        |
+| `debugging-checklist`       | ✅ GO | 새 기능 (재현→격리→로깅→가설검증)     |
+| `error-message-explainer`   | ✅ GO | 새 기능 (컴파일러/런타임 에러 해석)   |
+| `config-file-explainer`     | ✅ GO | 새 기능 (설정 파일 구조 설명)         |
+| `data-structure-chooser`    | ✅ GO | 새 기능 (자료구조 트레이드오프 추천)  |
+| `log-summarizer`            | ✅ GO | 새 기능 (로그 그룹핑+첫 실패 식별)    |
+| `linter-fix-guide`          | ✅ GO | 새 기능 (린트 룰 설명+수정 제안)      |
+| `dependency-install-helper` | ✅ GO | 새 기능 (플랫폼별 의존성 설치 가이드) |
+| `ticket-breakdown`          | ❌ NO | `writing-plans` GO와 중복             |
+| `small-script-generator`    | ❌ NO | 에이전트 기본 능력                    |
+| `readme-polish`             | ❌ NO | documentation 자체 스킬               |
+| `function-docstrings`       | ❌ NO | 에이전트 기본 능력                    |
+| `git-basic-helper`          | ❌ NO | `github` EXIST                        |
+
+### ComposioHQ
+
+| 스킬                    | 판정 | 사유                                        |
+| ----------------------- | ---- | ------------------------------------------- |
+| `changelog-generator`   | ✅ GO | 새 기능 (git→체인지로그)                    |
+| `video-downloader`      | ✅ GO | 새 기능 (yt-dlp 래퍼)                       |
+| `email-draft-polish`    | ✅ GO | 새 기능 (이메일 톤 조절, himalaya는 전송만) |
+| `file-organizer`        | ❌ NO | `doc-sort` 자체 스킬 있음                   |
+| `invoice-organizer`     | ❌ NO | 인보이스 전용                               |
+| `support-ticket-triage` | ❌ NO | 티켓 전용                                   |
+
+### 기타 커뮤니티
+
+| 스킬                      | 레포            | 판정 | 사유                                              |
+| ------------------------- | --------------- | ---- | ------------------------------------------------- |
+| `postgres`                | sanjay3290      | ✅ GO | 새 기능 (DB 쿼리)                                 |
+| `deep-research`           | sanjay3290      | ✅ GO | 새 기능 (멀티스텝 리서치)                         |
+| `context-compression`     | muratcankoylan  | ✅ GO | 새 기능 (컨텍스트 압축)                           |
+| `ios-simulator`           | conorluddy      | ✅ GO | 새 기능 (iOS 시뮬레이터 제어)                     |
+| `kreuzberg`               | kreuzberg-dev   | ✅ GO | 새 기능 (62+ 포맷 추출, pdf는 PDF만)              |
+| `apple-hig-skills`        | raintree-tech   | ✅ GO | 새 기능 (Apple HIG 14개 가이드)                   |
+| `aws-skills`              | zxkane          | ✅ GO | 새 기능 (AWS 인프라 자동화)                       |
+| `terraform`               | hashicorp       | ✅ GO | 새 기능 (HCL/모듈/프로바이더 IaC)                 |
+| `whatsapp`                | gokapso         | ✅ GO | 새 기능 (WhatsApp 메시지/자동화)                  |
+| `Dimillian/Skills`        | Dimillian       | ❌ NO | `ios-simulator` GO + `apple-hig-skills` GO에 통합 |
+| `multi-agent-patterns`    | muratcankoylan  | ❌ NO | `dispatching-parallel-agents` GO에 통합           |
+| `memory-systems`          | muratcankoylan  | ❌ NO | `memory` EXIST + 벡터 메모리 계획 중              |
+| `clawsec`                 | prompt-security | ❌ NO | `static-analysis` + `insecure-defaults` GO에 통합 |
+| `data-structure-protocol` | k-kolomeitsev   | ❌ NO | 실험적                                            |
+| `home-assistant`          | komal-SkyNET    | ❌ NO | `openhue` EXIST                                   |
+
+---
+
+## 📊 최종 집계
+
+| 판정     | 수량    |
+| -------- | ------- |
+| 📦 EXIST  | 67      |
+| ✅ GO     | **51**  |
+| ❌ NO     | **28**  |
+| **합계** | **146** |
+
+### NO 통합 매핑
+
+| NO 스킬                     | 통합 대상                                    |
+| --------------------------- | -------------------------------------------- |
+| `brand-guidelines`          | → `theme-factory` EXIST                      |
+| `web-design-guidelines`     | → `frontend-design` EXIST                    |
+| `composition-patterns`      | → `react-best-practices` GO                  |
+| `next-cache-components`     | → `next-best-practices` GO                   |
+| `building-mcp-server-on-cf` | → `mcp-builder` EXIST                        |
+| `wrangler`                  | → `cloudflare-deploy` EXIST                  |
+| `semgrep-rule-creator`      | → `static-analysis` GO                       |
+| `figma` (fetch-only)        | → `figma-implement-design` EXIST             |
+| `hugging-face-datasets`     | → `hugging-face-cli` GO                      |
+| `fal-generate`              | → `imagegen`+`nano-banana-pro` EXIST         |
+| `fal-audio`                 | → `speech`+`transcribe` EXIST                |
+| `finishing-dev-branch`      | → `github` EXIST                             |
+| `collaboration-patterns`    | → `dispatching-parallel-agents` GO           |
+| `ticket-breakdown`          | → `writing-plans` GO                         |
+| `file-organizer`            | → `doc-sort` 자체 스킬                       |
+| `Dimillian/Skills`          | → `ios-simulator` + `apple-hig-skills` GO    |
+| `multi-agent-patterns`      | → `dispatching-parallel-agents` GO           |
+| `memory-systems`            | → `memory` EXIST                             |
+| `clawsec`                   | → `static-analysis` + `insecure-defaults` GO |
+| `home-assistant`            | → `openhue` EXIST                            |
 
 ---
 
-## 🌐 커뮤니티 인기 스킬 (개별)
+## 🏆 GO 51개 — 다운로드 목록
 
-### 생산성 / 협업
-| 스킬                    | 레포                                                                                               | 설명                                         |
-| ----------------------- | -------------------------------------------------------------------------------------------------- | -------------------------------------------- |
-| `whatsapp`              | [gokapso/agent-skills](https://github.com/gokapso/agent-skills)                                    | WhatsApp 연동 (메시지 전송, webhook, 자동화) |
-| `email-draft-polish`    | [ComposioHQ](https://github.com/ComposioHQ/awesome-codex-skills/tree/master/email-draft-polish)    | 이메일 초안 작성/톤 조절                     |
-| `invoice-organizer`     | [ComposioHQ](https://github.com/ComposioHQ/awesome-codex-skills/tree/master/invoice-organizer)     | 인보이스 데이터 추출/정리                    |
-| `support-ticket-triage` | [ComposioHQ](https://github.com/ComposioHQ/awesome-codex-skills/tree/master/support-ticket-triage) | 고객 티켓 분류/우선순위                      |
-| `file-organizer`        | [ComposioHQ](https://github.com/ComposioHQ/awesome-codex-skills/tree/master/file-organizer)        | 파일 정리/이름 변경 자동화                   |
-| `changelog-generator`   | [ComposioHQ](https://github.com/ComposioHQ/awesome-codex-skills/tree/master/changelog-generator)   | git commit → 체인지로그 생성                 |
+### 1. 창작/디자인 (2)
+| 스킬              | 레포       |
+| ----------------- | ---------- |
+| `algorithmic-art` | anthropics |
+| `canvas-design`   | anthropics |
 
-### 개발 / 테스트
-| 스킬               | 레포                                                                                           | 설명                               |
-| ------------------ | ---------------------------------------------------------------------------------------------- | ---------------------------------- |
-| `ios-simulator`    | [conorluddy/ios-simulator-skill](https://github.com/conorluddy/ios-simulator-skill)            | iOS 시뮬레이터 제어                |
-| `video-downloader` | [ComposioHQ](https://github.com/ComposioHQ/awesome-codex-skills/tree/master/video-downloader)  | 영상 다운로드 (yt-dlp 등)          |
-| `postgres`         | [sanjay3290/ai-skills](https://github.com/sanjay3290/ai-skills/tree/main/skills/postgres)      | PostgreSQL 읽기 전용 쿼리          |
-| `deep-research`    | [sanjay3290/ai-skills](https://github.com/sanjay3290/ai-skills/tree/main/skills/deep-research) | Gemini Deep Research 에이전트 활용 |
-| `kreuzberg`        | [kreuzberg-dev/kreuzberg](https://github.com/kreuzberg-dev/kreuzberg)                          | 62+ 포맷 텍스트/테이블 추출        |
+### 2. 프런트엔드 (3)
+| 스킬                   | 레포        |
+| ---------------------- | ----------- |
+| `react-best-practices` | vercel-labs |
+| `next-best-practices`  | vercel-labs |
+| `next-upgrade`         | vercel-labs |
 
-### 에이전트 / 컨텍스트 엔지니어링
-| 스킬                      | 레포                                                                                                                          | 설명                                                 |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| `context-compression`     | [muratcankoylan/Agent-Skills-for-Context-Engineering](https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering) | 컨텍스트 압축 전략                                   |
-| `memory-systems`          | 위와 동일                                                                                                                     | 단기/장기/그래프 메모리 아키텍처                     |
-| `multi-agent-patterns`    | 위와 동일                                                                                                                     | 오케스트레이터/P2P/계층 패턴                         |
-| `data-structure-protocol` | [k-kolomeitsev/data-structure-protocol](https://github.com/k-kolomeitsev/data-structure-protocol)                             | 그래프 기반 장기 메모리                              |
-| `superpowers` (모음)      | [obra/superpowers](https://github.com/obra/superpowers)                                                                       | TDD, 디버깅, 서브에이전트, git worktrees 등 20+ 스킬 |
+### 3. 성능/인프라 (5)
+| 스킬              | 레포       |
+| ----------------- | ---------- |
+| `web-perf`        | cloudflare |
+| `agents-sdk`      | cloudflare |
+| `durable-objects` | cloudflare |
+| `aws-skills`      | zxkane     |
+| `terraform`       | hashicorp  |
 
-### 보안 / 특화
-| 스킬               | 레포                                                                           | 설명                                     |
-| ------------------ | ------------------------------------------------------------------------------ | ---------------------------------------- |
-| `apple-hig-skills` | [raintree-technology](https://github.com/raintree-technology/apple-hig-skills) | Apple HIG 14개 스킬 (iOS/macOS/visionOS) |
-| `home-assistant`   | [komal-SkyNET](https://github.com/komal-SkyNET/claude-skill-homeassistant)     | Home Assistant 워크플로 관리             |
-| `clawsec`          | [prompt-security](https://github.com/prompt-security/clawsec)                  | 보안 스킬 (드리프트 탐지, 자동 감사)     |
-| `aws-skills`       | [zxkane/aws-skills](https://github.com/zxkane/aws-skills)                      | AWS 인프라 자동화                        |
-| `terraform`        | [hashicorp/agent-skills](https://github.com/hashicorp/agent-skills)            | HCL 코드/모듈/프로바이더 생성            |
+### 4. 보안 (5)
+| 스킬                     | 레포        |
+| ------------------------ | ----------- |
+| `static-analysis`        | trailofbits |
+| `insecure-defaults`      | trailofbits |
+| `differential-review`    | trailofbits |
+| `property-based-testing` | trailofbits |
+| `modern-python`          | trailofbits |
+
+### 5. 보안 (OpenAI) (3)
+| 스킬                      | 레포   |
+| ------------------------- | ------ |
+| `security-best-practices` | openai |
+| `security-ownership-map`  | openai |
+| `security-threat-model`   | openai |
+
+### 6. ML (3)
+| 스킬                         | 레포        |
+| ---------------------------- | ----------- |
+| `hugging-face-cli`           | huggingface |
+| `hugging-face-model-trainer` | huggingface |
+| `hugging-face-evaluation`    | huggingface |
+
+### 7. AI 미디어 (1)
+| 스킬             | 레포   |
+| ---------------- | ------ |
+| `fal-image-edit` | fal-ai |
+
+### 8. 개발 워크플로 (8, obra)
+| 스킬                          | 레포 |
+| ----------------------------- | ---- |
+| `brainstorming`               | obra |
+| `writing-plans`               | obra |
+| `tdd`                         | obra |
+| `requesting-code-review`      | obra |
+| `receiving-code-review`       | obra |
+| `dispatching-parallel-agents` | obra |
+| `debugging-helpers`           | obra |
+| `git-worktrees`               | obra |
+
+### 9. DevOps 실용 (8, proflead)
+| 스킬                        | 레포     |
+| --------------------------- | -------- |
+| `codebase-orientation`      | proflead |
+| `debugging-checklist`       | proflead |
+| `error-message-explainer`   | proflead |
+| `config-file-explainer`     | proflead |
+| `data-structure-chooser`    | proflead |
+| `log-summarizer`            | proflead |
+| `linter-fix-guide`          | proflead |
+| `dependency-install-helper` | proflead |
+
+### 10. 유틸리티 (6)
+| 스킬                  | 레포           |
+| --------------------- | -------------- |
+| `changelog-generator` | ComposioHQ     |
+| `video-downloader`    | ComposioHQ     |
+| `email-draft-polish`  | ComposioHQ     |
+| `postgres`            | sanjay3290     |
+| `deep-research`       | sanjay3290     |
+| `context-compression` | muratcankoylan |
+
+### 11. 플랫폼/메시징 (4)
+| 스킬               | 레포          |
+| ------------------ | ------------- |
+| `ios-simulator`    | conorluddy    |
+| `apple-hig-skills` | raintree-tech |
+| `kreuzberg`        | kreuzberg-dev |
+| `whatsapp`         | gokapso       |
 
 ---
 
-## 📊 채택 우선순위 추천
+## 다운로드 명령어
 
-### Tier 1 — 즉시 가져올 만한 것 (범용, 의존성 적음)
-1. **`algorithmic-art`** — p5.js 아트 → `frontend-design`과 시너지
-2. **`changelog-generator`** — git commit → 릴리스 노트. 매일 쓸 수 있음
-3. **`security-best-practices`** — 코드 보안 리뷰, openai 공식
-4. **`email-draft-polish`** — 이메일 작성/톤 조절
-5. **`video-downloader`** — yt-dlp 래퍼, `video-frames`와 시너지
-6. **`file-organizer`** — 파일 정리 자동화
-7. **`modern-python`** — uv+ruff+pytest 모범사례 (TrailOfBits)
+```bash
+# 기업 공식
+git clone --depth 1 https://github.com/anthropics/skills /tmp/anthropics-skills
+git clone --depth 1 https://github.com/vercel-labs/agent-skills /tmp/vercel-skills
+git clone --depth 1 https://github.com/cloudflare/skills /tmp/cf-skills
+git clone --depth 1 https://github.com/trailofbits/skills /tmp/tob-skills
+git clone --depth 1 https://github.com/openai/skills /tmp/openai-skills
+git clone --depth 1 https://github.com/huggingface/skills /tmp/hf-skills
+git clone --depth 1 https://github.com/fal-ai-community/skills /tmp/fal-skills
 
-### Tier 2 — 프로젝트 성장 시
-8. **`deep-research`** — 멀티스텝 리서치 에이전트
-9. **`context-compression`** — 긴 세션 컨텍스트 관리
-10. **`superpowers`** (obra) — TDD, 디버깅, 서브에이전트 패턴
-11. **`whatsapp`** — 텔레그램 이후 메신저 확장 시
-12. **`postgres`** — DB 쿼리 스킬
-13. **`apple-hig-skills`** — Apple 앱 개발 시
-
-### Tier 3 — 특정 기술 스택 사용 시
-14. **Vercel/Next.js 시리즈** — Next.js 프로젝트 진행 시
-15. **HuggingFace 시리즈** — ML 모델 학습/평가 시
-16. **Trail of Bits 보안 시리즈** — 보안 감사 필요 시
-17. **fal.ai 시리즈** — fal.ai 미디어 생성 시
-18. **Terraform/AWS** — 인프라 자동화 시
-
----
+# 커뮤니티
+git clone --depth 1 https://github.com/obra/superpowers /tmp/superpowers
+git clone --depth 1 https://github.com/proflead/codex-skills-library /tmp/proflead-skills
+git clone --depth 1 https://github.com/ComposioHQ/awesome-codex-skills /tmp/composio-skills
+git clone --depth 1 https://github.com/sanjay3290/ai-skills /tmp/sanjay-skills
+git clone --depth 1 https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering /tmp/context-skills
+git clone --depth 1 https://github.com/conorluddy/ios-simulator-skill /tmp/ios-sim
+git clone --depth 1 https://github.com/raintree-technology/apple-hig-skills /tmp/hig-skills
+git clone --depth 1 https://github.com/kreuzberg-dev/kreuzberg /tmp/kreuzberg
+git clone --depth 1 https://github.com/gokapso/agent-skills /tmp/gokapso-skills
+git clone --depth 1 https://github.com/zxkane/aws-skills /tmp/aws-skills
+git clone --depth 1 https://github.com/hashicorp/agent-skills /tmp/terraform-skills
+```
 
 ## 체크리스트
 
-- [x] 주요 레포 3곳 웹 탐색
-- [x] 기존 54개 스킬과 중복 비교
-- [x] 비중복 후보 정리 (기업 공식 + 커뮤니티)
-- [x] 채택 우선순위 Tier 분류
-- [ ] Tier 1 스킬 실제 다운로드 (별도 phase)
+- [x] Phase 1 dedup 반영 (mcp-sync.js 수정)
+- [x] 실측 EXIST 67개 확인
+- [x] 보류 전부 GO/NO 확정 (보류 0)
+- [x] 기능적 중복 교차 검증 + 통합 매핑
+- [x] GO 51개 카테고리별 정리 + clone 명령
+- [ ] 실제 다운로드 + skills_ref/ 복사
+- [ ] registry.json 업데이트

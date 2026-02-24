@@ -1,4 +1,4 @@
-# server.js — Glue + API Routes (687L)
+# server.js — Glue + API Routes (686L)
 
 > 라우트 + 초기화 + 커맨드 ctx 구성 + Quota 조회
 
@@ -72,7 +72,7 @@ ensureDirs() → runMigration() → loadSettings() → initPromptFiles()
 | 명령어        | 설명                                                                      |
 | ------------- | ------------------------------------------------------------------------- |
 | `serve`       | `--port 3457` `--host 0.0.0.0` `--open`, IPv4 first                       |
-| `chat`        | 3모드 (Default/Raw/Simple), 슬래시명령, 멀티라인, CJK 너비 (720L)         |
+| `chat`        | 3모드 (Default/Raw/Simple), 슬래시명령, 멀티라인, CJK 너비 (832L)         |
 | `init`        | Interactive/`--non-interactive`, 완료 후 postinstall                      |
 | `doctor`      | 11개 체크 (CLI/Telegram/Skills/Chrome 등), `--json`                       |
 | `mcp`         | `install <pkg>` · `sync` · `list` · `reset` (PyPI 자동 감지)              |

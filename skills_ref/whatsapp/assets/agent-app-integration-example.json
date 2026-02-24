@@ -1,0 +1,35 @@
+{
+  "integration_payload": {
+    "action_id": "google_calendar-query-free-busy-calendars",
+    "app_slug": "google_calendar",
+    "account_id": "apn_example",
+    "configured_props": {
+      "calendarId": "{{calendar_id}}",
+      "timeMin": "{{time_min}}",
+      "timeMax": "{{time_max}}"
+    },
+    "variable_definitions": {
+      "calendar_id": "string",
+      "time_min": "string",
+      "time_max": "string"
+    }
+  },
+  "agent_node_config": {
+    "node_type": "agent",
+    "config": {
+      "system_prompt": "Check calendar availability and book appointments.",
+      "provider_model_id": "uuid",
+      "max_iterations": 10,
+      "temperature": 0.7,
+      "flow_agent_app_integration_tools": [
+        {
+          "name": "check_calendar",
+          "description": "Check availability in Google Calendar",
+          "app_integration_id": "integration_uuid"
+        }
+      ],
+      "flow_agent_webhooks": [],
+      "flow_agent_mcp_servers": []
+    }
+  }
+}

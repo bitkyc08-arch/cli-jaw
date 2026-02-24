@@ -23,7 +23,7 @@ graph TD
 
     subgraph "📨 사용자 입력"
         USER["User Message"]
-        HIST["Recent History<br/>(Codex만 5개)"]
+        HIST["Recent History<br/>(Codex만, Phase 6에서 전 CLI 확대 예정)"]
     end
 
     A1 --> MERGE["getSystemPrompt()"]
@@ -74,7 +74,7 @@ graph TD
 ### 조립 순서
 
 ```js
-// prompt.js:213-216
+// prompt.js:214-217
 const a1 = fs.readFileSync(A1_PATH, 'utf8');
 const a2 = fs.readFileSync(A2_PATH, 'utf8');
 let prompt = `${a1}\n\n${a2}`;
@@ -116,7 +116,7 @@ graph LR
 경로: `~/.cli-claw/memory/MEMORY.md`
 
 ```js
-// prompt.js:239-252 — 항상 주입, 조건 없음
+// prompt.js:243-256 — 항상 주입, 조건 없음
 const coreMem = fs.readFileSync(memPath, 'utf8').trim();
 if (coreMem && coreMem.length > 50) {
     const truncated = coreMem.length > 1500
@@ -195,17 +195,23 @@ graph TD
     SYS --> O_SKIP["OpenCode:<br/>별도 메커니즘 없음"]
 
     USER["User Message"] --> C_STDIN["Claude:<br/>stdin = 프롬프트만"]
-    USER --> X_STDIN["Codex:<br/>stdin = 시스템 + 히스토리 + 프롬프트"]
+    USER --> X_STDIN["Codex:<br/>stdin = 시스템(중복!) + 히스토리 + 프롬프트"]
     USER --> G_ARG["Gemini:<br/>-p 인자"]
     USER --> O_ARG["OpenCode:<br/>위치 인자"]
 ```
 
-| CLI          | 시스템 프롬프트 전달                  | 사용자 메시지 | 히스토리             | 압축 보호          |
-| ------------ | ------------------------------------- | ------------- | -------------------- | ------------------ |
-| **Claude**   | `--append-system-prompt` 플래그       | stdin         | ❌ (Claude 자체 관리) | ✅ 압축 안됨        |
-| **Codex**    | `.codex/AGENTS.md` 파일 + stdin 전문  | stdin 끝부분  | ✅ 최근 5개 stdin     | ✅ AGENTS.md는 별도 |
-| **Gemini**   | `GEMINI_SYSTEM_MD` 환경변수 (tmpfile) | `-p` 인자     | ❌ (Gemini 자체 관리) | ✅ 별도 파일        |
-| **OpenCode** | ❌ 없음 (stdin도 안됨)                 | 위치 인자     | ❌                    | ❌                  |
+| CLI          | 시스템 프롬프트 전달                 | role        | 매 턴 포함 | 압축 보호                  |
+| ------------ | ------------------------------------ | ----------- | ---------- | -------------------------- |
+| **Claude**   | `--append-system-prompt` 플래그      | `system`    | ✅          | ✅ cache_control breakpoint |
+| **Codex**    | `.codex/AGENTS.md` 자동 로딩         | `developer` | ✅          | ✅ 매 call 파일 재로딩      |
+| **Gemini**   | `GEMINI_SYSTEM_MD` env (tmpfile)     | `system`    | ✅          | ✅ system_instruction 분리  |
+| **OpenCode** | `AGENTS.md` + custom agent + per-msg | 혼합        | ✅          | ⚠️ 구현 의존                |
+
+> **전체 검증 완료** (2026-02-24):
+> - **Claude**: `--append-system-prompt`는 system role에 추가. compaction 시 `cache_control` breakpoint으로 보호.
+> - **Codex**: AGENTS.md는 매 API call마다 `developer` role로 포함 (`codex-rs/core/prompt.md` 확인). stdin 중복 불필요.
+> - **Gemini**: `GEMINI_SYSTEM_MD`는 Gemini API의 `system_instruction` 파라미터로 전달. 별도 파일이라 대화와 분리.
+> - **OpenCode**: `AGENTS.md`를 LLM 컨텍스트에 포함 + `input.user.system`으로 per-message 커스텀 지시 가능.
 
 ### Claude — 중복 방지 핵심
 
@@ -218,11 +224,11 @@ if (cli === 'claude') {
 }
 ```
 
-### Codex — stdin 전문 구조
+### Codex — stdin 전문 구조 (⚠️ 중복, Phase 6 제거 예정)
 
 ```text
-[Claw Platform Context]
-{getSystemPrompt() 전체}
+[Claw Platform Context]      ← ⚠️ AGENTS.md와 100% 중복!
+{getSystemPrompt() 전체}     ← ⚠️ 매 턴 developer role로 이미 들어감
 
 [Recent History]
 [user] 이전 메시지 1
@@ -233,10 +239,14 @@ if (cli === 'claude') {
 {현재 프롬프트}
 ```
 
+> **AGENTS.md 동작 방식** (검증): Codex는 매 API call 시 `.codex/AGENTS.md`를
+> `developer` role로 conversation에 포함. compact 후에도 파일에서 재로딩하여
+> 항상 전체 내용이 유지됨. 따라서 stdin에서 시스템 프롬프트를 중복 전송할 이유 없음.
+
 ### Gemini — tmpfile 환경변수
 
 ```js
-// agent.js:188-192
+// agent.js:189-193
 if (cli === 'gemini' && sysPrompt) {
     const tmpSysFile = join(os.tmpdir(), `claw-gemini-sys-${agentLabel}.md`);
     fs.writeFileSync(tmpSysFile, sysPrompt);

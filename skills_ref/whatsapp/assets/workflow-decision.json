@@ -1,0 +1,83 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "send_text_1710000010000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Do you want to continue? Reply yes or no.",
+          "delay_seconds": 0
+        }
+      }
+    },
+    {
+      "id": "wait_for_response_1710000014000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 520 },
+      "data": {
+        "node_type": "wait_for_response",
+        "config": {
+          "save_response_to": "user_reply"
+        }
+      }
+    },
+    {
+      "id": "decide_1710000018000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 720 },
+      "data": {
+        "node_type": "decide",
+        "config": {
+          "decision_type": "function",
+          "function_id": "FUNCTION_ID_HERE",
+          "conditions": [
+            { "label": "yes", "description": "User agreed" },
+            { "label": "no", "description": "User declined" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000022000",
+      "type": "flow-node",
+      "position": { "x": 0, "y": 920 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Great, let's continue!",
+          "delay_seconds": 0
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000026000",
+      "type": "flow-node",
+      "position": { "x": 240, "y": 920 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "No problem. Ending the workflow.",
+          "delay_seconds": 0
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "send_text_1710000010000", "label": "next" },
+    { "source": "send_text_1710000010000", "target": "wait_for_response_1710000014000", "label": "next" },
+    { "source": "wait_for_response_1710000014000", "target": "decide_1710000018000", "label": "next" },
+    { "source": "decide_1710000018000", "target": "send_text_1710000022000", "label": "yes" },
+    { "source": "decide_1710000018000", "target": "send_text_1710000026000", "label": "no" }
+  ]
+}

@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24 (server.js 687L / agent.js 363L / commands.js 557L / prompt.js 414L / public/ 18파일 ~2580L)
+> 마지막 검증: 2026-02-24 (server.js 686L / agent.js 363L / commands.js 573L / prompt.js 413L / public/ 19파일 ~2685L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -10,46 +10,46 @@
 
 ```text
 cli-claw/
-├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (685L)
+├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (686L)
 ├── lib/
-│   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + 글로벌 설치 (453L)
+│   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + 글로벌 설치 (455L)
 │   └── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
 ├── src/
 │   ├── config.js             ← CLAW_HOME, settings, CLI 탐지, APP_VERSION (167L)
 │   ├── db.js                 ← SQLite 스키마 + prepared statements (75L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (18L)
 │   ├── events.js             ← NDJSON 이벤트 파싱 (96L)
-│   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (557L)
+│   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (573L)
 │   ├── agent.js              ← CLI spawn + 스트림 + 큐 + 메모리 flush (363L)
 │   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (130L)
 │   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (358L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
-│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 + vision-click 주입 (414L)
+│   ├── prompt.js             ← 프롬프트 생성 + 스킬 + 서브에이전트 + vision-click 주입 (413L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)
 │       ├── actions.js        ← snapshot/click/type/navigate/screenshot/mouseClick (178L)
-│       └── index.js          ← re-export hub (12L)
-├── public/                   ← Web UI (ES Modules, 18 files, ~2580L)
+│       └── index.js          ← re-export hub (11L)
+├── public/                   ← Web UI (ES Modules, 19 files, ~2685L)
 │   ├── index.html            ← HTML 뼈대 (421L, inline JS/CSS 없음)
 │   ├── css/                  ← 5 files (950L)
-│   └── js/                   ← 12 files (1209L)
+│   └── js/                   ← 13 files (1300L)
 ├── bin/
 │   ├── cli-claw.js           ← 9개 서브커맨드 라우팅
 │   ├── postinstall.js        ← npm install 후 8단계 자동 설정 (139L)
 │   └── commands/
 │       ├── serve.js          ← 서버 시작 (--port/--host/--open, .env 자동감지)
-│       ├── chat.js           ← 터미널 채팅 TUI (3모드, 슬래시커맨드, 자동완성, 720L)
+│       ├── chat.js           ← 터미널 채팅 TUI (3모드, 슬래시커맨드, 자동완성, 832L)
 │       ├── init.js           ← 초기화 마법사
 │       ├── doctor.js         ← 진단 (11개 체크, --json)
 │       ├── status.js         ← 서버 상태 (--json)
 │       ├── mcp.js            ← MCP 관리 (install/sync/list/reset)
 │       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset + installFromRef)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
-│       └── browser.js        ← 브라우저 CLI (16개 서브커맨드, +mouse-click)
-├── skills_ref/               ← 번들 스킬 (54개: OpenClaw 26 + Codex 27 폴백 + vision-click)
+│       └── browser.js        ← 브라우저 CLI (16개 서브커맨드, +mouse-click, 216L)
+├── skills_ref/               ← 번들 스킬 (55개: OpenClaw 26 + Codex 27 폴백 + vision-click + telegram-send)
 │   └── registry.json
-└── devlog/                   ← MVP 12 Phase + Post-MVP 6개 폴더
+└── devlog/                   ← MVP 12 Phase + Post-MVP 8개 폴더
 ```
 
 ### 런타임 데이터 (`~/.cli-claw/`)
@@ -65,7 +65,7 @@ cli-claw/
 | `skills_ref/`      | Reference 스킬 (AI 참조용)                |
 | `browser-profile/` | Chrome 사용자 프로필                      |
 
-npm 의존성: `express` ^4.21 · `ws` ^8.18 · `better-sqlite3` ^11.7 · `grammy` ^1.40 · `node-fetch` ^3.3 · `playwright-core` ^1.58
+npm 의존성: `express` ^4.21 · `ws` ^8.18 · `better-sqlite3` ^11.7 · `grammy` ^1.40 · `@grammyjs/runner` ^2.0 · `@grammyjs/transformer-throttler` ^1.2 · `node-fetch` ^3.3 · `playwright-core` ^1.58
 
 ---
 
@@ -153,7 +153,8 @@ graph LR
 | `260223_모델/`                    | 모델 목록 + custom input                                  | ✅    |
 | `260223_프론트엔드/`              | Web UI ES Modules 모듈화 (Phase 10)                       | ✅    |
 | `260223_11_서브에이전트프롬프트/` | 서브에이전트 프롬프트 구조화 (Phase 11)                   | ✅    |
-| `260224_cmd/`                     | 슬래시 커맨드 + 프롬프트 정규화 (P1✅ P2✅ P3✅ P4📋 P5📋 P6📋) | 🟡    |
+| `260224_cmd/`                     | 슬래시 커맨드 + 프롬프트 정규화 (P1✅ P2✅ P3✅ P4✅ P5✅ P6📋) | 🟡    |
+| `260224_skill/`                   | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2)         | 🟡    |
 | `260224_vision/`                  | Vision Click Phase 1 — Codex-only 비전 좌표 클릭          | ✅    |
 
 ---

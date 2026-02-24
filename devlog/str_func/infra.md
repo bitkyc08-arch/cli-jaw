@@ -4,7 +4,7 @@
 
 ---
 
-## config.js — 경로, 설정, CLI 탐지 (167L)
+## config.js — 경로, 설정, CLI 탐지 (168L)
 
 **상수**: `CLAW_HOME` · `PROMPTS_DIR` · `DB_PATH` · `SETTINGS_PATH` · `HEARTBEAT_JOBS_PATH` · `UPLOADS_DIR` · `SKILLS_DIR` · `SKILLS_REF_DIR` · `APP_VERSION` (← package.json)
 
@@ -81,13 +81,13 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 |                          | `getPageText(port, fmt)` |
 |                          | `mouseClick(port, x, y)` |
 
-`index.js` (12L) — re-export hub (mouseClick 포함)
+`index.js` (11L) — re-export hub (mouseClick 포함)
 
 > 👁️ `mouseClick()` — vision-click Phase 1 추가. 픽셀 좌표 기반 클릭. `page.mouse.click(x, y)` + `dblclick` 지원.
 
 ---
 
-## lib/mcp-sync.js — MCP 통합 관리 (453L)
+## lib/mcp-sync.js — MCP 통합 관리 (455L)
 
 소스: `~/.cli-claw/mcp.json`
 

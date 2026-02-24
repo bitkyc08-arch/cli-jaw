@@ -14,7 +14,7 @@ cli-claw serve
 
 - 🤖 **Multi-CLI**: Claude Code, Codex, Gemini CLI, OpenCode 통합
 - 👥 **Sub Agents**: 역할별 에이전트 분배 (프론트, 백엔드, QA 등)
-- 📦 **Skills**: 플러그인 스킬 시스템 (2×3 분류: Active / Reference, Codex 폴백 번들)
+- 📦 **Skills**: 플러그인 스킬 시스템 (2×3 분류: Active / Reference, Codex 폴백 번들, 55개 내장)
 - 🧠 **Memory**: 자동 대화 요약 + 장기 기억
 - 💓 **Heartbeat**: 주기적 자동 실행
 - 📨 **Telegram**: 텔레그램 봇 연동 + 슬래시 커맨드 디스패치
@@ -126,23 +126,24 @@ cli-claw browser reset [--force]  # 프로필 + 스크린샷 초기화
 
 ```
 cli-claw serve  →  Express + WebSocket server (:3457)
-cli-claw chat   →  Terminal UI (raw stdin, footer, queue)
+cli-claw chat   →  Terminal UI (raw stdin, footer, queue, 832L)
 ```
 
 ```
-server.js            API routes + WebSocket hub
-src/agent.js         CLI spawn + stream parser
-src/orchestrator.js  Multi-agent task distribution
-src/config.js        Settings + defaults
-src/prompt.js        System prompt + sub-agent prompt generator
-src/telegram.js      Telegram bot bridge
-src/memory.js        Memory: MEMORY.md(시스템레벨 1500자) + session(10000자, threshold/2 간격 주입)
-src/browser/         Chrome CDP control
-lib/mcp-sync.js      MCP config sync (4 CLI targets)
-public/              Web UI (ES Modules, stop/queue/drag-drop)
+server.js            API routes + WebSocket hub (686L)
+src/agent.js         CLI spawn + stream parser (363L)
+src/orchestrator.js  Multi-agent task distribution (130L)
+src/config.js        Settings + defaults (168L)
+src/prompt.js        System prompt + sub-agent + vision-click (413L)
+src/commands.js      Slash command registry + dispatcher (573L)
+src/telegram.js      Telegram bot bridge (358L)
+src/memory.js        Memory: MEMORY.md(1500자) + session(10000자, threshold/2 주입)
+src/browser/         Chrome CDP control (actions + connection + index)
+lib/mcp-sync.js      MCP config sync (4 CLI targets, 455L)
+public/              Web UI (ES Modules, 19 files, ~2685L)
 ├── index.html       HTML skeleton (no inline JS/CSS)
 ├── css/             5 stylesheets (variables, layout, chat, sidebar, modals)
-└── js/              12 modules (state, ws, ui, render + features/)
+└── js/              13 modules (state, ws, ui, render + features/)
 ```
 
 ## MCP Auto-Install

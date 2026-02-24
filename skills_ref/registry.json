@@ -643,6 +643,412 @@
             "workflow": "routing_guide",
             "provider": "n/a",
             "status": "active"
+        },
+        "algorithmic-art": {
+            "name": "Algorithmic Art",
+            "emoji": "🎨",
+            "category": "ai-media",
+            "description": "p5.js 제너러티브 아트. 알고리즘 기반 시각 작품 생성.",
+            "requires": {},
+            "install": null
+        },
+        "canvas-design": {
+            "name": "Canvas Design",
+            "emoji": "🖼️",
+            "category": "ai-media",
+            "description": "Canvas API로 PNG/PDF 시각 디자인 생성.",
+            "requires": {},
+            "install": null
+        },
+        "react-best-practices": {
+            "name": "React Best Practices",
+            "emoji": "⚛️",
+            "category": "devtools",
+            "description": "React 코드 패턴, 성능 최적화, 컴포넌트 설계 모범사례.",
+            "requires": {},
+            "install": null
+        },
+        "web-perf": {
+            "name": "Web Perf",
+            "emoji": "⚡",
+            "category": "devtools",
+            "description": "Core Web Vitals 감사. Lighthouse/CrUX 기반 성능 분석.",
+            "requires": {},
+            "install": null
+        },
+        "agents-sdk": {
+            "name": "Agents Sdk",
+            "emoji": "🤖",
+            "category": "devtools",
+            "description": "Cloudflare Workers AI 에이전트 SDK 사용 가이드.",
+            "requires": {},
+            "install": null
+        },
+        "durable-objects": {
+            "name": "Durable Objects",
+            "emoji": "💾",
+            "category": "devtools",
+            "description": "Cloudflare Durable Objects (RPC+SQLite+WebSocket) 스테이트풀 워커.",
+            "requires": {},
+            "install": null
+        },
+        "static-analysis": {
+            "name": "Static Analysis",
+            "emoji": "🔍",
+            "category": "devtools",
+            "description": "CodeQL+Semgrep+SARIF 정적 보안 분석.",
+            "requires": {
+                "env": []
+            },
+            "install": null
+        },
+        "insecure-defaults": {
+            "name": "Insecure Defaults",
+            "emoji": "🔒",
+            "category": "devtools",
+            "description": "하드코딩 시크릿, 약한 암호, 안전하지 않은 기본값 탐지.",
+            "requires": {},
+            "install": null
+        },
+        "modern-python": {
+            "name": "Modern Python",
+            "emoji": "🐍",
+            "category": "devtools",
+            "description": "uv+ruff+ty+pytest Python 모범사례.",
+            "requires": {},
+            "install": null
+        },
+        "differential-review": {
+            "name": "Differential Review",
+            "emoji": "🔎",
+            "category": "devtools",
+            "description": "보안 관점 diff 리뷰. 변경된 코드의 보안 영향 분석.",
+            "requires": {},
+            "install": null
+        },
+        "property-based-testing": {
+            "name": "Property Based Testing",
+            "emoji": "🧪",
+            "category": "devtools",
+            "description": "다언어 속성 기반 테스트 (Hypothesis/fast-check 등).",
+            "requires": {},
+            "install": null
+        },
+        "security-best-practices": {
+            "name": "Security Best Practices",
+            "emoji": "🛡️",
+            "category": "devtools",
+            "description": "언어별 보안 취약점 패턴 리뷰.",
+            "requires": {},
+            "install": null
+        },
+        "security-ownership-map": {
+            "name": "Security Ownership Map",
+            "emoji": "👥",
+            "category": "devtools",
+            "description": "코드베이스 소유자/버스팩터 매핑.",
+            "requires": {},
+            "install": null
+        },
+        "security-threat-model": {
+            "name": "Security Threat Model",
+            "emoji": "⚠️",
+            "category": "devtools",
+            "description": "리포별 위협 모델 생성 (STRIDE/DREAD).",
+            "requires": {},
+            "install": null
+        },
+        "hugging-face-cli": {
+            "name": "Hugging Face Cli",
+            "emoji": "🤗",
+            "category": "ai-media",
+            "description": "HF Hub CLI로 모델/데이터셋/스페이스 관리.",
+            "requires": {
+                "env": [
+                    "HF_TOKEN"
+                ]
+            },
+            "install": null
+        },
+        "hugging-face-model-trainer": {
+            "name": "Hugging Face Model Trainer",
+            "emoji": "🏋️",
+            "category": "ai-media",
+            "description": "TRL: SFT/DPO/GRPO 모델 학습.",
+            "requires": {
+                "env": [
+                    "HF_TOKEN"
+                ]
+            },
+            "install": null
+        },
+        "hugging-face-evaluation": {
+            "name": "Hugging Face Evaluation",
+            "emoji": "📊",
+            "category": "ai-media",
+            "description": "vLLM/lighteval 모델 평가 및 벤치마크.",
+            "requires": {
+                "env": [
+                    "HF_TOKEN"
+                ]
+            },
+            "install": null
+        },
+        "fal-image-edit": {
+            "name": "Fal Image Edit",
+            "emoji": "✏️",
+            "category": "ai-media",
+            "description": "fal.ai AI 이미지 편집 (스타일 전환, 오브젝트 제거).",
+            "requires": {
+                "env": [
+                    "FAL_KEY"
+                ]
+            },
+            "install": null
+        },
+        "brainstorming": {
+            "name": "Brainstorming",
+            "emoji": "💡",
+            "category": "devtools",
+            "description": "코딩 전 아이디어 정제→디자인 문서 작성 (obra/superpowers).",
+            "requires": {},
+            "install": null
+        },
+        "writing-plans": {
+            "name": "Writing Plans",
+            "emoji": "📋",
+            "category": "devtools",
+            "description": "2-5분 단위 태스크 분해. 파일 경로/코드/검증 포함.",
+            "requires": {},
+            "install": null
+        },
+        "tdd": {
+            "name": "Tdd",
+            "emoji": "🔴",
+            "category": "devtools",
+            "description": "RED-GREEN-REFACTOR TDD 사이클 강제.",
+            "requires": {},
+            "install": null
+        },
+        "requesting-code-review": {
+            "name": "Requesting Code Review",
+            "emoji": "📝",
+            "category": "devtools",
+            "description": "에이전트 내부 코드 리뷰. severity 기반 차단.",
+            "requires": {},
+            "install": null
+        },
+        "receiving-code-review": {
+            "name": "Receiving Code Review",
+            "emoji": "📩",
+            "category": "devtools",
+            "description": "코드 리뷰 피드백 수신 및 대응 패턴.",
+            "requires": {},
+            "install": null
+        },
+        "dispatching-parallel-agents": {
+            "name": "Dispatching Parallel Agents",
+            "emoji": "🔀",
+            "category": "devtools",
+            "description": "병렬 서브에이전트 디스패치 패턴.",
+            "requires": {},
+            "install": null
+        },
+        "debugging-helpers": {
+            "name": "Debugging Helpers",
+            "emoji": "🐛",
+            "category": "devtools",
+            "description": "체계적 디버깅 보조 (systematic-debugging).",
+            "requires": {},
+            "install": null
+        },
+        "git-worktrees": {
+            "name": "Git Worktrees",
+            "emoji": "🌲",
+            "category": "devtools",
+            "description": "git worktree 기반 격리 브랜치 워크플로.",
+            "requires": {},
+            "install": null
+        },
+        "codebase-orientation": {
+            "name": "Codebase Orientation",
+            "emoji": "🗺️",
+            "category": "devtools",
+            "description": "프로젝트 엔트리포인트/모듈/빌드 매핑. 온보딩 가이드.",
+            "requires": {},
+            "install": null
+        },
+        "debugging-checklist": {
+            "name": "Debugging Checklist",
+            "emoji": "✅",
+            "category": "devtools",
+            "description": "재현→격리→로깅→가설검증 디버깅 체크리스트.",
+            "requires": {},
+            "install": null
+        },
+        "error-message-explainer": {
+            "name": "Error Message Explainer",
+            "emoji": "💬",
+            "category": "devtools",
+            "description": "컴파일러/런타임 에러 → 원인 + 수정 제안.",
+            "requires": {},
+            "install": null
+        },
+        "config-file-explainer": {
+            "name": "Config File Explainer",
+            "emoji": "⚙️",
+            "category": "devtools",
+            "description": "설정 파일 구조/키/기본값 설명.",
+            "requires": {},
+            "install": null
+        },
+        "data-structure-chooser": {
+            "name": "Data Structure Chooser",
+            "emoji": "🏗️",
+            "category": "devtools",
+            "description": "자료구조 시간/공간 트레이드오프 추천.",
+            "requires": {},
+            "install": null
+        },
+        "log-summarizer": {
+            "name": "Log Summarizer",
+            "emoji": "📄",
+            "category": "devtools",
+            "description": "로그 그룹핑 + 첫 실패 식별 + 액션 제안.",
+            "requires": {},
+            "install": null
+        },
+        "linter-fix-guide": {
+            "name": "Linter Fix Guide",
+            "emoji": "🧹",
+            "category": "devtools",
+            "description": "린트 룰 설명 + 패턴 제시 + 최소 수정 제안.",
+            "requires": {},
+            "install": null
+        },
+        "dependency-install-helper": {
+            "name": "Dependency Install Helper",
+            "emoji": "📦",
+            "category": "devtools",
+            "description": "플랫폼별 의존성 설치 단계 + 검증 명령.",
+            "requires": {},
+            "install": null
+        },
+        "changelog-generator": {
+            "name": "Changelog Generator",
+            "emoji": "📰",
+            "category": "devtools",
+            "description": "git commit → 체인지로그/릴리스 노트 생성.",
+            "requires": {},
+            "install": null
+        },
+        "video-downloader": {
+            "name": "Video Downloader",
+            "emoji": "🎬",
+            "category": "utility",
+            "description": "yt-dlp 래퍼. 유튜브/미디어 다운로드.",
+            "requires": {
+                "binaries": [
+                    "yt-dlp"
+                ]
+            },
+            "install": null
+        },
+        "email-draft-polish": {
+            "name": "Email Draft Polish",
+            "emoji": "✉️",
+            "category": "communication",
+            "description": "이메일 초안 톤 조절/포맷팅.",
+            "requires": {},
+            "install": null
+        },
+        "postgres": {
+            "name": "Postgres",
+            "emoji": "🐘",
+            "category": "devtools",
+            "description": "PostgreSQL 읽기 전용 쿼리. 스키마 탐색.",
+            "requires": {
+                "env": [
+                    "DATABASE_URL"
+                ]
+            },
+            "install": null
+        },
+        "deep-research": {
+            "name": "Deep Research",
+            "emoji": "🔬",
+            "category": "devtools",
+            "description": "멀티스텝 리서치 에이전트. 검색→분석→요약.",
+            "requires": {},
+            "install": null
+        },
+        "context-compression": {
+            "name": "Context Compression",
+            "emoji": "🗜️",
+            "category": "devtools",
+            "description": "컨텍스트 압축 전략. 긴 세션 최적화.",
+            "requires": {},
+            "install": null
+        },
+        "ios-simulator": {
+            "name": "Ios Simulator",
+            "emoji": "📱",
+            "category": "devtools",
+            "description": "iOS 시뮬레이터 제어. 앱 빌드/실행/테스트.",
+            "requires": {
+                "binaries": [
+                    "xcrun"
+                ]
+            },
+            "install": null
+        },
+        "apple-hig-skills": {
+            "name": "Apple Hig Skills",
+            "emoji": "🍎",
+            "category": "devtools",
+            "description": "Apple HIG 14개 가이드 (foundations/platforms/components/patterns).",
+            "requires": {},
+            "install": null
+        },
+        "whatsapp": {
+            "name": "Whatsapp",
+            "emoji": "💬",
+            "category": "communication",
+            "description": "WhatsApp 메시지 자동화 (automate-whatsapp).",
+            "requires": {},
+            "install": null
+        },
+        "aws-skills": {
+            "name": "Aws Skills",
+            "emoji": "☁️",
+            "category": "devtools",
+            "description": "AWS 인프라 자동화 (CDK/CloudFormation/Lambda).",
+            "requires": {
+                "binaries": [
+                    "aws"
+                ]
+            },
+            "install": null
+        },
+        "terraform": {
+            "name": "Terraform",
+            "emoji": "🏗️",
+            "category": "devtools",
+            "description": "HashiCorp Terraform HCL/모듈/프로바이더 IaC.",
+            "requires": {
+                "binaries": [
+                    "terraform"
+                ]
+            },
+            "install": null
+        },
+        "kreuzberg": {
+            "name": "Kreuzberg",
+            "emoji": "📑",
+            "category": "utility",
+            "description": "62+ 포맷 텍스트 추출 (PDF/DOCX/PPTX/이미지 등).",
+            "requires": {},
+            "install": null
         }
     }
 }
