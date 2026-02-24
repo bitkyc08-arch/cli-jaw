@@ -1,8 +1,8 @@
 # Phase 3: Web UI Command Dropdown
 
-> 상태: 📋 계획 | 날짜: 2026-02-24
-> 범위: `public/index.html`, `public/js/features/chat.js`, `public/js/main.js`, `public/css/chat.css`
-> 의존: Phase 2 (`POST /api/command`, `GET /api/commands`) 완료 후 진행
+> 상태: ✅ 구현 완료 | 날짜: 2026-02-24
+> 범위: `public/index.html`, `public/js/features/slash-commands.js`, `public/js/main.js`, `public/css/chat.css`
+> 의존: Phase 2 (`POST /api/command`, `GET /api/commands`) ✔️ 완료
 
 Phase 1(CLI autocomplete)과 같은 UX를 Web UI에 구현한다.
 `/` 입력 시 입력창 위에 드롭다운이 나타나고, 화살표/Enter/ESC로 조작할 수 있다.
@@ -532,6 +532,30 @@ chatInput.addEventListener('input', (e) => {
 | IME 호환성             | 🟡      | 20m     |
 | 브라우저 테스트        | 🟡      | 30m     |
 | **합계**               |        | **~4h** |
+
+---
+
+## 구현 결과 (계획 외 추가 사항)
+
+| 추가 항목                                            | 파일                | 효과                                                                   |
+| ---------------------------------------------------- | ------------------- | ---------------------------------------------------------------------- |
+| `closeTimer` 중복 방지                               | `slash-commands.js` | close 중 showDropdown 재호출 시 `clearTimeout`으로 race condition 방지 |
+| `color-mix(in srgb, var(--accent) 10%, transparent)` | `chat.css`          | hover 배경에 accent 10% 혼합 — 디자인 시스템 변수와 자연스러운 조화    |
+| `scroll-margin-block: 4px`                           | `chat.css`          | `scrollIntoView` 시 선택 항목 상하 여백 확보                           |
+| `cmd-execute` 커스텀 이벤트                          | `main.js`           | `void sendMessage()`로 바인딩 — JS 모듈 간 깨끗한 분리                 |
+| `position: absolute` + `left/right: 20px`            | `chat.css`          | input-area padding과 드롭다운 좌우 여백 일치                           |
+| `slash-commands.js` 220줄 (계획 120줄)               | -                   | ARIA, 빈결과 UI, 애니메이션 등 UX 개선으로 규모 증가                   |
+
+---
+
+## 향후 개선 (Phase 3+)
+
+| 항목                          | 설명                                                                     | 상태         |
+| ----------------------------- | ------------------------------------------------------------------------ | ------------ |
+| argument stage 확장           | `update()`가 공백 포함 시 즉시 닫힘 → Phase 4 인자 자동완성 시 분기 필요 | 🟡 Phase 4 때 |
+| `loadCommands` 에러 로깅      | catch에서 사일런트 처리 → `console.warn` 추가 권장                       | 🟢            |
+| 모바일 `visualViewport`       | 터치 키보드 위에 드롭다운이 가려질 수 있음 (W4)                          | 🟢            |
+| Web전용 응답 `type` 색상 분기 | 응답 `type` 필드 이미 추가됨 → `addSystemMsg`에서 색상 분기 구현 필요    | 🟡            |
 
 ## 리스크
 
