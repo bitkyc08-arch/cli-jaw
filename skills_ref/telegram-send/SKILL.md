@@ -1,12 +1,12 @@
 ---
 name: telegram-send
-description: "Send voice/photos/documents (and optional text notices) directly to Telegram via local cli-claw API."
+description: "Send voice/photos/documents (and optional text notices) to Telegram. Use local api first, then Bot API fallback if file-send fails."
 metadata:
   {
     "openclaw":
       {
         "emoji": "📨",
-        "requires": { "bins": ["curl"] },
+        "requires": { "bins": ["curl", "jq"] },
       },
   }
 ---
@@ -14,9 +14,9 @@ metadata:
 # Telegram Send
 
 Use this skill when the user asks to deliver non-text output to Telegram.
-This is separate from the normal text response pipeline.
+Keep your normal text response in stdout.
 
-## Endpoint
+## Primary Endpoint
 
 `POST http://localhost:3457/api/telegram/send`
 
@@ -25,34 +25,65 @@ This is separate from the normal text response pipeline.
 - `voice`
 - `photo`
 - `document`
-- `text` (optional, for intermediate notices)
+- `text` (optional status message)
 
 ## Request Rules
 
 - For non-text types, `file_path` is required.
-- `chat_id` is recommended. If omitted, server uses the latest active Telegram chat.
-- Keep your normal text response in stdout (do not replace it with file send only).
+- `chat_id` is optional for local endpoint (server uses latest active chat).
+- For Bot API fallback, `chat_id` is required.
 
-## Examples
+## Standard Call (Use First)
 
 ```bash
-# Send voice (OGG/OPUS recommended, MP3/M4A also allowed by Telegram)
-curl -s -X POST http://localhost:3457/api/telegram/send \
-  -H "Content-Type: application/json" \
-  -d '{"type":"voice","file_path":"/tmp/reply.ogg","caption":"Voice response"}'
-
-# Send photo
-curl -s -X POST http://localhost:3457/api/telegram/send \
+curl -sS -X POST http://localhost:3457/api/telegram/send \
   -H "Content-Type: application/json" \
   -d '{"type":"photo","file_path":"/tmp/chart.png","caption":"Analysis chart"}'
+```
 
-# Send document
-curl -s -X POST http://localhost:3457/api/telegram/send \
-  -H "Content-Type: application/json" \
-  -d '{"type":"document","file_path":"/tmp/report.pdf","caption":"Weekly report"}'
+## Failure Pattern and Fallback
 
-# Optional text notice
-curl -s -X POST http://localhost:3457/api/telegram/send \
+If local endpoint returns file-send failure (for example `{"error":"Unexpected end of JSON input"}`) for `photo/voice/document`, use direct Telegram Bot API.
+
+### 1) Read token and chat id
+
+```bash
+TOKEN=$(jq -r '.telegram.token' ~/.cli-claw/settings.json)
+CHAT_ID=8231528245   # or provide from user/previous successful response
+```
+
+### 2) Send by type
+
+```bash
+# photo
+curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendPhoto" \
+  -F "chat_id=${CHAT_ID}" \
+  -F "photo=@/tmp/chart.png" \
+  -F "caption=Analysis chart"
+
+# voice
+curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendVoice" \
+  -F "chat_id=${CHAT_ID}" \
+  -F "voice=@/tmp/reply.ogg" \
+  -F "caption=Voice response"
+
+# document
+curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendDocument" \
+  -F "chat_id=${CHAT_ID}" \
+  -F "document=@/tmp/report.pdf" \
+  -F "caption=Weekly report"
+```
+
+## Quick Verification
+
+```bash
+curl -sS -X POST http://localhost:3457/api/telegram/send \
   -H "Content-Type: application/json" \
-  -d '{"type":"text","text":"Intermediate result is ready"}'
+  -d '{"type":"text","text":"ping"}'
+```
+
+Expected success shape:
+
+```json
+{"ok":true,"chat_id":8231528245,"type":"text"}
 ```
