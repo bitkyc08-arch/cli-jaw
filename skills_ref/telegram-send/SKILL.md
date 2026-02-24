@@ -52,6 +52,14 @@ TOKEN=$(jq -r '.telegram.token' ~/.cli-claw/settings.json)
 CHAT_ID=8231528245   # or provide from user/previous successful response
 ```
 
+If `CHAT_ID` is unknown, fetch the latest one:
+
+```bash
+CHAT_ID=$(curl -sS -X POST http://localhost:3457/api/telegram/send \
+  -H "Content-Type: application/json" \
+  -d '{"type":"text","text":"chat_id check"}' | jq -r '.chat_id')
+```
+
 ### 2) Send by type
 
 ```bash
@@ -81,6 +89,11 @@ curl -sS -X POST http://localhost:3457/api/telegram/send \
   -H "Content-Type: application/json" \
   -d '{"type":"text","text":"ping"}'
 ```
+
+## Safety Note
+
+- Do not print token values in logs or chat output.
+- Read token only via `jq` variable assignment and use it in-process.
 
 Expected success shape:
 
