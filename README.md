@@ -134,7 +134,7 @@ src/orchestrator.js  Multi-agent task distribution
 src/config.js        Settings + defaults
 src/prompt.js        System prompt + sub-agent prompt generator
 src/telegram.js      Telegram bot bridge
-src/memory.js        Memory: MEMORY.md(시스템레벨 1500자) + session(10000자, x2 cycle 주입)
+src/memory.js        Memory: MEMORY.md(시스템레벨 1500자) + session(10000자, threshold/2 간격 주입)
 src/browser/         Chrome CDP control
 lib/mcp-sync.js      MCP config sync (4 CLI targets)
 public/              Web UI (ES Modules, stop/queue/drag-drop)
