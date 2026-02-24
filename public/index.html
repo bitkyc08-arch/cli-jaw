@@ -35,6 +35,17 @@
             <p class="stat" id="statMsgs">Messages: 0</p>
         </div>
 
+        <div>
+            <div class="section-title" style="display:flex;justify-content:space-between;align-items:center">
+                CLI Status
+                <button class="btn-clear" style="margin:0;padding:2px 6px;font-size:9px"
+                    data-action="refreshCliSidebar">🔄</button>
+            </div>
+            <div id="cliStatusSidebar" style="margin-top:4px;font-size:11px">
+                <div style="color:var(--text-dim);font-size:10px">Loading...</div>
+            </div>
+        </div>
+
         <button class="btn-clear">/clear</button>
         <button class="sidebar-hb-btn" id="hbSidebarBtn">💓 Heartbeat (0)</button>
     </div>
