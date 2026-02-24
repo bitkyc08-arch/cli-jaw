@@ -2,6 +2,7 @@
 import { state } from '../state.js';
 import { t, fetchWithLocale } from './i18n.js';
 import { apiJson } from '../api.js';
+import { escapeHtml } from '../render.js';
 
 export async function loadSkills() {
     try {
@@ -38,12 +39,12 @@ export function renderSkills() {
         return `
         <div class="skill-card ${s.enabled ? 'enabled' : ''}">
             <div class="skill-card-header">
-                <span class="skill-emoji">${s.emoji || '🔧'}</span>
-                <span class="skill-name">${s.name || s.id}</span>
+                <span class="skill-emoji">${escapeHtml(s.emoji || '🔧')}</span>
+                <span class="skill-name">${escapeHtml(s.name || s.id)}</span>
                 <button class="skill-toggle ${s.enabled ? 'on' : 'off'}"
-                        data-skill-id="${s.id}" data-skill-enabled="${s.enabled}"></button>
+                        data-skill-id="${escapeHtml(s.id)}" data-skill-enabled="${s.enabled}"></button>
             </div>
-            <div class="skill-desc">${s.description || ''}</div>
+            <div class="skill-desc">${escapeHtml(s.description || '')}</div>
             ${reqParts.length ? `<div class="skill-req">${reqParts.join(' · ')}</div>` : ''}
         </div>`;
     }).join('');

@@ -55,12 +55,12 @@ function renderMemFiles(files) {
     }
     container.innerHTML = files.map(f => `
         <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border:1px solid var(--border);border-radius:4px;margin-bottom:4px;cursor:pointer"
-             data-mem-view="${f.name}">
+             data-mem-view="${escapeHtml(f.name)}">
             <div>
-                <span style="font-size:12px;font-family:monospace">${f.name}</span>
+                <span style="font-size:12px;font-family:monospace">${escapeHtml(f.name)}</span>
                 <span style="font-size:10px;color:var(--accent);margin-left:6px">${f.entries} entries</span>
             </div>
-            <button data-mem-delete="${f.name}" style="background:none;border:none;color:#f55;cursor:pointer;font-size:14px">🗑️</button>
+            <button data-mem-delete="${escapeHtml(f.name)}" style="background:none;border:none;color:#f55;cursor:pointer;font-size:14px">🗑️</button>
         </div>
     `).join('');
 }

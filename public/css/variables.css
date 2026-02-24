@@ -125,3 +125,17 @@ input[type="text"] {
     scrollbar-width: thin;
     scrollbar-color: var(--border) transparent;
 }
+
+/* ─── Focus visible ──────────────────────────────── */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+button:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}

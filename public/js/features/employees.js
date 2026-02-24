@@ -102,7 +102,7 @@ export async function deleteEmployee(id) {
 export function onEmpCliChange(id, cli) {
     const models = MODEL_MAP[cli] || [];
     const sel = document.querySelector(`[data-emp-model="${id}"]`);
-    sel.innerHTML = `<option value="default" selected>default</option>` + models.map(m => `<option>${m}</option>`).join('') + `<option value="__custom__">${t('emp.customModel')}</option>`;
+    sel.innerHTML = `<option value="default" selected>default</option>` + models.map(m => `<option>${escapeHtml(m)}</option>`).join('') + `<option value="__custom__">${t('emp.customModel')}</option>`;
     updateEmployee(id, { cli, model: 'default' });
 }
 

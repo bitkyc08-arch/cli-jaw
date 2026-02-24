@@ -2,6 +2,7 @@
 import { state } from '../state.js';
 import { t } from './i18n.js';
 import { api, apiJson } from '../api.js';
+import { escapeHtml } from '../render.js';
 
 export async function openHeartbeatModal() {
     const data = await api('/api/heartbeat');
@@ -23,7 +24,7 @@ export function renderHeartbeatJobs() {
         container.innerHTML = state.heartbeatJobs.map((job, i) => `
             <div class="hb-job-card">
                 <div class="hb-job-header">
-                    <input type="text" value="${job.name || ''}" placeholder="${t('hb.name')}"
+                    <input type="text" value="${escapeHtml(job.name || '')}" placeholder="${t('hb.name')}"
                         data-hb-name="${i}">
                     <span style="font-size:11px;color:var(--text-dim)">every</span>
                     <input type="number" value="${job.schedule?.minutes || 5}" min="1"
@@ -34,7 +35,7 @@ export function renderHeartbeatJobs() {
                     <button class="hb-del" data-hb-remove="${i}">✕</button>
                 </div>
                 <textarea class="hb-prompt" rows="2" placeholder="${t('hb.prompt')}"
-                    data-hb-prompt="${i}">${job.prompt || ''}</textarea>
+                    data-hb-prompt="${i}">${escapeHtml(job.prompt || '')}</textarea>
             </div>
         `).join('');
     }

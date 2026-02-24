@@ -40,7 +40,7 @@ import {
 import { state } from './state.js';
 import { loadCliRegistry, getCliKeys } from './constants.js';
 import { initAppName } from './features/appname.js';
-import { initSidebar } from './features/sidebar.js';
+import { initSidebar, toggleLeft, toggleRight } from './features/sidebar.js';
 import { initTheme } from './features/theme.js';
 import { initI18n, setLang, getLang, t } from './features/i18n.js';
 
@@ -261,3 +261,16 @@ async function bootstrap() {
 void bootstrap().catch((err) => {
     console.error('[bootstrap]', err);
 });
+
+// ── Keyboard: Escape closes modals ──────────────────
+document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+        document.querySelectorAll('.modal-overlay.open').forEach(m => {
+            m.classList.remove('open');
+        });
+    }
+});
+
+// ── Mobile sidebar toggle (sidebar.js functions reuse) ──
+document.getElementById('mobileMenuLeft')?.addEventListener('click', toggleLeft);
+document.getElementById('mobileMenuRight')?.addEventListener('click', toggleRight);

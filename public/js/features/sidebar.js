@@ -41,7 +41,7 @@ function isNarrow() {
     return window.innerWidth <= BREAKPOINT;
 }
 
-function toggleLeft() {
+export function toggleLeft() {
     if (isNarrow()) {
         // Narrow mode: toggle expanded override
         document.body.classList.toggle('left-expanded');
@@ -53,7 +53,7 @@ function toggleLeft() {
     syncIcons();
 }
 
-function toggleRight() {
+export function toggleRight() {
     if (isNarrow()) {
         document.body.classList.toggle('right-expanded');
     } else {

@@ -32,8 +32,8 @@
 
 <body>
     <!-- Left Sidebar -->
-    <div class="sidebar-left">
-        <button class="sidebar-toggle" id="toggleLeft" title="Collapse">◀</button>
+    <nav class="sidebar-left" role="navigation" aria-label="Main navigation">
+        <button class="sidebar-toggle" id="toggleLeft" title="Collapse" aria-label="Collapse sidebar">◀</button>
         <div class="logo">CLI-CLAW</div>
 
         <div>
@@ -43,7 +43,7 @@
 
         <div>
             <div class="section-title">Memory</div>
-            <button class="sidebar-hb-btn" id="memorySidebarBtn">🧠 Memory (0)</button>
+            <button class="sidebar-hb-btn" id="memorySidebarBtn" aria-label="Open memory panel">🧠 Memory (0)</button>
         </div>
 
         <div>
@@ -82,7 +82,7 @@
             <button class="sidebar-hb-btn" id="hbSidebarBtn">💓 Heartbeat (0)</button>
             <button class="sidebar-hb-btn" id="langToggle" title="한국어 ⇄ English">🌐 한국어</button>
         </div>
-    </div>
+    </nav>
 
     <!-- Chat Area -->
     <div class="chat-area" style="position:relative">
@@ -110,15 +110,15 @@
             <input type="file" id="fileInput" hidden
                 accept="image/*,.pdf,.txt,.md,.js,.py,.json,.csv,.html,.css,.ts,.tsx,.jsx">
             <textarea class="chat-input" id="chatInput" rows="1" data-i18n-placeholder="input.placeholder"
-                placeholder="메시지 입력..." aria-haspopup="listbox" aria-expanded="false" aria-controls="cmdDropdown"
-                aria-autocomplete="list" aria-activedescendant=""></textarea>
+                placeholder="메시지 입력..." aria-label="Chat message input" aria-haspopup="listbox" aria-expanded="false"
+                aria-controls="cmdDropdown" aria-autocomplete="list" aria-activedescendant=""></textarea>
             <button class="btn-send" id="btnSend">➤</button>
         </div>
     </div>
 
     <!-- Right Sidebar (Tabbed) -->
-    <div class="sidebar-right">
-        <button class="sidebar-toggle" id="toggleRight" title="Collapse">▶</button>
+    <aside class="sidebar-right" role="complementary" aria-label="Settings panel">
+        <button class="sidebar-toggle" id="toggleRight" title="Collapse" aria-label="Collapse settings">▶</button>
         <div class="tab-bar">
             <button class="tab-btn active">Agents</button>
             <button class="tab-btn">Skills</button>
@@ -333,10 +333,10 @@
 
 
         </div>
-    </div>
+    </aside>
 
     <!-- Prompt Modal -->
-    <div class="modal-overlay" id="promptModal">
+    <div class="modal-overlay" id="promptModal" role="dialog" aria-modal="true" aria-label="System prompt editor">
         <div class="modal-box">
             <div class="modal-header">
                 <span>System Prompt (A-2)</span>
@@ -353,7 +353,7 @@
     </div>
 
     <!-- Heartbeat Jobs Modal -->
-    <div class="modal-overlay" id="heartbeatModal">
+    <div class="modal-overlay" id="heartbeatModal" role="dialog" aria-modal="true" aria-label="Heartbeat jobs">
         <div class="modal-box" style="max-height:80vh;overflow-y:auto">
             <div class="modal-header">
                 <span>💓 Heartbeat Jobs</span>
@@ -368,7 +368,7 @@
     </div>
 
     <!-- Memory Modal -->
-    <div class="modal-overlay" id="memoryModal">
+    <div class="modal-overlay" id="memoryModal" role="dialog" aria-modal="true" aria-label="Memory files">
         <div class="modal-box" style="max-height:80vh;overflow-y:auto">
             <div class="modal-header">
                 <span>🧠 Memory</span>
@@ -443,6 +443,12 @@
                 <div id="memFilesList"></div>
             </div>
         </div>
+    </div>
+
+    <!-- Mobile Navigation -->
+    <div class="mobile-nav">
+        <button id="mobileMenuLeft" aria-label="Open menu">☰ Menu</button>
+        <button id="mobileMenuRight" aria-label="Open settings">⚙️ Settings</button>
     </div>
 
     <script type="module" src="/js/main.js"></script>

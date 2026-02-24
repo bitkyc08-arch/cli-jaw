@@ -318,11 +318,14 @@ npm test
 
 ## 완료 기준
 
-- [ ] innerHTML 모든 사용처에 escapeHtml 적용 확인 (감사 표 기준)
-- [ ] 4개 파일 XSS 패치: employees, heartbeat, skills, memory
-- [ ] 사이드바/모달에 ARIA role + aria-label 추가
-- [ ] `:focus-visible` 스타일 추가
-- [ ] Escape로 모달 닫기
-- [ ] 768px 미만 모바일 레이아웃 동작
-- [ ] 모바일 하단 네비 표시
-- [ ] `npm test` 통과
+- [x] innerHTML 모든 사용처에 escapeHtml 적용 확인 (감사 표 기준)
+- [x] 4개 파일 XSS 패치: employees, heartbeat, skills, memory
+- [x] escapeHtml `"` / `'` 강화
+- [x] 사이드바/모달에 ARIA role + aria-label 추가
+- [x] div → nav/aside 시맨틱 태그 변경
+- [x] `:focus-visible` 스타일 추가
+- [x] Escape로 모달 닫기
+- [x] 768px 미만 모바일 레이아웃 동작 (900px 충돌 방지)
+- [x] 모바일 하단 네비 표시 (sidebar.js toggleLeft/toggleRight 재사용)
+- [x] `npm test` 통과 (234/235, 1 skip = smoke)
+
