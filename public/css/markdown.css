@@ -3,35 +3,26 @@
 /* Tables */
 .msg-content table {
     border-collapse: collapse;
-    max-width: 100%;
+    width: 100%;
     margin: 8px 0;
     font-size: 12px;
-    border: 1px solid #4ade80;
-    display: block;
-    overflow-x: auto;
-}
-
-.msg-content thead,
-.msg-content tbody,
-.msg-content tr {
-    display: table;
-    width: 100%;
-    table-layout: auto;
+    border: 1px solid #06b6d4;
+    /* cyan-500 */
 }
 
 .msg-content th,
 .msg-content td {
-    border: 1px solid rgba(74, 222, 128, 0.25);
+    border: 1px solid rgba(6, 182, 212, 0.25);
+    /* cyan-500 */
     padding: 6px 12px;
     text-align: left;
     word-break: break-word;
-    max-width: 320px;
 }
 
 .msg-content th {
-    background: rgba(74, 222, 128, 0.08);
+    background: rgba(6, 182, 212, 0.08);
     font-weight: 600;
-    border-bottom: 2px solid #4ade80;
+    border-bottom: 2px solid #06b6d4;
 }
 
 .msg-content tr:nth-child(even) {
@@ -39,7 +30,13 @@
 }
 
 .msg-content tr:hover {
-    background: rgba(74, 222, 128, 0.04);
+    background: rgba(6, 182, 212, 0.04);
+}
+
+.table-wrapper {
+    max-width: 100%;
+    overflow-x: auto;
+    margin: 8px 0;
 }
 
 /* Code blocks */
