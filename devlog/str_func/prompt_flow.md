@@ -168,7 +168,7 @@ The middleware detects your JSON output and AUTOMATICALLY spawns employees.
 | ---------------- | ------------------------- | --------------------------- |
 | Heartbeat        | `jobs.length > 0`         | ✅/⏸️ 목록 + 간격             |
 | Active Skills    | `activeSkills.length > 0` | 이름 목록 (CLI가 트리거)    |
-| Available Skills | `availableRef.length > 0` | 이름 + 설명 + SKILL.md 경로 |
+| Available Skills | `availableRef.length > 0` | ID 목록 (compact CSV)       |
 | Skill Discovery  | 항상                      | 없으면 검색/생성 안내       |
 
 ---
@@ -179,10 +179,10 @@ The middleware detects your JSON output and AUTOMATICALLY spawns employees.
 
 `getSystemPrompt()` 결과를 2곳에 저장:
 
-| 대상        | 경로                         | 용도                       |
-| ----------- | ---------------------------- | -------------------------- |
-| `B.md`      | `~/.cli-claw/prompts/B.md`   | 디버그/참조용              |
-| `AGENTS.md` | `<workDir>/.codex/AGENTS.md` | **Codex 전용** — 자동 로딩 |
+| 대상        | 경로                         | 용도                                         |
+| ----------- | ---------------------------- | -------------------------------------------- |
+| `B.md`      | `~/.cli-claw/prompts/B.md`   | 디버그/참조용                                |
+| `AGENTS.md` | `{workDir}/AGENTS.md`        | **Codex + Copilot + OpenCode** — 자동 로딩   |
 
 **세션 무효화**: B.md 변경 시 `session_id = null` → 다음 메시지에서 신규 세션 생성
 
@@ -191,13 +191,13 @@ The middleware detects your JSON output and AUTOMATICALLY spawns employees.
 ```mermaid
 graph TD
     SYS["getSystemPrompt()"] --> C_SYS["Claude:<br/>--append-system-prompt"]
-    SYS --> X_FILE["Codex:<br/>.codex/AGENTS.md 파일"]
+    SYS --> X_FILE["Codex:<br/>{workDir}/AGENTS.md 자동 로딩"]
     SYS --> G_ENV["Gemini:<br/>GEMINI_SYSTEM_MD 환경변수"]
-    SYS --> O_SKIP["OpenCode:<br/>별도 메커니즘 없음"]
-    SYS --> CP_ACP["Copilot:<br/>AGENTS.md 자동 로딩 + ACP session/prompt"]
+    SYS --> O_FILE["OpenCode:<br/>{workDir}/AGENTS.md 자동 로딩"]
+    SYS --> CP_ACP["Copilot:<br/>{workDir}/AGENTS.md 자동 로딩 + ACP"]
 
     USER["User Message"] --> C_STDIN["Claude:<br/>stdin = 프롬프트만"]
-    USER --> X_STDIN["Codex:<br/>stdin = 시스템(중복!) + 히스토리 + 프롬프트"]
+    USER --> X_STDIN["Codex:<br/>stdin = 히스토리 + 프롬프트"]
     USER --> G_ARG["Gemini:<br/>-p 인자"]
     USER --> O_ARG["OpenCode:<br/>위치 인자"]
     USER --> CP_MSG["Copilot:<br/>ACP session/prompt messages"]
@@ -206,13 +206,13 @@ graph TD
 | CLI          | 시스템 프롬프트 전달                 | role        | 매 턴 포함 | 압축 보호                  |
 | ------------ | ------------------------------------ | ----------- | ---------- | -------------------------- |
 | **Claude**   | `--append-system-prompt` 플래그      | `system`    | ✅          | ✅ cache_control breakpoint |
-| **Codex**    | `.codex/AGENTS.md` 자동 로딩         | `developer` | ✅          | ✅ 매 call 파일 재로딩      |
+| **Codex**    | `{workDir}/AGENTS.md` 자동 로딩      | `developer` | ✅          | ✅ 매 call 파일 재로딩      |
 | **Gemini**   | `GEMINI_SYSTEM_MD` env (tmpfile)     | `system`    | ✅          | ✅ system_instruction 분리  |
-| **OpenCode** | `AGENTS.md` + custom agent + per-msg | 혼합        | ✅          | ⚠️ 구현 의존                |
-| **Copilot**  | `{workDir}/AGENTS.md` 자동 로딩 + ACP `session/prompt` | `system` | ✅ | ✅ ACP 세션 단위 |
+| **OpenCode** | `{workDir}/AGENTS.md` 자동 로딩      | 혼합        | ✅          | ✅ 매 call 파일 재로딩      |
+| **Copilot**  | `{workDir}/AGENTS.md` 자동 로딩 + ACP | `system`   | ✅          | ✅ ACP 세션 단위            |
 
-> **Copilot 시스템 프롬프트**: `{workDir}/AGENTS.md`에 B 프롬프트를 쓰므로 Copilot도 자동으로 읽음. 추가 작업 불필요.
-> `COPILOT_CUSTOM_INSTRUCTIONS_DIRS` 환경변수로 `.cli-claw/prompts/` 지정도 가능.
+> **Phase 12에서 통합**: `regenerateB()`가 `{workDir}/AGENTS.md`에 B 프롬프트를 쓰므로 Codex, Copilot, OpenCode 전부 자동으로 읽음.
+> Ref 스킬은 compact CSV 형식으로 (이모지/설명/경로 제거, ~68% 크기 감소).
 
 ### Claude — 중복 방지 핵심
 
@@ -338,7 +338,7 @@ graph TD
 │    └ 스킬 1+ 개일 때만                               │
 ├──────────────────────────────────────────────────────┤
 │ → B.md 캐시 저장                                     │
-│ → .codex/AGENTS.md 저장 (Codex + Copilot 공용)       │
+│ → {workDir}/AGENTS.md (Codex+Copilot+OpenCode 통합)  │
 │ → CLI별 삽입 방식으로 전달 (5개 CLI)                  │
 └──────────────────────────────────────────────────────┘
 ```

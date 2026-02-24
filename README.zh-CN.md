@@ -167,12 +167,15 @@ cli-claw chat       # 或使用终端 TUI
 | **心跳** | 定时自动执行 + 活跃时间 + 安静时间 | ⭐⭐ |
 | **回退链** | `claude → codex → gemini` 失败自动重试 | ⭐⭐⭐ |
 | **事件去重** | Claude `stream_event`/`assistant` 重叠防止 | ⭐⭐⭐ |
-| **70 单元测试** | `node:test` — 零外部依赖 | ⭐⭐ |
+| **89 单元测试** | `node:test` — 零外部依赖 | ⭐⭐ |
+| **统一 AGENTS.md** | `{workDir}/AGENTS.md` — Codex + Copilot + OpenCode 统一系统提示 | ⭐⭐⭐ |
+| **XSS 加固** | DOMPurify + regex 回退 + Mermaid strict 模式 | ⭐⭐ |
 
 ### 🔜 计划中
 
 | 功能 | 说明 | 优先级 |
 |------|------|:------:|
+| **i18n (Phase 6.9/7)** | 完整 i18n 基础设施 + 中/英 locale 切换 | 📋 |
 | **Vector DB 记忆** | 基于嵌入的语义检索（替代 grep） | 📋 |
 | **视觉多提供商** | 将 vision-click 扩展到 Claude、Gemini | 📋 |
 | **语音 STT** | Telegram 语音转文字技能集成 | 📋 |

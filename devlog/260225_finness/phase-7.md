@@ -31,11 +31,11 @@
 
 | 함수 | 역할 |
 |------|------|
-| `initI18n()` | localStorage → 없으면 `navigator.language` 감지 → `loadLocale()` |
+| `initI18n()` | localStorage (try/catch + 메모리 fallback) → 없으면 `navigator.language` 감지 → `normalizeLocale()` → `loadLocale()` |
 | `loadLocale(lang)` | `fetch('/api/i18n/${lang}')` → 캐시 |
 | `t(key, params?)` | 딕셔너리 조회 + `{count}` 보간 + fallback (키 자체 표시) |
 | `applyI18n()` | `[data-i18n]` → textContent, `[data-i18n-placeholder]` → placeholder, `[data-i18n-title]` → title |
-| `setLang(lang)` | locale 교체 + `applyI18n()` + localStorage |
+| `setLang(lang)` | locale 교체 + `applyI18n()` + localStorage (try/catch) + **WS 재연결** (?lang= 쿼리) |
 | `getLangs()` | `/api/i18n/languages` → 사용 가능 언어 목록 |
 | `fetchWithLocale(url, init?)` | `fetch()` 래퍼 — URL에 `?locale=xx` 쿼리 자동 추가 |
 
@@ -43,7 +43,7 @@
 - Phase 6.9에서 생성된 스켈레톤에 한국어 값 작성
 - 섹션: `cmd.*`, `skill.*`, `emp.*`, `chat.*`, `hb.*`, `mem.*`, `phase.*`, `ws.*`, `btn.*`, `status.*`
 
-#### [MODIFY] `public/locales/en.json` (~160 키)
+#### [MODIFY] `public/locales/en.json` (~170 키)
 - 동일 키 + 영어 값
 
 #### [MODIFY] `index.html`
@@ -59,6 +59,10 @@
 - `import { initI18n } from './features/i18n.js'`
 - `await initI18n()` bootstrap
 
+#### [MODIFY] `public/js/ws.js`
+- WS 연결 시 `?lang=xx` 쿼리 추가: `new WebSocket(\`ws://${location.host}?lang=${currentLocale}\`)`
+- `setLang()` 호출 시 WS 재연결
+
 ---
 
 ## 완료 기준
@@ -67,10 +71,11 @@
 |------|------|
 | 한/영 전환 | 토글 → 전체 UI 즉시 전환 (정적 + 동적 문자열 모두) |
 | 서버 응답 | 커맨드 응답·에러 메시지가 클라이언트 locale에 맞춰 표시 |
-| 새로고침 유지 | localStorage 복원 |
+| 새로고침 유지 | localStorage 복원 (try/catch + 메모리 fallback) |
 | fallback | 키 없으면 키 자체 표시 |
 | 확장성 | `ja.json` 파일 추가만으로 새 언어 |
 | Backend API | `/api/i18n/languages` → 자동 감지 |
+| WS locale | `setLang()` 시 WS 재연결으로 locale 전파 |
 | 프롬프트 독립 | UI 영어 전환해도 Agent 프롬프트는 A-2 Language 설정 유지 |
 | 기존 기능 | 한국어 기본 설정에서 모든 기존 기능 정상 |
 | 스킬 표시 | locale에 따라 skill name/description 전환 |
@@ -82,10 +87,12 @@
 ```
 Phase 6 (사이드바 접기/테마) ← 완료
     ↓
-Phase 6.9 (i18n 인프라) ← src/i18n.js, 3-인터페이스 locale ctx,
-    │                      프롬프트 분리, registry locale 파일,
+Phase 6.9 (i18n 인프라) ← src/i18n.js (t, normalizeLocale, getPromptLocale),
+    │                      3-인터페이스 locale ctx, Vary/Content-Language 헤더,
+    │                      telegram setMyCommands language_code,
     │                      /api/i18n/* 엔드포인트, LEGACY_MAP 확장
     ↓
 Phase 7 (본 문서) ← 프런트엔드 i18n.js, locale JSON 값 작성,
-                     data-i18n 바인딩, 언어 토글 UI
+                     data-i18n 바인딩, 언어 토글 UI,
+                     WS ?lang= 쿼리, localStorage try/catch
 ```

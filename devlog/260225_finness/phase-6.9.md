@@ -29,8 +29,15 @@
 // src/i18n.js [NEW] — 서버 측 t() 함수
 const locales = {};   // { ko: { ... }, en: { ... } }
 
+// BCP47 정규화: 'en-US' → 'en', 'ko-KR' → 'ko', 'EN' → 'en'
+export function normalizeLocale(raw, defaultLocale = 'ko') {
+    if (!raw || typeof raw !== 'string') return defaultLocale;
+    const base = raw.trim().toLowerCase().split(/[-_]/)[0];
+    return locales[base] ? base : defaultLocale;
+}
+
 export function loadLocales(localeDir) {
-    for (const f of fs.readdirSync(localeDir).filter(f => f.endsWith('.json'))) {
+    for (const f of fs.readdirSync(localeDir).filter(f => f.endsWith('.json') && !f.startsWith('skills-'))) {
         locales[f.replace('.json', '')] = JSON.parse(fs.readFileSync(join(localeDir, f), 'utf8'));
     }
 }
@@ -65,8 +72,8 @@ export function getPromptLocale(a2Path) {
 #### 각 인터페이스의 ctx.locale 주입
 
 ```js
-// server.js — makeWebCommandCtx()
-locale: req.headers['accept-language']?.startsWith('en') ? 'en' : settings.locale || 'ko',
+// server.js — makeWebCommandCtx(): 명시적 locale 파라미터 우선 (Accept-Language 미사용)
+locale: normalizeLocale(req?.query?.locale || settings.locale, 'ko'),
 
 // telegram.js — makeTelegramCommandCtx()
 locale: settings.locale || 'ko',
@@ -90,10 +97,10 @@ async function modelHandler(args, ctx) {
 
 | 파일 | 변경 |
 |------|------|
-| `src/i18n.js` | [NEW] `t()`, `loadLocales()` |
+| `src/i18n.js` | [NEW] `t()`, `loadLocales()`, `normalizeLocale()`, `getPromptLocale()` |
 | `src/commands.js` | 17 handler 전부 — desc + 응답에 `t()` 사용 |
-| `server.js` | `makeWebCommandCtx()`에 `locale` 추가, `/api/command` + **`/api/commands`** 모두 locale 반영 |
-| `src/telegram.js` | `makeTelegramCommandCtx()`에 `locale` 추가, 에러 메시지, **`syncTelegramCommands()` desc locale** |
+| `server.js` | `makeWebCommandCtx()`에 `locale` 추가, `/api/command` + `/api/commands`에 `Vary` + `Content-Language` 헤더, `normalizeLocale()` 사용 |
+| `src/telegram.js` | `makeTelegramCommandCtx()`에 `locale` 추가, `syncTelegramCommands()`에 `language_code` 파라미터 |
 | `bin/commands/chat.js` | `makeCliCommandCtx()`에 `locale` 추가, UI 문자열 |
 
 ---
@@ -312,33 +319,38 @@ return [{ value: 'reset', label: t('cmd.employee.resetLabel', {}, locale) }];
 #### ⚠️ `/api/commands` + Telegram `setMyCommands` locale 전파
 
 ```js
-// server.js — /api/commands에 locale 파라미터 추가
+// server.js — /api/commands에 locale + Vary + Content-Language
 app.get('/api/commands', (req, res) => {
     const iface = String(req.query.interface || 'web');
-    const locale = req.query.locale || settings.locale || 'ko';
+    const locale = normalizeLocale(req.query.locale || settings.locale, 'ko');
+    res.vary('Accept-Language');
+    res.set('Content-Language', locale);
     res.json(COMMANDS
         .filter(c => c.interfaces.includes(iface) && !c.hidden)
         .map(c => ({
             name: c.name,
-            desc: c.descKey ? t(c.descKey, {}, locale) : c.desc,  // ← locale 반영
+            desc: c.descKey ? t(c.descKey, {}, locale) : c.desc,
             // ...
         }))
     );
 });
 
-// telegram.js — syncTelegramCommands에 locale 주입
+// telegram.js — syncTelegramCommands에 language_code 주입
 function syncTelegramCommands(bot) {
     const locale = settings.locale || 'ko';
-    return bot.api.setMyCommands(
-        COMMANDS
-            .filter(c => c.interfaces.includes('telegram') && ...)
-            .map(c => ({
-                command: c.name,
-                description: toTelegramCommandDescription(
-                    c.descKey ? t(c.descKey, {}, locale) : c.desc   // ← locale 반영
-                ),
-            }))
-    );
+    const cmds = COMMANDS
+        .filter(c => c.interfaces.includes('telegram') && ...)
+        .map(c => ({
+            command: c.name,
+            description: toTelegramCommandDescription(
+                c.descKey ? t(c.descKey, {}, locale) : c.desc
+            ),
+        }));
+    // Telegram Bot API: language_code로 언어별 커맨드 설명 등록
+    return Promise.all([
+        bot.api.setMyCommands(cmds),
+        bot.api.setMyCommands(cmds, { language_code: locale }),
+    ]);
 }
 ```
 
@@ -527,13 +539,16 @@ app.get('/api/i18n/:lang', (req, res) => {
 | 항목 | 조건 |
 |------|------|
 | 서버 측 `t()` | `src/i18n.js` 모듈 동작 |
+| `normalizeLocale()` | BCP47 정규화 (`en-US` → `en`) |
 | 3-인터페이스 locale | web/cli/telegram 모두 ctx.locale 전파 |
+| HTTP 헤더 | Locale 응답에 `Vary: Accept-Language` + `Content-Language` |
 | 프롬프트 분리 | UI 언어 ≠ Agent 프롬프트 언어 (A-2 Language 기반) |
 | 역호환 | 기존 한국어 동작 보존 (LEGACY_MAP 확장, registry.json 미수정) |
 | DB 무중단 | 기존 한국어 role → 새 preset value 매핑 유지 |
 | API | `/api/i18n/languages` → `["ko", "en"]` |
-| 키 완성 | ~160개 UI 키 + 212개 skill 키 locale JSON에 존재 |
-| 테스트 | `npm test` 전체 통과 |
+| Telegram | `setMyCommands` `language_code` 파라미터 적용 |
+| 키 완성 | ~170개 UI 키 + 212개 skill 키 locale JSON에 존재 |
+| 테스트 | `npm test` 115개 전체 통과 (i18n 23개 포함) |
 | 직원 수 정확 | 문서/코드 모두 4명 기준 통일 |
 
 ---

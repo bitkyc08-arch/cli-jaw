@@ -172,12 +172,15 @@ cli-claw chat       # Or use terminal TUI
 | **Event Deduplication** | Claude `stream_event`/`assistant` overlap prevention | ⭐⭐⭐ |
 | **Dark/Light Theme** | ☀️/🌙 toggle, 13 semantic CSS vars, highlight.js sync | ⭐⭐ |
 | **Responsive Sidebar** | Collapsible ◀/▶, auto-collapse <900px, localStorage persist | ⭐⭐ |
-| **70 Unit Tests** | `node:test` — zero deps, events + telegram + registry + commands | ⭐⭐ |
+| **89 Unit Tests** | `node:test` — zero deps, events + telegram + registry + commands + sanitize | ⭐⭐ |
+| **Unified AGENTS.md** | `{workDir}/AGENTS.md` — Codex + Copilot + OpenCode unified system prompt | ⭐⭐⭐ |
+| **XSS Hardening** | DOMPurify + regex fallback + Mermaid strict mode | ⭐⭐ |
 
 ### 🔜 Planned
 
 | Feature | Description | Priority |
 |---------|-------------|:--------:|
+| **i18n (Phase 6.9/7)** | Full i18n infrastructure + KO/EN locale toggle | 📋 |
 | **Vector DB Memory** | Embedding-based semantic retrieval (replacing grep) | 📋 |
 | **Vision Multi-Provider** | Extend vision-click to Claude, Gemini | 📋 |
 | **Voice STT** | Telegram voice-to-text skill integration | 📋 |

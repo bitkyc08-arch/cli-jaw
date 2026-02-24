@@ -23,13 +23,13 @@ cli-claw/
 │   ├── bus.js                ← WS + 내부 리스너 broadcast + removeBroadcastListener(fn) (18L)
 │   ├── events.js             ← NDJSON 파싱 + dedupe key + ACP update 파싱 + logEventSummary + test helpers (322L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (cli-registry import) (639L)
-│   ├── agent.js              ← CLI spawn + ACP 분기 + effort config.json 쓰기 + origin 전달 + ctx reset + activityPing + 스트림 + 큐 + 메모리 flush (611L)
+│   ├── agent.js              ← CLI spawn + ACP 분기 + effort config.json 쓰기 + origin 전달 + ctx reset + 스트림 + 큐 + 메모리 flush (609L)
 │   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + origin 전달 + phase skip (584L)
 │   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
 │   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 + 디바운스 tool 업데이트 (470L)
 │   ├── telegram-forwarder.js ← [NEW] Telegram 포워딩 헬퍼 추출 (escape, chunk, createForwarder) (105L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + pending queue + fs.watch (107L)
-│   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + phase skip + git금지 (499L)
+│   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + phase skip + EN defaults (497L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)
@@ -65,7 +65,7 @@ cli-claw/
 │       ├── reset.js          ← 전체 초기화 (MCP/스킬/직원/세션, y/N 확인)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
 │       └── browser.js        ← 브라우저 CLI (17개 서브커맨드, +vision-click, 239L)
-├── tests/                    ← 회귀 방지 테스트 (74 tests)
+├── tests/                    ← 회귀 방지 테스트 (89 tests)
 │   ├── events.test.js        ← 이벤트 파서 단위 테스트 (dedupe, fallback 등)
 │   ├── events-acp.test.js    ← ACP session/update 이벤트 테스트
 │   ├── telegram-forwarding.test.js ← Telegram 포워딩 동작 테스트
@@ -73,6 +73,7 @@ cli-claw/
 │   │   ├── cli-registry.test.js
 │   │   ├── bus.test.js
 │   │   ├── commands-parse.test.js
+│   │   ├── render-sanitize.test.js ← [NEW] XSS sanitize 11 cases
 │   │   └── worklog.test.js
 │   └── fixtures/             ← CLI별 이벤트 fixture JSON
 ├── README.md                 ← 영문 (기본, 언어 스위처)
@@ -172,7 +173,7 @@ graph LR
 15. **Copilot effort**: `--reasoning-effort` 미지원 → `~/.copilot/config.json` `reasoning_effort` 직접 수정
 16. **Copilot quota**: macOS keychain `copilot-cli` → `copilot_internal/user` API (캐싱, 서버당 1회 팝업)
 17. **ACP ctx reset**: `loadSession()` 히스토리 리플레이 → `prompt()` 전 `ctx.fullText/toolLog/seenToolKeys` 초기화 필수
-18. **ACP activityTimeout**: `session/prompt`에 고정 타임아웃 대신 idle 120s + 절대 20min 이중 타이머, `session/update` 이벤트로 idle 리셋
+18. **ACP activityTimeout**: `session/prompt`에 고정 타임아웃 대신 idle 1200s + 절대 1200s 이중 타이머, `_handleLine`에서 모든 JSON-RPC 메시지 + stderr 활동으로 idle 자동 리셋
 19. **마크다운 렌더링**: CDN defer (marked v14, hljs v11, KaTeX 0.16, Mermaid v11), CDN 실패 시 regex fallback
 20. **marked v14 주의**: 커스텀 렌더러 API 토큰 기반 변경 — `renderer.table({header, body})` 불가, regex 후처리로 대안
 
@@ -203,7 +204,7 @@ graph LR
 | `260224_skill/`               | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2)           | 🟡    |
 | `260224_vision/`              | Vision Click P1✅ P2✅ — P3 멀티프로바이더 미구현              | 🟡    |
 | `260224_orch/`                | 오케스트레이션 v2 P0✅ P1✅ P2✅ P3✅ P4✅ P5✅                   | ✅    |
-| `260225_finness/`             | P0~P5✅ + P5.9✅ + P5.9.1✅ + P6✅ + P6.1✅ + P6.2✅ 테마·사이드바·이모지·반응형 | ✅    |
+| `260225_finness/`             | P0~P6.2✅ + P7.9✅ (XSS+Auth) + P12✅ (AGENTS.md 통합) + P6.9/P7 (i18n 📋) | 🟡    |
 | `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6 완료 (할당량+effort+브랜딩)  | ✅    |
 | `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
 
