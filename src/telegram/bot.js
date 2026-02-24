@@ -11,7 +11,7 @@ import { orchestrate, orchestrateContinue, isContinueIntent } from '../orchestra
 import {
     activeProcess, killActiveAgent, waitForProcessEnd,
     saveUpload, buildMediaPrompt, messageQueue,
-} from './agent/spawn.js';
+} from '../agent/spawn.js';
 import { parseCommand, executeCommand, COMMANDS } from '../cli/commands.js';
 import { getMergedSkills } from '../prompt/builder.js';
 import * as memory from '../memory/memory.js';
@@ -109,7 +109,7 @@ function markChatActive(chatId) {
     const allowed = settings.telegram?.allowedChatIds || [];
     if (!allowed.includes(chatId)) {
         settings.telegram.allowedChatIds = [...allowed, chatId];
-        import('./config.js').then(m => m.saveSettings(settings)).catch(() => { });
+        import('../core/config.js').then(m => m.saveSettings(settings)).catch(() => { });
     }
 }
 
@@ -152,7 +152,7 @@ function makeTelegramCommandCtx() {
         // Telegram settings changes: only fallbackOrder allowed
         updateSettings: async (patch) => {
             if (patch.fallbackOrder !== undefined && Object.keys(patch).length === 1) {
-                const { replaceSettings: _replace, saveSettings: _save } = await import('./config.js');
+                const { replaceSettings: _replace, saveSettings: _save } = await import('../core/config.js');
                 _replace({ ...settings, ...patch });
                 _save(settings);
                 return { ok: true };
@@ -179,7 +179,7 @@ function makeTelegramCommandCtx() {
         searchMemory: (q) => memory.search(q),
         getBrowserStatus: async () => {
             try {
-                const m = await import('./browser/index.js');
+                const m = await import('../browser/index.js');
                 return m.getBrowserStatus(settings.browser?.cdpPort || 9240);
             } catch {
                 return { running: false, tabs: [] };
@@ -187,7 +187,7 @@ function makeTelegramCommandCtx() {
         },
         getBrowserTabs: async () => {
             try {
-                const m = await import('./browser/index.js');
+                const m = await import('../browser/index.js');
                 return { tabs: await m.listTabs(settings.browser?.cdpPort || 9240) };
             } catch {
                 return { tabs: [] };
@@ -280,7 +280,7 @@ export function initTelegram() {
         if (activeProcess) {
             // 큐에 추가 — steer 대신 대기
             console.log('[tg:queue] agent busy, queueing message');
-            const { enqueueMessage } = await import('./agent.js');
+            const { enqueueMessage } = await import('../agent/spawn.js');
             enqueueMessage(prompt, 'telegram');
             insertMessage.run('user', displayMsg, 'telegram', '');
             broadcast('new_message', { role: 'user', content: displayMsg, source: 'telegram' });
