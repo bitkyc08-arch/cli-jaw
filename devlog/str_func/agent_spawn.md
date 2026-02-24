@@ -4,7 +4,7 @@
 
 ---
 
-## agent.js — CLI Spawn & Queue + ACP 분기 (585L)
+## agent.js — CLI Spawn & Queue + ACP 분기 (611L)
 
 | Function                                   | 역할                                                 |
 | ------------------------------------------ | ---------------------------------------------------- |
@@ -27,9 +27,9 @@
     [YES] AcpClient 경로:
       → new AcpClient(model, workingDir, permissions)
       → acp.initialize() → acp.createSession(workDir) or loadSession()
-      → acp.on('session/update') → extractFromAcpUpdate → broadcast
+      → acp.on('session/update') → extractFromAcpUpdate → broadcast + activityPing()
       → **ctx reset** (fullText='', toolLog=[], seenToolKeys.clear()) ← loadSession 히스토리 리플레이 방지
-      → acp.prompt(sessionId, text) → child = acp.proc
+      → acp.prompt(text) → { promise, activityPing } → child = acp.proc
     [NO] 기존 spawn 경로:
       → resume or new args
       → buildHistoryBlock(prompt) ← 신규 세션만
@@ -53,7 +53,7 @@
 
 ---
 
-## acp-client.js — Copilot ACP JSON-RPC 클라이언트 (253L) `[NEW]`
+## acp-client.js — Copilot ACP JSON-RPC 클라이언트 (311L) `[NEW]`
 
 | Class / Method               | 역할                                              |
 | ---------------------------- | ------------------------------------------------- |
@@ -61,12 +61,13 @@
 | `spawn()`                    | 프로세스 생성 + readline NDJSON 파싱              |
 | `kill()`                     | SIGTERM 종료                                      |
 | `request(method, params, timeout)` | JSON-RPC request (응답 대기, Promise, 30s 기본) |
+| `requestWithActivityTimeout(method, params, idleMs, maxMs)` | **활동 기반 타임아웃** — idle+절대 이중 타이머, `{ promise, activityPing }` 반환 |
 | `notify(method, params)`     | JSON-RPC notification (응답 없음)                 |
 | `_handleLine(line)`          | NDJSON 라인 파싱 + response/notification 분기     |
 | `_handleAgentRequest(msg)`   | 에이전트→클라이언트 요청 자동 처리 (permission 자동 승인) |
 | `initialize()`               | ACP 핸드셰이크 (protocolVersion + clientInfo)     |
 | `createSession(workDir)`     | `session/new` → sessionId 반환 + 자동 저장        |
-| `prompt(text, sessionId)`    | `session/prompt` → messages 전송 (5분 timeout)    |
+| `prompt(text, sessionId)`    | `session/prompt` → activityTimeout (idle 120s, max 20min) |
 | `loadSession(sessionId)`     | `session/load` → 이전 세션 이어하기               |
 | `cancel(sessionId)`          | `session/cancel` notification                     |
 | `shutdown()`                 | `shutdown` → proc kill                            |

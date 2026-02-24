@@ -17,7 +17,7 @@ public/
 │   ├── modals.css        ← 모달, 하트비트 카드 (171L)
 │   └── markdown.css      ← 마크다운 렌더링 (테이블·코드·인용·KaTeX·Mermaid) (149L)
 └── js/
-    ├── main.js           ← 앱 진입점 + 이벤트 바인딩 (233L)
+    ├── main.js           ← 앱 진입점 + 이벤트 바인딩 (235L)
     ├── state.js          ← 공유 상태 모듈 (16L)
     ├── constants.js      ← fetchCliRegistry() 동적 로딩 (119L)
     ├── render.js         ← [REWRITE] marked+hljs+KaTeX+Mermaid 렌더러, CDN 실패시 regex fallback (141L)
@@ -30,6 +30,7 @@ public/
         ├── employees.js  ← 서브에이전트 CRUD (CLI 드롭다운 동적 생성) (106L)
         ├── heartbeat.js  ← 하트비트 모달/작업 (83L)
         ├── memory.js     ← 메모리 모달/설정 (90L)
+        ├── appname.js    ← [NEW] Agent Name 커스텀 (localStorage, 메시지 라벨) (43L)
         └── slash-commands.js ← 슬래시 커맨드 드롭다운 (220L)
 ```
 
@@ -73,7 +74,7 @@ export async function loadCliRegistry() {
 | 모듈        | 역할                        | 라인 |
 | ----------- | --------------------------- | ---- |
 | `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 (CDN fallback) | 141  |
-| `ui.js`     | DOM 유틸 + stop-mode        | 142  |
+| `ui.js`     | DOM 유틸 + stop-mode        | 143  |
 | `ws.js`     | WebSocket + 메시지 라우팅   | 60   |
 
 ### Features Layer
@@ -86,6 +87,7 @@ export async function loadCliRegistry() {
 | `employees.js`      | 서브에이전트 CRUD (동적 CLI)  | 106  |
 | `heartbeat.js`      | 하트비트 모달                 | 83   |
 | `memory.js`         | 메모리 모달                   | 90   |
+| `appname.js`        | Agent Name 커스텀 (localStorage) | 43   |
 | `slash-commands.js` | 슬래시 커맨드 드롭다운        | 220  |
 
 ---
