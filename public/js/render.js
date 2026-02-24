@@ -65,11 +65,6 @@ function ensureMarked() {
 
     const renderer = new marked.Renderer();
 
-    // Wrap tables in a div for overflow scrolling without breaking table-layout
-    renderer.table = function ({ header, body }) {
-        return `<div class="table-wrapper"><table><thead>${header}</thead><tbody>${body}</tbody></table></div>`;
-    };
-
     // Code blocks: highlight.js + mermaid detection
     renderer.code = function ({ text, lang }) {
         // Mermaid
@@ -130,6 +125,8 @@ export function renderMarkdown(text) {
     let html;
     if (ensureMarked()) {
         html = marked.parse(cleaned);
+        // Wrap tables for horizontal scrolling
+        html = html.replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
     } else {
         html = renderFallback(cleaned);
     }

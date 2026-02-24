@@ -1,6 +1,7 @@
 # Phase 6 (finness): Web UI 테마 시스템 (Light Mode + Custom Colors)
 
-> 목표: 다크 전용 → 다크/라이트/커스텀 테마 전환 지원
+> 목표: 다크 전용 → 다크/라이트/커스텀 테마 전환 지원 및 좌우 사이드바 접기 기능
+> 난이도: 🟡 보통 (CSS 변수 분리와 localStorage 상태 관리가 핵심이며, 기존 로직 이관 자체는 직관적임)
 
 ---
 
@@ -98,26 +99,48 @@
 - `a` color: `#60a5fa` → `var(--link-color)`
 - `.code-lang-label` color: `#8b949e` → `var(--code-label)`
 
-### Step 3: 테마 토글 UI 추가
+### Step 3: 테마 토글 및 사이드바 접기 UI 추가
 
 #### [MODIFY] `public/index.html`
-- `<html>` 태그에 `data-theme="dark"` 기본값
-- 좌측 사이드바(Logo 옆 또는 하단)에 테마 토글 버튼 추가:
+- `<html>` 태그에 `data-theme="dark"` 기본값 지정
+- 좌측 사이드바 로고 영역에 **테마 토글** 및 **좌측 접기(`«`)** 버튼 추가:
 ```html
-<button id="themeToggle" class="btn-clear" style="...">🌙 Dark</button>
+<div class="sidebar-header">
+    <div class="logo">🦞 CLI-CLAW</div>
+    <button id="leftSidebarToggle" class="btn-icon">«</button>
+</div>
+<button id="themeToggle" class="btn-clear">🌙 Dark</button>
 ```
-- highlight.js CDN: `github-dark` → 동적 전환 필요 (JS에서 처리)
+- 우측 사이드바 상단에 **우측 접기(`»`)** 버튼 추가:
+```html
+<button id="rightSidebarToggle" class="btn-icon">»</button>
+```
+
+#### [MODIFY] `public/css/layout.css`
+- 사이드바 축소 상태를 위한 CSS 클래스 추가 (`.collapsed`):
+```css
+body.left-collapsed { grid-template-columns: 0px 1fr 260px; }
+body.right-collapsed { grid-template-columns: 220px 1fr 0px; }
+body.left-collapsed.right-collapsed { grid-template-columns: 0px 1fr 0px; }
+
+.sidebar-left, .sidebar-right { transition: width 0.3s ease, padding 0.3s ease; }
+.collapsed { overflow: hidden; padding: 0 !important; border: none; }
+```
+- 사이드바가 접혔을 때 화면 끝에 작게 나타나는 **펼치기 부동 버튼** 추가 (CSS fixed 포지셔닝).
 
 ### Step 4: 테마 전환 로직
 
 #### [NEW] `public/js/features/theme.js` (~40L)
 
+#### [NEW] `public/js/features/theme.js` (~50L)
+
 | 함수 | 역할 |
 |------|------|
-| `initTheme()` | `localStorage.getItem('theme')` 또는 OS 미디어쿼리 `prefers-color-scheme` 감지 → 적용 |
+| `initTheme()` | `localStorage.getItem('theme')` 및 사이드바 상태(`leftCollapsed`, `rightCollapsed`) 로드 및 적용 |
 | `toggleTheme()` | `data-theme` 토글 + localStorage 저장 + hljs 테마시트 교체 |
-| `setTheme(name)` | 직접 지정 (향후 커스텀 테마 확장용) |
-| `swapHljsTheme(theme)` | `<link>` href를 `github-dark` ↔ `github` 교체 |
+| `swapHljsTheme(theme)`| `<link>` href를 `github-dark` ↔ `github` 교체 |
+| `toggleLeftSidebar()` | `body.classList.toggle('left-collapsed')` + localStorage 저장 |
+| `toggleRightSidebar()`| `body.classList.toggle('right-collapsed')` + localStorage 저장 |
 
 highlight.js 라이트 테마:
 ```

@@ -3,40 +3,26 @@
 /* Tables */
 .msg-content table {
     border-collapse: collapse;
-    width: 100%;
+    width: auto;
     margin: 8px 0;
     font-size: 12px;
-    border: 1px solid #06b6d4;
-    /* cyan-500 */
 }
 
 .msg-content th,
 .msg-content td {
-    border: 1px solid rgba(6, 182, 212, 0.25);
-    /* cyan-500 */
-    padding: 6px 12px;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
     text-align: left;
-    word-break: break-word;
 }
 
 .msg-content th {
-    background: rgba(6, 182, 212, 0.08);
+    background: var(--surface);
     font-weight: 600;
-    border-bottom: 2px solid #06b6d4;
+    white-space: nowrap;
 }
 
 .msg-content tr:nth-child(even) {
-    background: rgba(255, 255, 255, 0.03);
-}
-
-.msg-content tr:hover {
-    background: rgba(6, 182, 212, 0.04);
-}
-
-.table-wrapper {
-    max-width: 100%;
-    overflow-x: auto;
-    margin: 8px 0;
+    background: rgba(255, 255, 255, 0.02);
 }
 
 /* Code blocks */
@@ -132,35 +118,24 @@
 .msg-content .katex-display {
     margin: 8px 0;
     overflow-x: auto;
-    overflow-y: hidden;
-    padding: 4px 0;
-}
-
-.msg-content .katex-display>.katex {
-    white-space: normal;
-    word-break: break-word;
-}
-
-.msg-content .katex {
-    font-size: 1.05em;
 }
 
 /* Mermaid */
-.msg-body .mermaid-container {
+.msg-content .mermaid-container {
     margin: 8px 0;
     text-align: center;
 }
 
-.msg-body .mermaid-container svg {
+.msg-content .mermaid-container svg {
     max-width: 100%;
 }
 
 /* Code block language label */
-.msg-body .code-block-wrapper {
+.msg-content .code-block-wrapper {
     position: relative;
 }
 
-.msg-body .code-lang-label {
+.msg-content .code-lang-label {
     position: absolute;
     top: 0;
     right: 0;
