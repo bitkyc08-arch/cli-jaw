@@ -110,16 +110,39 @@ graph TB
 
 ## 🚀 시작하기
 
+### Step 1 — 설치 (한 줄이면 끝)
+
 ```bash
-# 글로벌 설치
 npm install -g cli-claw
+```
 
-# 서버 시작 (Web UI + API)
-cli-claw serve
-# → http://localhost:3457
+이 한 줄이 자동으로:
+- ✅ **5개 CLI 전부 설치** (claude, codex, gemini, opencode, copilot)
+- ✅ MCP 서버 설치 (context7)
+- ✅ 100+ 기본 스킬 복사
+- ✅ 설정 디렉토리 생성 (`~/.cli-claw/`)
+- ✅ 스킬 의존성 설치 (uv, playwright)
 
-# 터미널 TUI도 있습니다
-cli-claw chat
+> bun이 있으면 `bun install -g`, 없으면 `npm i -g` 폴백.
+
+### Step 2 — 인증 (쓰고 싶은 CLI만)
+
+| CLI | 인증 명령어 | 비고 |
+|-----|-----------|------|
+| Claude | `claude` (최초 실행) | Anthropic 로그인 |
+| Codex | `codex --login` | OpenAI 계정 |
+| Copilot | `gh auth login` | GitHub 계정 (`gh` CLI 필요) |
+| Gemini | `gemini` (최초 실행) | Google Cloud 로그인 |
+| OpenCode | 설정파일에 API key | [opencode docs](https://opencode.ai) |
+
+> 💡 **5개 다 필요 없습니다** — 하나만 있어도 동작합니다.
+
+### Step 3 — 실행
+
+```bash
+cli-claw doctor     # 설치 상태 진단 (11항목)
+cli-claw serve      # 서버 시작 → http://localhost:3457
+cli-claw chat       # 또는 터미널 TUI
 ```
 
 ---
@@ -343,10 +366,10 @@ cli-claw reset                      # 전체 초기화 (MCP/스킬/직원/세션
 ## 🧪 테스트
 
 ```bash
-npm test                            # 전체 65개 테스트
-node --test tests/unit/*.test.js    # 단위 테스트만
-npm run test:watch                  # 감시 모드
+npm test    # 65개 테스트, ~90ms, 외부 의존성 0
 ```
+
+상세는 [TESTS.md](TESTS.md) 참조.
 
 | 테스트 파일 | 커버리지 |
 |------------|---------|

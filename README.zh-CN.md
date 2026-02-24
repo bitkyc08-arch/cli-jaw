@@ -110,16 +110,39 @@ graph TB
 
 ## 🚀 快速开始
 
+### Step 1 — 安装（一条命令搞定一切）
+
 ```bash
-# 全局安装
 npm install -g cli-claw
+```
 
-# 启动服务器（Web UI + API）
-cli-claw serve
-# → http://localhost:3457
+这一条命令自动完成：
+- ✅ 安装**全部 5 个 CLI 工具**（claude, codex, gemini, opencode, copilot）
+- ✅ 设置 MCP 服务器（context7）
+- ✅ 复制 100+ 默认技能
+- ✅ 创建配置目录（`~/.cli-claw/`）
+- ✅ 安装技能依赖（uv, playwright）
 
-# 或使用终端 TUI
-cli-claw chat
+> 有 bun 用 `bun install -g`，没有则回退到 `npm i -g`。
+
+### Step 2 — 认证（只需要你用的 CLI）
+
+| CLI | 认证命令 | 备注 |
+|-----|----------|------|
+| Claude | `claude`（首次运行） | Anthropic 登录 |
+| Codex | `codex --login` | OpenAI 账号 |
+| Copilot | `gh auth login` | GitHub 账号（需要 `gh` CLI） |
+| Gemini | `gemini`（首次运行） | Google Cloud 登录 |
+| OpenCode | 配置文件中 API key | 参见 [opencode docs](https://opencode.ai) |
+
+> 💡 **不需要全部 5 个** — 哪怕只有一个 CLI 也能用。
+
+### Step 3 — 运行
+
+```bash
+cli-claw doctor     # 检查安装状态（11 项检查）
+cli-claw serve      # 启动服务器 → http://localhost:3457
+cli-claw chat       # 或使用终端 TUI
 ```
 
 ---
@@ -343,10 +366,10 @@ cli-claw reset                      # 全面重置（MCP/技能/员工/会话）
 ## 🧪 测试
 
 ```bash
-npm test                            # 全部 65 个测试
-node --test tests/unit/*.test.js    # 仅单元测试
-npm run test:watch                  # 监视模式
+npm test    # 65 个测试，~90ms，零外部依赖
 ```
+
+详情参见 [TESTS.md](TESTS.md)。
 
 | 测试文件 | 覆盖范围 |
 |----------|----------|

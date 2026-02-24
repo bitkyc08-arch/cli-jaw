@@ -12,8 +12,8 @@
 
 **English** / [한국어](README.ko.md) / [中文](README.zh-CN.md)
 
-<!-- 📸 Replace with actual screenshot -->
-<!-- ![CLI-CLAW Dashboard](docs/screenshots/dashboard.png) -->
+<!-- 📸 SCREENSHOT: Web UI Dashboard -->
+<!-- ![CLI-CLAW Web UI](docs/screenshots/web-ui.png) -->
 
 </div>
 
@@ -31,8 +31,11 @@ CLI-CLAW takes a fundamentally different approach:
 >
 > **Your account stays safe. Period.**
 
-<!-- 📸 Replace with actual Web UI screenshot -->
-<!-- ![Web UI](docs/screenshots/web-ui.png) -->
+<!-- 📸 SCREENSHOT: Terminal TUI -->
+<!-- ![Terminal TUI](docs/screenshots/terminal-tui.png) -->
+
+<!-- 📸 SCREENSHOT: Telegram Bot -->
+<!-- ![Telegram Bot](docs/screenshots/telegram-bot.png) -->
 
 ---
 
@@ -108,18 +111,41 @@ graph TB
 
 ---
 
-## 🚀 Quick Start
+## 🚀 Getting Started
+
+### Step 1 — Install (one command does everything)
 
 ```bash
-# Install globally
 npm install -g cli-claw
+```
 
-# Start the server (Web UI + API)
-cli-claw serve
-# → http://localhost:3457
+This single command automatically:
+- ✅ Installs **all 5 CLI tools** (claude, codex, gemini, opencode, copilot)
+- ✅ Sets up MCP servers (context7)
+- ✅ Copies 100+ default skills
+- ✅ Creates config directory (`~/.cli-claw/`)
+- ✅ Installs skill dependencies (uv, playwright)
 
-# Or use the terminal TUI
-cli-claw chat
+> Uses `bun install -g` if bun is available, falls back to `npm i -g`.
+
+### Step 2 — Authenticate (only the CLIs you want)
+
+| CLI | Auth Command | Notes |
+|-----|-------------|-------|
+| Claude | `claude` (first run) | Opens browser for Anthropic login |
+| Codex | `codex --login` | OpenAI account |
+| Copilot | `gh auth login` | GitHub account (needs `gh` CLI) |
+| Gemini | `gemini` (first run) | Google Cloud login |
+| OpenCode | API key in config | See [opencode docs](https://opencode.ai) |
+
+> 💡 **You don't need all 5** — even one CLI is enough to start.
+
+### Step 3 — Run
+
+```bash
+cli-claw doctor     # Check what's installed (11 checks)
+cli-claw serve      # Start server → http://localhost:3457
+cli-claw chat       # Or use terminal TUI
 ```
 
 ---
@@ -343,20 +369,10 @@ cli-claw reset                      # Full reset (MCP/skills/employees/session)
 ## 🧪 Tests
 
 ```bash
-npm test                            # All 65 tests
-node --test tests/unit/*.test.js    # Unit tests only
-npm run test:watch                  # Watch mode
+npm test    # 65 tests, ~90ms, zero external dependencies
 ```
 
-| Test File | Coverage |
-|-----------|----------|
-| `events.test.js` | NDJSON parser, session ID, tool labels, ACP |
-| `events-acp.test.js` | ACP `session/update` — 5 event types |
-| `telegram-forwarding.test.js` | Origin filter, fallback, chunking, markdown |
-| `cli-registry.test.js` | Structure, defaults, model choices |
-| `bus.test.js` | Broadcast, listeners, WS mock |
-| `commands-parse.test.js` | parseCommand, executeCommand, completions |
-| `worklog.test.js` | Phases, pending agent parser |
+See [TESTS.md](TESTS.md) for full test coverage details.
 
 ---
 

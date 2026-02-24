@@ -66,18 +66,47 @@ ensureDir(path.join(clawHome, 'uploads'));
 const skillsSymlinkReport = ensureSkillsSymlinks(home, { onConflict: 'backup' });
 logSkillsSymlinkReport(skillsSymlinkReport);
 
-// 2b. Copilot CLI: auto-install + PATH symlink
+// 2b. Auto-install 5 CLI tools (bun preferred, npm fallback)
+const hasBun = (() => { try { execSync('bun --version', { stdio: 'pipe' }); return true; } catch { return false; } })();
+const installGlobal = hasBun ? 'bun install -g' : 'npm i -g';
+const installLabel = hasBun ? 'bun' : 'npm';
+
+const CLI_PACKAGES = [
+    { bin: 'claude', pkg: '@anthropic-ai/claude-code' },
+    { bin: 'codex', pkg: '@openai/codex' },
+    { bin: 'gemini', pkg: '@google/gemini-cli' },
+    { bin: 'opencode', pkg: 'opencode-antigravity-auth' },
+];
+
+console.log(`[claw:init] checking CLI tools (using ${installLabel})...`);
+for (const { bin, pkg } of CLI_PACKAGES) {
+    try {
+        execSync(`which ${bin}`, { stdio: 'pipe' });
+        console.log(`[claw:init] ⏭️  ${bin} (already installed)`);
+    } catch {
+        console.log(`[claw:init] 📦 ${installGlobal} ${pkg} ...`);
+        try {
+            execSync(`${installGlobal} ${pkg}`, { stdio: 'pipe', timeout: 180000 });
+            console.log(`[claw:init] ✅ ${bin} installed`);
+        } catch (e) {
+            console.error(`[claw:init] ⚠️  ${bin}: auto-install failed — install manually: ${installGlobal} ${pkg}`);
+        }
+    }
+}
+
+// 2c. Copilot CLI: gh extension + PATH symlink
 try {
     const copilotBin = path.join(home, '.local', 'share', 'gh', 'copilot', 'copilot');
     if (!fs.existsSync(copilotBin)) {
-        console.log('[claw:init] Installing Copilot CLI...');
+        console.log('[claw:init] 📦 Installing Copilot CLI via gh...');
         execSync('gh copilot --help', { stdio: 'ignore', timeout: 30000 });
     }
     if (fs.existsSync(copilotBin)) {
         ensureDir(path.join(home, '.local', 'bin'));
         ensureSymlink(copilotBin, path.join(home, '.local', 'bin', 'copilot'));
+        console.log('[claw:init] ✅ copilot installed');
     }
-} catch { console.log('[claw:init] ⚠️ Copilot CLI not installed (gh not authenticated?)'); }
+} catch { console.log('[claw:init] ⚠️ copilot: gh not authenticated — run: gh auth login'); }
 
 
 // 3. ~/CLAUDE.md → ~/AGENTS.md (if AGENTS.md exists and CLAUDE.md doesn't)
