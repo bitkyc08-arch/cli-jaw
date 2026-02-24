@@ -40,6 +40,7 @@ const FALLBACK_CLI_REGISTRY = {
         models: [
             'claude-sonnet-4.6',
             'claude-opus-4.6',
+            'claude-opus-4.6-fast',
             'claude-haiku-4.5',
             'gpt-5.3-codex',
             'gpt-5.2-codex',
@@ -111,9 +112,9 @@ export function getCliMeta(cli) {
 }
 
 export const ROLE_PRESETS = [
-    { value: 'frontend', label: '프런트엔드', prompt: 'UI/UX 구현, CSS, 컴포넌트 개발', skill: 'dev-frontend' },
-    { value: 'backend', label: '백엔드', prompt: 'API, DB, 서버 로직 구현', skill: 'dev-backend' },
-    { value: 'data', label: '데이터', prompt: '데이터 파이프라인, 분석, ML', skill: 'dev-data' },
-    { value: 'docs', label: '문서작성', prompt: '문서화, README, API docs', skill: 'documentation' },
-    { value: 'custom', label: '커스텀...', prompt: '', skill: null },
+    { value: 'frontend', labelKey: 'role.label.frontend', label: 'Frontend', prompt: 'UI/UX, CSS, components', skill: 'dev-frontend' },
+    { value: 'backend', labelKey: 'role.label.backend', label: 'Backend', prompt: 'API, DB, server logic', skill: 'dev-backend' },
+    { value: 'data', labelKey: 'role.label.data', label: 'Data', prompt: 'Data pipeline, analysis, ML', skill: 'dev-data' },
+    { value: 'docs', labelKey: 'role.label.docs', label: 'Docs', prompt: 'Documentation, README, API docs', skill: 'documentation' },
+    { value: 'custom', labelKey: 'role.label.custom', label: 'Custom...', prompt: '', skill: null },
 ];
