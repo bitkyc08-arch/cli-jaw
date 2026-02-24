@@ -74,6 +74,25 @@ if (process.stdin.isTTY) process.stdin.setRawMode(true);
 - `/cli c` 상태에서 `claude/codex` 후보 제시
 - command stage와 argument stage를 분리
 
+> 🔧 **UX 반영 (A1)**: argument stage 전환 시 popup 상단에 context 표시:
+>
+> ```
+> model ▸ 모델 선택
+> ────────────────────────
+>   gpt-5.3-codex     Codex default
+>   gemini-2.5-pro    Gemini Pro
+> ```
+>
+> 구현: `formatAutocompleteLine` 첫 줄에 dim 텍스트로 context 헤더 렌더
+
+> 🔧 **UX 반영 (A3)**: async provider 로딩 중 상태 표시:
+>
+> ```js
+> // provider가 async이면 로딩 spinner 표시
+> const SPINNER = ['⠋','⠙','⠹','⠸','⠼','⠴','⠦','⠧','⠇','⠏'];
+> // popup 영역에 "⠋ 로딩 중..." 한 줄 표시 후 결과 도착 시 교체
+> ```
+
 ## B. 후보 점수화
 
 현재 prefix match만 사용 중이라 후보가 많으면 품질이 낮습니다.
@@ -106,13 +125,27 @@ ac = {
 - `pageup/pagedown`: windowSize 단위
 - `home/end`: 첫/끝 이동
 
+> 🔧 **UX 반영 (A2)**: PageUp/PageDown ESC 시퀀스 명시:
+>
+> | 키 | raw ESC 시퀀스 |
+> |---|---|
+> | `PageUp` | `\x1b[5~` |
+> | `PageDown` | `\x1b[6~` |
+> | `Home` | `\x1b[H` 또는 `\x1b[1~` |
+> | `End` | `\x1b[F` 또는 `\x1b[4~` |
+>
+> ⚠️ iTerm2와 macOS Terminal에서 시퀀스가 다를 수 있으므로 둘 다 지원 필요.
+
 ## D. 입력 확정 정책 정교화
 
 - `Tab`: 항상 "치환만" (실행 금지)
 - `Enter`:
   - popup open + command stage + 인자 없음 -> 즉시 실행
   - popup open + 인자 필요/argument stage -> 치환 후 입력 대기
-- `Right Arrow`(선택): 치환만
+
+> 🔧 **UX 반영 (A4)**: `Right Arrow` 치환 제거 권장
+> 일반 입력 중 Right는 커서 이동인데 popup에서만 치환이면 혼동 유발.
+> Tab으로 통일 권장.
 
 ## E. 성능/안정성 가드
 
@@ -167,25 +200,27 @@ ac = {
 
 ## 난이도 / 공수
 
-| 항목 | 난이도 | 공수 |
-| --- | --- | --- |
-| argument provider 스키마 추가 | 🟡 | 40m |
-| completion resolver(stage 분기 + 점수화) | 🟠 | 60m |
-| paging UI + key bindings | 🟠 | 55m |
-| Enter/Tab 정책 정교화 | 🟡 | 35m |
-| 회귀 테스트 | 🟡 | 35m |
-| 합계 |  | 약 3.8h |
+| 항목                                     | 난이도 | 공수    |
+| ---------------------------------------- | ------ | ------- |
+| argument provider 스키마 추가            | 🟡      | 40m     |
+| completion resolver(stage 분기 + 점수화) | 🟠      | 60m     |
+| paging UI + key bindings                 | 🟠      | 55m     |
+| Enter/Tab 정책 정교화                    | 🟡      | 35m     |
+| 회귀 테스트                              | 🟡      | 35m     |
+| 합계                                     |        | 약 3.8h |
 
 ---
 
 ## 리스크 / 대응
 
-| 리스크 | 확률 | 영향 | 대응 |
-| --- | --- | --- | --- |
-| provider 호출 지연으로 입력 렉 | 보통 | 보통 | sync provider 우선, async는 timeout fallback |
-| page/window 계산 버그 | 보통 | 보통 | selected/windowStart 불변식 테스트 |
-| Enter 정책 혼동 | 높음 | 보통 | command stage/argument stage 명시적 분기 |
-| resize 후 index 유실 | 보통 | 낮음 | resize 시 selected clamp + rerender |
+| 리스크                           | 확률 | 영향 | 대응                                                           |
+| -------------------------------- | ---- | ---- | -------------------------------------------------------------- |
+| provider 호출 지연으로 입력 렉   | 보통 | 보통 | sync provider 우선, async는 timeout fallback                   |
+| page/window 계산 버그            | 보통 | 보통 | selected/windowStart 불변식 테스트                             |
+| Enter 정책 혼동                  | 높음 | 보통 | command stage/argument stage 명시적 분기                       |
+| resize 후 index 유실             | 보통 | 낮음 | resize 시 selected clamp + rerender                            |
+| `Ctrl+N/P` 터미널 충돌           | 보통 | 보통 | A5: macOS Terminal에서 Ctrl+N=새창. iTerm2 외엔 미지원 문서화  |
+| Phase 1c `ensureSpaceBelow` 호환 | 보통 | 보통 | A6: `visibleRows` 변경 시 항상 `ensureSpaceBelow(n)` 선행 호출 |
 
 ---
 

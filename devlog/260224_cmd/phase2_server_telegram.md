@@ -108,6 +108,17 @@ app.get('/api/commands', (req, res) => {
             aliases: c.aliases || [],
         }))
     );
+```
+
+> 🔧 **UX 반영 (U1)**: `POST /api/command` 응답에 `type` 필드 추가 필요.
+> 핸들러 반환값에 `type: 'success' | 'error' | 'info'`를 포함시켜 Web UI에서 색상 분기 가능:
+>
+> ```js
+> // commands.js 핸들러 반환 예시:
+> return { ok: true, type: 'success', text: '모델이 변경되었습니다.' };
+> return { ok: false, type: 'error', text: '잘못된 커맨드입니다.' };
+> return { ok: true, type: 'info', text: '현재 모델: gpt-5.3-codex' };
+> ```
 });
 ```
 
@@ -148,16 +159,21 @@ import { parseCommand, executeCommand, COMMANDS } from './commands.js';
 // BotFather 예약 커맨드 (Grammy가 네이티브 처리)
 const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
 
+// UX 반영 (U2): Telegram에서 read-only인 커맨드는 메뉴에서 제외
+const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // updateSettings read-only 문제
+
 // initTelegram() 내부, bot.start() 직전에 추가
 function syncTelegramCommands(bot) {
     return bot.api.setMyCommands(
         COMMANDS
-            .filter(c => c.interfaces.includes('telegram') && !RESERVED_CMDS.has(c.name))
-            .map(c => {
-                const raw = String(c.desc || '').trim();
-                const description = raw.length >= 3 ? raw.slice(0, 256) : 'Run command';
-                return { command: c.name, description };
-            })
+            .filter(c => c.interfaces.includes('telegram')
+                && !RESERVED_CMDS.has(c.name)
+                && !TG_EXCLUDED_CMDS.has(c.name))
+            .map(c => ({
+                command: c.name,
+                // UX 반영 (U3): 카테고리 prefix로 메뉴 그룹핑
+                description: `[${c.category || '도구'}] ${c.desc}`.slice(0, 256),
+            }))
     );
 }
 
@@ -279,6 +295,26 @@ Phase 2: bot.command('start','id') 유지 + on('text') 디스패치 병행
 Phase 3 이후(선택): COMMANDS 이관 검토
 ```
 
+> 🔧 **UX 반영 (U4)**: Telegram 커맨드 결과 포매팅 개선 로드맵
+>
+> Phase 2에서는 `ctx.reply(text)` 플레인 텍스트로 충분하지만,
+> 후속 버전에서 `parse_mode: 'HTML'` 도입 가능:
+>
+> ```js
+> // Grammy parse-mode 플러그인 (Context7 참조)
+> import { hydrateReply, parseMode } from '@grammyjs/parse-mode';
+> bot.use(hydrateReply);
+> bot.api.config.use(parseMode('HTML'));
+>
+> // 커맨드 결과 포매팅 예시
+> await ctx.reply(
+>     `<b>✅ 모델 변경</b>\n<code>${modelName}</code>`,
+>     { parse_mode: 'HTML' }
+> );
+> ```
+>
+> 출처: [Grammy parse-mode plugin](https://github.com/grammyjs/website/blob/main/site/docs/plugins/parse-mode.md)
+
 ---
 
 ## 영향 파일
@@ -302,12 +338,12 @@ Phase 3 이후(선택): COMMANDS 이관 검토
 
 ## 리스크
 
-| 리스크                                   | 확률 | 영향 | 대응                                                            |
-| ---------------------------------------- | ---- | ---- | --------------------------------------------------------------- |
-| Telegram ctx 직접 import 시 결합 오류    | 보통 | 보통 | `makeTelegramCommandCtx()` 단위 테스트 + init 시 smoke check    |
-| setMyCommands 실패 (토큰 문제)           | 낮음 | 낮음 | catch로 경고만 출력                                             |
-| /clear가 Web에서 기존 동작 깨짐          | 낮음 | 보통 | Phase 2에선 서버 API만 준비, 기존 chat.js 미수정                |
-| `updateSettings` read-only로 인한 오해   | 보통 | 보통 | `/model`,`/cli` TG 정책 확정(미지원 안내 or 실제 반영) 명시 필요 |
+| 리스크                                 | 확률 | 영향 | 대응                                                             |
+| -------------------------------------- | ---- | ---- | ---------------------------------------------------------------- |
+| Telegram ctx 직접 import 시 결합 오류  | 보통 | 보통 | `makeTelegramCommandCtx()` 단위 테스트 + init 시 smoke check     |
+| setMyCommands 실패 (토큰 문제)         | 낮음 | 낮음 | catch로 경고만 출력                                              |
+| /clear가 Web에서 기존 동작 깨짐        | 낮음 | 보통 | Phase 2에선 서버 API만 준비, 기존 chat.js 미수정                 |
+| `updateSettings` read-only로 인한 오해 | 보통 | 보통 | `/model`,`/cli` TG 정책 확정(미지원 안내 or 실제 반영) 명시 필요 |
 
 ## 검증
 

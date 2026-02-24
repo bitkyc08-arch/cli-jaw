@@ -73,13 +73,13 @@ Phase 1(CLI autocomplete)과 같은 UX를 Web UI에 구현한다.
 
 ### 키보드 동작 (가이드라인 + 제품 정책)
 
-| 키       | 드롭다운 닫힘      | 드롭다운 열림     |
-| -------- | ------------------ | ----------------- |
-| `↓`      | 열기 + 첫 항목 (`/` 입력 상태) | 다음 항목         |
-| `↑`      | 열기 + 마지막 항목 (`/` 입력 상태) | 이전 항목         |
-| `Enter`  | 메시지 전송        | 선택 적용/실행    |
-| `Escape` | -                  | 닫기              |
-| `Tab`    | 기본 포커스 이동   | 선택 적용 후 닫기 (제품 정책) |
+| 키       | 드롭다운 닫힘                      | 드롭다운 열림                 |
+| -------- | ---------------------------------- | ----------------------------- |
+| `↓`      | 열기 + 첫 항목 (`/` 입력 상태)     | 다음 항목                     |
+| `↑`      | 열기 + 마지막 항목 (`/` 입력 상태) | 이전 항목                     |
+| `Enter`  | 메시지 전송                        | 선택 적용/실행                |
+| `Escape` | -                                  | 닫기                          |
+| `Tab`    | 기본 포커스 이동                   | 선택 적용 후 닫기 (제품 정책) |
 
 > `Tab` 오버라이드는 APG 기본 포커스 이동과 다를 수 있으므로 제품 정책으로 명시한다.
 
@@ -145,7 +145,18 @@ function escapeHtml(str) {
 
 function render() {
     const el = dropdown();
-    if (!filtered.length) { close(); return; }
+    // UX 반영 (W6): 빈 결과 시 안내 텍스트 표시
+    if (!filtered.length) {
+        if (input().value.startsWith('/')) {
+            el.innerHTML = `<div class="cmd-item cmd-empty" style="color:var(--text-dim,#666);font-style:italic">
+                일치하는 커맨드가 없습니다
+            </div>`;
+            el.style.display = 'block';
+            el.classList.add('visible');
+            return;
+        }
+        close(); return;
+    }
 
     el.innerHTML = filtered.map((cmd, i) => {
         const isSelected = i === selectedIdx;
@@ -163,9 +174,15 @@ function render() {
     // 🔧 수정: cmd.name/desc/args를 escapeHtml()로 감싸 XSS 방지 (C1)
 
     el.style.display = 'block';
+    // UX 반영 (W3): 등장 애니메이션 트리거
+    requestAnimationFrame(() => el.classList.add('visible'));
     isOpen = true;
 
-    // ARIA 갱신
+    // UX 반영 (W7): 선택 항목 스크롤 추적 (ARIA APG: scrollable listbox 가이드라인)
+    const activeItem = el.querySelector('.cmd-item.selected');
+    if (activeItem) activeItem.scrollIntoView({ block: 'nearest' });
+
+    // ARIA 상태 업데이트갱신
     const inp = input();
     inp.setAttribute('aria-expanded', 'true');
     inp.setAttribute('aria-activedescendant',
@@ -180,8 +197,13 @@ function render() {
 
 export function close() {
     const el = dropdown();
-    el.style.display = 'none';
-    el.innerHTML = '';
+    // UX 반영 (W3): 퇴장 애니메이션
+    el.classList.remove('visible');
+    // transitionend 후 display:none (또는 즉시)
+    setTimeout(() => {
+        el.style.display = 'none';
+        el.innerHTML = ''; // Clear content after it's hidden
+    }, 150);
     isOpen = false;
     selectedIdx = -1;
     filtered = [];
@@ -341,9 +363,12 @@ import { loadCommands, update, handleKeydown, handleClick, handleOutsideClick } 
 loadCommands();
 
 // Input 이벤트: 실시간 필터링
+// UX 반영 (W2): rAF debounce로 빠른 타이핑 시 불필요한 DOM 재렌더 방지
+let _rafId = 0;
 document.getElementById('chatInput').addEventListener('input', (e) => {
     if (e.isComposing) return; // 한글 조합 중 필터링 스킵
-    update(e.target.value);
+    cancelAnimationFrame(_rafId);
+    _rafId = requestAnimationFrame(() => update(e.target.value));
 });
 
 // Keydown: 드롭다운 네비게이션 (기존 handleKey보다 먼저)
@@ -381,6 +406,17 @@ document.getElementById('chatInput').addEventListener('cmd-execute', () => {
     overflow-y: auto;
     z-index: 100;
     box-shadow: 0 -2px 12px rgba(0, 0, 0, 0.3);
+    /* UX 반영 (W3): 등장/퇴장 애니메이션 */
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.15s ease-out, transform 0.15s ease-out;
+    pointer-events: none;
+}
+
+.cmd-dropdown.visible {
+    opacity: 1;
+    transform: translateY(0);
+    pointer-events: auto;
 }
 
 .cmd-item {
@@ -505,7 +541,8 @@ chatInput.addEventListener('input', (e) => {
 | IME 한글 조합 중 오동작              | 보통 | 보통 | `isComposing` 체크 + `compositionend` 대응 |
 | CSS 변수 미정의 fallback             | 낮음 | 낮음 | fallback 값 명시                           |
 | `POST /api/command` 응답 지연        | 낮음 | 낮음 | loading 상태 표시                          |
-| 모바일 터치 UX                       | 보통 | 보통 | 클릭 이벤트로 기본 대응                    |
+| 모바일 터치 UX                       | 보통 | 보통 | W4: `visualViewport` API로 가시 영역 계산  |
+| Phase 4 인자 자동완성 미대응         | 보통 | 높음 | W8: argument stage 확장 가능 구조 필요     |
 
 ## 검증
 
