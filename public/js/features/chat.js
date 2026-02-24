@@ -72,10 +72,16 @@ export async function sendMessage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ prompt: text }),
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+            addSystemMsg(`❌ ${data.error || `요청 실패 (${res.status})`}`, '', 'error');
+            return;
+        }
         if (data.queued) {
             const { updateQueueBadge } = await import('../ui.js');
             updateQueueBadge(data.pending || 1);
+        } else if (data.continued) {
+            addSystemMsg('↪️ 이전 worklog 기준으로 이어서 진행합니다.');
         }
     }
 }

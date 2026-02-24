@@ -24,6 +24,7 @@ function printHelp() {
     init       초기 설정 마법사
     doctor     설치/설정 진단
     chat       터미널 채팅 (REPL)
+    employee   직원 관리 (reset)
     mcp        MCP 서버 관리 (install/sync/list)
     skill      스킬 관리 (install/remove/info)
     status     서버 상태 확인
@@ -52,6 +53,9 @@ switch (command) {
         break;
     case 'chat':
         await import('./commands/chat.js');
+        break;
+    case 'employee':
+        await import('./commands/employee.js');
         break;
     case 'mcp':
         await import('./commands/mcp.js');

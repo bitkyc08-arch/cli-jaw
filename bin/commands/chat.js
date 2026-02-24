@@ -119,6 +119,7 @@ function makeCliCommandCtx() {
         searchMemory: (q) => apiJson(`/api/claw-memory/search?q=${encodeURIComponent(q)}`).then(d => d.result || '(no results)'),
         getBrowserStatus: () => apiJson('/api/browser/status'),
         getBrowserTabs: () => apiJson('/api/browser/tabs'),
+        resetEmployees: () => apiJson('/api/employees/reset', { method: 'POST' }),
         getPrompt: () => apiJson('/api/prompt'),
         resetSkills: async () => runSkillResetLocal(),
     };

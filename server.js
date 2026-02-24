@@ -313,6 +313,7 @@ function makeWebCommandCtx() {
         getBrowserStatus: async () => browser.getBrowserStatus(settings.browser?.cdpPort || 9240),
         getBrowserTabs: async () => ({ tabs: await browser.listTabs(settings.browser?.cdpPort || 9240) }),
         resetEmployees: async () => seedDefaultEmployees({ reset: true, notify: true }),
+        resetSkills: async () => { copyDefaultSkills(); ensureSkillsSymlinks(settings.workingDir); regenerateB(); },
         getPrompt: () => {
             const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
             return { content: a2 };

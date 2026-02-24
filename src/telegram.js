@@ -6,7 +6,7 @@ import { sequentialize } from '@grammyjs/runner';
 import { broadcast, addBroadcastListener, removeBroadcastListener } from './bus.js';
 import { settings, detectAllCli, APP_VERSION } from './config.js';
 import { insertMessage, getSession, updateSession, clearMessages } from './db.js';
-import { orchestrate } from './orchestrator.js';
+import { orchestrate, orchestrateContinue, isContinueIntent } from './orchestrator.js';
 import {
     activeProcess, killActiveAgent, waitForProcessEnd,
     saveUpload, buildMediaPrompt, messageQueue,
@@ -79,7 +79,8 @@ export function orchestrateAndCollect(prompt) {
             }
         };
         addBroadcastListener(handler);
-        orchestrate(prompt).catch(err => {
+        const run = isContinueIntent(prompt) ? orchestrateContinue() : orchestrate(prompt);
+        Promise.resolve(run).catch(err => {
             clearTimeout(timeout);
             removeBroadcastListener(handler);
             resolve(`❌ ${err.message}`);

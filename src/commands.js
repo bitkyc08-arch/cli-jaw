@@ -136,6 +136,10 @@ function skillArgumentCompletions() {
     return [{ value: 'list', label: '스킬 목록' }, { value: 'reset', label: '스킬 초기화' }];
 }
 
+function employeeArgumentCompletions() {
+    return [{ value: 'reset', label: '기본 5명 재생성' }];
+}
+
 function browserArgumentCompletions() {
     return [{ value: 'status', label: '브라우저 상태' }, { value: 'tabs', label: '열린 탭 목록' }];
 }
@@ -341,9 +345,6 @@ async function skillHandler(args, ctx) {
         return { ok: true, text: `🧰 Skills: ${active} active, ${ref} ref` };
     }
     if (sub === 'reset') {
-        if ((ctx.interface || 'cli') !== 'cli') {
-            return { ok: false, text: '❌ /skill reset은 CLI에서만 사용할 수 있습니다.' };
-        }
         if (typeof ctx.resetSkills !== 'function') {
             return { ok: false, text: '❌ 이 환경에서는 /skill reset을 사용할 수 없습니다.' };
         }
@@ -351,6 +352,19 @@ async function skillHandler(args, ctx) {
         return { ok: true, text: '✅ 스킬 초기화를 실행했습니다.' };
     }
     return { ok: false, text: 'Usage: /skill [list|reset]' };
+}
+
+async function employeeHandler(args, ctx) {
+    const sub = (args[0] || '').toLowerCase();
+    if (sub !== 'reset') {
+        return { ok: false, text: 'Usage: /employee reset' };
+    }
+    if (typeof ctx.resetEmployees !== 'function') {
+        return { ok: false, text: '❌ 이 환경에서는 /employee reset을 사용할 수 없습니다.' };
+    }
+    const result = await ctx.resetEmployees();
+    const seeded = Number.isFinite(result?.seeded) ? result.seeded : '?';
+    return { ok: true, text: `✅ 직원 기본값으로 재설정 완료 (${seeded}명)` };
 }
 
 async function clearHandler(_args, ctx) {
@@ -509,6 +523,7 @@ export const COMMANDS = [
     { name: 'fallback', desc: '폴백 CLI 순서 설정', args: '[cli1 cli2...|off]', category: 'model', interfaces: ['cli', 'web', 'telegram'], getArgumentCompletions: fallbackArgumentCompletions, handler: fallbackHandler },
     { name: 'version', desc: '버전/CLI 설치 상태', category: 'cli', interfaces: ['cli', 'web', 'telegram'], handler: versionHandler },
     { name: 'skill', desc: '스킬 목록/초기화', args: '[list|reset]', category: 'tools', interfaces: ['cli', 'web', 'telegram'], getArgumentCompletions: skillArgumentCompletions, handler: skillHandler },
+    { name: 'employee', desc: '직원 기본값 재설정', args: 'reset', category: 'tools', interfaces: ['cli', 'web'], getArgumentCompletions: employeeArgumentCompletions, handler: employeeHandler },
     { name: 'mcp', desc: 'MCP 목록/동기화/설치', args: '[sync|install]', category: 'tools', interfaces: ['cli', 'web'], handler: mcpHandler },
     { name: 'memory', desc: '메모리 검색/목록', args: '[query]', category: 'tools', interfaces: ['cli'], handler: memoryHandler },
     { name: 'browser', desc: '브라우저 상태/탭', args: '[status|tabs]', category: 'tools', interfaces: ['cli', 'web', 'telegram'], getArgumentCompletions: browserArgumentCompletions, handler: browserHandler },
