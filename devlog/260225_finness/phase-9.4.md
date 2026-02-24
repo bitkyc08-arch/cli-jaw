@@ -6,128 +6,113 @@
 
 ## 왜 해야 하는가
 
-- `agent.js` (585줄), `orchestrator.js` (584줄), `config.js` (177줄) — 테스트 0건
+- `agent.js`, `orchestrator.js` 핵심 분기(인자 빌드/triage/JSON 파싱)는 직접 단위 테스트가 부족함
 - subtask 파싱/인자 빌드/설정 마이그레이션 버그 시 전체 시스템 불통
-- 기존 9개 테스트로는 핵심 경로 회귀 감지 불가
+- 기존 테스트만으로는 핵심 경로 회귀 감지가 부족함
 
 ---
 
 ## 신규 테스트 4개
 
-### 1. `tests/unit/orchestrator.test.js` (subtask 파싱)
+### 1. `tests/unit/orchestrator-parsing.test.js` (실제 export 파싱 검증)
 
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { parseSubtasks, parseDirectAnswer, stripSubtaskJSON } from '../../src/orchestrator.js';
 
-test('OR-001: fenced json subtask', () => {
-  const input = 'text\n```json\n{"subtasks":["a","b"]}\n```\nmore';
-  const m = input.match(/```json\s*([\s\S]*?)```/);
-  assert.deepEqual(JSON.parse(m[1]).subtasks, ['a','b']);
+test('ORP-001: fenced json subtasks parse', () => {
+  const input = 'x\n```json\n{"subtasks":[{"agent":"백엔드","task":"a"}]}\n```';
+  const st = parseSubtasks(input);
+  assert.equal(st[0].agent, '백엔드');
 });
 
-test('OR-002: malformed json → null', () => {
-  const m = '```json\n{broken\n```'.match(/```json\s*([\s\S]*?)```/);
-  let r = null; try { r = JSON.parse(m[1]).subtasks; } catch {}
-  assert.equal(r, null);
+test('ORP-002: malformed json returns null', () => {
+  assert.equal(parseSubtasks('```json\n{broken\n```'), null);
 });
 
-test('OR-003: no block → null', () => {
-  assert.equal('plain text'.match(/```json\s*([\s\S]*?)```/), null);
+test('ORP-003: direct_answer only path', () => {
+  const input = '```json\n{"direct_answer":"ok","subtasks":[]}\n```';
+  assert.equal(parseDirectAnswer(input), 'ok');
 });
 
-test('OR-004: nested subtask', () => {
-  const j = '```json\n{"subtasks":[{"task":"x","prompt":"y"}]}\n```';
-  const p = JSON.parse(j.match(/```json\s*([\s\S]*?)```/)[1]);
-  assert.equal(p.subtasks[0].task, 'x');
+test('ORP-004: stripSubtaskJSON removes json block', () => {
+  const s = stripSubtaskJSON('요약\n```json\n{"subtasks":[]}\n```');
+  assert.equal(s, '요약');
 });
 ```
 
-### 2. `tests/unit/agent-args.test.js` (CLI별 인자 빌드)
+### 2. `tests/unit/orchestrator-triage.test.js` (분기 규칙 검증)
 
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { isContinueIntent, needsOrchestration } from '../../src/orchestrator.js';
 
-function buildArgs(cli, model, prompt, perm) {
-  const a = [];
-  if (cli === 'claude') {
-    a.push('--print','--output-format','stream-json');
-    if (model !== 'default') a.push('--model', model);
-    if (perm === 'auto') a.push('--allowedTools','*');
-    a.push('-p', prompt);
-  } else if (cli === 'codex') {
-    a.push('--full-auto');
-    if (model !== 'default') a.push('--model', model);
-    a.push(prompt);
-  } else if (cli === 'gemini') {
-    if (model !== 'default') a.push('--model', model);
-    a.push(prompt);
-  }
-  return a;
-}
+test('ORT-001: continue intent positive', () => {
+  assert.equal(isContinueIntent('continue'), true);
+  assert.equal(isContinueIntent('이어서 해줘'), true);
+});
 
-test('AG-001: claude default', () => {
-  const a = buildArgs('claude','default','hi','default');
-  assert.ok(a.includes('--print'));
-  assert.ok(!a.includes('--model'));
+test('ORT-002: continue intent negative', () => {
+  assert.equal(isContinueIntent('계획 검토해줘'), false);
 });
-test('AG-002: claude custom model', () => {
-  assert.ok(buildArgs('claude','opus','hi','default').includes('opus'));
+
+test('ORT-003: complex coding request needs orchestration', () => {
+  const msg = 'server.js 라우트 분리하고 tests 추가하고 API 회귀 확인해줘';
+  assert.equal(needsOrchestration(msg), true);
 });
-test('AG-003: claude auto perm', () => {
-  assert.ok(buildArgs('claude','default','hi','auto').includes('*'));
-});
-test('AG-004: codex full-auto', () => {
-  assert.ok(buildArgs('codex','default','hi','auto').includes('--full-auto'));
-});
-test('AG-005: gemini model', () => {
-  const a = buildArgs('gemini','pro','hi','auto');
-  assert.ok(a.includes('pro'));
-});
-test('AG-006: prompt last for codex', () => {
-  const a = buildArgs('codex','o3','build','auto');
-  assert.equal(a.at(-1), 'build');
+
+test('ORT-004: short casual message bypasses orchestration', () => {
+  assert.equal(needsOrchestration('안녕'), false);
 });
 ```
 
-### 3. `tests/unit/config.test.js`
+### 3. `tests/unit/agent-args.test.js` (실제 buildArgs/buildResumeArgs 검증)
 
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { buildArgs, buildResumeArgs } from '../../src/agent.js';
 
-test('CF-001: defaults have required keys', () => {
-  const d = { cli:'claude', permissions:'default', workingDir:'.', perCli:{}, memory:{}, telegram:{} };
-  for (const k of ['cli','permissions','perCli','memory']) assert.ok(k in d);
+test('AG-001: claude default excludes --model', () => {
+  const args = buildArgs('claude', 'default', '', 'hi', 'sys', 'safe');
+  assert.ok(!args.includes('--model'));
 });
-test('CF-002: deep merge preserves custom', () => {
-  const defs = { perCli: { claude:{model:'default'}, codex:{model:'default'} } };
-  const user = { perCli: { claude:{model:'opus'} } };
-  for (const [k,v] of Object.entries(user.perCli)) defs.perCli[k] = {...(defs.perCli[k]||{}),...v};
-  assert.equal(defs.perCli.claude.model, 'opus');
-  assert.equal(defs.perCli.codex.model, 'default');
+
+test('AG-002: codex auto includes bypass flag', () => {
+  const args = buildArgs('codex', 'o3', 'high', 'hi', '', 'auto');
+  assert.ok(args.includes('--dangerously-bypass-approvals-and-sandbox'));
 });
-test('CF-003: new CLI appears', () => {
-  const defs = { perCli: { claude:{}, codex:{}, copilot:{} } };
-  const user = { perCli: { claude:{} } };
-  for (const [k,v] of Object.entries(user.perCli)) defs.perCli[k] = {...(defs.perCli[k]||{}),...v};
-  assert.ok('copilot' in defs.perCli);
+
+test('AG-003: gemini includes prompt payload', () => {
+  const args = buildArgs('gemini', 'gemini-2.5-pro', '', 'hello', '', 'safe');
+  assert.ok(args.includes('hello'));
+});
+
+test('AG-004: resume args include session id', () => {
+  const args = buildResumeArgs('claude', 'default', '', 'sess-1', 'next', 'safe');
+  assert.ok(args.includes('sess-1'));
 });
 ```
 
-### 4. `tests/unit/commands-handlers.test.js`
+### 4. `tests/unit/settings-merge.test.js` (settings patch 병합 규칙 검증)
 
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mergeSettingsPatch } from '../../src/settings-merge.js';
 
-test('CH-001: help result has text', () => {
-  const r = { ok:true, text:'/help ...' };
-  assert.ok(r.ok && r.text.includes('/help'));
+test('SM-001: perCli deep merge preserves existing effort', () => {
+  const current = { perCli: { copilot: { model: 'a', effort: 'high' } } };
+  const next = mergeSettingsPatch(current, { perCli: { copilot: { model: 'b' } } });
+  assert.equal(next.perCli.copilot.effort, 'high');
 });
-test('CH-002: unknown → null', () => {
-  assert.equal(null, null); // parseCommand('/unknown') → null
+
+test('SM-002: activeOverrides deep merge preserves sibling keys', () => {
+  const current = { activeOverrides: { codex: { model: 'o3', effort: 'medium' } } };
+  const next = mergeSettingsPatch(current, { activeOverrides: { codex: { model: 'o4' } } });
+  assert.equal(next.activeOverrides.codex.effort, 'medium');
 });
 ```
 
@@ -153,8 +138,8 @@ node --test --experimental-test-coverage \
 | 대상 | 충돌 |
 |---|---|
 | `tests/unit/*` (4개 NEW) | 없음 |
-| `src/orchestrator.js` | export 추가 필요 — 낮음 |
-| `src/agent.js` | export 추가 필요 — 낮음 |
+| `src/settings-merge.js` | **NEW** (server.js의 병합 로직 추출) |
+| `server.js` | `applySettingsPatch`가 `mergeSettingsPatch` 사용하도록 경량 수정 |
 | Phase 9.3 | 9.3 완료 후 import 경로 안정 → **순서: 9.3 → 9.4** |
 | **병렬 가능**: 9.1/9.2와 동시 작업 OK |
 
@@ -162,6 +147,6 @@ node --test --experimental-test-coverage \
 
 ## 완료 기준
 
-- [ ] 테스트 4개 파일, 20+ 케이스 추가
+- [ ] 테스트 4개 파일, 12+ 케이스 추가
 - [ ] `npm test` 전체 통과
 - [ ] coverage lines 70% 이상

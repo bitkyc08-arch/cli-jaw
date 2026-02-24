@@ -747,18 +747,6 @@
             },
             "install": null
         },
-        "frontend-design": {
-            "name": "Frontend Design",
-            "name_ko": "Frontend Design",
-            "name_en": "Frontend Design",
-            "emoji": "🎨",
-            "category": "ai-media",
-            "description": "독창적이고 프로덕션급 프론트엔드 UI/페이지 디자인 및 구현.",
-            "desc_ko": "독창적이고 프로덕션급 프론트엔드 UI/페이지 디자인 및 구현.",
-            "desc_en": "Unique, production-grade frontend UI/page design and implementation.",
-            "requires": null,
-            "install": null
-        },
         "docx": {
             "name": "DOCX",
             "name_ko": "DOCX",
@@ -782,23 +770,6 @@
             "desc_en": ".xlsx/.xlsm/.csv/.tsv file create/edit/analyze/format. Includes pandas data analysis.",
             "requires": null,
             "install": null
-        },
-        "webapp-testing": {
-            "name": "Webapp Testing",
-            "name_ko": "Webapp Testing",
-            "name_en": "Webapp Testing",
-            "emoji": "🧪",
-            "category": "devtools",
-            "description": "Playwright 기반 웹앱 상호작용/검증/디버깅 테스트 스킬.",
-            "desc_ko": "Playwright 기반 웹앱 상호작용/검증/디버깅 테스트 스킬.",
-            "desc_en": "Playwright-based web app interaction/verification/debugging test skill.",
-            "requires": null,
-            "install": null,
-            "canonical_id": "webapp-testing",
-            "aliases": [],
-            "workflow": "e2e_test",
-            "provider": "n/a",
-            "status": "active"
         },
         "mcp-builder": {
             "name": "MCP Builder",
@@ -1456,18 +1427,6 @@
                     "terraform"
                 ]
             },
-            "install": null
-        },
-        "kreuzberg": {
-            "name": "Kreuzberg",
-            "name_ko": "Kreuzberg",
-            "name_en": "Kreuzberg",
-            "emoji": "📑",
-            "category": "utility",
-            "description": "62+ 포맷 텍스트 추출 (PDF/DOCX/PPTX/이미지 등).",
-            "desc_ko": "62+ 포맷 텍스트 추출 (PDF/DOCX/PPTX/이미지 등).",
-            "desc_en": "62+ format text extraction (PDF/DOCX/PPTX/images etc.).",
-            "requires": {},
             "install": null
         },
         "dev": {

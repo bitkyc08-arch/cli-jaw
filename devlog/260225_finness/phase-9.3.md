@@ -6,7 +6,7 @@
 
 ## 왜 해야 하는가
 
-9.1(guard) + 9.2(응답 공통화) 적용 후에도 `server.js`는 여전히 **800줄 이상**.
+9.1(guard) + 9.2(응답 공통화) 적용 후에도 `server.js`는 여전히 **대형 단일 파일**이다.
 분리를 통해:
 1. 파일별 변경 범위가 100줄 이내로 축소
 2. 기능별 테스트 격리 가능
@@ -259,9 +259,9 @@ const EXPECTED_ROUTES = [
   'GET /api/browser/text',
 ];
 
-test('RR-001: all 60 routes registered', () => {
-  assert.equal(EXPECTED_ROUTES.length, 60);
-  // 실제 검증은 서버 시작 후 _router.stack 또는 rg 기반
+test('RR-001: routes are fully registered', () => {
+  assert.ok(EXPECTED_ROUTES.length > 0);
+  // 실제 검증은 baseline 파일과 after 파일의 set 비교로 수행
 });
 ```
 
@@ -279,6 +279,6 @@ node --test tests/integration/route-registration.test.js
 
 - [ ] `server.js` 200줄 이하
 - [ ] 6개 라우트 파일 각 100줄 이하
-- [ ] 60개 라우트 전수 등록 (diff 0건)
+- [ ] baseline 대비 라우트 누락/추가 0건 (diff 0건)
 - [ ] `npm test` 통과
 - [ ] 프런트 기능 정상 동작

@@ -23,7 +23,7 @@ tags: [cli-claw, finness, phase-9, backend, hardening, dependency, testing]
 - `memory-files`, `skills`, `upload`, `claw-memory` 입력 경계가 약함.
 
 2. 구조가 커져서 작은 수정도 위험
-- `server.js` 856줄/60 라우트로 결합도가 높음.
+- `server.js`가 대형 단일 파일로 유지되어 결합도가 높음.
 
 3. 회귀가 다시 반복될 가능성
 - 핵심 경로 테스트가 부족해 재발 방지가 약함.
@@ -347,9 +347,12 @@ export function registerCoreRoutes(app, deps) {
 ### 8.1 신규 테스트 파일
 
 - `tests/unit/path-guards.test.js`
-- `tests/unit/http-validate.test.js`
-- `tests/unit/orchestrator.test.js`
+- `tests/unit/http-response.test.js`
+- `tests/unit/async-handler.test.js`
+- `tests/unit/orchestrator-parsing.test.js`
+- `tests/unit/orchestrator-triage.test.js`
 - `tests/unit/agent-args.test.js`
+- `tests/unit/settings-merge.test.js`
 - (선택) `tests/api/security-routes.test.js`
 
 ### 8.2 테스트 케이스 설계
@@ -514,9 +517,12 @@ semgrep --baseline-commit origin/main --json --json-output .artifacts/semgrep-ba
 - `scripts/check-deps-offline.mjs`
 - `scripts/check-deps-online.sh`
 - `tests/unit/path-guards.test.js`
-- `tests/unit/http-validate.test.js`
-- `tests/unit/orchestrator.test.js`
+- `tests/unit/http-response.test.js`
+- `tests/unit/async-handler.test.js`
+- `tests/unit/orchestrator-parsing.test.js`
+- `tests/unit/orchestrator-triage.test.js`
 - `tests/unit/agent-args.test.js`
+- `tests/unit/settings-merge.test.js`
 - `devlog/260225_finness/static-analysis-baseline.md`
 
 ### 10.3 영향 파일 (간접)
@@ -879,7 +885,7 @@ npm test
 ### 26.1 파일 구조 제안
 
 ```text
-src/commands/
+src/command-contract/
   catalog.js             # COMMANDS + capability metadata
   policy.js              # interface별 노출/실행 정책
   help-renderer.js       # text/json/telegram help 렌더러
@@ -1073,7 +1079,7 @@ argument 모드:
 `str_func/AGENTS.md` 기준으로, WS6 완료 시 아래 동기화 필수:
 
 코드 6곳:
-1. `src/commands.js` (또는 분리 후 catalog/policy)
+1. `src/commands.js` (또는 `src/command-contract/{catalog,policy}`)
 2. `server.js` (또는 controller)
 3. `bin/commands/chat.js`
 4. `src/telegram.js`
@@ -1136,4 +1142,3 @@ bash devlog/verify-counts.sh
 적용 방식:
 - 스킬 지침을 "규칙"이 아니라 구현 항목(WS6)으로 매핑.
 - Help/command 통합과 인터페이스 capability를 Phase 9 실행 플랜에 직접 편입.
-

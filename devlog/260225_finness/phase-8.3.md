@@ -1,4 +1,4 @@
-# Phase 8.3: server.js 구조 분리 설계 (856줄 → 5개 라우트 모듈)
+# Phase 8.3: server.js 구조 분리 설계 (947줄 → 6개 라우트 모듈)
 
 > 이 문서는 Phase 8의 P1(구조 분리) 설계를 다룬다.
 
@@ -10,37 +10,26 @@
 
 ```bash
 $ wc -l server.js
-856 server.js
+947 server.js
 
 $ rg -n "app\.(get|post|put|patch|delete)\('/api" server.js | wc -l
-60
+62
 ```
 
-단일 파일에 **60개 API 라우트 + 90줄 quota 함수 + 80줄 헬퍼 + 50줄 부팅 로직**이 혼재.
+단일 파일에 API 라우트/quota/헬퍼/부팅 로직이 혼재되어 변경 충돌이 잦다.
 
 ### 발생하는 문제
 
 1. **변경 충돌 빈도**: 모든 기능 수정이 server.js를 건드려 git merge conflict 발생
 2. **회귀 범위 예측 불가**: memory 라우트 수정이 telegram 라우트에 영향을 줄 수 있는지 추적 어려움
 3. **테스트 격리 불가**: 특정 라우트 그룹만 테스트하려 해도 전체 서버를 올려야 함
-4. **`dev` 스킬 500줄 룰 위반**: 356줄 초과
+4. **`dev` 스킬 500줄 룰 위반**: 400줄 이상 초과
 
 ### 현재 파일 구조 (책임별 분류)
 
-```
-server.js (856줄)
-├── L59-69:   .env 로더                           ~11줄
-├── L71-167:  Quota 함수들 (5개)                   ~97줄
-├── L169-222: Express + WebSocket 초기화            ~54줄
-├── L224-329: 헬퍼 함수들 (7개)                     ~106줄
-├── L330-413: 코어 API (session/messages/command)   ~84줄
-├── L415-501: 설정/메모리/업로드 API                 ~87줄
-├── L504-595: Telegram/MCP API                     ~92줄
-├── L597-654: CLI/Quota/Employees API              ~58줄
-├── L656-739: Skills/Memory API                    ~84줄
-├── L741-823: Browser API (11개 라우트)             ~83줄
-└── L825-857: 서버 부팅                             ~33줄
-```
+- `.env 로더`, `quota 조회`, `Express/WebSocket 초기화`, `라우트 등록`, `부팅`이 한 파일에 공존
+- 기능 단위가 아닌 파일 단위로 변경이 섞여서 PR 충돌 빈도 상승
+- 라우트 시그니처 변경 여부를 자동 비교하기 어려움
 
 ---
 
@@ -274,9 +263,8 @@ test('RS-001: core routes registration', async () => {
   }
 });
 
-test('RS-002: total route count matches 60', async () => {
-  // 모든 registrar 호출 후 합산 = 60
-  // (실제 구현 시 app._router.stack에서 추출)
+test('RS-002: route count matches baseline', async () => {
+  // 분리 전 baseline과 분리 후 추출값의 개수/집합이 동일해야 함
 });
 ```
 
@@ -284,7 +272,7 @@ test('RS-002: total route count matches 60', async () => {
 
 ```js
 #!/usr/bin/env node
-// 기존 server.js에서 rg로 추출한 60개 라우트와 분리 후 라우트 비교
+// 분리 직전 baseline과 분리 후 라우트 비교 (고정 숫자 의존 금지)
 import { execSync } from 'child_process';
 
 const before = execSync(
@@ -292,7 +280,7 @@ const before = execSync(
   { encoding: 'utf8' }
 ).trim().split('\n').sort();
 
-console.log(`[verify] expected routes: ${before.length}`);
+console.log(`[verify] baseline routes: ${before.length}`);
 // TODO: 분리 후 각 routes/*.js에서 동일 패턴 추출하여 비교
 ```
 
@@ -309,6 +297,6 @@ node scripts/verify-routes.mjs
 
 - [ ] `server.js` 200줄 이하
 - [ ] 6개 라우트 파일 생성 (각 100줄 이하)
-- [ ] 60개 라우트 전수 등록 확인 (누락 0건)
+- [ ] baseline 대비 라우트 누락/추가 0건 (시그니처 diff 0건)
 - [ ] 기존 `npm test` 통과
 - [ ] git diff에서 라우트 경로/메서드 변경 0건 (시그니처 불변)

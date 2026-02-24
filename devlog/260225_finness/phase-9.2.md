@@ -84,16 +84,16 @@ Phase 8.2의 17개 "상" 우선순위 라우트부터 적용:
      const filename = assertFilename(req.params.filename, { allowExt: ['.md'] });
      const fp = safeResolveUnder(base, filename);
      if (!fs.existsSync(fp)) return fail(res, 404, 'not_found');
--    res.json({ name: filename, content: fs.readFileSync(fp, 'utf8') });
-+    ok(res, { name: filename, content: fs.readFileSync(fp, 'utf8') });
+     const payload = { name: filename, content: fs.readFileSync(fp, 'utf8') };
++    res.json({ ok: true, data: payload, ...payload }); // 1단계: 기존 필드 유지
  }));
 
  // skills enable
  app.post('/api/skills/enable', asyncHandler((req, res) => {
      const id = assertSkillId(req.body?.id);
      // ...
--    res.json({ ok: true });
-+    ok(res, { id, enabled: true });
+     const payload = { id, enabled: true };
++    res.json({ ok: true, data: payload, ...payload }); // 1단계: 기존 필드 유지
  }));
 
  // upload
@@ -101,8 +101,8 @@ Phase 8.2의 17개 "상" 우선순위 라우트부터 적용:
      const decoded = decodeFilenameSafe(req.headers['x-filename']);
      const filename = assertFilename(decoded, { allowExt: [/* ... */] });
      const filePath = saveUpload(req.body, filename);
--    res.json({ path: filePath, filename: basename(filePath) });
-+    ok(res, { path: filePath, filename: basename(filePath) });
+     const payload = { path: filePath, filename: basename(filePath) };
++    res.json({ ok: true, data: payload, ...payload }); // 1단계: 기존 필드 유지
  }));
 ```
 
@@ -121,9 +121,9 @@ Phase 8.2의 17개 "상" 우선순위 라우트부터 적용:
 
 | 우선순위 | 라우트 그룹 | 전환 방식 |
 |---|---|---|
-| 상 | memory-files, skills, upload, claw-memory | 즉시 `ok()/fail()` |
-| 중 | session, messages, settings, employees, mcp | dual-response (기존 + ok/data) |
-| 낮음 | browser, heartbeat, cli-registry, quota | 프런트 전환 후 |
+| 상 | memory-files, skills, upload, claw-memory | 1단계 `dual-response` (기존 필드 + `ok/data`) |
+| 중 | session, messages, settings, employees, mcp | 1단계 `dual-response` 후 2단계 `ok()/fail()` |
+| 낮음 | browser, heartbeat, cli-registry, quota | 프런트 전환 후 2단계 `ok()/fail()` |
 
 ---
 
@@ -133,7 +133,7 @@ Phase 8.2의 17개 "상" 우선순위 라우트부터 적용:
 |---|---|---|
 | `src/http/*` | **NEW** (3개) | 없음 |
 | `server.js` 전체 라우트 | 점진 수정 | **중간** — 9.1(guard) 수정과 같은 라우트 |
-| 프런트 `public/js/**` | 간접 영향 | **1단계에서 안전** — dual-response |
+| 프런트 `public/js/**` | 간접 영향 | **1단계에서 안전** — 기존 필드 유지 |
 | Phase 9.1 | guard가 적용된 상태에서 `ok()/fail()` 교체 | **순서: 9.1 → 9.2** |
 | Phase 9.3 | 라우트 분리 시 `ok()/fail()` import가 route 파일로 이동 | 9.2 코드가 9.3에서 재사용됨 |
 
@@ -215,8 +215,8 @@ npm test
 ## 완료 기준
 
 - [ ] `src/http/response.js` + `async-handler.js` + `error-middleware.js` 생성
-- [ ] 고위험 라우트 17곳에 `ok()/fail()` 적용
+- [ ] 고위험 라우트 17곳에 1단계 `dual-response` 적용
 - [ ] `errorHandler` 미들웨어 등록
 - [ ] 단위 테스트 6/6 통과
 - [ ] `npm test` 통과
-- [ ] 프런트 기존 기능 동작 확인 (dual-response 하위호환)
+- [ ] 프런트 기존 기능 동작 확인 (기존 필드 하위호환)

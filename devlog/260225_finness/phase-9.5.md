@@ -58,7 +58,10 @@ makeTelegramCommandCtx() // src/telegram.js
 
 ## 설계: 단일소스 Command Catalog
 
-### `src/commands/catalog.js`
+주의:
+- 현재 코드베이스에는 `src/commands.js` 파일이 이미 존재하므로, 신규 디렉토리는 `src/command-contract/`를 사용해 경로 충돌을 피한다.
+
+### `src/command-contract/catalog.js`
 
 ```js
 import { COMMANDS } from '../commands.js';
@@ -87,7 +90,7 @@ export function getCommandCatalog() {
 }
 ```
 
-### `src/commands/policy.js`
+### `src/command-contract/policy.js`
 
 ```js
 import { getCommandCatalog, CAPABILITY } from './catalog.js';
@@ -112,7 +115,7 @@ export function getTelegramMenuCommands() {
 }
 ```
 
-### `src/commands/help-renderer.js`
+### `src/command-contract/help-renderer.js`
 
 ```js
 import { getVisibleCommands } from './policy.js';
@@ -151,7 +154,7 @@ export function renderHelp({ iface, commandName, format = 'text' }) {
 ### Step 1: catalog/policy/renderer 생성
 
 ```bash
-mkdir -p src/commands
+mkdir -p src/command-contract
 # catalog.js, policy.js, help-renderer.js
 ```
 
@@ -161,7 +164,7 @@ mkdir -p src/commands
 -function printHelp() {
 -  console.log(`Commands:\n  chat  ...\n  config ...\n`);
 -}
-+import { renderHelp } from '../src/commands/help-renderer.js';
++import { renderHelp } from '../src/command-contract/help-renderer.js';
 +function printHelp() {
 +  console.log(renderHelp({ iface: 'cmdline' }).text);
 +}
@@ -172,7 +175,7 @@ mkdir -p src/commands
 ```diff
 -const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);
 -const menuCmds = COMMANDS.filter(c => !excluded.has(c.name));
-+import { getTelegramMenuCommands } from './commands/policy.js';
++import { getTelegramMenuCommands } from './command-contract/policy.js';
 +const menuCmds = getTelegramMenuCommands();
 ```
 
@@ -199,9 +202,9 @@ mkdir -p src/commands
 
 | 대상 | 변경 | 충돌 |
 |---|---|---|
-| `src/commands/catalog.js` | **NEW** | 없음 |
-| `src/commands/policy.js` | **NEW** | 없음 |
-| `src/commands/help-renderer.js` | **NEW** | 없음 |
+| `src/command-contract/catalog.js` | **NEW** | 없음 |
+| `src/command-contract/policy.js` | **NEW** | 없음 |
+| `src/command-contract/help-renderer.js` | **NEW** | 없음 |
 | `src/commands.js` | export 확장 (COMMANDS) | 낮음 |
 | `bin/cli-claw.js` | printHelp 교체 | 낮음 |
 | `src/telegram.js` | TG_EXCLUDED 제거 → policy 사용 | 중간 |
@@ -217,7 +220,7 @@ mkdir -p src/commands
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getVisibleCommands, getTelegramMenuCommands } from '../../src/commands/policy.js';
+import { getVisibleCommands, getTelegramMenuCommands } from '../../src/command-contract/policy.js';
 
 test('CP-001: web visible includes help', () => {
   const cmds = getVisibleCommands('web');
@@ -242,7 +245,7 @@ test('CP-003: telegram visible includes model (readonly)', () => {
 ```js
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { renderHelp } from '../../src/commands/help-renderer.js';
+import { renderHelp } from '../../src/command-contract/help-renderer.js';
 
 test('HP-001: list mode', () => {
   const r = renderHelp({ iface: 'web' });
@@ -266,7 +269,7 @@ test('HP-003: unknown command', () => {
 
 ```js
 #!/usr/bin/env node
-import { getVisibleCommands, getTelegramMenuCommands } from '../src/commands/policy.js';
+import { getVisibleCommands, getTelegramMenuCommands } from '../src/command-contract/policy.js';
 
 const webCmds = getVisibleCommands('web').map(c=>c.name).sort();
 const tgHelp = getVisibleCommands('telegram').map(c=>c.name).sort();
@@ -295,7 +298,7 @@ node scripts/check-command-parity.mjs
 
 ## 완료 기준
 
-- [ ] `src/commands/{catalog,policy,help-renderer}.js` 생성
+- [ ] `src/command-contract/{catalog,policy,help-renderer}.js` 생성
 - [ ] `bin/cli-claw.js` printHelp → renderer 교체
 - [ ] Telegram setMyCommands → policy 교체
 - [ ] /api/commands 메타 확장

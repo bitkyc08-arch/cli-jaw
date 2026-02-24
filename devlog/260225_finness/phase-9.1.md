@@ -156,7 +156,7 @@ export function decodeFilenameSafe(rawHeader) {
 +        if (!file || file.includes('..') || file.startsWith('/')) {
 +            return res.status(400).json({ error: 'invalid_file_param' });
 +        }
-         const content = memory.read(req.query.file, { lines: req.query.lines });
+         const content = memory.read(file, { lines: req.query.lines });
          res.json({ content });
      } catch (e) { res.status(500).json({ error: e.message }); }
  });

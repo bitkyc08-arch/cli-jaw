@@ -14,7 +14,7 @@ tags: [cli-claw, finness, phase-8, backend, dependency, security, testing]
 ## 0) 요약 (핵심 결론)
 
 1. 구조 리스크는 여전히 큼
-- `500줄 초과 파일`이 5개이며, 특히 `server.js`에 API 60개가 집중됨.
+- `500줄 초과 파일`이 5개이며, 특히 `server.js`에 API 라우트가 과집중됨.
 - `catch {}`가 백엔드 범위에서 63건으로, 의도된 fallback과 위험한 무시가 혼재됨.
 
 2. 의존성 자체는 "치명적 즉시 취약" 신호는 낮음
@@ -75,13 +75,13 @@ wc -l server.js src/commands.js src/agent.js src/orchestrator.js src/prompt.js s
 
 | 파일 | 줄 수 | 상태 |
 |---|---:|---|
-| `server.js` | 856 | 기준 초과 |
-| `src/commands.js` | 639 | 기준 초과 |
-| `src/agent.js` | 607 | 기준 초과 |
+| `server.js` | 947 | 기준 초과 |
+| `src/commands.js` | 658 | 기준 초과 |
+| `src/agent.js` | 619 | 기준 초과 |
 | `src/orchestrator.js` | 584 | 기준 초과 |
-| `src/prompt.js` | 502 | 기준 초과 |
+| `src/prompt.js` | 497 | 적정 (경계 이하) |
 | `src/config.js` | 177 | 적정 |
-| `src/telegram.js` | 470 | 경계 |
+| `src/telegram.js` | 493 | 경계 |
 
 ### 2.2 API 라우트 수
 
@@ -89,10 +89,10 @@ wc -l server.js src/commands.js src/agent.js src/orchestrator.js src/prompt.js s
 rg -n "app\.(get|post|put|patch|delete)\('/api" server.js | wc -l
 ```
 
-결과: `60`
+결과: `62` (작성 시점)
 
 해석:
-- 단일 파일에 60개 엔드포인트가 몰려 있고, 요청 검증/응답 포맷/예외 처리 정책이 기능별로 일관되지 않음.
+- 단일 파일에 엔드포인트가 과밀되어 있고, 요청 검증/응답 포맷/예외 처리 정책이 기능별로 일관되지 않음.
 
 ### 2.3 조용한 catch 분포
 
@@ -438,10 +438,10 @@ export function globalErrorHandler(err, req, res, _next) {
 
 ## 6) 서버 구조 개선 계획 (왜 필요한지 포함)
 
-### 6.1 `server.js` 분리 (현재 856줄)
+### 6.1 `server.js` 분리 (현재 947줄)
 
 왜 필요한가:
-- 60개 라우트가 하나의 파일에 있어 변경 시 회귀 범위 예측이 어렵다.
+- 라우트가 하나의 파일에 집중되어 있어 변경 시 회귀 범위 예측이 어렵다.
 - 입력 검증/응답 포맷이 파일 내 위치에 따라 편차가 발생한다.
 
 대상 분리안:
@@ -615,8 +615,9 @@ export function globalErrorHandler(err, req, res, _next) {
 
 ### 9.2 응답/에러 공통화
 
-- [ ] `src/http-response.js` 추가
-- [ ] `src/http-validate.js` 추가
+- [ ] `src/http/response.js` 추가
+- [ ] `src/http/async-handler.js` 추가
+- [ ] `src/http/error-middleware.js` 추가
 - [ ] `asyncHandler` 미들웨어 추가
 - [ ] `globalErrorHandler` 추가
 - [ ] 라우트별 `{ ok, data }` 전환 계획 반영
@@ -624,9 +625,12 @@ export function globalErrorHandler(err, req, res, _next) {
 ### 9.3 테스트
 
 - [ ] `tests/unit/path-guards.test.js`
-- [ ] `tests/unit/http-validate.test.js`
-- [ ] `tests/unit/orchestrator.test.js`
+- [ ] `tests/unit/http-response.test.js`
+- [ ] `tests/unit/async-handler.test.js`
+- [ ] `tests/unit/orchestrator-parsing.test.js`
+- [ ] `tests/unit/orchestrator-triage.test.js`
 - [ ] `tests/unit/agent-args.test.js`
+- [ ] `tests/unit/settings-merge.test.js`
 - [ ] 커버리지 임계치 실행
 
 ### 9.4 의존성/정적분석
@@ -778,7 +782,7 @@ semgrep ci --sarif --sarif-output semgrep.sarif
 
 ---
 
-## 17) 부록 D: API 응답 정규화 매트릭스 (60개 라우트)
+## 17) 부록 D: API 응답 정규화 매트릭스 (작성 시점 62개 라우트)
 
 설명:
 - `현재`는 기존 구현의 대표 응답 형식을 적었다.
@@ -975,7 +979,7 @@ Phase 9 담당자가 바로 시작할 수 있도록 아래를 선행 공유한�
 
 1. 현재 지표
 - 500줄 초과 파일 5개
-- API 라우트 60개
+- API 라우트 62개 (작성 시점)
 - catch 63건
 - 테스트 파일 9개
 
@@ -1177,4 +1181,3 @@ node scripts/check-command-parity.mjs
 완료 기준:
 - 인터페이스별 command 목록과 help output이 정책상 완전히 일치
 - "보이지만 실행 불가" 명령 0건
-
