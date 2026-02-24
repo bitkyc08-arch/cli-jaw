@@ -216,18 +216,19 @@ export function getSystemPrompt() {
     let prompt = `${a1}\n\n${a2}`;
 
     // Auto-flush memories (threshold-based injection)
-    // Only inject at first message and every Nth flush cycle to save tokens
+    // Inject every ceil(threshold/2) messages: threshold=5 → inject at 0,3,5,8,10...
     try {
-        const injectEvery = settings.memory?.injectEvery ?? 2;
-        const shouldInject = memoryFlushCounter === 0 && (flushCycleCount % injectEvery === 0);
+        const threshold = settings.memory?.flushEvery ?? 20;
+        const injectInterval = Math.ceil(threshold / 2);
+        const shouldInject = memoryFlushCounter % injectInterval === 0;
         if (shouldInject) {
             const memories = loadRecentMemories();
             if (memories) {
                 prompt += memories;
-                console.log(`[memory] injected session memory (cycle ${flushCycleCount}, every ${injectEvery})`);
+                console.log(`[memory] injected (msg ${memoryFlushCounter}, every ${injectInterval})`);
             }
         } else {
-            console.log(`[memory] skipped injection (counter ${memoryFlushCounter}/${settings.memory?.flushEvery ?? 20}, cycle ${flushCycleCount})`);
+            console.log(`[memory] skipped injection (msg ${memoryFlushCounter}/${threshold}, interval ${injectInterval})`);
         }
     } catch {
         // Fallback: always inject if counter unavailable

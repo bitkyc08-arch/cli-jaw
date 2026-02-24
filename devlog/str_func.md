@@ -17,7 +17,7 @@ cli-claw/
 │   ├── db.js                 ← SQLite 스키마 + prepared statements (76L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (19L)
 │   ├── events.js             ← NDJSON 이벤트 파싱 (97L)
-│   ├── agent.js              ← CLI spawn + 스트림 + 큐 + 메모리 flush (360L)
+│   ├── agent.js              ← CLI spawn + 스트림 + 큐 + 메모리 flush (355L)
 │   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (131L)
 │   ├── telegram.js           ← Telegram 봇 + orchestrateAndCollect (267L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (91L)
@@ -27,11 +27,11 @@ cli-claw/
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결
 │       └── actions.js        ← snapshot/click/type/navigate/screenshot
 ├── public/                   ← Web UI (ES Modules, 18 files, 2504L)
-│   ├── index.html            ← HTML 뼈대 (416L, inline JS/CSS 없음)
+│   ├── index.html            ← HTML 뼈대 (418L, inline JS/CSS 없음)
 │   ├── css/
 │   │   ├── variables.css     ← CSS 커스텀 프로퍼티, 리셋 (47L)
 │   │   ├── layout.css        ← 사이드바, 탭, 세이브바 (162L)
-│   │   ├── chat.css          ← 채팅, 메시지, 타이핑, 첨부 (265L)
+│   │   ├── chat.css          ← 채팅, 메시지, 타이핑, 첨부, 멈춤 버튼 (275L)
 │   │   ├── sidebar.css       ← 설정, 스킬 카드, 토글 (215L)
 │   │   └── modals.css        ← 모달, 하트비트 카드 (171L)
 │   └── js/
@@ -39,12 +39,12 @@ cli-claw/
 │       ├── state.js          ← 공유 상태 모듈 (16L)
 │       ├── constants.js      ← MODEL_MAP, ROLE_PRESETS (23L)
 │       ├── render.js         ← renderMarkdown, escapeHtml (20L)
-│       ├── ui.js             ← DOM 조작 유틸 (138L)
+│       ├── ui.js             ← DOM 조작 유틸 + stop-mode 토글 (141L)
 │       ├── ws.js             ← WebSocket 연결 + 메시지 라우팅 (41L)
 │       └── features/
-│           ├── chat.js       ← 전송, 첨부, 드래그앤드롭 (111L)
+│           ├── chat.js       ← 전송, 첨부, 드래그앤드롭, 멈춤, 큐 (124L)
 │           ├── settings.js   ← 설정, CLI 상태, MCP, 프롬프트 (351L)
-│           ├── skills.js     ← 로드, 토글, 필터 (65L)
+│           ├── skills.js     ← 로드, 토글, 필터, 기타 카테고리 (69L)
 │           ├── employees.js  ← 서브에이전트 CRUD (92L)
 │           ├── heartbeat.js  ← 하트비트 모달/작업 (83L)
 │           └── memory.js     ← 메모리 모달/설정 (90L)
@@ -310,7 +310,7 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 
 | 폴더                              | 주제                                     | 상태 |
 | --------------------------------- | ---------------------------------------- | ---- |
-| `260223_권한/`                    | 권한 + 모듈화 + 스킬 + 브라우저 (P1~11)  | ✅    |
+| `260223_권한/`                    | 권한 + 모듈화 + 스킬 + 브라우저 (P1~13)  | ✅    |
 | `260223_메모리 개선/`             | 메모리 고도화 (flush 개선 + 신규 메모리) | ✅    |
 | `260223_모델/`                    | 모델 목록 + custom input                 | ✅    |
 | `260223_프론트엔드/`              | Web UI ES Modules 모듈화 (Phase 10)      | ✅    |
