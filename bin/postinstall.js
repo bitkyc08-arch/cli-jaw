@@ -75,7 +75,7 @@ const CLI_PACKAGES = [
     { bin: 'claude', pkg: '@anthropic-ai/claude-code' },
     { bin: 'codex', pkg: '@openai/codex' },
     { bin: 'gemini', pkg: '@google/gemini-cli' },
-    { bin: 'opencode', pkg: 'opencode-antigravity-auth' },
+    { bin: 'opencode', pkg: 'opencode-ai' },
 ];
 
 console.log(`[claw:init] checking CLI tools (using ${installLabel})...`);
@@ -88,8 +88,19 @@ for (const { bin, pkg } of CLI_PACKAGES) {
         try {
             execSync(`${installGlobal} ${pkg}`, { stdio: 'pipe', timeout: 180000 });
             console.log(`[claw:init] ✅ ${bin} installed`);
-        } catch (e) {
-            console.error(`[claw:init] ⚠️  ${bin}: auto-install failed — install manually: ${installGlobal} ${pkg}`);
+        } catch {
+            // Fallback: if bun failed, try npm
+            if (hasBun) {
+                console.log(`[claw:init] ⚠️  bun failed, trying npm i -g ${pkg} ...`);
+                try {
+                    execSync(`npm i -g ${pkg}`, { stdio: 'pipe', timeout: 180000 });
+                    console.log(`[claw:init] ✅ ${bin} installed (via npm fallback)`);
+                } catch {
+                    console.error(`[claw:init] ⚠️  ${bin}: auto-install failed — install manually: npm i -g ${pkg}`);
+                }
+            } else {
+                console.error(`[claw:init] ⚠️  ${bin}: auto-install failed — install manually: npm i -g ${pkg}`);
+            }
         }
     }
 }

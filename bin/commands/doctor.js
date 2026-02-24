@@ -69,7 +69,7 @@ check('heartbeat.json', () => {
 });
 
 // 5. CLI tools
-for (const cli of ['claude', 'codex', 'gemini', 'opencode']) {
+for (const cli of ['claude', 'codex', 'gemini', 'opencode', 'copilot']) {
     check(`CLI: ${cli}`, () => {
         try {
             execSync(`which ${cli}`, { stdio: 'pipe' });

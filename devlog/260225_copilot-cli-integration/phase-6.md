@@ -1,6 +1,6 @@
-# Phase 6: Copilot 할당량 + 추론강도 + CLI-CLAW 브랜딩
+# Phase 6: Copilot 할당량 + 추론강도 + CLI-CLAW 브랜딩 + UI 정합성
 
-> 예상 시간: 25분
+> 완료: 2026-02-25T00:38
 
 ---
 
@@ -23,192 +23,104 @@ Authorization: token {copilot-cli keychain token}
 Editor-Version: vscode/1.95.0
 ```
 
-### 응답 (테스트 완료)
+### 핵심 발견 🎉
 
-```json
-{
-    "login": "jondo1323",
-    "access_type_sku": "copilot_for_business_seat",
-    "quota_reset_date": "2026-03-01",
-    "quota_snapshots": {
-        "premium_interactions": {
-            "entitlement": 1500,
-            "percent_remaining": 4.42,
-            "remaining": 66,
-            "unlimited": false
-        },
-        "chat": { "unlimited": true },
-        "completions": { "unlimited": true }
-    }
-}
-```
+**Pro+ 계정에서 Copilot CLI chat은 모든 모델 무제한!**
 
-### 기존 UI 호환 (변경 불필요!)
+| quota | remaining | unlimited | 비고 |
+|-------|:---------:|:---------:|------|
+| `chat` | 0 | **True** ♾️ | CLI chat 전부 여기 |
+| `completions` | 0 | **True** ♾️ | IDE 자동완성 |
+| `premium_interactions` | 66 | False | CLI chat에서 미차감 |
 
-`renderCliStatus()`가 이미 bar 그래프 + account 표시 지원:
+실제 테스트 결과:
+- `claude-sonnet-4.6` (1x) × 3회 → premium **0** 차감
+- `claude-opus-4.6` (3x) × 1회 → premium **0** 차감
+- DB에서 `copilot | claude-opus-4.6` 모델 확인 완료
 
-```js
-// 기존 quota 구조체 — copilot도 동일하게 반환하면 자동 표시
-{
-    account: { email: "jondo1323", plan: "Pro+" },
-    windows: [{ label: "Premium", percent: 95.6 }],
-    resetDate: "2026-03-01"
-}
-```
+### 구현
 
-기존 CSS:
-```css
-/* bar 색상 (이미 구현됨) */
-pct > 80  → #ef4444 (빨강)
-pct > 50  → #fbbf24 (노랑)  
-pct <= 50 → #38bdf8 (파랑)
-```
+#### [NEW] `lib/quota-copilot.js` (67L)
 
-### 파일 변경
+- macOS keychain에서 토큰 읽기 (1회 팝업, 이후 메모리 캐싱)
+- `copilot_internal/user` API 호출 (`AbortSignal.timeout(8000)`)
+- 기존 `renderCliStatus()` 호환 구조체 반환
 
-#### [NEW] `lib/quota-copilot.js`
+#### [MODIFY] `server.js`
 
-```js
-import { execSync } from 'child_process';
-
-export async function fetchCopilotQuota() {
-    let token;
-    try {
-        token = execSync('security find-generic-password -s "copilot-cli" -w',
-            { encoding: 'utf8', timeout: 3000 }).trim();
-    } catch { return null; }
-    if (!token) return null;
-
-    const res = await fetch('https://api.github.com/copilot_internal/user', {
-        headers: {
-            'Authorization': `token ${token}`,
-            'Editor-Version': 'vscode/1.95.0',
-        },
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
-
-    const snap = data.quota_snapshots || {};
-    const pi = snap.premium_interactions || {};
-    const windows = [];
-
-    if (!pi.unlimited && pi.entitlement) {
-        windows.push({
-            label: 'Premium',
-            used: pi.entitlement - (pi.remaining || 0),
-            limit: pi.entitlement,
-            percent: 100 - (pi.percent_remaining || 0),
-        });
-    }
-
-    return {
-        account: {
-            email: data.login,
-            plan: data.access_type_sku?.replace(/_/g, ' '),
-        },
-        windows,
-        resetDate: data.quota_reset_date,
-    };
-}
-```
-
-#### [MODIFY] `server.js` L599-606
-
-```diff
- app.get('/api/quota', async (_, res) => {
--    const [claude, codex] = await Promise.all([
-+    const [claude, codex, copilot] = await Promise.all([
-         fetchClaudeUsage(readClaudeCreds()),
-         fetchCodexUsage(readCodexTokens()),
-+        fetchCopilotQuota(),
-     ]);
-     const gemini = readGeminiAccount();
--    res.json({ claude, codex, gemini, opencode: null, copilot: null });
-+    res.json({ claude, codex, gemini, opencode: null, copilot });
- });
-```
-
-> 기존 `renderCliStatus()` 코드가 `account`, `windows` 구조를 그대로 소비하므로 프론트엔드 수정 불필요
+- `import { fetchCopilotQuota }` 추가
+- `/api/quota` 라우트에 copilot 추가
 
 ---
 
-## 6.2 추론강도 (Reasoning Effort)
+## 6.2 추론강도 (Reasoning Effort) — 비활성화
 
-### CLI별 비교
+### 경위
 
-| CLI | 옵션 | 값 |
-|-----|------|------|
-| Claude | `--effort` | low, medium, high |
-| Codex | `--reasoning` | low, medium, high, xhigh |
-| Copilot | `--reasoning-effort` | low, medium, high |
+1. 초기 계획: `--reasoning-effort` CLI 플래그 전달
+2. **테스트 결과**: Copilot CLI가 `--reasoning-effort` 미지원
+3. 대안: `~/.copilot/config.json` 직접 수정 (Method A)
+4. **최종 결정**: UI effort 비활성화 (글로벌 config.json은 외부 영향 있음)
 
-> Copilot CLI v0.0.415의 `~/.copilot/config.json`에 `"reasoning_effort": "high"` 확인됨
+### 현재 상태
 
-### 파일 변경
+| 항목 | 값 |
+|------|------|
+| `cli-registry.js` copilot.efforts | `[]` (비활성) |
+| `cli-registry.js` copilot.effortNote | `~/.copilot/config.json` |
+| UI effort 드롭다운 | disabled, `~/.copilot/config.json` 표시 |
+| `agent.js` config.json 쓰기 | 제거됨 |
 
-#### [MODIFY] `src/acp-client.js`
-
-```diff
- constructor({ model, workDir, permissions = 'safe' } = {}) {
-     // ...
-     this.model = model;
-+    this.effort = null; // set before spawn
- }
-
- spawn() {
-     const args = ['--acp'];
-     if (this.model) args.push('--model', this.model);
-+    if (this.effort) args.push('--reasoning-effort', this.effort);
-```
-
-#### [MODIFY] `src/agent.js` (copilot ACP branch)
-
-```diff
--    const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });
-+    const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });
-+    if (effort) acp.effort = effort;
-```
-
-#### [MODIFY] `public/js/constants.js` — copilot efforts 배열
-
-```diff
- copilot: {
-     label: 'Copilot',
--    efforts: [],
-+    efforts: ['low', 'medium', 'high'],
-     models: [...]
- }
-```
-
-> UI는 이미 `syncPerCliModelAndEffortControls()`가 efforts 배열 기반으로 effortCopilot 드롭다운을 동적 생성하므로 HTML 변경 불필요
+> 사용자가 수동으로 `~/.copilot/config.json`에서 `reasoning_effort` 설정 가능
 
 ---
 
 ## 6.3 UI 브랜딩: CLAW → CLI-CLAW
 
-#### [MODIFY] `public/index.html` — 3곳
-
-```diff
--    <title>🦞 Claw Agent</title>
-+    <title>🦞 CLI-CLAW</title>
-
--    <div class="logo">🦞 CLAW</div>
-+    <div class="logo">🦞 CLI-CLAW</div>
-
--    <div class="chat-header">🦞 Claw Agent ● <span id="headerCli">claude</span></div>
-+    <div class="chat-header">🦞 CLI-CLAW ● <span id="headerCli">claude</span></div>
-```
+`public/index.html` — 3곳:
+- `<title>` → `🦞 CLI-CLAW`
+- `<div class="logo">` → `🦞 CLI-CLAW`
+- `<div class="chat-header">` → `🦞 CLI-CLAW ●`
 
 ---
 
-## 6.4 구현 순서
+## 6.4 UI 정합성 수정
 
-| # | 작업 | 파일 | 시간 |
-|---|------|------|------|
-| 1 | 브랜딩 변경 | `index.html` (3곳) | 1분 |
-| 2 | quota 모듈 | `lib/quota-copilot.js` [NEW] | 5분 |
-| 3 | quota 라우트 | `server.js` (3줄) | 2분 |
-| 4 | effort 전달 | `acp-client.js` + `agent.js` | 3분 |
-| 5 | effort UI | `constants.js` (1줄) | 1분 |
-| 6 | 테스트 | curl /api/quota + UI 확인 | 5분 |
-| 7 | 커밋 + 푸시 | — | 2분 |
+### 6.4.1 Model 드롭다운 "default" 옵션
+
+| 위치 | "default" | 이유 |
+|------|:---------:|------|
+| Active CLI selModel | ✅ | 소비자 — perCli 참조 |
+| Per-CLI 설정 (🟣🟢🔵🟠💙) | ❌ | 소스 — 순환참조 방지 |
+| Sub Agent | ✅ | 소비자 — CLI defaultModel 사용 |
+
+### 6.4.2 Effort 드롭다운 UX
+
+- 비어있는 efforts CLI → `effortNote` 필드 표시 + `disabled`
+- Copilot: `~/.copilot/config.json` 힌트 표시
+
+### 6.4.3 Fallback constants.js 동기화
+
+- `constants.js` FALLBACK_CLI_REGISTRY copilot efforts/effortNote → server 동일
+
+### 6.4.4 기타 정합성
+
+| 수정 | 파일 |
+|------|------|
+| Copilot quota fetch 8s timeout | `quota-copilot.js` |
+| Telegram origin 필터 | `telegram.js` |
+| ACP optionId 폴백 (value/id/optionId) | `acp-client.js` |
+
+---
+
+## 커밋 로그
+
+| 해시 | 메시지 |
+|------|--------|
+| `a4fc3e3` | phase 6: branding, quota, effort config.json |
+| `4a6ea0c` | docs: str_func + README, 3 consistency fixes |
+| `ae9fc8f` | fix: effort='' deletes reasoning_effort |
+| `e691617` | fix: disable copilot effort |
+| `5a58057` | fix: add 'default' to Active CLI model |
+| `7f24869` | fix: effortNote hint, telegram origin, ACP optionId |
+| `2b00f0c` | fix: remove 'default' from per-CLI model |
