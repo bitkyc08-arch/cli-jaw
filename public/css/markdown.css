@@ -1,0 +1,162 @@
+/* ── Markdown rendering styles ── */
+
+/* Tables */
+.msg-content table {
+    border-collapse: collapse;
+    width: auto;
+    margin: 8px 0;
+    font-size: 12px;
+    border: 1px solid var(--table-border);
+}
+
+.msg-content th,
+.msg-content td {
+    border: 1px solid rgba(6, 182, 212, 0.35);
+    padding: 5px 12px;
+    text-align: left;
+}
+
+.msg-content th {
+    background: rgba(6, 182, 212, 0.1);
+    font-weight: 600;
+    white-space: nowrap;
+    border-bottom: 2px solid var(--table-border);
+}
+
+.msg-content tr:nth-child(even) {
+    background: rgba(255, 255, 255, 0.03);
+}
+
+/* Code blocks */
+.msg-content pre {
+    background: var(--code-bg);
+    padding: 12px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 8px 0;
+    font-size: 12px;
+    line-height: 1.45;
+}
+
+.msg-content pre code {
+    background: none;
+    padding: 0;
+    border-radius: 0;
+    font-family: var(--font-mono);
+}
+
+.msg-content code {
+    background: var(--border);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 0.9em;
+    font-family: var(--font-mono);
+}
+
+/* Blockquotes */
+.msg-content blockquote {
+    border-left: 3px solid var(--accent, #60a5fa);
+    margin: 8px 0;
+    padding: 4px 12px;
+    color: var(--text-dim);
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 0 4px 4px 0;
+}
+
+/* Lists */
+.msg-content ul,
+.msg-content ol {
+    margin: 4px 0;
+    padding-left: 20px;
+}
+
+.msg-content li {
+    margin: 2px 0;
+}
+
+/* Links */
+.msg-content a {
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.msg-content a:hover {
+    text-decoration: underline;
+}
+
+/* Horizontal rules */
+.msg-content hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 12px 0;
+}
+
+/* Headings inside messages */
+.msg-content h1,
+.msg-content h2,
+.msg-content h3 {
+    margin: 10px 0 4px;
+    line-height: 1.3;
+}
+
+.msg-content h1 {
+    font-size: 16px;
+}
+
+.msg-content h2 {
+    font-size: 14px;
+}
+
+.msg-content h3 {
+    font-size: 13px;
+}
+
+/* Paragraphs */
+.msg-content p {
+    margin: 4px 0;
+}
+
+/* KaTeX */
+.msg-content .katex-display {
+    margin: 8px 0;
+    overflow-x: auto;
+}
+
+/* Mermaid */
+.msg-content .mermaid-container {
+    margin: 8px 0;
+    text-align: center;
+}
+
+.msg-content .mermaid-container svg {
+    max-width: 100%;
+}
+
+/* Code block language label */
+.msg-content .code-block-wrapper {
+    position: relative;
+}
+
+.msg-content .code-lang-label {
+    position: absolute;
+    top: 0;
+    right: 0;
+    padding: 2px 8px;
+    font-size: 10px;
+    color: var(--code-label-color);
+    background: rgba(255, 255, 255, 0.05);
+    border-radius: 0 6px 0 4px;
+    font-family: 'SF Mono', monospace;
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.15s, transform 0.15s, color 0.15s;
+}
+
+.msg-content .code-lang-label:hover {
+    background: rgba(255, 255, 255, 0.15);
+    transform: scale(1.05);
+}
+
+.msg-content .code-lang-label.copied {
+    color: #4ade80;
+}

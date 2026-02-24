@@ -1,0 +1,7 @@
+{
+  "type": "item.completed",
+  "item": {
+    "type": "command_execution",
+    "command": "npm run test:events"
+  }
+}

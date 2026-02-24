@@ -1,0 +1,88 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "send_interactive_1710000300000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "send_interactive",
+        "config": {
+          "interactive_type": "button",
+          "body_text": "How can we help you today?",
+          "buttons": [
+            { "id": "sales", "title": "Sales" },
+            { "id": "support", "title": "Support" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wait_for_response_1710000304000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 520 },
+      "data": {
+        "node_type": "wait_for_response",
+        "config": {
+          "save_response_to": "button_choice"
+        }
+      }
+    },
+    {
+      "id": "decide_1710000308000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 720 },
+      "data": {
+        "node_type": "decide",
+        "config": {
+          "decision_type": "function",
+          "function_id": "FUNCTION_ID_HERE",
+          "conditions": [
+            { "label": "sales", "description": "User selected Sales" },
+            { "label": "support", "description": "User selected Support" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000312000",
+      "type": "flow-node",
+      "position": { "x": 0, "y": 920 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Got it - connecting you to Sales.",
+          "delay_seconds": 0
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000316000",
+      "type": "flow-node",
+      "position": { "x": 240, "y": 920 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Got it - connecting you to Support.",
+          "delay_seconds": 0
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "send_interactive_1710000300000", "label": "next" },
+    { "source": "send_interactive_1710000300000", "target": "wait_for_response_1710000304000", "label": "next" },
+    { "source": "wait_for_response_1710000304000", "target": "decide_1710000308000", "label": "next" },
+    { "source": "decide_1710000308000", "target": "send_text_1710000312000", "label": "sales" },
+    { "source": "decide_1710000308000", "target": "send_text_1710000316000", "label": "support" }
+  ]
+}
+

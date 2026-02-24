@@ -1,0 +1,8 @@
+node_modules/
+*.db
+*.db-shm
+*.db-wal
+settings.json
+.DS_Store
+.env
+.artifacts/

@@ -1,0 +1,62 @@
+name: Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - agent
+  pull_request:
+
+jobs:
+  node-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build native modules
+        run: cd node_modules/better-sqlite3 && npx --yes prebuild-install || npm run build-release
+
+      - name: Run tests
+        run: npm test
+
+      - name: Deps security check
+        run: npm run check:deps
+
+      - name: File size check
+        run: |
+          echo "=== Files over 500 lines ==="
+          find . -name '*.js' -not -path './node_modules/*' -not -path './skills_ref/*' \
+            | xargs wc -l | sort -rn | awk '$1 > 500 && !/total/ { print "⚠️ " $0; found=1 } END { if (!found) print "✅ All files under 500 lines" }'
+
+      - name: CLI basic tests
+        run: node --test tests/integration/cli-basic.test.js
+
+      - name: API smoke tests
+        run: |
+          node server.js &
+          SERVER_PID=$!
+          # Wait for server to be ready (max 10s)
+          for i in $(seq 1 20); do
+            if curl -sf http://localhost:3457/api/session > /dev/null 2>&1; then
+              echo "✅ Server ready after $((i/2))s"
+              break
+            fi
+            sleep 0.5
+          done
+          TEST_PORT=3457 node --test tests/integration/api-smoke.test.js || SMOKE_EXIT=$?
+          kill $SERVER_PID 2>/dev/null || true
+          exit ${SMOKE_EXIT:-0}
+        env:
+          NODE_ENV: test
+

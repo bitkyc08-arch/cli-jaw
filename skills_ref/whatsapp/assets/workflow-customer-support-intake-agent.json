@@ -1,0 +1,56 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "send_text_1710000200000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Thanks for reaching out. Please reply with your email and a short description of the issue.",
+          "delay_seconds": 0
+        }
+      }
+    },
+    {
+      "id": "wait_for_response_1710000204000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 520 },
+      "data": {
+        "node_type": "wait_for_response",
+        "config": {
+          "save_response_to": "support_intake"
+        }
+      }
+    },
+    {
+      "id": "agent_1710000208000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 720 },
+      "data": {
+        "node_type": "agent",
+        "config": {
+          "system_prompt": "You are a customer support agent. The user's intake message is in vars.support_intake. Extract the email and issue summary. Ask concise follow-up questions if critical details are missing. When you have enough info, summarize the issue and call complete_task.",
+          "provider_model_id": "PROVIDER_MODEL_ID_HERE",
+          "max_iterations": 20,
+          "temperature": 0.2
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "send_text_1710000200000", "label": "next" },
+    { "source": "send_text_1710000200000", "target": "wait_for_response_1710000204000", "label": "next" },
+    { "source": "wait_for_response_1710000204000", "target": "agent_1710000208000", "label": "next" }
+  ]
+}
+

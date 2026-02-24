@@ -1,0 +1,31 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "agent_1710000100000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "agent",
+        "config": {
+          "system_prompt": "You are a helpful assistant. Ask one clarifying question if needed, then call complete_task.",
+          "provider_model_id": "PROVIDER_MODEL_ID_HERE",
+          "max_iterations": 10,
+          "temperature": 0.2
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "agent_1710000100000", "label": "next" }
+  ]
+}
+

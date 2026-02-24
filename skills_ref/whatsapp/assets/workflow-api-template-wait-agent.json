@@ -1,0 +1,59 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "send_template_1710000500000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "send_template",
+        "config": {
+          "template_id": "TEMPLATE_ID_HERE",
+          "parameters": {
+            "1": "{{vars.customer_name}}",
+            "2": "{{vars.case_id}}"
+          }
+        }
+      }
+    },
+    {
+      "id": "wait_for_response_1710000504000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 520 },
+      "data": {
+        "node_type": "wait_for_response",
+        "config": {
+          "save_response_to": "user_reply"
+        }
+      }
+    },
+    {
+      "id": "agent_1710000508000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 720 },
+      "data": {
+        "node_type": "agent",
+        "config": {
+          "system_prompt": "You are following up on a WhatsApp template message triggered by an API call. Use vars.case_id and vars.customer_name for context. The user's reply is in vars.user_reply. Resolve the request or gather the missing details. When complete, summarize and call complete_task.",
+          "provider_model_id": "PROVIDER_MODEL_ID_HERE",
+          "max_iterations": 20,
+          "temperature": 0.2
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "send_template_1710000500000", "label": "next" },
+    { "source": "send_template_1710000500000", "target": "wait_for_response_1710000504000", "label": "next" },
+    { "source": "wait_for_response_1710000504000", "target": "agent_1710000508000", "label": "next" }
+  ]
+}
+

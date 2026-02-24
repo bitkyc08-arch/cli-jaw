@@ -1,0 +1,10 @@
+{
+  "type": "item.completed",
+  "item": {
+    "type": "web_search",
+    "action": {
+      "type": "search",
+      "query": "node test runner"
+    }
+  }
+}

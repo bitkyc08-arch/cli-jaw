@@ -1,0 +1,5 @@
+{
+  "name": "webhook-handler",
+  "description": "Store webhook payloads",
+  "code": "async function handler(request, env) {\n  const payload = await request.json();\n  await env.DB.prepare(\"INSERT INTO webhook_logs (event, data) VALUES (?, ?)\").bind(payload.event, JSON.stringify(payload.data)).run();\n  return new Response(JSON.stringify({ success: true }), { headers: { 'Content-Type': 'application/json' } });\n}"
+}

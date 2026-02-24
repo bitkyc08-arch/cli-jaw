@@ -1,0 +1,11 @@
+{
+  "filters": {
+    "status": "eq.active",
+    "created_at": "gte.2025-01-01"
+  },
+  "data": {
+    "phone": "+14155550123",
+    "name": "Alicia",
+    "status": "active"
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "send_text_1710000000000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Hello! What's your name?",
+          "delay_seconds": 0
+        }
+      }
+    },
+    {
+      "id": "wait_for_response_1710000005000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 520 },
+      "data": {
+        "node_type": "wait_for_response",
+        "config": {
+          "save_response_to": "user_name"
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000009000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 720 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Nice to meet you, {{vars.user_name}}!",
+          "delay_seconds": 0
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "send_text_1710000000000", "label": "next" },
+    { "source": "send_text_1710000000000", "target": "wait_for_response_1710000005000", "label": "next" },
+    { "source": "wait_for_response_1710000005000", "target": "send_text_1710000009000", "label": "next" }
+  ]
+}

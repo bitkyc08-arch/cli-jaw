@@ -1,0 +1,89 @@
+{
+  "nodes": [
+    {
+      "id": "start",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 120 },
+      "data": {
+        "node_type": "start",
+        "config": {}
+      }
+    },
+    {
+      "id": "send_interactive_1710000400000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 320 },
+      "data": {
+        "node_type": "send_interactive",
+        "config": {
+          "interactive_type": "button",
+          "body_text": "How can we help you today?",
+          "buttons": [
+            { "id": "sales", "title": "Sales" },
+            { "id": "support", "title": "Support" }
+          ]
+        }
+      }
+    },
+    {
+      "id": "wait_for_response_1710000404000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 520 },
+      "data": {
+        "node_type": "wait_for_response",
+        "config": {
+          "save_response_to": "button_choice"
+        }
+      }
+    },
+    {
+      "id": "decide_1710000408000",
+      "type": "flow-node",
+      "position": { "x": 120, "y": 720 },
+      "data": {
+        "node_type": "decide",
+        "config": {
+          "decision_type": "ai",
+          "provider_model_id": "PROVIDER_MODEL_ID_HERE",
+          "conditions": [
+            { "label": "sales", "description": "User selected Sales (button id: sales)" },
+            { "label": "support", "description": "User selected Support (button id: support)" }
+          ],
+          "llm_temperature": 0.0
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000412000",
+      "type": "flow-node",
+      "position": { "x": 0, "y": 920 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Got it - connecting you to Sales.",
+          "delay_seconds": 0
+        }
+      }
+    },
+    {
+      "id": "send_text_1710000416000",
+      "type": "flow-node",
+      "position": { "x": 240, "y": 920 },
+      "data": {
+        "node_type": "send_text",
+        "config": {
+          "message": "Got it - connecting you to Support.",
+          "delay_seconds": 0
+        }
+      }
+    }
+  ],
+  "edges": [
+    { "source": "start", "target": "send_interactive_1710000400000", "label": "next" },
+    { "source": "send_interactive_1710000400000", "target": "wait_for_response_1710000404000", "label": "next" },
+    { "source": "wait_for_response_1710000404000", "target": "decide_1710000408000", "label": "next" },
+    { "source": "decide_1710000408000", "target": "send_text_1710000412000", "label": "sales" },
+    { "source": "decide_1710000408000", "target": "send_text_1710000416000", "label": "support" }
+  ]
+}
+

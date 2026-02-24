@@ -1,0 +1,51 @@
+{
+  "name": "cli-claw-ts",
+  "version": "0.1.0",
+  "type": "module",
+  "bin": {
+    "cli-claw": "bin/cli-claw.ts"
+  },
+  "files": [
+    "bin/",
+    "server.js",
+    "public/",
+    "package.json",
+    "src/",
+    "lib/",
+    "skills_ref/"
+  ],
+  "scripts": {
+    "dev": "tsx --env-file=.env server.ts",
+    "postinstall": "tsx bin/postinstall.ts",
+    "check:copilot-gap": "node scripts/check-copilot-gap.js",
+    "check:deps": "node scripts/check-deps-offline.mjs",
+    "check:deps:online": "bash scripts/check-deps-online.sh",
+    "test": "tsx --test tests/*.test.ts tests/**/*.test.ts",
+    "test:coverage": "node --test --experimental-test-coverage tests/*.test.js tests/**/*.test.js",
+    "test:watch": "node --test --watch tests/*.test.js tests/**/*.test.js",
+    "test:events": "node --test tests/events.test.js",
+    "test:telegram": "node --test tests/telegram-forwarding.test.js",
+    "test:smoke": "TEST_PORT=3457 node --test tests/integration/api-smoke.test.js",
+    "build": "tsc",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@grammyjs/runner": "^2.0.3",
+    "@grammyjs/transformer-throttler": "^1.2.1",
+    "better-sqlite3": "^11.7.0",
+    "express": "^4.21.0",
+    "grammy": "^1.40.0",
+    "helmet": "^8.1.0",
+    "node-fetch": "^3.3.2",
+    "playwright-core": "^1.58.2",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "@types/node": "^22.0.0",
+    "@types/express": "^5.0.0",
+    "@types/better-sqlite3": "^7.6.0",
+    "@types/ws": "^8.5.0",
+    "tsx": "^4.19.0"
+  }
+}
