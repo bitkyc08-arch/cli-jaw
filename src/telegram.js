@@ -93,6 +93,7 @@ export function orchestrateAndCollect(prompt) {
 
 export let telegramBot = null;
 export const telegramActiveChatIds = new Set();
+let tgProcessing = false;  // true while tgOrchestrate is handling a request
 const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
 const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // read-only on Telegram
 
@@ -273,6 +274,7 @@ export function initTelegram() {
         }
 
         markChatActive(ctx.chat.id);
+        tgProcessing = true;
         insertMessage.run('user', displayMsg, 'telegram', '');
         broadcast('new_message', { role: 'user', content: displayMsg, source: 'telegram' });
 
@@ -312,6 +314,7 @@ export function initTelegram() {
 
         try {
             const result = await orchestrateAndCollect(prompt);
+            tgProcessing = false;
             clearInterval(typingInterval);
             if (toolHandler) removeBroadcastListener(toolHandler);
             if (statusMsgId) {
@@ -328,6 +331,7 @@ export function initTelegram() {
             }
             console.log(`[tg:out] ${ctx.chat.id}: ${result.slice(0, 80)}`);
         } catch (err) {
+            tgProcessing = false;
             clearInterval(typingInterval);
             if (toolHandler) removeBroadcastListener(toolHandler);
             if (statusMsgId) {
@@ -389,6 +393,27 @@ export function initTelegram() {
             await ctx.reply(`❌ 파일 처리 실패: ${err.message}`);
         }
     });
+    // ─── Global Forwarding: non-Telegram responses → Telegram ───
+    if (settings.telegram?.forwardAll !== false) {
+        addBroadcastListener((type, data) => {
+            if (type !== 'agent_done' || !data.text) return;
+            if (data.error) return;
+            if (tgProcessing) return;  // Telegram request → handled by tgOrchestrate
+            const chatIds = Array.from(telegramActiveChatIds);
+            if (!chatIds.length) return;
+            const lastChatId = chatIds[chatIds.length - 1];
+
+            const preview = (data.text || '').slice(0, 200).replace(/\n/g, ' ');
+            console.log(`[tg:forward] → chat ${lastChatId}: ${preview.slice(0, 60)}...`);
+
+            const html = markdownToTelegramHtml(data.text);
+            const chunks = chunkTelegramMessage(html);
+            for (const chunk of chunks) {
+                bot.api.sendMessage(lastChatId, `📡 ${chunk}`, { parse_mode: 'HTML' })
+                    .catch(() => bot.api.sendMessage(lastChatId, `📡 ${chunk.replace(/<[^>]+>/g, '')}`).catch(() => { }));
+            }
+        });
+    }
 
     void syncTelegramCommands(bot).catch((e) => {
         console.warn('[tg:commands] setMyCommands failed:', e.message);
