@@ -180,18 +180,12 @@ function extractToolLabels(cli, event) {
     }
 
     if (cli === 'claude') {
-        // Real-time streaming: content_block_start for tool_use/thinking
+        // Real-time streaming only (--include-partial-messages)
+        // assistant bulk event is skipped to avoid duplicate broadcasts
         if (event.type === 'stream_event' && event.event?.type === 'content_block_start') {
             const cb = event.event.content_block;
             if (cb?.type === 'tool_use') labels.push({ icon: '🔧', label: cb.name || 'tool' });
             if (cb?.type === 'thinking') labels.push({ icon: '💭', label: 'thinking...' });
-        }
-        // Bulk turn event
-        if (event.type === 'assistant' && event.message?.content) {
-            for (const block of event.message.content) {
-                if (block.type === 'tool_use') labels.push({ icon: '🔧', label: block.name });
-                if (block.type === 'thinking') labels.push({ icon: '💭', label: (block.thinking || '').slice(0, 60) });
-            }
         }
     }
 
