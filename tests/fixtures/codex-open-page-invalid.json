@@ -1,0 +1,10 @@
+{
+  "type": "item.completed",
+  "item": {
+    "type": "web_search",
+    "action": {
+      "type": "open_page",
+      "url": "not a url"
+    }
+  }
+}

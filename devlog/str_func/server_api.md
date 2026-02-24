@@ -47,7 +47,7 @@ ensureDirs() → runMigration() → loadSettings() → initPromptFiles()
 | Memory Files   | `GET /api/memory-files` `GET/DELETE /api/memory-files/:fn` `PUT /api/memory-files/settings`                   |
 | Claw Memory    | `GET /api/claw-memory/search,read,list` `POST /api/claw-memory/save,init`                                     |
 | Upload & MCP   | `POST /api/upload` `GET/PUT /api/mcp` `POST /api/mcp/sync,install,reset`                                      |
-| Status & Quota | `GET /api/cli-status` `GET /api/quota`                                                                        |
+| Status & Quota | `GET /api/cli-status` `GET /api/quota` (Claude/Codex/Gemini/**Copilot**)                                       |
 | Skills         | `GET /api/skills` `POST /api/skills/enable,disable` `GET /api/skills/:id` `POST /api/skills/reset`            |
 | Employees      | `GET/POST /api/employees` `PUT/DELETE /api/employees/:id` `POST /api/employees/reset`                         |
 | Browser        | `POST start,stop,act(+mouse-click),vision-click,navigate,screenshot,evaluate` `GET status,tabs,snapshot,text` |

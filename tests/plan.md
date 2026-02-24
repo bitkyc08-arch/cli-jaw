@@ -1,7 +1,20 @@
 # CLI-Claw 테스트 계획
 
 > 작성일: 2026-02-25
-> 상태: 계획 (미구현)
+> 상태: 부분 구현 (2026-02-24 검증 반영)
+
+## 계획 검증 결과 (2026-02-24)
+
+- 현재 실행 중 테스트:
+  - `tests/events.test.js`
+  - `tests/events-acp.test.js`
+  - `tests/telegram-forwarding.test.js`
+- 이번 검증에서 반영한 보강:
+  - `events.js`: `extractSessionId`, `extractFromEvent`, `extractToolLabels`, `extractFromAcpUpdate` 멀티-CLI 경로 테스트 추가
+  - `telegram-forwarder.js`: skip/fallback 오탐 방지 assertion, markdown/chunk 유틸 테스트 추가
+- 아직 미구현:
+  - `cli-registry`, `bus`, `worklog`, `memory`, `commands`, `config`, `prompt` 테스트
+  - fixture 확장(`codex-events.json`, `gemini-events.json`, `opencode-events.json`) 및 integration tier
 
 ## 프레임워크
 

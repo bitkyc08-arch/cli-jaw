@@ -259,7 +259,7 @@ export function spawnAgent(prompt, opts = {}) {
                     cfg.reasoning_effort = effort;
                     fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
                 }
-            } catch { /* config.json may not exist */ }
+            } catch (e) { console.warn('[claw:copilot] effort config.json write failed:', e.message); }
         }
 
         const acp = new AcpClient({ model, workDir: settings.workingDir, permissions });

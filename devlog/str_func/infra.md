@@ -22,7 +22,7 @@ CLI_REGISTRY = {
     codex:    { label: 'Codex',    binary: 'codex',    defaultModel: 'gpt-5.3-codex', ... },
     gemini:   { label: 'Gemini',   binary: 'gemini',   defaultModel: 'gemini-2.5-pro', ... },
     opencode: { label: 'OpenCode', binary: 'opencode', defaultModel: 'anthropic/claude-opus-4-6-thinking', ... },
-    copilot:  { label: 'Copilot',  binary: 'copilot',  defaultModel: 'claude-sonnet-4.6', ... },
+    copilot:  { label: 'Copilot',  binary: 'copilot',  defaultModel: 'claude-sonnet-4.6', defaultEffort: 'high', efforts: ['low','medium','high'], ... },
 };
 ```
 

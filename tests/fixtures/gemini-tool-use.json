@@ -1,0 +1,7 @@
+{
+  "type": "tool_use",
+  "tool_name": "shell",
+  "parameters": {
+    "command": "npm run lint"
+  }
+}

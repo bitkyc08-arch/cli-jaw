@@ -1,6 +1,6 @@
-# CLI-Claw — Source Structure & Function Reference
+# CLI-CLAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-25T08:00 (server.js 854L / agent.js 563L / orchestrator.js 584L / prompt.js 502L / telegram.js 439L / acp-client.js 243L / cli-registry.js 87L)
+> 마지막 검증: 2026-02-25T08:52 (server.js 856L / agent.js 575L / orchestrator.js 584L / prompt.js 502L / telegram.js 413L / acp-client.js 243L / cli-registry.js 87L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -13,19 +13,21 @@ cli-claw/
 ├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx + /api/cli-registry (854L)
 ├── lib/
 │   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 + symlink 보호 (645L)
-│   └── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
+│   ├── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
+│   └── quota-copilot.js      ← [NEW] Copilot 할당량 조회 (keychain→copilot_internal/user API) (67L)
 ├── src/
 │   ├── cli-registry.js       ← [NEW] 5개 CLI/모델 단일 소스 레지스트리 (87L)
 │   ├── acp-client.js         ← [NEW] Copilot ACP JSON-RPC 클라이언트 (243L)
 │   ├── config.js             ← CLAW_HOME, settings, CLI 탐지 (cli-registry 기반), APP_VERSION (177L)
 │   ├── db.js                 ← SQLite 스키마 + prepared statements + trace (84L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast + removeBroadcastListener(fn) (20L)
-│   ├── events.js             ← NDJSON 파싱 + dedupe key + ACP update 파싱 + logEventSummary (309L)
+│   ├── events.js             ← NDJSON 파싱 + dedupe key + ACP update 파싱 + logEventSummary + test helpers (318L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (cli-registry import) (639L)
-│   ├── agent.js              ← CLI spawn + ACP 분기 + origin 전달 + 히스토리빌더 + 스트림 + 큐 + 메모리 flush (563L)
+│   ├── agent.js              ← CLI spawn + ACP 분기 + effort config.json 쓰기 + origin 전달 + 히스토리빌더 + 스트림 + 큐 + 메모리 flush (575L)
 │   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + origin 전달 + phase skip (584L)
 │   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
-│   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 (439L)
+│   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 (413L)
+│   ├── telegram-forwarder.js ← [NEW] Telegram 포워딩 헬퍼 추출 (escape, chunk, createForwarder) (73L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
 │   ├── prompt.js             ← 프롬프트 + 스킬 + 서브에이전트 v2 + phase skip + git금지 (502L)
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
@@ -35,7 +37,7 @@ cli-claw/
 │       ├── vision.js         ← vision-click 파이프라인 + Codex provider (138L)
 │       └── index.js          ← re-export hub (13L)
 ├── public/                   ← Web UI (ES Modules, 19 files, ~3000L)
-│   ├── index.html            ← HTML 뼈대 (440L, inline JS/CSS 없음)
+│   ├── index.html            ← HTML 뼈대 (412L, inline JS/CSS 없음, 🦞 CLI-CLAW 브랜딩)
 │   ├── css/                  ← 5 files (964L)
 │   └── js/                   ← 13 files (1600L)
 │       └── constants.js      ← loadCliRegistry() 동적 로딩 + FALLBACK_CLI_REGISTRY (114L)
@@ -148,6 +150,8 @@ graph LR
 12. **symlink 보호**: 실디렉토리 충돌 시 backup 우선 (무조건 삭제 금지)
 13. **CLI registry**: `src/cli-registry.js`에서 5개 CLI 정의, 프론트/백엔드가 `/api/cli-registry`로 동기화
 14. **Copilot ACP**: JSON-RPC 2.0 over stdio, `session/update` 이벤트로 실시간 스트리밍
+15. **Copilot effort**: `--reasoning-effort` 미지원 → `~/.copilot/config.json` `reasoning_effort` 직접 수정
+16. **Copilot quota**: macOS keychain `copilot-cli` → `copilot_internal/user` API (캐싱, 서버당 1회 팝업)
 
 ---
 
@@ -177,7 +181,7 @@ graph LR
 | `260224_vision/`              | Vision Click P1✅ P2✅ — P3 멀티프로바이더 미구현              | 🟡    |
 | `260224_orch/`                | 오케스트레이션 v2 P0✅ P1✅ P2✅ P3✅ P4✅ P5✅                   | ✅    |
 | `260225_finness/`             | 안정화(P0✅) + 안전성/정합성(P1✅) + 회귀 테스트(P2✅)          | ✅    |
-| `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~5 완료                          | ✅    |
+| `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6 완료 (할당량+effort+브랜딩)  | ✅    |
 | `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
 
 ---

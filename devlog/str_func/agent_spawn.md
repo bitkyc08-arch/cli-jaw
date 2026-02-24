@@ -4,7 +4,7 @@
 
 ---
 
-## agent.js — CLI Spawn & Queue + ACP 분기 (563L)
+## agent.js — CLI Spawn & Queue + ACP 분기 (575L)
 
 | Function                                   | 역할                                                 |
 | ------------------------------------------ | ---------------------------------------------------- |
@@ -86,7 +86,7 @@ Client (cli-claw)               Agent (copilot --acp)
 
 ### 권한 모드
 
-| cli-claw 설정          | Copilot 플래그                                |
+| cli-claw 설정          | Copilot 플래그/config.json                        |
 | ---------------------- | --------------------------------------------- |
 | `permissions: 'auto'`  | `--allow-all-tools`                           |
 | `permissions: 'yolo'`  | `--yolo` (== `--allow-all-tools --allow-all-paths --allow-all-urls`) |

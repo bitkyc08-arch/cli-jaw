@@ -19,6 +19,7 @@ import {
     escapeHtmlTg,
     markdownToTelegramHtml,
     chunkTelegramMessage,
+    createForwarderLifecycle,
     createTelegramForwarder,
 } from './telegram-forwarder.js';
 
@@ -26,6 +27,7 @@ export {
     escapeHtmlTg,
     markdownToTelegramHtml,
     chunkTelegramMessage,
+    createForwarderLifecycle,
     createTelegramForwarder,
 } from './telegram-forwarder.js';
 
@@ -75,7 +77,21 @@ export function orchestrateAndCollect(prompt, meta = {}) {
 
 export let telegramBot = null;
 export const telegramActiveChatIds = new Set();
-let telegramForwarder = null;
+const telegramForwarderLifecycle = createForwarderLifecycle({
+    addListener: addBroadcastListener,
+    removeListener: removeBroadcastListener,
+    buildForwarder: ({ bot }) => createTelegramForwarder({
+        bot,
+        getLastChatId: () => {
+            const chatIds = Array.from(telegramActiveChatIds);
+            return chatIds.length ? chatIds[chatIds.length - 1] : null;
+        },
+        shouldSkip: (data) => data.origin === 'telegram', // handled by tgOrchestrate already
+        log: ({ chatId, preview }) => {
+            console.log(`[tg:forward] → chat ${chatId}: ${String(preview).slice(0, 60)}...`);
+        },
+    }),
+});
 const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
 const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // read-only on Telegram
 
@@ -86,25 +102,11 @@ function markChatActive(chatId) {
 }
 
 function detachTelegramForwarder() {
-    if (!telegramForwarder) return;
-    removeBroadcastListener(telegramForwarder);
-    telegramForwarder = null;
+    telegramForwarderLifecycle.detach();
 }
 
 function attachTelegramForwarder(bot) {
-    if (telegramForwarder) return;
-    telegramForwarder = createTelegramForwarder({
-        bot,
-        getLastChatId: () => {
-            const chatIds = Array.from(telegramActiveChatIds);
-            return chatIds.length ? chatIds[chatIds.length - 1] : null;
-        },
-        shouldSkip: (data) => data.origin === 'telegram', // handled by tgOrchestrate already
-        log: ({ chatId, preview }) => {
-            console.log(`[tg:forward] → chat ${chatId}: ${String(preview).slice(0, 60)}...`);
-        },
-    });
-    addBroadcastListener(telegramForwarder);
+    telegramForwarderLifecycle.attach({ bot });
 }
 
 function toTelegramCommandDescription(desc) {

@@ -1,4 +1,4 @@
-# 🦞 CLI-Claw
+# 🦞 CLI-CLAW
 
 > Unified AI agent orchestration platform — CLI, Web UI, Telegram
 
@@ -122,16 +122,17 @@ npm run test:watch                # 감시 모드
 ### OpenCode
 | Model                              | Description    |
 | ---------------------------------- | -------------- |
-| `github-copilot/claude-sonnet-4.5` | Default        |
-| `github-copilot/claude-opus-4.6`   | Copilot Opus   |
-| `github-copilot/gpt-5`             | Copilot GPT-5  |
-| `github-copilot/gemini-2.5-pro`    | Copilot Gemini |
-| `opencode/big-pickle`              | 🆓 Free         |
-| `opencode/GLM-5 Free`              | 🆓 Free         |
-| `opencode/MiniMax M2.5 Free`       | 🆓 Free         |
-| `opencode/Kimi K2.5 Free`          | 🆓 Free         |
-| `opencode/GPT 5 Nano Free`         | 🆓 Free         |
-| `opencode/Grok Code Fast 1 Free`   | 🆓 Free         |
+| `anthropic/claude-opus-4-6-thinking`   | Default        |
+| `anthropic/claude-sonnet-4-6-thinking` | Sonnet         |
+| `anthropic/claude-sonnet-4-6`          | Sonnet (fast)  |
+| `openai/gpt-5.3-codex-xhigh`          | Codex xhigh    |
+| `openai/gpt-5.3-codex-high`           | Codex high     |
+| `opencode/big-pickle`                  | 🆓 Free         |
+| `opencode/GLM-5 Free`                  | 🆓 Free         |
+| `opencode/MiniMax M2.5 Free`           | 🆓 Free         |
+| `opencode/Kimi K2.5 Free`              | 🆓 Free         |
+| `opencode/GPT 5 Nano Free`             | 🆓 Free         |
+| `opencode/Grok Code Fast 1 Free`       | 🆓 Free         |
 
 ### Copilot (ACP)
 | Model                  | Cost    | Description              |
@@ -206,7 +207,7 @@ bin/cli-claw.js        11개 서브커맨드 (serve/chat/init/doctor/status/mcp/
 | Skills    | `GET /api/skills`, `POST /api/skills/enable,disable`                 |
 | Browser   | `POST /api/browser/start,stop,act(+mouse-click),navigate,screenshot` |
 | Employees | `GET/POST /api/employees`, `PUT/DELETE /api/employees/:id`           |
-| Quota     | `GET /api/quota` (Claude/Codex/Gemini usage)                         |
+| Quota     | `GET /api/quota` (Claude/Codex/Gemini/**Copilot** usage)                     |
 
 ## License
 

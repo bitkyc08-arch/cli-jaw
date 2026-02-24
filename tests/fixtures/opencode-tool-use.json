@@ -1,0 +1,6 @@
+{
+  "type": "tool_use",
+  "part": {
+    "tool": "web-search"
+  }
+}

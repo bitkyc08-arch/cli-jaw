@@ -37,6 +37,38 @@ export function chunkTelegramMessage(text, limit = 4096) {
 }
 
 /**
+ * Listener lifecycle helper used by telegram bridge and unit tests.
+ * Ensures attach/detach idempotency so re-init does not leak listeners.
+ */
+export function createForwarderLifecycle({
+    addListener,
+    removeListener,
+    buildForwarder,
+} = {}) {
+    let forwarder = null;
+    return {
+        attach(args = {}) {
+            if (forwarder) return forwarder;
+            const next = typeof buildForwarder === 'function' ? buildForwarder(args) : null;
+            if (typeof next !== 'function') {
+                throw new TypeError('buildForwarder must return a function');
+            }
+            forwarder = next;
+            if (typeof addListener === 'function') addListener(forwarder);
+            return forwarder;
+        },
+        detach() {
+            if (!forwarder) return;
+            if (typeof removeListener === 'function') removeListener(forwarder);
+            forwarder = null;
+        },
+        getCurrent() {
+            return forwarder;
+        },
+    };
+}
+
+/**
  * Build a pure forwarder handler for `agent_done` broadcasts.
  * Side-effects are limited to bot API calls, so logic is unit-testable.
  */

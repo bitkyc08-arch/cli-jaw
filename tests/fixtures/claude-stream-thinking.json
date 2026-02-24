@@ -1,0 +1,10 @@
+{
+  "type": "stream_event",
+  "event": {
+    "type": "content_block_start",
+    "index": 4,
+    "content_block": {
+      "type": "thinking"
+    }
+  }
+}

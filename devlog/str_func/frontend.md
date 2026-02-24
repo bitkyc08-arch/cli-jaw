@@ -8,7 +8,7 @@
 
 ```text
 public/
-├── index.html            ← HTML 뼈대 (440L, inline JS/CSS 없음, Copilot <option> 포함)
+├── index.html            ← HTML 뼈대 (412L, inline JS/CSS 없음, 🦞 CLI-CLAW 브랜딩, 모델/effort 동적 렌더링)
 ├── css/
 │   ├── variables.css     ← CSS 커스텀 프로퍼티, 리셋 (47L)
 │   ├── layout.css        ← 사이드바, 탭, 세이브바 (162L)
@@ -52,8 +52,8 @@ export async function loadCliRegistry() {
 
 ### index.html 변경
 
-- CLI 선택 `<select>`: 5개 `<option>` (claude, codex, gemini, opencode, **copilot**)
-- CLI별 모델 `<select>`: copilot 모델 블록 추가 (gpt-4.1, gpt-5-mini, claude-sonnet-4.6 등)
+- CLI 선택 `<select>`: 5개 option (claude, codex, gemini, opencode, **copilot**) — 동적 렌더링 (`loadCliRegistry()`)
+- CLI별 모델 `<select>`: 동적 렌더링 (`syncPerCliModelAndEffortControls()`)
 
 ---
 
