@@ -185,7 +185,180 @@ export function clearPromptCache() { promptCache.clear(); }
 > [!IMPORTANT]
 > Option B만으로도 즉각 효과. A는 B 위에 얹으면 되고, C는 별도 검증 필요.
 
-## 7. 구현 결과 (Option B)
-- promptCache Map 추가 (prompt.js)
-- clearPromptCache() 오케스트레이션 시작 시 호출 (orchestrator.js)
-- 예상 효과: 동일 role spawn 시 디스크 I/O 제거
+## 7. 워크플로우 다이어그램
+
+### 7-1. Before: 캐시 없는 낭비 패턴
+
+```mermaid
+sequenceDiagram
+    participant O as orchestrator.js
+    participant P as prompt.js
+    participant D as 디스크 (SKILL.md)
+    participant A as spawnAgent()
+
+    Note over O: distributeByPhase() — 3 agents × 5 phases
+    loop 매 spawn (최대 15~45회)
+        O->>P: getEmployeePromptV2(emp, role, phase)
+        P->>D: readFileSync(dev/SKILL.md)
+        D-->>P: 3,086 chars
+        P->>D: readFileSync(dev-frontend/SKILL.md)
+        D-->>P: 4,232 chars
+        P->>D: readFileSync(dev-testing/SKILL.md) [Phase 4만]
+        D-->>P: 3,881 chars
+        P-->>O: sysPrompt (~8,500 chars)
+        O->>A: spawnAgent(taskPrompt, { sysPrompt })
+        Note over A: CLI별 재주입<br/>Claude: --append-system-prompt<br/>Codex: AGENTS.md 재작성<br/>Gemini: 임시파일 재작성
+    end
+    Note over O,A: ❌ 총 I/O: 45회 × 3파일 = 135회 readFileSync
+```
+
+### 7-2. After: 인메모리 캐시 적용
+
+```mermaid
+sequenceDiagram
+    participant O as orchestrator.js
+    participant C as promptCache (Map)
+    participant P as prompt.js
+    participant D as 디스크 (SKILL.md)
+    participant A as spawnAgent()
+
+    O->>C: clearPromptCache()
+    Note over C: Map.clear()
+
+    rect rgb(200, 255, 200)
+        Note over O: 첫 spawn (캐시 MISS)
+        O->>P: getEmployeePromptV2(emp, "backend", 3)
+        P->>C: has("emp1:backend:3")?
+        C-->>P: ❌ MISS
+        P->>D: readFileSync(dev/SKILL.md)
+        P->>D: readFileSync(dev-backend/SKILL.md)
+        P-->>C: set("emp1:backend:3", prompt)
+        P-->>O: sysPrompt
+        O->>A: spawnAgent()
+    end
+
+    rect rgb(200, 230, 255)
+        Note over O: 이후 동일 role+phase spawn (캐시 HIT)
+        O->>P: getEmployeePromptV2(emp, "backend", 3)
+        P->>C: has("emp1:backend:3")?
+        C-->>P: ✅ HIT → 즉시 반환
+        P-->>O: sysPrompt (디스크 I/O 0회)
+        O->>A: spawnAgent()
+    end
+    Note over O,A: ✅ I/O: role×phase 조합 수만큼 (최대 ~10회)
+```
+
+### 7-3. 오케스트레이션 전체 흐름
+
+```mermaid
+flowchart TD
+    U["👤 사용자 입력"] --> T{needsOrchestration?}
+    T -- No --> DA["직접 응답 (spawnAgent)"]
+    T -- Yes --> WL["📝 Worklog 생성"]
+
+    WL --> CC["🗑️ clearPromptCache()"]
+    CC --> PP["🎯 phasePlan() — 기획 Agent"]
+
+    PP --> DA2{directAnswer?}
+    DA2 -- Yes --> END1["💬 직접 응답 반환"]
+    DA2 -- No --> INIT["initAgentPhases(subtasks)"]
+
+    INIT --> ROUND["🔄 라운드 시작 (1~3)"]
+    ROUND --> DIST["distributeByPhase()"]
+
+    subgraph DIST_DETAIL["distributeByPhase 상세"]
+        direction TB
+        D1["Agent 1: getEmployeePromptV2()"] --> D1S["spawnAgent()"]
+        D1S --> D1R["결과 → worklog 기록"]
+        D1R --> D2["Agent 2: getEmployeePromptV2()"]
+        D2 --> D2S["spawnAgent()"]
+        D2S --> D2R["결과 → worklog 기록"]
+        D2R --> D3["Agent N..."]
+    end
+
+    DIST --> REV["📋 phaseReview() — 리뷰 Agent"]
+
+    REV --> VERD{모든 Agent PASS?}
+    VERD -- Yes --> ADV["advancePhase() → 다음 Phase"]
+    VERD -- No --> RETRY["FAIL Agent만 재시도"]
+    RETRY --> ROUND
+
+    ADV --> DONE{allDone?}
+    DONE -- Yes --> FIN["✅ Final Summary → broadcast"]
+    DONE -- No --> ROUND
+
+    ROUND -- "MAX_ROUNDS 도달" --> PARTIAL["⏳ 부분 완료 보고"]
+
+    style CC fill:#ff9,stroke:#f90,stroke-width:2px
+    style DA fill:#9f9
+    style FIN fill:#9f9
+    style PARTIAL fill:#ff9
+```
+
+### 7-4. 토큰 사용량 비교 (Before vs After)
+
+```mermaid
+graph LR
+    subgraph BEFORE["❌ Before (캐시 없음)"]
+        B1["3 agents × 5 phases × 3 rounds"]
+        B2["= 45회 spawn"]
+        B3["× 3~4회 readFileSync"]
+        B4["= ~135회 디스크 I/O"]
+        B5["총 ~528K chars<br/>~132K tokens"]
+        B1 --> B2 --> B3 --> B4 --> B5
+    end
+
+    subgraph AFTER["✅ After (인메모리 캐시)"]
+        A1["3 agents × 5 phases × 3 rounds"]
+        A2["= 45회 spawn"]
+        A3["첫 호출만 디스크 I/O"]
+        A4["= ~10회 디스크 I/O"]
+        A5["총 ~528K chars<br/>but I/O 92% 감소"]
+        A1 --> A2 --> A3 --> A4 --> A5
+    end
+
+    BEFORE -.->|"Option B 적용"| AFTER
+
+    style B5 fill:#faa,stroke:#f00
+    style A5 fill:#afa,stroke:#0a0
+```
+
+### 7-5. 캐시 키 구조와 라이프사이클
+
+```mermaid
+stateDiagram-v2
+    [*] --> Empty: 서버 시작 / orchestrate() 호출
+
+    Empty --> Building: getEmployeePromptV2() 첫 호출
+    Building --> Cached: promptCache.set(key, prompt)
+
+    state Cached {
+        [*] --> Hit
+        Hit --> Hit: 동일 key 재호출 → 즉시 반환
+        Hit --> Miss: 새로운 key 조합
+        Miss --> Hit: 빌드 후 캐시 저장
+    }
+
+    Cached --> Empty: clearPromptCache()
+    note right of Empty
+        캐시 키 형식:
+        "${emp.id}:${role}:${phase}"
+        예: "emp_1:backend:3"
+        예: "emp_2:frontend:4"
+    end note
+
+    note left of Cached
+        최대 엔트리 수:
+        agents(~4) × phases(~5)
+        = ~20개 (매우 작음)
+    end note
+```
+
+---
+
+## 8. 구현 결과 (Option B)
+- promptCache Map 추가 (prompt.js L8)
+- getEmployeePromptV2() 캐시 레이어 (prompt.js L443-496)
+- clearPromptCache() export (prompt.js L500)
+- orchestrate() 시작 시 캐시 클리어 (orchestrator.js L364)
+- 예상 효과: 동일 role spawn 시 디스크 I/O 92% 감소

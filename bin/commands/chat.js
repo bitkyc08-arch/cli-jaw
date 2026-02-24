@@ -31,7 +31,7 @@ const c = {
 // ─── Connect ─────────────────────────────────
 const wsUrl = getWsUrl(values.port);
 const apiUrl = getServerUrl(values.port);
-import { APP_VERSION, getServerUrl, getWsUrl } from '../../src/config.js';
+import { APP_VERSION, getServerUrl, getWsUrl } from '../../src/core/config.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const SKILL_SCRIPT = resolvePath(__dirname, 'skill.js');

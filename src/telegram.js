@@ -3,10 +3,10 @@
 import https from 'node:https';
 import { Bot } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
-import { broadcast, addBroadcastListener, removeBroadcastListener } from './bus.js';
-import { settings, detectAllCli, APP_VERSION } from './config.js';
-import { t, normalizeLocale } from './i18n.js';
-import { insertMessage, getSession, updateSession, clearMessages } from './db.js';
+import { broadcast, addBroadcastListener, removeBroadcastListener } from './core/bus.js';
+import { settings, detectAllCli, APP_VERSION } from './core/config.js';
+import { t, normalizeLocale } from './core/i18n.js';
+import { insertMessage, getSession, updateSession, clearMessages } from './core/db.js';
 import { orchestrate, orchestrateContinue, isContinueIntent } from './orchestrator.js';
 import {
     activeProcess, killActiveAgent, waitForProcessEnd,

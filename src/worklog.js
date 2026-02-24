@@ -3,7 +3,7 @@
 
 import fs from 'fs';
 import { join } from 'path';
-import { CLAW_HOME } from './config.js';
+import { CLAW_HOME } from './core/config.js';
 
 export const WORKLOG_DIR = join(CLAW_HOME, 'worklogs');
 const LATEST_LINK = join(WORKLOG_DIR, 'latest.md');

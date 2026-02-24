@@ -3,7 +3,7 @@
  * Checks if the server is running by pinging the API.
  */
 import { parseArgs } from 'node:util';
-import { getServerUrl, DEFAULT_PORT } from '../../src/config.js';
+import { getServerUrl, DEFAULT_PORT } from '../../src/core/config.js';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),

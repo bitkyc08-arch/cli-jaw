@@ -2,7 +2,7 @@
 // src/settings-merge.js 가 생성되면 통과 (server.js에서 로직 추출 예정)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mergeSettingsPatch } from '../../src/settings-merge.js';
+import { mergeSettingsPatch } from '../../src/core/settings-merge.js';
 
 // ─── perCli deep merge ──────────────────────────────
 

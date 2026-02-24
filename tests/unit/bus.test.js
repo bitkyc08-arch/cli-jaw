@@ -5,7 +5,7 @@ import {
     addBroadcastListener,
     removeBroadcastListener,
     setWss,
-} from '../../src/bus.js';
+} from '../../src/core/bus.js';
 
 test('addBroadcastListener receives broadcast events', () => {
     const received = [];

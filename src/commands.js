@@ -2,7 +2,7 @@
 // Handlers extracted to commands-handlers.js for 500-line compliance.
 
 import { CLI_KEYS, buildModelChoicesByCli } from './cli-registry.js';
-import { t } from './i18n.js';
+import { t } from './core/i18n.js';
 import {
     formatDuration, unknownCommand, unsupportedCommand, normalizeResult,
     statusHandler, modelHandler, cliHandler, skillHandler, employeeHandler,

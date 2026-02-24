@@ -15,7 +15,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { t, loadLocales, getPromptLocale, getAvailableLocales, normalizeLocale } from '../../src/i18n.js';
+import { t, loadLocales, getPromptLocale, getAvailableLocales, normalizeLocale } from '../../src/core/i18n.js';
 import { COMMANDS } from '../../src/commands.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

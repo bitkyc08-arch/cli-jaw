@@ -1,7 +1,7 @@
 /**
  * src/memory.js — Phase A: grep-based persistent memory
  */
-import { CLAW_HOME } from './config.js';
+import { CLAW_HOME } from './core/config.js';
 import { join } from 'path';
 import fs from 'fs';
 import { spawnSync } from 'child_process';

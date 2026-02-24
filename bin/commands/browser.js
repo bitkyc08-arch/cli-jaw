@@ -6,7 +6,7 @@ import { parseArgs } from 'node:util';
 import { rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { getServerUrl } from '../../src/config.js';
+import { getServerUrl } from '../../src/core/config.js';
 
 const SERVER = getServerUrl();
 const sub = process.argv[3];

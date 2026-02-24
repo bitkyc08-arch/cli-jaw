@@ -1,5 +1,5 @@
 import { getActivePage, getCdpSession } from './connection.js';
-import { CLAW_HOME } from '../config.js';
+import { CLAW_HOME } from '../core/config.js';
 import { join } from 'path';
 import fs from 'fs';
 

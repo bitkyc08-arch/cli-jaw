@@ -4,11 +4,11 @@ import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 import { spawn } from 'child_process';
-import { broadcast } from './bus.js';
-import { settings, UPLOADS_DIR, detectCli } from './config.js';
+import { broadcast } from './core/bus.js';
+import { settings, UPLOADS_DIR, detectCli } from './core/config.js';
 import {
     getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
-} from './db.js';
+} from './core/db.js';
 import { getSystemPrompt } from './prompt.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary } from './events.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../lib/upload.js';

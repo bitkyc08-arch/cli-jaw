@@ -1,8 +1,8 @@
 import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
-import { settings, CLAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile } from './config.js';
-import { getSession, updateSession, getEmployees } from './db.js';
+import { settings, CLAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile } from './core/config.js';
+import { getSession, updateSession, getEmployees } from './core/db.js';
 import { memoryFlushCounter, flushCycleCount } from './agent.js';
 
 const promptCache = new Map();

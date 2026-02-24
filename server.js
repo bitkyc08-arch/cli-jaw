@@ -3,7 +3,7 @@
 
 import express from 'express';
 import helmet from 'helmet';
-import { log } from './src/logger.js';
+import { log } from './src/core/logger.js';
 import { createServer } from 'http';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
@@ -22,11 +22,11 @@ import {
 import { assertSkillId, assertFilename, safeResolveUnder } from './src/security/path-guards.js';
 import { decodeFilenameSafe } from './src/security/decode.js';
 import { ok, fail } from './src/http/response.js';
-import { mergeSettingsPatch } from './src/settings-merge.js';
-import { setWss, broadcast } from './src/bus.js';
+import { mergeSettingsPatch } from './src/core/settings-merge.js';
+import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory.js';
-import { loadLocales, t, normalizeLocale } from './src/i18n.js';
+import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
     CLAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
     SKILLS_DIR, SKILLS_REF_DIR,
@@ -34,13 +34,13 @@ import {
     ensureDirs, runMigration,
     loadHeartbeatFile, saveHeartbeatFile,
     detectAllCli, APP_VERSION,
-} from './src/config.js';
+} from './src/core/config.js';
 import {
     db, getSession, updateSession, insertMessage, getMessages, getMessagesWithTrace,
     getRecentMessages, clearMessages,
     getMemory, upsertMemory, deleteMemory,
     getEmployees, insertEmployee, deleteEmployee,
-} from './src/db.js';
+} from './src/core/db.js';
 import {
     initPromptFiles, getMemoryDir, getSystemPrompt, regenerateB,
     A2_PATH, HEARTBEAT_PATH,

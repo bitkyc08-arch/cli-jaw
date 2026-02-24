@@ -7,7 +7,7 @@ import { parseArgs } from 'node:util';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { getServerUrl } from '../../src/config.js';
+import { getServerUrl } from '../../src/core/config.js';
 import fs from 'node:fs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));

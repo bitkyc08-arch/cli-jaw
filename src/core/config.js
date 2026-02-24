@@ -5,11 +5,11 @@ import fs from 'fs';
 import { join } from 'path';
 import { execFileSync } from 'child_process';
 import { createRequire } from 'module';
-import { CLI_REGISTRY, CLI_KEYS, DEFAULT_CLI, buildDefaultPerCli } from './cli-registry.js';
+import { CLI_REGISTRY, CLI_KEYS, DEFAULT_CLI, buildDefaultPerCli } from '../cli-registry.js';
 
 // ─── Version (single source of truth: package.json) ──
 const require = createRequire(import.meta.url);
-const pkg = require('../package.json');
+const pkg = require('../../package.json');
 export const APP_VERSION = pkg.version;
 
 // ─── Paths ───────────────────────────────────────────

@@ -1,7 +1,7 @@
 // ─── Orchestration v2 (Plan → Phase-aware Distribute → Quality Gate Review) ──
 
-import { broadcast } from './bus.js';
-import { insertMessage, getEmployees } from './db.js';
+import { broadcast } from './core/bus.js';
+import { insertMessage, getEmployees } from './core/db.js';
 import { getEmployeePromptV2, clearPromptCache } from './prompt.js';
 import { spawnAgent } from './agent.js';
 import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from './worklog.js';
