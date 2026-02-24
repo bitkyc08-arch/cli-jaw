@@ -88,11 +88,13 @@ function parseVerdicts(text) {
 
 function initAgentPhases(subtasks) {
     return subtasks.map(st => {
-        const profile = PHASE_PROFILES[st.role || 'custom'] || [3];
+        const role = (st.role || 'custom').toLowerCase();  // 정규화: Frontend → frontend
+        const profile = PHASE_PROFILES[role] || [3];
         return {
             agent: st.agent,
             task: st.task,
-            role: st.role || 'custom',
+            role,
+            verification: st.verification || null,  // pass_criteria/fail_criteria 보존
             phaseProfile: profile,
             currentPhaseIdx: 0,
             currentPhase: profile[0],
@@ -231,9 +233,13 @@ async function phaseReview(results, agentPhases, worklog, round) {
         `- **${r.agent}** (${r.role}, ${r.phaseLabel}): ${r.status === 'done' ? '✅' : '❌'}\n  ${r.text.slice(0, 400)}`
     ).join('\n');
 
-    const matrixStr = agentPhases.map(ap =>
-        `- ${ap.agent}: role=${ap.role}, phase=${ap.currentPhase}(${PHASES[ap.currentPhase]}), completed=${ap.completed}`
-    ).join('\n');
+    const matrixStr = agentPhases.map(ap => {
+        const base = `- ${ap.agent}: role=${ap.role}, phase=${ap.currentPhase}(${PHASES[ap.currentPhase]}), completed=${ap.completed}`;
+        if (ap.verification) {
+            return `${base}\n  pass_criteria: ${ap.verification.pass_criteria || 'N/A'}\n  fail_criteria: ${ap.verification.fail_criteria || 'N/A'}`;
+        }
+        return base;
+    }).join('\n');
 
     const reviewPrompt = `## 라운드 ${round} 결과 리뷰
 
@@ -323,16 +329,17 @@ export async function orchestrate(prompt) {
             for (const v of verdicts.verdicts) {
                 const ap = agentPhases.find(a => a.agent === v.agent);
                 if (ap) {
+                    const judgedPhase = ap.currentPhase;  // advance 전 기록
                     advancePhase(ap, v.pass);
-                    ap.history.push({ round, phase: ap.currentPhase, pass: v.pass, feedback: v.feedback });
+                    ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
                 }
             }
         }
         updateMatrix(worklog.path, agentPhases);
 
-        // 5. 완료 판정
+        // 5. 완료 판정 (agentPhases 기준 우선, allDone은 보조)
         const allDone = agentPhases.every(ap => ap.completed);
-        if (allDone || verdicts?.allDone) {
+        if (allDone) {
             const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
             appendToWorklog(worklog.path, 'Final Summary', summary);
             updateWorklogStatus(worklog.path, 'done', round);
