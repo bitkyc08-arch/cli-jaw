@@ -4,7 +4,7 @@ tags: [vision, codex, gpt-5.3, 좌표추출, 스모크테스트]
 status: verified
 ---
 
-# Vision Click — Codex CLI 방식
+# (fin) Vision Click — Codex CLI 방식
 
 > `codex exec -i screenshot.png --json` — **±1px 정확도 검증 완료.**
 

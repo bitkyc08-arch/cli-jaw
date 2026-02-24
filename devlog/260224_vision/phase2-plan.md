@@ -4,7 +4,7 @@ tags: [vision-click, phase2, codex, 구현계획]
 status: planning
 ---
 
-# Vision Click Phase 2 — Codex 원커맨드 + DPR 보정
+# (fin) Vision Click Phase 2 — Codex 원커맨드 + DPR 보정
 
 > Phase 1(수동 워크플로) → Phase 2(자동 원커맨드). Codex 전용.
 >
