@@ -48,12 +48,13 @@ export function isContinueIntent(text) { ... }
 
 ## 5-C: `/employee reset` 명령
 
-| 경로          | 구현                                         |
-| ------------- | -------------------------------------------- |
-| 슬래시 커맨드 | `commands.js` → `employeeHandler` (cli, web) |
-| CLI 명령      | `bin/commands/employee.js` → REST API 호출   |
-| CLI 등록      | `bin/cli-claw.js` → `employee` 서브커맨드    |
-| Web chat.js   | `resetEmployees` ctx 연결                    |
+| 경로                    | 구현                                         | L   |
+| ----------------------- | -------------------------------------------- | --- |
+| 슬래시 커맨드           | `commands.js` → `employeeHandler` (cli, web) |     |
+| CLI 명령                | `bin/commands/employee.js`                   | 67L |
+| `bin/commands/reset.js` | [NEW] CLI 전체 초기화 (y/N, 서버 체크)       | 97L |
+| `bin/cli-claw.js`       | [MODIFY] employee + reset 서브커맨드 등록    | 93L |
+| Web chat.js             | `resetEmployees` ctx 연결                    |     |
 
 ---
 
@@ -76,6 +77,17 @@ export function isContinueIntent(text) { ... }
 - `skillHandler`의 `ctx.interface !== 'cli'` 차단 제거
 - `makeWebCommandCtx`에 `resetSkills` 추가
 - 이제 웹 UI에서도 `/skill reset` 가능
+
+---
+
+## 5-F: CLI reset 안정성
+
+### `bin/commands/reset.js` 개선
+
+- **서버 연결 확인**: 리셋 시도 전 `/api/session` ping → 실패 시 "서버에 연결할 수 없습니다" 메시지
+- **`confirm` 인자**: `cli-claw reset confirm` = `cli-claw reset --yes` 동일 동작
+- **chat.js `resetSkills`**: `spawnSync(skill.js reset --force)` → `POST /api/skills/reset` API 호출로 교체
+- **`/api/skills/reset`**: server.js에 endpoint 추가 (`copyDefaultSkills` + `ensureSkillsSymlinks` + `regenerateB`)
 
 ---
 
