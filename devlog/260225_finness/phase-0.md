@@ -27,6 +27,34 @@
 - `src/telegram.js`
 - `src/orchestrator.js` (옵션 전달 최소 확장)
 
+## 구현 반영 결과 (2026-02-24)
+- [완료] Claude 이벤트 dedupe + assistant fallback 복구
+  - `src/events.js`: `extractToolLabels(cli, event, ctx)`로 확장
+  - `src/events.js`: `makeClaudeToolKey()`, `pushToolLabel()` 추가
+  - `src/events.js`: `ctx.hasClaudeStreamEvents` 기반으로 `assistant` 로그/라벨 중복 차단
+  - `src/agent.js`: `ctx.seenToolKeys`, `ctx.hasClaudeStreamEvents` 상태 필드 추가
+- [완료] Telegram global forwarder lifecycle 고정
+  - `src/telegram.js`: `telegramForwarder` 참조 보관
+  - `src/telegram.js`: `detachTelegramForwarder()`/`attachTelegramForwarder(bot)` 추가
+  - `src/telegram.js`: `initTelegram()` 시작 시 detach 수행 후 재초기화
+- [완료] `tgProcessing` 제거 + `origin` 메타 기반 분기
+  - `src/telegram.js`: `tgProcessing` 완전 제거
+  - `src/telegram.js`: `orchestrateAndCollect(prompt, meta)`로 확장, Telegram 호출 시 `{ origin: 'telegram', chatId }` 전달
+  - `src/agent.js`: `broadcast('agent_done', ...)` payload에 `origin` 포함
+  - `src/orchestrator.js`: `orchestrate(prompt, meta)`, `orchestrateContinue(meta)`로 확장
+  - `server.js`: WS/API 엔트리에서 `origin`(`cli`/`web`) 전달
+
+## 구현 검증 결과 (2026-02-24)
+- 문법 검증: `node --check`로 아래 파일 통과
+  - `src/events.js`, `src/agent.js`, `src/orchestrator.js`, `src/telegram.js`, `server.js`
+- 동작 스모크 테스트(스크립트 실행):
+  - `stream_event` + `assistant` 연속 입력 시 tool 라벨 1회만 기록 확인
+  - `assistant`만 있는 입력에서도 fallback tool 라벨 기록 확인
+
+## 구현 시 주의사항
+- `origin`은 기본값이 `'web'`이며, heartbeat 등 기존 호출부는 meta 미전달 시 기본 동작 유지
+- `extractToolLabel()`는 하위호환용으로 유지되며, 실제 메인 경로는 `extractFromEvent(..., ctx)`를 통해 `extractToolLabels(..., ctx)`를 사용
+
 ---
 
 ## 0-1. Claude 이벤트 정규화 + dedupe key

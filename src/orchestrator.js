@@ -202,7 +202,7 @@ function advancePhase(ap, passed) {
 
 // ─── Plan Phase ──────────────────────────────────────
 
-async function phasePlan(prompt, worklog) {
+async function phasePlan(prompt, worklog, meta = {}) {
     broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'planning' });
 
     const planPrompt = `## 작업 요청
@@ -269,7 +269,7 @@ ${prompt}
 worklog 경로: ${worklog.path}
 이 파일에 계획을 기록하세요.`;
 
-    const { promise } = spawnAgent(planPrompt, { agentId: 'planning' });
+    const { promise } = spawnAgent(planPrompt, { agentId: 'planning', origin: meta.origin || 'web' });
     const result = await promise;
 
     // Agent 자율 판단: direct_answer가 있으면 subtask 생략
@@ -287,7 +287,7 @@ worklog 경로: ${worklog.path}
 
 // ─── Distribute Phase (per-agent phase-aware) ────────
 
-async function distributeByPhase(agentPhases, worklog, round) {
+async function distributeByPhase(agentPhases, worklog, round, meta = {}) {
     const emps = getEmployees.all();
     const results = [];
 
@@ -352,7 +352,7 @@ ${priorSummary}
 
         const { promise } = spawnAgent(taskPrompt, {
             agentId: emp.id, cli: emp.cli, model: emp.model,
-            forceNew: true, sysPrompt,
+            forceNew: true, sysPrompt, origin: meta.origin || 'web',
         });
 
         const r = await promise;
@@ -397,7 +397,7 @@ ${priorSummary}
 
 // ─── Review Phase (per-agent verdict) ────────────────
 
-async function phaseReview(results, agentPhases, worklog, round) {
+async function phaseReview(results, agentPhases, worklog, round, meta = {}) {
     const report = results.map(r =>
         `- **${r.agent}** (${r.role}, ${r.phaseLabel}): ${r.status === 'done' ? '✅' : '❌'}\n  ${r.text.slice(0, 400)}`
     ).join('\n');
@@ -450,7 +450,7 @@ JSON으로 출력:
 모든 작업이 완료되면 allDone: true + 사용자에게 보여줄 자연어 요약을 함께 작성.`;
 
     broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'reviewing' });
-    const { promise } = spawnAgent(reviewPrompt, { agentId: 'planning', internal: true });
+    const { promise } = spawnAgent(reviewPrompt, { agentId: 'planning', internal: true, origin: meta.origin || 'web' });
     const evalR = await promise;
 
     const verdicts = parseVerdicts(evalR.text);
@@ -459,25 +459,26 @@ JSON으로 출력:
 
 // ─── Main Orchestrate v2 ─────────────────────────────
 
-export async function orchestrate(prompt) {
+export async function orchestrate(prompt, meta = {}) {
+    const origin = meta.origin || 'web';
     const employees = getEmployees.all();
 
     // Triage: 간단한 메시지는 직접 응답
     if (employees.length > 0 && !needsOrchestration(prompt)) {
         console.log(`[claw:triage] direct response (no orchestration needed)`);
-        const { promise } = spawnAgent(prompt);
+        const { promise } = spawnAgent(prompt, { origin });
         const result = await promise;
         const stripped = stripSubtaskJSON(result.text);
-        broadcast('orchestrate_done', { text: stripped || result.text || '' });
+        broadcast('orchestrate_done', { text: stripped || result.text || '', origin });
         return;
     }
 
     // 직원 없으면 단일 에이전트 모드
     if (employees.length === 0) {
-        const { promise } = spawnAgent(prompt);
+        const { promise } = spawnAgent(prompt, { origin });
         const result = await promise;
         const stripped = stripSubtaskJSON(result.text);
-        broadcast('orchestrate_done', { text: stripped || result.text || '' });
+        broadcast('orchestrate_done', { text: stripped || result.text || '', origin });
         return;
     }
 
@@ -485,18 +486,18 @@ export async function orchestrate(prompt) {
     broadcast('worklog_created', { path: worklog.path });
 
     // 1. 기획 (planning agent가 직접 응답할 수도 있음)
-    const { planText, subtasks, directAnswer } = await phasePlan(prompt, worklog);
+    const { planText, subtasks, directAnswer } = await phasePlan(prompt, worklog, { origin });
 
     // Agent 자율 판단: subtask 불필요 → 직접 응답
     if (directAnswer) {
         console.log('[claw:triage] planning agent chose direct response');
-        broadcast('agent_done', { text: directAnswer });
-        broadcast('orchestrate_done', { text: directAnswer });
+        broadcast('agent_done', { text: directAnswer, origin });
+        broadcast('orchestrate_done', { text: directAnswer, origin });
         return;
     }
 
     if (!subtasks?.length) {
-        broadcast('orchestrate_done', { text: planText || '' });
+        broadcast('orchestrate_done', { text: planText || '', origin });
         return;
     }
 
@@ -509,8 +510,8 @@ export async function orchestrate(prompt) {
         updateWorklogStatus(worklog.path, 'round_' + round, round);
         broadcast('round_start', { round, agentPhases });
 
-        const results = await distributeByPhase(agentPhases, worklog, round);
-        const { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round);
+        const results = await distributeByPhase(agentPhases, worklog, round, { origin });
+        const { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
 
         // 4. Per-agent phase advance
         if (verdicts?.verdicts) {
@@ -532,7 +533,7 @@ export async function orchestrate(prompt) {
             appendToWorklog(worklog.path, 'Final Summary', summary);
             updateWorklogStatus(worklog.path, 'done', round);
             insertMessage.run('assistant', summary, 'orchestrator', '');
-            broadcast('orchestrate_done', { text: summary, worklog: worklog.path });
+            broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin });
             break;
         }
 
@@ -548,23 +549,24 @@ export async function orchestrate(prompt) {
             appendToWorklog(worklog.path, 'Final Summary', partial);
             updateWorklogStatus(worklog.path, 'partial', round);
             insertMessage.run('assistant', partial, 'orchestrator', '');
-            broadcast('orchestrate_done', { text: partial, worklog: worklog.path });
+            broadcast('orchestrate_done', { text: partial, worklog: worklog.path, origin });
         }
     }
 }
 
 // ─── Continue (이어서 해줘) ───────────────────────────
 
-export async function orchestrateContinue() {
+export async function orchestrateContinue(meta = {}) {
+    const origin = meta.origin || 'web';
     const latest = readLatestWorklog();
     if (!latest) {
-        broadcast('orchestrate_done', { text: '이어갈 worklog가 없습니다.' });
+        broadcast('orchestrate_done', { text: '이어갈 worklog가 없습니다.', origin });
         return;
     }
 
     const pending = parseWorklogPending(latest.content);
     if (!pending.length) {
-        broadcast('orchestrate_done', { text: '모든 작업이 이미 완료되었습니다.' });
+        broadcast('orchestrate_done', { text: '모든 작업이 이미 완료되었습니다.', origin });
         return;
     }
 
@@ -578,5 +580,5 @@ ${pending.map(p => `- ${p.agent} (${p.role}): Phase ${p.currentPhase}`).join('\n
 
 subtask JSON을 출력하세요.`;
 
-    return orchestrate(resumePrompt);
+    return orchestrate(resumePrompt, meta);
 }

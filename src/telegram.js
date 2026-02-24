@@ -47,7 +47,7 @@ export function chunkTelegramMessage(text, limit = 4096) {
     return chunks;
 }
 
-export function orchestrateAndCollect(prompt) {
+export function orchestrateAndCollect(prompt, meta = {}) {
     return new Promise((resolve) => {
         let collected = '';
         let timeout;
@@ -79,7 +79,7 @@ export function orchestrateAndCollect(prompt) {
             }
         };
         addBroadcastListener(handler);
-        const run = isContinueIntent(prompt) ? orchestrateContinue() : orchestrate(prompt);
+        const run = isContinueIntent(prompt) ? orchestrateContinue(meta) : orchestrate(prompt, meta);
         Promise.resolve(run).catch(err => {
             clearTimeout(timeout);
             removeBroadcastListener(handler);
@@ -93,7 +93,7 @@ export function orchestrateAndCollect(prompt) {
 
 export let telegramBot = null;
 export const telegramActiveChatIds = new Set();
-let tgProcessing = false;  // true while tgOrchestrate is handling a request
+let telegramForwarder = null;
 const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
 const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // read-only on Telegram
 
@@ -101,6 +101,36 @@ function markChatActive(chatId) {
     // Refresh insertion order so Array.from(set).at(-1) points to latest active chat.
     telegramActiveChatIds.delete(chatId);
     telegramActiveChatIds.add(chatId);
+}
+
+function detachTelegramForwarder() {
+    if (!telegramForwarder) return;
+    removeBroadcastListener(telegramForwarder);
+    telegramForwarder = null;
+}
+
+function attachTelegramForwarder(bot) {
+    if (telegramForwarder) return;
+    telegramForwarder = (type, data) => {
+        if (type !== 'agent_done' || !data?.text) return;
+        if (data.error) return;
+        if (data.origin === 'telegram') return; // handled by tgOrchestrate already
+
+        const chatIds = Array.from(telegramActiveChatIds);
+        if (!chatIds.length) return;
+        const lastChatId = chatIds[chatIds.length - 1];
+
+        const preview = (data.text || '').slice(0, 200).replace(/\n/g, ' ');
+        console.log(`[tg:forward] → chat ${lastChatId}: ${preview.slice(0, 60)}...`);
+
+        const html = markdownToTelegramHtml(data.text);
+        const chunks = chunkTelegramMessage(html);
+        for (const chunk of chunks) {
+            bot.api.sendMessage(lastChatId, `📡 ${chunk}`, { parse_mode: 'HTML' })
+                .catch(() => bot.api.sendMessage(lastChatId, `📡 ${chunk.replace(/<[^>]+>/g, '')}`).catch(() => { }));
+        }
+    };
+    addBroadcastListener(telegramForwarder);
 }
 
 function toTelegramCommandDescription(desc) {
@@ -176,6 +206,7 @@ function makeTelegramCommandCtx() {
 // ─── Init ────────────────────────────────────────────
 
 export function initTelegram() {
+    detachTelegramForwarder();
     if (telegramBot) {
         const old = telegramBot;
         telegramBot = null;
@@ -274,7 +305,6 @@ export function initTelegram() {
         }
 
         markChatActive(ctx.chat.id);
-        tgProcessing = true;
         insertMessage.run('user', displayMsg, 'telegram', '');
         broadcast('new_message', { role: 'user', content: displayMsg, source: 'telegram' });
 
@@ -313,8 +343,7 @@ export function initTelegram() {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         try {
-            const result = await orchestrateAndCollect(prompt);
-            tgProcessing = false;
+            const result = await orchestrateAndCollect(prompt, { origin: 'telegram', chatId: ctx.chat.id });
             clearInterval(typingInterval);
             if (toolHandler) removeBroadcastListener(toolHandler);
             if (statusMsgId) {
@@ -331,7 +360,6 @@ export function initTelegram() {
             }
             console.log(`[tg:out] ${ctx.chat.id}: ${result.slice(0, 80)}`);
         } catch (err) {
-            tgProcessing = false;
             clearInterval(typingInterval);
             if (toolHandler) removeBroadcastListener(toolHandler);
             if (statusMsgId) {
@@ -395,24 +423,7 @@ export function initTelegram() {
     });
     // ─── Global Forwarding: non-Telegram responses → Telegram ───
     if (settings.telegram?.forwardAll !== false) {
-        addBroadcastListener((type, data) => {
-            if (type !== 'agent_done' || !data.text) return;
-            if (data.error) return;
-            if (tgProcessing) return;  // Telegram request → handled by tgOrchestrate
-            const chatIds = Array.from(telegramActiveChatIds);
-            if (!chatIds.length) return;
-            const lastChatId = chatIds[chatIds.length - 1];
-
-            const preview = (data.text || '').slice(0, 200).replace(/\n/g, ' ');
-            console.log(`[tg:forward] → chat ${lastChatId}: ${preview.slice(0, 60)}...`);
-
-            const html = markdownToTelegramHtml(data.text);
-            const chunks = chunkTelegramMessage(html);
-            for (const chunk of chunks) {
-                bot.api.sendMessage(lastChatId, `📡 ${chunk}`, { parse_mode: 'HTML' })
-                    .catch(() => bot.api.sendMessage(lastChatId, `📡 ${chunk.replace(/<[^>]+>/g, '')}`).catch(() => { }));
-            }
-        });
+        attachTelegramForwarder(bot);
     }
 
     void syncTelegramCommands(bot).catch((e) => {

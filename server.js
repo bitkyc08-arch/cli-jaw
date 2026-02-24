@@ -201,7 +201,7 @@ wss.on('connection', (ws) => {
                     } else {
                         insertMessage.run('user', text, 'cli', '');
                         broadcast('new_message', { role: 'user', content: text, source: 'cli' });
-                        orchestrateContinue();
+                        orchestrateContinue({ origin: 'cli' });
                     }
                     return;
                 }
@@ -211,7 +211,7 @@ wss.on('connection', (ws) => {
                 } else {
                     insertMessage.run('user', text, 'cli', '');
                     broadcast('new_message', { role: 'user', content: text, source: 'cli' });
-                    orchestrate(text);
+                    orchestrate(text, { origin: 'cli' });
                 }
             }
             if (msg.type === 'stop') killActiveAgent('ws');
@@ -375,7 +375,7 @@ app.post('/api/message', (req, res) => {
         if (activeProcess) {
             return res.status(409).json({ error: 'agent already running' });
         }
-        orchestrateContinue();
+        orchestrateContinue({ origin: 'web' });
         return res.json({ ok: true, continued: true });
     }
 
@@ -383,7 +383,7 @@ app.post('/api/message', (req, res) => {
         enqueueMessage(trimmed, 'web');
         return res.json({ ok: true, queued: true, pending: messageQueue.length });
     }
-    orchestrate(trimmed);
+    orchestrate(trimmed, { origin: 'web' });
     res.json({ ok: true });
 });
 
@@ -391,7 +391,7 @@ app.post('/api/orchestrate/continue', (req, res) => {
     if (activeProcess) {
         return res.status(409).json({ error: 'agent already running' });
     }
-    orchestrateContinue();
+    orchestrateContinue({ origin: 'web' });
     res.json({ ok: true });
 });
 
