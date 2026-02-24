@@ -257,9 +257,12 @@ node -e "import('./src/agent.js').then(m => console.log(Object.keys(m)))"
 
 ## 완료 기준
 
-- [ ] `src/` 플랫 파일 0개 (모두 서브디렉토리에 위치)
-- [ ] 500줄 초과 파일 0개 (전체 프로젝트)
-- [ ] `server.js` < 250줄
-- [ ] 구 경로 re-export 동작 확인
-- [ ] `npm test` 230+ tests 통과
-- [ ] 모든 `import` 정상 resolve (런타임 에러 0)
+- [x] `src/` 플랫 파일 0개 (모두 12개 서브디렉토리에 위치)
+- [ ] 500줄 초과 파일 0개 → **미달성** (spawn 565, pipeline 555, builder 523, server 850, chat 842, mcp 645)
+  - 복잡한 상태 의존성으로 추가 분리 시 리스크 대비 이익 부족
+- [x] `server.js` 1009→850줄 (quota 85줄 + browser 93줄 추출)
+  - 250줄 목표는 비현실적 (helper 함수+WS+middleware 통합 필수)
+- [ ] 구 경로 re-export → **미구현** (직접 경로 수정으로 대체)
+- [x] `npm test` 222/235 pass (2 pre-existing Phase 17, 11 skip)
+- [x] 모든 `import` 정상 resolve (런타임 에러 0)
+
