@@ -113,25 +113,10 @@
             "name": "GitHub (범용)",
             "emoji": "🐙",
             "category": "devtools",
-            "description": "이슈·PR·CI·코드리뷰를 gh CLI로 관리. Codex gh-* 보다 범용.",
+            "description": "GitHub gh CLI 통합: 이슈·PR·CI·코드리뷰·API + PR 코멘트·CI 디버깅·이슈 자동수정·yeet.",
             "requires": {
                 "bins": [
                     "gh"
-                ]
-            },
-            "install": "brew install gh"
-        },
-        "gh-issues": {
-            "name": "GitHub Issues Auto-Fix",
-            "emoji": "🔧",
-            "category": "devtools",
-            "description": "이슈를 자동으로 수정하고 PR 오픈. 서브에이전트 스폰.",
-            "requires": {
-                "bins": [
-                    "gh"
-                ],
-                "env": [
-                    "GH_TOKEN"
                 ]
             },
             "install": "brew install gh"
@@ -215,18 +200,6 @@
             },
             "install": "brew install 1password-cli"
         },
-        "nano-pdf": {
-            "name": "PDF 생성/편집",
-            "emoji": "📄",
-            "category": "utility",
-            "description": "PDF 생성·편집·텍스트 추출. Codex pdf 스킬과 보완.",
-            "requires": {
-                "bins": [
-                    "python3"
-                ]
-            },
-            "install": null
-        },
         "nano-banana-pro": {
             "name": "이미지 생성 (Gemini)",
             "emoji": "🖼️",
@@ -300,7 +273,7 @@
             "name": "Screen Capture",
             "emoji": "📸",
             "category": "utility",
-            "description": "macOS screencapture로 스크린샷/영역/윈도우 캡처. 웹캠(imagesnap).",
+            "description": "macOS 스크린샷·웹캠·녹화. 전체/영역/윈도우/다중모니터. 도구별 캡처 불가 시 기본 폴백.",
             "requires": null,
             "install": null
         },
@@ -519,42 +492,6 @@
             "requires": null,
             "install": null
         },
-        "doc": {
-            "name": "Document (docx)",
-            "emoji": "📝",
-            "category": "utility",
-            "description": ".docx 문서 읽기·생성·편집. python-docx 기반.",
-            "requires": {
-                "bins": [
-                    "python3"
-                ]
-            },
-            "install": null
-        },
-        "gh-address-comments": {
-            "name": "GitHub PR 코멘트 처리",
-            "emoji": "💬",
-            "category": "devtools",
-            "description": "GitHub PR 리뷰 코멘트 자동 반영. gh CLI.",
-            "requires": {
-                "bins": [
-                    "gh"
-                ]
-            },
-            "install": "brew install gh"
-        },
-        "gh-fix-ci": {
-            "name": "GitHub CI 수정",
-            "emoji": "🔧",
-            "category": "devtools",
-            "description": "실패한 GitHub PR CI 자동 디버깅·수정. gh CLI.",
-            "requires": {
-                "bins": [
-                    "gh"
-                ]
-            },
-            "install": "brew install gh"
-        },
         "imagegen": {
             "name": "이미지 생성 (OpenAI)",
             "emoji": "🖼️",
@@ -582,43 +519,10 @@
             "name": "PDF 읽기/리뷰",
             "emoji": "📄",
             "category": "utility",
-            "description": "PDF 파일 읽기·리뷰·분석. python3 기반.",
+            "description": "PDF 읽기·생성·편집·리뷰. reportlab/pdfplumber/pypdf + nano-pdf 자연어 편집.",
             "requires": {
                 "bins": [
                     "python3"
-                ]
-            },
-            "install": null
-        },
-        "screenshot": {
-            "name": "Desktop Screenshot",
-            "emoji": "🖥️",
-            "category": "utility",
-            "description": "데스크탑/시스템 스크린샷 촬영. macOS screencapture.",
-            "requires": null,
-            "install": null
-        },
-        "spreadsheet": {
-            "name": "Spreadsheet (xlsx)",
-            "emoji": "📊",
-            "category": "utility",
-            "description": ".xlsx 스프레드시트 생성·편집·분석. python3 기반.",
-            "requires": {
-                "bins": [
-                    "python3"
-                ]
-            },
-            "install": null
-        },
-        "yeet": {
-            "name": "Git Yeet",
-            "emoji": "🚀",
-            "category": "devtools",
-            "description": "Stage → Commit → Push → PR 자동화. git + gh.",
-            "requires": {
-                "bins": [
-                    "git",
-                    "gh"
                 ]
             },
             "install": null
@@ -635,7 +539,7 @@
             "name": "DOCX",
             "emoji": "📄",
             "category": "productivity",
-            "description": "Word 문서(.docx) 생성/수정/파싱 전용 스킬.",
+            "description": ".docx 문서 생성·편집·읽기. 시각 검증(soffice→PDF→PNG), tracked changes, python-docx.",
             "requires": null,
             "install": null
         },
@@ -643,7 +547,7 @@
             "name": "XLSX",
             "emoji": "📊",
             "category": "utility",
-            "description": "스프레드시트(.xlsx/.csv/.tsv) 읽기/수정/생성 전용 스킬.",
+            "description": ".xlsx/.xlsm/.csv/.tsv 파일 생성·편집·분석·포맷팅. pandas 데이터 분석 포함.",
             "requires": null,
             "install": null
         },

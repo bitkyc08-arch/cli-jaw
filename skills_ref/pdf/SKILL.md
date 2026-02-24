@@ -1,6 +1,6 @@
 ---
 name: "pdf"
-description: "Use when tasks involve reading, creating, or reviewing PDF files where rendering and layout matter; prefer visual checks by rendering pages (Poppler) and use Python tools such as `reportlab`, `pdfplumber`, and `pypdf` for generation and extraction."
+description: "Use when tasks involve reading, creating, editing, or reviewing PDF files. Visual layout checks via Poppler (pdftoppm). Python tools: reportlab (create), pdfplumber/pypdf (extract), nano-pdf (natural-language page editing). Also covers DOCX→PDF conversion via soffice."
 ---
 
 
@@ -9,6 +9,8 @@ description: "Use when tasks involve reading, creating, or reviewing PDF files w
 ## When to use
 - Read or review PDF content where layout and visuals matter.
 - Create PDFs programmatically with reliable formatting.
+- Edit existing PDFs with natural-language instructions (nano-pdf).
+- Convert documents (DOCX, HTML) to PDF.
 - Validate final rendering before delivery.
 
 ## Workflow

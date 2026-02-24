@@ -1,6 +1,6 @@
 ---
 name: screen-capture
-description: "Screen capture and camera snapshots using macOS built-in tools. Full screen, region, window, and webcam capture."
+description: "Screen capture and camera snapshots using macOS built-in tools. Full screen, region, window, webcam, and video recording. Use as default when tool-specific capture (Figma, Playwright, CDP) is unavailable. Prefer cli-claw browser screenshot for web pages."
 metadata:
   {
     "openclaw":

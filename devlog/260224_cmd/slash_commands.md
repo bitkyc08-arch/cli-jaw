@@ -1,6 +1,6 @@
 # Slash Commands — 상세 구현 계획
 
-> 상태: 📋 계획 (v2 — Context7 조사 반영)
+> 상태: 📋 계획 (v3 — 안정성/회귀 리스크 보강)
 
 ## 0. OpenClaw 참고
 
@@ -148,7 +148,7 @@ program.helpCommand('assist [command]', 'show assistance');
 
 1. **CLI 커맨드 하드코딩** — `/mcp`만 별도 분기, 확장 어려움
 2. **자동완성 없음** — raw stdin 모드라 readline completer 미사용, `/` 쳐도 힌트 없음
-3. **Web UI 미지원** — `index.html`에 slash 감지 로직 전혀 없음
+3. **Web Slash 부분 미지원** — 현재 `/clear`만 `public/js/features/chat.js`에서 특례 처리되고, 그 외 `/...`는 일반 프롬프트로 전송됨
 4. **Telegram 무시** — `text.startsWith('/') return;` (line 224) — 모든 `/`를 무시
 5. **중복 코드** — simple mode와 default mode에 `/mcp` 로직 2벌 (line 96~127, 302~336)
 
@@ -158,27 +158,29 @@ program.helpCommand('assist [command]', 'show assistance');
 
 ### 2.1 공통 커맨드 (모든 인터페이스)
 
-| 커맨드     | 인자                      | 동작                    | 구현 난이도 |
-| ---------- | ------------------------- | ----------------------- | ----------- |
-| `/help`    | —                         | 커맨드 목록 + 설명      | 🟢 쉬움      |
-| `/status`  | —                         | CLI, 모델, 세션, uptime | 🟢 쉬움      |
-| `/model`   | `[name]`                  | 현재 모델 확인 / 변경   | 🟡 보통      |
-| `/cli`     | `[codex\|claude\|gemini]` | 현재 CLI 확인 / 변경    | 🟡 보통      |
-| `/skill`   | `[list\|reset]`           | 스킬 목록 / 초기화      | 🟡 보통      |
-| `/clear`   | —                         | 세션 리셋 + 화면 정리   | 🟢 쉬움      |
-| `/version` | —                         | CLI/서버 버전 정보      | 🟢 쉬움      |
+| 커맨드     | 인자            | 동작                                   | 구현 난이도 |
+| ---------- | --------------- | -------------------------------------- | ----------- |
+| `/help`    | —               | 커맨드 목록 + 설명                     | 🟢 쉬움      |
+| `/status`  | —               | CLI, 모델, 세션, uptime                | 🟢 쉬움      |
+| `/model`   | `[name]`        | 현재 모델 확인 / 변경                  | 🟡 보통      |
+| `/cli`     | `[name]`        | 현재 CLI 확인 / 변경 (`opencode` 포함) | 🟡 보통      |
+| `/skill`   | `[list\|reset]` | 스킬 목록 / 초기화                     | 🟡 보통      |
+| `/clear`   | —               | 화면/입력 영역 정리 (비파괴)           | 🟢 쉬움      |
+| `/reset`   | `[confirm]`     | 세션/메시지 리셋 (파괴적)              | 🟡 보통      |
+| `/version` | —               | CLI/서버 버전 정보                     | 🟢 쉬움      |
 
 ### 2.2 인터페이스 특화
 
-| 커맨드                 | 인터페이스     | 동작                 | 구현 난이도 |
-| ---------------------- | -------------- | -------------------- | ----------- |
-| `/quit` `/q` `/exit`   | CLI only       | 프로세스 종료        | 🟢 기존      |
-| `/file <path>`         | CLI only       | 파일 첨부            | 🟢 기존      |
-| `/mcp [sync\|install]` | CLI + Web      | MCP 관리             | 🟢 기존 이전 |
-| `/memory [search]`     | CLI + Web + TG | 메모리 검색/목록     | 🟡 보통      |
-| `/browser [status]`    | CLI + Web + TG | 브라우저 상태/탭     | 🟡 보통      |
-| `/prompt`              | CLI + Web      | 시스템 프롬프트 정보 | 🟢 쉬움      |
-| `/id`                  | TG only        | Chat ID 확인         | 🟢 기존      |
+| 커맨드                 | 인터페이스               | 동작                 | 구현 난이도 |
+| ---------------------- | ------------------------ | -------------------- | ----------- |
+| `/quit` `/q` `/exit`   | CLI only                 | 프로세스 종료        | 🟢 기존      |
+| `/file <path>`         | CLI only                 | 파일 첨부            | 🟢 기존      |
+| `/mcp [sync\|install]` | CLI + Web                | MCP 관리             | 🟢 기존 이전 |
+| `/memory [query]`      | CLI only (Phase 1)       | 메모리 검색/목록     | 🟡 보통      |
+| `/browser [status]`    | CLI + Web + TG           | 브라우저 상태/탭     | 🟡 보통      |
+| `/prompt`              | CLI + Web                | 시스템 프롬프트 정보 | 🟢 쉬움      |
+| `/id`                  | TG only                  | Chat ID 확인         | 🟢 기존      |
+| `/memory [query] (확장)` | Web + TG (Phase 2 선택) | 보안 보강 후 확장    | 🟠 중간      |
 
 ---
 
@@ -351,14 +353,19 @@ graph TD
 //      [cli]: { ...(s.perCli?.[cli] || {}), model: name }
 //    }
 // 4) await ctx.updateSettings({ perCli: nextPerCli })
-// 유효성: claude-*, gpt-*, gemini-* 만 허용, 아니면 경고
+// 유효성:
+//   - 하드코딩 prefix(claude/gpt/gemini) 금지
+//   - 빈 문자열/개행 포함/비정상 길이만 거부
+//   - opencode 모델 문자열도 그대로 허용 (회귀 방지)
 // ⚠️ 변경 후 안내: "다음 메시지부터 새 모델 적용. 실행 중인 에이전트는 현재 모델 유지."
 ```
 
 #### `/cli [name]`
 ```js
-// 인자 없으면: 현재 CLI (codex/claude/gemini) 출력
+// 인자 없으면: 현재 CLI 출력
 // 인자 있으면: PUT /api/settings { cli: name } → 변경 + 에이전트 재시작 필요 안내
+// 허용 CLI는 하드코딩하지 않고 Object.keys(settings.perCli) 기준으로 동적 계산
+// (예: claude, codex, gemini, opencode)
 ```
 
 #### `/skill [list|reset]`
@@ -370,15 +377,21 @@ graph TD
 //   - Phase 2(선택): /api/skills/reset 추가 후 비동기 서버 처리로 전환
 ```
 
-#### `/clear` — **모든 인터페이스에서 세션 리셋 통일**
+#### `/clear` — **비파괴 유지 (기존 의미 유지)**
 ```js
-// 공통: POST /api/clear (DB 메시지 삭제 + 세션 초기화)
-// CLI: + console.clear() + setupScrollRegion() (화면도 정리)
-// Web: + clear chat area (DOM 비우기)
-// TG: "🗑️ 대화가 초기화되었습니다" 메시지
-//
-// ⚠️ 기존 CLI /clear는 화면만 지웠음 → 이제 세션도 리셋
-//    화면만 지우고 싶으면 Ctrl+L 안내
+// 공통: 화면/입력 영역만 정리 (DB/세션 변경 없음)
+// CLI: console.clear() + setupScrollRegion()
+// Web: chat area 임시 정리 (DOM clear)
+// TG: 화면 개념이 없으므로 안내 메시지 반환 (no-op)
+```
+
+#### `/reset [confirm]` — **파괴적 리셋 전용**
+```js
+// DB/세션 리셋은 /reset으로 분리
+// 안전장치: /reset confirm 형태일 때만 POST /api/clear 호출
+// confirm 없으면 안내:
+//   "정말 초기화하려면 /reset confirm 입력"
+// 결과: clear messages + reset session + broadcast('clear')
 ```
 
 #### `/version`
@@ -393,6 +406,12 @@ graph TD
 // 인자 없으면: GET /api/claw-memory/list → 파일 목록 + 크기
 // 인자 있으면: GET /api/claw-memory/search?q=<query> → grep 결과
 // MEMORY.md는 시스템 프롬프트에 자동 주입되므로 별도 로딩 불필요
+//
+// 보안 정책:
+// - Phase 1: CLI only로 제한
+// - 서버/라이브러리 보강 전에는 Web/TG 비활성
+// - memory.search 구현을 shell 문자열 execSync에서
+//   execFile/spawn + argv 방식으로 교체 후 확장
 ```
 
 #### `/browser [status|tabs]`
@@ -493,9 +512,9 @@ if (inputBuf === '/') {
 > ⚠️ **주의**: raw stdin 모드에서는 `readline` completer를 쓸 수 없음.
 > `/` 입력 시 힌트를 dim으로 출력하고, 탭완성 대신 힌트 표시 방식 채택.
 
-### [MODIFY] `public/index.html`
+### [MODIFY] `public/index.html` + `public/js/features/chat.js` + `public/js/main.js` + `public/css/chat.css`
 
-**커맨드 드롭다운 UI:**
+**커맨드 드롭다운 UI (DOM 추가는 index, 동작은 모듈 JS):**
 
 ```html
 <div id="cmd-dropdown" class="cmd-dropdown" style="display:none">
@@ -504,41 +523,24 @@ if (inputBuf === '/') {
 ```
 
 ```js
-// 입력 감지
-messageInput.addEventListener('input', () => {
-    const val = messageInput.value;
-    if (val === '/') {
-        // GET /api/commands → filter web → 드롭다운 표시
-        showCommandDropdown(commands.filter(c => c.interfaces.includes('web')));
-    } else if (val.startsWith('/')) {
-        // 자동완성 필터링
-        filterCommandDropdown(val);
-    } else {
-        hideCommandDropdown();
-    }
-});
-
-// 선택 시
-function selectCommand(name) {
-    if (needsArgs(name)) {
-        messageInput.value = `/${name} `;
-        messageInput.focus();
-    } else {
-        executeWebCommand(`/${name}`);
-    }
+// public/js/features/chat.js
+// 1) sendMessage() 초반에 slash 인터셉트
+if (text.startsWith('/')) {
+    const result = await executeWebCommand(text);
+    if (result?.text) addSystemMsg(result.text);
+    input.value = '';
+    return;
 }
 
-// 실행
-async function executeWebCommand(text) {
-    const res = await fetch('/api/command', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text })
-    });
-    const result = await res.json();
-    if (result?.text) addMessage('agent', result.text);
-}
+// 2) chatInput input 이벤트에서 dropdown filter
+// public/js/main.js에서 이벤트 바인딩
+document.getElementById('chatInput').addEventListener('input', onSlashInput);
+
+// 3) /clear 특례 분기를 제거하고 커맨드 디스패치로 단일화
+// (기존 if (text === '/clear') ... 삭제)
 ```
+
+> ⚠️ 현재 Web 앱은 모듈 구조이므로 `index.html` inline script 방식은 사용하지 않음.
 
 **CSS:**
 ```css
@@ -609,7 +611,7 @@ void syncTelegramCommands(bot).catch((e) => {
 +             ...makeTelegramCommandCtx(),  // API adapter 묶음
 +         };
 +         const result = await executeCommand(parsed, tgCtx);
-+         if (result?.text) await ctx.reply(result.text, { parse_mode: 'HTML' });
++         if (result?.text) await ctx.reply(result.text); // 기본 plain text
 +         return;
 +     }
 ```
@@ -619,6 +621,8 @@ void syncTelegramCommands(bot).catch((e) => {
 - `setMyCommands`로 Telegram UI에 커맨드 목록 자동 등록
 - Grammy `ctx.match`는 사용하지 않음 (공통 레지스트리 우선)
 - handler는 Telegram reply를 직접 호출하지 않고 결과만 반환 (중복 응답 방지)
+- HTML 모드가 필요하면 반드시 escape 후 사용:
+  - `ctx.reply(escapeTelegramHtml(result.text), { parse_mode: 'HTML' })`
 
 **변경 3: Grammy `bot.command` 마이그레이션 경로**
 
@@ -636,13 +640,19 @@ Phase 2: (선택) /start, /id를 COMMANDS로 이전, bot.command 제거
 
 ```
 ❯ /
-  /help  /status  /model  /cli  /skill  /clear  /mcp  /memory  /browser  /prompt  /quit
+  /help  /status  /model  /cli  /skill  /clear  /reset  /mcp  /memory  /browser  /prompt  /quit
 
 ❯ /model
   현재 모델: claude-sonnet-4-20250514
 
 ❯ /model gemini-2.5-flash
   ✅ 모델 변경: gemini-2.5-flash
+
+❯ /clear
+  ✅ 화면을 정리했습니다. (대화 기록은 유지됨)
+
+❯ /reset confirm
+  ✅ 세션/대화가 초기화되었습니다.
 
 ❯ /status
   🦞 cli-claw v0.1.0
@@ -662,15 +672,16 @@ Phase 2: (선택) /start, /id를 COMMANDS로 이전, bot.command 제거
 |  /model     모델 변경/확인            |
 |  /cli       CLI 변경                  |
 |  /skill     스킬 관리                 |
-|  /clear     대화 초기화               |
+|  /clear     화면 정리                 |
+|  /reset     대화 초기화               |
 |  /memory    메모리 검색               |
 +---------------------------------------+
 | /                              [Send] |
 +---------------------------------------+
 ```
 
-유저가 `/model`을 클릭하면 입력창에 `/model ` 자동 채움.
-`/clear`처럼 인자 없는 것은 바로 실행 → 채팅에 시스템 메시지 표시.
+`/model`을 클릭하면 입력창에 `/model ` 자동 채움.  
+`/clear`는 즉시 실행, `/reset`은 `/reset confirm` 안내 후 재입력.
 
 ### 시나리오 3: Telegram에서 `/status`
 
@@ -704,27 +715,30 @@ Bot:  🦞 cli-claw v0.1.0
 
 ### 구현 난이도
 
-| 항목                         | 난이도 | 공수    | 비고                               |
-| ---------------------------- | ------ | ------- | ---------------------------------- |
-| `src/commands.js` 레지스트리 | 🟡      | 1.5h    | 에러 핸들링 + ctx 설계 포함        |
-| `chat.js` 디스패치 + 힌트    | 🟡      | 2.5h    | raw stdin 호환 + 기존 코드 제거    |
-| `server.js` API + ctx 주입   | 🟢      | 30m     | 직접 모듈 호출 ctx 구성            |
-| `index.html` 드롭다운        | 🟡      | 2.5h    | CSS 애니메이션 + 키보드 네비게이션 |
-| `telegram.js` 디스패치       | 🟢      | 45m     | Grammy 미들웨어 테스트 포함        |
-| 테스트 (3개 인터페이스)      | 🟡      | 1.5h    | 3 인터페이스 × 5+ 시나리오         |
-| **합계**                     |        | **~9h** | 약 1.5x 원래 추정                  |
+| 항목                                  | 난이도 | 공수     | 비고                                              |
+| ------------------------------------- | ------ | -------- | ------------------------------------------------- |
+| `src/commands.js` 레지스트리          | 🟡      | 1.5h     | 에러 핸들링 + ctx 설계 포함                       |
+| `chat.js` 디스패치 + 힌트             | 🟡      | 2.5h     | raw stdin 호환 + 기존 코드 제거                   |
+| `server.js` API + ctx 주입            | 🟢      | 30m      | 직접 모듈 호출 ctx 구성                           |
+| Web 모듈 통합 (`chat.js/main.js/css`) | 🟡      | 2.5h     | `index.html` DOM + 모듈 이벤트 바인딩             |
+| `telegram.js` 디스패치                | 🟢      | 45m      | plain text 기본, 필요 시 escape 후 HTML           |
+| `src/memory.js` 보안 보강             | 🟠      | 1.0h     | shell command 제거 (`execFile/spawn` + argv)      |
+| 테스트 (3개 인터페이스)               | 🟡      | 1.5h     | 3 인터페이스 × 5+ 시나리오 + reset 안전장치 검증  |
+| **합계**                              |        | **~10h** | 보안/회귀 방지 반영으로 소폭 증가                 |
 
 ### 리스크
 
-| 리스크                             | 확률 | 영향 | 대응                                                       |
-| ---------------------------------- | ---- | ---- | ---------------------------------------------------------- |
-| **raw stdin 힌트 깜박임**          | 높음 | 낮음 | Phase 1: `/` 때 1회 전체 목록만, Phase 4에서 점진적 필터링 |
-| **Web UI 드롭다운 포커스**         | 보통 | 보통 | 화살표 키 + Enter 네비게이션 필수                          |
-| **Grammy bot.command 충돌**        | 낮음 | 낮음 | `/start`,`/id`만 유지하고 나머지는 레지스트리 단일화        |
-| **/model 갱신 필드 불일치**        | 보통 | 높음 | `perCli[activeCli].model`만 갱신하도록 명시                 |
-| **handler 내 예외 전파**           | 보통 | 보통 | `executeCommand` try-catch 래퍼 (설계에 반영 완료)         |
-| **서버 self-request 병목**         | 낮음 | 낮음 | Web ctx는 모듈 함수 직접 주입, localhost fetch 금지         |
-| **unknown 커맨드 침묵**            | 보통 | 보통 | parse 결과를 `unknown` 타입으로 통일해 항상 안내 반환       |
+| 리스크                                | 확률 | 영향 | 대응                                                                  |
+| ------------------------------------- | ---- | ---- | --------------------------------------------------------------------- |
+| **raw stdin 힌트 깜박임**             | 높음 | 낮음 | Phase 1: `/` 때 1회 전체 목록만, Phase 4에서 점진적 필터링            |
+| **Web UI 드롭다운 포커스**            | 보통 | 보통 | 화살표 키 + Enter 네비게이션 필수                                     |
+| **opencode CLI/모델 회귀**            | 보통 | 높음 | `/cli`/`/model` 하드코딩 금지, `settings.perCli` 기반 동적 허용       |
+| **/clear 파괴적 의미 변경**           | 보통 | 높음 | `/clear` 비파괴 유지, 파괴적 동작은 `/reset confirm`으로 분리         |
+| **memory 검색 명령 인젝션**           | 보통 | 높음 | `memory.search`를 argv 기반 실행으로 교체 후 Web/TG 확장              |
+| **Telegram HTML parse 깨짐/주입**     | 보통 | 보통 | 기본 plain text, HTML 필요 시 escape 필수                             |
+| **handler 내 예외 전파**              | 보통 | 보통 | `executeCommand` try-catch 래퍼 (설계 반영)                           |
+| **서버 self-request 병목**            | 낮음 | 낮음 | Web ctx는 모듈 함수 직접 주입, localhost fetch 금지                    |
+| **unknown 커맨드 침묵**               | 보통 | 보통 | parse 결과를 `unknown` 타입으로 통일해 항상 안내 반환                  |
 
 ### 장점
 
@@ -738,10 +752,11 @@ Bot:  🦞 cli-claw v0.1.0
 ## 7. 구현 순서
 
 ```
+Phase 0 (안전): /clear·/reset 분리 + memory.search 보안 보강
 Phase 1 (핵심): commands.js + chat.js 디스패치       → CLI 동작
 Phase 2 (서버): server.js API + telegram.js 연결     → TG 동작
-         + setMyCommands 등록
-Phase 3 (UI):   index.html 드롭다운                  → Web 동작
+         + setMyCommands 등록 + plain text 응답
+Phase 3 (UI):   index DOM + public/js 모듈 드롭다운  → Web 동작
 Phase 4 (폴리시): Tab 자동완성, 키보드 네비게이션     → UX 개선
 ```
 
@@ -766,11 +781,20 @@ curl -s -X POST localhost:3457/api/command \
 curl -s -X POST localhost:3457/api/command \
   -d '{"text":"/unknown"}' -H 'Content-Type: application/json' | jq .
 
-# 2. /clear 세션 리셋 확인
+# 2. /reset confirm 세션 리셋 확인
 curl -s localhost:3457/api/messages | jq 'length'  # before
 curl -s -X POST localhost:3457/api/command \
-  -d '{"text":"/clear"}' -H 'Content-Type: application/json'
+  -d '{"text":"/reset confirm"}' -H 'Content-Type: application/json'
 curl -s localhost:3457/api/messages | jq 'length'  # after → 0
+
+# 3. /clear 비파괴 확인
+curl -s -X POST localhost:3457/api/command \
+  -d '{"text":"/clear"}' -H 'Content-Type: application/json' | jq .
+curl -s localhost:3457/api/messages | jq 'length'  # unchanged
+
+# 4. memory 검색 보안 smoke test (명령 치환 문자열)
+curl -s -G localhost:3457/api/claw-memory/search \
+  --data-urlencode 'q=$(id)' | jq .
 ```
 
 ### 수동 검증
@@ -781,13 +805,14 @@ curl -s localhost:3457/api/messages | jq 'length'  # after → 0
 | `/help model`             | CLI/Web/TG | 상세 도움말 표시                               |
 | `/model` (인자 없음)      | CLI/Web    | 현재 모델 출력                                 |
 | `/model gemini-2.5-flash` | CLI/Web    | `perCli[activeCli].model` 변경 + 안내 메시지   |
-| `/clear`                  | CLI        | `POST /api/clear` + `console.clear()` 확인     |
-| `/clear`                  | Web        | 채팅 영역 비워짐 + DB 리셋                     |
-| `/clear`                  | TG         | 리셋 확인 메시지                               |
+| `/clear`                  | CLI/Web    | 화면 정리만 수행, DB/세션 유지                 |
+| `/reset` (confirm 없음)   | CLI/Web/TG | 확인 문구 안내                                 |
+| `/reset confirm`          | CLI/Web/TG | `POST /api/clear` + 세션/메시지 리셋            |
 | `/foo` (미존재)           | CLI/Web/TG | 에러 메시지                                    |
 | `/mcp` (TG에서)           | TG         | "사용할 수 없습니다" 안내                      |
 | Telegram `/` 메뉴         | TG         | `setMyCommands` 목록 표시 확인                 |
 | handler 예외              | Web        | 500 대신 `{ ok: false, text: '오류...' }` 반환 |
+| `/model` (opencode 활성)  | CLI/Web    | opencode 모델 문자열 정상 저장 (회귀 없음)      |
 
 ### 브라우저 테스트 (Web UI)
 
@@ -799,23 +824,26 @@ curl -s localhost:3457/api/messages | jq 'length'  # after → 0
 ## 체크리스트
 
 - [ ] `src/commands.js` 생성 (레지스트리 + 핸들러 + 에러 래퍼)
-- [ ] `/help` `/status` `/model` `/cli` `/clear` `/version` 핸들러
+- [ ] `/help` `/status` `/model` `/cli` `/clear` `/reset` `/version` 핸들러
 - [ ] 파서 unknown 타입 통일 (`null`은 non-slash만)
 - [ ] aliases 지원 (`/q`,`/exit` → `/quit`)
-- [ ] `/clear` — 세션 리셋 통일 (CLI+Web+TG 모두 POST /api/clear)
+- [ ] `/clear` — 비파괴 유지 (화면/입력 정리만)
+- [ ] `/reset confirm` — 파괴적 리셋 (POST /api/clear)
 - [ ] `/skill` 기존 `bin/commands/skill.js` 연결
 - [ ] `/mcp` 기존 코드 이전
-- [ ] `/memory` — 새 `~/.cli-claw/memory/` 시스템 연동 (`/api/claw-memory/*`)
+- [ ] `/memory` — Phase 1: CLI only
+- [ ] `src/memory.js` — shell 문자열 실행 제거 (`execFile/spawn` + argv)
 - [ ] `/browser` — Phase 7 `/api/browser/*` 연동
 - [ ] `/prompt` 핸들러
+- [ ] `/cli` 허용 목록을 `settings.perCli` 기반 동적 계산 (`opencode` 포함)
 - [ ] `chat.js` — 디스패치 통합 (simple + default 양쪽)
 - [ ] `chat.js` — `/` 입력 시 힌트 표시
 - [ ] `server.js` — `POST /api/command` + `GET /api/commands`
 - [ ] `server.js` — `GET /api/runtime` (uptime/activeAgent/queuePending)
 - [ ] `telegram.js` — `startsWith('/')` 무시 → 디스패치로 교체
 - [ ] `telegram.js` — `bot.api.setMyCommands()` 등록 (Telegram 커맨드 제안 UI)
-- [ ] `telegram.js` — handler 직접 reply 금지 (중복 응답 방지)
-- [ ] `index.html` — 드롭다운 UI + 키보드 네비게이션
+- [ ] `telegram.js` — plain text 기본, HTML 응답 시 escape 보장
+- [ ] `index.html` + `public/js` 모듈 — 드롭다운 UI + 키보드 네비게이션
 - [ ] curl 스크립트로 서버 API 검증
 - [ ] 3개 인터페이스 수동 테스트
 
@@ -834,12 +862,17 @@ curl -s localhost:3457/api/messages | jq 'length'  # after → 0
   - 장점: Web/TG에서도 동일하게 실행 가능, 서버 응답성 개선
   - 단점: 구현 범위 증가
 
-### 9.2 Unknown 커맨드 UX
+### 9.2 `/reset` 확인 정책
 
-- 옵션 A (권장): CLI/Web/TG 모두 동일한 에러 메시지 반환
-- 옵션 B: Telegram만 unknown 무시
+- 옵션 A (권장): `/reset confirm` 2단계 확인 필수
+- 옵션 B: `/reset` 즉시 실행 (빠르지만 오작동 위험)
 
 ### 9.3 Telegram `/start`, `/id` 관리 위치
 
 - 옵션 A (권장): `bot.command('start','id')` 유지 + 나머지는 레지스트리
 - 옵션 B: `/start`, `/id`도 `COMMANDS`로 완전 이관
+
+### 9.4 `/memory` Web/TG 확장 시점
+
+- 옵션 A (권장): `src/memory.js` 보안 교체 완료 후 확장
+- 옵션 B: 지금 즉시 확장 (개발 속도는 빠르나 보안 리스크 존재)

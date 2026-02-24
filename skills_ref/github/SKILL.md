@@ -1,6 +1,6 @@
 ---
 name: github
-description: "GitHub operations via `gh` CLI: issues, PRs, CI runs, code review, API queries. Use when: (1) checking PR status or CI, (2) creating/commenting on issues, (3) listing/filtering PRs or issues, (4) viewing run logs. NOT for: complex web UI interactions requiring manual browser flows (use browser tooling when available), bulk operations across many repos (script with gh api), or when gh auth is not configured."
+description: "GitHub operations via `gh` CLI: issues, PRs, CI runs, code review, API queries, PR comment handling, CI debugging, auto-fix issue workflows, and stage→commit→push→PR (yeet). Use when interacting with GitHub. NOT for: local git operations (use git directly), non-GitHub repos, or complex browser flows."
 metadata:
   {
     "openclaw":
@@ -42,6 +42,10 @@ Use the `gh` CLI to interact with GitHub repositories, issues, PRs, and CI.
 - Creating or merging pull requests
 - Querying GitHub API for repository data
 - Listing repos, releases, or collaborators
+- Addressing PR review comments (merged from gh-address-comments)
+- Debugging and fixing failing CI checks (merged from gh-fix-ci)
+- Auto-fixing issues and opening PRs (merged from gh-issues)
+- Stage → commit → push → PR in one flow (merged from yeet)
 
 ## When NOT to Use
 
@@ -140,7 +144,6 @@ gh pr list --json number,title,state,mergeable --jq '.[] | select(.mergeable == 
 ### PR Review Summary
 
 ```bash
-# Get PR overview for review
 PR=55 REPO=owner/repo
 echo "## PR #$PR Summary"
 gh pr view $PR --repo $REPO --json title,body,author,additions,deletions,changedFiles \
@@ -151,10 +154,54 @@ gh pr checks $PR --repo $REPO
 ### Issue Triage
 
 ```bash
-# Quick issue triage view
 gh issue list --repo owner/repo --state open --json number,title,labels,createdAt \
   --jq '.[] | "[\(.number)] \(.title) - \([.labels[].name] | join(", ")) (\(.createdAt[:10]))"'
 ```
+
+---
+
+## Merged Workflows
+
+> The following workflows were consolidated from gh-issues, gh-address-comments, gh-fix-ci, and yeet.
+
+### PR Comment Handling (from gh-address-comments)
+
+Address review/issue comments on the open PR for the current branch:
+
+1. Check auth: `gh auth status`
+2. Find current PR: `gh pr view --json number,url`
+3. List review comments: `gh api repos/{owner}/{repo}/pulls/{pr}/comments --jq '.[] | "\(.id): \(.body[:80])"'`
+4. Address each comment, commit fixes
+5. Push and re-request review
+
+### Fix Failing CI (from gh-fix-ci)
+
+Debug and fix failing GitHub Actions checks:
+
+1. Find failing checks: `gh pr checks <PR> --repo owner/repo`
+2. Get failed run logs: `gh run view <run-id> --log-failed`
+3. Summarize failure snippet and root cause
+4. Draft fix plan → get approval → implement
+5. Push fix and verify CI passes
+
+### Auto-Fix Issues (from gh-issues)
+
+Fetch issues, implement fixes, and open PRs:
+
+1. List target issues: `gh issue list --label bug --limit 5`
+2. For each issue: create branch, implement fix, open PR
+3. Monitor PR reviews and address comments
+4. Uses GitHub REST API with `$GH_TOKEN` for automation
+
+### Yeet: Stage → Commit → Push → PR (from yeet)
+
+One-shot flow to ship changes:
+
+1. If on main/master, create branch: `git checkout -b codex/{description}`
+2. Stage changes: `git add -A`
+3. Commit: `git commit -m "{description}"`
+4. Push: `git push -u origin HEAD`
+5. Open PR: `gh pr create --title "[codex] {description}" --body "..."`
 
 ## Notes
 

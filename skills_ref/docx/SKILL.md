@@ -1,6 +1,6 @@
 ---
 name: docx
-description: "Use this skill whenever the user wants to create, read, edit, or manipulate Word documents (.docx files). Triggers include: any mention of \"Word doc\", \"word document\", \".docx\", or requests to produce professional documents with formatting like tables of contents, headings, page numbers, or letterheads. Also use when extracting or reorganizing content from .docx files, inserting or replacing images in documents, performing find-and-replace in Word files, working with tracked changes or comments, or converting content into a polished Word document. If the user asks for a \"report\", \"memo\", \"letter\", \"template\", or similar deliverable as a Word or .docx file, use this skill. Do NOT use for PDFs, spreadsheets, Google Docs, or general coding tasks unrelated to document generation."
+description: "Use this skill for any .docx task: create, read, edit, or manipulate Word documents. Triggers: \"Word doc\", \".docx\", reports, memos, letters, templates. Also covers visual review (render DOCX → PDF → PNG via soffice + pdftoppm), python-docx for quick text extraction, tracked changes, comments, find-and-replace, and image insertion. Do NOT use for PDFs, spreadsheets, or Google Docs."
 license: Proprietary. LICENSE.txt has complete terms
 ---
 
@@ -12,10 +12,10 @@ A .docx file is a ZIP archive containing XML files.
 
 ## Quick Reference
 
-| Task | Approach |
-|------|----------|
-| Read/analyze content | `pandoc` or unpack for raw XML |
-| Create new document | Use `docx-js` - see Creating New Documents below |
+| Task                   | Approach                                                          |
+| ---------------------- | ----------------------------------------------------------------- |
+| Read/analyze content   | `pandoc` or unpack for raw XML                                    |
+| Create new document    | Use `docx-js` - see Creating New Documents below                  |
 | Edit existing document | Unpack → edit XML → repack - see Editing Existing Documents below |
 
 ### Converting .doc to .docx
@@ -95,10 +95,10 @@ sections: [{
 
 **Common page sizes (DXA units, 1440 DXA = 1 inch):**
 
-| Paper | Width | Height | Content Width (1" margins) |
-|-------|-------|--------|---------------------------|
-| US Letter | 12,240 | 15,840 | 9,360 |
-| A4 (default) | 11,906 | 16,838 | 9,026 |
+| Paper        | Width  | Height | Content Width (1" margins) |
+| ------------ | ------ | ------ | -------------------------- |
+| US Letter    | 12,240 | 15,840 | 9,360                      |
+| A4 (default) | 11,906 | 16,838 | 9,026                      |
 
 **Landscape orientation:** docx-js swaps width/height internally, so pass portrait dimensions and let it handle the swap:
 ```javascript
@@ -309,12 +309,12 @@ Edit files in `unpacked/word/`. See XML Reference below for patterns.
 <!-- Use these entities for professional typography -->
 <w:t>Here&#x2019;s a quote: &#x201C;Hello&#x201D;</w:t>
 ```
-| Entity | Character |
-|--------|-----------|
-| `&#x2018;` | ‘ (left single) |
+| Entity     | Character                     |
+| ---------- | ----------------------------- |
+| `&#x2018;` | ‘ (left single)               |
 | `&#x2019;` | ’ (right single / apostrophe) |
-| `&#x201C;` | “ (left double) |
-| `&#x201D;` | ” (right double) |
+| `&#x201C;` | “ (left double)               |
+| `&#x201D;` | ” (right double)              |
 
 **Adding comments:** Use `comment.py` to handle boilerplate across multiple XML files (text must be pre-escaped XML):
 ```bash
