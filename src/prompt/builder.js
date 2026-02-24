@@ -248,8 +248,8 @@ export function loadRecentMemories() {
 // ─── System Prompt Generation ────────────────────────
 
 export function getSystemPrompt() {
-    // Phase 15: A1 is hardcoded — prevents agent from modifying core rules
-    const a1 = A1_CONTENT;
+    // A-1: file takes priority (user-editable), hardcoded fallback
+    const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : A1_CONTENT;
     const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
     let prompt = `${a1}\n\n${a2}`;
 
