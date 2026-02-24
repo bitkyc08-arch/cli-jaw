@@ -12,8 +12,8 @@
 ```js
 // agent.js — ACP 세션 생성 후
 const session = await acp.createSession(settings.workingDir);
-// session.id (또는 session.sessionId)를 db에 저장
-// 기존 패턴: insertSession.run(cli, model, session.id)
+// session.id를 기존 db 세션 테이블에 저장
+// 기존 패턴: updateSession(agentLabel, session.id)
 ```
 
 ### Resume 플로우
@@ -63,7 +63,7 @@ AcpClient 생성자에 `resumeId` 옵션 추가:
 ### 텔레그램
 - [ ] 텔레그램에서 copilot 응답 수신
 - [ ] 중간 이벤트 포워딩 (📡)
-- [ ] 텔레그램에서 `/cli copilot` 전환
+- [ ] ⚠️ `/cli copilot` 전환: 텔레그램에서는 fallbackOrder만 변경 가능 (서버 settings에서 직접 변경 필요)
 
 ### UI
 - [ ] 웹 설정에서 Copilot 선택 가능

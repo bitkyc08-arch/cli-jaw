@@ -11,13 +11,15 @@
 
 ```
 ACP session/update               →  cli-claw broadcast
-─────────────────────────────────────────────────────
+─────────────────────────────────────────────────
 kind: 'thinking'                 →  agent_tool { icon: '💭', label: ... }
 kind: 'tool_use'                 →  agent_tool { icon: '🔧', label: toolName }
 kind: 'tool_result'              →  agent_tool { icon: '✅', label: toolName }
-kind: 'text'                     →  agent_chunk { text: ... }
-kind: 'complete'                 →  agent_done { text: fullText }
+kind: 'text'                     →  (fullText에 누적, ws.js가 agent_output으로 전달)
+kind: 'complete'                 →  agent_done { text: fullText, toolLog }
 ```
+
+> ⚠️ 웹 프론트는 `ws.js`에서 `agent_output` 이벤트를 수신. 텔레그램은 `agent_chunk` + `agent_output` 둘 다 수신.
 
 ---
 
@@ -123,7 +125,7 @@ Phase 2 테스트에서 캡처한 실제 `session/update` 메시지:
 # Phase 3과 통합 후 테스트
 
 # 1. tool use가 발생하는 프롬프트
-curl -X POST http://localhost:4280/api/chat \
+curl -X POST http://localhost:3457/api/message \
   -H 'Content-Type: application/json' \
   -d '{"message": "list files in current directory", "cli": "copilot", "model": "gpt-4.1"}'
 

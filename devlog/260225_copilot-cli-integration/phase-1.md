@@ -133,7 +133,28 @@ ensureSymlink(copilotBin, copilotLink);
 
 ---
 
-## 1.5 `public/js/features/settings.js` — perCli 저장
+## 1.5 `public/js/constants.js` — 프론트엔드 모델 목록
+
+### 변경: MODEL_CHOICES_BY_CLI (L2-11)
+
+```diff
+     opencode: [
+         'opencode/big-pickle', ...
+     ],
++    copilot: [
++        'claude-sonnet-4.6', 'claude-opus-4.6', 'claude-haiku-4.5',
++        'gpt-5.3-codex', 'gpt-5.2-codex', 'gpt-5.1-codex',
++        'gpt-4.1', 'gpt-5-mini',
++        'gemini-3-pro-preview',
++    ],
+ };
+```
+
+> ⚠️ `commands.js`의 `MODEL_CHOICES_BY_CLI`와 `constants.js`의 목록은 **동일하게** 유지해야 함
+
+---
+
+## 1.6 `public/js/features/settings.js` — perCli 저장
 
 ### 변경: L141-144
 

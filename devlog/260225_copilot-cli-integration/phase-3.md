@@ -15,7 +15,7 @@
 
 **copilot은 다름**: ACP 프로토콜로 초기화 → 세션 생성 → 프롬프트 전송
 
-### 변경: `orchestrateAgent()` 내부 (L204 부근)
+### 변경: `spawnAgent()` 내부 (L203 부근)
 
 ```js
 import { AcpClient } from './acp-client.js';
@@ -51,7 +51,7 @@ if (cli === 'copilot') {
             broadcast('agent_chunk', { text: parsed.text });
         }
         if (parsed.done) {
-            broadcast('agent_done', { text: fullText });
+            broadcast('agent_done', { text: fullText, toolLog: ctx.toolLog });
             if (!forceNew && !opts.internal && !opts._skipInsert) {
                 insertMessage.run('assistant', fullText, cli, model);
             }
@@ -157,8 +157,8 @@ cd ~/Documents/BlogProject/cli-claw && node server.js
 # 3. 중간 이벤트 (tool use) 표시 확인
 # 4. 텔레그램 포워딩 동작 확인
 
-# API 테스트
-curl -X POST http://localhost:4280/api/chat \
+# API 테스트 (포트: 3457, 경로: /api/message)
+curl -X POST http://localhost:3457/api/message \
   -H 'Content-Type: application/json' \
   -d '{"message": "say hello", "cli": "copilot", "model": "gpt-4.1"}'
 ```
