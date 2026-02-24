@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractFromAcpUpdate } from '../src/events.js';
+import { extractFromAcpUpdate } from '../src/agent/events.js';
 
 test('extractFromAcpUpdate handles agent_thought_chunk with truncation', () => {
     const longThought = 'a'.repeat(80);

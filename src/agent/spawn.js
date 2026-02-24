@@ -4,14 +4,14 @@ import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 import { spawn } from 'child_process';
-import { broadcast } from './core/bus.js';
-import { settings, UPLOADS_DIR, detectCli } from './core/config.js';
+import { broadcast } from '../core/bus.js';
+import { settings, UPLOADS_DIR, detectCli } from '../core/config.js';
 import {
     getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
-} from './core/db.js';
-import { getSystemPrompt } from './prompt.js';
+} from '../core/db.js';
+import { getSystemPrompt } from '../prompt.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary } from './events.js';
-import { saveUpload as _saveUpload, buildMediaPrompt } from '../lib/upload.js';
+import { saveUpload as _saveUpload, buildMediaPrompt } from '../../lib/upload.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -128,7 +128,7 @@ function withHistoryPrompt(prompt, historyBlock) {
     return `${historyBlock}\n\n---\n[Current Message]\n${body}`;
 }
 
-import { buildArgs, buildResumeArgs } from './agent-args.js';
+import { buildArgs, buildResumeArgs } from './args.js';
 export { buildArgs, buildResumeArgs };
 
 // ─── Upload wrapper ──────────────────────────────────
@@ -138,8 +138,8 @@ export { buildMediaPrompt };
 
 // ─── Spawn Agent ─────────────────────────────────────
 
-import { stripSubtaskJSON } from './orchestrator.js';
-import { AcpClient } from './acp-client.js';
+import { stripSubtaskJSON } from '../orchestrator/pipeline.js';
+import { AcpClient } from '../acp-client.js';
 
 export function spawnAgent(prompt, opts = {}) {
     const { forceNew = false, agentId, sysPrompt: customSysPrompt } = opts;

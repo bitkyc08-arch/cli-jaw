@@ -50,9 +50,9 @@ import {
     activeProcess, killActiveAgent, waitForProcessEnd,
     steerAgent, enqueueMessage, processQueue, messageQueue,
     saveUpload, memoryFlushCounter,
-} from './src/agent.js';
+} from './src/agent/spawn.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/commands.js';
-import { orchestrate, orchestrateContinue, isContinueIntent } from './src/orchestrator.js';
+import { orchestrate, orchestrateContinue, isContinueIntent } from './src/orchestrator/pipeline.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram.js';
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/heartbeat.js';
 import { fetchCopilotQuota } from './lib/quota-copilot.js';

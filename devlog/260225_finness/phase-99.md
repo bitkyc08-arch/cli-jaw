@@ -116,6 +116,135 @@ distributeByPhase() loop:
 
 ---
 
+## 4.1. 세션 ID 라이프사이클 (핵심 문제 지점)
+
+> **session_id**는 CLI(Claude/Codex/Copilot)와의 대화 연속성을 유지하는 키.
+> 이 값이 잘못 관리되면 **이전 대화가 누적되거나**, **세션을 못 찾아 에러**가 발생한다.
+
+### 세션 관련 코드 위치
+
+| 파일 | 라인 | 역할 |
+|------|------|------|
+| `src/core/db.js` L13 | `session_id TEXT` | DB 스키마 — session 테이블에 저장 |
+| `src/core/db.js` L63 | `getSession()` | 현재 세션 정보 조회 (active_cli, session_id, model 등) |
+| `src/core/db.js` L64 | `updateSession.run()` | 세션 정보 업데이트 (session_id 포함) |
+| `src/agent/spawn.js` L166 | `isResume = !forceNew && session.session_id && ...` | **세션 재사용 판정** — forceNew=false + session_id 있음 + 같은 CLI |
+| `src/agent/spawn.js` L174 | `buildResumeArgs(cli, ..., session.session_id, ...)` | 기존 세션으로 이어서 대화 |
+| `src/agent/spawn.js` L284-293 | `acp.loadSession()` / `acp.createSession()` | ACP(Copilot): 세션 로드 or 새 세션 생성 |
+| `src/agent/spawn.js` L296-301 | `ctx.fullText = ''` 리셋 | **P4 핫픽스**: loadSession 리플레이 후 누적 텍스트 초기화 |
+| `src/agent/spawn.js` L321-322 | `updateSession.run(cli, ctx.sessionId, ...)` | 정상 종료 시 session_id 저장 |
+| `src/prompt.js` L516-520 | `updateSession.run(..., null, ...)` | **regenerateB()에서 session_id = null로 무효화** |
+
+### 4.1.1. 세션 Resume vs ForceNew 분기
+
+```mermaid
+flowchart TD
+    SP["spawnAgent(prompt, opts)"] --> GS["getSession() from DB"]
+    GS --> CHK{isResume?}
+
+    CHK -- "조건 3개 모두 충족" --> RESUME["세션 재사용"]
+    CHK -- "하나라도 미충족" --> NEW["새 세션 생성"]
+
+    subgraph RESUME_COND["isResume 조건 (ALL 필요)"]
+        C1["① forceNew === false"]
+        C2["② session.session_id 존재 (not null)"]
+        C3["③ session.active_cli === 현재 cli"]
+    end
+
+    RESUME --> RA["buildResumeArgs(session_id)"]
+    RA --> CLI_R{"CLI 종류"}
+    CLI_R -- Claude --> CR["claude --resume <session_id>"]
+    CLI_R -- Copilot/ACP --> ACP_R["acp.loadSession(session_id)"]
+    CLI_R -- Codex --> CX_R["codex --session <session_id>"]
+
+    NEW --> NA["buildNewArgs(sysPrompt)"]
+    NA --> CLI_N{"CLI 종류"}
+    CLI_N -- Claude --> CN["claude --append-system-prompt ..."]
+    CLI_N -- Copilot/ACP --> ACP_N["acp.createSession(workDir)"]
+    CLI_N -- Codex --> CX_N["codex (AGENTS.md 재작성)"]
+
+    style CHK fill:#ff9,stroke:#f90,stroke-width:3px
+    style C2 fill:#faa,stroke:#f00,stroke-width:2px
+```
+
+### 4.1.2. 오케스트레이션에서의 세션 ID 흐름
+
+```mermaid
+sequenceDiagram
+    participant U as 사용자
+    participant O as orchestrate()
+    participant DB as session DB
+    participant S as spawnAgent()
+    participant CLI as CLI 프로세스
+
+    U->>O: 작업 요청
+    O->>DB: getSession()
+    DB-->>O: {session_id: "abc123", active_cli: "copilot"}
+
+    Note over O: ── Plan Phase ──
+    O->>S: spawnAgent(planPrompt, {agentId: "planning"})
+    Note over S: forceNew=false → isResume 판정
+    S->>DB: getSession()
+    DB-->>S: session_id: "abc123"
+    S->>CLI: resume session "abc123"
+    CLI-->>S: plan 결과
+    S->>DB: updateSession(cli, "abc123", ...)
+    Note over DB: session_id 유지됨
+
+    Note over O: ── Distribute Phase ──
+    loop 각 employee (forceNew: true)
+        O->>S: spawnAgent(taskPrompt, {forceNew: true, sysPrompt, cli: emp.cli})
+        Note over S: ⚠️ forceNew=true → isResume=false<br/>항상 새 세션 생성!
+        S->>CLI: 새 세션 시작
+        CLI-->>S: 작업 결과 + 새 sessionId: "xyz789"
+        Note over S: forceNew이므로<br/>session_id 저장 안 함 (L321 조건)
+    end
+
+    Note over O: ── Review Phase ──
+    O->>S: spawnAgent(reviewPrompt, {internal: true})
+    Note over S: internal=true, forceNew=false<br/>→ isResume 가능
+    S->>DB: getSession()
+    DB-->>S: session_id: "abc123" (Plan때 저장된 것)
+    S->>CLI: resume "abc123"
+    CLI-->>S: 리뷰 결과
+
+    Note over O,DB: ⚠️ 핵심: employee spawn은 forceNew=true<br/>→ 매번 새 세션 (세션 재사용 불가)<br/>→ 시스템 프롬프트 매번 재주입 필요
+```
+
+### 4.1.3. regenerateB()의 세션 무효화
+
+```mermaid
+flowchart LR
+    RB["regenerateB() 호출"] --> W1["B.md 재작성"]
+    RB --> W2["AGENTS.md 재작성"]
+    RB --> INV["session_id = null 로 무효화"]
+
+    INV --> EFFECT["다음 spawnAgent() 시<br/>isResume = false<br/>→ 새 세션 강제 생성"]
+
+    subgraph TRIGGER["regenerateB() 호출 시점"]
+        T1["설정 변경 (API)"]
+        T2["스킬 설치/제거"]
+        T3["직원 추가/삭제"]
+        T4["프롬프트 파일 수정"]
+    end
+
+    TRIGGER --> RB
+
+    style INV fill:#faa,stroke:#f00,stroke-width:2px
+    style EFFECT fill:#ff9
+```
+
+### 4.1.4. 세션 ID 문제 요약표
+
+| 문제 | 원인 | 위치 | 영향 |
+|------|------|------|------|
+| **Employee 세션 재사용 불가** | `forceNew: true` 고정 | orchestrator.js L207 | 매 spawn마다 sysPrompt 전체 재주입 |
+| **세션 무효화 시 재생성** | `regenerateB()`에서 `session_id = null` | prompt.js L518 | 설정 변경 후 첫 대화에서 이전 컨텍스트 손실 |
+| **ACP loadSession 리플레이** | `acp.loadSession()`이 전체 히스토리 재전송 | spawn.js L286 | P4에서 수정 — `ctx.fullText = ''` 리셋으로 해결 |
+| **Plan/Review 세션 공유** | 둘 다 main session_id 사용 | spawn.js L166 | Plan 결과가 Review 컨텍스트에 누적 (의도적) |
+
+---
+
 ## 5. 개선안
 
 ### Option A: SQLite 세션 캐싱 (주니 제안 ✅ 추천)

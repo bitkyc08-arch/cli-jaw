@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getEmployeePrompt, getEmployeePromptV2 } from '../../src/prompt.js';
-import { needsOrchestration, parseSubtasks } from '../../src/orchestrator.js';
+import { needsOrchestration, parseSubtasks } from '../../src/orchestrator/pipeline.js';
 
 // ─── getEmployeePrompt: export + 기본 구조 ─────────
 

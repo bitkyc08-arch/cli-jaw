@@ -1,10 +1,10 @@
 // ─── Orchestration v2 (Plan → Phase-aware Distribute → Quality Gate Review) ──
 
-import { broadcast } from './core/bus.js';
-import { insertMessage, getEmployees } from './core/db.js';
-import { getEmployeePromptV2, clearPromptCache } from './prompt.js';
-import { spawnAgent } from './agent.js';
-import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from './worklog.js';
+import { broadcast } from '../core/bus.js';
+import { insertMessage, getEmployees } from '../core/db.js';
+import { getEmployeePromptV2, clearPromptCache } from '../prompt.js';
+import { spawnAgent } from '../agent/spawn.js';
+import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from '../worklog.js';
 
 const MAX_ROUNDS = 3;
 
@@ -12,7 +12,7 @@ const MAX_ROUNDS = 3;
 import {
     isContinueIntent, needsOrchestration,
     parseSubtasks, parseDirectAnswer, stripSubtaskJSON, parseVerdicts,
-} from './orchestrator-parser.js';
+} from './parser.js';
 export { isContinueIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
 
 // ─── Phase 정의 ──────────────────────────────────────

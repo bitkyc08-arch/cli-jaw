@@ -1,6 +1,6 @@
 // ─── Event Extraction (NDJSON parser) ────────────────
 
-import { broadcast } from './core/bus.js';
+import { broadcast } from '../core/bus.js';
 
 function pushTrace(ctx, line) {
     if (!ctx?.traceLog || !line) return;

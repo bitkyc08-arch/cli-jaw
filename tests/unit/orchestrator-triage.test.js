@@ -2,7 +2,7 @@
 // 이미 export된 함수를 직접 검증 (추가 작업 없이 즉시 실행 가능)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isContinueIntent, needsOrchestration } from '../../src/orchestrator.js';
+import { isContinueIntent, needsOrchestration } from '../../src/orchestrator/pipeline.js';
 
 // ─── isContinueIntent ────────────────────────────────
 
