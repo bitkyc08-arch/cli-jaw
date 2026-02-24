@@ -1,6 +1,6 @@
 ---
 name: telegram-send
-description: "Send voice/photos/documents (and optional text notices) to Telegram. Use local api first, then Bot API fallback if file-send fails."
+description: "Send voice/photos/documents (and optional text notices) to Telegram. Prefer Bot API first for non-text delivery; use local API for text/status and fallback."
 metadata:
   {
     "openclaw":
@@ -13,46 +13,29 @@ metadata:
 
 # Telegram Send
 
-Use this skill when the user asks to deliver non-text output to Telegram.
+Use this skill when the user asks to deliver output to Telegram.
 Keep your normal text response in stdout.
 
-## Primary Endpoint
+## Delivery Policy (Bot-First)
 
-`POST http://localhost:3457/api/telegram/send`
+- `photo`/`voice`/`document`: send with direct Telegram Bot API first.
+- `text` status notices: you may use local endpoint for convenience.
+- If Bot API send fails, you can retry once via local endpoint.
 
-## Supported Types
+## Required Inputs
 
-- `voice`
-- `photo`
-- `document`
-- `text` (optional status message)
+- Non-text requires `file_path`.
+- Bot API requires `chat_id`.
+- Token is read from `~/.cli-claw/settings.json`.
 
-## Request Rules
-
-- For non-text types, `file_path` is required.
-- `chat_id` is optional for local endpoint (server uses latest active chat).
-- For Bot API fallback, `chat_id` is required.
-
-## Standard Call (Use First)
-
-```bash
-curl -sS -X POST http://localhost:3457/api/telegram/send \
-  -H "Content-Type: application/json" \
-  -d '{"type":"photo","file_path":"/tmp/chart.png","caption":"Analysis chart"}'
-```
-
-## Failure Pattern and Fallback
-
-If local endpoint returns file-send failure (for example `{"error":"Unexpected end of JSON input"}`) for `photo/voice/document`, use direct Telegram Bot API.
-
-### 1) Read token and chat id
+## 1) Read token and chat id
 
 ```bash
 TOKEN=$(jq -r '.telegram.token' ~/.cli-claw/settings.json)
-CHAT_ID=8231528245   # or provide from user/previous successful response
+CHAT_ID=8231528245   # user-provided or previously known
 ```
 
-If `CHAT_ID` is unknown, fetch the latest one:
+If `CHAT_ID` is unknown, recover latest active chat via local endpoint text ping:
 
 ```bash
 CHAT_ID=$(curl -sS -X POST http://localhost:3457/api/telegram/send \
@@ -60,7 +43,7 @@ CHAT_ID=$(curl -sS -X POST http://localhost:3457/api/telegram/send \
   -d '{"type":"text","text":"chat_id check"}' | jq -r '.chat_id')
 ```
 
-### 2) Send by type
+## 2) Bot API send by type (Primary)
 
 ```bash
 # photo
@@ -82,6 +65,20 @@ curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendDocument" \
   -F "caption=Weekly report"
 ```
 
+## 3) Local Endpoint (Secondary)
+
+Primary local endpoint:
+
+`POST http://localhost:3457/api/telegram/send`
+
+Example (non-text):
+
+```bash
+curl -sS -X POST http://localhost:3457/api/telegram/send \
+  -H "Content-Type: application/json" \
+  -d '{"type":"photo","file_path":"/tmp/chart.png","caption":"Analysis chart"}'
+```
+
 ## Quick Verification
 
 ```bash
@@ -93,7 +90,7 @@ curl -sS -X POST http://localhost:3457/api/telegram/send \
 ## Safety Note
 
 - Do not print token values in logs or chat output.
-- Read token only via `jq` variable assignment and use it in-process.
+- Keep token in shell variables only.
 
 Expected success shape:
 
