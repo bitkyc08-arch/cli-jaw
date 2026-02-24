@@ -145,6 +145,9 @@
     font-size: 13px;
     font-family: var(--font-mono);
     resize: none;
+    overflow-y: auto;
+    max-height: 192px;
+    transition: height 0.1s ease;
 }
 
 .chat-input:focus {

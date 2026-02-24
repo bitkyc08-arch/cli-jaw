@@ -175,6 +175,7 @@ cli-claw chat       # Or use terminal TUI
 | **89 Unit Tests** | `node:test` — zero deps, events + telegram + registry + commands + sanitize | ⭐⭐ |
 | **Unified AGENTS.md** | `{workDir}/AGENTS.md` — Codex + Copilot + OpenCode unified system prompt | ⭐⭐⭐ |
 | **XSS Hardening** | DOMPurify + regex fallback + Mermaid strict mode | ⭐⭐ |
+| **Auto-Expand Input** | Chat textarea grows up to 8 lines, resets on send | ⭐ |
 
 ### 🔜 Planned
 
@@ -362,6 +363,7 @@ cli-claw reset                      # Full reset (MCP/skills/employees/session)
 | `claude-sonnet-4.6` | 1x | Default — capable |
 | `gpt-5.3-codex` | 1x | Latest Codex |
 | `claude-opus-4.6` | 3x | Most powerful |
+| `claude-opus-4.6-fast` | 1x | Opus quality, fast speed |
 
 </details>
 

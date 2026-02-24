@@ -20,6 +20,7 @@ export async function sendMessage() {
 
     if (text.startsWith('/') && !state.attachedFile) {
         input.value = '';
+        resetInputHeight();
         slashCmd.close();
         try {
             let signal, timer;
@@ -57,6 +58,7 @@ export async function sendMessage() {
         const displayMsg = `[📎 ${state.attachedFile.name}] ${text}`;
         addMessage('user', displayMsg);
         input.value = '';
+        resetInputHeight();
         try {
             const filePath = await uploadFile(state.attachedFile);
             let prompt = t('chat.file.sent', { path: filePath });
@@ -74,6 +76,7 @@ export async function sendMessage() {
     } else {
         addMessage('user', text);
         input.value = '';
+        resetInputHeight();
         const res = await fetch('/api/message', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -135,6 +138,22 @@ export function clearAttachedFile() {
 export async function clearChat() {
     await fetch('/api/clear', { method: 'POST' });
     document.getElementById('chatMessages').innerHTML = '';
+}
+
+// ── Auto-resize textarea ──
+function autoResize(el) {
+    el.style.height = 'auto';
+    el.style.height = el.scrollHeight + 'px';
+}
+
+export function initAutoResize() {
+    const el = document.getElementById('chatInput');
+    el.addEventListener('input', () => autoResize(el));
+}
+
+export function resetInputHeight() {
+    const el = document.getElementById('chatInput');
+    el.style.height = 'auto';
 }
 
 export function initDragDrop() {

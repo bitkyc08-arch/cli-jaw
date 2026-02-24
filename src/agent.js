@@ -219,8 +219,9 @@ export function spawnAgent(prompt, opts = {}) {
     const cli = opts.cli || session.active_cli || settings.cli;
     const permissions = opts.permissions || settings.permissions || session.permissions || 'auto';
     const cfg = settings.perCli?.[cli] || {};
-    const model = opts.model || cfg.model || 'default';
-    const effort = opts.effort || cfg.effort || '';
+    const ao = (!opts.internal && !opts.agentId) ? (settings.activeOverrides?.[cli] || {}) : {};
+    const model = opts.model || ao.model || cfg.model || 'default';
+    const effort = opts.effort || ao.effort || cfg.effort || '';
 
     const sysPrompt = customSysPrompt || getSystemPrompt();
 
@@ -238,7 +239,11 @@ export function spawnAgent(prompt, opts = {}) {
     }
 
     const agentLabel = agentId || 'main';
-    console.log(`[claw:${agentLabel}] Spawning: ${cli} ${args.join(' ').slice(0, 120)}...`);
+    if (cli === 'copilot') {
+        console.log(`[claw:${agentLabel}] Spawning: copilot --acp --model ${model} [${permissions}]`);
+    } else {
+        console.log(`[claw:${agentLabel}] Spawning: ${cli} ${args.join(' ').slice(0, 120)}...`);
+    }
 
     const spawnEnv = makeCleanEnv();
 
@@ -311,7 +316,7 @@ export function spawnAgent(prompt, opts = {}) {
             if (parsed.tool) {
                 // Buffer 💭 thought chunks → flush when different event arrives
                 if (parsed.tool.icon === '💭') {
-                    ctx.thinkingBuf += parsed.tool.label + ' ';
+                    ctx.thinkingBuf += parsed.tool.label;
                     return;
                 }
                 // Non-💭 tool → flush any pending thinking first

@@ -4,7 +4,7 @@
 
 ---
 
-## agent.js — CLI Spawn & Queue + ACP 분기 (611L)
+## agent.js — CLI Spawn & Queue + ACP 분기 (619L)
 
 | Function                                   | 역할                                                 |
 | ------------------------------------------ | ---------------------------------------------------- |
@@ -22,10 +22,12 @@
 ### spawnAgent 흐름 (ACP 분기 포함)
 
 ```text
-실행 중 체크 → cli/model/effort 결정 → origin 설정 (opts.origin || 'web')
+실행 중 체크 → cli/model/effort 결정 (activeOverrides → perCli → default) → origin 설정
 → cli === 'copilot' ?
     [YES] AcpClient 경로:
+      → config.json model + effort 동기화 (~/.copilot/config.json)
       → new AcpClient(model, workingDir, permissions)
+      → log: [claw:main] Spawning: copilot --acp --model {model} [{permissions}]
       → acp.initialize() → acp.createSession(workDir) or loadSession()
       → acp.on('session/update') → extractFromAcpUpdate → broadcast
       → **ctx reset** (fullText='', toolLog=[], seenToolKeys.clear()) ← loadSession 히스토리 리플레이 방지
@@ -44,6 +46,23 @@
 - `spawnAgent(prompt, { origin: 'telegram' })` — 텔레그램 기원
 - `spawnAgent(prompt, { origin: 'web' })` — 웹/CLI 기원 (기본)
 - `broadcast('agent_done', { ..., origin })` — 포워딩 판단에 사용
+
+### model/effort 우선순위
+
+```text
+opts.model → activeOverrides[cli].model → perCli[cli].model → 'default'
+opts.effort → activeOverrides[cli].effort → perCli[cli].effort → ''
+
+- activeOverrides: Active CLI UI에서 변경 시 저장 (main agent만)
+- perCli: 사이드바 CLI별 설정 (sub-agent도 참조)
+- Sub-Agent(opts.agentId || opts.internal): activeOverrides 무시 → perCli만
+```
+
+### ~/.copilot/config.json 동기화
+
+- copilot spawn 전 `model` + `reasoning_effort` 자동 쓰기
+- model이 `'default'`면 건너뜀, 명시적 모델명만 동기화
+- `--model` flag + config.json 이중 보장
 
 ### 메모리 flush 상세
 

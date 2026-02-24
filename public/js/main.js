@@ -3,7 +3,7 @@
 
 import { connect } from './ws.js';
 import { switchTab, handleSave, loadStats, loadMessages, loadMemory } from './ui.js';
-import { sendMessage, handleKey, clearAttachedFile, clearChat, initDragDrop } from './features/chat.js';
+import { sendMessage, handleKey, clearAttachedFile, clearChat, initDragDrop, initAutoResize } from './features/chat.js';
 import {
     loadCommands, update as updateSlashDropdown, handleKeydown as handleSlashKeydown,
     handleClick as handleSlashClick, handleOutsideClick as handleSlashOutsideClick,
@@ -236,6 +236,7 @@ async function bootstrap() {
     bindPerCliControlEvents();
     connect();
     initDragDrop();
+    initAutoResize();
     await loadCommands();
     await loadSettings();
     loadCliStatus();

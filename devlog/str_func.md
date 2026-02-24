@@ -1,6 +1,6 @@
 # CLI-CLAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-25T02:02 (server.js 856L / agent.js 611L / orchestrator.js 584L / prompt.js 502L / telegram.js 470L / acp-client.js 311L / cli-registry.js 88L)
+> 마지막 검증: 2026-02-25T04:40 (server.js 947L / agent.js 619L / orchestrator.js 584L / prompt.js 502L / telegram.js 470L / acp-client.js 315L / cli-registry.js 88L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -10,20 +10,20 @@
 
 ```text
 cli-claw/
-├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx + /api/cli-registry (856L)
+├── server.js                 ← 라우트 + 글루 + perCli deep merge + activeOverrides + /api/cli-registry (947L)
 ├── lib/
 │   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 + symlink 보호 (645L)
 │   ├── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
 │   └── quota-copilot.js      ← [NEW] Copilot 할당량 조회 (keychain→copilot_internal/user API) (67L)
 ├── src/
 │   ├── cli-registry.js       ← [NEW] 5개 CLI/모델 단일 소스 레지스트리 + effortNote (88L)
-│   ├── acp-client.js         ← [NEW] Copilot ACP JSON-RPC 클라이언트 + optionId 폴백 + activityTimeout (311L)
+│   ├── acp-client.js         ← [NEW] Copilot ACP JSON-RPC 클라이언트 + optionId 폴백 + activityTimeout + _handleLine heartbeat (315L)
 │   ├── config.js             ← CLAW_HOME, settings, CLI 탐지 (cli-registry 기반), APP_VERSION (177L)
 │   ├── db.js                 ← SQLite 스키마 + prepared statements + trace (84L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast + removeBroadcastListener(fn) (18L)
 │   ├── events.js             ← NDJSON 파싱 + dedupe key + ACP update 파싱 + logEventSummary + test helpers (322L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (cli-registry import) (639L)
-│   ├── agent.js              ← CLI spawn + ACP 분기 + effort config.json 쓰기 + origin 전달 + ctx reset + 스트림 + 큐 + 메모리 flush (609L)
+│   ├── agent.js              ← CLI spawn + ACP 분기 + model+effort config.json 동기화 + activeOverrides + origin 전달 + ctx reset + 스트림 + 큐 + 메모리 flush (619L)
 │   ├── orchestrator.js       ← Orchestration v2 + triage + 순차실행 + origin 전달 + phase skip (584L)
 │   ├── worklog.js            ← Worklog CRUD + phase matrix + PHASES (153L)
 │   ├── telegram.js           ← Telegram 봇 + forwarder lifecycle + origin 필터링 + 디바운스 tool 업데이트 (470L)
@@ -43,7 +43,7 @@ cli-claw/
 │   │   ├── layout.css        ← 사이드바 + 토글 absolute + collapse + 반응형 900px (281L)
 │   │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 색상 var (149L)
 │   └── js/                   ← 16 files (~2159L)
-│       ├── main.js           ← 앱 진입점 + 5개 모듈 wire (239L)
+│       ├── main.js           ← 앱 진입점 + 5개 모듈 wire (241L)
 │       ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 (161L)
 │       ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (119L)
 │       └── features/
@@ -55,6 +55,7 @@ cli-claw/
 │   ├── postinstall.js        ← npm install 후 5-CLI 자동설치(bun→npm 폴백) + MCP + 스킬 + Copilot (212L)
 │   └── commands/
 │       ├── serve.js          ← 서버 시작 (--port/--host/--open, .env 자동감지)
+│       ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var + auto-expand (408L)
 │       ├── chat.js           ← 터미널 채팅 TUI (3모드, 슬래시커맨드, 자동완성, 844L)
 │       ├── init.js           ← 초기화 마법사
 │       ├── doctor.js         ← 진단 (12개 체크 — 5 CLI 포함, --json)
@@ -176,6 +177,9 @@ graph LR
 18. **ACP activityTimeout**: `session/prompt`에 고정 타임아웃 대신 idle 1200s + 절대 1200s 이중 타이머, `_handleLine`에서 모든 JSON-RPC 메시지 + stderr 활동으로 idle 자동 리셋
 19. **마크다운 렌더링**: CDN defer (marked v14, hljs v11, KaTeX 0.16, Mermaid v11), CDN 실패 시 regex fallback
 20. **marked v14 주의**: 커스텀 렌더러 API 토큰 기반 변경 — `renderer.table({header, body})` 불가, regex 후처리로 대안
+21. **Copilot model sync**: `~/.copilot/config.json`에 model + effort 모두 동기화 (spawn 시 자동)
+22. **activeOverrides**: Active CLI 모델/effort 변경은 `activeOverrides[cli]`에 저장, Sub-Agent는 `perCli`만 참조 → 상호 간섭 없음
+23. **Copilot spawn 로그**: `[claw:main] Spawning: copilot --acp --model {model} [{permissions}]` 형태로 실제 ACP args 표시
 
 ---
 
@@ -204,7 +208,7 @@ graph LR
 | `260224_skill/`               | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2)           | 🟡    |
 | `260224_vision/`              | Vision Click P1✅ P2✅ — P3 멀티프로바이더 미구현              | 🟡    |
 | `260224_orch/`                | 오케스트레이션 v2 P0✅ P1✅ P2✅ P3✅ P4✅ P5✅                   | ✅    |
-| `260225_finness/`             | P0~P6.2✅ + P7.9✅ (XSS+Auth) + P12✅ (AGENTS.md 통합) + P6.9/P7 (i18n 📋) | 🟡    |
+| `260225_finness/`             | P0~P6.2✅ + P7.2✅ (textarea auto-expand) + P7.9✅ (XSS+Auth) + P12✅ (AGENTS.md 통합) + P6.9/P7 (i18n 📋) | 🟡    |
 | `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6 완료 (할당량+effort+브랜딩)  | ✅    |
 | `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
 

@@ -14,7 +14,7 @@ public/
 ├── css/                  ← 6 files (1355L)
 │   ├── variables.css     ← 커스텀 프로퍼티, 3단 폰트, 라이트 팔레트, 사이드바 변수 (126L)
 │   ├── layout.css        ← 사이드바 그라디언트 + 토글 absolute + collapse + 반응형 (281L)
-│   ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var (404L)
+│   ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var + auto-expand (408L)
 │   ├── sidebar.css       ← 설정/스킬 카드 hover + display font (224L)
 │   ├── modals.css        ← 모달, 하트비트 카드 (171L)
 │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 var (149L)
@@ -26,7 +26,7 @@ public/
     ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() (143L)
     ├── ws.js             ← WebSocket + 메시지 라우팅 (60L)
     └── features/
-        ├── chat.js       ← 전송, 첨부, 드래그앤드롭, 멈춤, 큐 (160L)
+        ├── chat.js       ← 전송, 첨부, 드래그앤드롭, 멈춤, 큐, auto-expand (176L)
         ├── settings.js   ← 설정 + CLI 상태 + perCli (5개 CLI) (524L)
         ├── skills.js     ← 로드, 토글, 필터 (69L)
         ├── employees.js  ← 서브에이전트 CRUD (CSS dot, 이모지 없음) (106L)
@@ -62,7 +62,7 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `chat.js` | 전송, 첨부, 드래그앤드롭 | 160 |
+| `chat.js` | 전송, 첨부, 드래그앤드롭, auto-expand | 176 |
 | `settings.js` | 설정 패널 + perCli (5개 CLI) | 524 |
 | `skills.js` | 스킬 카드 UI | 69 |
 | `employees.js` | 서브에이전트 CRUD (CSS dot) | 106 |
@@ -81,7 +81,7 @@ public/
 |------|------|------|
 | `variables.css` | 3단 폰트 + 시맨틱 색상 + 라이트 팔레트 + 사이드바 변수 | 126 |
 | `layout.css` | 사이드바 그라디언트 + 토글 absolute + collapse/반응형 | 281 |
-| `chat.css` | 채팅 버블 + 애니메이션 + flex 헤더 | 404 |
+| `chat.css` | 채팅 버블 + 애니메이션 + flex 헤더 + auto-expand | 408 |
 | `sidebar.css` | 설정/스킬 카드 hover + display font | 224 |
 | `modals.css` | 모달 + 하트비트 카드 | 171 |
 | `markdown.css` | 마크다운 렌더링 + 시맨틱 색상 var | 149 |
@@ -115,3 +115,4 @@ public/
 | 6 | 사이드바 접기 + 테마 시스템 + 시맨틱 변수 |
 | 6.1 | 레이아웃 리팩터 + 이모지 정리 (탭, 서브에이전트, ROLE_PRESETS) |
 | 6.2 | 토글 absolute 통일 + 반응형 이중 모드 + collapsed/expanded 충돌 수정 |
+| 7.2 | 채팅 입력창 auto-expand (최대 8줄, 전송 후 리셋) |

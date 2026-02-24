@@ -145,9 +145,12 @@ export async function loadSettings() {
     }
 
     onCliChange(false);
-    const activeCfg = s.perCli?.[s.cli] || {};
-    if (activeCfg.model) document.getElementById('selModel').value = activeCfg.model;
-    syncActiveEffortOptions(s.cli, activeCfg.effort || '');
+    const ao = s.activeOverrides?.[s.cli] || {};
+    const pc = s.perCli?.[s.cli] || {};
+    const activeModel = ao.model || pc.model;
+    const activeEffort = ao.effort || pc.effort || '';
+    if (activeModel) document.getElementById('selModel').value = activeModel;
+    syncActiveEffortOptions(s.cli, activeEffort);
 
     loadTelegramSettings(s);
     loadFallbackOrder(s);
@@ -302,12 +305,15 @@ export function onCliChange(save = true) {
     };
 
     fetch('/api/settings').then(r => r.json()).then(s => {
-        const cfg = s.perCli?.[cli] || {};
-        if (cfg.model) {
-            appendCustomOption(modelSel, cfg.model);
-            modelSel.value = cfg.model;
+        const ao = s.activeOverrides?.[cli] || {};
+        const pc = s.perCli?.[cli] || {};
+        const model = ao.model || pc.model;
+        const effort = ao.effort || pc.effort || '';
+        if (model) {
+            appendCustomOption(modelSel, model);
+            modelSel.value = model;
         }
-        syncActiveEffortOptions(cli, cfg.effort || '');
+        syncActiveEffortOptions(cli, effort);
     });
 
     if (save) updateSettings();
@@ -320,15 +326,14 @@ export async function saveActiveCliSettings() {
     if (model === '__custom__') {
         model = document.getElementById('selModelCustom')?.value?.trim() || 'default';
     }
-    const perCli = {};
-    perCli[cli] = {
-        model,
-        effort: document.getElementById('selEffort').value,
-    };
+    const effortEl = document.getElementById('selEffort');
+    const overrides = {};
+    overrides[cli] = { model };
+    if (!effortEl?.disabled) overrides[cli].effort = effortEl?.value || '';
     await fetch('/api/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ perCli }),
+        body: JSON.stringify({ activeOverrides: overrides }),
     });
 }
 
