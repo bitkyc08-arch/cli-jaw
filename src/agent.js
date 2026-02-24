@@ -280,7 +280,21 @@ export function spawnAgent(prompt, opts = {}) {
             fullText: '', traceLog: [], toolLog: [], seenToolKeys: new Set(),
             hasClaudeStreamEvents: false, sessionId: null, cost: null,
             turns: null, duration: null, tokens: null, stderrBuf: '',
+            thinkingBuf: '',
         };
+
+        // Flush accumulated 💭 thinking buffer as a single merged event
+        function flushThinking() {
+            if (!ctx.thinkingBuf) return;
+            const merged = ctx.thinkingBuf.trim();
+            if (merged) {
+                const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
+                const tool = { icon: '💭', label: display };
+                ctx.toolLog.push(tool);
+                broadcast('agent_tool', { agentId: agentLabel, ...tool });
+            }
+            ctx.thinkingBuf = '';
+        }
 
         // session/update → broadcast mapping
         acp.on('session/update', (params) => {
@@ -288,8 +302,13 @@ export function spawnAgent(prompt, opts = {}) {
             if (!parsed) return;
 
             if (parsed.tool) {
-                // Skip broadcasting 💭 thought chunks (floods Web UI + Telegram)
-                if (parsed.tool.icon === '💭') return;
+                // Buffer 💭 thought chunks → flush when different event arrives
+                if (parsed.tool.icon === '💭') {
+                    ctx.thinkingBuf += parsed.tool.label + ' ';
+                    return;
+                }
+                // Non-💭 tool → flush any pending thinking first
+                flushThinking();
                 const key = `${parsed.tool.icon}:${parsed.tool.label}`;
                 if (!ctx.seenToolKeys.has(key)) {
                     ctx.seenToolKeys.add(key);
@@ -298,6 +317,7 @@ export function spawnAgent(prompt, opts = {}) {
                 }
             }
             if (parsed.text) {
+                flushThinking();
                 ctx.fullText += parsed.text;
             }
         });
@@ -336,6 +356,7 @@ export function spawnAgent(prompt, opts = {}) {
         })();
 
         acp.on('exit', ({ code, signal }) => {
+            flushThinking();  // Flush any remaining thinking buffer
             if (!forceNew) {
                 activeProcess = null;
                 broadcast('agent_status', { running: false, agentId: agentLabel });

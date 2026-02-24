@@ -12,6 +12,9 @@
     border-bottom: 1px solid var(--border);
     font-size: 14px;
     font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+    position: relative;
+    z-index: 1;
 }
 
 .chat-messages {
@@ -32,18 +35,35 @@
     word-wrap: break-word;
     overflow-wrap: break-word;
     white-space: pre-wrap;
+    animation: msgSlideIn 0.2s ease-out;
+}
+
+@keyframes msgSlideIn {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
 }
 
 .msg-user {
     background: var(--user-bg);
     align-self: flex-end;
     border: 1px solid var(--border);
+    border-radius: 12px 12px 4px 12px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .msg-agent {
     background: var(--agent-bg);
     align-self: flex-start;
     border: 1px solid var(--border);
+    border-radius: 12px 12px 12px 4px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
 }
 
 .msg-system {
@@ -106,6 +126,8 @@
     display: flex;
     gap: 8px;
     position: relative;
+    box-shadow: 0 -1px 3px rgba(0, 0, 0, 0.15);
+    z-index: 1;
 }
 
 .chat-input {
@@ -116,13 +138,14 @@
     padding: 10px 14px;
     border-radius: 8px;
     font-size: 13px;
-    font-family: inherit;
+    font-family: var(--font-mono);
     resize: none;
 }
 
 .chat-input:focus {
     outline: none;
     border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
 }
 
 .chat-input:disabled {
@@ -139,10 +162,17 @@
     font-size: 13px;
     font-weight: 600;
     font-family: inherit;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
 }
 
 .btn-send:hover {
     background: var(--accent2);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(255, 107, 107, 0.3);
+}
+
+.btn-send:active {
+    transform: translateY(0);
 }
 
 .btn-send.stop-mode {

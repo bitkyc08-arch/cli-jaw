@@ -42,7 +42,7 @@
     background: none;
     padding: 0;
     border-radius: 0;
-    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-family: var(--font-mono);
 }
 
 .msg-content code {
@@ -50,7 +50,7 @@
     padding: 1px 5px;
     border-radius: 3px;
     font-size: 0.9em;
-    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-family: var(--font-mono);
 }
 
 /* Blockquotes */

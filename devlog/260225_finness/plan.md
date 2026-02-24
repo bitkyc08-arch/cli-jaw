@@ -108,3 +108,19 @@
 1. `tests/events.test.js` 최소 3케이스 작성 (`stream_event`, `assistant fallback`, `stream 이후 assistant 무시`)
 2. `tests/telegram-forwarding.test.js` 최소 2케이스 작성 (`origin=telegram skip`, `error skip`)
 3. `package.json`에 `test:events`, `test:telegram` 추가 후 수동 실행 루프 고정
+
+---
+
+## 2026-02-24 보정 (Phase 8 리뷰 반영)
+
+- 아래 항목은 최신 코드 기준으로 **완료/보정 필요**:
+  - 테스트 스크립트 부재 이슈: 해소 (`npm run test`, `test:events`, `test:telegram` 존재)
+  - Telegram 전역 포워더 lifecycle 이슈: 해소 (`createForwarderLifecycle` 기반 detach/attach 적용)
+  - symlink 강제 삭제 이슈: 보정 (`ensureSkillsSymlinks(..., { onConflict: 'backup' })`)
+
+- 새 우선순위:
+  1. **Phase 9** 진행 (백엔드 보안/검증/회귀 테스트, 프런트 제외)
+  2. Phase 8의 구조 분리 작업은 Phase 9 P0/P1 완료 후 착수
+
+- 상세 계획 문서: `devlog/260225_finness/phase-9.md`
+- `dev` 스킬의 연관 스킬(`security-best-practices`, `static-analysis`, `tdd`, `debugging-checklist` 등) 검토 결과도 `phase-9.md`에 반영
