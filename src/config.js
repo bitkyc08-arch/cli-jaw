@@ -69,7 +69,7 @@ export const DEFAULT_SETTINGS = {
         claude: { model: 'claude-sonnet-4-6', effort: 'medium' },
         codex: { model: 'gpt-5.3-codex', effort: 'medium' },
         gemini: { model: 'gemini-2.5-pro', effort: '' },
-        opencode: { model: 'github-copilot/claude-sonnet-4.5', effort: '' },
+        opencode: { model: 'anthropic/claude-opus-4-6-thinking', effort: '' },
     },
     heartbeat: {
         enabled: false,
