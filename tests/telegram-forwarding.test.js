@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     chunkTelegramMessage,
+    createForwarderLifecycle,
     createTelegramForwarder,
     escapeHtmlTg,
     markdownToTelegramHtml,
@@ -79,6 +80,42 @@ test('forwarder falls back to plain text when HTML send fails', async () => {
     assert.equal(sent[1].text.includes('bold'), true);
 });
 
+test('forwarder handles mixed origin/error events deterministically', async () => {
+    const { bot, sent } = createBotSpy();
+    const forward = createTelegramForwarder({
+        bot,
+        getLastChatId: () => 456,
+        shouldSkip: (data) => data.origin === 'telegram',
+    });
+
+    forward('agent_done', { text: 'skip telegram', origin: 'telegram' });
+    forward('agent_done', { text: 'ok web', origin: 'web' });
+    forward('agent_done', { text: 'skip error', origin: 'web', error: true });
+    forward('agent_done', { text: 'ok cli', origin: 'cli' });
+    await flush();
+
+    assert.equal(sent.length, 2);
+    assert.equal(sent[0].text, '📡 ok web');
+    assert.equal(sent[1].text, '📡 ok cli');
+});
+
+test('forwarder chunks long messages into multiple sends', async () => {
+    const { bot, sent } = createBotSpy();
+    const forward = createTelegramForwarder({
+        bot,
+        getLastChatId: () => 999,
+    });
+    const longText = `**head**\n${'x'.repeat(5000)}`;
+
+    forward('agent_done', { text: longText, origin: 'web' });
+    await flush();
+
+    assert.equal(sent.length >= 2, true);
+    assert.equal(sent.every((msg) => msg.opts?.parse_mode === 'HTML'), true);
+    assert.equal(sent.every((msg) => msg.chatId === 999), true);
+    assert.equal(sent[0].text.startsWith('📡 '), true);
+});
+
 test('forwarder does nothing when type is not agent_done or chatId is missing', async () => {
     const { bot, sent } = createBotSpy();
     const forward = createTelegramForwarder({
@@ -118,4 +155,50 @@ test('chunkTelegramMessage falls back to hard split without newlines', () => {
     const input = 'abcdefghij';
     const chunks = chunkTelegramMessage(input, 5);
     assert.deepEqual(chunks, ['abcde', 'fghij']);
+});
+
+test('createForwarderLifecycle attach/detach is idempotent', () => {
+    const added = [];
+    const removed = [];
+    let buildCount = 0;
+
+    const lifecycle = createForwarderLifecycle({
+        addListener: (fn) => added.push(fn),
+        removeListener: (fn) => removed.push(fn),
+        buildForwarder: () => {
+            buildCount += 1;
+            return () => { };
+        },
+    });
+
+    const first = lifecycle.attach({ bot: {} });
+    const second = lifecycle.attach({ bot: {} });
+    lifecycle.detach();
+    lifecycle.detach();
+
+    assert.equal(typeof first, 'function');
+    assert.equal(first, second);
+    assert.equal(buildCount, 1);
+    assert.equal(added.length, 1);
+    assert.equal(removed.length, 1);
+    assert.equal(lifecycle.getCurrent(), null);
+});
+
+test('createForwarderLifecycle can attach again after detach', () => {
+    let buildCount = 0;
+    const lifecycle = createForwarderLifecycle({
+        buildForwarder: () => {
+            buildCount += 1;
+            return () => { };
+        },
+    });
+
+    const first = lifecycle.attach();
+    lifecycle.detach();
+    const second = lifecycle.attach();
+
+    assert.equal(typeof first, 'function');
+    assert.equal(typeof second, 'function');
+    assert.notEqual(first, second);
+    assert.equal(buildCount, 2);
 });

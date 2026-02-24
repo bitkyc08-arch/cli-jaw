@@ -3,6 +3,14 @@
 ## 전제
 - 최소 회귀 테스트(events/telegram)는 `phase-1.1.md`에서 선반영 완료된 상태를 전제로 함
 
+## 구현 반영 결과 (2026-02-24)
+- [x] `tests/events.test.js`를 fixture 테이블 기반으로 확장 (Claude/Codex/Gemini/OpenCode)
+- [x] `tests/fixtures/*`에 CLI별 분기 fixture 13개 추가 (`result/error`, `open_page`, `tool_result` 등)
+- [x] `tests/telegram-forwarding.test.js`에 mixed-origin/error, long-chunk 전송, lifecycle idempotent 테스트 추가
+- [x] `src/telegram-forwarder.js`에 `createForwarderLifecycle()` 추가 후 `src/telegram.js` forwarder attach/detach에 적용
+- [x] CI 워크플로 추가: `.github/workflows/test.yml` (`npm ci --ignore-scripts` + `npm test`)
+- [x] 로컬 검증 명령: `npm run test:events`, `npm run test:telegram`, `npm test`
+
 ## 목표
 - 이벤트/텔레그램 테스트 커버리지 확장
 - 동시성/라이프사이클 회귀까지 자동 차단
@@ -11,8 +19,9 @@
 ## 범위
 - `tests/events.test.js`, `tests/fixtures/*`
 - `tests/telegram-forwarding.test.js`
+- `src/telegram-forwarder.js`, `src/telegram.js`
 - `package.json` (집계 테스트)
-- 필요 시 CI 워크플로 파일
+- `.github/workflows/test.yml`
 
 ## 재검토 근거
 - Node Test Runner: https://nodejs.org/api/test.html
