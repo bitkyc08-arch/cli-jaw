@@ -20,15 +20,21 @@ export async function sendMessage() {
         input.value = '';
         slashCmd.close();
         try {
-            const signal = typeof AbortSignal?.timeout === 'function'
-                ? AbortSignal.timeout(10000)
-                : undefined;
+            let signal, timer;
+            if (typeof AbortSignal?.timeout === 'function') {
+                signal = AbortSignal.timeout(10000);
+            } else {
+                const ac = new AbortController();
+                signal = ac.signal;
+                timer = setTimeout(() => ac.abort(), 10000);
+            }
             const res = await fetch('/api/command', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text }),
                 signal,
             });
+            if (timer) clearTimeout(timer);
             const result = await res.json().catch(() => ({}));
             if (!res.ok && !result?.text) throw new Error(`HTTP ${res.status}`);
             if (result?.code === 'clear_screen') {
