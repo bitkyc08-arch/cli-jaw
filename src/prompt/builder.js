@@ -315,6 +315,13 @@ export function getSystemPrompt() {
             prompt += '\n5. If you can handle the task yourself, respond directly WITHOUT JSON dispatch';
             prompt += '\n6. When receiving a "result report", summarize it in natural language for the user';
             prompt += '\n7. Simple questions, single-file edits, or tasks in your expertise → handle directly';
+            prompt += '\n\n### Completion Protocol';
+            prompt += '\nAfter dispatching, the system runs a 5-phase pipeline:';
+            prompt += '\n  Phase 1(기획) → 2(기획검증) → 3(개발) → 4(디버깅) → 5(통합검증)';
+            prompt += '\nEmployees can skip phases by emitting `{ "phases_completed": [3,4,5] }`.';
+            prompt += '\nA review agent checks each employee\'s output per-phase (Quality Gate).';
+            prompt += '\nWhen ALL employees pass ALL their phases, orchestration emits **allDone** and reports the summary to you.';
+            prompt += '\nYou then summarize the final result to the user in natural language.';
         }
     } catch { /* DB not ready yet */ }
 
@@ -433,6 +440,16 @@ export function getEmployeePrompt(emp) {
     // ─── Memory commands
     prompt += `\n## Memory\n`;
     prompt += `Long-term memory: use \`cli-claw memory search/read/save\` commands.\n`;
+
+    // ─── Orchestration Completion Protocol
+    prompt += `\n## Task Completion Protocol\n`;
+    prompt += `You are an employee agent running inside a 5-phase pipeline.\n`;
+    prompt += `When you finish your assigned task(s), output this JSON at the end of your response:\n`;
+    prompt += `\`\`\`json\n{ "phases_completed": [3, 4, 5] }\n\`\`\`\n`;
+    prompt += `Replace the numbers with the phases you actually completed in this pass.\n`;
+    prompt += `- Single phase only → do NOT add this JSON (system auto-advances)\n`;
+    prompt += `- Multiple phases at once → MUST add this JSON so the system skips done phases\n`;
+    prompt += `- All your remaining phases done → include all of them, system marks you complete\n`;
 
     return prompt;
 }
