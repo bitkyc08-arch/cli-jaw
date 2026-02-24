@@ -6,7 +6,7 @@
 
 *一个界面，五个 CLI，封号？不存在的。*
 
-[![Tests](https://img.shields.io/badge/tests-70%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-216%20pass-brightgreen)](#-测试)
 [![Node](https://img.shields.io/badge/node-%3E%3D20-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
 
