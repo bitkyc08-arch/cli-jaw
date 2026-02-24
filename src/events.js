@@ -126,6 +126,19 @@ export function logEventSummary(agentLabel, cli, event, ctx = null) {
     }
 
     if (cli === 'claude') {
+        // Real-time streaming events (--include-partial-messages)
+        if (event.type === 'stream_event' && event.event) {
+            const inner = event.event;
+            if (inner.type === 'content_block_start' && inner.content_block) {
+                const cb = inner.content_block;
+                if (cb.type === 'tool_use') {
+                    logLine(`[${agentLabel}] 🔧 ${cb.name || 'tool'}`, ctx);
+                } else if (cb.type === 'thinking') {
+                    logLine(`[${agentLabel}] 💭 thinking...`, ctx);
+                }
+            }
+            return;
+        }
         if (event.type === 'assistant' && event.message?.content) {
             for (const block of event.message.content) {
                 if (block.type === 'tool_use') {
@@ -166,10 +179,19 @@ function extractToolLabels(cli, event) {
         if (item.type === 'command_execution') labels.push({ icon: '⚡', label: (item.command || 'exec').slice(0, 40) });
     }
 
-    if (cli === 'claude' && event.type === 'assistant' && event.message?.content) {
-        for (const block of event.message.content) {
-            if (block.type === 'tool_use') labels.push({ icon: '🔧', label: block.name });
-            if (block.type === 'thinking') labels.push({ icon: '💭', label: (block.thinking || '').slice(0, 60) });
+    if (cli === 'claude') {
+        // Real-time streaming: content_block_start for tool_use/thinking
+        if (event.type === 'stream_event' && event.event?.type === 'content_block_start') {
+            const cb = event.event.content_block;
+            if (cb?.type === 'tool_use') labels.push({ icon: '🔧', label: cb.name || 'tool' });
+            if (cb?.type === 'thinking') labels.push({ icon: '💭', label: 'thinking...' });
+        }
+        // Bulk turn event
+        if (event.type === 'assistant' && event.message?.content) {
+            for (const block of event.message.content) {
+                if (block.type === 'tool_use') labels.push({ icon: '🔧', label: block.name });
+                if (block.type === 'thinking') labels.push({ icon: '💭', label: (block.thinking || '').slice(0, 60) });
+            }
         }
     }
 

@@ -131,6 +131,7 @@ export function buildArgs(cli, model, effort, prompt, sysPrompt, permissions = '
     switch (cli) {
         case 'claude':
             return ['--print', '--verbose', '--output-format', 'stream-json',
+                '--include-partial-messages',
                 ...(autoPerm ? ['--dangerously-skip-permissions'] : []),
                 '--max-turns', '50',
                 ...(model && model !== 'default' ? ['--model', model] : []),
@@ -162,6 +163,7 @@ export function buildResumeArgs(cli, model, effort, sessionId, prompt, permissio
     switch (cli) {
         case 'claude':
             return ['--print', '--verbose', '--output-format', 'stream-json',
+                '--include-partial-messages',
                 ...(autoPerm ? ['--dangerously-skip-permissions'] : []),
                 '--resume', sessionId,
                 '--max-turns', '50',
