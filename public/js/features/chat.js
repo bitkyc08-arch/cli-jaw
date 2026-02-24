@@ -20,19 +20,23 @@ export async function sendMessage() {
         input.value = '';
         slashCmd.close();
         try {
+            const signal = typeof AbortSignal?.timeout === 'function'
+                ? AbortSignal.timeout(10000)
+                : undefined;
             const res = await fetch('/api/command', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ text }),
+                signal,
             });
             const result = await res.json().catch(() => ({}));
             if (!res.ok && !result?.text) throw new Error(`HTTP ${res.status}`);
             if (result?.code === 'clear_screen') {
                 document.getElementById('chatMessages').innerHTML = '';
             }
-            if (result?.text) addSystemMsg(result.text);
+            if (result?.text) addSystemMsg(result.text, '', result.type);
         } catch (err) {
-            addSystemMsg(`❌ 커맨드 실행 실패: ${err.message}`);
+            addSystemMsg(`❌ 커맨드 실행 실패: ${err.message}`, '', 'error');
         }
         return;
     }

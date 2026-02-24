@@ -171,15 +171,15 @@ program.helpCommand('assist [command]', 'show assistance');
 
 ### 2.2 인터페이스 특화
 
-| 커맨드                 | 인터페이스               | 동작                 | 구현 난이도 |
-| ---------------------- | ------------------------ | -------------------- | ----------- |
-| `/quit` `/q` `/exit`   | CLI only                 | 프로세스 종료        | 🟢 기존      |
-| `/file <path>`         | CLI only                 | 파일 첨부            | 🟢 기존      |
-| `/mcp [sync\|install]` | CLI + Web                | MCP 관리             | 🟢 기존 이전 |
-| `/memory [query]`      | CLI only (Phase 1)       | 메모리 검색/목록     | 🟡 보통      |
-| `/browser [status]`    | CLI + Web + TG           | 브라우저 상태/탭     | 🟡 보통      |
-| `/prompt`              | CLI + Web                | 시스템 프롬프트 정보 | 🟢 쉬움      |
-| `/id`                  | TG only                  | Chat ID 확인         | 🟢 기존      |
+| 커맨드                   | 인터페이스              | 동작                 | 구현 난이도 |
+| ------------------------ | ----------------------- | -------------------- | ----------- |
+| `/quit` `/q` `/exit`     | CLI only                | 프로세스 종료        | 🟢 기존      |
+| `/file <path>`           | CLI only                | 파일 첨부            | 🟢 기존      |
+| `/mcp [sync\|install]`   | CLI + Web               | MCP 관리             | 🟢 기존 이전 |
+| `/memory [query]`        | CLI only (Phase 1)      | 메모리 검색/목록     | 🟡 보통      |
+| `/browser [status]`      | CLI + Web + TG          | 브라우저 상태/탭     | 🟡 보통      |
+| `/prompt`                | CLI + Web               | 시스템 프롬프트 정보 | 🟢 쉬움      |
+| `/id`                    | TG only                 | Chat ID 확인         | 🟢 기존      |
 | `/memory [query] (확장)` | Web + TG (Phase 2 선택) | 보안 보강 후 확장    | 🟠 중간      |
 
 ---
@@ -270,14 +270,14 @@ export function getCompletions(partial, iface = 'cli') {
 
 > **핵심 원칙**: handler는 `ctx`를 통해 환경 의존성을 주입받는다.
 
-| 필드                   | CLI                        | Web (server.js)                 | Telegram                    |
-| ---------------------- | -------------------------- | ------------------------------- | --------------------------- |
-| `ctx.interface`        | `'cli'`                    | `'web'`                         | `'telegram'`                |
-| `ctx.getSession()`     | API 어댑터                 | `getSession()` 직접 호출        | API 어댑터                  |
-| `ctx.getSettings()`    | API 어댑터                 | `() => settings`                | API 어댑터                  |
-| `ctx.updateSettings()` | API 어댑터                 | `updateSettingsAndSession()`    | API 어댑터                  |
+| 필드                   | CLI                         | Web (server.js)                  | Telegram                    |
+| ---------------------- | --------------------------- | -------------------------------- | --------------------------- |
+| `ctx.interface`        | `'cli'`                     | `'web'`                          | `'telegram'`                |
+| `ctx.getSession()`     | API 어댑터                  | `getSession()` 직접 호출         | API 어댑터                  |
+| `ctx.getSettings()`    | API 어댑터                  | `() => settings`                 | API 어댑터                  |
+| `ctx.updateSettings()` | API 어댑터                  | `updateSettingsAndSession()`     | API 어댑터                  |
 | `ctx.getRuntime()`     | API 어댑터 (`/api/runtime`) | `getRuntimeSnapshot()` 직접 호출 | API 어댑터 (`/api/runtime`) |
-| `ctx.getSkills()`      | API 어댑터                 | `getMergedSkills()` 직접 호출   | API 어댑터                  |
+| `ctx.getSkills()`      | API 어댑터                  | `getMergedSkills()` 직접 호출    | API 어댑터                  |
 
 **서버 내부에서는 HTTP self-request 금지** — `POST /api/command` 핸들러에서
 handler가 `/api/session` 등을 호출할 때, `fetch(localhost)` 대신
@@ -715,30 +715,30 @@ Bot:  🦞 cli-claw v0.1.0
 
 ### 구현 난이도
 
-| 항목                                  | 난이도 | 공수     | 비고                                              |
-| ------------------------------------- | ------ | -------- | ------------------------------------------------- |
-| `src/commands.js` 레지스트리          | 🟡      | 1.5h     | 에러 핸들링 + ctx 설계 포함                       |
-| `chat.js` 디스패치 + 힌트             | 🟡      | 2.5h     | raw stdin 호환 + 기존 코드 제거                   |
-| `server.js` API + ctx 주입            | 🟢      | 30m      | 직접 모듈 호출 ctx 구성                           |
-| Web 모듈 통합 (`chat.js/main.js/css`) | 🟡      | 2.5h     | `index.html` DOM + 모듈 이벤트 바인딩             |
-| `telegram.js` 디스패치                | 🟢      | 45m      | plain text 기본, 필요 시 escape 후 HTML           |
-| `src/memory.js` 보안 보강             | 🟠      | 1.0h     | shell command 제거 (`execFile/spawn` + argv)      |
-| 테스트 (3개 인터페이스)               | 🟡      | 1.5h     | 3 인터페이스 × 5+ 시나리오 + reset 안전장치 검증  |
-| **합계**                              |        | **~10h** | 보안/회귀 방지 반영으로 소폭 증가                 |
+| 항목                                  | 난이도 | 공수     | 비고                                             |
+| ------------------------------------- | ------ | -------- | ------------------------------------------------ |
+| `src/commands.js` 레지스트리          | 🟡      | 1.5h     | 에러 핸들링 + ctx 설계 포함                      |
+| `chat.js` 디스패치 + 힌트             | 🟡      | 2.5h     | raw stdin 호환 + 기존 코드 제거                  |
+| `server.js` API + ctx 주입            | 🟢      | 30m      | 직접 모듈 호출 ctx 구성                          |
+| Web 모듈 통합 (`chat.js/main.js/css`) | 🟡      | 2.5h     | `index.html` DOM + 모듈 이벤트 바인딩            |
+| `telegram.js` 디스패치                | 🟢      | 45m      | plain text 기본, 필요 시 escape 후 HTML          |
+| `src/memory.js` 보안 보강             | 🟠      | 1.0h     | shell command 제거 (`execFile/spawn` + argv)     |
+| 테스트 (3개 인터페이스)               | 🟡      | 1.5h     | 3 인터페이스 × 5+ 시나리오 + reset 안전장치 검증 |
+| **합계**                              |        | **~10h** | 보안/회귀 방지 반영으로 소폭 증가                |
 
 ### 리스크
 
-| 리스크                                | 확률 | 영향 | 대응                                                                  |
-| ------------------------------------- | ---- | ---- | --------------------------------------------------------------------- |
-| **raw stdin 힌트 깜박임**             | 높음 | 낮음 | Phase 1: `/` 때 1회 전체 목록만, Phase 4에서 점진적 필터링            |
-| **Web UI 드롭다운 포커스**            | 보통 | 보통 | 화살표 키 + Enter 네비게이션 필수                                     |
-| **opencode CLI/모델 회귀**            | 보통 | 높음 | `/cli`/`/model` 하드코딩 금지, `settings.perCli` 기반 동적 허용       |
-| **/clear 파괴적 의미 변경**           | 보통 | 높음 | `/clear` 비파괴 유지, 파괴적 동작은 `/reset confirm`으로 분리         |
-| **memory 검색 명령 인젝션**           | 보통 | 높음 | `memory.search`를 argv 기반 실행으로 교체 후 Web/TG 확장              |
-| **Telegram HTML parse 깨짐/주입**     | 보통 | 보통 | 기본 plain text, HTML 필요 시 escape 필수                             |
-| **handler 내 예외 전파**              | 보통 | 보통 | `executeCommand` try-catch 래퍼 (설계 반영)                           |
-| **서버 self-request 병목**            | 낮음 | 낮음 | Web ctx는 모듈 함수 직접 주입, localhost fetch 금지                    |
-| **unknown 커맨드 침묵**               | 보통 | 보통 | parse 결과를 `unknown` 타입으로 통일해 항상 안내 반환                  |
+| 리스크                            | 확률 | 영향 | 대응                                                            |
+| --------------------------------- | ---- | ---- | --------------------------------------------------------------- |
+| **raw stdin 힌트 깜박임**         | 높음 | 낮음 | Phase 1: `/` 때 1회 전체 목록만, Phase 4에서 점진적 필터링      |
+| **Web UI 드롭다운 포커스**        | 보통 | 보통 | 화살표 키 + Enter 네비게이션 필수                               |
+| **opencode CLI/모델 회귀**        | 보통 | 높음 | `/cli`/`/model` 하드코딩 금지, `settings.perCli` 기반 동적 허용 |
+| **/clear 파괴적 의미 변경**       | 보통 | 높음 | `/clear` 비파괴 유지, 파괴적 동작은 `/reset confirm`으로 분리   |
+| **memory 검색 명령 인젝션**       | 보통 | 높음 | `memory.search`를 argv 기반 실행으로 교체 후 Web/TG 확장        |
+| **Telegram HTML parse 깨짐/주입** | 보통 | 보통 | 기본 plain text, HTML 필요 시 escape 필수                       |
+| **handler 내 예외 전파**          | 보통 | 보통 | `executeCommand` try-catch 래퍼 (설계 반영)                     |
+| **서버 self-request 병목**        | 낮음 | 낮음 | Web ctx는 모듈 함수 직접 주입, localhost fetch 금지             |
+| **unknown 커맨드 침묵**           | 보통 | 보통 | parse 결과를 `unknown` 타입으로 통일해 항상 안내 반환           |
 
 ### 장점
 
@@ -758,6 +758,8 @@ Phase 2 (서버): server.js API + telegram.js 연결     → TG 동작
          + setMyCommands 등록 + plain text 응답
 Phase 3 (UI):   index DOM + public/js 모듈 드롭다운  → Web 동작
 Phase 4 (폴리시): Tab 자동완성, 키보드 네비게이션     → UX 개선
+Phase 5 (안정화): 에러 핸들링 + 회귀 + 레거시 정리   → 안정화
+Phase 6 (프롬프트): 히스토리 통합 + 시스템 프롬프트 정규화 → 프롬프트 개선
 ```
 
 ---
@@ -807,12 +809,12 @@ curl -s -G localhost:3457/api/claw-memory/search \
 | `/model gemini-2.5-flash` | CLI/Web    | `perCli[activeCli].model` 변경 + 안내 메시지   |
 | `/clear`                  | CLI/Web    | 화면 정리만 수행, DB/세션 유지                 |
 | `/reset` (confirm 없음)   | CLI/Web/TG | 확인 문구 안내                                 |
-| `/reset confirm`          | CLI/Web/TG | `POST /api/clear` + 세션/메시지 리셋            |
+| `/reset confirm`          | CLI/Web/TG | `POST /api/clear` + 세션/메시지 리셋           |
 | `/foo` (미존재)           | CLI/Web/TG | 에러 메시지                                    |
 | `/mcp` (TG에서)           | TG         | "사용할 수 없습니다" 안내                      |
 | Telegram `/` 메뉴         | TG         | `setMyCommands` 목록 표시 확인                 |
 | handler 예외              | Web        | 500 대신 `{ ok: false, text: '오류...' }` 반환 |
-| `/model` (opencode 활성)  | CLI/Web    | opencode 모델 문자열 정상 저장 (회귀 없음)      |
+| `/model` (opencode 활성)  | CLI/Web    | opencode 모델 문자열 정상 저장 (회귀 없음)     |
 
 ### 브라우저 테스트 (Web UI)
 

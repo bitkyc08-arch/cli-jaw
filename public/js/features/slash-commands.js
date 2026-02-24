@@ -99,7 +99,8 @@ export async function loadCommands() {
         const res = await fetch('/api/commands?interface=web');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         cmdList = await res.json();
-    } catch {
+    } catch (err) {
+        console.warn('[slash-commands] loadCommands failed:', err.message);
         cmdList = [];
     }
 }

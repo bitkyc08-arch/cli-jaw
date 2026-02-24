@@ -149,7 +149,8 @@ async function safeCall(fn, fallback = null) {
     if (typeof fn !== 'function') return fallback;
     try {
         return await fn();
-    } catch {
+    } catch (err) {
+        if (process.env.DEBUG) console.warn('[commands:safeCall]', err.message);
         return fallback;
     }
 }
@@ -541,7 +542,13 @@ export function getArgumentCompletionItems(commandName, partial = '', iface = 'c
     if (!cmd.interfaces.includes(iface)) return [];
     if (typeof cmd.getArgumentCompletions !== 'function') return [];
 
-    const candidates = cmd.getArgumentCompletions(ctx, argv, partial) || [];
+    let candidates;
+    try {
+        candidates = cmd.getArgumentCompletions(ctx, argv, partial) || [];
+    } catch (err) {
+        if (process.env.DEBUG) console.warn('[commands:argComplete]', err.message);
+        return [];
+    }
     const normalized = dedupeChoices(candidates.map(normalizeArgumentCandidate).filter(Boolean));
     const query = String(partial || '').trim().toLowerCase();
 

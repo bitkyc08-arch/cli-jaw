@@ -3,7 +3,7 @@
 import os from 'os';
 import fs from 'fs';
 import { join } from 'path';
-import { execSync } from 'child_process';
+import { execFileSync, execSync } from 'child_process';
 import { createRequire } from 'module';
 
 // ─── Version (single source of truth: package.json) ──
@@ -151,8 +151,9 @@ export function saveHeartbeatFile(data) {
 // ─── CLI Detection ───────────────────────────────────
 
 export function detectCli(name) {
+    if (!/^[a-z0-9_-]+$/i.test(name)) return { available: false, path: null };
     try {
-        const p = execSync(`which ${name}`, { encoding: 'utf8', timeout: 3000 }).trim();
+        const p = execFileSync('which', [name], { encoding: 'utf8', timeout: 3000 }).trim();
         return { available: true, path: p };
     } catch { return { available: false, path: null }; }
 }

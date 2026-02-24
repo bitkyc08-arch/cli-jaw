@@ -499,8 +499,12 @@ if (values.simple) {
         redrawInputWithAutocomplete();
     }
 
-    // Redraw footer + input/autocomplete on terminal resize
-    process.stdout.on('resize', handleResize);
+    // Redraw footer + input/autocomplete on terminal resize (debounced)
+    let resizeTimer = null;
+    process.stdout.on('resize', () => {
+        if (resizeTimer) clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => { resizeTimer = null; handleResize(); }, 50);
+    });
 
     async function runSlashCommand(parsed) {
         let exiting = false;

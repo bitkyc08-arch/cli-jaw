@@ -37,10 +37,11 @@ export function updateQueueBadge(count) {
     el.style.display = count > 0 ? 'flex' : 'none';
 }
 
-export function addSystemMsg(text, extraClass) {
+export function addSystemMsg(text, extraClass, type) {
     const container = document.getElementById('chatMessages');
     const div = document.createElement('div');
-    div.className = 'msg msg-system' + (extraClass ? ' ' + extraClass : '');
+    const typeClass = type ? ` msg-type-${type}` : '';
+    div.className = 'msg msg-system' + typeClass + (extraClass ? ' ' + extraClass : '');
     div.textContent = text;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;

@@ -57,6 +57,21 @@
     max-width: 95%;
 }
 
+.msg-type-success {
+    border-color: #4caf50;
+    color: #4caf50;
+}
+
+.msg-type-error {
+    border-color: #ef5350;
+    color: #ef5350;
+}
+
+.msg-type-info {
+    border-color: #42a5f5;
+    color: #42a5f5;
+}
+
 .tool-summary {
     font-size: 11px;
     color: var(--text-dim);
