@@ -137,10 +137,10 @@ export class AcpClient extends EventEmitter {
 
     /** Create a new session with working directory */
     async createSession(workDir) {
-        const result = await this.request('session/create', {
+        const result = await this.request('session/new', {
             workingDirectory: workDir,
         });
-        this.sessionId = result?.sessionId || result?.id;
+        this.sessionId = result?.sessionId;
         return result;
     }
 
@@ -152,6 +152,13 @@ export class AcpClient extends EventEmitter {
             sessionId: sid,
             messages: [{ role: 'user', content: [{ type: 'text', text }] }],
         });
+    }
+
+    /** Resume a previous session */
+    async loadSession(sessionId) {
+        const result = await this.request('session/load', { sessionId });
+        this.sessionId = sessionId;
+        return result;
     }
 
     /** Cancel current operation */

@@ -10,16 +10,17 @@
 > ⚠️ 아래 `params` 구조는 Phase 2 캡처 결과로 확정. 현재는 추정.
 
 ```
-ACP session/update               →  cli-claw broadcast
-─────────────────────────────────────────────────
-kind: 'thinking'                 →  agent_tool { icon: '💭', label: ... }
-kind: 'tool_use'                 →  agent_tool { icon: '🔧', label: toolName }
-kind: 'tool_result'              →  agent_tool { icon: '✅', label: toolName }
-kind: 'text'                     →  (fullText에 누적, ws.js가 agent_output으로 전달)
-kind: 'complete'                 →  agent_done { text: fullText, toolLog }
+ACP session/update                  →  cli-claw broadcast
+──────────────────────────────────────────────────────
+sessionUpdate: 'agent_thought_chunk' →  agent_tool { icon: '💭' }
+sessionUpdate: 'tool_call'           →  agent_tool { icon: '🔧', label: name }
+sessionUpdate: 'tool_call_update'    →  agent_tool { icon: '✅', label: name }
+sessionUpdate: 'agent_message_chunk' →  fullText에 누적 (ws.js가 agent_output으로)
+session/prompt result (stopReason)   →  agent_done { text: fullText, toolLog }
 ```
 
-> ⚠️ 웹 프론트는 `ws.js`에서 `agent_output` 이벤트를 수신. 텔레그램은 `agent_chunk` + `agent_output` 둘 다 수신.
+> **확정됨**: `params.update.sessionUpdate`가 discriminator 필드 (공식 schema.json)
+> `kind` / `type`이 아님! `update.sessionUpdate`로 접근.
 
 ---
 
@@ -31,60 +32,74 @@ kind: 'complete'                 →  agent_done { text: fullText, toolLog }
 /**
  * ACP session/update 이벤트 → cli-claw 내부 이벤트
  * @param {Object} params - session/update notification의 params
+ *   params.update.sessionUpdate = discriminator
  * @returns {{ tool?: Object, text?: string, done?: boolean } | null}
  */
 export function extractFromAcpUpdate(params) {
-    // Phase 2 캡처 결과에 따라 구조 확정
-    // 아래는 ACP 스펙 기반 추정
-    const kind = params?.kind || params?.type || params?.event;
-    const content = params?.content || params?.text || '';
+    const update = params?.update;
+    if (!update) return null;
 
-    switch (kind) {
-        case 'thinking':
-        case 'reasoning':
+    const type = update.sessionUpdate;
+
+    switch (type) {
+        case 'agent_thought_chunk': {
+            // ContentChunk: update.content = [{type: 'text', text: '...'}]
+            const text = extractText(update.content);
             return {
                 tool: {
                     icon: '💭',
-                    label: typeof content === 'string'
-                        ? content.slice(0, 60) + (content.length > 60 ? '...' : '')
-                        : 'thinking...'
+                    label: text.slice(0, 60) + (text.length > 60 ? '...' : '') || 'thinking...'
                 }
             };
+        }
 
-        case 'tool_use':
         case 'tool_call':
             return {
                 tool: {
                     icon: '🔧',
-                    label: params?.name || params?.toolName || 'tool',
+                    label: update.name || 'tool',
                 }
             };
 
-        case 'tool_result':
+        case 'tool_call_update':
             return {
                 tool: {
                     icon: '✅',
-                    label: params?.name || params?.toolName || 'done',
+                    label: update.name || update.id || 'done',
                 }
             };
 
-        case 'text':
-        case 'content':
-        case 'assistant_message_delta':
-            return { text: content };
+        case 'agent_message_chunk': {
+            const text = extractText(update.content);
+            return { text };
+        }
 
-        case 'complete':
-        case 'done':
-        case 'end':
-            return { done: true };
+        case 'plan':
+            return {
+                tool: {
+                    icon: '📝',
+                    label: 'planning...',
+                }
+            };
 
         default:
-            // 알 수 없는 이벤트 → 무시하되 로그
             if (process.env.DEBUG) {
-                console.log(`[acp] unknown update kind: ${kind}`, params);
+                console.log(`[acp] unknown sessionUpdate: ${type}`, update);
             }
             return null;
     }
+}
+
+// ContentChunk.content 에서 텍스트 추출 (content가 string/array/object일 수 있음)
+function extractText(content) {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content
+            .filter(c => c.type === 'text')
+            .map(c => c.text || '')
+            .join('');
+    }
+    return '';
 }
 ```
 

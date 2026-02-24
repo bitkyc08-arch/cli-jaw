@@ -16,20 +16,46 @@
 - `gh copilot -- --acp --port 8080` → TCP
 - 공식 스펙: https://agentclientprotocol.com
 
-### ACP 메시지 플로우
+### ACP 메시지 플로우 (공식 스키마 기반)
 ```
 Client                          Agent (copilot --acp)
   │                                   │
-  ├─→ initialize ────────────────────→│
+  ├─→ initialize ────────────────────→│   capabilities 교환
   │←── initialize result ────────────┤
-  ├─→ session/create (workDir) ──────→│
-  │←── session/create result ────────┤
-  ├─→ session/prompt (text) ─────────→│
-  │←── session/update (thinking) ────┤  💭
-  │←── session/update (tool_use) ────┤  🔧
-  │←── session/update (text) ────────┤  📝
-  │←── session/update (complete) ────┤  ✅
-  ├─→ shutdown ──────────────────────→│
+  ├─→ session/new (workDir) ────────→│   세션 생성 (★ not session/create)
+  │←── session/new result {sessionId}┤
+  ├─→ session/prompt (messages) ────→│
+  │←── session/update {sessionUpdate:
+  │      "agent_thought_chunk"} ─────┤  💭 thinking
+  │←── session/update {sessionUpdate:
+  │      "tool_call"} ─────────────┤  🔧 tool
+  │←── session/update {sessionUpdate:
+  │      "tool_call_update"} ──────┤  ✅ result
+  │←── session/update {sessionUpdate:
+  │      "agent_message_chunk"} ────┤  📝 text
+  │←── session/prompt result ───────┤  ✅ 완료 (stopReason)
+  ├─→ session/cancel (sessionId) ───→│  취소
+  ├─→ session/load (sessionId) ────→│  resume (선택적)
+```
+
+### session/update 실제 스키마 (schema.json 확인됨)
+```json
+{
+  "jsonrpc": "2.0",
+  "method": "session/update",
+  "params": {
+    "sessionId": "abc-123",
+    "update": {
+      "sessionUpdate": "agent_message_chunk | agent_thought_chunk | tool_call | tool_call_update | plan",
+      // sessionUpdate 값에 따라 추가 필드:
+      // agent_message_chunk: ContentChunk {content: [{type: 'text', text: '...'}]}
+      // agent_thought_chunk: ContentChunk {content: [{type: 'text', text: '...'}]}
+      // tool_call: ToolCall {id, name, status, content?}
+      // tool_call_update: ToolCallUpdate {id, status, content?}
+      // plan: Plan {steps: [...]}
+    }
+  }
+}
 ```
 
 ### 권한 / Yolo 모드
