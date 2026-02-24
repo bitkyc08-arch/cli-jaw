@@ -2,7 +2,7 @@
 
 > **의존**: Phase 2 (`orchestrator.js` v2)
 > **검증일**: 2026-02-24
-> **산출물**: 프런트엔드 행렬 표시, "이어서 해줘" 연속성, 새 API 엔드포인트
+> **산출물**: 프런트엔드 행렬 표시, "이어서 해줘" 연속성, 기본 서브에이전트 5명, 새 API 엔드포인트
 
 ---
 
@@ -144,11 +144,11 @@ if (!getEmployees().length) seedDefaultEmployees();
 
 ## 검증된 리스크
 
-### 🟡 MEDIUM: `parseWorklogPending` 미정의
+### ✅ RESOLVED: `parseWorklogPending`
 
-`orchestrateContinue()`에서 사용하는 `parseWorklogPending(latest.content)` 함수가 설계에 정의 안 됨.
+~~`orchestrateContinue()`에서 사용하는 `parseWorklogPending(latest.content)` 함수가 설계에 정의 안 됨.~~
 
-**해결**: `worklog.js`에 추가 구현 필요. worklog의 Agent Status Matrix 테이블을 파싱해서 `completed: false`인 agent 목록 반환:
+**해결**: Phase 1에서 `worklog.js`에 구현 완료. fallback도 Phase 1(보수적 재시작)로 수정됨.
 
 ```javascript
 export function parseWorklogPending(content) {
@@ -162,7 +162,7 @@ export function parseWorklogPending(content) {
       const cols = line.split('|').map(c => c.trim()).filter(Boolean);
       if (cols.length >= 3) {
         const phaseMatch = cols[2].match(/Phase (\d+)/);
-        pending.push({ agent: cols[0], role: cols[1], currentPhase: phaseMatch ? +phaseMatch[1] : 3 });
+        pending.push({ agent: cols[0], role: cols[1], currentPhase: phaseMatch ? +phaseMatch[1] : 1 });  // fallback: Phase 1 재시작
       }
     }
   }

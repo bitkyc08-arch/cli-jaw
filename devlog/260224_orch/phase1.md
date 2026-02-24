@@ -262,7 +262,7 @@ const LEGACY_ROLE_MAP = {
   'React/Vue 기반 UI 컴포넌트 개발, 스타일링': 'frontend',
   'API 서버, DB 스키마, 비즈니스 로직 구현': 'backend',
   '프론트엔드와 백엔드 모두 담당': 'frontend',  // fullstack → frontend
-  'CI/CD, Docker, 인프라 자동화': 'custom',
+  'CI/CD, Docker, 인프라 자동화': 'backend',     // devops → backend
   '테스트 작성, 버그 재현, 품질 관리': 'custom',
   '데이터 파이프라인, ETL, 분석 쿼리': 'data',
   'API 문서화, README, 가이드 작성': 'docs',
