@@ -1,6 +1,6 @@
 # CLI-Claw — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-24 (server.js 686L / agent.js 363L / commands.js 573L / prompt.js 413L / public/ 19파일 ~2685L)
+> 마지막 검증: 2026-02-24 (server.js 699L / agent.js 409L / commands.js 573L / prompt.js 413L / public/ 19파일 ~2685L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -10,17 +10,17 @@
 
 ```text
 cli-claw/
-├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (686L)
+├── server.js                 ← 라우트 + 글루 + 슬래시커맨드 ctx (699L)
 ├── lib/
-│   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + 글로벌 설치 (455L)
+│   ├── mcp-sync.js           ← MCP 통합 + 스킬 복사 + 글로벌 설치 (482L)
 │   └── upload.js             ← 파일 업로드 + Telegram 다운로드 (70L)
 ├── src/
 │   ├── config.js             ← CLAW_HOME, settings, CLI 탐지, APP_VERSION (167L)
-│   ├── db.js                 ← SQLite 스키마 + prepared statements (75L)
+│   ├── db.js                 ← SQLite 스키마 + prepared statements + trace (84L)
 │   ├── bus.js                ← WS + 내부 리스너 broadcast (18L)
-│   ├── events.js             ← NDJSON 이벤트 파싱 (96L)
+│   ├── events.js             ← NDJSON 파싱 + logEventSummary + traceLog (185L)
 │   ├── commands.js           ← 슬래시 커맨드 레지스트리 + 디스패쳐 (573L)
-│   ├── agent.js              ← CLI spawn + 스트림 + 큐 + 메모리 flush (363L)
+│   ├── agent.js              ← CLI spawn + 히스토리빌더 + 스트림 + 큐 + 메모리 flush (409L)
 │   ├── orchestrator.js       ← Planning → Sub-agent 오케스트레이션 (130L)
 │   ├── telegram.js           ← Telegram 봇 + 슬래시디스패치 + setMyCommands (358L)
 │   ├── heartbeat.js          ← Heartbeat 잡 스케줄 + fs.watch (90L)
@@ -28,8 +28,9 @@ cli-claw/
 │   ├── memory.js             ← Persistent Memory grep 기반 (128L)
 │   └── browser/              ← Chrome CDP 제어
 │       ├── connection.js     ← Chrome 탐지/launch/CDP 연결 (71L)
-│       ├── actions.js        ← snapshot/click/type/navigate/screenshot/mouseClick (178L)
-│       └── index.js          ← re-export hub (11L)
+│       ├── actions.js        ← snapshot/click/type/navigate/screenshot/mouseClick (182L)
+│       ├── vision.js         ← vision-click 파이프라인 + Codex provider (138L)
+│       └── index.js          ← re-export hub (13L)
 ├── public/                   ← Web UI (ES Modules, 19 files, ~2685L)
 │   ├── index.html            ← HTML 뼈대 (421L, inline JS/CSS 없음)
 │   ├── css/                  ← 5 files (950L)
@@ -46,7 +47,7 @@ cli-claw/
 │       ├── mcp.js            ← MCP 관리 (install/sync/list/reset)
 │       ├── skill.js          ← 스킬 관리 (install/remove/info/list/reset + installFromRef)
 │       ├── memory.js         ← 메모리 CLI (search/read/save/list/init)
-│       └── browser.js        ← 브라우저 CLI (16개 서브커맨드, +mouse-click, 216L)
+│       └── browser.js        ← 브라우저 CLI (17개 서브커맨드, +vision-click, 238L)
 ├── skills_ref/               ← 번들 스킬 (55개: OpenClaw 26 + Codex 27 폴백 + vision-click + telegram-send)
 │   └── registry.json
 └── devlog/                   ← MVP 12 Phase + Post-MVP 8개 폴더
@@ -155,7 +156,7 @@ graph LR
 | `260223_11_서브에이전트프롬프트/` | 서브에이전트 프롬프트 구조화 (Phase 11)                   | ✅    |
 | `260224_cmd/`                     | 슬래시 커맨드 + 프롬프트 정규화 (P1✅ P2✅ P3✅ P4✅ P5✅ P6📋) | 🟡    |
 | `260224_skill/`                   | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2)         | 🟡    |
-| `260224_vision/`                  | Vision Click Phase 1 — Codex-only 비전 좌표 클릭          | ✅    |
+| `260224_vision/`                  | Vision Click P1✅ P2✅ — 원커맨드 + DPR 자동 보정           | ✅    |
 
 ---
 

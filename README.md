@@ -70,12 +70,13 @@ cli-claw browser snapshot         # Accessibility tree (ariaSnapshot 기반)
 cli-claw browser screenshot       # 스크린샷
 cli-claw browser navigate <url>   # URL 이동
 cli-claw browser click <ref>      # 클릭 (snapshot ref ID)
-cli-claw browser mouse-click <x> <y>  # 픽셀 좌표 클릭 (vision-click)
+cli-claw browser mouse-click <x> <y>  # 픽셀 좌표 클릭
+cli-claw browser vision-click "Login"  # 비전 AI 원커맨드 클릭 (DPR 자동 보정)
 cli-claw browser type <ref> <text># 텍스트 입력
 cli-claw browser reset [--force]  # 프로필 + 스크린샷 초기화
 ```
 
-> 👁️ **Vision Click** (Codex만): snapshot에 ref가 없는 요소는 `screenshot → codex exec -i → mouse-click`으로 클릭. `cli-claw skill install vision-click`으로 활성화.
+> 👁️ **Vision Click** (Codex): screenshot → AI 좌표 추출 → DPR 보정 → 클릭을 원커맨드로 실행. `--provider codex`, `--double` 옵션 지원. 자동 활성화 스킬.
 
 ## Supported Models
 

@@ -20,14 +20,24 @@
 
 ---
 
-## db.js — Database (75L)
+## db.js — Database (84L)
 
 ```sql
 session   (id='default', active_cli, session_id, model, permissions, working_dir, effort)
-messages  (id PK, role, content, cli, model, cost_usd, duration_ms, created_at)
+messages  (id PK, role, content, cli, model, trace, cost_usd, duration_ms, created_at)
 memory    (id PK, key UNIQUE, value, source, created_at, updated_at)
 employees (id PK, name, cli, model, role, status, created_at)
 ```
+
+`trace` — Phase 6 추가. cleaned NDJSON 로그 전체 (reasoning + cmd + output). 기존 DB는 PRAGMA migration으로 자동 ALTER.
+
+| Prepared Statement       | 용도                               |
+| ------------------------ | ---------------------------------- |
+| `insertMessage`          | 4인자 (trace=NULL) — 기존 호환     |
+| `insertMessageWithTrace` | 5인자 (trace 포함)                 |
+| `getMessages`            | trace 제외 (UI/API 용)             |
+| `getMessagesWithTrace`   | trace 포함 (full)                  |
+| `getRecentMessages`      | trace 포함 (DESC, 히스토리 빌더용) |
 
 ---
 
@@ -68,26 +78,34 @@ employees (id PK, name, cli, model, role, status, created_at)
 
 Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 
-| connection.js (71L)      | actions.js (178L)        |
-| ------------------------ | ------------------------ |
-| `findChrome()`           | `snapshot(port, opts)`   |
-| `launchChrome(port)`     | `screenshot(port, opts)` |
-| `connectCdp(port)`       | `click(port, ref, opts)` |
-| `getActivePage(port)`    | `type(port, ref, text)`  |
-| `getCdpSession(port)`    | `press(port, key)`       |
-| `listTabs(port)`         | `hover(port, ref)`       |
-| `getBrowserStatus(port)` | `navigate(port, url)`    |
-| `closeBrowser()`         | `evaluate(port, expr)`   |
-|                          | `getPageText(port, fmt)` |
-|                          | `mouseClick(port, x, y)` |
+| connection.js (71L)      | actions.js (182L)                |
+| ------------------------ | -------------------------------- |
+| `findChrome()`           | `snapshot(port, opts)`           |
+| `launchChrome(port)`     | `screenshot(port, opts)` +dpr    |
+| `connectCdp(port)`       | `click(port, ref, opts)`         |
+| `getActivePage(port)`    | `type(port, ref, text)`          |
+| `getCdpSession(port)`    | `press(port, key)`               |
+| `listTabs(port)`         | `hover(port, ref)`               |
+| `getBrowserStatus(port)` | `navigate(port, url)`            |
+| `closeBrowser()`         | `evaluate(port, expr)`           |
+|                          | `getPageText(port, fmt)`         |
+|                          | `mouseClick(port, x, y)` Phase 1 |
 
-`index.js` (11L) — re-export hub (mouseClick 포함)
+### vision.js (138L) — Vision Click 파이프라인
 
-> 👁️ `mouseClick()` — vision-click Phase 1 추가. 픽셀 좌표 기반 클릭. `page.mouse.click(x, y)` + `dblclick` 지원.
+| Function                           | 역할                                            |
+| ---------------------------------- | ----------------------------------------------- |
+| `extractCoordinates(path, target)` | 비전 AI로 좌표 추출 (provider 분기)             |
+| `codexVision(path, target)`        | Codex exec -i + NDJSON 파싱                     |
+| `visionClick(port, target, opts)`  | screenshot → vision → DPR 보정 → click → verify |
+
+`index.js` (13L) — re-export hub (mouseClick + visionClick 포함)
+
+> 👁️ Phase 2: `visionClick()` — 원커맨드 파이프라인. `screenshot()` 는 `{path, dpr, viewport}` 반환. DPR 자동 보정 (coord / devicePixelRatio).
 
 ---
 
-## lib/mcp-sync.js — MCP 통합 관리 (455L)
+## lib/mcp-sync.js — MCP 통합 관리 (482L)
 
 소스: `~/.cli-claw/mcp.json`
 
