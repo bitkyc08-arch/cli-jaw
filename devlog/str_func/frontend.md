@@ -2,7 +2,7 @@
 
 > Web UI — Vanilla HTML + CSS + ES Modules. CDN: marked, highlight.js, KaTeX, Mermaid.
 > 3단 폰트: Chakra Petch(display) + Outfit(body) + SF Mono(code).
-> 듀얼 테마: dark(기본)/light, 반응형 사이드바 접기(900px).
+> 듀얼 테마: Arctic Cyan dark(기본)/light, pill 스위치, 반응형 사이드바 접기(900px).
 
 ---
 
@@ -10,11 +10,11 @@
 
 ```text
 public/
-├── index.html            ← 뼈대 (459L, CDN 4개 + data-theme + ◀/▶ 토글 + multi-file chip)
-├── css/                  ← 6 files (1355L)
-│   ├── variables.css     ← 커스텀 프로퍼티, 3단 폰트, 라이트 팔레트, 사이드바 변수 (126L)
-│   ├── layout.css        ← 사이드바 그라디언트 + 토글 absolute + collapse + 반응형 (281L)
-│   ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var + auto-expand + file-chip (467L)
+├── index.html            ← CLI-JAW 대문자 로고, pill theme switch, quota 높이 정렬 (450L)
+├── css/                  ← 6 files (~1420L)
+│   ├── variables.css     ← Arctic Cyan (#22d3ee/#06b6d4) + will-change + scrollbar tint (142L)
+│   ├── layout.css        ← opacity 전환 + contain 격리 + 로고 글로우 + overflow:hidden (290L)
+│   ├── chat.css          ← pill theme-switch + border-left 구분 + 채팅 버블 (530L)
 │   ├── sidebar.css       ← 설정/스킬 카드 hover + display font (224L)
 │   ├── modals.css        ← 모달, 하트비트 카드 (171L)
 │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 var + copy 버튼 (161L)
@@ -33,8 +33,8 @@ public/
         ├── heartbeat.js  ← 하트비트 모달/작업 (83L)
         ├── memory.js     ← 메모리 모달/설정 (90L)
         ├── sidebar.js    ← [NEW] 사이드바 접기 (이중 모드: wide=collapsed, narrow=expanded) (88L)
-        ├── theme.js      ← [NEW] 다크/라이트 테마 토글 + hljs 스타일시트 스와프 (38L)
-        ├── appname.js    ← [NEW] Agent Name 커스텀 (localStorage, 메시지 라벨) (43L)
+        ├── theme.js      ← pill switch 다크/라이트 (is-light class) + hljs 스와프 (40L)
+        ├── appname.js    ← Agent Name (DEFAULT_NAME='CLI-JAW') (43L)
         └── slash-commands.ts ← 슬래시 커맨드 드롭다운 (220L)
 ```
 
@@ -69,8 +69,8 @@ public/
 | `heartbeat.js` | 하트비트 모달 | 83 |
 | `memory.js` | 메모리 모달 | 90 |
 | `sidebar.js` | 사이드바 접기 (이중 모드 responsive) | 88 |
-| `theme.js` | 다크/라이트 테마 + hljs 스와프 | 38 |
-| `appname.js` | Agent Name 커스텀 | 43 |
+| `theme.js` | pill switch 다크/라이트 + is-light class + hljs 스와프 | 40 |
+| `appname.js` | Agent Name (DEFAULT_NAME='CLI-JAW') | 43 |
 | `slash-commands.ts` | 슬래시 커맨드 드롭다운 | 220 |
 
 ---
@@ -79,22 +79,26 @@ public/
 
 | 파일 | 역할 | 라인 |
 |------|------|------|
-| `variables.css` | 3단 폰트 + 시맨틱 색상 + 라이트 팔레트 + 사이드바 변수 | 126 |
-| `layout.css` | 사이드바 그라디언트 + 토글 absolute + collapse/반응형 | 281 |
-| `chat.css` | 채팅 버블 + 애니메이션 + flex 헤더 + auto-expand + file-chip | 467 |
+| `variables.css` | Arctic Cyan + will-change + cubic-bezier easing + scrollbar tint | 142 |
+| `layout.css` | opacity 전환 + contain 격리 + 로고 글로우 + overflow:hidden | 290 |
+| `chat.css` | pill theme-switch + border-left 구분 + 채팅 버블 + auto-expand | 530 |
 | `sidebar.css` | 설정/스킬 카드 hover + display font | 224 |
 | `modals.css` | 모달 + 하트비트 카드 | 171 |
 | `markdown.css` | 마크다운 렌더링 + 시맨틱 색상 var + copy 버튼 스타일 | 161 |
 
-### 테마
+### 테마 (Arctic Cyan)
 
 | 기능 | 구현 |
 |------|------|
+| 색상 | Dark: `#22d3ee`/`#06b6d4`, Light: `#0891b2`/`#0e7490` |
 | 다크/라이트 | `[data-theme="light"]` vs `:root` (기본 다크) |
 | 13개 시맨틱 변수 | `--stop-btn`, `--code-bg`, `--link-color` 등 |
 | hljs 연동 | `theme.js`가 `#hljsTheme` link href 스와프 |
-| 토글 UI | 챗 헤더 ☀️/🌙 |
+| 토글 UI | pill switch (moon crescent ↔ amber sun knob, `.is-light` class) |
 | localStorage | 새로고침 유지 |
+| 사이드바 성능 | `display:none` → `opacity` + `contain: layout style` + `overflow:hidden` |
+| 영역 구분 | `chat-area` 좌우 `border-left/right` |
+| 하드코딩 제거 | `#1a0a0a` → `color-mix(in srgb, var(--accent) 10%, var(--bg))` |
 
 ### 사이드바 접기
 
@@ -122,3 +126,5 @@ public/
 | i18n Fix | 탭 전환 textContent 영어 하드코딩 → 인덱스 기반 매칭 (다국어 호환) |
 | i18n Fix | render.js/settings.js 하드코딩 한국어 4곳 → `t()` i18n 호출 + `escapeHtml(t)` 파람메터 충돌 수정 |
 | Multi-file | `attachedFile` → `attachedFiles[]`, chip 프리뷰, 개별 제거, 병렬 업로드, `<input multiple>` |
+| Rename | CLI-CLAW → CLI-JAW 대문자 로고, 페이지 타이틀, 헤더, agent name default |
+| Theme | Red → Arctic Cyan (`#22d3ee`), pill switch, sidebar jank fix, border 구분, 글로우 |

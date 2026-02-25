@@ -50,14 +50,26 @@ try {
 }
 
 // ─── Fetch info ──────────────────────────────
-let info = { cli: 'codex', workingDir: '~' };
+let info = { cli: 'codex', workingDir: '~', model: '' };
 try {
     const r = await fetch(`${apiUrl}/api/settings`, { signal: AbortSignal.timeout(2000) });
-    if (r.ok) { const s = await r.json() as Record<string, any>; info = { cli: s.cli || 'codex', workingDir: s.workingDir || '~' }; }
+    if (r.ok) {
+        const res = await r.json() as Record<string, any>;
+        const s = res.data || res;
+        const cli = s.cli || 'codex';
+        info = { cli, workingDir: s.workingDir || '~', model: s.perCli?.[cli]?.model || '' };
+    }
+    // Active session model overrides perCli default
+    const sr = await fetch(`${apiUrl}/api/session`, { signal: AbortSignal.timeout(2000) });
+    if (sr.ok) {
+        const ses = await sr.json() as Record<string, any>;
+        const sd = ses.data || ses;
+        if (sd.model) info.model = sd.model;
+    }
 } catch { }
 
-const cliLabel: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode' };
-const cliColor: Record<string, string> = { claude: c.magenta, codex: c.red, gemini: c.blue, opencode: c.yellow };
+const cliLabel: Record<string, string> = { claude: 'Claude Code', codex: 'Codex', gemini: 'Gemini CLI', opencode: 'OpenCode', copilot: 'Copilot' };
+const cliColor: Record<string, string> = { claude: c.magenta, codex: c.red, gemini: c.blue, opencode: c.yellow, copilot: c.cyan };
 const accent = cliColor[info.cli] || c.red;
 const label = cliLabel[info.cli] || info.cli;
 const dir = info.workingDir.replace(process.env.HOME || '', '~');
@@ -185,11 +197,23 @@ if (values.simple) {
     // ─── Default + Raw — shared UI with raw stdin ──
     const isRaw = values.raw;
 
-    // Banner
+    // Banner — block art (no border frame)
+    const modelStr = info.model ? `${c.dim}model:${c.reset}     ${c.bold}${info.model}${c.reset}` : '';
+    // prettier-ignore
+    const art = [
+        '██████╗ ██╗     ██╗     ██╗ █████╗ ██╗    ██╗',
+        '██╔════╝██║     ██║     ██║██╔══██╗██║    ██║',
+        '██║     ██║     ██║     ██║███████║██║ █╗ ██║',
+        '██║     ██║     ██║██   ██║██╔══██║██║███╗██║',
+        '╚██████╗███████╗██║╚█████╔╝██║  ██║╚███╔███╔╝',
+        ' ╚═════╝╚══════╝╚═╝ ╚════╝ ╚═╝  ╚═╝ ╚══╝╚══╝',
+    ];
     console.log('');
-    console.log(`  ${c.bold}cli-jaw${c.reset} ${c.dim}v${APP_VERSION}${c.reset}${isRaw ? `  ${c.dim}(raw json)${c.reset}` : ''}`);
+    for (const line of art) console.log(`  ${c.cyan}${c.bold}${line}${c.reset}`);
+    console.log(`  ${c.dim}v${APP_VERSION}${c.reset}${isRaw ? `  ${c.dim}(raw json)${c.reset}` : ''}`);
     console.log('');
     console.log(`  ${c.dim}engine:${c.reset}    ${accent}${label}${c.reset}`);
+    if (modelStr) console.log(`  ${modelStr}`);
     console.log(`  ${c.dim}directory:${c.reset}  ${c.cyan}${dir}${c.reset}`);
     console.log(`  ${c.dim}server:${c.reset}    ${c.green}\u25CF${c.reset} localhost:${values.port}`);
     console.log('');

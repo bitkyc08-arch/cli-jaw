@@ -1,8 +1,8 @@
 # CLI-JAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-25T16:24 (Parallel dispatch 구현 + session invalidation fix)
+> 마지막 검증: 2026-02-25T17:35 (cli-jaw rename + Arctic Cyan theme + CLI banner)
 > server.ts 863L / src/ 36파일 12서브디렉토리 / tests 252 pass (tsx runner)
-> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix 반영
+> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix + cli-jaw rename 반영
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -67,10 +67,10 @@ cli-jaw/
 │       ├── policy.ts         ← getVisibleCommands, getTelegramMenuCommands (37L)
 │       └── help-renderer.ts  ← renderHelp list/detail mode (44L)
 ├── public/                   ← Web UI (ES Modules, ~26 files, ~4420L)
-│   ├── index.html            ← 뼈대 (459L, data-i18n 완전 한글화, multi-file chip preview)
-│   ├── css/                  ← 6 files (1355L)
-│   │   ├── variables.css     ← 커스텀 프로퍼티 + 3단 폰트 + 라이트/다크 (140L)
-│   │   ├── layout.css        ← 사이드바 + 토글 + 반응형 768px (281L)
+│   ├── index.html            ← 뼈대 (450L, CLI-JAW 대문자 로고, pill theme switch, data-i18n)
+│   ├── css/                  ← 6 files (~1420L)
+│   │   ├── variables.css     ← Arctic Cyan 테마 + will-change + scrollbar tint (142L)
+│   │   ├── layout.css        ← opacity 전환 + contain 격리 + 로고 글로우 (290L)
 │   │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + copy 버튼 (161L)
 │   ├── locales/              ← i18n 로케일
 │   │   ├── ko.json           ← 한국어 (180키)
@@ -82,14 +82,14 @@ cli-jaw/
 │       └── features/
 │           ├── i18n.ts       ← 프론트엔드 i18n + applyI18n() (126L)
 │           ├── sidebar.js    ← 사이드바 접기 (이중 모드) (88L)
-│           ├── theme.js      ← 다크/라이트 테마 토글 (38L)
-│           └── appname.js    ← Agent Name 커스텀 (43L)
+│           ├── theme.js      ← pill switch 다크/라이트 (is-light class) (40L)
+│           └── appname.js    ← Agent Name (DEFAULT_NAME='CLI-JAW') (43L)
 ├── bin/
 │   ├── cli-jaw.ts           ← 11개 서브커맨드 라우팅
 │   ├── postinstall.ts        ← npm install 후 5-CLI 자동설치 + MCP + 스킬 (212L)
 │   └── commands/
 │       ├── serve.ts          ← 서버 시작 (--port/--host/--open)
-│       ├── chat.ts           ← 터미널 채팅 TUI (3모드, 842L)
+│       ├── chat.ts           ← 터미널 채팅 TUI (3모드, 블록아트 배너, active model 표시, 870L)
 │       ├── init.ts           ← 초기화 마법사
 │       ├── doctor.ts         ← 진단 (12개 체크, --json)
 │       ├── status.ts         ← 서버 상태 (--json)
@@ -248,6 +248,12 @@ graph LR
 50. **[fix] Session invalidation 제거**: `regenerateB()`에서 세션 무효화 삭제 — 모든 CLI가 AGENTS.md 동적 reload 확인
 45. **[feat] History block 10**: `buildHistoryBlock()` `maxSessions` 5→10 (비-resume 세션에서 최근 대화 10개 불러옴, 8000자 제한 유지)
 46. **[docs] README i18n**: 한국어/중국어 Hero 카피 리뉴얼 + 전체 톤 공식 문서 스타일로 격상
+51. **[rename] CLI-JAW**: cli-claw → cli-jaw 전체 리네임 (코드, 문서, 런타임 경로, API, 프롬프트)
+52. **[theme] Arctic Cyan**: `--accent: #22d3ee`/`#06b6d4` (dark), `#0891b2`/`#0e7490` (light), 하드코딩 `#1a0a0a` → `color-mix()`
+53. **[ux] Pill theme switch**: 이모지 ☀️/🌙 → CSS pill 토글 (moon crescent ↔ amber sun knob)
+54. **[perf] Sidebar jank fix**: `display:none` → `opacity` 전환 + `contain: layout style` + `overflow:hidden`
+55. **[ux] CLI 블록아트 배너**: `██╗` 스타일 CLIJaw ASCII art + active model(`/api/session`) 표시
+56. **[ux] Logo uppercase**: 프론트엔드 로고 `CLI-JAW` 대문자, 이모지 없음
 
 ---
 
@@ -283,6 +289,7 @@ graph LR
 | `260225_finness/`             | P0~P9✅ + P10~P17✅ + P20~P20.6✅ — 보안, i18n, AI triage, 디렉토리 분리 | ✅    |
 | `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6                              | ✅    |
 | `260225_debug/`                   | i18n + multifile + dev skill + filepath fix + parallel dispatch + session fix | ✅    |
+| `260225_clijaw_rename/`           | cli-claw→cli-jaw 리네임 + Arctic Cyan 테마 + CLI 블록아트 배너 | ✅    |
 | `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
 
 ---
