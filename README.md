@@ -20,6 +20,8 @@
 
 ---
 
+> ⚠️ **Installation Notice:** `npm install -g cli-jaw` runs a postinstall script that may modify your globally installed CLI skill directories (`~/.agents/skills/`, `~/.claude/skills/`), custom instructions (`~/AGENTS.md` → `~/CLAUDE.md` symlink), and MCP config (`~/.cli-jaw/mcp.json` → syncs to Claude/Codex/Gemini/OpenCode/Copilot). Existing configs are preserved and merged, not overwritten.
+
 ## What is CLI-JAW?
 
 CLI-JAW is a **personal AI assistant** that lives on your machine and works from the interfaces you already use — **Web, Terminal, and Telegram**. Ask it anything, delegate tasks, automate your workflows.
@@ -387,11 +389,11 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 | ---------------------------- | ------------------------------------------------------------------------------------------- |
 | `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                  |
 | `Error: node version`        | Upgrade to Node.js ≥ 22: `nvm install 22` or download from [nodejs.org](https://nodejs.org) |
-| Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`. |
-| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                    |
-| Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                       |
-| Skills not loading           | Run `jaw skill reset` then `jaw mcp sync`.                                          |
-| Browser commands fail        | Install Chrome/Chromium. Run `jaw browser start` first.                                 |
+| Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`.     |
+| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                        |
+| Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                               |
+| Skills not loading           | Run `jaw skill reset` then `jaw mcp sync`.                                                  |
+| Browser commands fail        | Install Chrome/Chromium. Run `jaw browser start` first.                                     |
 
 </details>
 
