@@ -45,7 +45,7 @@ export function getWsUrl(port: string | number | undefined) {
 
 /** Locate the cli-jaw package root (for bundled skills_ref/) */
 export function getProjectDir() {
-    return join(new URL('.', import.meta.url).pathname, '..');
+    return dirname(findPackageJson());
 }
 
 // ─── Ensure directories ─────────────────────────────

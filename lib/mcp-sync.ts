@@ -12,9 +12,20 @@
 import fs from 'fs';
 import os from 'os';
 import { join, dirname, resolve, isAbsolute } from 'path';
+import { fileURLToPath } from 'url';
 
 const JAW_HOME = join(os.homedir(), '.cli-jaw');
 const MCP_PATH = join(JAW_HOME, 'mcp.json');
+
+/** Walk up from current file to find package.json → package root */
+function findPackageRoot(): string {
+    let dir = dirname(fileURLToPath(import.meta.url));
+    while (dir !== dirname(dir)) {
+        if (fs.existsSync(join(dir, 'package.json'))) return dir;
+        dir = dirname(dir);
+    }
+    return dirname(fileURLToPath(import.meta.url));
+}
 
 // ─── Load / Save unified config ────────────────────
 
@@ -571,7 +582,7 @@ export function copyDefaultSkills() {
     }
 
     // ─── 2. Bundled skills_ref/ → ~/.cli-jaw/skills_ref/ ───
-    const packageRefDir = join(new URL('.', import.meta.url).pathname, '..', 'skills_ref');
+    const packageRefDir = join(findPackageRoot(), 'skills_ref');
     if (fs.existsSync(packageRefDir)) {
         const entries = fs.readdirSync(packageRefDir, { withFileTypes: true });
         let refCopied = 0;
