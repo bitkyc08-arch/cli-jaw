@@ -9,7 +9,7 @@ export const state = {
     allSkills: [],
     currentSkillFilter: 'all',
     currentAgentDiv: null,
-    attachedFile: null,
+    attachedFiles: [],
     heartbeatJobs: [],
     cliStatusCache: null,
     cliStatusTs: 0,

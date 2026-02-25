@@ -99,15 +99,17 @@
             <span class="typing-dot"></span>
         </div>
         <div class="file-preview" id="filePreview">
-            <span id="filePreviewName"></span>
-            <img id="filePreviewImg" src="" alt="">
-            <button class="remove">✕</button>
+            <div class="file-preview-header">
+                <span class="file-preview-title">📎 Files</span>
+                <button class="file-preview-clear" id="filePreviewClear">✕ Clear all</button>
+            </div>
+            <div class="file-preview-list" id="filePreviewList"></div>
         </div>
         <div class="chat-input-area">
             <div id="cmdDropdown" class="cmd-dropdown" role="listbox" data-i18n-aria="aria.cmdList" aria-label="커맨드 목록"
                 style="display:none"></div>
             <button class="btn-attach" data-i18n-title="btn.attach" title="파일 첨부">📎</button>
-            <input type="file" id="fileInput" hidden
+            <input type="file" id="fileInput" hidden multiple
                 accept="image/*,.pdf,.txt,.md,.js,.py,.json,.csv,.html,.css,.ts,.tsx,.jsx">
             <textarea class="chat-input" id="chatInput" rows="1" data-i18n-placeholder="input.placeholder"
                 placeholder="메시지 입력..." aria-label="Chat message input" aria-haspopup="listbox" aria-expanded="false"

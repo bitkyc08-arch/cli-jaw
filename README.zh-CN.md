@@ -36,8 +36,7 @@ CLI-CLAW 从根本上换了思路——所有交互都走厂商自己发的**官
 | **技能生态** | 105+ 个内置技能 | 插件不一 | 有限 |
 | **成本** | Copilot/OpenCode 有免费层 | API 费用 | API 费用 |
 
-<!-- 📸 TODO: 终端 TUI 截图 -->
-<!-- ![Terminal TUI](docs/screenshots/terminal-tui.png) -->
+![CLI-CLAW 终端](docs/screenshots/terminal-cli.png)
 
 ---
 
@@ -169,8 +168,7 @@ CLI-CLAW 不只是聊天机器人 — 它是完整的**双向桥接**：
 - 心跳任务结果（定时执行）
 - 浏览器截图
 
-<!-- 📸 TODO: Telegram Bot 截图 -->
-<!-- ![Telegram Bot](docs/screenshots/telegram-bot.png) -->
+![Telegram Bot](docs/screenshots/telegram-bot.png)
 
 ---
 

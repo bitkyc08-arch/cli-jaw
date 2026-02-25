@@ -11,15 +11,15 @@ export async function sendMessage() {
     const btn = document.getElementById('btnSend');
 
     // Stop mode: clicking ■ stops the agent
-    if (btn.classList.contains('stop-mode') && !input.value.trim() && !state.attachedFile) {
+    if (btn.classList.contains('stop-mode') && !input.value.trim() && !state.attachedFiles.length) {
         apiFire('/api/stop', 'POST');
         return;
     }
 
     const text = input.value.trim();
-    if (!text && !state.attachedFile) return;
+    if (!text && !state.attachedFiles.length) return;
 
-    if (text.startsWith('/') && !state.attachedFile) {
+    if (text.startsWith('/') && !state.attachedFiles.length) {
         input.value = '';
         resetInputHeight();
         slashCmd.close();
@@ -55,20 +55,22 @@ export async function sendMessage() {
         return;
     }
 
-    if (state.attachedFile) {
-        const displayMsg = `[📎 ${state.attachedFile.name}] ${text}`;
+    if (state.attachedFiles.length) {
+        const names = state.attachedFiles.map(f => f.name).join(', ');
+        const displayMsg = `[📎 ${names}] ${text}`;
         addMessage('user', displayMsg);
         input.value = '';
         resetInputHeight();
         try {
-            const filePath = await uploadFile(state.attachedFile);
-            let prompt = t('chat.file.sent', { path: filePath });
+            // Upload all files in parallel
+            const paths = await Promise.all(state.attachedFiles.map(f => uploadFile(f)));
+            let prompt = paths.map(p => t('chat.file.sent', { path: p })).join('\n');
             if (text) prompt += t('chat.file.sentWithMsg', { text });
-            clearAttachedFile();
+            clearAttachedFiles();
             await apiJson('/api/message', 'POST', { prompt });
         } catch (err) {
             addSystemMsg(t('chat.file.uploadFail', { msg: err.message }));
-            clearAttachedFile();
+            clearAttachedFiles();
         }
     } else {
         addMessage('user', text);
@@ -108,28 +110,47 @@ async function uploadFile(file) {
     return data.path;
 }
 
-export function attachFile(file) {
-    state.attachedFile = file;
-    const preview = document.getElementById('filePreview');
-    const nameEl = document.getElementById('filePreviewName');
-    const imgEl = document.getElementById('filePreviewImg');
-    nameEl.textContent = `📎 ${file.name} (${(file.size / 1024).toFixed(1)}KB)`;
-    if (file.type.startsWith('image/')) {
-        imgEl.src = URL.createObjectURL(file);
-        imgEl.style.display = 'block';
-    } else {
-        imgEl.style.display = 'none';
+export function attachFiles(files) {
+    for (const file of files) {
+        // Skip duplicates by name
+        if (state.attachedFiles.some(f => f.name === file.name)) continue;
+        state.attachedFiles.push(file);
     }
-    preview.classList.add('visible');
+    renderFilePreview();
     document.getElementById('chatInput').focus();
 }
 
-export function clearAttachedFile() {
-    state.attachedFile = null;
-    const preview = document.getElementById('filePreview');
-    preview.classList.remove('visible');
-    document.getElementById('filePreviewImg').src = '';
+export function removeAttachedFile(index) {
+    state.attachedFiles.splice(index, 1);
+    renderFilePreview();
+}
+
+export function clearAttachedFiles() {
+    state.attachedFiles = [];
+    renderFilePreview();
     document.getElementById('fileInput').value = '';
+}
+
+function renderFilePreview() {
+    const preview = document.getElementById('filePreview');
+    const listEl = document.getElementById('filePreviewList');
+    if (!state.attachedFiles.length) {
+        preview.classList.remove('visible');
+        if (listEl) listEl.innerHTML = '';
+        return;
+    }
+    preview.classList.add('visible');
+    if (!listEl) return;
+    listEl.innerHTML = state.attachedFiles.map((f, i) => {
+        const size = (f.size / 1024).toFixed(1);
+        const isImg = f.type.startsWith('image/');
+        const thumb = isImg ? `<img src="${URL.createObjectURL(f)}" class="file-chip-thumb" alt="">` : '';
+        return `<div class="file-chip">
+            ${thumb}
+            <span class="file-chip-name">📎 ${f.name} (${size}KB)</span>
+            <button class="file-chip-remove" data-file-idx="${i}" title="Remove">✕</button>
+        </div>`;
+    }).join('');
 }
 
 export async function clearChat() {
@@ -173,11 +194,13 @@ export function initDragDrop() {
         e.preventDefault();
         dragCounter = 0;
         overlay.classList.remove('visible');
-        const file = e.dataTransfer.files[0];
-        if (file) attachFile(file);
+        const files = [...e.dataTransfer.files];
+        if (files.length) attachFiles(files);
     });
 
     document.getElementById('fileInput').addEventListener('change', (e) => {
-        if (e.target.files[0]) attachFile(e.target.files[0]);
+        const files = [...e.target.files];
+        if (files.length) attachFiles(files);
+        e.target.value = ''; // allow re-selecting same file
     });
 }

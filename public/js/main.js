@@ -12,7 +12,7 @@ window.addEventListener('error', (e) => {
 
 import { connect } from './ws.js';
 import { switchTab, handleSave, loadStats, loadMessages, loadMemory } from './ui.js';
-import { sendMessage, handleKey, clearAttachedFile, clearChat, initDragDrop, initAutoResize } from './features/chat.js';
+import { sendMessage, handleKey, clearAttachedFiles, removeAttachedFile, clearChat, initDragDrop, initAutoResize } from './features/chat.js';
 import {
     loadCommands, update as updateSlashDropdown, handleKeydown as handleSlashKeydown,
     handleClick as handleSlashClick, handleOutsideClick as handleSlashOutsideClick,
@@ -65,7 +65,11 @@ chatInput.addEventListener('cmd-execute', () => {
 });
 document.getElementById('cmdDropdown')?.addEventListener('click', handleSlashClick);
 document.addEventListener('click', handleSlashOutsideClick);
-document.querySelector('.file-preview .remove').addEventListener('click', clearAttachedFile);
+document.getElementById('filePreviewClear').addEventListener('click', clearAttachedFiles);
+document.getElementById('filePreviewList').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-file-idx]');
+    if (btn) removeAttachedFile(+btn.dataset.fileIdx);
+});
 document.querySelector('.btn-attach').addEventListener('click', () => {
     document.getElementById('fileInput').click();
 });

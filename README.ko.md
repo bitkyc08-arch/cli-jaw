@@ -36,8 +36,7 @@ CLI-CLAW는 접근 방식 자체가 다릅니다 — 모든 요청이 벤더가 
 | **스킬 생태계** | 105+개 내장 스킬 | 플러그인 다양 | 제한적 |
 | **비용** | Copilot/OpenCode 무료 티어 | API 비용 발생 | API 비용 발생 |
 
-<!-- 📸 TODO: 터미널 TUI 스크린샷 -->
-<!-- ![Terminal TUI](docs/screenshots/terminal-tui.png) -->
+![CLI-CLAW 터미널](docs/screenshots/terminal-cli.png)
 
 ---
 
@@ -169,8 +168,7 @@ CLI-CLAW는 단순 챗봇이 아닙니다 — 완전한 **양방향 브릿지**�
 - 하트비트 작업 결과 (예약 실행)
 - 브라우저 스크린샷
 
-<!-- 📸 TODO: 텔레그램 봇 스크린샷 -->
-<!-- ![Telegram Bot](docs/screenshots/telegram-bot.png) -->
+![텔레그램 봇](docs/screenshots/telegram-bot.png)
 
 ---
 

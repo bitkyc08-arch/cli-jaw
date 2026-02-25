@@ -36,8 +36,7 @@ CLI-CLAW takes a different approach — every interaction goes through **officia
 | **Skill Ecosystem** | 107 built-in skills | Plugins vary | Limited |
 | **Cost** | Free tier via Copilot/OpenCode | API costs | API costs |
 
-<!-- 📸 TODO: Terminal TUI screenshot -->
-<!-- ![Terminal TUI](docs/screenshots/terminal-tui.png) -->
+![CLI-CLAW Terminal](docs/screenshots/terminal-cli.png)
 
 ---
 
@@ -169,8 +168,7 @@ CLI-CLAW isn't just a chat bot — it's a full **bidirectional bridge**:
 - Heartbeat job results (scheduled tasks)
 - Browser screenshots
 
-<!-- 📸 TODO: Telegram Bot screenshot -->
-<!-- ![Telegram Bot](docs/screenshots/telegram-bot.png) -->
+![Telegram Bot](docs/screenshots/telegram-bot.png)
 
 ---
 
