@@ -65,10 +65,22 @@ import { CLI_REGISTRY } from './src/cli/registry.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
+// Walk up to project root (where package.json lives)
+// Works from both source (server.ts) and dist (dist/server.js)
+function findProjectRoot(): string {
+    let dir = __dirname;
+    while (dir !== dirname(dir)) {
+        if (fs.existsSync(join(dir, 'package.json'))) return dir;
+        dir = dirname(dir);
+    }
+    return __dirname; // fallback
+}
+const projectRoot = findProjectRoot();
+
 // ─── .env loader (no dependency) ─────────────────────
 
 try {
-    const envPath = join(__dirname, '.env');
+    const envPath = join(projectRoot, '.env');
     if (fs.existsSync(envPath)) {
         for (const line of fs.readFileSync(envPath, 'utf8').split('\n')) {
             const m = line.match(/^([A-Z_]+)=(.*)$/);
@@ -88,8 +100,8 @@ const DEFAULT_EMPLOYEES = [
 ];
 
 ensureDirs();
-fs.mkdirSync(join(__dirname, 'public'), { recursive: true });
-runMigration(__dirname);
+fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
+runMigration(projectRoot);
 loadSettings();
 initPromptFiles();
 regenerateB();
@@ -147,7 +159,7 @@ app.use((req, res, next) => {
 });
 
 app.use(express.json({ limit: '1mb' }));
-app.use(express.static(join(__dirname, 'public')));
+app.use(express.static(join(projectRoot, 'public')));
 
 // WebSocket incoming messages
 wss.on('connection', (ws) => {
@@ -774,7 +786,7 @@ registerBrowserRoutes(app);
 // ─── i18n API ────────────────────────────────────────
 
 app.get('/api/i18n/languages', (_, res) => {
-    const localeDir = join(__dirname, 'public', 'locales');
+    const localeDir = join(projectRoot, 'public', 'locales');
     if (!fs.existsSync(localeDir)) return res.json({ languages: ['ko'], default: 'ko' });
     const langs = fs.readdirSync(localeDir)
         .filter(f => f.endsWith('.json') && !f.startsWith('skills-'))
@@ -786,7 +798,7 @@ app.get('/api/i18n/:lang', (req, res) => {
     const raw = req.params.lang.replace(/[^a-z-]/gi, '');
     const lang = normalizeLocale(raw, '');
     if (!lang) return res.status(404).json({ error: 'locale not found' });
-    const filePath = join(__dirname, 'public', 'locales', `${lang}.json`);
+    const filePath = join(projectRoot, 'public', 'locales', `${lang}.json`);
     if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'locale not found' });
     res.json(JSON.parse(fs.readFileSync(filePath, 'utf8')));
 });
@@ -810,7 +822,7 @@ watchHeartbeatFile();
 
 server.listen(PORT, () => {
     // Bootstrap i18n locale dictionaries
-    loadLocales(join(__dirname, 'public', 'locales'));
+    loadLocales(join(projectRoot, 'public', 'locales'));
     log.info(`\n  🦞 Claw Agent — http://localhost:${PORT}\n`);
     log.info(`  CLI:    ${settings.cli}`);
     log.info(`  Perms:  ${settings.permissions}`);
