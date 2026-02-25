@@ -46,6 +46,7 @@ ${c.bold}   🦈 v${pkg.version}${c.reset}  ${c.dim}AI Agent Orchestration Platf
     status     서버 상태 확인
     browser    브라우저 제어
     memory     영구 메모리 관리
+    launchd    macOS 자동 실행 관리 (install/uninstall/status)
 
   ${c.bold}Options:${c.reset}
     --help     도움말 표시
@@ -92,6 +93,9 @@ switch (command) {
         break;
     case 'memory':
         await import('./commands/memory.js');
+        break;
+    case 'launchd':
+        await import('./commands/launchd.js');
         break;
     case '--version':
     case '-v':

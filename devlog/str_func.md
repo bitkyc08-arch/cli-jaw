@@ -85,7 +85,7 @@ cli-jaw/
 │           ├── theme.js      ← pill switch 다크/라이트 (is-light class) (40L)
 │           └── appname.js    ← Agent Name (DEFAULT_NAME='CLI-JAW') (43L)
 ├── bin/
-│   ├── cli-jaw.ts           ← 11개 서브커맨드 라우팅
+│   ├── cli-jaw.ts           ← 12개 서브커맨드 라우팅
 │   ├── postinstall.ts        ← npm install 후 5-CLI 자동설치 + MCP + 스킬 (212L)
 │   └── commands/
 │       ├── serve.ts          ← 서버 시작 (--port/--host/--open)
@@ -98,6 +98,7 @@ cli-jaw/
 │       ├── employee.ts       ← 직원 관리 (reset, REST API 호출, 67L)
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션)
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init)
+│       ├── launchd.ts        ← macOS LaunchAgent 관리 (install/unset/status)
 │       └── browser.ts        ← 브라우저 CLI (17개 서브커맨드, 240L)
 ├── tests/                    ← 회귀 방지 테스트 (252 pass)
 │   ├── events.test.ts        ← 이벤트 파서 단위 테스트
@@ -132,7 +133,7 @@ cli-jaw/
 
 | 경로               | 설명                                      |
 | ------------------ | ----------------------------------------- |
-| `jaw.db`          | SQLite DB                                 |
+| `jaw.db`           | SQLite DB                                 |
 | `settings.json`    | 사용자 설정                               |
 | `mcp.json`         | 통합 MCP 설정 (source of truth)           |
 | `prompts/`         | A-1, A-2, HEARTBEAT 프롬프트              |
@@ -178,21 +179,21 @@ graph LR
 
 ### 디렉토리 의존 규칙 (Phase 20.6)
 
-| 디렉토리 | 의존 대상 | 비고 |
-|----------|----------|------|
-| `src/core/` | — | 의존 0, 인프라 계층 (config, db, bus, logger, i18n, settings-merge) |
-| `src/security/` | — | 의존 0, 입력 검증 |
-| `src/http/` | — | 의존 0, 응답 표준화 |
-| `src/browser/` | — | 독립 모듈, CDP 제어 |
-| `src/cli/` | core, command-contract | 커맨드 레지스트리 + 핸들러 + ACP 클라이언트 |
-| `src/command-contract/` | cli/commands | capability map + policy + help |
-| `src/prompt/` | core | A-1/A-2 + 스킬 + 직원 프롬프트 v2 |
-| `src/memory/` | core | 메모리 + worklog + heartbeat |
-| `src/agent/` | core, prompt, orchestrator, cli/acp-client | 핵심 허브 + ACP copilot 분기 |
-| `src/orchestrator/` | core, prompt, agent | planning ↔ agent 상호 + phase 관리 |
-| `src/telegram/` | core, orchestrator, agent, cli, prompt, memory | 외부 인터페이스 + lifecycle |
-| `src/routes/` | core, browser | Express 라우트 추출 |
-| `server.ts` | 전체 | 글루 레이어 |
+| 디렉토리                | 의존 대상                                      | 비고                                                                |
+| ----------------------- | ---------------------------------------------- | ------------------------------------------------------------------- |
+| `src/core/`             | —                                              | 의존 0, 인프라 계층 (config, db, bus, logger, i18n, settings-merge) |
+| `src/security/`         | —                                              | 의존 0, 입력 검증                                                   |
+| `src/http/`             | —                                              | 의존 0, 응답 표준화                                                 |
+| `src/browser/`          | —                                              | 독립 모듈, CDP 제어                                                 |
+| `src/cli/`              | core, command-contract                         | 커맨드 레지스트리 + 핸들러 + ACP 클라이언트                         |
+| `src/command-contract/` | cli/commands                                   | capability map + policy + help                                      |
+| `src/prompt/`           | core                                           | A-1/A-2 + 스킬 + 직원 프롬프트 v2                                   |
+| `src/memory/`           | core                                           | 메모리 + worklog + heartbeat                                        |
+| `src/agent/`            | core, prompt, orchestrator, cli/acp-client     | 핵심 허브 + ACP copilot 분기                                        |
+| `src/orchestrator/`     | core, prompt, agent                            | planning ↔ agent 상호 + phase 관리                                  |
+| `src/telegram/`         | core, orchestrator, agent, cli, prompt, memory | 외부 인터페이스 + lifecycle                                         |
+| `src/routes/`           | core, browser                                  | Express 라우트 추출                                                 |
+| `server.ts`             | 전체                                           | 글루 레이어                                                         |
 
 ---
 
@@ -266,19 +267,19 @@ graph LR
 
 ## 서브 문서
 
-| 문서                                        | 범위                                                          | 파일                                  |
-| ------------------------------------------- | ------------------------------------------------------------- | ------------------------------------- |
-| [🔧 infra.md](str_func/infra.md)             | core/ (config·db·bus·logger·i18n·settings-merge) + security/ + http/ | 의존 0 계층 + Phase 9 보안/응답  |
-| [🌐 server_api.md](str_func/server_api.md)   | server.ts · routes/ · REST API · WebSocket                     | 라우트 + 40+ 엔드포인트 + guards |
-| [⚡ commands.md](str_func/commands.md)       | cli/ (commands·handlers·registry) + command-contract/          | 레지스트리 + 디스패처 + capability   |
-| [🤖 agent_spawn.md](str_func/agent_spawn.md) | agent/ (spawn·args·events) + orchestrator/ (pipeline·parser) + cli/acp-client | spawn + ACP + 오케스트레이션 |
-| [📱 telegram.md](str_func/telegram.md)       | telegram/ (bot·forwarder) + memory/heartbeat                   | 외부 인터페이스 + lifecycle + origin   |
-| [🎨 frontend.md](str_func/frontend.md)       | public/ 전체 (~25파일, i18n 포함)                              | ES Modules + CSS + 동적 registry      |
-| [🧠 prompt_flow.md](str_func/prompt_flow.md) | prompt/builder.ts · 직원 프롬프트 · promptCache                | **핵심** — 정적/동적 + Copilot ACP    |
-| [📄 prompt_basic_A1.md](str_func/prompt_basic_A1.md) | A-1 기본 프롬프트 원문                                  | EN 기본 프롬프트 레퍼런스 |
-| [📄 prompt_basic_A2.md](str_func/prompt_basic_A2.md) | A-2 프롬프트 템플릿                                     | 사용자 편집 가능 |
-| [📄 prompt_basic_B.md](str_func/prompt_basic_B.md) | B 프롬프트 원문 (직원 규칙, 위임 정책)                    | 직원 레퍼런스 |
-| [💾 memory_architecture.md](str_func/memory_architecture.md) | 3계층 메모리 시스템 (History Block · Flush · Injection) | 메모리 전체 구조 레퍼런스 |
+| 문서                                                        | 범위                                                                          | 파일                                 |
+| ----------------------------------------------------------- | ----------------------------------------------------------------------------- | ------------------------------------ |
+| [🔧 infra.md](str_func/infra.md)                             | core/ (config·db·bus·logger·i18n·settings-merge) + security/ + http/          | 의존 0 계층 + Phase 9 보안/응답      |
+| [🌐 server_api.md](str_func/server_api.md)                   | server.ts · routes/ · REST API · WebSocket                                    | 라우트 + 40+ 엔드포인트 + guards     |
+| [⚡ commands.md](str_func/commands.md)                       | cli/ (commands·handlers·registry) + command-contract/                         | 레지스트리 + 디스패처 + capability   |
+| [🤖 agent_spawn.md](str_func/agent_spawn.md)                 | agent/ (spawn·args·events) + orchestrator/ (pipeline·parser) + cli/acp-client | spawn + ACP + 오케스트레이션         |
+| [📱 telegram.md](str_func/telegram.md)                       | telegram/ (bot·forwarder) + memory/heartbeat                                  | 외부 인터페이스 + lifecycle + origin |
+| [🎨 frontend.md](str_func/frontend.md)                       | public/ 전체 (~25파일, i18n 포함)                                             | ES Modules + CSS + 동적 registry     |
+| [🧠 prompt_flow.md](str_func/prompt_flow.md)                 | prompt/builder.ts · 직원 프롬프트 · promptCache                               | **핵심** — 정적/동적 + Copilot ACP   |
+| [📄 prompt_basic_A1.md](str_func/prompt_basic_A1.md)         | A-1 기본 프롬프트 원문                                                        | EN 기본 프롬프트 레퍼런스            |
+| [📄 prompt_basic_A2.md](str_func/prompt_basic_A2.md)         | A-2 프롬프트 템플릿                                                           | 사용자 편집 가능                     |
+| [📄 prompt_basic_B.md](str_func/prompt_basic_B.md)           | B 프롬프트 원문 (직원 규칙, 위임 정책)                                        | 직원 레퍼런스                        |
+| [💾 memory_architecture.md](str_func/memory_architecture.md) | 3계층 메모리 시스템 (History Block · Flush · Injection)                       | 메모리 전체 구조 레퍼런스            |
 
 ---
 
@@ -288,17 +289,17 @@ graph LR
 
 **진행 중** (`devlog/`):
 
-| 폴더                          | 주제                                                        | 상태 |
-| ----------------------------- | ----------------------------------------------------------- | ---- |
-| `260224_skill/`               | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2)           | 🟡    |
-| `260224_vision/`              | Vision Click P1✅ P2✅ — P3 멀티프로바이더 미구현              | 🟡    |
-| `260224_orch/`                | 오케스트레이션 v2 P0~P5✅                                     | ✅    |
-| `260225_finness/`             | P0~P9✅ + P10~P17✅ + P20~P20.6✅ — 보안, i18n, AI triage, 디렉토리 분리 | ✅    |
-| `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6                              | ✅    |
-| `260225_debug/`                   | i18n + multifile + dev skill + filepath fix + parallel dispatch + session fix | ✅    |
-| `260225_clijaw_rename/`           | cli-claw→cli-jaw 리네임 + Arctic Cyan 테마 + CLI 블록아트 배너 | ✅    |
+| 폴더                              | 주제                                                                                       | 상태 |
+| --------------------------------- | ------------------------------------------------------------------------------------------ | ---- |
+| `260224_skill/`                   | 스킬 큐레이션 + Telegram Send + Voice STT (P0~P2)                                          | 🟡    |
+| `260224_vision/`                  | Vision Click P1✅ P2✅ — P3 멀티프로바이더 미구현                                            | 🟡    |
+| `260224_orch/`                    | 오케스트레이션 v2 P0~P5✅                                                                   | ✅    |
+| `260225_finness/`                 | P0~P9✅ + P10~P17✅ + P20~P20.6✅ — 보안, i18n, AI triage, 디렉토리 분리                      | ✅    |
+| `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6                                                                 | ✅    |
+| `260225_debug/`                   | i18n + multifile + dev skill + filepath fix + parallel dispatch + session fix              | ✅    |
+| `260225_clijaw_rename/`           | cli-claw→cli-jaw 리네임 + Arctic Cyan 테마 + CLI 블록아트 배너                             | ✅    |
 | `260225_mermaid_bugs/`            | Mermaid text invisible (DOMPurify foreignObject strip) + overlay UX + user msg persistence | ✅    |
-| `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
+| `269999_메모리 개선/`             | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                                                | 🔜    |
 
 ---
 

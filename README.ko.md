@@ -30,13 +30,13 @@ CLI-JAW는 내 컴퓨터에 상주하며 이미 익숙한 인터페이스인 **�
 
 단일 모델만을 사용하는 기존 비서들과 달리, CLI-JAW는 5개의 AI 엔진(Claude, Codex, Gemini, OpenCode, Copilot)을 공식 CLI를 통해 오케스트레이션하여 모든 제공업체의 장점을 통합된 경험으로 제공합니다. 하나의 엔진 사용량이 초과되면 자동으로 다음 엔진으로 전환됩니다. 107개의 내장 스킬이 브라우저 자동화부터 문서 생성까지 모든 것을 처리합니다.
 
-| | 왜 CLI-JAW인가요? |
-|---|---|
-| 🛡️ **안전한 서비스 약관 준수** | 공식 CLI만 사용합니다 — API 키 스크래핑이나 리버스 엔지니어링이 없으므로 계정 정지 위험이 없습니다. |
-| 🤖 **검증된 에이전트 도구** | 실전에서 검증된 5개의 코딩 에이전트(Claude, Codex, Gemini, OpenCode, Copilot)를 한 곳에서 사용하세요. |
-| ⚡ **멀티 에이전트 자동 전환(Fallback)** | 엔진 하나가 멈춰도 걱정 없습니다. 다음 엔진이 즉시 이어받아 중단 없는 작업이 가능합니다. |
-| 🎭 **오케스트레이션 기반 성능 극대화** | 복잡한 작업은 전문화된 서브 에이전트에게 분산시켜 처리량을 극대화합니다. |
-| 📦 **107개의 내장 스킬** | 브라우저 자동화, 문서 생성, 텔레그램 연동, 영구 메모리 등 설치 즉시 사용 가능한 기능들을 제공합니다. |
+|                                         | 왜 CLI-JAW인가요?                                                                                     |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| 🛡️ **안전한 서비스 약관 준수**           | 공식 CLI만 사용합니다 — API 키 스크래핑이나 리버스 엔지니어링이 없으므로 계정 정지 위험이 없습니다.   |
+| 🤖 **검증된 에이전트 도구**              | 실전에서 검증된 5개의 코딩 에이전트(Claude, Codex, Gemini, OpenCode, Copilot)를 한 곳에서 사용하세요. |
+| ⚡ **멀티 에이전트 자동 전환(Fallback)** | 엔진 하나가 멈춰도 걱정 없습니다. 다음 엔진이 즉시 이어받아 중단 없는 작업이 가능합니다.              |
+| 🎭 **오케스트레이션 기반 성능 극대화**   | 복잡한 작업은 전문화된 서브 에이전트에게 분산시켜 처리량을 극대화합니다.                              |
+| 📦 **107개의 내장 스킬**                 | 브라우저 자동화, 문서 생성, 텔레그램 연동, 영구 메모리 등 설치 즉시 사용 가능한 기능들을 제공합니다.  |
 
 ![CLI-JAW 터미널](docs/screenshots/terminal-cli.png)
 
@@ -76,10 +76,10 @@ graph LR
 
 ### 사전 요구사항
 
-| 필수 항목 | 용도 |
-|-----------|------|
-| **Node.js ≥ 22** | 런타임. [다운로드](https://nodejs.org) |
-| **AI CLI 최소 1개** | 비서를 움직이는 두뇌 |
+| 필수 항목           | 용도                                   |
+| ------------------- | -------------------------------------- |
+| **Node.js ≥ 22**    | 런타임. [다운로드](https://nodejs.org) |
+| **AI CLI 최소 1개** | 비서를 움직이는 두뇌                   |
 
 > 🆓 **무료 옵션:** [Copilot CLI](https://docs.github.com/en/copilot)는 GitHub 무료 플랜에서도, [OpenCode](https://opencode.ai)는 무료 모델이 있어요 — 카드 등록 없이 바로 시작 가능.
 
@@ -133,6 +133,7 @@ gemini               # Google     (첫 실행 시 자동 인증)
 
 ```bash
 cli-jaw serve        # Web UI → http://localhost:3457
+cli-jaw launchd      # 부팅 시 자동 실행 (macOS)
 # — 또는 —
 cli-jaw chat         # 터미널 TUI (브라우저 필요 없음)
 ```
@@ -148,26 +149,26 @@ cli-jaw chat         # 터미널 TUI (브라우저 필요 없음)
 <details>
 <summary>전체 스킬 목록 보기</summary>
 
-| 티어 | 수량 | 작동 방식 |
-|------|:----:|----------|
-| **Active 스킬** | 17 | 매번 AI한테 자동으로 주입돼요. 항상 켜져 있어요. |
-| **Reference 스킬** | 88+ | 관련 작업을 시키면 그때 AI가 읽어서 써요. |
+| 티어               | 수량  | 작동 방식                                        |
+| ------------------ | :---: | ------------------------------------------------ |
+| **Active 스킬**    |  17   | 매번 AI한테 자동으로 주입돼요. 항상 켜져 있어요. |
+| **Reference 스킬** |  88+  | 관련 작업을 시키면 그때 AI가 읽어서 써요.        |
 
 #### Active 스킬 (항상 켜짐)
 
-| 스킬 | 기능 |
-|------|------|
-| `browser` | Chrome 자동화 — 스냅샷, 클릭, 네비게이트, 스크린샷 |
-| `github` | 이슈, PR, CI, 코드 리뷰 (`gh` CLI 사용) |
-| `notion` | Notion 페이지 및 데이터베이스 관리 |
-| `memory` | 세션 간 영속 장기 메모리 |
-| `telegram-send` | Telegram으로 사진, 문서, 음성 메시지 전송 |
-| `vision-click` | 스크린샷 → AI가 좌표 찾기 → 클릭 (원커맨드) |
-| `imagegen` | OpenAI Image API로 이미지 생성/편집 |
-| `pdf` / `docx` / `xlsx` | 오피스 문서 읽기, 생성, 편집 |
-| `screen-capture` | macOS 스크린샷 및 카메라 캡처 |
-| `openai-docs` | 최신 OpenAI API 문서 |
-| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | 서브에이전트용 개발 가이드 |
+| 스킬                                                                | 기능                                               |
+| ------------------------------------------------------------------- | -------------------------------------------------- |
+| `browser`                                                           | Chrome 자동화 — 스냅샷, 클릭, 네비게이트, 스크린샷 |
+| `github`                                                            | 이슈, PR, CI, 코드 리뷰 (`gh` CLI 사용)            |
+| `notion`                                                            | Notion 페이지 및 데이터베이스 관리                 |
+| `memory`                                                            | 세션 간 영속 장기 메모리                           |
+| `telegram-send`                                                     | Telegram으로 사진, 문서, 음성 메시지 전송          |
+| `vision-click`                                                      | 스크린샷 → AI가 좌표 찾기 → 클릭 (원커맨드)        |
+| `imagegen`                                                          | OpenAI Image API로 이미지 생성/편집                |
+| `pdf` / `docx` / `xlsx`                                             | 오피스 문서 읽기, 생성, 편집                       |
+| `screen-capture`                                                    | macOS 스크린샷 및 카메라 캡처                      |
+| `openai-docs`                                                       | 최신 OpenAI API 문서                               |
+| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | 서브에이전트용 개발 가이드                         |
 
 #### Reference 스킬 (필요할 때만)
 
@@ -277,6 +278,9 @@ graph LR
 
 ```bash
 cli-jaw serve                         # 서버 시작
+cli-jaw launchd                       # 부팅 시 자동 실행 (macOS)
+cli-jaw launchd status                # 데몬 상태 확인
+cli-jaw launchd unset                 # 자동 실행 해제
 cli-jaw chat                          # 터미널 TUI
 cli-jaw doctor                        # 진단 (12개 체크)
 cli-jaw skill install <name>          # 스킬 설치
@@ -296,13 +300,13 @@ cli-jaw reset                         # 전체 초기화
 <details>
 <summary>전체 프리셋 보기</summary>
 
-| CLI | 기본값 | 주요 모델 |
-|-----|--------|-----------|
-| **Claude** | `claude-sonnet-4-6` | opus-4-6, haiku-4-5, 확장 사고 변형 |
-| **Codex** | `gpt-5.3-codex` | spark, 5.2, 5.1-max, 5.1-mini |
-| **Gemini** | `gemini-2.5-pro` | 3.0-pro-preview, 3-flash-preview, 2.5-flash |
+| CLI          | 기본값                     | 주요 모델                                      |
+| ------------ | -------------------------- | ---------------------------------------------- |
+| **Claude**   | `claude-sonnet-4-6`        | opus-4-6, haiku-4-5, 확장 사고 변형            |
+| **Codex**    | `gpt-5.3-codex`            | spark, 5.2, 5.1-max, 5.1-mini                  |
+| **Gemini**   | `gemini-2.5-pro`           | 3.0-pro-preview, 3-flash-preview, 2.5-flash    |
 | **OpenCode** | `claude-opus-4-6-thinking` | 🆓 big-pickle, GLM-5, MiniMax, Kimi, GPT-5-Nano |
-| **Copilot** | `gpt-4.1` 🆓 | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6 |
+| **Copilot**  | `gpt-4.1` 🆓                | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6      |
 
 </details>
 
@@ -367,24 +371,24 @@ npm test
 
 ## 📖 문서
 
-| 문서 | 내용 |
-|------|------|
+| 문서                                    | 내용                                                |
+| --------------------------------------- | --------------------------------------------------- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | 시스템 설계, 모듈 그래프, REST API (40+ 엔드포인트) |
-| [TESTS.md](TESTS.md) | 테스트 커버리지, 테스트 계획 |
+| [TESTS.md](TESTS.md)                    | 테스트 커버리지, 테스트 계획                        |
 
 ---
 
 ## 🔧 문제 해결
 
-| 증상 | 원인 | 해결 방법 |
-|------|------|-----------|
-| `command not found: cli-jaw` | npm 전역 bin이 PATH에 없음 | `npm config get prefix` 확인 후 `bin/`을 PATH에 추가 |
-| `doctor`에서 CLI 누락 표시 | 해당 CLI 미설치 | `npm i -g @anthropic-ai/claude-code` 등 설치 |
-| 포트 3457 사용 중 | 다른 프로세스가 점유 | `PORT=4000 cli-jaw serve` 또는 기존 프로세스 종료 |
-| 텔레그램 봇 무반응 | 토큰 미설정 또는 Chat ID 누락 | `cli-jaw init --telegram-token ...` 재실행 |
-| `npm install -g` 권한 오류 | 글로벌 디렉토리 권한 문제 | `sudo npm i -g cli-jaw` 또는 [nvm](https://github.com/nvm-sh/nvm) 사용 권장 |
-| 빌드 실패 (`tsc` 에러) | Node 22 미만 버전 | `node -v` 확인 → 22 이상으로 업그레이드 |
-| 메모리가 세션 간 유지 안 됨 | `~/.cli-jaw/memory/` 디렉토리 없음 | `cli-jaw init` 재실행하면 자동 생성 |
+| 증상                         | 원인                               | 해결 방법                                                                   |
+| ---------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
+| `command not found: cli-jaw` | npm 전역 bin이 PATH에 없음         | `npm config get prefix` 확인 후 `bin/`을 PATH에 추가                        |
+| `doctor`에서 CLI 누락 표시   | 해당 CLI 미설치                    | `npm i -g @anthropic-ai/claude-code` 등 설치                                |
+| 포트 3457 사용 중            | 다른 프로세스가 점유               | `PORT=4000 cli-jaw serve` 또는 기존 프로세스 종료                           |
+| 텔레그램 봇 무반응           | 토큰 미설정 또는 Chat ID 누락      | `cli-jaw init --telegram-token ...` 재실행                                  |
+| `npm install -g` 권한 오류   | 글로벌 디렉토리 권한 문제          | `sudo npm i -g cli-jaw` 또는 [nvm](https://github.com/nvm-sh/nvm) 사용 권장 |
+| 빌드 실패 (`tsc` 에러)       | Node 22 미만 버전                  | `node -v` 확인 → 22 이상으로 업그레이드                                     |
+| 메모리가 세션 간 유지 안 됨  | `~/.cli-jaw/memory/` 디렉토리 없음 | `cli-jaw init` 재실행하면 자동 생성                                         |
 
 ---
 

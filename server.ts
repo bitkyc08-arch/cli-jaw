@@ -832,6 +832,17 @@ server.listen(PORT, () => {
     log.info(`  DB:     ${DB_PATH}`);
     log.info(`  Prompts: ${PROMPTS_DIR}\n`);
 
+    // Auto-open browser (cross-platform)
+    const url = `http://localhost:${PORT}`;
+    const openCmd = process.platform === 'darwin' ? 'open'
+        : process.platform === 'win32' ? 'start'
+            : 'xdg-open';
+    import('child_process').then(({ exec }) => {
+        exec(`${openCmd} ${url}`, (err) => {
+            if (err) log.info(`  Browser: could not auto-open (${err.message})`);
+        });
+    });
+
     try {
         initMcpConfig(settings.workingDir);
         const symlinks = ensureSkillsSymlinks(settings.workingDir, { onConflict: 'backup' });

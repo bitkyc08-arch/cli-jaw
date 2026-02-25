@@ -1,6 +1,6 @@
 {
   "name": "cli-jaw",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Personal AI assistant powered by 5 engines (Claude, Codex, Gemini, OpenCode, Copilot) — Web, Terminal, and Telegram interfaces with 107 built-in skills",
   "type": "module",
   "keywords": [
@@ -55,7 +55,7 @@
     "build:frontend": "node esbuild.config.mjs",
     "watch:frontend": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit",
-    "prepublishOnly": "tsc"
+    "prepublishOnly": "tsc && node esbuild.config.mjs"
   },
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",
@@ -74,7 +74,7 @@
     "@types/node": "^22.0.0",
     "@types/ws": "^8.5.0",
     "esbuild": "^0.27.3",
-    "typescript": "^5.7.0",
-    "tsx": "^4.21.0"
+    "tsx": "^4.21.0",
+    "typescript": "^5.7.0"
   }
 }

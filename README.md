@@ -30,13 +30,13 @@ CLI-JAW is a **personal AI assistant** that lives on your machine and works from
 
 Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. 107 built-in skills handle everything from browser automation to document generation.
 
-| | Why CLI-JAW? |
-|---|---|
-| 🛡️ **TOS-Safe** | Uses official CLIs only — no API key scraping, no reverse engineering, no ban risk. |
-| 🤖 **Verified Agent Tools** | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof. |
-| ⚡ **Multi-Agent Fallback** | One engine down? The next picks up automatically. Zero downtime. |
-| 🎭 **Orchestrated Performance** | Complex tasks split across specialized sub-agents for maximum throughput. |
-| 📦 **107 Built-in Skills** | Browser automation, document generation, Telegram, memory — ready out of the box. |
+|                                | Why CLI-JAW?                                                                             |
+| ------------------------------ | ---------------------------------------------------------------------------------------- |
+| 🛡️ **TOS-Safe**                 | Uses official CLIs only — no API key scraping, no reverse engineering, no ban risk.      |
+| 🤖 **Verified Agent Tools**     | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof. |
+| ⚡ **Multi-Agent Fallback**     | One engine down? The next picks up automatically. Zero downtime.                         |
+| 🎭 **Orchestrated Performance** | Complex tasks split across specialized sub-agents for maximum throughput.                |
+| 📦 **107 Built-in Skills**      | Browser automation, document generation, Telegram, memory — ready out of the box.        |
 
 ![CLI-JAW Terminal](docs/screenshots/terminal-cli.png)
 
@@ -76,10 +76,10 @@ graph LR
 
 ### Prerequisites
 
-| Requirement | Why |
-|-------------|-----|
-| **Node.js ≥ 22** | Runtime. [Download](https://nodejs.org) |
-| **At least 1 AI CLI** | The engine that powers your assistant |
+| Requirement           | Why                                     |
+| --------------------- | --------------------------------------- |
+| **Node.js ≥ 22**      | Runtime. [Download](https://nodejs.org) |
+| **At least 1 AI CLI** | The engine that powers your assistant   |
 
 > 🆓 **Free options:** [Copilot CLI](https://docs.github.com/en/copilot) (GitHub free tier) and [OpenCode](https://opencode.ai) have free models — no credit card needed.
 
@@ -133,6 +133,7 @@ gemini               # Google     (first run triggers auth)
 
 ```bash
 cli-jaw serve        # Web UI → http://localhost:3457
+cli-jaw launchd      # Auto-start on boot (macOS)
 # — or —
 cli-jaw chat         # Terminal TUI (no browser needed)
 ```
@@ -148,26 +149,26 @@ cli-jaw chat         # Terminal TUI (no browser needed)
 <details>
 <summary>View all skills</summary>
 
-| Tier | Count | How it works |
-|------|:-----:|--------------|
-| **Active Skills** | 17 | Auto-injected into every AI prompt. Always available. |
-| **Reference Skills** | 90 | AI reads them on-demand when you ask for a relevant task. |
+| Tier                 | Count | How it works                                              |
+| -------------------- | :---: | --------------------------------------------------------- |
+| **Active Skills**    |  17   | Auto-injected into every AI prompt. Always available.     |
+| **Reference Skills** |  90   | AI reads them on-demand when you ask for a relevant task. |
 
 #### Active Skills (always on)
 
-| Skill | What it does |
-|-------|-------------|
-| `browser` | Chrome automation — snapshot, click, navigate, screenshot |
-| `github` | Issues, PRs, CI, code review via `gh` CLI |
-| `notion` | Create/manage Notion pages and databases |
-| `memory` | Persistent long-term memory across sessions |
-| `telegram-send` | Send photos, documents, voice messages to Telegram |
-| `vision-click` | Screenshot → AI finds coordinates → clicks (one command) |
-| `imagegen` | Generate/edit images via OpenAI Image API |
-| `pdf` / `docx` / `xlsx` | Read, create, edit office documents |
-| `screen-capture` | macOS screenshot and camera capture |
-| `openai-docs` | Up-to-date OpenAI API documentation |
-| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | Development guidelines for sub-agents |
+| Skill                                                               | What it does                                              |
+| ------------------------------------------------------------------- | --------------------------------------------------------- |
+| `browser`                                                           | Chrome automation — snapshot, click, navigate, screenshot |
+| `github`                                                            | Issues, PRs, CI, code review via `gh` CLI                 |
+| `notion`                                                            | Create/manage Notion pages and databases                  |
+| `memory`                                                            | Persistent long-term memory across sessions               |
+| `telegram-send`                                                     | Send photos, documents, voice messages to Telegram        |
+| `vision-click`                                                      | Screenshot → AI finds coordinates → clicks (one command)  |
+| `imagegen`                                                          | Generate/edit images via OpenAI Image API                 |
+| `pdf` / `docx` / `xlsx`                                             | Read, create, edit office documents                       |
+| `screen-capture`                                                    | macOS screenshot and camera capture                       |
+| `openai-docs`                                                       | Up-to-date OpenAI API documentation                       |
+| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | Development guidelines for sub-agents                     |
 
 #### Reference Skills (on-demand)
 
@@ -284,6 +285,9 @@ cli-jaw mcp install <package>         # Install MCP → syncs to all 5 CLIs
 cli-jaw memory search <query>         # Search memory
 cli-jaw browser start                 # Launch Chrome (CDP)
 cli-jaw browser vision-click "Login"  # AI-powered click
+cli-jaw launchd                       # Auto-start on boot (macOS)
+cli-jaw launchd status                # Check daemon status
+cli-jaw launchd unset                 # Remove auto-start
 cli-jaw reset                         # Full reset
 ```
 
@@ -296,13 +300,13 @@ Each CLI comes with preconfigured presets, but you can type **any model ID** dir
 <details>
 <summary>View all presets</summary>
 
-| CLI | Default | Notable Models |
-|-----|---------|----------------|
-| **Claude** | `claude-sonnet-4-6` | opus-4-6, haiku-4-5, extended thinking variants |
-| **Codex** | `gpt-5.3-codex` | spark, 5.2, 5.1-max, 5.1-mini |
-| **Gemini** | `gemini-2.5-pro` | 3.0-pro-preview, 3-flash-preview, 2.5-flash |
-| **OpenCode** | `claude-opus-4-6-thinking` | 🆓 big-pickle, GLM-5, MiniMax, Kimi, GPT-5-Nano |
-| **Copilot** | `gpt-4.1` 🆓 | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6 |
+| CLI          | Default                    | Notable Models                                  |
+| ------------ | -------------------------- | ----------------------------------------------- |
+| **Claude**   | `claude-sonnet-4-6`        | opus-4-6, haiku-4-5, extended thinking variants |
+| **Codex**    | `gpt-5.3-codex`            | spark, 5.2, 5.1-max, 5.1-mini                   |
+| **Gemini**   | `gemini-2.5-pro`           | 3.0-pro-preview, 3-flash-preview, 2.5-flash     |
+| **OpenCode** | `claude-opus-4-6-thinking` | 🆓 big-pickle, GLM-5, MiniMax, Kimi, GPT-5-Nano  |
+| **Copilot**  | `gpt-4.1` 🆓                | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6       |
 
 </details>
 
@@ -367,10 +371,10 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 
 ## 📖 Documentation
 
-| Document | What's inside |
-|----------|---------------|
+| Document                                | What's inside                                         |
+| --------------------------------------- | ----------------------------------------------------- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, module graph, REST API (40+ endpoints) |
-| [TESTS.md](TESTS.md) | Test coverage and test plan |
+| [TESTS.md](TESTS.md)                    | Test coverage and test plan                           |
 
 ---
 
@@ -379,15 +383,15 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 <details>
 <summary>Common issues</summary>
 
-| Problem | Solution |
-|---------|----------|
-| `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`. |
-| `Error: node version` | Upgrade to Node.js ≥ 22: `nvm install 22` or download from [nodejs.org](https://nodejs.org) |
-| Agent timeout / no response | Run `cli-jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`. |
-| `EADDRINUSE: port 3457` | Another instance is running. Stop it or use `cli-jaw serve --port 3458`. |
-| Telegram bot not responding | Check token with `cli-jaw doctor`. Ensure `cli-jaw serve` is running. |
-| Skills not loading | Run `cli-jaw skill reset` then `cli-jaw mcp sync`. |
-| Browser commands fail | Install Chrome/Chromium. Run `cli-jaw browser start` first. |
+| Problem                      | Solution                                                                                    |
+| ---------------------------- | ------------------------------------------------------------------------------------------- |
+| `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                  |
+| `Error: node version`        | Upgrade to Node.js ≥ 22: `nvm install 22` or download from [nodejs.org](https://nodejs.org) |
+| Agent timeout / no response  | Run `cli-jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`. |
+| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `cli-jaw serve --port 3458`.                    |
+| Telegram bot not responding  | Check token with `cli-jaw doctor`. Ensure `cli-jaw serve` is running.                       |
+| Skills not loading           | Run `cli-jaw skill reset` then `cli-jaw mcp sync`.                                          |
+| Browser commands fail        | Install Chrome/Chromium. Run `cli-jaw browser start` first.                                 |
 
 </details>
 
