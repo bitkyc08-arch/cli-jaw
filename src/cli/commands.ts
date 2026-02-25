@@ -173,6 +173,9 @@ export function parseCommand(text: any) {
         const help = findCommand('help');
         return { type: 'known', cmd: help, args: [], name: 'help' };
     }
+    // File paths like /users/junny/... or /tmp/foo — not commands
+    const firstToken = body.split(/\s+/)[0] || '';
+    if (firstToken.includes('/') || firstToken.includes('\\')) return null;
     const parts = body.split(/\s+/);
     const name = (parts.shift() || '').toLowerCase();
     const cmd = findCommand(name);
