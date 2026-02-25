@@ -6,7 +6,7 @@
 
 *一个界面，五个 CLI，封号？不存在的。*
 
-[![Tests](https://img.shields.io/badge/tests-216%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-252%20pass-brightgreen)](#-测试)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -34,7 +34,7 @@ CLI-CLAW 从根本上换了思路——所有交互都走厂商自己发的**官
 | **多模型** | 5 个 CLI 统一 | 通常 1 个提供商 | 1-2 个 |
 | **自动回退** | `claude → codex → gemini` | 手动切换 | ❌ |
 | **MCP 同步** | 安装一次 → 5 个 CLI | 每个工具单独配 | ❌ |
-| **技能生态** | 107 个内置技能 | 插件不一 | 有限 |
+| **技能生态** | 105+ 个内置技能 | 插件不一 | 有限 |
 | **成本** | Copilot/OpenCode 有免费层 | API 费用 | API 费用 |
 
 <!-- 📸 TODO: 终端 TUI 截图 -->
@@ -63,7 +63,7 @@ graph LR
 - ⚡ **自动回退** — `claude → codex → gemini`。一个挂了，下一个自动顶上。
 - 🎭 **多代理编排** — 复杂任务拆分给角色型子代理，走 5 阶段流水线处理。
 - 🔌 **MCP 同步** — 安装一次 MCP 服务器，五个 CLI 立即可用。
-- 📦 **107 个技能** — 内置插件系统，两个层级（见下方[技能系统](#-技能系统)）。
+- 📦 **105+ 个技能** — 内置插件系统，两个层级（见下方[技能系统](#-技能系统)）。
 - 🧠 **持久记忆** — 自动总结对话，长期记忆，提示注入。
 - 📱 **Telegram 机器人** — 聊天、接收照片/文档/语音，用手机控制代理。
 - 🌐 **浏览器自动化** — Chrome CDP + AI 驱动的 Vision Click。
@@ -75,7 +75,7 @@ graph LR
 ## 快速开始
 
 ```bash
-# 安装（自动设置一切：5 个 CLI、MCP、107 个技能）
+# 安装（自动设置一切：5 个 CLI、MCP、105+ 个技能）
 npm install -g cli-claw
 
 # 认证你要用的 CLI（有一个就够）
@@ -95,12 +95,12 @@ cli-claw chat        # 或使用终端 TUI
 
 ## 📦 技能系统
 
-CLI-CLAW 自带 **107 个内置技能**，分为两个层级：
+CLI-CLAW 自带 **105+ 个内置技能**，分为两个层级：
 
 | 层级 | 数量 | 工作方式 |
 |------|:----:|----------|
 | **活跃技能** | 17 | 自动注入每次 AI 提示。始终可用。 |
-| **参考技能** | 90 | 当你请求相关任务时，AI 按需读取并使用。 |
+| **参考技能** | 88+ | 当你请求相关任务时，AI 按需读取并使用。 |
 
 ### 活跃技能（始终开启）
 
@@ -137,7 +137,7 @@ terraform          # 基础设施即代码
 postgres           # PostgreSQL 操作
 jupyter-notebook   # 运行 Jupyter 笔记本
 sentry             # 错误监控
-# ... 还有 79 个
+# ... 还有 77 个
 ```
 
 永久激活参考技能：
@@ -262,15 +262,55 @@ cli-claw reset                         # 全面重置
 
 </details>
 
-> 🔧 想添加模型：修改 `src/cli-registry.ts` — 一个文件，全局自动生效。
+> 🔧 想添加模型：修改 `src/cli/registry.ts` — 一个文件，全局自动生效。
+
+---
+
+## 🛠️ 开发
+
+```bash
+# 构建（TypeScript → JavaScript）
+npm run build          # tsc → dist/
+
+# 从源码运行（开发）
+npm run dev            # tsx server.ts
+npx tsx bin/cli-claw.ts serve   # 直接运行 .ts 文件
+
+# 从构建产物运行（生产）
+node dist/bin/cli-claw.js serve
+
+# ⚠️ node 不能直接运行 .ts 文件：
+# node bin/cli-claw.ts   ← 这样不行
+```
+
+**项目结构：**
+
+```
+src/
+├── agent/          # AI 代理生命周期 & 生成
+├── browser/        # Chrome CDP 自动化
+├── cli/            # CLI 注册表 & 模型预设
+├── core/           # DB、配置、日志
+├── http/           # Express 服务器 & 中间件
+├── memory/         # 持久记忆系统
+├── orchestrator/   # 多代理编排流水线
+├── prompt/         # 提示注入 & AGENTS.md 生成
+├── routes/         # REST API 端点（40+）
+├── security/       # 输入验证 & 安全护栏
+└── telegram/       # Telegram 机器人集成
+```
+
+> 🔧 **TypeScript** — `strict: true`、`NodeNext` 模块解析、ES2022 目标。
 
 ---
 
 ## 🧪 测试
 
 ```bash
-npm test    # 216 个测试，~260ms，零外部依赖
+npm test    # 252 pass、1 skipped、零外部依赖
 ```
+
+- 使用 `tsx --test` 运行（Node.js 原生测试运行器 + TypeScript）。
 
 ---
 
