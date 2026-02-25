@@ -1,8 +1,8 @@
 # CLI-CLAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-25T16:05 (Dev skill rules + file path fix + history 10 + parallel dispatch plan)
-> server.ts 863L / src/ 35파일 12서브디렉토리 / tests 252 pass (tsx runner)
-> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + i18n/dist 버그픽스 + prompt/orchestration 개선 반영
+> 마지막 검증: 2026-02-25T16:24 (Parallel dispatch 구현 + session invalidation fix)
+> server.ts 863L / src/ 36파일 12서브디렉토리 / tests 252 pass (tsx runner)
+> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix 반영
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -30,10 +30,11 @@ cli-claw-ts/
 │   │   ├── args.ts           ← CLI별 인자 빌더 (67L)
 │   │   └── events.ts         ← NDJSON 파서 + ACP update + logEventSummary (322L)
 │   ├── orchestrator/         ← 직원 오케스트레이션
-│   │   ├── pipeline.ts       ← Plan → Phase-aware Distribute → Quality Gate (582L)
+│   │   ├── pipeline.ts       ← Plan → Distribute → Quality Gate (407L, parallel/sequential 분기)
+│   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers (344L)
 │   │   └── parser.ts         ← triage + subtask JSON + verdict 파싱 (108L)
 │   ├── prompt/               ← 프롬프트 조립
-│   │   └── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache + dev skill rules (560L)
+│   │   └── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache + dev skill rules (557L)
 │   ├── cli/                  ← 커맨드 시스템
 │   │   ├── commands.ts       ← 슬래시 커맨드 레지스트리 + 디스패처 + 파일경로 필터 (271L)
 │   │   ├── handlers.ts       ← 18개 커맨드 핸들러 (432L)
@@ -241,6 +242,10 @@ graph LR
 42. **[feat] Multi-file input**: `attachedFiles[]` 배열, 병렬 업로드, chip 프리뷰, 개별 제거
 43. **[prompt] Dev skill rules**: A1_CONTENT에 `### Dev Skills (MANDATORY)` 서브섹션 추가 — 코드 작성 전 dev/SKILL.md 읽기 의무화
 44. **[ux] 파일 경로 커맨드 오인 수정**: `parseCommand()`에서 첫 토큰에 `/` 포함 시 커맨드가 아닌 일반 텍스트로 판별
+47. **[feat] Parallel dispatch**: `distribute.ts` 분리, `distributeByPhase()` parallel/sequential 분기, `Promise.all` 병렬 실행
+48. **[fix] Employee list injection**: `buildPlanPrompt()`에 동적 employee 목록 주입 — planning agent가 정확한 에이전트 이름 사용
+49. **[fix] No-JSON fallback**: planning agent가 JSON 없이 응답하면 direct answer로 처리 (silent failure 방지)
+50. **[fix] Session invalidation 제거**: `regenerateB()`에서 세션 무효화 삭제 — 모든 CLI가 AGENTS.md 동적 reload 확인
 45. **[feat] History block 10**: `buildHistoryBlock()` `maxSessions` 5→10 (비-resume 세션에서 최근 대화 10개 불러옴, 8000자 제한 유지)
 46. **[docs] README i18n**: 한국어/중국어 Hero 카피 리뉴얼 + 전체 톤 공식 문서 스타일로 격상
 
@@ -277,7 +282,7 @@ graph LR
 | `260224_orch/`                | 오케스트레이션 v2 P0~P5✅                                     | ✅    |
 | `260225_finness/`             | P0~P9✅ + P10~P17✅ + P20~P20.6✅ — 보안, i18n, AI triage, 디렉토리 분리 | ✅    |
 | `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6                              | ✅    |
-| `260225_debug/`                   | i18n 탭버그 + 하드코딩 + multifile + dev skill + filepath fix + parallel plan | 🟡    |
+| `260225_debug/`                   | i18n + multifile + dev skill + filepath fix + parallel dispatch + session fix | ✅    |
 | `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
 
 ---

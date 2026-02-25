@@ -3,11 +3,16 @@
 import { broadcast } from '../core/bus.js';
 import {
     insertMessage, getEmployees,
-    getEmployeeSession, upsertEmployeeSession, clearAllEmployeeSessions,
+    clearAllEmployeeSessions,
 } from '../core/db.js';
-import { getEmployeePromptV2, clearPromptCache } from '../prompt/builder.js';
+import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent } from '../agent/spawn.js';
 import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from '../memory/worklog.js';
+import {
+    PHASES, PHASE_INSTRUCTIONS,
+    findEmployee, validateParallelSafety, runSingleAgent,
+    buildPlanPrompt,
+} from './distribute.js';
 
 const MAX_ROUNDS = 3;
 
@@ -18,8 +23,7 @@ import {
 } from './parser.js';
 export { isContinueIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
 
-// ─── Phase 정의 ──────────────────────────────────────
-const PHASES = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
+// ─── Phase 정의 (constants in distribute.ts) ─────────
 
 const PHASE_PROFILES = {
     frontend: [1, 2, 3, 4, 5],
@@ -29,33 +33,7 @@ const PHASE_PROFILES = {
     custom: [3],
 };
 
-const PHASE_INSTRUCTIONS = {
-    1: `[기획] 이 계획의 실현 가능성을 검증하세요. 코드 작성 금지.
-     - 필수: 영향 범위 분석 (어떤 파일들이 변경되는가)
-     - 필수: 의존성 확인 (import/export 충돌 없는가)
-     - 필수: 엣지 케이스 목록 (null/empty/error 처리)
-     - worklog에 분석 결과를 기록하세요.`,
-    2: `[기획검증] 설계 문서를 검증하고 누락된 부분을 보완하세요.
-     - 필수: 파일 변경 목록과 실제 코드 대조 (함수명, 라인 번호)
-     - 필수: 충돌 검사 (다른 agent 작업과 같은 파일 수정하는가)
-     - 필수: 테스트 전략 수립 (verifyable 기준 정의)
-     - worklog에 검증 결과를 기록하세요.`,
-    3: `[개발] 문서를 참조하여 코드를 작성하세요.
-     - 필수: 변경된 파일 목록과 단위 당 핵심 변경 설명
-     - 필수: 기존 export/import 깨뜨리지 않았는지 확인
-     - 필수: 코드가 lint/build 에러 없이 동작하는지 검증
-     - worklog Execution Log에 변경 로그를 기록하세요.`,
-    4: `[디버깅] 코드를 실행/테스트하고 버그를 수정하세요.
-     - 필수: 실행 결과 스크린샷/로그 첨부
-     - 필수: 발견된 버그 목록과 수정 내역
-     - 필수: 엣지 케이스 테스트 결과 (null/empty/error)
-     - worklog에 디버그 로그를 기록하세요.`,
-    5: `[통합검증] 다른 영역과의 통합을 검증하세요.
-     - 필수: 다른 agent 산출물과의 통합 테스트
-     - 필수: 최종 문서 업데이트 (README, 변경로그)
-     - 필수: 전체 워크플로우 동작 확인
-     - worklog에 최종 검증 결과를 기록하세요.`,
-};
+// PHASE_INSTRUCTIONS moved to distribute.ts
 
 // ─── Per-Agent Phase Tracking ────────────────────────
 
@@ -84,6 +62,7 @@ function initAgentPhases(subtasks: any[]) {
             agent: st.agent,
             task: st.task,
             role,
+            parallel: st.parallel === true,
             verification: st.verification || null,
             phaseProfile: effectiveProfile,
             currentPhaseIdx: 0,
@@ -109,83 +88,8 @@ function advancePhase(ap: Record<string, any>, passed: boolean) {
 async function phasePlan(prompt: string, worklog: Record<string, any>, meta: Record<string, any> = {}) {
     broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'planning' });
 
-    const planPrompt = `## 작업 요청
-${prompt}
-
-## 판단 기준 — 3단계 호출 전략
-먼저 이 요청의 **복잡도**를 판단하세요. 호출을 최소화하는 것이 핵심입니다.
-
-### 🟢 Tier 0: 직접 응답 (직원 호출 0회)
-- 인사, 잡담, 간단한 질문, 정보 확인
-- 한 파일 수정, 단순 버그 수정, 설정 변경
-- **당신이 직접 해결할 수 있는 모든 것**
-
-이 경우 subtasks를 빈 배열로 하고 direct_answer에 응답을 넣으세요:
-
-\`\`\`json
-{
-  "direct_answer": "여기에 직접 응답",
-  "subtasks": []
-}
-\`\`\`
-
-### 🟡 Tier 1: 부분 위임 (직원 1~2명, 호출 2~3회)
-- 중간 복잡도: 특정 영역 리팩토링, 기능 추가, 테스트 작성 등
-- **당신이 기획/분석/설계를 직접 처리** → 직원에게 개발(Phase 3)부터만 위임
-- start_phase = 3 이상으로 설정하여 불필요한 Phase 건너뛰기
-
-핵심: 기획(Phase 1~2)은 당신이 이 응답에서 직접 수행하고 결과를 자연어로 작성.
-직원에게는 **코드 작성(3) + 테스트(4)** 만 맡기세요.
-
-### 🔴 Tier 2: 전체 위임 (직원 2~4명, Phase 1부터)
-- 대규모 멀티영역 개발, 신규 기능 설계부터 통합까지
-- 여러 파일/모듈에 걸친 복잡한 변경
-- start_phase = 1 (기획부터 직원에게)
-
-#### 에이전트 수 결정
-- 단일 영역 → **1명**만
-- 프론트+백엔드 → **2명**
-- 대규모 프로젝트 → 2~3명 (5명 전원은 극히 드문 경우)
-- 같은 파일을 여러 에이전트가 건드리지 않도록 주의
-
-#### start_phase 결정
-- 당신이 기획 완료 → start_phase = 3 (개발부터)
-- 코드 이미 있고 테스트만 → start_phase = 4 (디버깅부터)
-- 분석부터 필요 → start_phase = 1 (전부 위임)
-
-#### Dev Skills 참고
-직원에게 작업을 맡길 때, 해당 직원의 role에 맞는 dev skill이 자동 주입됩니다:
-- frontend → dev-frontend SKILL.md (UI/컴포넌트 가이드)
-- backend → dev-backend SKILL.md (API/서버 가이드)
-- data → dev-data SKILL.md (데이터 파이프라인 가이드)
-- docs → documentation SKILL.md
-이 스킬들은 코딩 컨벤션, 프로젝트 구조, 테스트 규칙을 포함합니다.
-
-## 출력 형식 (반드시 준수)
-1. 자연어로 계획을 설명하세요.
-2. **검증 기준을 반드시 포함**하세요.
-3. subtask JSON:
-
-\`\`\`json
-{
-  "subtasks": [
-    {
-      "agent": "직원이름",
-      "role": "frontend|backend|data|docs",
-      "task": "구체적 지시",
-      "start_phase": 3,
-      "verification": {
-        "pass_criteria": "통과 기준 (1줄)",
-        "fail_criteria": "실패 기준 (1줄)",
-        "affected_files": ["src/file.js"]
-      }
-    }
-  ]
-}
-\`\`\`
-
-worklog 경로: ${worklog.path}
-이 파일에 계획을 기록하세요.`;
+    const emps = getEmployees.all() as Record<string, any>[];
+    const planPrompt = buildPlanPrompt(prompt, worklog.path, emps);
 
     const { promise } = spawnAgent(planPrompt, { agentId: 'planning', origin: (meta as Record<string, any>).origin || 'web' });
     const result = await promise as Record<string, any>;
@@ -200,10 +104,19 @@ worklog 경로: ${worklog.path}
     appendToWorklog(worklog.path, 'Plan', planText || '(Plan Agent 응답 없음)');
 
     const subtasks = parseSubtasks(result.text);
+
+    // §7.4: Fallback — if planning agent responded without JSON, treat as direct answer
+    if (!subtasks || subtasks.length === 0) {
+        console.warn('[orchestrator:plan] No JSON block found in planning response. Treating as direct answer.');
+        return { planText: result.text, subtasks: [], directAnswer: result.text };
+    }
+
     return { planText, subtasks };
 }
 
 // ─── Distribute Phase (per-agent phase-aware) ────────
+// Helper functions (buildParallelContext, buildSequentialContext, findEmployee,
+// validateParallelSafety, runSingleAgent) extracted to distribute.ts
 
 async function distributeByPhase(agentPhases: Record<string, any>[], worklog: Record<string, any>, round: number, meta: Record<string, any> = {}) {
     const emps = getEmployees.all() as Record<string, any>[];
@@ -212,114 +125,36 @@ async function distributeByPhase(agentPhases: Record<string, any>[], worklog: Re
     const active = agentPhases.filter((ap: Record<string, any>) => !ap.completed);
     if (active.length === 0) return results;
 
-    // 순차 실행: 각 에이전트가 이전 에이전트의 변경을 볼 수 있도록
-    for (const ap of active) {
-        const emp = emps.find((e: Record<string, any>) =>
-            e.name === ap.agent || e.name?.includes(ap.agent) || ap.agent.includes(e.name)
-        );
+    // §7.3: Validate parallel safety before execution
+    validateParallelSafety(active);
+
+    const parallelGroup = active.filter(ap => ap.parallel === true);
+    const sequentialGroup = active.filter(ap => ap.parallel !== true);
+
+    // Phase 1: Run parallel group concurrently
+    if (parallelGroup.length > 0) {
+        console.log(`[orchestrator:parallel] Running ${parallelGroup.length} agents concurrently: ${parallelGroup.map(a => a.agent).join(', ')}`);
+        const parallelPeers = parallelGroup.map(ap => ({
+            agent: ap.agent, role: ap.role, verification: ap.verification,
+        }));
+        const parallelPromises = parallelGroup.map(ap => {
+            const emp = findEmployee(emps, ap);
+            if (!emp) return Promise.resolve({ agent: ap.agent, role: ap.role, status: 'skipped', text: 'Agent not found' } as Record<string, any>);
+            return runSingleAgent(ap, emp, worklog, round, meta, [], parallelPeers);
+        });
+        const parallelResults = await Promise.all(parallelPromises);
+        results.push(...parallelResults);
+    }
+
+    // Phase 2: Run sequential group one-by-one (sees parallel results as prior)
+    for (const ap of sequentialGroup) {
+        const emp = findEmployee(emps, ap);
         if (!emp) {
             results.push({ agent: ap.agent, role: ap.role, status: 'skipped', text: 'Agent not found' });
             continue;
         }
-
-        const instruction = PHASE_INSTRUCTIONS[ap.currentPhase as keyof typeof PHASE_INSTRUCTIONS];
-        const phaseLabel = PHASES[ap.currentPhase as keyof typeof PHASES];
-        const sysPrompt = getEmployeePromptV2(emp, ap.role, ap.currentPhase);
-
-        // 이전 에이전트 결과 요약 (순차 실행이므로 이미 완료된 것들)
-        const priorSummary = results.length > 0
-            ? results.map(r => `- ${r.agent} (${r.role}): ${r.status} — ${r.text.slice(0, 150)}`).join('\n')
-            : '(첫 번째 에이전트입니다)';
-
-        const remainingPhases = ap.phaseProfile.slice(ap.currentPhaseIdx).map((p: number) => `${p}(${PHASES[p as keyof typeof PHASES]})`).join('→');
-
-        const taskPrompt = `## 작업 지시 [${phaseLabel}]
-${ap.task}
-
-## 현재 Phase: ${ap.currentPhase} (${phaseLabel})
-${instruction}
-
-## 남은 Phase: ${remainingPhases}
-
-## Phase 합치기 (적극 권장 ⚡)
-**가능한 한 여러 Phase를 한 번에 완료하세요.** 1 Phase만 하는 것은 작업이 불확실할 때만 허용됩니다.
-- 간단한 수정/버그픽스 → Phase 3~5 전부 한 번에
-- 명확한 기능 추가 → Phase 1~3 한 번에
-- 코드 수정 + 테스트 → Phase 3~4 한 번에
-
-예: 기획과 개발을 동시에 → 기획 분석 + 코드 작성까지 한 번에 완료.
-이 경우 응답 마지막에 아래 JSON을 추가하세요:
-
-\`\`\`json
-{ "phases_completed": [${ap.phaseProfile.slice(ap.currentPhaseIdx).join(', ')}] }
-\`\`\`
-
-한 Phase만 완료한 경우에는 이 JSON을 넣지 않아도 됩니다.
-
-## 순차 실행 규칙
-- **이전 에이전트가 이미 수정한 파일은 건드리지 마세요**
-- 당신의 담당 영역(${ap.role})에만 집중하세요
-
-### 이전 에이전트 결과
-${priorSummary}
-
-## Worklog
-이 파일을 먼저 읽으세요: ${worklog.path}
-작업 완료 후 반드시 Execution Log 섹션에 결과를 기록하세요.`;
-
-        broadcast('agent_status', {
-            agentId: (emp as Record<string, any>).id, agentName: (emp as Record<string, any>).name,
-            status: 'running', phase: ap.currentPhase, phaseLabel,
-        });
-
-        const empSession = getEmployeeSession.get((emp as Record<string, any>).id) as Record<string, any> | undefined;
-        const canResume = !!(empSession?.session_id && empSession?.cli === (emp as Record<string, any>).cli);
-        const { promise } = spawnAgent(taskPrompt, {
-            agentId: (emp as Record<string, any>).id, cli: (emp as Record<string, any>).cli, model: (emp as Record<string, any>).model,
-            forceNew: !canResume,
-            employeeSessionId: canResume ? empSession!.session_id : undefined,
-            sysPrompt: canResume ? undefined : sysPrompt,
-            origin: (meta as Record<string, any>).origin || 'web',
-        });
-
-        const r = await promise as Record<string, any>;
-        if (r.code === 0 && r.sessionId) {
-            upsertEmployeeSession.run((emp as Record<string, any>).id, r.sessionId, (emp as Record<string, any>).cli);
-        }
-        const result = {
-            agent: ap.agent, role: ap.role, id: (emp as Record<string, any>).id,
-            phase: ap.currentPhase, phaseLabel,
-            status: r.code === 0 ? 'done' : 'error',
-            text: r.text || '',
-        };
-
-        // phases_completed 파싱: 에이전트가 여러 phase를 한 번에 완료 선언
-        const pcMatch = ((r as Record<string, any>).text || '').match(/\{[\s\S]*"phases_completed"\s*:\s*\[[\d,\s]+\][\s\S]*\}/);
-        if (pcMatch) {
-            try {
-                const pc = JSON.parse(pcMatch[0]);
-                if (Array.isArray(pc.phases_completed) && pc.phases_completed.length > 1) {
-                    const maxCompleted = Math.max(...pc.phases_completed);
-                    const newIdx = ap.phaseProfile.findIndex((p: number) => p > maxCompleted);
-                    if (newIdx === -1) {
-                        ap.completed = true;
-                        console.log(`[claw:phase-skip] ${ap.agent} completed ALL phases in one pass`);
-                    } else if (newIdx > ap.currentPhaseIdx + 1) {
-                        ap.currentPhaseIdx = newIdx;
-                        ap.currentPhase = ap.phaseProfile[newIdx];
-                        console.log(`[claw:phase-skip] ${ap.agent} jumped to phase ${ap.currentPhase} (completed: ${pc.phases_completed})`);
-                    }
-                }
-            } catch (e) { console.debug('[orchestrator:phases] JSON parse failed'); }
-        }
-
+        const result = await runSingleAgent(ap, emp, worklog, round, meta, results);
         results.push(result);
-        broadcast('agent_status', { agentId: (emp as Record<string, any>).id, agentName: (emp as Record<string, any>).name, status: result.status, phase: ap.currentPhase });
-
-        // 즉시 worklog에 기록
-        appendToWorklog(worklog.path, 'Execution Log',
-            `### Round ${round} — ${result.agent} (${result.role}, ${result.phaseLabel})\n- Status: ${result.status}\n- Result: ${result.text.slice(0, 500)}`
-        );
     }
 
     return results;

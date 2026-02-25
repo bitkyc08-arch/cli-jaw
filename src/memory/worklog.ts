@@ -5,6 +5,19 @@ import fs from 'fs';
 import { join } from 'path';
 import { CLAW_HOME } from '../core/config.js';
 
+// ─── Write Lock (prevents race condition in parallel agent writes) ──
+const writeLocks = new Map<string, Promise<void>>();
+
+function withWriteLock(filePath: string, fn: () => void): void {
+    const prev = writeLocks.get(filePath) || Promise.resolve();
+    const next = prev.then(() => {
+        fn();
+    }).catch(e => {
+        console.error(`[worklog:lock] write error for ${filePath}:`, (e as Error).message);
+    });
+    writeLocks.set(filePath, next);
+}
+
 export const WORKLOG_DIR = join(CLAW_HOME, 'worklogs');
 const LATEST_LINK = join(WORKLOG_DIR, 'latest.md');
 
@@ -74,20 +87,22 @@ export function readLatestWorklog() {
 export function appendToWorklog(wlPath: string, section: string, content: string) {
     if (!wlPath || !fs.existsSync(wlPath)) return;
 
-    const file = fs.readFileSync(wlPath, 'utf8');
-    const marker = `## ${section}`;
-    const idx = file.indexOf(marker);
+    withWriteLock(wlPath, () => {
+        const file = fs.readFileSync(wlPath, 'utf8');
+        const marker = `## ${section}`;
+        const idx = file.indexOf(marker);
 
-    if (idx === -1) {
-        // 섹션이 없으면 끝에 추가
-        fs.appendFileSync(wlPath, `\n## ${section}\n${content}\n`);
-    } else {
-        // 섹션 헤더 뒤, 다음 섹션 앞에 삽입
-        const nextSection = file.indexOf('\n## ', idx + marker.length);
-        const insertPos = nextSection === -1 ? file.length : nextSection;
-        const updated = file.slice(0, insertPos) + '\n' + content + '\n' + file.slice(insertPos);
-        fs.writeFileSync(wlPath, updated);
-    }
+        if (idx === -1) {
+            // 섹션이 없으면 끝에 추가
+            fs.appendFileSync(wlPath, `\n## ${section}\n${content}\n`);
+        } else {
+            // 섹션 헤더 뒤, 다음 섹션 앞에 삽입
+            const nextSection = file.indexOf('\n## ', idx + marker.length);
+            const insertPos = nextSection === -1 ? file.length : nextSection;
+            const updated = file.slice(0, insertPos) + '\n' + content + '\n' + file.slice(insertPos);
+            fs.writeFileSync(wlPath, updated);
+        }
+    });
 }
 
 // ─── Matrix Update ───────────────────────────────────
@@ -95,23 +110,25 @@ export function appendToWorklog(wlPath: string, section: string, content: string
 export function updateMatrix(wlPath: string, agentPhases: Array<Record<string, any>>) {
     if (!wlPath || !fs.existsSync(wlPath)) return;
 
-    const table = agentPhases.map((ap: Record<string, any>) =>
-        `| ${ap.agent} | ${ap.role} | Phase ${ap.currentPhase}: ${(PHASES as Record<string, string>)[ap.currentPhase] || '?'} | ${ap.completed ? '✅ 완료' : '⏳ 진행 중'} |`
-    ).join('\n');
+    withWriteLock(wlPath, () => {
+        const table = agentPhases.map((ap: Record<string, any>) =>
+            `| ${ap.agent} | ${ap.role} | Phase ${ap.currentPhase}: ${(PHASES as Record<string, string>)[ap.currentPhase] || '?'} | ${ap.completed ? '✅ 완료' : '⏳ 진행 중'} |`
+        ).join('\n');
 
-    const file = fs.readFileSync(wlPath, 'utf8');
-    const header = '## Agent Status Matrix';
-    const start = file.indexOf(header);
-    if (start === -1) return;
+        const file = fs.readFileSync(wlPath, 'utf8');
+        const header = '## Agent Status Matrix';
+        const start = file.indexOf(header);
+        if (start === -1) return;
 
-    const nextSection = file.indexOf('\n## ', start + header.length);
-    const replacement = `${header}\n| Agent | Role | Phase | Gate |\n|-------|------|-------|------|\n${table}\n`;
+        const nextSection = file.indexOf('\n## ', start + header.length);
+        const replacement = `${header}\n| Agent | Role | Phase | Gate |\n|-------|------|-------|------|\n${table}\n`;
 
-    const updated = nextSection === -1
-        ? file.slice(0, start) + replacement
-        : file.slice(0, start) + replacement + file.slice(nextSection);
+        const updated = nextSection === -1
+            ? file.slice(0, start) + replacement
+            : file.slice(0, start) + replacement + file.slice(nextSection);
 
-    fs.writeFileSync(wlPath, updated);
+        fs.writeFileSync(wlPath, updated);
+    });
 }
 
 // ─── Status Update ───────────────────────────────────
@@ -119,11 +136,13 @@ export function updateMatrix(wlPath: string, agentPhases: Array<Record<string, a
 export function updateWorklogStatus(wlPath: string, status: string, round: number) {
     if (!wlPath || !fs.existsSync(wlPath)) return;
 
-    const file = fs.readFileSync(wlPath, 'utf8');
-    const updated = file
-        .replace(/- Status: .*/, `- Status: ${status}`)
-        .replace(/- Rounds: .*/, `- Rounds: ${round}/3`);
-    fs.writeFileSync(wlPath, updated);
+    withWriteLock(wlPath, () => {
+        const file = fs.readFileSync(wlPath, 'utf8');
+        const updated = file
+            .replace(/- Status: .*/, `- Status: ${status}`)
+            .replace(/- Rounds: .*/, `- Rounds: ${round}/3`);
+        fs.writeFileSync(wlPath, updated);
+    });
 }
 
 // ─── Parse Pending (for "이어서 해줘") ───────────────

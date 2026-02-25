@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 import { settings, CLAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile } from '../core/config.js';
-import { getSession, updateSession, getEmployees } from '../core/db.js';
+import { getSession, getEmployees } from '../core/db.js';
 import { memoryFlushCounter, flushCycleCount } from '../agent/spawn.js';
 
 const promptCache = new Map();
@@ -335,6 +335,8 @@ export function getSystemPrompt() {
             prompt += '\n5. If you can handle the task yourself, respond directly WITHOUT JSON dispatch';
             prompt += '\n6. When receiving a "result report", summarize it in natural language for the user';
             prompt += '\n7. Simple questions, single-file edits, or tasks in your expertise → handle directly';
+            prompt += '\n8. For Tier 1-2 tasks: mark independent subtasks with `"parallel": true` for concurrent execution';
+            prompt += '\n9. Default is `"parallel": false`. Only use `true` when affected_files have zero overlap';
             prompt += '\n\n### Completion Protocol';
             prompt += '\nAfter dispatching, the system runs a 5-phase pipeline:';
             prompt += '\n  Phase 1(기획) → 2(기획검증) → 3(개발) → 4(디버깅) → 5(통합검증)';
@@ -549,12 +551,7 @@ export function regenerateB() {
         console.error(`[prompt] AGENTS.md generation failed:`, (e as Error).message);
     }
 
-    try {
-        const session: any = getSession();
-        if (session.session_id) {
-            updateSession.run(session.active_cli, null, session.model,
-                session.permissions, session.working_dir, session.effort);
-            console.log('[claw:session] invalidated — B.md changed');
-        }
-    } catch { /* DB not ready yet */ }
+    // Session invalidation removed: all CLIs (Claude, Copilot, Codex, Gemini)
+    // dynamically reload AGENTS.md on resume. Nullifying session_id was breaking
+    // conversation continuity on every message.
 }

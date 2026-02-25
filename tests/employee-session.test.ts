@@ -9,6 +9,7 @@ import path from 'node:path';
 const ROOT = process.cwd();
 const DB_SRC = path.join(ROOT, 'src/core/db.ts');
 const PIPELINE_SRC = path.join(ROOT, 'src/orchestrator/pipeline.ts');
+const DISTRIBUTE_SRC = path.join(ROOT, 'src/orchestrator/distribute.ts');
 
 // ─── 1. employee_sessions 테이블 존재 확인 ──────────
 
@@ -120,7 +121,7 @@ test('P100-ES-006: clearAllEmployeeSessions가 main session 테이블을 건드�
 // ─── 7. Phase 합치기 프롬프트에 '적극 권장' 문구 존재 확인 ──
 
 test('P100-ES-007: Phase 합치기 프롬프트에 적극 권장 문구 포함', () => {
-    const src = fs.readFileSync(PIPELINE_SRC, 'utf8');
+    const src = fs.readFileSync(PIPELINE_SRC, 'utf8') + '\n' + fs.readFileSync(DISTRIBUTE_SRC, 'utf8');
     assert.match(src, /적극 권장/,
         'pipeline.js에 "적극 권장" 문구가 포함되어야 함');
     assert.match(src, /Phase 합치기/,

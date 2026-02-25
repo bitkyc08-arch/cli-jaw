@@ -2,7 +2,7 @@
 
 > Date: 2026-02-25
 > Target: `src/prompt/builder.ts` L541-562 `regenerateB()`
-> Status: **Plan — pending approval**
+> Status: **Done — applied Option A (invalidation removed)**
 
 ---
 

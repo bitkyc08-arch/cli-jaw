@@ -5,11 +5,12 @@ import path from 'node:path';
 
 const ROOT = process.cwd();
 const PIPELINE = path.join(ROOT, 'src/orchestrator/pipeline.ts');
+const DISTRIBUTE = path.join(ROOT, 'src/orchestrator/distribute.ts');
 const SPAWN = path.join(ROOT, 'src/agent/spawn.ts');
 const DB = path.join(ROOT, 'src/core/db.ts');
 
 test('P100-001: pipeline uses employeeSessionId-based resume and global clear', () => {
-    const src = fs.readFileSync(PIPELINE, 'utf8');
+    const src = fs.readFileSync(PIPELINE, 'utf8') + '\n' + fs.readFileSync(DISTRIBUTE, 'utf8');
     assert.match(src, /employeeSessionId:\s*canResume\s*\?\s*empSession!?\.session_id\s*:\s*undefined/);
     assert.match(src, /clearAllEmployeeSessions\.run\(\)/);
     assert.match(src, /upsertEmployeeSession\.run\(.*\.id,\s*r\.sessionId,\s*.*\.cli\)/);
