@@ -90,14 +90,14 @@ graph LR
 npm install -g cli-jaw
 
 # 2. 运行初始化向导（创建配置、安装技能）
-cli-jaw init
+jaw init
 
 # 3. 健康检查 — 看看哪些已就绪
-cli-jaw doctor
+jaw doctor
 ```
 
 <details>
-<summary>📋 <code>cli-jaw doctor</code> 输出示例</summary>
+<summary>📋 <code>jaw doctor</code> 输出示例</summary>
 
 ```
 🦈 CLI-JAW Doctor — 12 checks
@@ -132,10 +132,10 @@ gemini               # Google     (首次运行触发认证)
 ### 启动
 
 ```bash
-cli-jaw serve        # Web UI → http://localhost:3457
-cli-jaw launchd      # 开机自动启动 (macOS)
+jaw serve        # Web UI → http://localhost:3457
+jaw launchd      # 开机自动启动 (macOS)
 # — 或者 —
-cli-jaw chat         # 终端 TUI（无需浏览器）
+jaw chat         # 终端 TUI（无需浏览器）
 ```
 
 > 💡 **不必全装 5 个。** 有一个就能跑。助手会自动检测可用引擎，缺了就无缝切换到下一个。
@@ -175,7 +175,7 @@ cli-jaw chat         # 终端 TUI（无需浏览器）
 88 个技能随时待命 — Spotify、天气、深度研究、TTS、视频下载、Apple 提醒事项、1Password、Terraform、PostgreSQL、Jupyter 等。
 
 ```bash
-cli-jaw skill install <name>    # 参考 → 活跃，永久激活
+jaw skill install <name>    # 参考 → 活跃，永久激活
 ```
 
 </details>
@@ -194,7 +194,7 @@ cli-jaw skill install <name>    # 参考 → 活跃，永久激活
 <summary>📋 Telegram 配置（3 步搞定）</summary>
 
 1. **创建机器人** — 给 [@BotFather](https://t.me/BotFather) 发 `/newbot` → 复制 Token
-2. **配置** — 运行 `cli-jaw init --telegram-token 你的TOKEN`，或在 Web UI 设置中填入
+2. **配置** — 运行 `jaw init --telegram-token 你的TOKEN`，或在 Web UI 设置中填入
 3. **开聊** — 给你的机器人发任意消息。首次发送时 Chat ID 会自动保存。
 
 </details>
@@ -255,7 +255,7 @@ graph TD
 ## 🔌 MCP — 单次配置，驱动 5 大 AI 引擎
 
 ```bash
-cli-jaw mcp install @anthropic/context7    # 安装一次
+jaw mcp install @anthropic/context7    # 安装一次
 # → 自动同步到 Claude、Codex、Gemini、OpenCode、Copilot
 ```
 
@@ -277,18 +277,18 @@ graph LR
 ## ⌨️ CLI 命令
 
 ```bash
-cli-jaw serve                         # 启动服务器
-cli-jaw launchd                       # 开机自动启动 (macOS)
-cli-jaw launchd status                # 查看守护进程状态
-cli-jaw launchd unset                 # 取消自动启动
-cli-jaw chat                          # 终端 TUI
-cli-jaw doctor                        # 诊断（12 项检查）
-cli-jaw skill install <name>          # 安装技能
-cli-jaw mcp install <package>         # 安装 MCP → 同步全部 5 CLI
-cli-jaw memory search <query>         # 搜索记忆
-cli-jaw browser start                 # 启动 Chrome（CDP）
-cli-jaw browser vision-click "登录"    # AI 智能点击
-cli-jaw reset                         # 全面重置
+jaw serve                         # 启动服务器
+jaw launchd                       # 开机自动启动 (macOS)
+jaw launchd status                # 查看守护进程状态
+jaw launchd unset                 # 取消自动启动
+jaw chat                          # 终端 TUI
+jaw doctor                        # 诊断（12 项检查）
+jaw skill install <name>          # 安装技能
+jaw mcp install <package>         # 安装 MCP → 同步全部 5 CLI
+jaw memory search <query>         # 搜索记忆
+jaw browser start                 # 启动 Chrome（CDP）
+jaw browser vision-click "登录"    # AI 智能点击
+jaw reset                         # 全面重置
 ```
 
 ---
@@ -384,11 +384,11 @@ npm test
 | ---------------------------- | ----------------------------- | ------------------------------------------------------------------------ |
 | `command not found: cli-jaw` | npm 全局 bin 不在 PATH 中     | 运行 `npm config get prefix`，将 `bin/` 加入 PATH                        |
 | `doctor` 显示 CLI 缺失       | 对应 CLI 未安装               | 按提示安装，如 `npm i -g @anthropic-ai/claude-code`                      |
-| 端口 3457 被占用             | 其他进程占用了端口            | 改用 `PORT=4000 cli-jaw serve` 或终止占用进程                            |
-| Telegram 机器人无响应        | Token 未配置或缺少 Chat ID    | 重新运行 `cli-jaw init --telegram-token ...`                             |
+| 端口 3457 被占用             | 其他进程占用了端口            | 改用 `PORT=4000 jaw serve` 或终止占用进程                            |
+| Telegram 机器人无响应        | Token 未配置或缺少 Chat ID    | 重新运行 `jaw init --telegram-token ...`                             |
 | `npm install -g` 权限错误    | 全局目录权限不足              | 使用 `sudo npm i -g cli-jaw` 或推荐 [nvm](https://github.com/nvm-sh/nvm) |
 | 构建失败（`tsc` 报错）       | Node 版本低于 22              | `node -v` 检查 → 升级至 22+                                              |
-| 会话间记忆未保留             | `~/.cli-jaw/memory/` 目录缺失 | 重新运行 `cli-jaw init` 自动创建                                         |
+| 会话间记忆未保留             | `~/.cli-jaw/memory/` 目录缺失 | 重新运行 `jaw init` 自动创建                                         |
 
 ---
 

@@ -32,7 +32,7 @@ ${c.cyan}     _____ _      _____       _
 ${c.dim}   ─────────────────────────────────────${c.reset}
 ${c.bold}   🦈 v${pkg.version}${c.reset}  ${c.dim}AI Agent Orchestration Platform${c.reset}
 
-  ${c.bold}Usage:${c.reset}  cli-jaw <command> [options]
+  ${c.bold}Usage:${c.reset}  jaw <command> [options]
 
   ${c.bold}Commands:${c.reset}
     serve      서버 시작 (포그라운드)
@@ -53,10 +53,10 @@ ${c.bold}   🦈 v${pkg.version}${c.reset}  ${c.dim}AI Agent Orchestration Platf
     --version  버전 표시
 
   ${c.bold}Examples:${c.reset}
-    cli-jaw serve --port 3457
-    cli-jaw init
-    cli-jaw doctor --json
-    cli-jaw chat --raw
+    jaw serve --port 3457
+    jaw init
+    jaw doctor --json
+    jaw chat --raw
 `);
 }
 

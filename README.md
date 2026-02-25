@@ -90,14 +90,14 @@ graph LR
 npm install -g cli-jaw
 
 # 2. Run setup wizard (creates config, installs skills)
-cli-jaw init
+jaw init
 
 # 3. Health check — see what's ready
-cli-jaw doctor
+jaw doctor
 ```
 
 <details>
-<summary>📋 Example <code>cli-jaw doctor</code> output</summary>
+<summary>📋 Example <code>jaw doctor</code> output</summary>
 
 ```
 🦈 CLI-JAW Doctor — 12 checks
@@ -132,10 +132,10 @@ gemini               # Google     (first run triggers auth)
 ### Launch
 
 ```bash
-cli-jaw serve        # Web UI → http://localhost:3457
-cli-jaw launchd      # Auto-start on boot (macOS)
+jaw serve        # Web UI → http://localhost:3457
+jaw launchd      # Auto-start on boot (macOS)
 # — or —
-cli-jaw chat         # Terminal TUI (no browser needed)
+jaw chat         # Terminal TUI (no browser needed)
 ```
 
 > 💡 **You don't need all 5.** Even one CLI is enough to start. Your assistant auto-detects which engines are available and falls back gracefully.
@@ -175,7 +175,7 @@ cli-jaw chat         # Terminal TUI (no browser needed)
 88+ more skills ready to use — spotify, weather, deep-research, tts, video-downloader, apple-reminders, 1password, terraform, postgres, jupyter-notebook, sentry, and more.
 
 ```bash
-cli-jaw skill install <name>    # Activate a reference skill permanently
+jaw skill install <name>    # Activate a reference skill permanently
 ```
 
 </details>
@@ -194,7 +194,7 @@ Your assistant isn't tied to your desk. Chat from anywhere via Telegram:
 <summary>📋 Telegram setup (3 steps)</summary>
 
 1. **Create a bot** — Message [@BotFather](https://t.me/BotFather) → `/newbot` → copy the token
-2. **Configure** — Run `cli-jaw init --telegram-token YOUR_TOKEN` or edit settings in the Web UI
+2. **Configure** — Run `jaw init --telegram-token YOUR_TOKEN` or edit settings in the Web UI
 3. **Start chatting** — Send any message to your bot. Your chat ID is auto-saved on first message.
 
 </details>
@@ -255,7 +255,7 @@ Your assistant **decides by itself** whether a task needs orchestration or a dir
 ## 🔌 MCP — One Config, Five AI Engines
 
 ```bash
-cli-jaw mcp install @anthropic/context7    # Install once
+jaw mcp install @anthropic/context7    # Install once
 # → Automatically syncs to Claude, Codex, Gemini, OpenCode, Copilot
 ```
 
@@ -277,18 +277,18 @@ No more editing 5 different config files. Install once → all AI engines get it
 ## ⌨️ CLI Commands
 
 ```bash
-cli-jaw serve                         # Start server
-cli-jaw chat                          # Terminal TUI
-cli-jaw doctor                        # Diagnostics (12 checks)
-cli-jaw skill install <name>          # Install a skill
-cli-jaw mcp install <package>         # Install MCP → syncs to all 5 CLIs
-cli-jaw memory search <query>         # Search memory
-cli-jaw browser start                 # Launch Chrome (CDP)
-cli-jaw browser vision-click "Login"  # AI-powered click
-cli-jaw launchd                       # Auto-start on boot (macOS)
-cli-jaw launchd status                # Check daemon status
-cli-jaw launchd unset                 # Remove auto-start
-cli-jaw reset                         # Full reset
+jaw serve                         # Start server
+jaw chat                          # Terminal TUI
+jaw doctor                        # Diagnostics (12 checks)
+jaw skill install <name>          # Install a skill
+jaw mcp install <package>         # Install MCP → syncs to all 5 CLIs
+jaw memory search <query>         # Search memory
+jaw browser start                 # Launch Chrome (CDP)
+jaw browser vision-click "Login"  # AI-powered click
+jaw launchd                       # Auto-start on boot (macOS)
+jaw launchd status                # Check daemon status
+jaw launchd unset                 # Remove auto-start
+jaw reset                         # Full reset
 ```
 
 ---
@@ -387,11 +387,11 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 | ---------------------------- | ------------------------------------------------------------------------------------------- |
 | `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                  |
 | `Error: node version`        | Upgrade to Node.js ≥ 22: `nvm install 22` or download from [nodejs.org](https://nodejs.org) |
-| Agent timeout / no response  | Run `cli-jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`. |
-| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `cli-jaw serve --port 3458`.                    |
-| Telegram bot not responding  | Check token with `cli-jaw doctor`. Ensure `cli-jaw serve` is running.                       |
-| Skills not loading           | Run `cli-jaw skill reset` then `cli-jaw mcp sync`.                                          |
-| Browser commands fail        | Install Chrome/Chromium. Run `cli-jaw browser start` first.                                 |
+| Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`. |
+| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                    |
+| Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                       |
+| Skills not loading           | Run `jaw skill reset` then `jaw mcp sync`.                                          |
+| Browser commands fail        | Install Chrome/Chromium. Run `jaw browser start` first.                                 |
 
 </details>
 

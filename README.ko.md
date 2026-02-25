@@ -90,14 +90,14 @@ graph LR
 npm install -g cli-jaw
 
 # 2. 초기 설정 (설정 파일 생성, 스킬 설치)
-cli-jaw init
+jaw init
 
 # 3. 상태 확인 — 뭐가 준비됐는지 점검
-cli-jaw doctor
+jaw doctor
 ```
 
 <details>
-<summary>📋 <code>cli-jaw doctor</code> 출력 예시</summary>
+<summary>📋 <code>jaw doctor</code> 출력 예시</summary>
 
 ```
 🦈 CLI-JAW Doctor — 12 checks
@@ -132,10 +132,10 @@ gemini               # Google     (첫 실행 시 자동 인증)
 ### 실행
 
 ```bash
-cli-jaw serve        # Web UI → http://localhost:3457
-cli-jaw launchd      # 부팅 시 자동 실행 (macOS)
+jaw serve        # Web UI → http://localhost:3457
+jaw launchd      # 부팅 시 자동 실행 (macOS)
 # — 또는 —
-cli-jaw chat         # 터미널 TUI (브라우저 필요 없음)
+jaw chat         # 터미널 TUI (브라우저 필요 없음)
 ```
 
 > 💡 **5개 다 깔 필요 없어요.** 하나만 있으면 됩니다. 어떤 엔진이 설치돼 있는지 자동 감지하고, 없으면 다음 엔진으로 자연스럽게 넘어갑니다.
@@ -175,7 +175,7 @@ cli-jaw chat         # 터미널 TUI (브라우저 필요 없음)
 88개+ 스킬이 더 있어요 — spotify, 날씨, 딥리서치, TTS, 비디오 다운로드, Apple 미리알림, 1Password, Terraform, PostgreSQL, Jupyter 등.
 
 ```bash
-cli-jaw skill install <name>    # reference → active로 영구 활성화
+jaw skill install <name>    # reference → active로 영구 활성화
 ```
 
 </details>
@@ -194,7 +194,7 @@ cli-jaw skill install <name>    # reference → active로 영구 활성화
 <summary>📋 텔레그램 설정 (3단계)</summary>
 
 1. **봇 만들기** — [@BotFather](https://t.me/BotFather)에게 `/newbot` → 토큰 복사
-2. **설정** — `cli-jaw init --telegram-token 토큰` 실행하거나 Web UI 설정에서 입력
+2. **설정** — `jaw init --telegram-token 토큰` 실행하거나 Web UI 설정에서 입력
 3. **채팅 시작** — 봇에게 아무 메시지나 보내세요. 첫 메시지에서 채팅 ID가 자동 저장됩니다.
 
 </details>
@@ -255,7 +255,7 @@ graph TD
 ## 🔌 MCP — 단일 설정, 5개의 AI 엔진
 
 ```bash
-cli-jaw mcp install @anthropic/context7    # 한 번만 설치
+jaw mcp install @anthropic/context7    # 한 번만 설치
 # → Claude, Codex, Gemini, OpenCode, Copilot 전부 자동 동기화
 ```
 
@@ -277,18 +277,18 @@ graph LR
 ## ⌨️ CLI 명령어
 
 ```bash
-cli-jaw serve                         # 서버 시작
-cli-jaw launchd                       # 부팅 시 자동 실행 (macOS)
-cli-jaw launchd status                # 데몬 상태 확인
-cli-jaw launchd unset                 # 자동 실행 해제
-cli-jaw chat                          # 터미널 TUI
-cli-jaw doctor                        # 진단 (12개 체크)
-cli-jaw skill install <name>          # 스킬 설치
-cli-jaw mcp install <package>         # MCP 설치 → 5개 CLI 전부 동기화
-cli-jaw memory search <query>         # 메모리 검색
-cli-jaw browser start                 # Chrome 시작 (CDP)
-cli-jaw browser vision-click "로그인"  # AI가 알아서 클릭
-cli-jaw reset                         # 전체 초기화
+jaw serve                         # 서버 시작
+jaw launchd                       # 부팅 시 자동 실행 (macOS)
+jaw launchd status                # 데몬 상태 확인
+jaw launchd unset                 # 자동 실행 해제
+jaw chat                          # 터미널 TUI
+jaw doctor                        # 진단 (12개 체크)
+jaw skill install <name>          # 스킬 설치
+jaw mcp install <package>         # MCP 설치 → 5개 CLI 전부 동기화
+jaw memory search <query>         # 메모리 검색
+jaw browser start                 # Chrome 시작 (CDP)
+jaw browser vision-click "로그인"  # AI가 알아서 클릭
+jaw reset                         # 전체 초기화
 ```
 
 ---
@@ -384,11 +384,11 @@ npm test
 | ---------------------------- | ---------------------------------- | --------------------------------------------------------------------------- |
 | `command not found: cli-jaw` | npm 전역 bin이 PATH에 없음         | `npm config get prefix` 확인 후 `bin/`을 PATH에 추가                        |
 | `doctor`에서 CLI 누락 표시   | 해당 CLI 미설치                    | `npm i -g @anthropic-ai/claude-code` 등 설치                                |
-| 포트 3457 사용 중            | 다른 프로세스가 점유               | `PORT=4000 cli-jaw serve` 또는 기존 프로세스 종료                           |
-| 텔레그램 봇 무반응           | 토큰 미설정 또는 Chat ID 누락      | `cli-jaw init --telegram-token ...` 재실행                                  |
+| 포트 3457 사용 중            | 다른 프로세스가 점유               | `PORT=4000 jaw serve` 또는 기존 프로세스 종료                           |
+| 텔레그램 봇 무반응           | 토큰 미설정 또는 Chat ID 누락      | `jaw init --telegram-token ...` 재실행                                  |
 | `npm install -g` 권한 오류   | 글로벌 디렉토리 권한 문제          | `sudo npm i -g cli-jaw` 또는 [nvm](https://github.com/nvm-sh/nvm) 사용 권장 |
 | 빌드 실패 (`tsc` 에러)       | Node 22 미만 버전                  | `node -v` 확인 → 22 이상으로 업그레이드                                     |
-| 메모리가 세션 간 유지 안 됨  | `~/.cli-jaw/memory/` 디렉토리 없음 | `cli-jaw init` 재실행하면 자동 생성                                         |
+| 메모리가 세션 간 유지 안 됨  | `~/.cli-jaw/memory/` 디렉토리 없음 | `jaw init` 재실행하면 자동 생성                                         |
 
 ---
 
