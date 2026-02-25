@@ -10,6 +10,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
+[![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
 
 [English](README.md) / [한국어](README.ko.md) / **中文**
 
@@ -73,22 +74,70 @@ graph LR
 
 ## 快速开始
 
+### 前置要求
+
+| 必备条件 | 说明 |
+|----------|------|
+| **Node.js ≥ 22** | 运行时环境。[下载](https://nodejs.org) |
+| **至少 1 个 AI CLI** | 驱动助手的 AI 引擎 |
+
+> 🆓 **免费方案：** [Copilot CLI](https://docs.github.com/en/copilot)（GitHub 免费套餐可用）和 [OpenCode](https://opencode.ai) 均提供免费模型 — 无需绑卡，即装即用。
+
+### 安装
+
 ```bash
-# 安装（自动设置一切：5 个 CLI、MCP、105+ 个技能）
+# 1. 全局安装
 npm install -g cli-jaw
 
-# 认证你要用的 CLI（有一个就够）
-claude auth          # Anthropic
-codex login          # OpenAI
-gemini               # Google（首次运行）
+# 2. 运行初始化向导（创建配置、安装技能）
+cli-jaw init
 
-# 开始
-cli-jaw doctor      # 检查安装状态（12 项检查）
-cli-jaw serve       # Web UI → http://localhost:3457
-cli-jaw chat        # 或使用终端 TUI
+# 3. 健康检查 — 看看哪些已就绪
+cli-jaw doctor
 ```
 
-> 💡 **不用 5 个全装。** 有一个就能用。Copilot 和 OpenCode 都有免费额度。
+<details>
+<summary>📋 <code>cli-jaw doctor</code> 输出示例</summary>
+
+```
+🦈 CLI-JAW Doctor — 12 checks
+
+ ✅ Node.js        v22.15.0
+ ✅ npm             v10.9.4
+ ✅ Claude CLI      installed
+ ✅ Codex CLI       installed
+ ⚠️ Gemini CLI      not found (optional)
+ ✅ OpenCode CLI    installed
+ ✅ Copilot CLI     installed
+ ✅ Database        jaw.db OK
+ ✅ Skills          17 active, 90 reference
+ ✅ MCP             3 servers configured
+ ✅ Memory          MEMORY.md exists
+ ✅ Server          port 3457 available
+```
+
+</details>
+
+### 认证 AI 引擎
+
+```bash
+# 选你有的就行 — 一个就够
+claude auth          # Anthropic  (付费)
+codex login          # OpenAI     (付费)
+gemini               # Google     (首次运行触发认证)
+# OpenCode            # 首次运行自动认证
+# Copilot             # 使用 GitHub 登录（有免费额度）
+```
+
+### 启动
+
+```bash
+cli-jaw serve        # Web UI → http://localhost:3457
+# — 或者 —
+cli-jaw chat         # 终端 TUI（无需浏览器）
+```
+
+> 💡 **不必全装 5 个。** 有一个就能跑。助手会自动检测可用引擎，缺了就无缝切换到下一个。
 
 ---
 
@@ -139,6 +188,15 @@ cli-jaw skill install <name>    # 参考 → 活跃，永久激活
 ```
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI 引擎
 ```
+
+<details>
+<summary>📋 Telegram 配置（3 步搞定）</summary>
+
+1. **创建机器人** — 给 [@BotFather](https://t.me/BotFather) 发 `/newbot` → 复制 Token
+2. **配置** — 运行 `cli-jaw init --telegram-token 你的TOKEN`，或在 Web UI 设置中填入
+3. **开聊** — 给你的机器人发任意消息。首次发送时 Chat ID 会自动保存。
+
+</details>
 
 **您可以在 Telegram 中进行哪些操作：**
 - 💬 与您的助手聊天（在 5 大 AI 引擎中任选其一）
@@ -316,6 +374,20 @@ npm test
 
 ---
 
+## 🔧 故障排查
+
+| 症状 | 原因 | 解决方法 |
+|------|------|----------|
+| `command not found: cli-jaw` | npm 全局 bin 不在 PATH 中 | 运行 `npm config get prefix`，将 `bin/` 加入 PATH |
+| `doctor` 显示 CLI 缺失 | 对应 CLI 未安装 | 按提示安装，如 `npm i -g @anthropic-ai/claude-code` |
+| 端口 3457 被占用 | 其他进程占用了端口 | 改用 `PORT=4000 cli-jaw serve` 或终止占用进程 |
+| Telegram 机器人无响应 | Token 未配置或缺少 Chat ID | 重新运行 `cli-jaw init --telegram-token ...` |
+| `npm install -g` 权限错误 | 全局目录权限不足 | 使用 `sudo npm i -g cli-jaw` 或推荐 [nvm](https://github.com/nvm-sh/nvm) |
+| 构建失败（`tsc` 报错） | Node 版本低于 22 | `node -v` 检查 → 升级至 22+ |
+| 会话间记忆未保留 | `~/.cli-jaw/memory/` 目录缺失 | 重新运行 `cli-jaw init` 自动创建 |
+
+---
+
 ## 🤝 参与贡献
 
 欢迎贡献！上手方法：
@@ -324,7 +396,7 @@ npm test
 2. `npm run build && npm test` 确认一切正常
 3. 提交 PR — 我们会尽快 review
 
-> 📋 发现 Bug 或者有好点子？[提个 Issue](https://github.com/cli-jaw/cli-jaw/issues)
+> 📋 发现 Bug 或者有好点子？[提个 Issue](https://github.com/bitkyc08-arch/cli-jaw/issues)
 
 ---
 

@@ -10,6 +10,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
+[![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
 
 [English](README.md) / **한국어** / [中文](README.zh-CN.md)
 
@@ -73,22 +74,70 @@ graph LR
 
 ## 빠른 시작
 
+### 사전 요구사항
+
+| 필수 항목 | 용도 |
+|-----------|------|
+| **Node.js ≥ 22** | 런타임. [다운로드](https://nodejs.org) |
+| **AI CLI 최소 1개** | 비서를 움직이는 두뇌 |
+
+> 🆓 **무료 옵션:** [Copilot CLI](https://docs.github.com/en/copilot)는 GitHub 무료 플랜에서도, [OpenCode](https://opencode.ai)는 무료 모델이 있어요 — 카드 등록 없이 바로 시작 가능.
+
+### 설치
+
 ```bash
-# 설치 (5개 CLI, MCP, 105+개 스킬 전부 자동 설정)
+# 1. 전역 설치
 npm install -g cli-jaw
 
-# 쓰고 싶은 CLI만 인증 (하나만 있어도 됩니다)
-claude auth          # Anthropic
-codex login          # OpenAI
-gemini               # Google (최초 실행)
+# 2. 초기 설정 (설정 파일 생성, 스킬 설치)
+cli-jaw init
 
-# 시작
-cli-jaw doctor      # 뭐가 설치됐는지 확인 (12개 체크)
-cli-jaw serve       # Web UI → http://localhost:3457
-cli-jaw chat        # 또는 터미널 TUI
+# 3. 상태 확인 — 뭐가 준비됐는지 점검
+cli-jaw doctor
 ```
 
-> 💡 **5개 다 깔 필요 없어요.** 하나만 있으면 충분합니다. Copilot이랑 OpenCode는 무료도 돼요.
+<details>
+<summary>📋 <code>cli-jaw doctor</code> 출력 예시</summary>
+
+```
+🦈 CLI-JAW Doctor — 12 checks
+
+ ✅ Node.js        v22.15.0
+ ✅ npm             v10.9.4
+ ✅ Claude CLI      installed
+ ✅ Codex CLI       installed
+ ⚠️ Gemini CLI      not found (optional)
+ ✅ OpenCode CLI    installed
+ ✅ Copilot CLI     installed
+ ✅ Database        jaw.db OK
+ ✅ Skills          17 active, 90 reference
+ ✅ MCP             3 servers configured
+ ✅ Memory          MEMORY.md exists
+ ✅ Server          port 3457 available
+```
+
+</details>
+
+### AI 엔진 인증
+
+```bash
+# 가진 것만 골라서 — 하나면 충분해요
+claude auth          # Anthropic  (유료)
+codex login          # OpenAI     (유료)
+gemini               # Google     (첫 실행 시 자동 인증)
+# OpenCode            # 첫 실행 시 자동 인증
+# Copilot             # GitHub 로그인 사용 (무료 플랜 가능)
+```
+
+### 실행
+
+```bash
+cli-jaw serve        # Web UI → http://localhost:3457
+# — 또는 —
+cli-jaw chat         # 터미널 TUI (브라우저 필요 없음)
+```
+
+> 💡 **5개 다 깔 필요 없어요.** 하나만 있으면 됩니다. 어떤 엔진이 설치돼 있는지 자동 감지하고, 없으면 다음 엔진으로 자연스럽게 넘어갑니다.
 
 ---
 
@@ -139,6 +188,15 @@ cli-jaw skill install <name>    # reference → active로 영구 활성화
 ```
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI 엔진
 ```
+
+<details>
+<summary>📋 텔레그램 설정 (3단계)</summary>
+
+1. **봇 만들기** — [@BotFather](https://t.me/BotFather)에게 `/newbot` → 토큰 복사
+2. **설정** — `cli-jaw init --telegram-token 토큰` 실행하거나 Web UI 설정에서 입력
+3. **채팅 시작** — 봇에게 아무 메시지나 보내세요. 첫 메시지에서 채팅 ID가 자동 저장됩니다.
+
+</details>
 
 **텔레그램에서 가능한 작업:**
 - 💬 비서와 채팅 (5개 AI 엔진 중 선택)
@@ -316,6 +374,20 @@ npm test
 
 ---
 
+## 🔧 문제 해결
+
+| 증상 | 원인 | 해결 방법 |
+|------|------|-----------|
+| `command not found: cli-jaw` | npm 전역 bin이 PATH에 없음 | `npm config get prefix` 확인 후 `bin/`을 PATH에 추가 |
+| `doctor`에서 CLI 누락 표시 | 해당 CLI 미설치 | `npm i -g @anthropic-ai/claude-code` 등 설치 |
+| 포트 3457 사용 중 | 다른 프로세스가 점유 | `PORT=4000 cli-jaw serve` 또는 기존 프로세스 종료 |
+| 텔레그램 봇 무반응 | 토큰 미설정 또는 Chat ID 누락 | `cli-jaw init --telegram-token ...` 재실행 |
+| `npm install -g` 권한 오류 | 글로벌 디렉토리 권한 문제 | `sudo npm i -g cli-jaw` 또는 [nvm](https://github.com/nvm-sh/nvm) 사용 권장 |
+| 빌드 실패 (`tsc` 에러) | Node 22 미만 버전 | `node -v` 확인 → 22 이상으로 업그레이드 |
+| 메모리가 세션 간 유지 안 됨 | `~/.cli-jaw/memory/` 디렉토리 없음 | `cli-jaw init` 재실행하면 자동 생성 |
+
+---
+
 ## 🤝 기여하기
 
 기여 환영합니다! 시작하는 방법:
@@ -324,7 +396,7 @@ npm test
 2. `npm run build && npm test`로 빌드 & 테스트가 통과하는지 확인
 3. PR을 보내주세요 — 빠르게 리뷰할게요
 
-> 📋 버그를 찾았거나 아이디어가 있으신가요? [이슈 열기](https://github.com/cli-jaw/cli-jaw/issues)
+> 📋 버그를 찾았거나 아이디어가 있으신가요? [이슈 열기](https://github.com/bitkyc08-arch/cli-jaw/issues)
 
 ---
 
