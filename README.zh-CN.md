@@ -168,11 +168,15 @@ CLI-CLAW 不只是聊天机器人 — 它是完整的**双向桥接**：
 - 心跳任务结果（定时执行）
 - 浏览器截图
 
-![Telegram Bot](docs/screenshots/telegram-bot.png)
+<p align="center">
+  <img src="docs/screenshots/telegram-bot.png" width="300" alt="Telegram Bot" />
+</p>
 
 ---
 
 ## 🎭 编排
+
+![编排日志](docs/screenshots/orchestration-log.png)
 
 复杂任务会分配给专业化的子代理：
 

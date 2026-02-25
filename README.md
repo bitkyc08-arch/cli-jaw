@@ -168,13 +168,17 @@ CLI-CLAW isn't just a chat bot — it's a full **bidirectional bridge**:
 - Heartbeat job results (scheduled tasks)
 - Browser screenshots
 
-![Telegram Bot](docs/screenshots/telegram-bot.png)
+<p align="center">
+  <img src="docs/screenshots/telegram-bot.png" width="300" alt="Telegram Bot" />
+</p>
 
 ---
 
 ## 🎭 Orchestration
 
 For complex tasks, CLI-CLAW splits the work across specialized sub-agents:
+
+![Orchestration Log](docs/screenshots/orchestration-log.png)
 
 ```mermaid
 graph TD

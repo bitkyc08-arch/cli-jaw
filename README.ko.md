@@ -168,11 +168,15 @@ CLI-CLAW는 단순 챗봇이 아닙니다 — 완전한 **양방향 브릿지**�
 - 하트비트 작업 결과 (예약 실행)
 - 브라우저 스크린샷
 
-![텔레그램 봇](docs/screenshots/telegram-bot.png)
+<p align="center">
+  <img src="docs/screenshots/telegram-bot.png" width="300" alt="텔레그램 봇" />
+</p>
 
 ---
 
 ## 🎭 오케스트레이션
+
+![오케스트레이션 로그](docs/screenshots/orchestration-log.png)
 
 복잡한 작업은 전문화된 서브에이전트들에게 분배합니다:
 
