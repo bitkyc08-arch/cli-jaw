@@ -46,3 +46,11 @@
 
 - `tests/unit/frontend-constants.test.ts` — `public/js/constants.js`는 실제 JS 파일이므로 `.js` 유지
 - 기존 lint 에러 (implicit any, null assignability 등)는 TS 마이그레이션 Phase 작업 범위로 별도 추적
+
+## 후속: tsc 빌드 방식 채택
+
+최종적으로 `tsc` 빌드 후 `dist/` 배포 방식을 채택함에 따라,
+소스 파일의 import 확장자는 `.js`로 되돌림 (NodeNext 모듈 해석 규칙).
+tsx 직접 실행은 `npm run dev` (개발 전용)에서만 사용.
+
+→ 관련 devlog: `260225_dist_build_compat.md`

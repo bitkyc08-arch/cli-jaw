@@ -23,21 +23,42 @@ const { values } = parseArgs({
     strict: false,
 });
 
-const serverPath = join(projectRoot, 'server.js');
+// Detect source vs dist: if server.js exists, use node; else use tsx + server.ts
+const serverJs = join(projectRoot, 'server.js');
+const serverTs = join(projectRoot, 'server.ts');
+const isDistMode = fs.existsSync(serverJs);
+const serverPath = isDistMode ? serverJs : serverTs;
 const envFile = join(projectRoot, '.env');
 
 console.log(`\n  🦞 cli-claw serve — port ${values.port}\n`);
 
-const nodeArgs = ['--dns-result-order=ipv4first'];
-if (fs.existsSync(envFile)) nodeArgs.unshift(`--env-file=${envFile}`);
-
-const child = spawn(process.execPath,
-    [...nodeArgs, serverPath],
-    {
-        stdio: 'inherit',
-        env: { ...process.env, PORT: values.port as string, HOST: values.host as string },
-    }
-);
+let child;
+if (isDistMode) {
+    // dist mode: spawn node directly
+    const nodeArgs = ['--dns-result-order=ipv4first'];
+    if (fs.existsSync(envFile)) nodeArgs.unshift(`--env-file=${envFile}`);
+    child = spawn(process.execPath,
+        [...nodeArgs, serverPath],
+        {
+            stdio: 'inherit',
+            env: { ...process.env, PORT: values.port as string, HOST: values.host as string },
+        }
+    );
+} else {
+    // source mode: spawn tsx
+    const localTsx = join(projectRoot, 'node_modules', '.bin', 'tsx');
+    const tsxBin = fs.existsSync(localTsx) ? localTsx : 'tsx';
+    const tsxArgs: string[] = [];
+    if (fs.existsSync(envFile)) tsxArgs.push(`--env-file=${envFile}`);
+    tsxArgs.push(serverPath);
+    child = spawn(tsxBin,
+        tsxArgs,
+        {
+            stdio: 'inherit',
+            env: { ...process.env, PORT: values.port as string, HOST: values.host as string },
+        }
+    );
+}
 
 // Forward signals
 process.on('SIGINT', () => child.kill('SIGINT'));
