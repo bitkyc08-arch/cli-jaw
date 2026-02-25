@@ -120,7 +120,7 @@ function makeCleanEnv() {
     return env;
 }
 
-function buildHistoryBlock(currentPrompt: string, maxSessions = 5, maxTotalChars = 8000) {
+function buildHistoryBlock(currentPrompt: string, maxSessions = 10, maxTotalChars = 8000) {
     const recent = getRecentMessages.all(Math.max(1, maxSessions * 2)) as any[];
     if (!recent.length) return '';
 
