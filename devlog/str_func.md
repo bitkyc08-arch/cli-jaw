@@ -1,8 +1,8 @@
 # CLI-CLAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-25T07:44 (Phase 20.6 디렉토리 리팩토링 완료)
-> server.ts 850L / src/ 35파일 12서브디렉토리 / tests 244 pass (tsx runner)
-> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 반영
+> 마지막 검증: 2026-02-25T14:50 (Multi-file input + i18n 버그픽스 + dist 빌드 호환)
+> server.ts 863L / src/ 35파일 12서브디렉토리 / tests 252 pass (tsx runner)
+> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + i18n/dist 버그픽스 반영
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -12,7 +12,7 @@
 
 ```text
 cli-claw-ts/
-├── server.ts                 ← Express 라우트 + 글루 + ok/fail + security guards (850L)
+├── server.ts                 ← Express 라우트 + 글루 + ok/fail + security guards (863L)
 ├── lib/
 │   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (645L)
 │   ├── upload.ts             ← 파일 업로드 + Telegram 다운로드 (70L)
@@ -66,17 +66,17 @@ cli-claw-ts/
 │       ├── policy.ts         ← getVisibleCommands, getTelegramMenuCommands (37L)
 │       └── help-renderer.ts  ← renderHelp list/detail mode (44L)
 ├── public/                   ← Web UI (ES Modules, ~26 files, ~4420L)
-│   ├── index.html            ← 뼈대 (456L, data-i18n 완전 한글화)
+│   ├── index.html            ← 뼈대 (459L, data-i18n 완전 한글화, multi-file chip preview)
 │   ├── css/                  ← 6 files (1355L)
 │   │   ├── variables.css     ← 커스텀 프로퍼티 + 3단 폰트 + 라이트/다크 (140L)
 │   │   ├── layout.css        ← 사이드바 + 토글 + 반응형 768px (281L)
 │   │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + copy 버튼 (161L)
 │   ├── locales/              ← i18n 로케일
-│   │   ├── ko.json           ← 한국어 (176키)
-│   │   └── en.json           ← 영어 (176키)
-│   └── js/                   ← 16 files (~2200L)
-│       ├── main.js           ← 앱 진입점 + 5개 모듈 wire (241L)
-│       ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + sanitize (217L)
+│   │   ├── ko.json           ← 한국어 (180키)
+│   │   └── en.json           ← 영어 (180키)
+│   └── js/                   ← 16 files (~2300L)
+│       ├── main.js           ← 앱 진입점 + 5개 모듈 wire + 인덱스 탭 전환 (281L)
+│       ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + sanitize + i18n import (220L)
 │       ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (119L)
 │       └── features/
 │           ├── i18n.ts       ← 프론트엔드 i18n + applyI18n() (126L)
@@ -98,7 +98,7 @@ cli-claw-ts/
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션)
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init)
 │       └── browser.ts        ← 브라우저 CLI (17개 서브커맨드, 240L)
-├── tests/                    ← 회귀 방지 테스트 (244 pass)
+├── tests/                    ← 회귀 방지 테스트 (252 pass)
 │   ├── events.test.ts        ← 이벤트 파서 단위 테스트
 │   ├── events-acp.test.ts    ← ACP session/update 이벤트 테스트
 │   ├── telegram-forwarding.test.ts ← Telegram 포워딩 동작 테스트
@@ -234,6 +234,11 @@ graph LR
 35. **[P20.5] XSS 수정**: escapeHtml 인용부호 처리, 4개 모듈 패치
 36. **[P20.6] 디렉토리 분리**: flat src/ → 12 subdirs, server.ts 850L
 37. **[P20.6] promptCache**: `getEmployeePromptV2` 캐싱, orchestrate() 시 clear
+38. **[i18n] 탭 전환**: textContent 영어 하드코딩 → 인덱스 기반 매칭 (다국어 호환)
+39. **[i18n] 하드코딩 제거**: `render.js`/`settings.js` 4곳 → `t()` i18n 호출로 교체
+40. **[dist] projectRoot**: `server.ts`/`config.ts`에서 `package.json` 위치 동적 탐색 (source/dist 양쪽 호환)
+41. **[dist] serve.ts dual-mode**: `server.js` 존재 → node(dist), 없으면 tsx(source) 자동 감지
+42. **[feat] Multi-file input**: `attachedFiles[]` 배열, 병렬 업로드, chip 프리뷰, 개별 제거
 
 ---
 
@@ -267,6 +272,7 @@ graph LR
 | `260224_orch/`                | 오케스트레이션 v2 P0~P5✅                                     | ✅    |
 | `260225_finness/`             | P0~P9✅ + P10~P17✅ + P20~P20.6✅ — 보안, i18n, AI triage, 디렉토리 분리 | ✅    |
 | `260225_copilot-cli-integration/` | Copilot ACP 통합 Phase 1~6                              | ✅    |
+| `260225_debug/`                   | i18n 탭버그 + 하드코딩 문자열 + dist 빌드 호환               | ✅    |
 | `269999_메모리 개선/`          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                 | 🔜    |
 
 ---

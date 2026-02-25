@@ -1,4 +1,4 @@
-# Frontend — public/ (23 files, ~3957L)
+# Frontend — public/ (26 files, ~4500L)
 
 > Web UI — Vanilla HTML + CSS + ES Modules. CDN: marked, highlight.js, KaTeX, Mermaid.
 > 3단 폰트: Chakra Petch(display) + Outfit(body) + SF Mono(code).
@@ -10,23 +10,23 @@
 
 ```text
 public/
-├── index.html            ← 뼈대 (443L, CDN 4개 + data-theme + ◀/▶ 토글)
+├── index.html            ← 뼈대 (459L, CDN 4개 + data-theme + ◀/▶ 토글 + multi-file chip)
 ├── css/                  ← 6 files (1355L)
 │   ├── variables.css     ← 커스텀 프로퍼티, 3단 폰트, 라이트 팔레트, 사이드바 변수 (126L)
 │   ├── layout.css        ← 사이드바 그라디언트 + 토글 absolute + collapse + 반응형 (281L)
-│   ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var + auto-expand (408L)
+│   ├── chat.css          ← 채팅 버블/애니메이션 + flex 헤더 + stop-btn var + auto-expand + file-chip (467L)
 │   ├── sidebar.css       ← 설정/스킬 카드 hover + display font (224L)
 │   ├── modals.css        ← 모달, 하트비트 카드 (171L)
 │   └── markdown.css      ← 렌더링 (테이블·코드·KaTeX·Mermaid) + 시맨틱 var + copy 버튼 (161L)
-└── js/                   ← 16 files (~2159L)
-    ├── main.js           ← 앱 진입점 + 5개 모듈 wire (239L)
-    ├── state.js          ← 공유 상태 모듈 (16L)
+└── js/                   ← 16 files (~2300L)
+    ├── main.js           ← 앱 진입점 + 5개 모듈 wire + 인덱스 탭 전환 (281L)
+    ├── state.js          ← 공유 상태 모듈 (attachedFiles 배열) (16L)
     ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (이모지 제거) (119L)
-    ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation + sanitize (217L)
+    ├── render.js         ← marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy delegation + sanitize + i18n (220L)
     ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() + finalizeAgent guard + user 마크다운 (151L)
     ├── ws.js             ← WebSocket + 메시지 라우팅 + orchestrate_done (64L)
     └── features/
-        ├── chat.js       ← 전송, 첨부, 드래그앤드롭, 멈춤, 큐, auto-expand (176L)
+        ├── chat.js       ← 전송, multi-file 첨부, chip 프리뷰, 드래그앤드롭, 멈춤, 큐, auto-expand (207L)
         ├── settings.js   ← 설정 + CLI 상태 + perCli (5개 CLI) (524L)
         ├── skills.js     ← 로드, 토글, 필터 (69L)
         ├── employees.js  ← 직원(employee) CRUD (CSS dot, 이모지 없음) (106L)
@@ -46,7 +46,7 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `main.js` | 앱 진입점, 이벤트 바인딩 | 239 |
+| `main.js` | 앱 진입점, 이벤트 바인딩, 인덱스 탭 전환 | 281 |
 | `state.js` | 공유 상태 | 16 |
 | `constants.js` | CLI_REGISTRY 동적 로딩 + ROLE_PRESETS | 119 |
 
@@ -54,7 +54,7 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy + sanitize | 217 |
+| `render.js` | marked+hljs+KaTeX+Mermaid 렌더러 + rehighlightAll + copy + sanitize + i18n | 220 |
 | `ui.js` | DOM 유틸 + stop-mode + finalizeAgent guard + user 마크다운 | 151 |
 | `ws.js` | WebSocket + 메시지 라우팅 + orchestrate_done | 64 |
 
@@ -62,7 +62,7 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `chat.js` | 전송, 첨부, 드래그앤드롭, auto-expand | 176 |
+| `chat.js` | 전송, multi-file 첨부, chip 프리뷰, 개별제거, 드래그앤드롭, auto-expand | 207 |
 | `settings.js` | 설정 패널 + perCli (5개 CLI) | 524 |
 | `skills.js` | 스킬 카드 UI | 69 |
 | `employees.js` | 직원(employee) CRUD (CSS dot) | 106 |
@@ -81,7 +81,7 @@ public/
 |------|------|------|
 | `variables.css` | 3단 폰트 + 시맨틱 색상 + 라이트 팔레트 + 사이드바 변수 | 126 |
 | `layout.css` | 사이드바 그라디언트 + 토글 absolute + collapse/반응형 | 281 |
-| `chat.css` | 채팅 버블 + 애니메이션 + flex 헤더 + auto-expand | 408 |
+| `chat.css` | 채팅 버블 + 애니메이션 + flex 헤더 + auto-expand + file-chip | 467 |
 | `sidebar.css` | 설정/스킬 카드 hover + display font | 224 |
 | `modals.css` | 모달 + 하트비트 카드 | 171 |
 | `markdown.css` | 마크다운 렌더링 + 시맨틱 색상 var + copy 버튼 스타일 | 161 |
@@ -119,3 +119,6 @@ public/
 | 16 | orchestrate_done WS 핸들러 추가 + finalizeAgent 이중 호출 방지 (debounce 500ms) |
 | 16+ | hljs CDN v11 수정 + `rehighlightAll()` lazy 폴링 + 코드 복사 버튼 event delegation + `markdown.css` copy 스타일 |
 | Bug 2.1 | 유저 메시지 `renderMarkdown()` 적용 (기존: `escapeHtml()` → `renderMarkdown()`) |
+| i18n Fix | 탭 전환 textContent 영어 하드코딩 → 인덱스 기반 매칭 (다국어 호환) |
+| i18n Fix | render.js/settings.js 하드코딩 한국어 4곳 → `t()` i18n 호출 + `escapeHtml(t)` 파람메터 충돌 수정 |
+| Multi-file | `attachedFile` → `attachedFiles[]`, chip 프리뷰, 개별 제거, 병렬 업로드, `<input multiple>` |

@@ -67,6 +67,7 @@ graph LR
 - 🌐 **Browser automation** — Chrome CDP + AI-powered Vision Click.
 - 🔍 **Web search** — Real-time web search via MCP tools (Context7, etc.)
 - 🌍 **i18n** — Korean / English, everywhere (UI, API, CLI, Telegram).
+- 📎 **Multi-file attach** — Drag & drop or pick multiple files. Chip preview with individual removal.
 
 ---
 
@@ -158,7 +159,7 @@ CLI-CLAW isn't just a chat bot — it's a full **bidirectional bridge**:
 - 💬 Chat with any of the 5 AI CLIs
 - 📸 Receive screenshots, generated images, documents
 - 🎤 Send voice messages (transcribed automatically)
-- 📎 Send files for the AI to process
+- 📎 Send files for the AI to process (multiple files at once)
 - ⚡ Run slash commands (`/cli`, `/model`, `/status`, etc.)
 - 🔄 Switch CLIs and models on the fly
 
