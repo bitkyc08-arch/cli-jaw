@@ -36,15 +36,15 @@ jobs:
       - name: File size check
         run: |
           echo "=== Files over 500 lines ==="
-          find . -name '*.js' -not -path './node_modules/*' -not -path './skills_ref/*' \
+          find . \( -name '*.js' -o -name '*.ts' \) -not -path './node_modules/*' -not -path './skills_ref/*' -not -name '*.d.ts' \
             | xargs wc -l | sort -rn | awk '$1 > 500 && !/total/ { print "⚠️ " $0; found=1 } END { if (!found) print "✅ All files under 500 lines" }'
 
       - name: CLI basic tests
-        run: node --test tests/integration/cli-basic.test.js
+        run: npx tsx --test tests/integration/cli-basic.test.ts
 
       - name: API smoke tests
         run: |
-          node server.js &
+          npx tsx server.ts &
           SERVER_PID=$!
           # Wait for server to be ready (max 10s)
           for i in $(seq 1 20); do
@@ -54,7 +54,7 @@ jobs:
             fi
             sleep 0.5
           done
-          TEST_PORT=3457 node --test tests/integration/api-smoke.test.js || SMOKE_EXIT=$?
+          TEST_PORT=3457 npx tsx --test tests/integration/api-smoke.test.ts || SMOKE_EXIT=$?
           kill $SERVER_PID 2>/dev/null || true
           exit ${SMOKE_EXIT:-0}
         env:
