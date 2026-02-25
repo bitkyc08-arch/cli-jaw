@@ -70,6 +70,7 @@ heartbeat.json auto-reload, JSON 포맷 상세
 ## Development Rules
 - 500줄/파일 제한, ES Module only
 - try/catch 필수, config.js에 값 관리
+- **Dev Skills 의무 사용**: 개발 작업 시작 전 반드시 `cli-claw skill read dev`, `dev-frontend`, `dev-backend` 등 관련 스킬 가이드를 먼저 읽고 지침을 준수할 것.
 ```
 
 ---
