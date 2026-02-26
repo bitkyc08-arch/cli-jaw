@@ -113,7 +113,9 @@ export async function processQueue() {
         else remaining.push(m);
     }
 
-    // Replace queue with remaining items + unprocessed batch tail (공정성 유지)
+    // Replace queue with remaining items + unprocessed batch tail
+    // 📋 Queue policy: "fair" — 다른 chatId 메시지 우선 소비, 같은 chatId tail은 뒤로.
+    //    "chatId-first" 정책이 필요하면 push 순서를 (batch.slice(1), ...remaining)으로 변경.
     messageQueue.length = 0;
     if (batch.length > 1) {
         // 🔑 batch 분리: 첫 메시지만 처리
@@ -411,6 +413,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         })();
 
         acp.on('exit', ({ code, signal }) => {
+            if (code !== 0 && !killReason) {
+                console.warn(`[acp:unexpected-exit] code=${code} signal=${signal} sessionId=${ctx.sessionId}`);
+            }
             const wasSteer = killReason === 'steer';
             if (mainManaged) killReason = null;  // consume
             flushThinking();  // Flush any remaining thinking buffer

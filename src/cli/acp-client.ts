@@ -219,6 +219,9 @@ export class AcpClient extends EventEmitter {
 
         // Notification from agent (no id, has method)
         if (msg.method) {
+            if (msg.method === 'session/cancelled') {
+                console.warn(`[acp:cancelled] ${JSON.stringify(msg.params || {}).slice(0, 200)}`);
+            }
             this.emit(msg.method, msg.params);
             return;
         }
@@ -254,15 +257,13 @@ export class AcpClient extends EventEmitter {
                 break;
             }
             default:
-                // Unknown agent request — respond with error
+                // Unknown agent request — always log + respond with error
+                console.warn(`[acp:unhandled] agent request: ${msg.method} params=${JSON.stringify(msg.params || {}).slice(0, 200)}`);
                 this._write({
                     jsonrpc: '2.0',
                     id: msg.id,
                     error: { code: -32601, message: `Method not supported: ${msg.method}` },
                 });
-                if (process.env.DEBUG) {
-                    console.log(`[acp] unsupported agent request: ${msg.method}`);
-                }
         }
     }
 
