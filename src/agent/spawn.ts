@@ -417,11 +417,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                     .replace(/\n{3,}/g, '\n\n')
                     .trim();
                 let finalContent = cleaned || ctx.fullText.trim();
-                const traceText = ctx.traceLog.join('\n');
+                let traceText = ctx.traceLog.join('\n');
 
                 // Tag interrupted output so history block can distinguish
+                // (buildHistoryBlock uses trace over content for assistant messages)
                 if (wasSteer && mainManaged && !opts.internal) {
                     finalContent = `⏹️ [interrupted]\n\n${finalContent}`;
+                    if (traceText) traceText = `⏹️ [interrupted]\n${traceText}`;
                     console.log(`[jaw:steer] saving interrupted output (${finalContent.length} chars)`);
                 }
 
@@ -574,11 +576,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 .trim();
             const displayText = cleaned || ctx.fullText.trim();
             let finalContent = displayText + costLine;
-            const traceText = ctx.traceLog.join('\n');
+            let traceText = ctx.traceLog.join('\n');
 
             // Tag interrupted output so history block can distinguish
+            // (buildHistoryBlock uses trace over content for assistant messages)
             if (wasSteer && mainManaged && !opts.internal) {
                 finalContent = `⏹️ [interrupted]\n\n${finalContent}`;
+                if (traceText) traceText = `⏹️ [interrupted]\n${traceText}`;
                 console.log(`[jaw:steer] saving interrupted output (${finalContent.length} chars)`);
             }
 

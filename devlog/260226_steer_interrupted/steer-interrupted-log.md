@@ -42,8 +42,27 @@ let killReason: string | null = null;
 - steer 후 다음 에이전트가 `buildHistoryBlock()`으로 history를 읽을 때, 이전 에이전트의 중단된 결과가 `⏹️ [interrupted]` 태그와 함께 포함됨
 - 불필요한 fallback 시도 방지
 
+### 4. trace에도 interrupted 태그 추가 (후속 패치)
+
+`buildHistoryBlock()` L149에서 assistant 메시지는 `row.trace`가 있으면 content 대신 **trace만 사용**.
+표준 CLI 경로(claude/codex/gemini/opencode)는 `logEventSummary()` → `pushTrace()` 경유로 거의 항상 trace가 쌓임.
+→ content에만 `⏹️ [interrupted]` 붙여도 history에서 안 보이는 버그.
+
+수정: `traceText`에도 동일하게 `⏹️ [interrupted]\n` 접두사 추가.
+
+```typescript
+// 수정 전
+const traceText = ctx.traceLog.join('\n');
+
+// 수정 후
+let traceText = ctx.traceLog.join('\n');
+if (wasSteer && mainManaged && !opts.internal) {
+    if (traceText) traceText = `⏹️ [interrupted]\n${traceText}`;
+}
+```
+
 ## 테스트
 
 ```
-# tests 253 / pass 252 / fail 0 / skipped 1
+# tests 314 / pass 313 / fail 0 / skipped 1
 ```
