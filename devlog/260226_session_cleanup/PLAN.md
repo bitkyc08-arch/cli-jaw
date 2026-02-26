@@ -2,49 +2,24 @@
 
 ## 메타
 - Date: 2026-02-26
-- Status: Phase 1 (기획)
-- 기반 커밋: `8054549` (pipeline.ts 롤백 완료 상태)
+- Status: Phase 2 (기획검증 — 직원 리뷰 5건 반영)
+- 기반 커밋: `5abc172` (pipeline.ts 롤백 완료 상태)
 
 ---
 
-## 1. 현재 문제 분석
+## 0. 직원 리뷰 충돌 5건 + 해결
 
-### 1.1 Phase Profile 끝점 지정 불가
-
-```typescript
-// pipeline.ts:47-53 (현재)
-const rawStart = Number(st.start_phase);
-const startPhase = Number.isFinite(rawStart) ? Math.max(minPhase, Math.min(maxPhase, rawStart)) : minPhase;
-const profile = fullProfile.filter((p: number) => p >= startPhase);
-// ← end_phase 없음. start만 지정 가능.
-```
-
-backend role + `start_phase: 3` → profile `[3,4,5]` → 간단한 수정도 3라운드 강제.
-
-### 1.2 세션 정리 누락 (2곳)
-
-```typescript
-// pipeline.ts:365-376 — MAX_ROUNDS partial 경로
-if (round === MAX_ROUNDS) {
-    // ... partial report ...
-    // ← clearAllEmployeeSessions 없음! 세션 잔존
-}
-
-// pipeline.ts:277-287 — late-subtask 분기 (동일 구조)
-if (round === MAX_ROUNDS) {
-    // ← 여기도 없음
-}
-```
-
-### 1.3 유저 주도 흐름 부재
-
-- "개발만 하고 보고해" → 불가능 (자동 다음 phase)
-- "리셋해" → 불가능 (해당 함수 없음)
-- parseVerdicts 실패 시 로그 없이 무시 (L338-348)
+| # | 충돌 | 원인 | 해결 |
+|---|------|------|------|
+| 1 | checkpoint 후 continue 불가 | `allDone` → `completed=true` → worklog ✅ → `parseWorklogPending`가 ⏳만 탐색 | checkpoint 시 `completed` 마킹 **안 함**. 대신 worklog status=`checkpoint` + 현재 phaseIdx 저장 |
+| 2 | `_skipClear`가 L244/L308 clear 누락 | clear 지점이 L228, L244, L308 총 3곳 | `_skipClear`를 3곳 모두 적용 |
+| 3 | "리뷰해봐"가 continue 패턴 불일치 | `isContinueIntent`는 "이어서/계속/continue"만 매칭 | continue 패턴에 "리뷰해봐", "다음 해봐" 등 추가 |
+| 4 | reset regex가 "리셋해줘"도 매칭 | `^리셋`은 prefix match → "리셋해줘"도 true | `^리셋해?$/i`로 변경. "리셋해줘"는 orchestrate로 가도 무방 |
+| 5 | planner JSON에 end_phase/checkpoint 없음 | distribute.ts:221 스키마에 미반영 | distribute.ts 변경에 이미 포함 (§3.9) |
 
 ---
 
-## 2. 상태 머신
+## 1. 상태 머신 (충돌 #1 해결 반영)
 
 ```mermaid
 stateDiagram-v2
@@ -54,159 +29,223 @@ stateDiagram-v2
     ACTIVE --> CHECKPOINT: scope 완료 + checkpoint=true
     ACTIVE --> PARTIAL: MAX_ROUNDS 초과
 
-    DONE --> [*]: 세션 삭제
+    DONE --> [*]: 세션 삭제 + completed=true
 
-    CHECKPOINT --> ACTIVE: "리뷰해봐" (orchestrateContinue)
-    CHECKPOINT --> [*]: "리셋해" (orchestrateReset)
-    CHECKPOINT --> ACTIVE: 새 orchestrate() → clearSessions
+    CHECKPOINT --> ACTIVE: continue ("리뷰해봐")
+    CHECKPOINT --> [*]: reset ("리셋해")
 
-    PARTIAL --> ACTIVE: "이어서 해줘" (orchestrateContinue)
-    PARTIAL --> [*]: "리셋해" (orchestrateReset)
-    PARTIAL --> ACTIVE: 새 orchestrate() → clearSessions
+    PARTIAL --> ACTIVE: continue ("이어서 해줘")
+    PARTIAL --> [*]: reset ("리셋해")
+
+    note right of CHECKPOINT
+      핵심: completed=false 유지
+      worklog에 resumePhaseIdx 저장
+      세션 보존
+    end note
+    
+    note right of PARTIAL
+      세션 보존
+      parseWorklogPending → ⏳ 항목
+    end note
 ```
-
-세션 정리 규칙:
-
-| 종료 상태 | 세션 | 이유 |
-|-----------|------|------|
-| `done` | **삭제** | 완전 종료 |
-| `checkpoint` | **보존** | 유저 결정 대기 |
-| `partial` | **보존** | 이어서 해줘 대비 |
-| `reset` | **삭제** | 명시적 초기화 |
-| 새 `orchestrate()` | **삭제** | L228에서 항상 clear |
 
 ---
 
-## 3. 변경 상세 (파일별)
+## 2. 핵심 알고리즘: checkpoint ≠ completed
 
-### 3.1 pipeline.ts `initAgentPhases` (L40-74)
-
-현재:
-```typescript
-// L47-53
-const rawStart = Number(st.start_phase);
-const startPhase = ...
-const profile = fullProfile.filter((p: number) => p >= startPhase);
-const effectiveProfile = profile.length > 0 ? profile : [fullProfile[fullProfile.length - 1]!];
+### 문제 (충돌 #1)
+```
+allDone → completed=true → worklog ✅ → parseWorklogPending ⏳만 탐색 → 0건 → "이미 완료"
 ```
 
-변경:
+### 해결: checkpoint는 completed 마킹 안 함
+
+```
+라운드 루프:
+  scopeDone = 모든 agent가 phaseProfile 끝까지 도달
+  hasCheckpoint = any agent has checkpoint=true
+
+  if scopeDone AND hasCheckpoint:
+    # completed=true로 마킹하지 않음!
+    # 대신 worklog에 "checkpoint at phase X" 기록
+    updateWorklogStatus("checkpoint")
+    # worklog matrix: ⏸ (새 기호) — 재개 가능
+    broadcast("orchestrate_done", { checkpoint: true })
+    return  # 세션 보존
+
+  if scopeDone AND NOT hasCheckpoint:
+    # 진짜 완료
+    completed=true
+    clearSessions
+    ...
+```
+
+### worklog Matrix 표기
+
+| 기호 | 의미 | parseWorklogPending |
+|------|------|---------------------|
+| ✅ | 완료 | 건너뜀 |
+| ⏳ | 진행 중/실패 | 재개 대상 |
+| ⏸ | **checkpoint 대기** [NEW] | 재개 대상 |
+
+`parseWorklogPending` (worklog.ts:158) 수정:
 ```diff
+-if (inMatrix && line.includes('⏳')) {
++if (inMatrix && (line.includes('⏳') || line.includes('⏸'))) {
+```
+
+`updateMatrix` (worklog.ts:115) 수정:
+```diff
+-`| ${ap.agent} | ${ap.role} | Phase ${ap.currentPhase}... | ${ap.completed ? '✅ 완료' : '⏳ 진행 중'} |`
++const gate = ap.completed ? '✅ 완료' : ap.checkpointed ? '⏸ checkpoint' : '⏳ 진행 중';
++`| ${ap.agent} | ... | ${gate} |`
+```
+
+---
+
+## 3. 변경 상세 (충돌 해결 반영)
+
+### 3.1 pipeline.ts `initAgentPhases` (L47-72)
+
+```diff
+ # L47-55: end_phase + sparse fallback
  const rawStart = Number(st.start_phase);
 +const rawEnd = Number(st.end_phase);
- const startPhase: number = Number.isFinite(rawStart)
-     ? Math.max(minPhase, Math.min(maxPhase, rawStart))
-     : minPhase;
--const profile = fullProfile.filter((p: number) => p >= startPhase);
--const effectiveProfile = profile.length > 0 ? profile : [fullProfile[fullProfile.length - 1]!];
-+const endPhase: number = Number.isFinite(rawEnd)
+ const startPhase = ...
++const endPhase = Number.isFinite(rawEnd)
 +    ? Math.max(startPhase, Math.min(maxPhase, rawEnd))
 +    : maxPhase;
+-const profile = fullProfile.filter((p: number) => p >= startPhase);
 +const profile = fullProfile.filter((p: number) => p >= startPhase && p <= endPhase);
-+// sparse fallback: 빈 profile이면 startPhase 이상 가장 가까운 phase 사용
++// sparse fallback
 +const effectiveProfile = profile.length > 0
 +    ? profile
 +    : [fullProfile.find((p: number) => p >= startPhase) || fullProfile[fullProfile.length - 1]!];
-+if (profile.length === 0) {
-+    console.warn(`[jaw:phase] ${st.agent}: no phases in [${startPhase},${endPhase}], fallback to [${effectiveProfile[0]}]`);
-+}
-```
 
-return 객체 (L61-72):
-```diff
+ # L61-72: return 객체
  return {
-     agent: st.agent,
-     task: st.task,
-     role,
-     parallel: st.parallel === true,
+     ...
 +    checkpoint: st.checkpoint === true,
-     verification: st.verification || null,
-     phaseProfile: effectiveProfile,
-     currentPhaseIdx: 0,
-     currentPhase: effectiveProfile[0],
-     completed: false,
-     history: [] as Record<string, any>[],
++    checkpointed: false,  // checkpoint 완료 여부 (resume cursor)
+     ...
  };
 ```
 
-### 3.2 pipeline.ts 메인 라운드 루프 (L338-376)
+### 3.2 pipeline.ts 라운드 루프 (L338-376) — 충돌 #1 핵심 수정
 
-#### L338-348: verdict 실패 로깅
 ```diff
+ # L338-348: verdict 실패 로깅
  if (verdicts?.verdicts) {
-     for (const v of verdicts.verdicts) {
-         ...
-     }
-+} else {
-+    console.warn(`[jaw:review] verdict parse failed — skipping phase advance (round ${round})`);
- }
-```
-
-#### L351-361: 완료 판정 — allDone verdict + checkpoint 분기
-```diff
--// 5. 완료 판정 (agentPhases 기준 우선, allDone은 보조)
--const allDone = agentPhases.every((ap: Record<string, any>) => ap.completed);
-+// 5. 완료 판정
-+const allDone = agentPhases.every((ap: Record<string, any>) => ap.completed)
-+    || verdicts?.allDone === true;
- if (allDone) {
-+    // allDone verdict인 경우 전원 completed 마킹
-+    agentPhases.forEach((ap: Record<string, any>) => { ap.completed = true; });
-+    updateMatrix(worklog.path, agentPhases);
-+
-+    const hasCheckpoint = agentPhases.some((ap: Record<string, any>) => ap.checkpoint);
-+    if (hasCheckpoint) {
-+        // CHECKPOINT: 세션 보존, 유저에게 보고
-+        const summary = stripSubtaskJSON(rawText) || '요청된 scope 완료';
-+        appendToWorklog(worklog.path, 'Final Summary', summary);
-+        updateWorklogStatus(worklog.path, 'checkpoint', round);
-+        insertMessage.run('assistant', summary + '\n\n다음 지시를 기다립니다. "리뷰해봐", "이어서 해줘", "리셋해"', 'orchestrator', '');
-+        broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin, checkpoint: true });
-+        break;
-+    }
-     const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
      ...
++} else {
++    console.warn(`[jaw:review] verdict parse failed (round ${round})`);
+ }
+
+ # L351-361: 완료 판정
+-const allDone = agentPhases.every(ap => ap.completed);
++const scopeDone = agentPhases.every(ap => ap.completed)
++    || verdicts?.allDone === true;
++const hasCheckpoint = agentPhases.some(ap => ap.checkpoint && !ap.checkpointed);
++
+-if (allDone) {
++if (scopeDone && !hasCheckpoint) {
++    // DONE: 진짜 완료
++    agentPhases.forEach(ap => { ap.completed = true; });
++    updateMatrix(worklog.path, agentPhases);
+     const summary = ...
      clearAllEmployeeSessions.run();
      ...
+     break;
++}
++
++if (scopeDone && hasCheckpoint) {
++    // CHECKPOINT: completed 마킹 안 함, 세션 보존
++    agentPhases.forEach(ap => {
++        if (ap.checkpoint) ap.checkpointed = true;
++    });
++    updateMatrix(worklog.path, agentPhases);
++    const summary = stripSubtaskJSON(rawText) || '요청된 scope 완료';
++    appendToWorklog(worklog.path, 'Final Summary', summary);
++    updateWorklogStatus(worklog.path, 'checkpoint', round);
++    insertMessage.run('assistant', summary + '\n\n다음: "리뷰해봐", "리셋해"', 'orchestrator', '');
++    broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin, checkpoint: true });
++    break;
  }
-```
 
-#### L365-376: partial 경로 — 세션 보존 (clearSessions 안 함)
-```diff
+ # L365-376: partial — 세션 보존
  if (round === MAX_ROUNDS) {
      ...
      updateWorklogStatus(worklog.path, 'partial', round);
--    // ← clearAllEmployeeSessions 없음 (현재: 세션 잔존 — 버그)
-+    // partial: 세션 보존 (이어서 해줘 대비)
-+    // 새 orchestrate() 진입 시 L228에서 자동 정리됨
-     insertMessage.run('assistant', partial, 'orchestrator', '');
-     broadcast('orchestrate_done', { text: partial, worklog: worklog.path, origin });
+     // clearSessions 안 함 (의도적 보존)
+     ...
  }
 ```
 
-### 3.3 pipeline.ts late-subtask 분기 (L250-288)
+### 3.3 pipeline.ts `orchestrate` 진입 — 충돌 #2 해결
 
-L331-376과 **동일한 구조**가 L250-288에 복제되어 있음. 같은 변경 적용:
-- L255: verdict 실패 로깅 추가
-- L266: `verdicts?.allDone` + checkpoint 분기 추가
-- L277-287: partial 세션 보존 (현재 clearSessions 없음 → 의도된 보존으로 명시)
-
-### 3.4 pipeline.ts `phaseReview` 프롬프트 (L200-215)
+clear 지점 3곳 모두 `_skipClear` 적용:
 
 ```diff
- ### 판정 규칙
- - **PASS**: ...
- - **FAIL**: ...
- 
-+### allDone 조기 완료 규칙
-+- 커밋+테스트+푸시 완료 → 남은 phase 있어도 allDone: true 가능
-+- 판단 기준: 사용자의 원래 요청이 충족되었는가?
-+- Phase 3에서 빌드/테스트/커밋 모두 완료 → Phase 4-5 불필요 → allDone: true
-+
- JSON으로 출력:
+ # L228
+-clearAllEmployeeSessions.run();
++if (!meta._skipClear) clearAllEmployeeSessions.run();
+
+ # L244 (late-subtask 분기)
+-clearAllEmployeeSessions.run();
++if (!meta._skipClear) clearAllEmployeeSessions.run();
+
+ # L308 (정규 orchestrate 진입)
+-clearAllEmployeeSessions.run();
++if (!meta._skipClear) clearAllEmployeeSessions.run();
 ```
 
-### 3.5 pipeline.ts `orchestrateReset` [NEW] (L378 뒤)
+### 3.4 pipeline.ts `orchestrateContinue` (L382-407) — checkpoint 재개
+
+```diff
+ export async function orchestrateContinue(meta = {}) {
+     const latest = readLatestWorklog();
+-    if (!latest) { ... }
++    if (!latest || latest.content.includes('Status: done') || latest.content.includes('Status: reset')) {
++        broadcast('orchestrate_done', { text: '이어갈 worklog가 없습니다.' });
++        return;
++    }
+
+     const pending = parseWorklogPending(latest.content);
+     ...
+-    return orchestrate(resumePrompt, meta);
++    return orchestrate(resumePrompt, { ...meta, _skipClear: true });
+ }
+```
+
+### 3.5 parser.ts — 충돌 #3, #4 해결
+
+```diff
+ # 충돌 #3: continue 패턴 확장
+ const CONTINUE_PATTERNS = [
+     /^\/?continue$/i,
+     /^이어서(?:\s*해줘)?$/i,
+     /^계속(?:\s*해줘)?$/i,
++    /^다음(?:\s*해봐)?$/i,
++    /^리뷰(?:\s*해봐)?$/i,
+ ];
+
++# 충돌 #4: reset 패턴 (정확 매칭)
++const RESET_PATTERNS = [
++    /^리셋해?$/i,
++    /^초기화해?$/i,
++    /^페이즈?\s*리셋해?$/i,
++    /^phase\s*reset$/i,
++    /^reset$/i,
++];
++
++export function isResetIntent(text: string) {
++    const t = String(text || '').trim();
++    if (!t) return false;
++    return RESET_PATTERNS.some(re => re.test(t));
++}
+```
+
+### 3.6 pipeline.ts `orchestrateReset` [NEW]
 
 ```typescript
 export async function orchestrateReset(meta: Record<string, any> = {}) {
@@ -218,68 +257,28 @@ export async function orchestrateReset(meta: Record<string, any> = {}) {
         return;
     }
     updateWorklogStatus(latest.path, 'reset', 0);
-    appendToWorklog(latest.path, 'Final Summary', '유저 요청으로 페이즈 리셋됨.');
-    broadcast('orchestrate_done', { text: '페이즈 리셋 완료. 새로 시작하려면 작업을 요청하세요.', origin });
+    appendToWorklog(latest.path, 'Final Summary', '유저 요청으로 리셋됨.');
+    broadcast('orchestrate_done', { text: '리셋 완료.', origin });
 }
 ```
 
-### 3.6 pipeline.ts `orchestrateContinue` 수정 (L382-407)
-
-현재 `orchestrateContinue`는 세션을 clear하고 새 `orchestrate()`를 호출 → 세션 복원 안 됨.
+### 3.7 worklog.ts — ⏸ 기호 지원
 
 ```diff
- export async function orchestrateContinue(meta: Record<string, any> = {}) {
-     const origin = (meta as Record<string, any>).origin || 'web';
-     const latest = readLatestWorklog();
--    if (!latest) {
-+    if (!latest || latest.content.includes('Status: done') || latest.content.includes('Status: reset')) {
-         broadcast('orchestrate_done', { text: '이어갈 worklog가 없습니다.', origin });
-         return;
-     }
- 
-     const pending = parseWorklogPending(latest.content);
-     ...
--    return orchestrate(resumePrompt, meta);
-+    // 핵심: clearSessions 안 함 — 기존 세션 복원
-+    return orchestrate(resumePrompt, { ...meta, _skipClear: true });
- }
+ # updateMatrix (L115)
+-`${ap.completed ? '✅ 완료' : '⏳ 진행 중'}`
++const gate = ap.completed ? '✅ 완료' : ap.checkpointed ? '⏸ checkpoint' : '⏳ 진행 중';
+
+ # parseWorklogPending (L158)
+-if (inMatrix && line.includes('⏳')) {
++if (inMatrix && (line.includes('⏳') || line.includes('⏸'))) {
 ```
 
-`orchestrate()` L228도 수정:
-```diff
- export async function orchestrate(prompt: string, meta: Record<string, any> = {}) {
--    clearAllEmployeeSessions.run();
-+    if (!meta._skipClear) clearAllEmployeeSessions.run();
-     clearPromptCache();
-```
+### 3.8 distribute.ts `buildPlanPrompt` — 충돌 #5 해결
 
-### 3.7 parser.ts `isResetIntent` [NEW] (L9 뒤)
+L157-160 가이드 + L221 JSON 스키마에 `end_phase`, `checkpoint` 추가. (이전 §3.9와 동일)
 
-```typescript
-const RESET_PATTERNS = [
-    /^리셋/i, /^초기화/i, /^페이즈?\s*리셋/i,
-    /^phase\s*reset/i, /^reset$/i,
-];
-
-export function isResetIntent(text: string) {
-    const t = String(text || '').trim();
-    if (!t) return false;
-    return RESET_PATTERNS.some(re => re.test(t));
-}
-```
-
-pipeline.ts L21에 import 추가:
-```diff
- import {
--    isContinueIntent, needsOrchestration,
-+    isContinueIntent, isResetIntent, needsOrchestration,
-     parseSubtasks, parseDirectAnswer, stripSubtaskJSON, parseVerdicts,
- } from './parser.js';
--export { isContinueIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
-+export { isContinueIntent, isResetIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
-```
-
-### 3.8 server.ts `/api/orchestrate/reset` 엔드포인트 (L410 뒤)
+### 3.9 server.ts `/api/orchestrate/reset`
 
 ```typescript
 app.post('/api/orchestrate/reset', (req, res) => {
@@ -288,42 +287,17 @@ app.post('/api/orchestrate/reset', (req, res) => {
 });
 ```
 
-import에 `orchestrateReset` 추가.
-
-### 3.9 distribute.ts `buildPlanPrompt` (L221 subtask JSON)
+### 3.10 phaseReview prompt (L200-215) — allDone 조기완료 규칙
 
 ```diff
-     {
-       "agent": "ExactAgentName",
-       "role": "frontend|backend|data|docs",
-       "task": "...",
-       "start_phase": 3,
-+      "end_phase": 3,
-+      "checkpoint": true,
-       "parallel": false,
-```
-
-L157-160에 가이드 추가:
-```diff
- #### start_phase Selection
- - You completed planning → start_phase = 3
- - Code exists, only tests needed → start_phase = 4
- - Analysis required from scratch → start_phase = 1
-+
-+#### end_phase Selection (optional, default: role의 마지막 phase)
-+- 간단한 수정/버그픽스 → end_phase: 3
-+- 테스트까지 → end_phase: 4
-+- 전체 → end_phase: 5 또는 생략
-+- docs role은 [1,3,5]만 존재. end_phase: 2는 3으로 보정됨.
-+
-+#### checkpoint (optional, default: false)
-+- true: scope 완료 후 유저에게 보고하고 대기
-+- false: 자동으로 done 처리
++### allDone 조기 완료 규칙
++- 커밋+테스트+푸시 완료 → 남은 phase 있어도 allDone: true 가능
++- 판단 기준: 사용자 요청이 충족되었는가?
 ```
 
 ---
 
-## 4. 시퀀스 다이어그램
+## 4. 시퀀스 다이어그램 (충돌 해결 반영)
 
 ```mermaid
 sequenceDiagram
@@ -334,16 +308,20 @@ sequenceDiagram
     participant W as Worklog
 
     rect rgb(40, 40, 60)
-    Note over U,W: 시나리오 1: checkpoint → continue → done
+    Note over U,W: checkpoint → continue (충돌 #1 해결)
     U->>O: "개발만 하고 보고해"
     O->>DB: clearSessions (L228)
     O->>A: Phase 3 (start=3 end=3 checkpoint=true)
     A->>O: 커밋 완료
-    O->>W: status: checkpoint
-    Note over DB: 세션 보존
-    O->>U: "Phase 3 완료. 다음 지시?"
-    U->>O: "리뷰도 해봐"
-    O->>A: Phase 4부터 (세션 복원, _skipClear)
+    Note over O: completed=false 유지!
+    O->>W: status: checkpoint, matrix: ⏸
+    O->>U: "Phase 3 완료. 다음?"
+    U->>O: "리뷰해봐"
+    Note over O: isContinueIntent → true (충돌 #3 해결)
+    O->>O: orchestrateContinue(_skipClear=true)
+    Note over DB: 세션 복원 (충돌 #2 해결)
+    O->>W: parseWorklogPending → ⏸ 항목 발견
+    O->>A: Phase 4부터 (같은 세션)
     A->>O: 리뷰 완료
     O->>W: status: done
     O->>DB: clearSessions
@@ -351,92 +329,74 @@ sequenceDiagram
     end
 
     rect rgb(60, 40, 40)
-    Note over U,W: 시나리오 2: checkpoint → reset
-    U->>O: "테스트만 해봐"
-    O->>A: Phase 4
-    O->>W: status: checkpoint
-    O->>U: "테스트 완료"
-    U->>O: "다른데서 리뷰했으니 리셋해"
-    O->>DB: clearSessions (orchestrateReset)
+    Note over U,W: checkpoint → reset
+    U->>O: "리셋해"
+    Note over O: isResetIntent → true (충돌 #4 해결)
+    O->>O: orchestrateReset()
+    O->>DB: clearSessions
     O->>W: status: reset
     O->>U: "리셋 완료"
     end
-
-    rect rgb(40, 60, 40)
-    Note over U,W: 시나리오 3: checkpoint → 새 작업
-    U->>O: "Phase 3만 해"
-    O->>W: status: checkpoint
-    O->>U: "완료"
-    U->>O: "다른 작업 해줘" (새 orchestrate)
-    O->>DB: clearSessions (L228 자동)
-    Note over DB: 이전 세션 자동 정리
-    O->>A: 새 작업 시작
-    end
 ```
 
 ---
 
-## 5. 엣지 케이스
-
-| # | 케이스 | 입력 | 결과 |
-|---|--------|------|------|
-| 1 | end_phase 생략 | `{start:3}` | `endPhase=maxPhase` → 기존 동작 |
-| 2 | start=3 end=3 | backend `[1..5]` | profile `[3]`, 1라운드 |
-| 3 | start > end | `{start:5, end:3}` | `endPhase=max(5,3)=5` → `[5]` |
-| 4 | docs sparse start=2 end=2 | `[1,3,5]` | filter=[], fallback `[3]` |
-| 5 | docs sparse start=2 end=4 | `[1,3,5]` | filter=`[3]` |
-| 6 | checkpoint 후 새 작업 | status=checkpoint | L228 clearSessions → 안전 |
-| 7 | partial 후 새 작업 | status=partial | L228 clearSessions → 안전 |
-| 8 | reset 후 이어서 해줘 | status=reset | orchestrateContinue에서 거부 |
-| 9 | done 후 이어서 해줘 | status=done | orchestrateContinue에서 거부 |
-
----
-
-## 6. 테스트 계획
-
-### tests/unit/orchestration-v3.test.ts [NEW]
+## 5. 테스트 계획
 
 ```
-# Phase Range (initAgentPhases 직접 테스트)
+# Phase Range
 EP-001: end_phase 생략 → maxPhase
 EP-002: start=3 end=3 → profile [3]
 EP-003: start > end → end 보정
 EP-004: docs start=2 end=2 → sparse fallback [3]
 EP-005: docs start=2 end=4 → [3]
-EP-006: end_phase=99 → clamp to maxPhase
-EP-007: checkpoint=true 저장 확인
-EP-008: checkpoint 생략 → false
 
-# Intent Detection (parser.ts)
-RS-001: isResetIntent("리셋") → true
-RS-002: isResetIntent("리셋해줘") → false (정확 매칭 아님)
-RS-003: isResetIntent("phase reset") → true
-RS-004: isResetIntent("안녕") → false
-```
+# Checkpoint (충돌 #1 핵심)
+CP-001: checkpoint=true → completed=false 유지
+CP-002: checkpoint 시 worklog matrix에 ⏸ 표기
+CP-003: parseWorklogPending이 ⏸ 항목 감지
+CP-004: checkpoint 후 continue → 세션 복원 + 다음 phase
+CP-005: checkpoint=false → 기존 done 동작
 
-### 빌드 검증
-```bash
-npx tsc --noEmit
-npm test
+# Intent (충돌 #3, #4)
+IN-001: "리뷰해봐" → isContinueIntent true
+IN-002: "다음 해봐" → isContinueIntent true
+IN-003: "이어서 해줘" → isContinueIntent true (기존)
+IN-004: "리셋해" → isResetIntent true
+IN-005: "리셋" → isResetIntent true
+IN-006: "리셋해줘" → isResetIntent false (orchestrate로)
+IN-007: "reset" → isResetIntent true
+
+# Session (충돌 #2)
+SL-001: _skipClear=true → L228 clear 안 함
+SL-002: _skipClear=true → L244 clear 안 함
+SL-003: _skipClear=true → L308 clear 안 함
+SL-004: _skipClear 없음 → 3곳 모두 clear
+
+# Reset
+RS-001: reset → clearSessions + worklog reset
+RS-002: reset 대상 없음 → 에러 메시지
+RS-003: reset 후 continue → "이어갈 작업 없음"
 ```
 
 ---
 
-## 7. 변경 요약
+## 6. 변경 요약
 
 | 파일 | 위치 | 변경 | 라인 |
 |------|------|------|------|
-| pipeline.ts | L47-55 | end_phase + sparse fallback | +12 |
-| pipeline.ts | L65 | checkpoint 필드 추가 | +1 |
-| pipeline.ts | L338-348 | verdict 실패 로깅 | +2 |
-| pipeline.ts | L351-361 | allDone verdict + checkpoint 분기 | +12 |
-| pipeline.ts | L228 | _skipClear 조건 | +1 |
-| pipeline.ts | L378+ | orchestrateReset [NEW] | +12 |
-| pipeline.ts | L382-407 | orchestrateContinue 수정 | +3 |
-| pipeline.ts | L200-215 | review prompt allDone 규칙 | +5 |
-| parser.ts | L9+ | isResetIntent [NEW] | +8 |
+| pipeline.ts | L47-72 | end_phase + checkpoint + checkpointed | +15 |
+| pipeline.ts | L228, L244, L308 | _skipClear 3곳 | +3 |
+| pipeline.ts | L338-376 | checkpoint 분기 + verdict 로깅 | +20 |
+| pipeline.ts | L200-215 | allDone 조기완료 prompt | +5 |
+| pipeline.ts | L382-407 | continue 수정 (_skipClear) | +3 |
+| pipeline.ts | after L407 | orchestrateReset [NEW] | +12 |
+| parser.ts | L5-9 | continue 패턴 확장 | +2 |
+| parser.ts | after L15 | isResetIntent [NEW] | +10 |
+| worklog.ts | L115 | ⏸ 기호 지원 | +2 |
+| worklog.ts | L158 | parseWorklogPending ⏸ 감지 | +1 |
 | distribute.ts | L157, L221 | end_phase/checkpoint 가이드 | +12 |
 | server.ts | L410+ | /api/orchestrate/reset | +4 |
-| tests/ | [NEW] | orchestration-v3.test.ts | ~60 |
+| tests/ | [NEW] | orchestration-v3.test.ts | ~80 |
 
-총: ~130줄 추가/수정. 기존 export/import 깨뜨리지 않음. end_phase/checkpoint 생략 시 기존 동작 100% 동일.
+총: ~170줄. 기존 동작 하위호환 (end_phase/checkpoint 생략 = 기존 동작).
