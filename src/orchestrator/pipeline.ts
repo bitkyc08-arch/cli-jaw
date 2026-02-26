@@ -175,7 +175,7 @@ async function distributeByPhase(agentPhases: Record<string, any>[], worklog: Re
 
 async function phaseReview(results: Record<string, any>[], agentPhases: Record<string, any>[], worklog: Record<string, any>, round: number, meta: Record<string, any> = {}) {
     const report = results.map((r: Record<string, any>) =>
-        `- **${r.agent}** (${r.role}, ${r.phaseLabel}): ${r.status === 'done' ? '✅' : '❌'}\n  ${r.text.slice(0, 400)}`
+        `- **${r.agent}** (${r.role}, ${r.phaseLabel}): ${r.status === 'done' ? '✅' : '❌'}\n  ${r.text.slice(0, 1200)}`
     ).join('\n');
 
     const matrixStr = agentPhases.map((ap: Record<string, any>) => {
@@ -268,7 +268,7 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                 updateWorklogStatus(worklog.path, 'round_' + round, round);
                 broadcast('round_start', { round, agentPhases });
                 const results = await distributeByPhase(agentPhases, worklog, round, { origin });
-                const { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
+                let { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
                 if (verdicts?.verdicts) {
                     for (const v of verdicts.verdicts) {
                         const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
@@ -279,7 +279,26 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                         }
                     }
                 } else {
-                    console.warn(`[jaw:review] verdict parse failed — skipping phase advance (round ${round})`);
+                    // Retry once — DIFF-C의 절삭 확대 덕분에 재시도 성공 확률 향상
+                    console.warn(`[jaw:review] verdict parse failed — retrying once (round ${round})`);
+                    const retryResult = await phaseReview(results, agentPhases, worklog, round, { origin });
+                    if (retryResult.verdicts?.verdicts) {
+                        verdicts = retryResult.verdicts;
+                        rawText = retryResult.rawText;
+                        for (const v of retryResult.verdicts.verdicts) {
+                            const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
+                            if (ap) {
+                                const judgedPhase = ap.currentPhase;
+                                advancePhase(ap, v.pass);
+                                ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
+                            }
+                        }
+                    } else {
+                        console.error(`[jaw:review] verdict parse failed after retry — all active marked FAIL (round ${round})`);
+                        for (const ap of agentPhases.filter((a: Record<string, any>) => !a.completed)) {
+                            ap.history.push({ round, phase: ap.currentPhase, pass: false, feedback: 'auto-fail (verdict parse failed x2)' });
+                        }
+                    }
                 }
                 updateMatrix(worklog.path, agentPhases);
 
@@ -379,7 +398,7 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
         broadcast('round_start', { round, agentPhases });
 
         const results = await distributeByPhase(agentPhases, worklog, round, { origin });
-        const { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
+        let { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
 
         // 4. Per-agent phase advance
         if (verdicts?.verdicts) {
@@ -392,7 +411,26 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                 }
             }
         } else {
-            console.warn(`[jaw:review] verdict parse failed — skipping phase advance (round ${round})`);
+            // Retry once — DIFF-C의 절삭 확대 덕분에 재시도 성공 확률 향상
+            console.warn(`[jaw:review] verdict parse failed — retrying once (round ${round})`);
+            const retryResult = await phaseReview(results, agentPhases, worklog, round, { origin });
+            if (retryResult.verdicts?.verdicts) {
+                verdicts = retryResult.verdicts;
+                rawText = retryResult.rawText;
+                for (const v of retryResult.verdicts.verdicts) {
+                    const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
+                    if (ap) {
+                        const judgedPhase = ap.currentPhase;
+                        advancePhase(ap, v.pass);
+                        ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
+                    }
+                }
+            } else {
+                console.error(`[jaw:review] verdict parse failed after retry — all active marked FAIL (round ${round})`);
+                for (const ap of agentPhases.filter((a: Record<string, any>) => !a.completed)) {
+                    ap.history.push({ round, phase: ap.currentPhase, pass: false, feedback: 'auto-fail (verdict parse failed x2)' });
+                }
+            }
         }
         updateMatrix(worklog.path, agentPhases);
 
@@ -473,6 +511,12 @@ Worklog: ${latest.path}
 
 미완료 항목:
 ${pending.map((p: Record<string, any>) => `- ${p.agent} (${p.role}): Phase ${p.currentPhase}`).join('\n')}
+
+## 제약 조건
+- 위 미완료 항목의 **agent 이름, role, 현재 phase를 그대로 유지**하세요.
+- 새로운 agent를 추가하거나 role을 변경하지 마세요.
+- task 내용만 현재 phase에 맞게 구체화하세요.
+- start_phase는 각 agent의 현재 phase와 동일하게 설정하세요.
 
 subtask JSON을 출력하세요.`;
 
