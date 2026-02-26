@@ -39,6 +39,14 @@ function isWSL() {
     }
 }
 
+function hasWslWindowsChrome() {
+    const paths = [
+        '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
+        '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+    ];
+    return paths.some(p => fs.existsSync(p));
+}
+
 function check(name: string, fn: () => string) {
     try {
         const detail = fn();
@@ -137,7 +145,12 @@ if (process.platform === 'linux') {
     check('Display Server', () => {
         if (process.env.WAYLAND_DISPLAY) return `Wayland (${process.env.WAYLAND_DISPLAY})`;
         if (process.env.DISPLAY) return `X11 (${process.env.DISPLAY})`;
-        if (isWSL()) throw new Error('WARN: no DISPLAY in WSL — enable WSLg or set DISPLAY to an X server');
+        if (isWSL()) {
+            if (hasWslWindowsChrome()) {
+                return 'WSL (no DISPLAY; Windows Chrome path detected via /mnt/c)';
+            }
+            throw new Error('WARN: no DISPLAY in WSL — enable WSLg/set DISPLAY, or install Windows Chrome for /mnt/c fallback');
+        }
         throw new Error('WARN: no DISPLAY — browser skill needs X11/Wayland');
     });
 }
