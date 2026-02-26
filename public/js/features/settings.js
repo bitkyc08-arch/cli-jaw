@@ -211,9 +211,8 @@ export async function updateSettings() {
 }
 
 export function setPerm(p, save = true) {
-    document.getElementById('permSafe').classList.toggle('active', p === 'safe');
-    document.getElementById('permAuto').classList.toggle('active', p === 'auto');
-    if (save) apiFire('/api/settings', 'PUT', { permissions: p });
+    // Auto-fixed since Phase 3.1 — no UI toggle, just persist
+    if (save) apiFire('/api/settings', 'PUT', { permissions: 'auto' });
 }
 
 export function getModelValue(cli) {

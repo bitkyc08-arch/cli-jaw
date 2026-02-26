@@ -171,14 +171,13 @@
             <div>
                 <label data-i18n="label.permissions">권한</label>
                 <div class="perm-toggle">
-                    <button class="perm-btn" id="permSafe">🔒 Safe</button>
-                    <button class="perm-btn active" id="permAuto">⚡ Auto</button>
+                    <span class="perm-btn active" style="cursor:default;flex:none;padding:6px 14px">⚡ Auto</span>
                 </div>
             </div>
 
             <div>
                 <label data-i18n="label.workingDir">작업 디렉토리</label>
-                <input type="text" id="inpCwd" value="~/">
+                <input type="text" id="inpCwd" value="" placeholder="~/.cli-jaw">
             </div>
 
             <hr style="border:none;border-top:1px solid var(--border);margin:4px 0">

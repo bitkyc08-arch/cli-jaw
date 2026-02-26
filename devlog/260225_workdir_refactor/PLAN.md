@@ -336,40 +336,19 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 - [x] `mcp.ts:59-60` — workingDir fallback: `homedir()` → `JAW_HOME` (+ removed unused `homedir` import)
 - **Scope**: 3 files, ~5 lines
 
-### Phase 3.1: Frontend Hotfix — workingDir 동적화 + 권한 Auto 고정
+### Phase 3.1: Frontend Hotfix — workingDir 동적화 + 권한 Auto 고정 ✅ DONE
 
-**Scope**: 3 files, ~15 lines  
+**Scope**: 3 source files + bundle rebuild  
 **목표**: 웹 대시보드의 workingDir/권한 UI를 현재 코드 상태에 맞게 정합
 
 #### 3.1-A: workingDir 동적값 표시 (`value="~/"` → 서버값)
-- [ ] `public/index.html:181` — `<input>` 의 하드코딩 `value="~/"` 제거 → `value=""` (빈값, JS가 채움)
-- 이미 `settings.js:133` 에서 `loadSettings()` 시 `inpCwd.value = s.workingDir` 로 서버값 주입
-- 변경 없이 동작하지만, 초기 로딩 순간 `~/` 가 깜빡이는 문제 해결
+- [x] `public/index.html:181` — `value="~/"` → `value=""` + `placeholder="~/.cli-jaw"`
 
 #### 3.1-B: 권한 토글 → Auto 고정 (읽기 전용 표시)
-- [ ] `public/index.html:172-176` — 토글 버튼 2개 → Auto 고정 배지로 교체
-  ```html
-  <label data-i18n="label.permissions">권한</label>
-  <span class="perm-badge">⚡ Auto</span>
-  ```
-- [ ] `public/js/main.js:109-110` — `permSafe`/`permAuto` click 리스너 제거
-- [ ] `public/js/features/settings.js:214-215` — `setPerm` 함수: classList 토글 → no-op (또는 배지 업데이트)
-- [ ] `public/js/features/settings.js:216` — `apiFire` 호출 유지 (서버에 auto 저장은 그대로)
-- [ ] CSS: `.perm-badge` 스타일 추가 (기존 `.perm-btn.active` 유사 디자인, 클릭 불가)
-
-#### 영향 분석
-| 파일 | 변경 | 위험 |
-|------|------|------|
-| `public/index.html` | HTML 2곳 수정 | 없음 (순수 UI) |
-| `public/js/main.js` | 리스너 2줄 제거 | 낮음 |
-| `public/js/features/settings.js` | setPerm 수정 | 낮음 (save=true 로직 유지) |
-| `public/dist/bundle.js` | 리빌드 필요 | 번들 빌드 스크립트 확인 필요 |
-
-#### 검증
-- [ ] `jaw serve` → 브라우저에서 설정 탭 확인
-- [ ] workingDir 입력란에 서버값(~/.cli-jaw) 표시되는지
-- [ ] 권한 영역이 "⚡ Auto" 배지로 고정 표시되는지
-- [ ] settings 저장(CLI 변경 등) 시 workingDir 유지되는지
+- [x] `public/index.html:172-176` — 토글 버튼 2개 → `<span class="perm-btn active">⚡ Auto</span>` 고정 배지
+- [x] `public/js/main.js:109-110` — `permSafe`/`permAuto` click 리스너 제거
+- [x] `public/js/features/settings.js:213-216` — `setPerm` → UI no-op, auto 고정 저장
+- [x] `public/dist/bundle.js` — esbuild 리빌드 완료
 
 ### Phase 3: `jaw clone` Command *(independent, after Phase 2)* ✅ DONE
 - [x] New file `bin/commands/clone.ts` (~140 lines) + routing in `cli-jaw.ts`

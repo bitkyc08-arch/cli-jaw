@@ -106,8 +106,6 @@ document.querySelector('.sidebar-save-bar .btn-save').addEventListener('click', 
 document.getElementById('selCli').addEventListener('change', () => onCliChange());
 document.getElementById('selModel').addEventListener('change', () => saveActiveCliSettings());
 document.getElementById('selEffort').addEventListener('change', () => saveActiveCliSettings());
-document.getElementById('permSafe').addEventListener('click', () => setPerm('safe'));
-document.getElementById('permAuto').addEventListener('click', () => setPerm('auto'));
 document.getElementById('inpCwd').addEventListener('change', updateSettings);
 document.querySelector('[data-action="addEmployee"]').addEventListener('click', addEmployee);
 
