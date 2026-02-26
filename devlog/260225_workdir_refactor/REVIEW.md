@@ -15,11 +15,7 @@
 - 근거: 프런트 UI는 Auto 배지만 표시하지만, `permissions: safe`를 가진 기존 설정은 그대로 유지됨.
 - 영향: 사용자는 UI상 Auto로 오해할 수 있고, 실제 실행은 safe 제약으로 동작 가능.
 
-### MEDIUM-1: Phase 4 포트 분리 미완료 (`browser`/`memory` CLI)
-- 근거: 두 명령이 서버 URL을 `getServerUrl('3457')`로 고정.
-- 영향: 비기본 포트 인스턴스(예: 3458/3459)에서 CLI 제어 실패.
-
-### MEDIUM-2: `launchd` 미지원 플래그가 install 경로로 떨어질 수 있음
+### MEDIUM-1: `launchd` 미지원 플래그가 install 경로로 떨어질 수 있음
 - 근거: `parseArgs(..., strict:false)` + 기본 분기(`default`) 조합으로 `--dry-run` 같은 미지원 플래그가 에러 없이 setup 경로로 진입.
 - 영향: 사용자가 비파괴 옵션으로 기대한 입력이 실제 설치 동작을 유발할 수 있음.
 
@@ -37,6 +33,7 @@
   - 테스트가 fixture 기반으로 개선되어 환경 의존성이 줄어듦.
 - Phase 4 (`launchd`):
   - instance hash label, xmlEsc, `--home/--port` pass-through는 코드 반영됨.
+  - `browser.ts` / `memory.ts` 서버 URL 하드코딩 제거됨.
 
 ---
 
@@ -47,7 +44,7 @@
    - `workingDir` PUT 이후 새 경로 `AGENTS.md` 미생성 재현
    - 기존 `permissions: safe` 설정은 일반 settings PUT 이후에도 `safe` 유지 재현
 3. 정적 검증:
-   - `browser.ts`, `memory.ts`의 포트 고정 경로 확인
+   - `browser.ts`, `memory.ts`의 포트 고정 경로 제거 확인
    - `launchd.ts` 기본 분기/명령 문자열 처리 확인
 
 ---
@@ -55,5 +52,5 @@
 ## Conclusion
 
 Phase 3.1은 **UI 반영 완료 + 런타임 후속 미완료** 상태입니다.  
-Phase 4는 **launchd 코어 반영 + 포트 연동 마무리 미완료** 상태입니다.  
+Phase 4는 **코어 반영 완료 + hardening(플래그/경로 처리) 미완료** 상태입니다.  
 전반적으로 큰 구조는 안정적이며, 남은 작업은 Phase 3.1 follow-up + Phase 4 마감 항목에 집중하면 됩니다.

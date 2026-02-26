@@ -212,9 +212,9 @@ jaw serve --home ~/.jaw-lab --port 3459
 - 인스턴스별 Label 해시 (`com.cli-jaw.<instance>-<hash>`)
 - plist XML escaping (`xmlEsc`)
 - ProgramArguments에 `--home <JAW_HOME> serve --port <PORT>` 전달
+- `browser.ts` / `memory.ts` 서버 URL 하드코딩(`3457`) 제거
 
 **남은 핵심:**
-- `browser.ts` / `memory.ts` 서버 URL 하드코딩(`3457`) 제거
 - launchctl 명령에서 plist path quoting 보강
 - 미지원 플래그(`--dry-run`)는 install 실행 대신 명시 에러
 
@@ -244,7 +244,7 @@ flowchart LR
     P1["Phase 1<br>workingDir → JAW_HOME<br><b>완료</b>"] --> P2["Phase 2<br>JAW_HOME 동적화<br><b>완료</b>"]
     P2 --> P3["Phase 3<br>jaw clone<br><b>완료</b>"]
     P3 --> P31["Phase 3.1<br>Frontend hotfix<br><b>코드 반영, 후속 필요</b>"]
-    P2 --> P4["Phase 4<br>포트 분리 + launchd<br><b>남은 작업: 3파일 ~20줄</b><br>(launchd+browser+memory)"]
+    P2 --> P4["Phase 4<br>포트 분리 + launchd<br><b>남은 작업: 1파일 ~10줄</b><br>(launchd hardening)"]
     P31 --> P99["Phase 99<br>프론트엔드 UI<br><b>먼 미래</b>"]
     P4 --> P99
 ```

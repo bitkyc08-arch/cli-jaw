@@ -365,7 +365,7 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 - [x] Tests: 8 new (P3-001~008, fixture-based), all pass
 - **Scope**: 1 new file (140 lines), 1 modified (cli-jaw.ts: +3 lines)
 
-### Phase 4: Multi-Instance launchd + Port Separation ✅ DONE
+### Phase 4: Multi-Instance launchd + Port Separation 🚧 IN PROGRESS
 - [x] `launchd.ts` — dynamic LABEL with hash-based instanceId
 - [x] `launchd.ts` — `--port` parseArgs + status output 반영
 - [x] `launchd.ts` — `xmlEsc()` 적용 + plist 문자열 escape
@@ -374,7 +374,7 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 - [x] `browser.ts:10` — `getServerUrl('3457')` → `getServerUrl(undefined)`
 - [x] `memory.ts:7` — `getServerUrl('3457')` → `getServerUrl(undefined)`
 - [x] Tests: 7 new (P4-001~007), all pass
-- **Scope**: 4 files changed (launchd ~50 lines, browser/memory 1 line each), 1 new test file
+- **Scope (remaining)**: launchd hardening 1 file, ~10 lines + smoke notes
 
 ### Phase 99: Frontend Instance UI *(far future)*
 
@@ -382,7 +382,7 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 
 ## Source Validation Snapshot
 
-Verified against source (2026-02-26, Phase 4 complete):
+Verified against source (2026-02-26, Phase 4 WIP):
 
 - `src/core/config.ts:27` → `JAW_HOME = process.env.CLI_JAW_HOME || join(os.homedir(), '.cli-jaw')` ✅ Dynamic
 - `src/core/config.ts:101` → `workingDir: JAW_HOME` ✅ Phase 1
@@ -720,7 +720,6 @@ basename-only label). An implementer following the diffs would reproduce all the
    - 기존 `settings.permissions = safe` 사용자는 UI가 Auto로 보여도 서버 값이 그대로 safe.
    - 검증 결과: `/api/settings`에 `cli/workingDir`만 PUT하면 permissions는 safe 유지.
 
-5. **Phase 4 partially done (MEDIUM)**:
-   - launchd core(라벨 해시, xmlEsc, --home/--port pass-through)는 구현됨.
-   - 남은 핵심: `browser.ts`, `memory.ts`의 `getServerUrl('3457')` 하드코딩 제거.
-   - 추가 하드닝: launchctl 명령 path quoting, 미지원 플래그(`--dry-run`) 명시 에러.
+5. **Phase 4 hardening pending (MEDIUM)**:
+   - launchd core(라벨 해시, xmlEsc, --home/--port pass-through)와 browser/memory 포트 하드코딩 제거는 구현됨.
+   - 남은 하드닝: launchctl 명령 path quoting, 미지원 플래그(`--dry-run`) 명시 에러.
