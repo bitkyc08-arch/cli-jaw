@@ -36,6 +36,7 @@
   "files": [
     "dist/",
     "public/",
+    "scripts/",
     "package.json",
     "skills_ref/"
   ],

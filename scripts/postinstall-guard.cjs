@@ -12,7 +12,7 @@
  * cross-platform (Windows cmd.exe compatible).
  */
 const fs = require('fs');
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const path = require('path');
 
 // ─── 1. Node version fail-fast ──────────────────────
@@ -33,9 +33,15 @@ if (fs.existsSync(target)) {
 }
 
 // ─── 3. Dev clone: build with local tsc ─────────────
-// Use local node_modules/.bin/tsc to avoid npx network dependency
-const localTsc = path.join(root, 'node_modules', '.bin', 'tsc');
-if (!fs.existsSync(localTsc)) {
+// Check both unix and Windows (.cmd) shim paths
+const binDir = path.join(root, 'node_modules', '.bin');
+const localTsc = [
+    path.join(binDir, 'tsc'),
+    path.join(binDir, 'tsc.cmd'),
+    path.join(binDir, 'tsc.ps1'),
+].find(p => fs.existsSync(p));
+
+if (!localTsc) {
     console.error('[jaw:init] ❌ dist/ not found and typescript not installed locally');
     console.error('           Run: npm install --ignore-scripts && npm run build && node dist/bin/postinstall.js');
     process.exit(1);
@@ -43,7 +49,8 @@ if (!fs.existsSync(localTsc)) {
 
 console.log('[jaw:init] dist/ not found, building...');
 try {
-    execSync(localTsc, { stdio: 'inherit', cwd: root, timeout: 60000 });
+    // execFileSync avoids shell parsing issues with spaces in paths
+    execFileSync(localTsc, [], { stdio: 'inherit', cwd: root, timeout: 60000 });
 } catch {
     console.error('[jaw:init] ❌ build failed — run manually:');
     console.error('           npm run build && node dist/bin/postinstall.js');
