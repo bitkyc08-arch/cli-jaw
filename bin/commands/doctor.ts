@@ -7,11 +7,9 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH } from '../../src/core/config.js';
 
-const JAW_HOME = path.join(os.homedir(), '.cli-jaw');
-const SETTINGS_PATH = path.join(JAW_HOME, 'settings.json');
-const DB_PATH = path.join(JAW_HOME, 'jaw.db');
-const HEARTBEAT_PATH = path.join(JAW_HOME, 'heartbeat.json');
+const HEARTBEAT_PATH = HEARTBEAT_JOBS_PATH;
 const PATH_LOOKUP_CMD = process.platform === 'win32' ? 'where' : 'which';
 
 const { values } = parseArgs({

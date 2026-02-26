@@ -12,9 +12,8 @@ import { readdirSync, readFileSync, writeFileSync, existsSync, mkdirSync, rmSync
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { execSync } from 'node:child_process';
+import { JAW_HOME, SKILLS_DIR } from '../../src/core/config.js';
 
-const JAW_HOME = join(homedir(), '.cli-jaw');
-const SKILLS_DIR = join(JAW_HOME, 'skills');
 const CODEX_SKILLS = join(homedir(), '.codex', 'skills');
 
 // ─── ANSI ────────────────────────────────────

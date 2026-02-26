@@ -9,10 +9,11 @@ import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { JAW_HOME } from '../../src/core/config.js';
 
 const LABEL = 'com.cli-jaw.serve';
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
-const LOG_DIR = join(homedir(), '.cli-jaw', 'logs');
+const LOG_DIR = join(JAW_HOME, 'logs');
 
 function getNodePath(): string {
     try { return execSync('which node', { encoding: 'utf8' }).trim(); }

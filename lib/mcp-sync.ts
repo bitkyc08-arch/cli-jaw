@@ -13,8 +13,8 @@ import fs from 'fs';
 import os from 'os';
 import { join, dirname, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
+import { JAW_HOME } from '../src/core/config.js';
 
-const JAW_HOME = join(os.homedir(), '.cli-jaw');
 const MCP_PATH = join(JAW_HOME, 'mcp.json');
 
 /** Walk up from current file to find package.json → package root */

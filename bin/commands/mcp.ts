@@ -17,6 +17,7 @@ import { execSync, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { JAW_HOME } from '../../src/core/config.js';
 
 // ─── lib imports (Single Source of Truth) ────
 import {
@@ -26,7 +27,6 @@ import {
     initMcpConfig,
 } from '../../lib/mcp-sync.js';
 
-const JAW_HOME = join(homedir(), '.cli-jaw');
 const PATH_LOOKUP_CMD = process.platform === 'win32' ? 'where' : 'which';
 
 // ─── ANSI ────────────────────────────────────

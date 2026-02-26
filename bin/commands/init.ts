@@ -7,9 +7,7 @@ import { parseArgs } from 'node:util';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-
-const JAW_HOME = path.join(os.homedir(), '.cli-jaw');
-const SETTINGS_PATH = path.join(JAW_HOME, 'settings.json');
+import { JAW_HOME, SETTINGS_PATH } from '../../src/core/config.js';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
