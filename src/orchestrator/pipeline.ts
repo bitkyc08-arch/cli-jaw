@@ -201,12 +201,6 @@ ${worklog.path} — 이 파일의 변경사항도 확인하세요.
 - **PASS**: 해당 phase의 필수 항목 모두 충족. 구체적 근거 제시.
 - **FAIL**: 필수 항목 중 하나라도 미충족. **구체적 수정 지시** 제공 ("더 노력하세요" 금지, 구체적 행동 제시).
 
-### allDone 조기 완료 규칙
-- 모든 agent가 마지막 phase를 PASS하면 당연히 allDone: true.
-- **조기 완료 가능**: agent의 실제 작업이 커밋+테스트 통과+푸시까지 완료되었다면, 남은 phase가 있어도 allDone: true로 설정 가능.
-- 예: Phase 3(개발)에서 빌드/테스트/커밋/푸시 모두 완료 → Phase 4-5 불필요 → allDone: true.
-- 판단 기준: 사용자 요청(원래 prompt)이 충족되었는가? 남은 phase가 실질적 가치를 추가하는가?
-
 JSON으로 출력:
 \`\`\`json
 {
@@ -267,14 +261,10 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                             ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
                         }
                     }
-                } else {
-                    console.warn(`[jaw:review] verdict parse failed or empty — skipping phase advance (round ${round})`);
                 }
                 updateMatrix(worklog.path, agentPhases);
-                const allDone = agentPhases.every((ap: Record<string, any>) => ap.completed) || verdicts?.allDone === true;
+                const allDone = agentPhases.every((ap: Record<string, any>) => ap.completed);
                 if (allDone) {
-                    agentPhases.forEach((ap: Record<string, any>) => { ap.completed = true; });
-                    updateMatrix(worklog.path, agentPhases);
                     const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
                     appendToWorklog(worklog.path, 'Final Summary', summary);
                     updateWorklogStatus(worklog.path, 'done', round);
@@ -292,7 +282,6 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                         `이어서 진행하려면 "이어서 해줘"라고 말씀하세요.\nWorklog: ${worklog.path}`;
                     appendToWorklog(worklog.path, 'Final Summary', partial);
                     updateWorklogStatus(worklog.path, 'partial', round);
-                    clearAllEmployeeSessions.run();
                     insertMessage.run('assistant', partial, 'orchestrator', '');
                     broadcast('orchestrate_done', { text: partial, worklog: worklog.path, origin });
                 }
@@ -356,16 +345,12 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                     ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
                 }
             }
-        } else {
-            console.warn(`[jaw:review] verdict parse failed or empty — skipping phase advance (round ${round})`);
         }
         updateMatrix(worklog.path, agentPhases);
 
-        // 5. 완료 판정 (agentPhases 기준 + allDone verdict 보조)
-        const allDone = agentPhases.every((ap: Record<string, any>) => ap.completed) || verdicts?.allDone === true;
+        // 5. 완료 판정 (agentPhases 기준 우선, allDone은 보조)
+        const allDone = agentPhases.every((ap: Record<string, any>) => ap.completed);
         if (allDone) {
-            agentPhases.forEach((ap: Record<string, any>) => { ap.completed = true; });
-            updateMatrix(worklog.path, agentPhases);
             const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
             appendToWorklog(worklog.path, 'Final Summary', summary);
             updateWorklogStatus(worklog.path, 'done', round);
@@ -377,7 +362,7 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
 
         broadcast('round_done', { round, action: 'next', agentPhases });
 
-        // 6. Max round 도달 → 부분 보고 + 세션 정리
+        // 6. Max round 도달 → 부분 보고
         if (round === MAX_ROUNDS) {
             const done = agentPhases.filter((ap: Record<string, any>) => ap.completed);
             const pending = agentPhases.filter((ap: Record<string, any>) => !ap.completed);
@@ -386,7 +371,6 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                 `이어서 진행하려면 "이어서 해줘"라고 말씀하세요.\nWorklog: ${worklog.path}`;
             appendToWorklog(worklog.path, 'Final Summary', partial);
             updateWorklogStatus(worklog.path, 'partial', round);
-            clearAllEmployeeSessions.run();
             insertMessage.run('assistant', partial, 'orchestrator', '');
             broadcast('orchestrate_done', { text: partial, worklog: worklog.path, origin });
         }
