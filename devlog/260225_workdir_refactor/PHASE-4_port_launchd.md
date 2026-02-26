@@ -1,7 +1,7 @@
 # Phase 4: Port Separation + Multi-Instance launchd
 
 **Status**: Planning
-**Files**: 2 files modified (~30 lines)
+**Files**: 4 files modified (~40 lines: launchd ~30 + browser/memory/mcp ~3 each)
 **Dependency**: Phase 2 (needs `--home` flag support)
 
 ---
@@ -29,14 +29,19 @@ Currently `launchd.ts` hardcodes:
 -const LABEL = 'com.cli-jaw.serve';
 -const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 -const LOG_DIR = join(homedir(), '.cli-jaw', 'logs');
-+// Derive label from JAW_HOME to allow multi-instance
 +import { JAW_HOME } from '../../src/core/config.js';
++import { createHash } from 'node:crypto';
++import { parseArgs } from 'node:util';
 +
-+function instanceId(): string {
-+    // ~/.cli-jaw → 'default', ~/.jaw-work → 'jaw-work'
-+    const base = basename(JAW_HOME);
-+    return base === '.cli-jaw' ? 'default' : base.replace(/^\./, '');
-+}
+ function instanceId(): string {
+-    // ~/.cli-jaw → 'default', ~/.jaw-work → 'jaw-work'
+     const base = basename(JAW_HOME);
+-    return base === '.cli-jaw' ? 'default' : base.replace(/^\./, '');
++    if (base === '.cli-jaw') return 'default';
++    // Hash full path to prevent collision (~/a/.jaw vs ~/b/.jaw)
++    const hash = createHash('md5').update(JAW_HOME).digest('hex').slice(0, 8);
++    return `${base.replace(/^\./, '')}-${hash}`;
+ }
 +
 +const INSTANCE = instanceId();
 +const LABEL = `com.cli-jaw.${INSTANCE}`;
@@ -47,21 +52,33 @@ Currently `launchd.ts` hardcodes:
 ### 4.1.2 `generatePlist()` — Pass --home and --port
 
 ```diff
++// XML escape helper — prevents silent plist parse failures on &, <, > in paths
++const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
++
  function generatePlist(): string {
      const nodePath = getNodePath();
      const jawPath = getJawPath();
-+    const port = process.argv.find((a, i) =>
-+        process.argv[i - 1] === '--port')  || '3457';
-     execSync(`mkdir -p ${LOG_DIR}`);
++    // parseArgs handles both --port 3458 and --port=3458
++    const { values } = parseArgs({
++        args: process.argv.slice(2),
++        options: { port: { type: 'string', default: '3457' } },
++        strict: false,
++        allowPositionals: true,
++    });
++    const port = values.port as string;
+-    execSync(`mkdir -p ${LOG_DIR}`);
++    execSync(`mkdir -p "${LOG_DIR}"`);
 
      return `<?xml version="1.0" encoding="UTF-8"?>
  ...
      <key>ProgramArguments</key>
      <array>
-         <string>${nodePath}</string>
-         <string>${jawPath}</string>
+-        <string>${nodePath}</string>
+-        <string>${jawPath}</string>
++        <string>${xmlEsc(nodePath)}</string>
++        <string>${xmlEsc(jawPath)}</string>
 +        <string>--home</string>
-+        <string>${JAW_HOME}</string>
++        <string>${xmlEsc(JAW_HOME)}</string>
          <string>serve</string>
 +        <string>--port</string>
 +        <string>${port}</string>
@@ -69,14 +86,14 @@ Currently `launchd.ts` hardcodes:
      ...
      <key>WorkingDirectory</key>
 -    <string>${homedir()}</string>
-+    <string>${JAW_HOME}</string>
++    <string>${xmlEsc(JAW_HOME)}</string>
      ...
 +    <key>EnvironmentVariables</key>
 +    <dict>
 +        <key>PATH</key>
-+        <string>${process.env.PATH}</string>
++        <string>${xmlEsc(process.env.PATH || '')}</string>
 +        <key>CLI_JAW_HOME</key>
-+        <string>${JAW_HOME}</string>
++        <string>${xmlEsc(JAW_HOME)}</string>
 +    </dict>
      ...`;
  }

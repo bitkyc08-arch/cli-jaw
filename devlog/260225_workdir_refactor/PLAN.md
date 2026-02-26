@@ -319,11 +319,12 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 - **Scope**: 8 files, ~8 lines each (replace local definition with import)
 
 ### Phase 2.1-2.2: JAW_HOME Dynamic *(env var + --home flag)*
-- [ ] `config.ts:27` — add CLI_JAW_HOME env var support (with `~` expansion)
-- [ ] `cli-jaw.ts` — parse `--home` flag BEFORE `const command = process.argv[2]`
+- [ ] `config.ts:27` — add CLI_JAW_HOME env var support (tilde regex: `/^~(?=\/|$)/`)
+- [ ] `cli-jaw.ts` — parse `--home` flag with `parseArgs({ strict: false })` BEFORE `const command` *(R7)*
 - [ ] `builder.ts` — replace ~10 hardcoded `~/.cli-jaw` in prompts with `${JAW_HOME}` *(RE-1)*
 - [ ] Run 252 tests + 3 new P2-* tests
 - **Scope**: 3 files, ~20 lines
+- **Constraint**: cli-jaw.ts MUST NOT add static imports to internal modules *(R6 ESM safety)*
 
 ### Phase 2 Frontend: PATCH-4 *(optional cleanup)*
 - [ ] `public/index.html:172-183` — remove permissions toggle + workdir input
@@ -334,11 +335,14 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 - **Scope**: 1 new file (~120 lines), 1 modified
 
 ### Phase 4: Multi-Instance launchd + Port Separation *(independent, after Phase 2)*
-- [ ] `launchd.ts` — dynamic LABEL, --home/--port pass-through, path quoting *(RE-5)*
+- [ ] `launchd.ts` — dynamic LABEL with hash-based instanceId *(R7: collision prevention)*
+- [ ] `launchd.ts` — `parseArgs({ strict: false })` for `--port` parsing *(R7: --port= support)*
+- [ ] `launchd.ts` — `xmlEsc()` helper for all plist string interpolations *(R7: XML injection)*
+- [ ] `launchd.ts` — `--home`/`--port` pass-through, path quoting *(RE-5)*
 - [ ] `browser.ts:11` — change `getServerUrl('3457')` → `getServerUrl(undefined)` *(RE-2)*
 - [ ] `memory.ts:7` — change `getServerUrl('3457')` → `getServerUrl(undefined)` *(RE-2)*
 - [ ] `mcp.ts:58` — change `homedir()` fallback → `JAW_HOME` *(RE-4)*
-- **Scope**: 4 files, ~10 lines
+- **Scope**: 4 files, ~50 lines (launchd ~40 + browser/memory/mcp ~3 each)
 
 ### Phase 99: Frontend Instance UI *(far future)*
 
@@ -543,3 +547,113 @@ Fourth pass focused on "what breaks AFTER Phase 2 is applied" — downstream eff
 
 - **R3 already fixed**: --home argv position (3 explicit references in PHASE-2 doc section 2.2)
   The R4 reviewer re-flagged this, but it was fully addressed in R3 with argv transformation diagram.
+
+---
+
+## Review Fix Log — R5 (260226, final consistency pass)
+
+### Issue 1: ROADMAP --home snippet missing splice
+**Finding**: ROADMAP_multi_instance.md:116 showed --home parsing without `process.argv.splice(homeIdx, 2)`. Without splice, `const command = process.argv[2]` would still see `--home` as the command.
+**Fix**: Added `process.argv.splice(homeIdx, 2)` + comment explaining it must precede command extraction.
+**Source**: bin/cli-jaw.ts:22 (`const command = process.argv[2]`)
+
+### Issue 2: Phase 4 scope mismatch between ROADMAP and PLAN
+**Finding**: ROADMAP mermaid said "2파일 ~30줄" while PLAN said "4 files ~10 lines". After R4's RE-2 additions (browser.ts, memory.ts, mcp.ts), Phase 4 now covers 4 files with ~40 lines total.
+**Fix**: ROADMAP mermaid → "4파일 ~40줄", PLAN scope → "4 files, ~40 lines".
+
+### Issue 3: PHASE-3 parseArgs reference error
+**Finding**: PHASE-3_clone_command.md:40 claimed parseArgs is "already used in serve.ts/launchd.ts". launchd.ts does NOT use parseArgs.
+**Fix**: Changed to "already used in serve.ts/chat.ts" (verified: serve.ts:35, bin/commands/chat.ts both use parseArgs).
+
+### Issue 4: ROADMAP import path example (fixed in R5 partial)
+**Finding**: ROADMAP:102 import example only showed `../../` form but lib/postinstall need `../`.
+**Fix**: Already applied in R5 partial pass — added per-directory import path table matching PHASE-2 doc.
+
+---
+
+## Review Fix Log — R6 (260226, external brain-compile review)
+
+An external reviewer flagged 6 issues (3 "FATAL", 2 "HIGH", 1 "MEDIUM").
+After code-level verification, **3 of 6 were proven NOT valid** and **3 are valid improvements**.
+
+### Rejected findings (verified NOT valid)
+
+1. **FATAL-1 (ESM hoisting trap)**: Reviewer claimed `--home` parsing in cli-jaw.ts would be
+   defeated by ESM static import hoisting freezing `JAW_HOME` before runtime code executes.
+   **REJECTED**: cli-jaw.ts only statically imports Node built-ins (`node:path`, `node:url`, `node:fs`).
+   All subcommand loading uses dynamic `await import('./commands/xxx.js')` — these execute AFTER
+   the `--home` parsing code. No wrapper file (`bin/run.ts`) is needed.
+   **Constraint added**: cli-jaw.ts MUST NEVER add static imports to internal modules.
+
+2. **FATAL-2 (fresh install crash)**: Reviewer claimed `symlinkSync` in postinstall would crash
+   because `~/.cli-jaw/` doesn't exist on fresh install.
+   **REJECTED**: `ensureDir(jawHome)` is called at postinstall.ts:103 (creates the directory with
+   `recursive: true`) BEFORE the symlink code at line 165-170. Additionally, the symlink is
+   guarded by `fs.existsSync(agentsMd)` — on fresh install, AGENTS.md doesn't exist so the
+   symlink is simply skipped.
+
+3. **FATAL-3 (node -e TLA crash)**: Reviewer claimed `await` in `node -e` would throw SyntaxError
+   because `node -e` defaults to CJS context.
+   **REJECTED**: Already verified in R3 — Node v22.22.0 supports TLA in `node -e` without
+   `--input-type=module`. Re-confirmed: `node -e 'const { join } = await import("node:path"); console.log(join("/a","b"))'` exits cleanly.
+
+### Accepted findings (applied)
+
+4. **HIGH (--home= syntax)**: `process.argv.indexOf('--home')` does NOT match `--home=/path`.
+   `parseArgs` handles both `--home /path` and `--home=/path` correctly (verified).
+   **Fix**: Added R6-2 note to PHASE-2 doc recommending `parseArgs({ strict: false })` upgrade.
+   Also added R6-4 note to PHASE-4 for `--port=` syntax same issue.
+
+5. **HIGH (tilde regex)**: `/^~/` matches `~username/path` and produces corrupt paths like
+   `/Users/junnyusername/path`. Verified: `/^~(?=\/|$)/` correctly skips `~username` form.
+   **Fix**: Updated regex in PHASE-2 (section 2.2), ROADMAP (Phase 2.1 + 2.2 snippets).
+
+6. **MEDIUM (launchd label collision + XML injection)**:
+   - `basename(JAW_HOME)` collides when multiple instances share the same leaf name.
+     Added hash-based uniqueness approach as comment in PHASE-4 doc.
+   - Path values with `&`, `<`, `>` break plist XML silently.
+     Added `xmlEsc()` helper recommendation in PHASE-4 doc (R6-5).
+
+### Files modified
+- `PHASE-2_jaw_home_dynamic.md`: Tilde regex fix + ESM safety note + parseArgs note
+- `PHASE-4_port_launchd.md`: Label collision note + XML escape note + port parseArgs + scope update
+- `ROADMAP_multi_instance.md`: Tilde regex fix (2 locations)
+- `PLAN.md`: This R6 review log
+
+---
+
+## Review Fix Log — R7 (260226, "note vs code" consistency enforcement)
+
+### Problem
+R6 accepted 3 findings but applied them as **advisory notes** rather than actual diff code changes.
+The executable diff snippets still used the old patterns (indexOf, argv.find, /^~/, raw interpolation,
+basename-only label). An implementer following the diffs would reproduce all the bugs R6 identified.
+
+### All 6 findings — VALID, all upgraded from notes to executable diffs
+
+1. **--home indexOf → parseArgs**: PHASE-2 section 2.2 diff rewritten to use `parseArgs({ strict: false })`
+   with `allowPositionals: true`. Handles both `--home /path` and `--home=/path`.
+   ROADMAP Phase 2.2 snippet also updated to match.
+
+2. **--port argv.find → parseArgs**: PHASE-4 section 4.1.2 diff rewritten to use `parseArgs()`.
+   Old `process.argv.find((a, i) => process.argv[i - 1] === '--port')` completely removed.
+
+3. **Tilde regex /^~/ → /^~(?=\/|$)/ in section 2.1**: PHASE-2 config.ts diff (line 74) fixed.
+   This was the last remaining unpatched location (section 2.2 was already fixed in R6).
+
+4. **XML escape applied to plist diffs**: All `<string>${...}</string>` interpolations in PHASE-4
+   generatePlist() now use `xmlEsc()`. Helper function added to the diff.
+
+5. **Launchd label hash activated**: instanceId() in PHASE-4 section 4.1 changed from
+   comment-only hash suggestion to actual `createHash('md5')` implementation.
+   `com.cli-jaw.jaw-work-a1b2c3d4` format prevents all collision scenarios.
+
+6. **PLAN.md checklist updated**: Phase 2.1-2.2 now lists parseArgs + tilde regex + ESM constraint.
+   Phase 4 now has 7 explicit checklist items (was 4) covering hash label, parseArgs, xmlEsc.
+   Scope updated to ~50 lines (was ~40).
+
+### Files modified
+- `PHASE-2_jaw_home_dynamic.md`: section 2.1 tilde regex + section 2.2 full parseArgs rewrite
+- `PHASE-4_port_launchd.md`: instanceId hash + parseArgs port + xmlEsc + import lines
+- `ROADMAP_multi_instance.md`: Phase 2.2 snippet parseArgs + Phase 4 scope "~50줄"
+- `PLAN.md`: Phase 2/4 checklists expanded + this R7 review log

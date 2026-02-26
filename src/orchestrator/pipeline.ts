@@ -350,7 +350,7 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
 
     const worklog = createWorklog(prompt);
     broadcast('worklog_created', { path: worklog.path });
-    clearAllEmployeeSessions.run();
+    if (!meta._skipClear) clearAllEmployeeSessions.run();
 
     // 1. 기획 (planning agent가 직접 응답할 수도 있음)
     const { planText, subtasks, directAnswer } = await phasePlan(prompt, worklog, { origin });

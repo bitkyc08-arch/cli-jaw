@@ -21,7 +21,7 @@ export function isContinueIntent(text: string) {
 const RESET_PATTERNS = [
     /^리셋해?$/i,
     /^초기화해?$/i,
-    /^페이즈?스*리셋해?$/i,
+    /^페이즈?\s*리셋해?$/i,
     /^phase\s*reset$/i,
     /^reset$/i,
 ];

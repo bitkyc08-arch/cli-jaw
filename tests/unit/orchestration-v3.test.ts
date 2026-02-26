@@ -112,3 +112,5 @@ test('RS-002: "리셋해" → reset', () => assert.equal(isResetIntent('리셋�
 test('RS-003: "리셋해줘" → NOT reset', () => assert.equal(isResetIntent('리셋해줘'), false));
 test('RS-004: "phase reset" → reset', () => assert.equal(isResetIntent('phase reset'), true));
 test('RS-005: "reset" → reset', () => assert.equal(isResetIntent('reset'), true));
+test('RS-006: "페이즈 리셋" → reset (regex fix)', () => assert.equal(isResetIntent('페이즈 리셋'), true));
+test('RS-007: "페이즈리셋" → reset', () => assert.equal(isResetIntent('페이즈리셋'), true));

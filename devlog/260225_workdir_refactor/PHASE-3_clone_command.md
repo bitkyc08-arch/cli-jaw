@@ -37,7 +37,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ⚠️ R3 FIX: arg parsing must handle `--from <value>` correctly.
 // Old approach: "first non-dash arg = target" fails for `jaw clone --from A B`
 //   because 'A' (the --from value) is a non-dash arg picked as target.
-// New approach: use parseArgs (Node built-in, already used in serve.ts/launchd.ts)
+// New approach: use parseArgs (Node built-in, already used in serve.ts/chat.ts)
 import { parseArgs } from 'node:util';
 
 const { values, positionals } = parseArgs({

@@ -100,6 +100,8 @@ jaw serve --home ~/.jaw-lab
 - `bin/postinstall.ts:28`
 
 모두 `import { JAW_HOME } from '../../src/core/config.js'`로 교체.
+단, `lib/mcp-sync.ts`와 `bin/postinstall.ts`는 `'../src/core/config.js'`로 (깊이가 다름).
+상세 경로는 PHASE-2 문서의 Phase 2.0 테이블 참조.
 
 **Phase 2.1 — env var (config.ts, 3줄):**
 ```typescript
@@ -108,20 +110,29 @@ jaw serve --home ~/.jaw-lab
 export const JAW_HOME = join(os.homedir(), '.cli-jaw');
 // After:
 export const JAW_HOME = process.env.CLI_JAW_HOME
-    ? resolve(process.env.CLI_JAW_HOME.replace(/^~/, os.homedir()))
+    ? resolve(process.env.CLI_JAW_HOME.replace(/^~(?=\/|$)/, os.homedir()))
     : join(os.homedir(), '.cli-jaw');
 ```
 
 **Phase 2.2 — CLI 플래그 (cli-jaw.ts):**
 ```typescript
 // --home 플래그 파싱 → process.env.CLI_JAW_HOME 설정
-// config.ts import 전에 설정해야 함 (모듈 로드 순서 주의)
-const homeIdx = process.argv.indexOf('--home');
-if (homeIdx !== -1 && process.argv[homeIdx + 1]) {
+// ⚠️ const command = process.argv[2] 보다 먼저 실행해야 함!
+// parseArgs로 --home /path 와 --home=/path 모두 대응
+import { parseArgs } from 'node:util';
+const { values: globalOpts, positionals: rawPositionals } = parseArgs({
+    args: process.argv.slice(2),
+    options: { home: { type: 'string' } },
+    strict: false,
+    allowPositionals: true,
+});
+if (globalOpts.home) {
     process.env.CLI_JAW_HOME = path.resolve(
-        process.argv[homeIdx + 1].replace(/^~/, os.homedir())
+        String(globalOpts.home).replace(/^~(?=\/|$)/, os.homedir())
     );
 }
+process.argv = [process.argv[0], process.argv[1], ...rawPositionals];
+// 이 다음에 const command = process.argv[2]; 위치
 ```
 
 **Phase 2 이후:**
@@ -217,7 +228,7 @@ jaw --home ~/.jaw-work launchd unset                 # 해제
 flowchart LR
     P1["Phase 1<br>workingDir → JAW_HOME<br><b>4파일 5줄</b>"] --> P2["Phase 2<br>2.0 JAW_HOME 중앙화 (8파일)<br>2.1-2.2 env var + --home (~10줄)"]
     P2 --> P3["Phase 3<br>jaw clone<br><b>1 새파일 ~120줄</b>"]
-    P2 --> P4["Phase 4<br>포트 분리 + launchd<br><b>2파일 ~30줄</b>"]
+    P2 --> P4["Phase 4<br>포트 분리 + launchd<br><b>4파일 ~50줄</b><br>(launchd+browser+memory+mcp)"]
     P3 --> P99["Phase 99<br>프론트엔드 UI<br><b>먼 미래</b>"]
     P4 --> P99
 ```

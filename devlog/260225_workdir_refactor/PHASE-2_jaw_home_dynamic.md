@@ -71,7 +71,7 @@ Currently these files define `const JAW_HOME = ...` locally instead of importing
 ```diff
 -export const JAW_HOME = join(os.homedir(), '.cli-jaw');
 +export const JAW_HOME = process.env.CLI_JAW_HOME
-+    ? resolve(process.env.CLI_JAW_HOME.replace(/^~/, os.homedir()))
++    ? resolve(process.env.CLI_JAW_HOME.replace(/^~(?=\/|$)/, os.homedir()))
 +    : join(os.homedir(), '.cli-jaw');
 ```
 
@@ -95,14 +95,22 @@ Add `import { resolve } from 'path'` if not already present (`join` is imported,
 +// ─── --home flag: must run BEFORE command parsing + config.ts import ───
 +import { resolve as pathResolve } from 'node:path';
 +import os from 'node:os';
-+const homeIdx = process.argv.indexOf('--home');
-+if (homeIdx !== -1 && process.argv[homeIdx + 1]) {
++import { parseArgs } from 'node:util';
++
++// parseArgs with strict:false — handles both --home /path and --home=/path
++const { values: globalOpts, positionals: rawPositionals } = parseArgs({
++    args: process.argv.slice(2),
++    options: { home: { type: 'string' } },
++    strict: false,
++    allowPositionals: true,
++});
++if (globalOpts.home) {
 +    process.env.CLI_JAW_HOME = pathResolve(
-+        process.argv[homeIdx + 1].replace(/^~/, os.homedir())
++        String(globalOpts.home).replace(/^~(?=\/|$)/, os.homedir())
 +    );
-+    // Remove --home and its value from argv so subcommands don't see it
-+    process.argv.splice(homeIdx, 2);
 +}
++// Rebuild argv without --home so subcommands see clean positionals
++process.argv = [process.argv[0], process.argv[1], ...rawPositionals];
 +
  const command = process.argv[2];  // ← NOW this correctly gets 'doctor', not '--home'
 ```
@@ -121,6 +129,23 @@ jaw --home /path doctor --json
   4. switch('doctor') → import('./commands/doctor.js')
   5. doctor.ts imports config.ts → config.ts reads CLI_JAW_HOME → correct JAW_HOME
 ```
+
+> ⚠️ **REVIEW FIX R6-1 (ESM Hoisting Safety)**:
+> cli-jaw.ts currently only has static imports from Node built-ins (`node:path`, `node:url`, `node:fs`).
+> All subcommand loading uses dynamic `await import()` — so `--home` parsing runs BEFORE any internal
+> module loads. **This is safe as-is — NO wrapper file needed.**
+> **CONSTRAINT**: cli-jaw.ts MUST NEVER add static imports to internal modules (e.g., `config.ts`).
+> If a static import chain reaches `config.ts`, ESM hoisting would freeze `JAW_HOME` before `--home` runs.
+
+> ⚠️ **REVIEW FIX R6-2 (= syntax support)**:
+> `process.argv.indexOf('--home')` does NOT match `--home=/path`. Users familiar with Unix CLI
+> conventions may use `jaw --home=/path doctor`. Consider upgrading to `parseArgs({ strict: false })`
+> for `--home` parsing to handle both `--home /path` and `--home=/path` forms.
+> Verified: `parseArgs` correctly splits `--home=/custom/path` into `values.home = '/custom/path'`.
+
+> ⚠️ **REVIEW FIX R6-3 (tilde regex)**:
+> Regex changed from `/^~/` to `/^~(?=\/|$)/` to prevent `~username/path` from becoming
+> `/Users/junnyusername/path`. New regex only matches `~/...` or standalone `~`.
 
 ### 2.3 Help text update in `bin/cli-jaw.ts`
 

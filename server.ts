@@ -196,9 +196,16 @@ wss.on('connection', (ws) => {
 
                 // Reset intent
                 if (isResetIntent(text)) {
-                    insertMessage.run('user', text, 'cli', '');
-                    broadcast('new_message', { role: 'user', content: text, source: 'cli' });
-                    orchestrateReset({ origin: 'cli' });
+                    if (activeProcess) {
+                        broadcast('agent_done', {
+                            text: t('ws.agentBusy', {}, resolveRequestLocale(null, settings.locale)),
+                            error: true,
+                        });
+                    } else {
+                        insertMessage.run('user', text, 'cli', '');
+                        broadcast('new_message', { role: 'user', content: text, source: 'cli' });
+                        orchestrateReset({ origin: 'cli' });
+                    }
                     return;
                 }
 
@@ -407,6 +414,9 @@ app.post('/api/message', (req, res) => {
 
     // Reset intent
     if (isResetIntent(trimmed)) {
+        if (activeProcess) {
+            return res.status(409).json({ error: 'agent already running' });
+        }
         orchestrateReset({ origin: 'web' });
         return res.json({ ok: true, reset: true });
     }
@@ -430,6 +440,9 @@ app.post('/api/orchestrate/continue', (req, res) => {
 });
 
 app.post('/api/orchestrate/reset', (req, res) => {
+    if (activeProcess) {
+        return res.status(409).json({ error: 'agent already running' });
+    }
     orchestrateReset({ origin: 'web' });
     res.json({ ok: true });
 });
