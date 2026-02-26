@@ -6,7 +6,7 @@
 
 *Claude, Codex, Gemini... 이제 번갈아 쓰지 마세요.*
 
-[![Tests](https://img.shields.io/badge/tests-360%20pass-brightgreen)](#-테스트)
+[![Tests](https://img.shields.io/badge/tests-373%20pass-brightgreen)](#-테스트)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -84,7 +84,7 @@ CLI-JAW는 내 컴퓨터에 상주하며 이미 익숙한 인터페이스인 **�
 > 💬 *"이 모듈 리팩토링하고 테스트도 짜줘"* → 서브에이전트가 알아서, 커피 한 잔 하고 오면 돼요  
 > 💬 *"저 PDF 다운받아서 핵심만 노션에 정리해"* → 브라우저 + 노션 스킬 조합으로 뚝딱
 
-단일 모델만을 사용하는 기존 비서들과 달리, CLI-JAW는 5개의 AI 엔진(Claude, Codex, Gemini, OpenCode, Copilot)을 공식 CLI를 통해 오케스트레이션하여 모든 제공업체의 장점을 통합된 경험으로 제공합니다. 하나의 엔진 사용량이 초과되면 자동으로 다음 엔진으로 전환됩니다. 105개의 내장 스킬이 브라우저 자동화부터 문서 생성까지 모든 것을 처리합니다.
+단일 모델만을 사용하는 기존 비서들과 달리, CLI-JAW는 5개의 AI 엔진(Claude, Codex, Gemini, OpenCode, Copilot)을 공식 CLI를 통해 오케스트레이션하여 모든 제공업체의 장점을 통합된 경험으로 제공합니다. 하나의 엔진 사용량이 초과되면 자동으로 다음 엔진으로 전환됩니다. 107개의 내장 스킬이 브라우저 자동화부터 문서 생성까지 모든 것을 처리합니다.
 
 |                                         | 왜 CLI-JAW인가요?                                                                                     |
 | --------------------------------------- | ----------------------------------------------------------------------------------------------------- |
@@ -92,7 +92,7 @@ CLI-JAW는 내 컴퓨터에 상주하며 이미 익숙한 인터페이스인 **�
 | 🤖 **검증된 에이전트 도구**              | 실전에서 검증된 5개의 코딩 에이전트(Claude, Codex, Gemini, OpenCode, Copilot)를 한 곳에서 사용하세요. |
 | ⚡ **멀티 에이전트 자동 전환(Fallback)** | 엔진 하나가 멈춰도 걱정 없습니다. 다음 엔진이 즉시 이어받아 중단 없는 작업이 가능합니다.              |
 | 🎭 **오케스트레이션 기반 성능 극대화**   | 복잡한 작업은 전문화된 서브 에이전트에게 분산시켜 처리량을 극대화합니다.                              |
-| 📦 **105개의 내장 스킬**                 | 브라우저 자동화, 문서 생성, 텔레그램 연동, 영구 메모리 등 설치 즉시 사용 가능한 기능들을 제공합니다.  |
+| 📦 **107개의 내장 스킬**                 | 브라우저 자동화, 문서 생성, 텔레그램 연동, 영구 메모리 등 설치 즉시 사용 가능한 기능들을 제공합니다.  |
 | 🖥️ **크로스 플랫폼**                     | macOS, Linux, Windows (WSL) — 브라우저 실행, CLI 감지, 설치 모두 네이티브 지원.               |
 
 ![CLI-JAW 터미널](docs/screenshots/terminal-cli.png)
@@ -119,7 +119,7 @@ graph LR
 - 🤖 **5개의 AI 엔진, 1명의 비서** — Claude · Codex · Gemini · OpenCode · Copilot. `/cli` 명령어로 전환하세요.
 - ⚡ **자동 전환(Fallback)** — 엔진 하나가 다운되면 다음 엔진이 매끄럽게 이어받습니다.
 - 🎭 **멀티 에이전트 오케스트레이션** — 복잡한 작업은 전문화된 서브 에이전트들에게 자동으로 분산됩니다.
-- 📦 **105개의 스킬** — 브라우저 제어, 파일 편집, 이미지 생성, 웹 검색 외 [다양한 기능](#-스킬-시스템).
+- 📦 **107개의 스킬** — 브라우저 제어, 파일 편집, 이미지 생성, 웹 검색 외 [다양한 기능](#-스킬-시스템).
 - 🧠 **영구 메모리** — 세션을 넘나들며 과거의 대화와 사용자 선호도를 기억합니다.
 - 📱 **텔레그램 봇** — 휴대폰으로 비서와 채팅하고, 음성/사진/파일을 전송하세요.
 - 🌐 **브라우저 자동화** — 비서가 알아서 웹을 탐색하고, 클릭하고, 타이핑하고, 스크린샷을 찍을 수 있습니다.
@@ -142,7 +142,7 @@ jaw launchd      # 부팅 시 자동 실행 (macOS)
 
 ## 📦 스킬 시스템
 
-**105개 스킬** 내장 — 브라우저, GitHub, 노션, 텔레그램, 메모리, PDF, 이미지 생성 등 [다양하게](#).
+**107개 스킬** 내장 — 브라우저, GitHub, 노션, 텔레그램, 메모리, PDF, 이미지 생성 등 [다양하게](#).
 
 <details>
 <summary>전체 스킬 목록 보기</summary>
@@ -150,7 +150,7 @@ jaw launchd      # 부팅 시 자동 실행 (macOS)
 | 티어               | 수량  | 작동 방식                                        |
 | ------------------ | :---: | ------------------------------------------------ |
 | **Active 스킬**    |  17   | 매번 AI한테 자동으로 주입돼요. 항상 켜져 있어요. |
-| **Reference 스킬** |  89   | 관련 작업을 시키면 그때 AI가 읽어서 써요.        |
+| **Reference 스킬** |  90   | 관련 작업을 시키면 그때 AI가 읽어서 써요.        |
 
 #### Active 스킬 (항상 켜짐)
 
@@ -170,7 +170,7 @@ jaw launchd      # 부팅 시 자동 실행 (macOS)
 
 #### Reference 스킬 (필요할 때만)
 
-89개 스킬이 더 있어요 — spotify, 날씨, 딥리서치, TTS, 비디오 다운로드, Apple 미리알림, 1Password, Terraform, PostgreSQL, Jupyter 등.
+90개 스킬이 더 있어요 — spotify, 날씨, 딥리서치, TTS, 비디오 다운로드, Apple 미리알림, 1Password, Terraform, PostgreSQL, Jupyter 등.
 
 ```bash
 jaw skill install <name>    # reference → active로 영구 활성화
@@ -355,7 +355,7 @@ src/
 ## 🧪 테스트
 
 <details>
-<summary>360 pass · 1 skipped · 외부 의존성 0</summary>
+<summary>373 pass · 1 skipped · 외부 의존성 0</summary>
 
 ```bash
 npm test

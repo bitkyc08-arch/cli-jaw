@@ -6,7 +6,7 @@
 
 *Claude、Codex、Gemini... 从此告别来回切换。*
 
-[![Tests](https://img.shields.io/badge/tests-360%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-373%20pass-brightgreen)](#-测试)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -84,7 +84,7 @@ CLI-JAW 是驻留在您本地机器上的**专属 AI 助手**，并在您熟悉�
 > 💬 *"重构这个模块，顺便写好测试"* → 子 Agent 搞定，你喝杯咖啡回来就行  
 > 💬 *"把那个 PDF 下载下来，关键信息放到 Notion 里"* → 浏览器 + Notion 技能组合，搞定
 
-与单一模型的助手不同，CLI-JAW 通过官方 CLI 命令行工具对 **5 大 AI 引擎**（Claude、Codex、Gemini、OpenCode、Copilot）进行编排 — 为您提供各大供应商最优势的能力及统一的体验。当一个引擎处于繁忙状态时，它会自动无缝切换至下一个。105 个内置技能可处理从浏览器自动化到文档生成的所有事务。
+与单一模型的助手不同，CLI-JAW 通过官方 CLI 命令行工具对 **5 大 AI 引擎**（Claude、Codex、Gemini、OpenCode、Copilot）进行编排 — 为您提供各大供应商最优势的能力及统一的体验。当一个引擎处于繁忙状态时，它会自动无缝切换至下一个。107 个内置技能可处理从浏览器自动化到文档生成的所有事务。
 
 |                                 | 为什么选择 CLI-JAW？                                                       |
 | ------------------------------- | -------------------------------------------------------------------------- |
@@ -92,7 +92,7 @@ CLI-JAW 是驻留在您本地机器上的**专属 AI 助手**，并在您熟悉�
 | 🤖 **经过验证的智能体工具**      | 5 大实战级编码智能体（Claude、Codex、Gemini、OpenCode、Copilot）集于一身。 |
 | ⚡ **多模型自动回退 (Fallback)** | 单一引擎发生故障？下一个立即接管。确保零停机。                             |
 | 🎭 **基于编排的性能优化**        | 复杂的任务会被拆分给专业的子智能体，以实现效率最大化。                     |
-| 📦 **105 个内置技能**            | 浏览器自动化、文档生成、Telegram 通知、持久化记忆 — 开箱即用。             |
+| 📦 **107 个内置技能**            | 浏览器自动化、文档生成、Telegram 通知、持久化记忆 — 开箱即用。             |
 | 🖥️ **跨平台支持**               | macOS、Linux、Windows (WSL) — 浏览器启动、CLI 检测、安装均原生支持。        |
 
 ![CLI-JAW 终端](docs/screenshots/terminal-cli.png)
@@ -119,7 +119,7 @@ graph LR
 - 🤖 **5 大 AI 引擎，1 个专属助手** — Claude · Codex · Gemini · OpenCode · Copilot。使用 `/cli` 命令一键切换。
 - ⚡ **自动回退 (Fallback)** — 即使一个引擎出现故障，下一个也会无缝接管。
 - 🎭 **多智能体编排** — 复杂任务会自动拆分给专业的子智能体并行处理。
-- 📦 **105 个技能** — 浏览器控制、文件编辑、图片生成、网页搜索以及[更多功能](#-技能系统)。
+- 📦 **107 个技能** — 浏览器控制、文件编辑、图片生成、网页搜索以及[更多功能](#-技能系统)。
 - 🧠 **持久化记忆** — 跨越不同会话，记住您过往的对话和偏好设定。
 - 📱 **Telegram 机器人** — 通过手机即可与您的助手聊天、发送语音/图片/文件。
 - 🌐 **浏览器自动化** — 您的助手能够自动导航网页、点击、打字并进行截图。
@@ -142,7 +142,7 @@ jaw launchd      # 开机自动启动 (macOS)
 
 ## 📦 技能系统
 
-**105 个技能**开箱即用 — 浏览器、GitHub、Notion、Telegram、记忆、PDF、图片生成等[应有尽有](#)。
+**107 个技能**开箱即用 — 浏览器、GitHub、Notion、Telegram、记忆、PDF、图片生成等[应有尽有](#)。
 
 <details>
 <summary>查看全部技能</summary>
@@ -150,7 +150,7 @@ jaw launchd      # 开机自动启动 (macOS)
 | 层级         | 数量  | 工作方式                           |
 | ------------ | :---: | ---------------------------------- |
 | **活跃技能** |  17   | 每次对话自动加载，随时可用。       |
-| **参考技能** |  89   | 用到的时候 AI 自己去读，按需调用。 |
+| **参考技能** |  90   | 用到的时候 AI 自己去读，按需调用。 |
 
 #### 活跃技能（常驻）
 
@@ -170,7 +170,7 @@ jaw launchd      # 开机自动启动 (macOS)
 
 #### 参考技能（按需调用）
 
-84 个技能随时待命 — Spotify、天气、深度研究、TTS、视频下载、Apple 提醒事项、1Password、Terraform、PostgreSQL、Jupyter 等。
+90 个技能随时待命 — Spotify、天气、深度研究、TTS、视频下载、Apple 提醒事项、1Password、Terraform、PostgreSQL、Jupyter 等。
 
 ```bash
 jaw skill install <name>    # 参考 → 活跃，永久激活
@@ -355,7 +355,7 @@ src/
 ## 🧪 测试
 
 <details>
-<summary>360 pass · 1 skipped · 零外部依赖</summary>
+<summary>373 pass · 1 skipped · 零外部依赖</summary>
 
 ```bash
 npm test

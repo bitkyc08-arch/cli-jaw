@@ -22,7 +22,7 @@ lidge-jun/cli-jaw              ← this repo (public)
 
 | Submodule | Repo | Visibility | 용도 |
 |-----------|------|:---:|------|
-| `skills_ref/` | [cli-jaw-skills](https://github.com/lidge-jun/cli-jaw-skills) | public | 105 bundled skills |
+| `skills_ref/` | [cli-jaw-skills](https://github.com/lidge-jun/cli-jaw-skills) | public | 107 bundled skills |
 | `devlog/` | cli-jaw-internal | **private** | Internal devlog & planning |
 
 > **devlog 접근이 필요한 경우**: [Issue를 열어](https://github.com/lidge-jun/cli-jaw/issues) collaborator 권한을 요청하세요.  
