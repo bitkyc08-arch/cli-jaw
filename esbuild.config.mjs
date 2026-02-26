@@ -5,7 +5,7 @@ const isWatch = process.argv.includes('--watch');
 
 /** @type {import('esbuild').BuildOptions} */
 const config = {
-  entryPoints: ['public/js/main.js'],
+  entryPoints: ['public/js/main.ts'],
   bundle: true,
   outfile: 'public/dist/bundle.js',
   format: 'esm',
