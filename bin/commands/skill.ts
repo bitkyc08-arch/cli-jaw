@@ -93,18 +93,21 @@ const arg = process.argv[4];
 
 switch (sub) {
     case 'install': {
-        if (!arg) {
+        const force = process.argv.includes('--force');
+        if (!arg || arg === '--force') {
             console.log(`\n  Usage: cli-jaw skill install <name>\n`);
-            console.log(`  Examples:`);
-            console.log(`    cli-jaw skill install playwright`);
-            console.log(`    cli-jaw skill install doc\n`);
+            console.log(`  Options:`);
+            console.log(`    --force    Overwrite existing skill\n`);
             process.exit(1);
         }
 
         const dst = join(SKILLS_DIR, arg);
-        if (existsSync(dst)) {
-            console.log(`\n  ${c.yellow}⏭️  "${arg}" already installed${c.reset}\n`);
+        if (existsSync(dst) && !force) {
+            console.log(`\n  ${c.yellow}⏭️  "${arg}" already installed (use --force to upgrade)${c.reset}\n`);
             break;
+        }
+        if (force && existsSync(dst)) {
+            rmSync(dst, { recursive: true, force: true });
         }
 
         console.log(`\n  ${c.bold}Installing skill: ${arg}${c.reset}\n`);

@@ -1,5 +1,6 @@
 import fs from 'fs';
 import os from 'os';
+import { createHash } from 'crypto';
 import { join } from 'path';
 import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile } from '../core/config.js';
 import { getSession, getEmployees } from '../core/db.js';
@@ -225,7 +226,33 @@ export const HEARTBEAT_PATH = join(PROMPTS_DIR, 'HEARTBEAT.md');
 // ─── Initialize prompt files ─────────────────────────
 
 export function initPromptFiles() {
-    if (!fs.existsSync(A1_PATH)) fs.writeFileSync(A1_PATH, A1_CONTENT);
+    const hashPath = A1_PATH + '.hash';
+    const currentHash = createHash('md5').update(A1_CONTENT).digest('hex');
+
+    if (!fs.existsSync(A1_PATH)) {
+        // First install
+        fs.writeFileSync(A1_PATH, A1_CONTENT);
+        fs.writeFileSync(hashPath, currentHash);
+    } else if (fs.existsSync(hashPath)) {
+        const savedHash = fs.readFileSync(hashPath, 'utf8').trim();
+        if (savedHash !== currentHash) {
+            // Template changed — check if user edited the file
+            const fileHash = createHash('md5').update(fs.readFileSync(A1_PATH, 'utf8')).digest('hex');
+            if (fileHash === savedHash) {
+                // User hasn't edited → safe to update
+                fs.writeFileSync(A1_PATH, A1_CONTENT);
+                fs.writeFileSync(hashPath, currentHash);
+                console.log('[prompt] A-1.md updated to new version');
+            } else {
+                console.log('[prompt] A-1.md has user edits — preserved');
+            }
+        }
+    } else {
+        // Pre-hash migration: write hash of current file so next update can detect edits
+        const fileHash = createHash('md5').update(fs.readFileSync(A1_PATH, 'utf8')).digest('hex');
+        fs.writeFileSync(hashPath, fileHash);
+    }
+
     if (!fs.existsSync(A2_PATH)) fs.writeFileSync(A2_PATH, A2_DEFAULT);
     if (!fs.existsSync(HEARTBEAT_PATH)) fs.writeFileSync(HEARTBEAT_PATH, HEARTBEAT_DEFAULT);
 }

@@ -511,6 +511,28 @@ export function initMcpConfig(workingDir: string) {
     return config;
 }
 
+// ─── Version helpers ────────────────────────────────
+
+function semverGt(a: string, b: string): boolean {
+    const pa = a.split('.').map(Number);
+    const pb = b.split('.').map(Number);
+    for (let i = 0; i < 3; i++) {
+        if ((pa[i] ?? 0) > (pb[i] ?? 0)) return true;
+        if ((pa[i] ?? 0) < (pb[i] ?? 0)) return false;
+    }
+    return false;
+}
+
+function loadRegistry(dir: string): Record<string, any> {
+    try {
+        return JSON.parse(fs.readFileSync(join(dir, 'registry.json'), 'utf8'));
+    } catch { return { skills: {} }; }
+}
+
+function getSkillVersion(id: string, registry: any): string | null {
+    return registry?.skills?.[id]?.version ?? null;
+}
+
 // ─── Skills: copy defaults ─────────────────────────
 
 /**
@@ -597,49 +619,80 @@ export function copyDefaultSkills() {
     const SKILLS_REPO = 'https://github.com/lidge-jun/cli-jaw-skills.git';
 
     if (fs.existsSync(packageRefDir)) {
-        // Dev / local: copy from bundled skills_ref/
+        // Dev / local: copy from bundled skills_ref/ (version-aware)
+        const srcReg = loadRegistry(packageRefDir);
+        const dstReg = loadRegistry(refDir);
         const entries = fs.readdirSync(packageRefDir, { withFileTypes: true });
-        let refCopied = 0;
+        let refCopied = 0, refUpdated = 0;
         for (const entry of entries) {
             const src = join(packageRefDir, entry.name);
             const dst = join(refDir, entry.name);
-            if (entry.isDirectory() && !fs.existsSync(dst)) {
-                copyDirRecursive(src, dst);
-                refCopied++;
+            if (entry.isDirectory()) {
+                if (!fs.existsSync(dst)) {
+                    copyDirRecursive(src, dst);
+                    refCopied++;
+                } else {
+                    const sv = getSkillVersion(entry.name, srcReg);
+                    const dv = getSkillVersion(entry.name, dstReg);
+                    // Migration: dv===null means pre-version install → always update
+                    if (sv && (!dv || semverGt(sv, dv))) {
+                        fs.rmSync(dst, { recursive: true, force: true });
+                        copyDirRecursive(src, dst);
+                        refUpdated++;
+                        console.log(`[skills] updated: ${entry.name} ${dv ?? '(none)'} → ${sv}`);
+                    }
+                }
             } else if (entry.isFile()) {
                 fs.copyFileSync(src, dst);
             }
         }
-        if (refCopied > 0) console.log(`[skills] Bundled: ${refCopied} skills → ref`);
-    } else if (!fs.existsSync(join(refDir, 'registry.json'))) {
-        // npm install (no bundled dir) + first time (no existing ref)
-        // → clone from GitHub
+        if (refCopied > 0) console.log(`[skills] Bundled: ${refCopied} new skills → ref`);
+        if (refUpdated > 0) console.log(`[skills] Bundled: ${refUpdated} skills updated`);
+    } else {
+        // npm install (no bundled dir) → clone or update from GitHub
+        const needsClone = !fs.existsSync(join(refDir, 'registry.json'));
         try {
-            // execSync imported at top of file
-            console.log(`[skills] cloning skills from ${SKILLS_REPO}...`);
-            // Clone into a temp dir, then move contents to refDir (which already exists)
+            console.log(`[skills] ${needsClone ? 'cloning' : 'updating'} skills from ${SKILLS_REPO}...`);
             const tmpClone = join(JAW_HOME, '.skills_clone_tmp');
             if (fs.existsSync(tmpClone)) fs.rmSync(tmpClone, { recursive: true });
             execSync(`git clone --depth 1 ${SKILLS_REPO} "${tmpClone}"`, {
                 stdio: 'pipe', timeout: 120000,
             });
-            // Move contents (skip .git)
+            // Version-aware merge (same logic as bundled path)
+            const srcReg = loadRegistry(tmpClone);
+            const dstReg = loadRegistry(refDir);
             const cloned = fs.readdirSync(tmpClone, { withFileTypes: true });
+            let cloneNew = 0, cloneUpdated = 0;
             for (const entry of cloned) {
                 if (entry.name === '.git') continue;
                 const src = join(tmpClone, entry.name);
                 const dst = join(refDir, entry.name);
-                if (entry.isDirectory() && !fs.existsSync(dst)) {
-                    copyDirRecursive(src, dst);
+                if (entry.isDirectory()) {
+                    if (!fs.existsSync(dst)) {
+                        copyDirRecursive(src, dst);
+                        cloneNew++;
+                    } else {
+                        const sv = getSkillVersion(entry.name, srcReg);
+                        const dv = getSkillVersion(entry.name, dstReg);
+                        if (sv && (!dv || semverGt(sv, dv))) {
+                            fs.rmSync(dst, { recursive: true, force: true });
+                            copyDirRecursive(src, dst);
+                            cloneUpdated++;
+                            console.log(`[skills] updated: ${entry.name} ${dv ?? '(none)'} → ${sv}`);
+                        }
+                    }
                 } else if (entry.isFile()) {
                     fs.copyFileSync(src, dst);
                 }
             }
             fs.rmSync(tmpClone, { recursive: true, force: true });
-            console.log(`[skills] ✅ cloned skills to ${refDir}`);
+            console.log(`[skills] ✅ ${cloneNew} new, ${cloneUpdated} updated → ${refDir}`);
         } catch (e) {
-            console.warn(`[skills] ⚠️ clone failed: ${(e as Error).message?.slice(0, 80)}`);
-            console.warn(`[skills] offline mode — skills will be available after 'jaw init'`);
+            if (needsClone) {
+                console.warn(`[skills] ⚠️ clone failed: ${(e as Error).message?.slice(0, 80)}`);
+                console.warn(`[skills] offline mode — skills will be available after 'jaw init'`);
+            }
+            // Update failure on existing install → silent (don't alarm user)
         }
     }
 
@@ -661,14 +714,27 @@ export function copyDefaultSkills() {
     for (const id of AUTO_ACTIVATE) {
         const src = join(refDir, id);
         const dst = join(activeDir, id);
-        if (fs.existsSync(src) && !fs.existsSync(dst)) {
+        if (!fs.existsSync(src)) continue;
+        if (!fs.existsSync(dst)) {
             copyDirRecursive(src, dst);
             copied++;
             autoCount++;
             console.log(`[skills] auto-activated: ${id}`);
+        } else {
+            // Sync active copy if ref was updated (mtime-based)
+            try {
+                const srcMtime = fs.statSync(join(src, 'SKILL.md')).mtimeMs;
+                const dstMtime = fs.statSync(join(dst, 'SKILL.md')).mtimeMs;
+                if (srcMtime > dstMtime) {
+                    fs.rmSync(dst, { recursive: true, force: true });
+                    copyDirRecursive(src, dst);
+                    autoCount++;
+                    console.log(`[skills] active synced: ${id}`);
+                }
+            } catch { /* SKILL.md missing in one side — skip */ }
         }
     }
-    if (autoCount > 0) console.log(`[skills] Total auto-activated: ${autoCount}`);
+    if (autoCount > 0) console.log(`[skills] Total auto-activated/synced: ${autoCount}`);
 
     return copied;
 }

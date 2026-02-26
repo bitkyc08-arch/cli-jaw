@@ -670,11 +670,7 @@ app.post('/api/skills/enable', (req, res) => {
         const dstPath = join(dstDir, 'SKILL.md');
         if (fs.existsSync(dstPath)) return res.json({ ok: true, msg: 'already enabled' });
         if (!fs.existsSync(refPath)) return res.status(404).json({ error: 'skill not found in ref' });
-        fs.mkdirSync(dstDir, { recursive: true });
-        const refDir = join(SKILLS_REF_DIR, id);
-        for (const f of fs.readdirSync(refDir)) {
-            fs.copyFileSync(join(refDir, f), join(dstDir, f));
-        }
+        fs.cpSync(join(SKILLS_REF_DIR, id), dstDir, { recursive: true });
         regenerateB();
         res.json({ ok: true });
     } catch (e: unknown) {
@@ -711,6 +707,11 @@ app.get('/api/skills/:id', (req, res) => {
 // ─── Skills Reset API ────────────────────────────────
 app.post('/api/skills/reset', (req, res) => {
     try {
+        // Clear before recopy (parity with CLI skill reset)
+        if (fs.existsSync(SKILLS_DIR)) fs.rmSync(SKILLS_DIR, { recursive: true, force: true });
+        if (fs.existsSync(SKILLS_REF_DIR)) fs.rmSync(SKILLS_REF_DIR, { recursive: true, force: true });
+        fs.mkdirSync(SKILLS_DIR, { recursive: true });
+        fs.mkdirSync(SKILLS_REF_DIR, { recursive: true });
         copyDefaultSkills();
         const symlinks = ensureSkillsSymlinks(settings.workingDir, { onConflict: 'backup' });
         regenerateB();
