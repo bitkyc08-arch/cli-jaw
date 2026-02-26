@@ -33,6 +33,6 @@ test('P31-003: workingDir change triggers artifact regeneration pipeline', () =>
     assert.ok(fn.includes('if (settings.workingDir !== prevWorkingDir)'));
     assert.ok(fn.includes('initMcpConfig(settings.workingDir)'));
     assert.ok(fn.includes('ensureSkillsSymlinks(settings.workingDir'));
-    assert.ok(fn.includes('syncToAll(loadUnifiedMcp(), settings.workingDir)'));
+    assert.ok(fn.includes('syncToAll(loadUnifiedMcp())'));
     assert.ok(fn.includes('regenerateB()'));
 });

@@ -92,9 +92,9 @@ test('P23-002: init.ts workingDir default uses JAW_HOME, not hardcoded path', ()
 
 test('P23-003: mcp.ts fallback uses JAW_HOME, not homedir()', () => {
     const src = readFileSync(join(projectRoot, 'bin/commands/mcp.ts'), 'utf8');
-    const fn = src.slice(src.indexOf('function getWorkingDir'), src.indexOf('function getWorkingDir') + 200);
-    assert.ok(!fn.includes('homedir()'), 'getWorkingDir fallback should NOT use homedir()');
-    assert.ok(fn.includes('JAW_HOME'), 'getWorkingDir fallback should use JAW_HOME');
+    // getWorkingDir was inlined into the reset case — verify the inlined fallback uses JAW_HOME
+    assert.ok(!src.includes('function getWorkingDir'), 'getWorkingDir should be removed (inlined)');
+    assert.ok(src.includes('catch { workingDir = JAW_HOME; }'), 'inlined fallback should use JAW_HOME');
 });
 
 test('P23-004: --home with subcommand as value produces error', () => {

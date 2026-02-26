@@ -44,3 +44,24 @@ test('RH-005: employee-session-reuse.test.ts exists in tests/unit', () => {
         'should be moved to tests/unit',
     );
 });
+
+// ── RH-006: stale legacy dist artifact is excluded from npm package ──
+
+test('RH-006: .npmignore excludes dist/bin/cli-claw.js', () => {
+    const npmignore = fs.readFileSync(join(root, '.npmignore'), 'utf8');
+    assert.ok(
+        npmignore.includes('dist/bin/cli-claw.js'),
+        '.npmignore should exclude stale legacy dist/bin/cli-claw.js',
+    );
+    assert.ok(
+        npmignore.includes('dist/bin/cli-claw.js.map'),
+        '.npmignore should exclude stale legacy dist/bin/cli-claw.js.map',
+    );
+});
+
+// ── RH-007: build script cleans dist before tsc ──
+
+test('RH-007: package build runs clean:dist before tsc', () => {
+    const pkg = JSON.parse(fs.readFileSync(join(root, 'package.json'), 'utf8'));
+    assert.equal(pkg.scripts?.build, 'npm run clean:dist && tsc');
+});
