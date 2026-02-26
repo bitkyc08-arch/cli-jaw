@@ -6,7 +6,7 @@
 
 *One assistant. Five brains. Always on.*
 
-[![Tests](https://img.shields.io/badge/tests-306%20pass-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-313%20pass-brightgreen)](#-tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -20,7 +20,62 @@
 
 ---
 
-> ⚠️ **Installation Notice:** `npm install -g cli-jaw` runs a postinstall script that may modify your globally installed CLI skill directories (`~/.agents/skills/`, `~/.claude/skills/`), custom instructions (`~/AGENTS.md` → `~/CLAUDE.md` symlink), and MCP config (`~/.cli-jaw/mcp.json` → syncs to Claude/Codex/Gemini/OpenCode/Copilot). Existing configs are preserved and merged, not overwritten.
+## 🚀 Install & Run (30 seconds)
+
+```bash
+npm install -g cli-jaw
+jaw serve
+```
+
+**That's it.** Open **http://localhost:3457** and start chatting. 🦈
+
+> Requires **Node.js ≥ 22** ([download](https://nodejs.org)) and **at least 1 AI CLI** authenticated below.
+
+---
+
+## 🔑 Authenticate Your AI Engines
+
+You only need **one** — pick whichever you have:
+
+```bash
+# ── Free options ──
+gh auth login                # GitHub Copilot (free tier) — then run: gh copilot --help
+opencode                     # OpenCode — auto-auth on first run (free models available)
+
+# ── Paid options ──
+claude auth                  # Anthropic Claude
+codex login                  # OpenAI Codex
+gemini                       # Google Gemini — first run triggers auth
+```
+
+Check what's ready: `jaw doctor`
+
+<details>
+<summary>📋 Example <code>jaw doctor</code> output</summary>
+
+```
+🦈 CLI-JAW Doctor — 12 checks
+
+ ✅ Node.js        v22.15.0
+ ✅ npm             v10.9.4
+ ✅ Claude CLI      installed
+ ✅ Codex CLI       installed
+ ⚠️ Gemini CLI      not found (optional)
+ ✅ OpenCode CLI    installed
+ ✅ Copilot CLI     installed
+ ✅ Database        jaw.db OK
+ ✅ Skills          17 active, 90 reference
+ ✅ MCP             3 servers configured
+ ✅ Memory          MEMORY.md exists
+ ✅ Server          port 3457 available
+```
+
+</details>
+
+> 💡 **You don't need all 5.** Even one CLI is enough. Your assistant auto-detects which engines are available and falls back gracefully.
+
+---
+
 
 ## What is CLI-JAW?
 
@@ -30,7 +85,7 @@ CLI-JAW is a **personal AI assistant** that lives on your machine and works from
 > 💬 *"Refactor this module and write tests"* → sub-agents handle it while you grab coffee  
 > 💬 *"Download that PDF and put the key points in Notion"* → browser + Notion skill, done
 
-Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. 122 built-in skills handle everything from browser automation to document generation.
+Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. 101 built-in skills handle everything from browser automation to document generation.
 
 |                                | Why CLI-JAW?                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------- |
@@ -38,7 +93,7 @@ Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, C
 | 🤖 **Verified Agent Tools**     | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof.    |
 | ⚡ **Multi-Agent Fallback**     | One engine down? The next picks up automatically. Zero downtime.                            |
 | 🎭 **Orchestrated Performance** | Complex tasks split across specialized sub-agents for maximum throughput.                   |
-| 📦 **122 Built-in Skills**      | Browser automation, document generation, Telegram, memory — ready out of the box.           |
+| 📦 **101 Built-in Skills**      | Browser automation, document generation, Telegram, memory — ready out of the box.           |
 | 🖥️ **Cross-Platform**           | macOS, Linux, Windows (WSL) — browser launch, CLI detection, and install all work natively. |
 
 ![CLI-JAW Terminal](docs/screenshots/terminal-cli.png)
@@ -65,7 +120,7 @@ graph LR
 - 🤖 **5 AI engines, 1 assistant** — Claude · Codex · Gemini · OpenCode · Copilot. Switch with `/cli`.
 - ⚡ **Auto fallback** — If one engine is down, the next picks up seamlessly.
 - 🎭 **Multi-agent orchestration** — Complex tasks get split across specialized sub-agents automatically.
-- 📦 **122 skills** — Browser control, file editing, image generation, web search, and [much more](#-skill-system).
+- 📦 **101 skills** — Browser control, file editing, image generation, web search, and [much more](#-skill-system).
 - 🧠 **Persistent memory** — Your assistant remembers past conversations and preferences across sessions.
 - 📱 **Telegram bot** — Chat with your assistant from your phone, send voice/photos/files.
 - 🌐 **Browser automation** — Your assistant can navigate the web, click, type, and screenshot.
@@ -73,81 +128,12 @@ graph LR
 - 🔍 **Web search** — Real-time information via MCP tools.
 - ⏰ **Heartbeat jobs** — Schedule recurring tasks that run automatically.
 
----
-
-## Quick Start
-
-### Prerequisites
-
-| Requirement           | Why                                     |
-| --------------------- | --------------------------------------- |
-| **Node.js ≥ 22**      | Runtime. [Download](https://nodejs.org) |
-| **At least 1 AI CLI** | The engine that powers your assistant   |
-
-> 🆓 **Free options:** [Copilot CLI](https://docs.github.com/en/copilot) (GitHub free tier) and [OpenCode](https://opencode.ai) have free models — no credit card needed.
-
-### Install
-
-```bash
-# 1. Install globally
-npm install -g cli-jaw
-
-# 2. Run setup wizard (creates config, installs skills)
-jaw init
-
-# 3. Health check — see what's ready
-jaw doctor
-```
-
-<details>
-<summary>📋 Example <code>jaw doctor</code> output</summary>
-
-```
-🦈 CLI-JAW Doctor — 12 checks
-
- ✅ Node.js        v22.15.0
- ✅ npm             v10.9.4
- ✅ Claude CLI      installed
- ✅ Codex CLI       installed
- ⚠️ Gemini CLI      not found (optional)
- ✅ OpenCode CLI    installed
- ✅ Copilot CLI     installed
- ✅ Database        jaw.db OK
- ✅ Skills          17 active, 90 reference
- ✅ MCP             3 servers configured
- ✅ Memory          MEMORY.md exists
- ✅ Server          port 3457 available
-```
-
-</details>
-
-### Authenticate your AI engines
-
-```bash
-# Pick whichever you have — even 1 is enough
-claude auth          # Anthropic  (paid)
-codex login          # OpenAI     (paid)
-gemini               # Google     (first run triggers auth)
-# OpenCode            # auto-auth on first run
-# Copilot             # uses GitHub login (free tier available)
-```
-
-### Launch
-
-```bash
-jaw serve        # Web UI → http://localhost:3457
-jaw launchd      # Auto-start on boot (macOS)
-# — or —
-jaw chat         # Terminal TUI (no browser needed)
-```
-
-> 💡 **You don't need all 5.** Even one CLI is enough to start. Your assistant auto-detects which engines are available and falls back gracefully.
 
 ---
 
 ## 📦 Skill System
 
-**122 skills** out of the box — browser, github, notion, telegram, memory, pdf, image generation, and [much more](#).
+**101 skills** out of the box — browser, github, notion, telegram, memory, pdf, image generation, and [much more](#).
 
 <details>
 <summary>View all skills</summary>
@@ -155,7 +141,7 @@ jaw chat         # Terminal TUI (no browser needed)
 | Tier                 | Count | How it works                                              |
 | -------------------- | :---: | --------------------------------------------------------- |
 | **Active Skills**    |  17   | Auto-injected into every AI prompt. Always available.     |
-| **Reference Skills** |  105  | AI reads them on-demand when you ask for a relevant task. |
+| **Reference Skills** |  84   | AI reads them on-demand when you ask for a relevant task. |
 
 #### Active Skills (always on)
 
@@ -175,7 +161,7 @@ jaw chat         # Terminal TUI (no browser needed)
 
 #### Reference Skills (on-demand)
 
-88+ more skills ready to use — spotify, weather, deep-research, tts, video-downloader, apple-reminders, 1password, terraform, postgres, jupyter-notebook, sentry, whatsapp, and more.
+84 more skills ready to use — spotify, weather, deep-research, tts, video-downloader, apple-reminders, 1password, terraform, postgres, jupyter-notebook, sentry, whatsapp, and more.
 
 ```bash
 jaw skill install <name>    # Activate a reference skill permanently
@@ -391,7 +377,7 @@ src/
 ## 🧪 Tests
 
 <details>
-<summary>306 pass · 1 skipped · zero external dependencies</summary>
+<summary>313 pass · 1 skipped · zero external dependencies</summary>
 
 ```bash
 npm test
