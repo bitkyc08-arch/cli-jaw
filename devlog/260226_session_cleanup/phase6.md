@@ -58,11 +58,10 @@ Phase 1-5 구현 완료 후 직원 리뷰에서 발견된 3건의 실제 버그 
 |----|--------|------|
 | RS-006 | "페이즈 리셋" → reset (regex fix 검증) | unit |
 | RS-007 | "페이즈리셋" → reset | unit |
-| SK-001 | `_skipClear: true` + L353 통과 시 세션 보존 확인 | unit/mock |
 
 ---
 
 ## 검증 계획
-1. `npm test` — 기존 275 + 신규 통과
+1. `npm test` — 299 pass 통과
 2. `npx tsc --noEmit` — 타입 체크
 3. 수동: "리셋해" 입력 시 agent busy이면 거부 확인

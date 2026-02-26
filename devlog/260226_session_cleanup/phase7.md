@@ -68,6 +68,6 @@ Phase 6 안정화 후 직원 리뷰에서 발견된 잔여 4건 처리.
 ---
 
 ## 검증
-1. `npm test` — 기존 277 pass 유지
+1. `npm test` — 299 pass 유지
 2. `npx tsc --noEmit` — 타입 체크
 3. i18n 키 테스트 자동 통과 확인 (locale JSON key 일치 테스트)
