@@ -1,7 +1,7 @@
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-02-26T10:27 (orchestration v3 — end_phase + checkpoint)
-> server.ts 863L / src/ 36파일 12서브디렉토리 / tests 252 pass (tsx runner)
+> server.ts 902L / src/ 36파일 12서브디렉토리 / tests 275 pass (tsx runner)
 > Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix + cli-jaw rename + orchestration v3 반영
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
@@ -30,9 +30,9 @@ cli-jaw/
 │   │   ├── args.ts           ← CLI별 인자 빌더 (67L)
 │   │   └── events.ts         ← NDJSON 파서 + ACP update + logEventSummary (322L)
 │   ├── orchestrator/         ← 직원 오케스트레이션
-│   │   ├── pipeline.ts       ← Plan → Distribute → Quality Gate (467L, parallel/sequential + end_phase/checkpoint)
-│   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers (344L)
-│   │   └── parser.ts         ← triage + subtask JSON + verdict 파싱 (108L)
+│   │   ├── pipeline.ts       ← Plan → Distribute → Quality Gate (493L, parallel/sequential + end_phase/checkpoint + reset)
+│   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers (356L)
+│   │   └── parser.ts         ← triage + subtask JSON + verdict 파싱 + isResetIntent (126L)
 │   ├── prompt/               ← 프롬프트 조립
 │   │   └── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache + dev skill rules (557L)
 │   ├── cli/                  ← 커맨드 시스템
@@ -265,6 +265,10 @@ graph LR
 64. **[orch-v3] end_phase + checkpoint**: `initAgentPhases()`에 `end_phase` 파싱 + sparse fallback + `checkpoint`/`checkpointed` 필드 추가. Planning agent가 phase 범위(`start_phase: 3, end_phase: 3`)와 체크포인트 모드 지정 가능.
 65. **[orch-v3] checkpoint branching**: 라운드 루프(2곳)에 checkpoint/done 분기 추가. `scopeDone && hasCheckpoint` → 세션 보존 + 유저 보고. `verdicts.allDone` 조기 완료 지원. verdict parse 실패 시 warn 로그.
 66. **[orch-v3] _skipClear + continue**: `orchestrate()` 진입 2곳에 `_skipClear` 조건 적용. `orchestrateContinue`에서 `_skipClear: true` 전달 → 세션 복원. done/reset worklog은 continue 거부.
+67. **[orch-v3] isResetIntent + orchestrateReset**: `parser.ts`에 `isResetIntent` 추가 (리셋/초기화/reset). `pipeline.ts`에 `orchestrateReset` 추가. `server.ts`/`bot.ts`에 WS/HTTP/Telegram reset 경로 추가. `/api/orchestrate/reset` 엔드포인트.
+68. **[orch-v3] worklog ⏸ + allDone**: `updateMatrix`에 `⏸ checkpoint` 상태 추가. `parseWorklogPending`가 `⏸` 감지. review prompt에 allDone 조기 완료 규칙 추가.
+69. **[orch-v3] planner schema**: `distribute.ts` `buildPlanPrompt`에 `end_phase`/`checkpoint` 가이드 + JSON 예시 추가.
+70. **[critical fix] checkpoint completed reset**: `advancePhase`가 마지막 phase PASS 시 `completed=true` 찍는데, checkpoint 분기에서 `completed=false`로 되돌리지 않으면 matrix에 ✅ 표시되어 resume 불가.
 
 ---
 

@@ -159,6 +159,16 @@ Output with empty subtasks and your answer in direct_answer:
 - Code exists, only tests needed → start_phase = 4 (debugging onwards)
 - Analysis required from scratch → start_phase = 1 (full delegation)
 
+#### end_phase Selection (optional, default: role의 마지막 phase)
+- 간단한 수정/버그픽스 → end_phase: 3
+- 테스트까지 → end_phase: 4
+- 전체 → end_phase: 5 또는 생략
+- docs role은 [1,3,5]만 존재. end_phase: 2는 3으로 보정됨.
+
+#### checkpoint (optional, default: false)
+- true: scope 완료 후 유저에게 보고하고 대기 (세션 보존)
+- false: 자동으로 done 처리
+
 #### Dev Skills Reference
 Each employee auto-receives role-matched dev skills:
 - frontend → dev-frontend SKILL.md (UI/component guide)
@@ -219,6 +229,8 @@ Every task you assign MUST be specific. Vague instructions waste cycles.
       "role": "frontend|backend|data|docs",
       "task": "Specific instruction with files, behavior, and constraints",
       "start_phase": 3,
+      "end_phase": 3,
+      "checkpoint": true,
       "parallel": false,
       "verification": {
         "pass_criteria": "One-line pass condition",

@@ -320,9 +320,10 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 
 ### Phase 2.1-2.2: JAW_HOME Dynamic *(env var + --home flag)*
 - [ ] `config.ts:27` — add CLI_JAW_HOME env var support (with `~` expansion)
-- [ ] `cli-jaw.ts` — parse `--home` flag before subcommand imports
+- [ ] `cli-jaw.ts` — parse `--home` flag BEFORE `const command = process.argv[2]`
+- [ ] `builder.ts` — replace ~10 hardcoded `~/.cli-jaw` in prompts with `${JAW_HOME}` *(RE-1)*
 - [ ] Run 252 tests + 3 new P2-* tests
-- **Scope**: 2 files, ~10 lines
+- **Scope**: 3 files, ~20 lines
 
 ### Phase 2 Frontend: PATCH-4 *(optional cleanup)*
 - [ ] `public/index.html:172-183` — remove permissions toggle + workdir input
@@ -332,9 +333,12 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 - [ ] Uses subprocess for regenerateB (env var must work first)
 - **Scope**: 1 new file (~120 lines), 1 modified
 
-### Phase 4: Multi-Instance launchd *(independent, after Phase 2)*
-- [ ] `launchd.ts` — dynamic LABEL, --home/--port pass-through
-- **Scope**: 1 file, ~30 lines
+### Phase 4: Multi-Instance launchd + Port Separation *(independent, after Phase 2)*
+- [ ] `launchd.ts` — dynamic LABEL, --home/--port pass-through, path quoting *(RE-5)*
+- [ ] `browser.ts:11` — change `getServerUrl('3457')` → `getServerUrl(undefined)` *(RE-2)*
+- [ ] `memory.ts:7` — change `getServerUrl('3457')` → `getServerUrl(undefined)` *(RE-2)*
+- [ ] `mcp.ts:58` — change `homedir()` fallback → `JAW_HOME` *(RE-4)*
+- **Scope**: 4 files, ~10 lines
 
 ### Phase 99: Frontend Instance UI *(far future)*
 
@@ -500,3 +504,42 @@ Third pass review focused on "would this actually execute?" validation.
 - **Top-level await in `node -e`**: Works on Node v22+ (tested: `node -e "const x = await ..."` → OK)
 - **`__dirname` in ESM**: Project already uses `dirname(fileURLToPath(import.meta.url))` pattern
   (cli-jaw.ts:11, serve.ts:13, chat.ts:36) — clone.ts must include same boilerplate
+
+---
+
+## Review Fixes R4 — Ripple Effects (2026-02-26 01:42)
+
+Fourth pass focused on "what breaks AFTER Phase 2 is applied" — downstream effects on other commands.
+
+### Findings Categorized
+
+| ID | Severity | Finding | Phase 2 Blocker? | Fix Phase |
+|----|----------|---------|------------------|-----------|
+| RE-1 | HIGH | builder.ts prompt has ~10 hardcoded `~/.cli-jaw` paths | **YES** — agent gets wrong paths | **Phase 2.1** |
+| RE-2 | HIGH | browser.ts/memory.ts hardcode `getServerUrl('3457')` | No — port issue, not home | **Phase 4** |
+| RE-3 | MEDIUM | postinstall.ts uses homedir() for symlinks | No — runs at install time | **Phase 3** |
+| RE-4 | MEDIUM | mcp.ts workingDir fallback is homedir() | No — auto-fixes after Phase 1 | **Phase 2.0** |
+| RE-5 | MEDIUM | launchd shell commands lack path quoting | No — default path has no spaces | **Phase 4** |
+
+### Actions Taken
+
+1. **RE-1 (prompt paths)**: Added to Phase 2.1 scope in Implementation Order.
+   Detailed fix table added to `PHASE-2_jaw_home_dynamic.md` Ripple Effects section.
+   Fix is 1 file (builder.ts), ~10 lines — replace `~/.cli-jaw` with `${JAW_HOME}`.
+
+2. **RE-2 (port hardcode)**: Added to Phase 4 scope in Implementation Order.
+   Fix: `getServerUrl('3457')` → `getServerUrl(undefined)` (falls through to `process.env.PORT`).
+   Note: `chat.ts:17` already does this correctly with `parseArgs` port option.
+
+3. **RE-3 (postinstall)**: Documented as non-blocker. postinstall is `npm install -g` hook,
+   runs once for the binary. Per-instance setup handled by `jaw clone` / `jaw init`.
+
+4. **RE-4 (mcp fallback)**: Added to Phase 2.0 scope (natural to fix during import centralization).
+   Change `|| homedir()` to `|| JAW_HOME`.
+
+5. **RE-5 (quoting)**: Added to Phase 4 scope. Quote `"${LOG_DIR}"` and `"${PLIST_PATH}"`.
+
+### What was already patched (skipped)
+
+- **R3 already fixed**: --home argv position (3 explicit references in PHASE-2 doc section 2.2)
+  The R4 reviewer re-flagged this, but it was fully addressed in R3 with argv transformation diagram.

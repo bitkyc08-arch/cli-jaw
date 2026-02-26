@@ -253,3 +253,114 @@ curl localhost:3458/api/cli-status             # instance B
 
 Phase 2.0 (centralization): Revert 8 files to local definitions. Safe — no data affected.
 Phase 2.1-2.3 (env var + --home): Revert config.ts + cli-jaw.ts. No data affected — custom JAW_HOME dirs stay as-is.
+
+---
+
+## Phase 2 Ripple Effects (R4 Review, 2026-02-26)
+
+> These are **known issues** that arise AFTER Phase 2 is applied — they don't block Phase 2
+> implementation but must be addressed for multi-instance to actually work end-to-end.
+
+### RE-1 [HIGH]: Prompt text has hardcoded `~/.cli-jaw` paths (builder.ts)
+
+The A-1 system prompt template (`const A1_CONTENT`, builder.ts:87-192) and dynamic prompt
+construction (builder.ts:361, 381, 392) contain ~10 hardcoded `~/.cli-jaw/...` strings.
+
+**Impact**: Agent in custom-home instance gets instructions pointing to the DEFAULT instance's paths.
+e.g. "read `~/.cli-jaw/skills/dev/SKILL.md`" when actual path is `~/.jaw-work/skills/dev/SKILL.md`.
+
+**Affected lines**:
+| Line | Content | Type |
+|------|---------|------|
+| 134 | `~/.cli-jaw/settings.json` (telegram) | A-1 template literal |
+| 135 | `~/.cli-jaw/settings.json` (telegram) | A-1 template literal |
+| 149 | `~/.cli-jaw/memory/MEMORY.md` | A-1 template literal |
+| 167 | `~/.cli-jaw/heartbeat.json` | A-1 template literal |
+| 183 | `~/.cli-jaw/skills/dev/SKILL.md` | A-1 template literal |
+| 189 | `~/.cli-jaw/skills/dev/SKILL.md` | A-1 template literal |
+| 361 | `~/.cli-jaw/heartbeat.json` | Dynamic string concat |
+| 381 | `~/.cli-jaw/skills/dev/SKILL.md` | Dynamic string concat |
+| 392 | `~/.cli-jaw/skills_ref/<name>/SKILL.md` | Dynamic string concat |
+
+**Fix**: Replace hardcoded `~/.cli-jaw` with `${JAW_HOME}` (already imported in builder.ts:4).
+- A-1 template literal: `A1_CONTENT` already uses backtick template — just interpolate `${JAW_HOME}`
+- Dynamic strings: replace string literal with `\`${JAW_HOME}/...\``
+- **Scope**: 1 file (builder.ts), ~10 line edits. No new imports needed.
+
+**When**: Phase 2.1 (same time as env var change — JAW_HOME is now dynamic, so prompts must use it)
+
+### RE-2 [HIGH]: `browser` and `memory` commands hardcode port 3457
+
+```typescript
+// bin/commands/browser.ts:11
+const SERVER = getServerUrl('3457');
+// bin/commands/memory.ts:7
+const SERVER = getServerUrl('3457');
+```
+
+`getServerUrl('3457')` passes literal `'3457'` which takes priority over `process.env.PORT`.
+Compare with `chat.ts:17` which correctly does `port: { type: 'string', default: process.env.PORT || '3457' }`.
+
+**Impact**: `jaw --home X browser start` on port-3458 instance → browser/memory commands talk to
+port 3457 (wrong instance) because they ignore the running instance's port.
+
+**Fix**: Change to `getServerUrl(undefined)` to fall through to `process.env.PORT || DEFAULT_PORT`.
+Or add `--port` option like chat.ts already does.
+- **Scope**: 2 files, 1 line each. Trivial.
+
+**When**: Phase 4 (port separation) — doesn't block Phase 2, but required for multi-instance UX.
+
+### RE-3 [MEDIUM]: `postinstall.ts` uses `home` (homedir) for symlinks
+
+```typescript
+// bin/postinstall.ts:108
+ensureSkillsSymlinks(home, { onConflict: 'backup' });  // home = os.homedir()
+// bin/postinstall.ts:166-167
+const agentsMd = path.join(home, 'AGENTS.md');    // ~/AGENTS.md
+const claudeMd = path.join(home, 'CLAUDE.md');    // ~/CLAUDE.md
+// bin/postinstall.ts:180
+initMcpConfig(home);                              // home-based MCP
+```
+
+**Impact**: `npm install -g` always sets up symlinks in `~/`, not in custom home.
+For default instance this is fine. For custom instances, `jaw clone` handles setup instead.
+
+**Assessment**: NOT a Phase 2 blocker. postinstall runs once during `npm install -g`, not per-instance.
+Instance-specific setup is handled by `jaw clone` (Phase 3) or `jaw init`.
+
+**When**: Phase 3 (clone handles per-instance setup). Low priority.
+
+### RE-4 [MEDIUM]: `mcp.ts` workingDir fallback is `homedir()`
+
+```typescript
+// bin/commands/mcp.ts:58
+return JSON.parse(readFileSync(settingsPath, 'utf8')).workingDir || homedir();
+```
+
+**Assessment**: After Phase 1 (workingDir = JAW_HOME), new instances will have `workingDir = JAW_HOME`
+in their settings.json. The `|| homedir()` fallback only fires if workingDir is empty/missing.
+Phase 2.0 also changes mcp.ts to import JAW_HOME from config.ts, so a better fallback would be `JAW_HOME`.
+
+**Fix**: Change `|| homedir()` to `|| JAW_HOME` in getWorkingDir().
+- **Scope**: 1 file, 1 line.
+
+**When**: Phase 2.0 (when centralizing imports — natural to fix the fallback too).
+
+### RE-5 [MEDIUM]: launchd shell commands lack path quoting
+
+```typescript
+// bin/commands/launchd.ts:30
+execSync(`mkdir -p ${LOG_DIR}`);                    // spaces → break
+// bin/commands/launchd.ts:78
+execSync(`launchctl unload ${PLIST_PATH}`, ...);    // spaces → break
+// bin/commands/launchd.ts:120
+execSync(`launchctl load -w ${PLIST_PATH}`);        // spaces → break
+```
+
+**Impact**: If JAW_HOME contains spaces (e.g. `/Users/John Smith/.cli-jaw`), these commands break.
+Currently safe because default `~/.cli-jaw` has no spaces, but custom `--home` paths might.
+
+**Fix**: Quote all interpolated paths: `"${LOG_DIR}"`, `"${PLIST_PATH}"`.
+- **Scope**: 1 file, 3 lines.
+
+**When**: Phase 4 (launchd multi-instance). Low risk for Phase 2 since default path has no spaces.

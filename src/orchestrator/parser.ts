@@ -6,12 +6,30 @@ const CONTINUE_PATTERNS = [
     /^\/?continue$/i,
     /^이어서(?:\s*해줘)?$/i,
     /^계속(?:\s*해줘)?$/i,
+    /^다음(?:\s*해봐)?$/i,
+    /^리뷰(?:\s*해봐)?$/i,
 ];
 
 export function isContinueIntent(text: string) {
     const t = String(text || '').trim();
     if (!t) return false;
     return CONTINUE_PATTERNS.some(re => re.test(t));
+}
+
+// ─── Reset Intent ────────────────────────────────────
+
+const RESET_PATTERNS = [
+    /^리셋해?$/i,
+    /^초기화해?$/i,
+    /^페이즈?스*리셋해?$/i,
+    /^phase\s*reset$/i,
+    /^reset$/i,
+];
+
+export function isResetIntent(text: string) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    return RESET_PATTERNS.some(re => re.test(t));
 }
 
 // ─── Message Triage: 복잡한 작업만 orchestrate ───────

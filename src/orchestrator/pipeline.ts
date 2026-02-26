@@ -18,10 +18,10 @@ const MAX_ROUNDS = 3;
 
 // ─── Parsing/Triage (extracted to orchestrator-parser.js) ──
 import {
-    isContinueIntent, needsOrchestration,
+    isContinueIntent, isResetIntent, needsOrchestration,
     parseSubtasks, parseDirectAnswer, stripSubtaskJSON, parseVerdicts,
 } from './parser.js';
-export { isContinueIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
+export { isContinueIntent, isResetIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
 
 // ─── Phase 정의 (constants in distribute.ts) ─────────
 
@@ -212,6 +212,11 @@ ${worklog.path} — 이 파일의 변경사항도 확인하세요.
 - **PASS**: 해당 phase의 필수 항목 모두 충족. 구체적 근거 제시.
 - **FAIL**: 필수 항목 중 하나라도 미충족. **구체적 수정 지시** 제공 ("더 노력하세요" 금지, 구체적 행동 제시).
 
+### allDone 조기 완료 규칙
+- 모든 agent가 마지막 phase를 PASS하면 당연히 allDone: true.
+- **조기 완료 가능**: 커밋+테스트+푸시 완료 → 남은 phase가 있어도 allDone: true.
+- 판단 기준: 사용자의 원래 요청이 충족되었는가? 남은 phase가 실질적 가치를 추가하는가?
+
 JSON으로 출력:
 \`\`\`json
 {
@@ -283,9 +288,12 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
                 const hasCheckpoint = agentPhases.some((ap: Record<string, any>) => ap.checkpoint && !ap.checkpointed);
 
                 if (scopeDone && hasCheckpoint) {
-                    // CHECKPOINT: completed 마킹 안 함, 세션 보존
+                    // CHECKPOINT: completed 되돌리기 + 세션 보존 (advancePhase가 completed=true 찍었으므로 reset)
                     agentPhases.forEach((ap: Record<string, any>) => {
-                        if (ap.checkpoint) ap.checkpointed = true;
+                        if (ap.checkpoint) {
+                            ap.checkpointed = true;
+                            ap.completed = false;  // resume 가능하게 되돌리기
+                        }
                     });
                     updateMatrix(worklog.path, agentPhases);
                     const summary = stripSubtaskJSON(rawText) || '요청된 scope 완료';
@@ -393,9 +401,12 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
         const hasCheckpoint = agentPhases.some((ap: Record<string, any>) => ap.checkpoint && !ap.checkpointed);
 
         if (scopeDone && hasCheckpoint) {
-            // CHECKPOINT: completed 마킹 안 함, 세션 보존
+            // CHECKPOINT: completed 되돌리기 + 세션 보존 (advancePhase가 completed=true 찍었으므로 reset)
             agentPhases.forEach((ap: Record<string, any>) => {
-                if (ap.checkpoint) ap.checkpointed = true;
+                if (ap.checkpoint) {
+                    ap.checkpointed = true;
+                    ap.completed = false;  // resume 가능하게 되돌리기
+                }
             });
             updateMatrix(worklog.path, agentPhases);
             const summary = stripSubtaskJSON(rawText) || '요청된 scope 완료';
@@ -464,4 +475,19 @@ ${pending.map((p: Record<string, any>) => `- ${p.agent} (${p.role}): Phase ${p.c
 subtask JSON을 출력하세요.`;
 
     return orchestrate(resumePrompt, { ...meta, _skipClear: true });
+}
+
+// ─── Reset (리셋해) ───────────────────────────────────
+
+export async function orchestrateReset(meta: Record<string, any> = {}) {
+    const origin = meta.origin || 'web';
+    clearAllEmployeeSessions.run();
+    const latest = readLatestWorklog();
+    if (!latest) {
+        broadcast('orchestrate_done', { text: '리셋할 worklog가 없습니다.', origin });
+        return;
+    }
+    updateWorklogStatus(latest.path, 'reset', 0);
+    appendToWorklog(latest.path, 'Final Summary', '유저 요청으로 리셋됨.');
+    broadcast('orchestrate_done', { text: '리셋 완료.', origin });
 }

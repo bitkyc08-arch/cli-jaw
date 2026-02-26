@@ -94,3 +94,21 @@ test('EP-010: parallel + checkpoint + end_phase 조합', () => {
     assert.equal(ap.currentPhase, 3);
     assert.equal(ap.currentPhaseIdx, 0);
 });
+
+// ─── IN: isContinueIntent 확장 ───────────────────────
+
+import { isContinueIntent, isResetIntent } from '../../src/orchestrator/pipeline.ts';
+
+test('IN-001: "리뷰해봐" → continue', () => assert.equal(isContinueIntent('리뷰해봐'), true));
+test('IN-002: "다음 해봐" → continue', () => assert.equal(isContinueIntent('다음 해봐'), true));
+test('IN-003: "이어서 해줘" → continue (기존)', () => assert.equal(isContinueIntent('이어서 해줘'), true));
+test('IN-004: "이어서" → continue (기존)', () => assert.equal(isContinueIntent('이어서'), true));
+test('IN-005: "리셋해" → NOT continue', () => assert.equal(isContinueIntent('리셋해'), false));
+
+// ─── RS: isResetIntent ───────────────────────────────
+
+test('RS-001: "리셋" → reset', () => assert.equal(isResetIntent('리셋'), true));
+test('RS-002: "리셋해" → reset', () => assert.equal(isResetIntent('리셋해'), true));
+test('RS-003: "리셋해줘" → NOT reset', () => assert.equal(isResetIntent('리셋해줘'), false));
+test('RS-004: "phase reset" → reset', () => assert.equal(isResetIntent('phase reset'), true));
+test('RS-005: "reset" → reset', () => assert.equal(isResetIntent('reset'), true));

@@ -55,7 +55,7 @@ import {
     saveUpload, memoryFlushCounter, resetFallbackState,
 } from './src/agent/spawn.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/cli/commands.js';
-import { orchestrate, orchestrateContinue, isContinueIntent } from './src/orchestrator/pipeline.js';
+import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from './src/orchestrator/pipeline.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram/bot.js';
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/memory/heartbeat.js';
 import { fetchCopilotQuota } from './lib/quota-copilot.js';
@@ -191,6 +191,14 @@ wss.on('connection', (ws) => {
                         broadcast('new_message', { role: 'user', content: text, source: 'cli' });
                         orchestrateContinue({ origin: 'cli' });
                     }
+                    return;
+                }
+
+                // Reset intent
+                if (isResetIntent(text)) {
+                    insertMessage.run('user', text, 'cli', '');
+                    broadcast('new_message', { role: 'user', content: text, source: 'cli' });
+                    orchestrateReset({ origin: 'cli' });
                     return;
                 }
 
@@ -397,6 +405,12 @@ app.post('/api/message', (req, res) => {
         return res.json({ ok: true, continued: true });
     }
 
+    // Reset intent
+    if (isResetIntent(trimmed)) {
+        orchestrateReset({ origin: 'web' });
+        return res.json({ ok: true, reset: true });
+    }
+
     if (activeProcess) {
         enqueueMessage(trimmed, 'web');
         return res.json({ ok: true, queued: true, pending: messageQueue.length });
@@ -412,6 +426,11 @@ app.post('/api/orchestrate/continue', (req, res) => {
         return res.status(409).json({ error: 'agent already running' });
     }
     orchestrateContinue({ origin: 'web' });
+    res.json({ ok: true });
+});
+
+app.post('/api/orchestrate/reset', (req, res) => {
+    orchestrateReset({ origin: 'web' });
     res.json({ ok: true });
 });
 
