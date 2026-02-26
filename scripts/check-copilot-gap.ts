@@ -36,18 +36,28 @@ const checks: CheckItem[] = [
     },
     {
         name: 'Employees UI uses dynamic CLI keys',
-        file: 'public/js/features/employees.js',
+        file: 'public/js/features/employees',
         needle: 'getCliKeys()',
     },
 ];
 
 const rows = checks.map((item: CheckItem) => {
-    const fullPath = path.join(ROOT, item.file);
-    const content: string = fs.existsSync(fullPath)
-        ? fs.readFileSync(fullPath, 'utf8')
-        : '';
+    // Support both .js and .ts (frontend migration may change extensions)
+    const candidates = item.file.includes('.')
+        ? [item.file]
+        : [`${item.file}.ts`, `${item.file}.js`];
+    let content = '';
+    let resolvedFile = item.file;
+    for (const f of candidates) {
+        const fullPath = path.join(ROOT, f);
+        if (fs.existsSync(fullPath)) {
+            content = fs.readFileSync(fullPath, 'utf8');
+            resolvedFile = f;
+            break;
+        }
+    }
     const ok: boolean = content.includes(item.needle);
-    return { ...item, ok };
+    return { ...item, file: resolvedFile, ok };
 });
 
 console.log('\nCopilot gap check\n');
