@@ -4,9 +4,10 @@
  * CLI entrypoint with subcommand routing.
  * No external dependencies — Node built-in only.
  */
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readFileSync } from 'node:fs';
+import { homedir } from 'node:os';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let pkg: any;
@@ -16,6 +17,21 @@ try {
 } catch {
     const pkgPath = join(__dirname, '..', '..', 'package.json');
     pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+}
+
+// ─── --home flag: must run BEFORE command parsing (ESM hoisting safe) ───
+// Manual parsing instead of parseArgs to avoid absorbing subcommand flags
+const _homeIdx = process.argv.indexOf('--home');
+const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
+if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
+    process.env.CLI_JAW_HOME = resolve(
+        process.argv[_homeIdx + 1]!.replace(/^~(?=\/|$)/, homedir())
+    );
+    process.argv.splice(_homeIdx, 2);
+} else if (_homeEqArg) {
+    const val = _homeEqArg.slice('--home='.length);
+    process.env.CLI_JAW_HOME = resolve(val.replace(/^~(?=\/|$)/, homedir()));
+    process.argv.splice(process.argv.indexOf(_homeEqArg), 1);
 }
 
 const command = process.argv[2];
@@ -49,14 +65,15 @@ ${c.bold}   🦈 v${pkg.version}${c.reset}  ${c.dim}AI Agent Orchestration Platf
     launchd    macOS 자동 실행 관리 (install/uninstall/status)
 
   ${c.bold}Options:${c.reset}
+    --home     데이터 디렉토리 지정 (기본: ~/.cli-jaw)
     --help     도움말 표시
     --version  버전 표시
 
   ${c.bold}Examples:${c.reset}
-    jaw serve --port 3457
+    jaw serve
+    jaw serve --home ~/.jaw-work --port 3458
     jaw init
     jaw doctor --json
-    jaw chat --raw
 `);
 }
 

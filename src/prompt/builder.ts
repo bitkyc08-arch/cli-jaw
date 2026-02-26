@@ -9,7 +9,7 @@ const promptCache = new Map();
 
 // ─── Skill Loading ───────────────────────────────────
 
-/** Read all active skills from ~/.cli-jaw/skills/ */
+/** Read all active skills from JAW_HOME/skills/ */
 export function loadActiveSkills() {
     try {
         if (!fs.existsSync(SKILLS_DIR)) return [];
@@ -131,8 +131,8 @@ cli-jaw browser vision-click "Menu" --double    # double-click variant
 ## Telegram File Delivery (Bot-First)
 For non-text output to Telegram, prefer direct Bot API:
 \`\`\`bash
-TOKEN=$(jq -r '.telegram.token' ~/.cli-jaw/settings.json)
-CHAT_ID=$(jq -r '.telegram.allowedChatIds[-1]' ~/.cli-jaw/settings.json)
+TOKEN=$(jq -r '.telegram.token' ${JAW_HOME}/settings.json)
+CHAT_ID=$(jq -r '.telegram.allowedChatIds[-1]' ${JAW_HOME}/settings.json)
 # photo:
 curl -sS -X POST "https://api.telegram.org/bot\${TOKEN}/sendPhoto" \\
   -F "chat_id=\${CHAT_ID}" -F "photo=@/path/to/image.png" -F "caption=desc"
@@ -146,7 +146,7 @@ Fallback local endpoint: \`POST http://localhost:3457/api/telegram/send\`
 
 ## Long-term Memory (MANDATORY)
 Two memory sources:
-- Core memory: \`~/.cli-jaw/memory/MEMORY.md\` (structured, persistent)
+- Core memory: \`${JAW_HOME}/memory/MEMORY.md\` (structured, persistent)
 - Session memory: \`~/.claude/projects/.../memory/\` (auto-flush)
 
 Rules:
@@ -164,7 +164,7 @@ Rules:
 - ❌ Do NOT dump raw conversation history into memory
 
 ## Heartbeat System
-Recurring tasks via \`~/.cli-jaw/heartbeat.json\` (auto-reloads on save):
+Recurring tasks via \`${JAW_HOME}/heartbeat.json\` (auto-reloads on save):
 \`\`\`json
 { "jobs": [{ "id": "hb_<timestamp>", "name": "Job name", "enabled": true,
   "schedule": { "kind": "every", "minutes": 5 }, "prompt": "task description" }] }
@@ -180,13 +180,13 @@ Recurring tasks via \`~/.cli-jaw/heartbeat.json\` (auto-reloads on save):
 
 ### Dev Skills (MANDATORY for Development Tasks)
 Before writing ANY code, you MUST read the relevant dev skill guides:
-1. **Always read first**: \`~/.cli-jaw/skills/dev/SKILL.md\` — project-wide conventions, file structure, coding standards
+1. **Always read first**: \`${JAW_HOME}/skills/dev/SKILL.md\` — project-wide conventions, file structure, coding standards
 2. **Role-specific** (read the one matching your task):
    - \`dev-frontend\` — UI components, CSS, browser compatibility
    - \`dev-backend\` — API design, error handling, security
    - \`dev-data\` — database, queries, migrations
    - \`dev-testing\` — test strategy, coverage, assertion patterns
-3. **How to read**: \`cat ~/.cli-jaw/skills/dev/SKILL.md\` or \`cli-jaw skill read dev\`
+3. **How to read**: \`cat ${JAW_HOME}/skills/dev/SKILL.md\` or \`cli-jaw skill read dev\`
 4. Follow ALL guidelines from the skill before and during implementation
 5. If a skill contradicts these rules, the skill takes priority (skills are project-specific)
 `;
@@ -358,7 +358,7 @@ export function getSystemPrompt() {
                 prompt += `- ${status} "${job.name}" — every ${mins}min: ${(job.prompt || '').slice(0, 50)}\n`;
             }
             prompt += `\nActive: ${activeJobs.length}, Total: ${hbData.jobs.length}`;
-            prompt += '\nTo modify: edit ~/.cli-jaw/heartbeat.json (auto-reloads on save)';
+            prompt += `\nTo modify: edit ${JAW_HOME}/heartbeat.json (auto-reloads on save)`;
         }
     } catch { /* heartbeat.json not ready */ }
 
@@ -378,7 +378,7 @@ export function getSystemPrompt() {
             if (activeSkills.length > 0) {
                 prompt += `\n### Active Skills (${activeSkills.length})\n`;
                 prompt += 'These skills are installed and available for reference.\n';
-                prompt += '**Development tasks**: Before writing code, ALWAYS read `~/.cli-jaw/skills/dev/SKILL.md` for project conventions.\n';
+                prompt += `**Development tasks**: Before writing code, ALWAYS read \`${JAW_HOME}/skills/dev/SKILL.md\` for project conventions.\n`;
                 prompt += 'For role-specific tasks, also read the relevant skill (dev-frontend, dev-backend, dev-data, dev-testing).\n';
                 for (const s of activeSkills) {
                     prompt += `- ${s!.name} (${s!.id})\n`;
@@ -389,7 +389,7 @@ export function getSystemPrompt() {
             if (availableRef.length > 0) {
                 prompt += `\n### Available Skills (${availableRef.length})\n`;
                 prompt += 'These are reference skills — not active yet, but ready to use on demand.\n';
-                prompt += '**How to use**: read `~/.cli-jaw/skills_ref/<name>/SKILL.md` and follow its instructions.\n';
+                prompt += `**How to use**: read \`${JAW_HOME}/skills_ref/<name>/SKILL.md\` and follow its instructions.\n`;
                 prompt += '**To activate permanently**: `cli-jaw skill install <name>`\n\n';
                 prompt += availableRef.map(s => s.id).join(', ') + '\n';
             }

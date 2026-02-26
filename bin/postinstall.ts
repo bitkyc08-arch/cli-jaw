@@ -19,13 +19,14 @@ import path from 'path';
 import os from 'os';
 import { execSync, execFileSync } from 'child_process';
 import { ensureSkillsSymlinks, initMcpConfig, copyDefaultSkills, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
+import { JAW_HOME } from '../src/core/config.js';
 
 const home = os.homedir();
+const jawHome = JAW_HOME;
 const PATH_LOOKUP_CMD = process.platform === 'win32' ? 'where' : 'which';
 
 // ─── Legacy migration: ~/.cli-jaw → ~/.cli-jaw ───
 const legacyHome = path.join(home, '.cli-jaw');
-const jawHome = path.join(home, '.cli-jaw');
 
 if (fs.existsSync(legacyHome) && !fs.existsSync(jawHome)) {
     console.log(`[jaw:init] migrating ~/.cli-jaw → ~/.cli-jaw ...`);

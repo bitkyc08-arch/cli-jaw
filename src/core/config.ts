@@ -2,7 +2,7 @@
 
 import os from 'os';
 import fs from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { execFileSync } from 'child_process';
 import { CLI_REGISTRY, CLI_KEYS, DEFAULT_CLI, buildDefaultPerCli } from '../cli/registry.js';
 
@@ -24,7 +24,9 @@ export const APP_VERSION: string = pkg.version;
 
 // ─── Paths ───────────────────────────────────────────
 
-export const JAW_HOME = join(os.homedir(), '.cli-jaw');
+export const JAW_HOME = process.env.CLI_JAW_HOME
+    ? resolve(process.env.CLI_JAW_HOME.replace(/^~(?=\/|$)/, os.homedir()))
+    : join(os.homedir(), '.cli-jaw');
 export const PROMPTS_DIR = join(JAW_HOME, 'prompts');
 export const DB_PATH = join(JAW_HOME, 'jaw.db');
 export const SETTINGS_PATH = join(JAW_HOME, 'settings.json');
