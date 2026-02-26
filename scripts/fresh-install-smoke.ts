@@ -85,7 +85,7 @@ async function main(): Promise<void> {
             throw new Error('doctor --json returned empty checks');
         }
 
-        const port = 34679;
+        const port = 30000 + Math.floor(Math.random() * 20000);
         server = spawn(process.execPath, [jawEntry, '--home', jawHome, 'serve', '--port', String(port)], {
             cwd: root,
             env: jawEnv,

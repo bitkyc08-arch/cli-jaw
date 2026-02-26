@@ -38,6 +38,9 @@ jobs:
       - name: Deps security check
         run: npm run check:deps
 
+      - name: Copilot gap check
+        run: npm run check:copilot-gap
+
       - name: File size check
         run: |
           echo "=== Files over 500 lines ==="

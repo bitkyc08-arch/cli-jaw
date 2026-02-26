@@ -32,11 +32,11 @@ function ver(p: string): string | null { return pkgs[p]?.version ?? null; }
 
 function semver(v: string | null): SemVer | null {
     const m = String(v ?? '').match(/^(\d+)\.(\d+)\.(\d+)/);
-    return m ? [+m[1], +m[2], +m[3]] as SemVer : null;
+    return m ? [+m[1]!, +m[2]!, +m[3]!] as SemVer : null;
 }
 
 function lt(a: SemVer, b: SemVer): boolean {
-    for (let i = 0; i < 3; i++) { if (a[i] !== b[i]) return a[i] < b[i]; }
+    for (let i = 0; i < 3; i++) { if (a[i]! !== b[i]!) return a[i]! < b[i]!; }
     return false;
 }
 
