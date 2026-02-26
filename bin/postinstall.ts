@@ -25,14 +25,16 @@ const home = os.homedir();
 const jawHome = JAW_HOME;
 const PATH_LOOKUP_CMD = process.platform === 'win32' ? 'where' : 'which';
 
-// ─── Legacy migration: ~/.cli-jaw → ~/.cli-jaw ───
+// ─── Legacy migration: ~/.cli-jaw → jawHome ───
+// Only run when jawHome IS the default (~/.cli-jaw). Custom --home must never move default data.
 const legacyHome = path.join(home, '.cli-jaw');
+const isDefaultHome = jawHome === legacyHome;
 
-if (fs.existsSync(legacyHome) && !fs.existsSync(jawHome)) {
-    console.log(`[jaw:init] migrating ~/.cli-jaw → ~/.cli-jaw ...`);
+if (isDefaultHome && fs.existsSync(legacyHome) && !fs.existsSync(jawHome)) {
+    console.log(`[jaw:init] migrating ~/.cli-jaw → ${jawHome} ...`);
     fs.renameSync(legacyHome, jawHome);
     console.log(`[jaw:init] ✅ migration complete`);
-} else if (fs.existsSync(legacyHome) && fs.existsSync(jawHome)) {
+} else if (isDefaultHome && fs.existsSync(legacyHome) && fs.existsSync(jawHome)) {
     console.log(`[jaw:init] ⚠️ both ~/.cli-jaw and ~/.cli-jaw exist — using ~/.cli-jaw`);
 }
 

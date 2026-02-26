@@ -16,7 +16,6 @@
 import { execSync, execFileSync } from 'node:child_process';
 import { readFileSync, existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { homedir } from 'node:os';
 import { JAW_HOME } from '../../src/core/config.js';
 
 // ─── lib imports (Single Source of Truth) ────
@@ -56,8 +55,8 @@ function findBinaryPath(name: string): string | null {
 function getWorkingDir() {
     try {
         const settingsPath = join(JAW_HOME, 'settings.json');
-        return JSON.parse(readFileSync(settingsPath, 'utf8')).workingDir || homedir();
-    } catch { return homedir(); }
+        return JSON.parse(readFileSync(settingsPath, 'utf8')).workingDir || JAW_HOME;
+    } catch { return JAW_HOME; }
 }
 
 // Known PyPI MCP packages (auto-detect without --pypi flag)

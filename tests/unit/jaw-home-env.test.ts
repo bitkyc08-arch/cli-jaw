@@ -2,7 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execSync } from 'node:child_process';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -70,4 +70,29 @@ test('P2-005: tilde expansion resolves correctly', () => {
     assert.ok(result.trim().startsWith('/'));
     assert.ok(result.trim().endsWith('/test-tilde'));
     assert.ok(!result.trim().includes('~'));
+});
+
+test('P23-001: postinstall legacy rename guard — custom home must not move ~/.cli-jaw', () => {
+    // Verify that postinstall.ts guards legacy rename with isDefaultHome check
+    const src = readFileSync(join(projectRoot, 'bin/postinstall.ts'), 'utf8');
+    assert.ok(
+        src.includes('isDefaultHome') && src.includes('legacyHome'),
+        'postinstall must guard legacy rename with isDefaultHome check'
+    );
+});
+
+test('P23-002: init.ts workingDir default uses JAW_HOME, not hardcoded path', () => {
+    const src = readFileSync(join(projectRoot, 'bin/commands/init.ts'), 'utf8');
+    // Should NOT contain os.homedir() in the workingDir default line
+    const workingDirLine = src.split('\n').find(l => l.includes('Working directory'));
+    assert.ok(workingDirLine, 'Working directory prompt line should exist');
+    assert.ok(workingDirLine.includes('JAW_HOME'), 'Default should reference JAW_HOME');
+    assert.ok(!workingDirLine.includes('os.homedir()'), 'Default should NOT use os.homedir()');
+});
+
+test('P23-003: mcp.ts fallback uses JAW_HOME, not homedir()', () => {
+    const src = readFileSync(join(projectRoot, 'bin/commands/mcp.ts'), 'utf8');
+    const fn = src.slice(src.indexOf('function getWorkingDir'), src.indexOf('function getWorkingDir') + 200);
+    assert.ok(!fn.includes('homedir()'), 'getWorkingDir fallback should NOT use homedir()');
+    assert.ok(fn.includes('JAW_HOME'), 'getWorkingDir fallback should use JAW_HOME');
 });

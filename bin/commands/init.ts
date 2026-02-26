@@ -41,7 +41,7 @@ console.log('\n  🦈 cli-jaw 초기 설정\n');
 
 // Collect
 const workingDir = values['working-dir'] ||
-    await ask('Working directory', settings.workingDir || path.join(os.homedir(), '.cli-jaw'));
+    await ask('Working directory', settings.workingDir || JAW_HOME);
 const cli = values.cli ||
     await ask('CLI (claude/codex/gemini)', settings.cli || 'claude');
 const permissions = values.permissions ||
