@@ -6,7 +6,7 @@
 
 *One assistant. Five brains. Always on.*
 
-[![Tests](https://img.shields.io/badge/tests-313%20pass-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-345%20pass-brightgreen)](#-tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -85,7 +85,7 @@ CLI-JAW is a **personal AI assistant** that lives on your machine and works from
 > 💬 *"Refactor this module and write tests"* → sub-agents handle it while you grab coffee  
 > 💬 *"Download that PDF and put the key points in Notion"* → browser + Notion skill, done
 
-Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. 101 built-in skills handle everything from browser automation to document generation.
+Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. 105 built-in skills handle everything from browser automation to document generation.
 
 |                                | Why CLI-JAW?                                                                                |
 | ------------------------------ | ------------------------------------------------------------------------------------------- |
@@ -377,7 +377,7 @@ src/
 ## 🧪 Tests
 
 <details>
-<summary>313 pass · 1 skipped · zero external dependencies</summary>
+<summary>345 pass · 1 skipped · zero external dependencies</summary>
 
 ```bash
 npm test

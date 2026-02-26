@@ -17,6 +17,7 @@ This skill covers universal guidelines. For domain-specific work, you **must** a
 | `dev-backend/SKILL.md` | `role=backend` | API design, architecture patterns, database optimization, security, error handling, middleware |
 | `dev-data/SKILL.md` | `role=data` | Data pipelines, ETL/ELT, data quality validation, SQL optimization, analysis & reporting |
 | `dev-testing/SKILL.md` | `role=testing` or debugging phase | Playwright browser testing, test strategy, debugging patterns, coverage analysis |
+| `dev-code-reviewer/SKILL.md` | Any agent, during code review | Review process, quality thresholds, antipattern detection, giving/receiving feedback |
 
 **When your task spans multiple domains** (e.g., building an API endpoint that returns analyzed data), read ALL relevant skill files before starting.
 

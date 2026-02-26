@@ -1,8 +1,8 @@
 # CLI-JAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-26T14:42 (multi-instance Phase 1-4.1 + sidebar hotfix 반영)
-> server.ts 935L / src/ 36파일 13서브디렉토리 / tests 314 total · 313 pass (tsx runner)
-> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix + cli-jaw rename + orchestration v3 + **multi-instance refactor (Phase 1-4.1)** 반영
+> 마지막 검증: 2026-02-26T15:30 (multi-instance Phase 1-4.1 + sidebar hotfix + interface_unify + postinstall fix 반영)
+> server.ts 854L / src/ 39파일 12서브디렉토리 / tests 346 total · 345 pass · 1 skip (tsx runner)
+> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix + cli-jaw rename + orchestration v3 + **multi-instance refactor (Phase 1-4.1)** + **interface_unify (submitMessage gateway)** + **postinstall fix** 반영
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -12,9 +12,9 @@
 
 ```text
 cli-jaw/
-├── server.ts                 ← Express 라우트 + 글루 + ok/fail + security guards (935L)
+├── server.ts                 ← Express 라우트 + 글루 + ok/fail + security guards (854L)
 ├── lib/
-│   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (661L)
+│   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (665L)
 │   ├── upload.ts             ← 파일 업로드 + Telegram 다운로드 (70L)
 │   └── quota-copilot.ts      ← Copilot 할당량 조회 (keychain → API) (68L)
 ├── src/
@@ -29,23 +29,26 @@ cli-jaw/
 │   │   ├── spawn.ts          ← CLI spawn + ACP 분기 + 큐 + 메모리 flush + activeOverrides 통합 (697L)
 │   │   ├── args.ts           ← CLI별 인자 빌더 (67L)
 │   │   └── events.ts         ← NDJSON 파서 + ACP update + logEventSummary (322L)
-│   ├── orchestrator/         ← 직원 오케스트레이션
+│   ├── orchestrator/         ← 직원 오케스트레이션 + 인터페이스 통합
 │   │   ├── pipeline.ts       ← Plan → Distribute → Quality Gate (493L, parallel/sequential + end_phase/checkpoint + reset)
 │   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers (356L)
-│   │   └── parser.ts         ← triage + subtask JSON + verdict 파싱 + isResetIntent (126L)
+│   │   ├── parser.ts         ← triage + subtask JSON + verdict 파싱 + isResetIntent (126L)
+│   │   ├── gateway.ts        ← submitMessage 통합 진입점 (WebUI+CLI+TG 공통) (60L)
+│   │   └── collect.ts        ← orchestrateAndCollect (bot.ts에서 분리) (62L)
 │   ├── prompt/               ← 프롬프트 조립
 │   │   └── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache + dev skill rules (557L)
 │   ├── cli/                  ← 커맨드 시스템
 │   │   ├── commands.ts       ← 슬래시 커맨드 레지스트리 + 디스패처 + 파일경로 필터 (271L)
 │   │   ├── handlers.ts       ← 18개 커맨드 핸들러 (432L)
 │   │   ├── registry.ts       ← 5개 CLI/모델 단일 소스 (89L)
-│   │   └── acp-client.ts     ← Copilot ACP JSON-RPC 클라이언트 (328L)
+│   │   ├── acp-client.ts     ← Copilot ACP JSON-RPC 클라이언트 (328L)
+│   │   └── command-context.ts ← 공유 커맨드 컨텍스트 팩토리 (99L)
 │   ├── memory/               ← 데이터 영속화
 │   │   ├── memory.ts         ← Persistent Memory grep 기반 (129L)
 │   │   ├── worklog.ts        ← Worklog CRUD + phase matrix (172L)
-│   │   └── heartbeat.ts      ← Heartbeat 잡 스케줄 + fs.watch (108L)
+│   │   └── heartbeat.ts      ← Heartbeat 잡 스케줄 + fs.watch (109L)
 │   ├── telegram/             ← Telegram 인터페이스
-│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 (511L)
+│   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 (432L)
 │   │   └── forwarder.ts      ← 포워딩 헬퍼 (escape, chunk, createForwarder) (105L)
 │   ├── browser/              ← Chrome CDP 제어
 │   │   ├── connection.ts     ← Chrome 탐지/launch/CDP 연결 (113L)
@@ -102,7 +105,7 @@ cli-jaw/
 │           └── appname.js    ← Agent Name (DEFAULT_NAME='CLI-JAW') (43L)
 ├── bin/
 │   ├── cli-jaw.ts           ← 12개 서브커맨드 라우팅 + --home flag (147L)
-│   ├── postinstall.ts        ← npm install 후 5-CLI 자동설치 + MCP + 스킬 (244L)
+│   ├── postinstall.ts        ← npm install 후 5-CLI 자동설치 + MCP + 스킬 (299L, Node guard + inline JAW_HOME)
 │   └── commands/
 │       ├── serve.ts          ← 서버 시작 (--port/--host/--open)
 │       ├── chat.ts           ← 터미널 채팅 TUI (3모드, 블록아트 배너, active model 표시, 873L)
@@ -117,11 +120,11 @@ cli-jaw/
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init) (92L)
 │       ├── launchd.ts        ← macOS LaunchAgent 관리 (instanceId, --port, xmlEsc) (179L)
 │       └── browser.ts        ← 브라우저 CLI (17개 서브커맨드, 238L)
-├── tests/                    ← 회귀 방지 테스트 (314 total · 313 pass)
+├── tests/                    ← 회귀 방지 테스트 (346 total · 345 pass · 1 skip)
 │   ├── events.test.ts        ← 이벤트 파서 단위 테스트
 │   ├── events-acp.test.ts    ← ACP session/update 이벤트 테스트
 │   ├── telegram-forwarding.test.ts ← Telegram 포워딩 동작 테스트
-│   ├── unit/                 ← Tier 1-2 단위 테스트 (~20 files)
+│   ├── unit/                 ← Tier 1-2 단위 테스트 (~25 files)
 │   │   ├── employee-prompt.test.ts ← 직원 프롬프트 14건
 │   │   ├── orchestrator-parsing.test.ts ← subtask 파싱 13건
 │   │   ├── orchestrator-triage.test.ts  ← triage 판단 10건
@@ -140,9 +143,10 @@ cli-jaw/
 ├── README.zh-CN.md           ← 중국어 번역
 ├── tsconfig.json             ← TypeScript 설정├── TESTS.md                  ← 테스트 상세
 ├── scripts/                  ← 도구 스크립트
+│   ├── postinstall-guard.cjs ← 크로스플랫폼 postinstall 가드 (Node 체크 + dist/ 감지 + 자동빌드) (63L)
 │   ├── check-deps-offline.mjs ← 오프라인 취약 버전 체크
 │   └── check-deps-online.sh  ← npm audit + semgrep
-├── skills_ref/               ← 번들 스킬 (101개)
+├── skills_ref/               ← 번들 스킬 (105개)
 └── devlog/                   ← MVP 12 Phase + Post-MVP devlogs
 ```
 
@@ -320,14 +324,18 @@ graph LR
 
 **진행 중** (`devlog/`):
 
-| 폴더                              | 주제                                                                                       | 상태 |
-| --------------------------------- | ------------------------------------------------------------------------------------------ | ---- |
-| `260226_interface_unify/`         | WebUI·CLI·Telegram 입력/출력 통합 (submitMessage gateway + TG output handler)              | 🟡    |
-| `260226_repo_hygiene/`            | skills_ref 별도 레포 분리 + devlog gitignore + tests 정리                                  | 📋    |
-| `260226_safe_install/`            | `jaw init --safe` 대화형 설치 모드 + `--dry-run`                                          | 📋    |
-| `260226_steer_interrupted/`       | steer 중단 시 부분 결과 저장 조사                                                          | 🟡    |
-| `devlog_ts/`                      | TypeScript 빌드 호환 (dist build, import ext fix)                                          | 🟡    |
-| `269999_메모리 개선/`             | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                                                | 🔜    |
+| 폴더                                          | 주제                                                                                       | 상태 |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------ | ---- |
+| `260226_postinstall/`                          | postinstall 클린 클론 실패 수정 + 크로스플랫폼 가드                                       | ✅    |
+| `260226_refactor_all/`                         | 통합 리팩토링 계획 (3 phase)                                                               | 🟡    |
+| `260226_refactor_all/260226_interface_unify/`  | WebUI·CLI·Telegram 입력/출력 통합 (submitMessage gateway + TG output handler)              | 🟡    |
+| `260226_refactor_all/260226_repo_hygiene/`     | skills_ref 별도 레포 분리 + devlog gitignore + tests 정리                                  | 📋    |
+| `260226_refactor_all/260226_safe_install/`     | `jaw init --safe` 대화형 설치 모드 + `--dry-run`                                          | 📋    |
+| `260226_refactor_all/260226_steer_interrupted/`| steer 중단 시 부분 결과 저장 조사                                                          | 🟡    |
+| `260226_skill_refactor/`                       | 스킬 리팩토링 (후보 비교 + 드래프트)                                                       | 🟡    |
+| `26_readme_polish/`                            | README 다국어 정비                                                                         | 🟡    |
+| `devlog_ts/`                                   | TypeScript 빌드 호환 (dist build, import ext fix)                                          | 🟡    |
+| `269999_메모리 개선/`                          | 메모리 고도화 (flush✅ + vector DB 📋 후순위)                                                | 🔜    |
 
 ---
 
