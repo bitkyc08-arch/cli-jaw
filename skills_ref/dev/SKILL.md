@@ -1,65 +1,160 @@
 ---
 name: dev
-description: "Common development guidelines for all orchestrated sub-agents. Enforces modular development, self-reference patterns, skill discovery, and change logging. Always injected by orchestrator."
+description: "Common development guidelines for all orchestrated sub-agents. Enforces modular development, systematic debugging, verification-before-completion, change logging, and code quality standards. Always injected by orchestrator."
 ---
 
-# Dev — 공통 개발 가이드
+# Dev — Common Development Guidelines
 
-모든 sub-agent에게 적용되는 필수 개발 규칙.
+Core rules applied to every sub-agent, regardless of role.
 
-## 1. 모듈화 개발 필수
+## Companion Skills
 
-- 단일 파일 **500줄 초과 금지**. 넘으면 분리.
-- 함수/클래스 단위로 export. 한 파일에 한 책임.
-- ES Module (`import`/`export`) 사용. CommonJS 금지.
-- 새 파일 생성 시 기존 파일 구조와 네이밍 패턴을 따를 것.
+This skill covers universal guidelines. For domain-specific work, you **must** also consult the matching role skill — read its `SKILL.md` before writing any code in that domain:
 
-## 2. Self-Reference 패턴
+| Skill File | Injected When | Covers |
+|---|---|---|
+| `dev-frontend/SKILL.md` | `role=frontend` | UI/UX implementation, design aesthetics, component architecture, responsive layouts, animation |
+| `dev-backend/SKILL.md` | `role=backend` | API design, architecture patterns, database optimization, security, error handling, middleware |
+| `dev-data/SKILL.md` | `role=data` | Data pipelines, ETL/ELT, data quality validation, SQL optimization, analysis & reporting |
+| `dev-testing/SKILL.md` | `role=testing` or debugging phase | Playwright browser testing, test strategy, debugging patterns, coverage analysis |
+| `dev-code-reviewer/SKILL.md` | Any agent, during code review | Review process, quality thresholds, antipattern detection, giving/receiving feedback |
 
-이 프로젝트(cli-jaw) 자체를 참고 패턴으로 사용:
+**When your task spans multiple domains** (e.g., building an API endpoint that returns analyzed data), read ALL relevant skill files before starting.
 
-| 패턴                | 참고 파일                                                | 설명                          |
-| ------------------- | -------------------------------------------------------- | ----------------------------- |
-| **API 스킬**        | `browser/SKILL.md` → `server.js` 엔드포인트 → CLI 명령어 | SKILL → API → CLI 3계층       |
-| **프런트엔드 모듈** | `public/js/features/*.js`                                | ES Module 기반 기능 분리      |
-| **설정 관리**       | `src/config.js`                                          | 경로, 설정, 감지를 한 파일에  |
-| **이벤트 통신**     | `src/bus.js` → WebSocket broadcast                       | 서버 → 클라이언트 실시간 통신 |
-| **프롬프트 조립**   | `src/prompt.js`                                          | 시스템 프롬프트 동적 생성     |
+---
 
-코드 작성 전에 해당 패턴의 기존 구현을 먼저 읽으세요.
+## 1. Modular Development
 
-## 3. 스킬 레퍼런스 탐색
+Every file, function, and class must have a single, clear responsibility.
 
-필요한 기술이 이 가이드에 없으면 `~/.cli-jaw/skills_ref/`에서 관련 스킬을 탐색:
+**Hard limits:**
 
-```
-~/.cli-jaw/skills_ref/
-├── react-best-practices/   ← React 컴포넌트/훅/상태 관리
-├── postgres/               ← PostgreSQL 쿼리, 스키마
-├── security-best-practices/ ← 보안 검토, 취약점 방지
-├── static-analysis/        ← 코드 품질, 린트 규칙
-├── debugging-checklist/    ← 디버깅 체계적 접근법
-├── tdd/                    ← 테스트 주도 개발
-├── web-perf/               ← 웹 성능 최적화
-└── ... (전체 목록: ls ~/.cli-jaw/skills_ref/)
-```
+| Metric | Threshold | Action |
+|--------|-----------|--------|
+| File length | >500 lines | Split into focused modules |
+| Function length | >50 lines | Extract helper functions |
+| Class methods | >20 methods | Split by responsibility |
+| Nesting depth | >4 levels | Flatten with early returns or extraction |
+| Function parameters | >5 | Use an options/config object |
 
-관련 스킬이 있으면 `SKILL.md`를 읽고 지침을 따르세요.
+**Rules:**
+- ES Module (`import`/`export`) only. No CommonJS `require()`.
+- One default export per file when the file has a primary purpose.
+- Follow existing naming conventions in the project. Check sibling files before creating new ones.
+- New files must match the directory structure and naming patterns already in use.
 
-## 4. 변경 로그 기록
+---
 
-worklog 파일이 제공되면 **반드시** 아래 형식으로 기록:
+## 2. Systematic Debugging
+
+Random fixes waste time and create new bugs. Follow this process for ANY technical issue — test failures, unexpected behavior, build errors, performance problems.
+
+### Phase 1: Root Cause Investigation
+
+**Before attempting any fix:**
+
+1. **Read the full error message and stack trace.** Don't skip past them — they often contain the exact answer.
+2. **Reproduce consistently.** What are the exact steps? Does it happen every time? If not, gather more data instead of guessing.
+3. **Check recent changes.** `git diff`, recent commits, new dependencies, config changes, environment differences.
+4. **Trace data flow.** Where does the bad value originate? Trace backward through the call stack until you find the source. Fix at the source, not the symptom.
+
+### Phase 2: Pattern Analysis
+
+1. Find working code in the same codebase that does something similar.
+2. List every difference between working and broken — however small.
+3. Don't assume "that can't matter."
+
+### Phase 3: Hypothesis Testing
+
+1. Form ONE clear hypothesis: "X is the root cause because Y."
+2. Make the SMALLEST possible change to test it.
+3. One variable at a time. Never fix multiple things at once.
+4. Didn't work? Form a NEW hypothesis. Don't pile fixes on top.
+
+### Phase 4: Implementation
+
+1. Write a failing test that reproduces the bug.
+2. Implement a single fix addressing the root cause.
+3. Verify: test passes, no regressions, output is clean.
+
+**If 3+ fix attempts fail:** Stop. The problem is likely architectural, not a simple bug. Discuss with your human partner before attempting more fixes.
+
+**Red flags — stop and return to Phase 1:**
+- "Quick fix for now, investigate later"
+- "Just try changing X and see"
+- "I don't fully understand but this might work"
+- Proposing solutions before investigating
+
+---
+
+## 3. Verification Before Completion
+
+Never claim work is complete without running verification. Evidence before assertions, always.
+
+**The gate (mandatory before ANY completion claim):**
+
+1. **IDENTIFY** — What command proves this claim?
+2. **RUN** — Execute the full command (fresh, not cached).
+3. **READ** — Full output. Check exit code. Count failures.
+4. **VERIFY** — Does the output actually confirm the claim?
+5. **Only then** — State the claim WITH evidence.
+
+| Claim | Requires | Not Sufficient |
+|-------|----------|----------------|
+| "Tests pass" | Test command output: 0 failures | Previous run, "should pass" |
+| "Build succeeds" | Build command: exit 0 | "Linter passed" |
+| "Bug fixed" | Original symptom verified resolved | "Code changed, assumed fixed" |
+| "Feature complete" | Each requirement checked line-by-line | "Tests pass" |
+
+**Red flags — you're about to lie:**
+- Using words like "should", "probably", "seems to"
+- Expressing satisfaction before verification ("Great!", "Done!")
+- Relying on partial verification or a previous run
+- Thinking "just this once"
+
+---
+
+## 4. Change Documentation
+
+When a worklog or changelog file is provided, record every change in this format:
 
 ```markdown
-### [파일명] — [변경 이유]
-- 변경 내용: ...
-- 영향 범위: 이 파일을 import하는 모듈 → [목록]
-- 테스트: [어떻게 검증했는가]
+### [filename] — [reason for change]
+- **Changes**: what was modified and why
+- **Impact**: modules that import or depend on this file
+- **Verification**: how the change was tested (command + result)
 ```
 
-## 5. 안전 규칙
+Keep entries factual and concise. One entry per file changed.
 
-- 기존 `export` 절대 삭제하지 말 것 (다른 모듈이 import 중일 수 있음)
-- `import` 추가 시 해당 모듈이 실제로 존재하는지 확인
-- 설정값은 하드코딩 금지 → `config.js` 또는 `settings.json` 사용
-- 에러 핸들링: `try/catch` 필수, 조용한 실패 금지 (최소 `console.error`)
+---
+
+## 5. Safety Rules
+
+- **Never delete existing exports** — other modules may depend on them. Deprecate first if needed.
+- **Verify imports exist** before adding new `import` statements. Check the target file is real.
+- **No hardcoded configuration** — use config files or environment variables. Magic strings and numbers belong in constants.
+- **Error handling is mandatory** — `try/catch` for all async operations. No silent failures. At minimum, log the error with context (`console.error('[module]', error.message)`).
+- **No destructive operations without confirmation** — deleting files, dropping tables, resetting state, or clearing caches require explicit user approval.
+
+---
+
+## 6. Code Quality Signals
+
+Watch for these anti-patterns and fix immediately:
+
+| Anti-Pattern | Symptom | Fix |
+|---|---|---|
+| **God class** | >20 methods, mixed responsibilities | Split by domain into focused classes |
+| **Long method** | >50 lines, does multiple things | Extract into named helper functions |
+| **Deep nesting** | >4 levels of if/for/try | Early returns, guard clauses, extract |
+| **Magic numbers** | Hardcoded `86400`, `1024`, `3` | Named constants with clear intent |
+| **Stringly typed** | Strings where enums/types belong | Define explicit types or enums |
+| **Missing error handling** | No catch, no input validation | Add try/catch, validate all inputs |
+| **Floating promises** | async call without `await` | Always `await` or handle rejection |
+| **Copy-paste code** | Same logic in 2+ places | Extract shared function, import it |
+
+**Good code reads like well-written prose:**
+- Function names describe what they do (`calculateTotalPrice`, not `calc`)
+- Variable names reveal intent (`remainingRetries`, not `r`)
+- Comments explain WHY, not WHAT (the code shows what)

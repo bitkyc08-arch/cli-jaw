@@ -1435,9 +1435,9 @@
             "name_en": "Dev Common",
             "emoji": "🔧",
             "category": "orchestration",
-            "description": "공통 개발 가이드. 모듈화 개발, self-reference 패턴, skills_ref 탐색, 변경 로그 기록.",
-            "desc_ko": "공통 개발 가이드. 모듈화 개발, self-reference 패턴, skills_ref 탐색, 변경 로그 기록.",
-            "desc_en": "Common development guide. Modular dev, self-reference patterns, skills_ref exploration, changelog.",
+            "description": "Common development guidelines. Modular dev, systematic debugging, verification-before-completion, code quality signals.",
+            "desc_ko": "공통 개발 가이드. 모듈화, 체계적 디버깅, 완료 전 검증, 코드 품질 시그널.",
+            "desc_en": "Common development guidelines. Modular dev, systematic debugging, verification-before-completion, code quality signals.",
             "requires": null,
             "install": null
         },
@@ -1459,9 +1459,9 @@
             "name_en": "Dev Backend",
             "emoji": "⚙️",
             "category": "orchestration",
-            "description": "백엔드 역할 가이드. Express.js 패턴, SQLite, 에러 핸들링, 보안 기본.",
-            "desc_ko": "백엔드 역할 가이드. Express.js 패턴, SQLite, 에러 핸들링, 보안 기본.",
-            "desc_en": "Backend role guide. Express.js patterns, SQLite, error handling, security basics.",
+            "description": "Backend development guide. API design, architecture patterns, database optimization, error handling, security, logging.",
+            "desc_ko": "백엔드 개발 가이드. API 설계, 아키텍처 패턴, DB 최적화, 에러 핸들링, 보안, 로깅.",
+            "desc_en": "Backend development guide. API design, architecture patterns, database optimization, error handling, security, logging.",
             "requires": null,
             "install": null
         },
@@ -1471,9 +1471,9 @@
             "name_en": "Dev Data",
             "emoji": "📊",
             "category": "orchestration",
-            "description": "데이터 역할 가이드. ETL 파이프라인, CSV/JSON 처리, SQL 쿼리, 분석.",
-            "desc_ko": "데이터 역할 가이드. ETL 파이프라인, CSV/JSON 처리, SQL 쿼리, 분석.",
-            "desc_en": "Data role guide. ETL pipelines, CSV/JSON processing, SQL queries, analysis.",
+            "description": "Data engineering and analysis guide. Pipelines, ETL/ELT, data quality, SQL optimization, reporting, architecture decisions.",
+            "desc_ko": "데이터 엔지니어링 가이드. 파이프라인, ETL/ELT, 데이터 품질, SQL 최적화, 분석, 아키텍처 결정.",
+            "desc_en": "Data engineering and analysis guide. Pipelines, ETL/ELT, data quality, SQL optimization, reporting, architecture decisions.",
             "requires": null,
             "install": null
         },
@@ -1486,6 +1486,18 @@
             "description": "디버깅 phase 전용. Playwright 웹앱 테스팅, 정찰-행동 패턴.",
             "desc_ko": "디버깅 phase 전용. Playwright 웹앱 테스팅, 정찰-행동 패턴.",
             "desc_en": "Debugging phase only. Playwright web app testing, recon-action pattern.",
+            "requires": null,
+            "install": null
+        },
+        "dev-code-reviewer": {
+            "name": "Dev Code Reviewer",
+            "name_ko": "Dev Code Reviewer",
+            "name_en": "Dev Code Reviewer",
+            "emoji": "🔍",
+            "category": "orchestration",
+            "description": "Code review guide. Review process, quality thresholds, antipatterns, giving/receiving feedback. Available to all agents.",
+            "desc_ko": "코드 리뷰 가이드. 리뷰 프로세스, 품질 임계값, 안티패턴, 피드백 주고받기. 모든 에이전트 참고 가능.",
+            "desc_en": "Code review guide. Review process, quality thresholds, antipatterns, giving/receiving feedback. Available to all agents.",
             "requires": null,
             "install": null
         }
