@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = join(__dirname, '..', '..');
 
+// Files that MUST import JAW_HOME from config.ts (centralized)
 const FILES_MUST_IMPORT = [
     'bin/commands/doctor.ts',
     'bin/commands/init.ts',
@@ -15,11 +16,16 @@ const FILES_MUST_IMPORT = [
     'bin/commands/browser.ts',
     'bin/commands/skill.ts',
     'bin/commands/launchd.ts',
+];
+
+// Files that intentionally define JAW_HOME inline for install independence
+// (postinstall.ts, mcp-sync.ts — no config.ts import to avoid registry.ts chain)
+const FILES_INLINE_JAW_HOME = [
     'lib/mcp-sync.ts',
     'bin/postinstall.ts',
 ];
 
-test('P20-001: all 8 files import JAW_HOME from config', () => {
+test('P20-001: all 6 command files import JAW_HOME from config', () => {
     for (const file of FILES_MUST_IMPORT) {
         const src = readFileSync(join(root, file), 'utf8');
         assert.ok(
@@ -30,10 +36,13 @@ test('P20-001: all 8 files import JAW_HOME from config', () => {
     }
 });
 
-test('P20-002: no file defines local JAW_HOME via homedir()', () => {
-    for (const file of FILES_MUST_IMPORT) {
+test('P20-002: inline JAW_HOME files do NOT import config.ts', () => {
+    for (const file of FILES_INLINE_JAW_HOME) {
         const src = readFileSync(join(root, file), 'utf8');
-        const hasLocalDef = /const\s+(?:jawHome|JAW_HOME)\s*=\s*(?:path\.)?join\(.*homedir/.test(src);
-        assert.ok(!hasLocalDef, `${file} should not define local JAW_HOME via homedir()`);
+        assert.ok(
+            !src.includes("from '../src/core/config") &&
+            !src.includes("from '../../src/core/config"),
+            `${file} must NOT import config.ts (install independence)`
+        );
     }
 });

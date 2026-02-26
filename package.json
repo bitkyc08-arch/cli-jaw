@@ -41,7 +41,7 @@
   ],
   "scripts": {
     "dev": "tsx --env-file=.env server.ts",
-    "postinstall": "node dist/bin/postinstall.js",
+    "postinstall": "node scripts/postinstall-guard.cjs && node dist/bin/postinstall.js",
     "check:copilot-gap": "node scripts/check-copilot-gap.js",
     "check:deps": "node scripts/check-deps-offline.mjs",
     "check:deps:online": "bash scripts/check-deps-online.sh",

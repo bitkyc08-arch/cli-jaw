@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+
+// ─── Node version guard ─────────────────────────────
+const [major] = process.versions.node.split('.').map(Number);
+if (major! < 22) {
+    console.error(`[jaw:init] ❌ Node.js >= 22 required (current: ${process.version})`);
+    console.error(`[jaw:init]    Install: https://nodejs.org or nvm install 22`);
+    process.exit(1);
+}
+
 /**
  * postinstall.js — Phase 12.1
  * Sets up symlink structure and MCP config for agent tool compatibility.
@@ -19,7 +28,11 @@ import path from 'path';
 import os from 'os';
 import { execSync, execFileSync } from 'child_process';
 import { ensureSkillsSymlinks, initMcpConfig, copyDefaultSkills, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
-import { JAW_HOME } from '../src/core/config.js';
+
+// ─── JAW_HOME inline (config.ts → registry.ts import 체인 제거) ───
+const JAW_HOME = process.env.CLI_JAW_HOME
+    ? path.resolve(process.env.CLI_JAW_HOME.replace(/^~(?=\/|$)/, os.homedir()))
+    : path.join(os.homedir(), '.cli-jaw');
 
 const home = os.homedir();
 const jawHome = JAW_HOME;

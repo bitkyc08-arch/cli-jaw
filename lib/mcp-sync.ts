@@ -13,7 +13,11 @@ import fs from 'fs';
 import os from 'os';
 import { join, dirname, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
-import { JAW_HOME } from '../src/core/config.js';
+
+// ─── JAW_HOME inline (config.ts → registry.ts import 체인 제거) ───
+const JAW_HOME = process.env.CLI_JAW_HOME
+    ? resolve(process.env.CLI_JAW_HOME.replace(/^~(?=\/|$)/, os.homedir()))
+    : join(os.homedir(), '.cli-jaw');
 
 const MCP_PATH = join(JAW_HOME, 'mcp.json');
 
