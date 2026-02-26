@@ -6,7 +6,7 @@
 
 *One assistant. Five brains. Always on.*
 
-[![Tests](https://img.shields.io/badge/tests-357%20pass-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-360%20pass-brightgreen)](#-tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -377,7 +377,7 @@ src/
 ## 🧪 Tests
 
 <details>
-<summary>357 pass · 1 skipped · zero external dependencies</summary>
+<summary>360 pass · 1 skipped · zero external dependencies</summary>
 
 ```bash
 npm test
@@ -470,7 +470,7 @@ Contributions are welcome! Here's how to get started:
 2. Run `npm run build && npm test` to make sure everything works
 3. Submit a PR — we'll review it promptly
 
-> 📋 Found a bug or have a feature idea? [Open an issue](https://github.com/bitkyc08-arch/cli-jaw/issues)
+> 📋 Found a bug or have a feature idea? [Open an issue](https://github.com/lidge-jun/cli-jaw/issues)
 
 ---
 

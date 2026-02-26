@@ -590,9 +590,13 @@ export function copyDefaultSkills() {
         console.log(`[skills] Codex: not installed, using bundled fallback`);
     }
 
-    // ─── 2. Bundled skills_ref/ → ~/.cli-jaw/skills_ref/ ───
+    // ─── 2. Populate skills_ref/ ─────────────────────
+    // Priority: bundled (dev) → git clone (npm install) → offline fallback
     const packageRefDir = join(findPackageRoot(), 'skills_ref');
+    const SKILLS_REPO = 'https://github.com/lidge-jun/cli-jaw-skills.git';
+
     if (fs.existsSync(packageRefDir)) {
+        // Dev / local: copy from bundled skills_ref/
         const entries = fs.readdirSync(packageRefDir, { withFileTypes: true });
         let refCopied = 0;
         for (const entry of entries) {
@@ -602,12 +606,40 @@ export function copyDefaultSkills() {
                 copyDirRecursive(src, dst);
                 refCopied++;
             } else if (entry.isFile()) {
-                // Always overwrite package-managed files (registry.json)
-                // These are not user-edited; they track available skills
                 fs.copyFileSync(src, dst);
             }
         }
         if (refCopied > 0) console.log(`[skills] Bundled: ${refCopied} skills → ref`);
+    } else if (!fs.existsSync(join(refDir, 'registry.json'))) {
+        // npm install (no bundled dir) + first time (no existing ref)
+        // → clone from GitHub
+        try {
+            const { execSync } = require('child_process');
+            console.log(`[skills] cloning skills from ${SKILLS_REPO}...`);
+            // Clone into a temp dir, then move contents to refDir (which already exists)
+            const tmpClone = join(JAW_HOME, '.skills_clone_tmp');
+            if (fs.existsSync(tmpClone)) fs.rmSync(tmpClone, { recursive: true });
+            execSync(`git clone --depth 1 ${SKILLS_REPO} "${tmpClone}"`, {
+                stdio: 'pipe', timeout: 120000,
+            });
+            // Move contents (skip .git)
+            const cloned = fs.readdirSync(tmpClone, { withFileTypes: true });
+            for (const entry of cloned) {
+                if (entry.name === '.git') continue;
+                const src = join(tmpClone, entry.name);
+                const dst = join(refDir, entry.name);
+                if (entry.isDirectory() && !fs.existsSync(dst)) {
+                    copyDirRecursive(src, dst);
+                } else if (entry.isFile()) {
+                    fs.copyFileSync(src, dst);
+                }
+            }
+            fs.rmSync(tmpClone, { recursive: true, force: true });
+            console.log(`[skills] ✅ cloned skills to ${refDir}`);
+        } catch (e) {
+            console.warn(`[skills] ⚠️ clone failed: ${(e as Error).message?.slice(0, 80)}`);
+            console.warn(`[skills] offline mode — skills will be available after 'jaw init'`);
+        }
     }
 
     // ─── 3. Auto-activate from refDir ───────────────

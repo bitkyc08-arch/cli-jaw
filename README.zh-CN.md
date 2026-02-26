@@ -6,7 +6,7 @@
 
 *Claude、Codex、Gemini... 从此告别来回切换。*
 
-[![Tests](https://img.shields.io/badge/tests-357%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-360%20pass-brightgreen)](#-测试)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -355,7 +355,7 @@ src/
 ## 🧪 测试
 
 <details>
-<summary>357 pass · 1 skipped · 零外部依赖</summary>
+<summary>360 pass · 1 skipped · 零外部依赖</summary>
 
 ```bash
 npm test
@@ -398,7 +398,7 @@ npm test
 2. `npm run build && npm test` 确认一切正常
 3. 提交 PR — 我们会尽快 review
 
-> 📋 发现 Bug 或者有好点子？[提个 Issue](https://github.com/bitkyc08-arch/cli-jaw/issues)
+> 📋 发现 Bug 或者有好点子？[提个 Issue](https://github.com/lidge-jun/cli-jaw/issues)
 
 ---
 

@@ -68,10 +68,10 @@ test('SAF-008: all install functions support dryRun', () => {
     assert.ok(depsBlock.includes('opts.dryRun'), 'installSkillDeps supports dryRun');
 });
 
-// ── INIT-001: --safe option ──
+// ── INIT-001: --dry-run option ──
 
-test('INIT-001: init.ts has --safe option', () => {
-    assert.ok(initSrc.includes("safe: { type: 'boolean'"), '--safe option defined');
+test('INIT-001: init.ts has --dry-run option', () => {
+    assert.ok(initSrc.includes("'dry-run': { type: 'boolean'"), '--dry-run option defined');
 });
 
 // ── INIT-002: --dry-run option ──
@@ -98,4 +98,28 @@ test('INIT-004: init.ts imports and calls extracted install functions', () => {
     assert.ok(initSrc.includes('installCliTools'), 'calls installCliTools');
     assert.ok(initSrc.includes('installMcpServers'), 'calls installMcpServers');
     assert.ok(initSrc.includes('installSkillDeps'), 'calls installSkillDeps');
+});
+
+// ── SAF-009: isEntryPoint guard ──
+
+test('SAF-009: postinstall has isEntryPoint guard', () => {
+    assert.ok(postinstallSrc.includes('isEntryPoint'), 'checks isEntryPoint');
+    assert.ok(postinstallSrc.includes("endsWith('postinstall"), 'checks postinstall filename');
+    assert.ok(postinstallSrc.includes('runPostinstall()'), 'calls runPostinstall from guard');
+});
+
+// ── INIT-005: --dry-run skips settings write ──
+
+test('INIT-005: --dry-run guards settings/dir writes', () => {
+    assert.ok(initSrc.includes("!values['dry-run']"), 'dry-run guards file writes');
+    assert.ok(initSrc.includes('[dry-run] would save settings'), 'dry-run reports settings skip');
+});
+
+// ── INIT-006: no top-level postinstall import side effects ──
+
+test('INIT-006: uses dynamic import for postinstall', () => {
+    assert.ok(
+        initSrc.includes("await import('../postinstall"),
+        'uses dynamic import (not static) for postinstall',
+    );
 });

@@ -1,0 +1,14 @@
+# Submodules — not included in npm package
+skills_ref/
+devlog/
+
+# Dev files
+.git/
+.gitmodules
+.DS_Store
+*.db
+*.db-shm
+*.db-wal
+.env
+.artifacts/
+node_modules/

@@ -20,11 +20,11 @@
   "license": "ISC",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bitkyc08-arch/cli-jaw.git"
+    "url": "git+https://github.com/lidge-jun/cli-jaw.git"
   },
-  "homepage": "https://github.com/bitkyc08-arch/cli-jaw#readme",
+  "homepage": "https://github.com/lidge-jun/cli-jaw#readme",
   "bugs": {
-    "url": "https://github.com/bitkyc08-arch/cli-jaw/issues"
+    "url": "https://github.com/lidge-jun/cli-jaw/issues"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -37,8 +37,7 @@
     "dist/",
     "public/",
     "scripts/",
-    "package.json",
-    "skills_ref/"
+    "package.json"
   ],
   "scripts": {
     "dev": "tsx --env-file=.env server.ts",

@@ -1,0 +1,6 @@
+[submodule "skills_ref"]
+	path = skills_ref
+	url = https://github.com/lidge-jun/cli-jaw-skills.git
+[submodule "devlog"]
+	path = devlog
+	url = https://github.com/lidge-jun/cli-jaw-internal.git
