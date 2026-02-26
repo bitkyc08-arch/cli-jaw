@@ -15,6 +15,7 @@ const projectRoot = join(__dirname, '..', '..');
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
+    allowNegative: true,
     options: {
         port: { type: 'string', default: process.env.PORT || '3457' },
         host: { type: 'string', default: '0.0.0.0' },

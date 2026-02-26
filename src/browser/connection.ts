@@ -65,10 +65,13 @@ function findChrome() {
 export async function launchChrome(port = DEFAULT_CDP_PORT) {
     if (chromeProc && !chromeProc.killed) return;
     const chrome = findChrome();
+    const noSandbox = process.env.CHROME_NO_SANDBOX === '1';
     chromeProc = spawn(chrome, [
         `--remote-debugging-port=${port}`,
         `--user-data-dir=${PROFILE_DIR}`,
         '--no-first-run', '--no-default-browser-check',
+        '--disable-dev-shm-usage',
+        ...(noSandbox ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
     ], { detached: true, stdio: 'ignore' });
     chromeProc.unref();
     await new Promise(r => setTimeout(r, 2000));
