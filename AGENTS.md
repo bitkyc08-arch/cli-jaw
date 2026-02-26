@@ -2,7 +2,43 @@
 
 System-level AI agent with full computer control via CLI wrapping (claude, codex, gemini).
 
-## Devlog Conventions
+## Repository Structure
+
+```
+lidge-jun/cli-jaw              ← public (this repo)
+├── skills_ref/  (submodule)   ← lidge-jun/cli-jaw-skills (public, 105 skills)
+├── devlog/      (submodule)   ← lidge-jun/cli-jaw-internal (private)
+└── .npmignore                 ← npm publish 시 submodules 제외
+```
+
+### Clone
+
+```bash
+# 코드만
+git clone https://github.com/lidge-jun/cli-jaw.git
+
+# 코드 + skills + devlog (private 권한 필요)
+git clone --recursive https://github.com/lidge-jun/cli-jaw.git
+```
+
+### Submodule Update
+
+서브모듈 수정 후 반드시 메인 레포에서도 ref 커밋:
+
+```bash
+cd devlog  # 또는 skills_ref
+git add -A && git commit -m "update" && git push
+cd ..
+git add devlog && git commit -m "chore: update devlog ref" && git push
+```
+
+### devlog 접근
+
+`devlog/` 는 private 레포입니다. 접근 필요 시 [Issue](https://github.com/lidge-jun/cli-jaw/issues)에서 collaborator 권한을 요청하세요.
+
+### Kanban
+
+프로젝트 보드: https://github.com/users/lidge-jun/projects/2/views/1
 
 ### Line Count Format (`str_func.md`)
 
