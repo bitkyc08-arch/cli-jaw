@@ -1,7 +1,7 @@
 # 프롬프트 삽입 흐름 — Prompt Injection Flow
 
 > cli-jaw의 프롬프트 조립 + 주입 전체 흐름. 에이전트 빌딩의 핵심 레퍼런스.
-> Phase 20.6: prompt.ts → prompt/builder.ts (523L) + promptCache 추가
+> Phase 20.6: prompt.ts → prompt/builder.ts (557L) + promptCache 추가
 
 ---
 

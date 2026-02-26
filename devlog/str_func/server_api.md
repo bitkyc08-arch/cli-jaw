@@ -1,4 +1,4 @@
-# server.ts — Glue + API Routes (949L)
+# server.ts — Glue + API Routes (902L)
 
 > 라우트 + 초기화 + 커맨드 ctx 구성 + Quota 조회 + CLI Registry API
 > Phase 9: `ok()`/`fail()` 표준 응답 13라우트 적용, 보안 가드 4라우트 적용, `mergeSettingsPatch` 호출
@@ -79,7 +79,7 @@ ensureDirs() → runMigration() → loadSettings() → initPromptFiles()
 | 명령어        | 설명                                                                                   |
 | ------------- | -------------------------------------------------------------------------------------- |
 | `serve`       | `--port 3457` `--host 0.0.0.0` `--open`, IPv4 first                                    |
-| `chat`        | 3모드 (Default/Raw/Simple), 슬래시명령, 멀티라인, CJK 너비 (832L)                      |
+| `chat`        | 3모드 (Default/Raw/Simple), 슬래시명령, 멀티라인, CJK 너비 (873L)                      |
 | `init`        | Interactive/`--non-interactive`, 완료 후 postinstall                                   |
 | `doctor`      | 11개 체크 (CLI/Telegram/Skills/Chrome 등), `--json`                                    |
 | `mcp`         | `install <pkg>` · `sync` · `list` · `reset` (PyPI 자동 감지)                           |

@@ -1,6 +1,6 @@
 # src/cli/ — Slash Command Registry & Dispatcher
 
-> cli/commands.ts (268L) + cli/handlers.ts (432L) + cli/registry.ts (89L) + cli/acp-client.ts (315L)
+> cli/commands.ts (271L) + cli/handlers.ts (432L) + cli/registry.ts (89L) + cli/acp-client.ts (328L)
 > 16개 커맨드, 3개 인터페이스 (cli/web/telegram). cli-registry 기반 동적 모델 매핑.
 > Phase 9.5: `command-contract/` 모듈로 capability 정책 + help 렌더링 통합.
 > Phase 20.6: commands.ts 658줄 → commands.ts (268L, 레지스트리) + handlers.ts (432L, 핸들러) 분리
@@ -66,7 +66,7 @@ const MODEL_CHOICES_BY_CLI = buildModelChoicesByCli();
 
 ---
 
-## slash-commands.ts — Web UI 드롭다운 (220L)
+## slash-commands.js — Web UI 드롭다운 (231L)
 
 `public/js/features/slash-commands.js`
 
@@ -91,7 +91,7 @@ COMMANDS 배열을 capability map으로 확장하여 인터페이스별 정책 �
 
 Telegram에서 `model`/`cli`는 `readonly`, 나머지는 `full`. Web에서 `hidden` 커맨드 제외.
 
-### policy.ts (40L)
+### policy.ts (37L)
 
 | Function                     | 역할                                     |
 | ---------------------------- | ---------------------------------------- |
@@ -99,7 +99,7 @@ Telegram에서 `model`/`cli`는 `readonly`, 나머지는 `full`. Web에서 `hidd
 | `getExecutableCommands(iface)` | full capability만 필터                 |
 | `getTelegramMenuCommands()`  | Telegram `setMyCommands`용 (reserved 제외) |
 
-### help-renderer.ts (46L)
+### help-renderer.ts (44L)
 
 | Function            | 역할                                             |
 | ------------------- | ------------------------------------------------ |

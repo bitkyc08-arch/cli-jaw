@@ -5,7 +5,7 @@
 
 ---
 
-## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle (493L)
+## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle (497L)
 
 | Function                                              | 역할                                                            |
 | ----------------------------------------------------- | --------------------------------------------------------------- |
@@ -66,7 +66,7 @@ initTelegram()
 
 ---
 
-## memory/heartbeat.ts — Scheduled Jobs (107L)
+## memory/heartbeat.ts — Scheduled Jobs (108L)
 
 | Function               | 역할                                   |
 | ---------------------- | -------------------------------------- |

@@ -29,7 +29,7 @@ CLI_REGISTRY = {
 
 ---
 
-## src/core/config.ts — 경로, 설정, CLI 탐지 (187L)
+## src/core/config.ts — 경로, 설정, CLI 탐지 (213L)
 
 **상수**: `JAW_HOME` · `PROMPTS_DIR` · `DB_PATH` · `SETTINGS_PATH` · `HEARTBEAT_JOBS_PATH` · `UPLOADS_DIR` · `SKILLS_DIR` · `SKILLS_REF_DIR` · `APP_VERSION` (← package.json)
 
@@ -67,7 +67,7 @@ employees (id PK, name, cli, model, role, status, created_at)
 
 ---
 
-## src/core/bus.ts — Broadcast Bus (18L)
+## src/core/bus.ts — Broadcast Bus (20L)
 
 순환 의존 방지 허브. 의존 0.
 
@@ -106,7 +106,7 @@ employees (id PK, name, cli, model, role, status, created_at)
 
 Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 
-| connection.ts (71L)      | actions.ts (179L)                |
+| connection.ts (113L)     | actions.ts (179L)                |
 | ------------------------ | -------------------------------- |
 | `findChrome()`           | `snapshot(port, opts)`           |
 | `launchChrome(port)`     | `screenshot(port, opts)` +dpr    |
@@ -131,7 +131,7 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 
 ---
 
-## lib/mcp-sync.ts — MCP 통합 관리 (645L)
+## lib/mcp-sync.ts — MCP 통합 관리 (661L)
 
 소스: `~/.cli-jaw/mcp.json`
 
@@ -165,7 +165,7 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 
 **의존 없음** — server.ts에서 라우트 핸들러 진입 시 호출.
 
-### path-guards.ts (67L)
+### path-guards.ts (60L)
 
 | Function            | 역할                                                  |
 | ------------------- | ----------------------------------------------------- |
@@ -173,7 +173,7 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 | `assertFilename(f, opts)` | 확장자 화이트리스트 + path separator 차단 + 길이 제한 |
 | `safeResolveUnder(base, rel)` | `path.resolve` 후 base 디렉토리 탈출 검증         |
 
-### decode.ts (22L)
+### decode.ts (21L)
 
 | Function                | 역할                                                  |
 | ----------------------- | ----------------------------------------------------- |
@@ -201,13 +201,13 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 | `ok(res, data)`   | `{ ok: true, ...data }` 200 응답              |
 | `fail(res, status, error, extra)` | `{ ok: false, error, ...extra }` 에러 응답 |
 
-### async-handler.ts (12L)
+### async-handler.ts (14L)
 
 | Function             | 역할                                     |
 | -------------------- | ---------------------------------------- |
 | `asyncHandler(fn)`   | `Promise.catch(next)` 래퍼 — async 에러 전달 |
 
-### error-middleware.ts (27L)
+### error-middleware.ts (26L)
 
 | Function            | 역할                                     |
 | ------------------- | ---------------------------------------- |

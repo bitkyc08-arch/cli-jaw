@@ -5,7 +5,7 @@
 
 ---
 
-## agent/spawn.ts — CLI Spawn & Queue + ACP 분기 (567L) + args.ts (67L) + events.ts (322L)
+## agent/spawn.ts — CLI Spawn & Queue + ACP 분기 (691L) + args.ts (67L) + events.ts (322L)
 
 | Function                                   | 역할                                                 |
 | ------------------------------------------ | ---------------------------------------------------- |
@@ -54,9 +54,9 @@
 opts.model → activeOverrides[cli].model → perCli[cli].model → 'default'
 opts.effort → activeOverrides[cli].effort → perCli[cli].effort → ''
 
-- activeOverrides: Active CLI UI에서 변경 시 저장 (main agent만)
-- perCli: 사이드바 CLI별 설정 (employee도 참조)
-- Employee(opts.agentId || opts.internal): activeOverrides 무시 → perCli만
+- activeOverrides: Active CLI UI에서 변경 시 저장
+- perCli: 사이드바 CLI별 설정
+- planning/employee agent도 activeOverrides 모델 사용 (spawn.ts:228 수정)
 ```
 
 ### ~/.copilot/config.json 동기화
@@ -73,7 +73,7 @@ opts.effort → activeOverrides[cli].effort → perCli[cli].effort → ''
 
 ---
 
-## acp-client.ts — Copilot ACP JSON-RPC 클라이언트 (311L) `[NEW]`
+## acp-client.ts — Copilot ACP JSON-RPC 클라이언트 (328L)
 
 | Class / Method               | 역할                                              |
 | ---------------------------- | ------------------------------------------------- |
@@ -115,7 +115,7 @@ Client (cli-jaw)               Agent (copilot --acp)
 
 ---
 
-## events.ts — NDJSON Event Parsing + Dedupe + ACP (318L)
+## events.ts — NDJSON Event Parsing + Dedupe + ACP (322L)
 
 | Function                                        | 역할                                              |
 | ----------------------------------------------- | ------------------------------------------------- |
@@ -165,7 +165,7 @@ extractFromAcpUpdate(params):
 
 ---
 
-## orchestrator/pipeline.ts (560L) + parser.ts (108L) — Orchestration v2 + Phase + AI dispatch
+## orchestrator/pipeline.ts (493L) + distribute.ts (356L) + parser.ts (126L) — Orchestration v3 + Phase + AI dispatch
 
 | Function                     | 역할                                           |
 | ---------------------------- | ---------------------------------------------- |
@@ -177,10 +177,11 @@ extractFromAcpUpdate(params):
 | `initAgentPhases(subtasks)`  | 에이전트별 phase profile 초기화                |
 | `advancePhase(ap, passed)`   | phase 전진/완료                                |
 | `phasePlan(prompt, worklog)` | planning agent 호출 (트리아지 판단 포함)       |
-| `distributeByPhase(...)`     | **순차 실행** — for-of 루프, 이전 결과 주입    |
+| `distributeByPhase(...)`     | **parallel/sequential** 분기, Promise.all 병렬 실행 |
 | `phaseReview(...)`           | per-agent verdict 판정                         |
 | `orchestrate(prompt, meta)`  | **메인** — triage → plan → distribute → review |
 | `orchestrateContinue(meta)`  | 이전 worklog 이어서 실행                       |
+| `orchestrateReset(meta)`     | worklog 초기화 + 리셋                          |
 
 ### origin 전달
 
@@ -206,7 +207,7 @@ orchestrate(prompt, meta)
 
 ---
 
-## prompt.ts — System Prompt & Skills (515L)
+## prompt/builder.ts — System Prompt & Skills (557L)
 
 | Function                                | 역할                                                                  |
 | --------------------------------------- | --------------------------------------------------------------------- |

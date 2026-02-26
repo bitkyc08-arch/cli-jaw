@@ -1,4 +1,4 @@
-# Frontend — public/ (26 files, ~4500L)
+# Frontend — public/ (28 files, ~5500L)
 
 > Web UI — Vanilla HTML + CSS + ES Modules. CDN: marked, highlight.js, KaTeX, Mermaid.
 > 3단 폰트: Chakra Petch(display) + Outfit(body) + SF Mono(code).
@@ -10,32 +10,35 @@
 
 ```text
 public/
-├── index.html            ← CLI-JAW 대문자 로고, pill theme switch, quota 높이 정렬 (450L)
-├── css/                  ← 6 files (~1420L)
-│   ├── variables.css     ← Arctic Cyan (#22d3ee/#06b6d4) + will-change + scrollbar tint (142L)
-│   ├── layout.css        ← opacity 전환 + contain 격리 + 로고 글로우 + overflow:hidden (290L)
-│   ├── chat.css          ← pill theme-switch + border-left 구분 + 채팅 버블 (530L)
-│   ├── sidebar.css       ← 설정/스킬 카드 hover + display font (224L)
-│   ├── modals.css        ← 모달, 하트비트 카드 (171L)
+├── index.html            ← CLI-JAW 대문자 로고, pill theme switch, quota 높이 정렬 (469L)
+├── css/                  ← 6 files (~1724L)
+│   ├── variables.css     ← Arctic Cyan (#22d3ee/#06b6d4) + will-change + scrollbar tint (141L)
+│   ├── layout.css        ← opacity 전환 + contain 격리 + 로고 글로우 + overflow:hidden (349L)
+│   ├── chat.css          ← 채팅 UI (메시지 버블·입력·첨부·스피너) (570L)
+│   ├── sidebar.css       ← 사이드바 레이아웃 + 접기/펼치기 (224L)
+│   ├── modals.css        ← 모달·탭·설정 패널 (171L)
 │   └── markdown.css      ← rendering (table·code·KaTeX·Mermaid) + mermaid overlay popup + copy btn (269L)
-└── js/                   ← 16 files (~2300L)
-    ├── main.js           ← 앱 진입점 + 5개 모듈 wire + 인덱스 탭 전환 (281L)
+└── js/                   ← 19 files (~3250L)
+    ├── main.js           ← 앱 진입점 + 모듈 wire + 인덱스 탭 전환 (281L)
     ├── state.js          ← 공유 상태 모듈 (attachedFiles 배열) (16L)
     ├── constants.js      ← CLI_REGISTRY 동적 로딩 + ROLE_PRESETS (이모지 제거) (119L)
-    ├── render.js         ← marked+hljs+KaTeX+Mermaid renderer + mermaid overlay popup + rehighlightAll + copy + sanitize + i18n (294L)
-    ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() + finalizeAgent guard + user 마크다운 (151L)
-    ├── ws.js             ← WebSocket + 메시지 라우팅 + orchestrate_done (64L)
+    ├── render.js         ← marked+hljs+KaTeX+Mermaid renderer + mermaid overlay popup + copy + sanitize (294L)
+    ├── api.js            ← fetch 래퍼 + REST 엔드포인트 (55L)
+    ├── locale.js         ← 로케일 셀렉터 (23L)
+    ├── ui.js             ← DOM 유틸 + stop-mode + getAppName() + finalizeAgent guard + user 마크다운 (172L)
+    ├── ws.js             ← WebSocket + 메시지 라우팅 + orchestrate_done (76L)
     └── features/
-        ├── chat.js       ← 전송, multi-file 첨부, chip 프리뷰, 드래그앤드롭, 멈춤, 큐, auto-expand (207L)
-        ├── settings.js   ← 설정 + CLI 상태 + perCli (5개 CLI) (524L)
-        ├── skills.js     ← 로드, 토글, 필터 (69L)
-        ├── employees.js  ← 직원(employee) CRUD (CSS dot, 이모지 없음) (106L)
-        ├── heartbeat.js  ← 하트비트 모달/작업 (83L)
-        ├── memory.js     ← 메모리 모달/설정 (90L)
-        ├── sidebar.js    ← [NEW] 사이드바 접기 (이중 모드: wide=collapsed, narrow=expanded) (88L)
+        ├── i18n.js       ← 프론트엔드 i18n + applyI18n() (125L)
+        ├── chat.js       ← 전송, multi-file 첨부, chip 프리뷰, 드래그앤드롭, 멈춤, 큐, auto-expand (242L)
+        ├── settings.js   ← 설정 + CLI 상태 + perCli (5개 CLI) (512L)
+        ├── skills.js     ← 로드, 토글, 필터 (68L)
+        ├── employees.js  ← 직원(employee) CRUD (CSS dot, 이모지 없음) (120L)
+        ├── heartbeat.js  ← 하트비트 모달/작업 (80L)
+        ├── memory.js     ← 메모리 모달/설정 (85L)
+        ├── slash-commands.js ← 슬래시 커맨드 자동완성 (231L)
+        ├── sidebar.js    ← 사이드바 접기 (이중 모드: wide=collapsed, narrow=expanded) (88L)
         ├── theme.js      ← pill switch 다크/라이트 (is-light class) + hljs 스와프 (40L)
-        ├── appname.js    ← Agent Name (DEFAULT_NAME='CLI-JAW') (43L)
-        └── slash-commands.ts ← 슬래시 커맨드 드롭다운 (220L)
+        └── appname.js    ← Agent Name (DEFAULT_NAME='CLI-JAW') (43L)
 ```
 
 ---
@@ -54,24 +57,27 @@ public/
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `render.js` | marked+hljs+KaTeX+Mermaid renderer + rehighlightAll + mermaid overlay popup + copy + sanitize + i18n | 294 |
-| `ui.js` | DOM 유틸 + stop-mode + finalizeAgent guard + user 마크다운 | 151 |
-| `ws.js` | WebSocket + 메시지 라우팅 + orchestrate_done | 64 |
+| `render.js` | marked+hljs+KaTeX+Mermaid renderer + mermaid overlay popup + copy + sanitize | 294 |
+| `api.js` | fetch 래퍼 + REST 엔드포인트 | 55 |
+| `locale.js` | 로케일 셀렉터 | 23 |
+| `ui.js` | DOM 유틸 + stop-mode + finalizeAgent guard + user 마크다운 | 172 |
+| `ws.js` | WebSocket + 메시지 라우팅 + orchestrate_done | 76 |
 
 ### Features Layer
 
 | 모듈 | 역할 | 라인 |
 |------|------|------|
-| `chat.js` | 전송, multi-file 첨부, chip 프리뷰, 개별제거, 드래그앤드롭, auto-expand | 207 |
-| `settings.js` | 설정 패널 + perCli (5개 CLI) | 524 |
-| `skills.js` | 스킬 카드 UI | 69 |
-| `employees.js` | 직원(employee) CRUD (CSS dot) | 106 |
-| `heartbeat.js` | 하트비트 모달 | 83 |
-| `memory.js` | 메모리 모달 | 90 |
+| `i18n.js` | 프론트엔드 i18n + applyI18n() | 125 |
+| `chat.js` | 전송, multi-file 첨부, chip 프리뷰, 개별제거, 드래그앤드롭, auto-expand | 242 |
+| `settings.js` | 설정 패널 + perCli (5개 CLI) | 512 |
+| `skills.js` | 스킬 카드 UI | 68 |
+| `employees.js` | 직원(employee) CRUD (CSS dot) | 120 |
+| `heartbeat.js` | 하트비트 모달 | 80 |
+| `memory.js` | 메모리 모달 | 85 |
+| `slash-commands.js` | 슬래시 커맨드 자동완성 | 231 |
 | `sidebar.js` | 사이드바 접기 (이중 모드 responsive) | 88 |
 | `theme.js` | pill switch 다크/라이트 + is-light class + hljs 스와프 | 40 |
 | `appname.js` | Agent Name (DEFAULT_NAME='CLI-JAW') | 43 |
-| `slash-commands.ts` | 슬래시 커맨드 드롭다운 | 220 |
 
 ---
 
@@ -79,9 +85,9 @@ public/
 
 | 파일 | 역할 | 라인 |
 |------|------|------|
-| `variables.css` | Arctic Cyan + will-change + cubic-bezier easing + scrollbar tint | 142 |
-| `layout.css` | opacity 전환 + contain 격리 + 로고 글로우 + overflow:hidden | 290 |
-| `chat.css` | pill theme-switch + border-left 구분 + 채팅 버블 + auto-expand | 530 |
+| `variables.css` | Arctic Cyan + will-change + cubic-bezier easing + scrollbar tint | 141 |
+| `layout.css` | opacity 전환 + contain 격리 + 로고 글로우 + overflow:hidden | 349 |
+| `chat.css` | 채팅 UI (메시지 버블·입력·첨부·스피너) | 570 |
 | `sidebar.css` | 설정/스킬 카드 hover + display font | 224 |
 | `modals.css` | 모달 + 하트비트 카드 | 171 |
 | `markdown.css` | markdown rendering + semantic color vars + mermaid overlay popup + copy btn style | 269 |
