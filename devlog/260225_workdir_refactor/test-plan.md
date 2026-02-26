@@ -13,7 +13,7 @@
 | 1 | `tests/unit/workdir-default.test.ts` | 2 | Unit | ✅ Pass | workingDir → JAW_HOME, prompt text |
 | 2.0 | `tests/unit/jaw-home-import.test.ts` | 2 | Unit | ✅ Pass | 8-file import centralization 검증 |
 | 2.1-2.2 | `tests/unit/jaw-home-env.test.ts` | 5 | Unit+Subprocess | ✅ Pass | env var, --home flag, tilde, = syntax |
-| 3 | `tests/unit/clone.test.ts` | 6 | Unit+Subprocess | ⬜ Pending | clone 디렉토리/설정/메모리/에러 |
+| 3 | `tests/unit/clone.test.ts` | 8 | Unit+Subprocess | ✅ Pass | clone 디렉토리/설정/메모리/에러/소스검증 |
 | 4 | `tests/unit/launchd-multi.test.ts` | 7 | Unit+Subprocess | ⬜ Pending | instanceId, plist, xmlEsc, port |
 | E2E | `tests/integration/multi-instance.test.ts` | 3 | Integration | ⬜ Pending | 두 인스턴스 동시 실행 |
 
@@ -186,7 +186,7 @@ test('P2-005: tilde expansion works correctly', () => {
 
 ---
 
-## Phase 3: `tests/unit/clone.test.ts`
+## Phase 3: `tests/unit/clone.test.ts` ✅ DONE
 
 ```typescript
 // Multi-Instance Phase 3: jaw clone 명령어 검증

@@ -52,7 +52,7 @@ const { values, positionals } = parseArgs({
 });
 
 const target = positionals[0]
-    ? path.resolve(positionals[0].replace(/^~/, os.homedir()))
+    ? path.resolve(positionals[0].replace(/^~(?=\/|$)/, os.homedir()))
     : null;
 
 if (!target) {
@@ -61,8 +61,8 @@ if (!target) {
 }
 
 const source = values.from
-    ? path.resolve((values.from as string).replace(/^~/, os.homedir()))
-    : path.join(os.homedir(), '.cli-jaw');
+    ? path.resolve((values.from as string).replace(/^~(?=\/|$)/, os.homedir()))
+    : JAW_HOME;  // R9: was path.join(os.homedir(), '.cli-jaw')
 const withMemory = values['with-memory'] as boolean;
 const linkRef = values['link-ref'] as boolean;
 
