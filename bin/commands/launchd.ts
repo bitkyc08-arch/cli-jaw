@@ -1,17 +1,39 @@
 /**
  * cli-jaw launchd — macOS LaunchAgent 관리
  * Usage:
- *   jaw launchd         — plist 확인 → 없으면 생성 → 시작 (원스텝)
- *   jaw launchd unset   — plist 제거 + 해제
- *   jaw launchd status  — 현재 상태 확인
+ *   jaw launchd              — plist 확인 → 없으면 생성 → 시작 (원스텝)
+ *   jaw launchd --port 3458  — 커스텀 포트로 등록
+ *   jaw launchd unset        — plist 제거 + 해제
+ *   jaw launchd status       — 현재 상태 확인
  */
 import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, basename } from 'node:path';
 import { homedir } from 'node:os';
+import { createHash } from 'node:crypto';
+import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 
-const LABEL = 'com.cli-jaw.serve';
+function instanceId(): string {
+    const base = basename(JAW_HOME);
+    if (base === '.cli-jaw') return 'default';
+    const hash = createHash('md5').update(JAW_HOME).digest('hex').slice(0, 8);
+    return `${base.replace(/^\./, '')}-${hash}`;
+}
+
+const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+// parseArgs is safe here — launchd is a leaf command (no subcommands to absorb)
+const { values: launchdOpts, positionals: launchdPos } = parseArgs({
+    args: process.argv.slice(3),
+    options: { port: { type: 'string', default: '3457' } },
+    strict: false,
+    allowPositionals: true,
+});
+const PORT = launchdOpts.port as string;
+
+const INSTANCE = instanceId();
+const LABEL = `com.cli-jaw.${INSTANCE}`;
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 const LOG_DIR = join(JAW_HOME, 'logs');
 
@@ -28,34 +50,40 @@ function getJawPath(): string {
 function generatePlist(): string {
     const nodePath = getNodePath();
     const jawPath = getJawPath();
-    execSync(`mkdir -p ${LOG_DIR}`);
+    execSync(`mkdir -p "${LOG_DIR}"`);
 
     return `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>${LABEL}</string>
+    <string>${xmlEsc(LABEL)}</string>
     <key>ProgramArguments</key>
     <array>
-        <string>${nodePath}</string>
-        <string>${jawPath}</string>
+        <string>${xmlEsc(nodePath)}</string>
+        <string>${xmlEsc(jawPath)}</string>
+        <string>--home</string>
+        <string>${xmlEsc(JAW_HOME)}</string>
         <string>serve</string>
+        <string>--port</string>
+        <string>${xmlEsc(PORT)}</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
     <key>WorkingDirectory</key>
-    <string>${homedir()}</string>
+    <string>${xmlEsc(JAW_HOME)}</string>
     <key>StandardOutPath</key>
-    <string>${LOG_DIR}/jaw-serve.log</string>
+    <string>${xmlEsc(LOG_DIR)}/jaw-serve.log</string>
     <key>StandardErrorPath</key>
-    <string>${LOG_DIR}/jaw-serve.err</string>
+    <string>${xmlEsc(LOG_DIR)}/jaw-serve.err</string>
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
-        <string>${process.env.PATH}</string>
+        <string>${xmlEsc(process.env.PATH || '')}</string>
+        <key>CLI_JAW_HOME</key>
+        <string>${xmlEsc(JAW_HOME)}</string>
     </dict>
 </dict>
 </plist>`;
@@ -68,7 +96,7 @@ function isLoaded(): boolean {
     } catch { return false; }
 }
 
-const sub = process.argv[3];
+const sub = launchdPos[0];
 
 switch (sub) {
     case 'unset': {
@@ -92,6 +120,8 @@ switch (sub) {
             const parts = out.split('\t');
             const pid = parts[0] === '-' ? 'stopped' : `running (PID ${parts[0]})`;
             console.log(`🦈 jaw serve — ${pid}`);
+            console.log(`   instance: ${INSTANCE}`);
+            console.log(`   port:     ${PORT}`);
             console.log(`   plist: ${PLIST_PATH}`);
             console.log(`   log:   ${LOG_DIR}/jaw-serve.log`);
         } catch {
@@ -125,7 +155,8 @@ switch (sub) {
         setTimeout(() => {
             if (isLoaded()) {
                 console.log('🦈 jaw serve가 백그라운드에서 실행 중입니다');
-                console.log('   http://localhost:3457');
+                console.log(`   instance: ${INSTANCE}`);
+                console.log(`   http://localhost:${PORT}`);
                 console.log(`   로그: ${LOG_DIR}/jaw-serve.log`);
                 console.log('\n   해제: jaw launchd unset');
             } else {

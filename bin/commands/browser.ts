@@ -7,7 +7,7 @@ import { rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getServerUrl, JAW_HOME } from '../../src/core/config.js';
 
-const SERVER = getServerUrl('3457');
+const SERVER = getServerUrl(undefined);
 const sub = process.argv[3];
 
 // ─── ANSI ────────────────────────────────────

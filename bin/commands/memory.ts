@@ -4,7 +4,7 @@
 import { parseArgs } from 'node:util';
 import { getServerUrl } from '../../src/core/config.js';
 
-const SERVER = getServerUrl('3457');
+const SERVER = getServerUrl(undefined);
 const sub = process.argv[3];
 
 async function api(method: string, path: string, body?: any) {
