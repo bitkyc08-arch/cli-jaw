@@ -37,7 +37,7 @@ const PHASE_PROFILES = {
 
 // ─── Per-Agent Phase Tracking ────────────────────────
 
-function initAgentPhases(subtasks: any[]) {
+export function initAgentPhases(subtasks: any[]) {
     return subtasks.map((st: Record<string, any>) => {
         const role = (st.role || 'custom').toLowerCase();
         const fullProfile = PHASE_PROFILES[role as keyof typeof PHASE_PROFILES] || [3];

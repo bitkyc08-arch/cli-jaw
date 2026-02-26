@@ -5,7 +5,7 @@
 **Dependency**: Phase 1 (workingDir must be JAW_HOME-based first)
 
 > ⚠️ **REVIEW FIX (2026-02-26)**: Original plan said "2 files, ~15 lines" but 
-> **6 files define their own local JAW_HOME** instead of importing from config.ts.
+> **8 files define their own local JAW_HOME** instead of importing from config.ts.
 > These must be centralized FIRST (Phase 2.0) before the env var change works.
 
 ---
@@ -14,31 +14,44 @@
 
 Currently these files define `const JAW_HOME = ...` locally instead of importing from `config.ts`:
 
-| File | Line | Current Code |
-|------|------|-------------|
-| `bin/commands/doctor.ts` | 11 | `const JAW_HOME = path.join(os.homedir(), '.cli-jaw')` |
-| `bin/commands/init.ts` | 11 | `const JAW_HOME = path.join(os.homedir(), '.cli-jaw')` |
-| `bin/commands/mcp.ts` | 29 | `const JAW_HOME = join(homedir(), '.cli-jaw')` |
-| `bin/commands/browser.ts` | 13 | `const JAW_HOME = join(homedir(), '.cli-jaw')` |
-| `bin/commands/skill.ts` | 16 | `const JAW_HOME = join(homedir(), '.cli-jaw')` |
-| `lib/mcp-sync.ts` | 17 | `const JAW_HOME = join(os.homedir(), '.cli-jaw')` |
-| `bin/commands/launchd.ts` | 15 | `const LOG_DIR = join(homedir(), '.cli-jaw', 'logs')` *(hardcoded path)* |
-| `bin/postinstall.ts` | 28 | `const jawHome = path.join(home, '.cli-jaw')` |
+| File | Line | Current Code | Correct Import Path |
+|------|------|-------------|---------------------|
+| `bin/commands/doctor.ts` | 11 | `const JAW_HOME = path.join(os.homedir(), '.cli-jaw')` | `../../src/core/config.js` |
+| `bin/commands/init.ts` | 11 | `const JAW_HOME = path.join(os.homedir(), '.cli-jaw')` | `../../src/core/config.js` |
+| `bin/commands/mcp.ts` | 29 | `const JAW_HOME = join(homedir(), '.cli-jaw')` | `../../src/core/config.js` |
+| `bin/commands/browser.ts` | 13 | `const JAW_HOME = join(homedir(), '.cli-jaw')` | `../../src/core/config.js` |
+| `bin/commands/skill.ts` | 16 | `const JAW_HOME = join(homedir(), '.cli-jaw')` | `../../src/core/config.js` |
+| `bin/commands/launchd.ts` | 15 | `const LOG_DIR = join(homedir(), '.cli-jaw', 'logs')` | `../../src/core/config.js` |
+| `lib/mcp-sync.ts` | 17 | `const JAW_HOME = join(os.homedir(), '.cli-jaw')` | `../src/core/config.js` ⚠️ |
+| `bin/postinstall.ts` | 28 | `const jawHome = path.join(home, '.cli-jaw')` | `../src/core/config.js` ⚠️ |
 
-**Fix for each** (except postinstall/launchd):
+> ⚠️ **REVIEW FIX R3**: Import paths differ by file location:
+> - `bin/commands/*.ts` → `../../src/core/config.js` (confirmed: browser.ts:9, status.ts:6 already use this)
+> - `lib/*.ts` → `../src/core/config.js` (different depth — **NOT** `../../`)
+> - `bin/*.ts` (non-commands) → `../src/core/config.js` (different depth)
+> 
+> Using the wrong relative path = immediate build error. Per-file paths are in the table above.
+
+**Fix for `bin/commands/*.ts`** (doctor, init, mcp, browser, skill):
 ```diff
 -const JAW_HOME = path.join(os.homedir(), '.cli-jaw');
 +import { JAW_HOME } from '../../src/core/config.js';
 ```
 
-**Fix for launchd.ts:**
+**Fix for `lib/mcp-sync.ts`:**
+```diff
+-const JAW_HOME = join(os.homedir(), '.cli-jaw');
++import { JAW_HOME } from '../src/core/config.js';
+```
+
+**Fix for `bin/commands/launchd.ts`:**
 ```diff
 -const LOG_DIR = join(homedir(), '.cli-jaw', 'logs');
 +import { JAW_HOME } from '../../src/core/config.js';
 +const LOG_DIR = join(JAW_HOME, 'logs');
 ```
 
-**Fix for postinstall.ts:**
+**Fix for `bin/postinstall.ts`:**
 ```diff
 -const jawHome = path.join(home, '.cli-jaw');
 +import { JAW_HOME as jawHome } from '../src/core/config.js';
@@ -66,25 +79,48 @@ Note: `resolve()` handles relative paths but does NOT expand `~`.
 We must explicitly `.replace(/^~/, os.homedir())` before `resolve()`.
 Add `import { resolve } from 'path'` if not already present (`join` is imported, need `resolve`).
 
-### 2.2 `bin/cli-jaw.ts` — --home flag (before any import)
+### 2.2 `bin/cli-jaw.ts` — --home flag (before command parsing)
+
+> ⚠️ **REVIEW FIX R3**: The current entrypoint does `const command = process.argv[2]` at line 22.
+> If user runs `jaw --home /path doctor`, then `process.argv[2]` = `--home` and command becomes
+> `'--home'` instead of `'doctor'` — the switch/case would fall to default (error).
+>
+> **The --home parsing + argv splice MUST happen BEFORE `const command = process.argv[2]`.**
+> This means inserting the --home block at the TOP of cli-jaw.ts, between the `pkg` loading
+> and the `const command` assignment.
 
 ```diff
-+// ─── --home flag: must run BEFORE config.ts import ───
+ // After pkg loading (lines 13-19), BEFORE command parsing:
+
++// ─── --home flag: must run BEFORE command parsing + config.ts import ───
 +import { resolve as pathResolve } from 'node:path';
++import os from 'node:os';
 +const homeIdx = process.argv.indexOf('--home');
 +if (homeIdx !== -1 && process.argv[homeIdx + 1]) {
 +    process.env.CLI_JAW_HOME = pathResolve(
-+        process.argv[homeIdx + 1].replace(/^~/, process.env.HOME || '')
++        process.argv[homeIdx + 1].replace(/^~/, os.homedir())
 +    );
 +    // Remove --home and its value from argv so subcommands don't see it
 +    process.argv.splice(homeIdx, 2);
 +}
++
+ const command = process.argv[2];  // ← NOW this correctly gets 'doctor', not '--home'
 ```
 
-This must go **before** the `switch(command)` block because `config.ts` is loaded
-at import time by subcommands. Order:
-1. Parse `--home` → set env var
-2. `switch(command)` → `import('./commands/serve.js')` → imports `config.ts` → reads env var
+This must go **before** `const command = process.argv[2]` (line 22) because:
+1. `--home /path` consumes 2 argv positions → splice shifts everything
+2. After splice, `process.argv[2]` is the actual command (`doctor`, `serve`, etc.)
+3. `config.ts` is loaded at import time by subcommands → env var must be set first
+
+**Full execution order:**
+```
+jaw --home /path doctor --json
+  1. Parse --home → set CLI_JAW_HOME env var
+  2. Splice --home + /path from argv → argv becomes [node, jaw, doctor, --json]
+  3. const command = process.argv[2] → 'doctor'
+  4. switch('doctor') → import('./commands/doctor.js')
+  5. doctor.ts imports config.ts → config.ts reads CLI_JAW_HOME → correct JAW_HOME
+```
 
 ### 2.3 Help text update in `bin/cli-jaw.ts`
 

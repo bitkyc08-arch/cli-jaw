@@ -28,11 +28,31 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import { execSync } from 'node:child_process';
+import { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const args = process.argv.slice(3);
-const targetIdx = args.findIndex(a => !a.startsWith('-'));
-const target = targetIdx >= 0
-    ? path.resolve(args[targetIdx].replace(/^~/, os.homedir()))
+// ESM __dirname equivalent (project convention: see cli-jaw.ts:11, serve.ts:13)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+
+// ⚠️ R3 FIX: arg parsing must handle `--from <value>` correctly.
+// Old approach: "first non-dash arg = target" fails for `jaw clone --from A B`
+//   because 'A' (the --from value) is a non-dash arg picked as target.
+// New approach: use parseArgs (Node built-in, already used in serve.ts/launchd.ts)
+import { parseArgs } from 'node:util';
+
+const { values, positionals } = parseArgs({
+    args: process.argv.slice(3),
+    options: {
+        from:        { type: 'string' },
+        'with-memory': { type: 'boolean', default: false },
+        'link-ref':    { type: 'boolean', default: false },
+    },
+    allowPositionals: true,
+    strict: false,
+});
+
+const target = positionals[0]
+    ? path.resolve(positionals[0].replace(/^~/, os.homedir()))
     : null;
 
 if (!target) {
@@ -40,12 +60,11 @@ if (!target) {
     process.exit(1);
 }
 
-const fromIdx = args.indexOf('--from');
-const source = fromIdx >= 0 && args[fromIdx + 1]
-    ? path.resolve(args[fromIdx + 1].replace(/^~/, os.homedir()))
+const source = values.from
+    ? path.resolve((values.from as string).replace(/^~/, os.homedir()))
     : path.join(os.homedir(), '.cli-jaw');
-const withMemory = args.includes('--with-memory');
-const linkRef = args.includes('--link-ref');
+const withMemory = values['with-memory'] as boolean;
+const linkRef = values['link-ref'] as boolean;
 
 if (fs.existsSync(target) && fs.readdirSync(target).length > 0) {
     console.error(`❌ Target directory not empty: ${target}`);
@@ -124,12 +143,17 @@ if (withMemory) {
 // This starts a fresh Node process where config.ts evaluates JAW_HOME
 // from CLI_JAW_HOME env var correctly.
 
-const projectRoot = path.resolve(__dirname, '../..');
+// ⚠️ R3 FIX: projectRoot calculation.
+// clone.ts is at bin/commands/clone.ts → compiled to dist/bin/commands/clone.js
+// __dirname at runtime = <project>/dist/bin/commands/
+// join(__dirname, '..', '..') = <project>/dist/ (project convention from serve.ts:14)
+// Import paths from dist/ are ./src/core/config.js (not ./dist/src/...)
+const projectRoot = path.join(__dirname, '..', '..');
 execSync(
     `node -e "` +
-    `const { loadSettings } = await import('./dist/src/core/config.js'); ` +
+    `const { loadSettings } = await import('./src/core/config.js'); ` +
     `loadSettings(); ` +
-    `const { regenerateB } = await import('./dist/src/prompt/builder.js'); ` +
+    `const { regenerateB } = await import('./src/prompt/builder.js'); ` +
     `regenerateB();"`,
     {
         cwd: projectRoot,
@@ -137,6 +161,8 @@ execSync(
         stdio: 'pipe'
     }
 );
+// Note: top-level await in `node -e` works on Node v22+ (verified).
+// CLI_JAW_HOME is set in env BEFORE Node starts, so config.ts reads it at import time.
 
 // 9. Summary
 console.log(`
