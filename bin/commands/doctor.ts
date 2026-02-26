@@ -59,6 +59,9 @@ console.log(!values.json ? '\n  🦈 cli-jaw doctor\n' : '');
 
 // 1. Home directory
 check('Home directory', () => {
+    if (!fs.existsSync(JAW_HOME)) {
+        fs.mkdirSync(JAW_HOME, { recursive: true });
+    }
     fs.accessSync(JAW_HOME, fs.constants.W_OK);
     return JAW_HOME;
 });
