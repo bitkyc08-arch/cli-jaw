@@ -6,7 +6,7 @@
 
 *Claude, Codex, Gemini... 이제 번갈아 쓰지 마세요.*
 
-[![Tests](https://img.shields.io/badge/tests-434%20pass-brightgreen)](#-테스트)
+[![Tests](https://img.shields.io/badge/tests-445%20pass-brightgreen)](#-테스트)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
