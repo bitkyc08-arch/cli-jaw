@@ -13,6 +13,7 @@ import fs from 'fs';
 import os from 'os';
 import { join, dirname, resolve, isAbsolute } from 'path';
 import { fileURLToPath } from 'url';
+import { execSync } from 'child_process';
 
 // ─── JAW_HOME inline (config.ts → registry.ts import 체인 제거) ───
 const JAW_HOME = process.env.CLI_JAW_HOME
@@ -614,7 +615,7 @@ export function copyDefaultSkills() {
         // npm install (no bundled dir) + first time (no existing ref)
         // → clone from GitHub
         try {
-            const { execSync } = require('child_process');
+            // execSync imported at top of file
             console.log(`[skills] cloning skills from ${SKILLS_REPO}...`);
             // Clone into a temp dir, then move contents to refDir (which already exists)
             const tmpClone = join(JAW_HOME, '.skills_clone_tmp');

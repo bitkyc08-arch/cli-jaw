@@ -241,20 +241,8 @@ export async function installSkillDeps(opts: InstallOpts = {}) {
 // ─── runPostinstall: setup + install (no top-level side effects) ────
 // Called only when running as npm postinstall entry point.
 // Dynamic import from init.ts gets clean library exports only.
-
 export async function runPostinstall() {
-    // ── Legacy migration (only in entry-point mode, NOT on import) ──
-    const legacyHome = path.join(home, '.cli-jaw');
-    const isCustomHome = jawHome !== legacyHome;
-    if (isCustomHome && fs.existsSync(legacyHome) && !fs.existsSync(jawHome)) {
-        console.log(`[jaw:init] migrating ~/.cli-jaw → ${jawHome} ...`);
-        fs.renameSync(legacyHome, jawHome);
-        console.log(`[jaw:init] ✅ migration complete`);
-    } else if (isCustomHome && fs.existsSync(legacyHome) && fs.existsSync(jawHome)) {
-        console.log(`[jaw:init] ⚠️ both ~/.cli-jaw and ${jawHome} exist — using ${jawHome}`);
-    }
-
-    // ── Safe mode guard (before any dir creation beyond jawHome) ──
+    // ── Safe mode guard (before ANY side effects) ──
     const isSafeMode = process.env.npm_config_jaw_safe === '1'
         || process.env.npm_config_jaw_safe === 'true'
         || process.env.JAW_SAFE === '1'
@@ -267,6 +255,17 @@ export async function runPostinstall() {
         console.log('[jaw:postinstall] 🔒 safe mode — home directory created only');
         console.log('[jaw:postinstall] Run `jaw init` to configure interactively');
         return;
+    }
+
+    // ── Legacy migration (only in normal mode, NOT safe mode) ──
+    const legacyHome = path.join(home, '.cli-jaw');
+    const isCustomHome = jawHome !== legacyHome;
+    if (isCustomHome && fs.existsSync(legacyHome) && !fs.existsSync(jawHome)) {
+        console.log(`[jaw:init] migrating ~/.cli-jaw → ${jawHome} ...`);
+        fs.renameSync(legacyHome, jawHome);
+        console.log(`[jaw:init] ✅ migration complete`);
+    } else if (isCustomHome && fs.existsSync(legacyHome) && fs.existsSync(jawHome)) {
+        console.log(`[jaw:init] ⚠️ both ~/.cli-jaw and ${jawHome} exist — using ${jawHome}`);
     }
 
     // 2. Ensure sub-directories (only in normal mode)

@@ -12,6 +12,7 @@ import { JAW_HOME, SETTINGS_PATH } from '../../src/core/config.js';
 const { values } = parseArgs({
     args: process.argv.slice(3),
     options: {
+        help: { type: 'boolean', default: false },
         'non-interactive': { type: 'boolean', default: false },
         safe: { type: 'boolean', default: false },
         'dry-run': { type: 'boolean', default: false },
@@ -24,6 +25,23 @@ const { values } = parseArgs({
     },
     strict: true,
 });
+
+if (values.help) {
+    console.log(`Usage: jaw init [options]
+
+Options:
+  --help                Show this help
+  --non-interactive     Skip prompts, use defaults
+  --safe                Safe install (home dir only)
+  --dry-run             Show what would be done without changes
+  --force               Overwrite existing settings
+  --working-dir <path>  Set working directory
+  --cli <name>          Default CLI (claude, codex, gemini, copilot, opencode)
+  --telegram-token <t>  Telegram bot token
+  --allowed-chat-ids <ids>  Comma-separated chat IDs
+  --skills-dir <path>   Skills directory`);
+    process.exit(0);
+}
 
 // Ensure home dir
 fs.mkdirSync(JAW_HOME, { recursive: true });
