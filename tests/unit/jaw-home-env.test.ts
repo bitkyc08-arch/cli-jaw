@@ -73,11 +73,11 @@ test('P2-005: tilde expansion resolves correctly', () => {
 });
 
 test('P23-001: postinstall legacy rename guard — custom home must not move ~/.cli-jaw', () => {
-    // Verify that postinstall.ts guards legacy rename with isDefaultHome check
+    // Verify that postinstall.ts guards legacy rename with isCustomHome check
     const src = readFileSync(join(projectRoot, 'bin/postinstall.ts'), 'utf8');
     assert.ok(
-        src.includes('isDefaultHome') && src.includes('legacyHome'),
-        'postinstall must guard legacy rename with isDefaultHome check'
+        src.includes('isCustomHome') && src.includes('legacyHome'),
+        'postinstall must guard legacy rename with isCustomHome check'
     );
 });
 
