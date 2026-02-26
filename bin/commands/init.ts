@@ -18,7 +18,6 @@ const { values } = parseArgs({
         force: { type: 'boolean', default: false },
         'working-dir': { type: 'string' },
         cli: { type: 'string' },
-        permissions: { type: 'string' },
         'telegram-token': { type: 'string' },
         'allowed-chat-ids': { type: 'string' },
         'skills-dir': { type: 'string' },
@@ -46,8 +45,6 @@ const workingDir = values['working-dir'] ||
     await ask('Working directory', settings.workingDir || JAW_HOME);
 const cli = values.cli ||
     await ask('CLI (claude/codex/gemini)', settings.cli || 'claude');
-const permissions = values.permissions ||
-    await ask('Permissions (safe/auto)', settings.permissions || 'safe');
 
 // Telegram
 let tgEnabled = false, tgToken = '', tgChatIds: number[] = [];
@@ -78,20 +75,25 @@ rl.close();
 const merged: Record<string, any> = values.force ? {} : { ...settings };
 merged.workingDir = workingDir;
 merged.cli = cli;
-merged.permissions = permissions;
+merged.permissions = 'auto';
 merged.skillsDir = skillsDir;
 if (tgEnabled || values.force) {
     merged.telegram = { enabled: tgEnabled, token: tgToken, allowedChatIds: tgChatIds };
 }
 
-// Save
-fs.writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2));
+// Save (skip in dry-run)
+if (!values['dry-run']) {
+    fs.writeFileSync(SETTINGS_PATH, JSON.stringify(merged, null, 2));
 
-// Ensure skills dir + heartbeat.json
-fs.mkdirSync(skillsDir as string, { recursive: true });
-const hbPath = path.join(JAW_HOME, 'heartbeat.json');
-if (!fs.existsSync(hbPath)) {
-    fs.writeFileSync(hbPath, JSON.stringify({ jobs: [] }, null, 2));
+    // Ensure skills dir + heartbeat.json
+    fs.mkdirSync(skillsDir as string, { recursive: true });
+    const hbPath = path.join(JAW_HOME, 'heartbeat.json');
+    if (!fs.existsSync(hbPath)) {
+        fs.writeFileSync(hbPath, JSON.stringify({ jobs: [] }, null, 2));
+    }
+} else {
+    console.log('  [dry-run] would save settings to', SETTINGS_PATH);
+    console.log('  [dry-run] would create', skillsDir);
 }
 
 // Step-by-step component install — dynamic import to prevent postinstall top-level side effects
@@ -122,7 +124,7 @@ console.log(`
 
   Working dir : ${workingDir}
   CLI         : ${cli}
-  Permissions : ${permissions}
+  Permissions : auto
   Telegram    : ${tgEnabled ? '✅ ' + tgToken.slice(0, 10) + '...' : '❌ off'}
   Skills      : ${skillsDir}
   Settings    : ${SETTINGS_PATH}
