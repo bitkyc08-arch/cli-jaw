@@ -18,7 +18,7 @@ export class AcpClient extends EventEmitter {
     _activityPing: (() => void) | null;
     _agentCapabilities: any;
 
-    constructor({ model, workDir, permissions = 'safe' }: { model?: any; workDir?: any; permissions?: string } = {}) {
+    constructor({ model, workDir, permissions = 'auto' }: { model?: any; workDir?: any; permissions?: string } = {}) {
         super();
         this.model = model;
         this.workDir = workDir;

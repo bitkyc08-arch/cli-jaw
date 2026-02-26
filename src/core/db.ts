@@ -21,7 +21,7 @@ db.exec(`
         active_cli  TEXT DEFAULT 'claude',
         session_id  TEXT,
         model       TEXT DEFAULT 'default',
-        permissions TEXT DEFAULT 'safe',
+        permissions TEXT DEFAULT 'auto',
         working_dir TEXT DEFAULT '~',
         effort      TEXT DEFAULT 'medium',
         updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
