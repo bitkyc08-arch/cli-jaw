@@ -333,7 +333,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         broadcast('agent_status', { running: true, agentId: agentLabel, cli });
 
         // ─── DIFF-C: ACP error guard — prevent uncaught EventEmitter crash ───
+        let acpSettled = false;  // guard: error→exit can fire sequentially
         acp.on('error', (err: Error) => {
+            if (acpSettled) return;
+            acpSettled = true;
             const msg = `Copilot ACP spawn failed: ${err.message}`;
             console.error(`[acp:error] ${msg}`);
             activeProcesses.delete(agentLabel);
@@ -439,6 +442,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         })();
 
         acp.on('exit', ({ code, signal }) => {
+            if (acpSettled) return;  // error handler already resolved
+            acpSettled = true;
             if (code !== 0 && !killReason) {
                 console.warn(`[acp:unexpected-exit] code=${code} signal=${signal} sessionId=${ctx.sessionId}`);
             }
@@ -540,7 +545,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     broadcast('agent_status', { running: true, agentId: agentLabel, cli });
 
     // ─── DIFF-A: error guard — prevent uncaught ENOENT crash ───
+    let stdSettled = false;  // guard: error→close can fire sequentially
     child.on('error', (err: NodeJS.ErrnoException) => {
+        if (stdSettled) return;
+        stdSettled = true;
         const msg = err.code === 'ENOENT'
             ? `CLI '${cli}' 실행 실패 (ENOENT). 설치/경로를 확인하세요.`
             : `CLI '${cli}' 실행 실패: ${err.message}`;
@@ -612,6 +620,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     });
 
     child.on('close', (code) => {
+        if (stdSettled) return;  // error handler already resolved
         const wasSteer = killReason === 'steer';
         if (mainManaged) killReason = null;  // consume
         activeProcesses.delete(agentLabel);

@@ -60,7 +60,7 @@ test('SI-003: ACP exit handler adds interrupted prefix to fullText when wasSteer
 
 test('SI-004: ACP exit handler adds interrupted prefix to traceText when wasSteer', () => {
     const acpExitIdx = spawnSrc.indexOf("acp.on('exit'");
-    const acpExitBlock = spawnSrc.slice(acpExitIdx, acpExitIdx + 2000);
+    const acpExitBlock = spawnSrc.slice(acpExitIdx, acpExitIdx + 2200);
 
     // trace tagging
     assert.ok(
