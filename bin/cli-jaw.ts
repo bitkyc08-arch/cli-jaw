@@ -63,6 +63,7 @@ ${c.bold}   🦈 v${pkg.version}${c.reset}  ${c.dim}AI Agent Orchestration Platf
     browser    브라우저 제어
     memory     영구 메모리 관리
     launchd    macOS 자동 실행 관리 (install/uninstall/status)
+    clone      인스턴스 복제 (독립 에이전트 생성)
 
   ${c.bold}Options:${c.reset}
     --home     데이터 디렉토리 지정 (기본: ~/.cli-jaw)
@@ -113,6 +114,9 @@ switch (command) {
         break;
     case 'launchd':
         await import('./commands/launchd.js');
+        break;
+    case 'clone':
+        await import('./commands/clone.js');
         break;
     case '--version':
     case '-v':

@@ -339,10 +339,14 @@ Current UI has a text input `<input id="inpCwd" value="~/">` in sidebar.
 ### Phase 2 Frontend: PATCH-4 *(optional cleanup)*
 - [ ] `public/index.html:172-183` — remove permissions toggle + workdir input
 
-### Phase 3: `jaw clone` Command *(independent, after Phase 2)*
-- [ ] New file `bin/commands/clone.ts` + routing in `cli-jaw.ts`
-- [ ] Uses subprocess for regenerateB (env var must work first)
-- **Scope**: 1 new file (~120 lines), 1 modified
+### Phase 3: `jaw clone` Command *(independent, after Phase 2)* ✅ DONE
+- [x] New file `bin/commands/clone.ts` (~140 lines) + routing in `cli-jaw.ts`
+- [x] parseArgs for --from/--with-memory/--link-ref (safe here — clone is a leaf command)
+- [x] Subprocess regenerateB with CLI_JAW_HOME env var
+- [x] Tilde regex: `/^~(?=\/|$)/` (R6 fix applied)
+- [x] Source default: `JAW_HOME` (not hardcoded `~/.cli-jaw`)
+- [x] Tests: 6 new (P3-001~006), all pass
+- **Scope**: 1 new file (140 lines), 1 modified (cli-jaw.ts: +3 lines)
 
 ### Phase 4: Multi-Instance launchd + Port Separation *(independent, after Phase 2)*
 - [ ] `launchd.ts` — dynamic LABEL with hash-based instanceId *(R7: collision prevention)*
