@@ -415,6 +415,7 @@ npm test
 | `doctor`에서 CLI 누락 표시   | 해당 CLI 미설치                    | `npm i -g @anthropic-ai/claude-code` 등 설치                                |
 | 포트 3457 사용 중            | 다른 프로세스가 점유               | `PORT=4000 jaw serve` 또는 기존 프로세스 종료                           |
 | 텔레그램 봇 무반응           | 토큰 미설정 또는 Chat ID 누락      | `jaw init --telegram-token ...` 재실행                                  |
+| 텔레그램 ✓✓ 지연 표시        | Telegram 서버 측 전달 확인 타이밍   | 정상 동작 — 서버 부하에 따라 수 분 걸릴 수 있음. 버그 아님               |
 | `npm install -g` 권한 오류   | 글로벌 디렉토리 권한 문제          | `sudo npm i -g cli-jaw` 또는 [nvm](https://github.com/nvm-sh/nvm) 사용 권장 |
 | 빌드 실패 (`tsc` 에러)       | Node 22 미만 버전                  | `node -v` 확인 → 22 이상으로 업그레이드                                     |
 | 메모리가 세션 간 유지 안 됨  | `~/.cli-jaw/memory/` 디렉토리 없음 | `jaw init` 재실행하면 자동 생성                                         |

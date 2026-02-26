@@ -411,6 +411,7 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 | Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`.     |
 | `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                        |
 | Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                               |
+| Telegram ✓✓ delayed          | Normal — Telegram server-side delivery ack can take a few minutes under load. Not a bug.    |
 | Skills not loading           | Run `jaw skill reset` then `jaw mcp sync`.                                                  |
 | Browser commands fail        | Install Chrome/Chromium. Run `jaw browser start` first.                                     |
 

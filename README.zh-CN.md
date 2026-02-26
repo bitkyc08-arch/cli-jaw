@@ -415,6 +415,7 @@ npm test
 | `doctor` 显示 CLI 缺失       | 对应 CLI 未安装               | 按提示安装，如 `npm i -g @anthropic-ai/claude-code`                      |
 | 端口 3457 被占用             | 其他进程占用了端口            | 改用 `PORT=4000 jaw serve` 或终止占用进程                                |
 | Telegram 机器人无响应        | Token 未配置或缺少 Chat ID    | 重新运行 `jaw init --telegram-token ...`                                 |
+| Telegram ✓✓ 延迟显示         | Telegram 服务器端交付确认时序 | 正常行为 — 服务器负载较高时可能延迟数分钟，非 Bug                        |
 | `npm install -g` 权限错误    | 全局目录权限不足              | 使用 `sudo npm i -g cli-jaw` 或推荐 [nvm](https://github.com/nvm-sh/nvm) |
 | 构建失败（`tsc` 报错）       | Node 版本低于 22              | `node -v` 检查 → 升级至 22+                                              |
 | 会话间记忆未保留             | `~/.cli-jaw/memory/` 目录缺失 | 重新运行 `jaw init` 自动创建                                             |
