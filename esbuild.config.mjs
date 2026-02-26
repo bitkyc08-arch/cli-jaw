@@ -12,6 +12,7 @@ const config = {
   sourcemap: true,
   minify: !isWatch,
   target: ['es2020'],
+  resolveExtensions: ['.ts', '.js'],
   logLevel: 'info',
 };
 
