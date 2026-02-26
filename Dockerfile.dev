@@ -9,7 +9,7 @@ RUN groupadd -r jaw && useradd -r -g jaw -m jaw
 
 WORKDIR /app
 COPY package*.json ./
-RUN npm ci --ignore-scripts
+RUN npm ci --ignore-scripts && npm rebuild better-sqlite3
 COPY . .
 RUN npm run build && npm run build:frontend
 
