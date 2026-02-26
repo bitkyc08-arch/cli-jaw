@@ -136,3 +136,4 @@ public/
 | Theme | Red → Arctic Cyan (`#22d3ee`), pill switch, sidebar jank fix, border 구분, 글로우 |
 | Mermaid Fix | DOMPurify removed from mermaid SVG (was stripping foreignObject/text). Overlay: z-index fix, size 95vw/95vh, raw SVG capture (no duplicate buttons) |
 | Msg Persist | `POST /api/message` now calls `insertMessage.run('user')` before `orchestrate()` — user messages survive page refresh |
+| Phase 3.1 | workingDir 입력란: `value=""` + placeholder 동적, 유저가 직접 경로 입력 가능. Permission 토글 Safe/Auto → Auto 고정 배지(`setPerm()` no-op). `settings.js` |

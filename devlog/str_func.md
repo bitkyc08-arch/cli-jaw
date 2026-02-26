@@ -1,8 +1,8 @@
 # CLI-JAW — Source Structure & Function Reference
 
-> 마지막 검증: 2026-02-26T11:00 (orchestration v3 — end_phase + checkpoint)
-> server.ts 902L / src/ 36파일 12서브디렉토리 / tests 276 total · 275 pass (tsx runner)
-> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix + cli-jaw rename + orchestration v3 반영
+> 마지막 검증: 2026-02-26T02:40 (multi-instance Phase 1-4.1 반영)
+> server.ts 935L / src/ 36파일 13서브디렉토리 / tests 314 total · 306 pass (tsx runner)
+> Phase 9 보안 하드닝 + Phase 17 AI triage + Phase 20.6 모듈 분리 + parallel dispatch + session fix + cli-jaw rename + orchestration v3 + **multi-instance refactor (Phase 1-4.1)** 반영
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -12,14 +12,14 @@
 
 ```text
 cli-jaw/
-├── server.ts                 ← Express 라우트 + 글루 + ok/fail + security guards (902L)
+├── server.ts                 ← Express 라우트 + 글루 + ok/fail + security guards (935L)
 ├── lib/
 │   ├── mcp-sync.ts           ← MCP 통합 + 스킬 복사 + DEDUP_EXCLUDED + 글로벌 설치 (661L)
 │   ├── upload.ts             ← 파일 업로드 + Telegram 다운로드 (70L)
 │   └── quota-copilot.ts      ← Copilot 할당량 조회 (keychain → API) (68L)
 ├── src/
 │   ├── core/                 ← 의존 0 인프라 계층
-│   │   ├── config.ts         ← JAW_HOME, settings, CLI 탐지, APP_VERSION (213L)
+│   │   ├── config.ts         ← JAW_HOME, settings, CLI 탐지, APP_VERSION (215L)
 │   │   ├── db.ts             ← SQLite 스키마 + prepared statements + trace (105L)
 │   │   ├── bus.ts            ← WS + 내부 리스너 broadcast (20L)
 │   │   ├── logger.ts         ← 로거 유틸 (11L)
@@ -112,9 +112,10 @@ cli-jaw/
 │       ├── skill.ts          ← 스킬 관리 (install/remove/info/list/reset)
 │       ├── employee.ts       ← 직원 관리 (reset, REST API 호출, 67L)
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션)
-│       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init)
-│       ├── launchd.ts        ← macOS LaunchAgent 관리 (install/unset/status)
-│       └── browser.ts        ← 브라우저 CLI (17개 서브커맨드, 240L)
+│       ├── clone.ts           ← 인스턴스 복제 (--from, --with-memory, regenerateB) (165L)
+│       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init) (92L)
+│       ├── launchd.ts        ← macOS LaunchAgent 관리 (instanceId, --port, xmlEsc) (179L)
+│       └── browser.ts        ← 브라우저 CLI (17개 서브커맨드, 238L)
 ├── tests/                    ← 회귀 방지 테스트 (276 total · 275 pass)
 │   ├── events.test.ts        ← 이벤트 파서 단위 테스트
 │   ├── events-acp.test.ts    ← ACP session/update 이벤트 테스트
@@ -284,6 +285,12 @@ graph LR
 68. **[orch-v3] worklog ⏸ + allDone**: `updateMatrix`에 `⏸ checkpoint` 상태 추가. `parseWorklogPending`가 `⏸` 감지. review prompt에 allDone 조기 완료 규칙 추가.
 69. **[orch-v3] planner schema**: `distribute.ts` `buildPlanPrompt`에 `end_phase`/`checkpoint` 가이드 + JSON 예시 추가.
 70. **[critical fix] checkpoint completed reset**: `advancePhase`가 마지막 phase PASS 시 `completed=true` 찍는데, checkpoint 분기에서 `completed=false`로 되돌리지 않으면 matrix에 ✅ 표시되어 resume 불가.
+71. **[multi-instance] Phase 1: workingDir default → JAW_HOME**: `config.ts:101` 기본값 `homedir()` → `JAW_HOME`. prompt_basic_A2에서도 `~/` → `~/.cli-jaw`.
+72. **[multi-instance] Phase 2: JAW_HOME dynamic**: 8파일 import 중앙화 → `config.ts`. `CLI_JAW_HOME` env var + `--home` flag (manual indexOf, NOT parseArgs). postinstall `isDefaultHome` guard, init/mcp fallback.
+73. **[multi-instance] Phase 3: jaw clone**: `bin/commands/clone.ts` (165L). source 검증(존재+settings.json), `--from`/`--with-memory`/`--link-ref`, subprocess `regenerateB`, fixture-based 테스트 8개.
+74. **[multi-instance] Phase 3.1: Frontend hotfix**: workingDir 입력란 `value=""` + placeholder, Safe/Auto → Auto 고정 배지. `settings.js` setPerm() → no-op + always 'auto'.
+75. **[multi-instance] Phase 4: launchd multi-instance**: `instanceId()` hash 기반 label (`com.cli-jaw.default` / `com.cli-jaw.<name>-<hash8>`), `xmlEsc()`, `parseArgs --port`, `--home`/`--port` plist pass-through, `CLI_JAW_HOME` env in plist, `WorkingDirectory → JAW_HOME`. `browser.ts`/`memory.ts` `getServerUrl('3457')` → `getServerUrl(undefined)`.
+76. **[multi-instance] Phase 4.1 hotfix**: `applySettingsPatch` workingDir 변경 시 `regenerateB`+`ensureSkillsSymlinks`+`syncToAll` 후처리. 서버 시작 시 `safe→auto` 강제 마이그레이션. launchd unknown flag guard + plist path quoting. memory init 경로 JAW_HOME 동적화.
 
 ---
 
@@ -317,6 +324,7 @@ graph LR
 | `260225_clijaw_rename/`           | cli-claw→cli-jaw 리네임 + Arctic Cyan 테마 + CLI 블록아트 배너                             | ✅    |
 | `260225_mermaid_bugs/`            | Mermaid text invisible (DOMPurify foreignObject strip) + overlay UX + user msg persistence | ✅    |
 | `260225_cross_platform/`          | 크로스 플랫폼 호환 패치 (browser serve, doctor, postinstall config)                        | 🟡    |
+| `260225_workdir_refactor/`        | Multi-instance refactor Phase 1-4.1 (workingDir, JAW_HOME, clone, launchd, frontend)      | ✅    |
 | `260226_session_cleanup/`         | Orchestration v3: end_phase + checkpoint + reset + session lifecycle                       | 🟡    |
 | `260226_steer_interrupted/`       | steer 중단 시 부분 결과 저장 조사                                                          | 🟡    |
 | `devlog_ts/`                      | TypeScript 빌드 호환 (dist build, import ext fix)                                          | 🟡    |

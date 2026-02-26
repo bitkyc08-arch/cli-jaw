@@ -29,9 +29,9 @@ CLI_REGISTRY = {
 
 ---
 
-## src/core/config.ts — 경로, 설정, CLI 탐지 (213L)
+## src/core/config.ts — 경로, 설정, CLI 탐지 (215L)
 
-**상수**: `JAW_HOME` · `PROMPTS_DIR` · `DB_PATH` · `SETTINGS_PATH` · `HEARTBEAT_JOBS_PATH` · `UPLOADS_DIR` · `SKILLS_DIR` · `SKILLS_REF_DIR` · `APP_VERSION` (← package.json)
+**상수**: `JAW_HOME` (← `CLI_JAW_HOME` env || `~/.cli-jaw`) · `PROMPTS_DIR` · `DB_PATH` · `SETTINGS_PATH` · `HEARTBEAT_JOBS_PATH` · `UPLOADS_DIR` · `SKILLS_DIR` · `SKILLS_REF_DIR` · `LOG_DIR` · `APP_VERSION` (← package.json) · `DEFAULT_PORT` ('3457')
 
 | Function              | 역할                                       |
 | --------------------- | ------------------------------------------ |
@@ -40,9 +40,13 @@ CLI_REGISTRY = {
 | `loadSettings()`      | settings.json 로드 + 마이그레이션          |
 | `saveSettings(s)`     | 설정 저장                                  |
 | `replaceSettings(s)`  | ESM live binding 대체 (API PUT용)          |
+| `getServerUrl(port)`  | `http://localhost:${port \|\| PORT \|\| 3457}` |
+| `getWsUrl(port)`      | WebSocket URL 동적 생성                    |
 | `detectCli(name)`     | `which` 기반 바이너리 존재 확인            |
 | `detectAllCli()`      | **5개 CLI** 상태 반환 (cli-registry 기반)  |
 | `buildDefaultPerCli()`| cli-registry에서 기본 perCli 객체 빌드     |
+
+**Multi-instance**: `JAW_HOME`은 `CLI_JAW_HOME` env var로 오버라이드 가능. `--home` flag는 `cli-jaw.ts`에서 `process.env.CLI_JAW_HOME` 설정 후 config.ts import 전에 적용. 모든 파생 경로(DB, settings, logs 등)가 자동으로 JAW_HOME 기준으로 변경됨.
 
 ---
 
@@ -225,3 +229,42 @@ Chrome CDP 제어, 완전 독립 모듈. Phase 7.2: `ariaSnapshot()` 기반.
 | `mergeSettingsPatch(settings, rawPatch)` | perCli/activeOverrides/heartbeat/telegram/memory deep merge |
 
 기존 `applySettingsPatch` 내 30줄 인라인 merge 로직을 추출. 개별 CLI 설정을 덮어쓰지 않고 필드 단위로 병합.
+
+---
+
+## bin/commands/ — CLI Subcommands
+
+### bin/cli-jaw.ts — CLI Entrypoint
+
+> 서브커맨드 라우터 + `--home` flag 처리 (manual `indexOf`, NOT parseArgs)
+> `--home` → `process.env.CLI_JAW_HOME` 설정 후 config.ts 동적 import
+> known-command guard: `--home` 사용 시 알려진 명령어(start/stop/launchd/clone 등)만 허용
+
+### bin/commands/clone.ts (165L)
+
+> `jaw clone` — JAW_HOME 환경 복제. source 디렉토리 검증(존재 + settings.json 포함).
+> `--from <path>`: 소스 지정. `--with-memory`: memory/ 디렉토리도 복사. `--link-ref`: skills_ref/ 심볼릭 링크.
+> 복제 후 subprocess `regenerateB` 호출로 프롬프트/스킬 재생성.
+
+| Function            | 역할                                          |
+| ------------------- | --------------------------------------------- |
+| `cloneHome(args)`   | 소스 검증 → 디렉토리 복사 → regenerateB 호출  |
+
+### bin/commands/launchd.ts (179L)
+
+> macOS launchd 서비스 관리. Multi-instance 지원.
+
+| Function              | 역할                                          |
+| --------------------- | --------------------------------------------- |
+| `instanceId()`        | JAW_HOME → label 식별자 (`default` / `<name>-<md5hash8>`) |
+| `xmlEsc(s)`           | XML 특수문자 이스케이프 (&, <, >, ", ')        |
+| `generatePlist(port)` | launchd plist XML 생성 (CLI_JAW_HOME env, --home/--port pass-through) |
+
+- `parseArgs({ strict: false })` + manual unknown-key guard (unknown flag → error + exit 1)
+- PLIST_PATH 더블-쿼팅 (경로에 공백 포함 시 안전)
+- `launchctl load/unload` 명령으로 서비스 시작/중지
+
+### bin/commands/browser.ts / memory.ts
+
+- `getServerUrl(undefined)` 패턴: PORT env var 우선, 없으면 DEFAULT_PORT('3457')
+- memory.ts: init 경로 `${JAW_HOME}/memory/` (하드코딩 `~/.cli-jaw` 제거)

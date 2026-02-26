@@ -1,7 +1,8 @@
-# server.ts — Glue + API Routes (902L)
+# server.ts — Glue + API Routes (935L)
 
 > 라우트 + 초기화 + 커맨드 ctx 구성 + Quota 조회 + CLI Registry API
 > Phase 9: `ok()`/`fail()` 표준 응답 13라우트 적용, 보안 가드 4라우트 적용, `mergeSettingsPatch` 호출
+> Phase 4.1: `applySettingsPatch` workingDir 변경 감지 + safe→auto 서버 시작 마이그레이션
 
 ---
 
@@ -12,8 +13,14 @@
 | `getRuntimeSnapshot()`            | 세션/설정/큐/에이전트 상태 스냅샷       |
 | `clearSessionState()`             | 세션/메시지/큐 초기화                   |
 | `getLatestTelegramChatId()`       | Telegram 최신 활성 chatId 반환          |
-| `applySettingsPatch(rawPatch, o)` | 설정 패치 + `mergeSettingsPatch()` 호출 + 저장 + B 재생성 |
+| `applySettingsPatch(rawPatch, o)` | 설정 패치 + `mergeSettingsPatch()` 호출 + 저장 + B 재생성. **workingDir 변경 시**: `initMcpConfig()` → `ensureSkillsSymlinks()` → `syncToAll()` → `regenerateB()` 후처리 |
 | `makeWebCommandCtx()`             | Web 인터페이스용 슬래시 커맨드 ctx 생성 |
+
+### 서버 시작 마이그레이션
+
+| 조건 | 동작 |
+| ---- | ---- |
+| `settings.permissions === 'safe'` | `'auto'`로 강제 변경 + 저장 + 로그 `[jaw:migrate] permissions: safe → auto` |
 
 ### Quota 함수
 

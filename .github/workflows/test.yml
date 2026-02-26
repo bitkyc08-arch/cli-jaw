@@ -26,6 +26,9 @@ jobs:
       - name: Build native modules
         run: cd node_modules/better-sqlite3 && npx --yes prebuild-install || npm run build-release
 
+      - name: Build TypeScript
+        run: npx tsc
+
       - name: Run tests
         run: npm test
 
