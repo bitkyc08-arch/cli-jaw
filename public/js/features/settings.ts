@@ -1,27 +1,41 @@
 // ── Settings Feature ──
 import { MODEL_MAP, loadCliRegistry, getCliKeys, getCliMeta } from '../constants.js';
+import type { CliEntry } from '../constants.js';
 import { escapeHtml } from '../render.js';
 import { syncStoredLocale } from '../locale.js';
 import { t } from './i18n.js';
 import { api, apiJson, apiFire } from '../api.js';
 
-function toCap(cli) {
+interface PerCliConfig { model?: string; effort?: string; }
+interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; }
+interface QuotaWindow { label: string; percent: number; }
+interface QuotaEntry { account?: { email?: string; type?: string; plan?: string; tier?: string }; windows?: QuotaWindow[]; }
+interface SettingsData {
+    cli: string; workingDir: string; permissions: string; locale?: string;
+    perCli?: Record<string, PerCliConfig>;
+    activeOverrides?: Record<string, PerCliConfig>;
+    telegram?: TelegramConfig;
+    fallbackOrder?: string[];
+    memory?: { cli?: string };
+}
+
+function toCap(cli: string): string {
     return cli.charAt(0).toUpperCase() + cli.slice(1);
 }
 
-function getModelSelect(cli) {
-    return document.getElementById('model' + toCap(cli));
+function getModelSelect(cli: string): HTMLSelectElement | null {
+    return document.getElementById('model' + toCap(cli)) as HTMLSelectElement | null;
 }
 
-function getCustomModelInput(cli) {
-    return document.getElementById('customModel' + toCap(cli));
+function getCustomModelInput(cli: string): HTMLInputElement | null {
+    return document.getElementById('customModel' + toCap(cli)) as HTMLInputElement | null;
 }
 
-function getEffortSelect(cli) {
-    return document.getElementById('effort' + toCap(cli));
+function getEffortSelect(cli: string): HTMLSelectElement | null {
+    return document.getElementById('effort' + toCap(cli)) as HTMLSelectElement | null;
 }
 
-function setSelectOptions(selectEl, values, { includeCustom = false, includeDefault = false, selected = '' } = {}) {
+function setSelectOptions(selectEl: HTMLSelectElement | null, values: string[], { includeCustom = false, includeDefault = false, selected = '' } = {}): void {
     if (!selectEl) return;
     const defaultHtml = includeDefault ? '<option value="default">default</option>' : '';
     const customHtml = includeCustom ? `<option value="__custom__">${t('model.customOption')}</option>` : '';
@@ -33,7 +47,7 @@ function setSelectOptions(selectEl, values, { includeCustom = false, includeDefa
     }
 }
 
-function appendCustomOption(selectEl, value) {
+function appendCustomOption(selectEl: HTMLSelectElement | null, value: string): void {
     if (!selectEl || !value) return;
     if (Array.from(selectEl.options).some(o => o.value === value)) return;
     const opt = document.createElement('option');
@@ -44,10 +58,10 @@ function appendCustomOption(selectEl, value) {
     else selectEl.appendChild(opt);
 }
 
-function syncCliOptionSelects(settings = null) {
+function syncCliOptionSelects(settings: SettingsData | null = null): void {
     const cliKeys = getCliKeys();
 
-    const selCli = document.getElementById('selCli');
+    const selCli = document.getElementById('selCli') as HTMLSelectElement | null;
     if (selCli) {
         const current = settings?.cli || selCli.value || cliKeys[0] || 'claude';
         selCli.innerHTML = cliKeys.map(cli => {
@@ -57,7 +71,7 @@ function syncCliOptionSelects(settings = null) {
         if (Array.from(selCli.options).some(o => o.value === current)) selCli.value = current;
     }
 
-    const memCli = document.getElementById('memCli');
+    const memCli = document.getElementById('memCli') as HTMLSelectElement | null;
     if (memCli) {
         const current = settings?.memory?.cli || memCli.value || '';
         memCli.innerHTML = '<option value="">(active CLI)</option>' +
@@ -66,7 +80,7 @@ function syncCliOptionSelects(settings = null) {
     }
 }
 
-function syncPerCliModelAndEffortControls(settings = null) {
+function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {
     for (const cli of getCliKeys()) {
         const modelSel = getModelSelect(cli);
         if (modelSel) {
@@ -96,8 +110,8 @@ function syncPerCliModelAndEffortControls(settings = null) {
     }
 }
 
-function syncActiveEffortOptions(cli, selected = '') {
-    const selEffort = document.getElementById('selEffort');
+function syncActiveEffortOptions(cli: string, selected = ''): void {
+    const selEffort = document.getElementById('selEffort') as HTMLSelectElement | null;
     if (!selEffort) return;
     const meta = getCliMeta(cli);
     if (meta?.effortNote) {
@@ -118,24 +132,26 @@ function syncActiveEffortOptions(cli, selected = '') {
     if (Array.from(selEffort.options).some(o => o.value === selected)) selEffort.value = selected;
 }
 
-export async function loadSettings() {
+export async function loadSettings(): Promise<void> {
     await loadCliRegistry();
-    const s = await api('/api/settings');
+    const s = await api<SettingsData>('/api/settings');
     if (!s) return;
-    syncStoredLocale(s.locale);
+    syncStoredLocale(s.locale ?? '');
     syncCliOptionSelects(s);
     syncPerCliModelAndEffortControls(s);
 
-    const selCli = document.getElementById('selCli');
-    if (Array.from(selCli.options).some(o => o.value === s.cli)) {
+    const selCli = document.getElementById('selCli') as HTMLSelectElement | null;
+    if (selCli && Array.from(selCli.options).some(o => o.value === s.cli)) {
         selCli.value = s.cli;
     }
-    document.getElementById('inpCwd').textContent = s.workingDir;
-    document.getElementById('headerCli').textContent = s.cli;
+    const cwdEl = document.getElementById('inpCwd');
+    if (cwdEl) cwdEl.textContent = s.workingDir;
+    const headerEl = document.getElementById('headerCli');
+    if (headerEl) headerEl.textContent = s.cli;
     setPerm(s.permissions, false);
 
     if (s.perCli) {
-        for (const [cli, cfg] of Object.entries(s.perCli)) {
+        for (const [cli, cfg] of Object.entries(s.perCli) as [string, PerCliConfig][]) {
             const modelEl = getModelSelect(cli);
             const effortEl = getEffortSelect(cli);
             if (modelEl && cfg.model) {
@@ -151,7 +167,8 @@ export async function loadSettings() {
     const pc = s.perCli?.[s.cli] || {};
     const activeModel = ao.model || pc.model;
     const activeEffort = ao.effort || pc.effort || '';
-    if (activeModel) document.getElementById('selModel').value = activeModel;
+    const selModel = document.getElementById('selModel') as HTMLSelectElement | null;
+    if (activeModel && selModel) selModel.value = activeModel;
     syncActiveEffortOptions(s.cli, activeEffort);
 
     loadTelegramSettings(s);
@@ -159,11 +176,17 @@ export async function loadSettings() {
     loadMcpServers();
 }
 
-export async function loadMcpServers() {
+interface McpData { servers: Record<string, { command: string; args?: string[] }>; }
+interface McpSyncResult { results: Record<string, boolean>; }
+interface McpInstallEntry { status: string; bin?: string; }
+interface McpInstallResult { results: Record<string, McpInstallEntry>; }
+
+export async function loadMcpServers(): Promise<void> {
     try {
-        const d = await api('/api/mcp');
+        const d = await api<McpData>('/api/mcp');
         if (!d) return;
         const el = document.getElementById('mcpServerList');
+        if (!el) return;
         const names = Object.entries(d.servers || {});
         if (!names.length) { el.textContent = t('mcp.noServers'); return; }
         el.innerHTML = names.map(([n, s]) =>
@@ -172,49 +195,52 @@ export async function loadMcpServers() {
     } catch { }
 }
 
-export async function syncMcpServers() {
+export async function syncMcpServers(): Promise<void> {
     const resultEl = document.getElementById('mcpSyncResult');
+    if (!resultEl) return;
     resultEl.style.display = 'block';
     resultEl.textContent = t('mcp.syncing');
     try {
-        const d = await apiJson('/api/mcp/sync', 'POST', {});
+        const d = await apiJson('/api/mcp/sync', 'POST', {}) as McpSyncResult | null;
         if (!d) { resultEl.textContent = '❌ sync failed'; return; }
         const r = d.results || {};
         resultEl.innerHTML = Object.entries(r).map(([k, v]) =>
             `${v ? '✅' : '⏭️'} ${k}`
         ).join(' &nbsp; ');
-    } catch (e) { resultEl.textContent = '❌ ' + e.message; }
+    } catch (e) { resultEl.textContent = '❌ ' + (e as Error).message; }
 }
 
-export async function installMcpGlobal() {
+export async function installMcpGlobal(): Promise<void> {
     const resultEl = document.getElementById('mcpSyncResult');
+    if (!resultEl) return;
     resultEl.style.display = 'block';
     resultEl.textContent = t('mcp.installing');
     try {
-        const d = await apiJson('/api/mcp/install', 'POST', {});
+        const d = await apiJson('/api/mcp/install', 'POST', {}) as McpInstallResult | null;
         if (!d) { resultEl.textContent = '❌ install failed'; return; }
         resultEl.innerHTML = Object.entries(d.results || {}).map(([k, v]) => {
             const icon = v.status === 'installed' ? '✅' : v.status === 'skip' ? '⏭️' : '❌';
             return `${icon} <b>${k}</b>: ${v.status}${v.bin ? ' → ' + v.bin : ''}`;
         }).join('<br>');
         loadMcpServers();
-    } catch (e) { resultEl.textContent = '❌ ' + e.message; }
+    } catch (e) { resultEl.textContent = '❌ ' + (e as Error).message; }
 }
 
-export async function updateSettings() {
+export async function updateSettings(): Promise<void> {
     const s = {
-        cli: document.getElementById('selCli').value,
+        cli: (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude',
     };
-    document.getElementById('headerCli').textContent = s.cli;
+    const hdr = document.getElementById('headerCli');
+    if (hdr) hdr.textContent = s.cli;
     await apiJson('/api/settings', 'PUT', s);
 }
 
-export function setPerm(p, save = true) {
+export function setPerm(_p: string, save = true): void {
     // Auto-fixed since Phase 3.1 — no UI toggle, just persist
     if (save) apiFire('/api/settings', 'PUT', { permissions: 'auto' });
 }
 
-export function getModelValue(cli) {
+export function getModelValue(cli: string): string {
     const sel = getModelSelect(cli);
     if (!sel) return 'default';
     if (sel.value === '__custom__') {
@@ -224,7 +250,7 @@ export function getModelValue(cli) {
     return sel.value;
 }
 
-export function handleModelSelect(cli, selectEl) {
+export function handleModelSelect(cli: string, selectEl: HTMLSelectElement): void {
     const customInput = getCustomModelInput(cli);
     if (!customInput) return;
     if (selectEl.value === '__custom__') {
@@ -236,7 +262,7 @@ export function handleModelSelect(cli, selectEl) {
     }
 }
 
-export function applyCustomModel(cli, inputEl) {
+export function applyCustomModel(cli: string, inputEl: HTMLInputElement): void {
     const val = inputEl.value.trim();
     if (!val) return;
     const select = getModelSelect(cli);
@@ -247,8 +273,8 @@ export function applyCustomModel(cli, inputEl) {
     savePerCli();
 }
 
-export async function savePerCli() {
-    const perCli = {};
+export async function savePerCli(): Promise<void> {
+    const perCli: Record<string, PerCliConfig> = {};
     for (const cli of getCliKeys()) {
         const modelEl = getModelSelect(cli);
         if (!modelEl) continue;
@@ -261,12 +287,13 @@ export async function savePerCli() {
     await apiJson('/api/settings', 'PUT', { perCli });
 }
 
-export function onCliChange(save = true) {
-    const cli = document.getElementById('selCli').value;
+export function onCliChange(save = true): void {
+    const cli = (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude';
     const models = MODEL_MAP[cli] || [];
-    const modelSel = document.getElementById('selModel');
+    const modelSel = document.getElementById('selModel') as HTMLSelectElement | null;
     setSelectOptions(modelSel, models, { includeCustom: true, includeDefault: true });
-    document.getElementById('headerCli').textContent = cli;
+    const hdrCli = document.getElementById('headerCli');
+    if (hdrCli) hdrCli.textContent = cli;
     syncActiveEffortOptions(cli);
 
     const oldInput = document.getElementById('selModelCustom');
@@ -277,16 +304,17 @@ export function onCliChange(save = true) {
     inp.placeholder = t('model.placeholder');
     inp.style.display = 'none';
     inp.onchange = function () {
-        const val = this.value.trim();
-        if (!val) return;
+        const val = (this as HTMLInputElement).value.trim();
+        if (!val || !modelSel) return;
         appendCustomOption(modelSel, val);
         modelSel.value = val;
-        this.style.display = 'none';
+        (this as HTMLInputElement).style.display = 'none';
         saveActiveCliSettings();
     };
-    modelSel.parentElement.appendChild(inp);
+    if (!modelSel) { if (save) updateSettings(); return; }
+    modelSel.parentElement?.appendChild(inp);
     modelSel.onchange = function () {
-        if (this.value === '__custom__') {
+        if ((this as HTMLSelectElement).value === '__custom__') {
             inp.style.display = 'block';
             inp.focus();
         } else {
@@ -295,13 +323,13 @@ export function onCliChange(save = true) {
         }
     };
 
-    api('/api/settings').then(s => {
+    api<SettingsData>('/api/settings').then(s => {
         if (!s) return;
         const ao = s.activeOverrides?.[cli] || {};
         const pc = s.perCli?.[cli] || {};
         const model = ao.model || pc.model;
         const effort = ao.effort || pc.effort || '';
-        if (model) {
+        if (model && modelSel) {
             appendCustomOption(modelSel, model);
             modelSel.value = model;
         }
@@ -311,49 +339,51 @@ export function onCliChange(save = true) {
     if (save) updateSettings();
 }
 
-export async function saveActiveCliSettings() {
-    const cli = document.getElementById('selCli').value;
-    const modelSel = document.getElementById('selModel');
+export async function saveActiveCliSettings(): Promise<void> {
+    const cli = (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude';
+    const modelSel = document.getElementById('selModel') as HTMLSelectElement | null;
     let model = modelSel?.value || 'default';
     if (model === '__custom__') {
-        model = document.getElementById('selModelCustom')?.value?.trim() || 'default';
+        model = (document.getElementById('selModelCustom') as HTMLInputElement | null)?.value?.trim() || 'default';
     }
-    const effortEl = document.getElementById('selEffort');
-    const overrides = {};
+    const effortEl = document.getElementById('selEffort') as HTMLSelectElement | null;
+    const overrides: Record<string, PerCliConfig> = {};
     overrides[cli] = { model };
-    if (!effortEl?.disabled) overrides[cli].effort = effortEl?.value || '';
+    if (effortEl && !effortEl.disabled) overrides[cli].effort = effortEl.value || '';
     await apiJson('/api/settings', 'PUT', { activeOverrides: overrides });
 }
 
 // ── Telegram ──
-export async function saveTelegramSettings() {
-    const token = document.getElementById('tgToken').value.trim();
-    const chatIdsRaw = document.getElementById('tgChatIds').value.trim();
+export async function saveTelegramSettings(): Promise<void> {
+    const token = (document.getElementById('tgToken') as HTMLInputElement)?.value.trim() || '';
+    const chatIdsRaw = (document.getElementById('tgChatIds') as HTMLInputElement)?.value.trim() || '';
     const allowedChatIds = chatIdsRaw
         ? chatIdsRaw.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n))
         : [];
     await apiJson('/api/settings', 'PUT', { telegram: { token, allowedChatIds } });
 }
 
-export async function setTelegram(enabled) {
-    document.getElementById('tgOn').classList.toggle('active', enabled);
-    document.getElementById('tgOff').classList.toggle('active', !enabled);
+export async function setTelegram(enabled: boolean): Promise<void> {
+    document.getElementById('tgOn')?.classList.toggle('active', enabled);
+    document.getElementById('tgOff')?.classList.toggle('active', !enabled);
     await apiJson('/api/settings', 'PUT', { telegram: { enabled } });
 }
 
-function loadTelegramSettings(s) {
+function loadTelegramSettings(s: SettingsData): void {
     if (!s.telegram) return;
     const tg = s.telegram;
-    document.getElementById('tgOn').classList.toggle('active', !!tg.enabled);
-    document.getElementById('tgOff').classList.toggle('active', !tg.enabled);
-    if (tg.token) document.getElementById('tgToken').value = tg.token;
-    if (tg.allowedChatIds?.length) {
-        document.getElementById('tgChatIds').value = tg.allowedChatIds.join(', ');
+    document.getElementById('tgOn')?.classList.toggle('active', !!tg.enabled);
+    document.getElementById('tgOff')?.classList.toggle('active', !tg.enabled);
+    const tgToken = document.getElementById('tgToken') as HTMLInputElement | null;
+    if (tg.token && tgToken) tgToken.value = tg.token;
+    const tgChatIds = document.getElementById('tgChatIds') as HTMLInputElement | null;
+    if (tg.allowedChatIds?.length && tgChatIds) {
+        tgChatIds.value = tg.allowedChatIds.join(', ');
     }
 }
 
 // ── Fallback Order ──
-export function loadFallbackOrder(s) {
+export function loadFallbackOrder(s: SettingsData): void {
     const container = document.getElementById('fallbackOrderList');
     if (!container) return;
     const allClis = Object.keys(s.perCli || {});
@@ -379,8 +409,8 @@ export function loadFallbackOrder(s) {
     container.innerHTML = html;
 }
 
-export async function saveFallbackOrder() {
-    const selects = document.querySelectorAll('#fallbackOrderList select');
+export async function saveFallbackOrder(): Promise<void> {
+    const selects = document.querySelectorAll<HTMLSelectElement>('#fallbackOrderList select');
     const fallbackOrder = [...selects].map(s => s.value).filter(Boolean);
     await apiJson('/api/settings', 'PUT', { fallbackOrder });
 }
@@ -388,10 +418,10 @@ export async function saveFallbackOrder() {
 // ── CLI Status ──
 import { state } from '../state.js';
 
-export async function loadCliStatus(force = false) {
+export async function loadCliStatus(force = false): Promise<void> {
     const interval = Number(localStorage.getItem('cliStatusInterval') || 300);
     if (!force && state.cliStatusCache && interval > 0 && (Date.now() - state.cliStatusTs) < interval * 1000) {
-        renderCliStatus(state.cliStatusCache);
+        renderCliStatus({ cliStatus: (state.cliStatusCache as Record<string, unknown>)?.cliStatus as Record<string, { available: boolean }> | null, quota: (state.cliStatusCache as Record<string, unknown>)?.quota as Record<string, QuotaEntry> | null });
         return;
     }
 
@@ -399,20 +429,20 @@ export async function loadCliStatus(force = false) {
     if (el) el.innerHTML = '<div style="color:var(--text-dim);font-size:11px">Loading...</div>';
 
     const [cliStatus, quota] = await Promise.all([
-        api('/api/cli-status'),
-        api('/api/quota'),
+        api<Record<string, { available: boolean }>>('/api/cli-status'),
+        api<Record<string, QuotaEntry>>('/api/quota'),
     ]);
 
-    state.cliStatusCache = { cliStatus, quota };
+    state.cliStatusCache = { cliStatus, quota } as Record<string, unknown>;
     state.cliStatusTs = Date.now();
-    renderCliStatus(state.cliStatusCache);
+    renderCliStatus({ cliStatus, quota });
 }
 
-function renderCliStatus(data) {
+function renderCliStatus(data: { cliStatus: Record<string, { available: boolean }> | null; quota: Record<string, QuotaEntry> | null }): void {
     const { cliStatus, quota } = data;
     const el = document.getElementById('cliStatusList');
 
-    const AUTH_HINTS = {
+    const AUTH_HINTS: Record<string, { install: string; auth: string }> = {
         claude: { install: 'npm i -g @anthropic-ai/claude-code', auth: 'claude auth' },
         codex: { install: 'npm i -g @openai/codex', auth: 'codex login' },
         gemini: { install: 'npm i -g @google/gemini-cli', auth: `gemini  (${t('cli.gemini.auth')})` },
@@ -428,7 +458,7 @@ function renderCliStatus(data) {
     }
 
     for (const [name, info] of Object.entries(cliStatus)) {
-        const q = quota[name];
+        const q = quota?.[name];
         const dotClass = info.available ? 'ok' : 'missing';
 
         let accountLine = '';
@@ -486,25 +516,27 @@ function renderCliStatus(data) {
         `;
     }
 
-    el.innerHTML = html;
+    if (el) el.innerHTML = html;
 }
 
 // ── Prompt Modal ──
-export function openPromptModal() {
-    api('/api/prompt').then(data => {
+export function openPromptModal(): void {
+    api<{ content?: string }>('/api/prompt').then(data => {
         if (!data) return;
-        document.getElementById('modalPromptEditor').value = data.content || '';
-        document.getElementById('promptModal').classList.add('open');
+        const editor = document.getElementById('modalPromptEditor') as HTMLTextAreaElement | null;
+        if (editor) editor.value = data.content || '';
+        document.getElementById('promptModal')?.classList.add('open');
     });
 }
 
-export function closePromptModal(e) {
+export function closePromptModal(e?: Event): void {
     if (e && e.target !== e.currentTarget) return;
-    document.getElementById('promptModal').classList.remove('open');
+    document.getElementById('promptModal')?.classList.remove('open');
 }
 
-export async function savePromptFromModal() {
-    const content = document.getElementById('modalPromptEditor').value;
+export async function savePromptFromModal(): Promise<void> {
+    const editor = document.getElementById('modalPromptEditor') as HTMLTextAreaElement | null;
+    const content = editor?.value || '';
     await apiJson('/api/prompt', 'PUT', { content });
-    document.getElementById('promptModal').classList.remove('open');
+    document.getElementById('promptModal')?.classList.remove('open');
 }

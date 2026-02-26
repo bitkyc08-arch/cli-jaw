@@ -4,24 +4,38 @@ import { t } from './i18n.js';
 import { api, apiJson } from '../api.js';
 import { escapeHtml } from '../render.js';
 
-export async function openHeartbeatModal() {
-    const data = await api('/api/heartbeat');
+interface HeartbeatJob {
+    id: string;
+    name?: string;
+    enabled: boolean;
+    schedule?: { kind?: string; minutes?: number };
+    prompt?: string;
+}
+
+interface HeartbeatData {
+    jobs: HeartbeatJob[];
+}
+
+export async function openHeartbeatModal(): Promise<void> {
+    const data = await api<HeartbeatData>('/api/heartbeat');
     state.heartbeatJobs = data?.jobs || [];
     renderHeartbeatJobs();
-    document.getElementById('heartbeatModal').classList.add('open');
+    document.getElementById('heartbeatModal')?.classList.add('open');
 }
 
-export function closeHeartbeatModal(e) {
+export function closeHeartbeatModal(e?: Event): void {
     if (e && e.target !== e.currentTarget) return;
-    document.getElementById('heartbeatModal').classList.remove('open');
+    document.getElementById('heartbeatModal')?.classList.remove('open');
 }
 
-export function renderHeartbeatJobs() {
+export function renderHeartbeatJobs(): void {
     const container = document.getElementById('hbJobsList');
-    if (state.heartbeatJobs.length === 0) {
+    if (!container) return;
+    const jobs = state.heartbeatJobs as HeartbeatJob[];
+    if (jobs.length === 0) {
         container.innerHTML = `<p style="color:var(--text-dim);font-size:12px;text-align:center">${t('hb.empty')}</p>`;
     } else {
-        container.innerHTML = state.heartbeatJobs.map((job, i) => `
+        container.innerHTML = jobs.map((job, i) => `
             <div class="hb-job-card">
                 <div class="hb-job-header">
                     <input type="text" value="${escapeHtml(job.name || '')}" placeholder="${t('hb.name')}"
@@ -39,12 +53,13 @@ export function renderHeartbeatJobs() {
             </div>
         `).join('');
     }
-    const active = state.heartbeatJobs.filter(j => j.enabled).length;
-    document.getElementById('hbSidebarBtn').textContent = `💓 Heartbeat (${active})`;
+    const active = jobs.filter(j => j.enabled).length;
+    const btn = document.getElementById('hbSidebarBtn');
+    if (btn) btn.textContent = `💓 Heartbeat (${active})`;
 }
 
-export function addHeartbeatJob() {
-    state.heartbeatJobs.push({
+export function addHeartbeatJob(): void {
+    (state.heartbeatJobs as HeartbeatJob[]).push({
         id: 'hb_' + Date.now(),
         name: '',
         enabled: true,
@@ -55,26 +70,28 @@ export function addHeartbeatJob() {
     saveHeartbeatJobs();
 }
 
-export function removeHeartbeatJob(i) {
+export function removeHeartbeatJob(i: number): void {
     state.heartbeatJobs.splice(i, 1);
     renderHeartbeatJobs();
     saveHeartbeatJobs();
 }
 
-export function toggleHeartbeatJob(i) {
-    state.heartbeatJobs[i].enabled = !state.heartbeatJobs[i].enabled;
+export function toggleHeartbeatJob(i: number): void {
+    const jobs = state.heartbeatJobs as HeartbeatJob[];
+    jobs[i].enabled = !jobs[i].enabled;
     renderHeartbeatJobs();
     saveHeartbeatJobs();
 }
 
-export async function saveHeartbeatJobs() {
+export async function saveHeartbeatJobs(): Promise<void> {
     await apiJson('/api/heartbeat', 'PUT', { jobs: state.heartbeatJobs });
 }
 
-export async function initHeartbeatBadge() {
+export async function initHeartbeatBadge(): Promise<void> {
     try {
-        const d = await api('/api/heartbeat');
+        const d = await api<HeartbeatData>('/api/heartbeat');
         const active = (d?.jobs || []).filter(j => j.enabled).length;
-        document.getElementById('hbSidebarBtn').textContent = `💓 Heartbeat (${active})`;
-    } catch { }
+        const btn = document.getElementById('hbSidebarBtn');
+        if (btn) btn.textContent = `💓 Heartbeat (${active})`;
+    } catch { /* ignore */ }
 }

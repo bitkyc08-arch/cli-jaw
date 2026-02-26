@@ -3,23 +3,29 @@ import { getPreferredLocale } from '../locale.js';
 import { t } from './i18n.js';
 import { api } from '../api.js';
 
-let cmdList = [];       // { name, desc, args, category }[]
-let filtered = [];      // currently filtered list
-let selectedIdx = -1;   // -1 = none
-let isOpen = false;
-let closeTimer = null;
+interface SlashCommand {
+    name: string;
+    desc: string;
+    args?: string;
+    category?: string;
+}
 
-// File paths like /Users/junny/... or /tmp/foo — not commands
-function looksLikeFilePath(text) {
+let cmdList: SlashCommand[] = [];
+let filtered: SlashCommand[] = [];
+let selectedIdx = -1;
+let isOpen = false;
+let closeTimer: ReturnType<typeof setTimeout> | null = null;
+
+function looksLikeFilePath(text: string): boolean {
     const after = String(text || '').slice(1).trim();
     const tok = after.split(/\s+/)[0] || '';
     return tok.includes('/') || tok.includes('\\');
 }
 
-const dropdown = () => document.getElementById('cmdDropdown');
-const input = () => document.getElementById('chatInput');
+const dropdown = (): HTMLElement | null => document.getElementById('cmdDropdown');
+const input = (): HTMLTextAreaElement | null => document.getElementById('chatInput') as HTMLTextAreaElement | null;
 
-function escapeHtml(str) {
+function escapeHtml(str: string): string {
     return String(str || '')
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
@@ -27,12 +33,12 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;');
 }
 
-function filterCommands(partial) {
+function filterCommands(partial: string): SlashCommand[] {
     const prefix = String(partial || '').toLowerCase();
     return cmdList.filter(c => (`/${c.name}`).startsWith(prefix));
 }
 
-function showDropdown() {
+function showDropdown(): void {
     const el = dropdown();
     const inp = input();
     if (!el || !inp) return;
@@ -45,18 +51,16 @@ function showDropdown() {
     el.style.display = 'block';
     requestAnimationFrame(() => el.classList.add('visible'));
     isOpen = true;
-
     inp.setAttribute('aria-expanded', 'true');
 }
 
-function render() {
+function render(): void {
     const el = dropdown();
     const inp = input();
     if (!el || !inp) return;
 
     if (!filtered.length) {
         if (!inp.value.startsWith('/') || looksLikeFilePath(inp.value)) { close(); return; }
-
         el.innerHTML = `
             <div class="cmd-item cmd-empty" role="option" aria-disabled="true">
                 ${t('cmd.noMatch')}
@@ -83,11 +87,11 @@ function render() {
     showDropdown();
     inp.setAttribute('aria-activedescendant', selectedIdx >= 0 ? `cmd-item-${selectedIdx}` : '');
 
-    const selected = el.querySelector('.selected');
-    if (selected) selected.scrollIntoView({ block: 'nearest' });
+    const selectedEl = el.querySelector('.selected');
+    if (selectedEl) selectedEl.scrollIntoView({ block: 'nearest' });
 }
 
-function applySelection(execute) {
+function applySelection(execute: boolean): void {
     const cmd = filtered[selectedIdx];
     const inp = input();
     if (!cmd || !inp) { close(); return; }
@@ -104,19 +108,19 @@ function applySelection(execute) {
     inp.dispatchEvent(new Event('cmd-execute', { bubbles: true }));
 }
 
-export async function loadCommands() {
+export async function loadCommands(): Promise<void> {
     try {
         const locale = getPreferredLocale();
         const url = `/api/commands?interface=web&locale=${encodeURIComponent(locale)}`;
-        const data = await api(url, { headers: { 'Accept-Language': locale } });
+        const data = await api<SlashCommand[]>(url, { headers: { 'Accept-Language': locale } });
         cmdList = data || [];
     } catch (err) {
-        console.warn('[slash-commands] loadCommands failed:', err.message);
+        console.warn('[slash-commands] loadCommands failed:', (err as Error).message);
         cmdList = [];
     }
 }
 
-export function close() {
+export function close(): void {
     const el = dropdown();
 
     if (closeTimer) {
@@ -143,19 +147,18 @@ export function close() {
     }
 }
 
-export function update(text) {
+export function update(text: string): void {
     const raw = String(text || '');
     if (!raw.startsWith('/') || raw.includes(' ') || raw.includes('\n') || looksLikeFilePath(raw)) {
         close();
         return;
     }
-
     filtered = filterCommands(raw);
     selectedIdx = filtered.length ? 0 : -1;
     render();
 }
 
-export function handleKeydown(e) {
+export function handleKeydown(e: KeyboardEvent): boolean {
     if (!isOpen) {
         if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && !e.isComposing) {
             update(input()?.value || '');
@@ -207,8 +210,9 @@ export function handleKeydown(e) {
     return false;
 }
 
-export function handleClick(e) {
-    const item = e.target.closest('.cmd-item');
+export function handleClick(e: Event): void {
+    const target = e.target as HTMLElement;
+    const item = target.closest('.cmd-item') as HTMLElement | null;
     if (!item) return;
     const idx = parseInt(item.dataset.index || '-1', 10);
     if (Number.isNaN(idx) || idx < 0) return;
@@ -216,16 +220,17 @@ export function handleClick(e) {
     applySelection(true);
 }
 
-export function handleOutsideClick(e) {
+export function handleOutsideClick(e: Event): void {
     if (!isOpen) return;
     const el = dropdown();
     const inp = input();
     if (!el || !inp) return;
-    if (!el.contains(e.target) && e.target !== inp) {
+    const target = e.target as Node;
+    if (!el.contains(target) && target !== inp) {
         close();
     }
 }
 
-export function isDropdownOpen() {
+export function isDropdownOpen(): boolean {
     return isOpen;
 }
