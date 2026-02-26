@@ -805,22 +805,24 @@ server.listen(PORT, () => {
     log.info(`  DB:     ${DB_PATH}`);
     log.info(`  Prompts: ${PROMPTS_DIR}\n`);
 
-    // Auto-open browser (cross-platform)
-    const url = `http://localhost:${PORT}`;
-    try {
-        const openCmd = process.platform === 'darwin' ? 'open'
-            : process.platform === 'win32' ? 'cmd'
-                : 'xdg-open';
-        const openArgs = process.platform === 'win32'
-            ? ['/c', 'start', '', url]
-            : [url];
-        const opener = spawn(openCmd, openArgs, { detached: true, stdio: 'ignore' });
-        opener.on('error', (err) => {
-            log.info(`  Browser: could not auto-open (${err.message})`);
-        });
-        opener.unref();
-    } catch (e: unknown) {
-        log.info(`  Browser: could not auto-open (${(e as Error).message})`);
+    // Auto-open browser (opt-in via JAW_OPEN_BROWSER=1, set by `jaw serve --open`)
+    if (process.env.JAW_OPEN_BROWSER === '1') {
+        const url = `http://localhost:${PORT}`;
+        try {
+            const openCmd = process.platform === 'darwin' ? 'open'
+                : process.platform === 'win32' ? 'cmd'
+                    : 'xdg-open';
+            const openArgs = process.platform === 'win32'
+                ? ['/c', 'start', '', url]
+                : [url];
+            const opener = spawn(openCmd, openArgs, { detached: true, stdio: 'ignore' });
+            opener.on('error', (err) => {
+                log.info(`  Browser: could not auto-open (${err.message})`);
+            });
+            opener.unref();
+        } catch (e: unknown) {
+            log.info(`  Browser: could not auto-open (${(e as Error).message})`);
+        }
     }
 
     try {

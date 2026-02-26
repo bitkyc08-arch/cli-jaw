@@ -18,7 +18,7 @@ const { values } = parseArgs({
     options: {
         port: { type: 'string', default: process.env.PORT || '3457' },
         host: { type: 'string', default: '0.0.0.0' },
-        open: { type: 'boolean', default: false },
+        open: { type: 'boolean', default: true },
     },
     strict: false,
 });
@@ -41,7 +41,7 @@ if (isDistMode) {
         [...nodeArgs, serverPath],
         {
             stdio: 'inherit',
-            env: { ...process.env, PORT: values.port as string, HOST: values.host as string },
+            env: { ...process.env, PORT: values.port as string, HOST: values.host as string, ...(values.open ? { JAW_OPEN_BROWSER: '1' } : {}) },
         }
     );
 } else {
@@ -55,7 +55,7 @@ if (isDistMode) {
         tsxArgs,
         {
             stdio: 'inherit',
-            env: { ...process.env, PORT: values.port as string, HOST: values.host as string },
+            env: { ...process.env, PORT: values.port as string, HOST: values.host as string, ...(values.open ? { JAW_OPEN_BROWSER: '1' } : {}) },
         }
     );
 }
@@ -75,28 +75,3 @@ child.on('error', (err: Error) => {
     console.error(`  ❌ Failed to start server: ${err.message}`);
     process.exit(1);
 });
-
-function openUrl(url: string) {
-    try {
-        const cmd = process.platform === 'darwin' ? 'open'
-            : process.platform === 'win32' ? 'cmd'
-                : 'xdg-open';
-        const args = process.platform === 'win32'
-            ? ['/c', 'start', '', url]
-            : [url];
-        const opener = spawn(cmd, args, { detached: true, stdio: 'ignore' });
-        opener.on('error', () => {
-            console.log('  ⚠️ Could not open browser');
-        });
-        opener.unref();
-    } catch {
-        console.log('  ⚠️ Could not open browser');
-    }
-}
-
-// --open: open browser after a short delay
-if (values.open) {
-    setTimeout(() => {
-        openUrl(getServerUrl(values.port as string));
-    }, 2000);
-}

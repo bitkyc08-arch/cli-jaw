@@ -37,7 +37,9 @@ declare global {
     }
 
     interface MarkedGlobal {
-        parse(src: string, options?: MarkedOptions): string | Promise<string>;
+        parse(src: string): string;
+        parse(src: string, options: MarkedOptions & { async: true }): Promise<string>;
+        parse(src: string, options: MarkedOptions): string;
         use(...extensions: Record<string, unknown>[]): void;
         setOptions(options: MarkedOptions): void;
         Renderer: new () => Record<string, unknown>;
