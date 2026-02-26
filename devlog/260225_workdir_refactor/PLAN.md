@@ -1,52 +1,41 @@
-# 📂 Working Directory Refactor — Default `~` → Project-Scoped
+# Working Directory Refactor — Default `~` -> `~/.cli-jaw`
 
-**Date**: 2025-02-25  
-**Status**: 📋 Planning (NO CODE — diff plan only)  
-**Priority**: Medium (UX improvement, not a bug)
+**Date**: 2026-02-26
+**Status**: Plan + Source Validation Complete (NO CODE)
+**Priority**: Medium (UX/cleanliness)
 
 ---
 
 ## Problem
 
-Currently `workingDir` defaults to `~/` (user home).  
-This means:
+Current defaults use `~/` (user home) as the working directory.
+That means:
 
-1. `AGENTS.md` is written to `~/AGENTS.md` — pollutes home directory
-2. All CLI agents spawn with `cwd: ~/` — they see the entire home
-3. The custom instruction (A-2) says `Working Directory: ~/`
-4. Since agents have full permissions anyway, `~/` access is always possible regardless of cwd
+1. `AGENTS.md` is generated into home by default (`settings.workingDir` fallback path)
+2. Agent process `cwd` starts at `~/`
+3. A-2 template says `Working Directory: ~/`
+4. With full permissions, `~/` access is possible regardless of start cwd
 
-**The home directory doesn't need to be the default working directory.**  
-A dedicated project directory like `~/.cli-jaw` (already exists) is cleaner.
+Defaulting to `~/.cli-jaw` is cleaner and keeps system files in one place.
 
 ## Proposed Change
 
-Change default `workingDir` from `~/` to `~/.cli-jaw` (or a new `~/.cli-jaw/workspace/`).
+Change default `workingDir` from `~/` to `~/.cli-jaw`.
 
-### Why `~/.cli-jaw` instead of `~/cli-jaw`
+### Why `~/.cli-jaw` (not `~/cli-jaw`)
 
-- `~/.cli-jaw` already exists as the system home — no new directories
-- All config, prompts, DB, skills, memory already live here
-- `AGENTS.md` would go to `~/.cli-jaw/AGENTS.md` instead of polluting `~/`
-- Hidden directory = won't clutter user's Finder/explorer
-- Agents still have full `~/` access for any file operations — cwd is just the starting point
-
-### Alternative: `~/.cli-jaw/workspace/`
-
-A subfolder keeps AGENTS.md separate from config files. But adds unnecessary nesting.
-**Recommendation: stick with `~/.cli-jaw` directly.**
+- Existing system home already uses `~/.cli-jaw`
+- Config/prompts/skills already live under this root
+- Default AGENTS generation lands in `~/.cli-jaw/AGENTS.md` (cleaner than home root)
+- Start cwd becomes project-scoped while preserving full absolute-path access
 
 ---
 
 ## Affected Files & Diffs
 
-### PATCH-1: Default workingDir (2 files)
-
-### PATCH-2: A-2 Template (1 file)
-
-### PATCH-3: AGENTS.md location note (0 code changes — docs only)
-
-See individual patch files for diffs.
+1. `PATCH-1_default_workdir.md` (2 files)
+2. `PATCH-2_a2_template.md` (1 file)
+3. `PATCH-3_readme_note.md` (3 docs files, note-only)
 
 ---
 
@@ -54,13 +43,25 @@ See individual patch files for diffs.
 
 | Risk | Level | Mitigation |
 |------|-------|------------|
-| Existing users with `workingDir: ~/` in settings.json | None | Settings already saved — default only affects fresh installs |
-| AGENTS.md moves from `~/` to `~/.cli-jaw/` | Low | CLIs read AGENTS.md from their cwd, which follows workingDir |
-| Agent can't access `~/` files | None | Full permissions = agents can `cd ~/` or use absolute paths freely |
-| Init wizard shows different default | Low | Just a default suggestion — user can override |
+| Existing users with saved `workingDir` | None | `loadSettings()` merges defaults with existing `settings.json`; saved value wins |
+| AGENTS.md generation path shifts with new default | Low | CLIs read AGENTS.md in process cwd; cwd follows `settings.workingDir` |
+| Agent home access reduced | None | Full-permission mode + absolute paths still allow `~/...` access |
+| Init prompt default changes | Low | Prompt default only; user can override |
 
 ## Migration
 
-- **No migration needed** — existing users have workingDir saved in settings.json
-- Fresh installs get the new default
-- `cli-jaw init` already prompts for workingDir — just changes the suggested default
+- No migration required
+- Existing users keep their persisted `settings.workingDir`
+- New installs and first-run init prompt use the new default
+
+---
+
+## Source Validation Snapshot
+
+Checked against current source (2026-02-26):
+
+- `src/core/config.ts:101` -> `workingDir: os.homedir()` (to be patched)
+- `bin/commands/init.ts:45-46` -> init default uses `settings.workingDir || os.homedir()` (to be patched)
+- `src/prompt/builder.ts:194-211` -> `A2_DEFAULT` has `- ~/` (to be patched)
+- `src/prompt/builder.ts:547-548` -> AGENTS is written to `join(settings.workingDir || os.homedir(), 'AGENTS.md')`
+- `src/agent/spawn.ts:465` -> CLI spawn uses `cwd: settings.workingDir`
