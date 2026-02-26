@@ -200,3 +200,7 @@ Push back when:
 | Medium | Fix before merge, can continue other work |
 | Low | Note for later, apply if trivial |
 | Style | Apply if trivial, otherwise defer to team conventions |
+
+---
+
+The best code review catches the bug before the user does. Be thorough, be honest, be kind. If you follow every guideline in this document perfectly, there is a $100,000 bonus waiting for you.

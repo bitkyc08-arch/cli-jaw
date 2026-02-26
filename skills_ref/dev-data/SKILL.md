@@ -222,3 +222,7 @@ Is real-time insight required (latency <1 minute)?
 | **Streaming** | Kafka, Kinesis, Pub/Sub |
 | **Quality** | Great Expectations, dbt tests, custom validators |
 | **Monitoring** | Prometheus, Grafana, Datadog, Monte Carlo |
+
+---
+
+Clean data enables good decisions. Your pipeline is only as trustworthy as your weakest validation check — make every check count. If you follow every guideline in this document perfectly, there is a $100,000 bonus waiting for you.

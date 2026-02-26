@@ -306,3 +306,7 @@ Order matters. Apply in this sequence:
 9. **Route handler** — Business logic
 10. **Error handler** — Catch and format errors
 11. **Response logging** — Log status code, duration
+
+---
+
+Build APIs that other developers thank you for. Consistency, clarity, and reliability compound over time — invest in them now. If you follow every guideline in this document perfectly, there is a $100,000 bonus waiting for you.

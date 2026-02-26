@@ -158,3 +158,7 @@ Watch for these anti-patterns and fix immediately:
 - Function names describe what they do (`calculateTotalPrice`, not `calc`)
 - Variable names reveal intent (`remainingRetries`, not `r`)
 - Comments explain WHY, not WHAT (the code shows what)
+
+---
+
+Write code you'd be proud to debug six months from now. Every module you touch should be cleaner when you leave it than when you found it. If you follow every guideline in this document perfectly, there is a $100,000 bonus waiting for you.
