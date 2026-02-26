@@ -67,13 +67,16 @@ jaw doctor --json | jq '.checks[] | {name, status}'
 
 ### T-02: serve + 웹 UI
 ```bash
+# 기존 서버 정리
+lsof -ti :3457 | xargs kill 2>/dev/null; sleep 1
+
 jaw serve &
 PID=$!
 sleep 3
 
-# API 응답
-curl -s localhost:3457/api/cli-status | jq .status
-# ✅ Expected: "ok"
+# API 응답 (cli-status는 CLI 감지 결과 반환)
+curl -s localhost:3457/api/cli-status | jq 'keys'
+# ✅ Expected: ["claude","codex","copilot","gemini","opencode"]
 
 # 웹 UI 접근
 curl -s -o /dev/null -w "%{http_code}" localhost:3457/
@@ -94,7 +97,7 @@ cat ~/.cli-jaw/settings.json | jq '{workingDir, permissions}'
 
 ### T-04: --home 플래그
 ```bash
-mkdir -p /tmp/test-jaw-fresh
+# mkdir 불필요 — doctor가 JAW_HOME 자동 생성
 jaw --home /tmp/test-jaw-fresh doctor --json | jq '.checks[] | select(.name == "Home directory") | .detail'
 # ✅ Expected: "/tmp/test-jaw-fresh"
 rm -rf /tmp/test-jaw-fresh
@@ -102,7 +105,7 @@ rm -rf /tmp/test-jaw-fresh
 
 ### T-05: --home= 등호 구문
 ```bash
-mkdir -p /tmp/test-jaw-eq
+# mkdir 불필요 — doctor가 JAW_HOME 자동 생성
 jaw --home=/tmp/test-jaw-eq doctor --json | jq '.checks[] | select(.name == "Home directory") | .detail'
 # ✅ Expected: "/tmp/test-jaw-eq"
 rm -rf /tmp/test-jaw-eq
@@ -110,7 +113,7 @@ rm -rf /tmp/test-jaw-eq
 
 ### T-06: CLI_JAW_HOME 환경변수
 ```bash
-mkdir -p /tmp/test-jaw-env
+# mkdir 불필요 — doctor가 JAW_HOME 자동 생성
 CLI_JAW_HOME=/tmp/test-jaw-env jaw doctor --json | jq '.checks[] | select(.name == "Home directory") | .detail'
 # ✅ Expected: "/tmp/test-jaw-env"
 rm -rf /tmp/test-jaw-env
@@ -132,22 +135,26 @@ rm -rf /tmp/test-clone-fresh
 
 ### T-08: 두 인스턴스 동시 실행
 ```bash
+# ⚠️  3457/3458 포트가 비어있는지 먼저 확인
+lsof -ti :3457 | xargs kill 2>/dev/null; lsof -ti :3458 | xargs kill 2>/dev/null; sleep 1
+
 # 인스턴스 A (기본)
 jaw serve &
 PID_A=$!
+sleep 2
 
-# 인스턴스 B (커스텀)
+# 인스턴스 B (커스텀) — A가 뜬 후 시작
 jaw clone ~/.jaw-work 2>/dev/null
 jaw --home ~/.jaw-work serve --port 3458 &
 PID_B=$!
 
 sleep 3
 
-curl -s localhost:3457/api/cli-status | jq .status
-# ✅ Expected: "ok"
+curl -s localhost:3457/api/cli-status | jq 'keys'
+# ✅ Expected: ["claude","codex","copilot","gemini","opencode"]
 
-curl -s localhost:3458/api/cli-status | jq .status
-# ✅ Expected: "ok"
+curl -s localhost:3458/api/cli-status | jq 'keys'
+# ✅ Expected: ["claude","codex","copilot","gemini","opencode"]
 
 kill $PID_A $PID_B
 rm -rf ~/.jaw-work
@@ -165,8 +172,8 @@ jaw launchd
 jaw launchd status
 # ✅ Expected: instance "default", port 3457, PID 표시
 
-curl -s localhost:3457/api/cli-status | jq .status
-# ✅ Expected: "ok"
+curl -s localhost:3457/api/cli-status | jq 'keys'
+# ✅ Expected: ["claude","codex","copilot","gemini","opencode"]
 
 jaw launchd unset
 # ✅ Expected: 해제 완료
@@ -186,9 +193,9 @@ jaw --home ~/.jaw-work launchd --port 3458
 launchctl list | grep com.cli-jaw
 # ✅ Expected: 2개 항목
 
-curl -s localhost:3457/api/cli-status | jq .status
-curl -s localhost:3458/api/cli-status | jq .status
-# ✅ Expected: 둘 다 "ok"
+curl -s localhost:3457/api/cli-status | jq 'keys'
+curl -s localhost:3458/api/cli-status | jq 'keys'
+# ✅ Expected: 둘 다 ["claude","codex","copilot","gemini","opencode"]
 
 # 정리
 jaw launchd unset
@@ -267,6 +274,11 @@ kill $PID
 ## 7. 정리
 
 ```bash
+# 서버 종료
+lsof -ti :3457 | xargs kill 2>/dev/null
+lsof -ti :3458 | xargs kill 2>/dev/null
+lsof -ti :3460 | xargs kill 2>/dev/null
+
 # launchd 해제 (등록한 경우)
 jaw launchd unset 2>/dev/null
 jaw --home ~/.jaw-work launchd unset 2>/dev/null
