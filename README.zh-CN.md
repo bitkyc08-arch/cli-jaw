@@ -6,7 +6,7 @@
 
 *Claude、Codex、Gemini... 从此告别来回切换。*
 
-[![Tests](https://img.shields.io/badge/tests-383%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-434%20pass-brightgreen)](#-测试)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -93,7 +93,7 @@ CLI-JAW 是驻留在您本地机器上的**专属 AI 助手**，并在您熟悉�
 | ⚡ **多模型自动回退 (Fallback)** | 单一引擎发生故障？下一个立即接管。确保零停机。                             |
 | 🎭 **基于编排的性能优化**        | 复杂的任务会被拆分给专业的子智能体，以实现效率最大化。                     |
 | 📦 **107 个内置技能**            | 浏览器自动化、文档生成、Telegram 通知、持久化记忆 — 开箱即用。             |
-| 🖥️ **跨平台支持**               | macOS、Linux、Windows (WSL) — 浏览器启动、CLI 检测、安装均原生支持。        |
+| 🖥️ **跨平台支持**               | macOS、Linux、Windows — ENOENT-safe CLI 启动、自动检测、`.cmd` 支持，跨平台原生运行。        |
 
 ![CLI-JAW 终端](docs/screenshots/terminal-cli.png)
 

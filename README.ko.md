@@ -6,7 +6,7 @@
 
 *Claude, Codex, Gemini... 이제 번갈아 쓰지 마세요.*
 
-[![Tests](https://img.shields.io/badge/tests-383%20pass-brightgreen)](#-테스트)
+[![Tests](https://img.shields.io/badge/tests-434%20pass-brightgreen)](#-테스트)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -93,7 +93,7 @@ CLI-JAW는 내 컴퓨터에 상주하며 이미 익숙한 인터페이스인 **�
 | ⚡ **멀티 에이전트 자동 전환(Fallback)** | 엔진 하나가 멈춰도 걱정 없습니다. 다음 엔진이 즉시 이어받아 중단 없는 작업이 가능합니다.              |
 | 🎭 **오케스트레이션 기반 성능 극대화**   | 복잡한 작업은 전문화된 서브 에이전트에게 분산시켜 처리량을 극대화합니다.                              |
 | 📦 **107개의 내장 스킬**                 | 브라우저 자동화, 문서 생성, 텔레그램 연동, 영구 메모리 등 설치 즉시 사용 가능한 기능들을 제공합니다.  |
-| 🖥️ **크로스 플랫폼**                     | macOS, Linux, Windows (WSL) — 브라우저 실행, CLI 감지, 설치 모두 네이티브 지원.               |
+| 🖥️ **크로스 플랫폼**                     | macOS, Linux, Windows — ENOENT-safe CLI 스폰, 자동 감지, `.cmd` shim 지원, 네이티브 설치 전부 크로스플랫폼 동작.               |
 
 ![CLI-JAW 터미널](docs/screenshots/terminal-cli.png)
 

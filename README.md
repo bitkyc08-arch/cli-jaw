@@ -6,7 +6,7 @@
 
 *One assistant. Five brains. Always on.*
 
-[![Tests](https://img.shields.io/badge/tests-383%20pass-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-434%20pass-brightgreen)](#-tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -94,7 +94,7 @@ Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, C
 | ⚡ **Multi-Agent Fallback**     | One engine down? The next picks up automatically. Zero downtime.                            |
 | 🎭 **Orchestrated Performance** | Complex tasks split across specialized sub-agents for maximum throughput.                   |
 | 📦 **107 Built-in Skills**      | Browser automation, document generation, Telegram, memory — ready out of the box.           |
-| 🖥️ **Cross-Platform**           | macOS, Linux, Windows (WSL) — browser launch, CLI detection, and install all work natively. |
+| 🖥️ **Cross-Platform**           | macOS, Linux, Windows — ENOENT-safe CLI spawn, auto-detection, `.cmd` shim support, and native install all work across platforms. |
 
 ![CLI-JAW Terminal](docs/screenshots/terminal-cli.png)
 
