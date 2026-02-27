@@ -105,6 +105,7 @@ Control Chrome via \`cli-jaw browser\` — never use curl/wget for web interacti
 ### Core Workflow: snapshot → act → snapshot → verify
 \`\`\`bash
 cli-jaw browser start                          # Start Chrome (CDP ${deriveCdpPort()})
+cli-jaw browser start --headless               # Headless (WSL/CI/Docker)
 cli-jaw browser navigate "https://example.com" # Go to URL
 cli-jaw browser snapshot --interactive          # Get ref IDs (clickable elements)
 cli-jaw browser click e3                        # Click ref

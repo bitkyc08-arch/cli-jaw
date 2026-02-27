@@ -2,11 +2,37 @@ import { JAW_HOME, deriveCdpPort } from '../core/config.js';
 import { spawn } from 'child_process';
 import { join } from 'path';
 import fs from 'node:fs';
+import net from 'node:net';
 import { chromium } from 'playwright-core';
 
 const PROFILE_DIR = join(JAW_HOME, 'browser-profile');
 let cached: any = null;   // { browser, cdpUrl }
 let chromeProc: any = null;
+
+/** Check if a port is already listening via TCP connect */
+function isPortListening(port: number, host = '127.0.0.1'): Promise<boolean> {
+    return new Promise(resolve => {
+        const sock = net.createConnection({ port, host });
+        const timer = setTimeout(() => { sock.destroy(); resolve(false); }, 500);
+        sock.once('connect', () => { clearTimeout(timer); sock.destroy(); resolve(true); });
+        sock.once('error', () => { clearTimeout(timer); resolve(false); });
+    });
+}
+
+/** Poll CDP /json/version until Chrome is ready to accept CDP connections */
+async function waitForCdpReady(port: number, timeoutMs = 10000): Promise<boolean> {
+    const start = Date.now();
+    while (Date.now() - start < timeoutMs) {
+        try {
+            const resp = await fetch(`http://127.0.0.1:${port}/json/version`, {
+                signal: AbortSignal.timeout(2000),
+            });
+            if (resp.ok) return true;
+        } catch { /* not ready yet */ }
+        await new Promise(r => setTimeout(r, 300));
+    }
+    return false;
+}
 
 function isWSL() {
     if (process.platform !== 'linux') return false;
@@ -61,28 +87,80 @@ function findChrome() {
     throw new Error('Chrome not found — install Google Chrome');
 }
 
-export async function launchChrome(port = deriveCdpPort()) {
+export async function launchChrome(port = deriveCdpPort(), opts: { headless?: boolean } = {}) {
+    // 1. CDP already responding → reuse (covers server restart, external Chrome)
+    if (await isPortListening(port)) {
+        try {
+            const resp = await fetch(`http://127.0.0.1:${port}/json/version`, {
+                signal: AbortSignal.timeout(2000),
+            });
+            if (resp.ok) {
+                console.log(`[browser] CDP already listening on port ${port} — reusing existing instance`);
+                return;
+            }
+        } catch {
+            throw new Error(
+                `Port ${port} is in use but not responding as CDP. ` +
+                `Another process may be occupying the port. Try --port <other> or stop the conflicting process.`
+            );
+        }
+    }
+
     if (chromeProc && !chromeProc.killed) return;
+
     const chrome = findChrome();
     const noSandbox = process.env.CHROME_NO_SANDBOX === '1';
+    const headless = opts.headless || process.env.CHROME_HEADLESS === '1';
+
     chromeProc = spawn(chrome, [
         `--remote-debugging-port=${port}`,
         `--user-data-dir=${PROFILE_DIR}`,
         '--no-first-run', '--no-default-browser-check',
         '--disable-dev-shm-usage',
+        '--disable-background-networking',
         ...(noSandbox ? ['--no-sandbox', '--disable-setuid-sandbox'] : []),
+        ...(headless ? ['--headless=new'] : []),
+        'about:blank',
     ], { detached: true, stdio: 'ignore' });
     chromeProc.unref();
-    await new Promise(r => setTimeout(r, 2000));
+
+    // 2. CDP readiness polling (replaces blind 2s sleep)
+    const ready = await waitForCdpReady(port);
+    if (!ready) {
+        if (chromeProc && !chromeProc.killed) {
+            chromeProc.kill('SIGTERM');
+            chromeProc = null;
+        }
+        throw new Error(
+            `Chrome CDP not responding on port ${port} after 10s. ` +
+            `Possible causes:\n` +
+            `  - Windows: Chrome singleton absorbed the launch (close ALL Chrome windows first)\n` +
+            `  - No display available (try --headless or CHROME_HEADLESS=1)\n` +
+            `  - Port conflict (try --port <other>)`
+        );
+    }
 }
 
-export async function connectCdp(port = deriveCdpPort()) {
+export async function connectCdp(port = deriveCdpPort(), retries = 3) {
     const cdpUrl = `http://127.0.0.1:${port}`;
     if (cached?.cdpUrl === cdpUrl && cached.browser.isConnected()) return cached;
-    const browser = await chromium.connectOverCDP(cdpUrl);
-    cached = { browser, cdpUrl };
-    browser.on('disconnected', () => { cached = null; });
-    return cached;
+
+    let lastError: Error | null = null;
+    for (let i = 0; i < retries; i++) {
+        try {
+            const browser = await chromium.connectOverCDP(cdpUrl, { timeout: 10000 });
+            cached = { browser, cdpUrl };
+            browser.on('disconnected', () => { cached = null; });
+            return cached;
+        } catch (e) {
+            lastError = e as Error;
+            if (i < retries - 1) {
+                console.warn(`[browser] CDP connect attempt ${i + 1}/${retries} failed, retrying in 1s...`);
+                await new Promise(r => setTimeout(r, 1000));
+            }
+        }
+    }
+    throw new Error(`CDP connection failed after ${retries} attempts: ${lastError?.message}`);
 }
 
 export async function getActivePage(port = deriveCdpPort()) {

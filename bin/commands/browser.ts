@@ -33,9 +33,15 @@ try {
         case 'start': {
             const { values } = parseArgs({
                 args: process.argv.slice(4),
-                options: { port: { type: 'string', default: String(deriveCdpPort()) } }, strict: false
+                options: {
+                    port: { type: 'string', default: String(deriveCdpPort()) },
+                    headless: { type: 'boolean', default: false },
+                }, strict: false
             });
-            const r = await api('POST', '/start', { port: Number(values.port) }) as Record<string, any>;
+            const r = await api('POST', '/start', {
+                port: Number(values.port),
+                headless: values.headless,
+            }) as Record<string, any>;
             console.log(r.running ? `🌐 Chrome started (CDP: ${r.cdpUrl})` : '❌ Failed');
             break;
         }
@@ -208,7 +214,7 @@ try {
   🌐 cli-jaw browser
 
   Commands:
-    start [--port <auto>]    Start Chrome (CDP port auto-derived from server port)
+    start [--port <auto>] [--headless]  Start Chrome (headless for WSL/CI/Docker)
     stop                   Stop Chrome
     status                 Connection status
     reset [--force]        Reset (clear profile + screenshots)

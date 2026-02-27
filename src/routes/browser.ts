@@ -13,7 +13,7 @@ export function registerBrowserRoutes(app: Express) {
             const port = Number.isInteger(requestedPort) && requestedPort > 0 && requestedPort <= 65535
                 ? requestedPort
                 : cdpPort();
-            await browser.launchChrome(port);
+            await browser.launchChrome(port, { headless: req.body?.headless === true });
             res.json(await browser.getBrowserStatus(port));
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
