@@ -27,11 +27,13 @@ export function getExecutableCommands(iface: string) {
 }
 
 /**
- * Telegram setMyCommands용 메뉴 — reserved 제외, full capability만
+ * Telegram setMyCommands용 메뉴 — bot 자체 처리 커맨드만 제외
+ * start/id/settings: bot.command()로 직접 핸들링
+ * help/model/cli: readonly여도 팝업에 표시 (사용자 편의)
  * @returns {Array}
  */
 export function getTelegramMenuCommands() {
-    const RESERVED = new Set(['start', 'id', 'help', 'settings']);
+    const BOT_HANDLED = new Set(['start', 'id', 'settings']);
     return getVisibleCommands('telegram')
-        .filter(c => !RESERVED.has(c.name) && c.capability?.telegram === CAPABILITY.full);
+        .filter(c => !BOT_HANDLED.has(c.name));
 }

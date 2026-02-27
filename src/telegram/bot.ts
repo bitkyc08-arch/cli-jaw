@@ -14,7 +14,8 @@ import {
     activeProcess, killActiveAgent, waitForProcessEnd,
     saveUpload, buildMediaPrompt, messageQueue,
 } from '../agent/spawn.js';
-import { parseCommand, executeCommand, COMMANDS } from '../cli/commands.js';
+import { parseCommand, executeCommand } from '../cli/commands.js';
+import { getTelegramMenuCommands } from '../command-contract/policy.js';
 import { getMergedSkills } from '../prompt/builder.js';
 import * as memory from '../memory/memory.js';
 import { downloadTelegramFile } from '../../lib/upload.js';
@@ -58,8 +59,7 @@ const telegramForwarderLifecycle = createForwarderLifecycle({
         },
     }),
 });
-const RESERVED_CMDS = new Set(['start', 'id', 'help', 'settings']);
-const TG_EXCLUDED_CMDS = new Set(['model', 'cli']);  // read-only on Telegram
+
 
 function currentLocale() {
     return normalizeLocale(settings.locale, 'ko');
@@ -92,11 +92,12 @@ function toTelegramCommandDescription(desc: string) {
 
 function syncTelegramCommands(bot: any) {
     const locale = currentLocale();
-    const cmds = COMMANDS
-        .filter(c => c.interfaces.includes('telegram') && !RESERVED_CMDS.has(c.name) && !TG_EXCLUDED_CMDS.has(c.name))
-        .map(c => ({
+    const cmds = getTelegramMenuCommands()
+        .map((c: any) => ({
             command: c.name,
-            description: toTelegramCommandDescription(c.descKey ? t(c.descKey, {}, locale) : c.desc),
+            description: toTelegramCommandDescription(
+                c.tgDescKey ? t(c.tgDescKey, {}, locale) : (c.descKey ? t(c.descKey, {}, locale) : c.desc)
+            ),
         }));
     // Set commands with language_code per Telegram Bot API
     // Also set default (no language_code) for users without language preference

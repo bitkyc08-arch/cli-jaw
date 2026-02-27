@@ -22,10 +22,10 @@ test('CP-001: web visible includes help', { skip: !moduleLoaded && 'policy.js no
     assert.ok(cmds.some(c => c.name === 'help'), 'help should be visible on web');
 });
 
-test('CP-002: telegram menu excludes model and cli', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
+test('CP-002: telegram menu includes model and cli (readonly visible)', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
     const cmds = getTelegramMenuCommands();
-    assert.ok(!cmds.some(c => c.name === 'model'), 'model should not be in telegram menu');
-    assert.ok(!cmds.some(c => c.name === 'cli'), 'cli should not be in telegram menu');
+    assert.ok(cmds.some(c => c.name === 'model'), 'model should be in telegram menu (readonly)');
+    assert.ok(cmds.some(c => c.name === 'cli'), 'cli should be in telegram menu (readonly)');
 });
 
 test('CP-003: telegram visible includes model (readonly)', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
@@ -51,4 +51,22 @@ test('CP-005: all interfaces return non-empty lists', { skip: !moduleLoaded && '
         const cmds = getVisibleCommands(iface);
         assert.ok(cmds.length > 0, `${iface} should have visible commands`);
     }
+});
+
+test('CP-006: telegram menu includes help', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
+    const cmds = getTelegramMenuCommands();
+    assert.ok(cmds.some(c => c.name === 'help'), 'help should be in telegram menu');
+});
+
+test('CP-007: telegram menu excludes start/id/settings', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
+    const cmds = getTelegramMenuCommands();
+    for (const name of ['start', 'id', 'settings']) {
+        assert.ok(!cmds.some(c => c.name === name), `${name} should not be in telegram menu`);
+    }
+});
+
+test('CP-008: telegram menu count >= 11', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
+    const cmds = getTelegramMenuCommands();
+    // help + status + clear + model + cli + fallback + flush + version + skill + browser + steer = 11
+    assert.ok(cmds.length >= 11, `expected >=11 commands, got ${cmds.length}`);
 });
