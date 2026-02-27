@@ -20,6 +20,34 @@
 
 </div>
 
+<details>
+<summary>🪟 <b>你在用 Windows 吗？</b> — WSL 一键安装</summary>
+
+**第一步：安装 WSL**（以管理员身份运行 PowerShell — 仅需一次）
+
+```powershell
+wsl --install
+```
+
+按提示重启电脑。重启后从开始菜单打开 **Ubuntu**。
+
+**第二步：安装 CLI-JAW**（在 Ubuntu/WSL 终端中）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
+```
+
+脚本会自动安装 **Node.js 22 + cli-jaw**。完成后：
+
+```bash
+jaw serve
+# → http://localhost:3457
+```
+
+> 💡 脚本使用 [fnm](https://github.com/Schniz/fnm) 管理 Node.js。如果已有 `nvm`，则自动使用 nvm。
+
+</details>
+
 ---
 
 ## 🚀 安装与启动（30 秒）

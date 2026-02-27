@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CLI-JAW — Windows Installation</title>
+    <meta name="description" content="One-click WSL setup for CLI-JAW on Windows.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <style>
+        /* ── Reset & Base ── */
+        *,
+        *::before,
+        *::after {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg: #06060b;
+            --surface: #0d0d15;
+            --surface2: #12121e;
+            --border: #1a1a2e;
+            --text: #e4e4ef;
+            --text-dim: #6e6e8a;
+            --accent: #22d3ee;
+            --accent2: #06b6d4;
+            --accent-glow: rgba(34, 211, 238, 0.15);
+            --accent-glow2: rgba(34, 211, 238, 0.06);
+            --green: #4ade80;
+            --font-display: 'Chakra Petch', monospace;
+            --font-body: 'Outfit', sans-serif;
+            --font-mono: 'JetBrains Mono', monospace;
+        }
+
+        body {
+            font-family: var(--font-body);
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.6;
+            overflow-x: hidden;
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image:
+                linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
+            background-size: 60px 60px;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 0 24px;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+        }
+
+        .header {
+            padding: 40px 0;
+            border-bottom: 1px solid var(--border);
+            margin-bottom: 60px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-family: var(--font-display);
+            font-size: 20px;
+            font-weight: 700;
+            color: var(--accent);
+            text-decoration: none;
+            transition: opacity 0.2s;
+        }
+
+        .logo:hover {
+            opacity: 0.8;
+        }
+
+        .back-link {
+            color: var(--text-dim);
+            text-decoration: none;
+            font-size: 14px;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            transition: color 0.2s;
+        }
+
+        .back-link:hover {
+            color: var(--text);
+        }
+
+        .page-title {
+            font-family: var(--font-display);
+            font-size: clamp(32px, 5vw, 48px);
+            font-weight: 700;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .page-desc {
+            color: var(--text-dim);
+            font-size: 18px;
+            margin-bottom: 60px;
+        }
+
+        .step-card {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 40px;
+            margin-bottom: 32px;
+            position: relative;
+            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.2);
+        }
+
+        .step-num {
+            position: absolute;
+            top: -16px;
+            left: 32px;
+            background: linear-gradient(135deg, #0096ff, #005c99);
+            color: white;
+            font-family: var(--font-display);
+            font-weight: 700;
+            font-size: 18px;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0, 150, 255, 0.3);
+        }
+
+        .step-title {
+            font-family: var(--font-display);
+            font-size: 24px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            margin-top: 8px;
+            color: white;
+        }
+
+        .step-desc {
+            color: var(--text-dim);
+            font-size: 15px;
+            margin-bottom: 24px;
+        }
+
+        .code-block {
+            background: var(--surface2);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 24px;
+            font-family: var(--font-mono);
+            font-size: 14px;
+            color: var(--accent);
+            overflow-x: auto;
+            line-height: 1.8;
+            box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .code-block .dim {
+            color: var(--text-dim);
+        }
+
+        .code-block .user {
+            color: #4ade80;
+        }
+
+        .info-box {
+            background: rgba(34, 211, 238, 0.05);
+            border-left: 3px solid var(--accent);
+            padding: 16px 20px;
+            border-radius: 0 8px 8px 0;
+            margin-top: 24px;
+            font-size: 14px;
+            color: var(--text-dim);
+        }
+
+        .info-box strong {
+            color: var(--text);
+        }
+
+        .footer {
+            border-top: 1px solid var(--border);
+            padding: 40px 0;
+            text-align: center;
+            margin-top: 60px;
+        }
+
+        .footer p {
+            color: var(--text-dim);
+            font-size: 13px;
+        }
+
+        .win-icon {
+            color: #0096ff;
+            text-shadow: 0 0 20px rgba(0, 150, 255, 0.4);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <header class="header">
+            <a href="index.html" class="logo">🦈 CLI-JAW</a>
+            <a href="index.html" class="back-link">← Back to Home</a>
+        </header>
+
+        <h1 class="page-title"><span class="win-icon">🪟</span> Windows Setup</h1>
+        <p class="page-desc">CLI-JAW runs natively inside the Windows Subsystem for Linux (WSL). Follow these two simple
+            steps to get your AI assistant up and running.</p>
+
+        <div class="step-card">
+            <div class="step-num">1</div>
+            <h2 class="step-title">Install WSL</h2>
+            <p class="step-desc">Open <strong>PowerShell as an Administrator</strong> (Right-click Start menu > Windows
+                PowerShell (Admin)) and run this command. It will install the required Linux components.</p>
+            <div class="code-block">
+                wsl --install
+            </div>
+            <div class="info-box">
+                <strong>Attention:</strong> Your computer will prompt you to restart. Please <strong>restart your
+                    computer</strong> before proceeding to Step 2.
+            </div>
+        </div>
+
+        <div class="step-card">
+            <div class="step-num">2</div>
+            <h2 class="step-title">Bootstrap CLI-JAW</h2>
+            <p class="step-desc">After restarting your PC, open <strong>Ubuntu</strong> from the Start Menu. Create a
+                UNIX username and password if prompted, then paste this one-liner script:</p>
+            <div class="code-block">
+                curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
+            </div>
+            <div class="info-box">
+                <strong>What this does:</strong><br>
+                1. Installs Node.js v22 (using fnm or nvm)<br>
+                2. Installs <code>cli-jaw</code> globally via npm<br>
+                3. Runs a diagnostic check
+            </div>
+        </div>
+
+        <div class="step-card" style="border-color: rgba(74, 222, 128, 0.3);">
+            <div class="step-num" style="background: var(--green); box-shadow: 0 4px 12px rgba(74, 222, 128, 0.3);">3
+            </div>
+            <h2 class="step-title">Start Chatting</h2>
+            <p class="step-desc">You're all set! Start the CLI-JAW local server right from your Ubuntu terminal.</p>
+            <div class="code-block">
+                jaw serve
+                <br><br>
+                <span class="dim"># Then open this link in your Windows browser:</span><br>
+                <span class="user">http://localhost:3457</span>
+            </div>
+        </div>
+    </div>
+
+    <footer class="footer">
+        <div class="container">
+            <p>ISC License · Made with ❤️ by the CLI-JAW community</p>
+        </div>
+    </footer>
+</body>
+
+</html>

@@ -20,6 +20,34 @@
 
 </div>
 
+<details>
+<summary>🪟 <b>Windows 사용자이신가요?</b> — WSL 원클릭 설치</summary>
+
+**Step 1: WSL 설치** (PowerShell 관리자 권한 — 최초 1회)
+
+```powershell
+wsl --install
+```
+
+안내에 따라 컴퓨터를 재시작하세요. 재부팅 후 시작 메뉴에서 **Ubuntu**를 실행하세요.
+
+**Step 2: CLI-JAW 설치** (Ubuntu/WSL 터미널에서)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
+```
+
+**Node.js 22 + cli-jaw**가 자동으로 설치됩니다. 완료 후:
+
+```bash
+jaw serve
+# → http://localhost:3457
+```
+
+> 💡 스크립트는 [fnm](https://github.com/Schniz/fnm)으로 Node.js를 관리합니다. 이미 `nvm`이 있으면 그걸 사용합니다.
+
+</details>
+
 ---
 
 ## 🚀 설치 & 실행 (30초)

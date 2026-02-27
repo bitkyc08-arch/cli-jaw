@@ -270,6 +270,31 @@
             color: var(--accent);
         }
 
+        .btn-windows {
+            background: transparent;
+            color: var(--text);
+            border: 1px solid rgba(0, 150, 255, 0.4);
+            animation: winPulse 2.5s ease-in-out infinite;
+        }
+
+        .btn-windows:hover {
+            border-color: #0096ff;
+            color: #0096ff;
+            box-shadow: 0 0 20px rgba(0, 150, 255, 0.2);
+        }
+
+        @keyframes winPulse {
+
+            0%,
+            100% {
+                border-color: rgba(0, 150, 255, 0.4);
+            }
+
+            50% {
+                border-color: rgba(0, 150, 255, 0.8);
+            }
+        }
+
         .hero-badges {
             margin-top: 32px;
             display: flex;
@@ -780,6 +805,9 @@
             <a href="https://github.com/lidge-jun/cli-jaw" class="btn btn-ghost" target="_blank">
                 ⭐ GitHub
             </a>
+            <a href="#platform" class="btn btn-windows">
+                🪟 Windows?
+            </a>
         </div>
         <div class="hero-badges">
             <img src="https://img.shields.io/badge/tests-445%20pass-brightgreen" alt="Tests">
@@ -925,6 +953,27 @@
                     <span class="dim"># Or build manually</span><br>
                     docker build -t cli-jaw .<br>
                     docker run -d -p 3457:3457 cli-jaw
+                </div>
+            </div>
+
+            <!-- WSL Block -->
+            <div class="docker-block" style="margin-top: 24px;">
+                <div class="docker-info">
+                    <h3>🪟 Windows — WSL One-Click</h3>
+                    <p>Windows users: install WSL first, then run one command to get CLI-JAW up and running.
+                        No manual Node.js setup required — the script handles everything.</p>
+                    <span class="docker-tag">PowerShell</span>
+                    <span class="docker-tag">Ubuntu/WSL</span>
+                    <span class="docker-tag">fnm</span>
+                </div>
+                <div class="code-block">
+                    <span class="dim"># Step 1 — PowerShell (Admin)</span><br>
+                    wsl --install<br>
+                    <span class="dim"># → Restart, open Ubuntu</span><br><br>
+                    <span class="dim"># Step 2 — Ubuntu terminal</span><br>
+                    curl -fsSL https://raw.githubusercontent.com/<br>
+                    &nbsp;&nbsp;lidge-jun/cli-jaw/master/<br>
+                    &nbsp;&nbsp;scripts/install-wsl.sh | bash
                 </div>
             </div>
         </div>

@@ -20,6 +20,34 @@
 
 </div>
 
+<details>
+<summary>🪟 <b>Are you on Windows?</b> — WSL One-Click Setup</summary>
+
+**Step 1: Install WSL** (PowerShell as Admin — one time only)
+
+```powershell
+wsl --install
+```
+
+Restart your computer when prompted. After reboot, open **Ubuntu** from the Start Menu.
+
+**Step 2: Install CLI-JAW** (in the Ubuntu/WSL terminal)
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
+```
+
+This automatically installs **Node.js 22 + cli-jaw**. When it finishes:
+
+```bash
+jaw serve
+# → http://localhost:3457
+```
+
+> 💡 The script uses [fnm](https://github.com/Schniz/fnm) for Node.js management. If you already have `nvm`, it will use that instead.
+
+</details>
+
 ---
 
 ## 🚀 Install & Run (30 seconds)
