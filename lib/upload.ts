@@ -17,7 +17,8 @@ import { join, extname, basename } from 'path';
 export function saveUpload(uploadsDir: string, buffer: Buffer, originalName: string) {
     const ts = Date.now();
     const ext = extname(originalName) || '.bin';
-    const safeName = `${ts}_${basename(originalName, ext).replace(/[^a-zA-Z0-9_-]/g, '')}${ext}`;
+    const stem = basename(originalName, ext).replace(/[^\p{L}\p{N}_-]/gu, '').slice(0, 100) || 'file';
+    const safeName = `${ts}_${stem}${ext}`;
     const filePath = join(uploadsDir, safeName);
     fs.writeFileSync(filePath, buffer);
     console.log(`[upload] saved ${filePath} (${buffer.length} bytes)`);
