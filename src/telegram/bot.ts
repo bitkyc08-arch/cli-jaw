@@ -44,6 +44,7 @@ export { orchestrateAndCollect };
 export let telegramBot: any = null;
 export const telegramActiveChatIds = new Set();
 let tgRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let botUsername: string | null = null;
 const telegramForwarderLifecycle = createForwarderLifecycle({
     addListener: addBroadcastListener,
     removeListener: removeBroadcastListener,
@@ -90,6 +91,10 @@ function toTelegramCommandDescription(desc: string) {
     return text.length >= 3 ? text.slice(0, 256) : 'Run command';
 }
 
+function escapeRegExp(text: string) {
+    return text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function syncTelegramCommands(bot: any) {
     const locale = currentLocale();
     const cmds = getTelegramMenuCommands()
@@ -111,8 +116,14 @@ function makeTelegramCommandCtx() {
     return makeCommandCtx('telegram', currentLocale(), {
         applySettings: async (patch) => {
             const { replaceSettings: _replace, saveSettings: _save } = await import('../core/config.js');
-            _replace({ ...settings, ...patch });
-            _save(settings);
+            const { mergeSettingsPatch } = await import('../core/settings-merge.js');
+            const merged = mergeSettingsPatch(settings, patch);
+            _replace(merged);
+            _save(merged);
+            if (patch.telegram) {
+                const { initTelegram: _init } = await import('./bot.js');
+                void _init();
+            }
             return { ok: true };
         },
         clearSession: () => {
@@ -199,6 +210,18 @@ export async function initTelegram() {
         if (allowed?.length > 0 && !allowed.includes(ctx.chat?.id)) {
             console.log(`[tg:blocked] chatId=${ctx.chat?.id}`);
             return;
+        }
+        await next();
+    });
+
+    // Group chat @mention gating
+    bot.use(async (ctx, next) => {
+        const chatType = ctx.chat?.type;
+        if (chatType === 'group' || chatType === 'supergroup') {
+            const text = ctx.message?.text || ctx.message?.caption || '';
+            if (!botUsername || !text.includes(`@${botUsername}`)) {
+                return;
+            }
         }
         await next();
     });
@@ -357,7 +380,10 @@ export async function initTelegram() {
 
     bot.on('message:text', async (ctx) => {
         markChatActive(ctx.chat.id);
-        const text = ctx.message.text;
+        let text = ctx.message.text;
+        if (botUsername) {
+            text = text.replace(new RegExp(`@${escapeRegExp(botUsername)}\\b`, 'g'), '').trim();
+        }
         if (text.startsWith('/')) {
             const parsed = parseCommand(text);
             if (!parsed) return;
@@ -436,6 +462,12 @@ export async function initTelegram() {
     void syncTelegramCommands(bot).catch((e) => {
         console.warn('[tg:commands] setMyCommands failed:', e.message);
     });
+
+    botUsername = null;
+    try {
+        const me = await bot.api.getMe();
+        botUsername = me.username || null;
+    } catch { /* noop */ }
 
     bot.start({
         drop_pending_updates: true,

@@ -7,7 +7,7 @@ import { t } from './i18n.js';
 import { api, apiJson, apiFire } from '../api.js';
 
 interface PerCliConfig { model?: string; effort?: string; }
-interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; }
+interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; }
 interface QuotaWindow { label: string; percent: number; }
 interface QuotaEntry {
     account?: { email?: string; type?: string; plan?: string; tier?: string };
@@ -374,6 +374,12 @@ export async function setTelegram(enabled: boolean): Promise<void> {
     await apiJson('/api/settings', 'PUT', { telegram: { enabled } });
 }
 
+export async function setForwardAll(enabled: boolean): Promise<void> {
+    document.getElementById('tgForwardOn')?.classList.toggle('active', enabled);
+    document.getElementById('tgForwardOff')?.classList.toggle('active', !enabled);
+    await apiJson('/api/settings', 'PUT', { telegram: { forwardAll: enabled } });
+}
+
 function loadTelegramSettings(s: SettingsData): void {
     if (!s.telegram) return;
     const tg = s.telegram;
@@ -385,6 +391,9 @@ function loadTelegramSettings(s: SettingsData): void {
     if (tg.allowedChatIds?.length && tgChatIds) {
         tgChatIds.value = tg.allowedChatIds.join(', ');
     }
+    const fwdOn = tg.forwardAll !== false;
+    document.getElementById('tgForwardOn')?.classList.toggle('active', fwdOn);
+    document.getElementById('tgForwardOff')?.classList.toggle('active', !fwdOn);
 }
 
 // ── Fallback Order ──

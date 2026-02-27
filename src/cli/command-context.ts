@@ -40,9 +40,16 @@ export function makeCommandCtx(
         getSession,
         getSettings: () => settings,
         updateSettings: async (patch: Record<string, any>) => {
-            // Telegram: only fallbackOrder allowed
+            // Telegram: allow fallbackOrder and telegram.forwardAll only
             if (iface === 'telegram') {
-                if (patch.fallbackOrder !== undefined && Object.keys(patch).length === 1) {
+                const keys = Object.keys(patch);
+                const allowed = keys.length === 1 && (
+                    patch.fallbackOrder !== undefined
+                    || (patch.telegram
+                        && Object.keys(patch.telegram).length === 1
+                        && patch.telegram.forwardAll !== undefined)
+                );
+                if (allowed) {
                     return deps.applySettings(patch);
                 }
                 return { ok: false, text: t('tg.settingsUnsupported', {}, locale) };

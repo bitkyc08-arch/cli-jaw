@@ -121,6 +121,7 @@ function createDefaultSettings() {
             enabled: false,
             token: '',
             allowedChatIds: [],
+            forwardAll: true,
         },
         memory: {
             enabled: true,

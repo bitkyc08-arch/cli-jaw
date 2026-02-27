@@ -22,7 +22,7 @@ import {
     loadSettings, setPerm, handleModelSelect, applyCustomModel, onCliChange,
     saveActiveCliSettings, savePerCli, updateSettings, openPromptModal,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
-    loadCliStatus, setTelegram, saveTelegramSettings, saveFallbackOrder
+    loadCliStatus, setTelegram, setForwardAll, saveTelegramSettings, saveFallbackOrder
 } from './features/settings.js';
 import {
     loadEmployees, addEmployee, deleteEmployee, updateEmployee,
@@ -160,6 +160,8 @@ document.querySelector('#tabSkills')?.addEventListener('click', (e) => {
 document.querySelector('[data-action="openPrompt"]')?.addEventListener('click', openPromptModal);
 document.getElementById('tgOff')?.addEventListener('click', () => setTelegram(false));
 document.getElementById('tgOn')?.addEventListener('click', () => setTelegram(true));
+document.getElementById('tgForwardOff')?.addEventListener('click', () => setForwardAll(false));
+document.getElementById('tgForwardOn')?.addEventListener('click', () => setForwardAll(true));
 document.getElementById('tgToken')?.addEventListener('change', saveTelegramSettings);
 document.getElementById('tgChatIds')?.addEventListener('change', saveTelegramSettings);
 document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);

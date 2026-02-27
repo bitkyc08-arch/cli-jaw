@@ -406,6 +406,19 @@ export async function steerHandler(args: any[], ctx: any) {
     return { ok: true, type: 'success', text: t('cmd.steer.started', {}, L) };
 }
 
+export async function forwardHandler(args: any[], ctx: any) {
+    const arg = args[0]?.toLowerCase();
+    if (arg === 'on' || arg === 'off') {
+        const val = arg === 'on';
+        const r = await ctx.updateSettings({ telegram: { forwardAll: val } });
+        if (!r?.ok) return { ok: false, text: r?.text || 'Failed' };
+        return { text: `📡 Telegram forwarding: ${val ? 'ON (all)' : 'OFF (TG only)'}` };
+    }
+    const settings = await safeCall(ctx.getSettings, null);
+    const current = settings?.telegram?.forwardAll !== false;
+    return { text: `📡 Telegram forwarding: ${current ? 'ON (all)' : 'OFF (TG only)'}\nUsage: /forward on|off` };
+}
+
 export async function fallbackHandler(args: any[], ctx: any) {
     const L = ctx.locale || 'ko';
     const settings = await safeCall(ctx.getSettings, null);
