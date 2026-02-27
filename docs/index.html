@@ -1019,6 +1019,77 @@
                     </div>
                 </div>
             </div>
+
+            <!-- Brew-free Node.js install helper -->
+            <div style="margin-top:32px; text-align:center;">
+                <button
+                    onclick="document.getElementById('brewFree').style.display = document.getElementById('brewFree').style.display === 'none' ? 'block' : 'none'"
+                    style="background:transparent; border:1px solid var(--border); color:var(--text-dim); font-family:var(--font-mono); font-size:13px; padding:10px 24px; border-radius:8px; cursor:pointer; transition:all 0.25s;"
+                    onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'"
+                    onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-dim)'">
+                    🍺 No Homebrew? — Install Node.js without brew
+                </button>
+            </div>
+
+            <div id="brewFree"
+                style="display:none; margin-top:24px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:32px; text-align:left; animation: fadeIn 0.3s ease;">
+                <h3
+                    style="font-family:var(--font-display); font-size:18px; font-weight:600; margin-bottom:16px; color:var(--text);">
+                    Node.js ≥ 22 required — 3 ways to get it
+                </h3>
+
+                <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(280px, 1fr)); gap:16px;">
+                    <!-- Option A -->
+                    <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:20px;">
+                        <div
+                            style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
+                            Option A — Easiest</div>
+                        <div
+                            style="font-family:var(--font-display); font-size:15px; font-weight:600; margin-bottom:8px;">
+                            Official Installer</div>
+                        <p style="color:var(--text-dim); font-size:13px; margin-bottom:12px;">Download from <a
+                                href="https://nodejs.org" target="_blank"
+                                style="color:var(--accent); text-decoration:none;">nodejs.org</a> (LTS ≥ 22)</p>
+                    </div>
+
+                    <!-- Option B -->
+                    <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:20px;">
+                        <div
+                            style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
+                            Option B — Recommended</div>
+                        <div
+                            style="font-family:var(--font-display); font-size:15px; font-weight:600; margin-bottom:8px;">
+                            nvm</div>
+                        <div class="code-block" style="font-size:12px; padding:12px;">
+                            <span class="dim"># install nvm</span><br>
+                            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash<br>
+                            source ~/.zshrc <span class="dim"># macOS; ~/.bashrc on Linux</span><br>
+                            nvm install 22
+                        </div>
+                    </div>
+
+                    <!-- Option C -->
+                    <div style="background:var(--bg); border:1px solid var(--border); border-radius:8px; padding:20px;">
+                        <div
+                            style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
+                            Option C — Fast</div>
+                        <div
+                            style="font-family:var(--font-display); font-size:15px; font-weight:600; margin-bottom:8px;">
+                            fnm</div>
+                        <div class="code-block" style="font-size:12px; padding:12px;">
+                            <span class="dim"># install fnm (no brew)</span><br>
+                            curl -fsSL https://fnm.vercel.app/install | bash -s -- --force-no-brew<br>
+                            source ~/.zshrc <span class="dim"># macOS; ~/.bashrc on Linux</span><br>
+                            fnm install 22 && fnm use 22 && fnm default 22
+                        </div>
+                    </div>
+                </div>
+
+                <p style="margin-top:16px; color:var(--text-dim); font-size:13px; text-align:center;">
+                    💡 <strong style="color:var(--text);">No global install?</strong> Run directly: <code
+                        style="font-family:var(--font-mono); color:var(--accent); background:var(--bg); padding:2px 8px; border-radius:4px;">npx cli-jaw serve</code>
+                </p>
+            </div>
         </div>
     </section>
 
