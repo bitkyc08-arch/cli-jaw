@@ -135,7 +135,16 @@ export async function modelHandler(args: any[], ctx: any) {
     if (!settings) return { ok: false, text: t('cmd.settingsLoadFail', {}, L) };
 
     const activeCli = settings.cli || 'claude';
-    const current = settings.perCli?.[activeCli]?.model || 'default';
+    const session = await safeCall(ctx.getSession, null);
+    const sessionCli = session?.active_cli || session?.activeCli;
+    const overrideModel = settings.activeOverrides?.[activeCli]?.model;
+    const sessionModel = session?.model && (!sessionCli || sessionCli === activeCli)
+        ? session.model
+        : undefined;
+    const current = overrideModel
+        || sessionModel
+        || settings.perCli?.[activeCli]?.model
+        || 'default';
 
     if (!args.length) {
         return { ok: true, text: t('cmd.model.current', { cli: activeCli, model: current }, L) };

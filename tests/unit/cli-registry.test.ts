@@ -41,6 +41,11 @@ test('every CLI defaultModel is included in its models list', () => {
     }
 });
 
+test('registry defaults for gemini and opencode are updated', () => {
+    assert.equal(CLI_REGISTRY.gemini.defaultModel, 'gemini-3-flash-preview');
+    assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode/big-pickle');
+});
+
 // ─── buildDefaultPerCli ──────────────────────────────
 
 test('buildDefaultPerCli returns correct shape', () => {

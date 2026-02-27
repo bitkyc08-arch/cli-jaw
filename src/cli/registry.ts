@@ -20,7 +20,7 @@ export const CLI_REGISTRY = {
     gemini: {
         label: 'Gemini',
         binary: 'gemini',
-        defaultModel: 'gemini-2.5-pro',
+        defaultModel: 'gemini-3-flash-preview',
         defaultEffort: '',
         efforts: [],
         models: ['gemini-3.0-pro-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-2.5-flash'],
@@ -28,7 +28,7 @@ export const CLI_REGISTRY = {
     opencode: {
         label: 'OpenCode',
         binary: 'opencode',
-        defaultModel: 'anthropic/claude-opus-4-6-thinking',
+        defaultModel: 'opencode/big-pickle',
         defaultEffort: '',
         efforts: ['minimal', 'low', 'high', 'max'],
         models: [
