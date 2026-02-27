@@ -67,7 +67,12 @@ jaw serve
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-> 💡 **그냥 써보고 싶다면?** 설치 없이 바로 실행: `npx cli-jaw serve`
+설치 후, AI 엔진 하나만 인증하고 실행하세요:
+
+```bash
+gh auth login        # 또는: claude auth / codex login
+jaw serve
+```
 
 </details>
 
