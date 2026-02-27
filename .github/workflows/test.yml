@@ -13,6 +13,9 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          token: ${{ secrets.SUBMODULE_PAT }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -37,6 +40,24 @@ jobs:
 
       - name: Deps security check
         run: npm run check:deps
+
+      - name: Verify devlog submodule
+        run: |
+          if [[ ! -d devlog/_fin ]]; then
+            echo "⚠️ devlog submodule not checked out — SUBMODULE_PAT secret may be missing"
+            exit 1
+          fi
+
+      - name: Devlog _fin status gate
+        run: bash devlog/str_func/audit-fin-status.sh
+
+      - name: Upload audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fin-status-audit
+          path: devlog/_fin/_status_audit.md
+          if-no-files-found: ignore
 
       - name: Copilot gap check
         run: npm run check:copilot-gap

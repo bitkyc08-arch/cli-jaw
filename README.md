@@ -58,6 +58,42 @@ jaw serve
 
 </details>
 
+<details>
+<summary>🍺 <b>No Homebrew?</b> — Install Node.js without brew</summary>
+
+CLI-JAW needs **Node.js ≥ 22**. If you don't have `brew`, here are 3 ways to get it:
+
+**Option A: Official Installer** (easiest)
+
+Download and run the installer from [nodejs.org](https://nodejs.org) (pick the LTS ≥ 22 version).
+
+**Option B: nvm** (recommended for developers)
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+source ~/.zshrc    # macOS default; use ~/.bashrc on Linux
+nvm install 22
+```
+
+**Option C: fnm** (fast, single binary)
+
+```bash
+curl -fsSL https://fnm.vercel.app/install | bash -s -- --force-no-brew
+source ~/.zshrc    # macOS default; use ~/.bashrc on Linux
+fnm install 22 && fnm use 22 && fnm default 22
+```
+
+Then install CLI-JAW:
+
+```bash
+npm install -g cli-jaw
+jaw serve
+```
+
+> 💡 **No global install?** Run directly with `npx`: `npx cli-jaw serve`
+
+</details>
+
 ---
 
 ## 🚀 Install & Run (30 seconds)
@@ -127,14 +163,14 @@ CLI-JAW is a **personal AI assistant** that lives on your machine and works from
 
 Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. 107 built-in skills handle everything from browser automation to document generation.
 
-|                                      | Why CLI-JAW?                                                                                                                        |
-| ------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------- |
-| 🛡️**TOS-Safe**               | Uses official CLIs only — no API key scraping, no reverse engineering, no ban risk.                                                |
-| 🤖**Verified Agent Tools**     | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof.                                            |
-| ⚡**Multi-Agent Fallback**     | One engine down? The next picks up automatically. Zero downtime.                                                                    |
-| 🎭**Orchestrated Performance** | Complex tasks split across specialized sub-agents for maximum throughput.                                                           |
-| 📦**107 Built-in Skills**      | Browser automation, document generation, Telegram, memory — ready out of the box.                                                  |
-| 🖥️**Cross-Platform**         | macOS, Linux, Windows — ENOENT-safe CLI spawn, auto-detection,`.cmd` shim support, and native install all work across platforms. |
+|                               | Why CLI-JAW?                                                                                                                     |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 🛡️**TOS-Safe**                 | Uses official CLIs only — no API key scraping, no reverse engineering, no ban risk.                                              |
+| 🤖**Verified Agent Tools**     | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof.                                         |
+| ⚡**Multi-Agent Fallback**     | One engine down? The next picks up automatically. Zero downtime.                                                                 |
+| 🎭**Orchestrated Performance** | Complex tasks split across specialized sub-agents for maximum throughput.                                                        |
+| 📦**107 Built-in Skills**      | Browser automation, document generation, Telegram, memory — ready out of the box.                                                |
+| 🖥️**Cross-Platform**           | macOS, Linux, Windows — ENOENT-safe CLI spawn, auto-detection,`.cmd` shim support, and native install all work across platforms. |
 
 ![CLI-JAW Terminal](docs/screenshots/terminal-cli.png)
 
@@ -177,26 +213,26 @@ graph LR
 <details>
 <summary>View all skills</summary>
 
-| Tier                       | Count | How it works                                              |
-| -------------------------- | :---: | --------------------------------------------------------- |
-| **Active Skills**    |  17  | Auto-injected into every AI prompt. Always available.     |
-| **Reference Skills** |  90  | AI reads them on-demand when you ask for a relevant task. |
+| Tier                 | Count | How it works                                              |
+| -------------------- | :---: | --------------------------------------------------------- |
+| **Active Skills**    |  17   | Auto-injected into every AI prompt. Always available.     |
+| **Reference Skills** |  90   | AI reads them on-demand when you ask for a relevant task. |
 
 #### Active Skills (always on)
 
-| Skill                                                                         | What it does                                               |
-| ----------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `browser`                                                                   | Chrome automation — snapshot, click, navigate, screenshot |
-| `github`                                                                    | Issues, PRs, CI, code review via `gh` CLI                |
-| `notion`                                                                    | Create/manage Notion pages and databases                   |
-| `memory`                                                                    | Persistent long-term memory across sessions                |
-| `telegram-send`                                                             | Send photos, documents, voice messages to Telegram         |
-| `vision-click`                                                              | Screenshot → AI finds coordinates → clicks (one command) |
-| `imagegen`                                                                  | Generate/edit images via OpenAI Image API                  |
-| `pdf` / `docx` / `xlsx`                                                 | Read, create, edit office documents                        |
-| `screen-capture`                                                            | macOS screenshot and camera capture                        |
-| `openai-docs`                                                               | Up-to-date OpenAI API documentation                        |
-| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | Development guidelines for sub-agents                      |
+| Skill                                                               | What it does                                              |
+| ------------------------------------------------------------------- | --------------------------------------------------------- |
+| `browser`                                                           | Chrome automation — snapshot, click, navigate, screenshot |
+| `github`                                                            | Issues, PRs, CI, code review via `gh` CLI                 |
+| `notion`                                                            | Create/manage Notion pages and databases                  |
+| `memory`                                                            | Persistent long-term memory across sessions               |
+| `telegram-send`                                                     | Send photos, documents, voice messages to Telegram        |
+| `vision-click`                                                      | Screenshot → AI finds coordinates → clicks (one command)  |
+| `imagegen`                                                          | Generate/edit images via OpenAI Image API                 |
+| `pdf` / `docx` / `xlsx`                                             | Read, create, edit office documents                       |
+| `screen-capture`                                                    | macOS screenshot and camera capture                       |
+| `openai-docs`                                                       | Up-to-date OpenAI API documentation                       |
+| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | Development guidelines for sub-agents                     |
 
 #### Reference Skills (on-demand)
 
@@ -345,13 +381,13 @@ jaw --home ~/my-project launchd --port 3458    # project → port 3458
 
 Each instance is fully independent — different working directory, different memory, different MCP config. Perfect for separating work/personal contexts or per-project AI setups.
 
-| Flag / Env              | What it does                              |
-| ----------------------- | ----------------------------------------- |
+| Flag / Env            | What it does                              |
+| --------------------- | ----------------------------------------- |
 | `--home <path>`       | Use a custom home directory for this run  |
-| `--home=<path>`       | Same, with `=` syntax                   |
+| `--home=<path>`       | Same, with `=` syntax                     |
 | `CLI_JAW_HOME=<path>` | Set via environment variable              |
 | `jaw clone <target>`  | Clone current instance to a new directory |
-| `--port <port>`       | Custom port for `serve` / `launchd`   |
+| `--port <port>`       | Custom port for `serve` / `launchd`       |
 
 ---
 
@@ -362,13 +398,13 @@ Each CLI comes with preconfigured presets, but you can type **any model ID** dir
 <details>
 <summary>View all presets</summary>
 
-| CLI                | Default                      | Notable Models                                  |
-| ------------------ | ---------------------------- | ----------------------------------------------- |
+| CLI          | Default                    | Notable Models                                  |
+| ------------ | -------------------------- | ----------------------------------------------- |
 | **Claude**   | `claude-sonnet-4-6`        | opus-4-6, haiku-4-5, extended thinking variants |
 | **Codex**    | `gpt-5.3-codex`            | spark, 5.2, 5.1-max, 5.1-mini                   |
 | **Gemini**   | `gemini-2.5-pro`           | 3.0-pro-preview, 3-flash-preview, 2.5-flash     |
-| **OpenCode** | `claude-opus-4-6-thinking` | 🆓 big-pickle, GLM-5, MiniMax, Kimi, GPT-5-Nano |
-| **Copilot**  | `gpt-4.1` 🆓               | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6      |
+| **OpenCode** | `claude-opus-4-6-thinking` | 🆓 big-pickle, GLM-5, MiniMax, Kimi, GPT-5-Nano  |
+| **Copilot**  | `gpt-4.1` 🆓                | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6       |
 
 </details>
 
@@ -395,8 +431,8 @@ docker run -d -p 3457:3457 --env-file .env --name jaw cli-jaw
 
 **Two Dockerfiles:**
 
-| File               | Purpose                    | Use Case                |
-| ------------------ | -------------------------- | ----------------------- |
+| File             | Purpose                    | Use Case                |
+| ---------------- | -------------------------- | ----------------------- |
 | `Dockerfile`     | Installs from npm registry | Production / deployment |
 | `Dockerfile.dev` | Builds from local source   | Development / testing   |
 
@@ -483,8 +519,8 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 
 ## 📖 Documentation
 
-| Document                             | What's inside                                         |
-| ------------------------------------ | ----------------------------------------------------- |
+| Document                                | What's inside                                         |
+| --------------------------------------- | ----------------------------------------------------- |
 | [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, module graph, REST API (40+ endpoints) |
 | [TESTS.md](TESTS.md)                    | Test coverage and test plan                           |
 
@@ -495,16 +531,16 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 <details>
 <summary>Common issues</summary>
 
-| Problem                        | Solution                                                                                      |
-| ------------------------------ | --------------------------------------------------------------------------------------------- |
-| `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.              |
-| `Error: node version`        | Upgrade to Node.js ≥ 22:`nvm install 22` or download from [nodejs.org](https://nodejs.org)    |
-| Agent timeout / no response    | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`. |
-| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                        |
-| Telegram bot not responding    | Check token with `jaw doctor`. Ensure `jaw serve` is running.                             |
-| Telegram ✓✓ delayed          | Normal — Telegram server-side delivery ack can take a few minutes under load. Not a bug.     |
-| Skills not loading             | Run `jaw skill reset` then `jaw mcp sync`.                                                |
-| Browser commands fail          | Install Chrome/Chromium. Run `jaw browser start` first.                                     |
+| Problem                      | Solution                                                                                   |
+| ---------------------------- | ------------------------------------------------------------------------------------------ |
+| `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                 |
+| `Error: node version`        | Upgrade to Node.js ≥ 22:`nvm install 22` or download from [nodejs.org](https://nodejs.org) |
+| Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`.    |
+| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                       |
+| Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                              |
+| Telegram ✓✓ delayed          | Normal — Telegram server-side delivery ack can take a few minutes under load. Not a bug.   |
+| Skills not loading           | Run `jaw skill reset` then `jaw mcp sync`.                                                 |
+| Browser commands fail        | Install Chrome/Chromium. Run `jaw browser start` first.                                    |
 
 </details>
 

@@ -58,6 +58,42 @@ jaw serve
 
 </details>
 
+<details>
+<summary>🍺 <b>没有 Homebrew？</b> — 不用 brew 安装 Node.js</summary>
+
+CLI-JAW 需要 **Node.js ≥ 22**。没有 `brew` 也可以，这里有 3 种安装方式：
+
+**方式 A：官方安装程序**（最简单）
+
+从 [nodejs.org](https://nodejs.org) 下载并运行安装程序（选择 LTS ≥ 22 版本）。
+
+**方式 B：nvm**（推荐开发者使用）
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
+source ~/.zshrc    # macOS 默认；Linux 上使用 ~/.bashrc
+nvm install 22
+```
+
+**方式 C：fnm**（快速，单文件）
+
+```bash
+curl -fsSL https://fnm.vercel.app/install | bash -s -- --force-no-brew
+source ~/.zshrc    # macOS 默认；Linux 上使用 ~/.bashrc
+fnm install 22 && fnm use 22 && fnm default 22
+```
+
+然后安装 CLI-JAW：
+
+```bash
+npm install -g cli-jaw
+jaw serve
+```
+
+> 💡 **不想全局安装？** 用 `npx` 直接运行：`npx cli-jaw serve`
+
+</details>
+
 ---
 
 ## 🚀 安装与启动（30 秒）
@@ -127,14 +163,14 @@ CLI-JAW 是驻留在您本地机器上的**专属 AI 助手**，并在您熟悉�
 
 与单一模型的助手不同，CLI-JAW 通过官方 CLI 命令行工具对 **5 大 AI 引擎**（Claude、Codex、Gemini、OpenCode、Copilot）进行编排 — 为您提供各大供应商最优势的能力及统一的体验。当一个引擎处于繁忙状态时，它会自动无缝切换至下一个。107 个内置技能可处理从浏览器自动化到文档生成的所有事务。
 
-|                                 | 为什么选择 CLI-JAW？                                                       |
-| ------------------------------- | -------------------------------------------------------------------------- |
-| 🛡️ **安全合规 (TOS-Safe)**       | 仅使用官方 CLI — 无 API 密钥抓取、无逆向工程、无封号风险。                 |
-| 🤖 **经过验证的智能体工具**      | 5 大实战级编码智能体（Claude、Codex、Gemini、OpenCode、Copilot）集于一身。 |
-| ⚡ **多模型自动回退 (Fallback)** | 单一引擎发生故障？下一个立即接管。确保零停机。                             |
-| 🎭 **基于编排的性能优化**        | 复杂的任务会被拆分给专业的子智能体，以实现效率最大化。                     |
-| 📦 **107 个内置技能**            | 浏览器自动化、文档生成、Telegram 通知、持久化记忆 — 开箱即用。             |
-| 🖥️ **跨平台支持**               | macOS、Linux、Windows — ENOENT-safe CLI 启动、自动检测、`.cmd` 支持，跨平台原生运行。        |
+|                                 | 为什么选择 CLI-JAW？                                                                  |
+| ------------------------------- | ------------------------------------------------------------------------------------- |
+| 🛡️ **安全合规 (TOS-Safe)**       | 仅使用官方 CLI — 无 API 密钥抓取、无逆向工程、无封号风险。                            |
+| 🤖 **经过验证的智能体工具**      | 5 大实战级编码智能体（Claude、Codex、Gemini、OpenCode、Copilot）集于一身。            |
+| ⚡ **多模型自动回退 (Fallback)** | 单一引擎发生故障？下一个立即接管。确保零停机。                                        |
+| 🎭 **基于编排的性能优化**        | 复杂的任务会被拆分给专业的子智能体，以实现效率最大化。                                |
+| 📦 **107 个内置技能**            | 浏览器自动化、文档生成、Telegram 通知、持久化记忆 — 开箱即用。                        |
+| 🖥️ **跨平台支持**                | macOS、Linux、Windows — ENOENT-safe CLI 启动、自动检测、`.cmd` 支持，跨平台原生运行。 |
 
 ![CLI-JAW 终端](docs/screenshots/terminal-cli.png)
 
@@ -353,13 +389,13 @@ jaw --home ~/my-project launchd --port 3458    # 项目 → 端口 3458
 
 每个实例完全独立 — 工作目录、记忆、MCP 配置各不相同。非常适合工作/个人环境分离或按项目配置 AI。
 
-| 参数 / 环境变量          | 功能                                 |
-| --------------------- | ------------------------------------ |
-| `--home <路径>`       | 指定本次运行使用的自定义主目录   |
-| `--home=<路径>`       | 同上（`=` 语法）                     |
-| `CLI_JAW_HOME=<路径>` | 通过环境变量指定                   |
-| `jaw clone <目标>`    | 将当前实例克隆到新目录           |
-| `--port <端口>`       | `serve` / `launchd` 自定义端口    |
+| 参数 / 环境变量       | 功能                           |
+| --------------------- | ------------------------------ |
+| `--home <路径>`       | 指定本次运行使用的自定义主目录 |
+| `--home=<路径>`       | 同上（`=` 语法）               |
+| `CLI_JAW_HOME=<路径>` | 通过环境变量指定               |
+| `jaw clone <目标>`    | 将当前实例克隆到新目录         |
+| `--port <端口>`       | `serve` / `launchd` 自定义端口 |
 
 ---
 
