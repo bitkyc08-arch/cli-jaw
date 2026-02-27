@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/in
 **Step 3: Authenticate an AI Engine** (pick one)
 
 ```bash
-gh auth login    # GitHub Copilot (Free)
+copilot login    # GitHub Copilot (Free)
 opencode         # OpenCode (Free models available)
 claude auth      # Anthropic Claude
 codex login      # OpenAI Codex
@@ -61,18 +61,27 @@ jaw serve
 <details>
 <summary>🍎 <b>New to the terminal?</b> — One-click Node.js + CLI-JAW install</summary>
 
-Paste this in your terminal — it auto-detects your setup and installs everything:
+**Step 1: Open Terminal**
+
+Open **Finder** → **Applications** → **Utilities** → **Terminal.app**
+(or press `⌘ Space` and type `Terminal`)
+
+**Step 2: Paste this and hit Enter**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-After install, authenticate with any one AI engine and launch:
+This installs Node.js + CLI-JAW automatically. Just wait until you see 🎉.
+
+**Step 3: Login & Launch**
 
 ```bash
-gh auth login        # or: claude auth / codex login
+copilot login
 jaw serve
 ```
+
+Open **http://localhost:3457** in your browser. That's it! 🦈
 
 </details>
 
@@ -97,7 +106,7 @@ You only need **one** — pick whichever you have:
 
 ```bash
 # ── Free options ──
-gh auth login                # GitHub Copilot (free tier) — then run: gh copilot --help
+copilot login                # GitHub Copilot (free tier)
 opencode                     # OpenCode — auto-auth on first run (free models available)
 
 # ── Paid options ──

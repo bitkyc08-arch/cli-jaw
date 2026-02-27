@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/in
 **Step 3: AI 엔진 인증** (하나 선택)
 
 ```bash
-gh auth login    # GitHub Copilot (무료)
+copilot login    # GitHub Copilot (무료)
 opencode         # OpenCode (무료 모델 제공)
 claude auth      # Anthropic Claude
 codex login      # OpenAI Codex
@@ -61,18 +61,27 @@ jaw serve
 <details>
 <summary>🍎 <b>터미널이 처음이신가요?</b> — 원클릭 Node.js + CLI-JAW 설치</summary>
 
-터미널에 이 한 줄만 붙여넣으세요 — 알아서 감지하고 다 설치해줍니다:
+**Step 1: 터미널 열기**
+
+**Finder** → **응용 프로그램** → **유틸리티** → **터미널.app** 을 열어주세요.
+(또는 `⌘ Space` 누르고 `터미널` 이라고 입력하세요)
+
+**Step 2: 아래 내용을 붙여넣고 Enter**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-설치 후, AI 엔진 하나만 인증하고 실행하세요:
+Node.js + CLI-JAW가 자동으로 설치됩니다. 🎉 가 뜰 때까지 기다려주세요.
+
+**Step 3: 로그인 & 실행**
 
 ```bash
-gh auth login        # 또는: claude auth / codex login
+copilot login
 jaw serve
 ```
+
+브라우저에서 **http://localhost:3457** 을 열면 끝! 🦈
 
 </details>
 
@@ -97,7 +106,7 @@ jaw serve
 
 ```bash
 # ── 무료 ──
-gh auth login                # GitHub Copilot (무료 플랜) — 이후: gh copilot --help
+copilot login                # GitHub Copilot (무료 플랜)
 opencode                     # OpenCode — 첫 실행 시 자동 인증 (무료 모델 있음)
 
 # ── 유료 ──

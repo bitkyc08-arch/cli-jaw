@@ -40,7 +40,7 @@ curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/in
 **第三步：认证 AI 引擎**（任选其一）
 
 ```bash
-gh auth login    # GitHub Copilot（免费）
+copilot login    # GitHub Copilot（免费）
 opencode         # OpenCode（提供免费模型）
 claude auth      # Anthropic Claude
 codex login      # OpenAI Codex
@@ -61,18 +61,27 @@ jaw serve
 <details>
 <summary>🍎 <b>终端新手？</b> — 一键安装 Node.js + CLI-JAW</summary>
 
-在终端粘贴这一行 — 自动检测并安装所有依赖：
+**第一步：打开终端**
+
+打开 **Finder** → **应用程序** → **实用工具** → **终端.app**
+（或者按 `⌘ Space` 然后输入 `Terminal`）
+
+**第二步：粘贴并按 Enter**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-安装后，认证任意一个 AI 引擎并启动：
+Node.js + CLI-JAW 会自动安装。等到出现 🎉 就完成了。
+
+**第三步：登录并启动**
 
 ```bash
-gh auth login        # 或者: claude auth / codex login
+copilot login
 jaw serve
 ```
+
+在浏览器中打开 **http://localhost:3457**。搞定！🦈
 
 </details>
 
@@ -97,7 +106,7 @@ jaw serve
 
 ```bash
 # ── 免费 ──
-gh auth login                # GitHub Copilot（免费套餐）— 然后: gh copilot --help
+copilot login                # GitHub Copilot（免费套餐）
 opencode                     # OpenCode — 首次运行自动认证（有免费模型）
 
 # ── 付费 ──

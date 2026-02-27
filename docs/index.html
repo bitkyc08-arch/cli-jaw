@@ -798,15 +798,23 @@
                 <span class="dim">$</span> jaw serve
             </div>
         </div>
-        <div class="hero-cta" style="margin-top:20px;">
-            <a href="#quickstart" class="btn btn-primary">
+        <div class="hero-cta" style="margin-top:20px; max-width:440px;">
+            <a href="#quickstart" class="btn btn-primary" style="flex:1; justify-content:center;">
                 Get Started
             </a>
-            <a href="https://github.com/lidge-jun/cli-jaw" class="btn btn-ghost" target="_blank">
+            <a href="https://github.com/lidge-jun/cli-jaw" class="btn btn-ghost" target="_blank"
+                style="flex:1; justify-content:center;">
                 ⭐ GitHub
             </a>
-            <a href="windows.html" class="btn btn-windows">
+        </div>
+        <div class="hero-cta" style="margin-top:12px; max-width:440px;">
+            <a href="windows.html" class="btn btn-windows" style="flex:1; justify-content:center;">
                 🪟 Windows?
+            </a>
+            <a href="#quickstart" class="btn btn-ghost"
+                style="flex:1; justify-content:center; border-color:rgba(255,255,255,0.2);"
+                onclick="setTimeout(function(){document.getElementById('brewFree').style.display='block'},400)">
+                🍎 What is Terminal?
             </a>
         </div>
         <div class="hero-badges">
@@ -1005,9 +1013,10 @@
                     <div class="step-title">Authenticate</div>
                     <div class="code-block">
                         <span class="dim"># pick any one</span><br>
-                        gh auth login<br>
+                        copilot login<br>
                         claude auth<br>
-                        codex login
+                        codex login<br>
+                        gemini login
                     </div>
                 </div>
                 <div class="step-card">
@@ -1033,18 +1042,55 @@
 
             <div id="brewFree"
                 style="display:none; margin-top:24px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:32px; text-align:left;">
-                <p style="color:var(--text-dim); font-size:14px; margin-bottom:16px;">
-                    Paste this in your terminal — it auto-detects your setup and installs everything:
-                </p>
-                <div class="code-block" style="font-size:13px;">
-                    <span class="dim">$</span> curl -fsSL
-                    https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
+
+                <h3
+                    style="font-family:var(--font-display); font-size:18px; font-weight:600; margin-bottom:20px; color:var(--text);">
+                    🍎 macOS — Step by Step
+                </h3>
+
+                <!-- Step 1: Open Terminal -->
+                <div style="margin-bottom:20px;">
+                    <div
+                        style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
+                        Step 1 — Open Terminal</div>
+                    <p style="color:var(--text-dim); font-size:14px; line-height:1.8;">
+                        Open <strong style="color:var(--text);">Finder</strong> → <strong
+                            style="color:var(--text);">Applications</strong> → <strong
+                            style="color:var(--text);">Utilities</strong> → <strong
+                            style="color:var(--text);">Terminal.app</strong><br>
+                        <span style="font-size:13px;">(or press <code
+                                style="font-family:var(--font-mono); color:var(--accent); background:var(--bg); padding:2px 6px; border-radius:4px;">⌘ Space</code>
+                            and type <code
+                                style="font-family:var(--font-mono); color:var(--accent); background:var(--bg); padding:2px 6px; border-radius:4px;">Terminal</code>)</span>
+                    </p>
                 </div>
-                <p style="margin-top:16px; color:var(--text-dim); font-size:13px; text-align:center;">
-                    💡 <strong style="color:var(--text);">Just want to try it?</strong> Run directly: <code
-                        style="font-family:var(--font-mono); color:var(--accent); background:var(--bg); padding:2px 8px; border-radius:4px;">npx
-                        cli-jaw serve</code>
-                </p>
+
+                <!-- Step 2: Paste -->
+                <div style="margin-bottom:20px;">
+                    <div
+                        style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
+                        Step 2 — Paste & hit Enter</div>
+                    <div class="code-block" style="font-size:13px;">
+                        curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
+                    </div>
+                    <p style="color:var(--text-dim); font-size:13px; margin-top:8px;">This installs Node.js + CLI-JAW
+                        automatically. Just wait until you see 🎉.</p>
+                </div>
+
+                <!-- Step 3: Auth + Launch -->
+                <div>
+                    <div
+                        style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
+                        Step 3 — Login & Launch</div>
+                    <div class="code-block" style="font-size:13px;">
+                        copilot login<br>
+                        jaw serve
+                    </div>
+                    <p style="color:var(--text-dim); font-size:13px; margin-top:8px;">
+                        Open <strong style="color:var(--accent);">http://localhost:3457</strong> in your browser. That's
+                        it! 🦈
+                    </p>
+                </div>
             </div>
         </div>
     </section>
