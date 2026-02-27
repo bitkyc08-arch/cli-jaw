@@ -37,8 +37,8 @@ function mockBot({ failTimes = 0, errorCode = 429, retryAfter = 0, useHttpError 
                 }
                 return { ok: true };
             },
-            async sendVoice(...a: any[]) { return this.sendDocument(...a); },
-            async sendPhoto(...a: any[]) { return this.sendDocument(...a); },
+            async sendVoice(c: any, f: any, o?: any) { return this.sendDocument(c, f, o); },
+            async sendPhoto(c: any, f: any, o?: any) { return this.sendDocument(c, f, o); },
         },
     };
 }
@@ -132,6 +132,7 @@ test('sendTelegramFile: does NOT retry on 400 (permanent)', async () => {
         const r = await sendTelegramFile(bot, 123, f, 'document');
         assert.equal(r.ok, false);
         assert.equal(r.attempts, 1);
+        assert.equal(r.statusCode, 400); // GrammyError.error_code passed through
     } finally { cleanup(f); }
 });
 
@@ -142,6 +143,7 @@ test('sendTelegramFile: does NOT retry on 403 (permanent)', async () => {
         const r = await sendTelegramFile(bot, 123, f, 'document');
         assert.equal(r.ok, false);
         assert.equal(r.attempts, 1);
+        assert.equal(r.statusCode, 403); // GrammyError.error_code passed through
     } finally { cleanup(f); }
 });
 
@@ -168,6 +170,34 @@ test('sendTelegramFile: 429 with retry_after=1 succeeds after wait', async () =>
         const r = await sendTelegramFile(bot, 123, f, 'document');
         assert.equal(r.ok, true);
         assert.equal(r.attempts, 2);
+    } finally { cleanup(f); }
+});
+
+// ─── sendTelegramFile: retry cap paths ────────────────
+
+test('sendTelegramFile: bails when retry_after exceeds MAX_DELAY cap', async () => {
+    // retry_after=60s > MAX_DELAY_MS(30s) → immediate failure
+    const bot = mockBot({ failTimes: 3, errorCode: 429, retryAfter: 60 });
+    const f = tmpFile(0);
+    try {
+        const r = await sendTelegramFile(bot, 123, f, 'document');
+        assert.equal(r.ok, false);
+        assert.equal(r.attempts, 1);
+        assert.equal(r.statusCode, 429);
+        assert.ok(r.error?.includes('too large'));
+    } finally { cleanup(f); }
+});
+
+test('sendTelegramFile: retry count stays within MAX_RETRIES bound on transient errors', async () => {
+    // Verifies the invariant: total attempts never exceed MAX_RETRIES (3).
+    // Note: actual MAX_TOTAL_WAIT cap (60s) isn't tested here because it
+    // requires retry_after≥30s which would make the test too slow.
+    const bot = mockBot({ failTimes: 3, errorCode: 500 });
+    const f = tmpFile(0);
+    try {
+        const r = await sendTelegramFile(bot, 123, f, 'document');
+        assert.equal(r.ok, false);
+        assert.ok(r.attempts <= 3, 'attempts should not exceed MAX_RETRIES');
     } finally { cleanup(f); }
 });
 
