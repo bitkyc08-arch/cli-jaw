@@ -17,7 +17,8 @@ export function sanitizeHtml(html: string): string {
             USE_PROFILES: { html: true, svg: true, svgFilters: true },
             FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
             FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
-            ADD_TAGS: ['use'],  // Mermaid SVG compatibility
+            ADD_TAGS: ['use'],      // Mermaid SVG compatibility
+            ADD_ATTR: ['aria-hidden', 'xmlns', 'viewBox'],  // KaTeX + SVG compat
         });
     }
     // CDN fallback: regex-based stripping
@@ -28,28 +29,81 @@ export function sanitizeHtml(html: string): string {
 }
 
 // ── Orchestration JSON stripping ──
-function stripOrchestration(text: string): string {
+export function stripOrchestration(text: string): string {
     let cleaned = text.replace(/```json\n[\s\S]*?\n```/g, '');
     cleaned = cleaned.replace(/\{[\s\S]*"subtasks"\s*:\s*\[[\s\S]*?\]\s*\}/g, '').trim();
     return cleaned;
 }
 
-// ── KaTeX inline/block math ──
-function renderMath(html: string): string {
-    if (typeof katex === 'undefined') return html;
-    // Block math: $$...$$
-    html = html.replace(/\$\$([\s\S]+?)\$\$/g, (_: string, tex: string) => {
-        try {
-            return katex.renderToString(tex.trim(), { displayMode: true, throwOnError: false });
-        } catch { return `<code>${escapeHtml(tex)}</code>`; }
+// ── KaTeX math shield/unshield ──
+// Shield: marked 전에 수식을 플레이스홀더로 치환 (marked가 $를 파괴하는 것 방지)
+// Unshield: marked 후에 플레이스홀더를 KaTeX 렌더링으로 복원
+
+interface MathBlock { tex: string; displayMode: boolean; }
+
+export function shieldMath(text: string): { text: string; blocks: MathBlock[] } {
+    const blocks: MathBlock[] = [];
+    // 1. 코드 블록/인라인 코드 보존 (수식 추출 대상에서 제외)
+    const preserved: string[] = [];
+    let processed = text
+        .replace(/```[\s\S]*?```/g, (m) => {
+            preserved.push(m); return `\x00C${preserved.length - 1}\x00`;
+        })
+        .replace(/`[^`]+`/g, (m) => {
+            preserved.push(m); return `\x00C${preserved.length - 1}\x00`;
+        });
+
+    // 2. Block math: $$...$$ (먼저 — greedy 방지)
+    processed = processed.replace(/\$\$([\s\S]+?)\$\$/g, (_, tex: string) => {
+        blocks.push({ tex: tex.trim(), displayMode: true });
+        return `\x00MATH-${blocks.length - 1}\x00`;
     });
-    // Inline math: $...$  (avoid matching currency like $10)
-    html = html.replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, (_: string, tex: string) => {
-        try {
-            return katex.renderToString(tex.trim(), { displayMode: false, throwOnError: false });
-        } catch { return `<code>${escapeHtml(tex)}</code>`; }
+
+    // 3. GPT-style block math: \[...\]
+    processed = processed.replace(/\\\[([\s\S]+?)\\\]/g, (_, tex: string) => {
+        blocks.push({ tex: tex.trim(), displayMode: true });
+        return `\x00MATH-${blocks.length - 1}\x00`;
     });
-    return html;
+
+    // 4. Inline math: $...$ (통화 $10 제외)
+    processed = processed.replace(/(?<!\$)\$(?!\$)([^\n$]+?)\$(?!\$)/g, (_, tex: string) => {
+        blocks.push({ tex: tex.trim(), displayMode: false });
+        return `\x00MATH-${blocks.length - 1}\x00`;
+    });
+
+    // 5. GPT-style inline math: \(...\)
+    processed = processed.replace(/\\\((.+?)\\\)/g, (_, tex: string) => {
+        blocks.push({ tex: tex.trim(), displayMode: false });
+        return `\x00MATH-${blocks.length - 1}\x00`;
+    });
+
+    // 4. 코드 블록 복원
+    processed = processed.replace(/\x00C(\d+)\x00/g, (_, i) => preserved[Number(i)]);
+
+    return { text: processed, blocks };
+}
+
+export function unshieldMath(html: string, blocks: MathBlock[]): string {
+    return html.replace(/\x00MATH-(\d+)\x00/g, (_, i) => {
+        const block = blocks[Number(i)];
+        if (!block) return `<code title="math placeholder error">[math error]</code>`;
+        if (typeof katex === 'undefined') {
+            // KaTeX CDN 미로드 시 fallback: <code> 표시
+            return block.displayMode
+                ? `<pre><code>${escapeHtml(block.tex)}</code></pre>`
+                : `<code>${escapeHtml(block.tex)}</code>`;
+        }
+        try {
+            return katex.renderToString(block.tex, {
+                displayMode: block.displayMode,
+                throwOnError: false,
+            });
+        } catch {
+            return block.displayMode
+                ? `<pre><code>${escapeHtml(block.tex)}</code></pre>`
+                : `<code>${escapeHtml(block.tex)}</code>`;
+        }
+    });
 }
 
 // ── Mermaid deferred rendering ──
@@ -194,18 +248,21 @@ export function renderMarkdown(text: string): string {
     const cleaned = stripOrchestration(text);
     if (!cleaned) return `<em style="color:var(--text-dim)">${escapeHtml(t('orchestrator.dispatching'))}</em>`;
 
+    // Shield math before any processing (marked destroys $ delimiters)
+    const { text: shielded, blocks: mathBlocks } = shieldMath(cleaned);
+
     let html: string;
     if (ensureMarked()) {
-        const fixed = fixCjkPunctuationBoundary(cleaned);
+        const fixed = fixCjkPunctuationBoundary(shielded);
         html = marked.parse(fixed) as string;
         // Wrap tables for horizontal scrolling
         html = html.replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
     } else {
-        html = renderFallback(cleaned);
+        html = renderFallback(shielded);
     }
 
-    // KaTeX math
-    html = renderMath(html);
+    // Unshield: restore math placeholders → KaTeX render
+    html = unshieldMath(html, mathBlocks);
 
     // XSS sanitization
     html = sanitizeHtml(html);
