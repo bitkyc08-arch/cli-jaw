@@ -47,9 +47,16 @@ test('shutdown handler stops telegram bot', () => {
         'shutdown handler must call telegramBot.stop()');
 });
 
-test('shutdown handler is async', () => {
-    assert.match(serverSrc, /process\.on\(sig,\s*async\s*\(\)/,
-        'shutdown handler must be async to await telegramBot.stop()');
+test('shutdown handler uses process.once and Promise.race', () => {
+    assert.match(serverSrc, /process\.once\('SIGTERM',\s*\(\)\s*=>\s*shutdown\('SIGTERM'\)\)/,
+        '서버 shutdown 핸들러가 process.once로 등록되어야 함');
+
+    assert.match(serverSrc, /process\.once\('SIGINT',\s*\(\)\s*=>\s*shutdown\('SIGINT'\)\)/,
+        '서버 shutdown 핸들러가 process.once로 등록되어야 함');
+
+    // 2. Telegram stop + timeout race가 있는지 확인
+    assert.match(serverSrc, /Promise\.race\(\[\s*telegramBot\.stop\(\)/,
+        'shutdown handler must use Promise.race to prevent hanging');
 });
 
 test('bootstrap uses void initTelegram()', () => {

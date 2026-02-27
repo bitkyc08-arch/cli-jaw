@@ -784,20 +784,40 @@ app.get('/api/i18n/:lang', (req, res) => {
 watchHeartbeatFile();
 
 // ─── Graceful Shutdown ──────────────────────────────
-['SIGTERM', 'SIGINT'].forEach(sig => process.on(sig, async () => {
+const shutdown = async (sig: string) => {
     console.log(`\n[server] ${sig} received, shutting down...`);
     stopHeartbeat();
     killAllAgents('shutdown');
+
     if (telegramBot) {
-        try { await telegramBot.stop(); } catch { }
+        let timerId: NodeJS.Timeout | undefined;
+        try {
+            await Promise.race([
+                telegramBot.stop(),
+                new Promise((_, reject) => {
+                    timerId = setTimeout(() => reject(new Error('telegram_timeout')), 2000);
+                })
+            ]);
+        } catch (e) {
+            console.warn('[server] telegramBot.stop() failed:', (e as Error).message);
+        } finally {
+            if (timerId) clearTimeout(timerId);
+        }
+        console.log('[server] telegram stopped (or timed out)');
     }
+
     wss.close();
-    server.close(() => {
-        console.log('[server] closed');
-        process.exit(0);
-    });
-    setTimeout(() => process.exit(1), 5000);
-}));
+    server.close();
+    if (server.closeAllConnections) server.closeAllConnections();
+
+    setTimeout(() => {
+        console.warn('[server] force exit (timeout)');
+        process.exit(1);
+    }, 3000).unref();
+};
+
+process.once('SIGTERM', () => shutdown('SIGTERM'));
+process.once('SIGINT', () => shutdown('SIGINT'));
 
 server.listen(PORT, () => {
     // Bootstrap i18n locale dictionaries

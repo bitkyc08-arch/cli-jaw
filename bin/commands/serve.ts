@@ -62,12 +62,27 @@ if (isDistMode) {
 }
 
 // Forward signals
-process.on('SIGINT', () => child.kill('SIGINT'));
-process.on('SIGTERM', () => child.kill('SIGTERM'));
+
+let exiting = false;
+
+process.on('SIGINT', () => {
+    if (exiting) return;
+    exiting = true;
+});
+
+process.on('SIGTERM', () => {
+    if (exiting) return;
+    exiting = true;
+    child.kill('SIGTERM');
+});
+
+import os from 'node:os';
 
 child.on('exit', (code: number | null, signal: string | null) => {
     if (signal) {
-        process.exit(1);
+        const sigNames: Record<string, number> = os.constants?.signals || {};
+        const sigCode = sigNames[signal] ?? 9;
+        process.exit(128 + sigCode);
     }
     process.exit(code ?? 1);
 });
