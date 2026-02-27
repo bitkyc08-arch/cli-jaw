@@ -59,38 +59,15 @@ jaw serve
 </details>
 
 <details>
-<summary>🍺 <b>没有 Homebrew？</b> — 不用 brew 安装 Node.js</summary>
+<summary>🍺 <b>没有 Homebrew？</b> — 一键安装 Node.js + CLI-JAW</summary>
 
-CLI-JAW 需要 **Node.js ≥ 22**。没有 `brew` 也可以，这里有 3 种安装方式：
-
-**方式 A：官方安装程序**（最简单）
-
-从 [nodejs.org](https://nodejs.org) 下载并运行安装程序（选择 LTS ≥ 22 版本）。
-
-**方式 B：nvm**（推荐开发者使用）
+在终端粘贴这一行 — 自动检测并安装所有依赖：
 
 ```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-source ~/.zshrc    # macOS 默认；Linux 上使用 ~/.bashrc
-nvm install 22
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-**方式 C：fnm**（快速，单文件）
-
-```bash
-curl -fsSL https://fnm.vercel.app/install | bash -s -- --force-no-brew
-source ~/.zshrc    # macOS 默认；Linux 上使用 ~/.bashrc
-fnm install 22 && fnm use 22 && fnm default 22
-```
-
-然后安装 CLI-JAW：
-
-```bash
-npm install -g cli-jaw
-jaw serve
-```
-
-> 💡 **不想全局安装？** 用 `npx` 直接运行：`npx cli-jaw serve`
+> 💡 **只想试试？** 无需安装，直接运行：`npx cli-jaw serve`
 
 </details>
 

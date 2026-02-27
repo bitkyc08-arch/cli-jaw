@@ -59,38 +59,15 @@ jaw serve
 </details>
 
 <details>
-<summary>🍺 <b>Homebrew가 없나요?</b> — brew 없이 Node.js 설치하기</summary>
+<summary>🍺 <b>Homebrew가 없나요?</b> — 원클릭 Node.js + CLI-JAW 설치</summary>
 
-CLI-JAW는 **Node.js ≥ 22**가 필요합니다. `brew`가 없어도 3가지 방법으로 설치할 수 있어요:
-
-**방법 A: 공식 설치 프로그램** (가장 쉬움)
-
-[nodejs.org](https://nodejs.org)에서 LTS ≥ 22 버전 설치 파일을 다운로드하세요.
-
-**방법 B: nvm** (개발자 추천)
+터미널에 이 한 줄만 붙여넣으세요 — 알아서 감지하고 다 설치해줍니다:
 
 ```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-source ~/.zshrc    # macOS 기본; Linux에서는 ~/.bashrc
-nvm install 22
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-**방법 C: fnm** (빠르고 단일 바이너리)
-
-```bash
-curl -fsSL https://fnm.vercel.app/install | bash -s -- --force-no-brew
-source ~/.zshrc    # macOS 기본; Linux에서는 ~/.bashrc
-fnm install 22 && fnm use 22 && fnm default 22
-```
-
-그다음 CLI-JAW 설치:
-
-```bash
-npm install -g cli-jaw
-jaw serve
-```
-
-> 💡 **글로벌 설치 없이?** `npx`로 바로 실행: `npx cli-jaw serve`
+> 💡 **그냥 써보고 싶다면?** 설치 없이 바로 실행: `npx cli-jaw serve`
 
 </details>
 

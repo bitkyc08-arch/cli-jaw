@@ -59,38 +59,15 @@ jaw serve
 </details>
 
 <details>
-<summary>🍺 <b>No Homebrew?</b> — Install Node.js without brew</summary>
+<summary>🍺 <b>No Homebrew?</b> — One-click Node.js + CLI-JAW install</summary>
 
-CLI-JAW needs **Node.js ≥ 22**. If you don't have `brew`, here are 3 ways to get it:
-
-**Option A: Official Installer** (easiest)
-
-Download and run the installer from [nodejs.org](https://nodejs.org) (pick the LTS ≥ 22 version).
-
-**Option B: nvm** (recommended for developers)
+Paste this in your terminal — it auto-detects your setup and installs everything:
 
 ```bash
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.4/install.sh | bash
-source ~/.zshrc    # macOS default; use ~/.bashrc on Linux
-nvm install 22
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-**Option C: fnm** (fast, single binary)
-
-```bash
-curl -fsSL https://fnm.vercel.app/install | bash -s -- --force-no-brew
-source ~/.zshrc    # macOS default; use ~/.bashrc on Linux
-fnm install 22 && fnm use 22 && fnm default 22
-```
-
-Then install CLI-JAW:
-
-```bash
-npm install -g cli-jaw
-jaw serve
-```
-
-> 💡 **No global install?** Run directly with `npx`: `npx cli-jaw serve`
+> 💡 **Just want to try it?** Run directly without installing: `npx cli-jaw serve`
 
 </details>
 
