@@ -411,8 +411,7 @@ function movePathToBackup(pathToMove: string, context: Record<string, any>) {
 
 const DEFAULT_MCP_SERVERS = {
     context7: {
-        command: 'npx',
-        args: ['-y', '@upstash/context7-mcp'],
+        url: 'https://mcp.context7.com/mcp',
     },
 };
 
@@ -445,6 +444,11 @@ export async function installMcpServers(config: Record<string, any>) {
     };
 
     for (const [name, srv] of Object.entries(config.servers || {}) as [string, any][]) {
+        // Skip URL-based remote servers (no local install needed)
+        if (srv.url) {
+            (results as Record<string, any>)[name] = { status: 'skip', reason: 'remote url' };
+            continue;
+        }
         // Skip already-global servers
         if (srv.command !== 'npx' && srv.command !== 'uv' && srv.command !== 'uvx') {
             (results as Record<string, any>)[name] = { status: 'skip', reason: 'already global' };
