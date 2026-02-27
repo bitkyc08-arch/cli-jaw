@@ -65,8 +65,42 @@ test('CP-007: telegram menu excludes start/id/settings', { skip: !moduleLoaded &
     }
 });
 
-test('CP-008: telegram menu count >= 11', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
+test('CP-008: telegram menu has exact expected command set', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
     const cmds = getTelegramMenuCommands();
-    // help + status + clear + model + cli + fallback + flush + version + skill + browser + steer = 11
-    assert.ok(cmds.length >= 11, `expected >=11 commands, got ${cmds.length}`);
+    const names = new Set(cmds.map(c => c.name));
+    const expected = new Set(['help', 'status', 'clear', 'model', 'cli', 'fallback', 'flush', 'version', 'skill', 'browser', 'steer']);
+    // All expected present
+    for (const name of expected) {
+        assert.ok(names.has(name), `expected "${name}" in telegram menu`);
+    }
+    // No unexpected extras (except future additions — we allow superset)
+    assert.ok(cmds.length >= expected.size, `expected >= ${expected.size} commands, got ${cmds.length}`);
+});
+
+test('CP-009: every telegram command has tgDescKey', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
+    const cmds = getTelegramMenuCommands();
+    for (const c of cmds) {
+        assert.ok(c.tgDescKey, `command "${c.name}" should have tgDescKey`);
+        assert.ok(typeof c.tgDescKey === 'string' && c.tgDescKey.startsWith('cmd.'), `tgDescKey "${c.tgDescKey}" should be a valid i18n key`);
+    }
+});
+
+test('CP-010: readonly commands block write on telegram', { skip: !moduleLoaded && 'policy.js not yet created' }, async () => {
+    // model and cli are readonly on telegram — supplying args should be blocked
+    const { parseCommand, executeCommand } = await import('../../src/cli/commands.ts');
+    for (const name of ['model', 'cli']) {
+        const parsed = parseCommand(`/${name} some-arg`);
+        assert.ok(parsed, `parseCommand should parse /${name}`);
+        const result = await executeCommand(parsed, { interface: 'telegram', locale: 'ko' });
+        assert.ok(result, `executeCommand result should not be null for /${name}`);
+        assert.equal(result.ok, false, `/${name} with args should fail on telegram (readonly)`);
+        assert.equal(result.code, 'readonly', `/${name} should return readonly code`);
+    }
+    // Without args, model/cli should succeed (read-only view)
+    for (const name of ['model', 'cli']) {
+        const parsed = parseCommand(`/${name}`);
+        const result = await executeCommand(parsed, { interface: 'telegram', locale: 'ko' });
+        // Should not be blocked by readonly guard (args.length === 0)
+        assert.notEqual(result?.code, 'readonly', `/${name} without args should not be readonly-blocked`);
+    }
 });

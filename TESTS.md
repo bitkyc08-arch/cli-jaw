@@ -1,13 +1,13 @@
 # 🧪 CLI-JAW Tests
 
-[![Tests](https://img.shields.io/badge/tests-547%20pass-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-548%20pass-brightgreen)](#)
 
 > `node:test` + `node:assert` via `tsx` runner — zero external test dependencies.
 
 ## Run
 
 ```bash
-npm test                            # All 547 tests (~14s)
+npm test                            # All 548 tests (~14s)
 tsx --test tests/unit/*.test.ts    # Unit tests only
 tsx --test tests/integration/*.test.ts  # Integration tests only
 npm run test:watch                  # Watch mode
@@ -31,29 +31,29 @@ npm run check:deps                  # Dependency vulnerability check
 
 ### Unit (Tier 1 — pure functions, zero I/O)
 
-| File                           | Tests | Coverage                                                                             |
-| ------------------------------ | :---: | ------------------------------------------------------------------------------------ |
-| `agent-args.test.ts`           |  16   | `buildArgs` / `buildResumeArgs` — 5 CLIs × model/effort/permissions combos           |
-| `async-handler.test.ts`        |   4   | Express async wrapper, error forwarding, statusCode preservation                     |
-| `bus.test.ts`                  |   6   | Broadcast, listener add/remove, WS mock, safety                                      |
-| `cli-registry.test.ts`         |   8   | CLI_KEYS, required fields, `buildDefaultPerCli`, `buildModelChoicesByCli`            |
-| `commands-parse.test.ts`       |  21   | parseCommand, executeCommand, getCompletions, COMMANDS integrity, i18n               |
-| `commands-policy.test.ts`      |   5   | Command-contract capability map, `getVisibleCommands`, Telegram menu                 |
-| `decode.test.ts`               |   5   | `decodeFilenameSafe` — URL encoding, traversal prevention                            |
-| `deps-check.test.ts`           |  10   | Semver range matching, advisory detection, offline vulnerability check               |
-| `frontend-constants.test.ts`   |   2   | ROLE_PRESETS structure, CLI registry schema                                          |
-| `heartbeat-queue.test.ts`      |   4   | Pending queue enqueue/dequeue, max size, drain order                                 |
-| `help-renderer.test.ts`        |   5   | `renderHelp` list/detail mode, markdown formatting                                   |
-| `http-response.test.ts`        |   6   | `ok()` / `fail()` standard response format, status codes                             |
-| `i18n.test.ts`                 |  26   | Locale loading, fallback chains, interpolation, plural rules                         |
-| `orchestrator-parsing.test.ts` |  13   | `parseSubtasks`, `parseDirectAnswer`, `stripSubtaskJSON` — fenced/raw/malformed      |
-| `orchestrator-triage.test.ts`  |  10   | `isContinueIntent`, `needsOrchestration` — signal threshold logic                    |
-| `path-guards.test.ts`          |  16   | `assertSkillId`, `assertFilename`, `safeResolveUnder` — traversal/injection/overlong |
-| `render-sanitize.test.ts`      |  11   | XSS regex fallback — script/event/javascript: stripping, content preservation        |
-| `settings-merge.test.ts`       |   5   | `mergeSettingsPatch` — perCli/activeOverrides deep merge                             |
-| `employee-prompt.test.ts`      |  14   | `getEmployeePrompt`, `getEmployeePromptV2`, old name exclusion                       |
-| `import-resolve.test.ts`       |   1   | **전체 src/ import 경로 존재 검증** — 리팩토링 후 깨진 경로 탐지                     |
-| `worklog.test.ts`              |   6   | PHASES mapping, `parseWorklogPending` extraction                                     |
+| File                           | Tests | Coverage                                                                                  |
+| ------------------------------ | :---: | ----------------------------------------------------------------------------------------- |
+| `agent-args.test.ts`           |  16   | `buildArgs` / `buildResumeArgs` — 5 CLIs × model/effort/permissions combos                |
+| `async-handler.test.ts`        |   4   | Express async wrapper, error forwarding, statusCode preservation                          |
+| `bus.test.ts`                  |   6   | Broadcast, listener add/remove, WS mock, safety                                           |
+| `cli-registry.test.ts`         |   8   | CLI_KEYS, required fields, `buildDefaultPerCli`, `buildModelChoicesByCli`                 |
+| `commands-parse.test.ts`       |  21   | parseCommand, executeCommand, getCompletions, COMMANDS integrity, i18n                    |
+| `commands-policy.test.ts`      |   8   | Command-contract capability map, `getVisibleCommands`, Telegram menu, readonly, tgDescKey |
+| `decode.test.ts`               |   5   | `decodeFilenameSafe` — URL encoding, traversal prevention                                 |
+| `deps-check.test.ts`           |  10   | Semver range matching, advisory detection, offline vulnerability check                    |
+| `frontend-constants.test.ts`   |   2   | ROLE_PRESETS structure, CLI registry schema                                               |
+| `heartbeat-queue.test.ts`      |   4   | Pending queue enqueue/dequeue, max size, drain order                                      |
+| `help-renderer.test.ts`        |   5   | `renderHelp` list/detail mode, markdown formatting                                        |
+| `http-response.test.ts`        |   6   | `ok()` / `fail()` standard response format, status codes                                  |
+| `i18n.test.ts`                 |  26   | Locale loading, fallback chains, interpolation, plural rules                              |
+| `orchestrator-parsing.test.ts` |  13   | `parseSubtasks`, `parseDirectAnswer`, `stripSubtaskJSON` — fenced/raw/malformed           |
+| `orchestrator-triage.test.ts`  |  10   | `isContinueIntent`, `needsOrchestration` — signal threshold logic                         |
+| `path-guards.test.ts`          |  16   | `assertSkillId`, `assertFilename`, `safeResolveUnder` — traversal/injection/overlong      |
+| `render-sanitize.test.ts`      |  11   | XSS regex fallback — script/event/javascript: stripping, content preservation             |
+| `settings-merge.test.ts`       |   5   | `mergeSettingsPatch` — perCli/activeOverrides deep merge                                  |
+| `employee-prompt.test.ts`      |  14   | `getEmployeePrompt`, `getEmployeePromptV2`, old name exclusion                            |
+| `import-resolve.test.ts`       |   1   | **전체 src/ import 경로 존재 검증** — 리팩토링 후 깨진 경로 탐지                          |
+| `worklog.test.ts`              |   6   | PHASES mapping, `parseWorklogPending` extraction                                          |
 
 ### Integration (Tier 2-3 — Express routes, CLI)
 
@@ -155,7 +155,7 @@ test('MY-001: descriptive test name', () => {
 ```
 
 Naming convention: `<PREFIX>-NNN: description`
-- `PG-*` Path Guards, `AG-*` Agent Args, `SM-*` Settings Merge
+- `CP-*` Commands Policy, `PG-*` Path Guards, `AG-*` Agent Args, `SM-*` Settings Merge
 - `ORP-*` Orchestrator Parsing, `ORT-*` Orchestrator Triage
 - `EMP-*` Employee Prompt, `IMP-*` Import Resolve
 - `SMOKE-*` API Smoke, `CLI-*` CLI Basic

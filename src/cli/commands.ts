@@ -194,6 +194,18 @@ export async function executeCommand(parsed: any, ctx: any) {
     if (!parsed.cmd.interfaces.includes(ctx.interface || 'cli')) {
         return unsupportedCommand(parsed.cmd, ctx.interface || 'cli', L);
     }
+    // Readonly enforcement: if command is readonly on this interface and args are supplied (write attempt), block
+    if (ctx.interface && parsed.args?.length > 0) {
+        const { getCommandCatalog, CAPABILITY } = await import('../command-contract/catalog.js');
+        const catalogCmd = getCommandCatalog().find((c: any) => c.name === parsed.cmd.name);
+        if (catalogCmd?.capability?.[ctx.interface] === CAPABILITY.readonly) {
+            return {
+                ok: false,
+                code: 'readonly',
+                text: t('cmd.unsupported', { name: parsed.cmd.name, iface: ctx.interface }, L),
+            };
+        }
+    }
     try {
         return normalizeResult(await parsed.cmd.handler(parsed.args || [], ctx));
     } catch (err: unknown) {
