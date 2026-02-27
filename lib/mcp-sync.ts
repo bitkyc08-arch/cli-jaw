@@ -73,7 +73,12 @@ export function importFromClaudeMcp(filePath: string) {
 export function toClaudeMcp(config: Record<string, any>) {
     const mcpServers: Record<string, any> = {};
     for (const [name, srv] of Object.entries(config.servers || {}) as [string, any][]) {
-        (mcpServers as Record<string, any>)[name] = { command: srv.command, args: srv.args || [] };
+        if (srv.url) {
+            (mcpServers as Record<string, any>)[name] = { url: srv.url };
+            if (srv.headers && Object.keys(srv.headers).length) (mcpServers as Record<string, any>)[name].headers = srv.headers;
+        } else {
+            (mcpServers as Record<string, any>)[name] = { command: srv.command, args: srv.args || [] };
+        }
         if (srv.env && Object.keys(srv.env).length) (mcpServers as Record<string, any>)[name].env = srv.env;
     }
     return { mcpServers };
@@ -84,8 +89,18 @@ export function toCodexToml(config: Record<string, any>) {
     let toml = '';
     for (const [name, srv] of Object.entries(config.servers || {}) as [string, any][]) {
         toml += `[mcp_servers.${name}]\n`;
-        toml += `command = "${srv.command}"\n`;
-        toml += `args = ${JSON.stringify(srv.args || [])}\n`;
+        if (srv.url) {
+            toml += `url = "${srv.url}"\n`;
+            if (srv.headers && Object.keys(srv.headers).length) {
+                toml += `[mcp_servers.${name}.headers]\n`;
+                for (const [k, v] of Object.entries(srv.headers)) {
+                    toml += `${k} = "${v}"\n`;
+                }
+            }
+        } else {
+            toml += `command = "${srv.command}"\n`;
+            toml += `args = ${JSON.stringify(srv.args || [])}\n`;
+        }
         if (srv.env && Object.keys(srv.env).length) {
             toml += `[mcp_servers.${name}.env]\n`;
             for (const [k, v] of Object.entries(srv.env)) {
@@ -101,10 +116,15 @@ export function toCodexToml(config: Record<string, any>) {
 export function toOpenCodeMcp(config: Record<string, any>) {
     const mcp: Record<string, any> = {};
     for (const [name, srv] of Object.entries(config.servers || {}) as [string, any][]) {
-        (mcp as Record<string, any>)[name] = {
-            type: 'local',
-            command: [srv.command, ...(srv.args || [])],
-        };
+        if (srv.url) {
+            (mcp as Record<string, any>)[name] = { type: 'remote', url: srv.url };
+            if (srv.headers && Object.keys(srv.headers).length) (mcp as Record<string, any>)[name].headers = srv.headers;
+        } else {
+            (mcp as Record<string, any>)[name] = {
+                type: 'local',
+                command: [srv.command, ...(srv.args || [])],
+            };
+        }
         if (srv.env && Object.keys(srv.env).length) (mcp as Record<string, any>)[name].environment = srv.env;
     }
     return mcp;
