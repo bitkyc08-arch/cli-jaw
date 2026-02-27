@@ -1,9 +1,13 @@
-// ─── Copilot Quota: copilot_internal/user API via keychain ──────
-// Token source: macOS keychain service "copilot-cli"
-// Cached to file (~/.cli-jaw/auth/copilot-token) to avoid repeated keychain popups.
-// If keychain read fails, suppressed until process restart.
+// ─── Copilot Quota: copilot_internal/user API ───────────────────
+// Token resolution order:
+//   1. ENV vars (COPILOT_GITHUB_TOKEN, GH_TOKEN, GITHUB_TOKEN)
+//   2. File cache (~/.cli-jaw/auth/copilot-token) — no keychain popup
+//   3. `gh auth token` — cross-platform fallback
+//   4. macOS Keychain (one-shot, cached to file, suppress on failure)
+//
+// Source: https://docs.github.com/copilot — official credential order
 
-import { execSync } from 'child_process';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
@@ -17,6 +21,7 @@ const TOKEN_CACHE_PATH = path.join(AUTH_DIR, 'copilot-token');
 let _cachedToken: string | null = null;
 let _keychainFailed = false; // suppress retry until restart
 
+// ─── Copilot config reader ──────────────────────────
 function readCopilotConfig(): { login: string; host: string } | null {
     try {
         const cfgPath = path.join(os.homedir(), '.copilot', 'config.json');
@@ -28,8 +33,43 @@ function readCopilotConfig(): { login: string; host: string } | null {
     return null;
 }
 
+// ─── File cache with account binding ────────────────
+function writeTokenCache(login: string, token: string) {
+    try {
+        fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 });
+        fs.writeFileSync(TOKEN_CACHE_PATH, `${login}\n${token}`, { mode: 0o600 });
+    } catch (e: unknown) {
+        console.warn('[quota-copilot] token cache write failed:', (e as Error).message);
+    }
+}
+
+function readTokenCache(expectedLogin: string | null): string | null {
+    try {
+        if (!fs.existsSync(TOKEN_CACHE_PATH)) return null;
+        const content = fs.readFileSync(TOKEN_CACHE_PATH, 'utf8').trim();
+        const newlineIdx = content.indexOf('\n');
+        if (newlineIdx < 0) return null; // old format or corrupt
+
+        const cachedLogin = content.slice(0, newlineIdx);
+        const cachedToken = content.slice(newlineIdx + 1).trim();
+
+        // Account binding: invalidate if login changed
+        if (expectedLogin && cachedLogin !== expectedLogin) {
+            console.info(`[quota-copilot] cache login mismatch (${cachedLogin} ≠ ${expectedLogin}), invalidating`);
+            try { fs.unlinkSync(TOKEN_CACHE_PATH); } catch { /* ignore */ }
+            return null;
+        }
+
+        return cachedToken || null;
+    } catch { return null; }
+}
+
+// ─── Token resolver ─────────────────────────────────
 function getCopilotToken() {
     if (_cachedToken) return _cachedToken;
+
+    const copilotUser = readCopilotConfig();
+    const expectedLogin = copilotUser?.login || null;
 
     // ─── 1. Env vars (cross-platform, explicit override) ───
     const envToken =
@@ -42,49 +82,56 @@ function getCopilotToken() {
     }
 
     // ─── 2. File cache (no keychain popup) ───
-    try {
-        if (fs.existsSync(TOKEN_CACHE_PATH)) {
-            const cached = fs.readFileSync(TOKEN_CACHE_PATH, 'utf8').trim();
-            if (cached) {
-                _cachedToken = cached;
-                return _cachedToken;
-            }
-        }
-    } catch { /* cache read failed, try keychain */ }
+    const cached = readTokenCache(expectedLogin);
+    if (cached) {
+        _cachedToken = cached;
+        return _cachedToken;
+    }
 
-    // ─── 3. macOS Keychain (one-shot, then cache to file) ───
+    // ─── 3. `gh auth token` fallback (cross-platform) ───
+    try {
+        const ghToken = execFileSync('gh', ['auth', 'token'], {
+            encoding: 'utf8',
+            timeout: 5000,
+            stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+        if (ghToken) {
+            _cachedToken = ghToken;
+            writeTokenCache(expectedLogin || 'gh-cli', ghToken);
+            return _cachedToken;
+        }
+    } catch {
+        // gh CLI not installed or not authenticated — continue
+    }
+
+    // ─── 4. macOS Keychain (one-shot, then cache to file) ───
     if (process.platform === 'darwin' && !_keychainFailed) {
         try {
-            // Use last_logged_in_user from copilot config for account selection
-            const copilotUser = readCopilotConfig();
-            const accountArg = copilotUser
-                ? `-a "${copilotUser.host}:${copilotUser.login}"`
-                : '';
+            const args = ['find-generic-password', '-s', 'copilot-cli'];
+            if (copilotUser) {
+                args.push('-a', `${copilotUser.host}:${copilotUser.login}`);
+            }
+            args.push('-w');
 
-            const token = execSync(
-                `security find-generic-password -s "copilot-cli" ${accountArg} -w`,
-                { encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'] }
-            ).trim();
+            const token = execFileSync('security', args, {
+                encoding: 'utf8',
+                timeout: 5000,
+                stdio: ['pipe', 'pipe', 'pipe'],
+            }).trim();
 
             if (token) {
                 _cachedToken = token;
-                // Cache to file for future reads
-                try {
-                    fs.mkdirSync(AUTH_DIR, { recursive: true, mode: 0o700 });
-                    fs.writeFileSync(TOKEN_CACHE_PATH, token, { mode: 0o600 });
-                } catch (e: unknown) {
-                    console.warn('[quota-copilot] token cache write failed:', (e as Error).message);
-                }
+                writeTokenCache(expectedLogin || 'keychain', token);
                 return _cachedToken;
             }
         } catch (e: unknown) {
             console.warn('[quota-copilot] keychain read failed (suppressed until restart):', (e as Error).message?.split('\n')[0]);
-            _keychainFailed = true; // don't ask again this session
+            _keychainFailed = true;
             return null;
         }
     }
 
-    // win32/linux: no keychain CLI — rely on env tokens above
+    // win32/linux: no keychain CLI — rely on env/gh/cache above
     if (process.env.DEBUG && process.platform !== 'darwin') {
         console.info(`[quota-copilot] token lookup skipped on ${process.platform} (set COPILOT_GITHUB_TOKEN or GH_TOKEN)`);
     }
