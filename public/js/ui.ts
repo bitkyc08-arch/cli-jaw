@@ -93,7 +93,7 @@ export function addMessage(role: string, text: string): HTMLDivElement {
     const div = document.createElement('div');
     div.className = `msg msg-${role}`;
     const rendered = renderMarkdown(text);
-    div.innerHTML = `<div class="msg-label">${role === 'user' ? t('msg.you') : getAppName()}</div><div class="msg-content">${rendered}</div>`;
+    div.innerHTML = `<div class="msg-label">${role === 'user' ? t('msg.you') : getAppName()}</div><div class="msg-content">${rendered}</div><button class="msg-copy" title="Copy"></button>`;
     container?.appendChild(div);
     scrollToBottom();
     return div;
@@ -156,14 +156,15 @@ export async function loadMemory(): Promise<void> {
 // ── Message copy delegation ──
 export function initMsgCopy(): void {
     document.getElementById('chatMessages')?.addEventListener('click', (e) => {
-        const msgContent = (e.target as HTMLElement)?.closest('.msg-content');
-        if (!msgContent) return;
-        // Double-click to copy (not single click)
-    });
-    document.getElementById('chatMessages')?.addEventListener('dblclick', (e) => {
-        const msgContent = (e.target as HTMLElement)?.closest('.msg-content') as HTMLElement | null;
-        if (!msgContent) return;
-        const text = msgContent.innerText || msgContent.textContent || '';
-        navigator.clipboard.writeText(text).catch(() => { });
+        const btn = (e.target as HTMLElement)?.closest('.msg-copy') as HTMLElement | null;
+        if (!btn) return;
+        const msg = btn.closest('.msg');
+        const content = msg?.querySelector('.msg-content') as HTMLElement | null;
+        if (!content) return;
+        const text = content.innerText || content.textContent || '';
+        navigator.clipboard.writeText(text).then(() => {
+            btn.classList.add('copied');
+            setTimeout(() => btn.classList.remove('copied'), 600);
+        }).catch(() => { });
     });
 }
