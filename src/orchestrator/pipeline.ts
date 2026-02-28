@@ -251,7 +251,7 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
     // Triage: 간단한 메시지는 직접 응답
     if (employees.length > 0 && !needsOrchestration(prompt)) {
         console.log(`[jaw:triage] direct response (no orchestration needed)`);
-        const { promise } = spawnAgent(prompt, { origin });
+        const { promise } = spawnAgent(prompt, { origin, _skipInsert: !!meta._skipInsert });
         const result = await promise as Record<string, any>;
         const lateSubtasks = parseSubtasks(result.text);
         if (lateSubtasks?.length) {
@@ -361,7 +361,7 @@ export async function orchestrate(prompt: string, meta: Record<string, any> = {}
 
     // 직원 없으면 단일 에이전트 모드
     if (employees.length === 0) {
-        const { promise } = spawnAgent(prompt, { origin });
+        const { promise } = spawnAgent(prompt, { origin, _skipInsert: !!meta._skipInsert });
         const result = await promise as Record<string, any>;
         const stripped = stripSubtaskJSON(result.text);
         broadcast('orchestrate_done', { text: stripped || result.text || '', origin, chatId });

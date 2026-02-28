@@ -33,7 +33,7 @@ export function submitMessage(
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
         insertMessage.run('user', display, meta.origin, '');
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
-        if (!meta.skipOrchestrate) orchestrateContinue({ origin: meta.origin, chatId: meta.chatId });
+        if (!meta.skipOrchestrate) orchestrateContinue({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true });
         return { action: 'started', continued: true };
     }
 
@@ -42,7 +42,7 @@ export function submitMessage(
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
         insertMessage.run('user', display, meta.origin, '');
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
-        if (!meta.skipOrchestrate) orchestrateReset({ origin: meta.origin, chatId: meta.chatId });
+        if (!meta.skipOrchestrate) orchestrateReset({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true });
         return { action: 'started' };
     }
 
@@ -59,7 +59,7 @@ export function submitMessage(
     insertMessage.run('user', display, meta.origin, '');
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
-        orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId });
+        orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId, _skipInsert: true });
     }
     return { action: 'started' };
 }

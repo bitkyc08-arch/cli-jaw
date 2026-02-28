@@ -345,7 +345,7 @@ export async function initTelegram() {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         try {
-            const result = await orchestrateAndCollect(prompt, { origin: 'telegram', chatId: ctx.chat.id }) as string;
+            const result = await orchestrateAndCollect(prompt, { origin: 'telegram', chatId: ctx.chat.id, _skipInsert: true }) as string;
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
                 clearTimeout(statusUpdateTimer);

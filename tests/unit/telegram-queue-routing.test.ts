@@ -30,16 +30,16 @@ test('TQ-002: busy path forwards chatId into enqueueMessage', () => {
 
 test('TQ-003: orchestrate paths forward chatId for continue/reset/normal', () => {
     assert.ok(
-        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, chatId: meta.chatId })'),
-        'continue path should pass chatId',
+        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true })'),
+        'continue path should pass chatId + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, chatId: meta.chatId })'),
-        'reset path should pass chatId',
+        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true })'),
+        'reset path should pass chatId + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId })'),
-        'normal path should pass chatId',
+        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId, _skipInsert: true })'),
+        'normal path should pass chatId + _skipInsert',
     );
 });
 

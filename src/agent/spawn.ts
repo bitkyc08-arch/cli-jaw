@@ -130,9 +130,9 @@ export async function steerAgent(newPrompt: string, source: string) {
     broadcast('new_message', { role: 'user', content: newPrompt, source });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    if (isResetIntent(newPrompt)) orchestrateReset({ origin });
-    else if (isContinueIntent(newPrompt)) orchestrateContinue({ origin });
-    else orchestrate(newPrompt, { origin });
+    if (isResetIntent(newPrompt)) orchestrateReset({ origin, _skipInsert: true });
+    else if (isContinueIntent(newPrompt)) orchestrateContinue({ origin, _skipInsert: true });
+    else orchestrate(newPrompt, { origin, _skipInsert: true });
 }
 
 // ─── Message Queue ───────────────────────────────────
@@ -179,9 +179,9 @@ export async function processQueue() {
     broadcast('queue_update', { pending: messageQueue.length });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    if (isResetIntent(combined)) orchestrateReset({ origin, chatId });
-    else if (isContinueIntent(combined)) orchestrateContinue({ origin, chatId });
-    else orchestrate(combined, { origin, chatId });
+    if (isResetIntent(combined)) orchestrateReset({ origin, chatId, _skipInsert: true });
+    else if (isContinueIntent(combined)) orchestrateContinue({ origin, chatId, _skipInsert: true });
+    else orchestrate(combined, { origin, chatId, _skipInsert: true });
 }
 
 // ─── Helpers ─────────────────────────────────────────
