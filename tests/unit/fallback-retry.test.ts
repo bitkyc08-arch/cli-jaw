@@ -271,3 +271,55 @@ describe('429 retry: edge case coverage', () => {
         }
     });
 });
+
+// ─── 429 Retry: runtime simulation tests ────────────
+// These tests exercise ACTUAL function calls (not string matching)
+// to verify state transitions and race condition safety.
+
+describe('429 retry: runtime timer simulation', () => {
+    test('isAgentBusy() is false when no process and no timer', async () => {
+        // Dynamic import to get real module — verifies initial idle state
+        const spawn = await import('../../src/agent/spawn.ts');
+        const wasBusy = spawn.isAgentBusy();
+        // If no test left a dangling timer or process, should be false
+        if (spawn.activeProcess) {
+            assert.ok(wasBusy, 'should be busy when activeProcess is set');
+        } else {
+            assert.equal(wasBusy, false, 'should not be busy with no process and no timer');
+        }
+    });
+
+    test('clearRetryTimer(false) is safe no-op when no timer — race condition defense', async () => {
+        // This tests the exact race window from spawn.ts:83 audit finding:
+        // Timer callback fires → nulls retryPendingTimer → killActiveAgent calls
+        // clearRetryTimer(false) → must not crash or double-fire.
+        const spawn = await import('../../src/agent/spawn.ts');
+
+        // Call clearRetryTimer(false) multiple times rapidly — simulates
+        // concurrent stop/steer arriving after timer already self-cleared
+        spawn.clearRetryTimer(false);
+        spawn.clearRetryTimer(false);
+        spawn.clearRetryTimer(true);
+
+        // Must not throw, must remain idle
+        assert.equal(spawn.isAgentBusy(), false,
+            'isAgentBusy must be false after multiple clearRetryTimer calls with no active timer');
+    });
+
+    test('killActiveAgent safely handles "nothing active" — timer already self-cleared', async () => {
+        // Simulates: timer callback already fired (timer=null, process=null)
+        // then killActiveAgent is called from a delayed steer/stop.
+        // Must not throw, must not corrupt state.
+        const spawn = await import('../../src/agent/spawn.ts');
+
+        // Ensure clean state
+        spawn.clearRetryTimer(false);
+
+        // killActiveAgent with nothing active → should be safe no-op
+        spawn.killActiveAgent('steer');
+        assert.equal(spawn.isAgentBusy(), false,
+            'killActiveAgent on empty state must not leave busy flag set');
+        assert.equal(spawn.activeProcess, null,
+            'activeProcess must remain null after kill on empty state');
+    });
+});

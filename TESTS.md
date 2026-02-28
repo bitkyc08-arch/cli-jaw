@@ -1,13 +1,13 @@
 # 🧪 CLI-JAW Tests
 
-[![Tests](https://img.shields.io/badge/tests-605%20pass-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-608%20pass-brightgreen)](#)
 
 > `node:test` + `node:assert` via `tsx` runner — zero external test dependencies.
 
 ## Run
 
 ```bash
-npm test                            # All 606 tests (~14s)
+npm test                            # All 608 tests (~15s)
 tsx --test tests/unit/*.test.ts    # Unit tests only
 tsx --test tests/integration/*.test.ts  # Integration tests only
 npm run test:watch                  # Watch mode
@@ -53,7 +53,7 @@ npm run check:deps                  # Dependency vulnerability check
 | `settings-merge.test.ts`       |   5   | `mergeSettingsPatch` — perCli/activeOverrides deep merge                                  |
 | `employee-prompt.test.ts`      |  14   | `getEmployeePrompt`, `getEmployeePromptV2`, old name exclusion                            |
 | `import-resolve.test.ts`       |   1   | **전체 src/ import 경로 존재 검증** — 리팩토링 후 깨진 경로 탐지                          |
-| `fallback-retry.test.ts`       |  27   | 429 retry state, `isAgentBusy`, `clearRetryTimer`, kill/queue guards, edge cases          |
+| `fallback-retry.test.ts`       |  30   | 429 retry state, `isAgentBusy`, `clearRetryTimer`, kill/queue guards, edge + runtime sim  |
 | `steer-command.test.ts`        |   8   | `/steer` command: registration, kill+wait, telegram branch, `isAgentBusy` guard           |
 | `submit-message.test.ts`       |  10   | `submitMessage` gateway: idle/busy/continue/reset paths, `isAgentBusy` busy rejection     |
 | `worklog.test.ts`              |   6   | PHASES mapping, `parseWorklogPending` extraction                                          |
