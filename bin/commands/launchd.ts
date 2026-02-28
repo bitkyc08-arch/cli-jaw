@@ -8,18 +8,11 @@
  */
 import { execSync } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { homedir } from 'node:os';
-import { createHash } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
-
-function instanceId(): string {
-    const base = basename(JAW_HOME);
-    if (base === '.cli-jaw') return 'default';
-    const hash = createHash('md5').update(JAW_HOME).digest('hex').slice(0, 8);
-    return `${base.replace(/^\./, '')}-${hash}`;
-}
+import { instanceId, getNodePath, getJawPath } from '../../src/core/instance.js';
 
 const xmlEsc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
@@ -47,15 +40,6 @@ const LABEL = `com.cli-jaw.${INSTANCE}`;
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 const LOG_DIR = join(JAW_HOME, 'logs');
 
-function getNodePath(): string {
-    try { return execSync('which node', { encoding: 'utf8' }).trim(); }
-    catch { return '/usr/local/bin/node'; }
-}
-
-function getJawPath(): string {
-    try { return execSync('which jaw', { encoding: 'utf8' }).trim(); }
-    catch { return execSync('which cli-jaw', { encoding: 'utf8' }).trim(); }
-}
 
 function generatePlist(): string {
     const nodePath = getNodePath();

@@ -47,6 +47,12 @@ function hasWslWindowsChrome() {
     return paths.some(p => fs.existsSync(p));
 }
 
+/** Detect headless server (no display, no desktop environment). */
+function isHeadless(): boolean {
+    if (process.platform !== 'linux') return false;
+    return !process.env.DISPLAY && !process.env.WAYLAND_DISPLAY && !isWSL();
+}
+
 function check(name: string, fn: () => string) {
     try {
         const detail = fn();
@@ -141,20 +147,6 @@ if (process.platform === 'darwin') {
     });
 }
 
-if (process.platform === 'linux') {
-    check('Display Server', () => {
-        if (process.env.WAYLAND_DISPLAY) return `Wayland (${process.env.WAYLAND_DISPLAY})`;
-        if (process.env.DISPLAY) return `X11 (${process.env.DISPLAY})`;
-        if (isWSL()) {
-            if (hasWslWindowsChrome()) {
-                return 'WSL (no DISPLAY; Windows Chrome path detected via /mnt/c)';
-            }
-            throw new Error('WARN: no DISPLAY in WSL — enable WSLg/set DISPLAY, or install Windows Chrome for /mnt/c fallback');
-        }
-        throw new Error('WARN: no DISPLAY — browser skill needs X11/Wayland');
-    });
-}
-
 // 9. Skill dependencies (Phase 9)
 check('uv (Python)', () => {
     try {
@@ -168,49 +160,86 @@ check('uv (Python)', () => {
     }
 });
 
-check('playwright-core', () => {
-    try {
-        execSync('node -e "require.resolve(\'playwright-core\')"', { stdio: 'pipe' });
-        return 'installed';
-    } catch {
-        throw new Error('WARN: not installed — run: npm i -g playwright-core');
-    }
-});
+const headless = isHeadless();
 
-check('Google Chrome', () => {
-    if (process.platform === 'darwin') {
-        if (fs.existsSync('/Applications/Google Chrome.app')) return 'installed';
-        if (fs.existsSync(path.join(os.homedir(), 'Applications/Google Chrome.app'))) return 'installed (user)';
-    } else if (process.platform === 'win32') {
-        const pf = process.env.PROGRAMFILES || 'C:\\Program Files';
-        const pf86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
-        const local = process.env.LOCALAPPDATA || '';
-        const winPaths = [
-            `${pf}\\Google\\Chrome\\Application\\chrome.exe`,
-            `${pf86}\\Google\\Chrome\\Application\\chrome.exe`,
-            `${local}\\Google\\Chrome\\Application\\chrome.exe`,
-            `${pf}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
-        ];
-        for (const p of winPaths) {
-            if (p && fs.existsSync(p)) return 'installed';
-        }
-    } else {
-        const linuxPaths = [
-            '/usr/bin/google-chrome-stable',
-            '/usr/bin/google-chrome',
-            '/usr/bin/chromium-browser',
-            '/usr/bin/chromium',
-            '/snap/bin/chromium',
-            '/usr/bin/brave-browser',
-            '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
-            '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
-        ];
-        for (const p of linuxPaths) {
-            if (fs.existsSync(p)) return 'installed';
-        }
+if (headless) {
+    // Headless server: browser checks are optional, show as INFO instead of WARN
+    if (!values.json) {
+        console.log('\n  \u2139\ufe0f  Browser checks (optional on headless server):');
+        console.log('     Display Server: skipped (headless)');
+        console.log('     playwright-core: skipped (headless)');
+        console.log('     Google Chrome: skipped (headless)');
     }
-    throw new Error('WARN: not found — required for browser skill');
-});
+    results.push(
+        { name: 'Display Server', status: 'info', detail: 'headless server \u2014 skipped' },
+        { name: 'playwright-core', status: 'info', detail: 'headless server \u2014 skipped' },
+        { name: 'Google Chrome', status: 'info', detail: 'headless server \u2014 skipped' },
+    );
+} else {
+    if (process.platform === 'linux') {
+        check('Display Server', () => {
+            if (process.env.WAYLAND_DISPLAY) return `Wayland (${process.env.WAYLAND_DISPLAY})`;
+            if (process.env.DISPLAY) return `X11 (${process.env.DISPLAY})`;
+            if (isWSL()) {
+                if (hasWslWindowsChrome()) {
+                    return 'WSL (no DISPLAY; Windows Chrome path detected via /mnt/c)';
+                }
+                throw new Error('WARN: no DISPLAY in WSL \u2014 enable WSLg/set DISPLAY, or install Windows Chrome for /mnt/c fallback');
+            }
+            throw new Error('WARN: no DISPLAY \u2014 browser skill needs X11/Wayland');
+        });
+    }
+
+    check('playwright-core', () => {
+        // Check global install via npm root -g (more reliable than require.resolve for global packages)
+        try {
+            const globalRoot = execSync('npm root -g', { encoding: 'utf8', stdio: 'pipe' }).trim();
+            if (fs.existsSync(path.join(globalRoot, 'playwright-core'))) return 'installed (global)';
+        } catch { /* npm not available or error */ }
+        // Fallback: check require.resolve (works for local installs)
+        try {
+            execSync('node -e "require.resolve(\'playwright-core\')"', { stdio: 'pipe' });
+            return 'installed';
+        } catch {
+            throw new Error('WARN: not installed \u2014 run: npm i -g playwright-core');
+        }
+    });
+
+    check('Google Chrome', () => {
+        if (process.platform === 'darwin') {
+            if (fs.existsSync('/Applications/Google Chrome.app')) return 'installed';
+            if (fs.existsSync(path.join(os.homedir(), 'Applications/Google Chrome.app'))) return 'installed (user)';
+        } else if (process.platform === 'win32') {
+            const pf = process.env.PROGRAMFILES || 'C:\\Program Files';
+            const pf86 = process.env['PROGRAMFILES(X86)'] || 'C:\\Program Files (x86)';
+            const local = process.env.LOCALAPPDATA || '';
+            const winPaths = [
+                `${pf}\\Google\\Chrome\\Application\\chrome.exe`,
+                `${pf86}\\Google\\Chrome\\Application\\chrome.exe`,
+                `${local}\\Google\\Chrome\\Application\\chrome.exe`,
+                `${pf}\\BraveSoftware\\Brave-Browser\\Application\\brave.exe`,
+            ];
+            for (const p of winPaths) {
+                if (p && fs.existsSync(p)) return 'installed';
+            }
+        } else {
+            const linuxPaths = [
+                '/usr/bin/google-chrome-stable',
+                '/usr/bin/google-chrome',
+                '/usr/bin/chromium-browser',
+                '/usr/bin/chromium',
+                '/snap/bin/chromium',
+                '/usr/bin/brave-browser',
+                '/mnt/c/Program Files/Google/Chrome/Application/chrome.exe',
+                '/mnt/c/Program Files (x86)/Google/Chrome/Application/chrome.exe',
+            ];
+            for (const p of linuxPaths) {
+                if (fs.existsSync(p)) return 'installed';
+            }
+        }
+        throw new Error('WARN: not found \u2014 required for browser skill');
+    });
+}
 
 // Output
 if (values.json) {

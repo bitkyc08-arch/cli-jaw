@@ -6,7 +6,7 @@
 
 *One assistant. Five brains. Always on.*
 
-[![Tests](https://img.shields.io/badge/tests-445%20pass-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-575%20pass-brightgreen)](#-tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -345,10 +345,14 @@ jaw browser start                 # Launch Chrome (CDP)
 jaw browser vision-click "Login"  # AI-powered click
 jaw clone ~/my-project            # Clone instance for a separate project
 jaw --home ~/my-project serve --port 3458  # Run a second instance
-jaw launchd                       # Auto-start on boot (macOS)
-jaw launchd --port 3458           # Auto-start with custom port
-jaw launchd status                # Check daemon status
-jaw launchd unset                 # Remove auto-start
+jaw service                       # Auto-start (auto-detects: launchd/systemd/docker)
+jaw service --port 3458           # Auto-start with custom port
+jaw service status                # Check daemon status
+jaw service unset                 # Remove auto-start
+jaw service logs                  # View service logs
+jaw launchd                       # Auto-start on boot (macOS only)
+jaw launchd status                # Check macOS daemon status
+jaw launchd unset                 # Remove macOS auto-start
 jaw reset                         # Full reset
 ```
 
@@ -366,8 +370,8 @@ jaw clone ~/my-project
 jaw --home ~/my-project serve --port 3458
 
 # Or auto-start both on boot
-jaw launchd                                    # default → port 3457
-jaw --home ~/my-project launchd --port 3458    # project → port 3458
+jaw service                                    # default → port 3457 (auto-detect backend)
+jaw --home ~/my-project service --port 3458    # project → port 3458
 ```
 
 Each instance is fully independent — different working directory, different memory, different MCP config. Perfect for separating work/personal contexts or per-project AI setups.
@@ -378,7 +382,7 @@ Each instance is fully independent — different working directory, different me
 | `--home=<path>`       | Same, with `=` syntax                     |
 | `CLI_JAW_HOME=<path>` | Set via environment variable              |
 | `jaw clone <target>`  | Clone current instance to a new directory |
-| `--port <port>`       | Custom port for `serve` / `launchd`       |
+| `--port <port>`       | Custom port for `serve` / `service`       |
 
 ---
 
@@ -496,7 +500,7 @@ src/
 ## 🧪 Tests
 
 <details>
-<summary>445 pass · 1 skipped · zero external dependencies</summary>
+<summary>575 pass · 1 skipped · zero external dependencies</summary>
 
 ```bash
 npm test
