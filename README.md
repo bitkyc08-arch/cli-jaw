@@ -96,6 +96,8 @@ jaw serve
 
 **That's it.** Open **http://localhost:3457** and start chatting. 🦈
 
+> 🕐 **Want it running 24/7?** `jaw service install` — auto-detects systemd, launchd, or Docker.
+
 > Requires **Node.js ≥ 22** ([download](https://nodejs.org)) and **at least 1 AI CLI** authenticated below.
 
 ---
@@ -336,6 +338,10 @@ No more editing 5 different config files. Install once → all AI engines get it
 
 ```bash
 jaw serve                         # Start server
+jaw service install               # Auto-start on boot (systemd/launchd/docker auto-detected)
+jaw service status                # Check daemon status
+jaw service unset                 # Remove auto-start
+jaw service logs                  # View service logs
 jaw chat                          # Terminal TUI
 jaw doctor                        # Diagnostics (12 checks)
 jaw skill install <name>          # Install a skill
@@ -345,14 +351,6 @@ jaw browser start                 # Launch Chrome (CDP)
 jaw browser vision-click "Login"  # AI-powered click
 jaw clone ~/my-project            # Clone instance for a separate project
 jaw --home ~/my-project serve --port 3458  # Run a second instance
-jaw service                       # Auto-start (auto-detects: launchd/systemd/docker)
-jaw service --port 3458           # Auto-start with custom port
-jaw service status                # Check daemon status
-jaw service unset                 # Remove auto-start
-jaw service logs                  # View service logs
-jaw launchd                       # Auto-start on boot (macOS only)
-jaw launchd status                # Check macOS daemon status
-jaw launchd unset                 # Remove macOS auto-start
 jaw reset                         # Full reset
 ```
 
@@ -512,18 +510,7 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 
 ---
 
-## 🆕 What's New (v1.2.0)
 
-> **24-hour patch cycle** — issues reported today, fixed today.
-
-| Feature                    | Description                                                                                             |
-| -------------------------- | ------------------------------------------------------------------------------------------------------- |
-| **429 Smart Retry**        | Rate-limited? Same engine retries once (10s), then auto-falls back to the next engine.                  |
-| **Browser Port Fix**       | `browser start --port 9338` now persists across `status`/`tabs`/`snapshot`. No more silent port resets. |
-| **Cross-Platform Service** | `jaw service install` — systemd, launchd, or Docker auto-detected.                                      |
-| **608 Tests**              | Up from 575. Zero regressions, zero external test dependencies.                                         |
-
----
 
 ## 📖 Documentation
 

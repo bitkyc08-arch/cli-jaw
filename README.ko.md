@@ -6,7 +6,7 @@
 
 *Claude, Codex, Gemini... 이제 번갈아 쓰지 마세요.*
 
-[![Tests](https://img.shields.io/badge/tests-445%20pass-brightgreen)](#-테스트)
+[![Tests](https://img.shields.io/badge/tests-608%20pass-brightgreen)](#-테스트)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -95,6 +95,8 @@ jaw serve
 ```
 
 **끝.** **http://localhost:3457** 열고 바로 채팅하세요. 🦈
+
+> 🕐 **24시간 돌아가게 만들고 싶으세요?** `jaw service install` — systemd, launchd, Docker 자동 감지.
 
 > **Node.js ≥ 22** ([다운로드](https://nodejs.org)) + 아래에서 **AI CLI 최소 1개** 인증 필요.
 
@@ -201,7 +203,7 @@ graph LR
 
 ```bash
 jaw chat         # 터미널 TUI (브라우저 필요 없음)
-jaw launchd      # 부팅 시 자동 실행 (macOS)
+jaw service install  # 부팅 시 자동 실행 (systemd/launchd/docker 자동 감지)
 ```
 
 > ⚠️ **설치 시 참고:** `npm install -g cli-jaw`는 postinstall 스크립트를 실행하여 스킬 디렉토리, 커스텀 인스트럭션, MCP 설정을 구성합니다. 기존 설정은 덮어쓰지 않고 병합됩니다.
@@ -345,9 +347,10 @@ graph LR
 
 ```bash
 jaw serve                         # 서버 시작
-jaw launchd                       # 부팅 시 자동 실행 (macOS)
-jaw launchd status                # 데몬 상태 확인
-jaw launchd unset                 # 자동 실행 해제
+jaw service install               # 부팅 시 자동 실행 (systemd/launchd/docker 자동 감지)
+jaw service status                # 데몬 상태 확인
+jaw service unset                 # 자동 실행 해제
+jaw service logs                  # 서비스 로그 보기
 jaw chat                          # 터미널 TUI
 jaw doctor                        # 진단 (12개 체크)
 jaw skill install <name>          # 스킬 설치
@@ -374,8 +377,8 @@ jaw clone ~/my-project
 jaw --home ~/my-project serve --port 3458
 
 # 또는 둘 다 부팅 시 자동 실행
-jaw launchd                                    # 기본 → 포트 3457
-jaw --home ~/my-project launchd --port 3458    # 프로젝트 → 포트 3458
+jaw service install                                # 기본 → 포트 3457
+jaw --home ~/my-project service install --port 3458 # 프로젝트 → 포트 3458
 ```
 
 각 인스턴스는 완전히 독립적입니다 — 작업 디렉토리, 메모리, MCP 설정이 모두 다릅니다. 업무/개인 컨텍스트 분리나 프로젝트별 AI 설정에 안성맞춤이에요.
@@ -386,7 +389,7 @@ jaw --home ~/my-project launchd --port 3458    # 프로젝트 → 포트 3458
 | `--home=<경로>`       | 동일 (`=` 구문)                          |
 | `CLI_JAW_HOME=<경로>` | 환경변수로 지정                          |
 | `jaw clone <대상>`    | 현재 인스턴스를 새 디렉토리로 복제       |
-| `--port <포트>`       | `serve` / `launchd`용 커스텀 포트        |
+| `--port <포트>`       | `serve` / `service`용 커스텀 포트        |
 
 ---
 
@@ -467,7 +470,7 @@ src/
 ## 🧪 테스트
 
 <details>
-<summary>445 pass · 1 skipped · 외부 의존성 0</summary>
+<summary>608 pass · 1 skipped · 외부 의존성 0</summary>
 
 ```bash
 npm test

@@ -6,7 +6,7 @@
 
 *Claude、Codex、Gemini... 从此告别来回切换。*
 
-[![Tests](https://img.shields.io/badge/tests-445%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-608%20pass-brightgreen)](#-测试)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -95,6 +95,8 @@ jaw serve
 ```
 
 **搞定。** 打开 **http://localhost:3457** 直接开聊。🦈
+
+> 🕐 **想让它 24 小时运行？** `jaw service install` — 自动检测 systemd、launchd 或 Docker。
 
 > 需要 **Node.js ≥ 22**（[下载](https://nodejs.org)）+ 下方**至少 1 个 AI CLI** 完成认证。
 
@@ -201,7 +203,7 @@ graph LR
 
 ```bash
 jaw chat         # 终端 TUI（无需浏览器）
-jaw launchd      # 开机自动启动 (macOS)
+jaw service install  # 开机自动启动 (systemd/launchd/docker 自动检测)
 ```
 
 > ⚠️ **安装须知：** `npm install -g cli-jaw` 运行 postinstall 脚本，设置技能目录、自定义指令和 MCP 配置。现有配置不会被覆盖，而是合并处理。
@@ -345,9 +347,10 @@ graph LR
 
 ```bash
 jaw serve                         # 启动服务器
-jaw launchd                       # 开机自动启动 (macOS)
-jaw launchd status                # 查看守护进程状态
-jaw launchd unset                 # 取消自动启动
+jaw service install               # 开机自动启动 (systemd/launchd/docker 自动检测)
+jaw service status                # 查看守护进程状态
+jaw service unset                 # 取消自动启动
+jaw service logs                  # 查看服务日志
 jaw chat                          # 终端 TUI
 jaw doctor                        # 诊断（12 项检查）
 jaw skill install <name>          # 安装技能
@@ -374,8 +377,8 @@ jaw clone ~/my-project
 jaw --home ~/my-project serve --port 3458
 
 # 或者两个都设置开机自启
-jaw launchd                                    # 默认 → 端口 3457
-jaw --home ~/my-project launchd --port 3458    # 项目 → 端口 3458
+jaw service install                                # 默认 → 端口 3457
+jaw --home ~/my-project service install --port 3458 # 项目 → 端口 3458
 ```
 
 每个实例完全独立 — 工作目录、记忆、MCP 配置各不相同。非常适合工作/个人环境分离或按项目配置 AI。
@@ -386,7 +389,7 @@ jaw --home ~/my-project launchd --port 3458    # 项目 → 端口 3458
 | `--home=<路径>`       | 同上（`=` 语法）               |
 | `CLI_JAW_HOME=<路径>` | 通过环境变量指定               |
 | `jaw clone <目标>`    | 将当前实例克隆到新目录         |
-| `--port <端口>`       | `serve` / `launchd` 自定义端口 |
+| `--port <端口>`       | `serve` / `service` 自定义端口 |
 
 ---
 
@@ -467,7 +470,7 @@ src/
 ## 🧪 测试
 
 <details>
-<summary>445 pass · 1 skipped · 零外部依赖</summary>
+<summary>608 pass · 1 skipped · 零外部依赖</summary>
 
 ```bash
 npm test
