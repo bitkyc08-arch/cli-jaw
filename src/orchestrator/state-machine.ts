@@ -5,6 +5,7 @@
 
 import { getOrcState, setOrcState, resetOrcState } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
+import { readLatestWorklog } from '../memory/worklog.js';
 
 // ─── Types ──────────────────────────────────────────
 
@@ -36,12 +37,27 @@ export function setState(s: OrcStateName, ctx?: OrcContext | null): void {
     ? (ctx ? JSON.stringify(ctx) : null)
     : getOrcState()?.ctx || null;
   setOrcState.run(s, ctxJson, 'default');
-  broadcast('orc_state', { state: s });
+
+  // Parse worklog title (max 2 words + …)
+  let title = 'PABCD';
+  try {
+    const wl = readLatestWorklog();
+    if (wl?.content) {
+      const firstLine = wl.content.split('\n')[0] || '';
+      const raw = firstLine.replace(/^#\s*Work Log:\s*"?/, '').replace(/"?\s*$/, '').trim();
+      if (raw) {
+        const words = raw.split(/\s+/);
+        title = words.slice(0, 2).join(' ') + (words.length > 2 ? '…' : '');
+      }
+    }
+  } catch { /* fallback to PABCD */ }
+
+  broadcast('orc_state', { state: s, title });
 }
 
 export function resetState(): void {
   resetOrcState();
-  broadcast('orc_state', { state: 'IDLE' });
+  broadcast('orc_state', { state: 'IDLE', title: '' });
 }
 
 // ─── Prefix Map ─────────────────────────────────────

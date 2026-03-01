@@ -28,6 +28,8 @@ interface WsMessage {
     content?: string;
     cli?: string;
     delay?: number;
+    state?: string;
+    title?: string;
 }
 
 // Agent phase state (populated by agent_status events from orchestrator)
@@ -83,9 +85,7 @@ export function connect(): void {
             import('./features/employees.js').then(m => m.loadEmployees());
         } else if (msg.type === 'orc_state') {
             const allowed = new Set<OrcStateName>(['IDLE', 'P', 'A', 'B', 'C', 'D']);
-            const rawState = typeof (msg as unknown as Record<string, unknown>).state === 'string'
-                ? (msg as unknown as Record<string, string>).state
-                : 'IDLE';
+            const rawState = typeof msg.state === 'string' ? msg.state : 'IDLE';
             const nextState = allowed.has(rawState as OrcStateName) ? (rawState as OrcStateName) : 'IDLE';
             state.orcState = nextState;
 
@@ -114,6 +114,70 @@ export function connect(): void {
                 };
                 badge.textContent = labels[nextState];
                 badge.style.display = nextState === 'IDLE' ? 'none' : 'inline-block';
+            }
+
+            // ─── Roadmap Bar ───
+            const PHASES = ['P', 'A', 'B', 'C'] as const;
+            const roadmap = document.getElementById('pabcRoadmap');
+            const shark = document.getElementById('sharkRunner');
+            const brand = document.getElementById('pabcBrand');
+
+            if (roadmap && shark) {
+                if (nextState === 'IDLE') {
+                    roadmap.classList.remove('visible', 'shimmer-out');
+                    shark.classList.remove('running');
+                } else if (nextState === 'D') {
+                    // All dots done + shimmer out
+                    PHASES.forEach(p => {
+                        const dot = document.getElementById(`dot-${p}`);
+                        if (dot) { dot.className = 'pabc-dot done'; dot.setAttribute('data-phase', p); }
+                    });
+                    for (let i = 0; i < 4; i++) {
+                        const c = document.getElementById(`pabc-conn-${i}`);
+                        if (c) c.className = 'pabc-connector done';
+                    }
+                    shark.classList.remove('running');
+                    roadmap.classList.add('shimmer-out');
+                    setTimeout(() => roadmap.classList.remove('visible', 'shimmer-out'), 1000);
+                } else {
+                    roadmap.classList.remove('shimmer-out');
+                    roadmap.classList.add('visible');
+                    shark.classList.add('running');
+
+                    // Update dots & connectors
+                    const idx = PHASES.indexOf(nextState as typeof PHASES[number]);
+                    PHASES.forEach((p, pi) => {
+                        const dot = document.getElementById(`dot-${p}`);
+                        if (dot) {
+                            dot.className = `pabc-dot ${pi < idx ? 'done' : pi === idx ? 'active' : 'future'}`;
+                            dot.setAttribute('data-phase', p);
+                        }
+                    });
+                    for (let i = 0; i < 4; i++) {
+                        const c = document.getElementById(`pabc-conn-${i}`);
+                        if (c) c.className = `pabc-connector ${i < idx ? 'done' : ''}`;
+                    }
+
+                    // Move shark along connector
+                    requestAnimationFrame(() => {
+                        const barRect = roadmap.getBoundingClientRect();
+                        const activeDot = document.getElementById(`dot-${nextState}`);
+                        if (!activeDot) return;
+                        const conn = document.getElementById(`pabc-conn-${idx}`);
+                        if (conn && nextState !== 'C') {
+                            const connRect = conn.getBoundingClientRect();
+                            shark.style.left = ((connRect.left - barRect.left) + (connRect.width * 0.4) - 18) + 'px';
+                        } else {
+                            const dotRect = activeDot.getBoundingClientRect();
+                            shark.style.left = ((dotRect.left - barRect.left) + (dotRect.width / 2) - 18) + 'px';
+                        }
+                    });
+                }
+
+                // Update brand text with worklog title
+                if (brand && msg.title) {
+                    brand.textContent = msg.title;
+                }
             }
         } else if (msg.type === 'new_message' && msg.source === 'telegram') {
             addMessage(msg.role === 'assistant' ? 'agent' : (msg.role || 'user'), msg.content || '');

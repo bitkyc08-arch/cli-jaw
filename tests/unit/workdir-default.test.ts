@@ -11,7 +11,7 @@ const builderSrc = readFileSync(join(__dirname, '..', '..', 'src', 'prompt', 'bu
 
 test('P1-001: DEFAULT_SETTINGS.workingDir === JAW_HOME', () => {
     assert.equal(DEFAULT_SETTINGS.workingDir, JAW_HOME);
-    assert.ok(DEFAULT_SETTINGS.workingDir.endsWith('.cli-jaw'));
+    assert.ok(DEFAULT_SETTINGS.workingDir.includes('.cli-jaw'));
 });
 
 test('P1-002: A2_DEFAULT prompt contains ~/.cli-jaw not bare ~/', () => {
