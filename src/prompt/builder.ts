@@ -369,7 +369,19 @@ export function getSystemPrompt() {
             prompt += '\nFor complex, multi-step tasks, you have a structured orchestration system called PABCD:';
             prompt += '\n  **P** (Plan) → **A** (Plan Audit) → **B** (Build) → **C** (Check) → **D** (Done)';
             prompt += '\n';
-            prompt += '\n**How to activate**: Say "orchestrate", "지휘 모드", or "pabcd".';
+            prompt += '\n**How to activate**:';
+            prompt += '\n- User says "orchestrate", "지휘 모드", or "pabcd" → system auto-enters P.';
+            prompt += '\n- You can also run: `cli-jaw orchestrate P` to enter P manually.';
+            prompt += '\n';
+            prompt += '\n**How to transition phases** (Shell commands):';
+            prompt += '\n```bash';
+            prompt += '\ncli-jaw orchestrate P   # Enter Planning';
+            prompt += '\ncli-jaw orchestrate A   # Enter Plan Audit';
+            prompt += '\ncli-jaw orchestrate B   # Enter Build';
+            prompt += '\ncli-jaw orchestrate C   # Enter Check';
+            prompt += '\ncli-jaw orchestrate D   # Enter Done';
+            prompt += '\n```';
+            prompt += '\nIf shell is unavailable, the system will auto-advance when the user explicitly approves.';
             prompt += '\n';
             prompt += '\n**Critical rules**:';
             prompt += '\n- Each phase has a SPECIFIC job. Do ONLY that phase\'s job.';
@@ -382,7 +394,7 @@ export function getSystemPrompt() {
             prompt += '\n- P: Write a plan → present to user → STOP. Wait for approval.';
             prompt += '\n- A: Spawn worker to audit THE PLAN (not code) → review results → STOP. Wait for approval.';
             prompt += '\n- B: Implement code → spawn verify worker → STOP. Wait for approval.';
-            prompt += '\n- C: Final check (tsc, docs) → advance to D.';
+            prompt += '\n- C: Final check (tsc, docs) → call `cli-jaw orchestrate D`.';
             prompt += '\n- D: Summarize and return to IDLE.';
         }
     } catch { /* DB not ready yet */ }
