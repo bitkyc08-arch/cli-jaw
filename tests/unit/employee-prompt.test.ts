@@ -1,8 +1,15 @@
 // Phase 17.3: employee prompt 명칭 통일 + 내용 검증
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { getEmployeePrompt, getEmployeePromptV2, clearPromptCache } from '../../src/prompt/builder.ts';
 import { needsOrchestration, parseSubtasks } from '../../src/orchestrator/pipeline.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const reviewerPath = join(__dirname, '../../skills_ref/dev-code-reviewer/SKILL.md');
+const hasSkillsRef = fs.existsSync(reviewerPath);
 
 // ─── getEmployeePrompt: export + 기본 구조 ─────────
 
@@ -66,14 +73,14 @@ test('EMP-009: getEmployeePromptV2 includes phase gate', () => {
 
 // ─── Phase 2: dev-code-reviewer injection ─────────────
 
-test('EMP-020: Phase 2 injects dev-code-reviewer content', () => {
+test('EMP-020: Phase 2 injects dev-code-reviewer content', { skip: !hasSkillsRef && 'skills_ref submodule not checked out' }, () => {
     const emp = { name: 'Data', cli: 'claude', role: 'data' };
     const v2 = getEmployeePromptV2(emp, 'data', 2);
     assert.ok(v2.includes('Code Review Guide (Phase 2'), 'Phase 2 should inject code-reviewer guide');
-    assert.ok(v2.includes('AUDIT worker'), 'Phase 2 should have AUDIT worker context');
+    assert.ok(v2.includes('PLAN AUDIT worker'), 'Phase 2 should have PLAN AUDIT worker context');
 });
 
-test('EMP-021: Phase 4 injects dev-testing, NOT dev-code-reviewer', () => {
+test('EMP-021: Phase 4 injects dev-testing, NOT dev-code-reviewer', { skip: !hasSkillsRef && 'skills_ref submodule not checked out' }, () => {
     const emp = { name: 'Backend', cli: 'claude', role: 'backend' };
     const v2 = getEmployeePromptV2(emp, 'backend', 4);
     assert.ok(v2.includes('Testing Guide (Phase 4)'), 'Phase 4 should inject testing guide');
@@ -89,7 +96,7 @@ test('EMP-022: Phase 3 does NOT inject reviewer or testing guides', () => {
     assert.ok(v2.includes('IMPLEMENTATION worker'), 'Phase 3 should have IMPLEMENTATION worker context');
 });
 
-test('EMP-023: String phase "2" works same as number 2 (type coercion safety)', () => {
+test('EMP-023: String phase "2" works same as number 2 (type coercion safety)', { skip: !hasSkillsRef && 'skills_ref submodule not checked out' }, () => {
     const emp = { name: 'Data', cli: 'claude', role: 'data' };
     clearPromptCache();
     const v2str = getEmployeePromptV2(emp, 'data', '2' as any);
