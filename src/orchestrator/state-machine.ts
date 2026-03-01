@@ -117,7 +117,7 @@ A worker must verify that your plan from P phase is feasible and safe before any
 
 Output this worker JSON now:
 \`\`\`json
-{"subtasks":[{"agent":"Data","task":"Audit the PLAN (not code). Verify: 1) All imports in the plan resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues.","priority":1}]}
+{"subtasks":[{"agent":"Data","task":"⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder. Audit the PLAN (not code). Verify: 1) All imports in the plan resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files.","priority":1}]}
 \`\`\`
 
 The system spawns the worker automatically. Wait for results.
@@ -138,7 +138,7 @@ Rules:
 
 After implementation, output a worker JSON to verify your code:
 \`\`\`json
-{"subtasks":[{"agent":"Data","task":"Verify the implemented code: 1) Integrates cleanly with existing modules. 2) No runtime issues. 3) All exports used correctly. Report DONE or NEEDS_FIX.","priority":1}]}
+{"subtasks":[{"agent":"Data","task":"⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder. Verify the implemented code: 1) Integrates cleanly with existing modules. 2) No runtime issues. 3) All exports used correctly. Report DONE or NEEDS_FIX with details. ⛔ REPEAT: Do NOT touch any files.","priority":1}]}
 \`\`\`
 
 Wait for worker results. Fix any NEEDS_FIX items.

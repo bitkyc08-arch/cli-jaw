@@ -480,6 +480,8 @@ export function getEmployeePrompt(emp: any) {
     prompt += `\n## Rules\n`;
     prompt += `- Execute the given task directly and report the results\n`;
     prompt += `- Do NOT output JSON subtasks (you are an executor, not a planner)\n`;
+    prompt += `- ⛔ Do NOT create, modify, or delete files unless the task EXPLICITLY says to write code\n`;
+    prompt += `- If the task says "audit", "verify", "check", or "review" → READ ONLY. Report findings, do NOT fix them.\n`;
     prompt += `- Report results concisely in natural language\n`;
     prompt += `- Respond in the user's language\n`;
     prompt += `- Never run git commit/push/branch/reset/clean unless the user explicitly asks\n`;
