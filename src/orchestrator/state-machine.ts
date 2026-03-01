@@ -129,20 +129,24 @@ After receiving worker results:
 
   B: `[PABCD — B: BUILD]
 
-You are now in Build mode. The plan has been audited. Implement it now.
+You are now in Build mode. The plan has been audited and approved.
 
-Rules:
-- Follow dev skill conventions strictly.
-- No TODOs or placeholders — every file must be complete.
-- All imports must resolve.
+⚠️ YOU (the Boss) must implement the code DIRECTLY. Write every file yourself.
+⚠️ Do NOT delegate implementation to a worker. Workers are READ-ONLY verifiers.
+⚠️ Do NOT output a worker JSON that says "implement", "create", or "write code".
 
-After implementation, output a worker JSON to verify your code:
+Steps:
+1. Read the approved plan from Phase P.
+2. Implement ALL changes yourself — create/modify/delete files as specified in the plan.
+3. After YOU finish implementing, output a worker JSON to VERIFY (not implement) your work:
+
 \`\`\`json
-{"subtasks":[{"agent":"Data","task":"⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder. Verify the implemented code: 1) Integrates cleanly with existing modules. 2) No runtime issues. 3) All exports used correctly. Report DONE or NEEDS_FIX with details. ⛔ REPEAT: Do NOT touch any files.","priority":1}]}
+{"subtasks":[{"agent":"Data","task":"⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder. Verify: 1) Files in plan exist with expected content. 2) No syntax errors (run tsc --noEmit if TS). 3) Imports resolve. 4) No integration conflicts. Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only.","priority":1}]}
 \`\`\`
 
-Wait for worker results. Fix any NEEDS_FIX items.
-Once DONE, report results to the user.
+Wait for worker verification results.
+- NEEDS_FIX: YOU fix the issues yourself, then re-verify with another worker.
+- DONE: Report results to the user.
 
 ⛔ STOP after reporting. WAIT for user approval before advancing to C.`,
 
