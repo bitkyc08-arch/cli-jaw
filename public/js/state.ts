@@ -11,9 +11,12 @@ export interface CliStatusCache {
     [cli: string]: unknown;
 }
 
+export type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
+
 export interface AppState {
     ws: WebSocket | null;
     agentBusy: boolean;
+    orcState: OrcStateName;
     employees: unknown[];
     allSkills: unknown[];
     currentSkillFilter: string;
@@ -35,4 +38,5 @@ export const state: AppState = {
     heartbeatJobs: [],
     cliStatusCache: null,
     cliStatusTs: 0,
+    orcState: 'IDLE',
 };

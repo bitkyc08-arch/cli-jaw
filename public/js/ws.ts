@@ -2,6 +2,7 @@
 import { state } from './state.js';
 import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage } from './ui.js';
 import { t, getLang } from './features/i18n.js';
+import type { OrcStateName } from './state.js';
 
 interface WsMessage {
     type: string;
@@ -80,6 +81,40 @@ export function connect(): void {
             if (el) el.innerHTML = '';
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
+        } else if (msg.type === 'orc_state') {
+            const allowed = new Set<OrcStateName>(['IDLE', 'P', 'A', 'B', 'C', 'D']);
+            const rawState = typeof (msg as unknown as Record<string, unknown>).state === 'string'
+                ? (msg as unknown as Record<string, string>).state
+                : 'IDLE';
+            const nextState = allowed.has(rawState as OrcStateName) ? (rawState as OrcStateName) : 'IDLE';
+            state.orcState = nextState;
+
+            if (nextState === 'IDLE' || nextState === 'D') {
+                document.body.removeAttribute('data-orc-state');
+                document.body.style.removeProperty('--orc-glow');
+            } else {
+                document.body.setAttribute('data-orc-state', nextState);
+                const glowVar = `--orc-glow-${nextState}`;
+                const glow = getComputedStyle(document.documentElement).getPropertyValue(glowVar).trim();
+                document.body.style.setProperty('--orc-glow', glow);
+            }
+
+            document.body.classList.add('orc-pulse');
+            setTimeout(() => document.body.classList.remove('orc-pulse'), 700);
+
+            const badge = document.getElementById('orcStateBadge');
+            if (badge) {
+                const labels: Record<OrcStateName, string> = {
+                    IDLE: '',
+                    P: 'PLAN',
+                    A: 'AUDIT',
+                    B: 'BUILD',
+                    C: 'CHECK',
+                    D: 'DONE',
+                };
+                badge.textContent = labels[nextState];
+                badge.style.display = nextState === 'IDLE' ? 'none' : 'inline-block';
+            }
         } else if (msg.type === 'new_message' && msg.source === 'telegram') {
             addMessage(msg.role === 'assistant' ? 'agent' : (msg.role || 'user'), msg.content || '');
         }

@@ -29,6 +29,14 @@
     --sidebar-left-w: 220px;
     --sidebar-right-w: 260px;
     --sidebar-collapsed-w: 48px;
+
+    /* ─── PABCD State Glow ─── */
+    --orc-glow: transparent;
+    --orc-glow-P: #3b82f6;
+    --orc-glow-A: #f59e0b;
+    --orc-glow-B: #22c55e;
+    --orc-glow-C: #a855f7;
+    --orc-glow-D: transparent;
 }
 
 * {
@@ -81,6 +89,11 @@ body.right-collapsed {
     --delete-color: #dc2626;
     --code-label-color: #6e6e8a;
     --modal-bg: rgba(0, 0, 0, 0.3);
+    --orc-glow-P: #2563eb;
+    --orc-glow-A: #d97706;
+    --orc-glow-B: #16a34a;
+    --orc-glow-C: #9333ea;
+    --orc-glow-D: transparent;
 }
 
 label {
