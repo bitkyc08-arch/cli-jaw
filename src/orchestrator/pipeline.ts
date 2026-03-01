@@ -48,8 +48,8 @@ function shouldAutoActivatePABCD(prompt: string, meta: Record<string, any>) {
     const t = String(prompt || '').trim();
     if (!t) return false;
     if (meta._workerResult || meta._skipAutoP) return false;
-    if (PABCD_ACTIVATE_PATTERNS.some(re => re.test(t))) return true;
-    return needsOrchestration(t);
+    // Only activate via explicit trigger words — NOT auto for every complex message.
+    return PABCD_ACTIVATE_PATTERNS.some(re => re.test(t));
 }
 
 // ─── orchestrate (PABCD sole entry point) ───────────

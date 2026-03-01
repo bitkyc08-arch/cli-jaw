@@ -50,22 +50,28 @@ export function resetState(): void {
 const PREFIXES: Record<string, string> = {
   Pb2: `[PLANNING MODE — User Feedback]
 The user has reviewed your plan. Apply their feedback and present the revised plan.
-If user approves (OK, next, lgtm), call \`cli-jaw orchestrate A\`.
+If user explicitly approves (OK, next, lgtm, 진행해), advance to Plan Audit phase.
 Otherwise revise and present again.
+
+⛔ STOP after presenting the revision. WAIT for another user response.
 
 User says:`,
 
   Ab2: `[PLAN AUDIT — Worker Results]
-Below are audit results from the verification worker.
-If issues found: fix plan and re-audit. If PASS: report to user and wait for approval.
-Once approved, call \`cli-jaw orchestrate B\`.
+Below are the plan audit results. The worker checked YOUR PLAN for feasibility — not the code.
+If issues found: fix the plan and re-audit (output worker JSON again).
+If PASS: report results to the user.
+
+⛔ STOP after reporting. WAIT for user approval before advancing to Build.
 
 Worker results:`,
 
   Bb2: `[IMPLEMENTATION REVIEW — Worker Results]
 Below are verification results for your code.
-If NEEDS_FIX: fix and re-verify. If DONE: report to user.
-Once approved, call \`cli-jaw orchestrate C\`.
+If NEEDS_FIX: fix and re-verify (output worker JSON again).
+If DONE: report results to the user.
+
+⛔ STOP after reporting. WAIT for user approval before advancing to Check.
 
 Worker results:`,
 };
@@ -80,56 +86,83 @@ export function getPrefix(state: OrcStateName, source: 'user' | 'worker' = 'user
 // ─── State Prompts (stdout on transition) ───────────
 
 const STATE_PROMPTS: Record<string, string> = {
-  P: `[PABCD ACTIVATED — PLANNING MODE]
+  P: `[PABCD — P: PLANNING]
 
-Read the project's structural documentation and dev skill docs first.
-Write a plan in devlog/_plan/ with two parts:
+You are now in Planning mode. Your ONLY job right now is to write a plan.
 
-Part 1: Easy explanation of what will be built (non-developer friendly).
-Part 2: Diff-level precision — exact file paths (NEW/MODIFY/DELETE),
-before/after diffs for MODIFY, complete content for NEW.
+Steps:
+1. Read the project's structural documentation and dev skill docs.
+2. Write a plan with TWO parts:
+   - Part 1: Easy explanation of what will be built (non-developer friendly).
+   - Part 2: Diff-level precision — exact file paths (NEW/MODIFY/DELETE),
+     before/after diffs for MODIFY, complete content for NEW.
+3. Present the plan to the user.
+4. Ask: "Any business logic I shouldn't decide alone?" and "Does Part 1 match your intent?"
 
-After writing the plan, ask the user:
-1. "Any business logic I shouldn't decide on my own?"
-2. "Please confirm Part 1 matches your intent."
+⛔ STOP HERE. Do NOT proceed to the next phase.
+⛔ Do NOT call cli-jaw orchestrate A yet.
+⛔ WAIT for the user to review and approve your plan.
+⛔ Only after explicit user approval (OK, lgtm, 진행, etc.) should you advance.
 
-Refine until user approves.
-Preferred: call \`cli-jaw orchestrate A\`.
-Fallback: if shell command is unavailable, wait for explicit user approval and the system may auto-advance to A.`,
+You will receive user feedback with a [PLANNING MODE] prefix. Revise until approved.`,
 
-  A: `[PLAN AUDIT MODE]
+  A: `[PABCD — A: PLAN AUDIT]
 
-Your plan is approved. Now verify it before coding.
-Output a worker JSON to audit the diff-level plan:
+You are now in Plan Audit mode. This phase audits YOUR PLAN — not the code.
+A worker must verify that your plan from P phase is feasible and safe before any coding begins.
+
+⚠️ You MUST output a worker JSON to audit the plan. Do NOT skip this step.
+⚠️ Do NOT say "audit is unnecessary" — every plan must be verified before coding.
+⚠️ The worker checks: import paths exist, function signatures match real code, no integration risks.
+
+Output this worker JSON now:
 \`\`\`json
-{"subtasks":[{"agent":"Data","task":"Audit the plan at devlog/_plan/. Verify: 1) All imports resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues.","priority":1}]}
+{"subtasks":[{"agent":"Data","task":"Audit the PLAN (not code). Verify: 1) All imports in the plan resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues.","priority":1}]}
 \`\`\`
-The system spawns the worker and returns results automatically.`,
 
-  B: `[IMPLEMENTATION MODE]
+The system spawns the worker automatically. Wait for results.
+After receiving worker results:
+- If FAIL: fix the plan and re-audit (output worker JSON again).
+- If PASS: report results to the user.
 
-The plan has been audited and verified. Now implement it.
-Rules: follow dev skill conventions, no TODOs, all imports must resolve.
+⛔ STOP after reporting. WAIT for user approval before advancing to B.`,
 
-After implementation, output a worker JSON to verify:
+  B: `[PABCD — B: BUILD]
+
+You are now in Build mode. The plan has been audited. Implement it now.
+
+Rules:
+- Follow dev skill conventions strictly.
+- No TODOs or placeholders — every file must be complete.
+- All imports must resolve.
+
+After implementation, output a worker JSON to verify your code:
 \`\`\`json
 {"subtasks":[{"agent":"Data","task":"Verify the implemented code: 1) Integrates cleanly with existing modules. 2) No runtime issues. 3) All exports used correctly. Report DONE or NEEDS_FIX.","priority":1}]}
-\`\`\``,
+\`\`\`
 
-  C: `[FINAL CHECK]
+Wait for worker results. Fix any NEEDS_FIX items.
+Once DONE, report results to the user.
 
-Perform final audit:
-1. Update str_func reflecting all changes.
-2. Verify all files saved and consistent.
-3. Run \`npx tsc --noEmit\` for build verification.
-4. Report completion summary.
+⛔ STOP after reporting. WAIT for user approval before advancing to C.`,
 
-When done, call \`cli-jaw orchestrate D\`.
-If shell command is unavailable, clearly report completion and ask the user to finalize.`,
+  C: `[PABCD — C: CHECK]
 
-  D: `[PABCD COMPLETE]
+You are now in Check mode. Perform final verification:
+1. Verify all files saved and consistent.
+2. Run \`npx tsc --noEmit\` for build verification (if TypeScript project).
+3. Update project structure documentation if applicable.
+4. Report completion summary to the user.
+
+Once verified, call \`cli-jaw orchestrate D\` to finalize.
+If shell command unavailable, report completion and ask user to finalize.`,
+
+  D: `[PABCD — D: DONE]
 All phases finished. Returning to idle.
-Summarize: what was planned, audited, implemented, verified. List changed files.`,
+Summarize what was accomplished:
+- What was planned (P), audited (A), implemented (B), verified (C).
+- List of files changed.
+- Any follow-up items.`,
 };
 
 export function getStatePrompt(target: string): string {

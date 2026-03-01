@@ -365,15 +365,25 @@ export function getSystemPrompt() {
             prompt += '\n7. Simple questions, single-file edits, or tasks in your expertise → handle directly';
             prompt += '\n8. For Tier 1-2 tasks: mark independent subtasks with `"parallel": true` for concurrent execution';
             prompt += '\n9. Default is `"parallel": false`. Only use `true` when affected_files have zero overlap';
-            prompt += '\n\n### Completion Protocol';
-            prompt += '\nAfter dispatching, the system uses the PABCD state machine:';
-            prompt += '\n  P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done)';
-            prompt += '\nPreferred: call `cli-jaw orchestrate [P|A|B|C|D]` to move phases explicitly.';
-            prompt += '\nFallback: if shell command is unavailable, request explicit user approval and the system auto-advances P→A→B→C.';
-            prompt += '\nWorkers are spawned automatically when you output subtask JSON.';
-            prompt += '\nWorker results are fed back to you for review.';
-            prompt += '\nWhen you call `cli-jaw orchestrate D`, the session returns to IDLE.';
-            prompt += '\nYou then summarize the final result to the user in natural language.';
+            prompt += '\n\n### PABCD Orchestration (지휘 모드)';
+            prompt += '\nFor complex, multi-step tasks, you have a structured orchestration system called PABCD:';
+            prompt += '\n  **P** (Plan) → **A** (Plan Audit) → **B** (Build) → **C** (Check) → **D** (Done)';
+            prompt += '\n';
+            prompt += '\n**How to activate**: Say "orchestrate", "지휘 모드", or "pabcd".';
+            prompt += '\n';
+            prompt += '\n**Critical rules**:';
+            prompt += '\n- Each phase has a SPECIFIC job. Do ONLY that phase\'s job.';
+            prompt += '\n- ⛔ STOP at the end of each phase and WAIT for user approval.';
+            prompt += '\n- Do NOT skip phases. Do NOT self-advance multiple phases in one turn.';
+            prompt += '\n- Workers are spawned automatically when you output subtask JSON in A or B phases.';
+            prompt += '\n- Worker results are fed back to you. Review them and report to the user.';
+            prompt += '\n';
+            prompt += '\n**Phase summary**:';
+            prompt += '\n- P: Write a plan → present to user → STOP. Wait for approval.';
+            prompt += '\n- A: Spawn worker to audit THE PLAN (not code) → review results → STOP. Wait for approval.';
+            prompt += '\n- B: Implement code → spawn verify worker → STOP. Wait for approval.';
+            prompt += '\n- C: Final check (tsc, docs) → advance to D.';
+            prompt += '\n- D: Summarize and return to IDLE.';
         }
     } catch { /* DB not ready yet */ }
 
@@ -552,7 +562,7 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
 
     // ─── 4. Worker context (PABCD-aware)
     const WORKER_CONTEXT: Record<number, string> = {
-        2: 'You are an AUDIT worker. Verify the plan: dependency validation, API integrity, integration risks. Verdict: PASS or FAIL with itemized issues.',
+        2: 'You are a PLAN AUDIT worker. Verify THE PLAN (not code): dependency validation, API integrity, integration risks. Verdict: PASS or FAIL with itemized issues.',
         3: 'You are an IMPLEMENTATION worker. Execute the assigned code task. Follow dev conventions, no TODOs, all imports must resolve.',
         4: 'You are a CHECK worker. Test and verify the implementation. Report: execution evidence, bugs found, edge case results. Verdict: DONE or NEEDS_FIX.',
     };

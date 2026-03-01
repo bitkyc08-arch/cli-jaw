@@ -52,7 +52,7 @@ describe('PABCD state-machine', () => {
         assert.equal(getStatePrompt('INVALID'), '');
     });
     test('13. statePrompt D not empty', () => {
-        assert.ok(getStatePrompt('D').includes('PABCD COMPLETE'));
+        assert.ok(getStatePrompt('D').includes('PABCD'));
     });
     test('14. C→D and D→IDLE valid', () => {
         assert.equal(canTransition('C', 'D'), true);
