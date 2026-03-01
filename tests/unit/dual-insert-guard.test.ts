@@ -50,29 +50,29 @@ test('DI-003: gateway reset path passes _skipInsert: true to orchestrateReset', 
     );
 });
 
-// ─── DI-004: pipeline triage spawnAgent propagates _skipInsert ───
+// ─── DI-004: pipeline PABCD spawnAgent propagates _skipInsert ───
 
-test('DI-004: pipeline triage path propagates _skipInsert to spawnAgent', () => {
-    // Find the triage block (employees.length > 0 && !needsOrchestration)
-    const triageStart = pipelineSrc.indexOf('[jaw:triage] direct response');
-    assert.ok(triageStart > 0, 'triage block must exist');
-    const triageBlock = pipelineSrc.slice(triageStart, triageStart + 300);
+test('DI-004: pipeline PABCD path propagates _skipInsert to spawnAgent', () => {
+    // Locate the concrete spawnAgent invocation block (log positions can move)
+    const spawnStart = pipelineSrc.indexOf('const { promise } = spawnAgent(prompt');
+    assert.ok(spawnStart > 0, 'spawnAgent invocation must exist');
+    const pabcdBlock = pipelineSrc.slice(spawnStart, spawnStart + 300);
     assert.ok(
-        triageBlock.includes('_skipInsert: !!meta._skipInsert'),
-        'triage spawnAgent must propagate _skipInsert from meta',
+        pabcdBlock.includes('_skipInsert: !!meta._skipInsert'),
+        'pabcd spawnAgent must propagate _skipInsert from meta',
     );
 });
 
-// ─── DI-005: pipeline no-employees spawnAgent propagates _skipInsert ───
+// ─── DI-005: pipeline PABCD has _skipInsert in spawn call ───
 
-test('DI-005: pipeline no-employees path propagates _skipInsert to spawnAgent', () => {
-    // Find the "직원 없으면 단일 에이전트 모드" block
-    const noEmpStart = pipelineSrc.indexOf('직원 없으면 단일 에이전트 모드');
-    assert.ok(noEmpStart > 0, 'no-employees block must exist');
-    const noEmpBlock = pipelineSrc.slice(noEmpStart, noEmpStart + 300);
+test('DI-005: pipeline PABCD spawn includes _skipInsert', () => {
+    // Verify spawnAgent call includes _skipInsert
+    const spawnIdx = pipelineSrc.indexOf('spawnAgent(prompt');
+    assert.ok(spawnIdx > 0, 'spawnAgent call must exist');
+    const spawnBlock = pipelineSrc.slice(spawnIdx, spawnIdx + 200);
     assert.ok(
-        noEmpBlock.includes('_skipInsert: !!meta._skipInsert'),
-        'no-employees spawnAgent must propagate _skipInsert from meta',
+        spawnBlock.includes('_skipInsert'),
+        'spawnAgent must include _skipInsert option',
     );
 });
 

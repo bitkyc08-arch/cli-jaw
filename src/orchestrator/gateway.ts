@@ -9,6 +9,7 @@ import {
     orchestrate, orchestrateContinue, orchestrateReset,
     isContinueIntent, isResetIntent,
 } from './pipeline.js';
+import { getState } from './state-machine.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
@@ -19,6 +20,23 @@ export type SubmitResult = {
     continued?: true;
 };
 
+function runDetached(
+    task: Promise<unknown>,
+    label: string,
+    meta: { origin: 'web' | 'cli' | 'telegram'; chatId?: string | number },
+) {
+    task.catch((err: unknown) => {
+        const msg = (err as Error)?.message || String(err);
+        console.error(`[gateway:${label}]`, msg);
+        broadcast('orchestrate_done', {
+            text: `[orchestrate error] ${msg}`,
+            origin: meta.origin,
+            chatId: meta.chatId,
+            error: true,
+        });
+    });
+}
+
 export function submitMessage(
     text: string,
     meta: { origin: 'web' | 'cli' | 'telegram'; displayText?: string; skipOrchestrate?: boolean; chatId?: string | number },
@@ -28,12 +46,18 @@ export function submitMessage(
 
     const display = meta.displayText || trimmed;
 
-    // ── continue intent ──
-    if (isContinueIntent(trimmed)) {
+    // ── continue intent (only when IDLE) ──
+    if (getState() === 'IDLE' && isContinueIntent(trimmed)) {
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
         insertMessage.run('user', display, meta.origin, '');
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
-        if (!meta.skipOrchestrate) orchestrateContinue({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true });
+        if (!meta.skipOrchestrate) {
+            runDetached(
+                orchestrateContinue({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true }),
+                'continue',
+                meta,
+            );
+        }
         return { action: 'started', continued: true };
     }
 
@@ -42,7 +66,13 @@ export function submitMessage(
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
         insertMessage.run('user', display, meta.origin, '');
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
-        if (!meta.skipOrchestrate) orchestrateReset({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true });
+        if (!meta.skipOrchestrate) {
+            runDetached(
+                orchestrateReset({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true }),
+                'reset',
+                meta,
+            );
+        }
         return { action: 'started' };
     }
 
@@ -59,7 +89,11 @@ export function submitMessage(
     insertMessage.run('user', display, meta.origin, '');
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
-        orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId, _skipInsert: true });
+        runDetached(
+            orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId, _skipInsert: true }),
+            'orchestrate',
+            meta,
+        );
     }
     return { action: 'started' };
 }

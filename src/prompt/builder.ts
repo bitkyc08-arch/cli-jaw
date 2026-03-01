@@ -366,11 +366,13 @@ export function getSystemPrompt() {
             prompt += '\n8. For Tier 1-2 tasks: mark independent subtasks with `"parallel": true` for concurrent execution';
             prompt += '\n9. Default is `"parallel": false`. Only use `true` when affected_files have zero overlap';
             prompt += '\n\n### Completion Protocol';
-            prompt += '\nAfter dispatching, the system runs a 5-phase pipeline:';
-            prompt += '\n  Phase 1(기획) → 2(기획검증) → 3(개발) → 4(디버깅) → 5(통합검증)';
-            prompt += '\nEmployees can skip phases by emitting `{ "phases_completed": [3,4,5] }`.';
-            prompt += '\nA review agent checks each employee\'s output per-phase (Quality Gate).';
-            prompt += '\nWhen ALL employees pass ALL their phases, orchestration emits **allDone** and reports the summary to you.';
+            prompt += '\nAfter dispatching, the system uses the PABCD state machine:';
+            prompt += '\n  P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done)';
+            prompt += '\nPreferred: call `cli-jaw orchestrate [P|A|B|C|D]` to move phases explicitly.';
+            prompt += '\nFallback: if shell command is unavailable, request explicit user approval and the system auto-advances P→A→B→C.';
+            prompt += '\nWorkers are spawned automatically when you output subtask JSON.';
+            prompt += '\nWorker results are fed back to you for review.';
+            prompt += '\nWhen you call `cli-jaw orchestrate D`, the session returns to IDLE.';
             prompt += '\nYou then summarize the final result to the user in natural language.';
         }
     } catch { /* DB not ready yet */ }
@@ -491,34 +493,34 @@ export function getEmployeePrompt(emp: any) {
     prompt += `\n## Memory\n`;
     prompt += `Long-term memory: use \`cli-jaw memory search/read/save\` commands.\n`;
 
-    // ─── Orchestration Completion Protocol
+    // ─── Task Completion Protocol (PABCD)
     prompt += `\n## Task Completion Protocol\n`;
-    prompt += `You are an employee agent running inside a 5-phase pipeline.\n`;
-    prompt += `When you finish your assigned task(s), output this JSON at the end of your response:\n`;
-    prompt += `\`\`\`json\n{ "phases_completed": [3, 4, 5] }\n\`\`\`\n`;
-    prompt += `Replace the numbers with the phases you actually completed in this pass.\n`;
-    prompt += `- Single phase only → do NOT add this JSON (system auto-advances)\n`;
-    prompt += `- Multiple phases at once → MUST add this JSON so the system skips done phases\n`;
-    prompt += `- All your remaining phases done → include all of them, system marks you complete\n`;
+    prompt += `You are an employee agent. Complete your assigned task and report results.\n`;
+    prompt += `Do NOT output subtask JSON — you are an executor, not a planner.\n`;
+    prompt += `Report findings clearly in natural language. Include:\n`;
+    prompt += `- What was checked or implemented\n`;
+    prompt += `- PASS/FAIL verdict (for audits) or DONE/NEEDS_FIX (for reviews)\n`;
+    prompt += `- Specific file paths and line numbers for any issues found\n`;
 
     return prompt;
 }
 
 // ─── Employee Prompt v2 (orchestration phase-aware) ──
 
-export function getEmployeePromptV2(emp: any, role: any, currentPhase: any) {
-    const cacheKey = `${emp.id || emp.name}:${role}:${currentPhase}`;
+export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | string) {
+    const phase = Number(currentPhase);
+    const cacheKey = `${emp.id || emp.name}:${role}:${phase}`;
     if (promptCache.has(cacheKey)) return promptCache.get(cacheKey);
 
     let prompt = getEmployeePrompt(emp);
 
-    // ─── 1. 공통 Dev 스킬 (항상 주입)
+    // ─── 1. Common dev skill (always injected)
     const devCommonPath = join(SKILLS_DIR, 'dev', 'SKILL.md');
     if (fs.existsSync(devCommonPath)) {
         prompt += `\n\n## Development Guide (Common)\n${fs.readFileSync(devCommonPath, 'utf8')}`;
     }
 
-    // ─── 2. Role 기반 Dev 스킬 주입
+    // ─── 2. Role-based dev skill injection
     const ROLE_SKILL_MAP = {
         frontend: join(SKILLS_DIR, 'dev-frontend', 'SKILL.md'),
         backend: join(SKILLS_DIR, 'dev-backend', 'SKILL.md'),
@@ -532,33 +534,35 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: any) {
         prompt += `\n\n## Development Guide (${role})\n${fs.readFileSync(skillPath, 'utf8')}`;
     }
 
-    // ─── 3. 디버깅 phase(4) → dev-testing 추가 주입
-    if (currentPhase === 4) {
+    // ─── 3a. Plan audit phase(2) → inject dev-code-reviewer
+    if (phase === 2) {
+        const reviewerPath = join(SKILLS_DIR, 'dev-code-reviewer', 'SKILL.md');
+        if (fs.existsSync(reviewerPath)) {
+            prompt += `\n\n## Code Review Guide (Phase 2 — Strict Audit)\n${fs.readFileSync(reviewerPath, 'utf8')}`;
+        }
+    }
+
+    // ─── 3b. Debug/check phase(4) → inject dev-testing
+    if (phase === 4) {
         const testingPath = join(SKILLS_DIR, 'dev-testing', 'SKILL.md');
         if (fs.existsSync(testingPath)) {
             prompt += `\n\n## Testing Guide (Phase 4)\n${fs.readFileSync(testingPath, 'utf8')}`;
         }
     }
 
-    // ─── 4. Phase 컨텍스트 + Quality Gate
-    const PHASES: Record<string, string> = { 1: 'Planning', 2: 'Plan Review', 3: 'Development', 4: 'Debugging', 5: 'Integration' };
-    const PHASE_GATES: Record<string, string> = {
-        1: 'Gate: impact analysis + dependency check + edge case list complete',
-        2: 'Gate: code cross-check + conflict scan + test strategy established',
-        3: 'Gate: changed file list + export/import integrity + zero build errors',
-        4: 'Gate: execution evidence + bug fix log + edge case test results',
-        5: 'Gate: integration tests + docs updated + workflow verified',
+    // ─── 4. Worker context (PABCD-aware)
+    const WORKER_CONTEXT: Record<number, string> = {
+        2: 'You are an AUDIT worker. Verify the plan: dependency validation, API integrity, integration risks. Verdict: PASS or FAIL with itemized issues.',
+        3: 'You are an IMPLEMENTATION worker. Execute the assigned code task. Follow dev conventions, no TODOs, all imports must resolve.',
+        4: 'You are a CHECK worker. Test and verify the implementation. Report: execution evidence, bugs found, edge case results. Verdict: DONE or NEEDS_FIX.',
     };
-    prompt += `\n\n## Current Phase: ${currentPhase} (${PHASES[currentPhase]})`;
-    prompt += `\nYou are currently executing the "${PHASES[currentPhase]}" phase.`;
-    prompt += `\n${PHASE_GATES[currentPhase]}`;
-    prompt += `\n\n## Sequential Execution + Phase Skip`;
-    prompt += `\nAgents run one at a time in order. Previous agents' results are already reflected in the files.`;
-    prompt += `\n- Read the worklog first to understand what previous agents did`;
-    prompt += `\n- Do not touch files already modified by others`;
+    const ctx = WORKER_CONTEXT[phase] || WORKER_CONTEXT[3];
+    prompt += `\n\n## Worker Role\n${ctx}`;
+    prompt += `\n\n## Execution Rules`;
+    prompt += `\n- Read the worklog first to understand context`;
+    prompt += `\n- Do not touch files outside your assigned scope`;
     prompt += `\n- Focus only on your assigned area`;
-    prompt += `\n- If current Phase > 1, previous Phases are already complete. Do not redo planning/review.`;
-    prompt += `\n\nNote: You must meet ALL gate conditions above to pass the Quality Gate. Incomplete work will be retried.`;
+    prompt += `\n- Report results clearly with specific file paths and line numbers`;
 
     promptCache.set(cacheKey, prompt);
     return prompt;

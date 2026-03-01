@@ -1,4 +1,4 @@
-// DIFF-D 검증: verdict parse 실패 → retry + 명시적 FAIL 경로
+// PABCD 검증: state machine + worker dispatch + orchestrate structure
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -10,48 +10,48 @@ const __dirname = dirname(__filename);
 
 const pipelineSrc = fs.readFileSync(join(__dirname, '../../src/orchestrator/pipeline.ts'), 'utf8');
 const spawnSrc = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+const stateMachineSrc = fs.readFileSync(join(__dirname, '../../src/orchestrator/state-machine.ts'), 'utf8');
 
-// ─── VR: Verdict Retry 구조 검증 ─────────────────────
+// ─── VR: PABCD State Machine 구조 검증 ───────────────
 
-test('VR-001: verdict destructuring uses let (not const) — triage path', () => {
-    // triage path (L271 부근)
-    const triageMatch = pipelineSrc.match(/let\s*\{\s*verdicts,\s*rawText\s*\}\s*=\s*await\s+phaseReview/g);
-    assert.ok(triageMatch, 'should use let for verdicts/rawText destructuring');
-    assert.ok(triageMatch.length >= 2, 'both triage and main paths should use let');
-});
-
-test('VR-002: retry calls phaseReview on verdict parse fail', () => {
-    const retryCount = (pipelineSrc.match(/retrying once/g) || []).length;
-    assert.equal(retryCount, 2, 'retry message should appear in both triage and main paths');
-});
-
-test('VR-003: retry success merges verdicts back', () => {
-    const mergeCount = (pipelineSrc.match(/verdicts\s*=\s*retryResult\.verdicts/g) || []).length;
-    assert.equal(mergeCount, 2, 'verdicts should be merged from retryResult in both paths');
-});
-
-test('VR-004: retry success merges rawText back', () => {
-    const mergeCount = (pipelineSrc.match(/rawText\s*=\s*retryResult\.rawText/g) || []).length;
-    assert.equal(mergeCount, 2, 'rawText should be merged from retryResult in both paths');
-});
-
-test('VR-005: retry failure marks all active as FAIL', () => {
-    const failCount = (pipelineSrc.match(/auto-fail \(verdict parse failed x2\)/g) || []).length;
-    assert.equal(failCount, 2, 'auto-fail feedback should appear in both paths');
-});
-
-test('VR-006: no auto-pass on verdict failure', () => {
-    assert.ok(
-        !pipelineSrc.includes('auto-pass'),
-        'auto-pass should not exist — quality gate must be preserved',
+test('VR-001: pipeline imports getState from state-machine', () => {
+    assert.match(
+        pipelineSrc,
+        /import\s*\{[\s\S]*\bgetState\b[\s\S]*\}\s*from '\.\/state-machine\.js';/,
+        'pipeline must import getState from state-machine',
     );
 });
 
-// ─── RV: Review Truncation 검증 ──────────────────────
+test('VR-002: pipeline uses PABCD state check before worker dispatch', () => {
+    assert.ok(pipelineSrc.includes("state !== 'IDLE'"), 'worker dispatch should be guarded by state check');
+});
 
-test('RV-001: phaseReview report truncation uses 1200 chars', () => {
-    assert.ok(pipelineSrc.includes('.slice(0, 1200)'), 'report truncation should be 1200 chars');
-    assert.ok(!pipelineSrc.includes('.slice(0, 400)'), 'old 400 char truncation should be removed');
+test('VR-003: pipeline feeds worker results back via recursive orchestrate', () => {
+    const workerBlock = pipelineSrc.slice(pipelineSrc.indexOf('worker JSON detected'));
+    assert.ok(workerBlock.includes('await orchestrate(wResult.text'), 'worker results should be fed back recursively');
+});
+
+test('VR-004: pipeline handles worker not found gracefully', () => {
+    assert.ok(pipelineSrc.includes('worker not found'), 'missing worker should log warning');
+    assert.ok(pipelineSrc.includes('Worker dispatch failed'), 'should broadcast failure when no workers run');
+});
+
+test('VR-005: state machine has PABCD transition guards', () => {
+    assert.ok(stateMachineSrc.includes('VALID_TRANSITIONS'), 'must define valid transition map');
+    assert.ok(stateMachineSrc.includes("IDLE: ['P']"), 'IDLE should only allow P transition');
+    assert.ok(stateMachineSrc.includes("C: ['D']"), 'C should transition to D');
+});
+
+test('VR-006: state machine exports canTransition', () => {
+    assert.ok(stateMachineSrc.includes('export function canTransition'), 'canTransition must be exported');
+});
+
+// ─── RV: PABCD Prefix Map 검증 ──────────────────────
+
+test('RV-001: state machine has PLANNING, AUDIT, and BUILD prefixes', () => {
+    assert.ok(stateMachineSrc.includes('PLANNING MODE'), 'P state should have PLANNING prefix');
+    assert.ok(stateMachineSrc.includes('PLAN AUDIT'), 'A state should have AUDIT prefix');
+    assert.ok(stateMachineSrc.includes('IMPLEMENTATION REVIEW'), 'B state should have BUILD prefix');
 });
 
 // ─── QP: Queue Policy 검증 ───────────────────────────
@@ -74,19 +74,40 @@ test('QP-002: batch tail goes after remaining (fair ordering)', () => {
     );
 });
 
-// ─── RC: orchestrateContinue 제약 검증 ───────────────
+// ─── RC: orchestrateContinue PABCD-aware ─────────────
 
-test('RC-001: orchestrateContinue prompt has constraint section', () => {
+test('RC-001: orchestrateContinue checks PABCD state before worklog', () => {
     const continueBlock = pipelineSrc.slice(
-        pipelineSrc.indexOf('async function orchestrateContinue') || pipelineSrc.indexOf('export async function orchestrateContinue'),
-        pipelineSrc.indexOf('return orchestrate(resumePrompt'),
+        pipelineSrc.indexOf('export async function orchestrateContinue'),
     );
     assert.ok(
-        continueBlock.includes('제약 조건'),
-        'resume prompt should include constraint section',
+        continueBlock.includes("state !== 'IDLE'"),
+        'continue should check active PABCD state',
     );
     assert.ok(
-        continueBlock.includes('agent 이름, role, 현재 phase를 그대로 유지'),
-        'constraints should mention preserving agent/role/phase',
+        continueBlock.includes('_skipClear: true'),
+        'continue should preserve sessions (_skipClear)',
+    );
+});
+
+test('RC-002: pipeline auto-enters P from IDLE for orchestration tasks', () => {
+    assert.ok(
+        pipelineSrc.includes('shouldAutoActivatePABCD'),
+        'pipeline should have auto-activation helper',
+    );
+    assert.ok(
+        pipelineSrc.includes("setState('P'"),
+        'pipeline should auto-transition IDLE -> P',
+    );
+});
+
+test('RC-003: pipeline supports approval-driven auto phase advance', () => {
+    assert.ok(
+        pipelineSrc.includes('AUTO_APPROVE_NEXT'),
+        'pipeline should define approval transition map',
+    );
+    assert.ok(
+        pipelineSrc.includes('isApproveIntent'),
+        'pipeline should evaluate approve intent',
     );
 });

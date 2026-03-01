@@ -4,8 +4,10 @@
 // "이어서 해줘" 계열은 명시적인 짧은 명령만 continue intent로 취급
 const CONTINUE_PATTERNS = [
     /^\/?continue$/i,
+    /^again$/i,
     /^이어서(?:\s*해줘)?$/i,
     /^계속(?:\s*해줘)?$/i,
+    /^다시(?:\s*해줘)?$/i,
     /^다음(?:\s*해봐)?$/i,
     /^리뷰(?:\s*해봐)?$/i,
 ];
@@ -30,6 +32,19 @@ export function isResetIntent(text: string) {
     const t = String(text || '').trim();
     if (!t) return false;
     return RESET_PATTERNS.some(re => re.test(t));
+}
+
+// ─── Approve Intent (PABCD phase advance) ────────────
+
+const APPROVE_PATTERNS = [
+    /^(?:ok|okay|lgtm|approved?|확인|좋아|진행|넘어가|다음\s*단계)$/i,
+    /^(?:go|next|proceed|ㅇㅋ|ㄱㄱ)$/i,
+];
+
+export function isApproveIntent(text: string) {
+    const t = String(text || '').trim();
+    if (!t) return false;
+    return APPROVE_PATTERNS.some(re => re.test(t));
 }
 
 // ─── Message Triage: 복잡한 작업만 orchestrate ───────

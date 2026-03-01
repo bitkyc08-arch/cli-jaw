@@ -56,6 +56,7 @@ import {
 } from './src/agent/spawn.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/cli/commands.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from './src/orchestrator/pipeline.js';
+import { getState, getCtx } from './src/orchestrator/state-machine.js';
 import { submitMessage } from './src/orchestrator/gateway.js';
 import { makeCommandCtx } from './src/cli/command-context.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram/bot.js';
@@ -385,6 +386,10 @@ app.post('/api/orchestrate/reset', (req, res) => {
     }
     orchestrateReset({ origin: 'web' });
     res.json({ ok: true });
+});
+
+app.get('/api/orchestrate/state', (_req, res) => {
+    res.json({ state: getState(), ctx: getCtx() });
 });
 
 app.post('/api/stop', (req, res) => {

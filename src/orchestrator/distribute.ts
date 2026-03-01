@@ -9,86 +9,91 @@ import { appendToWorklog } from '../memory/worklog.js';
 
 // ─── Phase Constants (shared with pipeline.ts) ───────
 
-export const PHASES: Record<number, string> = { 1: '기획', 2: '기획검증', 3: '개발', 4: '디버깅', 5: '통합검증' };
+export const PHASES: Record<number, string> = { 1: 'Planning', 2: 'Plan Audit', 3: 'Development', 4: 'Debug/Check', 5: 'Integration' };
 
 export const PHASE_INSTRUCTIONS: Record<number, string> = {
-    1: `[기획] 이 계획의 실현 가능성을 검증하세요. 코드 작성 금지.
-     - 필수: 영향 범위 분석 (어떤 파일들이 변경되는가)
-     - 필수: 의존성 확인 (import/export 충돌 없는가)
-     - 필수: 엣지 케이스 목록 (null/empty/error 처리)
-     - worklog에 분석 결과를 기록하세요.`,
-    2: `[기획검증] 설계 문서를 검증하고 누락된 부분을 보완하세요.
-     - 필수: 파일 변경 목록과 실제 코드 대조 (함수명, 라인 번호)
-     - 필수: 충돌 검사 (다른 agent 작업과 같은 파일 수정하는가)
-     - 필수: 테스트 전략 수립 (verifyable 기준 정의)
-     - worklog에 검증 결과를 기록하세요.`,
-    3: `[개발] 문서를 참조하여 코드를 작성하세요.
-     - 필수: 변경된 파일 목록과 단위 당 핵심 변경 설명
-     - 필수: 기존 export/import 깨뜨리지 않았는지 확인
-     - 필수: 코드가 lint/build 에러 없이 동작하는지 검증
-     - worklog Execution Log에 변경 로그를 기록하세요.`,
-    4: `[디버깅] 코드를 실행/테스트하고 버그를 수정하세요.
-     - 필수: 실행 결과 스크린샷/로그 첨부
-     - 필수: 발견된 버그 목록과 수정 내역
-     - 필수: 엣지 케이스 테스트 결과 (null/empty/error)
-     - worklog에 디버그 로그를 기록하세요.`,
-    5: `[통합검증] 다른 영역과의 통합을 검증하세요.
-     - 필수: 다른 agent 산출물과의 통합 테스트
-     - 필수: 최종 문서 업데이트 (README, 변경로그)
-     - 필수: 전체 워크플로우 동작 확인
-     - worklog에 최종 검증 결과를 기록하세요.`,
+    1: `[Planning] Validate the feasibility of this plan. Do NOT write code.
+     - Required: Impact scope analysis (which files will change)
+     - Required: Dependency check (no import/export conflicts)
+     - Required: Edge case list (null/empty/error handling)
+     - Record analysis results in the worklog.`,
+    2: `[Plan Audit — Strict] Referencing dev-code-reviewer and dev skill, conduct a strict audit of the current diff-level plan. Determine if the code is truly 'copy-paste ready' and free from dependency integrity issues.
+     Using context7 and web search, thoroughly verify the following and report ALL potential risks:
+     - Required (Dependency Validation): Ensure all imported libraries and versions in the plan match the latest stable releases (or the project's package.json/requirements.txt) to prevent version conflicts. Check every import statement against the actual file system.
+     - Required (API Integrity): Use Context7 to confirm that all function calls and methods exist in the current documentation and are not deprecated or hallucinated. Verify function signatures, parameter types, and return types match actual usage.
+     - Required (Integration Risks): Identify if copy-pasting will break existing logic, specifically looking for: missing imports or unresolved module paths, uninitialized variables or undefined references, context mismatches (wrong function arity, incompatible types), circular dependencies introduced by new files, existing callers that would break from API changes.
+     - Required: Conflict scan (does any other agent modify the same files)
+     - Required: Test strategy (define verifiable criteria)
+     - Report all findings as structured markdown with specific file paths and line numbers.
+     - Provide a final verdict: PASS (safe to implement) or FAIL (requires plan revision) with itemized issues.
+     - Record audit results in the worklog.`,
+    3: `[Development] Refer to documentation and write the code.
+     - Required: List changed files with key changes per unit
+     - Required: Verify existing export/import not broken
+     - Required: Verify code runs without lint/build errors
+     - Record change log in worklog Execution Log.`,
+    4: `[Debug/Check] Run/test the code and fix any bugs.
+     - Required: Attach execution results (screenshots/logs)
+     - Required: List discovered bugs and fixes
+     - Required: Edge case test results (null/empty/error)
+     - Record debug log in the worklog.`,
+    5: `[Integration] Verify integration with other areas.
+     - Required: Integration tests with other agent outputs
+     - Required: Final docs update (README, changelog)
+     - Required: Full workflow verification
+     - Record final verification results in the worklog.`,
 };
 
 // ─── Prompt Context Helpers ──────────────────────────
 
 export function buildParallelContext(ap: Record<string, any>, peers: Record<string, any>[]): string {
-    const myFiles = (ap.verification?.affected_files || []).map((f: string) => `- ${f}`).join('\n') || '(지정된 파일 없음)';
+    const myFiles = (ap.verification?.affected_files || []).map((f: string) => `- ${f}`).join('\n') || '(no files specified)';
     const peerList = peers
         .filter(p => p.agent !== ap.agent)
         .map(p => `- ${p.agent} (${p.role}): ${(p.verification?.affected_files || []).join(', ') || 'unspecified'}`)
-        .join('\n') || '(없음)';
+        .join('\n') || '(none)';
 
-    return `## 병렬 실행 모드 ⚡
-- 다른 에이전트가 **동시에** 작업 중입니다.
-- 당신의 담당 영역(${ap.role})과 아래 지정 파일에만 집중하세요.
-- **절대** 다른 에이전트의 파일을 수정하지 마세요.
-- 공유 설정 파일(package.json, tsconfig.json 등)을 수정하지 마세요.
+    return `## Parallel Execution Mode ⚡
+- Other agents are working **simultaneously**.
+- Focus only on your area (${ap.role}) and the files listed below.
+- **Never** modify files owned by other agents.
+- Do not modify shared config files (package.json, tsconfig.json, etc.).
 
-### 당신의 담당 파일
+### Your Assigned Files
 ${myFiles}
 
-### 동시 작업 중인 에이전트
+### Concurrently Working Agents
 ${peerList}`;
 }
 
 export function buildSequentialContext(ap: Record<string, any>, priorResults: Record<string, any>[]): string {
     const priorSummary = priorResults.length > 0
         ? priorResults.map(r => `- ${r.agent} (${r.role}): ${r.status} — ${r.text.slice(0, 150)}`).join('\n')
-        : '(첫 번째 에이전트입니다)';
+        : '(You are the first agent)';
 
-    return `## 순차 실행 규칙
-- **이전 에이전트가 이미 수정한 파일은 건드리지 마세요**
-- 당신의 담당 영역(${ap.role})에만 집중하세요
+    return `## Sequential Execution Rules
+- **Do not touch files already modified by previous agents**
+- Focus only on your area (${ap.role})
 
-### 이전 에이전트 결과
+### Previous Agent Results
 ${priorSummary}`;
 }
 
 // ─── Employee Lookup ─────────────────────────────────
 
 export function findEmployee(emps: Record<string, any>[], ap: Record<string, any>) {
-    // 가드: agent 이름 없으면 즉시 null (빈값/비정상값 방어)
+    // Guard: immediately return null if agent name is missing/invalid
     if (!ap.agent || typeof ap.agent !== 'string') {
         console.warn(`[jaw:match] ⚠️ invalid agent name: ${JSON.stringify(ap.agent)}`);
         return null;
     }
-    // 1차: 정확 매칭 (가장 안전)
+    // 1st: exact match (safest)
     const exact = emps.find(e => e.name === ap.agent);
     if (exact) return exact;
-    // 2차: case-insensitive 정확 매칭
+    // 2nd: case-insensitive exact match
     const ci = emps.find(e => e.name?.toLowerCase() === ap.agent.toLowerCase());
     if (ci) return ci;
-    // 3차: fallback substring (경고 로그)
+    // 3rd: fallback substring match (with warning)
     const fuzzy = emps.find(e => typeof e.name === 'string' && (e.name.includes(ap.agent) || ap.agent.includes(e.name)));
     if (fuzzy) console.warn(`[jaw:match] ⚠️ Fuzzy match: "${ap.agent}" → "${fuzzy.name}"`);
     return fuzzy ?? null;
@@ -285,34 +290,34 @@ export async function runSingleAgent(
         .map((p: number) => `${p}(${PHASES[p]})`)
         .join('→');
 
-    const taskPrompt = `## 작업 지시 [${phaseLabel}]
+    const taskPrompt = `## Task Instruction [${phaseLabel}]
 ${ap.task}
 
-## 현재 Phase: ${ap.currentPhase} (${phaseLabel})
+## Current Phase: ${ap.currentPhase} (${phaseLabel})
 ${instruction}
 
-## 남은 Phase: ${remainingPhases}
+## Remaining Phases: ${remainingPhases}
 
-## Phase 합치기 (적극 권장 ⚡)
-**가능한 한 여러 Phase를 한 번에 완료하세요.** 1 Phase만 하는 것은 작업이 불확실할 때만 허용됩니다.
-- 간단한 수정/버그픽스 → Phase 3~5 전부 한 번에
-- 명확한 기능 추가 → Phase 1~3 한 번에
-- 코드 수정 + 테스트 → Phase 3~4 한 번에
+## Phase Merging (Highly Recommended ⚡)
+**Complete as many phases as possible in a single pass.** Doing only 1 phase is allowed only when the task is uncertain.
+- Simple fix/bugfix → Phases 3~5 all at once
+- Clear feature addition → Phases 1~3 at once
+- Code change + tests → Phases 3~4 at once
 
-예: 기획과 개발을 동시에 → 기획 분석 + 코드 작성까지 한 번에 완료.
-이 경우 응답 마지막에 아래 JSON을 추가하세요:
+Example: planning + development together → complete analysis + code in one pass.
+In that case, add this JSON at the end of your response:
 
 \`\`\`json
 { "phases_completed": [${ap.phaseProfile.slice(ap.currentPhaseIdx).join(', ')}] }
 \`\`\`
 
-한 Phase만 완료한 경우에는 이 JSON을 넣지 않아도 됩니다.
+If you completed only one phase, you do not need to add this JSON.
 
 ${executionContext}
 
 ## Worklog
-이 파일을 먼저 읽으세요: ${worklog.path}
-작업 완료 후 반드시 Execution Log 섹션에 결과를 기록하세요.`;
+Read this file first: ${worklog.path}
+After completing your task, record results in the Execution Log section.`;
 
     broadcast('agent_status', {
         agentId: emp.id, agentName: emp.name,
@@ -340,7 +345,7 @@ ${executionContext}
         text: r.text || '',
     };
 
-    // phases_completed 파싱
+    // Parse phases_completed from agent output
     const pcMatch = (r.text || '').match(/\{[\s\S]*"phases_completed"\s*:\s*\[[\d,\s]+\][\s\S]*\}/);
     if (pcMatch) {
         try {

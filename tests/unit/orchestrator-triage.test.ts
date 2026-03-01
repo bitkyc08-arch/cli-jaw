@@ -22,6 +22,12 @@ test('ORT-003: "계속 해줘" matches', () => {
     assert.equal(isContinueIntent('계속'), true);
 });
 
+test('ORT-003b: "again/다시" matches', () => {
+    assert.equal(isContinueIntent('again'), true);
+    assert.equal(isContinueIntent('다시'), true);
+    assert.equal(isContinueIntent('다시 해줘'), true);
+});
+
 test('ORT-004: non-continue intent returns false', () => {
     assert.equal(isContinueIntent('계획 짜줘'), false);
     assert.equal(isContinueIntent('server.js 수정해줘'), false);

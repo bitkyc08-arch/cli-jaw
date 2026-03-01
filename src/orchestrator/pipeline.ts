@@ -1,540 +1,249 @@
-// ─── Orchestration v2 (Plan → Phase-aware Distribute → Quality Gate Review) ──
+// ─── PABCD Orchestration ────────────────────────────
+// Old round-loop pipeline fully removed.
+// PABCD state machine is the sole orchestration system.
 
 import { broadcast } from '../core/bus.js';
 import {
     insertMessage, getEmployees,
     clearAllEmployeeSessions,
+    upsertEmployeeSession,
 } from '../core/db.js';
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent } from '../agent/spawn.js';
-import { createWorklog, readLatestWorklog, appendToWorklog, updateMatrix, updateWorklogStatus, parseWorklogPending } from '../memory/worklog.js';
 import {
-    PHASES, PHASE_INSTRUCTIONS,
-    findEmployee, validateParallelSafety, runSingleAgent,
-    buildPlanPrompt,
-} from './distribute.js';
-
-const MAX_ROUNDS = 3;
-
-// ─── Parsing/Triage (extracted to orchestrator-parser.js) ──
+    readLatestWorklog,
+    appendToWorklog, updateWorklogStatus,
+} from '../memory/worklog.js';
+import { findEmployee, runSingleAgent } from './distribute.js';
 import {
-    isContinueIntent, isResetIntent, needsOrchestration,
-    parseSubtasks, parseDirectAnswer, stripSubtaskJSON, parseVerdicts,
+    getState, getPrefix, resetState, setState, getStatePrompt,
+    type OrcStateName,
+} from './state-machine.js';
+
+// ─── Parser re-exports ─────────────────────────────
+import {
+    isContinueIntent, isResetIntent, isApproveIntent, needsOrchestration,
+    parseSubtasks, parseDirectAnswer, stripSubtaskJSON,
 } from './parser.js';
-export { isContinueIntent, isResetIntent, needsOrchestration, parseSubtasks, parseDirectAnswer, stripSubtaskJSON };
-
-// ─── Phase 정의 (constants in distribute.ts) ─────────
-
-const PHASE_PROFILES = {
-    frontend: [1, 2, 3, 4, 5],
-    backend: [1, 2, 3, 4, 5],
-    data: [1, 2, 3, 4, 5],
-    docs: [1, 3, 5],
-    custom: [3],
+export {
+    isContinueIntent, isResetIntent, isApproveIntent, needsOrchestration,
+    parseSubtasks, parseDirectAnswer, stripSubtaskJSON,
 };
 
-// PHASE_INSTRUCTIONS moved to distribute.ts
+const PABCD_ACTIVATE_PATTERNS = [
+    /^\/?orchestrate$/i,
+    /^\/?pabcd$/i,
+    /^지휘\s*모드$/i,
+    /^오케스트레이션(?:\s*모드)?$/i,
+    /^orchestration(?:\s*mode)?$/i,
+];
 
-// ─── Per-Agent Phase Tracking ────────────────────────
+const AUTO_APPROVE_NEXT: Partial<Record<OrcStateName, OrcStateName>> = {
+    P: 'A',
+    A: 'B',
+    B: 'C',
+};
 
-export function initAgentPhases(subtasks: any[]) {
-    return subtasks.map((st: Record<string, any>) => {
-        const role = (st.role || 'custom').toLowerCase();
-        const fullProfile = PHASE_PROFILES[role as keyof typeof PHASE_PROFILES] || [3];
+function shouldAutoActivatePABCD(prompt: string, meta: Record<string, any>) {
+    const t = String(prompt || '').trim();
+    if (!t) return false;
+    if (meta._workerResult || meta._skipAutoP) return false;
+    if (PABCD_ACTIVATE_PATTERNS.some(re => re.test(t))) return true;
+    return needsOrchestration(t);
+}
 
-        // start_phase / end_phase 지원: planning agent가 지정한 범위
-        // 잘못된 값은 profile 범위 내로 보정 (예: 99 -> 마지막 phase)
-        const rawStart = Number(st.start_phase);
-        const rawEnd = Number(st.end_phase);
-        const minPhase = fullProfile[0]!;
-        const maxPhase = fullProfile[fullProfile.length - 1]!;
-        const startPhase: number = Number.isFinite(rawStart)
-            ? Math.max(minPhase, Math.min(maxPhase, rawStart))
-            : minPhase;
-        const endPhase: number = Number.isFinite(rawEnd)
-            ? Math.max(startPhase, Math.min(maxPhase, rawEnd))
-            : maxPhase;
-        const profile = fullProfile.filter((p: number) => p >= startPhase && p <= endPhase);
-        // sparse fallback: 빈 profile이면 startPhase 이상 가장 가까운 phase 사용
-        const effectiveProfile = profile.length > 0
-            ? profile
-            : [fullProfile.find((p: number) => p >= startPhase) || fullProfile[fullProfile.length - 1]!];
-        if (profile.length === 0) {
-            console.warn(`[jaw:phase] ${st.agent}: no phases in [${startPhase},${endPhase}], fallback to [${effectiveProfile[0]}]`);
+// ─── orchestrate (PABCD sole entry point) ───────────
+
+export async function orchestrate(
+    prompt: string,
+    meta: Record<string, any> = {},
+) {
+    const origin = meta.origin || 'web';
+    const chatId = meta.chatId;
+    const userText = String(prompt || '').trim();
+    let state = getState();
+    let skipPrefix = !!meta._skipPrefix;
+
+    // Skip session clear during active PABCD (preserve resume)
+    if (!meta._skipClear && state === 'IDLE') {
+        clearAllEmployeeSessions.run();
+    }
+
+    // Auto-enter P mode from IDLE for orchestration-worthy tasks.
+    if (state === 'IDLE' && shouldAutoActivatePABCD(userText, meta)) {
+        setState('P', {
+            originalPrompt: userText || prompt,
+            plan: null,
+            workerResults: [],
+            origin,
+            chatId,
+        });
+        state = 'P';
+        prompt = `${getStatePrompt('P')}\n\nUser request:\n${userText || prompt}`;
+        skipPrefix = true;
+        console.log('[jaw:pabcd] auto-transition IDLE -> P');
+    }
+
+    // Auto-advance by explicit approval intent (no shell command dependency).
+    if (state !== 'IDLE' && !meta._workerResult && isApproveIntent(userText)) {
+        const next = AUTO_APPROVE_NEXT[state as OrcStateName];
+        if (next) {
+            const prev = state;
+            setState(next);
+            state = next;
+            prompt = `${getStatePrompt(next)}\n\nUser approval:\n${userText}`;
+            skipPrefix = true;
+            console.log(`[jaw:pabcd] auto-transition ${prev} -> ${next} (approve intent)`);
         }
+    }
 
-        if (startPhase > minPhase) {
-            console.log(`[jaw:phase-skip] ${st.agent} (${role}): skipping to phase ${startPhase}`);
+    clearPromptCache();
+
+    // prefix injection
+    const source = meta._workerResult ? 'worker' : 'user';
+    const prefix = getPrefix(state, source as 'user' | 'worker');
+    if (prefix && !skipPrefix) {
+        prompt = prefix + '\n' + prompt;
+    }
+
+    // spawn/resume agent
+    console.log(`[jaw:pabcd] state=${state}, spawning/resuming agent`);
+    const { promise } = spawnAgent(prompt, {
+        origin,
+        _skipInsert: !!meta._skipInsert,
+    });
+    const result = await promise as Record<string, any>;
+
+    // Worker JSON detected → spawn workers → feed results back
+    const workerTasks = parseSubtasks(result.text);
+    if (workerTasks?.length && state !== 'IDLE') {
+        // Only dispatch workers during active PABCD (P/A/B/C).
+        // In IDLE, subtask JSON is handled by the middleware, not here.
+        console.log(`[jaw:pabcd] worker JSON detected (${workerTasks.length} tasks)`);
+
+        // Map PABCD state → worker phase context
+        const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 3, C: 4 };
+        const workerPhase = PABCD_PHASE_MAP[state] || 3;
+
+        let anyWorkerRan = false;
+        for (const wt of workerTasks) {
+            const emp = findEmployee(
+                getEmployees.all() as Record<string, any>[],
+                wt,
+            );
+            if (!emp) {
+                console.warn(`[jaw:pabcd] worker not found: ${wt.agent}`);
+                continue;
+            }
+            // Force fresh session for PABCD workers (prevent context contamination)
+            upsertEmployeeSession.run(emp.id, null, emp.cli);
+
+            const wResult = await runSingleAgent(
+                {
+                    ...wt,
+                    phaseProfile: [workerPhase],
+                    currentPhaseIdx: 0,
+                    currentPhase: workerPhase,
+                    completed: false,
+                    history: [],
+                },
+                emp,
+                { path: '' },
+                1,
+                { origin },
+                [],  // priorResults (empty — worker runs independently)
+            );
+            anyWorkerRan = true;
+            // Feed worker results back to the main agent
+            await orchestrate(wResult.text, {
+                ...meta,
+                _skipClear: true,
+                _workerResult: true,
+            });
         }
+        // If no workers could be found, broadcast the original response
+        if (!anyWorkerRan) {
+            const stripped = stripSubtaskJSON(result.text);
+            broadcast('orchestrate_done', {
+                text: `[Worker dispatch failed — no matching employees]\n${stripped || result.text || ''}`,
+                origin,
+                chatId,
+            });
+        }
+        return;
+    }
 
-        return {
-            agent: st.agent,
-            task: st.task,
-            role,
-            parallel: st.parallel === true,
-            checkpoint: st.checkpoint === true,
-            checkpointed: false,
-            verification: st.verification || null,
-            phaseProfile: effectiveProfile,
-            currentPhaseIdx: 0,
-            currentPhase: effectiveProfile[0],
-            completed: false,
-            history: [] as Record<string, any>[],
-        };
+    // Normal response → broadcast
+    const stripped = stripSubtaskJSON(result.text);
+    broadcast('orchestrate_done', {
+        text: stripped || result.text || '',
+        origin,
+        chatId,
     });
 }
 
-function advancePhase(ap: Record<string, any>, passed: boolean) {
-    if (!passed) return;
-    if (ap.currentPhaseIdx < ap.phaseProfile.length - 1) {
-        ap.currentPhaseIdx++;
-        ap.currentPhase = ap.phaseProfile[ap.currentPhaseIdx];
-    } else {
-        ap.completed = true;
-    }
-}
+// ─── Continue ───────────────────────────────────────
 
-// ─── Plan Phase ──────────────────────────────────────
-
-async function phasePlan(prompt: string, worklog: Record<string, any>, meta: Record<string, any> = {}) {
-    broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'planning' });
-
-    const emps = getEmployees.all() as Record<string, any>[];
-    const planPrompt = buildPlanPrompt(prompt, worklog.path, emps);
-
-    const { promise } = spawnAgent(planPrompt, { agentId: 'planning', _skipInsert: true, origin: (meta as Record<string, any>).origin || 'web' });
-    const result = await promise as Record<string, any>;
-
-    // Agent 자율 판단: direct_answer가 있으면 subtask 생략
-    const directAnswer = parseDirectAnswer(result.text);
-    if (directAnswer) {
-        return { planText: directAnswer, subtasks: [], directAnswer };
-    }
-
-    const planText = stripSubtaskJSON(result.text);
-    appendToWorklog(worklog.path, 'Plan', planText || '(Plan Agent 응답 없음)');
-
-    const subtasks = parseSubtasks(result.text);
-
-    // §7.4: Fallback — if planning agent responded without JSON, treat as direct answer
-    if (!subtasks || subtasks.length === 0) {
-        console.warn('[orchestrator:plan] No JSON block found in planning response. Treating as direct answer.');
-        return { planText: result.text, subtasks: [], directAnswer: result.text };
-    }
-
-    return { planText, subtasks };
-}
-
-// ─── Distribute Phase (per-agent phase-aware) ────────
-// Helper functions (buildParallelContext, buildSequentialContext, findEmployee,
-// validateParallelSafety, runSingleAgent) extracted to distribute.ts
-
-async function distributeByPhase(agentPhases: Record<string, any>[], worklog: Record<string, any>, round: number, meta: Record<string, any> = {}) {
-    const emps = getEmployees.all() as Record<string, any>[];
-    const results: Record<string, any>[] = [];
-
-    const active = agentPhases.filter((ap: Record<string, any>) => !ap.completed);
-    if (active.length === 0) return results;
-
-    // §7.3: Validate parallel safety before execution
-    validateParallelSafety(active);
-
-    const parallelGroup = active.filter(ap => ap.parallel === true);
-    const sequentialGroup = active.filter(ap => ap.parallel !== true);
-
-    // Phase 1: Run parallel group concurrently
-    if (parallelGroup.length > 0) {
-        console.log(`[orchestrator:parallel] Running ${parallelGroup.length} agents concurrently: ${parallelGroup.map(a => a.agent).join(', ')}`);
-        const parallelPeers = parallelGroup.map(ap => ({
-            agent: ap.agent, role: ap.role, verification: ap.verification,
-        }));
-        const parallelPromises = parallelGroup.map(ap => {
-            const emp = findEmployee(emps, ap);
-            if (!emp) return Promise.resolve({ agent: ap.agent, role: ap.role, status: 'skipped', text: 'Agent not found' } as Record<string, any>);
-            return runSingleAgent(ap, emp, worklog, round, meta, [], parallelPeers);
-        });
-        const parallelResults = await Promise.all(parallelPromises);
-        results.push(...parallelResults);
-    }
-
-    // Phase 2: Run sequential group one-by-one (sees parallel results as prior)
-    for (const ap of sequentialGroup) {
-        const emp = findEmployee(emps, ap);
-        if (!emp) {
-            results.push({ agent: ap.agent, role: ap.role, status: 'skipped', text: 'Agent not found' });
-            continue;
-        }
-        const result = await runSingleAgent(ap, emp, worklog, round, meta, results);
-        results.push(result);
-    }
-
-    return results;
-}
-
-// ─── Review Phase (per-agent verdict) ────────────────
-
-async function phaseReview(results: Record<string, any>[], agentPhases: Record<string, any>[], worklog: Record<string, any>, round: number, meta: Record<string, any> = {}) {
-    const report = results.map((r: Record<string, any>) =>
-        `- **${r.agent}** (${r.role}, ${r.phaseLabel}): ${r.status === 'done' ? '✅' : '❌'}\n  ${r.text.slice(0, 1200)}`
-    ).join('\n');
-
-    const matrixStr = agentPhases.map((ap: Record<string, any>) => {
-        const base = `- ${ap.agent}: role=${ap.role}, phase=${ap.currentPhase}(${PHASES[ap.currentPhase as keyof typeof PHASES]}), completed=${ap.completed}`;
-        if (ap.verification) {
-            return `${base}\n  pass_criteria: ${ap.verification.pass_criteria || 'N/A'}\n  fail_criteria: ${ap.verification.fail_criteria || 'N/A'}`;
-        }
-        return base;
-    }).join('\n');
-
-    const reviewPrompt = `## 라운드 ${round} 결과 리뷰
-
-### 실행 결과
-${report}
-
-### 현재 Agent 상태
-${matrixStr}
-
-### Worklog
-${worklog.path} — 이 파일의 변경사항도 확인하세요.
-
-## 판정 (각 agent별로 개별 판정)
-
-### Quality Gate 루브릭
-각 agent의 현재 phase에 따라 아래 기준으로 판정:
-
-- **Phase 1 (기획)**: 영향 범위 분석 + 의존성 확인 + 엣지 케이스 목록 있는가?
-- **Phase 2 (기획검증)**: 실제 코드와 대조 확인 + 충돌 검사 + 테스트 전략 수립됐는가?
-- **Phase 3 (개발)**: 변경 파일 목록 + export/import 무결성 + 빌드 에러 없는가?
-- **Phase 4 (디버깅)**: 실행 결과 증거 + 버그 수정 내역 + 엣지 케이스 테스트 결과 있는가?
-- **Phase 5 (통합검증)**: 통합 테스트 + 문서 업데이트 + 워크플로우 동작 확인?
-
-### 판정 규칙
-- **PASS**: 해당 phase의 필수 항목 모두 충족. 구체적 근거 제시.
-- **FAIL**: 필수 항목 중 하나라도 미충족. **구체적 수정 지시** 제공 ("더 노력하세요" 금지, 구체적 행동 제시).
-
-### allDone 조기 완료 규칙
-- 모든 agent가 마지막 phase를 PASS하면 당연히 allDone: true.
-- **조기 완료 가능**: 커밋+테스트+푸시 완료 → 남은 phase가 있어도 allDone: true.
-- 판단 기준: 사용자의 원래 요청이 충족되었는가? 남은 phase가 실질적 가치를 추가하는가?
-
-JSON으로 출력:
-\`\`\`json
-{
-  "verdicts": [
-    { "agent": "이름", "pass": true, "feedback": "통과 근거: ..." },
-    { "agent": "이름", "pass": false, "feedback": "수정 필요: 1. ... 2. ..." }
-  ],
-  "allDone": false
-}
-\`\`\`
-
-모든 작업이 완료되면 allDone: true + 사용자에게 보여줄 자연어 요약을 함께 작성.`;
-
-    broadcast('agent_status', { agentId: 'planning', agentName: '🎯 기획', status: 'reviewing' });
-    const { promise } = spawnAgent(reviewPrompt, { agentId: 'planning', internal: true, origin: (meta as Record<string, any>).origin || 'web' });
-    const evalR = await promise as Record<string, any>;
-
-    const verdicts = parseVerdicts(evalR.text);
-    return { verdicts, rawText: evalR.text };
-}
-
-// ─── Main Orchestrate v2 ─────────────────────────────
-
-export async function orchestrate(prompt: string, meta: Record<string, any> = {}) {
-    if (!meta._skipClear) clearAllEmployeeSessions.run();
-    clearPromptCache();
-
+export async function orchestrateContinue(
+    meta: Record<string, any> = {},
+) {
     const origin = meta.origin || 'web';
     const chatId = meta.chatId;
-    const employees = getEmployees.all();
+    const state = getState();
 
-    // Triage: 간단한 메시지는 직접 응답
-    if (employees.length > 0 && !needsOrchestration(prompt)) {
-        console.log(`[jaw:triage] direct response (no orchestration needed)`);
-        const { promise } = spawnAgent(prompt, { origin, _skipInsert: !!meta._skipInsert });
-        const result = await promise as Record<string, any>;
-        const lateSubtasks = parseSubtasks(result.text);
-        if (lateSubtasks?.length) {
-            console.log(`[jaw:triage] agent chose to dispatch (${lateSubtasks.length} subtasks)`);
-            const worklog = createWorklog(prompt);
-            broadcast('worklog_created', { path: worklog.path });
-            if (!meta._skipClear) clearAllEmployeeSessions.run();
-            const planText = stripSubtaskJSON(result.text);
-            appendToWorklog(worklog.path, 'Plan', planText || '(Agent-initiated dispatch)');
-            const agentPhases = initAgentPhases(lateSubtasks);
-            updateMatrix(worklog.path, agentPhases);
-            // Round loop (same as L508-553)
-            for (let round = 1; round <= MAX_ROUNDS; round++) {
-                updateWorklogStatus(worklog.path, 'round_' + round, round);
-                broadcast('round_start', { round, agentPhases });
-                const results = await distributeByPhase(agentPhases, worklog, round, { origin });
-                let { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
-                if (verdicts?.verdicts) {
-                    for (const v of verdicts.verdicts) {
-                        const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
-                        if (ap) {
-                            const judgedPhase = ap.currentPhase;
-                            advancePhase(ap, v.pass);
-                            ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
-                        }
-                    }
-                } else {
-                    // Retry once — DIFF-C의 절삭 확대 덕분에 재시도 성공 확률 향상
-                    console.warn(`[jaw:review] verdict parse failed — retrying once (round ${round})`);
-                    const retryResult = await phaseReview(results, agentPhases, worklog, round, { origin });
-                    if (retryResult.verdicts?.verdicts) {
-                        verdicts = retryResult.verdicts;
-                        rawText = retryResult.rawText;
-                        for (const v of retryResult.verdicts.verdicts) {
-                            const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
-                            if (ap) {
-                                const judgedPhase = ap.currentPhase;
-                                advancePhase(ap, v.pass);
-                                ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
-                            }
-                        }
-                    } else {
-                        console.error(`[jaw:review] verdict parse failed after retry — all active marked FAIL (round ${round})`);
-                        for (const ap of agentPhases.filter((a: Record<string, any>) => !a.completed)) {
-                            ap.history.push({ round, phase: ap.currentPhase, pass: false, feedback: 'auto-fail (verdict parse failed x2)' });
-                        }
-                    }
-                }
-                updateMatrix(worklog.path, agentPhases);
-
-                // 완료 판정
-                const scopeDone = agentPhases.every((ap: Record<string, any>) => ap.completed)
-                    || verdicts?.allDone === true;
-                const hasCheckpoint = agentPhases.some((ap: Record<string, any>) => ap.checkpoint && !ap.checkpointed);
-
-                if (scopeDone && hasCheckpoint) {
-                    // CHECKPOINT: completed 되돌리기 + 세션 보존 (advancePhase가 completed=true 찍었으므로 reset)
-                    agentPhases.forEach((ap: Record<string, any>) => {
-                        if (ap.checkpoint) {
-                            ap.checkpointed = true;
-                            ap.completed = false;  // resume 가능하게 되돌리기
-                        }
-                    });
-                    updateMatrix(worklog.path, agentPhases);
-                    const summary = stripSubtaskJSON(rawText) || '요청된 scope 완료';
-                    appendToWorklog(worklog.path, 'Final Summary', summary);
-                    updateWorklogStatus(worklog.path, 'checkpoint', round);
-                    insertMessage.run('assistant', summary + '\n\n다음: "리뷰해봐", "이어서 해줘", "리셋해"', 'orchestrator', '');
-                    broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin, chatId, checkpoint: true });
-                    return;
-                }
-
-                if (scopeDone) {
-                    // DONE: 진짜 완료
-                    agentPhases.forEach((ap: Record<string, any>) => { ap.completed = true; });
-                    updateMatrix(worklog.path, agentPhases);
-                    const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
-                    appendToWorklog(worklog.path, 'Final Summary', summary);
-                    updateWorklogStatus(worklog.path, 'done', round);
-                    clearAllEmployeeSessions.run();
-                    insertMessage.run('assistant', summary, 'orchestrator', '');
-                    broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin, chatId });
-                    return;
-                }
-
-                broadcast('round_done', { round, action: 'next', agentPhases });
-                if (round === MAX_ROUNDS) {
-                    const done = agentPhases.filter((ap: Record<string, any>) => ap.completed);
-                    const pending = agentPhases.filter((ap: Record<string, any>) => !ap.completed);
-                    const partial = `## 완료 (${done.length})\n${done.map((a: Record<string, any>) => `- ✅ ${a.agent} (${a.role})`).join('\n')}\n\n` +
-                        `## 미완료 (${pending.length})\n${pending.map((a: Record<string, any>) => `- ⏳ ${a.agent} (${a.role}) — Phase ${a.currentPhase}: ${PHASES[a.currentPhase as keyof typeof PHASES]}`).join('\n')}\n\n` +
-                        `이어서 진행하려면 "이어서 해줘"라고 말씀하세요.\nWorklog: ${worklog.path}`;
-                    appendToWorklog(worklog.path, 'Final Summary', partial);
-                    updateWorklogStatus(worklog.path, 'partial', round);
-                    // partial: 세션 보존 (이어서 해줘 대비, 새 orchestrate() 시 L228에서 자동 정리)
-                    insertMessage.run('assistant', partial, 'orchestrator', '');
-                    broadcast('orchestrate_done', { text: partial, worklog: worklog.path, origin, chatId });
-                }
-            }
-            return;
-        }
-
-        const stripped = stripSubtaskJSON(result.text);
-        broadcast('orchestrate_done', { text: stripped || result.text || '', origin, chatId });
-        return;
+    // Active PABCD → resume from current state
+    if (state !== 'IDLE') {
+        console.log(`[jaw:pabcd] continue in state=${state}`);
+        return orchestrate('Please continue from where you left off.', {
+            ...meta,
+            _skipClear: true,
+        });
     }
 
-    // 직원 없으면 단일 에이전트 모드
-    if (employees.length === 0) {
-        const { promise } = spawnAgent(prompt, { origin, _skipInsert: !!meta._skipInsert });
-        const result = await promise as Record<string, any>;
-        const stripped = stripSubtaskJSON(result.text);
-        broadcast('orchestrate_done', { text: stripped || result.text || '', origin, chatId });
-        return;
-    }
-
-    const worklog = createWorklog(prompt);
-    broadcast('worklog_created', { path: worklog.path });
-    if (!meta._skipClear) clearAllEmployeeSessions.run();
-
-    // 1. 기획 (planning agent가 직접 응답할 수도 있음)
-    const { planText, subtasks, directAnswer } = await phasePlan(prompt, worklog, { origin });
-
-    // Agent 자율 판단: subtask 불필요 → 직접 응답
-    if (directAnswer) {
-        console.log('[jaw:triage] planning agent chose direct response');
-        broadcast('agent_done', { text: directAnswer, origin });
-        broadcast('orchestrate_done', { text: directAnswer, origin, chatId });
-        return;
-    }
-
-    if (!subtasks?.length) {
-        broadcast('orchestrate_done', { text: planText || '', origin, chatId });
-        return;
-    }
-
-    // 2. Per-agent phase 초기화
-    const agentPhases = initAgentPhases(subtasks);
-    updateMatrix(worklog.path, agentPhases);
-
-    // 3. Round loop
-    for (let round = 1; round <= MAX_ROUNDS; round++) {
-        updateWorklogStatus(worklog.path, 'round_' + round, round);
-        broadcast('round_start', { round, agentPhases });
-
-        const results = await distributeByPhase(agentPhases, worklog, round, { origin });
-        let { verdicts, rawText } = await phaseReview(results, agentPhases, worklog, round, { origin });
-
-        // 4. Per-agent phase advance
-        if (verdicts?.verdicts) {
-            for (const v of verdicts.verdicts) {
-                const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
-                if (ap) {
-                    const judgedPhase = ap.currentPhase;  // advance 전 기록
-                    advancePhase(ap, v.pass);
-                    ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
-                }
-            }
-        } else {
-            // Retry once — DIFF-C의 절삭 확대 덕분에 재시도 성공 확률 향상
-            console.warn(`[jaw:review] verdict parse failed — retrying once (round ${round})`);
-            const retryResult = await phaseReview(results, agentPhases, worklog, round, { origin });
-            if (retryResult.verdicts?.verdicts) {
-                verdicts = retryResult.verdicts;
-                rawText = retryResult.rawText;
-                for (const v of retryResult.verdicts.verdicts) {
-                    const ap = agentPhases.find((a: Record<string, any>) => a.agent === v.agent);
-                    if (ap) {
-                        const judgedPhase = ap.currentPhase;
-                        advancePhase(ap, v.pass);
-                        ap.history.push({ round, phase: judgedPhase, pass: v.pass, feedback: v.feedback });
-                    }
-                }
-            } else {
-                console.error(`[jaw:review] verdict parse failed after retry — all active marked FAIL (round ${round})`);
-                for (const ap of agentPhases.filter((a: Record<string, any>) => !a.completed)) {
-                    ap.history.push({ round, phase: ap.currentPhase, pass: false, feedback: 'auto-fail (verdict parse failed x2)' });
-                }
-            }
-        }
-        updateMatrix(worklog.path, agentPhases);
-
-        // 5. 완료 판정
-        const scopeDone = agentPhases.every((ap: Record<string, any>) => ap.completed)
-            || verdicts?.allDone === true;
-        const hasCheckpoint = agentPhases.some((ap: Record<string, any>) => ap.checkpoint && !ap.checkpointed);
-
-        if (scopeDone && hasCheckpoint) {
-            // CHECKPOINT: completed 되돌리기 + 세션 보존 (advancePhase가 completed=true 찍었으므로 reset)
-            agentPhases.forEach((ap: Record<string, any>) => {
-                if (ap.checkpoint) {
-                    ap.checkpointed = true;
-                    ap.completed = false;  // resume 가능하게 되돌리기
-                }
-            });
-            updateMatrix(worklog.path, agentPhases);
-            const summary = stripSubtaskJSON(rawText) || '요청된 scope 완료';
-            appendToWorklog(worklog.path, 'Final Summary', summary);
-            updateWorklogStatus(worklog.path, 'checkpoint', round);
-            insertMessage.run('assistant', summary + '\n\n다음: "리뷰해봐", "이어서 해줘", "리셋해"', 'orchestrator', '');
-            broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin, checkpoint: true });
-            break;
-        }
-
-        if (scopeDone) {
-            // DONE: 진짜 완료
-            agentPhases.forEach((ap: Record<string, any>) => { ap.completed = true; });
-            updateMatrix(worklog.path, agentPhases);
-            const summary = stripSubtaskJSON(rawText) || '모든 작업 완료';
-            appendToWorklog(worklog.path, 'Final Summary', summary);
-            updateWorklogStatus(worklog.path, 'done', round);
-            clearAllEmployeeSessions.run();
-            insertMessage.run('assistant', summary, 'orchestrator', '');
-            broadcast('orchestrate_done', { text: summary, worklog: worklog.path, origin, chatId });
-            break;
-        }
-
-        broadcast('round_done', { round, action: 'next', agentPhases });
-
-        // 6. Max round 도달 → 부분 보고
-        if (round === MAX_ROUNDS) {
-            const done = agentPhases.filter((ap: Record<string, any>) => ap.completed);
-            const pending = agentPhases.filter((ap: Record<string, any>) => !ap.completed);
-            const partial = `## 완료 (${done.length})\n${done.map((a: Record<string, any>) => `- ✅ ${a.agent} (${a.role})`).join('\n')}\n\n` +
-                `## 미완료 (${pending.length})\n${pending.map((a: Record<string, any>) => `- ⏳ ${a.agent} (${a.role}) — Phase ${a.currentPhase}: ${PHASES[a.currentPhase as keyof typeof PHASES]}`).join('\n')}\n\n` +
-                `이어서 진행하려면 "이어서 해줘"라고 말씀하세요.\nWorklog: ${worklog.path}`;
-            appendToWorklog(worklog.path, 'Final Summary', partial);
-            updateWorklogStatus(worklog.path, 'partial', round);
-            // partial: 세션 보존 (이어서 해줘 대비, 새 orchestrate() 시 L228에서 자동 정리)
-            insertMessage.run('assistant', partial, 'orchestrator', '');
-            broadcast('orchestrate_done', { text: partial, worklog: worklog.path, origin, chatId });
-        }
-    }
-}
-
-// ─── Continue (이어서 해줘) ───────────────────────────
-
-export async function orchestrateContinue(meta: Record<string, any> = {}) {
-    const origin = (meta as Record<string, any>).origin || 'web';
-    const chatId = meta.chatId;
+    // IDLE + incomplete worklog → worklog-based resume
     const latest = readLatestWorklog();
-    if (!latest || latest.content.includes('Status: done') || latest.content.includes('Status: reset')) {
-        broadcast('orchestrate_done', { text: '이어갈 worklog가 없습니다.', origin, chatId });
+    if (
+        !latest ||
+        latest.content.includes('Status: done') ||
+        latest.content.includes('Status: reset')
+    ) {
+        broadcast('orchestrate_done', {
+            text: 'No pending work to continue.',
+            origin,
+            chatId,
+        });
         return;
     }
 
-    const pending = parseWorklogPending(latest.content);
-    if (!pending.length) {
-        broadcast('orchestrate_done', { text: '모든 작업이 이미 완료되었습니다.', origin, chatId });
-        return;
-    }
-
-    const resumePrompt = `## 이어서 작업
-이전 worklog를 읽고 미완료 항목을 이어서 진행하세요.
-
-Worklog: ${latest.path}
-
-미완료 항목:
-${pending.map((p: Record<string, any>) => `- ${p.agent} (${p.role}): Phase ${p.currentPhase}`).join('\n')}
-
-## 제약 조건
-- 위 미완료 항목의 **agent 이름, role, 현재 phase를 그대로 유지**하세요.
-- 새로운 agent를 추가하거나 role을 변경하지 마세요.
-- task 내용만 현재 phase에 맞게 구체화하세요.
-- start_phase는 각 agent의 현재 phase와 동일하게 설정하세요.
-
-subtask JSON을 출력하세요.`;
-
-    return orchestrate(resumePrompt, { ...meta, _skipClear: true });
+    return orchestrate(
+        `Read the previous worklog and continue any incomplete tasks.\nWorklog: ${latest.path}`,
+        { ...meta, _skipClear: true },
+    );
 }
 
-// ─── Reset (리셋해) ───────────────────────────────────
+// ─── Reset ──────────────────────────────────────────
 
-export async function orchestrateReset(meta: Record<string, any> = {}) {
+export async function orchestrateReset(
+    meta: Record<string, any> = {},
+) {
     const origin = meta.origin || 'web';
     const chatId = meta.chatId;
     clearAllEmployeeSessions.run();
+    resetState();
     const latest = readLatestWorklog();
     if (!latest) {
-        broadcast('orchestrate_done', { text: '리셋할 worklog가 없습니다.', origin, chatId });
+        broadcast('orchestrate_done', {
+            text: 'Reset complete.',
+            origin,
+            chatId,
+        });
         return;
     }
     updateWorklogStatus(latest.path, 'reset', 0);
-    appendToWorklog(latest.path, 'Final Summary', '유저 요청으로 리셋됨.');
-    broadcast('orchestrate_done', { text: '리셋 완료.', origin, chatId });
+    appendToWorklog(latest.path, 'Final Summary', 'Reset by user request.');
+    broadcast('orchestrate_done', {
+        text: 'Reset complete.',
+        origin,
+        chatId,
+    });
 }

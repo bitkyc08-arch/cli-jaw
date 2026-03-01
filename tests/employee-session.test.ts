@@ -120,12 +120,12 @@ test('P100-ES-006: clearAllEmployeeSessions가 main session 테이블을 건드�
 
 // ─── 7. Phase 합치기 프롬프트에 '적극 권장' 문구 존재 확인 ──
 
-test('P100-ES-007: Phase 합치기 프롬프트에 적극 권장 문구 포함', () => {
+test('P100-ES-007: Phase Merging prompt includes recommendation', () => {
     const src = fs.readFileSync(PIPELINE_SRC, 'utf8') + '\n' + fs.readFileSync(DISTRIBUTE_SRC, 'utf8');
-    assert.match(src, /적극 권장/,
-        'pipeline.js에 "적극 권장" 문구가 포함되어야 함');
-    assert.match(src, /Phase 합치기/,
-        'pipeline.js에 "Phase 합치기" 문구가 포함되어야 함');
+    assert.match(src, /Highly Recommended/,
+        'distribute.ts should include "Highly Recommended" text');
+    assert.match(src, /Phase Merging/,
+        'distribute.ts should include "Phase Merging" section');
     assert.match(src, /phases_completed/,
-        'pipeline.js에 phases_completed 파싱 로직이 있어야 함');
+        'distribute.ts should have phases_completed parsing logic');
 });

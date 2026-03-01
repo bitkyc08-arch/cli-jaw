@@ -66,6 +66,14 @@ db.exec(`
         cli         TEXT,
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS orc_state (
+        id         TEXT PRIMARY KEY DEFAULT 'default',
+        state      TEXT DEFAULT 'IDLE',
+        ctx        TEXT DEFAULT NULL,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+    INSERT OR IGNORE INTO orc_state (id) VALUES ('default');
 `);
 
 // Lightweight migration for existing DBs created before `trace` column existed.
@@ -101,5 +109,10 @@ export const upsertEmployeeSession = db.prepare(
     'INSERT OR REPLACE INTO employee_sessions (employee_id, session_id, cli) VALUES (?, ?, ?)'
 );
 export const clearAllEmployeeSessions = db.prepare('DELETE FROM employee_sessions');
+
+// ─── PABCD State Machine ────────────────────────────
+export const getOrcState = () => db.prepare('SELECT * FROM orc_state WHERE id = ?').get('default') as { id: string; state: string; ctx: string | null; updated_at: string } | undefined;
+export const setOrcState = db.prepare('UPDATE orc_state SET state=?, ctx=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
+export const resetOrcState = () => db.prepare('UPDATE orc_state SET state=?, ctx=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?').run('IDLE', 'default');
 
 export { db };

@@ -26,7 +26,7 @@ const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
 if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
     const _homeVal = process.argv[_homeIdx + 1]!;
     // Guard: if the "value" looks like a known subcommand, user forgot the path
-    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'memory', 'launchd', 'clone', 'service'];
+    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'memory', 'launchd', 'clone', 'service', 'orchestrate'];
     if (_knownCmds.includes(_homeVal)) {
         console.error(`  ❌ --home requires a path argument (got subcommand '${_homeVal}')`);
         console.error(`  Usage: jaw --home <path> ${_homeVal}`);
@@ -77,6 +77,7 @@ ${c.bold}   🦈 v${pkg.version}${c.reset}  ${c.dim}AI Agent Orchestration Platf
     launchd    macOS 자동 실행 관리 (install/uninstall/status)
     service    크로스 플랫폼 자동 실행 (systemd/launchd/docker)
     clone      인스턴스 복제 (독립 에이전트 생성)
+    orchestrate PABCD 상태 전환 (P|A|B|C|D)
 
   ${c.bold}Options:${c.reset}
     --home     데이터 디렉토리 지정 (기본: ~/.cli-jaw)
@@ -130,6 +131,9 @@ switch (command) {
         break;
     case 'clone':
         await import('./commands/clone.js');
+        break;
+    case 'orchestrate':
+        await import('./commands/orchestrate.js');
         break;
     case 'service':
         await import('./commands/service.js');

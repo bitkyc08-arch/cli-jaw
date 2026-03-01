@@ -126,3 +126,14 @@ test('SM-010: origin from meta is used in broadcast and orchestrate', () => {
         'orchestrate receives meta.origin',
     );
 });
+
+test('SM-011: detached orchestration calls are rejection-safe', () => {
+    assert.ok(
+        gatewaySrc.includes('function runDetached('),
+        'gateway should wrap detached orchestrate calls',
+    );
+    assert.ok(
+        gatewaySrc.includes('.catch((err: unknown) =>'),
+        'detached orchestrate calls should handle rejections',
+    );
+});

@@ -1,7 +1,7 @@
 // Phase 17.3: employee prompt 명칭 통일 + 내용 검증
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getEmployeePrompt, getEmployeePromptV2 } from '../../src/prompt/builder.ts';
+import { getEmployeePrompt, getEmployeePromptV2, clearPromptCache } from '../../src/prompt/builder.ts';
 import { needsOrchestration, parseSubtasks } from '../../src/orchestrator/pipeline.ts';
 
 // ─── getEmployeePrompt: export + 기본 구조 ─────────
@@ -62,6 +62,42 @@ test('EMP-009: getEmployeePromptV2 includes phase gate', () => {
     const v2 = getEmployeePromptV2(emp, 'backend', 3);
     // Should include some phase-related content
     assert.ok(v2.length > 0);
+});
+
+// ─── Phase 2: dev-code-reviewer injection ─────────────
+
+test('EMP-020: Phase 2 injects dev-code-reviewer content', () => {
+    const emp = { name: 'Data', cli: 'claude', role: 'data' };
+    const v2 = getEmployeePromptV2(emp, 'data', 2);
+    assert.ok(v2.includes('Code Review Guide (Phase 2'), 'Phase 2 should inject code-reviewer guide');
+    assert.ok(v2.includes('AUDIT worker'), 'Phase 2 should have AUDIT worker context');
+});
+
+test('EMP-021: Phase 4 injects dev-testing, NOT dev-code-reviewer', () => {
+    const emp = { name: 'Backend', cli: 'claude', role: 'backend' };
+    const v2 = getEmployeePromptV2(emp, 'backend', 4);
+    assert.ok(v2.includes('Testing Guide (Phase 4)'), 'Phase 4 should inject testing guide');
+    assert.ok(!v2.includes('Code Review Guide (Phase 2'), 'Phase 4 should NOT inject code-reviewer');
+    assert.ok(v2.includes('CHECK worker'), 'Phase 4 should have CHECK worker context');
+});
+
+test('EMP-022: Phase 3 does NOT inject reviewer or testing guides', () => {
+    const emp = { name: 'Frontend', cli: 'claude', role: 'frontend' };
+    const v2 = getEmployeePromptV2(emp, 'frontend', 3);
+    assert.ok(!v2.includes('Code Review Guide (Phase 2'), 'Phase 3 should NOT inject reviewer');
+    assert.ok(!v2.includes('Testing Guide (Phase 4)'), 'Phase 3 should NOT inject testing');
+    assert.ok(v2.includes('IMPLEMENTATION worker'), 'Phase 3 should have IMPLEMENTATION worker context');
+});
+
+test('EMP-023: String phase "2" works same as number 2 (type coercion safety)', () => {
+    const emp = { name: 'Data', cli: 'claude', role: 'data' };
+    clearPromptCache();
+    const v2str = getEmployeePromptV2(emp, 'data', '2' as any);
+    clearPromptCache();
+    const v2num = getEmployeePromptV2(emp, 'data', 2);
+    // Both should inject code-reviewer (Number() normalization)
+    assert.ok(v2str.includes('Code Review Guide (Phase 2'), 'String "2" must also inject reviewer');
+    assert.ok(v2num.includes('Code Review Guide (Phase 2'), 'Number 2 must inject reviewer');
 });
 
 // ─── Phase 17: triage AI dispatch ────────────────────
