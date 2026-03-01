@@ -583,3 +583,15 @@ export function flushArgumentCompletions(ctx: any) {
         { value: 'off', label: t('cmd.arg.flushOff', {}, L) },
     ]);
 }
+
+// ─── IDE Handler ─────────────────────────────────────
+
+export async function ideHandler(args: string[], ctx: any) {
+    const L = ctx.locale || 'ko';
+    const sub = (args[0] || '').toLowerCase();
+    if (sub === 'pop') return { ok: true, code: 'ide_pop_toggle', text: t('cmd.ide.popToggled', {}, L) };
+    if (sub === 'on') return { ok: true, code: 'ide_on', text: t('cmd.ide.toggled', {}, L) };
+    if (sub === 'off') return { ok: true, code: 'ide_off', text: t('cmd.ide.toggled', {}, L) };
+    if (sub === '') return { ok: true, code: 'ide_toggle', text: t('cmd.ide.toggled', {}, L) };
+    return { ok: false, text: t('cmd.ide.usage', {}, L) };
+}

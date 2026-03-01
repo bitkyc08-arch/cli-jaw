@@ -204,5 +204,9 @@
     "code.copied": "Copied ✓",
     "mcp.noServers": "(no servers configured)",
     "mermaid.renderFail": "Mermaid render failed",
-    "orchestrator.dispatching": "🎯 Dispatching tasks..."
+    "orchestrator.dispatching": "🎯 Dispatching tasks...",
+    "cmd.ide.desc": "IDE diff view",
+    "cmd.ide.toggled": "IDE diff mode toggled",
+    "cmd.ide.popToggled": "IDE popup toggled",
+    "cmd.ide.usage": "Usage: /ide [pop|on|off]"
 }

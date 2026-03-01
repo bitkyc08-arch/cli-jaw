@@ -10,6 +10,17 @@ import { spawnSync } from 'node:child_process';
 import { resolve as resolvePath, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseCommand, executeCommand, getCompletionItems, getArgumentCompletionItems } from '../../src/cli/commands.js';
+import {
+    isGitRepo, captureFileSet, diffFileSets,
+    detectIde, getIdeCli, openDiffInIde, getDiffStat,
+} from '../../src/ide/diff.js';
+
+const chatCwd = process.cwd();
+const isGit = isGitRepo(chatCwd);
+const detectedIde = detectIde();
+let ideEnabled = isGit;
+let idePopEnabled = false;
+const preFileSetQueue: Map<string, string>[] = [];
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
@@ -145,6 +156,18 @@ if (values.simple) {
             const result = await executeCommand(parsed, makeCliCommandCtx());
             if (result?.code === 'clear_screen') console.clear();
             if (result?.text) console.log(`  ${renderCommandText(result.text)}`);
+            // IDE command state handling (mirror of default mode)
+            if (result?.code === 'ide_toggle') { ideEnabled = !ideEnabled; }
+            if (result?.code === 'ide_on') { ideEnabled = true; }
+            if (result?.code === 'ide_off') { ideEnabled = false; }
+            if (['ide_toggle', 'ide_on', 'ide_off'].includes(result?.code)) {
+                console.log(`  ${ideEnabled ? '\u2713' : '\u2717'} IDE diff: ${ideEnabled ? 'ON' : 'OFF'}${isGit ? '' : ' (non-git)'}`);
+            }
+            if (result?.code === 'ide_pop_toggle') {
+                idePopEnabled = !idePopEnabled;
+                const ideName = detectedIde ? getIdeCli(detectedIde) : null;
+                console.log(`  ${idePopEnabled ? '\u2713' : '\u2717'} IDE popup: ${idePopEnabled ? 'ON' : 'OFF'}${ideName ? ` (${ideName})` : ' (IDE \ubbf8\uac10\uc9c0)'}`);
+            }
             if (result?.code === 'exit') {
                 ws.close();
                 rl.close();
@@ -166,6 +189,19 @@ if (values.simple) {
             else if (msg.type === 'agent_done') {
                 if (streaming) { process.stdout.write('\n\n'); streaming = false; }
                 else if (msg.text) console.log(msg.text + '\n');
+                // IDE diff: simple mode (queue drain unconditional)
+                if (isGit && preFileSetQueue.length > 0) {
+                    const preSet = preFileSetQueue.shift()!;
+                    if (ideEnabled) {
+                        const postSet = captureFileSet(chatCwd);
+                        const changed = diffFileSets(preSet, postSet);
+                        if (changed.length > 0) {
+                            console.log(`  \u{1F4C2} ${changed.length}개 파일 변경됨`);
+                            for (const f of changed.slice(0, 10)) console.log(`    ◦ ${f}`);
+                            if (idePopEnabled && detectedIde) openDiffInIde(chatCwd, changed, detectedIde);
+                        }
+                    }
+                }
                 rl.prompt();
             }
             else if (msg.type === 'agent_status' && msg.status === 'running')
@@ -182,11 +218,19 @@ if (values.simple) {
             const caption = parts.slice(1).join(' ');
             if (!fs.existsSync(fp)) { console.log(`  ${c.red}파일 없음: ${fp}${c.reset}`); rl.prompt(); return; }
             const prompt = `[사용자가 파일을 보냈습니다: ${fp}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+            // IDE: pre-snapshot before send (simple mode)
+            if (ideEnabled && isGit) {
+                preFileSetQueue.push(captureFileSet(chatCwd));
+            }
             ws.send(JSON.stringify({ type: 'send_message', text: prompt }));
             return;
         }
         const parsed = parseCommand(t);
         if (parsed) { void runSlashCommand(parsed); return; }
+        // IDE: pre-snapshot before send (simple mode)
+        if (ideEnabled && isGit) {
+            preFileSetQueue.push(captureFileSet(chatCwd));
+        }
         ws.send(JSON.stringify({ type: 'send_message', text: t }));
     });
     rl.on('close', () => { ws.close(); process.exit(0); });
@@ -216,6 +260,12 @@ if (values.simple) {
     if (modelStr) console.log(`  ${modelStr}`);
     console.log(`  ${c.dim}directory:${c.reset}  ${c.cyan}${dir}${c.reset}`);
     console.log(`  ${c.dim}server:${c.reset}    ${c.green}\u25CF${c.reset} localhost:${values.port}`);
+    if (ideEnabled) {
+        const ideName = detectedIde || 'terminal';
+        console.log(`  ${c.dim}ide diff:${c.reset}  ${c.green}\u25CF${c.reset} ON (${ideName}, git)`);
+    } else if (!isGit) {
+        console.log(`  ${c.dim}ide diff:${c.reset}  ${c.yellow}\u25CB${c.reset} OFF (non-git)`);
+    }
     console.log('');
     console.log(`  ${c.dim}/quit to exit, /clear to clear screen, /reset confirm to factory reset${c.reset}`);
     console.log(`  ${c.dim}/file <path> to attach${c.reset}`);
@@ -547,6 +597,18 @@ if (values.simple) {
                 setupScrollRegion();
             }
             if (result?.text) console.log(`  ${renderCommandText(result.text)}`);
+            // IDE command result handling
+            if (result?.code === 'ide_toggle') { ideEnabled = !ideEnabled; }
+            if (result?.code === 'ide_on') { ideEnabled = true; }
+            if (result?.code === 'ide_off') { ideEnabled = false; }
+            if (['ide_toggle', 'ide_on', 'ide_off'].includes(result?.code)) {
+                console.log(`  ${ideEnabled ? c.green + '✓' : c.yellow + '✗'}${c.reset} IDE diff: ${ideEnabled ? 'ON' : 'OFF'}${isGit ? '' : ` ${c.dim}(non-git)${c.reset}`}`);
+            }
+            if (result?.code === 'ide_pop_toggle') {
+                idePopEnabled = !idePopEnabled;
+                const ideName = detectedIde ? getIdeCli(detectedIde) : null;
+                console.log(`  ${idePopEnabled ? c.green + '✓' : c.yellow + '✗'}${c.reset} IDE popup: ${idePopEnabled ? 'ON' : 'OFF'}${ideName ? ` (${ideName})` : ` ${c.dim}(IDE 미감지)${c.reset}`}`);
+            }
             if (result?.code === 'exit') {
                 exiting = true;
                 cleanupScrollRegion();
@@ -727,6 +789,10 @@ if (values.simple) {
                     return;
                 }
                 const prompt = `[사용자가 파일을 보냈습니다: ${fp}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+                // IDE: pre-snapshot before send (queue push)
+                if (ideEnabled && isGit) {
+                    preFileSetQueue.push(captureFileSet(chatCwd));
+                }
                 ws.send(JSON.stringify({ type: 'send_message', text: prompt }));
                 inputActive = false;
                 return;
@@ -737,6 +803,10 @@ if (values.simple) {
                 commandRunning = true;
                 void runSlashCommand(parsed);
                 return;
+            }
+            // IDE: pre-snapshot before send (queue push)
+            if (ideEnabled && isGit) {
+                preFileSetQueue.push(captureFileSet(chatCwd));
             }
             ws.send(JSON.stringify({ type: 'send_message', text }));
             inputActive = false;
@@ -805,6 +875,25 @@ if (values.simple) {
                     } else if (msg.text) {
                         console.log('');
                         console.log(`  ${msg.text.replace(/\n/g, '\n  ')}`);
+                    }
+                    // IDE diff: queue drain unconditional (mid-run /ide off safe)
+                    if (isGit && preFileSetQueue.length > 0) {
+                        const preSet = preFileSetQueue.shift()!;
+                        if (ideEnabled) {
+                            const postSet = captureFileSet(chatCwd);
+                            const changed = diffFileSets(preSet, postSet);
+                            if (changed.length > 0) {
+                                const stat = getDiffStat(chatCwd, changed);
+                                console.log(`\n  ${c.cyan}\u{1F4C2} ${changed.length}개 파일 변경됨${c.reset}`);
+                                if (stat) console.log(`  ${stat}`);
+                                else for (const f of changed.slice(0, 10)) console.log(`  ${c.dim}  ◦ ${f}${c.reset}`);
+                                if (changed.length > 10) console.log(`  ${c.dim}  ... +${changed.length - 10}개${c.reset}`);
+                                if (idePopEnabled && detectedIde) {
+                                    console.log(`  ${c.dim}→ ${getIdeCli(detectedIde)}에서 diff 열기${c.reset}`);
+                                    openDiffInIde(chatCwd, changed, detectedIde);
+                                }
+                            }
+                        }
                     }
                     streaming = false;
                     inputActive = true;

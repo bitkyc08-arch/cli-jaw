@@ -8,7 +8,7 @@ import {
     statusHandler, modelHandler, cliHandler, skillHandler, employeeHandler,
     clearHandler, resetHandler, versionHandler, mcpHandler, memoryHandler,
     browserHandler, promptHandler, quitHandler, fileHandler, fallbackHandler,
-    steerHandler, flushHandler, forwardHandler,
+    steerHandler, flushHandler, forwardHandler, ideHandler,
     modelArgumentCompletions, cliArgumentCompletions, skillArgumentCompletions,
     employeeArgumentCompletions, browserArgumentCompletions, fallbackArgumentCompletions,
     flushArgumentCompletions,
@@ -167,6 +167,7 @@ export const COMMANDS = [
     { name: 'quit', aliases: ['q', 'exit'], descKey: 'cmd.quit.desc', desc: 'Quit process', category: 'cli', interfaces: ['cli'], handler: quitHandler },
     { name: 'file', descKey: 'cmd.file.desc', desc: 'Attach file', args: '<path> [caption]', category: 'cli', interfaces: ['cli'], hidden: true, handler: fileHandler },
     { name: 'steer', descKey: 'cmd.steer.desc', tgDescKey: 'cmd.steer.tg_desc', desc: 'Interrupt agent and redirect', args: '<prompt>', category: 'session', interfaces: ['web', 'telegram'], handler: steerHandler },
+    { name: 'ide', descKey: 'cmd.ide.desc', desc: 'IDE diff view', args: '[pop|on|off]', category: 'tools', interfaces: ['cli'], handler: ideHandler },
 ];
 
 // ─── Dispatch ────────────────────────────────────────
