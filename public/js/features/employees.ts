@@ -92,6 +92,8 @@ export function renderEmployees(): void {
                     <select data-emp-model="${a.id}">
                         <option value="default"${(!a.model || a.model === 'default') ? ' selected' : ''}>default</option>
                         ${models.map(m => `<option${a.model === m ? ' selected' : ''}>${m}</option>`).join('')}
+                        ${a.model && a.model !== 'default' && !models.includes(a.model) ? `<option selected>${a.model}</option>` : ''}
+                        <option value="__custom__">${t('emp.customModel')}</option>
                     </select>
                 </div>
             </div>
