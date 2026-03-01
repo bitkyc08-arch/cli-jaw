@@ -56,7 +56,8 @@ import {
 } from './src/agent/spawn.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/cli/commands.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from './src/orchestrator/pipeline.js';
-import { getState, getCtx } from './src/orchestrator/state-machine.js';
+import { getState, getCtx, setState, resetState, canTransition } from './src/orchestrator/state-machine.js';
+import type { OrcStateName } from './src/orchestrator/state-machine.js';
 import { submitMessage } from './src/orchestrator/gateway.js';
 import { makeCommandCtx } from './src/cli/command-context.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram/bot.js';
@@ -180,6 +181,11 @@ wss.on('connection', (ws) => {
     }
     if (messageQueue.length > 0) {
         ws.send(JSON.stringify({ type: 'queue_update', pending: messageQueue.length }));
+    }
+    // Send current PABCD state so page refresh preserves glow
+    const orcState = getState();
+    if (orcState && orcState !== 'IDLE') {
+        ws.send(JSON.stringify({ type: 'orc_state', state: orcState, ts: Date.now() }));
     }
 
     ws.on('message', (raw) => {
@@ -390,6 +396,24 @@ app.post('/api/orchestrate/reset', (req, res) => {
 
 app.get('/api/orchestrate/state', (_req, res) => {
     res.json({ state: getState(), ctx: getCtx() });
+});
+
+app.put('/api/orchestrate/state', (req, res) => {
+    const target = String(req.body?.state || '').toUpperCase();
+    const valid: OrcStateName[] = ['P', 'A', 'B', 'C', 'D'];
+    if (!valid.includes(target as OrcStateName)) return fail(res, 400, `Invalid state: ${target}. Must be one of: ${valid.join(', ')}`);
+    const current = getState();
+    const t = target as OrcStateName;
+    if (!canTransition(current, t)) {
+        return fail(res, 409, `Cannot transition: ${current} → ${t}`);
+    }
+    if (t === 'D') {
+        setState(t);
+        resetState();
+    } else {
+        setState(t, t === 'P' ? { originalPrompt: '', plan: null, workerResults: [], origin: 'api' } : undefined);
+    }
+    res.json({ ok: true, state: getState() });
 });
 
 app.post('/api/stop', (req, res) => {

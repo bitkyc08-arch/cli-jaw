@@ -1,47 +1,46 @@
 #!/usr/bin/env node
 // bin/commands/orchestrate.ts — CLI: jaw orchestrate [P|A|B|C|D]
+// Calls the running server's API so WS broadcast reaches all clients in real-time.
 
-import { getState, setState, resetState, canTransition, getStatePrompt, type OrcStateName, type OrcContext } from '../../src/orchestrator/state-machine.js';
+import { settings } from '../../src/core/config.js';
 
-const target = (process.argv[3] || '').toUpperCase() as OrcStateName;
-const current = getState();
+// Derive port: --port flag > env > settings > 3457
+const portIdx = process.argv.indexOf('--port');
+const PORT = (portIdx !== -1 && process.argv[portIdx + 1]) ? process.argv[portIdx + 1] : (process.env.PORT || '3457');
+const BASE = `http://localhost:${PORT}`;
 
-// No argument = enter P from IDLE
-if (!target || target === 'P') {
-  if (current !== 'IDLE') {
-    console.error(`Cannot enter P: currently in ${current}. Reset first.`);
-    process.exit(1);
-  }
-  // Initialize context with available info (agent fills in details later)
-  const ctx: OrcContext = {
-    originalPrompt: process.argv.slice(4).join(' ') || '',
-    plan: null,
-    workerResults: [],
-    origin: process.env.JAW_ORIGIN || 'cli',
-  };
-  setState('P', ctx);
-  console.log(getStatePrompt('P'));
-  process.exit(0);
-}
+const target = (process.argv[3] || 'P').toUpperCase();
+const valid = ['P', 'A', 'B', 'C', 'D'];
 
-// D → IDLE (auto-reset, with guard)
-if (target === 'D') {
-  if (!canTransition(current, 'D')) {
-    console.error(`Cannot transition to D: currently in ${current}. Must be in C first.`);
-    process.exit(1);
-  }
-  setState('D');
-  console.log(getStatePrompt('D'));
-  resetState();
-  process.exit(0);
-}
-
-// General transition with guard
-if (!canTransition(current, target)) {
-  console.error(`Invalid transition: ${current} → ${target}`);
-  console.error(`Valid: ${['P','A','B','C','D'].filter(t => canTransition(current, t as OrcStateName)).join(', ') || 'none'}`);
+if (!valid.includes(target)) {
+  console.error(`Invalid state: ${target}. Must be one of: ${valid.join(', ')}`);
   process.exit(1);
 }
 
-setState(target);
-console.log(getStatePrompt(target));
+try {
+  const res = await fetch(`${BASE}/api/orchestrate/state`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ state: target }),
+  });
+
+  const body = await res.json() as any;
+
+  if (!res.ok) {
+    console.error(body.error || `Failed: ${res.status}`);
+    process.exit(1);
+  }
+
+  console.log(`✅ State → ${body.state || target}`);
+
+  // Also print the state prompt for context
+  const { getStatePrompt } = await import('../../src/orchestrator/state-machine.js');
+  console.log(getStatePrompt(target as any));
+} catch (e: any) {
+  if (e.cause?.code === 'ECONNREFUSED') {
+    console.error(`Server not running on port ${PORT}. Start with: jaw serve --port ${PORT}`);
+  } else {
+    console.error(`Error: ${e.message}`);
+  }
+  process.exit(1);
+}
