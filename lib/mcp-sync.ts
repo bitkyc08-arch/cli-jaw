@@ -705,8 +705,9 @@ export function copyDefaultSkills() {
             if (needsClone) {
                 console.warn(`[skills] ⚠️ clone failed: ${(e as Error).message?.slice(0, 80)}`);
                 console.warn(`[skills] offline mode — skills will be available after 'jaw init'`);
+            } else {
+                console.log(`[skills] update check skipped: ${(e as Error).message?.slice(0, 60)}`);
             }
-            // Update failure on existing install → silent (don't alarm user)
         }
     }
 
