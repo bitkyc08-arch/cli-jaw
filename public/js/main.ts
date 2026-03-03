@@ -22,7 +22,8 @@ import {
     loadSettings, setPerm, handleModelSelect, applyCustomModel, onCliChange,
     saveActiveCliSettings, savePerCli, updateSettings, openPromptModal,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
-    loadCliStatus, setTelegram, setForwardAll, saveTelegramSettings, saveFallbackOrder
+    loadCliStatus, setTelegram, setForwardAll, saveTelegramSettings, saveFallbackOrder,
+    openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
 } from './features/settings.js';
 import {
     loadEmployees, addEmployee, deleteEmployee, updateEmployee,
@@ -194,6 +195,15 @@ document.querySelector('[data-action="closePrompt"]')?.addEventListener('click',
 document.querySelector('[data-action="cancelPrompt"]')?.addEventListener('click', () => closePromptModal());
 document.querySelector('[data-action="savePrompt"]')?.addEventListener('click', savePromptFromModal);
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePromptModal(); });
+
+// ── Template Modal ──
+document.querySelector('[data-action="openTemplates"]')?.addEventListener('click', openTemplateModal);
+document.querySelector('[data-action="saveTemplate"]')?.addEventListener('click', saveTemplateFromModal);
+document.querySelector('[data-action="closeTemplate"]')?.addEventListener('click', () => closeTemplateModal());
+document.getElementById('templateModal')?.addEventListener('click', (e) => closeTemplateModal(e));
+document.querySelector('#templateModal .modal-box')?.addEventListener('click', (e) => e.stopPropagation());
+document.getElementById('templateBack')?.addEventListener('click', templateGoBack);
+document.getElementById('templateDevToggle')?.addEventListener('click', toggleDevMode);
 
 // ── Heartbeat Modal ──
 document.getElementById('heartbeatModal')?.addEventListener('click', (e) => closeHeartbeatModal(e));
