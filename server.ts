@@ -432,9 +432,9 @@ app.post('/api/clear', (_, res) => {
 app.get('/api/settings', (_, res) => {
     const safe = { ...settings };
     if (safe.stt) {
-        const hasKey = !!(safe.stt.geminiApiKey || process.env.GEMINI_API_KEY);
-        const hasOpenaiKey = !!safe.stt.openaiApiKey;
-        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasKey, openaiApiKey: undefined, openaiKeySet: hasOpenaiKey };
+        const gKey = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
+        const oKey = safe.stt.openaiApiKey || '';
+        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey, geminiKeyLast4: gKey.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey, openaiKeyLast4: oKey.slice(-4) || '' };
     }
     ok(res, safe, safe);
 });
@@ -442,9 +442,9 @@ app.put('/api/settings', (req, res) => {
     const result = applySettingsPatch(req.body, { restartTelegram: true });
     const safe = { ...result };
     if (safe.stt) {
-        const hasGemini = !!(safe.stt.geminiApiKey || process.env.GEMINI_API_KEY);
-        const hasOpenai = !!safe.stt.openaiApiKey;
-        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasGemini, openaiApiKey: undefined, openaiKeySet: hasOpenai };
+        const gKey2 = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
+        const oKey2 = safe.stt.openaiApiKey || '';
+        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey2, geminiKeyLast4: gKey2.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey2, openaiKeyLast4: oKey2.slice(-4) || '' };
     }
     ok(res, safe);
 });
