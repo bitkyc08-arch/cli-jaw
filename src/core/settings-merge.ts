@@ -31,7 +31,7 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
     }
 
     // Deep merge nested objects (heartbeat, telegram, memory)
-    for (const key of ['heartbeat', 'telegram', 'memory']) {
+    for (const key of ['heartbeat', 'telegram', 'memory', 'stt']) {
         if (remaining[key] && typeof remaining[key] === 'object') {
             result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];

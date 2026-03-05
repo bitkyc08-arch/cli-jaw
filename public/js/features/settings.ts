@@ -22,6 +22,7 @@ interface SettingsData {
     telegram?: TelegramConfig;
     fallbackOrder?: string[];
     memory?: { cli?: string };
+    stt?: { engine?: string; geminiKeySet?: boolean; geminiModel?: string; whisperModel?: string };
 }
 
 function toCap(cli: string): string {
@@ -179,6 +180,40 @@ export async function loadSettings(): Promise<void> {
     loadTelegramSettings(s);
     loadFallbackOrder(s);
     loadMcpServers();
+    initSttSettings(s.stt || {});
+}
+
+// ── STT Settings ──
+function initSttSettings(sttConfig: Record<string, any>): void {
+    const engine = document.getElementById('sttEngine') as HTMLSelectElement | null;
+    const geminiKey = document.getElementById('sttGeminiKey') as HTMLInputElement | null;
+    const geminiModel = document.getElementById('sttGeminiModel') as HTMLSelectElement | null;
+    const whisperModel = document.getElementById('sttWhisperModel') as HTMLInputElement | null;
+
+    if (engine) engine.value = sttConfig.engine || 'auto';
+    if (geminiKey) geminiKey.placeholder = sttConfig.geminiKeySet ? '••••••••' : 'AIza...';
+    if (geminiModel) geminiModel.value = sttConfig.geminiModel || 'gemini-2.5-flash-lite';
+    if (whisperModel) whisperModel.value = sttConfig.whisperModel || 'mlx-community/whisper-large-v3-turbo';
+
+    const btn = document.getElementById('sttSave');
+    if (btn && !btn.dataset.bound) {
+        btn.dataset.bound = '1';
+        btn.addEventListener('click', async () => {
+            const patch: Record<string, any> = {
+                stt: {
+                    engine: engine?.value || 'auto',
+                    geminiModel: geminiModel?.value || 'gemini-2.5-flash-lite',
+                    whisperModel: whisperModel?.value || '',
+                },
+            };
+            if (geminiKey?.value) patch.stt.geminiApiKey = geminiKey.value;
+            await apiJson('/api/settings', 'PUT', patch);
+            if (geminiKey) {
+                geminiKey.value = '';
+                geminiKey.placeholder = '••••••••';
+            }
+        });
+    }
 }
 
 interface McpData { servers: Record<string, { command: string; args?: string[] }>; }

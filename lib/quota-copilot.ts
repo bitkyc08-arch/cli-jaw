@@ -233,39 +233,31 @@ export async function refreshCopilotFromKeychain(): Promise<{
     }
 
     // 2. File cache (already cleared above, should miss)
-    if (!foundToken) {
-        const cached = readTokenCache(expectedLogin);
-        if (cached) {
-            steps.push({ source: 'Cache', status: 'hit' });
-            foundToken = cached;
+    const cached = readTokenCache(expectedLogin);
+    if (cached) {
+        steps.push({ source: 'Cache', status: 'hit' });
+        foundToken = cached;
+    } else {
+        steps.push({ source: 'Cache', status: 'miss', detail: 'cleared' });
+    }
+
+    // 3. gh auth token (always try — report status for all sources)
+    try {
+        const ghToken = execFileSync('gh', ['auth', 'token'], {
+            encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'],
+        }).trim();
+        if (ghToken) {
+            steps.push({ source: 'gh CLI', status: 'hit', detail: ghToken.slice(0, 8) + '…' });
+            foundToken = ghToken;
         } else {
-            steps.push({ source: 'Cache', status: 'miss', detail: 'cleared' });
+            steps.push({ source: 'gh CLI', status: 'miss' });
         }
-    } else {
-        steps.push({ source: 'Cache', status: 'miss', detail: 'skipped (ENV hit)' });
+    } catch {
+        steps.push({ source: 'gh CLI', status: 'miss', detail: 'not available' });
     }
 
-    // 3. gh auth token
-    if (!foundToken) {
-        try {
-            const ghToken = execFileSync('gh', ['auth', 'token'], {
-                encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'],
-            }).trim();
-            if (ghToken) {
-                steps.push({ source: 'gh CLI', status: 'hit', detail: ghToken.slice(0, 8) + '…' });
-                foundToken = ghToken;
-            } else {
-                steps.push({ source: 'gh CLI', status: 'miss' });
-            }
-        } catch {
-            steps.push({ source: 'gh CLI', status: 'miss', detail: 'not available' });
-        }
-    } else {
-        steps.push({ source: 'gh CLI', status: 'miss', detail: 'skipped' });
-    }
-
-    // 4. macOS Keychain
-    if (!foundToken && process.platform === 'darwin') {
+    // 4. macOS Keychain (always try — this is the point of the 🔑 button)
+    if (process.platform === 'darwin') {
         try {
             const args = ['find-generic-password', '-s', 'copilot-cli'];
             if (copilotUser) args.push('-a', `${copilotUser.host}:${copilotUser.login}`);
@@ -282,10 +274,8 @@ export async function refreshCopilotFromKeychain(): Promise<{
         } catch (e: unknown) {
             steps.push({ source: 'Keychain', status: 'error', detail: (e as Error).message?.split('\n')[0] });
         }
-    } else if (!foundToken) {
-        steps.push({ source: 'Keychain', status: 'miss', detail: process.platform !== 'darwin' ? 'non-macOS' : 'skipped' });
     } else {
-        steps.push({ source: 'Keychain', status: 'miss', detail: 'skipped' });
+        steps.push({ source: 'Keychain', status: 'miss', detail: 'non-macOS' });
     }
 
     if (!foundToken) return { ok: false, steps };

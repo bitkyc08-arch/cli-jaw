@@ -132,6 +132,12 @@ function createDefaultSettings() {
         },
         employees: [],
         locale: 'ko',
+        stt: {
+            engine: 'auto',
+            geminiApiKey: '',
+            geminiModel: 'gemini-2.5-flash-lite',
+            whisperModel: 'mlx-community/whisper-large-v3-turbo',
+        },
     };
 }
 

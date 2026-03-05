@@ -287,6 +287,11 @@ document.addEventListener('keydown', (e) => {
             m.classList.remove('open');
         });
     }
+    // Ctrl+Shift+Space (Win/Linux) or Cmd+Shift+Space (Mac) toggles voice recording
+    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.code === 'Space') {
+        e.preventDefault();
+        toggleRecording();
+    }
 });
 
 // ── Mobile sidebar toggle (sidebar.js functions reuse) ──

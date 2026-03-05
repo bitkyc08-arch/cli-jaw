@@ -429,7 +429,14 @@ app.post('/api/clear', (_, res) => {
 });
 
 // Settings
-app.get('/api/settings', (_, res) => ok(res, settings, settings));
+app.get('/api/settings', (_, res) => {
+    const safe = { ...settings };
+    if (safe.stt) {
+        const hasKey = !!(safe.stt.geminiApiKey || process.env.GEMINI_API_KEY);
+        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasKey };
+    }
+    ok(res, safe, safe);
+});
 app.put('/api/settings', (req, res) => {
     ok(res, applySettingsPatch(req.body, { restartTelegram: true }));
 });
