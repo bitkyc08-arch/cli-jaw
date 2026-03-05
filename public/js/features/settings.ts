@@ -190,11 +190,33 @@ function initSttSettings(sttConfig: Record<string, any>): void {
     const geminiKey = document.getElementById('sttGeminiKey') as HTMLInputElement | null;
     const geminiModel = document.getElementById('sttGeminiModel') as HTMLSelectElement | null;
     const whisperModel = document.getElementById('sttWhisperModel') as HTMLInputElement | null;
+    const openaiBaseUrl = document.getElementById('sttOpenaiBaseUrl') as HTMLInputElement | null;
+    const openaiKey = document.getElementById('sttOpenaiKey') as HTMLInputElement | null;
+    const openaiModel = document.getElementById('sttOpenaiModel') as HTMLInputElement | null;
+    const vortexJson = document.getElementById('sttVortexJson') as HTMLTextAreaElement | null;
 
     if (engine) engine.value = sttConfig.engine || 'auto';
     if (geminiKey) geminiKey.placeholder = sttConfig.geminiKeySet ? '••••••••' : 'AIza...';
     if (geminiModel) geminiModel.value = sttConfig.geminiModel || 'gemini-2.5-flash-lite';
     if (whisperModel) whisperModel.value = sttConfig.whisperModel || 'mlx-community/whisper-large-v3-turbo';
+    if (openaiBaseUrl) openaiBaseUrl.value = sttConfig.openaiBaseUrl || '';
+    if (openaiKey) openaiKey.placeholder = sttConfig.openaiKeySet ? '••••••••' : 'sk-...';
+    if (openaiModel) openaiModel.value = sttConfig.openaiModel || '';
+    if (vortexJson) vortexJson.value = sttConfig.vortexConfig || '';
+
+    function toggleProviderFields() {
+        const v = engine?.value || 'auto';
+        const showGemini = v === 'auto' || v === 'gemini';
+        const showOpenai = v === 'openai';
+        const showVortex = v === 'vortex';
+        const showWhisper = v === 'auto' || v === 'whisper';
+        document.querySelectorAll('.stt-gemini').forEach(el => (el as HTMLElement).style.display = showGemini ? '' : 'none');
+        document.querySelectorAll('.stt-openai').forEach(el => (el as HTMLElement).style.display = showOpenai ? '' : 'none');
+        document.querySelectorAll('.stt-vortex').forEach(el => (el as HTMLElement).style.display = showVortex ? '' : 'none');
+        document.querySelectorAll('.stt-whisper').forEach(el => (el as HTMLElement).style.display = showWhisper ? '' : 'none');
+    }
+    toggleProviderFields();
+    engine?.addEventListener('change', toggleProviderFields);
 
     const btn = document.getElementById('sttSave');
     if (btn && !btn.dataset.bound) {
@@ -205,18 +227,20 @@ function initSttSettings(sttConfig: Record<string, any>): void {
                     engine: engine?.value || 'auto',
                     geminiModel: geminiModel?.value || 'gemini-2.5-flash-lite',
                     whisperModel: whisperModel?.value || '',
+                    openaiBaseUrl: openaiBaseUrl?.value || '',
+                    openaiModel: openaiModel?.value || '',
+                    vortexConfig: vortexJson?.value || '',
                 },
             };
             if (geminiKey?.value) patch.stt.geminiApiKey = geminiKey.value;
-            console.log('[stt] saving:', { engine: patch.stt.engine, hasKey: !!patch.stt.geminiApiKey });
+            if (openaiKey?.value) patch.stt.openaiApiKey = openaiKey.value;
+            console.log('[stt] saving:', { engine: patch.stt.engine, hasGeminiKey: !!patch.stt.geminiApiKey, hasOpenaiKey: !!patch.stt.openaiApiKey });
             try {
                 await apiJson('/api/settings', 'PUT', patch);
                 btn.textContent = t('stt.saved');
                 setTimeout(() => btn.textContent = t('stt.save'), 2000);
-                if (geminiKey) {
-                    geminiKey.value = '';
-                    geminiKey.placeholder = '••••••••';
-                }
+                if (geminiKey) { geminiKey.value = ''; geminiKey.placeholder = '••••••••'; }
+                if (openaiKey) { openaiKey.value = ''; openaiKey.placeholder = '••••••••'; }
             } catch (e) {
                 console.error('[stt] save failed:', e);
                 btn.textContent = '❌ Save failed';

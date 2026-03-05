@@ -433,7 +433,8 @@ app.get('/api/settings', (_, res) => {
     const safe = { ...settings };
     if (safe.stt) {
         const hasKey = !!(safe.stt.geminiApiKey || process.env.GEMINI_API_KEY);
-        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasKey };
+        const hasOpenaiKey = !!safe.stt.openaiApiKey;
+        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasKey, openaiApiKey: undefined, openaiKeySet: hasOpenaiKey };
     }
     ok(res, safe, safe);
 });
@@ -442,7 +443,8 @@ app.put('/api/settings', (req, res) => {
     const safe = { ...result };
     if (safe.stt) {
         const hasGemini = !!(safe.stt.geminiApiKey || process.env.GEMINI_API_KEY);
-        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasGemini };
+        const hasOpenai = !!safe.stt.openaiApiKey;
+        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: hasGemini, openaiApiKey: undefined, openaiKeySet: hasOpenai };
     }
     ok(res, safe);
 });

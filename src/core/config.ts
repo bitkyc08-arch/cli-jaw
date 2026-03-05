@@ -137,6 +137,10 @@ function createDefaultSettings() {
             geminiApiKey: '',
             geminiModel: 'gemini-2.5-flash-lite',
             whisperModel: 'mlx-community/whisper-large-v3-turbo',
+            openaiBaseUrl: '',
+            openaiApiKey: '',
+            openaiModel: '',
+            vortexConfig: '',
         },
     };
 }

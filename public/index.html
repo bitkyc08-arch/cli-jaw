@@ -376,23 +376,48 @@
                     <select id="sttEngine">
                         <option value="auto">Auto (Gemini → Whisper)</option>
                         <option value="gemini">Gemini only</option>
+                        <option value="openai">OpenAI Compatible</option>
+                        <option value="vortex">Vortex</option>
                         <option value="whisper">Whisper only (local)</option>
                     </select>
                 </div>
-                <div class="settings-row sub-row">
+                <div class="settings-row sub-row stt-gemini">
                     <label data-i18n="stt.geminiKey">Gemini API Key</label>
                     <input type="password" id="sttGeminiKey" placeholder="AIza..."
                         style="width:100%;font-size:11px;padding:4px">
                 </div>
-                <div class="settings-row sub-row">
+                <div class="settings-row sub-row stt-gemini">
                     <label data-i18n="stt.geminiModel">Gemini 모델</label>
                     <select id="sttGeminiModel">
+                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite (fastest)</option>
                         <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite (fast)</option>
                         <option value="gemini-2.5-flash">gemini-2.5-flash (balanced)</option>
                         <option value="gemini-2.5-pro">gemini-2.5-pro (accurate)</option>
                     </select>
                 </div>
-                <div class="settings-row sub-row">
+                <!-- OpenAI Compatible -->
+                <div class="settings-row sub-row stt-openai" style="display:none">
+                    <label data-i18n="stt.openaiBaseUrl">Base URL</label>
+                    <input type="text" id="sttOpenaiBaseUrl" placeholder="https://api.groq.com/openai"
+                        style="width:100%;font-size:11px;padding:4px">
+                </div>
+                <div class="settings-row sub-row stt-openai" style="display:none">
+                    <label data-i18n="stt.openaiKey">API Key</label>
+                    <input type="password" id="sttOpenaiKey" placeholder="sk-..."
+                        style="width:100%;font-size:11px;padding:4px">
+                </div>
+                <div class="settings-row sub-row stt-openai" style="display:none">
+                    <label data-i18n="stt.openaiModel">Model</label>
+                    <input type="text" id="sttOpenaiModel" placeholder="whisper-large-v3"
+                        style="width:100%;font-size:11px;padding:4px">
+                </div>
+                <!-- Vortex -->
+                <div class="settings-row sub-row stt-vortex" style="display:none">
+                    <label data-i18n="stt.vortexConfig">Vortex Config (JSON)</label>
+                    <textarea id="sttVortexJson" rows="4" placeholder='{"endpoint":"...","token":"..."}'
+                        style="width:100%;font-size:11px;padding:4px;font-family:var(--font-mono)"></textarea>
+                </div>
+                <div class="settings-row sub-row stt-whisper">
                     <label data-i18n="stt.whisperModel">Whisper 모델</label>
                     <input type="text" id="sttWhisperModel" placeholder="mlx-community/..."
                         style="width:100%;font-size:11px;padding:4px">

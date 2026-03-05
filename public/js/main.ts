@@ -197,7 +197,7 @@ document.querySelector('#promptModal .modal-box')?.addEventListener('click', (e)
 document.querySelector('[data-action="closePrompt"]')?.addEventListener('click', () => closePromptModal());
 document.querySelector('[data-action="cancelPrompt"]')?.addEventListener('click', () => closePromptModal());
 document.querySelector('[data-action="savePrompt"]')?.addEventListener('click', savePromptFromModal);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePromptModal(); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !state.isRecording) closePromptModal(); });
 
 // ── Template Modal ──
 document.querySelector('[data-action="openTemplates"]')?.addEventListener('click', openTemplateModal);
@@ -284,6 +284,11 @@ void bootstrap().catch((err: unknown) => {
 // ── Keyboard: Escape closes modals ──────────────────
 document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+        if (state.isRecording) {
+            e.preventDefault();
+            cancelRecording();
+            return;
+        }
         document.querySelectorAll('.modal-overlay.open').forEach(m => {
             m.classList.remove('open');
         });
