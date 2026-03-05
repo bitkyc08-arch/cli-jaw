@@ -37,7 +37,15 @@ Restart your computer when prompted. After reboot, open **Ubuntu** from the Star
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
 ```
 
-**Step 3: Authenticate an AI Engine** (pick one)
+The script automatically installs prerequisites (`curl`, `unzip`, `git`), Node.js 22+, and CLI-JAW.
+
+**Step 3: Reload your shell** (important — picks up PATH changes)
+
+```bash
+source ~/.bashrc
+```
+
+**Step 4: Authenticate an AI Engine** (pick one)
 
 ```bash
 copilot login    # GitHub Copilot (Free)
@@ -47,7 +55,7 @@ codex login      # OpenAI Codex
 gemini           # Google Gemini
 ```
 
-**Step 4: Start Chatting**
+**Step 5: Start Chatting**
 
 ```bash
 jaw serve
@@ -55,6 +63,18 @@ jaw serve
 ```
 
 > 💡 The script uses [fnm](https://github.com/Schniz/fnm) for Node.js management. If you already have `nvm`, it will use that instead.
+
+<details>
+<summary>🔧 <b>Troubleshooting WSL</b></summary>
+
+| Problem | Fix |
+|---------|-----|
+| `unzip: command not found` | Rerun the installer — it now auto-installs `unzip` |
+| `jaw: command not found` after install | Run `source ~/.bashrc` to reload PATH |
+| Still can't find `jaw` | Run `export PATH="$(npm config get prefix)/bin:$PATH"` |
+| Permission errors with `npm install -g` | Run `sudo chown -R $USER $(npm config get prefix)` |
+
+</details>
 
 </details>
 

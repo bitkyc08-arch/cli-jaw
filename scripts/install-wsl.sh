@@ -34,6 +34,25 @@ echo ""
 NODE_MAJOR=22
 
 # ═══════════════════════════════════════
+#  Step 0: System prerequisites
+# ═══════════════════════════════════════
+install_prerequisites() {
+  local missing=()
+  for cmd in curl unzip git; do
+    command -v "$cmd" &>/dev/null || missing+=("$cmd")
+  done
+
+  if [ ${#missing[@]} -gt 0 ]; then
+    info "Installing system prerequisites: ${missing[*]}..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq "${missing[@]}"
+    ok "Prerequisites installed: ${missing[*]}"
+  else
+    ok "System prerequisites already satisfied (curl, unzip, git)"
+  fi
+}
+
+# ═══════════════════════════════════════
 #  Step 1: Node.js version manager
 # ═══════════════════════════════════════
 install_node() {
@@ -92,6 +111,22 @@ install_jaw() {
   fi
 
   ok "cli-jaw installed: $(jaw --version 2>/dev/null || echo 'done')"
+
+  # Ensure npm global bin is in PATH
+  local npm_bin
+  npm_bin="$(npm config get prefix 2>/dev/null)/bin"
+  if [ -d "$npm_bin" ] && [[ ":$PATH:" != *":$npm_bin:"* ]]; then
+    export PATH="$npm_bin:$PATH"
+    # Persist to shell profile
+    local profile="$HOME/.bashrc"
+    [ -f "$HOME/.zshrc" ] && profile="$HOME/.zshrc"
+    if ! grep -q "npm config get prefix" "$profile" 2>/dev/null; then
+      echo '' >> "$profile"
+      echo '# CLI-JAW: npm global bin' >> "$profile"
+      echo 'export PATH="$(npm config get prefix)/bin:$PATH"' >> "$profile"
+      ok "Added npm global bin to $profile"
+    fi
+  fi
 }
 
 # ═══════════════════════════════════════
@@ -107,6 +142,9 @@ run_doctor() {
 # ═══════════════════════════════════════
 main() {
   info "Starting CLI-JAW installation on WSL..."
+  echo ""
+
+  install_prerequisites
   echo ""
 
   install_node
