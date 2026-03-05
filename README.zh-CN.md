@@ -304,6 +304,26 @@ jaw skill install <name>    # 参考 → 活跃，永久激活
 
 ---
 
+## 🎤 语音 & STT — 语音转文字
+
+CLI-JAW 通过多供应商 STT 在所有界面支持语音输入：
+
+| 供应商 | 设置方法 |
+|-------|---------|
+| **OpenAI 兼容** | Settings UI → STT → OpenAI 端点 + API 密钥 |
+| **Google Vertex AI** | Settings UI → STT → Vertex AI 凭证 |
+| **自定义端点** | 任何 OpenAI 兼容的 STT API URL |
+
+**可以使用语音的场景：**
+
+- 🌐 **Web UI** — 点击麦克风按钮实时录音并转写
+- 📱 **Telegram** — 发送语音消息，AI 处理前自动转写
+- 🎙️ **多模态** — 在单条消息中组合语音 + 文字 + 文件附件
+
+所有 STT 设置（供应商、API 密钥、语言）均在 **Settings UI** 中管理 — 无需编辑配置文件。
+
+---
+
 ## 🎭 多智能体编排
 
 对于复杂的任务，您的助手会自动将其委派给专业的子智能体：

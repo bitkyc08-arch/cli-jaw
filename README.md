@@ -316,6 +316,26 @@ Your assistant isn't tied to your desk. Chat from anywhere via Telegram:
 
 ---
 
+## 🎤 Voice & STT — Speech-to-Text
+
+CLI-JAW supports voice input across all interfaces with multi-provider STT:
+
+| Provider | How to enable |
+|----------|--------------|
+| **OpenAI-compatible** | Settings UI → STT → OpenAI endpoint + API key |
+| **Google Vertex AI** | Settings UI → STT → Vertex AI credentials |
+| **Custom endpoint** | Any OpenAI-compatible STT API URL |
+
+**Where you can use voice:**
+
+- 🌐 **Web UI** — Click the mic button to record and transcribe in real-time
+- 📱 **Telegram** — Send voice messages; auto-transcribed before reaching the AI
+- 🎙️ **Multimodal** — Combine voice + text + file attachments in a single message
+
+All STT settings (provider, API keys, language) are managed in the **Settings UI** — no config files to edit.
+
+---
+
 ## 🎭 Multi-Agent Orchestration — PABCD
 
 For complex tasks, CLI-JAW uses **PABCD** — a finite state machine that enforces a strict 5-phase pipeline:

@@ -159,6 +159,15 @@ export function connect(): void {
                             positionShark(roadmap, shark, currentSharkPhase);
                         }
                     }).observe(roadmap);
+                    let rafId = 0;
+                    window.addEventListener('resize', () => {
+                        cancelAnimationFrame(rafId);
+                        rafId = requestAnimationFrame(() => {
+                            if (currentSharkPhase && shark.classList.contains('running')) {
+                                positionShark(roadmap, shark, currentSharkPhase);
+                            }
+                        });
+                    });
                 }
 
                 if (nextState === 'IDLE') {

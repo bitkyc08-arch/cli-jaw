@@ -304,6 +304,26 @@ jaw skill install <name>    # reference → active로 영구 활성화
 
 ---
 
+## 🎤 음성 & STT — 음성 인식
+
+CLI-JAW는 멀티 프로바이더 STT로 모든 인터페이스에서 음성 입력을 지원합니다:
+
+| 프로바이더 | 설정 방법 |
+|-----------|----------|
+| **OpenAI 호환** | Settings UI → STT → OpenAI 엔드포인트 + API 키 |
+| **Google Vertex AI** | Settings UI → STT → Vertex AI 인증 정보 |
+| **커스텀 엔드포인트** | OpenAI 호환 STT API URL 직접 입력 |
+
+**음성을 사용할 수 있는 곳:**
+
+- 🌐 **웹 UI** — 마이크 버튼으로 실시간 녹음 및 전사
+- 📱 **텔레그램** — 음성 메시지 전송 시 AI에 전달 전 자동 전사
+- 🎙️ **멀티모달** — 음성 + 텍스트 + 파일 첨부를 하나의 메시지에 조합 가능
+
+모든 STT 설정(프로바이더, API 키, 언어)은 **Settings UI**에서 관리 — 설정 파일 편집 불필요.
+
+---
+
 ## 🎭 멀티 에이전트 오케스트레이션
 
 ![오케스트레이션 로그](docs/screenshots/orchestration-log.png)
