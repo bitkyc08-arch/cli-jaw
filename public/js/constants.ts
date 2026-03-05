@@ -19,7 +19,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     codex: {
         label: 'Codex',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'],
+        models: ['gpt-5.4', 'gpt-5.4-spark', 'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'],
     },
     gemini: {
         label: 'Gemini',
@@ -33,6 +33,8 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'anthropic/claude-opus-4-6-thinking',
             'anthropic/claude-sonnet-4-6-thinking',
             'anthropic/claude-sonnet-4-6',
+            'openai/gpt-5.4-xhigh',
+            'openai/gpt-5.4-high',
             'openai/gpt-5.3-codex-xhigh',
             'openai/gpt-5.3-codex-high',
             'opencode/big-pickle',
@@ -52,6 +54,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'claude-opus-4.6',
             'claude-opus-4.6-fast',
             'claude-haiku-4.5',
+            'gpt-5.4',
             'gpt-5.3-codex',
             'gpt-5.2-codex',
             'gpt-5.1-codex',

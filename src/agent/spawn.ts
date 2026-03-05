@@ -318,9 +318,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     let args;
     if (isResume) {
         console.log(`[jaw:resume] ${cli} session=${resumeSessionId.slice(0, 12)}...`);
-        args = buildResumeArgs(cli, model, effort, resumeSessionId, prompt, permissions);
+        args = buildResumeArgs(cli, model, effort, resumeSessionId, prompt, permissions, { fastMode: cfg.fastMode });
     } else {
-        args = buildArgs(cli, model, effort, promptForArgs, sysPrompt, permissions);
+        args = buildArgs(cli, model, effort, promptForArgs, sysPrompt, permissions, { fastMode: cfg.fastMode });
     }
 
     const agentLabel = agentId || 'main';

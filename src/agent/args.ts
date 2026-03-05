@@ -1,7 +1,7 @@
 // ─── Agent CLI Argument Builders ──────────────────────
 // Extracted from agent.js for 500-line compliance.
 
-export function buildArgs(cli: string, model: string, effort: string, prompt: string, sysPrompt: string, permissions = 'auto') {
+export function buildArgs(cli: string, model: string, effort: string, prompt: string, sysPrompt: string, permissions = 'auto', options: { fastMode?: boolean } = {}) {
     const autoPerm = permissions === 'auto';
     switch (cli) {
         case 'claude':
@@ -16,6 +16,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
             return ['exec',
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['-c', `model_reasoning_effort="${effort}"`] : []),
+                ...(options.fastMode ? ['--enable', 'fast_mode'] : []),
                 ...(autoPerm ? ['--dangerously-bypass-approvals-and-sandbox'] : []),
                 '--skip-git-repo-check', '--json'];
         case 'gemini':
@@ -33,7 +34,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
     }
 }
 
-export function buildResumeArgs(cli: string, model: string, effort: string, sessionId: string, prompt: string, permissions = 'auto') {
+export function buildResumeArgs(cli: string, model: string, effort: string, sessionId: string, prompt: string, permissions = 'auto', options: { fastMode?: boolean } = {}) {
     const autoPerm = permissions === 'auto';
     switch (cli) {
         case 'claude':
@@ -47,6 +48,7 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
         case 'codex':
             return ['exec', 'resume',
                 ...(model && model !== 'default' ? ['--model', model] : []),
+                ...(options.fastMode ? ['--enable', 'fast_mode'] : []),
                 ...(autoPerm ? ['--dangerously-bypass-approvals-and-sandbox'] : []),
                 '--skip-git-repo-check',
                 sessionId, prompt || '', '--json'];

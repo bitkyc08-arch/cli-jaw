@@ -170,6 +170,18 @@ document.getElementById('tgToken')?.addEventListener('change', saveTelegramSetti
 document.getElementById('tgChatIds')?.addEventListener('change', saveTelegramSettings);
 document.getElementById('fallbackOrderList')?.addEventListener('change', saveFallbackOrder);
 
+// Codex fast mode toggle
+function setCodexFast(on: boolean) {
+    const onBtn = document.getElementById('codexFastOn');
+    const offBtn = document.getElementById('codexFastOff');
+    if (onBtn && offBtn) {
+        onBtn.classList.toggle('active', on);
+        offBtn.classList.toggle('active', !on);
+    }
+    savePerCli();
+}
+document.getElementById('codexFastOn')?.addEventListener('click', () => setCodexFast(true));
+document.getElementById('codexFastOff')?.addEventListener('click', () => setCodexFast(false));
 // Per-CLI model selects
 function bindPerCliControlEvents(): void {
     for (const cli of getCliKeys()) {

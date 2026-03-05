@@ -6,7 +6,7 @@ import { syncStoredLocale } from '../locale.js';
 import { t } from './i18n.js';
 import { api, apiJson, apiFire } from '../api.js';
 
-interface PerCliConfig { model?: string; effort?: string; }
+interface PerCliConfig { model?: string; effort?: string; fastMode?: boolean; }
 interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; }
 interface QuotaWindow { label: string; percent: number; resetsAt?: string | number | null; }
 interface QuotaEntry {
@@ -166,6 +166,11 @@ export async function loadSettings(): Promise<void> {
                 modelEl.value = cfg.model;
             }
             if (effortEl) effortEl.value = cfg.effort || '';
+            // Restore Codex fast mode toggle
+            if (cli === 'codex' && cfg.fastMode !== undefined) {
+                document.getElementById('codexFastOn')?.classList.toggle('active', cfg.fastMode);
+                document.getElementById('codexFastOff')?.classList.toggle('active', !cfg.fastMode);
+            }
         }
     }
 
@@ -364,10 +369,16 @@ export async function savePerCli(): Promise<void> {
         const modelEl = getModelSelect(cli);
         if (!modelEl) continue;
         const effortEl = getEffortSelect(cli);
-        perCli[cli] = {
+        const entry: PerCliConfig = {
             model: getModelValue(cli),
             effort: effortEl ? effortEl.value : '',
         };
+        // Codex fast mode toggle
+        if (cli === 'codex') {
+            const onBtn = document.getElementById('codexFastOn');
+            entry.fastMode = onBtn?.classList.contains('active') ?? false;
+        }
+        perCli[cli] = entry;
     }
     await apiJson('/api/settings', 'PUT', { perCli });
 }
