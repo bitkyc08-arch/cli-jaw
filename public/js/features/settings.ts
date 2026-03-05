@@ -8,7 +8,7 @@ import { api, apiJson, apiFire } from '../api.js';
 
 interface PerCliConfig { model?: string; effort?: string; }
 interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; }
-interface QuotaWindow { label: string; percent: number; }
+interface QuotaWindow { label: string; percent: number; resetsAt?: string | number | null; }
 interface QuotaEntry {
     account?: { email?: string; type?: string; plan?: string; tier?: string };
     windows?: QuotaWindow[];
@@ -553,13 +553,25 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             windowsHtml = q.windows.map(w => {
                 const pct = Math.round(w.percent);
                 const barColor = pct > 80 ? '#ef4444' : pct > 50 ? '#fbbf24' : '#38bdf8';
+                const shortLabel = w.label.replace('-hour', 'h').replace('-day', 'd').replace(' Sonnet', '').replace(' Opus', '');
+                let resetStr = '';
+                if (w.resetsAt) {
+                    const d = new Date(typeof w.resetsAt === 'number' ? w.resetsAt * 1000 : w.resetsAt);
+                    const now = new Date();
+                    if (d.toDateString() === now.toDateString()) {
+                        resetStr = `${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`;
+                    } else {
+                        resetStr = `${d.getMonth() + 1}/${d.getDate()}`;
+                    }
+                }
                 return `
-                    <div style="display:flex;align-items:center;gap:6px;margin-left:16px;font-size:10px;color:var(--text-dim)">
-                        <span style="width:42px">${w.label}</span>
+                    <div style="display:flex;align-items:center;gap:4px;margin-left:16px;font-size:10px;color:var(--text-dim)">
+                        <span style="width:18px">${shortLabel}</span>
                         <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
                             <div style="width:${pct}%;height:100%;background:${barColor};border-radius:2px"></div>
                         </div>
-                        <span style="width:28px;text-align:right">${pct}%</span>
+                        <span style="width:24px;text-align:right">${pct}%</span>
+                        ${resetStr ? `<span style="width:30px;text-align:right;opacity:0.6">${resetStr}</span>` : ''}
                     </div>
                 `;
             }).join('');
