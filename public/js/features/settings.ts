@@ -550,31 +550,36 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
 
     if (el) el.innerHTML = html;
 
-    // Copilot keychain refresh handler — step-by-step feedback
+    // Copilot keychain refresh handler — shows each token source result
     const kcBtn = document.getElementById('copilotKeychainBtn');
     if (kcBtn) {
         kcBtn.addEventListener('click', async () => {
-            kcBtn.textContent = '1️⃣ 캐시 클리어…';
-            await new Promise(r => setTimeout(r, 400));
+            const btn = kcBtn as HTMLButtonElement;
+            btn.disabled = true;
+            btn.textContent = '🔍 조회 중…';
 
-            kcBtn.textContent = '2️⃣ 토큰 재조회…';
             try {
-                const res = await api<{ ok: boolean; account?: any }>('/api/copilot/refresh', { method: 'POST' });
+                const res = await api<{ ok: boolean; account?: any; steps: Array<{ source: string; status: string; detail?: string }> }>('/api/copilot/refresh', { method: 'POST' });
+                if (!res?.steps) { btn.textContent = '❌'; btn.disabled = false; return; }
 
-                if (res?.ok) {
-                    kcBtn.textContent = '3️⃣ 상태 새로고침…';
-                    await new Promise(r => setTimeout(r, 300));
+                // Show each step result sequentially
+                for (let i = 0; i < res.steps.length; i++) {
+                    const s = res.steps[i];
+                    const icon = s.status === 'hit' ? '✅' : s.status === 'error' ? '❌' : '⬜';
+                    btn.textContent = `${i + 1}. ${s.source} ${icon}`;
+                    await new Promise(r => setTimeout(r, 500));
+                }
+
+                if (res.ok) {
+                    btn.textContent = '✅ 완료!';
                     await loadCliStatus(true);
-                    kcBtn.textContent = '4️⃣ ✅ 완료!';
-                    setTimeout(() => { kcBtn.textContent = t('copilot.keychain'); }, 2000);
                 } else {
-                    kcBtn.textContent = '❌ 토큰 없음';
-                    setTimeout(() => { kcBtn.textContent = t('copilot.keychain'); }, 3000);
+                    btn.textContent = '❌ 토큰 없음';
                 }
             } catch {
-                kcBtn.textContent = '❌ 실패';
-                setTimeout(() => { kcBtn.textContent = t('copilot.keychain'); }, 3000);
+                btn.textContent = '❌ 실패';
             }
+            setTimeout(() => { btn.textContent = t('copilot.keychain'); btn.disabled = false; }, 3000);
         });
     }
 }

@@ -205,18 +205,94 @@ export function clearCopilotTokenCache() {
     } catch { /* ignore */ }
 }
 
-/** Force token re-read: reset keychain suppression + clear all caches + retry full chain */
-export async function refreshCopilotFromKeychain(): Promise<{ ok: boolean; account?: any }> {
+/** Force token re-read: reset keychain suppression + clear all caches + retry full chain.
+ *  Returns step-by-step results for each source in priority order. */
+export async function refreshCopilotFromKeychain(): Promise<{
+    ok: boolean;
+    account?: any;
+    steps: Array<{ source: string; status: 'hit' | 'miss' | 'error'; detail?: string }>;
+}> {
     _keychainFailed = false;
     _cachedToken = null;
     try {
         if (fs.existsSync(TOKEN_CACHE_PATH)) fs.unlinkSync(TOKEN_CACHE_PATH);
     } catch { /* ignore */ }
 
-    // Re-run full priority chain (ENV → cache → gh → keychain) with keychain now unblocked
-    const token = getCopilotToken();
-    if (!token) return { ok: false };
+    const steps: Array<{ source: string; status: 'hit' | 'miss' | 'error'; detail?: string }> = [];
+    const copilotUser = readCopilotConfig();
+    const expectedLogin = copilotUser?.login || null;
+    let foundToken: string | null = null;
+
+    // 1. ENV
+    const envToken = process.env.COPILOT_GITHUB_TOKEN || process.env.GH_TOKEN || process.env.GITHUB_TOKEN;
+    if (envToken) {
+        steps.push({ source: 'ENV', status: 'hit', detail: envToken.slice(0, 8) + '…' });
+        foundToken = envToken;
+    } else {
+        steps.push({ source: 'ENV', status: 'miss' });
+    }
+
+    // 2. File cache (already cleared above, should miss)
+    if (!foundToken) {
+        const cached = readTokenCache(expectedLogin);
+        if (cached) {
+            steps.push({ source: 'Cache', status: 'hit' });
+            foundToken = cached;
+        } else {
+            steps.push({ source: 'Cache', status: 'miss', detail: 'cleared' });
+        }
+    } else {
+        steps.push({ source: 'Cache', status: 'miss', detail: 'skipped (ENV hit)' });
+    }
+
+    // 3. gh auth token
+    if (!foundToken) {
+        try {
+            const ghToken = execFileSync('gh', ['auth', 'token'], {
+                encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'],
+            }).trim();
+            if (ghToken) {
+                steps.push({ source: 'gh CLI', status: 'hit', detail: ghToken.slice(0, 8) + '…' });
+                foundToken = ghToken;
+            } else {
+                steps.push({ source: 'gh CLI', status: 'miss' });
+            }
+        } catch {
+            steps.push({ source: 'gh CLI', status: 'miss', detail: 'not available' });
+        }
+    } else {
+        steps.push({ source: 'gh CLI', status: 'miss', detail: 'skipped' });
+    }
+
+    // 4. macOS Keychain
+    if (!foundToken && process.platform === 'darwin') {
+        try {
+            const args = ['find-generic-password', '-s', 'copilot-cli'];
+            if (copilotUser) args.push('-a', `${copilotUser.host}:${copilotUser.login}`);
+            args.push('-w');
+            const token = execFileSync('security', args, {
+                encoding: 'utf8', timeout: 5000, stdio: ['pipe', 'pipe', 'pipe'],
+            }).trim();
+            if (token) {
+                steps.push({ source: 'Keychain', status: 'hit', detail: token.slice(0, 8) + '…' });
+                foundToken = token;
+            } else {
+                steps.push({ source: 'Keychain', status: 'miss' });
+            }
+        } catch (e: unknown) {
+            steps.push({ source: 'Keychain', status: 'error', detail: (e as Error).message?.split('\n')[0] });
+        }
+    } else if (!foundToken) {
+        steps.push({ source: 'Keychain', status: 'miss', detail: process.platform !== 'darwin' ? 'non-macOS' : 'skipped' });
+    } else {
+        steps.push({ source: 'Keychain', status: 'miss', detail: 'skipped' });
+    }
+
+    if (!foundToken) return { ok: false, steps };
+
+    _cachedToken = foundToken;
+    writeTokenCache(expectedLogin || 'refresh', foundToken);
 
     const result = await fetchCopilotQuota();
-    return { ok: true, account: result?.account ?? null };
+    return { ok: true, account: result?.account ?? null, steps };
 }
