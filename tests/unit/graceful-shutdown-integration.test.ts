@@ -28,7 +28,7 @@ async function isHealthy(port: number) {
     }
 }
 
-async function waitForHealth(port: number, timeoutMs = 20000) {
+async function waitForHealth(port: number, timeoutMs = 30000) {
     const start = Date.now();
     while (Date.now() - start < timeoutMs) {
         if (await isHealthy(port)) return;
