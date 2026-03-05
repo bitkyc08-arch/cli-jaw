@@ -54,7 +54,7 @@
     "test:telegram": "tsx --test tests/telegram-forwarding.test.ts",
     "test:smoke": "TEST_PORT=3457 tsx --test tests/integration/api-smoke.test.ts",
     "test:fresh-install": "tsx scripts/fresh-install-smoke.ts",
-    "build": "npm run clean:dist && tsc && cp -r src/prompt/templates dist/src/prompt/templates",
+    "build": "npm run clean:dist && tsc && cp -r src/prompt/templates dist/src/prompt/templates && cp -r prompts dist/prompts",
     "build:frontend": "node esbuild.config.mjs",
     "watch:frontend": "node esbuild.config.mjs --watch",
     "typecheck": "tsc --noEmit",

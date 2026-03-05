@@ -4,7 +4,9 @@
  * No external npm dependencies — uses Node built-in https + child_process.
  */
 import fs from 'node:fs';
+import path from 'node:path';
 import https from 'node:https';
+import { fileURLToPath } from 'node:url';
 import { settings } from '../src/core/config.js';
 
 export interface SttResult {
@@ -38,9 +40,11 @@ export async function sttGemini(audioPath: string, mimeType = 'audio/ogg'): Prom
     const audioB64 = fs.readFileSync(audioPath).toString('base64');
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
 
+    const __sttDir = path.dirname(fileURLToPath(import.meta.url));
+    const sttPrompt = fs.readFileSync(path.join(__sttDir, '..', 'prompts', 'stt-system.md'), 'utf8').trim();
     const body = JSON.stringify({
         contents: [{ parts: [
-            { text: 'Transcribe this voice message accurately. Output ONLY the transcribed text, nothing else.' },
+            { text: sttPrompt },
             { inline_data: { mime_type: mimeType, data: audioB64 } },
         ] }],
     });
