@@ -41,7 +41,8 @@ export async function fetchClaudeUsage(creds: any) {
         if (!resp.ok) {
             // 401/403 = token expired/invalid → auth failure
             if (resp.status === 401 || resp.status === 403) return { authenticated: false };
-            return { error: true }; // 5xx, rate limit, etc.
+            if (resp.status === 429) return { error: true, reason: 'rate_limited' };
+            return { error: true }; // 5xx, etc.
         }
         const data = await resp.json() as Record<string, any>;
         const windows = [];

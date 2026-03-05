@@ -14,6 +14,7 @@ interface QuotaEntry {
     windows?: QuotaWindow[];
     authenticated?: boolean;
     error?: boolean;
+    reason?: string;
 }
 interface SettingsData {
     cli: string; workingDir: string; permissions: string; locale?: string;
@@ -562,6 +563,9 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
                     </div>
                 `;
             }).join('');
+        } else if (q?.error && info.available) {
+            const msg = q.reason === 'rate_limited' ? 'Rate limited — retry in a moment' : 'Usage data unavailable';
+            windowsHtml = `<div style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px;opacity:0.7">⚠ ${msg}</div>`;
         }
 
         html += `
