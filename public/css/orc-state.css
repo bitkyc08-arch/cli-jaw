@@ -157,7 +157,7 @@ body[data-orc-state].orc-pulse #chatMessages {
     background-size: 360px 24px;
     position: absolute;
     top: -13px;
-    left: 22px;
+    left: 0;
     z-index: 10;
     transition: left 1.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
     pointer-events: none;

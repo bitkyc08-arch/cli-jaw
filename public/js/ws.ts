@@ -4,6 +4,35 @@ import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAge
 import { t, getLang } from './features/i18n.js';
 import type { OrcStateName } from './state.js';
 
+const ROADMAP_PHASES = ['P', 'A', 'B', 'C'] as const;
+
+/** Track current phase for resize recalculation */
+let currentSharkPhase: string | null = null;
+
+/** Position shark midway between active dot and next dot.
+ *  For C (last phase), center on the C dot itself.
+ *  Uses dot midpoints to avoid CENTER brand element skewing connector index mapping. */
+function positionShark(roadmap: HTMLElement, shark: HTMLElement, phase: string): void {
+    const idx = ROADMAP_PHASES.indexOf(phase as typeof ROADMAP_PHASES[number]);
+    if (idx < 0) return;
+    const barRect = roadmap.getBoundingClientRect();
+    const sharkW = shark.offsetWidth || 36;
+    const dot = document.getElementById(`dot-${phase}`);
+    if (!dot) return;
+
+    const nextPhase = ROADMAP_PHASES[idx + 1];
+    const nextDot = nextPhase ? document.getElementById(`dot-${nextPhase}`) : null;
+    if (nextDot) {
+        const dotRect = dot.getBoundingClientRect();
+        const nextRect = nextDot.getBoundingClientRect();
+        const mid = (dotRect.right + nextRect.left) / 2;
+        shark.style.left = (mid - barRect.left - sharkW / 2) + 'px';
+    } else {
+        const dotRect = dot.getBoundingClientRect();
+        shark.style.left = (dotRect.left - barRect.left + dotRect.width / 2 - sharkW / 2) + 'px';
+    }
+}
+
 interface WsMessage {
     type: string;
     running?: boolean;
@@ -117,18 +146,28 @@ export function connect(): void {
             }
 
             // ─── Roadmap Bar ───
-            const PHASES = ['P', 'A', 'B', 'C'] as const;
             const roadmap = document.getElementById('pabcRoadmap');
             const shark = document.getElementById('sharkRunner');
             const brand = document.getElementById('pabcBrand');
 
             if (roadmap && shark) {
+                // ResizeObserver: reposition shark when bar width changes
+                if (!roadmap.dataset.resizeObserved) {
+                    roadmap.dataset.resizeObserved = '1';
+                    new ResizeObserver(() => {
+                        if (currentSharkPhase && shark.classList.contains('running')) {
+                            positionShark(roadmap, shark, currentSharkPhase);
+                        }
+                    }).observe(roadmap);
+                }
+
                 if (nextState === 'IDLE') {
                     roadmap.classList.remove('visible', 'shimmer-out');
                     shark.classList.remove('running');
+                    currentSharkPhase = null;
                 } else if (nextState === 'D') {
                     // All dots done + shimmer out
-                    PHASES.forEach(p => {
+                    ROADMAP_PHASES.forEach(p => {
                         const dot = document.getElementById(`dot-${p}`);
                         if (dot) { dot.className = 'pabc-dot done'; dot.setAttribute('data-phase', p); }
                     });
@@ -137,6 +176,7 @@ export function connect(): void {
                         if (c) c.className = 'pabc-connector done';
                     }
                     shark.classList.remove('running');
+                    currentSharkPhase = null;
                     roadmap.classList.add('shimmer-out');
                     setTimeout(() => roadmap.classList.remove('visible', 'shimmer-out'), 1000);
                 } else {
@@ -145,8 +185,8 @@ export function connect(): void {
                     shark.classList.add('running');
 
                     // Update dots & connectors
-                    const idx = PHASES.indexOf(nextState as typeof PHASES[number]);
-                    PHASES.forEach((p, pi) => {
+                    const idx = ROADMAP_PHASES.indexOf(nextState as typeof ROADMAP_PHASES[number]);
+                    ROADMAP_PHASES.forEach((p, pi) => {
                         const dot = document.getElementById(`dot-${p}`);
                         if (dot) {
                             dot.className = `pabc-dot ${pi < idx ? 'done' : pi === idx ? 'active' : 'future'}`;
@@ -158,20 +198,8 @@ export function connect(): void {
                         if (c) c.className = `pabc-connector ${i < idx ? 'done' : ''}`;
                     }
 
-                    // Move shark along connector
-                    requestAnimationFrame(() => {
-                        const barRect = roadmap.getBoundingClientRect();
-                        const activeDot = document.getElementById(`dot-${nextState}`);
-                        if (!activeDot) return;
-                        const conn = document.getElementById(`pabc-conn-${idx}`);
-                        if (conn && nextState !== 'C') {
-                            const connRect = conn.getBoundingClientRect();
-                            shark.style.left = ((connRect.left - barRect.left) + (connRect.width * 0.4) - 18) + 'px';
-                        } else {
-                            const dotRect = activeDot.getBoundingClientRect();
-                            shark.style.left = ((dotRect.left - barRect.left) + (dotRect.width / 2) - 18) + 'px';
-                        }
-                    });
+                    currentSharkPhase = nextState;
+                    requestAnimationFrame(() => positionShark(roadmap, shark, nextState));
                 }
 
                 // Update brand text with worklog title
