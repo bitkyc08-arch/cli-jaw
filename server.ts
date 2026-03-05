@@ -592,8 +592,11 @@ app.post('/api/voice', express.raw({ type: ['audio/*', 'application/octet-stream
 
         console.log(`[web:voice] STT (${result.engine}, ${result.elapsed.toFixed(1)}s): ${result.text.slice(0, 80)}`);
 
-        const prompt = `🎤 ${result.text}`;
-        submitMessage(prompt, { origin: 'web' });
+        const sttOnly = String(req.headers['x-stt-only'] || '') === 'true';
+        if (!sttOnly) {
+            const prompt = `🎤 ${result.text}`;
+            submitMessage(prompt, { origin: 'web' });
+        }
 
         res.json({ ok: true, text: result.text, engine: result.engine, elapsed: result.elapsed });
     } catch (e: unknown) {

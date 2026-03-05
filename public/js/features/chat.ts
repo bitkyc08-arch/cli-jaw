@@ -252,26 +252,57 @@ export function initDragDrop(): void {
     });
 }
 
-/** Upload recorded voice blob and send to /api/voice for STT */
+/** Upload recorded voice blob, combine with pending text/files, send unified message */
 export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): Promise<void> {
-    addMessage('user', '🎤 [음성 메시지]');
+    const input = document.getElementById('chatInput') as HTMLTextAreaElement | null;
+    const pendingText = input?.value.trim() || '';
+    const pendingFiles = [...state.attachedFiles];
+
+    // Build user-facing display message
+    const displayParts: string[] = ['🎤 [음성 메시지]'];
+    if (pendingFiles.length) displayParts.push(`[📎 ${pendingFiles.map(f => f.name).join(', ')}]`);
+    if (pendingText) displayParts.push(pendingText);
+    addMessage('user', displayParts.join(' '));
+
+    // Clear input immediately
+    if (input && pendingText) { input.value = ''; resetInputHeight(); }
+    if (pendingFiles.length) clearAttachedFiles();
+
     try {
-        const res = await fetch('/api/voice', {
+        // Step 1: STT only (no submitMessage on server)
+        const sttRes = await fetch('/api/voice', {
             method: 'POST',
             headers: {
                 'Content-Type': mime,
                 'X-Voice-Ext': ext,
+                'X-STT-Only': 'true',
             },
             body: blob,
         });
-        if (!res.ok) {
-            const data = await res.json().catch(() => ({}));
-            throw new Error(data.error || `HTTP ${res.status}`);
+        if (!sttRes.ok) {
+            const data = await sttRes.json().catch(() => ({}));
+            throw new Error(data.error || `HTTP ${sttRes.status}`);
         }
-        const result = await res.json().catch(() => null);
-        if (result?.text) {
-            addSystemMsg(`🎤 STT (${result.engine}, ${result.elapsed?.toFixed(1)}s): "${result.text.slice(0, 100)}"`, '', 'info');
+        const sttResult = await sttRes.json().catch(() => null);
+        if (!sttResult?.text) throw new Error('Empty STT result');
+
+        addSystemMsg(`🎤 STT (${sttResult.engine}, ${sttResult.elapsed?.toFixed(1)}s): "${sttResult.text.slice(0, 100)}"`, '', 'info');
+
+        // Step 2: Upload pending files (if any)
+        let filePaths: string[] = [];
+        if (pendingFiles.length) {
+            filePaths = await Promise.all(pendingFiles.map(f => uploadFile(f)));
         }
+
+        // Step 3: Build combined prompt and send via /api/message
+        const promptParts: string[] = [];
+        for (const p of filePaths) {
+            promptParts.push(t('chat.file.sent', { path: p }));
+        }
+        promptParts.push(`🎤 ${sttResult.text}`);
+        if (pendingText) promptParts.push(pendingText);
+
+        await apiJson('/api/message', 'POST', { prompt: promptParts.join('\n') });
     } catch (err) {
         addSystemMsg(t('voice.sttFail', { msg: (err as Error).message }), '', 'error');
     }
