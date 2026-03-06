@@ -53,26 +53,31 @@ test('DI-003: gateway reset path passes _skipInsert: true to orchestrateReset', 
 // ─── DI-004: pipeline PABCD spawnAgent propagates _skipInsert ───
 
 test('DI-004: pipeline PABCD path propagates _skipInsert to spawnAgent', () => {
-    // Locate the concrete spawnAgent invocation block (log positions can move)
-    const spawnStart = pipelineSrc.indexOf('const { promise } = spawnAgent(prompt');
-    assert.ok(spawnStart > 0, 'spawnAgent invocation must exist');
+    // Locate the concrete main-agent invocation block.
+    // Research refactor may wrap spawnAgent behind runSpawnAgent for test injection.
+    const runSpawnIdx = pipelineSrc.indexOf('const { promise } = runSpawnAgent(prompt');
+    const directSpawnIdx = pipelineSrc.indexOf('const { promise } = spawnAgent(prompt');
+    const spawnStart = runSpawnIdx >= 0 ? runSpawnIdx : directSpawnIdx;
+    assert.ok(spawnStart > 0, 'main agent invocation must exist');
     const pabcdBlock = pipelineSrc.slice(spawnStart, spawnStart + 300);
     assert.ok(
         pabcdBlock.includes('_skipInsert: !!meta._skipInsert'),
-        'pabcd spawnAgent must propagate _skipInsert from meta',
+        'pabcd main-agent invocation must propagate _skipInsert from meta',
     );
 });
 
 // ─── DI-005: pipeline PABCD has _skipInsert in spawn call ───
 
 test('DI-005: pipeline PABCD spawn includes _skipInsert', () => {
-    // Verify spawnAgent call includes _skipInsert
-    const spawnIdx = pipelineSrc.indexOf('spawnAgent(prompt');
-    assert.ok(spawnIdx > 0, 'spawnAgent call must exist');
+    // Verify the main-agent invocation includes _skipInsert
+    const runSpawnIdx = pipelineSrc.indexOf('runSpawnAgent(prompt');
+    const directSpawnIdx = pipelineSrc.indexOf('spawnAgent(prompt');
+    const spawnIdx = runSpawnIdx >= 0 ? runSpawnIdx : directSpawnIdx;
+    assert.ok(spawnIdx > 0, 'main-agent invocation must exist');
     const spawnBlock = pipelineSrc.slice(spawnIdx, spawnIdx + 200);
     assert.ok(
         spawnBlock.includes('_skipInsert'),
-        'spawnAgent must include _skipInsert option',
+        'main-agent invocation must include _skipInsert option',
     );
 });
 

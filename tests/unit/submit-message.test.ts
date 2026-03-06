@@ -83,17 +83,19 @@ test('SM-006: reset intent when idle → started + orchestrateReset', () => {
     assert.ok(resetBlock.includes("action: 'started'"), 'returns started');
 });
 
-// ─── SM-007: reset intent busy → rejected/busy ───
+// ─── SM-007: reset intent bypasses busy rejection ───
 
-test('SM-007: reset intent when busy → rejected/busy', () => {
+test('SM-007: reset intent when busy still starts reset flow', () => {
     const resetBlock = gatewaySrc.slice(
         gatewaySrc.indexOf('// ── reset'),
         gatewaySrc.indexOf('// ── busy'),
     );
     assert.ok(
-        resetBlock.includes("if (isAgentBusy()) return { action: 'rejected', reason: 'busy' }"),
-        'reset intent rejects when busy (429 retry-aware)',
+        !resetBlock.includes("if (isAgentBusy()) return { action: 'rejected', reason: 'busy' }"),
+        'reset intent should bypass busy rejection so reset remains available during retries',
     );
+    assert.ok(resetBlock.includes('orchestrateReset('), 'reset path still calls orchestrateReset');
+    assert.ok(resetBlock.includes("action: 'started'"), 'reset path still returns started');
 });
 
 // ─── SM-008: displayText is used for insertMessage and broadcast ───
