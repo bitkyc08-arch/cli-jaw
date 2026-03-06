@@ -401,9 +401,6 @@ app.post('/api/orchestrate/continue', (req, res) => {
 });
 
 app.post('/api/orchestrate/reset', (req, res) => {
-    if (isAgentBusy()) {
-        return res.status(409).json({ error: 'agent already running' });
-    }
     orchestrateReset({ origin: 'web' });
     res.json({ ok: true });
 });
