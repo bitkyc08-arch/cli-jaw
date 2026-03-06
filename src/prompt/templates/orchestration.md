@@ -39,13 +39,14 @@ For complex, multi-step tasks, you have a structured orchestration system called
 - User says "orchestrate", "지휘 모드", or "pabcd" → system auto-enters P.
 - You can also run: `cli-jaw orchestrate P` to enter P manually.
 
-**How to transition phases** (Shell commands):
+**How to transition phases** (Shell commands — forward only, no backward moves):
 ```bash
-cli-jaw orchestrate P   # Enter Planning
-cli-jaw orchestrate A   # Enter Plan Audit
-cli-jaw orchestrate B   # Enter Build
-cli-jaw orchestrate C   # Enter Check
-cli-jaw orchestrate D   # Enter Done
+cli-jaw orchestrate P       # Enter Planning (from IDLE)
+cli-jaw orchestrate A       # Enter Plan Audit (from P)
+cli-jaw orchestrate B       # Enter Build (from A)
+cli-jaw orchestrate C       # Enter Check (from B)
+cli-jaw orchestrate D       # Enter Done (from C, returns to IDLE)
+cli-jaw orchestrate reset   # Return to IDLE from any state
 ```
 If shell is unavailable, the system will auto-advance when the user explicitly approves.
 
@@ -64,3 +65,5 @@ If shell is unavailable, the system will auto-advance when the user explicitly a
 - D: Summarize and return to IDLE.
 
 **⚠️ State transitions MUST use `cli-jaw orchestrate` commands. No other method.**
+
+**All code must pass static analysis (`tsc --noEmit`, `mypy`, `go vet`, etc.) before claiming completion.**

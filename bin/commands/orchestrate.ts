@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// bin/commands/orchestrate.ts — CLI: jaw orchestrate [P|A|B|C|D]
+// bin/commands/orchestrate.ts — CLI: jaw orchestrate [P|A|B|C|D|reset]
 // Calls the running server's API so WS broadcast reaches all clients in real-time.
 
 import { settings } from '../../src/core/config.js';
@@ -10,14 +10,27 @@ const PORT = (portIdx !== -1 && process.argv[portIdx + 1]) ? process.argv[portId
 const BASE = `http://localhost:${PORT}`;
 
 const target = (process.argv[3] || 'P').toUpperCase();
-const valid = ['P', 'A', 'B', 'C', 'D'];
+const valid = ['P', 'A', 'B', 'C', 'D', 'RESET'];
 
 if (!valid.includes(target)) {
-  console.error(`Invalid state: ${target}. Must be one of: ${valid.join(', ')}`);
+  console.error(`Invalid state: ${target}. Must be one of: P, A, B, C, D, reset`);
   process.exit(1);
 }
 
 try {
+  // Reset: return to IDLE from any state
+  if (target === 'RESET') {
+    const res = await fetch(`${BASE}/api/orchestrate/reset`, { method: 'POST' });
+    const body = await res.json() as any;
+    if (!res.ok) {
+      console.error(body.error || `Failed: ${res.status}`);
+      process.exit(1);
+    }
+    console.log('✅ State → IDLE (reset)');
+    process.exit(0);
+  }
+
+  // State transition: P|A|B|C|D
   const res = await fetch(`${BASE}/api/orchestrate/state`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -44,3 +57,4 @@ try {
   }
   process.exit(1);
 }
+
