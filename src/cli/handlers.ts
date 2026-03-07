@@ -336,6 +336,12 @@ export async function memoryHandler(args: any[], ctx: any) {
     if (sub === 'adv') {
         const action = String(args[1] || 'status').toLowerCase();
         if (action === 'on') {
+            const settings = await safeCall(ctx.getSettings, null);
+            const ma = settings?.memoryAdvanced || {};
+            const validated = await ctx.validateAdvancedMemoryConfig?.(ma);
+            if (!validated?.ok) {
+                return { ok: false, text: validated?.error || 'Advanced memory validation failed.' };
+            }
             const r = await ctx.updateSettings({ memoryAdvanced: { enabled: true } });
             if (r?.ok === false) return r;
             const status = await ctx.getAdvancedMemoryStatus?.();

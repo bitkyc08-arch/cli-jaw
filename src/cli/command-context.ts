@@ -12,7 +12,7 @@ import { getMergedSkills, A2_PATH, regenerateB } from '../prompt/builder.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import * as browser from '../browser/index.js';
 import * as memory from '../memory/memory.js';
-import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, getAdvancedMemoryStatus, reindexAdvancedMemory, searchAdvancedMemory } from '../memory/advanced.js';
+import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, getAdvancedMemoryStatus, reindexAdvancedMemory, searchAdvancedMemory, validateAdvancedMemoryConfig } from '../memory/advanced.js';
 import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll,
     ensureSkillsSymlinks, copyDefaultSkills,
@@ -90,6 +90,7 @@ export function makeCommandCtx(
         initAdvancedMemory: () => ensureAdvancedMemoryStructure(),
         bootstrapAdvancedMemory: (options?: Record<string, any>) => bootstrapAdvancedMemory(options || {}),
         reindexAdvancedMemory: () => reindexAdvancedMemory(),
+        validateAdvancedMemoryConfig: (options?: Record<string, any>) => validateAdvancedMemoryConfig(options || {}),
 
         // Browser
         getBrowserStatus: async () => browser.getBrowserStatus(settings.browser?.cdpPort || deriveCdpPort()),

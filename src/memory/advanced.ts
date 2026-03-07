@@ -14,6 +14,21 @@ type BootstrapOptions = {
     importClaudeSession?: boolean;
 };
 
+type AdvancedConfig = {
+    enabled?: boolean;
+    provider?: string;
+    model?: string;
+    apiKey?: string;
+    baseUrl?: string;
+    vertexConfig?: string;
+    bootstrap?: {
+        enabled?: boolean;
+        useActiveCli?: boolean;
+        cli?: string;
+        model?: string;
+    };
+};
+
 type AdvancedMeta = {
     schemaVersion: number;
     phase: string;
@@ -71,6 +86,10 @@ export function getAdvancedMemoryBackupDir() {
     return join(JAW_HOME, 'backup-memory-v1');
 }
 
+export function getAdvancedFlushFilePath(date = new Date().toISOString().slice(0, 10)) {
+    return join(getAdvancedMemoryDir(), 'episodes', 'live', `${date}.md`);
+}
+
 function getAdvancedIndexDbPath() {
     return join(getAdvancedMemoryDir(), 'index.sqlite');
 }
@@ -80,6 +99,24 @@ export function normalizeOpenAiCompatibleBaseUrl(raw: string) {
     if (!value) return '';
     const trimmed = value.replace(/\/+$/, '');
     return /\/v1$/i.test(trimmed) ? trimmed : `${trimmed}/v1`;
+}
+
+function getAdvancedConfig(override: Partial<AdvancedConfig> = {}) {
+    const base = settings.memoryAdvanced || {};
+    return {
+        enabled: override.enabled ?? base.enabled ?? false,
+        provider: override.provider ?? base.provider ?? 'gemini',
+        model: override.model ?? base.model ?? '',
+        apiKey: override.apiKey ?? base.apiKey ?? '',
+        baseUrl: normalizeOpenAiCompatibleBaseUrl(override.baseUrl ?? base.baseUrl ?? ''),
+        vertexConfig: override.vertexConfig ?? base.vertexConfig ?? '',
+        bootstrap: {
+            enabled: override.bootstrap?.enabled ?? base.bootstrap?.enabled ?? true,
+            useActiveCli: override.bootstrap?.useActiveCli ?? base.bootstrap?.useActiveCli ?? true,
+            cli: override.bootstrap?.cli ?? base.bootstrap?.cli ?? '',
+            model: override.bootstrap?.model ?? base.bootstrap?.model ?? '',
+        },
+    };
 }
 
 function ensureDir(path: string) {
@@ -171,9 +208,10 @@ function extractJsonArray(text: string) {
     }
 }
 
-async function expandViaGemini(query: string) {
-    const apiKey = settings.memoryAdvanced?.apiKey || process.env.GEMINI_API_KEY || '';
-    const model = settings.memoryAdvanced?.model || 'gemini-3.1-flash-lite-preview';
+async function expandViaGemini(query: string, override: Partial<AdvancedConfig> = {}) {
+    const cfg = getAdvancedConfig(override);
+    const apiKey = cfg.apiKey || process.env.GEMINI_API_KEY || '';
+    const model = cfg.model || 'gemini-3.1-flash-lite-preview';
     if (!apiKey) return [];
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
     const body = {
@@ -198,10 +236,11 @@ async function expandViaGemini(query: string) {
     return extractJsonArray(text);
 }
 
-async function expandViaOpenAiCompatible(query: string) {
-    const apiKey = settings.memoryAdvanced?.apiKey || '';
-    const baseUrl = normalizeOpenAiCompatibleBaseUrl(settings.memoryAdvanced?.baseUrl || '');
-    const model = settings.memoryAdvanced?.model || 'gpt-4o-mini';
+async function expandViaOpenAiCompatible(query: string, override: Partial<AdvancedConfig> = {}) {
+    const cfg = getAdvancedConfig(override);
+    const apiKey = cfg.apiKey || '';
+    const baseUrl = cfg.baseUrl || '';
+    const model = cfg.model || 'gpt-4o-mini';
     if (!apiKey || !baseUrl) return [];
     const res = await fetch(`${baseUrl}/chat/completions`, {
         method: 'POST',
@@ -279,15 +318,16 @@ async function getGoogleAccessToken(sa: any) {
     return json?.access_token || '';
 }
 
-async function expandViaVertex(query: string) {
-    const cfgRaw = settings.memoryAdvanced?.vertexConfig || '';
+async function expandViaVertex(query: string, override: Partial<AdvancedConfig> = {}) {
+    const cfgSetting = getAdvancedConfig(override);
+    const cfgRaw = cfgSetting.vertexConfig || '';
     if (!cfgRaw) return [];
     let cfg: VertexConfig;
     try { cfg = JSON.parse(cfgRaw); } catch { return []; }
 
     let endpoint = cfg.endpoint || '';
     let token = cfg.token || '';
-    const model = settings.memoryAdvanced?.model || cfg.model || 'gemini-3.1-flash-lite-preview';
+    const model = cfgSetting.model || cfg.model || 'gemini-3.1-flash-lite-preview';
 
     if (!endpoint) {
         const sa = loadServiceAccount(cfg);
@@ -338,6 +378,34 @@ export async function expandSearchKeywords(query: string) {
     const merged = sanitizeKeywords(expanded.length ? [q, ...expanded] : heuristicKeywords(q));
     lastExpansionTerms = merged;
     return merged;
+}
+
+export async function validateAdvancedMemoryConfig(override: Partial<AdvancedConfig> = {}) {
+    const cfg = getAdvancedConfig(override);
+    if (cfg.provider === 'local') {
+        return { ok: true, provider: 'local' };
+    }
+    if (cfg.provider === 'gemini') {
+        if (!cfg.apiKey) return { ok: false, error: 'Gemini API key is required.' };
+        const expanded = await expandViaGemini('login auth bug', cfg);
+        if (!expanded.length) return { ok: false, error: 'Gemini validation failed.' };
+        return { ok: true, provider: 'gemini', keywords: expanded };
+    }
+    if (cfg.provider === 'openai-compatible') {
+        if (!cfg.apiKey || !cfg.baseUrl || !cfg.model) {
+            return { ok: false, error: 'OpenAI-compatible requires base URL, API key, and model.' };
+        }
+        const expanded = await expandViaOpenAiCompatible('login auth bug', cfg);
+        if (!expanded.length) return { ok: false, error: 'OpenAI-compatible validation failed.' };
+        return { ok: true, provider: 'openai-compatible', keywords: expanded };
+    }
+    if (cfg.provider === 'vertex') {
+        if (!cfg.vertexConfig) return { ok: false, error: 'Vertex Config JSON is required.' };
+        const expanded = await expandViaVertex('login auth bug', cfg);
+        if (!expanded.length) return { ok: false, error: 'Vertex validation failed.' };
+        return { ok: true, provider: 'vertex', keywords: expanded };
+    }
+    return { ok: false, error: `Unsupported provider: ${cfg.provider}` };
 }
 
 function slug(value: string) {

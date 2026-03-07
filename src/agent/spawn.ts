@@ -12,6 +12,7 @@ import {
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary } from './events.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../../lib/upload.js';
+import { getAdvancedFlushFilePath, getAdvancedMemoryStatus } from '../memory/advanced.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -868,7 +869,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
 async function triggerMemoryFlush() {
     const { getMemoryDir } = await import('../prompt/builder.js');
-    const memDir = getMemoryDir();
     const threshold = settings.memory?.flushEvery ?? 20;
     const recent = (getRecentMessages.all(threshold) as any[]).reverse();
     if (recent.length < 4) return;
@@ -880,7 +880,9 @@ async function triggerMemoryFlush() {
     const convo = lines.join('\n\n');
     const date = new Date().toISOString().slice(0, 10);
     const time = new Date().toTimeString().slice(0, 5);
-    const memFile = join(memDir, `${date}.md`);
+    const adv = getAdvancedMemoryStatus();
+    const memDir = getMemoryDir();
+    const memFile = adv.enabled ? getAdvancedFlushFilePath(date) : join(memDir, `${date}.md`);
 
     const flushPrompt = `You are a memory extractor. Summarize the conversation into a short prose paragraph.
 Save by APPENDING to: ${memFile}
@@ -900,7 +902,7 @@ Conversation:
 ---
 ${convo}`;
 
-    fs.mkdirSync(memDir, { recursive: true });
+    fs.mkdirSync(join(memFile, '..'), { recursive: true });
 
     const flushCli = settings.memory?.cli || settings.cli;
     const flushModel = settings.memory?.model || (settings.perCli?.[flushCli]?.model) || 'default';

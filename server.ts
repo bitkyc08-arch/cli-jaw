@@ -30,7 +30,7 @@ import { syncCodexContextWindow, readCodexContextWindow } from './src/core/codex
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory/memory.js';
-import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, getAdvancedMemoryStatus, listAdvancedMemoryFiles, normalizeOpenAiCompatibleBaseUrl, readAdvancedMemorySnippet, reindexAdvancedMemory, searchAdvancedMemory, syncKvShadowImport } from './src/memory/advanced.js';
+import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, getAdvancedMemoryStatus, listAdvancedMemoryFiles, normalizeOpenAiCompatibleBaseUrl, readAdvancedMemorySnippet, reindexAdvancedMemory, searchAdvancedMemory, syncKvShadowImport, validateAdvancedMemoryConfig } from './src/memory/advanced.js';
 import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
     JAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
@@ -512,6 +512,31 @@ app.put('/api/memory-advanced/settings', (req, res) => {
             vertexConfigSet: !!vertexConfig,
         },
     });
+});
+app.post('/api/memory-advanced/enable', async (req, res) => {
+    try {
+        const patch = req.body || {};
+        const validated = await validateAdvancedMemoryConfig(patch);
+        if (!validated.ok) {
+            return res.status(400).json({ ok: false, error: validated.error || 'Advanced memory validation failed.' });
+        }
+        applySettingsPatch({ memoryAdvanced: { ...patch, enabled: true } }, { restartTelegram: false });
+        const result = bootstrapAdvancedMemory({
+            importCore: patch.importCore !== false,
+            importMarkdown: patch.importMarkdown !== false,
+            importKv: patch.importKv !== false,
+            importClaudeSession: patch.importClaudeSession !== false,
+        });
+        res.json({
+            ok: true,
+            message: 'Advanced memory enabled and initialized.',
+            validated,
+            result,
+            status: getAdvancedMemoryStatus(),
+        });
+    } catch (e: unknown) {
+        res.status(500).json({ ok: false, error: (e as Error).message });
+    }
 });
 app.post('/api/memory-advanced/init', (_req, res) => {
     const created = ensureAdvancedMemoryStructure();
