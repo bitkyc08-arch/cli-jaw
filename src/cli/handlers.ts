@@ -334,7 +334,7 @@ export async function memoryHandler(args: any[], ctx: any) {
     const L = ctx.locale || 'ko';
     const sub = String(args[0] || '').toLowerCase();
     if (sub === 'status') {
-        const status = await ctx.getAdvancedMemoryStatus?.();
+        const status = await ctx.getMemoryStatus?.();
         const lines = [
             `🧠 Memory`,
             `State: ${status?.state || '-'}`,
@@ -347,7 +347,7 @@ export async function memoryHandler(args: any[], ctx: any) {
         return { ok: true, text: lines.join('\n') };
     }
     if (sub === 'bootstrap') {
-        const result = await ctx.bootstrapAdvancedMemory?.({
+        const result = await ctx.bootstrapMemory?.({
             importCore: true,
             importMarkdown: true,
             importKv: true,
@@ -363,7 +363,7 @@ export async function memoryHandler(args: any[], ctx: any) {
         };
     }
     if (sub === 'reindex') {
-        const result = await ctx.reindexAdvancedMemory?.();
+        const result = await ctx.reindexMemory?.();
         return {
             ok: true,
             text: [
@@ -376,7 +376,7 @@ export async function memoryHandler(args: any[], ctx: any) {
     if (sub === 'adv') {
         const action = String(args[1] || 'status').toLowerCase();
         if (action === 'on') {
-            const status = await ctx.getAdvancedMemoryStatus?.();
+            const status = await ctx.getMemoryStatus?.();
             return {
                 ok: true,
                 text: `🧠 Memory is integrated by default.\nState: ${status?.state || 'not_initialized'}`,
@@ -386,21 +386,21 @@ export async function memoryHandler(args: any[], ctx: any) {
             return { ok: true, text: '🧠 Memory can no longer be turned off as a separate mode.' };
         }
         if (action === 'init') {
-            const created = await ctx.initAdvancedMemory?.();
-            const status = await ctx.getAdvancedMemoryStatus?.();
+            const created = await ctx.initMemoryRuntime?.();
+            const status = await ctx.getMemoryStatus?.();
             return {
                 ok: true,
                 text: `🧠 Memory initialized\nRoot: ${created?.root || status?.storageRoot || '-'}\nState: ${status?.state || 'configured'}`,
             };
         }
         if (action === 'bootstrap') {
-            const result = await ctx.bootstrapAdvancedMemory?.({
+            const result = await ctx.bootstrapMemory?.({
                 importCore: true,
                 importMarkdown: true,
                 importKv: true,
                 importClaudeSession: true,
             });
-            const status = await ctx.getAdvancedMemoryStatus?.();
+            const status = await ctx.getMemoryStatus?.();
             return {
                 ok: true,
                 text: [
@@ -412,8 +412,8 @@ export async function memoryHandler(args: any[], ctx: any) {
             };
         }
         if (action === 'reindex') {
-            const result = await ctx.reindexAdvancedMemory?.();
-            const status = await ctx.getAdvancedMemoryStatus?.();
+            const result = await ctx.reindexMemory?.();
+            const status = await ctx.getMemoryStatus?.();
             return {
                 ok: true,
                 text: [
@@ -424,7 +424,7 @@ export async function memoryHandler(args: any[], ctx: any) {
                 ].join('\n'),
             };
         }
-        const status = await ctx.getAdvancedMemoryStatus?.();
+        const status = await ctx.getMemoryStatus?.();
         const lines = [
             `🧠 Memory: ${status?.enabled ? 'ON' : 'OFF'}`,
             `State: ${status?.state || '-'}`,

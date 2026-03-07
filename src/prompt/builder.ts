@@ -6,7 +6,7 @@ import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartb
 import { getSession, getEmployees } from '../core/db.js';
 import { memoryFlushCounter, flushCycleCount } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
-import { buildTaskSnapshot, getAdvancedMemoryStatus, loadAdvancedProfileSummary } from '../memory/advanced.js';
+import { buildTaskSnapshot, getMemoryStatus, loadProfileSummary } from '../memory/runtime.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 
 const promptCache = new Map();
@@ -225,7 +225,7 @@ function appendLegacyMemoryContext(prompt: string) {
 
 function appendAdvancedMemoryContext(prompt: string, currentPrompt: string, providedSnapshot = '') {
     let next = prompt;
-    const profile = loadAdvancedProfileSummary(800);
+    const profile = loadProfileSummary(800);
     const snapshot = providedSnapshot || buildTaskSnapshot(currentPrompt, 2800);
     next += '\n\n---\n## Memory Runtime\n';
     next += '- indexed memory context is active\n';
@@ -246,12 +246,12 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
     let prompt = `${a1}\n\n${a2}`;
     const currentPrompt = String(opts.currentPrompt || '').trim();
     const forDisk = opts.forDisk === true;
-    const adv = getAdvancedMemoryStatus();
+    const mem = getMemoryStatus();
 
     // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
     // No dynamic injection needed — Bot-First policy with curl examples included
 
-    if (!forDisk && adv.routing?.searchRead === 'advanced') {
+    if (!forDisk && mem.routing?.searchRead === 'advanced') {
         prompt = appendAdvancedMemoryContext(prompt, currentPrompt, opts.memorySnapshot || '');
     } else if (!forDisk) {
         prompt = appendLegacyMemoryContext(prompt);

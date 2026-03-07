@@ -12,7 +12,7 @@ import {
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary } from './events.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../../lib/upload.js';
-import { getAdvancedFlushFilePath, getAdvancedMemoryStatus } from '../memory/advanced.js';
+import { getMemoryFlushFilePath, getMemoryStatus } from '../memory/runtime.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -881,7 +881,7 @@ async function triggerMemoryFlush() {
     const date = new Date().toISOString().slice(0, 10);
     const time = new Date().toTimeString().slice(0, 5);
     const memDir = getMemoryDir();
-    const memFile = getAdvancedFlushFilePath(date);
+    const memFile = getMemoryFlushFilePath(date);
 
     const flushPrompt = `You are a memory extractor. Summarize the conversation into a short prose paragraph.
 Save by APPENDING to: ${memFile}

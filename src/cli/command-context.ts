@@ -12,7 +12,7 @@ import { getMergedSkills, A2_PATH, regenerateB } from '../prompt/builder.js';
 import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import * as browser from '../browser/index.js';
 import * as memory from '../memory/memory.js';
-import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, getAdvancedMemoryStatus, reindexAdvancedMemory, searchAdvancedMemory, validateAdvancedMemoryConfig } from '../memory/advanced.js';
+import { bootstrapMemory, ensureMemoryStructure, getMemoryStatus, reindexMemory, searchIndexedMemory } from '../memory/runtime.js';
 import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll,
     ensureSkillsSymlinks, copyDefaultSkills,
@@ -81,16 +81,20 @@ export function makeCommandCtx(
         // Memory
         listMemory: () => memory.list(),
         searchMemory: (q: any) => {
-            const status = getAdvancedMemoryStatus();
+            const status = getMemoryStatus();
             return status.enabled && status.routing?.searchRead === 'advanced'
-                ? searchAdvancedMemory(String(q || ''))
+                ? searchIndexedMemory(String(q || ''))
                 : memory.search(q);
         },
-        getAdvancedMemoryStatus: () => getAdvancedMemoryStatus(),
-        initAdvancedMemory: () => ensureAdvancedMemoryStructure(),
-        bootstrapAdvancedMemory: (options?: Record<string, any>) => bootstrapAdvancedMemory(options || {}),
-        reindexAdvancedMemory: () => reindexAdvancedMemory(),
-        validateAdvancedMemoryConfig: (options?: Record<string, any>) => validateAdvancedMemoryConfig(options || {}),
+        getMemoryStatus: () => getMemoryStatus(),
+        initMemoryRuntime: () => ensureMemoryStructure(),
+        bootstrapMemory: (options?: Record<string, any>) => bootstrapMemory(options || {}),
+        reindexMemory: () => reindexMemory(),
+        getAdvancedMemoryStatus: () => getMemoryStatus(),
+        initAdvancedMemory: () => ensureMemoryStructure(),
+        bootstrapAdvancedMemory: (options?: Record<string, any>) => bootstrapMemory(options || {}),
+        reindexAdvancedMemory: () => reindexMemory(),
+        validateAdvancedMemoryConfig: async () => ({ ok: true, provider: 'integrated', error: '' }),
 
         // Browser
         getBrowserStatus: async () => browser.getBrowserStatus(settings.browser?.cdpPort || deriveCdpPort()),

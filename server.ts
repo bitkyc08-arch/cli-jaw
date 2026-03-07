@@ -30,7 +30,7 @@ import { syncCodexContextWindow, readCodexContextWindow } from './src/core/codex
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory/memory.js';
-import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, ensureIntegratedMemoryReady, getAdvancedMemoryStatus, listAdvancedMemoryFiles, readAdvancedMemorySnippet, reindexAdvancedMemory, searchAdvancedMemory, syncKvShadowImport } from './src/memory/advanced.js';
+import { bootstrapMemory, ensureMemoryRuntimeReady, getMemoryStatus, listMemoryFiles, readIndexedMemorySnippet, reindexMemory, searchIndexedMemory, syncKvShadowImport } from './src/memory/runtime.js';
 import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
     JAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
@@ -114,7 +114,7 @@ fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
 runMigration(projectRoot);
 loadSettings();
 try {
-    ensureIntegratedMemoryReady();
+    ensureMemoryRuntimeReady();
 } catch (e: unknown) {
     console.warn('[jaw:memory-init]', (e as Error).message);
 }
@@ -471,28 +471,28 @@ app.put('/api/settings', (req, res) => {
 });
 
 app.get('/api/memory/status', (_req, res) => {
-    res.json(getAdvancedMemoryStatus());
+    res.json(getMemoryStatus());
 });
 app.post('/api/memory/reindex', (_req, res) => {
-    const result = reindexAdvancedMemory();
+    const result = reindexMemory();
     res.json({
         ok: true,
         message: 'Memory reindex completed.',
         result,
-        status: getAdvancedMemoryStatus(),
+        status: getMemoryStatus(),
     });
 });
 app.post('/api/memory/bootstrap', (req, res) => {
-    const result = bootstrapAdvancedMemory(req.body || {});
+    const result = bootstrapMemory(req.body || {});
     res.json({
         ok: true,
         message: 'Memory bootstrap completed.',
         result,
-        status: getAdvancedMemoryStatus(),
+        status: getMemoryStatus(),
     });
 });
 app.get('/api/memory/files', (_req, res) => {
-    res.json(listAdvancedMemoryFiles());
+    res.json(listMemoryFiles());
 });
 
 // Codex context window config
@@ -956,8 +956,8 @@ app.post('/api/skills/reset', (req, res) => {
 app.get('/api/jaw-memory/search', (req, res) => {
     try {
         const q = String(req.query.q || '');
-        const adv = getAdvancedMemoryStatus();
-        res.json({ result: adv.enabled && adv.routing.searchRead === 'advanced' ? searchAdvancedMemory(q) : memory.search(q) });
+        const mem = getMemoryStatus();
+        res.json({ result: mem.routing.searchRead === 'advanced' ? searchIndexedMemory(q) : memory.search(q) });
     }
     catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
 });
@@ -965,9 +965,9 @@ app.get('/api/jaw-memory/search', (req, res) => {
 app.get('/api/jaw-memory/read', (req, res) => {
     try {
         const file = assertMemoryRelPath(String(req.query.file || ''), { allowExt: ['.md', '.txt', '.json'] });
-        const adv = getAdvancedMemoryStatus();
-        const content = adv.enabled && adv.routing.searchRead === 'advanced'
-            ? readAdvancedMemorySnippet(normalizeAdvancedReadPath(file), { lines: req.query.lines as any })
+        const mem = getMemoryStatus();
+        const content = mem.routing.searchRead === 'advanced'
+            ? readIndexedMemorySnippet(normalizeAdvancedReadPath(file), { lines: req.query.lines as any })
             : memory.read(file, { lines: req.query.lines as any });
         res.json({ content });
     } catch (e: unknown) { res.status((e as any).statusCode || 500).json({ error: (e as Error).message }); }
