@@ -504,9 +504,6 @@
                 <button class="mem-tab active" id="memTabBtnSettings"
                     style="padding:6px 12px;border:none;background:none;color:var(--text);cursor:pointer;font-size:12px;border-bottom:2px solid transparent">⚙️
                     Settings</button>
-                <button class="mem-tab" id="memTabBtnAdvSetup"
-                    style="display:none;padding:6px 12px;border:none;background:none;color:var(--text-dim);cursor:pointer;font-size:12px;border-bottom:2px solid transparent">🧠
-                    Advanced Setup</button>
                 <button class="mem-tab" id="memTabBtnAdvOps"
                     style="padding:6px 12px;border:none;background:none;color:var(--text-dim);cursor:pointer;font-size:12px;border-bottom:2px solid transparent">📊
                     Status</button>
@@ -571,110 +568,6 @@
                     flush
                 </div>
             </div>
-            <div id="memTabAdvSetup" style="padding:12px;display:none">
-                <div class="settings-row">
-                    <label>Advanced</label>
-                    <div>
-                        <button id="advOff" class="perm-btn">Off</button>
-                        <button id="advOn" class="perm-btn">On</button>
-                    </div>
-                </div>
-                <div class="settings-row">
-                    <label>Status</label>
-                    <span id="advEnabledBadge" style="font-size:11px;color:var(--text-dim)">disabled</span>
-                </div>
-                <div class="settings-row">
-                    <label>Query Provider</label>
-                    <select id="advProvider"
-                        style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
-                        <option value="gemini">gemini</option>
-                        <option value="vertex">vertex</option>
-                        <option value="openai-compatible">openai-compatible</option>
-                        <option value="local">local</option>
-                    </select>
-                </div>
-
-                <div class="settings-row sub-row adv-gemini">
-                    <label>Gemini API Key</label>
-                    <input type="password" id="advGeminiKey" placeholder="AIza..."
-                        style="width:100%;font-size:11px;padding:4px">
-                </div>
-                <div class="settings-row sub-row adv-gemini">
-                    <label>Query Model</label>
-                    <select id="advGeminiModel">
-                        <option value="gemini-3.1-flash-lite-preview" selected>gemini-3.1-flash-lite-preview</option>
-                        <option value="gemini-2.5-flash-lite">gemini-2.5-flash-lite</option>
-                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
-                        <option value="__custom__">✏️ 직접 입력...</option>
-                    </select>
-                    <input type="text" id="advGeminiModelCustom" placeholder="모델명 입력"
-                        style="display:none; margin-top:4px;" />
-                </div>
-
-                <div class="settings-row sub-row adv-vertex" style="display:none">
-                    <label>Vertex Config JSON</label>
-                    <textarea id="advVertexConfig" rows="4"
-                        placeholder='{"project_id":"...","location":"us-central1","credentials_path":"..."}'
-                        style="width:100%;font-size:11px;padding:4px;font-family:var(--font-mono)"></textarea>
-                </div>
-                <div class="settings-row sub-row adv-vertex" style="display:none">
-                    <label>Query Model</label>
-                    <input type="text" id="advVertexModel" placeholder="gemini-3.1-flash-lite-preview"
-                        style="width:100%;font-size:11px;padding:4px">
-                </div>
-
-                <div class="settings-row sub-row adv-openai" style="display:none">
-                    <label>Base URL</label>
-                    <input type="text" id="advOpenaiBaseUrl" placeholder="https://host/v1"
-                        style="width:100%;font-size:11px;padding:4px">
-                </div>
-                <div class="settings-row sub-row adv-openai" style="display:none">
-                    <label>API Key</label>
-                    <input type="password" id="advOpenaiKey" placeholder="sk-..."
-                        style="width:100%;font-size:11px;padding:4px">
-                </div>
-                <div class="settings-row sub-row adv-openai" style="display:none">
-                    <label>Query Model</label>
-                    <input type="text" id="advOpenaiModel" placeholder="gpt-4o-mini"
-                        style="width:100%;font-size:11px;padding:4px">
-                </div>
-
-                <div class="settings-row">
-                    <label>Use Active CLI/Model</label>
-                    <input type="checkbox" id="advBootstrapUseActive" checked>
-                </div>
-                <div class="settings-row sub-row adv-bootstrap-manual" style="display:none">
-                    <label>Bootstrap CLI</label>
-                    <select id="advBootstrapCli"
-                        style="font-size:11px;padding:4px;background:var(--surface);color:var(--text);border:1px solid var(--border);border-radius:4px">
-                        <option value="">(active CLI)</option>
-                        <option>claude</option>
-                        <option>codex</option>
-                        <option>gemini</option>
-                        <option>opencode</option>
-                        <option>copilot</option>
-                    </select>
-                </div>
-                <div class="settings-row sub-row adv-bootstrap-manual" style="display:none">
-                    <label>Bootstrap Model</label>
-                    <input type="text" id="advBootstrapModel" placeholder="(active model)"
-                        style="width:100%;font-size:11px;padding:4px">
-                </div>
-
-                <div class="settings-row">
-                    <label>Import Sources</label>
-                    <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
-                        <label><input type="checkbox" id="advImportCore" checked> MEMORY.md</label>
-                        <label><input type="checkbox" id="advImportMarkdown" checked> memory/**/*.md</label>
-                        <label><input type="checkbox" id="advImportKv" checked> SQLite KV memory</label>
-                        <label><input type="checkbox" id="advImportClaudeSession" checked> external .claude session memory (read-only)</label>
-                    </div>
-                </div>
-                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
-                    <button class="btn-save" id="advSaveSettingsBtn">💾 Save Advanced Settings</button>
-                    <button class="btn-clear" id="advBootstrapBtn">🧩 Re-run Bootstrap</button>
-                </div>
-            </div>
             <div id="memTabAdvOps" style="padding:12px;display:none">
                 <div class="settings-row"><label>Index State</label><span id="advIndexState" style="font-size:11px;color:var(--text-dim)">-</span></div>
                 <div class="settings-row"><label>Storage Root</label><span id="advStorageRoot" style="font-size:10px;color:var(--text-dim);font-family:monospace;word-break:break-all">-</span></div>
@@ -689,7 +582,17 @@
                     style="margin-top:8px;padding:6px;background:var(--bg);border-radius:4px;font-size:11px;color:var(--text-dim)">
                     Fixed Snapshot Budget: 2800 chars / 4 chunks / 700 chars each
                 </div>
+                <div class="settings-row" style="margin-top:12px">
+                    <label>Bootstrap Sources</label>
+                    <div style="display:flex;flex-direction:column;gap:4px;font-size:11px">
+                        <label><input type="checkbox" id="advImportCore" checked> MEMORY.md</label>
+                        <label><input type="checkbox" id="advImportMarkdown" checked> memory/**/*.md</label>
+                        <label><input type="checkbox" id="advImportKv" checked> SQLite KV memory</label>
+                        <label><input type="checkbox" id="advImportClaudeSession" checked> external .claude session memory (read-only)</label>
+                    </div>
+                </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">
+                    <button class="btn-clear" id="advBootstrapBtn">🧩 Bootstrap</button>
                     <button class="btn-clear" id="advReindexBtn">🔄 Reindex</button>
                     <button class="btn-clear" id="advReimportBtn">📥 Re-import Legacy</button>
                     <button class="btn-clear" id="advOpenCorruptedBtn">📂 Open Corrupted Folder</button>

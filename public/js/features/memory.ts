@@ -69,11 +69,11 @@ function setChecked(id: string, value: boolean) {
 function syncSidebarBadge(status: AdvancedMemoryStatus | null, basicCount: number) {
     const sideBtn = $('memorySidebarBtn');
     if (!sideBtn) return;
-    if (!status?.enabled) {
-        sideBtn.textContent = `🧠 Memory (${basicCount})`;
-        return;
-    }
-    const state = status.state === 'configured' ? 'Adv On' : status.state === 'not_initialized' ? 'Adv On' : status.state;
+    const state = status?.indexState === 'ready'
+        ? 'Ready'
+        : status?.state === 'not_initialized'
+            ? 'Indexing'
+            : (status?.state || `(${basicCount})`);
     sideBtn.textContent = `🧠 Memory · ${state}`;
 }
 
@@ -105,7 +105,7 @@ function setAdvBanner(text: string, show = true) {
 }
 
 function setAdvBusy(busy: boolean) {
-    const ids = ['advOn', 'advOff', 'advSaveSettingsBtn', 'advBootstrapBtn', 'advReindexBtn', 'advReimportBtn', 'advOpenCorruptedBtn'];
+    const ids = ['advBootstrapBtn', 'advReindexBtn', 'advReimportBtn', 'advOpenCorruptedBtn'];
     for (const id of ids) {
         const el = $(id) as HTMLButtonElement | null;
         if (el) el.disabled = busy;

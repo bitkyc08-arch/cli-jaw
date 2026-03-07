@@ -30,7 +30,7 @@ import { syncCodexContextWindow, readCodexContextWindow } from './src/core/codex
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory/memory.js';
-import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, ensureIntegratedMemoryReady, getAdvancedMemoryStatus, listAdvancedMemoryFiles, normalizeOpenAiCompatibleBaseUrl, readAdvancedMemorySnippet, reindexAdvancedMemory, searchAdvancedMemory, syncKvShadowImport, validateAdvancedMemoryConfig } from './src/memory/advanced.js';
+import { bootstrapAdvancedMemory, ensureAdvancedMemoryStructure, ensureIntegratedMemoryReady, getAdvancedMemoryStatus, listAdvancedMemoryFiles, readAdvancedMemorySnippet, reindexAdvancedMemory, searchAdvancedMemory, syncKvShadowImport } from './src/memory/advanced.js';
 import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
     JAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
@@ -268,14 +268,6 @@ function applySettingsPatch(rawPatch: Record<string, any> = {}, { restartTelegra
     const prevWorkingDir = settings.workingDir;
     const hasTelegramUpdate = !!(rawPatch || {}).telegram || (rawPatch || {}).locale !== undefined;
 
-    if (rawPatch?.memoryAdvanced && typeof rawPatch.memoryAdvanced === 'object') {
-        const ma = { ...rawPatch.memoryAdvanced };
-        if (typeof ma.baseUrl === 'string') {
-            ma.baseUrl = normalizeOpenAiCompatibleBaseUrl(ma.baseUrl);
-        }
-        rawPatch = { ...rawPatch, memoryAdvanced: ma };
-    }
-
     const merged = mergeSettingsPatch(settings, rawPatch);
     replaceSettings(merged);
     saveSettings(settings);
@@ -315,25 +307,6 @@ function applySettingsPatch(rawPatch: Record<string, any> = {}, { restartTelegra
 
     if (restartTelegram && hasTelegramUpdate) void initTelegram();
     return settings;
-}
-
-function sanitizeAdvancedSettingsPatch(raw: Record<string, any> = {}) {
-    const patch = raw && typeof raw === 'object' ? raw : {};
-    const next: Record<string, any> = {};
-    if (patch.enabled !== undefined) next.enabled = !!patch.enabled;
-    if (typeof patch.provider === 'string') next.provider = patch.provider;
-    if (typeof patch.model === 'string') next.model = patch.model;
-    if (typeof patch.apiKey === 'string' && patch.apiKey) next.apiKey = patch.apiKey;
-    if (typeof patch.baseUrl === 'string') next.baseUrl = patch.baseUrl;
-    if (typeof patch.vertexConfig === 'string') next.vertexConfig = patch.vertexConfig;
-    if (patch.bootstrap && typeof patch.bootstrap === 'object') {
-        next.bootstrap = {};
-        if (patch.bootstrap.enabled !== undefined) next.bootstrap.enabled = !!patch.bootstrap.enabled;
-        if (patch.bootstrap.useActiveCli !== undefined) next.bootstrap.useActiveCli = !!patch.bootstrap.useActiveCli;
-        if (typeof patch.bootstrap.cli === 'string') next.bootstrap.cli = patch.bootstrap.cli;
-        if (typeof patch.bootstrap.model === 'string') next.bootstrap.model = patch.bootstrap.model;
-    }
-    return next;
 }
 
 function normalizeAdvancedReadPath(file: string) {
@@ -479,18 +452,6 @@ app.post('/api/clear', (_, res) => {
 // Settings
 app.get('/api/settings', (_, res) => {
     const safe = { ...settings };
-    if (safe.memoryAdvanced) {
-        const key = safe.memoryAdvanced.apiKey || '';
-        const vertexConfig = safe.memoryAdvanced.vertexConfig || '';
-        safe.memoryAdvanced = {
-            ...safe.memoryAdvanced,
-            apiKey: undefined,
-            apiKeySet: !!key,
-            apiKeyLast4: key.slice(-4) || '',
-            vertexConfig: undefined,
-            vertexConfigSet: !!vertexConfig,
-        };
-    }
     if (safe.stt) {
         const gKey = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
         const oKey = safe.stt.openaiApiKey || '';
@@ -501,101 +462,12 @@ app.get('/api/settings', (_, res) => {
 app.put('/api/settings', (req, res) => {
     const result = applySettingsPatch(req.body, { restartTelegram: true });
     const safe = { ...result };
-    if (safe.memoryAdvanced) {
-        const key = safe.memoryAdvanced.apiKey || '';
-        const vertexConfig = safe.memoryAdvanced.vertexConfig || '';
-        safe.memoryAdvanced = {
-            ...safe.memoryAdvanced,
-            apiKey: undefined,
-            apiKeySet: !!key,
-            apiKeyLast4: key.slice(-4) || '',
-            vertexConfig: undefined,
-            vertexConfigSet: !!vertexConfig,
-        };
-    }
     if (safe.stt) {
         const gKey2 = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
         const oKey2 = safe.stt.openaiApiKey || '';
         safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey2, geminiKeyLast4: gKey2.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey2, openaiKeyLast4: oKey2.slice(-4) || '' };
     }
     ok(res, safe);
-});
-
-// Advanced Memory (Phase 0a)
-app.get('/api/memory-advanced/status', (_, res) => {
-    res.json(getAdvancedMemoryStatus());
-});
-app.put('/api/memory-advanced/settings', (req, res) => {
-    const result = applySettingsPatch({ memoryAdvanced: sanitizeAdvancedSettingsPatch(req.body || {}) }, { restartTelegram: false });
-    const safe = { ...result.memoryAdvanced };
-    const key = safe.apiKey || '';
-    const vertexConfig = safe.vertexConfig || '';
-    res.json({
-        ok: true,
-        memoryAdvanced: {
-            ...safe,
-            apiKey: undefined,
-            apiKeySet: !!key,
-            apiKeyLast4: key.slice(-4) || '',
-            vertexConfig: undefined,
-            vertexConfigSet: !!vertexConfig,
-        },
-    });
-});
-app.post('/api/memory-advanced/enable', async (req, res) => {
-    try {
-        const raw = req.body || {};
-        const settingsPatch = sanitizeAdvancedSettingsPatch(raw);
-        const validated = await validateAdvancedMemoryConfig(settingsPatch);
-        if (!validated.ok) {
-            return res.status(400).json({ ok: false, error: validated.error || 'Advanced memory validation failed.' });
-        }
-        applySettingsPatch({ memoryAdvanced: { ...settingsPatch, enabled: true } }, { restartTelegram: false });
-        const result = bootstrapAdvancedMemory({
-            importCore: raw.importCore !== false,
-            importMarkdown: raw.importMarkdown !== false,
-            importKv: raw.importKv !== false,
-            importClaudeSession: raw.importClaudeSession !== false,
-        });
-        res.json({
-            ok: true,
-            message: 'Advanced memory enabled and initialized.',
-            validated,
-            result,
-            status: getAdvancedMemoryStatus(),
-        });
-    } catch (e: unknown) {
-        res.status(500).json({ ok: false, error: (e as Error).message });
-    }
-});
-app.post('/api/memory-advanced/init', (_req, res) => {
-    const created = ensureAdvancedMemoryStructure();
-    res.json({
-        ok: true,
-        created,
-        status: getAdvancedMemoryStatus(),
-    });
-});
-app.post('/api/memory-advanced/bootstrap', (req, res) => {
-    const result = bootstrapAdvancedMemory(req.body || {});
-    res.json({
-        ok: true,
-        message: 'Advanced bootstrap completed.',
-        result,
-        status: getAdvancedMemoryStatus(),
-    });
-});
-app.post('/api/memory-advanced/reindex', (_req, res) => {
-    const result = reindexAdvancedMemory();
-    res.json({
-        ok: true,
-        message: 'Advanced reindex completed.',
-        result,
-        status: getAdvancedMemoryStatus(),
-    });
-});
-app.get('/api/memory-advanced/files', (_req, res) => {
-    res.json(listAdvancedMemoryFiles());
 });
 
 app.get('/api/memory/status', (_req, res) => {
