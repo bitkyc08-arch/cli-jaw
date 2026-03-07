@@ -179,6 +179,11 @@ export function loadSettings() {
             }
         }
         const merged = migrateSettings({ ...defaults, ...raw, perCli: mergedPerCli });
+        // --home (JAW_HOME) always wins over persisted workingDir (#64 hotfix)
+        if (merged.workingDir !== JAW_HOME) {
+            merged.workingDir = JAW_HOME;
+            saveSettings(merged);
+        }
         if (raw.planning) saveSettings(merged);
         settings = merged;
         return merged;
