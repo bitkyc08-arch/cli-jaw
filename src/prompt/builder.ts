@@ -6,6 +6,7 @@ import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartb
 import { getSession, getEmployees } from '../core/db.js';
 import { memoryFlushCounter, flushCycleCount } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
+import { buildTaskSnapshot, getAdvancedMemoryStatus, loadAdvancedProfileSummary } from '../memory/advanced.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 
 const promptCache = new Map();
@@ -185,37 +186,26 @@ export function loadRecentMemories() {
 
 // ─── System Prompt Generation ────────────────────────
 
-export function getSystemPrompt() {
-    // A-1: file takes priority (user-editable), rendered template fallback
-    const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
-    const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
-    let prompt = `${a1}\n\n${a2}`;
-
-    // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
-    // No dynamic injection needed — Bot-First policy with curl examples included
-
-    // Auto-flush memories (threshold-based injection)
-    // Inject every ceil(threshold/2) messages: threshold=5 → inject at 0,3,5,8,10...
+function appendLegacyMemoryContext(prompt: string) {
+    let next = prompt;
     try {
-        const threshold = settings.memory?.flushEvery ?? 20;
+        const threshold = settings.memory?.flushEvery ?? 10;
         const injectInterval = Math.ceil(threshold / 2);
         const shouldInject = memoryFlushCounter % injectInterval === 0;
         if (shouldInject) {
             const memories = loadRecentMemories();
             if (memories) {
-                prompt += memories;
+                next += memories;
                 console.log(`[memory] injected (msg ${memoryFlushCounter}, every ${injectInterval})`);
             }
         } else {
             console.log(`[memory] skipped injection (msg ${memoryFlushCounter}/${threshold}, interval ${injectInterval})`);
         }
     } catch {
-        // Fallback: always inject if counter unavailable
         const memories = loadRecentMemories();
-        if (memories) prompt += memories;
+        if (memories) next += memories;
     }
 
-    // Core memory (MEMORY.md, system-level injection)
     try {
         const memPath = join(JAW_HOME, 'memory', 'MEMORY.md');
         if (fs.existsSync(memPath)) {
@@ -224,11 +214,53 @@ export function getSystemPrompt() {
                 const truncated = coreMem.length > 1500
                     ? coreMem.slice(0, 1500) + '\n...(use `cli-jaw memory read MEMORY.md` for full)'
                     : coreMem;
-                prompt += '\n\n---\n## Core Memory\n' + truncated;
+                next += '\n\n---\n## Core Memory\n' + truncated;
                 console.log(`[memory] MEMORY.md loaded: ${truncated.length} chars`);
             }
         }
     } catch { /* memory not ready */ }
+
+    return next;
+}
+
+function appendAdvancedMemoryContext(prompt: string, currentPrompt: string, providedSnapshot = '') {
+    let next = prompt;
+    const profile = loadAdvancedProfileSummary(800);
+    const snapshot = providedSnapshot || buildTaskSnapshot(currentPrompt, 2800);
+    next += '\n\n---\n## Advanced Memory Mode\n';
+    next += '- search/read routed to advanced runtime\n';
+    next += '- save remains on legacy lightweight path\n';
+    if (profile) {
+        next += '\n\n## Advanced Profile\n' + profile;
+    }
+    if (snapshot) {
+        next += '\n\n' + snapshot;
+    }
+    return next;
+}
+
+export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string } = {}) {
+    // A-1: file takes priority (user-editable), rendered template fallback
+    const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
+    const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
+    let prompt = `${a1}\n\n${a2}`;
+    const currentPrompt = String(opts.currentPrompt || '').trim();
+    const forDisk = opts.forDisk === true;
+    const adv = getAdvancedMemoryStatus();
+
+    // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
+    // No dynamic injection needed — Bot-First policy with curl examples included
+
+    if (!adv.enabled) {
+        prompt = appendLegacyMemoryContext(prompt);
+    } else if (!forDisk && adv.routing?.searchRead === 'advanced') {
+        prompt = appendAdvancedMemoryContext(prompt, currentPrompt, opts.memorySnapshot || '');
+    } else if (!forDisk) {
+        prompt = appendLegacyMemoryContext(prompt);
+        prompt += '\n\n---\n## Advanced Memory Status\n';
+        prompt += '- advanced memory is enabled but index is not ready yet\n';
+        prompt += '- temporary fallback to legacy memory context is active\n';
+    }
 
     try {
         const emps = getEmployees.all();
@@ -410,7 +442,7 @@ export function clearPromptCache() { promptCache.clear(); }
 
 export function regenerateB() {
     clearTemplateCache();
-    const fullPrompt = getSystemPrompt();
+    const fullPrompt = getSystemPrompt({ forDisk: true });
     fs.writeFileSync(join(PROMPTS_DIR, 'B.md'), fullPrompt);
 
     // Generate {workDir}/AGENTS.md — read by Codex, Copilot, and OpenCode

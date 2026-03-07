@@ -26,6 +26,7 @@ import {
     injectResearchIntoPlanningPrompt,
     shouldRunResearch,
 } from './research.js';
+import { buildTaskSnapshotAsync, getAdvancedMemoryStatus } from '../memory/advanced.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -176,9 +177,20 @@ export async function orchestrate(
 
     // spawn/resume agent
     console.log(`[jaw:pabcd] state=${state}, spawning/resuming agent`);
+    let memorySnapshot = '';
+    try {
+        const adv = getAdvancedMemoryStatus();
+        if (adv.enabled && adv.routing?.searchRead === 'advanced' && !meta._workerResult) {
+            memorySnapshot = await buildTaskSnapshotAsync(userText || prompt, 2800);
+        }
+    } catch (err) {
+        console.warn('[jaw:memory-snapshot]', (err as Error).message);
+    }
+
     const { promise } = runSpawnAgent(prompt, {
         origin,
         _skipInsert: !!meta._skipInsert,
+        memorySnapshot,
     });
     const result = await promise as Record<string, any>;
 

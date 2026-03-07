@@ -133,7 +133,7 @@ function createDefaultSettings() {
         memoryAdvanced: {
             enabled: false,
             provider: 'gemini',
-            model: '',
+            model: 'gemini-3.1-flash-lite-preview',
             apiKey: '',
             baseUrl: '',
             vertexConfig: '',

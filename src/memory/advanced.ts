@@ -2,7 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import Database from 'better-sqlite3';
 import { join, relative, dirname } from 'path';
-import { createHash } from 'crypto';
+import { createHash, createSign } from 'crypto';
 import { JAW_HOME, settings } from '../core/config.js';
 import { instanceId } from '../core/instance.js';
 import { getMemory } from '../core/db.js';
@@ -48,6 +48,20 @@ type ParsedMarkdown = {
 };
 
 const DEFAULT_IMPORTED_COUNTS = { core: 0, markdown: 0, kv: 0, claude: 0 };
+let lastExpansionTerms: string[] = [];
+
+type VertexConfig = {
+    endpoint?: string;
+    token?: string;
+    model?: string;
+    project_id?: string;
+    projectId?: string;
+    location?: string;
+    credentials_path?: string;
+    credentialsPath?: string;
+    credentials_json?: Record<string, any>;
+    credentialsJson?: Record<string, any>;
+};
 
 export function getAdvancedMemoryDir() {
     return join(JAW_HOME, 'memory-advanced');
@@ -96,6 +110,234 @@ function frontmatter(meta: Record<string, string>) {
 
 function hashText(text: string) {
     return createHash('sha1').update(text).digest('hex').slice(0, 12);
+}
+
+function heuristicKeywords(query: string) {
+    const q = String(query || '').trim();
+    if (!q) return [];
+    const tokens = q.split(/[\s,]+/).map(t => t.trim()).filter(Boolean);
+    const out = new Set<string>([q, ...tokens]);
+    const lower = q.toLowerCase();
+    if (/login|로그인|auth|인증/.test(lower)) {
+        out.add('login');
+        out.add('auth');
+        out.add('인증');
+        out.add('401');
+    }
+    if (/launchd|service|plist|시작 안됨/.test(lower)) {
+        out.add('launchd');
+        out.add('plist');
+        out.add('service');
+    }
+    return [...out].slice(0, 5);
+}
+
+function sanitizeKeywords(input: unknown) {
+    const raw = Array.isArray(input) ? input : [];
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const item of raw) {
+        const value = String(item || '')
+            .replace(/[;&|`$><]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim()
+            .slice(0, 48);
+        if (!value) continue;
+        const key = value.toLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(value);
+        if (out.length >= 5) break;
+    }
+    return out;
+}
+
+function extractJsonArray(text: string) {
+    const trimmed = String(text || '').trim();
+    if (!trimmed) return [];
+    try {
+        const parsed = JSON.parse(trimmed);
+        return sanitizeKeywords(parsed);
+    } catch {
+        const match = trimmed.match(/\[[\s\S]*\]/);
+        if (match) {
+            try {
+                return sanitizeKeywords(JSON.parse(match[0]));
+            } catch {
+                return [];
+            }
+        }
+        return [];
+    }
+}
+
+async function expandViaGemini(query: string) {
+    const apiKey = settings.memoryAdvanced?.apiKey || process.env.GEMINI_API_KEY || '';
+    const model = settings.memoryAdvanced?.model || 'gemini-3.1-flash-lite-preview';
+    if (!apiKey) return [];
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`;
+    const body = {
+        contents: [{
+            parts: [{
+                text: `사용자 질문을 바탕으로 로컬 마크다운 기억을 뒤질 검색 키워드 5개를 JSON 배열로만 출력해라.
+- 한국어, 영어, 동의어, 에러코드, 모듈명 포함 가능
+- 예: ["로그인","login","auth","401","인증"]
+
+질문: ${query}`,
+            }],
+        }],
+    };
+    const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) return [];
+    const json: any = await res.json();
+    const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('\n') || '';
+    return extractJsonArray(text);
+}
+
+async function expandViaOpenAiCompatible(query: string) {
+    const apiKey = settings.memoryAdvanced?.apiKey || '';
+    const baseUrl = normalizeOpenAiCompatibleBaseUrl(settings.memoryAdvanced?.baseUrl || '');
+    const model = settings.memoryAdvanced?.model || 'gpt-4o-mini';
+    if (!apiKey || !baseUrl) return [];
+    const res = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+            model,
+            temperature: 0,
+            response_format: { type: 'json_object' },
+            messages: [
+                {
+                    role: 'system',
+                    content: 'Return only valid JSON: {"keywords":["k1","k2","k3"]}',
+                },
+                {
+                    role: 'user',
+                    content: `Expand this user query into up to 5 search keywords for local markdown search. Include Korean, English, synonyms, error codes, module names when helpful.\nQuery: ${query}`,
+                },
+            ],
+        }),
+    });
+    if (!res.ok) return [];
+    const json: any = await res.json();
+    const text = json?.choices?.[0]?.message?.content || '';
+    try {
+        const parsed = JSON.parse(text);
+        return sanitizeKeywords(parsed.keywords);
+    } catch {
+        return extractJsonArray(text);
+    }
+}
+
+function loadServiceAccount(config: VertexConfig) {
+    if (config.credentials_json || config.credentialsJson) return config.credentials_json || config.credentialsJson;
+    const path = config.credentials_path || config.credentialsPath || '';
+    if (!path) return null;
+    try {
+        return JSON.parse(fs.readFileSync(path, 'utf8'));
+    } catch {
+        return null;
+    }
+}
+
+async function getGoogleAccessToken(sa: any) {
+    const iat = Math.floor(Date.now() / 1000);
+    const exp = iat + 3600;
+    const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+    const claim = Buffer.from(JSON.stringify({
+        iss: sa.client_email,
+        scope: 'https://www.googleapis.com/auth/cloud-platform',
+        aud: sa.token_uri,
+        exp,
+        iat,
+    })).toString('base64url');
+    const unsigned = `${header}.${claim}`;
+    const signer = createSign('RSA-SHA256');
+    signer.update(unsigned);
+    signer.end();
+    const signature = signer.sign(sa.private_key).toString('base64url');
+    const assertion = `${unsigned}.${signature}`;
+
+    const body = new URLSearchParams({
+        grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+        assertion,
+    });
+    const res = await fetch(sa.token_uri, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body,
+    });
+    if (!res.ok) return '';
+    const json: any = await res.json();
+    return json?.access_token || '';
+}
+
+async function expandViaVertex(query: string) {
+    const cfgRaw = settings.memoryAdvanced?.vertexConfig || '';
+    if (!cfgRaw) return [];
+    let cfg: VertexConfig;
+    try { cfg = JSON.parse(cfgRaw); } catch { return []; }
+
+    let endpoint = cfg.endpoint || '';
+    let token = cfg.token || '';
+    const model = settings.memoryAdvanced?.model || cfg.model || 'gemini-3.1-flash-lite-preview';
+
+    if (!endpoint) {
+        const sa = loadServiceAccount(cfg);
+        const project = cfg.project_id || cfg.projectId || sa?.project_id;
+        const location = cfg.location || 'us-central1';
+        if (sa && !token) token = await getGoogleAccessToken(sa);
+        if (project) {
+            endpoint = `https://${location}-aiplatform.googleapis.com/v1/projects/${project}/locations/${location}/publishers/google/models/${model}:generateContent`;
+        }
+    }
+    if (!endpoint || !token) return [];
+
+    const body = {
+        contents: [{
+            role: 'user',
+            parts: [{
+                text: `Return only a JSON array of up to 5 search keywords for local markdown search. Include Korean, English, synonyms, error codes, module names when useful.\nQuery: ${query}`,
+            }],
+        }],
+    };
+    const res = await fetch(endpoint, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(body),
+    });
+    if (!res.ok) return [];
+    const json: any = await res.json();
+    const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('\n') || '';
+    return extractJsonArray(text);
+}
+
+export async function expandSearchKeywords(query: string) {
+    const q = String(query || '').trim();
+    if (!q) return [];
+    const provider = settings.memoryAdvanced?.provider || 'gemini';
+    let expanded: string[] = [];
+    try {
+        if (provider === 'gemini') expanded = await expandViaGemini(q);
+        else if (provider === 'openai-compatible') expanded = await expandViaOpenAiCompatible(q);
+        else if (provider === 'vertex') expanded = await expandViaVertex(q);
+        else expanded = [];
+    } catch {
+        expanded = [];
+    }
+    const merged = sanitizeKeywords(expanded.length ? [q, ...expanded] : heuristicKeywords(q));
+    lastExpansionTerms = merged;
+    return merged;
 }
 
 function slug(value: string) {
@@ -203,9 +445,13 @@ function getLegacyClaudeMemoryDir() {
 function importCoreMemory(root: string) {
     const corePath = join(JAW_HOME, 'memory', 'MEMORY.md');
     if (!fs.existsSync(corePath)) return 0;
+    const profilePath = join(root, 'profile.md');
+    if (fs.existsSync(profilePath)) {
+        // Profile already exists — preserve user edits, skip overwrite
+        return 0;
+    }
     const content = safeReadFile(corePath);
     const parsed = parseLegacyMemorySections(content);
-    const profilePath = join(root, 'profile.md');
     const body = `# Profile
 
 ## User Preferences
@@ -434,10 +680,13 @@ function getIndexDb() {
             path TEXT NOT NULL,
             relpath TEXT NOT NULL,
             kind TEXT NOT NULL,
+            home_id TEXT NOT NULL DEFAULT '',
             source_start_line INTEGER NOT NULL,
             source_end_line INTEGER NOT NULL,
             source_hash TEXT NOT NULL,
-            content TEXT NOT NULL
+            content TEXT NOT NULL,
+            content_hash TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT ''
         );
         CREATE INDEX IF NOT EXISTS idx_chunks_relpath ON chunks(relpath);
         CREATE INDEX IF NOT EXISTS idx_chunks_path ON chunks(path);
@@ -481,9 +730,11 @@ function reindexAll(root: string) {
     const db = getIndexDb();
     clearIndex(db);
 
+    const now = new Date().toISOString();
+    const homeId = instanceId();
     const insertChunk = db.prepare(`
-        INSERT INTO chunks (path, relpath, kind, source_start_line, source_end_line, source_hash, content)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO chunks (path, relpath, kind, home_id, source_start_line, source_end_line, source_hash, content, content_hash, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const insertFts = db.prepare(`
         INSERT INTO chunks_fts (rowid, content, relpath, kind)
@@ -498,14 +749,18 @@ function reindexAll(root: string) {
             const rel = relative(root, file).replace(/\\/g, '/');
             const kind = kindForFile(root, file);
             for (const chunk of chunkMarkdown(file, rel, kind)) {
+                const contentHash = hashText(chunk.content);
                 const info = insertChunk.run(
                     chunk.path,
                     chunk.relpath,
                     chunk.kind,
+                    homeId,
                     chunk.source_start_line,
                     chunk.source_end_line,
                     chunk.source_hash,
                     chunk.content,
+                    contentHash,
+                    now,
                 );
                 insertFts.run(
                     Number(info.lastInsertRowid),
@@ -522,6 +777,39 @@ function reindexAll(root: string) {
     return { totalFiles, totalChunks };
 }
 
+function reindexSingleFile(root: string, file: string) {
+    if (!fs.existsSync(file)) return 0;
+    const db = getIndexDb();
+    const rel = relative(root, file).replace(/\\/g, '/');
+    const kind = kindForFile(root, file);
+    const now = new Date().toISOString();
+    const homeId = instanceId();
+
+    // Delete existing chunks for this file
+    db.prepare('DELETE FROM chunks_fts WHERE rowid IN (SELECT id FROM chunks WHERE relpath = ?)').run(rel);
+    db.prepare('DELETE FROM chunks WHERE relpath = ?').run(rel);
+
+    // Re-chunk and insert
+    const insertChunk = db.prepare(
+        'INSERT INTO chunks (path, relpath, kind, home_id, source_start_line, source_end_line, source_hash, content, content_hash, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    );
+    const insertFts = db.prepare(
+        'INSERT INTO chunks_fts (rowid, content, relpath, kind) VALUES (?, ?, ?, ?)'
+    );
+    let count = 0;
+    const tx = db.transaction(() => {
+        for (const chunk of chunkMarkdown(file, rel, kind)) {
+            const contentHash = hashText(chunk.content);
+            const info = insertChunk.run(chunk.path, chunk.relpath, chunk.kind, homeId, chunk.source_start_line, chunk.source_end_line, chunk.source_hash, chunk.content, contentHash, now);
+            insertFts.run(Number(info.lastInsertRowid), chunk.content, chunk.relpath, chunk.kind);
+            count++;
+        }
+    });
+    tx();
+    db.close();
+    return count;
+}
+
 function buildLikeTerm(term: string) {
     return `%${term.replace(/[%_]/g, (m) => `\\${m}`)}%`;
 }
@@ -536,6 +824,11 @@ function tokenizeQuery(query: string) {
     return Array.from(new Set([trimmed, ...tokens])).slice(0, 8);
 }
 
+function tokenizeExpandedQuery(query: string, expanded?: string[]) {
+    if (expanded?.length) return sanitizeKeywords([query, ...expanded]).slice(0, 8);
+    return tokenizeQuery(query);
+}
+
 function formatHits(hits: SearchHit[]) {
     if (!hits.length) return '(no results)';
     return hits.map(hit => {
@@ -544,9 +837,9 @@ function formatHits(hits: SearchHit[]) {
     }).join('\n\n---\n\n');
 }
 
-function searchIndex(query: string) {
+function searchIndex(query: string, expanded?: string[]) {
     const db = getIndexDb();
-    const searchTerms = tokenizeQuery(query);
+    const searchTerms = tokenizeExpandedQuery(query, expanded);
     if (!searchTerms.length) {
         db.close();
         return { hits: [] as SearchHit[] };
@@ -657,7 +950,7 @@ function importSingleMarkdownFile(root: string, file: string) {
         updated_at: new Date().toISOString(),
     });
     writeText(dest, fm + body.trim() + '\n');
-    reindexAdvancedMemory();
+    reindexSingleFile(root, dest);
     return dest;
 }
 
@@ -667,7 +960,7 @@ export function syncLegacyMarkdownShadowImport(file: string) {
     if (file === join(JAW_HOME, 'memory', 'MEMORY.md')) {
         const count = importCoreMemory(root);
         updateImportedCount('core', count);
-        reindexAdvancedMemory();
+        if (count > 0) reindexSingleFile(root, join(root, 'profile.md'));
         return { ok: true, target: join(root, 'profile.md'), count };
     }
     const target = importSingleMarkdownFile(root, file);
@@ -681,7 +974,7 @@ export function syncKvShadowImport() {
     const root = getAdvancedMemoryDir();
     const count = importKvMemory(root);
     updateImportedCount('kv', count);
-    reindexAdvancedMemory();
+    reindexSingleFile(root, join(root, 'semantic', 'kv-imported.md'));
     return { ok: true, target: join(root, 'semantic', 'kv-imported.md'), count };
 }
 
@@ -806,6 +1099,44 @@ export function searchAdvancedMemory(query: string) {
     return formatHits(hits);
 }
 
+export function loadAdvancedProfileSummary(maxChars = 800) {
+    const file = join(getAdvancedMemoryDir(), 'profile.md');
+    if (!fs.existsSync(file)) return '';
+    const parsed = parseMarkdownFile(safeReadFile(file));
+    const body = parsed.body.trim();
+    if (!body) return '';
+    return body.length > maxChars ? body.slice(0, maxChars) + '\n...(truncated)' : body;
+}
+
+export function buildTaskSnapshot(query: string, budget = 2800, expanded?: string[]) {
+    const cleaned = String(query || '').trim();
+    if (!cleaned) return '';
+    const { hits } = searchIndex(cleaned, expanded);
+    if (!hits.length) return '';
+
+    const out: string[] = [];
+    let remaining = Math.max(0, budget);
+
+    for (const hit of hits.slice(0, 4)) {
+        if (remaining <= 0) break;
+        const header = `### ${hit.relpath}:${hit.source_start_line}-${hit.source_end_line}`;
+        const snippetBudget = Math.min(700, Math.max(0, remaining - header.length - 4));
+        if (snippetBudget <= 0) break;
+        const snippet = hit.snippet.slice(0, snippetBudget).trim();
+        const block = `${header}\n${snippet}`;
+        out.push(block);
+        remaining -= block.length + 2;
+    }
+
+    if (!out.length) return '';
+    return `## Task Snapshot\n${out.join('\n\n')}`;
+}
+
+export async function buildTaskSnapshotAsync(query: string, budget = 2800) {
+    const expanded = await expandSearchKeywords(query);
+    return buildTaskSnapshot(query, budget, expanded);
+}
+
 export function readAdvancedMemorySnippet(relPath: string, opts: { lines?: string } = {}) {
     const root = getAdvancedMemoryDir();
     const file = join(root, relPath);
@@ -850,7 +1181,7 @@ export function getAdvancedMemoryStatus() {
         lastIndexedAt: fs.existsSync(dbPath) ? fs.statSync(dbPath).mtime.toISOString() : null,
         importStatus: meta?.bootstrapStatus || (initialized ? 'idle' : 'not_started'),
         corruptedCount: countFiles(corruptedDir),
-        lastExpansion: [],
+        lastExpansion: lastExpansionTerms,
         lastError: meta?.lastError || '',
         importedCounts: meta?.importedCounts || { ...DEFAULT_IMPORTED_COUNTS },
         backupRoot: getAdvancedMemoryBackupDir(),

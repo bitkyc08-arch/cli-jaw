@@ -276,13 +276,14 @@ interface SpawnOpts {
     model?: string;
     effort?: string;
     permissions?: string;
+    memorySnapshot?: string;
 }
 
 export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     // Ensure AGENTS.md on disk is fresh before CLI reads it
     if (!opts.internal && !opts._isFallback) regenerateB();
 
-    const { forceNew = false, agentId, sysPrompt: customSysPrompt } = opts;
+    const { forceNew = false, agentId, sysPrompt: customSysPrompt, memorySnapshot } = opts;
     const origin = opts.origin || 'web';
     const empSid = opts.employeeSessionId || null;
     const mainManaged = !forceNew && !empSid;
@@ -321,7 +322,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const model = opts.model || ao.model || cfg.model || 'default';
     const effort = opts.effort || ao.effort || cfg.effort || '';
 
-    const sysPrompt = customSysPrompt || getSystemPrompt();
+    const sysPrompt = customSysPrompt !== undefined
+        ? customSysPrompt
+        : getSystemPrompt({ currentPrompt: prompt, forDisk: false, memorySnapshot });
 
     const isResume = empSid
         ? true
