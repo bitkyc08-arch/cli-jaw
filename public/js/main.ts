@@ -36,7 +36,10 @@ import {
 } from './features/heartbeat.js';
 import {
     openMemoryModal, closeMemoryModal, switchMemTab, setMemEnabled,
-    saveMemSettings, deleteMemFile, viewMemFile
+    saveMemSettings, deleteMemFile, viewMemFile,
+    setAdvEnabled, saveAdvancedMemorySettings, initializeAdvancedMemory,
+    rerunAdvancedBootstrap, reindexAdvancedMemory, openCorruptedFolder,
+    bindAdvancedProviderUi
 } from './features/memory.js';
 import { state } from './state.js';
 import { loadCliRegistry, getCliKeys } from './constants.js';
@@ -318,6 +321,8 @@ document.getElementById('memoryModal')?.addEventListener('click', (e) => closeMe
 document.querySelector('#memoryModal .modal-box')?.addEventListener('click', (e) => e.stopPropagation());
 document.querySelector('[data-action="closeMemory"]')?.addEventListener('click', () => closeMemoryModal());
 document.getElementById('memTabBtnSettings')?.addEventListener('click', () => switchMemTab('settings'));
+document.getElementById('memTabBtnAdvSetup')?.addEventListener('click', () => switchMemTab('adv-setup'));
+document.getElementById('memTabBtnAdvOps')?.addEventListener('click', () => switchMemTab('adv-ops'));
 document.getElementById('memTabBtnFiles')?.addEventListener('click', () => switchMemTab('files'));
 document.getElementById('memOn')?.addEventListener('click', () => setMemEnabled(true));
 document.getElementById('memOff')?.addEventListener('click', () => setMemEnabled(false));
@@ -325,9 +330,18 @@ document.getElementById('memFlushEvery')?.addEventListener('change', saveMemSett
 document.getElementById('memCli')?.addEventListener('change', saveMemSettings);
 document.getElementById('memModel')?.addEventListener('change', saveMemSettings);
 document.getElementById('memRetention')?.addEventListener('change', saveMemSettings);
+document.getElementById('advOn')?.addEventListener('click', () => setAdvEnabled(true));
+document.getElementById('advOff')?.addEventListener('click', () => setAdvEnabled(false));
+document.getElementById('advSaveSettingsBtn')?.addEventListener('click', saveAdvancedMemorySettings);
+document.getElementById('advInitBtn')?.addEventListener('click', initializeAdvancedMemory);
+document.getElementById('advBootstrapBtn')?.addEventListener('click', rerunAdvancedBootstrap);
+document.getElementById('advReindexBtn')?.addEventListener('click', reindexAdvancedMemory);
+document.getElementById('advReimportBtn')?.addEventListener('click', rerunAdvancedBootstrap);
+document.getElementById('advOpenCorruptedBtn')?.addEventListener('click', openCorruptedFolder);
+bindAdvancedProviderUi();
 
 // Memory files (event delegation)
-document.getElementById('memFilesList')?.addEventListener('click', (e) => {
+document.getElementById('basicMemoryFiles')?.addEventListener('click', (e) => {
     const del = (e.target as HTMLElement)?.closest('[data-mem-delete]') as HTMLElement | null;
     if (del) { e.stopPropagation(); deleteMemFile(del.dataset.memDelete || ''); return; }
     const view = (e.target as HTMLElement)?.closest('[data-mem-view]') as HTMLElement | null;
