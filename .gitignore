@@ -8,3 +8,6 @@ settings.json
 .artifacts/
 public/dist/
 dist/
+
+out/
+_INBOX/
