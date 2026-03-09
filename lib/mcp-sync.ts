@@ -551,6 +551,7 @@ const CODEX_ACTIVE = new Set([
 const OPENCLAW_ACTIVE = new Set([
     'browser', 'notion', 'memory', 'vision-click',
     'screen-capture', 'docx', 'xlsx', 'pptx', 'hwp', 'github', 'telegram-send',
+    'video',
 ]);
 
 function getSkillVersion(id: string, registry: any): string | null {
