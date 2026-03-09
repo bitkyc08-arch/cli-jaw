@@ -826,14 +826,20 @@ function copyDirRecursive(src: string, dst: string) {
     try { entries = fs.readdirSync(src, { withFileTypes: true }); }
     catch { return; }
     for (const entry of entries) {
+        // Skip node_modules — never copy dependency trees (may be symlinks to shared installs)
+        if (entry.name === 'node_modules' || entry.name === '.git') continue;
         const srcPath = join(src, entry.name);
         const dstPath = join(dst, entry.name);
         try {
-            // Resolve symlinks to their real type
-            const stat = fs.statSync(srcPath);
-            if (stat.isDirectory()) {
+            // Use lstatSync to detect symlinks without following them
+            const lstat = fs.lstatSync(srcPath);
+            if (lstat.isSymbolicLink()) {
+                // Skip symlinks — don't follow into potentially huge directories
+                continue;
+            }
+            if (lstat.isDirectory()) {
                 copyDirRecursive(srcPath, dstPath);
-            } else if (stat.isFile()) {
+            } else if (lstat.isFile()) {
                 fs.copyFileSync(srcPath, dstPath);
             }
             // Skip sockets, FIFOs, etc.
