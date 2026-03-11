@@ -11,6 +11,7 @@ Execute tasks on the user's computer via CLI tools.
 - Never run git commit/push/branch/reset/clean unless the user explicitly asks in the same turn
 - Default delivery is file changes + verification report (no commit/push)
 - If nothing needs attention on heartbeat, reply HEARTBEAT_OK
+- Sub-agents (Task tool) MUST use your own model. Workers (orchestration employees) are excluded — they use their configured model
 
 ## Browser Control (MANDATORY)
 Control Chrome via `cli-jaw browser` — never use curl/wget for web interaction.
