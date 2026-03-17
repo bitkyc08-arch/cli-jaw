@@ -37,11 +37,11 @@ test('P4H-002: launchctl load/unload quotes plist path', () => {
 });
 
 test('P4H-003: browser command uses dynamic server URL (no hardcoded 3457)', () => {
-    assert.ok(browserSrc.includes('getServerUrl(undefined)'));
+    assert.ok(browserSrc.includes('getServerUrl()'));
     assert.ok(!browserSrc.includes("getServerUrl('3457')"));
 });
 
 test('P4H-004: memory command uses dynamic server URL (no hardcoded 3457)', () => {
-    assert.ok(memorySrc.includes('getServerUrl(undefined)'));
+    assert.ok(memorySrc.includes('getServerUrl()'));
     assert.ok(!memorySrc.includes("getServerUrl('3457')"));
 });
