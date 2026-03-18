@@ -17,7 +17,7 @@ import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, re
 import { registerBrowserRoutes } from './src/routes/browser.js';
 import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll,
-    ensureSkillsSymlinks, initMcpConfig, copyDefaultSkills,
+    ensureWorkingDirSkillsLinks, initMcpConfig, copyDefaultSkills,
 } from './lib/mcp-sync.js';
 
 // ─── src/ modules ────────────────────────────────────
@@ -296,7 +296,7 @@ function applySettingsPatch(rawPatch: Record<string, any> = {}, { restartTelegra
     if (settings.workingDir !== prevWorkingDir) {
         try {
             initMcpConfig(settings.workingDir);
-            ensureSkillsSymlinks(settings.workingDir, { onConflict: 'backup' });
+            ensureWorkingDirSkillsLinks(settings.workingDir, { onConflict: 'skip', includeClaude: true, allowReplaceManaged: true });
             syncToAll(loadUnifiedMcp());
             regenerateB();
             console.log(`[jaw:workingDir] artifacts regenerated for ${settings.workingDir}`);
@@ -1090,7 +1090,7 @@ server.listen(PORT, () => {
 
     try {
         initMcpConfig(settings.workingDir);
-        const symlinks = ensureSkillsSymlinks(settings.workingDir, { onConflict: 'backup' });
+        const symlinks = ensureWorkingDirSkillsLinks(settings.workingDir, { onConflict: 'skip', includeClaude: true, allowReplaceManaged: true });
         copyDefaultSkills();
         const moved = (symlinks?.links || []).filter(x => x.action === 'backup_replace');
         if (moved.length) {

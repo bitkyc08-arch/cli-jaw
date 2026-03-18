@@ -15,7 +15,7 @@ import * as memory from '../memory/memory.js';
 import { bootstrapMemory, ensureMemoryStructure, getMemoryStatus, reindexMemory, searchIndexedMemory } from '../memory/runtime.js';
 import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll,
-    ensureSkillsSymlinks, copyDefaultSkills, softResetSkills,
+    ensureWorkingDirSkillsLinks, copyDefaultSkills, softResetSkills,
 } from '../../lib/mcp-sync.js';
 
 export type CommandContextInterface = 'web' | 'telegram' | 'cli';
@@ -118,7 +118,7 @@ export function makeCommandCtx(
             } else {
                 softResetSkills();
             }
-            const symlinks = ensureSkillsSymlinks(settings.workingDir, { onConflict: 'backup' });
+            const symlinks = ensureWorkingDirSkillsLinks(settings.workingDir, { onConflict: 'skip', includeClaude: true, allowReplaceManaged: true });
             regenerateB();
             return { symlinks };
         },
