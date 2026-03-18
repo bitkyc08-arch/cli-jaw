@@ -120,6 +120,8 @@ jaw serve
 
 > Requires **Node.js ≥ 22** ([download](https://nodejs.org)) and **at least 1 AI CLI** authenticated below.
 
+> 🔒 **Shared path policy:** cli-jaw uses `~/.cli-jaw/*` by default. It does **not** modify shared harness paths (`~/.agents/*`, `~/.agent/*`, `~/.claude/*`) unless you explicitly opt in. See `jaw doctor --repair-shared-paths` to detect or fix contamination from older versions.
+
 ---
 
 ## 🔑 Authenticate Your AI Engines
@@ -648,7 +650,8 @@ rm -f ~/Library/LaunchAgents/com.cli-jaw.*
 
 # ── 4. Remove legacy artifacts ──
 rm -f ~/AGENTS.md ~/CLAUDE.md          # postinstall symlinks
-rm -rf ~/.agents ~/.agent              # skill symlink dirs
+# Do not remove shared harness paths (~/.agents, ~/.agent) unless you explicitly
+# created them for cli-jaw. Use: jaw doctor --repair-shared-paths
 rm -rf ~/.cli-claw                     # old cli-claw data
 rm -f ~/.copilot/mcp-config.json       # MCP config synced by jaw
 
