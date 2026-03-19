@@ -527,6 +527,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 const promptResult = await promptPromise;
                 if (process.env.DEBUG) console.log('[acp:prompt:result]', JSON.stringify(promptResult).slice(0, 200));
 
+                // Save session BEFORE shutdown — acp.shutdown() causes SIGTERM (code=null),
+                // which skips the exit handler's code===0 gate, losing session continuity.
+                if (!forceNew && !empSid && ctx.sessionId) {
+                    updateSession.run(cli, ctx.sessionId, model, settings.permissions, settings.workingDir, cfg.effort || '');
+                    console.log(`[jaw:session] saved ${cli} session=${ctx.sessionId.slice(0, 12)}... (pre-shutdown)`);
+                }
+
                 await acp.shutdown();
             } catch (err: unknown) {
                 console.error(`[acp:error] ${(err as Error).message}`);
