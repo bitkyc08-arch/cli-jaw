@@ -25,8 +25,7 @@ import {
 import { assertSkillId, assertFilename, assertMemoryRelPath, safeResolveUnder } from './src/security/path-guards.js';
 import { decodeFilenameSafe } from './src/security/decode.js';
 import { ok, fail } from './src/http/response.js';
-import { mergeSettingsPatch } from './src/core/settings-merge.js';
-import { syncCodexContextWindow, readCodexContextWindow } from './src/core/codex-config.js';
+import { readCodexContextWindow } from './src/core/codex-config.js';
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory/memory.js';
@@ -35,14 +34,14 @@ import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
     JAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
     SKILLS_DIR, SKILLS_REF_DIR,
-    settings, loadSettings, saveSettings, replaceSettings,
+    settings, loadSettings, saveSettings,
     ensureDirs, runMigration,
     loadHeartbeatFile, saveHeartbeatFile,
     detectAllCli, APP_VERSION,
 } from './src/core/config.js';
 import {
-    db, getSession, updateSession, insertMessage, getMessages, getMessagesWithTrace,
-    getRecentMessages, clearMessages,
+    db, getSession, insertMessage, getMessages, getMessagesWithTrace,
+    getRecentMessages,
     getMemory, upsertMemory, deleteMemory,
     getEmployees, insertEmployee, deleteEmployee,
 } from './src/core/db.js';
@@ -57,6 +56,7 @@ import {
     steerAgent, enqueueMessage, processQueue, messageQueue,
     saveUpload, memoryFlushCounter, resetFallbackState,
 } from './src/agent/spawn.js';
+import { bumpSessionOwnershipGeneration } from './src/agent/session-persistence.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/cli/commands.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from './src/orchestrator/pipeline.js';
 import { getState, getCtx, setState, resetState, canTransition } from './src/orchestrator/state-machine.js';
@@ -69,6 +69,8 @@ import { validateHeartbeatScheduleInput } from './src/memory/heartbeat-schedule.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from './lib/quota-copilot.js';
 import { startTokenKeepAlive } from './lib/token-keepalive.js';
 import { CLI_REGISTRY } from './src/cli/registry.js';
+import { clearMainSessionState } from './src/core/main-session.js';
+import { applyRuntimeSettingsPatch } from './src/core/runtime-settings.js';
 
 // ─── Resolve paths ───────────────────────────────────
 
@@ -228,10 +230,8 @@ function getRuntimeSnapshot() {
 }
 
 function clearSessionState() {
-    clearMessages.run();
-    const session = getSession() as Record<string, any>;
-    updateSession.run(session.active_cli, null, session.model, session.permissions, session.working_dir, session.effort);
-    broadcast('clear', {});
+    bumpSessionOwnershipGeneration();
+    clearMainSessionState();
 }
 
 function resolveRequestLocale(req: any, preferred: string | null = null) {
@@ -262,49 +262,12 @@ function getLatestTelegramChatId() {
 }
 
 function applySettingsPatch(rawPatch: Record<string, any> = {}, { restartTelegram = false } = {}) {
-    const prevCli = settings.cli;
-    const prevWorkingDir = settings.workingDir;
-    const hasTelegramUpdate = !!(rawPatch || {}).telegram || (rawPatch || {}).locale !== undefined;
-
-    const merged = mergeSettingsPatch(settings, rawPatch);
-    replaceSettings(merged);
-    saveSettings(settings);
-
-    // Sync Codex config.toml when contextWindow changes
-    if (rawPatch.perCli?.codex && 'contextWindow' in rawPatch.perCli.codex) {
-        const codexCfg = settings.perCli?.codex || {};
-        syncCodexContextWindow({
-            enabled: !!codexCfg.contextWindow,
-            contextWindow: codexCfg.contextWindowSize || 1000000,
-            compactLimit: codexCfg.contextCompactLimit || 900000,
-        });
-    }
-
-    resetFallbackState();
-    const session = getSession() as Record<string, any>;
-    const ao = settings.activeOverrides?.[settings.cli] || {};
-    const pc = settings.perCli?.[settings.cli] || {};
-    const activeModel = ao.model || pc.model || 'default';
-    const activeEffort = ao.effort || pc.effort || 'medium';
-    const sessionId = (settings.cli !== prevCli) ? null : session.session_id;
-    if (settings.cli !== prevCli && session.session_id) {
-        console.log(`[jaw:session] invalidated — CLI changed ${prevCli} → ${settings.cli}`);
-    }
-    updateSession.run(settings.cli, sessionId, activeModel, settings.permissions, settings.workingDir, activeEffort);
-
-    // workingDir 변경 시 산출물 재생성
-    if (settings.workingDir !== prevWorkingDir) {
-        try {
-            initMcpConfig(settings.workingDir);
-            ensureWorkingDirSkillsLinks(settings.workingDir, { onConflict: 'skip', includeClaude: true, allowReplaceManaged: true });
-            syncToAll(loadUnifiedMcp());
-            regenerateB();
-            console.log(`[jaw:workingDir] artifacts regenerated for ${settings.workingDir}`);
-        } catch (e: unknown) { console.error('[jaw:workingDir]', (e as Error).message); }
-    }
-
-    if (restartTelegram && hasTelegramUpdate) void initTelegram();
-    return settings;
+    bumpSessionOwnershipGeneration();
+    return applyRuntimeSettingsPatch(rawPatch, {
+        resetFallbackState,
+        restartTelegram,
+        onRestartTelegram: () => { void initTelegram(); },
+    });
 }
 
 function normalizeAdvancedReadPath(file: string) {

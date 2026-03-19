@@ -13,6 +13,12 @@ import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary } from './events.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../../lib/upload.js';
 import { getMemoryFlushFilePath, getMemoryStatus } from '../memory/runtime.js';
+import { resolveMainCli } from '../core/main-session.js';
+import {
+    getSessionOwnershipGeneration,
+    persistMainSession,
+} from './session-persistence.js';
+import { shouldInvalidateResumeSession } from './resume-classifier.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -300,7 +306,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const resultPromise = new Promise(r => { resolve = r; });
 
     const session: any = getSession();
-    let cli = opts.cli || session.active_cli || settings.cli;
+    const ownerGeneration = getSessionOwnershipGeneration();
+    let cli = resolveMainCli(opts.cli, settings, session);
 
     // ─── Fallback retry: skip to fallback if retries exhausted ───
     if (!opts._isFallback && !opts.internal) {
@@ -325,7 +332,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     const sysPrompt = customSysPrompt !== undefined
         ? customSysPrompt
-        : getSystemPrompt({ currentPrompt: prompt, forDisk: false, memorySnapshot });
+        : getSystemPrompt({ currentPrompt: prompt, forDisk: false, memorySnapshot, activeCli: cli });
 
     const isResume = empSid
         ? true
@@ -538,9 +545,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
                 // Save session BEFORE shutdown — acp.shutdown() causes SIGTERM (code=null),
                 // which skips the exit handler's code===0 gate, losing session continuity.
-                if (!forceNew && !empSid && ctx.sessionId) {
-                    updateSession.run(cli, ctx.sessionId, model, settings.permissions, settings.workingDir, cfg.effort || '');
-                    console.log(`[jaw:session] saved ${cli} session=${ctx.sessionId.slice(0, 12)}... (pre-shutdown)`);
+                const persistedAcpSessionId = ctx.sessionId;
+                if (persistedAcpSessionId && persistMainSession({
+                    ownerGeneration,
+                    forceNew,
+                    employeeSessionId: empSid,
+                    sessionId: persistedAcpSessionId,
+                    isFallback: opts._isFallback,
+                    cli,
+                    model,
+                    effort: cfg.effort || '',
+                })) {
+                    console.log(`[jaw:session] saved ${cli} session=${persistedAcpSessionId.slice(0, 12)}... (pre-shutdown)`);
                 }
 
                 await acp.shutdown();
@@ -555,7 +571,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (acpSettled) return;  // error handler already resolved
             acpSettled = true;
             if (code !== 0 && !killReason) {
-                console.warn(`[acp:unexpected-exit] code=${code} signal=${signal} sessionId=${ctx.sessionId}`);
+                console.warn(`[acp:unexpected-exit] code=${code} signal=${signal} sessionId=${ctx.sessionId || 'none'}`);
             }
             const wasSteer = killReason === 'steer';
             if (mainManaged) killReason = null;  // consume
@@ -566,8 +582,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 broadcast('agent_status', { running: false, agentId: agentLabel });
             }
 
-            if (!forceNew && !empSid && ctx.sessionId && code === 0) {
-                updateSession.run(cli, ctx.sessionId, model, settings.permissions, settings.workingDir, cfg.effort || '');
+            const persistedExitSessionId = ctx.sessionId;
+            if (persistedExitSessionId && persistMainSession({
+                ownerGeneration,
+                forceNew,
+                employeeSessionId: empSid,
+                sessionId: persistedExitSessionId,
+                isFallback: opts._isFallback,
+                code,
+                cli,
+                model,
+                effort: cfg.effort || '',
+            })) {
+                console.log(`[jaw:session] saved ${cli} session=${persistedExitSessionId.slice(0, 12)}...`);
             }
 
             // ─── Success: clear fallback state (auto-recovery) ───
@@ -612,6 +639,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 if (ctx.stderrBuf.includes('auth')) errMsg = '🔐 인증 오류 — `copilot login` 또는 `gh auth login` 실행 후 다시 시도해주세요';
                 else if (is429) errMsg = '⚡ API 용량 초과 (429)';
                 else if (ctx.stderrBuf.trim()) errMsg = ctx.stderrBuf.trim().slice(0, 200);
+
+                if (isResume && !empSid && shouldInvalidateResumeSession(cli, code, ctx.stderrBuf, ctx.fullText)) {
+                    updateSession.run(cli, null, model, settings.permissions, settings.workingDir, cfg.effort || '');
+                    console.log(`[jaw:session] invalidated stale resume — ${cli} session cleared`);
+                }
 
                 // ─── 429 delay retry (same engine, 1회만) ────────
                 if (!opts.internal && !opts._isFallback && is429 && !opts._isRetry) {
@@ -764,9 +796,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             broadcast('agent_status', { running: false, agentId: agentLabel });
         }
 
-        if (!forceNew && !empSid && ctx.sessionId && code === 0) {
-            updateSession.run(cli, ctx.sessionId, model, settings.permissions, settings.workingDir, cfg.effort || 'medium');
-            console.log(`[jaw:session] saved ${cli} session=${ctx.sessionId.slice(0, 12)}...`);
+        const persistedStdSessionId = ctx.sessionId;
+        if (persistedStdSessionId && persistMainSession({
+            ownerGeneration,
+            forceNew,
+            employeeSessionId: empSid,
+            sessionId: persistedStdSessionId,
+            isFallback: opts._isFallback,
+            code,
+            cli,
+            model,
+            effort: cfg.effort || 'medium',
+        })) {
+            console.log(`[jaw:session] saved ${cli} session=${persistedStdSessionId.slice(0, 12)}...`);
         }
 
         // ─── Success: clear fallback state (auto-recovery) ───
@@ -821,6 +863,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 errMsg = '🔐 인증 오류 — CLI 로그인 상태를 확인해주세요';
             } else if (ctx.stderrBuf.trim()) {
                 errMsg = ctx.stderrBuf.trim().slice(0, 200);
+            }
+
+            if (isResume && !empSid && shouldInvalidateResumeSession(cli, code, ctx.stderrBuf, ctx.fullText)) {
+                updateSession.run(cli, null, model, settings.permissions, settings.workingDir, cfg.effort || 'medium');
+                console.log(`[jaw:session] invalidated stale resume — ${cli} session cleared`);
             }
 
             // ─── 429 delay retry (same engine, 1회만) ────────

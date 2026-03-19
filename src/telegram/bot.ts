@@ -6,19 +6,23 @@ import { sequentialize } from '@grammyjs/runner';
 import { broadcast, addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
 import { settings, detectAllCli, APP_VERSION } from '../core/config.js';
 import { t, normalizeLocale } from '../core/i18n.js';
-import { insertMessage, getSession, updateSession, clearMessages } from '../core/db.js';
+import { insertMessage } from '../core/db.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from '../orchestrator/pipeline.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import { makeCommandCtx } from '../cli/command-context.js';
 import {
     activeProcess, killActiveAgent, waitForProcessEnd,
     saveUpload, buildMediaPrompt, messageQueue,
+    resetFallbackState,
 } from '../agent/spawn.js';
+import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
 import { getTelegramMenuCommands } from '../command-contract/policy.js';
 import { getMergedSkills } from '../prompt/builder.js';
 import * as memory from '../memory/memory.js';
 import { downloadTelegramFile } from '../../lib/upload.js';
+import { clearMainSessionState } from '../core/main-session.js';
+import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { handleVoice } from './voice.js';
 import {
     escapeHtmlTg,
@@ -116,22 +120,16 @@ function syncTelegramCommands(bot: any) {
 function makeTelegramCommandCtx() {
     return makeCommandCtx('telegram', currentLocale(), {
         applySettings: async (patch) => {
-            const { replaceSettings: _replace, saveSettings: _save } = await import('../core/config.js');
-            const { mergeSettingsPatch } = await import('../core/settings-merge.js');
-            const merged = mergeSettingsPatch(settings, patch);
-            _replace(merged);
-            _save(merged);
-            if (patch.telegram) {
-                const { initTelegram: _init } = await import('./bot.js');
-                void _init();
-            }
-            return { ok: true };
+            bumpSessionOwnershipGeneration();
+            return applyRuntimeSettingsPatch(patch, {
+                resetFallbackState,
+                restartTelegram: true,
+                onRestartTelegram: () => { void initTelegram(); },
+            });
         },
         clearSession: () => {
-            clearMessages.run();
-            const s = getSession() as Record<string, any>;
-            updateSession.run(s.active_cli, null, s.model, s.permissions, s.working_dir, s.effort);
-            broadcast('clear', {});
+            bumpSessionOwnershipGeneration();
+            clearMainSessionState();
         },
     });
 }

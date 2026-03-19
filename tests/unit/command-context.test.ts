@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
+import { makeCommandCtx } from '../../src/cli/command-context.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -87,4 +88,62 @@ test('CC-007: getPrompt returns actual file content, not unsupported message', (
         !ctxSrc.includes('tg.promptUnsupported'),
         'no unsupported message in unified context',
     );
+});
+
+// ─── CC-008+: behavioral delegation tests ───
+
+test('CC-008: telegram fallbackOrder patch delegates to applySettings', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async (patch: Record<string, any>) => {
+            calls.push(patch);
+            return { ok: true };
+        },
+        clearSession: () => undefined,
+    });
+
+    const result = await ctx.updateSettings({ fallbackOrder: ['codex', 'copilot'] });
+    assert.equal(result?.ok, true);
+    assert.deepEqual(calls, [{ fallbackOrder: ['codex', 'copilot'] }]);
+});
+
+test('CC-009: telegram rejects unsupported patches without calling applySettings', async () => {
+    let calls = 0;
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async () => {
+            calls++;
+            return { ok: true };
+        },
+        clearSession: () => undefined,
+    });
+
+    const result = await ctx.updateSettings({ cli: 'codex' });
+    assert.equal(result?.ok, false);
+    assert.equal(calls, 0);
+});
+
+test('CC-010: web context delegates settings patches directly', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('web', 'ko', {
+        applySettings: async (patch: Record<string, any>) => {
+            calls.push(patch);
+            return { ok: true };
+        },
+        clearSession: () => undefined,
+    });
+
+    const result = await ctx.updateSettings({ cli: 'codex' });
+    assert.equal(result?.ok, true);
+    assert.deepEqual(calls, [{ cli: 'codex' }]);
+});
+
+test('CC-011: clearSession delegates to dependency callback', async () => {
+    let cleared = 0;
+    const ctx = makeCommandCtx('web', 'ko', {
+        applySettings: async () => ({ ok: true }),
+        clearSession: () => { cleared++; },
+    });
+
+    await ctx.clearSession();
+    assert.equal(cleared, 1);
 });

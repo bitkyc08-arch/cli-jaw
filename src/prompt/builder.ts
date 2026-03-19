@@ -3,7 +3,7 @@ import os from 'os';
 import { createHash } from 'crypto';
 import { join } from 'path';
 import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile, deriveCdpPort } from '../core/config.js';
-import { getSession, getEmployees } from '../core/db.js';
+import { getEmployees } from '../core/db.js';
 import { memoryFlushCounter, flushCycleCount } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
 import { buildTaskSnapshot, getMemoryStatus, loadProfileSummary } from '../memory/runtime.js';
@@ -239,7 +239,11 @@ function appendAdvancedMemoryContext(prompt: string, currentPrompt: string, prov
     return next;
 }
 
-export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string } = {}) {
+export function shouldIncludeVisionClickHint(activeCli?: string | null): boolean {
+    return activeCli === 'codex';
+}
+
+export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string } = {}) {
     // A-1: file takes priority (user-editable), rendered template fallback
     const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
     const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
@@ -335,8 +339,8 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
 
     // ─── Vision-Click Hint (Codex only) ──────────────
     try {
-        const session: any = getSession();
-        if (session.active_cli === 'codex') {
+        const activeCli = opts.activeCli || settings.cli;
+        if (shouldIncludeVisionClickHint(activeCli)) {
             const visionSkillPath = join(SKILLS_DIR, 'vision-click', 'SKILL.md');
             if (fs.existsSync(visionSkillPath)) {
                 prompt += '\n' + loadTemplate('vision-click.md');
