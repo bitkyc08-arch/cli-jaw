@@ -504,10 +504,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 if (process.env.DEBUG) console.log('[acp:init]', JSON.stringify(initResult).slice(0, 200));
 
                 replayMode = true;  // Phase 17.2: mute during session load
+                let loadSessionOk = false;
                 if (isResume && resumeSessionId) {
                     try {
                         await acp.loadSession(resumeSessionId);
-                    } catch {
+                        loadSessionOk = true;
+                        console.log(`[acp:session] loadSession OK: ${resumeSessionId.slice(0, 12)}...`);
+                    } catch (loadErr: unknown) {
+                        console.warn(`[acp:session] loadSession FAILED: ${(loadErr as Error).message} — falling back to createSession`);
                         await acp.createSession(settings.workingDir);
                     }
                 } else {
@@ -522,7 +526,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 ctx.seenToolKeys.clear();
                 ctx.thinkingBuf = '';  // Phase 17.2: clear replay thinking too
 
-                const acpPrompt = isResume ? prompt : withHistoryPrompt(prompt, historyBlock);
+                // If loadSession failed (or not resuming), inject history into prompt
+                const needsHistoryFallback = isResume && !loadSessionOk;
+                const fallbackHistory = needsHistoryFallback ? buildHistoryBlock(prompt) : '';
+                const acpPrompt = needsHistoryFallback
+                    ? withHistoryPrompt(prompt, fallbackHistory)
+                    : (isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
                 const { promise: promptPromise } = acp.prompt(acpPrompt);
                 const promptResult = await promptPromise;
                 if (process.env.DEBUG) console.log('[acp:prompt:result]', JSON.stringify(promptResult).slice(0, 200));
