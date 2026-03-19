@@ -308,12 +308,29 @@ if (values.simple) {
         process.stdout.write(`\x1b[${rows};1H\n`);
     }
 
+    function renderBlockSeparator() {
+        process.stdout.write('\n');
+        console.log(`  ${c.dim}${hrLine()}${c.reset}`);
+    }
+
+    function renderAssistantTurnStart() {
+        process.stdout.write('\n  ');
+    }
+
     function showPrompt() {
         if (typeof closeAutocomplete === 'function') closeAutocomplete();
         prevLineCount = 1;  // reset for fresh prompt
-        console.log('');
-        console.log(`  ${c.dim}${hrLine()}${c.reset}`);
         process.stdout.write(promptPrefix);
+    }
+
+    function openPromptBlock() {
+        renderBlockSeparator();
+        showPrompt();
+    }
+
+    function reopenPromptLine() {
+        process.stdout.write('\n');
+        showPrompt();
     }
 
     // Phase 12.1.7: Calculate visual width (Korean/CJK = 2 columns, ANSI codes = 0)
@@ -641,7 +658,7 @@ if (values.simple) {
                 commandRunning = false;
                 inputActive = true;
                 closeAutocomplete();
-                showPrompt();
+                openPromptBlock();
             }
         }
     }
@@ -665,7 +682,7 @@ if (values.simple) {
             ws.send(JSON.stringify({ type: 'stop' }));
             console.log(`\n  ${c.yellow}■ stopped${c.reset}`);
             inputActive = true;
-            showPrompt();
+            openPromptBlock();
         }
     }
 
@@ -693,7 +710,7 @@ if (values.simple) {
             if (commandRunning) return;
             if (!inputActive) {
                 inputActive = true;
-                showPrompt();
+                openPromptBlock();
             }
             appendNewlineToComposer(composer);
             redrawInputWithAutocomplete();
@@ -802,9 +819,9 @@ if (values.simple) {
             clearComposer(composer);
             closeAutocomplete();
             prevLineCount = 1;
-            console.log('');  // newline after input
 
-            if (!text) { showPrompt(); return; }
+            if (!text) { reopenPromptLine(); return; }
+            renderBlockSeparator();
             // Phase 10: /file command
             if (draft !== null && text.startsWith('/file ')) {
                 const parts = text.slice(6).trim().split(/\s+/);
@@ -812,7 +829,7 @@ if (values.simple) {
                 const caption = parts.slice(1).join(' ');
                 if (!fs.existsSync(fp)) {
                     console.log(`  ${c.red}파일 없음: ${fp}${c.reset}`);
-                    showPrompt();
+                    openPromptBlock();
                     return;
                 }
                 const prompt = `[사용자가 파일을 보냈습니다: ${fp}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
@@ -848,7 +865,7 @@ if (values.simple) {
                 ws.send(JSON.stringify({ type: 'stop' }));
                 console.log(`\n  ${c.yellow}■ stopped${c.reset}`);
                 inputActive = true;
-                showPrompt();
+                openPromptBlock();
             } else {
                 cleanupScrollRegion();
                 console.log(`\n  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
@@ -867,7 +884,7 @@ if (values.simple) {
             if (!inputActive) {
                 if (commandRunning) return;
                 inputActive = true;
-                showPrompt();  // new separator + prompt before queue input
+                openPromptBlock();  // new separator + prompt before queue input
             }
             appendTextToComposer(composer, key);
             redrawInputWithAutocomplete();
@@ -895,7 +912,7 @@ if (values.simple) {
             if (!inputActive) {
                 if (commandRunning) return;
                 inputActive = true;
-                showPrompt();
+                openPromptBlock();
             }
             redrawInputWithAutocomplete();
             if (tokens.length === 0) return;
@@ -916,8 +933,7 @@ if (values.simple) {
                     }
                     if (!streaming) {
                         streaming = true;
-                        console.log('');
-                        process.stdout.write('  ');
+                        renderAssistantTurnStart();
                     }
                     process.stdout.write((msg.text || '').replace(/\n/g, '\n  '));
                     break;
@@ -928,8 +944,8 @@ if (values.simple) {
                     } else if (streaming) {
                         console.log('');
                     } else if (msg.text) {
-                        console.log('');
-                        console.log(`  ${msg.text.replace(/\n/g, '\n  ')}`);
+                        renderAssistantTurnStart();
+                        console.log(msg.text.replace(/\n/g, '\n  '));
                     }
                     // IDE diff: queue drain unconditional (mid-run /ide off safe)
                     if (isGit && preFileSetQueue.length > 0) {
@@ -952,7 +968,7 @@ if (values.simple) {
                     }
                     streaming = false;
                     inputActive = true;
-                    showPrompt();
+                    openPromptBlock();
                     break;
 
                 case 'agent_status':
@@ -1014,5 +1030,5 @@ if (values.simple) {
     });
 
     setupScrollRegion();
-    showPrompt();
+    openPromptBlock();
 }
