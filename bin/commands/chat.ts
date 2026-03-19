@@ -16,14 +16,26 @@ import {
     backspaceComposer,
     clearComposer,
     consumePasteProtocol,
-    createComposerState,
-    createPasteCaptureState,
     flattenComposerForSubmit,
     getComposerDisplayText,
     getPlainCommandDraft,
     getTrailingTextSegment,
     setBracketedPaste,
 } from '../../src/cli/tui/composer.js';
+import { classifyKeyAction } from '../../src/cli/tui/keymap.js';
+import {
+    applyResolvedAutocompleteState,
+    clearAutocomplete,
+    closeAutocomplete,
+    makeSelectionKey,
+    popupTotalRows,
+    renderAutocomplete,
+    resolveAutocompleteState,
+    syncAutocompleteWindow,
+} from '../../src/cli/tui/overlay.js';
+import { clipTextToCols, visualWidth } from '../../src/cli/tui/renderers.js';
+import { cleanupScrollRegion, ensureSpaceBelow, resolveShellLayout, setupScrollRegion } from '../../src/cli/tui/shell.js';
+import { createTuiStore } from '../../src/cli/tui/store.js';
 import {
     isGitRepo, captureFileSet, diffFileSets,
     detectIde, getIdeCli, openDiffInIde, getDiffStat,
@@ -290,24 +302,6 @@ if (values.simple) {
     // ─── Scroll region: fixed footer at bottom ──
     const getRows = () => process.stdout.rows || 24;
 
-    function setupScrollRegion() {
-        const rows = getRows();
-        // Set scroll region to rows 1..(rows-2), leaving bottom 2 for footer
-        process.stdout.write(`\x1b[1;${rows - 2}r`);
-        // Draw fixed footer at absolute positions
-        process.stdout.write(`\x1b[${rows - 1};1H\x1b[2K  ${c.dim}${hrLine()}${c.reset}`);
-        process.stdout.write(`\x1b[${rows};1H\x1b[2K${footer}`);
-        // Move cursor back into scroll region
-        process.stdout.write(`\x1b[${rows - 2};1H`);
-    }
-
-    function cleanupScrollRegion() {
-        const rows = getRows();
-        // Reset scroll region to full terminal
-        process.stdout.write(`\x1b[1;${rows}r`);
-        process.stdout.write(`\x1b[${rows};1H\n`);
-    }
-
     function renderBlockSeparator() {
         process.stdout.write('\n');
         console.log(`  ${c.dim}${hrLine()}${c.reset}`);
@@ -318,7 +312,7 @@ if (values.simple) {
     }
 
     function showPrompt() {
-        if (typeof closeAutocomplete === 'function') closeAutocomplete();
+        if (typeof closeAutocomplete === 'function') closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
         prevLineCount = 1;  // reset for fresh prompt
         process.stdout.write(promptPrefix);
     }
@@ -331,43 +325,6 @@ if (values.simple) {
     function reopenPromptLine() {
         process.stdout.write('\n');
         showPrompt();
-    }
-
-    // Phase 12.1.7: Calculate visual width (Korean/CJK = 2 columns, ANSI codes = 0)
-    function visualWidth(str: string) {
-        // Strip ANSI escape codes first
-        const stripped = str.replace(/\x1b\[[0-9;]*m/g, '');
-        let w = 0;
-        for (const ch of stripped) {
-            const cp = ch.codePointAt(0);
-            if (cp === undefined) { w += 1; continue; }
-            // CJK ranges: Hangul, CJK Unified, Fullwidth, etc
-            if ((cp >= 0x1100 && cp <= 0x115F) || (cp >= 0x2E80 && cp <= 0x303E) ||
-                (cp >= 0x3040 && cp <= 0x33BF) || (cp >= 0x3400 && cp <= 0x4DBF) ||
-                (cp >= 0x4E00 && cp <= 0xA4CF) || (cp >= 0xA960 && cp <= 0xA97C) ||
-                (cp >= 0xAC00 && cp <= 0xD7AF) || (cp >= 0xD7B0 && cp <= 0xD7FF) ||
-                (cp >= 0xF900 && cp <= 0xFAFF) || (cp >= 0xFE30 && cp <= 0xFE6F) ||
-                (cp >= 0xFF01 && cp <= 0xFF60) || (cp >= 0xFFE0 && cp <= 0xFFE6) ||
-                (cp >= 0x20000 && cp <= 0x2FA1F)) {
-                w += 2;
-            } else {
-                w += 1;
-            }
-        }
-        return w;
-    }
-
-    function clipTextToCols(str: string, maxCols: number) {
-        if (maxCols <= 0) return '';
-        let out = '';
-        let w = 0;
-        for (const ch of str) {
-            const cw = visualWidth(ch);
-            if (w + cw > maxCols) break;
-            out += ch;
-            w += cw;
-        }
-        return out;
     }
 
     let prevLineCount = 1;  // track how many terminal rows input occupied
@@ -404,31 +361,17 @@ if (values.simple) {
     }
 
     // ─── State ───────────────────────────────
-    const composer = createComposerState();
-    const pasteCapture = createPasteCaptureState();
+    const store = createTuiStore();
+    const composer = store.composer;
+    const pasteCapture = store.pasteCapture;
+    const panes = store.panes;
     let inputActive = true;
     let streaming = false;
     let commandRunning = false;
     const ESC_WAIT_MS = 70;
     let escPending = false;
     let escTimer: ReturnType<typeof setTimeout> | null = null;
-    const ac: {
-        open: boolean; stage: string; contextHeader: string;
-        items: any[]; selected: number; windowStart: number;
-        visibleRows: number; renderedRows: number;
-        maxRowsCommand: number; maxRowsArgument: number;
-    } = {
-        open: false,
-        stage: 'command',
-        contextHeader: '',
-        items: [],
-        selected: 0,
-        windowStart: 0,
-        visibleRows: 0,
-        renderedRows: 0,
-        maxRowsCommand: 6,
-        maxRowsArgument: 8,
-    };
+    const ac = store.autocomplete;
 
     function getMaxPopupRows() {
         // Scroll region ends at rows-2 (rows-1/rows are fixed footer).
@@ -436,180 +379,32 @@ if (values.simple) {
         return Math.max(0, getRows() - 3);
     }
 
-    function makeSelectionKey(item: any, stage: string) {
-        if (!item) return '';
-        const base = item.command ? `${item.command}:${item.name}` : item.name;
-        return `${stage}:${base}`;
-    }
-
-    function popupTotalRows(state: any) {
-        if (!state?.open) return 0;
-        return (state.visibleRows || 0) + (state.contextHeader ? 1 : 0);
-    }
-
-    // ─ Phase 1c: use terminal natural scrolling to create space below ─
-    // Prints \n within scroll region to push content up if needed,
-    // then CSI A back to prompt row. No content is overwritten.
-    function ensureSpaceBelow(n: number) {
-        if (n <= 0) return;
-        for (let i = 0; i < n; i++) process.stdout.write('\n');
-        process.stdout.write(`\x1b[${n}A`);
-    }
-
-    function syncAutocompleteWindow() {
-        if (!ac.items.length || ac.visibleRows <= 0) {
-            ac.windowStart = 0;
-            return;
-        }
-        ac.selected = Math.max(0, Math.min(ac.selected, ac.items.length - 1));
-        const maxStart = Math.max(0, ac.items.length - ac.visibleRows);
-        ac.windowStart = Math.max(0, Math.min(ac.windowStart, maxStart));
-        if (ac.selected < ac.windowStart) ac.windowStart = ac.selected;
-        if (ac.selected >= ac.windowStart + ac.visibleRows) {
-            ac.windowStart = ac.selected - ac.visibleRows + 1;
-        }
-    }
-
-    function resolveAutocompleteState(prevKey: string) {
-        const draft = getPlainCommandDraft(composer);
-        if (!draft || !draft.startsWith('/')) {
-            return { open: false, items: [], selected: 0, visibleRows: 0 };
-        }
-
-        const body = draft.slice(1);
-        const firstSpace = body.indexOf(' ');
-        let stage = 'command';
-        let contextHeader = '';
-        let items = [];
-
-        if (firstSpace === -1) {
-            items = getCompletionItems(draft, 'cli');
-        } else {
-            const commandName = body.slice(0, firstSpace).trim().toLowerCase();
-            if (!commandName) return { open: false, items: [], selected: 0, visibleRows: 0 };
-
-            const rest = body.slice(firstSpace + 1);
-            const endsWithSpace = /\s$/.test(rest);
-            const tokens = rest.trim() ? rest.trim().split(/\s+/) : [];
-            const partial = endsWithSpace ? '' : (tokens[tokens.length - 1] || '');
-            const argv = endsWithSpace ? tokens : tokens.slice(0, -1);
-
-            items = getArgumentCompletionItems(commandName, partial, 'cli', argv, {});
-            if (items.length) {
-                stage = 'argument';
-                contextHeader = `${commandName} ▸ ${items[0]?.commandDesc || '인자 선택'}`;
-            }
-        }
-
-        if (!items.length) {
-            return { open: false, items: [], selected: 0, visibleRows: 0 };
-        }
-
-        const selected = (() => {
-            if (!prevKey) return 0;
-            const idx = items.findIndex(i => makeSelectionKey(i, stage) === prevKey);
-            return idx >= 0 ? idx : 0;
-        })();
-
-        const maxRows = getMaxPopupRows();
-        const headerRows = contextHeader ? 1 : 0;
-        const maxItemRows = Math.max(0, maxRows - headerRows);
-        const stageCap = stage === 'argument' ? ac.maxRowsArgument : ac.maxRowsCommand;
-        const visibleRows = Math.min(stageCap, items.length, maxItemRows);
-        if (visibleRows <= 0) {
-            return { open: false, items: [], selected: 0, visibleRows: 0 };
-        }
-        return { open: true, stage, contextHeader, items, selected, visibleRows };
-    }
-
-    function clearAutocomplete() {
-        if (ac.renderedRows <= 0) return;
-        process.stdout.write('\x1b[s');
-        for (let row = 1; row <= ac.renderedRows; row++) {
-            process.stdout.write(`\x1b[${row}B\r\x1b[2K\x1b[${row}A`);
-        }
-        process.stdout.write('\x1b[u');
-        ac.renderedRows = 0;
-    }
-
-    function closeAutocomplete() {
-        clearAutocomplete();
-        ac.open = false;
-        ac.stage = 'command';
-        ac.contextHeader = '';
-        ac.items = [];
-        ac.selected = 0;
-        ac.windowStart = 0;
-        ac.visibleRows = 0;
-    }
-
-    function formatAutocompleteLine(item: any, selected: boolean, stage: string) {
-        const value = stage === 'argument' ? item.name : `/${item.name}`;
-        const valueCol = stage === 'argument' ? 24 : 14;
-        const valueText = value.length >= valueCol ? value.slice(0, valueCol) : value.padEnd(valueCol, ' ');
-        const desc = item.desc || '';
-        const raw = `  ${valueText}  ${desc}`;
-        const line = clipTextToCols(raw, (process.stdout.columns || 80) - 2);
-        return selected ? `\x1b[7m${line}${c.reset}` : `${c.dim}${line}${c.reset}`;
-    }
-
-    function renderAutocomplete() {
-        clearAutocomplete();
-        if (!ac.open || ac.items.length === 0 || ac.visibleRows <= 0) return;
-
-        syncAutocompleteWindow();
-        const start = ac.windowStart;
-        const end = Math.min(ac.items.length, start + ac.visibleRows);
-        const headerRows = ac.contextHeader ? 1 : 0;
-        process.stdout.write('\x1b[s');
-
-        if (headerRows) {
-            process.stdout.write('\x1b[1B\r\x1b[2K');
-            const header = clipTextToCols(`  ${ac.contextHeader}`, (process.stdout.columns || 80) - 2);
-            process.stdout.write(`${c.dim}${header}${c.reset}`);
-            process.stdout.write('\x1b[1A');
-        }
-
-        for (let i = start; i < end; i++) {
-            const row = (i - start) + 1 + headerRows;
-            process.stdout.write(`\x1b[${row}B\r\x1b[2K`);
-            process.stdout.write(formatAutocompleteLine(ac.items[i], i === ac.selected, ac.stage));
-            process.stdout.write(`\x1b[${row}A`);
-        }
-        ac.renderedRows = headerRows + (end - start);
-        process.stdout.write('\x1b[u');
-    }
-
     function redrawInputWithAutocomplete() {
         const prevItem = ac.items[ac.selected];
         const prevKey = makeSelectionKey(prevItem, ac.stage);
-        const next = resolveAutocompleteState(prevKey);
-        clearAutocomplete();
+        const next = resolveAutocompleteState({
+            draft: getPlainCommandDraft(composer),
+            prevKey,
+            maxPopupRows: getMaxPopupRows(),
+            maxRowsCommand: ac.maxRowsCommand,
+            maxRowsArgument: ac.maxRowsArgument,
+        });
+        clearAutocomplete(ac, (chunk) => process.stdout.write(chunk));
         // ─ Phase 1c: scroll to create space BELOW prompt (not above) ─
         if (next.open) ensureSpaceBelow(popupTotalRows(next));
         redrawPromptLine();
-        if (!next.open) {
-            ac.open = false;
-            ac.stage = 'command';
-            ac.contextHeader = '';
-            ac.items = [];
-            ac.selected = 0;
-            ac.windowStart = 0;
-            ac.visibleRows = 0;
-            return;
-        }
-        ac.open = true;
-        ac.stage = next.stage ?? 'command';
-        ac.contextHeader = next.contextHeader || '';
-        ac.items = next.items as any[];
-        ac.selected = next.selected;
-        ac.visibleRows = next.visibleRows;
-        syncAutocompleteWindow();
-        renderAutocomplete();
+        applyResolvedAutocompleteState(ac, next);
+        renderAutocomplete(ac, {
+            write: (chunk) => process.stdout.write(chunk),
+            columns: process.stdout.columns || 80,
+            dimCode: c.dim,
+            resetCode: c.reset,
+            clipTextToCols,
+        });
     }
 
     function handleResize() {
-        setupScrollRegion();
+        setupScrollRegion(footer, `  ${c.dim}${hrLine()}${c.reset}`, resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
         if (!inputActive || commandRunning) return;
         redrawInputWithAutocomplete();
     }
@@ -627,7 +422,7 @@ if (values.simple) {
             const result = await executeCommand(parsed, makeCliCommandCtx());
             if (result?.code === 'clear_screen') {
                 console.clear();
-                setupScrollRegion();
+                setupScrollRegion(footer, `  ${c.dim}${hrLine()}${c.reset}`, resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
             }
             if (result?.text) console.log(`  ${renderCommandText(result.text)}`);
             // IDE command result handling
@@ -644,7 +439,7 @@ if (values.simple) {
             }
             if (result?.code === 'exit') {
                 exiting = true;
-                cleanupScrollRegion();
+                cleanupScrollRegion(resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
                 console.log(`  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
                 setBracketedPaste(false);
                 ws.close();
@@ -657,7 +452,7 @@ if (values.simple) {
             if (!exiting) {
                 commandRunning = false;
                 inputActive = true;
-                closeAutocomplete();
+                closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
                 openPromptBlock();
             }
         }
@@ -673,7 +468,7 @@ if (values.simple) {
         escPending = false;
         escTimer = null;
         if (ac.open) {
-            closeAutocomplete();
+            closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
             redrawPromptLine();
             return;
         }
@@ -696,7 +491,8 @@ if (values.simple) {
         }
 
         // Delay ESC standalone handling to distinguish it from ESC sequences.
-        if (key === '\x1b') {
+        const action = classifyKeyAction(key);
+        if (action === 'escape-alone') {
             escPending = true;
             escTimer = setTimeout(flushPendingEscape, ESC_WAIT_MS);
             return;
@@ -706,7 +502,7 @@ if (values.simple) {
         // Typing always works (for queue). Only Enter submission checks inputActive.
 
         // Phase 12.1.7: Option+Enter (ESC+CR/LF) → insert newline
-        if (key === '\x1b\r' || key === '\x1b\n') {
+        if (action === 'option-enter') {
             if (commandRunning) return;
             if (!inputActive) {
                 inputActive = true;
@@ -718,59 +514,89 @@ if (values.simple) {
         }
 
         // Autocomplete navigation (raw ESC sequences)
-        const isUpKey = key === '\x1b[A' || key === '\x1bOA';
-        const isDownKey = key === '\x1b[B' || key === '\x1bOB';
-        const isPageUpKey = key === '\x1b[5~';
-        const isPageDownKey = key === '\x1b[6~';
-        const isHomeKey = key === '\x1b[H' || key === '\x1b[1~' || key === '\x1bOH';
-        const isEndKey = key === '\x1b[F' || key === '\x1b[4~' || key === '\x1bOF';
-        if (ac.open && isUpKey) { // Up
+        if (ac.open && action === 'arrow-up') { // Up
             ac.selected = Math.max(0, ac.selected - 1);
             if (ac.selected < ac.windowStart) ac.windowStart = ac.selected;
-            renderAutocomplete();
+            renderAutocomplete(ac, {
+                write: (chunk) => process.stdout.write(chunk),
+                columns: process.stdout.columns || 80,
+                dimCode: c.dim,
+                resetCode: c.reset,
+                clipTextToCols,
+            });
             return;
         }
-        if (ac.open && isDownKey) { // Down
+        if (ac.open && action === 'arrow-down') { // Down
             const maxIdx = ac.items.length - 1;
             ac.selected = Math.min(maxIdx, ac.selected + 1);
             if (ac.selected >= ac.windowStart + ac.visibleRows) {
                 ac.windowStart = ac.selected - ac.visibleRows + 1;
             }
-            renderAutocomplete();
+            renderAutocomplete(ac, {
+                write: (chunk) => process.stdout.write(chunk),
+                columns: process.stdout.columns || 80,
+                dimCode: c.dim,
+                resetCode: c.reset,
+                clipTextToCols,
+            });
             return;
         }
-        if (ac.open && isPageUpKey) {
+        if (ac.open && action === 'page-up') {
             const step = Math.max(1, ac.visibleRows);
             ac.selected = Math.max(0, ac.selected - step);
             if (ac.selected < ac.windowStart) ac.windowStart = ac.selected;
-            renderAutocomplete();
+            renderAutocomplete(ac, {
+                write: (chunk) => process.stdout.write(chunk),
+                columns: process.stdout.columns || 80,
+                dimCode: c.dim,
+                resetCode: c.reset,
+                clipTextToCols,
+            });
             return;
         }
-        if (ac.open && isPageDownKey) {
+        if (ac.open && action === 'page-down') {
             const step = Math.max(1, ac.visibleRows);
             const maxIdx = ac.items.length - 1;
             ac.selected = Math.min(maxIdx, ac.selected + step);
             if (ac.selected >= ac.windowStart + ac.visibleRows) {
                 ac.windowStart = ac.selected - ac.visibleRows + 1;
             }
-            renderAutocomplete();
+            renderAutocomplete(ac, {
+                write: (chunk) => process.stdout.write(chunk),
+                columns: process.stdout.columns || 80,
+                dimCode: c.dim,
+                resetCode: c.reset,
+                clipTextToCols,
+            });
             return;
         }
-        if (ac.open && isHomeKey) {
+        if (ac.open && action === 'home') {
             ac.selected = 0;
             ac.windowStart = 0;
-            renderAutocomplete();
+            renderAutocomplete(ac, {
+                write: (chunk) => process.stdout.write(chunk),
+                columns: process.stdout.columns || 80,
+                dimCode: c.dim,
+                resetCode: c.reset,
+                clipTextToCols,
+            });
             return;
         }
-        if (ac.open && isEndKey) {
+        if (ac.open && action === 'end') {
             ac.selected = Math.max(0, ac.items.length - 1);
             if (ac.selected >= ac.windowStart + ac.visibleRows) {
                 ac.windowStart = ac.selected - ac.visibleRows + 1;
             }
-            renderAutocomplete();
+            renderAutocomplete(ac, {
+                write: (chunk) => process.stdout.write(chunk),
+                columns: process.stdout.columns || 80,
+                dimCode: c.dim,
+                resetCode: c.reset,
+                clipTextToCols,
+            });
             return;
         }
-        if (ac.open && key === '\t') { // Tab accept (no execute)
+        if (ac.open && action === 'tab') { // Tab accept (no execute)
             const picked = ac.items[ac.selected];
             const pickedStage = ac.stage;
             if (picked) {
@@ -780,16 +606,16 @@ if (values.simple) {
                 } else {
                     appendTextToComposer(composer, `/${picked.name}${picked.args ? ' ' : ''}`);
                 }
-                closeAutocomplete();
+                closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
                 redrawPromptLine();
             }
             return;
         }
-        if (key === '\r' || key === '\n') {
+        if (action === 'enter') {
             if (ac.open) {
                 const picked = ac.items[ac.selected];
                 const pickedStage = ac.stage;
-                closeAutocomplete();
+                closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
                 if (picked) {
                     clearComposer(composer);
                     if (pickedStage === 'argument') {
@@ -817,7 +643,7 @@ if (values.simple) {
             const draft = getPlainCommandDraft(composer);
             const text = flattenComposerForSubmit(composer).trim();
             clearComposer(composer);
-            closeAutocomplete();
+            closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
             prevLineCount = 1;
 
             if (!text) { reopenPromptLine(); return; }
@@ -854,11 +680,11 @@ if (values.simple) {
             }
             ws.send(JSON.stringify({ type: 'send_message', text }));
             inputActive = false;
-        } else if (key === '\x7f' || key === '\b') {
+        } else if (action === 'backspace') {
             // Backspace
             backspaceComposer(composer);
             redrawInputWithAutocomplete();
-        } else if (key === '\x03') {
+        } else if (action === 'ctrl-c') {
             // Ctrl+C — stop agent if running, otherwise exit
             if (!inputActive) {
                 if (commandRunning) return;
@@ -867,18 +693,18 @@ if (values.simple) {
                 inputActive = true;
                 openPromptBlock();
             } else {
-                cleanupScrollRegion();
+                cleanupScrollRegion(resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
                 console.log(`\n  ${c.dim}Bye! \uD83E\uDD9E${c.reset}\n`);
                 setBracketedPaste(false);
                 ws.close();
                 process.stdin.setRawMode(false);
                 process.exit(0);
             }
-        } else if (key === '\x15') {
+        } else if (action === 'ctrl-u') {
             // Ctrl+U — clear line
             clearComposer(composer);
             redrawInputWithAutocomplete();
-        } else if (key.charCodeAt(0) >= 32 || key.charCodeAt(0) > 127) {
+        } else if (action === 'printable') {
             // Printable chars (including multibyte/Korean)
             // Phase 12.1.5: allow typing during agent run for queue
             if (!inputActive) {
@@ -1022,13 +848,13 @@ if (values.simple) {
     });
 
     ws.on('close', () => {
-        cleanupScrollRegion();
+        cleanupScrollRegion(resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
         console.log(`\n  ${c.dim}Disconnected${c.reset}\n`);
         setBracketedPaste(false);
         process.stdin.setRawMode(false);
         process.exit(0);
     });
 
-    setupScrollRegion();
+    setupScrollRegion(footer, `  ${c.dim}${hrLine()}${c.reset}`, resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
     openPromptBlock();
 }
