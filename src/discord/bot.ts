@@ -235,7 +235,8 @@ export async function shutdownDiscord() {
 async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: any }> {
     if (!discordClient) return { ok: false, error: 'Discord not connected' };
 
-    const channelId = req.chatId || req.target?.targetId
+    // Thread-aware: prefer threadId over targetId when present
+    const channelId = req.chatId || req.target?.threadId || req.target?.targetId
         || (Array.from(discordActiveChannelIds).at(-1))
         || settings.discord?.channelIds?.[0];
     if (!channelId) return { ok: false, error: 'No discord channelId available — send a message first or set channelIds' };

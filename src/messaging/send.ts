@@ -104,9 +104,11 @@ export function validateTarget(target: RemoteTarget, channel: MessengerChannel):
 export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: any }> {
     const channel = resolveChannel(req);
 
-    // Validate explicit target shape (allow targets outside allowlist for direct API calls)
-    if (req.target && (!req.target.targetId || !req.target.channel)) {
-        return { ok: false, error: 'Invalid target: targetId and channel are required' };
+    // Validate explicit target (shape + allowlist)
+    if (req.target) {
+        if (!validateTarget(req.target, channel)) {
+            return { ok: false, error: `Invalid or disallowed target for ${channel}: ${req.target.targetId || '(empty)'}` };
+        }
     }
 
     // Resolve target: explicit > validated lastActive > validated latestSeen > configured fallback > error

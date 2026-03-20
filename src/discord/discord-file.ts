@@ -35,7 +35,9 @@ export async function sendDiscordFile(
     }
     validateDiscordFileSize(filePath, fileStat.size);
 
-    const channel = await client.channels.fetch(target.targetId);
+    // Thread-aware: prefer threadId over targetId
+    const resolvedId = target.threadId || target.targetId;
+    const channel = await client.channels.fetch(resolvedId);
     if (!channel || !('send' in channel)) {
         return { ok: false, error: 'Target channel not text-based' };
     }
