@@ -28,14 +28,18 @@ test('CC-002: getMcp returns real loadUnifiedMcp, not empty object', () => {
 
 // ─── CC-003: TG settings restriction is in makeCommandCtx ───
 
-test('CC-003: telegram interface restricts settings to fallbackOrder', () => {
+test('CC-003: telegram interface restricts settings via allowlist', () => {
     assert.ok(
         ctxSrc.includes("iface === 'telegram'"),
         'makeCommandCtx checks for telegram interface',
     );
     assert.ok(
         ctxSrc.includes('tg.settingsUnsupported'),
-        'returns unsupported message for non-fallbackOrder patches',
+        'returns unsupported message for disallowed patches',
+    );
+    assert.ok(
+        ctxSrc.includes('TG_ALLOWED_SETTINGS_KEYS'),
+        'uses Set-based allowlist for telegram settings',
     );
 });
 
@@ -129,7 +133,7 @@ test('CC-009: telegram rejects unsupported patches without calling applySettings
         clearSession: () => undefined,
     });
 
-    const result = await ctx.updateSettings({ cli: 'codex' });
+    const result = await ctx.updateSettings({ workingDir: '/tmp/bad' });
     assert.equal(result?.ok, false);
     assert.equal(calls, 0);
 });
@@ -158,4 +162,50 @@ test('CC-011: clearSession delegates to dependency callback', async () => {
 
     await ctx.clearSession();
     assert.equal(cleared, 1);
+});
+
+// ─── Phase 00: telegram settings allowlist expansion ───
+
+test('CC-012: telegram allows cli settings patch', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const result = await ctx.updateSettings({ cli: 'codex' });
+    assert.equal(result?.ok, true);
+    assert.deepEqual(calls, [{ cli: 'codex' }]);
+});
+
+test('CC-013: telegram allows perCli settings patch', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const result = await ctx.updateSettings({ perCli: { claude: { model: 'claude-4-opus' } } });
+    assert.equal(result?.ok, true);
+    assert.deepEqual(calls, [{ perCli: { claude: { model: 'claude-4-opus' } } }]);
+});
+
+test('CC-014: telegram allows memory settings patch', async () => {
+    const calls: Record<string, any>[] = [];
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async (patch: Record<string, any>) => { calls.push(patch); return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const result = await ctx.updateSettings({ memory: { cli: 'claude', model: 'default' } });
+    assert.equal(result?.ok, true);
+    assert.deepEqual(calls, [{ memory: { cli: 'claude', model: 'default' } }]);
+});
+
+test('CC-015: telegram rejects workingDir patch', async () => {
+    let calls = 0;
+    const ctx = makeCommandCtx('telegram', 'ko', {
+        applySettings: async () => { calls++; return { ok: true }; },
+        clearSession: () => undefined,
+    });
+    const result = await ctx.updateSettings({ workingDir: '/tmp/evil' });
+    assert.equal(result?.ok, false);
+    assert.equal(calls, 0);
 });

@@ -1,5 +1,5 @@
 // ─── Command Contract: Capability Catalog ────────────
-// Phase 9.5 — COMMANDS 배열을 capability map으로 확장
+// Phase 9.5 → Phase 00: /model, /cli Telegram full 승격
 
 import { COMMANDS } from '../cli/commands.js';
 
@@ -10,8 +10,8 @@ export const CAPABILITY = {
     blocked: 'blocked',   // 실행 차단
 };
 
-// Telegram 전용 readonly 대상
-const TG_READONLY = new Set(['model', 'cli']);
+// Telegram 전용 readonly 대상 — Phase 00: /model, /cli 허용으로 비워짐
+const TG_READONLY = new Set<string>();
 // root CLI는 서브커맨드 체계
 const CMDLINE_HIDDEN = new Set(['help', 'clear', 'model', 'cli', 'fallback',
     'status', 'reset', 'skill', 'employee', 'mcp', 'memory', 'browser', 'prompt', 'version']);

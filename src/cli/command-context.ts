@@ -28,6 +28,15 @@ export type CommandContextDeps = {
     resetEmployees?: () => any;
 };
 
+// Telegram에서 허용하는 settings patch 키
+const TG_ALLOWED_SETTINGS_KEYS = new Set([
+    'fallbackOrder',  // /fallback
+    'cli',            // /cli
+    'perCli',         // /model
+    'memory',         // /flush
+    'telegram',       // /forward
+]);
+
 export function makeCommandCtx(
     iface: CommandContextInterface,
     locale: string,
@@ -40,16 +49,12 @@ export function makeCommandCtx(
         getSession,
         getSettings: () => settings,
         updateSettings: async (patch: Record<string, any>) => {
-            // Telegram: allow fallbackOrder and telegram.forwardAll only
+            // Telegram: allow curated subset of runtime-setting keys
             if (iface === 'telegram') {
                 const keys = Object.keys(patch);
-                const allowed = keys.length === 1 && (
-                    patch.fallbackOrder !== undefined
-                    || (patch.telegram
-                        && Object.keys(patch.telegram).length === 1
-                        && patch.telegram.forwardAll !== undefined)
-                );
-                if (allowed) {
+                const allAllowed = keys.length > 0
+                    && keys.every(k => TG_ALLOWED_SETTINGS_KEYS.has(k));
+                if (allAllowed) {
                     return deps.applySettings(patch);
                 }
                 return { ok: false, text: t('tg.settingsUnsupported', {}, locale) };
