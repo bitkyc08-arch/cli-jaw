@@ -43,10 +43,10 @@ test('EMP-005: getEmployeePrompt includes browser control section', () => {
     assert.ok(prompt.includes('cli-jaw browser'));
 });
 
-test('EMP-006: getEmployeePrompt includes telegram section', () => {
+test('EMP-006: getEmployeePrompt includes channel file delivery section', () => {
     const emp = { name: 'Test', cli: 'claude', role: '' };
     const prompt = getEmployeePrompt(emp);
-    assert.ok(prompt.includes('Telegram File Delivery'));
+    assert.ok(prompt.includes('Channel File Delivery'));
 });
 
 test('EMP-007: getEmployeePrompt defaults role to general developer', () => {

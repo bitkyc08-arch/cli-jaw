@@ -18,37 +18,37 @@ test('TQ-001: submitMessage metadata supports optional chatId', () => {
     );
 });
 
-test('TQ-002: busy path forwards chatId into enqueueMessage', () => {
+test('TQ-002: busy path forwards target+chatId into enqueueMessage', () => {
     const busyStart = gatewaySrc.indexOf('// ── busy');
     const busyEnd = gatewaySrc.indexOf('// ── idle');
     const busyBlock = gatewaySrc.slice(busyStart, busyEnd);
     assert.ok(
-        busyBlock.includes('enqueueMessage(trimmed, meta.origin, { chatId: meta.chatId })'),
-        'busy path should enqueue with chatId metadata',
+        busyBlock.includes('enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId })'),
+        'busy path should enqueue with target+chatId metadata',
     );
 });
 
-test('TQ-003: orchestrate paths forward chatId for continue/reset/normal', () => {
+test('TQ-003: orchestrate paths forward target+chatId for continue/reset/normal', () => {
     assert.ok(
-        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true })'),
-        'continue path should pass chatId + _skipInsert',
+        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true })'),
+        'continue path should pass target+chatId + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true })'),
-        'reset path should pass chatId + _skipInsert',
+        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true })'),
+        'reset path should pass target+chatId + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId, _skipInsert: true })'),
-        'normal path should pass chatId + _skipInsert',
+        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true })'),
+        'normal path should pass target+chatId + _skipInsert',
     );
 });
 
-test('TQ-004: processQueue isolates queue by source+chatId group', () => {
+test('TQ-004: processQueue isolates queue by groupQueueKey', () => {
     const queueStart = spawnSrc.indexOf('export async function processQueue()');
     const queueBlock = spawnSrc.slice(queueStart, queueStart + 2400);
     assert.ok(
-        queueBlock.includes("const groupKey = `${first.source}:${first.chatId ?? ''}`"),
-        'processQueue should build source+chatId group key',
+        queueBlock.includes('groupQueueKey(first.source, first.target)'),
+        'processQueue should use groupQueueKey for group isolation',
     );
     assert.ok(
         queueBlock.includes('if (key === groupKey) batch.push(m)'),

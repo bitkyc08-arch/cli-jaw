@@ -42,9 +42,9 @@ test('409 retry calls void initTelegram()', () => {
 
 // ─── server.ts ───────────────────────────────────────
 
-test('shutdown handler stops telegram bot', () => {
-    assert.match(serverSrc, /telegramBot[\s\S]*?\.stop\(\)/,
-        'shutdown handler must call telegramBot.stop()');
+test('shutdown handler uses shutdownMessagingRuntime', () => {
+    assert.match(serverSrc, /shutdownMessagingRuntime\s*\(\)/,
+        'shutdown handler must call shutdownMessagingRuntime()');
 });
 
 test('shutdown handler uses process.once and Promise.race', () => {
@@ -54,22 +54,22 @@ test('shutdown handler uses process.once and Promise.race', () => {
     assert.match(serverSrc, /process\.once\('SIGINT',\s*\(\)\s*=>\s*shutdown\('SIGINT'\)\)/,
         '서버 shutdown 핸들러가 process.once로 등록되어야 함');
 
-    // 2. Telegram stop + timeout race가 있는지 확인
-    assert.match(serverSrc, /Promise\.race\(\[\s*telegramBot\.stop\(\)/,
+    // Messaging shutdown + timeout race
+    assert.match(serverSrc, /Promise\.race\(\[\s*\n?\s*shutdownMessagingRuntime\(\)/,
         'shutdown handler must use Promise.race to prevent hanging');
 });
 
-test('bootstrap uses void initTelegram()', () => {
+test('bootstrap uses void initActiveMessagingRuntime()', () => {
     // Find the server.listen callback area
     const listenBlock = serverSrc.slice(serverSrc.indexOf('server.listen'));
-    assert.match(listenBlock, /void\s+initTelegram\s*\(\)/,
-        'bootstrap must use void initTelegram() (fire-and-forget, internal catch)');
+    assert.match(listenBlock, /void\s+initActiveMessagingRuntime\s*\(\)/,
+        'bootstrap must use void initActiveMessagingRuntime() (fire-and-forget)');
 });
 
-test('applySettingsPatch uses void initTelegram()', () => {
+test('applySettingsPatch uses void restartMessagingRuntime()', () => {
     const start = serverSrc.indexOf('function applySettingsPatch');
     const end = serverSrc.indexOf('function ', start + 30); // next function
     const patchFn = serverSrc.slice(start, end > start ? end : start + 3000);
-    assert.match(patchFn, /void\s+initTelegram\s*\(\)/,
-        'applySettingsPatch must use void initTelegram() to avoid async propagation');
+    assert.match(patchFn, /void\s+restartMessagingRuntime\s*\(/,
+        'applySettingsPatch must use void restartMessagingRuntime() to avoid async propagation');
 });
