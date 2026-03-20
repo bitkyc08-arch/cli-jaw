@@ -59,6 +59,11 @@ Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 - Always provide normal text response alongside file delivery
 - Do not print token values in logs
 
+### Discord Notes
+- Discord runs in degraded mode when MESSAGE_CONTENT intent is not granted (slash commands only, no plain message path)
+- DM delivery is not officially supported — use guild channels
+- Use `jaw doctor` to check Discord status and diagnose issues
+
 For Telegram, you can also use direct Bot API:
 ```bash
 TOKEN=$(jq -r '.telegram.token' {{JAW_HOME}}/settings.json)

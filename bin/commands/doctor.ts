@@ -116,12 +116,30 @@ for (const cli of ['claude', 'codex', 'gemini', 'opencode', 'copilot']) {
     });
 }
 
-// 6. Telegram
+// 6a. Active channel
+check('Active channel', () => {
+    const ch = settings?.channel || 'telegram';
+    return ch;
+});
+
+// 6b. Telegram
 check('Telegram', () => {
     if (!settings?.telegram?.enabled) throw new Error('WARN: disabled');
     const token = settings.telegram.token;
     if (!token || !token.includes(':')) throw new Error('invalid token format');
     return `token=...${token.slice(-6)}`;
+});
+
+// 6c. Discord
+check('Discord', () => {
+    if (!settings?.discord?.enabled) throw new Error('WARN: disabled');
+    const token = settings.discord.token;
+    if (!token) throw new Error('token missing');
+    const guildId = settings.discord.guildId;
+    if (!guildId) throw new Error('guild ID missing — set discord.guildId');
+    const channelIds = settings.discord.channelIds;
+    if (!channelIds?.length) throw new Error('channel IDs missing — set discord.channelIds');
+    return `guild=${guildId}, channels=${channelIds.length}`;
 });
 
 // 7. Skills directory
@@ -271,9 +289,37 @@ if (headless) {
     });
 }
 
+// Build Discord status for JSON output
+function buildDiscordStatus() {
+    const s = settings as Record<string, any> | null;
+    const dc = s?.discord || {};
+    const tokenPresent = !!dc.token;
+    const guildConfigured = !!dc.guildId;
+    const channelIdsConfigured = !!(dc.channelIds?.length);
+    let status = 'ok';
+    const degradedReasons: string[] = [];
+    if (!dc.enabled) { status = 'disabled'; }
+    else if (!tokenPresent) { status = 'missing_token'; degradedReasons.push('token missing'); }
+    else if (!guildConfigured) { status = 'missing_guild_id'; degradedReasons.push('guild ID not configured'); }
+    else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
+    return {
+        status,
+        enabled: !!dc.enabled,
+        tokenPresent,
+        guildConfigured,
+        channelIdsConfigured,
+        degradedReasons,
+    };
+}
+
 // Output
 if (values.json) {
-    console.log(JSON.stringify({ checks: results }, null, 2));
+    const output: Record<string, any> = {
+        checks: results,
+        activeChannel: (settings as Record<string, any> | null)?.channel || 'telegram',
+        discord: buildDiscordStatus(),
+    };
+    console.log(JSON.stringify(output, null, 2));
 }
 
 const hasError = results.some(r => r.status === 'error');

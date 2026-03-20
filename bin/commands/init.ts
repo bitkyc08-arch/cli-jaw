@@ -19,8 +19,12 @@ const { values } = parseArgs({
         force: { type: 'boolean', default: false },
         'working-dir': { type: 'string' },
         cli: { type: 'string' },
+        channel: { type: 'string' },
         'telegram-token': { type: 'string' },
         'allowed-chat-ids': { type: 'string' },
+        'discord-token': { type: 'string' },
+        'discord-guild-id': { type: 'string' },
+        'discord-channel-ids': { type: 'string' },
         'skills-dir': { type: 'string' },
     },
     strict: true,
@@ -37,8 +41,12 @@ Options:
   --force               Overwrite existing settings
   --working-dir <path>  Set working directory
   --cli <name>          Default CLI (claude, codex, gemini, copilot, opencode)
+  --channel <ch>        Active channel (telegram or discord)
   --telegram-token <t>  Telegram bot token
-  --allowed-chat-ids <ids>  Comma-separated chat IDs
+  --allowed-chat-ids <ids>  Comma-separated Telegram chat IDs
+  --discord-token <t>   Discord bot token
+  --discord-guild-id <id>   Discord guild (server) ID
+  --discord-channel-ids <ids>  Comma-separated Discord channel IDs
   --skills-dir <path>   Skills directory`);
     process.exit(0);
 }
@@ -46,9 +54,16 @@ Options:
 // Ensure home dir
 fs.mkdirSync(JAW_HOME, { recursive: true });
 
-// Load existing settings (merge)
+// Load existing settings — fail if exists and no --force
 let settings: Record<string, any> = {};
-try { settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); } catch { }
+const settingsExist = fs.existsSync(SETTINGS_PATH);
+if (settingsExist && !values.force) {
+    console.error('  ❌ settings.json already exists. Use --force to overwrite.');
+    process.exit(1);
+}
+if (settingsExist) {
+    try { settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); } catch { }
+}
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });
 const ask = (q: string, def: string): Promise<string> => new Promise(r => {
@@ -64,6 +79,13 @@ const workingDir = values['working-dir'] ||
 const cli = values.cli ||
     await ask('CLI (claude/codex/gemini)', settings.cli || 'claude');
 
+// Channel selection
+const channelFlag = values.channel as string | undefined;
+if (channelFlag && channelFlag !== 'telegram' && channelFlag !== 'discord') {
+    console.error(`  ❌ Invalid --channel "${channelFlag}". Must be "telegram" or "discord".`);
+    process.exit(1);
+}
+
 // Telegram
 let tgEnabled = false, tgToken = '', tgChatIds: number[] = [];
 if (values['non-interactive']) {
@@ -72,7 +94,7 @@ if (values['non-interactive']) {
         tgToken = values['telegram-token'] as string;
         tgChatIds = ((values['allowed-chat-ids'] || '') as string).split(',').map((s: string) => +s.trim()).filter(Boolean);
     }
-} else {
+} else if (!channelFlag || channelFlag === 'telegram') {
     const tgAnswer = await ask('Telegram 연결? (y/n)', settings.telegram?.enabled ? 'y' : 'n');
     tgEnabled = tgAnswer.toLowerCase() === 'y';
     if (tgEnabled) {
@@ -83,11 +105,55 @@ if (values['non-interactive']) {
     }
 }
 
+// Discord
+let dcEnabled = false, dcToken = '', dcGuildId = '', dcChannelIds: string[] = [];
+if (values['non-interactive']) {
+    if (values['discord-token']) {
+        dcToken = values['discord-token'] as string;
+        dcGuildId = values['discord-guild-id'] || '';
+        dcChannelIds = ((values['discord-channel-ids'] || '') as string).split(',').map(s => s.trim()).filter(Boolean);
+        dcEnabled = true;
+    }
+} else if (!channelFlag || channelFlag === 'discord') {
+    const dcAnswer = await ask('Discord 연결? (y/n)', settings.discord?.enabled ? 'y' : 'n');
+    dcEnabled = dcAnswer.toLowerCase() === 'y';
+    if (dcEnabled) {
+        dcToken = await ask('Bot token', settings.discord?.token || '');
+        dcGuildId = await ask('Guild ID', settings.discord?.guildId || '');
+        const idsStr = await ask('Channel IDs (comma)',
+            (settings.discord?.channelIds || []).join(',') || '');
+        dcChannelIds = idsStr.split(',').map(s => s.trim()).filter(Boolean);
+    }
+}
+
+// Validate Discord flags
+if (dcEnabled) {
+    if (!dcToken) {
+        console.error('  ❌ Discord token is required.');
+        process.exit(1);
+    }
+    if (!dcGuildId) {
+        console.error('  ❌ Discord guild ID is required.');
+        process.exit(1);
+    }
+    if (!dcChannelIds.length) {
+        console.error('  ❌ At least one Discord channel ID is required.');
+        process.exit(1);
+    }
+}
+
 // Skills dir
 const skillsDir = values['skills-dir'] ||
     await ask('Skills directory', settings.skillsDir || path.join(JAW_HOME, 'skills'));
 
 rl.close();
+
+// Determine active channel
+let activeChannel: string = channelFlag || settings.channel || 'telegram';
+if (!channelFlag) {
+    if (dcEnabled && !tgEnabled) activeChannel = 'discord';
+    else if (tgEnabled && !dcEnabled) activeChannel = 'telegram';
+}
 
 // Merge (preserve existing values unless --force)
 const merged: Record<string, any> = values.force ? {} : { ...settings };
@@ -95,8 +161,19 @@ merged.workingDir = workingDir;
 merged.cli = cli;
 merged.permissions = 'auto';
 merged.skillsDir = skillsDir;
+merged.channel = activeChannel;
 if (tgEnabled || values.force) {
     merged.telegram = { enabled: tgEnabled, token: tgToken, allowedChatIds: tgChatIds };
+}
+if (dcEnabled || values.force) {
+    merged.discord = {
+        enabled: dcEnabled,
+        token: dcToken,
+        guildId: dcGuildId,
+        channelIds: dcChannelIds,
+        forwardAll: true,
+        allowBots: false,
+    };
 }
 
 // Save (skip in dry-run)
@@ -142,8 +219,10 @@ console.log(`
 
   Working dir : ${workingDir}
   CLI         : ${cli}
+  Channel     : ${activeChannel}
   Permissions : auto
   Telegram    : ${tgEnabled ? '✅ ' + tgToken.slice(0, 10) + '...' : '❌ off'}
+  Discord     : ${dcEnabled ? '✅ ' + dcToken.slice(0, 10) + '...' : '❌ off'}
   Skills      : ${skillsDir}
   Settings    : ${SETTINGS_PATH}
 
