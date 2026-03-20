@@ -1,13 +1,13 @@
 # 🧪 CLI-JAW Tests
 
-[![Tests](https://img.shields.io/badge/tests-907%20pass%20%2F%201%20skip-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-868%20pass%20%2F%202%20skip-brightgreen)](#)
 
 > `node:test` + `node:assert` via `tsx` runner — zero external test dependencies.
 
 ## Run
 
 ```bash
-npm test                            # All 907 tests (~15s)
+npm test                            # All 870 tests (~16s)
 tsx --test tests/unit/*.test.ts    # Unit tests only
 tsx --test tests/integration/*.test.ts  # Integration tests only
 npm run test:watch                  # Watch mode
@@ -140,9 +140,9 @@ npm run test:coverage    # Node --experimental-test-coverage
 
 | Tier  | Description                  | Count |         Status          |
 | :---: | ---------------------------- | :---: | :---------------------: |
-|   1   | Pure functions (zero deps)   |  183  |            ✅            |
-|   2   | Light I/O (tmp dir, fixture) |  47   |            ✅            |
-|   3   | Integration (server/Express) |  16   | ✅ (route + smoke + CLI) |
+|   1   | Pure functions (zero deps)   |  396  |            ✅            |
+|   2   | Light I/O (tmp dir, fixture) |  32   |            ✅            |
+|   3   | Integration (server/Express) |  27   |            ✅            |
 |  3+   | API smoke + CLI basic        |   —   |      📋 Phase 20.4       |
 |   4   | E2E (browser + full stack)   |   —   |            💭            |
 
@@ -152,7 +152,7 @@ npm run test:coverage    # Node --experimental-test-coverage
 
 | Script          | Command                                                         | Description                 |
 | --------------- | --------------------------------------------------------------- | --------------------------- |
-| `test`          | `tsx --test tests/*.test.ts tests/**/*.test.ts`                 | All tests                   |
+| `test`          | `tsx --test tests/*.test.ts tests/unit/*.test.ts`               | Unit + root tests (CI)      |
 | `test:watch`    | `tsx --test --watch ...`                                        | Watch mode                  |
 | `test:coverage` | `tsx --test --experimental-test-coverage ...`                   | Coverage report             |
 | `test:smoke`    | `TEST_PORT=3457 tsx --test tests/integration/api-smoke.test.ts` | API smoke (needs server)    |

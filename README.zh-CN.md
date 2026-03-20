@@ -6,7 +6,7 @@
 
 *Claude、Codex、Gemini... 从此告别来回切换。*
 
-[![Tests](https://img.shields.io/badge/tests-639%20pass-brightgreen)](#-测试)
+[![Tests](https://img.shields.io/badge/tests-868%20pass-brightgreen)](#-测试)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -508,7 +508,7 @@ src/
 ## 🧪 测试
 
 <details>
-<summary>639 pass · 1 skipped · 零外部依赖</summary>
+<summary>868 pass · 2 skipped · 零外部依赖</summary>
 
 ```bash
 npm test
