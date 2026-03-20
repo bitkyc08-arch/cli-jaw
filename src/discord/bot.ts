@@ -44,7 +44,12 @@ function markChannelActive(channelId: string) {
     discordActiveChannelIds.add(channelId);
 }
 
+const MAX_ATTACHMENT_SIZE = 50 * 1024 * 1024; // 50 MiB
+
 async function downloadDiscordAttachment(attachment: Attachment): Promise<{ buffer: Buffer; name: string }> {
+    if (attachment.size && attachment.size > MAX_ATTACHMENT_SIZE) {
+        throw new Error(`Attachment too large: ${(attachment.size / 1024 / 1024).toFixed(1)} MiB (max 50 MiB)`);
+    }
     const res = await fetch(attachment.url);
     if (!res.ok) throw new Error(`Failed to download attachment: ${res.status}`);
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -70,18 +75,22 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
 
         // Listen for queued result — correlate by requestId (request-level isolation)
         const requestId = result.requestId;
+        let queueTimeout: ReturnType<typeof setTimeout>;
         const queueHandler = (type: string, data: Record<string, any>) => {
             if (type === 'orchestrate_done' && data.text && data.origin === 'discord'
                 && data.requestId === requestId) {
+                clearTimeout(queueTimeout);
                 removeBroadcastListener(queueHandler);
                 const chunks = chunkDiscordMessage(data.text);
                 for (const chunk of chunks) {
-                    (msg.channel as any).send(chunk).catch(() => { });
+                    (msg.channel as any).send(chunk).catch((e: Error) => {
+                        console.error('[discord:queue-send]', e.message);
+                    });
                 }
             }
         };
         addBroadcastListener(queueHandler);
-        setTimeout(() => removeBroadcastListener(queueHandler), 300000);
+        queueTimeout = setTimeout(() => removeBroadcastListener(queueHandler), 300000);
         return;
     }
 

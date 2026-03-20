@@ -126,6 +126,12 @@ if (values['non-interactive']) {
     }
 }
 
+// Validate: --channel discord requires Discord config
+if (channelFlag === 'discord' && !dcEnabled) {
+    console.error('  ❌ --channel discord requires --discord-token.');
+    process.exit(1);
+}
+
 // Validate Discord flags
 if (dcEnabled) {
     if (!dcToken) {
