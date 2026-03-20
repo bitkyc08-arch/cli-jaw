@@ -643,11 +643,8 @@ if (values.simple) {
         }
 
         // Palette input handling
+        // (ESC dismiss is handled by flushPendingEscape)
         if (ov.paletteOpen) {
-            if (action === 'escape-alone') {
-                dismissOverlay();
-                return;
-            }
             if (action === 'arrow-up') {
                 ov.paletteSelected = Math.max(0, ov.paletteSelected - 1);
             } else if (action === 'arrow-down') {
