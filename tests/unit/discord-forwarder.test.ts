@@ -48,9 +48,9 @@ test('dcOrchestrate passes chatId to submitMessage', () => {
         'dcOrchestrate should pass chatId from msg.channelId');
 });
 
-test('queue handler correlates by chatId (not target.targetId)', () => {
-    assert.match(botSrc, /data\.chatId\s*===\s*chatId/,
-        'queue handler should correlate by chatId for consistency with Telegram');
+test('queue handler correlates by requestId for request-level isolation', () => {
+    assert.match(botSrc, /data\.requestId\s*===\s*requestId/,
+        'queue handler should correlate by requestId');
     assert.ok(!botSrc.includes('data.target?.targetId === msg.channelId'),
         'queue handler should NOT use data.target?.targetId (not always present)');
 });

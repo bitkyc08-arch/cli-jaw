@@ -18,28 +18,28 @@ test('TQ-001: submitMessage metadata supports optional chatId', () => {
     );
 });
 
-test('TQ-002: busy path forwards target+chatId into enqueueMessage', () => {
+test('TQ-002: busy path forwards target+chatId+requestId into enqueueMessage', () => {
     const busyStart = gatewaySrc.indexOf('// ── busy');
     const busyEnd = gatewaySrc.indexOf('// ── idle');
     const busyBlock = gatewaySrc.slice(busyStart, busyEnd);
     assert.ok(
-        busyBlock.includes('enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId })'),
-        'busy path should enqueue with target+chatId metadata',
+        busyBlock.includes('enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId, requestId })'),
+        'busy path should enqueue with target+chatId+requestId metadata',
     );
 });
 
-test('TQ-003: orchestrate paths forward target+chatId for continue/reset/normal', () => {
+test('TQ-003: orchestrate paths forward target+chatId+requestId for continue/reset/normal', () => {
     assert.ok(
-        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true })'),
-        'continue path should pass target+chatId + _skipInsert',
+        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true })'),
+        'continue path should pass target+chatId+requestId + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true })'),
-        'reset path should pass target+chatId + _skipInsert',
+        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true })'),
+        'reset path should pass target+chatId+requestId + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true })'),
-        'normal path should pass target+chatId + _skipInsert',
+        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true })'),
+        'normal path should pass target+chatId+requestId + _skipInsert',
     );
 });
 
@@ -104,12 +104,12 @@ test('TQ-007: tgOrchestrate passes chatId to submitMessage', () => {
     );
 });
 
-test('TQ-008: queued telegram response filter is strict by chatId', () => {
+test('TQ-008: queued telegram response filter uses requestId for isolation', () => {
     const fnStart = botSrc.indexOf('const queueHandler = (type: string, data: Record<string, any>) =>');
     const fnBlock = botSrc.slice(fnStart, fnStart + 600);
     assert.ok(
-        fnBlock.includes('data.chatId === chatId'),
-        'queued response should match the same chatId only',
+        fnBlock.includes('data.requestId === requestId'),
+        'queued response should match by requestId',
     );
     assert.ok(
         !fnBlock.includes('!data.chatId || data.chatId === chatId'),
