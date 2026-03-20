@@ -19,6 +19,7 @@ import {
     persistMainSession,
 } from './session-persistence.js';
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
+import { groupQueueKey } from '../messaging/session-key.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -153,14 +154,14 @@ export function enqueueMessage(prompt: string, source: string, meta?: { target?:
 export async function processQueue() {
     if (activeProcess || retryPendingTimer || messageQueue.length === 0) return;
 
-    // Group by source+chatId — only process the first group, leave rest in queue
+    // Group by source+target — only process the first group, leave rest in queue
     const first = messageQueue[0];
-    const groupKey = `${first.source}:${first.chatId ?? ''}`;
+    const groupKey = groupQueueKey(first.source, first.target);
     const batch: typeof messageQueue = [];
     const remaining: typeof messageQueue = [];
 
     for (const m of messageQueue) {
-        const key = `${m.source}:${m.chatId ?? ''}`;
+        const key = groupQueueKey(m.source, m.target);
         if (key === groupKey) batch.push(m);
         else remaining.push(m);
     }
@@ -179,6 +180,7 @@ export async function processQueue() {
 
     const combined = batch[0].prompt;  // 항상 단일 메시지만 처리
     const source = batch[0].source;
+    const target = batch[0].target;
     const chatId = batch[0].chatId;
     console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
     insertMessage.run('user', combined, source, '');
@@ -186,9 +188,9 @@ export async function processQueue() {
     broadcast('queue_update', { pending: messageQueue.length });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    if (isResetIntent(combined)) orchestrateReset({ origin, chatId, _skipInsert: true });
-    else if (isContinueIntent(combined)) orchestrateContinue({ origin, chatId, _skipInsert: true });
-    else orchestrate(combined, { origin, chatId, _skipInsert: true });
+    if (isResetIntent(combined)) orchestrateReset({ origin, target, chatId, _skipInsert: true });
+    else if (isContinueIntent(combined)) orchestrateContinue({ origin, target, chatId, _skipInsert: true });
+    else orchestrate(combined, { origin, target, chatId, _skipInsert: true });
 }
 
 // ─── Helpers ─────────────────────────────────────────

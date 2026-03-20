@@ -10,8 +10,9 @@ export const CAPABILITY = {
     blocked: 'blocked',   // 실행 차단
 };
 
-// Telegram 전용 readonly 대상 — Phase 00: /model, /cli 허용으로 비워짐
-const TG_READONLY = new Set<string>();
+// Remote readonly targets — shared by telegram + discord
+// Phase 00: /model, /cli 허용으로 비워짐
+const REMOTE_READONLY = new Set<string>();
 // root CLI는 서브커맨드 체계
 const CMDLINE_HIDDEN = new Set(['help', 'clear', 'model', 'cli', 'fallback',
     'status', 'reset', 'skill', 'employee', 'mcp', 'memory', 'browser', 'prompt', 'version']);
@@ -31,7 +32,10 @@ export function getCommandCatalog() {
                 ? (cmd.hidden ? CAPABILITY.hidden : CAPABILITY.full)
                 : CAPABILITY.hidden,
             telegram: cmd.interfaces.includes('telegram')
-                ? (TG_READONLY.has(cmd.name) ? CAPABILITY.readonly : CAPABILITY.full)
+                ? (REMOTE_READONLY.has(cmd.name) ? CAPABILITY.readonly : CAPABILITY.full)
+                : CAPABILITY.hidden,
+            discord: cmd.interfaces.includes('discord')
+                ? (REMOTE_READONLY.has(cmd.name) ? CAPABILITY.readonly : CAPABILITY.full)
                 : CAPABILITY.hidden,
             cmdline: CMDLINE_HIDDEN.has(cmd.name) ? CAPABILITY.hidden : CAPABILITY.full,
         },

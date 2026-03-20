@@ -24,6 +24,10 @@ import { downloadTelegramFile } from '../../lib/upload.js';
 import { clearMainSessionState } from '../core/main-session.js';
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { handleVoice } from './voice.js';
+import { registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
+import { registerSendTransport } from '../messaging/send.js';
+import type { RemoteTarget } from '../messaging/types.js';
+import type { ChannelSendRequest } from '../messaging/send.js';
 import {
     escapeHtmlTg,
     markdownToTelegramHtml,
@@ -71,7 +75,7 @@ function currentLocale() {
     return normalizeLocale(settings.locale, 'ko');
 }
 
-function markChatActive(chatId: number) {
+function markChatActive(chatId: number, ctx?: any) {
     // Refresh insertion order so Array.from(set).at(-1) points to latest active chat.
     telegramActiveChatIds.delete(chatId);
     telegramActiveChatIds.add(chatId);
@@ -80,6 +84,12 @@ function markChatActive(chatId: number) {
     if (!allowed.includes(chatId)) {
         settings.telegram.allowedChatIds = [...allowed, chatId];
         import('../core/config.js').then(m => m.saveSettings(settings)).catch(() => { });
+    }
+    // Update messaging runtime targets
+    if (ctx) {
+        const target = buildTelegramTarget(ctx);
+        setLastActiveTarget('telegram', target);
+        setLatestSeenTarget('telegram', target);
     }
 }
 
@@ -90,6 +100,80 @@ function detachTelegramForwarder() {
 function attachTelegramForwarder(bot: any) {
     telegramForwarderLifecycle.attach({ bot });
 }
+
+// ─── Transport Contract Exports ─────────────────────
+
+export async function shutdownTelegram() {
+    detachTelegramForwarder();
+    if (!telegramBot) return;
+    const old = telegramBot;
+    telegramBot = null;
+    try { await old.stop(); } catch (e: unknown) {
+        console.warn('[telegram:stop]', (e as Error).message);
+    }
+}
+
+export function getLatestTelegramChatId(): string | number | null {
+    return Array.from(telegramActiveChatIds).at(-1) as string | number | null ?? null;
+}
+
+export function getTelegramTargetIds(): Array<string | number> {
+    return settings.telegram.allowedChatIds?.length
+        ? [...settings.telegram.allowedChatIds]
+        : ([...telegramActiveChatIds] as Array<string | number>);
+}
+
+export async function sendTelegramText(chatId: string, text: string) {
+    if (!telegramBot) throw new Error('Telegram not connected');
+    return telegramBot.api.sendMessage(chatId, text);
+}
+
+function buildTelegramTarget(ctx: any): RemoteTarget {
+    const chatType = ctx.chat?.type;
+    const isGroup = chatType === 'group' || chatType === 'supergroup';
+    return {
+        channel: 'telegram',
+        targetKind: 'channel',
+        peerKind: isGroup ? 'group' : 'direct',
+        targetId: String(ctx.chat.id),
+        threadId: ctx.message?.message_thread_id ? String(ctx.message.message_thread_id) : undefined,
+    };
+}
+
+async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: any }> {
+    if (!telegramBot) return { ok: false, error: 'Telegram not connected' };
+
+    const chatId = req.chatId || req.target?.targetId || getLatestTelegramChatId();
+    if (!chatId) return { ok: false, error: 'No telegram chatId available' };
+
+    if (req.type === 'text') {
+        const text = req.text?.trim();
+        if (!text) return { ok: false, error: 'text required' };
+        const { markdownToTelegramHtml, chunkTelegramMessage } = await import('./forwarder.js');
+        const html = markdownToTelegramHtml(text);
+        const chunks = chunkTelegramMessage(html);
+        for (const chunk of chunks) {
+            try {
+                await telegramBot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
+            } catch {
+                await telegramBot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
+            }
+        }
+        return { ok: true, chat_id: chatId, type: 'text' };
+    }
+
+    // File types
+    const filePath = req.filePath;
+    if (!filePath) return { ok: false, error: 'file_path required for non-text types' };
+    const { validateFileSize, sendTelegramFile } = await import('./telegram-file.js');
+    validateFileSize(filePath, req.type);
+    const result = await sendTelegramFile(telegramBot, chatId, filePath, req.type, { caption: req.caption });
+    return result;
+}
+
+// Register transport at module load time
+registerTransport('telegram', { init: initTelegram, shutdown: shutdownTelegram });
+registerSendTransport('telegram', telegramSendHandler);
 
 function toTelegramCommandDescription(desc: string) {
     const text = String(desc || '').trim();
@@ -259,7 +343,7 @@ export async function initTelegram() {
         }
 
         // result.action === 'started' — TG 출력 로직 진입
-        markChatActive(ctx.chat.id);
+        markChatActive(ctx.chat.id, ctx);
 
         await ctx.replyWithChatAction('typing')
             .then(() => console.log('[tg:typing] ✅ sent'))
@@ -380,7 +464,7 @@ export async function initTelegram() {
     }
 
     bot.on('message:text', async (ctx) => {
-        markChatActive(ctx.chat.id);
+        markChatActive(ctx.chat.id, ctx);
         let text = ctx.message.text;
         if (botUsername) {
             text = text.replace(new RegExp(`@${escapeRegExp(botUsername)}\\b`, 'g'), '').trim();

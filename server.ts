@@ -64,6 +64,9 @@ import type { OrcStateName } from './src/orchestrator/state-machine.js';
 import { submitMessage } from './src/orchestrator/gateway.js';
 import { makeCommandCtx } from './src/cli/command-context.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram/bot.js';
+import './src/discord/bot.js'; // side-effect: registers discord transport
+import { initActiveMessagingRuntime, shutdownMessagingRuntime, restartMessagingRuntime } from './src/messaging/runtime.js';
+import { sendChannelOutput, normalizeChannelSendRequest } from './src/messaging/send.js';
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/memory/heartbeat.js';
 import { validateHeartbeatScheduleInput } from './src/memory/heartbeat-schedule.js';
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from './lib/quota-copilot.js';
@@ -262,12 +265,14 @@ function getLatestTelegramChatId() {
 }
 
 function applySettingsPatch(rawPatch: Record<string, any> = {}, { restartTelegram = false } = {}) {
+    const prevSnapshot = { ...settings };
     bumpSessionOwnershipGeneration();
-    return applyRuntimeSettingsPatch(rawPatch, {
+    const result = applyRuntimeSettingsPatch(rawPatch, {
         resetFallbackState,
         restartTelegram,
-        onRestartTelegram: () => { void initTelegram(); },
+        onRestartTelegram: () => { void restartMessagingRuntime(prevSnapshot, settings, rawPatch); },
     });
+    return result;
 }
 
 function normalizeAdvancedReadPath(file: string) {
@@ -689,6 +694,29 @@ app.post('/api/telegram/send', async (req, res) => {
     }
 });
 
+// Canonical channel send (Phase 2)
+app.post('/api/channel/send', async (req, res) => {
+    try {
+        const result = await sendChannelOutput(normalizeChannelSendRequest(req.body));
+        if (!result.ok) return res.status(502).json(result);
+        return res.json(result);
+    } catch (e: unknown) {
+        console.error('[channel:send]', e);
+        return res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.post('/api/discord/send', async (req, res) => {
+    try {
+        const result = await sendChannelOutput({ ...normalizeChannelSendRequest(req.body), channel: 'discord' });
+        if (!result.ok) return res.status(502).json(result);
+        return res.json(result);
+    } catch (e: unknown) {
+        console.error('[discord:send]', e);
+        return res.status(500).json({ error: (e as Error).message });
+    }
+});
+
 // MCP
 app.get('/api/mcp', (req, res) => res.json(loadUnifiedMcp()));
 app.put('/api/mcp', (req, res) => {
@@ -981,22 +1009,17 @@ const shutdown = async (sig: string) => {
     stopHeartbeat();
     killAllAgents('shutdown');
 
-    if (telegramBot) {
-        let timerId: NodeJS.Timeout | undefined;
-        try {
-            await Promise.race([
-                telegramBot.stop(),
-                new Promise((_, reject) => {
-                    timerId = setTimeout(() => reject(new Error('telegram_timeout')), 2000);
-                })
-            ]);
-        } catch (e) {
-            console.warn('[server] telegramBot.stop() failed:', (e as Error).message);
-        } finally {
-            if (timerId) clearTimeout(timerId);
-        }
-        console.log('[server] telegram stopped (or timed out)');
+    try {
+        await Promise.race([
+            shutdownMessagingRuntime(),
+            new Promise((_, reject) => {
+                setTimeout(() => reject(new Error('messaging_shutdown_timeout')), 2000);
+            }),
+        ]);
+    } catch (e) {
+        console.warn('[server] messaging shutdown failed:', (e as Error).message);
     }
+    console.log('[server] messaging stopped (or timed out)');
 
     wss.close();
     server.close();
@@ -1062,7 +1085,7 @@ server.listen(PORT, () => {
         console.log(`  MCP:    ~/.cli-jaw/mcp.json`);
     } catch (e: unknown) { console.error('[mcp-init]', (e as Error).message); }
 
-    void initTelegram();
+    void initActiveMessagingRuntime();
     startHeartbeat();
     startTokenKeepAlive();
 

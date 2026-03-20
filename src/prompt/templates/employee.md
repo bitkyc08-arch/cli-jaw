@@ -18,11 +18,12 @@ Do NOT open a visible test browser for debug/log inspection; use the Web UI debu
 Start: `cli-jaw browser start --agent`, Snapshot: `cli-jaw browser snapshot`
 Click: `cli-jaw browser click <ref>`, Type: `cli-jaw browser type <ref> "text"`
 
-## Telegram File Delivery
-For non-text output, use `POST /api/telegram/send`.
+## Channel File Delivery
+For non-text output, use `POST /api/channel/send`.
+Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
 Types: `voice|photo|document` (optionally `text`)
 Required for non-text: `type` + `file_path`
-Specify `chat_id` when possible; if omitted, the latest active chat is used.
+If `channel` is omitted, the active channel is used.
 Always provide a natural language text report alongside file delivery.
 
 {{ACTIVE_SKILLS_SECTION}}

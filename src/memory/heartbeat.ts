@@ -3,8 +3,8 @@
 import fs from 'fs';
 import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } from '../core/config.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
-import { markdownToTelegramHtml, chunkTelegramMessage, telegramBot, telegramActiveChatIds } from '../telegram/bot.js';
 import { broadcast } from '../core/bus.js';
+import { sendChannelOutput } from '../messaging/send.js';
 import {
     describeHeartbeatSchedule,
     formatHeartbeatNow,
@@ -78,25 +78,12 @@ async function runHeartbeatJob(job: Record<string, any>) {
 
         console.log(`[heartbeat:${job.name}] response: ${result.slice(0, 80)}`);
 
-        if (telegramBot && settings.telegram?.enabled) {
-            const chatIds = settings.telegram.allowedChatIds?.length
-                ? settings.telegram.allowedChatIds
-                : [...telegramActiveChatIds];
-            if (chatIds.length === 0) {
-                console.log(`[heartbeat:${job.name}] no telegram chatIds — send a message to the bot first`);
-            }
-            const html = markdownToTelegramHtml(result);
-            const chunks = chunkTelegramMessage(html);
-            for (const chatId of chatIds) {
-                for (const chunk of chunks) {
-                    try {
-                        await (telegramBot as any).api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
-                    } catch {
-                        await (telegramBot as any).api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
-                    }
-                }
-            }
-        }
+        // Send heartbeat result via active messaging channel
+        await sendChannelOutput({
+            channel: 'active',
+            type: 'text',
+            text: result,
+        });
     } catch (err) {
         console.error(`[heartbeat:${job.name}] error:`, (err as Error).message);
     } finally {

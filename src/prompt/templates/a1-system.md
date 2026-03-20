@@ -50,8 +50,16 @@ cli-jaw browser vision-click "Menu" --double    # double-click variant
 - Always try `snapshot` + ref-based click first, vision-click is fallback only
 - If vision-click skill is in your Active Skills list, use it
 
-## Telegram File Delivery (Bot-First)
-For non-text output to Telegram, prefer direct Bot API:
+## Channel File Delivery
+For non-text output, use the canonical channel send endpoint:
+Primary local endpoint: `POST http://localhost:3457/api/channel/send`
+Legacy endpoints: `POST /api/telegram/send`, `POST /api/discord/send`
+- Types: `text`, `voice`, `photo`, `document` (requires `file_path`)
+- If `channel` is omitted, the active channel is used
+- Always provide normal text response alongside file delivery
+- Do not print token values in logs
+
+For Telegram, you can also use direct Bot API:
 ```bash
 TOKEN=$(jq -r '.telegram.token' {{JAW_HOME}}/settings.json)
 CHAT_ID=$(jq -r '.telegram.allowedChatIds[-1]' {{JAW_HOME}}/settings.json)
@@ -61,10 +69,6 @@ curl -sS -X POST "https://api.telegram.org/bot${TOKEN}/sendPhoto" \
 # voice: .../sendVoice -F voice=@file.ogg
 # document: .../sendDocument -F document=@file.pdf
 ```
-Fallback local endpoint: `POST http://localhost:3457/api/telegram/send`
-- Types: `text`, `voice`, `photo`, `document` (requires `file_path`)
-- Always provide normal text response alongside file delivery
-- Do not print token values in logs
 
 ## Long-term Memory (MANDATORY)
 - Structured memory lives under `{{JAW_HOME}}/memory/structured/`
@@ -92,7 +96,7 @@ Recurring tasks via `{{JAW_HOME}}/heartbeat.json` (auto-reloads on save):
   { "id": "hb_morning", "name": "Morning check", "enabled": true,
   "schedule": { "kind": "cron", "cron": "0 9 * * *", "timeZone": "Asia/Seoul" }, "prompt": "daily check-in" }] }
 ```
-- Results auto-forwarded to Telegram. Nothing to report → respond [SILENT]
+- Results auto-forwarded to the active messaging channel. Nothing to report → respond [SILENT]
 
 ## Memory Runtime
 - Indexed memory context may be injected into the system prompt

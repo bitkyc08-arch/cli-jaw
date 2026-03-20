@@ -17,7 +17,9 @@ import {
     runSkillReset,
 } from '../../lib/mcp-sync.js';
 
-export type CommandContextInterface = 'web' | 'telegram' | 'cli';
+import type { RemoteInterface } from '../messaging/types.js';
+
+export type CommandContextInterface = 'web' | 'cli' | RemoteInterface;
 
 export type CommandContextDeps = {
     /** Apply settings patch (server.ts provides full logic, TG provides restricted subset) */
@@ -49,15 +51,16 @@ export function makeCommandCtx(
         getSession,
         getSettings: () => settings,
         updateSettings: async (patch: Record<string, any>) => {
-            // Telegram: allow curated subset of runtime-setting keys
-            if (iface === 'telegram') {
+            // Remote interfaces: allow curated subset of runtime-setting keys
+            if (iface === 'telegram' || iface === 'discord') {
                 const keys = Object.keys(patch);
                 const allAllowed = keys.length > 0
                     && keys.every(k => TG_ALLOWED_SETTINGS_KEYS.has(k));
                 if (allAllowed) {
                     return deps.applySettings(patch);
                 }
-                return { ok: false, text: t('tg.settingsUnsupported', {}, locale) };
+                const msgKey = iface === 'discord' ? 'dc.settingsUnsupported' : 'tg.settingsUnsupported';
+                return { ok: false, text: t(msgKey, {}, locale) };
             }
             return deps.applySettings(patch);
         },

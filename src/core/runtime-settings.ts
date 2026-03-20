@@ -20,7 +20,8 @@ export function applyRuntimeSettingsPatch(
 ) {
     const prevCli = settings.cli;
     const prevWorkingDir = settings.workingDir;
-    const hasTelegramUpdate = !!(rawPatch || {}).telegram || (rawPatch || {}).locale !== undefined;
+    const hasTelegramUpdate = !!(rawPatch || {}).telegram || !!(rawPatch || {}).discord
+        || !!(rawPatch || {}).channel || (rawPatch || {}).locale !== undefined;
 
     const merged = mergeSettingsPatch(settings, rawPatch);
     replaceSettings(merged);
