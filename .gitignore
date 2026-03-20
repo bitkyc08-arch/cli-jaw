@@ -11,3 +11,4 @@ dist/
 
 out/
 _INBOX/
+*.tgz
