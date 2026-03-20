@@ -68,10 +68,11 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         console.log(`[discord:queue] agent busy, queued (${result.pending} pending)`);
         await msg.reply(t('tg.queued', { count: result.pending }, currentLocale()));
 
-        // Listen for queued result — correlate by origin + chatId (consistent with Telegram)
+        // Listen for queued result — correlate by requestId (request-level isolation)
+        const requestId = result.requestId;
         const queueHandler = (type: string, data: Record<string, any>) => {
             if (type === 'orchestrate_done' && data.text && data.origin === 'discord'
-                && data.chatId === chatId) {
+                && data.requestId === requestId) {
                 removeBroadcastListener(queueHandler);
                 const chunks = chunkDiscordMessage(data.text);
                 for (const chunk of chunks) {
@@ -94,7 +95,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
 
     try {
         const text = String(await orchestrateAndCollect(prompt, {
-            origin: 'discord', target, chatId, _skipInsert: true,
+            origin: 'discord', target, chatId, requestId: result.requestId, _skipInsert: true,
         }));
         const chunks = chunkDiscordMessage(text);
         for (const chunk of chunks) {

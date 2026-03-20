@@ -87,6 +87,7 @@ export async function orchestrate(
     const origin = meta.origin || 'web';
     const chatId = meta.chatId;
     const target = meta.target;
+    const requestId = meta.requestId;
     const userText = String(prompt || '').trim();
     const runSpawnAgent: SpawnAgentLike = typeof meta._spawnAgent === 'function'
         ? meta._spawnAgent
@@ -270,6 +271,7 @@ export async function orchestrate(
                 origin,
                 chatId,
                 target,
+                requestId,
             });
         }
         return;
@@ -282,6 +284,7 @@ export async function orchestrate(
         origin,
         chatId,
         target,
+        requestId,
     });
 }
 
@@ -293,6 +296,7 @@ export async function orchestrateContinue(
     const origin = meta.origin || 'web';
     const chatId = meta.chatId;
     const target = meta.target;
+    const requestId = meta.requestId;
     const state = getState();
 
     // Active PABCD → resume from current state
@@ -334,6 +338,7 @@ export async function orchestrateReset(
     const origin = meta.origin || 'web';
     const chatId = meta.chatId;
     const target = meta.target;
+    const requestId = meta.requestId;
     clearAllEmployeeSessions.run();
     resetState();
     const latest = readLatestWorklog();
@@ -353,5 +358,6 @@ export async function orchestrateReset(
         origin,
         chatId,
         target,
+        requestId,
     });
 }

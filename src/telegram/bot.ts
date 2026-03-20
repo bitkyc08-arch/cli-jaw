@@ -318,9 +318,10 @@ export async function initTelegram() {
             console.log(`[tg:queue] agent busy, queued (${result.pending} pending)`);
             await ctx.reply(t('tg.queued', { count: result.pending }, currentLocale()));
 
-            // 큐 처리 후 응답을 이 채팅으로 전달
+            // 큐 처리 후 응답을 이 채팅으로 전달 — requestId로 request-level 격리
+            const requestId = result.requestId;
             const queueHandler = (type: string, data: Record<string, any>) => {
-                if (type === 'orchestrate_done' && data.text && data.origin === 'telegram' && data.chatId === chatId) {
+                if (type === 'orchestrate_done' && data.text && data.origin === 'telegram' && data.requestId === requestId) {
                     removeBroadcastListener(queueHandler);
                     const html = markdownToTelegramHtml(data.text);
                     const chunks = chunkTelegramMessage(html);
@@ -341,6 +342,7 @@ export async function initTelegram() {
         }
 
         // result.action === 'started' — TG 출력 로직 진입
+        const submitRequestId = result.requestId;
         markChatActive(ctx.chat.id, ctx);
 
         await ctx.replyWithChatAction('typing')
@@ -426,7 +428,7 @@ export async function initTelegram() {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         try {
-            const result = await orchestrateAndCollect(prompt, { origin: 'telegram', chatId: ctx.chat.id, _skipInsert: true }) as string;
+            const result = await orchestrateAndCollect(prompt, { origin: 'telegram', chatId: ctx.chat.id, requestId: submitRequestId, _skipInsert: true }) as string;
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
                 clearTimeout(statusUpdateTimer);

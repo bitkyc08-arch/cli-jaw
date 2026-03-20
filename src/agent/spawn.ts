@@ -145,8 +145,8 @@ export async function steerAgent(newPrompt: string, source: string) {
 
 // ─── Message Queue ───────────────────────────────────
 
-export function enqueueMessage(prompt: string, source: string, meta?: { target?: any; chatId?: string | number }) {
-    messageQueue.push({ prompt, source, target: meta?.target, chatId: meta?.chatId, ts: Date.now() });
+export function enqueueMessage(prompt: string, source: string, meta?: { target?: any; chatId?: string | number; requestId?: string }) {
+    messageQueue.push({ prompt, source, target: meta?.target, chatId: meta?.chatId, requestId: meta?.requestId, ts: Date.now() });
     console.log(`[queue] +1 (${messageQueue.length} pending)`);
     broadcast('queue_update', { pending: messageQueue.length });
 }
@@ -182,15 +182,16 @@ export async function processQueue() {
     const source = batch[0].source;
     const target = batch[0].target;
     const chatId = batch[0].chatId;
+    const requestId = batch[0].requestId;
     console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
     insertMessage.run('user', combined, source, '');
     // NOTE: no broadcast('new_message') here — gateway.ts already broadcast at enqueue time
     broadcast('queue_update', { pending: messageQueue.length });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    if (isResetIntent(combined)) orchestrateReset({ origin, target, chatId, _skipInsert: true });
-    else if (isContinueIntent(combined)) orchestrateContinue({ origin, target, chatId, _skipInsert: true });
-    else orchestrate(combined, { origin, target, chatId, _skipInsert: true });
+    if (isResetIntent(combined)) orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true });
+    else if (isContinueIntent(combined)) orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true });
+    else orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
 }
 
 // ─── Helpers ─────────────────────────────────────────

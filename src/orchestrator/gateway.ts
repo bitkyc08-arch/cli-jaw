@@ -2,6 +2,7 @@
 // Unified message submission for all interfaces (WebUI, REST, Telegram).
 // Replaces duplicated intent/queue/orchestrate logic in server.ts + bot.ts.
 
+import { randomUUID } from 'node:crypto';
 import { isAgentBusy, enqueueMessage, messageQueue } from '../agent/spawn.js';
 import { insertMessage } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
@@ -16,6 +17,7 @@ export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
     reason?: string;
     pending?: number;
+    requestId?: string;
     // backward-compat for REST consumers (chat.js expects these)
     queued?: true;
     continued?: true;
@@ -24,7 +26,7 @@ export type SubmitResult = {
 function runDetached(
     task: Promise<unknown>,
     label: string,
-    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number },
+    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string },
 ) {
     task.catch((err: unknown) => {
         const msg = (err as Error)?.message || String(err);
@@ -34,6 +36,7 @@ function runDetached(
             origin: meta.origin,
             target: meta.target,
             chatId: meta.chatId,
+            requestId: meta.requestId,
             error: true,
         });
     });
@@ -47,6 +50,7 @@ export function submitMessage(
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
 
     const display = meta.displayText || trimmed;
+    const requestId = randomUUID();
 
     // ── continue intent (only when IDLE) ──
     if (getState() === 'IDLE' && isContinueIntent(trimmed)) {
@@ -55,12 +59,12 @@ export function submitMessage(
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true }),
+                orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
                 'continue',
-                meta,
+                { ...meta, requestId },
             );
         }
-        return { action: 'started', continued: true };
+        return { action: 'started', continued: true, requestId };
     }
 
     // ── reset intent ──
@@ -69,21 +73,21 @@ export function submitMessage(
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true }),
+                orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
                 'reset',
-                meta,
+                { ...meta, requestId },
             );
         }
-        return { action: 'started' };
+        return { action: 'started', requestId };
     }
 
     // ── busy → enqueue only ──
     // NOTE: insertMessage is NOT called here — processQueue() handles it.
     // This fixes the dual-insert bug where bot.ts called both enqueue + insert.
     if (isAgentBusy()) {
-        enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId });
+        enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId, requestId });
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
-        return { action: 'queued', pending: messageQueue.length, queued: true };
+        return { action: 'queued', pending: messageQueue.length, queued: true, requestId };
     }
 
     // ── idle → start immediately ──
@@ -91,10 +95,10 @@ export function submitMessage(
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
         runDetached(
-            orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true }),
+            orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
             'orchestrate',
-            meta,
+            { ...meta, requestId },
         );
     }
-    return { action: 'started' };
+    return { action: 'started', requestId };
 }
