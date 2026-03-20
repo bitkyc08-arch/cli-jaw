@@ -1,13 +1,13 @@
 # 🧪 CLI-JAW Tests
 
-[![Tests](https://img.shields.io/badge/tests-743%20pass%20%2F%201%20skip-brightgreen)](#)
+[![Tests](https://img.shields.io/badge/tests-881%20pass%20%2F%201%20skip-brightgreen)](#)
 
 > `node:test` + `node:assert` via `tsx` runner — zero external test dependencies.
 
 ## Run
 
 ```bash
-npm test                            # All 744 tests (~15s)
+npm test                            # All 881 tests (~15s)
 tsx --test tests/unit/*.test.ts    # Unit tests only
 tsx --test tests/integration/*.test.ts  # Integration tests only
 npm run test:watch                  # Watch mode
@@ -60,6 +60,17 @@ npm run check:deps                  # Dependency vulnerability check
 | `submit-message.test.ts`       |  10   | `submitMessage` gateway: idle/busy/continue/reset paths, `isAgentBusy` busy rejection     |
 | `worklog.test.ts`              |   6   | PHASES mapping, `parseWorklogPending` extraction                                          |
 | `browser-port.test.ts`         |   9   | `activePort` lifecycle, `getActivePort` fallback chain, `cdpPort(req)` validation (#49)   |
+| `discord-forwarder.test.ts`    |   6   | chunkDiscordMessage, self-origin skip, queue correlation by requestId                     |
+| `discord-file.test.ts`         |   8   | File size validation (10 MiB), validateDiscordFileSize behavior, text-based channel check |
+| `discord-commands-registration.test.ts` |   7   | DISCORD_SLASH_COMMANDS list, guild-scoped registration, guard checks             |
+| `doctor-discord-degraded.test.ts` |  10   | Discord status matrix (disabled/token/guild/channel), JSON output schema              |
+| `doctor-json-discord.test.ts`  |   9   | JSON schema fields, buildDiscordStatus fields, degradedReasons                            |
+| `forward-command.test.ts`      |   5   | /forward command availability on Discord, DISCORD_SLASH_COMMANDS membership                |
+| `heartbeat-routing.test.ts`    |   4   | Heartbeat sendResult check, canonical send fallback chain, target resolution order        |
+| `init-discord-negative.test.ts`|  11   | --channel validation, --force guard, Discord token/guild/channel ID validation            |
+| `messaging-runtime.test.ts`    |  10   | clearTargetState, hydrateTargetsFromSettings, restart rules, env overrides                |
+| `system-prompt.test.ts`        |   7   | Canonical /api/channel/send, legacy endpoints, Discord degraded mode docs                 |
+| `web-channel-toggle.test.ts`   |   5   | Async PUT /api/settings, transactional rollback, error propagation                        |
 
 ### Integration (Tier 2-3 — Express routes, CLI)
 
@@ -68,6 +79,7 @@ npm run check:deps                  # Dependency vulnerability check
 | `route-registration.test.ts` |   5   | Baseline route list, core/memory/browser route groups, dedup check |
 | `cli-basic.test.ts`          |   4   | CLI --help, --version, unknown command, doctor                     |
 | `api-smoke.test.ts`          |  12   | API endpoint smoke tests (server startup required)                 |
+| `settings-channel-switch.test.ts` |   6   | Channel switch restart, env-only boot, transactional rollback, target in broadcasts |
 
 ---
 

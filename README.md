@@ -6,7 +6,7 @@
 
 *One assistant. Five brains. Always on.*
 
-[![Tests](https://img.shields.io/badge/tests-639%20pass-brightgreen)](#-tests)
+[![Tests](https://img.shields.io/badge/tests-899%20pass-brightgreen)](#-tests)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-ISC-yellow)](LICENSE)
@@ -169,7 +169,7 @@ Check what's ready: `jaw doctor`
 
 ## What is CLI-JAW?
 
-CLI-JAW is a **personal AI assistant** that lives on your machine and works from the interfaces you already use — **Web, Terminal, and Telegram**. Ask it anything, delegate tasks, automate your workflows.
+CLI-JAW is a **personal AI assistant** that lives on your machine and works from the interfaces you already use — **Web, Terminal, Telegram, and Discord**. Ask it anything, delegate tasks, automate your workflows.
 ![1772128366759](image/README/1772128366759.png)
 
 > 💬 *"Summarize today's schedule"* → answer on Telegram
@@ -184,7 +184,7 @@ Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, C
 | 🤖**Verified Agent Tools** | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof.                                         |
 | ⚡**Multi-Agent Fallback** | One engine down? The next picks up automatically. Zero downtime.                                                                 |
 | 🎭**PABCD Orchestration**  | DB-persisted FSM pipeline — Plan → Audit → Build → Check → Done. Workers are read-only. You approve every phase.                 |
-| 📦**107 Built-in Skills**  | Browser automation, document generation, Telegram, memory — ready out of the box.                                                |
+| 📦**107 Built-in Skills**  | Browser automation, document generation, Telegram/Discord, memory — ready out of the box.                                         |
 | 🖥️**Cross-Platform**       | macOS, Linux, Windows — ENOENT-safe CLI spawn, auto-detection,`.cmd` shim support, and native install all work across platforms. |
 
 ![CLI-JAW Terminal](docs/screenshots/terminal-cli.png)

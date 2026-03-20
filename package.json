@@ -1,7 +1,7 @@
 {
   "name": "cli-jaw",
   "version": "1.4.0-preview.20260321002229",
-  "description": "Personal AI assistant powered by 5 engines (Claude, Codex, Gemini, OpenCode, Copilot) — Web, Terminal, and Telegram interfaces with 107 built-in skills",
+  "description": "Personal AI assistant powered by 5 engines (Claude, Codex, Gemini, OpenCode, Copilot) — Web, Terminal, Telegram, and Discord interfaces with 107 built-in skills",
   "type": "module",
   "keywords": [
     "ai-assistant",
@@ -13,6 +13,7 @@
     "multi-agent",
     "orchestration",
     "telegram-bot",
+    "discord-bot",
     "browser-automation",
     "mcp"
   ],
