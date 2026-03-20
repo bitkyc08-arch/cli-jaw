@@ -268,7 +268,7 @@ graph LR
 
 #### Reference Skills (on-demand)
 
-88 more skills ready to use — spotify, weather, deep-research, tts, video-downloader, apple-reminders, 1password, terraform, postgres, jupyter-notebook, sentry, whatsapp, and more.
+94 more skills ready to use — imagegen, openai-docs, spotify, weather, deep-research, tts, video-downloader, apple-reminders, 1password, terraform, postgres, jupyter-notebook, sentry, whatsapp, and more.
 
 ```bash
 jaw skill install <name>    # Activate a reference skill permanently

@@ -37,7 +37,15 @@ wsl --install
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
 ```
 
-**第三步：认证 AI 引擎**（任选其一）
+脚本自动安装必备软件（`curl`、`unzip`、`git`）、Node.js 22+ 和 CLI-JAW。
+
+**第三步：重新加载 Shell**（重要 — 使 PATH 更改生效）
+
+```bash
+source ~/.bashrc
+```
+
+**第四步：认证 AI 引擎**（任选其一）
 
 ```bash
 copilot login    # GitHub Copilot（免费）
@@ -147,7 +155,7 @@ gemini                       # Google Gemini — 首次运行触发认证
 
 ## CLI-JAW 是什么？
 
-CLI-JAW 是驻留在您本地机器上的**专属 AI 助手**，并在您熟悉的界面中运行 — **网页、终端和 Telegram**。您可以向它提出任何问题、委派任务或是自动化您的工作流。
+CLI-JAW 是驻留在您本地机器上的**专属 AI 助手**，并在您熟悉的界面中运行 — **网页、终端、Telegram 和 Discord**。您可以向它提出任何问题、委派任务或是自动化您的工作流。
 ![CLI-JAW Web UI](image/README/1772128366759.png)
 
 > 💬 *"帮我整理一下今天的日程"* → 直接在 Telegram 上收到整理好的结果
@@ -257,7 +265,7 @@ jaw service install  # 开机自动启动 (systemd/launchd/docker 自动检测)
 
 #### 参考技能（按需调用）
 
-89 个技能随时待命 — Spotify、天气、深度研究、TTS、视频下载、Apple 提醒事项、1Password、Terraform、PostgreSQL、Jupyter 等。
+94 个技能随时待命 — imagegen、openai-docs、Spotify、天气、深度研究、TTS、视频下载、Apple 提醒事项、1Password、Terraform、PostgreSQL、Jupyter 等。
 
 ```bash
 jaw skill install <name>    # 参考 → 活跃，永久激活
@@ -288,6 +296,7 @@ jaw skill install <name>    # 参考 → 活跃，永久激活
 - 💬 与您的助手聊天（在 5 大 AI 引擎中任选其一）
 - 🎤 发送语音消息（自动转写为文字）
 - 📎 发送文件和图片进行处理
+- 🎙️ 在单条消息中组合语音 + 文字 + 文件附件
 - ⚡ 运行系统命令（`/cli`、`/model`、`/status`）
 - 🔄 随时随地切换 AI 引擎
 
@@ -547,7 +556,7 @@ npm test
 
 欢迎贡献！上手方法：
 
-1. Fork 仓库，从 `main` 拉个分支
+1. Fork 仓库，从 `master` 拉个分支
 2. `npm run build && npm test` 确认一切正常
 3. 提交 PR — 我们会尽快 review
 
