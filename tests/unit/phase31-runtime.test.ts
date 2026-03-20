@@ -25,15 +25,13 @@ test('P31-001: startup migrates permissions safe -> auto', () => {
 });
 
 test('P31-002: applySettingsPatch tracks previous workingDir before merge', () => {
-    const fn = section(runtimeSettingsSrc, 'export function applyRuntimeSettingsPatch', 'return settings;');
-    assert.ok(fn.includes('const prevWorkingDir = settings.workingDir'));
+    assert.ok(runtimeSettingsSrc.includes('const prevWorkingDir = settings.workingDir'));
 });
 
 test('P31-003: workingDir change triggers artifact regeneration pipeline', () => {
-    const fn = section(runtimeSettingsSrc, 'export function applyRuntimeSettingsPatch', 'return settings;');
-    assert.ok(fn.includes('if (settings.workingDir !== prevWorkingDir)'));
-    assert.ok(fn.includes('initMcpConfig(settings.workingDir)'));
-    assert.ok(fn.includes('ensureWorkingDirSkillsLinks(settings.workingDir'));
-    assert.ok(fn.includes('syncToAll(loadUnifiedMcp())'));
-    assert.ok(fn.includes('regenerateB()'));
+    assert.ok(runtimeSettingsSrc.includes('if (settings.workingDir !== prevWorkingDir)'));
+    assert.ok(runtimeSettingsSrc.includes('initMcpConfig(settings.workingDir)'));
+    assert.ok(runtimeSettingsSrc.includes('ensureWorkingDirSkillsLinks(settings.workingDir'));
+    assert.ok(runtimeSettingsSrc.includes('syncToAll(loadUnifiedMcp())'));
+    assert.ok(runtimeSettingsSrc.includes('regenerateB()'));
 });

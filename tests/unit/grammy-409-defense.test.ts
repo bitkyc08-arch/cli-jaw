@@ -4,6 +4,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import fs from 'node:fs';
+import { join, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const BOT_PATH = new URL('../../src/telegram/bot.ts', import.meta.url).pathname;
 const SERVER_PATH = new URL('../../server.ts', import.meta.url).pathname;
@@ -66,10 +68,10 @@ test('bootstrap uses void initActiveMessagingRuntime()', () => {
         'bootstrap must use void initActiveMessagingRuntime() (fire-and-forget)');
 });
 
-test('applySettingsPatch uses void restartMessagingRuntime()', () => {
-    const start = serverSrc.indexOf('function applySettingsPatch');
-    const end = serverSrc.indexOf('function ', start + 30); // next function
-    const patchFn = serverSrc.slice(start, end > start ? end : start + 3000);
-    assert.match(patchFn, /void\s+restartMessagingRuntime\s*\(/,
-        'applySettingsPatch must use void restartMessagingRuntime() to avoid async propagation');
+test('applyRuntimeSettingsPatch calls restartMessagingRuntime (unified restart)', () => {
+    const runtimeSettingsSrc = fs.readFileSync(
+        join(dirname(fileURLToPath(import.meta.url)), '../../src/core/runtime-settings.ts'), 'utf8',
+    );
+    assert.match(runtimeSettingsSrc, /await\s+restartMessagingRuntime\s*\(/,
+        'applyRuntimeSettingsPatch must await restartMessagingRuntime() for transactional settings+restart');
 });
