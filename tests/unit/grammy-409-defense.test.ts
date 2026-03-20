@@ -61,11 +61,12 @@ test('shutdown handler uses process.once and Promise.race', () => {
         'shutdown handler must use Promise.race to prevent hanging');
 });
 
-test('bootstrap uses void initActiveMessagingRuntime()', () => {
-    // Find the server.listen callback area
+test('bootstrap calls initActiveMessagingRuntime with error handling', () => {
     const listenBlock = serverSrc.slice(serverSrc.indexOf('server.listen'));
-    assert.match(listenBlock, /void\s+initActiveMessagingRuntime\s*\(\)/,
-        'bootstrap must use void initActiveMessagingRuntime() (fire-and-forget)');
+    assert.ok(listenBlock.includes('initActiveMessagingRuntime()'),
+        'bootstrap must call initActiveMessagingRuntime()');
+    assert.ok(listenBlock.includes('.catch('),
+        'bootstrap must catch init errors');
 });
 
 test('applyRuntimeSettingsPatch calls restartMessagingRuntime (unified restart)', () => {

@@ -63,3 +63,15 @@ test('discord status has degradedReasons array', () => {
     assert.ok(fn.includes('degradedReasons'),
         'discord status should have degradedReasons field');
 });
+
+test('discord status has runtimeReady field', () => {
+    const fn = doctorSrc.slice(doctorSrc.indexOf('function buildDiscordStatus'));
+    assert.ok(fn.includes('runtimeReady'),
+        'discord status should have runtimeReady field');
+});
+
+test('discord status has channelConsistent field', () => {
+    const fn = doctorSrc.slice(doctorSrc.indexOf('function buildDiscordStatus'));
+    assert.ok(fn.includes('channelConsistent'),
+        'discord status should have channelConsistent field');
+});

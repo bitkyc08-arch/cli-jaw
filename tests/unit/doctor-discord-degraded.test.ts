@@ -64,6 +64,13 @@ test('buildDiscordStatus returns degradedReasons array', () => {
         'status builder should return degradedReasons');
 });
 
+test('doctor checks channel consistency', () => {
+    assert.match(doctorSrc, /Channel consistency/,
+        'should have channel consistency check');
+    assert.match(doctorSrc, /active channel is discord but Discord is not enabled/,
+        'should detect discord channel with disabled Discord');
+});
+
 test('buildDiscordStatus distinguishes missing_token vs missing_guild_id vs missing_channel_ids', () => {
     assert.match(doctorSrc, /missing_token/,
         'should have missing_token status');
