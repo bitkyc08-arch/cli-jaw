@@ -20,6 +20,14 @@
 
 </div>
 
+## Quick Links
+
+- [Install & Run](#-install--run-30-seconds) · [Authenticate](#-authenticate-your-ai-engines) · [What is CLI-JAW?](#what-is-cli-jaw)
+- [Features](#what-can-your-assistant-do) · [Skills](#-skill-system) · [Telegram](#-telegram--your-assistant-in-your-pocket) · [Voice & STT](#-voice--stt--speech-to-text)
+- [PABCD Orchestration](#-multi-agent-orchestration--pabcd) · [MCP](#-mcp--one-config-six-ai-engines) · [CLI Commands](#️-cli-commands)
+- [Multi-Instance](#️-multi-instance--separate-projects-separate-contexts) · [Models](#-models) · [Docker](#-docker--container-isolation)
+- [Development](#️-development) · [Tests](#-tests) · [Docs](#-documentation) · [Troubleshooting](#-troubleshooting) · [Contributing](#-contributing)
+
 <details>
 <summary>🪟 <b>Are you on Windows?</b> — WSL One-Click Setup</summary>
 

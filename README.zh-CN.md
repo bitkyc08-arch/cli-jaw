@@ -20,6 +20,14 @@
 
 </div>
 
+## 快速链接
+
+- [安装与启动](#-安装与启动30-秒) · [认证 AI 引擎](#-认证-ai-引擎) · [CLI-JAW 是什么？](#cli-jaw-是什么)
+- [功能](#您的助手能做什么) · [技能](#-技能系统) · [Telegram](#-telegram--您口袋里的助手) · [语音 & STT](#-语音--stt--语音转文字)
+- [多智能体编排](#-多智能体编排) · [MCP](#-mcp--单次配置驱动-6-大-ai-引擎) · [CLI 命令](#️-cli-命令)
+- [多实例](#️-多实例--项目级别的独立环境) · [模型](#-模型) · [Docker](#-docker--容器隔离)
+- [开发](#️-开发) · [测试](#-测试) · [文档](#-文档) · [故障排查](#-故障排查) · [参与贡献](#-参与贡献)
+
 <details>
 <summary>🪟 <b>你在用 Windows 吗？</b> — WSL 一键安装</summary>
 
@@ -55,7 +63,7 @@ codex login      # OpenAI Codex
 gemini           # Google Gemini
 ```
 
-**第四步：启动聊天**
+**第五步：启动聊天**
 
 ```bash
 jaw serve
@@ -63,6 +71,18 @@ jaw serve
 ```
 
 > 💡 脚本使用 [fnm](https://github.com/Schniz/fnm) 管理 Node.js。如果已有 `nvm`，则自动使用 nvm。
+
+<details>
+<summary>🔧 <b>WSL 故障排查</b></summary>
+
+| 问题                                    | 解决方法                                                 |
+| --------------------------------------- | -------------------------------------------------------- |
+| `unzip: command not found`              | 重新运行安装脚本 — 现已自动安装 `unzip`                   |
+| 安装后 `jaw: command not found`          | 运行 `source ~/.bashrc` 重新加载 PATH                     |
+| 仍然找不到 `jaw`                         | 运行 `export PATH="$(npm config get prefix)/bin:$PATH"`   |
+| `npm install -g` 权限错误                | 运行 `sudo chown -R $USER $(npm config get prefix)`       |
+
+</details>
 
 </details>
 
@@ -549,6 +569,8 @@ npm test
 | `npm install -g` 权限错误    | 全局目录权限不足              | 使用 `sudo npm i -g cli-jaw` 或推荐 [nvm](https://github.com/nvm-sh/nvm) |
 | 构建失败（`tsc` 报错）       | Node 版本低于 22              | `node -v` 检查 → 升级至 22+                                              |
 | 会话间记忆未保留             | `~/.cli-jaw/memory/` 目录缺失 | 重新运行 `jaw init` 自动创建                                             |
+
+> 📋 需要全新重装？请参阅 [英文 README 的 Fresh Start 指南](README.md#-troubleshooting)。
 
 ---
 
