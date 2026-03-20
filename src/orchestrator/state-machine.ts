@@ -6,6 +6,7 @@
 import { getOrcState, setOrcState, resetOrcState } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
 import { readLatestWorklog } from '../memory/worklog.js';
+import type { RemoteTarget } from '../messaging/types.js';
 
 // ─── Types ──────────────────────────────────────────
 
@@ -16,6 +17,7 @@ export interface OrcContext {
   plan: string | null;
   workerResults: string[];
   origin: string;
+  target?: RemoteTarget;
   chatId?: string | number;
   researchReport?: string | null;
   researchNeeded?: boolean;

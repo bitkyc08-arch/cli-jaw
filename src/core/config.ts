@@ -118,11 +118,24 @@ function createDefaultSettings() {
             activeHours: { start: '08:00', end: '22:00' },
             target: 'all',
         },
+        channel: 'telegram' as const,
         telegram: {
             enabled: false,
             token: '',
             allowedChatIds: [],
             forwardAll: true,
+        },
+        discord: {
+            enabled: false,
+            token: '',
+            guildId: '',
+            channelIds: [] as string[],
+            forwardAll: true,
+            allowBots: false,
+        },
+        messaging: {
+            latestSeen: { telegram: null, discord: null },
+            lastActive: { telegram: null, discord: null },
         },
         memory: {
             enabled: true,
@@ -169,6 +182,24 @@ function migrateSettings(s: Record<string, any>) {
         }
         delete s.planning;
     }
+    // Discord/channel migration
+    if (!s.channel) s.channel = 'telegram';
+    if (!s.discord) {
+        s.discord = {
+            enabled: false,
+            token: '',
+            guildId: '',
+            channelIds: [],
+            forwardAll: true,
+            allowBots: false,
+        };
+    }
+    if (!s.messaging) {
+        s.messaging = {
+            latestSeen: { telegram: null, discord: null },
+            lastActive: { telegram: null, discord: null },
+        };
+    }
     return s;
 }
 
@@ -191,6 +222,12 @@ export function loadSettings() {
             ...raw,
             perCli: mergedPerCli,
             tui: { ...defaults.tui, ...(raw.tui || {}) },
+            telegram: { ...defaults.telegram, ...(raw.telegram || {}) },
+            discord: { ...defaults.discord, ...(raw.discord || {}) },
+            messaging: {
+                latestSeen: { ...defaults.messaging.latestSeen, ...(raw.messaging?.latestSeen || {}) },
+                lastActive: { ...defaults.messaging.lastActive, ...(raw.messaging?.lastActive || {}) },
+            },
         });
         // --home (JAW_HOME) always wins over persisted workingDir (#64 hotfix)
         if (merged.workingDir !== JAW_HOME) {
@@ -198,6 +235,26 @@ export function loadSettings() {
             saveSettings(merged);
         }
         if (raw.planning) saveSettings(merged);
+
+        // env overrides
+        if (process.env.TELEGRAM_TOKEN) {
+            merged.telegram.token = process.env.TELEGRAM_TOKEN;
+            merged.telegram.enabled = true;
+        }
+        if (process.env.DISCORD_TOKEN) {
+            merged.discord = merged.discord || {};
+            merged.discord.token = process.env.DISCORD_TOKEN;
+            merged.discord.enabled = true;
+        }
+        if (process.env.DISCORD_GUILD_ID) {
+            merged.discord = merged.discord || {};
+            merged.discord.guildId = process.env.DISCORD_GUILD_ID;
+        }
+        if (process.env.DISCORD_CHANNEL_IDS) {
+            merged.discord = merged.discord || {};
+            merged.discord.channelIds = process.env.DISCORD_CHANNEL_IDS.split(',').map((s: string) => s.trim()).filter(Boolean);
+        }
+
         settings = merged;
         return merged;
     } catch { /* expected: settings.json may not exist on first run */

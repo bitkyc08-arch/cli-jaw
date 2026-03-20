@@ -144,8 +144,8 @@ export async function steerAgent(newPrompt: string, source: string) {
 
 // ─── Message Queue ───────────────────────────────────
 
-export function enqueueMessage(prompt: string, source: string, meta?: { chatId?: string | number }) {
-    messageQueue.push({ prompt, source, chatId: meta?.chatId, ts: Date.now() });
+export function enqueueMessage(prompt: string, source: string, meta?: { target?: any; chatId?: string | number }) {
+    messageQueue.push({ prompt, source, target: meta?.target, chatId: meta?.chatId, ts: Date.now() });
     console.log(`[queue] +1 (${messageQueue.length} pending)`);
     broadcast('queue_update', { pending: messageQueue.length });
 }

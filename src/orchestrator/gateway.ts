@@ -10,6 +10,7 @@ import {
     isContinueIntent, isResetIntent,
 } from './pipeline.js';
 import { getState } from './state-machine.js';
+import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 
 export type SubmitResult = {
     action: 'started' | 'queued' | 'rejected';
@@ -23,7 +24,7 @@ export type SubmitResult = {
 function runDetached(
     task: Promise<unknown>,
     label: string,
-    meta: { origin: 'web' | 'cli' | 'telegram'; chatId?: string | number },
+    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number },
 ) {
     task.catch((err: unknown) => {
         const msg = (err as Error)?.message || String(err);
@@ -31,6 +32,7 @@ function runDetached(
         broadcast('orchestrate_done', {
             text: `[orchestrate error] ${msg}`,
             origin: meta.origin,
+            target: meta.target,
             chatId: meta.chatId,
             error: true,
         });
@@ -39,7 +41,7 @@ function runDetached(
 
 export function submitMessage(
     text: string,
-    meta: { origin: 'web' | 'cli' | 'telegram'; displayText?: string; skipOrchestrate?: boolean; chatId?: string | number },
+    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number },
 ): SubmitResult {
     const trimmed = text.trim();
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
@@ -53,7 +55,7 @@ export function submitMessage(
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateContinue({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true }),
+                orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true }),
                 'continue',
                 meta,
             );
@@ -67,7 +69,7 @@ export function submitMessage(
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateReset({ origin: meta.origin, chatId: meta.chatId, _skipInsert: true }),
+                orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true }),
                 'reset',
                 meta,
             );
@@ -79,7 +81,7 @@ export function submitMessage(
     // NOTE: insertMessage is NOT called here — processQueue() handles it.
     // This fixes the dual-insert bug where bot.ts called both enqueue + insert.
     if (isAgentBusy()) {
-        enqueueMessage(trimmed, meta.origin, { chatId: meta.chatId });
+        enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId });
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         return { action: 'queued', pending: messageQueue.length, queued: true };
     }
@@ -89,7 +91,7 @@ export function submitMessage(
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
         runDetached(
-            orchestrate(trimmed, { origin: meta.origin, chatId: meta.chatId, _skipInsert: true }),
+            orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, _skipInsert: true }),
             'orchestrate',
             meta,
         );
