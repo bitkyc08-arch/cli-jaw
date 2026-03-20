@@ -4,6 +4,7 @@ import { join } from 'path';
 import fs from 'node:fs';
 import net from 'node:net';
 import { chromium } from 'playwright-core';
+import { resolveLaunchPolicy, type BrowserStartMode } from './launch-policy.js';
 
 const PROFILE_DIR = join(JAW_HOME, 'browser-profile');
 let cached: any = null;   // { browser, cdpUrl }
@@ -88,7 +89,10 @@ function findChrome() {
     throw new Error('Chrome not found — install Google Chrome');
 }
 
-export async function launchChrome(port = deriveCdpPort(), opts: { headless?: boolean } = {}) {
+export async function launchChrome(
+    port = deriveCdpPort(),
+    opts: { headless?: boolean; mode?: BrowserStartMode } = {},
+) {
     // 1. CDP already responding → reuse (covers server restart, external Chrome)
     if (await isPortListening(port)) {
         try {
@@ -110,9 +114,17 @@ export async function launchChrome(port = deriveCdpPort(), opts: { headless?: bo
 
     if (chromeProc && !chromeProc.killed) return;
 
+    const launchPolicy = resolveLaunchPolicy({
+        mode: opts.mode,
+        headless: opts.headless,
+    });
+    if (!launchPolicy.allowLaunch) {
+        throw new Error(launchPolicy.denyReason || 'Browser launch denied by policy');
+    }
+
     const chrome = findChrome();
     const noSandbox = process.env.CHROME_NO_SANDBOX === '1';
-    const headless = opts.headless || process.env.CHROME_HEADLESS === '1';
+    const headless = launchPolicy.headless;
 
     chromeProc = spawn(chrome, [
         `--remote-debugging-port=${port}`,

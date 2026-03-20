@@ -51,11 +51,11 @@ test('CDP-004: launchChrome checks port before spawn', () => {
     );
 });
 
-test('CDP-005: CHROME_HEADLESS env var recognized', () => {
+test('CDP-005: connection.ts delegates headless policy to launch policy helper', () => {
     assert.match(
         connectionSrc,
-        /CHROME_HEADLESS/,
-        'connection.ts should recognize CHROME_HEADLESS environment variable for headless mode',
+        /resolveLaunchPolicy/,
+        'connection.ts should delegate mode/headless behavior to launch policy helper',
     );
 });
 
@@ -105,7 +105,7 @@ test('CDP-010: launchChrome signature is backward compatible', () => {
     // Ensure the opts parameter has a default value
     assert.match(
         connectionSrc,
-        /launchChrome\(port\s*=\s*deriveCdpPort\(\),\s*opts.*=\s*\{\}/,
+        /launchChrome\(\s*port\s*=\s*deriveCdpPort\(\),[\s\S]*opts[\s\S]*=\s*\{\}/,
         'launchChrome should have opts with default empty object for backward compatibility',
     );
 });

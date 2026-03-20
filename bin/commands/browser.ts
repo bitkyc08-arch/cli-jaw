@@ -37,11 +37,13 @@ try {
                 options: {
                     port: { type: 'string', default: String(deriveCdpPort()) },
                     headless: { type: 'boolean', default: false },
+                    agent: { type: 'boolean', default: false },
                 }, strict: false
             });
             const r = await api('POST', '/start', {
                 port: Number(values.port),
                 headless: values.headless,
+                mode: values.agent ? 'agent' : 'manual',
             }) as Record<string, any>;
             console.log(r.running ? `🌐 Chrome started (CDP: ${r.cdpUrl})` : '❌ Failed');
             break;
@@ -215,7 +217,7 @@ try {
   🌐 cli-jaw browser
 
   Commands:
-    start [--port <auto>] [--headless]  Start Chrome (headless for WSL/CI/Docker)
+    start [--port <auto>] [--headless] [--agent]  Start Chrome
     stop                   Stop Chrome
     status                 Connection status
     reset [--force]        Reset (clear profile + screenshots)
@@ -242,4 +244,3 @@ try {
     console.error(`❌ ${(e as Error).message}`);
     process.exitCode = 1;
 }
-

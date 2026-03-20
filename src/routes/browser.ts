@@ -2,6 +2,7 @@
 import type { Express, Request, Response } from 'express';
 import * as browser from '../browser/index.js';
 import { ok } from '../http/response.js';
+import { DEBUG_CONSOLE_ONLY_MESSAGE, normalizeBrowserStartMode, type BrowserStartMode } from '../browser/launch-policy.js';
 
 /** Port priority: req param > activePort > settings.browser.cdpPort > deriveCdpPort() */
 const cdpPort = (req: Request) => {
@@ -10,12 +11,27 @@ const cdpPort = (req: Request) => {
     return browser.getActivePort();
 };
 
+export function resolveBrowserStartOptions(req: Request): {
+    port: number;
+    mode: BrowserStartMode;
+    headless: boolean;
+} {
+    return {
+        port: cdpPort(req),
+        mode: normalizeBrowserStartMode(req.body?.mode),
+        headless: req.body?.headless === true,
+    };
+}
+
 export function registerBrowserRoutes(app: Express) {
     app.post('/api/browser/start', async (req: Request, res: Response) => {
         try {
-            const port = cdpPort(req);
-            await browser.launchChrome(port, { headless: req.body?.headless === true });
-            res.json(await browser.getBrowserStatus(port));
+            const start = resolveBrowserStartOptions(req);
+            if (start.mode === 'debug') {
+                return res.status(400).json({ error: DEBUG_CONSOLE_ONLY_MESSAGE });
+            }
+            await browser.launchChrome(start.port, { mode: start.mode, headless: start.headless });
+            res.json(await browser.getBrowserStatus(start.port));
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
