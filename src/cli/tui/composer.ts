@@ -97,9 +97,16 @@ export function makePasteLabel(ordinal: number, lineCount: number, charCount: nu
     return `[Pasted text #${ordinal} +${charCount} chars]`;
 }
 
-export function appendPasteToComposer(state: ComposerState, rawText: string): void {
+export interface PasteCollapseConfig {
+    collapseLines: number;
+    collapseChars: number;
+}
+
+export function appendPasteToComposer(state: ComposerState, rawText: string, config?: PasteCollapseConfig): void {
+    const collapseLines = config?.collapseLines ?? 2;
+    const collapseChars = config?.collapseChars ?? 160;
     const { lineCount, charCount } = countTextMetrics(rawText);
-    if (lineCount < 2 && charCount < 160) {
+    if (lineCount < collapseLines && charCount < collapseChars) {
         appendTextToComposer(state, rawText);
         return;
     }
@@ -177,6 +184,7 @@ export function consumePasteProtocol(
     chunk: string,
     capture: PasteCaptureState,
     composer: ComposerState,
+    pasteConfig?: PasteCollapseConfig,
 ): string[] {
     let data = capture.carry + chunk;
     capture.carry = '';
@@ -192,7 +200,7 @@ export function consumePasteProtocol(
                 break;
             }
             capture.buffer += data.slice(0, endIdx);
-            appendPasteToComposer(composer, capture.buffer);
+            appendPasteToComposer(composer, capture.buffer, pasteConfig);
             capture.buffer = '';
             capture.active = false;
             data = data.slice(endIdx + BRACKETED_PASTE_END.length);

@@ -21,6 +21,7 @@ import {
     getPlainCommandDraft,
     getTrailingTextSegment,
     setBracketedPaste,
+    type PasteCollapseConfig,
 } from '../../src/cli/tui/composer.js';
 import { classifyKeyAction } from '../../src/cli/tui/keymap.js';
 import {
@@ -32,10 +33,17 @@ import {
     renderAutocomplete,
     resolveAutocompleteState,
     syncAutocompleteWindow,
+    renderHelpOverlay,
+    clearOverlayBox,
+    renderCommandPalette,
 } from '../../src/cli/tui/overlay.js';
 import { clipTextToCols, visualWidth } from '../../src/cli/tui/renderers.js';
 import { cleanupScrollRegion, ensureSpaceBelow, resolveShellLayout, setupScrollRegion } from '../../src/cli/tui/shell.js';
 import { createTuiStore } from '../../src/cli/tui/store.js';
+import {
+    appendUserItem, startAssistantItem, appendToActiveAssistant,
+    finalizeAssistant, appendStatusItem, clearEphemeralStatus,
+} from '../../src/cli/tui/transcript.js';
 import {
     isGitRepo, captureFileSet, diffFileSets,
     detectIde, getIdeCli, openDiffInIde, getDiffStat,
@@ -88,6 +96,7 @@ try {
 
 // ─── Fetch info ──────────────────────────────
 let info = { cli: 'codex', workingDir: '~', model: '' };
+let tuiConfig = { pasteCollapseLines: 2, pasteCollapseChars: 160, keymapPreset: 'default', diffStyle: 'summary', themeSeed: 'jaw-default' };
 try {
     const r = await fetch(`${apiUrl}/api/settings`, { signal: AbortSignal.timeout(2000) });
     if (r.ok) {
@@ -95,6 +104,7 @@ try {
         const s = res.data || res;
         const cli = s.cli || 'codex';
         info = { cli, workingDir: s.workingDir || '~', model: s.perCli?.[cli]?.model || '' };
+        if (s.tui && typeof s.tui === 'object') tuiConfig = { ...tuiConfig, ...s.tui };
     }
     // Active session model overrides perCli default
     const sr = await fetch(`${apiUrl}/api/session`, { signal: AbortSignal.timeout(2000) });
@@ -365,6 +375,9 @@ if (values.simple) {
     const composer = store.composer;
     const pasteCapture = store.pasteCapture;
     const panes = store.panes;
+    const transcript = store.transcript;
+    const ov = store.overlay;
+    let overlayBoxHeight = 0;
     let inputActive = true;
     let streaming = false;
     let commandRunning = false;
@@ -641,6 +654,7 @@ if (values.simple) {
             }
             // Enter — submit
             const draft = getPlainCommandDraft(composer);
+            const displayText = getComposerDisplayText(composer);
             const text = flattenComposerForSubmit(composer).trim();
             clearComposer(composer);
             closeAutocomplete(ac, (chunk) => process.stdout.write(chunk));
@@ -648,6 +662,7 @@ if (values.simple) {
 
             if (!text) { reopenPromptLine(); return; }
             renderBlockSeparator();
+            appendUserItem(transcript, displayText.trim(), text);
             // Phase 10: /file command
             if (draft !== null && text.startsWith('/file ')) {
                 const parts = text.slice(6).trim().split(/\s+/);
@@ -732,7 +747,7 @@ if (values.simple) {
         }
         if (commandRunning && !inputActive) return;
         const beforeDisplay = getComposerDisplayText(composer);
-        const tokens = consumePasteProtocol(incoming, pasteCapture, composer);
+        const tokens = consumePasteProtocol(incoming, pasteCapture, composer, { collapseLines: tuiConfig.pasteCollapseLines, collapseChars: tuiConfig.pasteCollapseChars });
         const afterDisplay = getComposerDisplayText(composer);
         if (beforeDisplay !== afterDisplay) {
             if (!inputActive) {
@@ -757,19 +772,27 @@ if (values.simple) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                         break;
                     }
+                    clearEphemeralStatus(transcript);
                     if (!streaming) {
                         streaming = true;
+                        startAssistantItem(transcript);
                         renderAssistantTurnStart();
                     }
+                    appendToActiveAssistant(transcript, msg.text || '');
                     process.stdout.write((msg.text || '').replace(/\n/g, '\n  '));
                     break;
 
                 case 'agent_done':
+                    clearEphemeralStatus(transcript);
                     if (isRaw) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (streaming) {
+                        finalizeAssistant(transcript);
                         console.log('');
                     } else if (msg.text) {
+                        startAssistantItem(transcript);
+                        appendToActiveAssistant(transcript, msg.text);
+                        finalizeAssistant(transcript);
                         renderAssistantTurnStart();
                         console.log(msg.text.replace(/\n/g, '\n  '));
                     }
@@ -804,6 +827,7 @@ if (values.simple) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (msg.status === 'running') {
                         const name = msg.agentName || msg.agentId || 'agent';
+                        appendStatusItem(transcript, `${name} working...`);
                         process.stdout.write(`\r  ${c.yellow}\u25CF${c.reset} ${c.dim}${name} working...${c.reset}          \r`);
                     }
                     break;
@@ -812,6 +836,7 @@ if (values.simple) {
                     if (isRaw) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else if (msg.icon && msg.label) {
+                        appendStatusItem(transcript, `${msg.icon} ${msg.label}`);
                         process.stdout.write(`\r  ${c.dim}${msg.icon} ${msg.label}${c.reset}          \r`);
                     }
                     break;
@@ -820,12 +845,14 @@ if (values.simple) {
                     if (isRaw) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                     } else {
+                        appendStatusItem(transcript, `${msg.from} → ${msg.to}`);
                         process.stdout.write(`\r  ${c.yellow}⚡${c.reset} ${c.dim}${msg.from} → ${msg.to}${c.reset}          \r`);
                     }
                     break;
 
                 case 'queue_update':
                     if (msg.pending > 0) {
+                        appendStatusItem(transcript, `${msg.pending}개 대기 중`);
                         process.stdout.write(`\r  ${c.yellow}⏳ ${msg.pending}개 대기 중${c.reset}          \r`);
                     }
                     break;
