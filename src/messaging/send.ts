@@ -88,7 +88,12 @@ export function validateTarget(target: RemoteTarget, channel: MessengerChannel):
     if (target.channel !== channel) return false;
     if (channel === 'discord') {
         const allowed = settings.discord?.channelIds;
-        if (allowed?.length && !allowed.includes(target.targetId)) return false;
+        if (allowed?.length) {
+            // Allow if targetId or parentTargetId (for threads) is in channelIds
+            const inAllowlist = allowed.includes(target.targetId)
+                || (target.parentTargetId && allowed.includes(target.parentTargetId));
+            if (!inAllowlist) return false;
+        }
     } else if (channel === 'telegram') {
         const allowed = settings.telegram?.allowedChatIds;
         if (allowed?.length && !allowed.map(String).includes(String(target.targetId))) return false;
@@ -98,6 +103,11 @@ export function validateTarget(target: RemoteTarget, channel: MessengerChannel):
 
 export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: any }> {
     const channel = resolveChannel(req);
+
+    // Validate explicit target shape (allow targets outside allowlist for direct API calls)
+    if (req.target && (!req.target.targetId || !req.target.channel)) {
+        return { ok: false, error: 'Invalid target: targetId and channel are required' };
+    }
 
     // Resolve target: explicit > validated lastActive > validated latestSeen > configured fallback > error
     if (!req.target) {

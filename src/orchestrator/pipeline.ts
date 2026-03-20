@@ -285,12 +285,22 @@ export async function orchestrate(
                 throw err;
             }
             anyWorkerRan = true;
-            // Feed worker results back to the main agent
-            await orchestrate(wResult.text, {
-                ...meta,
-                _skipClear: true,
-                _workerResult: true,
-            });
+            // Inject the worker result exactly once through the replay contract.
+            // This keeps durable handoff semantics while avoiding duplicate boss processing.
+            if (claimWorkerReplay(emp.id)) {
+                try {
+                    await orchestrate(wResult.text, {
+                        ...meta,
+                        _skipClear: true,
+                        _workerResult: true,
+                        _skipReplayDrain: true,
+                    });
+                    markWorkerReplayed(emp.id);
+                } catch (err) {
+                    releaseWorkerReplay(emp.id);
+                    throw err;
+                }
+            }
         }
         // If no workers could be found, broadcast the original response
         if (!anyWorkerRan) {

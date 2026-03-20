@@ -139,7 +139,19 @@ check('Discord', () => {
     if (!guildId) throw new Error('guild ID missing — set discord.guildId');
     const channelIds = settings.discord.channelIds;
     if (!channelIds?.length) throw new Error('channel IDs missing — set discord.channelIds');
-    return `guild=${guildId}, channels=${channelIds.length}`;
+    return `guild=${guildId}, channels=${channelIds.length} (MESSAGE_CONTENT intent required for plain messages)`;
+});
+
+// 6d. Channel consistency
+check('Channel consistency', () => {
+    const ch = (settings as Record<string, any> | null)?.channel || 'telegram';
+    if (ch === 'discord' && !settings?.discord?.enabled) {
+        throw new Error('WARN: active channel is discord but Discord is not enabled');
+    }
+    if (ch === 'telegram' && !settings?.telegram?.enabled) {
+        throw new Error('WARN: active channel is telegram but Telegram is not enabled');
+    }
+    return 'consistent';
 });
 
 // 7. Skills directory
@@ -302,12 +314,22 @@ function buildDiscordStatus() {
     else if (!tokenPresent) { status = 'missing_token'; degradedReasons.push('token missing'); }
     else if (!guildConfigured) { status = 'missing_guild_id'; degradedReasons.push('guild ID not configured'); }
     else if (!channelIdsConfigured) { status = 'missing_channel_ids'; degradedReasons.push('channel IDs not configured'); }
+    // Check active channel consistency
+    const activeChannel = s?.channel || 'telegram';
+    const channelConsistent = activeChannel !== 'discord' || !!dc.enabled;
+    if (!channelConsistent) {
+        degradedReasons.push('active channel is discord but Discord is not enabled');
+    }
+
     return {
         status,
         enabled: !!dc.enabled,
         tokenPresent,
         guildConfigured,
         channelIdsConfigured,
+        channelConsistent,
+        runtimeReady: status === 'ok' && channelConsistent,
+        messageContentNote: 'MESSAGE_CONTENT privileged intent required for plain guild messages; without it only slash commands work',
         degradedReasons,
     };
 }

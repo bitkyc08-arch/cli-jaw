@@ -140,7 +140,11 @@ export async function initDiscord() {
     client.on(Events.MessageCreate, async (msg) => {
         if (msg.author.id === client.user?.id) return; // never process own messages
         if (msg.author.bot && !settings.discord.allowBots) return;
-        if (settings.discord.channelIds?.length && !settings.discord.channelIds.includes(msg.channelId)) return;
+        if (settings.discord.channelIds?.length) {
+            const parentId = (msg.channel as any)?.parentId;
+            if (!settings.discord.channelIds.includes(msg.channelId)
+                && !(parentId && settings.discord.channelIds.includes(parentId))) return;
+        }
 
         markChannelActive(msg.channelId);
         const target = buildDiscordTarget(msg);
@@ -216,6 +220,7 @@ export async function shutdownDiscord() {
         removeBroadcastListener(forwarderHandler);
         forwarderHandler = null;
     }
+    discordActiveChannelIds.clear();
     if (!discordClient) return;
     const old = discordClient;
     discordClient = null;
@@ -262,12 +267,9 @@ async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok: boolea
         targetId: String(channelId),
     };
 
-    try {
-        await sendDiscordFile(discordClient, target, filePath, { caption: req.caption });
-        return { ok: true, channel_id: channelId, type: req.type };
-    } catch (e) {
-        return { ok: false, error: (e as Error).message };
-    }
+    const fileResult = await sendDiscordFile(discordClient, target, filePath, { caption: req.caption });
+    if (!fileResult.ok) return fileResult;
+    return { ok: true, channel_id: channelId, type: req.type };
 }
 
 // ─── Register Transport ─────────────────────────────

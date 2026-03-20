@@ -25,6 +25,8 @@ import {
 import { assertSkillId, assertFilename, assertMemoryRelPath, safeResolveUnder } from './src/security/path-guards.js';
 import { decodeFilenameSafe } from './src/security/decode.js';
 import { ok, fail } from './src/http/response.js';
+import { asyncHandler } from './src/http/async-handler.js';
+import { errorHandler } from './src/http/error-middleware.js';
 import { readCodexContextWindow } from './src/core/codex-config.js';
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
@@ -389,9 +391,13 @@ app.get('/api/orchestrate/workers', (_req, res) => {
 });
 
 app.get('/api/orchestrate/snapshot', (_req, res) => {
+    const runtime = getRuntimeSnapshot();
     res.json({
         orc: { state: getState(), ctx: getCtx() },
-        runtime: getRuntimeSnapshot(),
+        runtime: {
+            ...runtime,
+            busy: runtime.activeAgent || getActiveWorkers().some(w => w.state === 'running'),
+        },
         workers: getActiveWorkers(),
     });
 });
@@ -434,7 +440,7 @@ app.get('/api/settings', (_, res) => {
     }
     ok(res, safe, safe);
 });
-app.put('/api/settings', async (req, res) => {
+app.put('/api/settings', asyncHandler(async (req, res) => {
     const result = await applySettingsPatch(req.body);
     const safe = { ...result };
     if (safe.stt) {
@@ -443,7 +449,7 @@ app.put('/api/settings', async (req, res) => {
         safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey2, geminiKeyLast4: gKey2.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey2, openaiKeyLast4: oKey2.slice(-4) || '' };
     }
     ok(res, safe);
-});
+}));
 
 app.get('/api/memory/status', (_req, res) => {
     res.json(getMemoryStatus());
@@ -1008,6 +1014,9 @@ app.get('/api/i18n/:lang', (req, res) => {
     res.json(JSON.parse(fs.readFileSync(filePath, 'utf8')));
 });
 
+// ─── Error Handler (must be last middleware) ─────────
+app.use(errorHandler as any);
+
 // ─── Start ───────────────────────────────────────────
 
 watchHeartbeatFile();
@@ -1095,7 +1104,9 @@ server.listen(PORT, () => {
     } catch (e: unknown) { console.error('[mcp-init]', (e as Error).message); }
 
     hydrateTargetsFromSettings(settings);
-    void initActiveMessagingRuntime();
+    initActiveMessagingRuntime().catch((e: unknown) => {
+        console.error('[messaging:boot]', (e as Error).message);
+    });
     startHeartbeat();
     startTokenKeepAlive();
 

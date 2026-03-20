@@ -65,30 +65,119 @@ interface WsMessage {
 const agentPhaseState: Record<string, { phase: string; phaseLabel: string }> = {};
 
 /** Hydrate agent phase cache from snapshot (used after reconnect) */
-export function hydrateAgentPhases(workers: Array<{ agentId: string; state: string; employeeName: string }>) {
+export function hydrateAgentPhases(workers: Array<{
+    agentId: string;
+    state: string;
+    phase?: string;
+    phaseLabel?: string;
+}>) {
     for (const key of Object.keys(agentPhaseState)) {
         delete agentPhaseState[key];
     }
     for (const w of workers) {
-        if (w.state === 'running') {
+        if (w.state === 'running' && w.phase) {
             agentPhaseState[w.agentId] = {
-                phase: 'working',
-                phaseLabel: 'working',
+                phase: w.phase,
+                phaseLabel: w.phaseLabel || '',
             };
         }
     }
 }
 
 /** Apply orchestration state to UI (shared by WS events and reconnect snapshot) */
-function applyOrcState(orcState: string, _title?: string) {
-    state.orcState = orcState as OrcStateName;
+function applyOrcState(orcState: string, title?: string) {
+    const allowed = new Set<OrcStateName>(['IDLE', 'P', 'A', 'B', 'C', 'D']);
+    const nextState = allowed.has(orcState as OrcStateName) ? (orcState as OrcStateName) : 'IDLE';
+    state.orcState = nextState;
+
+    if (nextState === 'IDLE' || nextState === 'D') {
+        document.body.removeAttribute('data-orc-state');
+        document.body.style.removeProperty('--orc-glow');
+    } else {
+        document.body.setAttribute('data-orc-state', nextState);
+        const glowVar = `--orc-glow-${nextState}`;
+        const glow = getComputedStyle(document.documentElement).getPropertyValue(glowVar).trim();
+        document.body.style.setProperty('--orc-glow', glow);
+    }
+
+    document.body.classList.add('orc-pulse');
+    setTimeout(() => document.body.classList.remove('orc-pulse'), 700);
+
     const badge = document.getElementById('orcStateBadge');
     if (badge) {
-        const labels: Record<string, string> = {
+        const labels: Record<OrcStateName, string> = {
             IDLE: '', P: 'PLAN', A: 'AUDIT', B: 'BUILD', C: 'CHECK', D: 'DONE',
         };
-        badge.textContent = labels[orcState] || '';
-        badge.style.display = orcState === 'IDLE' ? 'none' : 'inline-block';
+        badge.textContent = labels[nextState];
+        badge.style.display = nextState === 'IDLE' ? 'none' : 'inline-block';
+    }
+
+    // ─── Roadmap Bar ───
+    const roadmap = document.getElementById('pabcRoadmap');
+    const shark = document.getElementById('sharkRunner');
+    const brand = document.getElementById('pabcBrand');
+
+    if (roadmap && shark) {
+        if (!roadmap.dataset.resizeObserved) {
+            roadmap.dataset.resizeObserved = '1';
+            new ResizeObserver(() => {
+                if (currentSharkPhase && shark.classList.contains('running')) {
+                    positionShark(roadmap, shark, currentSharkPhase);
+                }
+            }).observe(roadmap);
+            let rafId = 0;
+            window.addEventListener('resize', () => {
+                cancelAnimationFrame(rafId);
+                rafId = requestAnimationFrame(() => {
+                    if (currentSharkPhase && shark.classList.contains('running')) {
+                        positionShark(roadmap, shark, currentSharkPhase);
+                    }
+                });
+            });
+        }
+
+        if (nextState === 'IDLE') {
+            roadmap.classList.remove('visible', 'shimmer-out');
+            shark.classList.remove('running');
+            currentSharkPhase = null;
+        } else if (nextState === 'D') {
+            ROADMAP_PHASES.forEach(p => {
+                const dot = document.getElementById(`dot-${p}`);
+                if (dot) { dot.className = 'pabc-dot done'; dot.setAttribute('data-phase', p); }
+            });
+            for (let i = 0; i < 4; i++) {
+                const c = document.getElementById(`pabc-conn-${i}`);
+                if (c) c.className = 'pabc-connector done';
+            }
+            shark.classList.remove('running');
+            currentSharkPhase = null;
+            roadmap.classList.add('shimmer-out');
+            setTimeout(() => roadmap.classList.remove('visible', 'shimmer-out'), 1000);
+        } else {
+            roadmap.classList.remove('shimmer-out');
+            roadmap.classList.add('visible');
+            shark.classList.add('running');
+
+            const idx = ROADMAP_PHASES.indexOf(nextState as typeof ROADMAP_PHASES[number]);
+            ROADMAP_PHASES.forEach((p, pi) => {
+                const dot = document.getElementById(`dot-${p}`);
+                if (dot) {
+                    dot.className = `pabc-dot ${pi < idx ? 'done' : pi === idx ? 'active' : 'future'}`;
+                    dot.setAttribute('data-phase', p);
+                }
+            });
+            for (let i = 0; i < 4; i++) {
+                const c = document.getElementById(`pabc-conn-${i}`);
+                if (c) c.className = `pabc-connector ${i < idx ? 'done' : ''}`;
+            }
+
+            currentSharkPhase = nextState;
+            requestAnimationFrame(() => positionShark(roadmap, shark, nextState));
+        }
+
+        if (brand && title) {
+            brand.textContent = title;
+        }
     }
 }
 
@@ -141,109 +230,7 @@ export function connect(): void {
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
         } else if (msg.type === 'orc_state') {
-            const allowed = new Set<OrcStateName>(['IDLE', 'P', 'A', 'B', 'C', 'D']);
-            const rawState = typeof msg.state === 'string' ? msg.state : 'IDLE';
-            const nextState = allowed.has(rawState as OrcStateName) ? (rawState as OrcStateName) : 'IDLE';
-            state.orcState = nextState;
-
-            if (nextState === 'IDLE' || nextState === 'D') {
-                document.body.removeAttribute('data-orc-state');
-                document.body.style.removeProperty('--orc-glow');
-            } else {
-                document.body.setAttribute('data-orc-state', nextState);
-                const glowVar = `--orc-glow-${nextState}`;
-                const glow = getComputedStyle(document.documentElement).getPropertyValue(glowVar).trim();
-                document.body.style.setProperty('--orc-glow', glow);
-            }
-
-            document.body.classList.add('orc-pulse');
-            setTimeout(() => document.body.classList.remove('orc-pulse'), 700);
-
-            const badge = document.getElementById('orcStateBadge');
-            if (badge) {
-                const labels: Record<OrcStateName, string> = {
-                    IDLE: '',
-                    P: 'PLAN',
-                    A: 'AUDIT',
-                    B: 'BUILD',
-                    C: 'CHECK',
-                    D: 'DONE',
-                };
-                badge.textContent = labels[nextState];
-                badge.style.display = nextState === 'IDLE' ? 'none' : 'inline-block';
-            }
-
-            // ─── Roadmap Bar ───
-            const roadmap = document.getElementById('pabcRoadmap');
-            const shark = document.getElementById('sharkRunner');
-            const brand = document.getElementById('pabcBrand');
-
-            if (roadmap && shark) {
-                // ResizeObserver: reposition shark when bar width changes
-                if (!roadmap.dataset.resizeObserved) {
-                    roadmap.dataset.resizeObserved = '1';
-                    new ResizeObserver(() => {
-                        if (currentSharkPhase && shark.classList.contains('running')) {
-                            positionShark(roadmap, shark, currentSharkPhase);
-                        }
-                    }).observe(roadmap);
-                    let rafId = 0;
-                    window.addEventListener('resize', () => {
-                        cancelAnimationFrame(rafId);
-                        rafId = requestAnimationFrame(() => {
-                            if (currentSharkPhase && shark.classList.contains('running')) {
-                                positionShark(roadmap, shark, currentSharkPhase);
-                            }
-                        });
-                    });
-                }
-
-                if (nextState === 'IDLE') {
-                    roadmap.classList.remove('visible', 'shimmer-out');
-                    shark.classList.remove('running');
-                    currentSharkPhase = null;
-                } else if (nextState === 'D') {
-                    // All dots done + shimmer out
-                    ROADMAP_PHASES.forEach(p => {
-                        const dot = document.getElementById(`dot-${p}`);
-                        if (dot) { dot.className = 'pabc-dot done'; dot.setAttribute('data-phase', p); }
-                    });
-                    for (let i = 0; i < 4; i++) {
-                        const c = document.getElementById(`pabc-conn-${i}`);
-                        if (c) c.className = 'pabc-connector done';
-                    }
-                    shark.classList.remove('running');
-                    currentSharkPhase = null;
-                    roadmap.classList.add('shimmer-out');
-                    setTimeout(() => roadmap.classList.remove('visible', 'shimmer-out'), 1000);
-                } else {
-                    roadmap.classList.remove('shimmer-out');
-                    roadmap.classList.add('visible');
-                    shark.classList.add('running');
-
-                    // Update dots & connectors
-                    const idx = ROADMAP_PHASES.indexOf(nextState as typeof ROADMAP_PHASES[number]);
-                    ROADMAP_PHASES.forEach((p, pi) => {
-                        const dot = document.getElementById(`dot-${p}`);
-                        if (dot) {
-                            dot.className = `pabc-dot ${pi < idx ? 'done' : pi === idx ? 'active' : 'future'}`;
-                            dot.setAttribute('data-phase', p);
-                        }
-                    });
-                    for (let i = 0; i < 4; i++) {
-                        const c = document.getElementById(`pabc-conn-${i}`);
-                        if (c) c.className = `pabc-connector ${i < idx ? 'done' : ''}`;
-                    }
-
-                    currentSharkPhase = nextState;
-                    requestAnimationFrame(() => positionShark(roadmap, shark, nextState));
-                }
-
-                // Update brand text with worklog title
-                if (brand && msg.title) {
-                    brand.textContent = msg.title;
-                }
-            }
+            applyOrcState(typeof msg.state === 'string' ? msg.state : 'IDLE', msg.title);
         } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord')) {
             addMessage(msg.role === 'assistant' ? 'agent' : (msg.role || 'user'), msg.content || '');
         }
@@ -265,7 +252,7 @@ export function connect(): void {
                 applyOrcState(snap.orc.state);
                 hydrateAgentPhases(snap.workers);
                 updateQueueBadge(snap.runtime.queuePending);
-                setStatus(snap.runtime.activeAgent ? 'running' : 'idle');
+                setStatus(snap.runtime.busy ? 'running' : 'idle');
                 import('./features/employees.js').then(m => {
                     if (typeof m.renderEmployees === 'function') m.renderEmployees();
                 });

@@ -7,6 +7,7 @@ import { getEmployeePromptV2 } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
 import { appendToWorklog } from '../memory/worklog.js';
 import { startWorkerMonitor } from './worker-monitor.js';
+import { updateWorkerPhase } from './worker-registry.js';
 
 // ─── Phase Constants (shared with pipeline.ts) ───────
 
@@ -325,6 +326,7 @@ After completing your task, record results in the Execution Log section.`;
         agentId: emp.id, agentName: emp.name,
         status: 'running', phase: ap.currentPhase, phaseLabel,
     });
+    updateWorkerPhase(emp.id, String(ap.currentPhase), phaseLabel ?? '');
 
     const empSession = getEmployeeSession.get(emp.id) as Record<string, any> | undefined;
     const canResume = !!(empSession?.session_id && empSession?.cli === emp.cli);

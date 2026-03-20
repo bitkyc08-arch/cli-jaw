@@ -15,12 +15,12 @@ const promptCache = new Map();
 // MD5 hashes of source templates (unrendered) for every historical pre-hash version.
 // Used to identify known stock files during pre-hash migration.
 const KNOWN_A1_SOURCE_HASHES = new Set([
-    '98afd313f47c5263e1a575a4771f1f77', // 9d60b47 initial
-    'c7df1da623ca091a90a09528ae50136b', // 1ea5aa6 heartbeat
-    'da324e18813262fde4d1919e02785f11', // c359545 memory
-    'a17912925389b834a570ec2ae2c358ec', // ecc958a sub-agent
-    '0d179e0a3dcaf50bb432cd3487ba2735', // 4b92441 browser
-    'bac7cf8ff85465175c77631011367ffb', // 4f5e91a discord
+    'b95f7d3d22cb79bd9be5bac577b68a9f', // 9d60b47 initial
+    '9bbc1632e610cd3f764028ec6eb2c05d', // 1ea5aa6 heartbeat
+    '70ff952b074ad95f6a6f1f40f59bde09', // c359545 memory
+    '546d162f31b8a42008f815cbe928a434', // ecc958a sub-agent
+    '2e2a3de20b9803bec3c7843ab2859ace', // 4b92441 browser
+    'e0e1d2495f2859382b61bf0a816943ad', // 4f5e91a discord
 ]);
 
 // ─── Migration Helpers ───────────────────────────────
