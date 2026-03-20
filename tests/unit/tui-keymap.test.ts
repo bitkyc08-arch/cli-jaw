@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyKeyAction } from '../../src/cli/tui/keymap.js';
+import { classifyKeyAction } from '../../src/cli/tui/keymap.ts';
 
 test('classifyKeyAction detects navigation escape sequences', () => {
     assert.equal(classifyKeyAction('\x1b[A'), 'arrow-up');

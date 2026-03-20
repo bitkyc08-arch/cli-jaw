@@ -7,7 +7,7 @@ import {
     popupTotalRows,
     resolveAutocompleteState,
     syncAutocompleteWindow,
-} from '../../src/cli/tui/overlay.js';
+} from '../../src/cli/tui/overlay.ts';
 
 test('resolveAutocompleteState closes for non-command drafts', () => {
     const next = resolveAutocompleteState({

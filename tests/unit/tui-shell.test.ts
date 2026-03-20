@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { cleanupScrollRegion, ensureSpaceBelow, resolveShellLayout, setupScrollRegion } from '../../src/cli/tui/shell.js';
+import { cleanupScrollRegion, ensureSpaceBelow, resolveShellLayout, setupScrollRegion } from '../../src/cli/tui/shell.ts';
 
 function withMockedStdout(fn: () => void) {
     const originalRows = process.stdout.rows;

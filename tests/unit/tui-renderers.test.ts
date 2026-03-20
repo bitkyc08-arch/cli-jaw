@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clipTextToCols, visualWidth } from '../../src/cli/tui/renderers.js';
+import { clipTextToCols, visualWidth } from '../../src/cli/tui/renderers.ts';
 
 test('visualWidth ignores ANSI escape codes', () => {
     assert.equal(visualWidth('\x1b[31mabc\x1b[0m'), 3);

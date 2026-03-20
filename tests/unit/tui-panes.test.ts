@@ -6,7 +6,7 @@ import {
     getPanelEmptyState,
     openPanel,
     togglePanel,
-} from '../../src/cli/tui/panes.js';
+} from '../../src/cli/tui/panes.ts';
 
 test('createPaneState starts closed with default side and width', () => {
     const state = createPaneState();
