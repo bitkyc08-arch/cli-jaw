@@ -613,9 +613,9 @@ if (values.simple) {
         }
 
         // Dismiss help on any key that isn't ?
+        // (ESC is handled by flushPendingEscape which calls dismissOverlay)
         if (ov.helpOpen) {
             dismissOverlay();
-            if (action === 'escape-alone') return;
         }
 
         // Command palette: Ctrl+K
@@ -927,6 +927,7 @@ if (values.simple) {
             const msg = JSON.parse(raw);
             switch (msg.type) {
                 case 'agent_chunk':
+                    if (ov.helpOpen || ov.paletteOpen) dismissOverlay();
                     if (isRaw) {
                         console.log(`  ${c.dim}${raw}${c.reset}`);
                         break;
