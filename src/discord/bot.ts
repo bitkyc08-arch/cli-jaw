@@ -136,6 +136,13 @@ export async function initDiscord() {
         partials: [Partials.Channel], // Required for DM events
     });
 
+    // ── Error handler: disable Discord on network failure ──
+    client.on(Events.Error, (err) => {
+        console.error(`[discord] ❌ Client error: ${err.message}`);
+        console.error('[discord] Disabling Discord for this session — restart to retry');
+        shutdownDiscord().catch(() => { /* ignore */ });
+    });
+
     // ── Message handler ──
     client.on(Events.MessageCreate, async (msg) => {
         if (msg.author.id === client.user?.id) return; // never process own messages
@@ -207,7 +214,14 @@ export async function initDiscord() {
     }
 
     // ── Login ──
-    await client.login(settings.discord.token);
+    try {
+        await client.login(settings.discord.token);
+    } catch (err) {
+        console.error(`[discord] ❌ Login failed (network?): ${(err as Error).message}`);
+        console.error('[discord] Disabling Discord for this session — restart to retry');
+        try { await client.destroy(); } catch { /* ignore */ }
+        return;
+    }
     discordClient = client;
     console.log(`[discord] ✅ Bot logged in as ${client.user?.tag || 'unknown'}`);
 
