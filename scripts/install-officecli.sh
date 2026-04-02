@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
-#  Install OfficeCLI binary for cli-jaw
-#  Usage: ./scripts/install-officecli.sh [--force]
+#  install-officecli.sh — Install OfficeCLI binary (fork-first, CJK-enhanced)
+#  Default: lidge-jun/OfficeCLI (includes CJK font handling)
+#  Override: --upstream to install vanilla iOfficeAI/OfficeCLI
+#  Override: OFFICECLI_REPO=other/repo to use a different source
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -14,31 +16,32 @@ ok()    { echo -e "${GREEN}✔${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠${NC} $*"; }
 fail()  { echo -e "${RED}✖${NC} $*"; exit 1; }
 
-REPO="iOfficeAI/OfficeCLI"
+REPO="${OFFICECLI_REPO:-lidge-jun/OfficeCLI}"
 INSTALL_DIR="${HOME}/.local/bin"
-FORCE="${1:-}"
 TARGET_BIN="${INSTALL_DIR}/officecli"
 DOWNLOAD_BIN="${INSTALL_DIR}/officecli.download"
 
-usage() {
-  cat <<'EOF'
-Usage: ./scripts/install-officecli.sh [--force]
+UPSTREAM=false
+FORCE=false
+for arg in "$@"; do
+  case "$arg" in
+    --upstream) UPSTREAM=true; REPO="iOfficeAI/OfficeCLI" ;;
+    --force)    FORCE=true ;;
+    -h|--help)
+      cat <<'EOF'
+Usage: ./scripts/install-officecli.sh [--force] [--upstream]
 
 Options:
-  --force   Reinstall even when officecli already exists
+  --force      Reinstall even when officecli already exists
+  --upstream   Use vanilla iOfficeAI/OfficeCLI instead of the CJK-enhanced fork
 EOF
-}
-
-case "${FORCE}" in
-  ""|--force) ;;
-  -h|--help)
-    usage
-    exit 0
-    ;;
-  *)
-    fail "Unknown argument: ${FORCE}"
-    ;;
-esac
+      exit 0
+      ;;
+    *)
+      fail "Unknown argument: ${arg}"
+      ;;
+  esac
+done
 
 command -v curl >/dev/null 2>&1 || fail "curl is required"
 
@@ -75,7 +78,7 @@ esac
 info "Platform: ${OS}/${ARCH} → ${ASSET}"
 
 # ── Check existing installation ──
-if [ -f "$TARGET_BIN" ] && [ "$FORCE" != "--force" ]; then
+if [ -f "$TARGET_BIN" ] && [ "$FORCE" = "false" ]; then
   if CURRENT=$("$TARGET_BIN" --version 2>/dev/null); then
     ok "officecli already installed: v${CURRENT}"
     echo "  Use --force to reinstall"
@@ -116,6 +119,14 @@ fi
 VERSION=$("$DOWNLOAD_BIN" --version 2>/dev/null) || fail "Binary exists but won't execute"
 mv "$DOWNLOAD_BIN" "$TARGET_BIN"
 ok "officecli v${VERSION} installed → ${TARGET_BIN}"
+
+# ── Source info ──
+echo "Installed: $(officecli --version 2>/dev/null || echo 'unknown')"
+if [ "$UPSTREAM" = "false" ]; then
+  echo "Source: lidge-jun/OfficeCLI (CJK-enhanced fork)"
+else
+  echo "Source: iOfficeAI/OfficeCLI (upstream)"
+fi
 
 # ── PATH hint ──
 if ! command -v officecli &>/dev/null; then

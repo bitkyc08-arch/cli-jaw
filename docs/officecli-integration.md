@@ -59,8 +59,10 @@ sequenceDiagram
 
 | 작업 | 명령 |
 | --- | --- |
-| 기본 설치 | `bash scripts/install-officecli.sh` |
+| 기본 설치 (CJK fork) | `bash scripts/install-officecli.sh` |
+| upstream 설치 | `bash scripts/install-officecli.sh --upstream` |
 | 강제 재설치 | `bash scripts/install-officecli.sh --force` |
+| 커스텀 소스 | `OFFICECLI_REPO=other/repo bash scripts/install-officecli.sh` |
 | 버전 확인 | `officecli --version` |
 | smoke test | `bash tests/smoke/test_officecli_integration.sh` |
 | 특정 바이너리 지정 테스트 | `OFFICECLI_BIN=/path/to/officecli bash tests/smoke/test_officecli_integration.sh` |
@@ -69,7 +71,9 @@ sequenceDiagram
 
 | 항목 | 내용 |
 | --- | --- |
-| 대상 릴리스 | `iOfficeAI/OfficeCLI` latest release |
+| 대상 릴리스 | `lidge-jun/OfficeCLI` latest release (fork-first) |
+| upstream 전환 | `--upstream` 플래그로 `iOfficeAI/OfficeCLI` 사용 가능 |
+| 소스 오버라이드 | `OFFICECLI_REPO=other/repo` 환경변수로 임의 소스 지정 |
 | 설치 위치 | `~/.local/bin/officecli` |
 | 지원 플랫폼 | macOS arm64/x64, Linux x64/arm64, Alpine musl 변형 |
 | 재실행 처리 | 기본은 idempotent, `--force`일 때만 재설치 |
@@ -105,13 +109,15 @@ sequenceDiagram
 
 ### upstream / fork 차이
 
-| 항목 | upstream 바이너리 | 저장소 내 fork 바이너리 |
+설치 스크립트는 **fork-first**로 동작한다. 기본 소스가 `lidge-jun/OfficeCLI`이며, CJK 폰트 처리가 강화되어 있다. vanilla upstream이 필요하면 `--upstream` 플래그를 사용한다.
+
+| 항목 | 기본 설치 (fork) | `--upstream` 설치 |
 | --- | --- | --- |
-| 기본 위치 | `~/.local/bin/officecli` | `officecli/build-local/officecli` |
-| 기본 설치 경로 | install script 사용 | 저장소 빌드 산출물 사용 |
+| GitHub 소스 | `lidge-jun/OfficeCLI` | `iOfficeAI/OfficeCLI` |
+| 설치 위치 | `~/.local/bin/officecli` | `~/.local/bin/officecli` |
 | 일반 OOXML 작업 | 지원 | 지원 |
-| CJK 강화 워크플로 | 제한적일 수 있음 | 우선 권장 |
-| smoke test 기본 선택 | fallback 대상 | 우선 선택 |
+| CJK 폰트 처리 | 강화됨 (우선 권장) | 제한적일 수 있음 |
+| smoke test 호환 | 완전 호환 | 완전 호환 |
 
 ### 관련 스킬
 
