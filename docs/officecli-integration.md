@@ -74,10 +74,12 @@ sequenceDiagram
 | 대상 릴리스 | `lidge-jun/OfficeCLI` latest release (fork-first) |
 | upstream 전환 | `--upstream` 플래그로 `iOfficeAI/OfficeCLI` 사용 가능 |
 | 소스 오버라이드 | `OFFICECLI_REPO=other/repo` 환경변수로 임의 소스 지정 |
+| 우선순위 규칙 | `OFFICECLI_REPO`와 `--upstream`은 함께 쓰지 않는다 |
 | 설치 위치 | `~/.local/bin/officecli` |
 | 지원 플랫폼 | macOS arm64/x64, Linux x64/arm64, Alpine musl 변형 |
 | 재실행 처리 | 기본은 idempotent, `--force`일 때만 재설치 |
 | 검증 | 다운로드 후 실행 가능 여부 확인, checksum 검증은 best-effort |
+| 설치 후 출력 | 설치된 버전과 실제 다운로드 소스를 함께 출력 |
 
 ### smoke test 8종
 
@@ -123,13 +125,18 @@ sequenceDiagram
 
 | 스킬 | 역할 |
 | --- | --- |
-| `docx` | Word 문서 생성/편집 |
-| `xlsx` | Excel 시트 편집 |
-| `pptx` | PowerPoint 슬라이드 생성 |
-| `officecli-cjk` | CJK 텍스트 처리 보강 |
-| `officecli-accessibility` | 접근성 점검 |
-| `officecli-data-pipeline` | 데이터 입출력 자동화 |
+| `docx` | Word 문서 생성/편집 (CJK·접근성 포함) |
+| `xlsx` | Excel 시트 편집 (데이터 파이프라인·CJK·접근성 포함) |
+| `pptx` | PowerPoint 슬라이드 생성 (CJK·접근성 포함) |
+
+### 공유 reference
+
+| 파일 | 역할 |
+| --- | --- |
+| `skills_ref/references/officecli-cjk.md` | DOCX/XLSX/PPTX 공통 CJK 규칙 |
+| `skills_ref/references/officecli-accessibility.md` | DOCX/XLSX/PPTX 공통 접근성 기준 |
 
 ## 변경 기록
 
+- 2026-04-02: Phase 20 — overlay routing을 제거하고 공통 규칙을 `skills_ref/references/`로 이동했다
 - 2026-04-02: narrative-first 구조와 frontmatter를 추가하고 smoke test의 바이너리 선택 규칙을 문서와 맞췄다

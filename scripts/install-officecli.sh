@@ -16,7 +16,8 @@ ok()    { echo -e "${GREEN}✔${NC} $*"; }
 warn()  { echo -e "${YELLOW}⚠${NC} $*"; }
 fail()  { echo -e "${RED}✖${NC} $*"; exit 1; }
 
-REPO="${OFFICECLI_REPO:-lidge-jun/OfficeCLI}"
+ENV_REPO="${OFFICECLI_REPO:-}"
+REPO="${ENV_REPO:-lidge-jun/OfficeCLI}"
 INSTALL_DIR="${HOME}/.local/bin"
 TARGET_BIN="${INSTALL_DIR}/officecli"
 DOWNLOAD_BIN="${INSTALL_DIR}/officecli.download"
@@ -25,7 +26,13 @@ UPSTREAM=false
 FORCE=false
 for arg in "$@"; do
   case "$arg" in
-    --upstream) UPSTREAM=true; REPO="iOfficeAI/OfficeCLI" ;;
+    --upstream)
+      if [ -n "$ENV_REPO" ]; then
+        fail "--upstream cannot be combined with OFFICECLI_REPO"
+      fi
+      UPSTREAM=true
+      REPO="iOfficeAI/OfficeCLI"
+      ;;
     --force)    FORCE=true ;;
     -h|--help)
       cat <<'EOF'
@@ -121,11 +128,13 @@ mv "$DOWNLOAD_BIN" "$TARGET_BIN"
 ok "officecli v${VERSION} installed → ${TARGET_BIN}"
 
 # ── Source info ──
-echo "Installed: $(officecli --version 2>/dev/null || echo 'unknown')"
-if [ "$UPSTREAM" = "false" ]; then
-  echo "Source: lidge-jun/OfficeCLI (CJK-enhanced fork)"
+echo "Installed: $("$TARGET_BIN" --version 2>/dev/null || echo 'unknown')"
+if [ "$UPSTREAM" = "true" ]; then
+  echo "Source: ${REPO} (upstream)"
+elif [ -n "$ENV_REPO" ]; then
+  echo "Source: ${REPO} (custom override)"
 else
-  echo "Source: iOfficeAI/OfficeCLI (upstream)"
+  echo "Source: ${REPO} (CJK-enhanced fork)"
 fi
 
 # ── PATH hint ──
