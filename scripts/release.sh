@@ -12,9 +12,9 @@ cd "$(dirname "$0")/.."
 echo "📦 Building backend (tsc)..."
 ./node_modules/.bin/tsc
 
-# 2. Frontend 번들링
-echo "📦 Building frontend (esbuild)..."
-node esbuild.config.mjs
+# 2. Frontend 번들링 (Vite)
+echo "📦 Building frontend (vite)..."
+npx vite build
 
 # 3. 버전 bump (patch)
 BUMP=${1:-patch}  # 기본 patch, 인자로 minor/major 가능

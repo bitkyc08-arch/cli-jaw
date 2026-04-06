@@ -29,7 +29,7 @@ echo "📦 Building backend..."
 npm run build
 
 echo "📦 Building frontend..."
-node esbuild.config.mjs
+npx vite build
 
 echo "⬆️  Setting preview version..."
 npm version "$PREVIEW_VERSION" --no-git-tag-version
