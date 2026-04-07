@@ -89,7 +89,7 @@ test('SI-006: Standard CLI close handler tags interrupted output', () => {
     const cliCloseIdx = spawnSrc.indexOf("child.on('close'");
     assert.ok(cliCloseIdx > 0, 'Standard CLI close handler should exist');
 
-    const cliCloseBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 3500);
+    const cliCloseBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 4000);
 
     // wasSteer check
     assert.ok(

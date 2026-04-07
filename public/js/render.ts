@@ -87,9 +87,15 @@ export function sanitizeHtml(html: string): string {
 }
 
 // ── Orchestration JSON stripping ──
+// Only strip JSON blocks that contain orchestration-specific keys, not all JSON blocks
+// Require keys unique to orchestration payloads (avoid generic words like "phase")
+const ORCH_KEYS = /["'](?:subtasks|employee_config|agent_phases|orchestration_plan)["']\s*:/;
 export function stripOrchestration(text: string): string {
-    let cleaned = text.replace(/```json\n[\s\S]*?\n```/g, '');
-    cleaned = cleaned.replace(/\{[\s\S]*"subtasks"\s*:\s*\[[\s\S]*?\]\s*\}/g, '').trim();
+    // Strip fenced JSON blocks only if they contain orchestration keys
+    let cleaned = text.replace(/```json\n([\s\S]*?)\n```/g, (_match, inner) =>
+        ORCH_KEYS.test(inner) ? '' : _match);
+    // Strip inline orchestration objects containing subtasks array
+    cleaned = cleaned.replace(/\{[^{}]*"subtasks"\s*:\s*\[[\s\S]*?\]\s*\}/g, '').trim();
     return cleaned;
 }
 

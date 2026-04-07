@@ -81,6 +81,10 @@ const messageCols = db.prepare('PRAGMA table_info(messages)').all();
 if (!(messageCols as Record<string, unknown>[]).some(c => c.name === 'trace')) {
     db.exec('ALTER TABLE messages ADD COLUMN trace TEXT DEFAULT NULL');
 }
+// Migration: add tool_log column for structured ProcessBlock data
+if (!(messageCols as Record<string, unknown>[]).some(c => c.name === 'tool_log')) {
+    db.exec('ALTER TABLE messages ADD COLUMN tool_log TEXT DEFAULT NULL');
+}
 
 // ─── Prepared Statements ─────────────────────────────
 
@@ -90,8 +94,8 @@ export const updateSession = db.prepare(`
     WHERE id='default'
 `);
 export const insertMessage = db.prepare('INSERT INTO messages (role, content, cli, model, trace) VALUES (?, ?, ?, ?, NULL)');
-export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace) VALUES (?, ?, ?, ?, ?)');
-export const getMessages = db.prepare('SELECT id, role, content, cli, model, cost_usd, duration_ms, created_at FROM messages ORDER BY id ASC');
+export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log) VALUES (?, ?, ?, ?, ?, ?)');
+export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, cost_usd, duration_ms, created_at FROM messages ORDER BY id ASC');
 export const getMessagesWithTrace = db.prepare('SELECT * FROM messages ORDER BY id ASC');
 export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, created_at FROM messages ORDER BY id DESC LIMIT ?');
 export const clearMessages = db.prepare('DELETE FROM messages');

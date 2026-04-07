@@ -9,7 +9,7 @@ import { getVirtualScroll, VS_THRESHOLD } from './virtual-scroll.js';
 import { createStreamRenderer, appendChunk, finalizeStream, type StreamState } from './streaming-render.js';
 import { buildToolGroupHtml, renderLiveToolActivity, cleanupToolElements, type ToolLogEntry } from './features/tool-ui.js';
 import { createProcessBlock, addStep, updateStepStatus, collapseBlock, type ProcessStep } from './features/process-block.js';
-interface MessageItem { role: string; content: string; }
+interface MessageItem { role: string; content: string; tool_log?: string | null; }
 
 export function setStatus(s: string): void {
     const badge = document.getElementById('statusBadge');
@@ -271,14 +271,54 @@ export async function loadMessages(): Promise<void> {
                     const role = m.role === 'assistant' ? 'agent' : m.role;
                     const rendered = renderMarkdown(m.content);
                     const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
+                    // Build static tool summary for VS path
+                    let toolHtml = '';
+                    if (m.tool_log && m.role === 'assistant') {
+                        try {
+                            const tools = JSON.parse(m.tool_log);
+                            if (Array.isArray(tools) && tools.length > 0) {
+                                const items = tools.map((t: any) => {
+                                    const detail = t.detail ? `<span class="process-step-detail">${escapeHtml(t.detail)}</span>` : '';
+                                    return `<div class="process-step" data-type="${escapeHtml(t.toolType || 'tool')}"><span class="process-dot done"></span><span class="process-badge">${escapeHtml(t.icon || '🔧')}</span><span class="process-step-label">${escapeHtml(t.label || 'tool')}</span>${detail}</div>`;
+                                }).join('');
+                                toolHtml = `<div class="process-block collapsed"><button class="process-summary" aria-expanded="false"><span class="process-dot done"></span><span class="process-summary-text">${tools.length} tool${tools.length > 1 ? 's' : ''} used</span><span class="process-chevron">▸</span></button><div class="process-details"><div class="process-steps-inner">${items}</div></div></div>`;
+                            }
+                        } catch { /* skip malformed */ }
+                    }
                     const html = role === 'agent'
-                        ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body"><div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
+                        ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body">${toolHtml}<div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
                         : `<div class="msg msg-${role}"><div class="msg-label">${label}</div><div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
                     vs.addItem(crypto.randomUUID(), html);
                 }
                 vs.scrollToBottom();
             } else {
-                msgs.forEach(m => addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content));
+                msgs.forEach(m => {
+                    const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content);
+                    // Reconstruct ProcessBlock from saved tool_log
+                    if (m.tool_log && m.role === 'assistant') {
+                        try {
+                            const tools = JSON.parse(m.tool_log);
+                            if (Array.isArray(tools) && tools.length > 0) {
+                                const body = div.querySelector('.agent-body') as HTMLElement;
+                                if (body) {
+                                    const pb = createProcessBlock(body);
+                                    for (const tool of tools) {
+                                        addStep(pb, {
+                                            id: crypto.randomUUID(),
+                                            icon: tool.icon || '🔧',
+                                            label: tool.label || tool.name || 'tool',
+                                            type: tool.toolType || 'tool',
+                                            detail: tool.detail || '',
+                                            status: tool.status || 'done',
+                                            startTime: Date.now(),
+                                        });
+                                    }
+                                    collapseBlock(pb);
+                                }
+                            }
+                        } catch { /* invalid tool_log JSON */ }
+                    }
+                });
             }
             // Cache for offline use
             cacheMessages(msgs.map(m => ({

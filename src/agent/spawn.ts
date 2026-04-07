@@ -10,7 +10,7 @@ import {
     getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
 } from '../core/db.js';
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
-import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary } from './events.js';
+import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary, flushClaudeBuffers } from './events.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../../lib/upload.js';
 import { getMemoryFlushFilePath, getMemoryStatus } from '../memory/runtime.js';
 import { resolveMainCli } from '../core/main-session.js';
@@ -649,7 +649,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 }
 
                 if (mainManaged && !opts.internal) {
-                    insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null);
+                    const toolLogJson = ctx.toolLog.length ? JSON.stringify(ctx.toolLog) : null;
+                    insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null, toolLogJson);
                     broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog, origin });
 
                     memoryFlushCounter++;
@@ -818,6 +819,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     child.on('close', (code) => {
         if (stdSettled) return;  // error handler already resolved
+        flushClaudeBuffers(ctx, agentLabel);  // flush any pending thinking/input buffers
         opts.lifecycle?.onExit?.(code ?? null);
         const wasSteer = killReason === 'steer';
         if (mainManaged) killReason = null;  // consume
@@ -874,7 +876,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             }
 
             if (mainManaged && !opts.internal) {
-                insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null);
+                const toolLogJson = ctx.toolLog.length ? JSON.stringify(ctx.toolLog) : null;
+                insertMessageWithTrace.run('assistant', finalContent, cli, model, traceText || null, toolLogJson);
                 broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog, origin });
 
                 memoryFlushCounter++;

@@ -2,6 +2,22 @@
 
 import { broadcast } from '../core/bus.js';
 
+/** Flush Claude-specific stream buffers (thinking + input_json).
+ *  Call on stream close to avoid data loss if content_block_stop never arrives. */
+export function flushClaudeBuffers(ctx: any, agentLabel?: string) {
+    if (ctx.claudeThinkingBuf) {
+        const merged = ctx.claudeThinkingBuf.trim();
+        if (merged) {
+            pushTrace(ctx, `[${agentLabel || 'agent'}] 💭 ${merged.slice(0, 200)}`);
+        }
+        ctx.claudeThinkingBuf = '';
+    }
+    if (ctx.claudeInputJsonBuf) {
+        ctx.claudeInputJsonBuf = '';
+        ctx.claudeCurrentToolName = '';
+    }
+}
+
 function pushTrace(ctx: any, line: any) {
     if (!ctx?.traceLog || !line) return;
     ctx.traceLog.push(line);
@@ -313,18 +329,25 @@ function extractToolLabels(cli: string, event: any, ctx: any = null) {
 /** Summarise a tool's input into a short one-liner for the ProcessBlock UI. */
 export function summarizeToolInput(toolName: string, input: any): string {
     if (!input) return '';
+    if (typeof input !== 'object') return String(input).slice(0, 60);
+    const s = (v: any) => (typeof v === 'string' ? v : v != null ? String(v) : '');
     const name = (toolName || '').toLowerCase();
+    let result = '';
     if (name.includes('bash') || name.includes('terminal') || name === 'execute_command')
-        return (input.command || input.cmd || '').slice(0, 80);
-    if (name.includes('read') || name === 'read_file' || name === 'view')
-        return (input.path || input.file_path || input.filename || '').split('/').pop() || '';
-    if (name.includes('write') || name.includes('edit') || name === 'create_file')
-        return (input.path || input.file_path || '').split('/').pop() || '';
-    if (name.includes('search') || name.includes('grep') || name === 'codebase_search')
-        return (input.query || input.pattern || input.search_query || '').slice(0, 60);
-    if (name.includes('web') || name === 'web_search')
-        return (input.query || '').slice(0, 60);
-    return '';
+        result = s(input.command || input.cmd).slice(0, 80);
+    else if (name.includes('read') || name === 'read_file' || name === 'view')
+        result = s(input.path || input.file_path || input.filename).split('/').pop() || s(input.path);
+    else if (name.includes('write') || name.includes('edit') || name === 'create_file')
+        result = s(input.path || input.file_path).split('/').pop() || s(input.path);
+    else if (name.includes('search') || name.includes('grep') || name === 'codebase_search')
+        result = s(input.query || input.pattern || input.search_query).slice(0, 60);
+    else if (name.includes('web') || name === 'web_search')
+        result = s(input.query).slice(0, 60);
+    // Fallback: show first meaningful key-value if specific extraction yielded nothing
+    if (!result) {
+        try { result = JSON.stringify(input).slice(0, 60); } catch { /* ignore */ }
+    }
+    return result;
 }
 
 // Backward-compat: return first label or null
