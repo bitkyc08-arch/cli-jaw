@@ -44,9 +44,9 @@
     /* ─── Font size scale ─── */
     --text-xs: 11px;
     --text-sm: 13px;
-    --text-base: 15px;
-    --text-md: 16px;
-    --text-lg: 18px;
+    --text-base: 16px;
+    --text-md: 17px;
+    --text-lg: 19px;
     --text-xl: 22px;
     --text-2xl: 26px;
     --text-3xl: 34px;
