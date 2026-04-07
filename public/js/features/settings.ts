@@ -5,4 +5,5 @@ export { setDiscord, setDiscordForwardAll, setDiscordAllowBots, saveDiscordSetti
 export { setActiveChannel, loadFallbackOrder, saveFallbackOrder } from './settings-channel.js';
 export { loadMcpServers, syncMcpServers, installMcpGlobal } from './settings-mcp.js';
 export { loadCliStatus } from './settings-cli-status.js';
+export { initSttSettings } from './settings-stt.js';
 export { openPromptModal, closePromptModal, savePromptFromModal, openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode } from './settings-templates.js';
