@@ -63,10 +63,10 @@ test('extractSessionId handles all supported CLIs', () => {
 test('tool label extraction fixture matrix covers codex, gemini, and opencode variants', () => {
     const fixtureCases = [
         {
-            name: 'claude stream thinking',
+            name: 'claude stream thinking (block_start — buffered, no immediate label)',
             cli: 'claude',
             fixture: 'claude-stream-thinking.json',
-            expected: [{ icon: '💭', label: 'thinking...', toolType: 'thinking' }],
+            expected: [],
         },
         {
             name: 'codex web search',
@@ -143,6 +143,63 @@ test('claude non-tool events do not emit labels', () => {
     const errorLabels = extractToolLabelsForTest('claude', readFixture('claude-error.json'), ctx);
     assert.equal(resultLabels.length, 0);
     assert.equal(errorLabels.length, 0);
+});
+
+test('claude thinking_delta buffer is flushed on non-thinking event', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Send thinking deltas — they should accumulate in buffer, not emit yet
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'Let me think about ' } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 0, 'thinking delta should not emit immediately');
+
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'thinking_delta', thinking: 'this problem carefully.' } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 0, 'second delta should also buffer');
+
+    // Non-thinking event (block_stop) should flush
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_stop', index: 0 },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1, 'flush should emit one tool label');
+    assert.equal(ctx.toolLog[0].toolType, 'thinking');
+    assert.equal(ctx.toolLog[0].icon, '💭');
+    assert.ok(ctx.toolLog[0].label.includes('think about'), 'label should contain thinking content');
+    assert.ok(ctx.toolLog[0].detail.includes('this problem carefully'), 'detail should contain full text');
+});
+
+test('claude input_json_delta buffer adds detail to tool label on block_stop', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // content_block_start → tool_use "Bash"
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', name: 'Bash', id: 'test-id' } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1, 'tool_use block_start should emit label');
+    assert.equal(ctx.toolLog[0].label, 'Bash');
+    assert.equal(ctx.toolLog[0].detail, undefined, 'no detail yet');
+
+    // input_json_delta chunks
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: '{"command": "ls' } },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'input_json_delta', partial_json: ' /tmp"}' } },
+    }, ctx, 'test');
+
+    // content_block_stop → flush input JSON → add detail
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_stop', index: 0 },
+    }, ctx, 'test');
+    assert.ok(ctx.toolLog[0].detail, 'detail should be populated after flush');
+    assert.ok(ctx.toolLog[0].detail.includes('ls /tmp'), 'detail should contain command');
 });
 
 test('extractFromEvent updates context for each CLI path', () => {

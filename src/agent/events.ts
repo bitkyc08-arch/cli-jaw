@@ -34,6 +34,78 @@ export function extractSessionId(cli: string, event: any) {
 }
 
 export function extractFromEvent(cli: string, event: any, ctx: any, agentLabel: string) {
+    // ── Claude stream buffer: thinking_delta + input_json_delta ──
+    if (cli === 'claude' && event.type === 'stream_event') {
+        const inner = event.event;
+
+        // Buffer thinking deltas
+        if (inner?.type === 'content_block_delta' && inner.delta?.type === 'thinking_delta') {
+            if (!ctx.claudeThinkingBuf) ctx.claudeThinkingBuf = '';
+            ctx.claudeThinkingBuf += inner.delta.thinking || '';
+            return;
+        }
+
+        // Buffer tool input JSON deltas
+        if (inner?.type === 'content_block_delta' && inner.delta?.type === 'input_json_delta') {
+            if (!ctx.claudeInputJsonBuf) ctx.claudeInputJsonBuf = '';
+            ctx.claudeInputJsonBuf += inner.delta.partial_json || '';
+            return;
+        }
+
+        // Track current tool name from content_block_start
+        if (inner?.type === 'content_block_start' && inner.content_block?.type === 'tool_use') {
+            ctx.claudeCurrentToolName = inner.content_block.name || 'tool';
+        }
+
+        // content_block_stop → flush both buffers
+        if (inner?.type === 'content_block_stop') {
+            // Flush thinking
+            if (ctx.claudeThinkingBuf) {
+                const merged = ctx.claudeThinkingBuf.trim();
+                if (merged) {
+                    const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
+                    const tool = { icon: '💭', label: display, toolType: 'thinking' as const, detail: display };
+                    ctx.toolLog.push(tool);
+                    broadcast('agent_tool', { agentId: agentLabel, ...tool });
+                }
+                ctx.claudeThinkingBuf = '';
+            }
+            // Flush tool input → update existing tool label with detail
+            if (ctx.claudeInputJsonBuf) {
+                try {
+                    const input = JSON.parse(ctx.claudeInputJsonBuf);
+                    const toolName = ctx.claudeCurrentToolName || 'tool';
+                    const detail = summarizeToolInput(toolName, input);
+                    if (detail) {
+                        // Find the last tool label for this tool and update its detail
+                        const existing = [...ctx.toolLog].reverse().find(
+                            (t: any) => t.icon === '🔧' && t.label === toolName && !t.detail
+                        );
+                        if (existing) {
+                            existing.detail = detail;
+                            // Re-broadcast with detail
+                            broadcast('agent_tool', { agentId: agentLabel, ...existing });
+                        }
+                    }
+                } catch { /* partial JSON */ }
+                ctx.claudeInputJsonBuf = '';
+                ctx.claudeCurrentToolName = '';
+            }
+        }
+
+        // Non-block-stop but non-delta → flush thinking
+        if (inner?.type !== 'content_block_stop' && ctx.claudeThinkingBuf) {
+            const merged = ctx.claudeThinkingBuf.trim();
+            if (merged) {
+                const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
+                const tool = { icon: '💭', label: display, toolType: 'thinking' as const, detail: display };
+                ctx.toolLog.push(tool);
+                broadcast('agent_tool', { agentId: agentLabel, ...tool });
+            }
+            ctx.claudeThinkingBuf = '';
+        }
+    }
+
     const toolLabels = extractToolLabels(cli, event, ctx);
     for (const toolLabel of toolLabels) {
         // Dedupe: same logic as ACP path — skip already-seen tool keys
@@ -208,12 +280,16 @@ function extractToolLabels(cli: string, event: any, ctx: any = null) {
             if (ctx) ctx.hasClaudeStreamEvents = true;
             const cb = event.event.content_block;
             if (cb?.type === 'tool_use') pushToolLabel(labels, { icon: '🔧', label: cb.name || 'tool', toolType: 'tool' }, cli, event, ctx);
-            if (cb?.type === 'thinking') pushToolLabel(labels, { icon: '💭', label: 'thinking...', toolType: 'thinking' }, cli, event, ctx);
+            // thinking: don't emit placeholder — buffer in extractFromEvent will emit with real content
         }
         if (event.type === 'assistant' && event.message?.content && !ctx?.hasClaudeStreamEvents) {
             for (const block of event.message.content) {
                 if (block.type === 'tool_use') pushToolLabel(labels, { icon: '🔧', label: block.name || 'tool', toolType: 'tool' }, cli, event, ctx);
-                if (block.type === 'thinking') pushToolLabel(labels, { icon: '💭', label: 'thinking...', toolType: 'thinking' }, cli, event, ctx);
+                if (block.type === 'thinking') {
+                    const text = (block.thinking || '').trim();
+                    const display = text.length > 200 ? '…' + text.slice(-197) : text || 'thinking...';
+                    pushToolLabel(labels, { icon: '💭', label: display, toolType: 'thinking', detail: display }, cli, event, ctx);
+                }
             }
         }
     }
