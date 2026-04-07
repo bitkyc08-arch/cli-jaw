@@ -467,7 +467,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (merged) {
                 const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
                 console.log(`  💭 ${display.slice(0, 120)}`);
-                const tool = { icon: '💭', label: display };
+                const tool = { icon: '💭', label: display, toolType: 'thinking' as const, detail: display };
                 ctx.toolLog.push(tool);
                 broadcast('agent_tool', { agentId: agentLabel, ...tool });
             }

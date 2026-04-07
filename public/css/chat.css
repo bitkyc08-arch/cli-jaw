@@ -325,7 +325,7 @@
 .msg:hover .msg-copy { opacity: 0.7; }
 .msg-copy:hover { opacity: 1; color: var(--text); transform: scale(1.5); }
 
-.msg-agent .msg-copy { right: 0; top: 0; bottom: auto; }
+.msg-agent .msg-copy { right: 0; bottom: var(--space-2); left: auto; top: auto; }
 .msg-user .msg-copy { left: var(--space-2); }
 
 .msg-copy:active {
