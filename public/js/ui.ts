@@ -162,6 +162,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
 
     cleanupToolElements();
     removeSkeleton();
+    const hadProcessBlock = !!state.currentProcessBlock;
     if (state.currentProcessBlock) {
         collapseBlock(state.currentProcessBlock);
         state.currentProcessBlock = null;
@@ -175,7 +176,8 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         // Finalize rAF stream if active, otherwise use raw text
         const finalText = currentStream ? finalizeStream(currentStream) || text : text;
         currentStream = null;
-        const toolHtml = hasTools ? buildToolGroupHtml(toolLog!) : '';
+        // Skip static tool HTML when process block already shows tool summary
+        const toolHtml = hasTools && !hadProcessBlock ? buildToolGroupHtml(toolLog!) : '';
         if (content) content.innerHTML = toolHtml + renderMarkdown(finalText);
         if (content) content.setAttribute('data-raw', stripOrchestration(finalText));
     }
