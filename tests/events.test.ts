@@ -52,6 +52,21 @@ test('claude assistant blocks are ignored after stream event', () => {
     assert.equal(labels.length, 0);
 });
 
+test('claude system compact events emit compacting and boundary labels', () => {
+    const ctx = createClaudeCtx();
+    const compacting = extractToolLabelsForTest('claude', {
+        type: 'system',
+        status: 'compacting',
+    }, ctx);
+    const boundary = extractToolLabelsForTest('claude', {
+        type: 'system',
+        subtype: 'compact_boundary',
+    }, ctx);
+
+    assert.deepEqual(compacting, [{ icon: '🗜️', label: 'compacting...', toolType: 'tool' }]);
+    assert.deepEqual(boundary, [{ icon: '✅', label: 'conversation compacted', toolType: 'tool' }]);
+});
+
 test('extractSessionId handles all supported CLIs', () => {
     assert.equal(extractSessionId('claude', { type: 'system', session_id: 'claude-1' }), 'claude-1');
     assert.equal(extractSessionId('codex', { type: 'thread.started', thread_id: 'thread-1' }), 'thread-1');
@@ -72,61 +87,61 @@ test('tool label extraction fixture matrix covers codex, gemini, and opencode va
             name: 'codex web search',
             cli: 'codex',
             fixture: 'codex-web-search.json',
-            expected: [{ icon: '🔍', label: 'node test runner', toolType: 'search' }],
+            expected: [{ icon: '🔍', label: 'node test runner', toolType: 'search', detail: 'node test runner' }],
         },
         {
             name: 'codex open page',
             cli: 'codex',
             fixture: 'codex-open-page.json',
-            expected: [{ icon: '🌐', label: 'example.com', toolType: 'search' }],
+            expected: [{ icon: '🌐', label: 'example.com', toolType: 'search', detail: 'https://example.com/docs?q=1' }],
         },
         {
             name: 'codex open page invalid fallback',
             cli: 'codex',
             fixture: 'codex-open-page-invalid.json',
-            expected: [{ icon: '🌐', label: 'page', toolType: 'search' }],
+            expected: [{ icon: '🌐', label: 'page', toolType: 'search', detail: 'not a url' }],
         },
         {
             name: 'codex command execution',
             cli: 'codex',
             fixture: 'codex-command.json',
-            expected: [{ icon: '⚡', label: 'npm run test:events', toolType: 'tool', detail: 'npm run test:events' }],
+            expected: [{ icon: '⚡', label: 'npm run test:events', toolType: 'tool', detail: 'npm run test:events', stepRef: 'codex:cmd:npm run test:events' }],
         },
         {
             name: 'codex reasoning',
             cli: 'codex',
             fixture: 'codex-reasoning.json',
-            expected: [{ icon: '💭', label: 'Plan isolate regression', toolType: 'thinking' }],
+            expected: [{ icon: '💭', label: 'Plan isolate regression', toolType: 'thinking', detail: 'Plan isolate regression' }],
         },
         {
             name: 'gemini tool use',
             cli: 'gemini',
             fixture: 'gemini-tool-use.json',
-            expected: [{ icon: '🔧', label: 'shell: npm run lint', toolType: 'tool', detail: 'npm run lint' }],
+            expected: [{ icon: '🔧', label: 'shell: npm run lint', toolType: 'tool', detail: 'npm run lint', stepRef: 'gemini:tool:shell' }],
         },
         {
             name: 'gemini tool result success',
             cli: 'gemini',
             fixture: 'gemini-tool-result-success.json',
-            expected: [{ icon: '✅', label: 'success', toolType: 'tool' }],
+            expected: [{ icon: '✅', label: 'success', toolType: 'tool', stepRef: 'gemini:tool:tool' }],
         },
         {
             name: 'gemini tool result error',
             cli: 'gemini',
             fixture: 'gemini-tool-result-error.json',
-            expected: [{ icon: '❌', label: 'error', toolType: 'tool' }],
+            expected: [{ icon: '❌', label: 'error', toolType: 'tool', stepRef: 'gemini:tool:tool' }],
         },
         {
             name: 'opencode tool use',
             cli: 'opencode',
             fixture: 'opencode-tool-use.json',
-            expected: [{ icon: '🔧', label: 'web-search', toolType: 'tool' }],
+            expected: [{ icon: '🔧', label: 'web-search', toolType: 'tool', stepRef: 'opencode:tool:web-search' }],
         },
         {
             name: 'opencode tool result',
             cli: 'opencode',
             fixture: 'opencode-tool-result.json',
-            expected: [{ icon: '✅', label: 'web-search', toolType: 'tool' }],
+            expected: [{ icon: '✅', label: 'web-search', toolType: 'tool', stepRef: 'opencode:tool:web-search' }],
         },
     ];
 
@@ -170,6 +185,21 @@ test('claude thinking_delta buffer is flushed on non-thinking event', () => {
     assert.equal(ctx.toolLog[0].icon, '💭');
     assert.ok(ctx.toolLog[0].label.includes('think about'), 'label should contain thinking content');
     assert.ok(ctx.toolLog[0].detail.includes('this problem carefully'), 'detail should contain full text');
+});
+
+test('codex reasoning keeps full detail while preview label stays short', () => {
+    const longReasoning = {
+        type: 'item.completed',
+        item: {
+            type: 'reasoning',
+            text: '**Plan** isolate regression by checking websocket state hydration and replay handling before UI render',
+        },
+    };
+
+    const [label] = extractToolLabelsForTest('codex', longReasoning, {});
+    assert.equal(label.toolType, 'thinking');
+    assert.ok(label.label.length <= 60, 'preview label should remain compact');
+    assert.equal(label.detail, 'Plan isolate regression by checking websocket state hydration and replay handling before UI render');
 });
 
 test('claude input_json_delta buffer adds detail to tool label on block_stop', () => {
@@ -271,7 +301,7 @@ test('extractFromEvent updates context for each CLI path', () => {
 
 test('extractToolLabel keeps backward compatibility and claude keys are deterministic', () => {
     const first = extractToolLabel('gemini', { type: 'tool_result', status: 'failed' });
-    assert.deepEqual(first, { icon: '❌', label: 'failed', toolType: 'tool' });
+    assert.deepEqual(first, { icon: '❌', label: 'failed', toolType: 'tool', stepRef: 'gemini:tool:tool' });
 
     const keyFromIndex = makeClaudeToolKeyForTest(
         { type: 'stream_event', event: { index: 3 } },

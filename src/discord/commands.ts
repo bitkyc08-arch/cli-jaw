@@ -13,7 +13,7 @@ import { clearMainSessionState } from '../core/main-session.js';
 
 // Operational commands exposed as slash commands
 const DISCORD_SLASH_COMMANDS = [
-    'help', 'status', 'model', 'cli', 'fallback', 'forward', 'flush', 'version', 'clear', 'steer',
+    'help', 'status', 'model', 'cli', 'fallback', 'forward', 'flush', 'version', 'clear', 'compact', 'steer',
 ];
 
 export async function registerDiscordSlashCommands(client: Client) {

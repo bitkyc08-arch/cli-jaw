@@ -235,6 +235,7 @@ export function connect(): void {
                 icon: msg.icon || '🔧',
                 label: msg.label || '',
                 detail: msg.detail || '',
+                stepRef: msg.stepRef || '',
                 status: 'running',
                 startTime: Date.now(),
             });

@@ -72,11 +72,23 @@ function syncCliOptionSelects(settings: SettingsData | null = null): void {
     }
 }
 
+function normalizeModelForDisplay(cli: string, model: string): string {
+    if (cli !== 'claude') return model;
+    switch ((model || '').trim()) {
+        case 'claude-sonnet-4-6': return 'sonnet';
+        case 'claude-opus-4-6': return 'opus';
+        case 'claude-sonnet-4-6[1m]': return 'sonnet[1m]';
+        case 'claude-opus-4-6[1m]': return 'opus[1m]';
+        default: return model;
+    }
+}
+
 function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {
     for (const cli of getCliKeys()) {
         const modelSel = getModelSelect(cli);
         if (modelSel) {
-            const selected = settings?.perCli?.[cli]?.model || modelSel.value || '';
+            const raw = settings?.perCli?.[cli]?.model || modelSel.value || '';
+            const selected = normalizeModelForDisplay(cli, raw);
             setSelectOptions(modelSel, MODEL_MAP[cli] || [], { includeCustom: true, selected });
             if (selected && !Array.from(modelSel.options).some(o => o.value === selected)) {
                 appendCustomOption(modelSel, selected);
@@ -146,8 +158,9 @@ export async function loadSettings(): Promise<void> {
             const modelEl = getModelSelect(cli);
             const effortEl = getEffortSelect(cli);
             if (modelEl && cfg.model) {
-                appendCustomOption(modelEl, cfg.model);
-                modelEl.value = cfg.model;
+                const displayModel = normalizeModelForDisplay(cli, cfg.model);
+                appendCustomOption(modelEl, displayModel);
+                modelEl.value = displayModel;
             }
             if (effortEl) effortEl.value = cfg.effort || '';
             if (cli === 'codex' && cfg.fastMode !== undefined) {
@@ -174,7 +187,13 @@ export async function loadSettings(): Promise<void> {
     const activeModel = ao.model || pc.model;
     const activeEffort = ao.effort || pc.effort || '';
     const selModel = document.getElementById('selModel') as HTMLSelectElement | null;
-    if (activeModel && selModel) selModel.value = activeModel;
+    if (activeModel && selModel) {
+        const displayModel = normalizeModelForDisplay(s.cli, activeModel);
+        if (displayModel && !Array.from(selModel.options).some(o => o.value === displayModel)) {
+            appendCustomOption(selModel, displayModel);
+        }
+        selModel.value = displayModel;
+    }
     syncActiveEffortOptions(s.cli, activeEffort);
 
     loadTelegramSettings(s);
@@ -299,8 +318,9 @@ export function onCliChange(save = true): void {
         const model = ao.model || pc.model;
         const effort = ao.effort || pc.effort || '';
         if (model && modelSel) {
-            appendCustomOption(modelSel, model);
-            modelSel.value = model;
+            const displayModel = normalizeModelForDisplay(cli, model);
+            appendCustomOption(modelSel, displayModel);
+            modelSel.value = displayModel;
         }
         syncActiveEffortOptions(cli, effort);
     });

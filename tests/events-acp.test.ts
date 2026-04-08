@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { extractFromAcpUpdate } from '../src/agent/events.ts';
 
-test('extractFromAcpUpdate handles agent_thought_chunk with truncation', () => {
+test('extractFromAcpUpdate keeps full thought detail while previewing the label', () => {
     const longThought = 'a'.repeat(80);
     const out = extractFromAcpUpdate({
         update: {
@@ -11,9 +11,10 @@ test('extractFromAcpUpdate handles agent_thought_chunk with truncation', () => {
         },
     });
     assert.equal(out.tool.icon, '💭');
-    assert.equal(out.tool.label.endsWith('...'), true);
-    assert.equal(out.tool.label.length, 63);
+    assert.equal(out.tool.label.endsWith('…'), true);
+    assert.equal(out.tool.label.length, 60);
     assert.equal(out.tool.toolType, 'thinking');
+    assert.equal(out.tool.detail, longThought);
 });
 
 test('extractFromAcpUpdate handles tool_call and tool_call_update fallback', () => {
@@ -23,7 +24,7 @@ test('extractFromAcpUpdate handles tool_call and tool_call_update fallback', () 
             name: 'Read',
         },
     });
-    assert.deepEqual(call, { tool: { icon: '🔧', label: 'Read', toolType: 'tool', detail: '' } });
+    assert.deepEqual(call, { tool: { icon: '🔧', label: 'Read', toolType: 'tool', detail: '', stepRef: 'acp:tool:Read' } });
 
     const updateByName = extractFromAcpUpdate({
         update: {
@@ -32,7 +33,7 @@ test('extractFromAcpUpdate handles tool_call and tool_call_update fallback', () 
             id: 'tool-1',
         },
     });
-    assert.deepEqual(updateByName, { tool: { icon: '✅', label: 'Read', toolType: 'tool' } });
+    assert.deepEqual(updateByName, { tool: { icon: '✅', label: 'Read', toolType: 'tool', stepRef: 'acp:tool:Read' } });
 
     const updateById = extractFromAcpUpdate({
         update: {
@@ -40,7 +41,7 @@ test('extractFromAcpUpdate handles tool_call and tool_call_update fallback', () 
             id: 'tool-2',
         },
     });
-    assert.deepEqual(updateById, { tool: { icon: '✅', label: 'tool-2', toolType: 'tool' } });
+    assert.deepEqual(updateById, { tool: { icon: '✅', label: 'tool-2', toolType: 'tool', stepRef: 'acp:tool:tool-2' } });
 });
 
 test('extractFromAcpUpdate handles agent_message_chunk content shapes', () => {

@@ -9,6 +9,7 @@ export interface ProcessStep {
     icon: string;
     label: string;
     detail?: string;
+    stepRef?: string;
     status: 'running' | 'done' | 'error';
     startTime: number;
 }
@@ -24,7 +25,7 @@ function buildSummaryText(steps: ProcessStep[]): string {
     for (const s of steps) {
         const key = s.type === 'thinking' ? '💭 Thinking'
             : s.type === 'search' ? '🔍 Search'
-            : '🔧';
+            : '🔧 Tool';
         counts[key] = (counts[key] || 0) + 1;
     }
     return Object.entries(counts)
@@ -32,29 +33,122 @@ function buildSummaryText(steps: ProcessStep[]): string {
         .join(' + ');
 }
 
+function previewText(text: string, max = 120): string {
+    const singleLine = text.replace(/\s+/g, ' ').trim();
+    if (!singleLine) return '';
+    return singleLine.length > max ? `${singleLine.slice(0, max - 1)}…` : singleLine;
+}
+
+function hasExpandableDetail(step: ProcessStep): boolean {
+    const detail = (step.detail || '').trim();
+    if (!detail) return false;
+    return detail !== (step.label || '').trim();
+}
+
 function renderStep(step: ProcessStep): string {
     const dotClass = `process-step-dot ${step.status}`;
     const badgeClass = `process-step-badge ${step.type}`;
     const badgeText = step.type.toUpperCase();
-    const label = escapeHtml(step.label);
+    const label = escapeHtml(step.label || step.icon || '');
+    const detail = step.detail || '';
+    const detailId = `process-detail-${step.id}`;
+    const detailPreview = hasExpandableDetail(step)
+        ? previewText(detail, step.type === 'thinking' ? 120 : 100)
+        : '';
+    const snippetHtml = detailPreview
+        ? `<span class="process-step-snippet">${escapeHtml(detailPreview)}</span>`
+        : '';
 
-    if (step.type === 'thinking' && step.detail) {
-        const preview = escapeHtml(step.detail.slice(0, 80));
-        const hasMore = step.detail.length > 80;
-        return `<div class="process-step" data-step-id="${step.id}" data-type="thinking">
-            <span class="${dotClass}"></span>
-            <span class="${badgeClass}">${badgeText}</span>
-            <span class="process-step-text">${preview}${hasMore ? '…' : ''}</span>
+    if (hasExpandableDetail(step)) {
+        return `<div class="process-step process-step-expandable" data-step-id="${step.id}" data-type="${step.type}">
+            <button class="process-step-toggle" aria-expanded="false" aria-controls="${detailId}">
+                <span class="${dotClass}"></span>
+                <span class="${badgeClass}">${badgeText}</span>
+                <span class="process-step-main">
+                    <span class="process-step-label">${label}</span>
+                    ${snippetHtml}
+                </span>
+                <span class="process-step-chevron">▸</span>
+            </button>
+            <div class="process-step-details collapsed" id="${detailId}">
+                <pre class="process-step-full">${escapeHtml(detail)}</pre>
+            </div>
         </div>`;
     }
 
-    const detail = step.detail ? `<span class="process-step-detail">${escapeHtml(step.detail)}</span>` : '';
     return `<div class="process-step" data-step-id="${step.id}" data-type="${step.type}">
         <span class="${dotClass}"></span>
         <span class="${badgeClass}">${badgeText}</span>
         <span class="process-step-label">${label}</span>
-        ${detail}
     </div>`;
+}
+
+function blockShell(summaryText = '', collapsed = false): string {
+    return `<div class="process-block${collapsed ? ' collapsed' : ''}">
+        <button class="process-summary" aria-expanded="${collapsed ? 'false' : 'true'}">
+            <span class="process-dot ${collapsed ? 'done' : 'running'}"></span>
+            <span class="process-summary-text">${escapeHtml(summaryText)}</span>
+            <span class="process-duration"></span>
+            <span class="process-chevron">${collapsed ? '▸' : '▾'}</span>
+        </button>
+        <div class="process-details">
+            <div class="process-steps-inner"></div>
+        </div>
+    </div>`;
+}
+
+function toggleStepDetails(toggle: HTMLElement): void {
+    const wrapper = toggle.closest('.process-step');
+    const details = wrapper?.querySelector('.process-step-details') as HTMLElement | null;
+    const chevron = toggle.querySelector('.process-step-chevron');
+    if (!wrapper || !details) return;
+    const expanding = details.classList.contains('collapsed');
+    details.classList.toggle('collapsed', !expanding);
+    wrapper.classList.toggle('expanded', expanding);
+    toggle.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+    if (chevron) chevron.textContent = expanding ? '▾' : '▸';
+}
+
+export function bindProcessBlockInteractions(root: HTMLElement): void {
+    if (root.dataset.processBlockBound === '1') return;
+    root.addEventListener('click', (event) => {
+        const target = event.target as HTMLElement | null;
+        if (!target) return;
+
+        const stepToggle = target.closest('.process-step-toggle') as HTMLElement | null;
+        if (stepToggle) {
+            toggleStepDetails(stepToggle);
+            return;
+        }
+
+        const summary = target.closest('.process-summary') as HTMLElement | null;
+        if (summary) {
+            const block = summary.closest('.process-block');
+            if (!block) return;
+            const expanding = block.classList.contains('collapsed');
+            block.classList.toggle('collapsed', !expanding);
+            summary.setAttribute('aria-expanded', expanding ? 'true' : 'false');
+            const chevron = summary.querySelector('.process-chevron');
+            if (chevron) chevron.textContent = expanding ? '▾' : '▸';
+        }
+    });
+    root.dataset.processBlockBound = '1';
+}
+
+export function buildProcessBlockHtml(steps: ProcessStep[], collapsed = true): string {
+    const summaryText = buildSummaryText(steps);
+    const html = blockShell(summaryText, collapsed);
+    const wrapper = document.createElement('div');
+    wrapper.innerHTML = html;
+    const inner = wrapper.querySelector('.process-steps-inner');
+    if (inner) inner.innerHTML = steps.map(renderStep).join('');
+    const dot = wrapper.querySelector('.process-dot');
+    if (dot) {
+        const anyRunning = steps.some(step => step.status === 'running');
+        dot.classList.toggle('running', anyRunning && !collapsed);
+        dot.classList.toggle('done', !anyRunning || collapsed);
+    }
+    return wrapper.innerHTML;
 }
 
 function updateSummary(pb: ProcessBlockState): void {
@@ -64,8 +158,8 @@ function updateSummary(pb: ProcessBlockState): void {
     const anyRunning = pb.steps.some(s => s.status === 'running');
     const dot = pb.element.querySelector('.process-dot');
     if (dot) {
-        dot.classList.toggle('running', anyRunning);
-        dot.classList.toggle('done', !anyRunning);
+        dot.classList.toggle('running', anyRunning && !pb.collapsed);
+        dot.classList.toggle('done', !anyRunning || pb.collapsed);
     }
 
     const elapsed = pb.steps.length > 0
@@ -76,17 +170,9 @@ function updateSummary(pb: ProcessBlockState): void {
 }
 
 export function createProcessBlock(parentEl: HTMLElement): ProcessBlockState {
-    const el = document.createElement('div');
-    el.className = 'process-block';
-    el.innerHTML = `<button class="process-summary" aria-expanded="true"><span class="process-dot running"></span><span class="process-summary-text"></span><span class="process-duration"></span><span class="process-chevron">▾</span></button><div class="process-details"><div class="process-steps-inner"></div></div>`;
-
-    const btn = el.querySelector('.process-summary') as HTMLButtonElement;
-    btn.addEventListener('click', () => {
-        const collapsed = el.classList.toggle('collapsed');
-        btn.setAttribute('aria-expanded', String(!collapsed));
-        const chevron = el.querySelector('.process-chevron');
-        if (chevron) chevron.textContent = collapsed ? '▸' : '▾';
-    });
+    const host = document.createElement('div');
+    host.innerHTML = blockShell('', false);
+    const el = host.firstElementChild as HTMLElement;
 
     const content = parentEl.querySelector('.msg-content');
     if (content) content.before(el);
@@ -109,7 +195,10 @@ export function updateStepStatus(pb: ProcessBlockState, stepId: string, status: 
     const stepEl = pb.element.querySelector(`[data-step-id="${stepId}"]`);
     if (stepEl) {
         const dot = stepEl.querySelector('.process-step-dot');
-        if (dot) { dot.className = `process-step-dot ${status}`; }
+        if (dot) {
+            dot.classList.remove('running', 'done', 'error');
+            dot.classList.add(status);
+        }
     }
     updateSummary(pb);
 }

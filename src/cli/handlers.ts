@@ -4,6 +4,7 @@
 import { CLI_KEYS, buildModelChoicesByCli } from './registry.js';
 import { t } from '../core/i18n.js';
 import { detectCli } from '../core/config.js';
+export { compactHandler } from './compact.js';
 
 const DEFAULT_CLI_CHOICES = [...CLI_KEYS];
 const MODEL_CHOICES_BY_CLI = buildModelChoicesByCli();
@@ -610,29 +611,43 @@ export async function flushHandler(args: any[], ctx: any) {
         // /flush <model> — auto-detect CLI from registry
         const modelName = args.join(' ').trim();
         const modelKey = modelName.toLowerCase();
-        const matchedClis: string[] = [];
-        for (const [cli, models] of Object.entries(MODEL_CHOICES_BY_CLI)) {
-            if ((models as string[]).some(m => m.toLowerCase() === modelKey)) {
-                matchedClis.push(cli);
-            }
-        }
 
-        // Filter by available CLIs
-        const availableClis = matchedClis.filter(c => detectCli(c).available);
+        // Legacy full-name hints for old Claude values
+        const LEGACY_MODEL_CLI_HINTS: Record<string, string> = {
+            'claude-sonnet-4-6': 'claude',
+            'claude-opus-4-6': 'claude',
+            'claude-sonnet-4-6[1m]': 'claude',
+            'claude-opus-4-6[1m]': 'claude',
+            'claude-haiku-4-5-20251001': 'claude',
+        };
 
-        if (availableClis.length > 0) {
-            newCli = availableClis[0]!;
+        const hintedCli = LEGACY_MODEL_CLI_HINTS[modelName];
+        if (hintedCli) {
+            newCli = hintedCli;
             newModel = modelName;
-        } else if (matchedClis.length > 0) {
-            // CLI found in registry but not installed
-            return {
-                ok: false,
-                text: t('cmd.flush.cliUnavailable', { cli: matchedClis.join(', '), model: modelName }, L),
-            };
         } else {
-            // Custom model name — keep current flush CLI
-            newCli = currentFlushCli;
-            newModel = modelName;
+            const matchedClis: string[] = [];
+            for (const [cli, models] of Object.entries(MODEL_CHOICES_BY_CLI)) {
+                if ((models as string[]).some(m => m.toLowerCase() === modelKey)) {
+                    matchedClis.push(cli);
+                }
+            }
+
+            // Filter by available CLIs
+            const availableClis = matchedClis.filter(c => detectCli(c).available);
+
+            if (availableClis.length > 0) {
+                newCli = availableClis[0]!;
+                newModel = modelName;
+            } else if (matchedClis.length > 0) {
+                return {
+                    ok: false,
+                    text: t('cmd.flush.cliUnavailable', { cli: matchedClis.join(', '), model: modelName }, L),
+                };
+            } else {
+                newCli = currentFlushCli;
+                newModel = modelName;
+            }
         }
     }
 

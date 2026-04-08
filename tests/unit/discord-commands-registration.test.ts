@@ -15,7 +15,7 @@ test('DISCORD_SLASH_COMMANDS includes operational commands', () => {
     const listMatch = commandsSrc.match(/DISCORD_SLASH_COMMANDS\s*=\s*\[([\s\S]*?)\]/);
     assert.ok(listMatch, 'should define DISCORD_SLASH_COMMANDS array');
     const list = listMatch![1];
-    for (const cmd of ['help', 'status', 'model', 'cli', 'forward', 'flush', 'version', 'steer']) {
+    for (const cmd of ['help', 'status', 'model', 'cli', 'forward', 'flush', 'version', 'compact', 'steer']) {
         assert.ok(list.includes(`'${cmd}'`), `should include '${cmd}'`);
     }
 });

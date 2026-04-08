@@ -75,8 +75,9 @@ import { validateHeartbeatScheduleInput } from './src/memory/heartbeat-schedule.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from './lib/quota-copilot.js';
 import { startTokenKeepAlive } from './lib/token-keepalive.js';
 import { CLI_REGISTRY } from './src/cli/registry.js';
-import { clearMainSessionState } from './src/core/main-session.js';
+import { clearMainSessionState, syncMainSessionToSettings } from './src/core/main-session.js';
 import { applyRuntimeSettingsPatch } from './src/core/runtime-settings.js';
+import { getDefaultClaudeModel, migrateLegacyClaudeValue } from './src/cli/claude-models.js';
 
 // ─── Resolve paths ───────────────────────────────────
 
@@ -121,6 +122,7 @@ ensureDirs();
 fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
 runMigration(projectRoot);
 loadSettings();
+syncMainSessionToSettings();
 try {
     ensureMemoryRuntimeReady();
 } catch (e: unknown) {
@@ -304,8 +306,9 @@ function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     }
 
     const cli = settings.cli;
+    const defaultModel = cli === 'claude' ? getDefaultClaudeModel() : 'default';
     for (const emp of DEFAULT_EMPLOYEES) {
-        insertEmployee.run(crypto.randomUUID(), emp.name, cli, 'default', emp.role);
+        insertEmployee.run(crypto.randomUUID(), emp.name, cli, defaultModel, emp.role);
     }
     if (notify) broadcast('agent_updated', {});
     regenerateB();
@@ -634,7 +637,14 @@ app.delete('/api/memory-files/:filename', (req, res) => {
     }
 });
 app.put('/api/memory-files/settings', (req, res) => {
-    settings.memory = { ...settings.memory, ...req.body };
+    const patch = { ...(req.body || {}) };
+    const targetCli = typeof patch.cli === 'string' && patch.cli
+        ? patch.cli
+        : settings.memory?.cli || settings.cli || '';
+    if (targetCli === 'claude' && typeof patch.model === 'string') {
+        patch.model = migrateLegacyClaudeValue(patch.model);
+    }
+    settings.memory = { ...settings.memory, ...patch };
     saveSettings(settings);
     res.json({ ok: true });
 });
@@ -833,7 +843,10 @@ app.get('/api/employees', (_, res) => ok(res, getEmployees.all()));
 app.post('/api/employees', (req, res) => {
     const id = crypto.randomUUID();
     const { name = 'New Agent', cli = 'claude', model = 'default', role = '' } = req.body || {};
-    insertEmployee.run(id, name, cli, model, role);
+    const nextModel = cli === 'claude' && (!model || model === 'default')
+        ? getDefaultClaudeModel()
+        : model;
+    insertEmployee.run(id, name, cli, nextModel, role);
     const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(id) as Record<string, any>;
     broadcast('agent_added', emp);
     regenerateB();
@@ -1144,4 +1157,18 @@ server.listen(PORT, () => {
         if (en) { db.prepare('UPDATE employees SET name = ? WHERE id = ?').run(en, (emp as any).id); migrated++; }
     }
     if (migrated > 0) console.log(`  Agents: migrated ${migrated} Korean names → English`);
+
+    // ─── Migrate legacy Claude employee model values → aliases ────────
+    const claudeModelMigrations = [
+        ['claude-sonnet-4-6', 'sonnet'],
+        ['claude-opus-4-6', 'opus'],
+        ['claude-sonnet-4-6[1m]', 'sonnet[1m]'],
+        ['claude-opus-4-6[1m]', 'opus[1m]'],
+    ];
+    let empModelMigrated = 0;
+    for (const [old, next] of claudeModelMigrations) {
+        const r = db.prepare(`UPDATE employees SET model = ? WHERE cli = 'claude' AND model = ?`).run(next, old);
+        empModelMigrated += r.changes;
+    }
+    if (empModelMigrated > 0) console.log(`  Agents: migrated ${empModelMigrated} legacy Claude model values → aliases`);
 });

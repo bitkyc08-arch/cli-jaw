@@ -1,13 +1,15 @@
 // ─── CLI Registry (single source of truth) ──────────
 
+import { getDefaultClaudeChoices, getDefaultClaudeModel } from './claude-models.js';
+
 export const CLI_REGISTRY = {
     claude: {
         label: 'Claude',
         binary: 'claude',
-        defaultModel: 'claude-sonnet-4-6',
+        defaultModel: getDefaultClaudeModel(),
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high'],
-        models: ['claude-sonnet-4-6', 'claude-opus-4-6', 'claude-sonnet-4-6[1m]', 'claude-opus-4-6[1m]', 'claude-haiku-4-5-20251001'],
+        models: getDefaultClaudeChoices(),
     },
     codex: {
         label: 'Codex',

@@ -6,6 +6,7 @@ import { join, resolve } from 'path';
 import { execFileSync } from 'child_process';
 import { CLI_REGISTRY, CLI_KEYS, DEFAULT_CLI, buildDefaultPerCli } from '../cli/registry.js';
 import { pickFirstReadyCli } from '../cli/readiness.js';
+import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 
 // ─── Version (single source of truth: package.json) ──
 import { dirname } from 'path';
@@ -170,7 +171,34 @@ function createDefaultSettings() {
 
 export const DEFAULT_SETTINGS = createDefaultSettings();
 
-function migrateSettings(s: Record<string, any>) {
+function normalizePerCliModels(perCli: Record<string, any> = {}) {
+    const next: Record<string, any> = {};
+    for (const [cli, cfg] of Object.entries(perCli)) {
+        next[cli] = {
+            ...cfg,
+            model: typeof cfg?.model === 'string'
+                ? migrateLegacyClaudeValue(cfg.model)
+                : cfg?.model,
+        };
+    }
+    return next;
+}
+
+function normalizeActiveOverrides(activeOverrides: Record<string, any> = {}) {
+    const next: Record<string, any> = {};
+    for (const [cli, cfg] of Object.entries(activeOverrides)) {
+        next[cli] = {
+            ...cfg,
+            model: typeof cfg?.model === 'string'
+                ? migrateLegacyClaudeValue(cfg.model)
+                : cfg?.model,
+        };
+    }
+    return next;
+}
+
+/** @internal — exported for unit testing */
+export function migrateSettings(s: Record<string, any>) {
     if (s.planning) {
         if (s.planning.cli && s.planning.cli !== s.cli) s.cli = s.planning.cli;
         if (s.planning.model && s.planning.model !== 'default') {
@@ -183,6 +211,14 @@ function migrateSettings(s: Record<string, any>) {
         }
         delete s.planning;
     }
+
+    // Claude model alias migration
+    s.perCli = normalizePerCliModels(s.perCli || {});
+    s.activeOverrides = normalizeActiveOverrides(s.activeOverrides || {});
+    if (s.memory?.cli === 'claude' && typeof s.memory?.model === 'string') {
+        s.memory.model = migrateLegacyClaudeValue(s.memory.model);
+    }
+
     // Discord/channel migration
     if (!s.channel) s.channel = 'telegram';
     if (!s.discord) {

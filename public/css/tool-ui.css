@@ -286,11 +286,24 @@
 }
 
 .process-step {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    display: grid;
+    gap: 4px;
     padding: 2px 0;
     font-size: var(--text-xs);
+}
+
+.process-step-toggle {
+    display: grid;
+    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    align-items: start;
+    gap: var(--space-2);
+    width: 100%;
+    padding: 0;
+    background: none;
+    border: 0;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
 }
 
 .process-step-dot {
@@ -333,17 +346,52 @@
     color: var(--success);
 }
 
-.process-step-label { color: var(--text); }
-.process-step-text { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.process-step-main {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
 
-.process-step-detail {
+.process-step-label {
+    color: var(--text);
+    word-break: break-word;
+}
+
+.process-step-snippet {
+    color: var(--text-dim);
+    word-break: break-word;
+}
+
+.process-step-chevron {
+    color: var(--text-dim);
+    transition: transform var(--duration-fast);
+}
+
+.process-step.expanded .process-step-chevron {
+    transform: rotate(90deg);
+}
+
+.process-step-details {
+    margin-left: 22px;
+    padding: 8px 10px;
+    border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.process-step-details.collapsed {
+    display: none;
+}
+
+.process-step-full {
+    margin: 0;
     font-family: var(--font-mono);
     font-size: var(--text-xs);
     color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 300px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    max-height: 260px;
 }
 
 @media (prefers-reduced-motion: reduce) {

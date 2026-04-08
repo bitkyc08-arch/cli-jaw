@@ -20,6 +20,7 @@ import {
 } from './session-persistence.js';
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
 import { groupQueueKey } from '../messaging/session-key.js';
+import { isCompactMarkerRow } from '../core/compact.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -236,6 +237,14 @@ function buildHistoryBlock(currentPrompt: string, maxSessions = 10, maxTotalChar
         if (promptText && i < 3 && skipCurrentPromptBudget > 0 && role === 'user' && content === promptText) {
             skipCurrentPromptBudget--;
             continue;
+        }
+
+        if (isCompactMarkerRow(row)) {
+            const summary = String(row.trace || '').trim();
+            if (summary && charCount + summary.length <= maxTotalChars) {
+                blocks.push(summary);
+            }
+            break;
         }
 
         const entry = role === 'assistant' && row.trace
@@ -465,9 +474,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (!ctx.thinkingBuf) return;
             const merged = ctx.thinkingBuf.trim();
             if (merged) {
-                const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
-                console.log(`  💭 ${display.slice(0, 120)}`);
-                const tool = { icon: '💭', label: display, toolType: 'thinking' as const, detail: display };
+                const singleLine = merged.replace(/\s+/g, ' ').trim();
+                const label = singleLine.length > 80 ? `${singleLine.slice(0, 79)}…` : singleLine;
+                console.log(`  💭 ${label.slice(0, 120)}`);
+                const tool = { icon: '💭', label, toolType: 'thinking' as const, detail: merged };
                 ctx.toolLog.push(tool);
                 broadcast('agent_tool', { agentId: agentLabel, ...tool });
             }
@@ -487,7 +497,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (parsed.tool) {
                 // Buffer 💭 thought chunks → flush when different event arrives
                 if (parsed.tool.icon === '💭') {
-                    ctx.thinkingBuf += parsed.tool.label;
+                    ctx.thinkingBuf += parsed.tool.detail || parsed.tool.label;
                     return;
                 }
                 // Non-💭 tool → flush any pending thinking first

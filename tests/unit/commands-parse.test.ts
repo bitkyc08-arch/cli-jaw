@@ -31,6 +31,13 @@ test('parseCommand: known command is parsed correctly', () => {
     assert.deepEqual(r.args, ['gpt-5.3-codex']);
 });
 
+test('parseCommand: compact command is parsed correctly', () => {
+    const r = parseCommand('/compact keep only deployment status');
+    assert.equal(r.type, 'known');
+    assert.equal(r.cmd.name, 'compact');
+    assert.deepEqual(r.args, ['keep', 'only', 'deployment', 'status']);
+});
+
 test('parseCommand: command aliases work', () => {
     const r = parseCommand('/h');
     assert.equal(r.type, 'known');
@@ -114,6 +121,11 @@ test('getCompletions: partial filters results', () => {
     assert.ok(!list.includes('/help'));
 });
 
+test('getCompletions: compact appears in session command list', () => {
+    const list = getCompletions('/com', 'cli');
+    assert.ok(list.includes('/compact'));
+});
+
 test('getCompletionItems returns structured objects', () => {
     const items = getCompletionItems('/ver', 'cli');
     assert.ok(items.length >= 1);
@@ -158,4 +170,16 @@ test('COMMANDS: every command has required fields', () => {
 test('COMMANDS: no duplicate names', () => {
     const names = COMMANDS.map(c => c.name);
     assert.equal(names.length, new Set(names).size);
+});
+
+test('executeCommand: compact returns busy error when runtime is active', async () => {
+    const parsed = parseCommand('/compact');
+    const r = await executeCommand(parsed, {
+        interface: 'cli',
+        getSettings: async () => ({ cli: 'codex', perCli: { codex: { model: 'default' } } }),
+        getSession: async () => ({ active_cli: 'codex', model: 'default' }),
+        getRuntime: async () => ({ activeAgent: true }),
+    });
+    assert.equal(r.ok, false);
+    assert.equal(r.code, 'compact_busy');
 });

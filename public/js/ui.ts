@@ -7,9 +7,39 @@ import { api } from './api.js';
 import { cacheMessages, getCachedMessages, appendCachedMessage } from './features/idb-cache.js';
 import { getVirtualScroll, VS_THRESHOLD } from './virtual-scroll.js';
 import { createStreamRenderer, appendChunk, finalizeStream, type StreamState } from './streaming-render.js';
-import { buildToolGroupHtml, renderLiveToolActivity, cleanupToolElements, type ToolLogEntry } from './features/tool-ui.js';
-import { createProcessBlock, addStep, updateStepStatus, collapseBlock, type ProcessStep } from './features/process-block.js';
+import { renderLiveToolActivity, cleanupToolElements, type ToolLogEntry } from './features/tool-ui.js';
+import {
+    createProcessBlock,
+    addStep,
+    updateStepStatus,
+    collapseBlock,
+    buildProcessBlockHtml,
+    bindProcessBlockInteractions,
+    type ProcessStep,
+} from './features/process-block.js';
 interface MessageItem { role: string; content: string; tool_log?: string | null; }
+
+function parseToolLog(toolLog?: string | null): ToolLogEntry[] {
+    if (!toolLog) return [];
+    try {
+        const parsed = JSON.parse(toolLog);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+function toProcessSteps(tools: ToolLogEntry[]): ProcessStep[] {
+    return tools.map((tool: any) => ({
+        id: crypto.randomUUID(),
+        icon: tool.icon || '🔧',
+        label: tool.label || tool.name || 'tool',
+        type: tool.toolType || 'tool',
+        detail: tool.detail || '',
+        status: tool.status || 'done',
+        startTime: Date.now(),
+    }));
+}
 
 export function setStatus(s: string): void {
     const badge = document.getElementById('statusBadge');
@@ -115,8 +145,13 @@ export function showProcessStep(step: ProcessStep): void {
         // Completion icons (✅/❌) update the last matching running step
         if (step.icon === '✅' || step.icon === '❌') {
             const status = step.icon === '✅' ? 'done' : 'error';
-            const match = [...state.currentProcessBlock.steps].reverse()
-                .find(s => s.status === 'running' && s.label === step.label);
+            // Prefer matching by stepRef (stable correlation), fall back to label
+            const ref = step.stepRef;
+            const match = ref
+                ? [...state.currentProcessBlock.steps].reverse()
+                    .find(s => s.status === 'running' && s.stepRef === ref)
+                : [...state.currentProcessBlock.steps].reverse()
+                    .find(s => s.status === 'running' && s.label === step.label);
             if (match) {
                 updateStepStatus(state.currentProcessBlock, match.id, status);
                 scrollToBottom();
@@ -177,7 +212,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         const finalText = currentStream ? finalizeStream(currentStream) || text : text;
         currentStream = null;
         // Skip static tool HTML when process block already shows tool summary
-        const toolHtml = hasTools && !hadProcessBlock ? buildToolGroupHtml(toolLog!) : '';
+        const toolHtml = hasTools && !hadProcessBlock ? buildProcessBlockHtml(toProcessSteps(toolLog!), true) : '';
         if (content) content.innerHTML = toolHtml + renderMarkdown(finalText);
         if (content) content.setAttribute('data-raw', stripOrchestration(finalText));
     }
@@ -271,20 +306,8 @@ export async function loadMessages(): Promise<void> {
                     const role = m.role === 'assistant' ? 'agent' : m.role;
                     const rendered = renderMarkdown(m.content);
                     const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
-                    // Build static tool summary for VS path
-                    let toolHtml = '';
-                    if (m.tool_log && m.role === 'assistant') {
-                        try {
-                            const tools = JSON.parse(m.tool_log);
-                            if (Array.isArray(tools) && tools.length > 0) {
-                                const items = tools.map((t: any) => {
-                                    const detail = t.detail ? `<span class="process-step-detail">${escapeHtml(t.detail)}</span>` : '';
-                                    return `<div class="process-step" data-type="${escapeHtml(t.toolType || 'tool')}"><span class="process-dot done"></span><span class="process-badge">${escapeHtml(t.icon || '🔧')}</span><span class="process-step-label">${escapeHtml(t.label || 'tool')}</span>${detail}</div>`;
-                                }).join('');
-                                toolHtml = `<div class="process-block collapsed"><button class="process-summary" aria-expanded="false"><span class="process-dot done"></span><span class="process-summary-text">${tools.length} tool${tools.length > 1 ? 's' : ''} used</span><span class="process-chevron">▸</span></button><div class="process-details"><div class="process-steps-inner">${items}</div></div></div>`;
-                            }
-                        } catch { /* skip malformed */ }
-                    }
+                    const tools = m.role === 'assistant' ? parseToolLog(m.tool_log) : [];
+                    const toolHtml = tools.length > 0 ? buildProcessBlockHtml(toProcessSteps(tools), true) : '';
                     const html = role === 'agent'
                         ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body">${toolHtml}<div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
                         : `<div class="msg msg-${role}"><div class="msg-label">${label}</div><div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
@@ -295,28 +318,16 @@ export async function loadMessages(): Promise<void> {
                 msgs.forEach(m => {
                     const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content);
                     // Reconstruct ProcessBlock from saved tool_log
-                    if (m.tool_log && m.role === 'assistant') {
-                        try {
-                            const tools = JSON.parse(m.tool_log);
-                            if (Array.isArray(tools) && tools.length > 0) {
-                                const body = div.querySelector('.agent-body') as HTMLElement;
-                                if (body) {
-                                    const pb = createProcessBlock(body);
-                                    for (const tool of tools) {
-                                        addStep(pb, {
-                                            id: crypto.randomUUID(),
-                                            icon: tool.icon || '🔧',
-                                            label: tool.label || tool.name || 'tool',
-                                            type: tool.toolType || 'tool',
-                                            detail: tool.detail || '',
-                                            status: tool.status || 'done',
-                                            startTime: Date.now(),
-                                        });
-                                    }
-                                    collapseBlock(pb);
-                                }
+                    if (m.role === 'assistant') {
+                        const tools = parseToolLog(m.tool_log);
+                        if (tools.length > 0) {
+                            const body = div.querySelector('.agent-body') as HTMLElement;
+                            if (body) {
+                                const pb = createProcessBlock(body);
+                                for (const tool of toProcessSteps(tools)) addStep(pb, tool);
+                                collapseBlock(pb);
                             }
-                        } catch { /* invalid tool_log JSON */ }
+                        }
                     }
                 });
             }
@@ -343,7 +354,10 @@ export async function loadMessages(): Promise<void> {
 
 // ── Message copy delegation ──
 export function initMsgCopy(): void {
-    document.getElementById('chatMessages')?.addEventListener('click', (e) => {
+    const chatMessages = document.getElementById('chatMessages');
+    if (!chatMessages) return;
+    bindProcessBlockInteractions(chatMessages);
+    chatMessages.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
 
         // Tool group toggle (event delegation instead of inline onclick)

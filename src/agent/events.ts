@@ -32,6 +32,15 @@ function toSingleLine(text: any) {
     return String(text || '').replace(/\s+/g, ' ').trim();
 }
 
+function clipText(text: string, max: number) {
+    if (!max || max < 1) return text;
+    return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+function buildPreview(text: any, max = 80) {
+    return clipText(toSingleLine(text), max);
+}
+
 function toIndentedPreview(text: any, max = 200) {
     const raw = String(text || '').trim();
     if (!raw) return '';
@@ -79,8 +88,12 @@ export function extractFromEvent(cli: string, event: any, ctx: any, agentLabel: 
             if (ctx.claudeThinkingBuf) {
                 const merged = ctx.claudeThinkingBuf.trim();
                 if (merged) {
-                    const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
-                    const tool = { icon: '💭', label: display, toolType: 'thinking' as const, detail: display };
+                    const tool = {
+                        icon: '💭',
+                        label: buildPreview(merged, 80) || 'thinking...',
+                        toolType: 'thinking' as const,
+                        detail: merged,
+                    };
                     ctx.toolLog.push(tool);
                     broadcast('agent_tool', { agentId: agentLabel, ...tool });
                 }
@@ -113,8 +126,12 @@ export function extractFromEvent(cli: string, event: any, ctx: any, agentLabel: 
         if (inner?.type !== 'content_block_stop' && ctx.claudeThinkingBuf) {
             const merged = ctx.claudeThinkingBuf.trim();
             if (merged) {
-                const display = merged.length > 200 ? '…' + merged.slice(-197) : merged;
-                const tool = { icon: '💭', label: display, toolType: 'thinking' as const, detail: display };
+                const tool = {
+                    icon: '💭',
+                    label: buildPreview(merged, 80) || 'thinking...',
+                    toolType: 'thinking' as const,
+                    detail: merged,
+                };
                 ctx.toolLog.push(tool);
                 broadcast('agent_tool', { agentId: agentLabel, ...tool });
             }
@@ -283,15 +300,44 @@ function extractToolLabels(cli: string, event: any, ctx: any = null) {
     if (cli === 'codex' && event.type === 'item.completed' && item) {
         if (item.type === 'web_search') {
             const action = item.action?.type || '';
-            if (action === 'search') labels.push({ icon: '🔍', label: (item.query || item.action?.query || 'search').slice(0, 60), toolType: 'search' });
-            else if (action === 'open_page') { try { labels.push({ icon: '🌐', label: new URL(item.action.url).hostname, toolType: 'search' }); } catch { labels.push({ icon: '🌐', label: 'page', toolType: 'search' }); } }
-            else labels.push({ icon: '🔍', label: (item.query || 'web').slice(0, 60), toolType: 'search' });
+            if (action === 'search') {
+                const query = item.query || item.action?.query || 'search';
+                labels.push({ icon: '🔍', label: buildPreview(query, 60), toolType: 'search', detail: query });
+            } else if (action === 'open_page') {
+                const url = item.action?.url || '';
+                try {
+                    labels.push({ icon: '🌐', label: new URL(url).hostname, toolType: 'search', detail: url });
+                } catch {
+                    labels.push({ icon: '🌐', label: 'page', toolType: 'search', detail: url });
+                }
+            } else {
+                const query = item.query || 'web';
+                labels.push({ icon: '🔍', label: buildPreview(query, 60), toolType: 'search', detail: query });
+            }
         }
-        if (item.type === 'reasoning') labels.push({ icon: '💭', label: (item.text || '').replace(/\*+/g, '').trim().slice(0, 60), toolType: 'thinking' });
-        if (item.type === 'command_execution') labels.push({ icon: '⚡', label: (item.command || 'exec').slice(0, 40), toolType: 'tool', detail: (item.command || '').slice(0, 80) });
+        if (item.type === 'reasoning') {
+            const detail = String(item.text || '').replace(/\*+/g, '').trim();
+            labels.push({ icon: '💭', label: buildPreview(detail, 60) || 'thinking...', toolType: 'thinking', detail });
+        }
+        if (item.type === 'command_execution') {
+            const command = String(item.command || 'exec');
+            const output = item.aggregated_output ? String(item.aggregated_output) : '';
+            const detail = output ? `$ ${command}\n${output}` : command;
+            labels.push({ icon: '⚡', label: buildPreview(command, 40) || 'exec', toolType: 'tool', detail, stepRef: `codex:cmd:${command}` });
+        }
     }
 
     if (cli === 'claude') {
+        if (event.type === 'system') {
+            const status = String(event.status || '');
+            const subtype = String(event.subtype || event.event || '');
+            if (status === 'compacting' || subtype === 'compacting') {
+                pushToolLabel(labels, { icon: '🗜️', label: 'compacting...', toolType: 'tool' }, cli, event, ctx);
+            }
+            if (status === 'compact_boundary' || subtype === 'compact_boundary' || event.compact_boundary === true) {
+                pushToolLabel(labels, { icon: '✅', label: 'conversation compacted', toolType: 'tool' }, cli, event, ctx);
+            }
+        }
         if (event.type === 'stream_event' && event.event?.type === 'content_block_start') {
             if (ctx) ctx.hasClaudeStreamEvents = true;
             const cb = event.event.content_block;
@@ -303,8 +349,7 @@ function extractToolLabels(cli: string, event: any, ctx: any = null) {
                 if (block.type === 'tool_use') pushToolLabel(labels, { icon: '🔧', label: block.name || 'tool', toolType: 'tool' }, cli, event, ctx);
                 if (block.type === 'thinking') {
                     const text = (block.thinking || '').trim();
-                    const display = text.length > 200 ? '…' + text.slice(-197) : text || 'thinking...';
-                    pushToolLabel(labels, { icon: '💭', label: display, toolType: 'thinking', detail: display }, cli, event, ctx);
+                    pushToolLabel(labels, { icon: '💭', label: buildPreview(text, 80) || 'thinking...', toolType: 'thinking', detail: text }, cli, event, ctx);
                 }
             }
         }
@@ -312,42 +357,53 @@ function extractToolLabels(cli: string, event: any, ctx: any = null) {
 
     if (cli === 'gemini') {
         if (event.type === 'tool_use') {
-            const detail = event.parameters?.command ? event.parameters.command.slice(0, 80) : summarizeToolInput(event.tool_name || '', event.parameters || {});
-            labels.push({ icon: '🔧', label: `${event.tool_name || 'tool'}${event.parameters?.command ? ': ' + event.parameters.command.slice(0, 40) : ''}`, toolType: 'tool', detail });
+            const detail = event.parameters?.command || summarizeToolInput(event.tool_name || '', event.parameters || {}, 0);
+            const suffix = event.parameters?.command ? `: ${buildPreview(event.parameters.command, 40)}` : '';
+            const ref = `gemini:tool:${event.tool_name || 'tool'}`;
+            labels.push({ icon: '🔧', label: `${event.tool_name || 'tool'}${suffix}`, toolType: 'tool', detail, stepRef: ref });
         }
-        if (event.type === 'tool_result') labels.push({ icon: event.status === 'success' ? '✅' : '❌', label: `${event.status || 'done'}`, toolType: 'tool' });
+        if (event.type === 'tool_result') {
+            const ref = `gemini:tool:${event.tool_name || 'tool'}`;
+            labels.push({ icon: event.status === 'success' ? '✅' : '❌', label: `${event.status || 'done'}`, toolType: 'tool', stepRef: ref });
+        }
     }
 
     if (cli === 'opencode') {
-        if (event.type === 'tool_use' && event.part) labels.push({ icon: '🔧', label: event.part.tool || 'tool', toolType: 'tool' });
-        if (event.type === 'tool_result' && event.part) labels.push({ icon: '✅', label: event.part.tool || 'done', toolType: 'tool' });
+        if (event.type === 'tool_use' && event.part) {
+            const ref = `opencode:tool:${event.part.tool || 'tool'}`;
+            labels.push({ icon: '🔧', label: event.part.tool || 'tool', toolType: 'tool', stepRef: ref });
+        }
+        if (event.type === 'tool_result' && event.part) {
+            const ref = `opencode:tool:${event.part.tool || 'tool'}`;
+            labels.push({ icon: '✅', label: event.part.tool || 'done', toolType: 'tool', stepRef: ref });
+        }
     }
 
     return labels;
 }
 
 /** Summarise a tool's input into a short one-liner for the ProcessBlock UI. */
-export function summarizeToolInput(toolName: string, input: any): string {
+export function summarizeToolInput(toolName: string, input: any, max = 60): string {
     if (!input) return '';
-    if (typeof input !== 'object') return String(input).slice(0, 60);
+    if (typeof input !== 'object') return clipText(String(input), max);
     const s = (v: any) => (typeof v === 'string' ? v : v != null ? String(v) : '');
     const name = (toolName || '').toLowerCase();
     let result = '';
     if (name.includes('bash') || name.includes('terminal') || name === 'execute_command')
-        result = s(input.command || input.cmd).slice(0, 80);
+        result = s(input.command || input.cmd);
     else if (name.includes('read') || name === 'read_file' || name === 'view')
         result = s(input.path || input.file_path || input.filename).split('/').pop() || s(input.path);
     else if (name.includes('write') || name.includes('edit') || name === 'create_file')
         result = s(input.path || input.file_path).split('/').pop() || s(input.path);
     else if (name.includes('search') || name.includes('grep') || name === 'codebase_search')
-        result = s(input.query || input.pattern || input.search_query).slice(0, 60);
+        result = s(input.query || input.pattern || input.search_query);
     else if (name.includes('web') || name === 'web_search')
-        result = s(input.query).slice(0, 60);
+        result = s(input.query);
     // Fallback: show first meaningful key-value if specific extraction yielded nothing
     if (!result) {
-        try { result = JSON.stringify(input).slice(0, 60); } catch { /* ignore */ }
+        try { result = JSON.stringify(input); } catch { /* ignore */ }
     }
-    return result;
+    return clipText(result, max);
 }
 
 // Backward-compat: return first label or null
@@ -396,22 +452,28 @@ export function extractFromAcpUpdate(params: any) {
             return {
                 tool: {
                     icon: '💭',
-                    label: text.slice(0, 60) + (text.length > 60 ? '...' : '') || 'thinking...',
+                    label: buildPreview(text, 60) || 'thinking...',
                     toolType: 'thinking',
-                    detail: text.slice(0, 80),
+                    detail: text,
                 },
             };
         }
 
-        case 'tool_call':
+        case 'tool_call': {
+            const toolName = update.name || 'tool';
+            const fullInput = update.input != null
+                ? (typeof update.input === 'object' ? JSON.stringify(update.input, null, 2) : String(update.input))
+                : '';
             return {
                 tool: {
                     icon: '🔧',
-                    label: update.name || 'tool',
+                    label: toolName,
                     toolType: 'tool',
-                    detail: summarizeToolInput(update.name || '', update.input),
+                    detail: fullInput,
+                    stepRef: `acp:tool:${toolName}`,
                 },
             };
+        }
 
         case 'tool_call_update':
             return {
@@ -419,6 +481,7 @@ export function extractFromAcpUpdate(params: any) {
                     icon: '✅',
                     label: update.name || update.id || 'done',
                     toolType: 'tool',
+                    stepRef: `acp:tool:${update.name || update.id || 'done'}`,
                 },
             };
 

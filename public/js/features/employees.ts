@@ -135,7 +135,7 @@ export function onEmpCliChange(id: string, cli: string): void {
             models.map(m => `<option>${escapeHtml(m)}</option>`).join('') +
             `<option value="__custom__">${t('emp.customModel')}</option>`;
     }
-    updateEmployee(id, { cli, model: 'default' });
+    updateEmployee(id, { cli, model: cli === 'claude' ? 'sonnet' : 'default' });
 }
 
 export function onEmpRoleChange(id: string, presetVal: string): void {

@@ -14,7 +14,7 @@ function makeCtx(overrides: Record<string, any> = {}) {
     const settings = {
         cli: 'claude',
         perCli: {
-            claude: { model: 'claude-sonnet-4-6', effort: 'medium' },
+            claude: { model: 'sonnet', effort: 'medium' },
             gemini: { model: 'gemini-2.5-pro', effort: '' },
             codex: { model: 'gpt-5.3-codex', effort: 'medium' },
         },
@@ -166,5 +166,27 @@ test('FC-008: /flush <model> returns cliUnavailable when matched CLIs are not in
         assert.ok(String(result.text).includes('cmd.flush.cliUnavailable'));
         assert.equal(ctx.settings.memory.cli, '');
         assert.equal(ctx.settings.memory.model, '');
+    });
+});
+
+// ─── FC-009: legacy full-name infers Claude via hint table ───
+
+test('FC-009: /flush <legacy-full-name> infers claude via LEGACY_MODEL_CLI_HINTS', async () => {
+    await withIsolatedPath(['claude'], async () => {
+        const ctx = makeCtx();
+        const result = await flushHandler(['claude-opus-4-6[1m]'], ctx);
+        assert.equal(result.ok, true);
+        assert.equal(ctx.settings.memory.cli, 'claude');
+        assert.equal(ctx.settings.memory.model, 'claude-opus-4-6[1m]');
+    });
+});
+
+test('FC-010: /flush claude <legacy-full-name> preserves explicit model literally', async () => {
+    await withIsolatedPath(['claude'], async () => {
+        const ctx = makeCtx();
+        const result = await flushHandler(['claude', 'claude-opus-4-6[1m]'], ctx);
+        assert.equal(result.ok, true);
+        assert.equal(ctx.settings.memory.cli, 'claude');
+        assert.equal(ctx.settings.memory.model, 'claude-opus-4-6[1m]');
     });
 });
