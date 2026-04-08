@@ -432,7 +432,7 @@ export function getEmployeePrompt(emp: any) {
 
 export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | string) {
     const phase = Number(currentPhase);
-    const cacheKey = `${emp.id || emp.name}:${role}:${phase}`;
+    const cacheKey = `${emp.id || emp.name}:${role}:${phase}:${settings.workingDir || '~'}`;
     if (promptCache.has(cacheKey)) return promptCache.get(cacheKey);
 
     let prompt = getEmployeePrompt(emp);

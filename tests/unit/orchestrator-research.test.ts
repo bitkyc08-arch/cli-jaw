@@ -119,7 +119,7 @@ Use tokens.
 
 test('RES-008: initial P request injects research before planning', async () => {
     const prompts: string[] = [];
-    setState('P', { originalPrompt: '', plan: null, workerResults: [], origin: 'test' });
+    setState('P', { originalPrompt: '', workingDir: null, plan: null, workerResults: [], origin: 'test' });
 
     await orchestrate('compare auth and session approaches', {
         origin: 'test',
@@ -164,7 +164,7 @@ Prefer bearer tokens for new routes.
 test('RES-009: clear implementation request skips pre-planning research', async () => {
     const prompts: string[] = [];
     let researchCalls = 0;
-    setState('P', { originalPrompt: '', plan: null, workerResults: [], origin: 'test' });
+    setState('P', { originalPrompt: '', workingDir: null, plan: null, workerResults: [], origin: 'test' });
 
     await orchestrate('fix the typo in server.ts', {
         origin: 'test',

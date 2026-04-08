@@ -3,7 +3,7 @@
 
 import { CLI_KEYS, buildModelChoicesByCli } from './registry.js';
 import { t } from '../core/i18n.js';
-import { detectCli } from '../core/config.js';
+import { detectCli, settings } from '../core/config.js';
 export { compactHandler } from './compact.js';
 
 const DEFAULT_CLI_CHOICES = [...CLI_KEYS];
@@ -759,7 +759,7 @@ export async function orchestrateHandler(args: string[], _ctx: any) {
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
 
-    setState(t, t === 'P' ? { originalPrompt: '', plan: null, workerResults: [], origin: 'web' } : undefined);
+    setState(t, t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' } : undefined);
     const statePrompt = getStatePrompt(t);
     const summary = statePrompt.split('\n')[0] || '';
     return { ok: true, text: `✅ State → ${getState()}${summary ? `\n${summary}` : ''}` };

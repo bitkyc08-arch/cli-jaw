@@ -17,7 +17,7 @@ describe('PABCD state-machine', () => {
         assert.equal(getState(), 'P');
     });
     test('3. setState with ctx', () => {
-        const ctx = { originalPrompt: 'test', plan: null, workerResults: [], origin: 'web' };
+        const ctx = { originalPrompt: 'test', workingDir: null, plan: null, workerResults: [], origin: 'web' };
         setState('P', ctx);
         assert.deepEqual(getCtx(), ctx);
     });
@@ -69,7 +69,7 @@ describe('PABCD state-machine', () => {
         assert.equal(canTransition('B', 'D'), false);
     });
     test('17. setState P with ctx preserves context', () => {
-        const ctx = { originalPrompt: 'build settings', plan: null, workerResults: [], origin: 'web' };
+        const ctx = { originalPrompt: 'build settings', workingDir: null, plan: null, workerResults: [], origin: 'web' };
         setState('P', ctx);
         assert.equal(getState(), 'P');
         const saved = getCtx();

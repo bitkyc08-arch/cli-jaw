@@ -122,7 +122,7 @@ test('DI-009: processQueue still has its own insertMessage.run (not removed)', (
     const pqEnd = spawnSrc.indexOf('// ─── Helpers', pqStart);
     const pqBlock = spawnSrc.slice(pqStart, pqEnd > 0 ? pqEnd : pqStart + 1500);
     assert.ok(
-        pqBlock.includes("insertMessage.run('user', combined, source, '')"),
+        pqBlock.includes("insertMessage.run('user', combined, source, ''"),
         'processQueue must retain its own insertMessage call',
     );
 });
@@ -134,7 +134,7 @@ test('DI-010: steerAgent still has its own insertMessage.run (not removed)', () 
     const steerEnd = spawnSrc.indexOf('// ─── Message Queue', steerStart);
     const steerBlock = spawnSrc.slice(steerStart, steerEnd > 0 ? steerEnd : steerStart + 800);
     assert.ok(
-        steerBlock.includes("insertMessage.run('user', newPrompt, source, '')"),
+        steerBlock.includes("insertMessage.run('user', newPrompt, source, ''"),
         'steerAgent must retain its own insertMessage call',
     );
 });

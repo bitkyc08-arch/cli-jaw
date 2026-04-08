@@ -440,7 +440,7 @@ app.put('/api/orchestrate/state', (req, res) => {
         setState(t);
         resetState();
     } else {
-        setState(t, t === 'P' ? { originalPrompt: '', plan: null, workerResults: [], origin: 'api' } : undefined);
+        setState(t, t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'api' } : undefined);
     }
     res.json({ ok: true, state: getState() });
 });

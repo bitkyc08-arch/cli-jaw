@@ -9,6 +9,7 @@ beforeEach(() => { resetState(); });
 test('OSR-001: reset during agent execution does not restore stale P state', async () => {
     setState('P', {
         originalPrompt: 'investigate stale state',
+        workingDir: null,
         plan: null,
         workerResults: [],
         origin: 'test',
@@ -34,6 +35,7 @@ test('OSR-001: reset during agent execution does not restore stale P state', asy
 test('OSR-002: phase advance during agent execution preserves advanced state and ctx', async () => {
     const ctx = {
         originalPrompt: 'advance after plan approval',
+        workingDir: null,
         plan: 'Approved plan from P',
         workerResults: [],
         origin: 'test',

@@ -3,6 +3,7 @@
 // PABCD state machine is the sole orchestration system.
 
 import { broadcast } from '../core/bus.js';
+import { settings } from '../core/config.js';
 import {
     insertMessage, getEmployees,
     clearAllEmployeeSessions,
@@ -114,12 +115,14 @@ export async function orchestrate(
         const nextCtx: OrcContext = {
             ...(ctx || {
                 originalPrompt: '',
+                workingDir: settings.workingDir || null,
                 plan: null,
                 workerResults: [],
                 origin,
                 chatId,
             }),
             originalPrompt: planningTask,
+            workingDir: settings.workingDir || null,
             origin,
             chatId,
         };

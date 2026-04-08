@@ -14,6 +14,7 @@ export type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
 
 export interface OrcContext {
   originalPrompt: string;
+  workingDir: string | null;
   plan: string | null;
   workerResults: string[];
   origin: string;
@@ -33,7 +34,11 @@ export function getState(): OrcStateName {
 export function getCtx(): OrcContext | null {
   const row = getOrcState();
   if (!row?.ctx) return null;
-  try { return JSON.parse(row.ctx); } catch { return null; }
+  try {
+    const parsed = JSON.parse(row.ctx);
+    if (parsed && parsed.workingDir === undefined) parsed.workingDir = null;
+    return parsed;
+  } catch { return null; }
 }
 
 export function setState(s: OrcStateName, ctx?: OrcContext | null): void {
