@@ -85,6 +85,11 @@ if (!(messageCols as Record<string, unknown>[]).some(c => c.name === 'trace')) {
 if (!(messageCols as Record<string, unknown>[]).some(c => c.name === 'tool_log')) {
     db.exec('ALTER TABLE messages ADD COLUMN tool_log TEXT DEFAULT NULL');
 }
+// Migration: add working_dir column for project-scoped message isolation
+if (!(messageCols as Record<string, unknown>[]).some(c => c.name === 'working_dir')) {
+    db.exec('ALTER TABLE messages ADD COLUMN working_dir TEXT DEFAULT NULL');
+}
+db.exec('CREATE INDEX IF NOT EXISTS idx_messages_wd ON messages(working_dir)');
 
 // ─── Prepared Statements ─────────────────────────────
 
@@ -93,11 +98,11 @@ export const updateSession = db.prepare(`
     UPDATE session SET active_cli=?, session_id=?, model=?, permissions=?, working_dir=?, effort=?, updated_at=CURRENT_TIMESTAMP
     WHERE id='default'
 `);
-export const insertMessage = db.prepare('INSERT INTO messages (role, content, cli, model, trace) VALUES (?, ?, ?, ?, NULL)');
-export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log) VALUES (?, ?, ?, ?, ?, ?)');
-export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, cost_usd, duration_ms, created_at FROM messages ORDER BY id ASC');
+export const insertMessage = db.prepare('INSERT INTO messages (role, content, cli, model, trace, working_dir) VALUES (?, ?, ?, ?, NULL, ?)');
+export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir) VALUES (?, ?, ?, ?, ?, ?, ?)');
+export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, cost_usd, duration_ms, working_dir, created_at FROM messages ORDER BY id ASC');
 export const getMessagesWithTrace = db.prepare('SELECT * FROM messages ORDER BY id ASC');
-export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, created_at FROM messages ORDER BY id DESC LIMIT ?');
+export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, created_at FROM messages WHERE working_dir = ? OR working_dir IS NULL ORDER BY id DESC LIMIT ?');
 export const clearMessages = db.prepare('DELETE FROM messages');
 export const getMemory = db.prepare('SELECT key, value, source FROM memory ORDER BY updated_at DESC');
 export const upsertMemory = db.prepare(`

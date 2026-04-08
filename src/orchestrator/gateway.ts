@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { isAgentBusy, enqueueMessage, messageQueue } from '../agent/spawn.js';
 import { hasBlockingWorkers, hasPendingWorkerReplays } from './worker-registry.js';
 import { insertMessage } from '../core/db.js';
+import { settings } from '../core/config.js';
 import { broadcast } from '../core/bus.js';
 import {
     orchestrate, orchestrateContinue, orchestrateReset,
@@ -56,7 +57,7 @@ export function submitMessage(
     // ── continue intent (only when IDLE) ──
     if (getState() === 'IDLE' && isContinueIntent(trimmed)) {
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
-        insertMessage.run('user', display, meta.origin, '');
+        insertMessage.run('user', display, meta.origin, '', settings.workingDir || null);
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
@@ -70,7 +71,7 @@ export function submitMessage(
 
     // ── reset intent ──
     if (isResetIntent(trimmed)) {
-        insertMessage.run('user', display, meta.origin, '');
+        insertMessage.run('user', display, meta.origin, '', settings.workingDir || null);
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
@@ -92,7 +93,7 @@ export function submitMessage(
     }
 
     // ── idle → start immediately ──
-    insertMessage.run('user', display, meta.origin, '');
+    insertMessage.run('user', display, meta.origin, '', settings.workingDir || null);
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
         runDetached(

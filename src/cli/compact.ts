@@ -79,7 +79,7 @@ export async function compactHandler(args: string[], ctx: any) {
     const { getRecentMessages, insertMessageWithTrace } = await import('../core/db.js');
     const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
     const { clearBossSessionOnly } = await import('../core/main-session.js');
-    const recent = getRecentMessages.all(40) as any[];
+    const recent = getRecentMessages.all(settings.workingDir || null, 40) as any[];
     const compactionRows = getRowsSinceLatestCompactForTest(recent);
     if (!compactionRows.length) {
         return {
@@ -91,7 +91,7 @@ export async function compactHandler(args: string[], ctx: any) {
 
     const summary = buildManagedCompactSummaryForTest(recent, instructions);
     const model = getActiveModel(settings, session, activeCli);
-    insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, activeCli, model, summary, null);
+    insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, activeCli, model, summary, null, settings.workingDir || null);
     bumpSessionOwnershipGeneration();
     clearBossSessionOnly();
     return {
