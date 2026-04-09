@@ -22,6 +22,12 @@ echo "Preview version: $PREVIEW_VERSION"
 echo "Dist-tag:        preview"
 
 echo ""
+echo "⬆️  Setting preview version..."
+npm version "$PREVIEW_VERSION" --no-git-tag-version
+
+VERSION=$(node -p "require('./package.json').version")
+echo "📌 package.json version: $VERSION"
+
 echo "🔎 Type checking..."
 pnpm exec tsc --noEmit
 
@@ -29,17 +35,19 @@ echo "📦 Building backend..."
 npm run build
 
 echo "📦 Building frontend..."
-npx vite build
+npm run build:frontend
 
-echo "⬆️  Setting preview version..."
-npm version "$PREVIEW_VERSION" --no-git-tag-version
-
-VERSION=$(node -p "require('./package.json').version")
-echo "📌 package.json version: $VERSION"
+echo "🧪 Verifying npm package contents..."
+npm pack --dry-run >/dev/null
 
 echo "📝 Creating local commit..."
 git add package.json package-lock.json
 git commit -m "[agent] chore: preview v$VERSION" --allow-empty
+
+echo "🚀 Publishing preview to npm..."
+TARBALL="$(npm pack | tail -1)"
+trap 'rm -f "$TARBALL"' EXIT
+npm publish "$TARBALL" --tag preview --access public
 
 echo "🏷️  Creating preview tag..."
 git tag "v$VERSION"
@@ -47,11 +55,7 @@ git tag "v$VERSION"
 echo "⬆️  Pushing branch + tag..."
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
 git push origin "$CURRENT_BRANCH"
-git push origin "$CURRENT_BRANCH:master"
 git push origin "v$VERSION"
-
-echo "🚀 Publishing preview to npm..."
-npm publish --tag preview --access public
 
 echo "📋 Creating GitHub prerelease..."
 PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v' | grep -v "^v$VERSION$" | head -1)

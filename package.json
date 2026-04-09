@@ -68,15 +68,15 @@
   "dependencies": {
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/transformer-throttler": "^1.2.1",
-    "better-sqlite3": "^11.7.0",
+    "better-sqlite3": "^12.8.0",
     "discord.js": "^14.25.1",
     "dompurify": "^3.3.3",
-    "express": "^4.21.0",
+    "express": "^5.2.1",
     "grammy": "^1.40.0",
     "helmet": "^8.1.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.44",
-    "marked": "^17.0.5",
+    "marked": "^18.0.0",
     "marked-highlight": "^2.2.3",
     "mermaid": "^11.14.0",
     "node-fetch": "^3.3.2",
@@ -84,13 +84,13 @@
     "ws": "^8.18.0"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.0",
+    "@types/better-sqlite3": "^7.6.13",
     "@types/dompurify": "^3.0.5",
-    "@types/express": "^4.17.21",
-    "@types/node": "^22.0.0",
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.5.2",
     "@types/ws": "^8.5.0",
     "tsx": "^4.21.0",
-    "typescript": "^5.7.0",
+    "typescript": "^6.0.2",
     "vite": "^8.0.3"
   }
 }
