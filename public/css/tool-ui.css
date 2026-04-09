@@ -431,6 +431,10 @@
 .process-step-snippet {
     color: var(--text-dim);
     word-break: break-word;
+    display: -webkit-box;
+    -webkit-line-clamp: 1;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
 }
 
 .process-step-chevron {
@@ -462,7 +466,13 @@
     white-space: pre-wrap;
     word-break: break-word;
     overflow-x: auto;
-    max-height: 260px;
+    max-height: 600px;
+}
+
+.process-step-label {
+    word-break: break-word;
+    overflow-wrap: break-word;
+    white-space: normal;
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -105,6 +105,7 @@ export async function orchestrate(
     const planningTask = pickPlanningTask(userText, prompt, ctx);
     const isInitialPlanningTurn = state === 'P'
         && !meta._workerResult
+        && !meta._skipPrefix
         && !ctx?.plan
         && !!planningTask;
 
@@ -173,10 +174,13 @@ export async function orchestrate(
     if (state === 'P' && !meta._workerResult) {
         const savedCtx = getCtx();
         if (savedCtx) {
-            setState('P', {
-                ...savedCtx,
-                plan: stripSubtaskJSON(result.text) || result.text || savedCtx.plan,
-            });
+            const newPlan = stripSubtaskJSON(result.text) || result.text || savedCtx.plan;
+            if (newPlan) {
+                setState('P', {
+                    ...savedCtx,
+                    plan: newPlan,
+                });
+            }
         }
     }
 

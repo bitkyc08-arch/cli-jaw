@@ -759,7 +759,12 @@ export async function orchestrateHandler(args: string[], _ctx: any) {
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
 
-    setState(t, t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' } : undefined);
+    if (t === 'P') {
+        setState(t, { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' });
+    } else {
+        // A/B/C: preserve existing ctx, only update state
+        setState(t);
+    }
     const statePrompt = getStatePrompt(t);
     const summary = statePrompt.split('\n')[0] || '';
     return { ok: true, text: `✅ State → ${getState()}${summary ? `\n${summary}` : ''}` };

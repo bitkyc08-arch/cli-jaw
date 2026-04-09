@@ -1,10 +1,11 @@
 // ─── Event Extraction (NDJSON parser) ────────────────
 
 import { broadcast } from '../core/bus.js';
+import type { SpawnContext } from '../types/agent.js';
 
 /** Flush Claude-specific stream buffers (thinking + input_json).
  *  Call on stream close to avoid data loss if content_block_stop never arrives. */
-export function flushClaudeBuffers(ctx: any, agentLabel?: string) {
+export function flushClaudeBuffers(ctx: SpawnContext, agentLabel?: string) {
     if (ctx.claudeThinkingBuf) {
         const merged = ctx.claudeThinkingBuf.trim();
         if (merged) {
@@ -18,12 +19,12 @@ export function flushClaudeBuffers(ctx: any, agentLabel?: string) {
     }
 }
 
-function pushTrace(ctx: any, line: any) {
+function pushTrace(ctx: SpawnContext, line: string) {
     if (!ctx?.traceLog || !line) return;
     ctx.traceLog.push(line);
 }
 
-function logLine(line: any, ctx: any) {
+function logLine(line: string, ctx: SpawnContext) {
     console.log(line);
     pushTrace(ctx, line);
 }
@@ -58,7 +59,7 @@ export function extractSessionId(cli: string, event: any) {
     }
 }
 
-export function extractFromEvent(cli: string, event: any, ctx: any, agentLabel: string) {
+export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, agentLabel: string) {
     // ── Claude stream buffer: thinking_delta + input_json_delta ──
     if (cli === 'claude' && event.type === 'stream_event') {
         const inner = event.event;
@@ -104,7 +105,7 @@ export function extractFromEvent(cli: string, event: any, ctx: any, agentLabel: 
                 try {
                     const input = JSON.parse(ctx.claudeInputJsonBuf);
                     const toolName = ctx.claudeCurrentToolName || 'tool';
-                    const detail = summarizeToolInput(toolName, input);
+                    const detail = summarizeToolInput(toolName, input);  // full, no clip (max=0)
                     if (detail) {
                         // Find the last tool label for this tool and update its detail
                         const existing = [...ctx.toolLog].reverse().find(
@@ -293,7 +294,7 @@ function pushToolLabel(labels: any[], label: any, cli: string, event: any, ctx: 
 }
 
 // Returns array of tool labels (supports multiple blocks per event)
-function extractToolLabels(cli: string, event: any, ctx: any = null) {
+function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = null) {
     const item = event.item || event.part || event;
     const labels = [];
 
@@ -383,9 +384,9 @@ function extractToolLabels(cli: string, event: any, ctx: any = null) {
 }
 
 /** Summarise a tool's input into a short one-liner for the ProcessBlock UI. */
-export function summarizeToolInput(toolName: string, input: any, max = 60): string {
+export function summarizeToolInput(toolName: string, input: any, max = 0): string {
     if (!input) return '';
-    if (typeof input !== 'object') return clipText(String(input), max);
+    if (typeof input !== 'object') return max ? clipText(String(input), max) : String(input);
     const s = (v: any) => (typeof v === 'string' ? v : v != null ? String(v) : '');
     const name = (toolName || '').toLowerCase();
     let result = '';
@@ -403,7 +404,7 @@ export function summarizeToolInput(toolName: string, input: any, max = 60): stri
     if (!result) {
         try { result = JSON.stringify(input); } catch { /* ignore */ }
     }
-    return clipText(result, max);
+    return max ? clipText(result, max) : result;
 }
 
 // Backward-compat: return first label or null

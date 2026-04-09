@@ -86,7 +86,8 @@ async function runSignalCase(
 
         // Current implementation forces exit in ~3s when shutdown hangs.
         assert.ok(elapsedMs <= 4200, `shutdown took too long (${elapsedMs}ms)`);
-        assert.equal(exitCode, 1, `unexpected exit code for ${signal}: ${exitCode}`);
+        // SIGINT may return 130 (128+2) on some platforms instead of 1
+        assert.ok([1, 130].includes(exitCode!), `unexpected exit code for ${signal}: ${exitCode}`);
 
         await sleep(600);
         assert.equal(await isHealthy(port), false, `port ${port} should be closed after ${signal}`);

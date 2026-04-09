@@ -6,7 +6,7 @@ import { settings } from '../core/config.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
-import { addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
+import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
 import { saveUpload, buildMediaPrompt, isAgentBusy } from '../agent/spawn.js';
 import { registerTransport, setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
 import { registerSendTransport } from '../messaging/send.js';
@@ -22,7 +22,7 @@ import type { Attachment, Message } from 'discord.js';
 
 export let discordClient: Client | null = null;
 export const discordActiveChannelIds = new Set<string>();
-let forwarderHandler: ((type: string, data: any) => void) | null = null;
+let forwarderHandler: BroadcastListener | null = null;
 
 // ─── Helpers ────────────────────────────────────────
 

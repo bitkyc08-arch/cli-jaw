@@ -3,7 +3,7 @@
 import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
-import { spawn } from 'child_process';
+import { spawn, type ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, UPLOADS_DIR, detectCli } from '../core/config.js';
 import {
@@ -25,8 +25,8 @@ import { isCompactMarkerRow } from '../core/compact.js';
 
 // ─── State ───────────────────────────────────────────
 
-export let activeProcess: any = null;
-export const activeProcesses = new Map<string, any>(); // agentId → child process
+export let activeProcess: ChildProcess | null = null;
+export const activeProcesses = new Map<string, ChildProcess>(); // agentId → child process
 
 export function killAgentById(agentId: string): boolean {
     const proc = activeProcesses.get(agentId);
@@ -49,7 +49,7 @@ export const messageQueue: any[] = [];
 // INVARIANT: single-main — 동시에 1개의 main spawnAgent만 존재한다고 가정.
 // 멀티 main task 도입 시 request-id 키 맵으로 전환 필요.
 let retryPendingTimer: ReturnType<typeof setTimeout> | null = null;
-let retryPendingResolve: ((v: any) => void) | null = null;
+let retryPendingResolve: ((v: { text: string; code: number }) => void) | null = null;
 let retryPendingOrigin: string | null = null;
 
 /** busy = process alive OR retry timer pending */
@@ -477,8 +477,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             const merged = ctx.thinkingBuf.trim();
             if (merged) {
                 const singleLine = merged.replace(/\s+/g, ' ').trim();
-                const label = singleLine.length > 80 ? `${singleLine.slice(0, 79)}…` : singleLine;
-                console.log(`  💭 ${label.slice(0, 120)}`);
+                const label = singleLine.length > 120 ? `${singleLine.slice(0, 119)}…` : singleLine;
+                console.log(`  💭 ${label}`);
                 const tool = { icon: '💭', label, toolType: 'thinking' as const, detail: merged };
                 ctx.toolLog.push(tool);
                 broadcast('agent_tool', { agentId: agentLabel, ...tool });
