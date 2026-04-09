@@ -49,7 +49,7 @@ test('broadcast sends to WS clients with readyState 1', () => {
             { readyState: 1, send: (msg) => sent.push(msg) },
         ],
     };
-    setWss(mockWss);
+    setWss(mockWss as any);
     broadcast('ws_test', { val: 42 });
 
     assert.equal(sent.length, 2);
