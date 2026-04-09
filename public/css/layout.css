@@ -207,6 +207,11 @@
     transition: border-color 0.15s, box-shadow 0.15s;
 }
 
+.sidebar-hb-btn.w-auto {
+    width: auto;
+    flex-shrink: 0;
+}
+
 .sidebar-hb-btn:hover {
     border-color: var(--accent);
     box-shadow: 0 0 0 1px var(--accent);

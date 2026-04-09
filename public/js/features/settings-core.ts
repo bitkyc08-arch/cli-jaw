@@ -178,6 +178,11 @@ export async function loadSettings(): Promise<void> {
                 if (winInput && cfg.contextWindowSize) winInput.value = String(cfg.contextWindowSize);
                 if (compInput && cfg.contextCompactLimit) compInput.value = String(cfg.contextCompactLimit);
             }
+            if (cli === 'claude') {
+                const is1m = !!(cfg.model && String(cfg.model).endsWith('[1m]'));
+                document.getElementById('claude1mOn')?.classList.toggle('active', is1m);
+                document.getElementById('claude1mOff')?.classList.toggle('active', !is1m);
+            }
         }
     }
 
@@ -235,8 +240,16 @@ export function handleModelSelect(cli: string, selectEl: HTMLSelectElement): voi
         customInput.focus();
     } else {
         customInput.style.display = 'none';
+        if (cli === 'claude') syncClaude1mToggle(selectEl.value);
         savePerCli();
     }
+}
+
+/** Sync Claude 1M toggle button state to match current model value */
+function syncClaude1mToggle(model: string): void {
+    const is1m = !!(model && model.endsWith('[1m]'));
+    document.getElementById('claude1mOn')?.classList.toggle('active', is1m);
+    document.getElementById('claude1mOff')?.classList.toggle('active', !is1m);
 }
 
 export function applyCustomModel(cli: string, inputEl: HTMLInputElement): void {
@@ -247,6 +260,7 @@ export function applyCustomModel(cli: string, inputEl: HTMLInputElement): void {
     appendCustomOption(select, val);
     select.value = val;
     inputEl.style.display = 'none';
+    if (cli === 'claude') syncClaude1mToggle(val);
     savePerCli();
 }
 

@@ -402,9 +402,14 @@ app.post('/api/orchestrate/continue', (req, res) => {
     res.json({ ok: true });
 });
 
-app.post('/api/orchestrate/reset', (req, res) => {
-    orchestrateReset({ origin: 'web' });
-    res.json({ ok: true });
+app.post('/api/orchestrate/reset', async (req, res) => {
+    try {
+        await orchestrateReset({ origin: 'web' });
+        res.json({ ok: true });
+    } catch (err) {
+        console.error('[orchestrate:reset] error', err);
+        res.status(500).json({ ok: false, error: String(err) });
+    }
 });
 
 app.get('/api/orchestrate/state', (_req, res) => {

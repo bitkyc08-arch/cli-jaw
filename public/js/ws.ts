@@ -51,8 +51,9 @@ interface WsMessage {
     label?: string;
     toolType?: string;
     detail?: string;
+    stepRef?: string;
     text?: string;
-    toolLog?: { icon: string; label: string }[];
+    toolLog?: { icon: string; label: string; detail?: string; toolType?: string; stepRef?: string }[];
     from?: string;
     to?: string;
     source?: string;
@@ -266,12 +267,10 @@ export function connect(): void {
     };
     state.ws.onopen = () => {
         console.log('[ws] connected');
-        // Restore state: reload messages to stay in sync after reconnect
-        getVirtualScroll().clear();
+        // Reload messages — loadMessages() handles DOM clearing internally
+        // (only clears after successful fetch to prevent blank screen)
         import('./ui.js').then(m => {
             m.cleanupToolActivity();
-            const el = document.getElementById('chatMessages');
-            if (el) el.innerHTML = '';
             m.loadMessages();
             m.setStatus('idle');
         });

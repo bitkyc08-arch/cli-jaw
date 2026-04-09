@@ -7,7 +7,7 @@ import { api } from './api.js';
 import { cacheMessages, getCachedMessages, appendCachedMessage } from './features/idb-cache.js';
 import { getVirtualScroll, VS_THRESHOLD } from './virtual-scroll.js';
 import { createStreamRenderer, appendChunk, finalizeStream, type StreamState } from './streaming-render.js';
-import { renderLiveToolActivity, cleanupToolElements, type ToolLogEntry } from './features/tool-ui.js';
+import { renderLiveToolActivity, cleanupToolElements, bindToolItemInteractions, type ToolLogEntry } from './features/tool-ui.js';
 import {
     createProcessBlock,
     addStep,
@@ -296,51 +296,59 @@ export async function loadStats(): Promise<void> {
 }
 
 export async function loadMessages(): Promise<void> {
-    try {
-        const msgs = await api<MessageItem[]>('/api/messages');
-        if (msgs && msgs.length > 0) {
-            const vs = getVirtualScroll();
-            if (msgs.length >= VS_THRESHOLD) {
-                // Bulk load via virtual scroll for large histories
-                for (const m of msgs) {
-                    const role = m.role === 'assistant' ? 'agent' : m.role;
-                    const rendered = renderMarkdown(m.content);
-                    const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
-                    const tools = m.role === 'assistant' ? parseToolLog(m.tool_log) : [];
-                    const toolHtml = tools.length > 0 ? buildProcessBlockHtml(toProcessSteps(tools), true) : '';
-                    const html = role === 'agent'
-                        ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body">${toolHtml}<div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
-                        : `<div class="msg msg-${role}"><div class="msg-label">${label}</div><div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
-                    vs.addItem(crypto.randomUUID(), html);
-                }
-                vs.scrollToBottom();
-            } else {
-                msgs.forEach(m => {
-                    const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content);
-                    // Reconstruct ProcessBlock from saved tool_log
-                    if (m.role === 'assistant') {
-                        const tools = parseToolLog(m.tool_log);
-                        if (tools.length > 0) {
-                            const body = div.querySelector('.agent-body') as HTMLElement;
-                            if (body) {
-                                const pb = createProcessBlock(body);
-                                for (const tool of toProcessSteps(tools)) addStep(pb, tool);
-                                collapseBlock(pb);
-                            }
+    // api() returns null on any failure (never throws), so null = server unreachable
+    const msgs = await api<MessageItem[]>('/api/messages');
+
+    if (msgs !== null) {
+        // Successful fetch — clear DOM and render (even if empty array after /clear)
+        const vs = getVirtualScroll();
+        vs.clear();
+        const chatEl = document.getElementById('chatMessages');
+        if (chatEl) chatEl.innerHTML = '';
+
+        if (msgs.length >= VS_THRESHOLD) {
+            for (const m of msgs) {
+                const role = m.role === 'assistant' ? 'agent' : m.role;
+                const rendered = renderMarkdown(m.content);
+                const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
+                const tools = m.role === 'assistant' ? parseToolLog(m.tool_log) : [];
+                const toolHtml = tools.length > 0 ? buildProcessBlockHtml(toProcessSteps(tools), true) : '';
+                const html = role === 'agent'
+                    ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body">${toolHtml}<div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
+                    : `<div class="msg msg-${role}"><div class="msg-label">${label}</div><div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
+                vs.addItem(crypto.randomUUID(), html);
+            }
+            vs.scrollToBottom();
+        } else {
+            msgs.forEach(m => {
+                const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content);
+                if (m.role === 'assistant') {
+                    const tools = parseToolLog(m.tool_log);
+                    if (tools.length > 0) {
+                        const body = div.querySelector('.agent-body') as HTMLElement;
+                        if (body) {
+                            const pb = createProcessBlock(body);
+                            for (const tool of toProcessSteps(tools)) addStep(pb, tool);
+                            collapseBlock(pb);
                         }
                     }
-                });
-            }
-            // Cache for offline use
-            cacheMessages(msgs.map(m => ({
-                role: m.role, content: m.content, timestamp: Date.now(),
-            }))).catch(() => {});
-            showEmptyState();
-            return;
+                }
+            });
         }
-    } catch { /* server unreachable — try cache */ }
+        cacheMessages(msgs.map(m => ({
+            role: m.role, content: m.content, timestamp: Date.now(),
+        }))).catch(() => {});
+        showEmptyState();
+        return;
+    }
 
-    // Offline fallback: load from IndexedDB
+    // Server unreachable (api() returned null) — preserve existing DOM messages
+    const chatEl = document.getElementById('chatMessages');
+    if (chatEl && chatEl.children.length > 0) {
+        showEmptyState();
+        return;
+    }
+    // DOM empty + server down — try IndexedDB cache
     const cached = await getCachedMessages();
     if (cached.length > 0) {
         cached.forEach(m => addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content));
@@ -357,6 +365,7 @@ export function initMsgCopy(): void {
     const chatMessages = document.getElementById('chatMessages');
     if (!chatMessages) return;
     bindProcessBlockInteractions(chatMessages);
+    bindToolItemInteractions(chatMessages);
     chatMessages.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
 

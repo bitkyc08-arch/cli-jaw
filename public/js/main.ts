@@ -219,6 +219,42 @@ document.getElementById('codexCtxOn')?.addEventListener('click', () => setCodexC
 document.getElementById('codexCtxOff')?.addEventListener('click', () => setCodexCtx(false));
 document.getElementById('codexCtxWindow')?.addEventListener('change', savePerCli);
 document.getElementById('codexCtxCompact')?.addEventListener('change', savePerCli);
+
+// Claude 1M context toggle — switches model between base and [1m] variant
+function setClaude1m(on: boolean) {
+    const onBtn = document.getElementById('claude1mOn');
+    const offBtn = document.getElementById('claude1mOff');
+    const modelSel = document.getElementById('modelClaude') as HTMLSelectElement | null;
+
+    let effective = on;
+    if (modelSel) {
+        let current = modelSel.value || '';
+        if (on && !current.endsWith('[1m]')) {
+            const target = current + '[1m]';
+            if (Array.from(modelSel.options).some(o => o.value === target)) {
+                modelSel.value = target;
+            } else {
+                effective = false; // no [1m] variant available
+            }
+        } else if (!on && current.endsWith('[1m]')) {
+            const base = current.replace(/\[1m\]$/, '');
+            if (Array.from(modelSel.options).some(o => o.value === base)) {
+                modelSel.value = base;
+            } else {
+                effective = true; // can't remove [1m], stay on
+            }
+        } else {
+            effective = current.endsWith('[1m]');
+        }
+    }
+    if (onBtn && offBtn) {
+        onBtn.classList.toggle('active', effective);
+        offBtn.classList.toggle('active', !effective);
+    }
+    savePerCli();
+}
+document.getElementById('claude1mOn')?.addEventListener('click', () => setClaude1m(true));
+document.getElementById('claude1mOff')?.addEventListener('click', () => setClaude1m(false));
 // Per-CLI model selects
 function bindPerCliControlEvents(): void {
     for (const cli of getCliKeys()) {

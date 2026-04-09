@@ -89,7 +89,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             windowsHtml = q.windows.map(w => {
                 const pct = Math.round(w.percent);
                 const barColor = pct > 80 ? '#ef4444' : pct > 50 ? '#fbbf24' : '#38bdf8';
-                const shortLabel = w.label.replace('-hour', 'h').replace('-day', 'd').replace(' Sonnet', '').replace(' Opus', '');
+                const shortLabel = w.label.replace('-hour', 'h').replace('-day', 'd').replace(' Sonnet', '').replace(' Opus', '').replace('plus monthly subscriber quota', 'plus').replace('Premium', 'Prem');
                 let resetStr = '';
                 if (w.resetsAt) {
                     const d = new Date(typeof w.resetsAt === 'number' ? w.resetsAt * 1000 : w.resetsAt);
@@ -102,7 +102,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
                 }
                 return `
                     <div style="display:flex;align-items:center;gap:4px;margin-left:16px;font-size:10px;color:var(--text-dim)">
-                        <span style="width:18px">${escapeHtml(shortLabel)}</span>
+                        <span style="min-width:18px;max-width:48px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(shortLabel)}</span>
                         <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
                             <div style="width:${pct}%;height:100%;background:${barColor};border-radius:2px"></div>
                         </div>
