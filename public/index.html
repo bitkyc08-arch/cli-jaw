@@ -40,7 +40,7 @@
 
         <div>
             <div class="section-title" data-i18n="sidebar.memory">메모리</div>
-            <button class="sidebar-hb-btn" id="memorySidebarBtn" aria-label="Open memory panel">🧠 Memory (0)</button>
+            <button class="sidebar-hb-btn" id="memorySidebarBtn" aria-label="Open memory panel"><span data-icon="brain"></span> Memory (0)</button>
         </div>
 
         <div>
@@ -83,15 +83,15 @@
                 <button class="sidebar-hb-btn btn-action-sm w-auto" id="appNameSave">✓</button>
             </div>
             <button class="sidebar-hb-btn" id="btnClearChat">/clear</button>
-            <button class="sidebar-hb-btn" id="hbSidebarBtn">💓 Heartbeat (0)</button>
-            <button class="sidebar-hb-btn" data-action="openTemplates">📝 프롬프트 템플릿</button>
-            <button class="sidebar-hb-btn" id="langToggle" title="한국어 ⇄ English">🌐 한국어</button>
+            <button class="sidebar-hb-btn" id="hbSidebarBtn"><span data-icon="heartPulse"></span> Heartbeat (0)</button>
+            <button class="sidebar-hb-btn" data-action="openTemplates"><span data-icon="plan"></span> 프롬프트 템플릿</button>
+            <button class="sidebar-hb-btn" id="langToggle" title="한국어 ⇄ English"><span data-icon="web"></span> 한국어</button>
         </div>
     </nav>
 
     <!-- Chat Area -->
     <div class="chat-area">
-        <div class="drag-overlay" id="dragOverlay" data-i18n="drag.drop">📎 파일을 여기에 드랍하세요</div>
+        <div class="drag-overlay" id="dragOverlay" data-i18n="drag.drop"><span data-icon="paperclip"></span> 파일을 여기에 드랍하세요</div>
         <div class="chat-header">
             <span>CLI-JAW ● <span id="headerCli">claude</span></span>
             <button class="theme-switch" id="toggleTheme" title="Toggle Theme" aria-label="Toggle dark/light mode">
@@ -127,7 +127,7 @@
         </div>
         <div class="file-preview" id="filePreview">
             <div class="file-preview-header">
-                <span class="file-preview-title">📎 Files</span>
+                <span class="file-preview-title"><span data-icon="paperclip"></span> Files</span>
                 <button class="file-preview-clear" id="filePreviewClear">✕ Clear all</button>
             </div>
             <div class="file-preview-list" id="filePreviewList"></div>
@@ -135,9 +135,9 @@
         <div class="chat-input-area">
             <div id="cmdDropdown" class="cmd-dropdown" role="listbox" data-i18n-aria="aria.cmdList" aria-label="커맨드 목록"
                 style="display:none"></div>
-            <button class="btn-attach" data-i18n-title="btn.attach" title="파일 첨부">📎</button>
+            <button class="btn-attach" data-i18n-title="btn.attach" title="파일 첨부"><span data-icon="paperclip"></span></button>
             <input type="file" id="fileInput" hidden multiple>
-            <button class="btn-voice" id="btnVoice" data-i18n-title="voice.start" title="음성 녹음">🎤</button>
+            <button class="btn-voice" id="btnVoice" data-i18n-title="voice.start" title="음성 녹음"><span data-icon="mic"></span></button>
             <span class="voice-timer" id="voiceTimer" style="display:none">00:00</span>
             <button class="btn-voice-cancel" id="btnVoiceCancel" style="display:none" title="취소">✕</button>
             <textarea class="chat-input" id="chatInput" rows="1" data-i18n-placeholder="input.placeholder"
@@ -189,7 +189,7 @@
             <div>
                 <label data-i18n="label.permissions">권한</label>
                 <div class="perm-toggle">
-                    <span class="perm-btn active perm-auto" >⚡ Auto</span>
+                    <span class="perm-btn active perm-auto" ><span data-icon="exec"></span> Auto</span>
                 </div>
             </div>
 
@@ -214,16 +214,16 @@
         <div id="tabSkills" class="tab-content" role="tabpanel" aria-labelledby="tabBtnSkills">
             <div class="flex gap-2 flex-wrap">
                 <button class="skill-filter active" data-filter="all" data-i18n="skill.filter.all">전체</button>
-                <button class="skill-filter" data-filter="installed" data-i18n="skill.filter.installed">📦 설치됨</button>
-                <button class="skill-filter" data-filter="productivity" data-i18n="skill.filter.productivity">📝
+                <button class="skill-filter" data-filter="installed" data-i18n="skill.filter.installed"><span data-icon="compacting"></span> 설치됨</button>
+                <button class="skill-filter" data-filter="productivity" data-i18n="skill.filter.productivity"><span data-icon="plan"></span>
                     생산성</button>
-                <button class="skill-filter" data-filter="communication" data-i18n="skill.filter.communication">📧
+                <button class="skill-filter" data-filter="communication" data-i18n="skill.filter.communication"><span data-icon="link"></span>
                     커뮤</button>
-                <button class="skill-filter" data-filter="devtools" data-i18n="skill.filter.devtools">🔧 개발</button>
-                <button class="skill-filter" data-filter="ai-media" data-i18n="skill.filter.ai">🤖 AI</button>
-                <button class="skill-filter" data-filter="utility" data-i18n="skill.filter.utility">🌐 유틸</button>
-                <button class="skill-filter" data-filter="smarthome" data-i18n="skill.filter.smarthome">🏠 홈</button>
-                <button class="skill-filter" data-filter="other" data-i18n="skill.filter.other">📂 기타</button>
+                <button class="skill-filter" data-filter="devtools" data-i18n="skill.filter.devtools"><span data-icon="tool"></span> 개발</button>
+                <button class="skill-filter" data-filter="ai-media" data-i18n="skill.filter.ai"><span data-icon="robot"></span> AI</button>
+                <button class="skill-filter" data-filter="utility" data-i18n="skill.filter.utility"><span data-icon="web"></span> 유틸</button>
+                <button class="skill-filter" data-filter="smarthome" data-i18n="skill.filter.smarthome"><span data-icon="house"></span> 홈</button>
+                <button class="skill-filter" data-filter="other" data-i18n="skill.filter.other"><span data-icon="folder"></span> 기타</button>
             </div>
             <div class="text-xs text-dim" id="skillsCount" data-i18n="loading">로딩 중...</div>
             <div id="skillsList"></div>
@@ -232,11 +232,11 @@
         <!-- Settings Tab -->
         <div id="tabSettings" class="tab-content" role="tabpanel" aria-labelledby="tabBtnSettings">
             <button class="btn-clear btn-action-block"  data-action="openPrompt"
-                data-i18n="btn.editPrompt">✏️
+                data-i18n="btn.editPrompt"><span data-icon="pencil"></span>
                 시스템 프롬프트 편집</button>
             <!-- Active Channel Toggle -->
             <div class="settings-group">
-                <h4>📡 Active Channel</h4>
+                <h4><span data-icon="radio"></span> Active Channel</h4>
                 <div class="settings-row">
                     <label>Runtime</label>
                     <div>
@@ -330,7 +330,7 @@
                     </select>
                 </div>
                 <div class="settings-row sub-row">
-                    <label>🧠 1M Context</label>
+                    <label><span data-icon="brain"></span> 1M Context</label>
                     <div>
                         <button id="claude1mOff" class="perm-btn active">Off</button>
                         <button id="claude1mOn" class="perm-btn">On</button>
@@ -356,14 +356,14 @@
                     </select>
                 </div>
                 <div class="settings-row sub-row">
-                    <label>⚡ Fast Mode</label>
+                    <label><span data-icon="exec"></span> Fast Mode</label>
                     <div>
                         <button id="codexFastOff" class="perm-btn active" data-i18n="btn.off">끔</button>
                         <button id="codexFastOn" class="perm-btn" data-i18n="btn.on">켬</button>
                     </div>
                 </div>
                 <div class="settings-row sub-row">
-                    <label>🧠 1M Context</label>
+                    <label><span data-icon="brain"></span> 1M Context</label>
                     <div>
                         <button id="codexCtxOff" class="perm-btn active">Off</button>
                         <button id="codexCtxOn" class="perm-btn">On</button>
@@ -431,7 +431,7 @@
 
             <!-- Fallback Order -->
             <div class="settings-group">
-                <h4>⚡ Fallback</h4>
+                <h4><span data-icon="exec"></span> Fallback</h4>
                 <p class="text-xs text-dim fallback-desc" data-i18n="fallback.desc">CLI 실패 시 자동
                     재시도 순서</p>
                 <div id="fallbackOrderList"></div>
@@ -439,20 +439,20 @@
 
             <!-- MCP Servers -->
             <div class="settings-group">
-                <h4>🔌 MCP Servers</h4>
+                <h4><span data-icon="link"></span> MCP Servers</h4>
                 <div id="mcpServerList" class="text-status py-1">
                     Loading...
                 </div>
                 <button class="btn-clear btn-action-block" 
-                    data-action="syncMcp">🔄 Sync to all CLIs</button>
+                    data-action="syncMcp"><span data-icon="refresh"></span> Sync to all CLIs</button>
                 <button class="btn-clear btn-action-block" 
-                    data-action="installMcp">📦 Install Globally (npm i -g)</button>
+                    data-action="installMcp"><span data-icon="compacting"></span> Install Globally (npm i -g)</button>
                 <div id="mcpSyncResult" class="text-xs text-dim py-1" style="display:none"></div>
             </div>
 
             <!-- STT Settings -->
             <div class="settings-group">
-                <h4 data-i18n="stt.title">🎙️ 음성 인식 (STT)</h4>
+                <h4 data-i18n="stt.title"><span data-icon="mic"></span> 음성 인식 (STT)</h4>
                 <div class="settings-row">
                     <label data-i18n="stt.engine">엔진</label>
                     <select id="sttEngine">
@@ -546,19 +546,19 @@
     <div class="modal-overlay" id="memoryModal" role="dialog" aria-modal="true" aria-label="Memory files">
         <div class="modal-box modal-scrollable" >
             <div class="modal-header">
-                <span data-i18n="modal.memoryTitle">🧠 메모리</span>
+                <span data-i18n="modal.memoryTitle"><span data-icon="brain"></span> 메모리</span>
                 <button data-action="closeMemory"
                     class="btn-modal-close" aria-label="Close">✕</button>
             </div>
             <div class="tab-strip" role="tablist">
                 <button class="mem-tab active mem-tab-btn" id="memTabBtnSettings" role="tab" aria-selected="true" aria-controls="memTabSettings"
-                    >⚙️
+                    ><span data-icon="settings"></span>
                     Settings</button>
                 <button class="mem-tab mem-tab-btn" id="memTabBtnAdvOps" role="tab" aria-selected="false" aria-controls="memTabAdvOps"
-                    >📊
+                    ><span data-icon="chart"></span>
                     Status</button>
                 <button class="mem-tab mem-tab-btn" id="memTabBtnFiles" role="tab" aria-selected="false" aria-controls="memTabFiles"
-                    >📂
+                    ><span data-icon="folder"></span>
                     Files</button>
             </div>
             <div id="advStatusBanner" class="adv-status-banner" style="display:none"></div>
@@ -617,7 +617,7 @@
                 </div>
                 <div
                     class="info-box">
-                    💡 Counter: <span id="memCounter">0</span> / <span id="memThreshold">10</span> responses until next
+                    <span data-icon="lightbulb"></span> Counter: <span id="memCounter">0</span> / <span id="memThreshold">10</span> responses until next
                     flush
                 </div>
             </div>
@@ -667,14 +667,14 @@
     <!-- Mobile Navigation -->
     <div class="mobile-nav">
         <button id="mobileMenuLeft" aria-label="Open menu">☰ Menu</button>
-        <button id="mobileMenuRight" aria-label="Open settings">⚙️ Settings</button>
+        <button id="mobileMenuRight" aria-label="Open settings"><span data-icon="settings"></span> Settings</button>
     </div>
 
     <!-- Template Editor Modal (Node Map + Editor 2-view) -->
     <div class="modal-overlay" id="templateModal" role="dialog" aria-modal="true" aria-label="Prompt templates">
         <div class="modal-box modal-template" >
             <div class="modal-header">
-                <span id="templateModalTitle">📝 프롬프트 구조</span>
+                <span id="templateModalTitle"><span data-icon="plan"></span> 프롬프트 구조</span>
                 <button data-action="closeTemplate"
                     class="btn-modal-close" aria-label="Close">✕</button>
             </div>
@@ -682,7 +682,7 @@
             <div id="templateTreeView" class="template-tree-area">
                 <div id="templateTree"></div>
                 <div class="template-hint">
-                    🔒 클릭하면 프롬프트 내용 확인 · ⚠️ 개발자 모드에서 편집
+                    <span data-icon="lock"></span> 클릭하면 프롬프트 내용 확인 · <span data-icon="warning"></span> 개발자 모드에서 편집
                 </div>
             </div>
             <!-- View 2: Editor (hidden by default) -->
@@ -694,14 +694,14 @@
                         뒤로</button>
                     <span id="templateEditorLabel" class="flex-1 text-sm text-dim"></span>
                     <button id="templateDevToggle"
-                        class="btn-dev-toggle">🔧
+                        class="btn-dev-toggle"><span data-icon="tool"></span>
                         개발자 모드</button>
                 </div>
                 <textarea class="modal-textarea template-textarea" id="templateEditor" readonly
                     ></textarea>
                 <div class="modal-footer">
                     <span id="templateVars" class="text-xs text-dim mr-auto"></span>
-                    <button class="btn-save" data-action="saveTemplate" style="display:none" id="templateSaveBtn">💾
+                    <button class="btn-save" data-action="saveTemplate" style="display:none" id="templateSaveBtn"><span data-icon="save"></span>
                         저장</button>
                 </div>
             </div>

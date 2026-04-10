@@ -3,6 +3,7 @@ import { state } from './state.js';
 import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity } from './ui.js';
 import { t, getLang } from './features/i18n.js';
 import { getVirtualScroll } from './virtual-scroll.js';
+import { ICONS, emojiToIcon } from './icons.js';
 import type { OrcStateName } from './state.js';
 
 const ROADMAP_PHASES = ['P', 'A', 'B', 'C'] as const;
@@ -214,7 +215,7 @@ export function connect(): void {
         } else if (msg.type === 'queue_update') {
             updateQueueBadge(msg.pending || 0);
         } else if (msg.type === 'worklog_created') {
-            addSystemMsg(`📋 Worklog: ${msg.path || ''}`);
+            addSystemMsg(`${ICONS.clipboard} Worklog: ${msg.path || ''}`);
         } else if (msg.type === 'round_start') {
             const agents = (msg.agentPhases || msg.subtasks || []);
             const names = agents.map(a => a.agent || a.name || '').join(', ');
@@ -233,11 +234,11 @@ export function connect(): void {
             showProcessStep({
                 id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 type: stepType,
-                icon: msg.icon || '🔧',
+                icon: msg.icon || ICONS.tool,
                 label: msg.label || '',
                 detail: msg.detail || '',
                 stepRef: msg.stepRef || '',
-                status: 'running',
+                status: (msg.status as 'running' | 'done' | 'error') || 'running',
                 startTime: Date.now(),
             });
         } else if (msg.type === 'agent_output') {
@@ -247,7 +248,7 @@ export function connect(): void {
         } else if (msg.type === 'agent_fallback') {
             addSystemMsg(t('ws.fallback', { from: msg.from || '', to: msg.to || '' }), 'tool-activity');
         } else if (msg.type === 'agent_smoke') {
-            addSystemMsg(`⚠️ ${msg.cli || 'agent'}: smoke response detected — auto-continuing`, 'tool-activity');
+            addSystemMsg(`${ICONS.warning} ${msg.cli || 'agent'}: smoke response detected — auto-continuing`, 'tool-activity');
         } else if (msg.type === 'agent_done') {
             finalizeAgent(msg.text || '', msg.toolLog);
         } else if (msg.type === 'orchestrate_done') {
@@ -258,7 +259,7 @@ export function connect(): void {
             const el = document.getElementById('chatMessages');
             if (el) el.innerHTML = '';
         } else if (msg.type === 'session_reset') {
-            addSystemMsg('🔄 Session reset — history preserved', 'tool-activity');
+            addSystemMsg(`${ICONS.refresh} Session reset — history preserved`, 'tool-activity');
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
         } else if (msg.type === 'orc_state') {
@@ -295,7 +296,7 @@ export function connect(): void {
         console.log('[ws] disconnected, reconnecting in 2s...');
         import('./ui.js').then(m => m.cleanupToolActivity());
         setStatus('idle');
-        addSystemMsg('⚡ 연결 끊김 — 재연결 중...', 'tool-activity');
+        addSystemMsg(`${ICONS.exec} 연결 끊김 — 재연결 중...`, 'tool-activity');
         setTimeout(connect, 2000);
     };
 }

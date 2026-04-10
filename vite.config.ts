@@ -11,6 +11,9 @@ export default defineConfig({
       input: 'public/index.html',
       output: {
         manualChunks(id: string) {
+          if (id.includes('node_modules/@lucide/icons/')) {
+            return 'vendor-icons';
+          }
           if (id.includes('node_modules/marked/') ||
               id.includes('node_modules/highlight.js/') ||
               id.includes('node_modules/katex/') ||

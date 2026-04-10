@@ -515,7 +515,7 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
 
     // ─── Subagent prohibition (employees always run in pipe mode) ───
     prompt += `\n\n## Agent/Subagent Prohibition`;
-    prompt += `\nYou are running as a worker agent in pipe mode.`;
+    prompt += `\nYou are running as an employee agent in pipe mode.`;
     prompt += `\nDo NOT use Agent tools or subagent delegation.`;
     prompt += `\nComplete all work directly in this session.`;
 
@@ -527,6 +527,7 @@ export function clearPromptCache() { promptCache.clear(); }
 
 export function regenerateB() {
     clearTemplateCache();
+    clearPromptCache();
     const fullPrompt = getSystemPrompt({ forDisk: true });
     fs.writeFileSync(join(PROMPTS_DIR, 'B.md'), fullPrompt);
 

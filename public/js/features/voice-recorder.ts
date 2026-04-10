@@ -3,6 +3,7 @@
 import { state } from '../state.js';
 import { addSystemMsg } from '../ui.js';
 import { t } from './i18n.js';
+import { ICONS } from '../icons.js';
 import { sendVoiceToServer } from './chat.js';
 
 let cancelled = false;
@@ -165,7 +166,7 @@ function updateRecordingUI(recording: boolean): void {
     const cancelBtn = document.getElementById('btnVoiceCancel');
     if (btn) {
         btn.classList.toggle('recording', recording);
-        btn.textContent = recording ? '⏹' : '🎤';
+        btn.innerHTML = recording ? ICONS.stop : ICONS.mic;
         btn.title = recording ? t('voice.stop') : t('voice.start');
     }
     if (cancelBtn) {

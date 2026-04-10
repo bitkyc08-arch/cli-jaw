@@ -8,6 +8,7 @@ import { cacheMessages, getCachedMessages, appendCachedMessage } from './feature
 import { getVirtualScroll, VS_THRESHOLD } from './virtual-scroll.js';
 import { createStreamRenderer, appendChunk, finalizeStream, type StreamState } from './streaming-render.js';
 import { renderLiveToolActivity, cleanupToolElements, bindToolItemInteractions, type ToolLogEntry } from './features/tool-ui.js';
+import { ICONS, emojiToIcon, emojiToStatus, isCompletionEmoji } from './icons.js';
 import {
     createProcessBlock,
     addStep,
@@ -33,10 +34,11 @@ function parseToolLog(toolLog?: string | null): ToolLogEntry[] {
 function toProcessSteps(tools: ToolLogEntry[]): ProcessStep[] {
     return tools.map((tool: any) => ({
         id: crypto.randomUUID(),
-        icon: tool.icon || '🔧',
+        icon: tool.icon ? emojiToIcon(tool.icon) : ICONS.tool,
         label: tool.label || tool.name || 'tool',
         type: tool.toolType || 'tool',
         detail: tool.detail || '',
+        stepRef: tool.stepRef || '',
         status: tool.status || 'done',
         startTime: Date.now(),
     }));
@@ -49,11 +51,11 @@ export function setStatus(s: string): void {
     document.getElementById('typingIndicator')?.classList.toggle('active', state.agentBusy);
     if (s === 'running') {
         if (badge) { badge.className = 'status-badge status-running'; badge.textContent = 'running'; }
-        if (btn) { btn.textContent = '■'; btn.title = t('btn.stop'); btn.classList.add('stop-mode'); }
+        if (btn) { btn.innerHTML = ICONS.stop; btn.title = t('btn.stop'); btn.classList.add('stop-mode'); }
         showSkeleton();
     } else {
         if (badge) { badge.className = 'status-badge status-idle'; badge.textContent = 'idle'; }
-        if (btn) { btn.textContent = '➤'; btn.title = 'Send'; btn.classList.remove('stop-mode'); }
+        if (btn) { btn.innerHTML = ICONS.send; btn.title = 'Send'; btn.classList.remove('stop-mode'); }
         removeSkeleton();
         updateQueueBadge(0);
     }
@@ -143,9 +145,11 @@ export function showProcessStep(step: ProcessStep): void {
         }
     }
     if (state.currentProcessBlock) {
-        // Completion icons (✅/❌) update the last matching running step
-        if (step.icon === '✅' || step.icon === '❌') {
-            const status = step.icon === '✅' ? 'done' : 'error';
+        // Completion detection: prefer semantic status field, fall back to emoji check
+        const resolvedStatus = (step.status && step.status !== 'running')
+            ? step.status
+            : emojiToStatus(step.icon);
+        if (resolvedStatus === 'done' || resolvedStatus === 'error') {
             // Prefer matching by stepRef (stable correlation), fall back to label
             const ref = step.stepRef;
             const match = ref
@@ -154,7 +158,7 @@ export function showProcessStep(step: ProcessStep): void {
                 : [...state.currentProcessBlock.steps].reverse()
                     .find(s => s.status === 'running' && s.label === step.label);
             if (match) {
-                updateStepStatus(state.currentProcessBlock, match.id, status);
+                updateStepStatus(state.currentProcessBlock, match.id, resolvedStatus);
                 scrollToBottom();
                 return;
             }
@@ -162,7 +166,7 @@ export function showProcessStep(step: ProcessStep): void {
             const anyRunning = [...state.currentProcessBlock.steps].reverse()
                 .find(s => s.status === 'running');
             if (anyRunning) {
-                updateStepStatus(state.currentProcessBlock, anyRunning.id, status);
+                updateStepStatus(state.currentProcessBlock, anyRunning.id, resolvedStatus);
                 scrollToBottom();
                 return;
             }
@@ -180,6 +184,8 @@ export function showProcessStep(step: ProcessStep): void {
                 return;
             }
         }
+        // Convert emoji icon to SVG before adding step
+        step.icon = emojiToIcon(step.icon);
         addStep(state.currentProcessBlock, step);
     }
     scrollToBottom();
@@ -252,7 +258,7 @@ export function addMessage(role: string, text: string): HTMLDivElement {
     const div = document.createElement('div');
     if (role === 'agent') {
         div.className = 'msg msg-agent';
-        div.innerHTML = `<div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body"><div class="msg-content">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
+        div.innerHTML = `<div class="agent-icon" aria-hidden="true">${ICONS.shark}</div><div class="agent-body"><div class="msg-content">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
     } else {
         div.className = `msg msg-${role}`;
         div.innerHTML = `<div class="msg-label">${label}</div><div class="msg-content">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button>`;
@@ -328,7 +334,7 @@ export async function loadMessages(): Promise<void> {
                 const tools = m.role === 'assistant' ? parseToolLog(m.tool_log) : [];
                 const toolHtml = tools.length > 0 ? buildProcessBlockHtml(toProcessSteps(tools), true) : '';
                 const html = role === 'agent'
-                    ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">🦈</div><div class="agent-body">${toolHtml}<div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
+                    ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">${ICONS.shark}</div><div class="agent-body">${toolHtml}<div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
                     : `<div class="msg msg-${role}"><div class="msg-label">${label}</div><div class="msg-content" data-raw="${escapeHtml(stripOrchestration(m.content))}">${rendered}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div>`;
                 vs.addItem(crypto.randomUUID(), html);
             }
@@ -366,7 +372,7 @@ export async function loadMessages(): Promise<void> {
     const cached = await getCachedMessages();
     if (cached.length > 0) {
         cached.forEach(m => addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content));
-        addMessage('system', '📴 오프라인 모드 — 캐시된 메시지 표시 중');
+        addMessage('system', `${ICONS.warning} 오프라인 모드 — 캐시된 메시지 표시 중`);
     }
     showEmptyState();
 }
@@ -406,7 +412,7 @@ export function initMsgCopy(): void {
         const text = content.getAttribute('data-raw') || content.innerText || content.textContent || '';
         navigator.clipboard.writeText(text).then(() => {
             btn.classList.add('copied');
-            btn.textContent = '✓';
+            btn.innerHTML = ICONS.checkSimple;
             setTimeout(() => {
                 btn.classList.remove('copied');
                 btn.textContent = '';

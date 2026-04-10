@@ -2,6 +2,7 @@
 // Collapsible panel showing tool/thinking activity during agent responses.
 
 import { escapeHtml } from '../render.js';
+import { ICONS } from '../icons.js';
 
 export interface ProcessStep {
     id: string;
@@ -23,13 +24,13 @@ export interface ProcessBlockState {
 function buildSummaryText(steps: ProcessStep[]): string {
     const counts: Record<string, number> = {};
     for (const s of steps) {
-        const key = s.type === 'thinking' ? '💭 Thinking'
-            : s.type === 'search' ? '🔍 Search'
-            : '🔧 Tool';
+        const key = s.type === 'thinking' ? `${ICONS.thinking} Thinking`
+            : s.type === 'search' ? `${ICONS.search} Search`
+            : `${ICONS.tool} Tool`;
         counts[key] = (counts[key] || 0) + 1;
     }
     return Object.entries(counts)
-        .map(([k, n]) => n > 1 ? `${k}×${n}` : k)
+        .map(([k, n]) => n > 1 ? `${k}&times;${n}` : k)
         .join(' + ');
 }
 
@@ -68,7 +69,7 @@ function renderStep(step: ProcessStep): string {
                     <span class="process-step-label">${label}</span>
                     ${snippetHtml}
                 </span>
-                <span class="process-step-chevron">▸</span>
+                <span class="process-step-chevron">${ICONS.chevronRight}</span>
             </button>
             <div class="process-step-details collapsed" id="${detailId}">
                 <pre class="process-step-full">${escapeHtml(detail)}</pre>
@@ -89,7 +90,7 @@ function blockShell(summaryText = '', collapsed = false): string {
             <span class="process-dot ${collapsed ? 'done' : 'running'}"></span>
             <span class="process-summary-text">${escapeHtml(summaryText)}</span>
             <span class="process-duration"></span>
-            <span class="process-chevron">${collapsed ? '▸' : '▾'}</span>
+            <span class="process-chevron">${collapsed ? ICONS.chevronRight : ICONS.chevronDown}</span>
         </button>
         <div class="process-details">
             <div class="process-steps-inner"></div>
@@ -106,7 +107,7 @@ function toggleStepDetails(toggle: HTMLElement): void {
     details.classList.toggle('collapsed', !expanding);
     wrapper.classList.toggle('expanded', expanding);
     toggle.setAttribute('aria-expanded', expanding ? 'true' : 'false');
-    if (chevron) chevron.textContent = expanding ? '▾' : '▸';
+    if (chevron) chevron.innerHTML = expanding ? ICONS.chevronDown : ICONS.chevronRight;
 }
 
 export function bindProcessBlockInteractions(root: HTMLElement): void {
@@ -129,7 +130,7 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
             block.classList.toggle('collapsed', !expanding);
             summary.setAttribute('aria-expanded', expanding ? 'true' : 'false');
             const chevron = summary.querySelector('.process-chevron');
-            if (chevron) chevron.textContent = expanding ? '▾' : '▸';
+            if (chevron) chevron.innerHTML = expanding ? ICONS.chevronDown : ICONS.chevronRight;
         }
     });
     root.dataset.processBlockBound = '1';
@@ -223,7 +224,7 @@ export function collapseBlock(pb: ProcessBlockState): void {
     const btn = pb.element.querySelector('.process-summary');
     if (btn) btn.setAttribute('aria-expanded', 'false');
     const chevron = pb.element.querySelector('.process-chevron');
-    if (chevron) chevron.textContent = '▸';
+    if (chevron) chevron.innerHTML = ICONS.chevronRight;
 
     for (const step of pb.steps) {
         if (step.status === 'running') step.status = 'done';

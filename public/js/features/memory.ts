@@ -1,6 +1,7 @@
 // ── Memory Feature ──
 import { escapeHtml } from '../render.js';
 import { api, apiJson } from '../api.js';
+import { ICONS } from '../icons.js';
 
 interface MemoryFile {
     name: string;
@@ -74,7 +75,7 @@ function syncSidebarBadge(status: AdvancedMemoryStatus | null, basicCount: numbe
         : status?.state === 'not_initialized'
             ? 'Indexing'
             : (status?.state || `(${basicCount})`);
-    sideBtn.textContent = `🧠 Memory · ${state}`;
+    sideBtn.innerHTML = `${ICONS.brain} Memory · ${escapeHtml(state)}`;
 }
 
 function renderStatusBanner(status: AdvancedMemoryStatus | null) {
@@ -174,7 +175,7 @@ function renderBasicFiles(files: MemoryFile[]) {
                 <span style="font-size:12px;font-family:monospace">${escapeHtml(f.name)}</span>
                 <span style="font-size:10px;color:var(--accent);margin-left:6px">${f.entries} entries</span>
             </div>
-            <button data-mem-delete="${escapeHtml(f.name)}" style="background:none;border:none;color:#f55;cursor:pointer;font-size:14px">🗑️</button>
+            <button data-mem-delete="${escapeHtml(f.name)}" style="background:none;border:none;color:#f55;cursor:pointer;font-size:14px">${ICONS.trash}</button>
         </div>
     `).join('');
 }
@@ -331,7 +332,7 @@ export async function viewMemFile(name: string): Promise<void> {
     container.innerHTML = `
         <div style="margin-bottom:8px;display:flex;justify-content:space-between;align-items:center">
             <span style="font-size:12px;font-weight:600">${escapeHtml(data.name)}</span>
-            <button data-mem-back style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">← back</button>
+            <button data-mem-back style="background:none;border:none;color:var(--accent);cursor:pointer;font-size:11px">${ICONS.arrowLeft} back</button>
         </div>
         <pre style="background:var(--bg);padding:8px;border-radius:4px;font-size:11px;white-space:pre-wrap;max-height:50vh;overflow-y:auto;color:var(--text)">${escapeHtml(data.content)}</pre>
     `;

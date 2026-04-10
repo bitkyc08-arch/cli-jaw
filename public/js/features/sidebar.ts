@@ -3,6 +3,8 @@
 // - Wide viewport (>900px): toggle *-collapsed classes
 // - Narrow viewport (≤900px): CSS auto-collapses, toggle *-expanded to override
 
+import { ICONS } from '../icons.js';
+
 interface SidebarState {
     left?: boolean;
     right?: boolean;
@@ -77,8 +79,8 @@ function isRightOpen(): boolean {
 function syncIcons(): void {
     const leftBtn = document.getElementById('toggleLeft');
     const rightBtn = document.getElementById('toggleRight');
-    if (leftBtn) leftBtn.textContent = isLeftOpen() ? '◀' : '▶';
-    if (rightBtn) rightBtn.textContent = isRightOpen() ? '▶' : '◀';
+    if (leftBtn) leftBtn.innerHTML = isLeftOpen() ? ICONS.chevronLeft : ICONS.chevronRight;
+    if (rightBtn) rightBtn.innerHTML = isRightOpen() ? ICONS.chevronRight : ICONS.chevronLeft;
 }
 
 function save(): void {

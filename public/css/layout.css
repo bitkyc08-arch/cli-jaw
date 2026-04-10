@@ -405,3 +405,21 @@ body.right-collapsed .sidebar-right {
 .mobile-nav {
     display: none;
 }
+
+/* ── Lucide Icons ── */
+.lucide {
+    display: inline-block;
+    vertical-align: -0.125em;
+    flex-shrink: 0;
+}
+
+[data-icon] {
+    display: inline-flex;
+    align-items: center;
+    line-height: 0;
+}
+
+.icon-hydrated {
+    display: inline-flex;
+    align-items: center;
+}

@@ -6,6 +6,7 @@ import { escapeHtml } from '../render.js';
 import { getAgentPhase } from '../ws.js';
 import { t } from './i18n.js';
 import { api, apiJson, apiFire } from '../api.js';
+import { ICONS } from '../icons.js';
 
 interface Employee {
     id: string;
@@ -80,7 +81,7 @@ export function renderEmployees(): void {
                 <input style="flex:1;background:none;border:none;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;outline:none"
                        value="${escapeHtml(a.name || 'Agent')}"
                        data-emp-name="${escapeHtml(a.id)}">
-                <button style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px" data-emp-delete="${escapeHtml(a.id)}" title="${t('emp.delete')}">✕</button>
+                <button style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px" data-emp-delete="${escapeHtml(a.id)}" title="${t('emp.delete')}">${ICONS.close}</button>
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
                 <div>
@@ -108,7 +109,7 @@ export function renderEmployees(): void {
                           placeholder="${t('emp.customRole')}">${isCustom ? escapeHtml(a.role || '') : ''}</textarea>
             </div>
             <div style="margin-top:4px;font-size:10px;display:flex;align-items:center;gap:6px">
-                <span style="color:${a.status === 'running' ? '#fbbf24' : 'var(--green)'}">● ${escapeHtml(a.status || 'idle')}</span>
+                <span style="color:${a.status === 'running' ? '#fbbf24' : 'var(--green)'}"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;vertical-align:middle;margin-right:4px"></span>${escapeHtml(a.status || 'idle')}</span>
                 ${phaseBadge}
             </div>
         </div>`;

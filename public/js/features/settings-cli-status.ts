@@ -3,6 +3,7 @@ import { api } from '../api.js';
 import { escapeHtml } from '../render.js';
 import { t } from './i18n.js';
 import { state } from '../state.js';
+import { ICONS } from '../icons.js';
 import type { QuotaEntry } from './settings-types.js';
 
 export async function loadCliStatus(force = false): Promise<void> {
@@ -113,14 +114,14 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             }).join('');
         } else if (q?.error && info.available) {
             const msg = q.reason === 'rate_limited' ? 'Rate limited — retry in a moment' : 'Usage data unavailable';
-            windowsHtml = `<div style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px;opacity:0.7">⚠ ${msg}</div>`;
+            windowsHtml = `<div style="font-size:10px;color:var(--text-dim);margin:2px 0 0 16px;opacity:0.7">${ICONS.warning} ${msg}</div>`;
         }
 
         html += `
             <div class="settings-group" style="margin-bottom:6px;padding:8px 10px">
                 <div class="cli-status-row">
                     <span class="cli-dot ${dotClass}"></span>
-                    <span class="cli-name" style="font-weight:600">${escapeHtml(name)}</span>${name === 'copilot' ? `<button id="copilotKeychainBtn" style="font-size:9px;margin-left:6px;padding:1px 5px;background:var(--border);color:var(--text-dim);border:1px solid var(--text-dim);border-radius:3px;cursor:pointer;vertical-align:middle;line-height:1" title="${t('copilot.keychainHint')}">🔑</button>` : ''}
+                    <span class="cli-name" style="font-weight:600">${escapeHtml(name)}</span>${name === 'copilot' ? `<button id="copilotKeychainBtn" style="font-size:9px;margin-left:6px;padding:1px 5px;background:var(--border);color:var(--text-dim);border:1px solid var(--text-dim);border-radius:3px;cursor:pointer;vertical-align:middle;line-height:1" title="${t('copilot.keychainHint')}">${ICONS.key}</button>` : ''}
                 </div>
                 ${accountLine}
                 ${authHint}
@@ -140,7 +141,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
     if (!hasReadyCli && allEntries.length > 0 && el) {
         el.insertAdjacentHTML('afterbegin',
             `<div style="padding:8px 10px;margin-bottom:8px;background:#fbbf2422;border:1px solid #fbbf24;border-radius:6px;font-size:11px;color:#fbbf24">
-                ⚠ ${t('cli.noReadyCli')}
+                ${ICONS.warning} ${t('cli.noReadyCli')}
             </div>`
         );
     }
@@ -150,15 +151,15 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
         kcBtn.addEventListener('click', async () => {
             const btn = kcBtn as HTMLButtonElement;
             btn.disabled = true;
-            btn.textContent = '⏳';
+            btn.innerHTML = ICONS.hourglass;
             try {
                 const res = await api<{ ok: boolean }>('/api/copilot/refresh', { method: 'POST' });
-                btn.textContent = res?.ok ? '✅' : '❌';
+                btn.innerHTML = res?.ok ? ICONS.check : ICONS.error;
                 if (res?.ok) await loadCliStatus(true);
             } catch {
-                btn.textContent = '❌';
+                btn.innerHTML = ICONS.error;
             }
-            setTimeout(() => { btn.textContent = '🔑'; btn.disabled = false; }, 2000);
+            setTimeout(() => { btn.innerHTML = ICONS.key; btn.disabled = false; }, 2000);
         });
     }
 }

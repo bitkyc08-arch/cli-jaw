@@ -293,6 +293,13 @@ export async function runSingleAgent(
         .map((p: number) => `${p}(${PHASES[p]})`)
         .join('→');
 
+    const worklogPath = String(worklog?.path || '').trim();
+    const worklogBlock = worklogPath
+        ? `## Worklog
+Read this file first: ${worklogPath}
+After completing your task, record results in the Execution Log section.`
+        : '';
+
     const taskPrompt = `## Task Instruction [${phaseLabel}]
 ${ap.task}
 
@@ -318,9 +325,7 @@ If you completed only one phase, you do not need to add this JSON.
 
 ${executionContext}
 
-## Worklog
-Read this file first: ${worklog.path}
-After completing your task, record results in the Execution Log section.`;
+${worklogBlock}`.trim();
 
     broadcast('agent_status', {
         agentId: emp.id, agentName: emp.name,
@@ -394,9 +399,11 @@ After completing your task, record results in the Execution Log section.`;
 
     broadcast('agent_status', { agentId: emp.id, agentName: emp.name, status: result.status, phase: ap.currentPhase });
 
-    appendToWorklog(worklog.path, 'Execution Log',
-        `### Round ${round} — ${result.agent} (${result.role}, ${result.phaseLabel})\n- Status: ${result.status}\n- Result: ${result.text.slice(0, 500)}`
-    );
+    if (worklogPath) {
+        appendToWorklog(worklogPath, 'Execution Log',
+            `### Round ${round} — ${result.agent} (${result.role}, ${result.phaseLabel})\n- Status: ${result.status}\n- Result: ${result.text.slice(0, 500)}`
+        );
+    }
 
     return result;
 }

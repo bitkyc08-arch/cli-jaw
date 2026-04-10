@@ -8,6 +8,7 @@ import { api, apiJson, apiFire } from '../api.js';
 import { escapeHtml } from '../render.js';
 import { getVirtualScroll } from '../virtual-scroll.js';
 import { clearCache } from './idb-cache.js';
+import { ICONS } from '../icons.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -81,7 +82,7 @@ export async function sendMessage(): Promise<void> {
 
     if (state.attachedFiles.length) {
         const names = state.attachedFiles.map((f: File) => f.name).join(', ');
-        const displayMsg = `[📎 ${names}] ${text}`;
+        const displayMsg = `${ICONS.paperclip} [${names}] ${text}`;
         addMessage('user', displayMsg);
         input.value = '';
         resetInputHeight();
@@ -107,7 +108,7 @@ export async function sendMessage(): Promise<void> {
         });
         const data: MessageResult = await res.json().catch(() => ({}));
         if (!res.ok) {
-            addSystemMsg(`❌ ${data.error || t('chat.requestFail', { status: res.status })}`, '', 'error');
+            addSystemMsg(`${ICONS.error} ${data.error || t('chat.requestFail', { status: res.status })}`, '', 'error');
             return;
         }
         if (data.queued) {
@@ -182,8 +183,8 @@ function renderFilePreview(): void {
         }
         return `<div class="file-chip">
             ${thumb}
-            <span class="file-chip-name">📎 ${escapeHtml(f.name)} (${size}KB)</span>
-            <button class="file-chip-remove" data-file-idx="${i}" title="Remove">✕</button>
+            <span class="file-chip-name">${ICONS.paperclip} ${escapeHtml(f.name)} (${size}KB)</span>
+            <button class="file-chip-remove" data-file-idx="${i}" title="Remove">${ICONS.close}</button>
         </div>`;
     }).join('');
 }
@@ -279,8 +280,8 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
     const pendingFiles = [...state.attachedFiles];
 
     // Build user-facing display message
-    const displayParts: string[] = ['🎤 [음성 메시지]'];
-    if (pendingFiles.length) displayParts.push(`[📎 ${pendingFiles.map(f => f.name).join(', ')}]`);
+    const displayParts: string[] = [`${ICONS.mic} [음성 메시지]`];
+    if (pendingFiles.length) displayParts.push(`${ICONS.paperclip} [${pendingFiles.map(f => f.name).join(', ')}]`);
     if (pendingText) displayParts.push(pendingText);
     addMessage('user', displayParts.join(' '));
 
@@ -306,7 +307,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
         const sttResult = await sttRes.json().catch(() => null);
         if (!sttResult?.text) throw new Error('Empty STT result');
 
-        addSystemMsg(`🎤 STT (${sttResult.engine}, ${sttResult.elapsed?.toFixed(1)}s): "${sttResult.text.slice(0, 100)}"`, '', 'info');
+        addSystemMsg(`${ICONS.mic} STT (${sttResult.engine}, ${sttResult.elapsed?.toFixed(1)}s): "${sttResult.text.slice(0, 100)}"`, '', 'info');
 
         // Step 2: Upload pending files (if any)
         let filePaths: string[] = [];
@@ -319,7 +320,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
         for (const p of filePaths) {
             promptParts.push(t('chat.file.sent', { path: p }));
         }
-        promptParts.push(`🎤 ${sttResult.text}`);
+        promptParts.push(`${ICONS.mic} ${sttResult.text}`);
         if (pendingText) promptParts.push(pendingText);
 
         await apiJson('/api/message', 'POST', { prompt: promptParts.join('\n') });

@@ -1,5 +1,5 @@
-// ─── Research Worker Dispatch Helper ────────────────
-// Phase-independent research dispatch for the Research worker.
+// ─── Research Employee Dispatch Helper ──────────────
+// Phase-independent research dispatch for the Research employee.
 // Callable from IDLE, P, A, B, C — always read-only, report-only.
 
 import { broadcast } from '../core/bus.js';
@@ -60,7 +60,7 @@ export async function dispatchResearchTask(
     : spawnAgent;
 
   if (!configuredEmp) {
-    console.warn('[jaw:research] Research employee not found, using fallback Research worker');
+    console.warn('[jaw:research] Research employee not found, using fallback Research employee');
   }
 
   const sysPrompt = getEmployeePromptV2(emp, 'research', 1);
@@ -121,8 +121,8 @@ Respond with this exact structure:
   if (parsed.rawText) return parsed;
 
   const failureReason = r.code === 127
-    ? 'Research worker CLI not available'
-    : `Research worker failed with code ${r.code ?? 'unknown'}`;
+    ? 'Research employee CLI not available'
+    : `Research employee failed with code ${r.code ?? 'unknown'}`;
   return {
     rawText: '',
     summary: '',

@@ -4,6 +4,7 @@ import type { HeartbeatJob, HeartbeatSchedule } from '../state.js';
 import { t } from './i18n.js';
 import { api, apiJson } from '../api.js';
 import { escapeHtml } from '../render.js';
+import { ICONS } from '../icons.js';
 import {
     validateHeartbeatScheduleInput,
     type HeartbeatScheduleValidationCode,
@@ -55,7 +56,7 @@ export function renderHeartbeatJobs(): void {
                             data-hb-name="${i}">
                         <button class="hb-toggle ${job.enabled ? 'on' : 'off'}"
                             data-hb-toggle="${i}" aria-label="${escapeHtml(String(job.name || 'job') + ' toggle')}"></button>
-                        <button class="hb-del" data-hb-remove="${i}">✕</button>
+                        <button class="hb-del" data-hb-remove="${i}">${ICONS.close}</button>
                     </div>
                     <div class="hb-job-schedule">
                         <select data-hb-kind="${i}">
@@ -76,7 +77,7 @@ export function renderHeartbeatJobs(): void {
     }
     const active = jobs.filter(j => j.enabled).length;
     const btn = document.getElementById('hbSidebarBtn');
-    if (btn) btn.textContent = `💓 Heartbeat (${active})`;
+    if (btn) btn.innerHTML = `${ICONS.heartPulse} Heartbeat (${active})`;
 }
 
 export function addHeartbeatJob(): void {
@@ -127,7 +128,7 @@ export async function initHeartbeatBadge(): Promise<void> {
         const d = await api<HeartbeatData>('/api/heartbeat');
         const active = (d?.jobs || []).map(normalizeHeartbeatJob).filter(j => j.enabled).length;
         const btn = document.getElementById('hbSidebarBtn');
-        if (btn) btn.textContent = `💓 Heartbeat (${active})`;
+        if (btn) btn.innerHTML = `${ICONS.heartPulse} Heartbeat (${active})`;
     } catch { /* ignore */ }
 }
 

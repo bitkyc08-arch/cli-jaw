@@ -3,6 +3,7 @@
 // Extracted from ui.ts for modularity.
 
 import { escapeHtml } from '../render.js';
+import { ICONS } from '../icons.js';
 
 export interface ToolLogEntry {
     icon: string;
@@ -42,7 +43,7 @@ function renderToolItem(tl: ToolLogEntry, idx: number): string {
                     <span class="tool-item-label">${label}</span>
                     ${snippetHtml}
                 </span>
-                <span class="tool-item-chevron">▸</span>
+                <span class="tool-item-chevron">${ICONS.chevronRight}</span>
             </button>
             <div class="tool-item-details collapsed" id="${detailId}">
                 <pre class="tool-item-full">${escapeHtml(detail)}</pre>
@@ -63,14 +64,14 @@ export function buildToolGroupHtml(toolLog: ToolLogEntry[]): string {
     });
 
     const summaryParts = Object.entries(counts)
-        .map(([icon, n]) => `${escapeHtml(icon)}×${n}`)
+        .map(([icon, n]) => `${escapeHtml(icon)}&times;${n}`)
         .join(' ');
 
     const toolId = `td-${Date.now()}`;
 
     const logLines = toolLog.map((tl, i) => renderToolItem(tl, i)).join('');
 
-    return `<div class="tool-group"><button class="tool-group-summary" aria-expanded="false" aria-controls="${toolId}"><span class="tool-status-dot done"></span><span class="tool-group-summary-text">${summaryParts}</span><span class="tool-group-chevron">▾</span></button><div class="tool-details collapsed" id="${toolId}">${logLines}</div></div>`;
+    return `<div class="tool-group"><button class="tool-group-summary" aria-expanded="false" aria-controls="${toolId}"><span class="tool-status-dot done"></span><span class="tool-group-summary-text">${summaryParts}</span><span class="tool-group-chevron">${ICONS.chevronDown}</span></button><div class="tool-details collapsed" id="${toolId}">${logLines}</div></div>`;
 }
 
 /** Bind expand/collapse click handlers for tool items within a container */
@@ -89,7 +90,7 @@ export function bindToolItemInteractions(root: HTMLElement): void {
         details.classList.toggle('collapsed', !expanding);
         wrapper.classList.toggle('expanded', expanding);
         toggle.setAttribute('aria-expanded', expanding ? 'true' : 'false');
-        if (chevron) chevron.textContent = expanding ? '▾' : '▸';
+        if (chevron) chevron.innerHTML = expanding ? ICONS.chevronDown : ICONS.chevronRight;
     });
     root.dataset.toolItemBound = '1';
 }

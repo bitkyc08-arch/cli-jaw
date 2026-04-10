@@ -53,6 +53,7 @@ import { initTheme } from './features/theme.js';
 import { initGestures } from './features/gesture.js';
 import { initI18n, setLang, getLang, t } from './features/i18n.js';
 import { toggleRecording, cancelRecording } from './features/voice-recorder.js';
+import { ICONS, hydrateIcons } from './icons.js';
 
 // ── Chat Actions ──
 document.getElementById('btnSend')?.addEventListener('click', sendMessage);
@@ -96,7 +97,7 @@ document.getElementById('langToggle')?.addEventListener('click', async () => {
     const next = getLang() === 'ko' ? 'en' : 'ko';
     await setLang(next);
     const btn = document.getElementById('langToggle');
-    if (btn) btn.textContent = `🌐 ${t('lang.' + next)}`;
+    if (btn) btn.innerHTML = `${ICONS.web} ${t('lang.' + next)}`;
     // Reconnect WS with new locale
     if (state.ws) { state.ws.close(); }
 });
@@ -400,9 +401,10 @@ document.getElementById('basicMemoryFiles')?.addEventListener('click', (e) => {
 
 // ── Init ──
 async function bootstrap(): Promise<void> {
+    hydrateIcons();
     await initI18n();
     const langBtn = document.getElementById('langToggle');
-    if (langBtn) langBtn.textContent = `🌐 ${t('lang.' + getLang())}`;
+    if (langBtn) langBtn.innerHTML = `${ICONS.web} ${t('lang.' + getLang())}`;
     await loadCliRegistry();
     bindPerCliControlEvents();
     connect();

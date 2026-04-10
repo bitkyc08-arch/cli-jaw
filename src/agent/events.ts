@@ -336,7 +336,7 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
                 pushToolLabel(labels, { icon: '🗜️', label: 'compacting...', toolType: 'tool' }, cli, event, ctx);
             }
             if (status === 'compact_boundary' || subtype === 'compact_boundary' || event.compact_boundary === true) {
-                pushToolLabel(labels, { icon: '✅', label: 'conversation compacted', toolType: 'tool' }, cli, event, ctx);
+                pushToolLabel(labels, { icon: '✅', label: 'conversation compacted', toolType: 'tool', status: 'done' }, cli, event, ctx);
             }
         }
         if (event.type === 'stream_event' && event.event?.type === 'content_block_start') {
@@ -365,7 +365,7 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
         }
         if (event.type === 'tool_result') {
             const ref = `gemini:tool:${event.tool_name || 'tool'}`;
-            labels.push({ icon: event.status === 'success' ? '✅' : '❌', label: `${event.status || 'done'}`, toolType: 'tool', stepRef: ref });
+            labels.push({ icon: event.status === 'success' ? '✅' : '❌', label: `${event.status || 'done'}`, toolType: 'tool', stepRef: ref, status: event.status === 'success' ? 'done' : 'error' });
         }
     }
 
@@ -376,7 +376,7 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
         }
         if (event.type === 'tool_result' && event.part) {
             const ref = `opencode:tool:${event.part.tool || 'tool'}`;
-            labels.push({ icon: '✅', label: event.part.tool || 'done', toolType: 'tool', stepRef: ref });
+            labels.push({ icon: '✅', label: event.part.tool || 'done', toolType: 'tool', stepRef: ref, status: 'done' });
         }
     }
 
@@ -483,6 +483,7 @@ export function extractFromAcpUpdate(params: any) {
                     label: update.name || update.id || 'done',
                     toolType: 'tool',
                     stepRef: `acp:tool:${update.name || update.id || 'done'}`,
+                    status: 'done',
                 },
             };
 

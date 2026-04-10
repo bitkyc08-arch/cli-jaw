@@ -13,7 +13,7 @@ export function initSttSettings(sttConfig: Record<string, any>): void {
     const vertexJson = document.getElementById('sttVertexJson') as HTMLTextAreaElement | null;
 
     if (engine) engine.value = sttConfig.engine || 'auto';
-    if (geminiKey) geminiKey.placeholder = sttConfig.geminiKeySet ? `✅ 입력됨 ····${sttConfig.geminiKeyLast4 || ''}` : 'AIza...';
+    if (geminiKey) geminiKey.placeholder = sttConfig.geminiKeySet ? `✓ 입력됨 ····${sttConfig.geminiKeyLast4 || ''}` : 'AIza...';
     if (geminiModel) {
         const saved = sttConfig.geminiModel || 'gemini-2.5-flash-lite';
         const hasOption = Array.from(geminiModel.options).some(o => o.value === saved);
@@ -22,7 +22,7 @@ export function initSttSettings(sttConfig: Record<string, any>): void {
     }
     if (whisperModel) whisperModel.value = sttConfig.whisperModel || 'mlx-community/whisper-large-v3-turbo';
     if (openaiBaseUrl) openaiBaseUrl.value = sttConfig.openaiBaseUrl || '';
-    if (openaiKey) openaiKey.placeholder = sttConfig.openaiKeySet ? `✅ 입력됨 ····${sttConfig.openaiKeyLast4 || ''}` : 'sk-...';
+    if (openaiKey) openaiKey.placeholder = sttConfig.openaiKeySet ? `✓ 입력됨 ····${sttConfig.openaiKeyLast4 || ''}` : 'sk-...';
     if (openaiModel) openaiModel.value = sttConfig.openaiModel || '';
     if (vertexJson) vertexJson.value = sttConfig.vertexConfig || '';
 
@@ -55,8 +55,8 @@ export function initSttSettings(sttConfig: Record<string, any>): void {
         console.log('[stt] saving:', { engine: patch.stt.engine, hasGeminiKey: !!patch.stt.geminiApiKey, hasOpenaiKey: !!patch.stt.openaiApiKey });
         try {
             await apiJson('/api/settings', 'PUT', patch);
-            if (geminiKey?.value) { const l4 = geminiKey.value.slice(-4); geminiKey.value = ''; geminiKey.placeholder = `✅ 입력됨 ····${l4}`; }
-            if (openaiKey?.value) { const l4 = openaiKey.value.slice(-4); openaiKey.value = ''; openaiKey.placeholder = `✅ 입력됨 ····${l4}`; }
+            if (geminiKey?.value) { const l4 = geminiKey.value.slice(-4); geminiKey.value = ''; geminiKey.placeholder = `✓ 입력됨 ····${l4}`; }
+            if (openaiKey?.value) { const l4 = openaiKey.value.slice(-4); openaiKey.value = ''; openaiKey.placeholder = `✓ 입력됨 ····${l4}`; }
         } catch (e) {
             console.error('[stt] save failed:', e);
         }

@@ -118,6 +118,14 @@ test('EMP-024: research role injects read-only guide and phase 1 context', () =>
     );
 });
 
+test('EMP-025: employee prompt uses employee-agent pipe mode wording', () => {
+    const emp = { name: 'Research', cli: 'claude', role: 'research' };
+    clearPromptCache();
+    const v2 = getEmployeePromptV2(emp, 'research', 1);
+    assert.ok(v2.includes('employee agent in pipe mode'));
+    assert.ok(!v2.includes('worker agent in pipe mode'));
+});
+
 // ─── Phase 17: triage AI dispatch ────────────────────
 
 test('EMP-011: parseSubtasks extracts subtask JSON from agent response', () => {

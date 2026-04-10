@@ -13,6 +13,7 @@ import { clearMainSessionState, clearBossSessionOnly } from '../core/main-sessio
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent } from '../agent/spawn.js';
 import {
+    createWorklog,
     readLatestWorklog,
     appendToWorklog, updateWorklogStatus,
 } from '../memory/worklog.js';
@@ -54,6 +55,14 @@ function pickPlanningTask(userText: string, _prompt: string, ctx: Record<string,
     const userPrompt = String(userText || '').trim();
     if (userPrompt) return userPrompt;
     return '';
+}
+
+function pickWorklogSeed(...candidates: Array<string | null | undefined>) {
+    for (const candidate of candidates) {
+        const value = String(candidate || '').trim();
+        if (value) return value;
+    }
+    return 'orchestration';
 }
 
 // ─── orchestrate (PABCD sole entry point) ───────────
@@ -137,6 +146,9 @@ export async function orchestrate(
             nextCtx.researchReport = report.rawText || null;
         }
 
+        // Create a fresh worklog before setState() so state/title reads the new latest worklog.
+        const worklogSeed = pickWorklogSeed(nextCtx.originalPrompt, planningTask, userText);
+        createWorklog(worklogSeed);
         setState('P', nextCtx);
         ctx = nextCtx;
     }
@@ -198,6 +210,11 @@ export async function orchestrate(
         const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 3, C: 4 };
         const defaultPhase = PABCD_PHASE_MAP[state] || 3;
 
+        const worklogSeed = pickWorklogSeed(ctx?.originalPrompt, planningTask, userText);
+        const activeWorklog = isInitialPlanningTurn
+            ? readLatestWorklog()
+            : (readLatestWorklog() || { path: createWorklog(worklogSeed).path });
+
         let anyWorkerRan = false;
         for (const wt of workerTasks) {
             const emp = findEmployee(
@@ -227,7 +244,7 @@ export async function orchestrate(
                         history: [],
                     },
                     emp,
-                    { path: '' },
+                    { path: activeWorklog?.path || '' },
                     1,
                     { origin },
                     [],  // priorResults (empty — worker runs independently)

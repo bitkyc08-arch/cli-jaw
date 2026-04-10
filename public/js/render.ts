@@ -25,6 +25,10 @@ import katex from 'katex';
 import DOMPurify from 'dompurify';
 import { t } from './features/i18n.js';
 import { fixCjkPunctuationBoundary } from './cjk-fix.js';
+import {
+    SvgBlock, shieldCodeFenceSvg, unshieldCodeFenceSvg,
+    extractTopLevelSvg,
+} from './diagram/types.js';
 
 // Register hljs languages (core-only import: ~25KB vs ~1MB full)
 hljs.registerLanguage('javascript', javascript);
@@ -75,16 +79,41 @@ export function escapeHtml(str: string): string {
         .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
-// ── XSS sanitization ──
+// ── XSS sanitization (hardened for inline SVG — Phase 1) ──
 export function sanitizeHtml(html: string): string {
     return DOMPurify.sanitize(html, {
         USE_PROFILES: { html: true, svg: true, svgFilters: true },
-        FORBID_TAGS: ['script', 'style', 'iframe', 'object', 'embed', 'form'],
+        FORBID_TAGS: [
+            'script', 'style', 'iframe', 'object', 'embed', 'form',
+            // SVG security: block animation + foreignObject (script injection vectors)
+            'foreignObject', 'animate', 'set', 'animateTransform', 'animateMotion',
+        ],
         FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur'],
         ADD_TAGS: ['use'],
-        ADD_ATTR: ['aria-hidden', 'xmlns', 'viewBox'],
+        ADD_ATTR: ['aria-hidden', 'xmlns', 'viewBox', 'role', 'aria-label',
+                   'data-jaw-svg', 'data-jaw-kind'],
     });
 }
+
+// Hook: strip external href/xlink:href on <use> and <image>
+// Only fragment references (#id) allowed — blocks external resource loading.
+DOMPurify.addHook('afterSanitizeAttributes', (node) => {
+    const tag = node.tagName.toLowerCase();
+    if (tag === 'use' || tag === 'image') {
+        const href = node.getAttribute('href') || '';
+        if (href && !href.startsWith('#')) {
+            node.removeAttribute('href');
+        }
+        // Check BOTH forms: getAttributeNS for XML parsers, getAttribute for HTML parser
+        // DOMPurify uses createHTMLDocument() which stores xlink:href as plain attribute
+        const xlinkHref = node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+            || node.getAttribute('xlink:href') || '';
+        if (xlinkHref && !xlinkHref.startsWith('#')) {
+            node.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+            node.removeAttribute('xlink:href');
+        }
+    }
+});
 
 // ── Orchestration JSON stripping ──
 // Only strip JSON blocks that contain orchestration-specific keys, not all JSON blocks
@@ -200,10 +229,18 @@ function ensureMarked(): boolean {
 
     const renderer = new Renderer();
 
-    // Code blocks: highlight.js + mermaid detection
+    // Code blocks: highlight.js + mermaid + diagram-html detection
     renderer.code = function ({ text, lang }: { text: string; lang?: string }) {
         if (lang === 'mermaid') {
             return `<div class="mermaid-container mermaid-pending">${escapeHtml(text)}</div>`;
+        }
+        // diagram-html: encode as base64, Phase 2 activateWidgets() inflates to sandboxed iframe
+        if (lang === 'diagram-html') {
+            const encoded = btoa(unescape(encodeURIComponent(text)));
+            return `<div class="diagram-widget-pending" data-diagram-html="${encoded}"
+                role="status" aria-label="Interactive widget loading">
+                <div class="diagram-spinner"></div>
+            </div>`;
         }
         let highlighted = escapeHtml(text);
         if (lang && hljs.getLanguage(lang)) {
@@ -292,24 +329,111 @@ function ensureCopyDelegation(): void {
     });
 }
 
+// ── SVG Block Rendering (Phase 1) ──
+
+function renderSvgBlock(block: SvgBlock): string {
+    if (block.kind === 'partial') {
+        return `<div class="diagram-container diagram-loading" role="status"
+            aria-label="Diagram loading"><div class="diagram-spinner"></div></div>`;
+    }
+    if (block.kind === 'error') {
+        return `<div class="diagram-container diagram-error" role="alert">
+            Malformed SVG: unclosed element</div>`;
+    }
+    // Complete SVG — sanitize individually (extracted SVGs bypass main pipeline)
+    const sanitized = sanitizeHtml(block.svg);
+    return `<div class="diagram-container diagram-svg" tabindex="0"
+        role="img" aria-label="SVG diagram">
+        ${sanitized}
+        <button class="diagram-zoom-btn" type="button"
+            aria-label="Expand diagram" title="Expand">⤢</button>
+    </div>`;
+}
+
+function unshieldSvgBlocks(html: string, blocks: SvgBlock[]): string {
+    for (const block of blocks) {
+        const pattern = `<div\\b[^>]*?\\bdata-jaw-svg="${block.id}"[^>]*></div>`;
+        const re = new RegExp(pattern, 'g');
+        html = html.replace(re, renderSvgBlock(block));
+    }
+    return html;
+}
+
+// ── Diagram Zoom Overlay ──
+
+export function bindDiagramZoom(): void {
+    document.querySelectorAll('.diagram-zoom-btn').forEach(btn => {
+        if ((btn as HTMLElement).dataset.bound) return;
+        (btn as HTMLElement).dataset.bound = '1';
+        btn.addEventListener('click', () => {
+            const container = btn.closest('.diagram-container');
+            if (!container) return;
+            // Clone without zoom button to prevent nesting
+            const clone = container.cloneNode(true) as HTMLElement;
+            clone.querySelectorAll('.diagram-zoom-btn').forEach(b => b.remove());
+            openDiagramOverlay(clone.innerHTML);
+        });
+    });
+}
+
+export function openDiagramOverlay(innerHtml: string): void {
+    const overlay = document.createElement('div');
+    overlay.className = 'diagram-overlay';
+    overlay.setAttribute('role', 'dialog');
+    overlay.setAttribute('aria-label', 'Expanded diagram');
+    overlay.innerHTML = `
+        <div class="diagram-overlay-content">${innerHtml}</div>
+        <button class="diagram-overlay-close" type="button" aria-label="Close">✕</button>
+    `;
+
+    const closeBtn = overlay.querySelector('.diagram-overlay-close') as HTMLElement;
+
+    const close = () => { overlay.remove(); document.removeEventListener('keydown', onKey); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') close(); };
+
+    closeBtn.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    closeBtn.focus();
+}
+
 // ── Main export ──
-export function renderMarkdown(text: string): string {
+export function renderMarkdown(text: string, isStreaming = false): string {
     const cleaned = stripOrchestration(text);
     if (!cleaned) return `<em class="text-dim orchestrate-placeholder">${escapeHtml(t('orchestrator.dispatching'))}</em>`;
 
-    const { text: shielded, blocks: mathBlocks } = shieldMath(cleaned);
+    // 1. Shield code fences (protect SVG in code blocks)
+    const { text: fenceShielded, fences } = shieldCodeFenceSvg(cleaned);
 
+    // 2. Extract top-level SVGs
+    const { text: svgShielded, blocks: svgBlocks } = extractTopLevelSvg(fenceShielded, isStreaming);
+
+    // 3. Unshield code fences (restore for marked processing)
+    const restored = unshieldCodeFenceSvg(svgShielded, fences);
+
+    // 4. Shield math
+    const { text: shielded, blocks: mathBlocks } = shieldMath(restored);
+
+    // 5. Marked parse
     ensureMarked();
     const fixed = fixCjkPunctuationBoundary(shielded);
     let html = marked.parse(fixed) as string;
     html = html.replace(/<table/g, '<div class="table-wrapper"><table').replace(/<\/table>/g, '</table></div>');
 
+    // 6. Unshield math
     html = unshieldMath(html, mathBlocks);
+
+    // 7. Sanitize
     html = sanitizeHtml(html);
 
+    // 8. Unshield SVGs (after sanitize — SVGs sanitized individually in renderSvgBlock)
+    html = unshieldSvgBlocks(html, svgBlocks);
+
+    // 9. Post-render async tasks
     requestAnimationFrame(() => {
         renderMermaidBlocks();
         rehighlightAll();
+        bindDiagramZoom();
     });
 
     ensureCopyDelegation();

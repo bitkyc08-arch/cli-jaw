@@ -3,6 +3,7 @@ import { state } from '../state.js';
 import { t, fetchWithLocale } from './i18n.js';
 import { apiJson } from '../api.js';
 import { escapeHtml } from '../render.js';
+import { ICONS, emojiToIcon } from '../icons.js';
 
 interface SkillItem {
     id: string;
@@ -46,13 +47,13 @@ export function renderSkills(): void {
 
     list.innerHTML = filtered.map(s => {
         const reqParts: string[] = [];
-        if (s.requires?.env) reqParts.push('🔑 ' + s.requires.env.map(e => escapeHtml(e)).join(', '));
-        if (s.requires?.bins) reqParts.push('⚙️ ' + s.requires.bins.map(b => escapeHtml(b)).join(', '));
+        if (s.requires?.env) reqParts.push(`${ICONS.key} ` + s.requires.env.map(e => escapeHtml(e)).join(', '));
+        if (s.requires?.bins) reqParts.push(`${ICONS.settings} ` + s.requires.bins.map(b => escapeHtml(b)).join(', '));
         if (s.install) reqParts.push(escapeHtml(s.install));
         return `
         <div class="skill-card ${s.enabled ? 'enabled' : ''}">
             <div class="skill-card-header">
-                <span class="skill-emoji">${escapeHtml(s.emoji || '🔧')}</span>
+                <span class="skill-emoji">${s.emoji ? emojiToIcon(s.emoji) : ICONS.tool}</span>
                 <span class="skill-name">${escapeHtml(s.name || s.id)}</span>
                 <button class="skill-toggle ${s.enabled ? 'on' : 'off'}"
                         data-skill-id="${escapeHtml(s.id)}" data-skill-enabled="${s.enabled}"

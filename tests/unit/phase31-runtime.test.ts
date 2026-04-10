@@ -9,6 +9,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
 const serverSrc = readFileSync(join(projectRoot, 'server.ts'), 'utf8');
 const runtimeSettingsSrc = readFileSync(join(projectRoot, 'src/core/runtime-settings.ts'), 'utf8');
+const builderSrc = readFileSync(join(projectRoot, 'src/prompt/builder.ts'), 'utf8');
 
 function section(src: string, startMarker: string, endMarker: string) {
     const start = src.indexOf(startMarker);
@@ -34,4 +35,10 @@ test('P31-003: workingDir change triggers artifact regeneration pipeline', () =>
     assert.ok(runtimeSettingsSrc.includes('ensureWorkingDirSkillsLinks(settings.workingDir'));
     assert.ok(runtimeSettingsSrc.includes('syncToAll(loadUnifiedMcp())'));
     assert.ok(runtimeSettingsSrc.includes('regenerateB()'));
+});
+
+test('P31-004: regenerateB clears both template cache and prompt cache', () => {
+    const body = section(builderSrc, 'export function regenerateB()', '// Generate {workDir}/AGENTS.md');
+    assert.ok(body.includes('clearTemplateCache()'));
+    assert.ok(body.includes('clearPromptCache()'));
 });
