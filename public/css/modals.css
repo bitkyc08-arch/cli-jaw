@@ -22,15 +22,15 @@
 }
 
 .modal-box {
-    background: color-mix(in srgb, var(--surface) 85%, transparent);
+    background: color-mix(in oklch, var(--surface) 85%, transparent);
     backdrop-filter: blur(24px) saturate(1.5);
     -webkit-backdrop-filter: blur(24px) saturate(1.5);
-    border: 1px solid color-mix(in srgb, var(--accent) 10%, var(--border));
+    border: 1px solid color-mix(in oklch, var(--accent) 10%, var(--border));
     border-radius: var(--radius-xl);
     box-shadow:
         0 16px 48px rgba(0, 0, 0, 0.5),
         0 0 0 1px rgba(255, 255, 255, 0.04) inset,
-        0 0 60px -20px color-mix(in srgb, var(--accent) 6%, transparent);
+        0 0 60px -20px color-mix(in oklch, var(--accent) 6%, transparent);
     width: 500px;
     max-width: 90vw;
     max-height: 80vh;
