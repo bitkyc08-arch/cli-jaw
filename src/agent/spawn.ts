@@ -22,6 +22,7 @@ import {
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
 import { groupQueueKey } from '../messaging/session-key.js';
 import { isCompactMarkerRow } from '../core/compact.js';
+import { hasBlockingWorkers, hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -168,7 +169,13 @@ export function enqueueMessage(prompt: string, source: string, meta?: { target?:
 }
 
 export async function processQueue() {
-    if (activeProcess || retryPendingTimer || messageQueue.length === 0) return;
+    if (
+        activeProcess
+        || retryPendingTimer
+        || hasBlockingWorkers()
+        || hasPendingWorkerReplays()
+        || messageQueue.length === 0
+    ) return;
 
     // Group by source+target — only process the first group, leave rest in queue
     const first = messageQueue[0];

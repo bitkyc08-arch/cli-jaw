@@ -62,6 +62,8 @@ import { bumpSessionOwnershipGeneration } from './src/agent/session-persistence.
 import { parseCommand, executeCommand, COMMANDS } from './src/cli/commands.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from './src/orchestrator/pipeline.js';
 import { getState, getCtx, setState, resetState, canTransition } from './src/orchestrator/state-machine.js';
+import { resolveOrcScope } from './src/orchestrator/scope.js';
+import { listActiveOrcStates } from './src/core/db.js';
 import type { OrcStateName } from './src/orchestrator/state-machine.js';
 import { submitMessage } from './src/orchestrator/gateway.js';
 import { getActiveWorkers } from './src/orchestrator/worker-registry.js';
@@ -75,7 +77,7 @@ import { validateHeartbeatScheduleInput } from './src/memory/heartbeat-schedule.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from './lib/quota-copilot.js';
 import { startTokenKeepAlive } from './lib/token-keepalive.js';
 import { CLI_REGISTRY } from './src/cli/registry.js';
-import { clearMainSessionState, syncMainSessionToSettings, resetSessionPreservingHistory } from './src/core/main-session.js';
+import { clearMainSessionState, clearBossSessionOnly, syncMainSessionToSettings, resetSessionPreservingHistory } from './src/core/main-session.js';
 import { applyRuntimeSettingsPatch } from './src/core/runtime-settings.js';
 import { getDefaultClaudeModel, migrateLegacyClaudeValue } from './src/cli/claude-models.js';
 
@@ -141,10 +143,10 @@ regenerateB();
 
 // Reset stale orchestration state left by unclean shutdown (kill -9, crash)
 {
-    const staleState = getState();
-    if (staleState !== 'IDLE') {
-        console.log(`[jaw:startup] resetting stale orc_state: ${staleState} → IDLE`);
-        resetState();
+    const staleRows = listActiveOrcStates.all() as Array<{ id: string; state: string }>;
+    for (const row of staleRows) {
+        console.log(`[jaw:startup] resetting stale orc_state(${row.id}): ${row.state} → IDLE`);
+        resetState(row.id);
     }
 }
 
@@ -217,9 +219,10 @@ wss.on('connection', (ws) => {
         ws.send(JSON.stringify({ type: 'queue_update', pending: messageQueue.length }));
     }
     // Send current PABCD state so page refresh preserves glow
-    const orcState = getState();
+    const webScope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
+    const orcState = getState(webScope);
     if (orcState && orcState !== 'IDLE') {
-        ws.send(JSON.stringify({ type: 'orc_state', state: orcState, ts: Date.now() }));
+        ws.send(JSON.stringify({ type: 'orc_state', state: orcState, scope: webScope, ts: Date.now() }));
     }
 
     ws.on('message', (raw) => {
@@ -413,7 +416,8 @@ app.post('/api/orchestrate/reset', async (req, res) => {
 });
 
 app.get('/api/orchestrate/state', (_req, res) => {
-    res.json({ state: getState(), ctx: getCtx() });
+    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
+    res.json({ scope, state: getState(scope), ctx: getCtx(scope) });
 });
 
 app.get('/api/orchestrate/workers', (_req, res) => {
@@ -422,8 +426,9 @@ app.get('/api/orchestrate/workers', (_req, res) => {
 
 app.get('/api/orchestrate/snapshot', (_req, res) => {
     const runtime = getRuntimeSnapshot();
+    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
     res.json({
-        orc: { state: getState(), ctx: getCtx() },
+        orc: { scope, state: getState(scope), ctx: getCtx(scope) },
         runtime: {
             ...runtime,
             busy: runtime.activeAgent || getActiveWorkers().some(w => w.state === 'running'),
@@ -436,18 +441,26 @@ app.put('/api/orchestrate/state', (req, res) => {
     const target = String(req.body?.state || '').toUpperCase();
     const valid: OrcStateName[] = ['P', 'A', 'B', 'C', 'D'];
     if (!valid.includes(target as OrcStateName)) return fail(res, 400, `Invalid state: ${target}. Must be one of: ${valid.join(', ')}`);
-    const current = getState();
+    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
+    const current = getState(scope);
     const t = target as OrcStateName;
     if (!canTransition(current, t)) {
         return fail(res, 409, `Cannot transition: ${current} → ${t}`);
     }
     if (t === 'D') {
-        setState(t);
-        resetState();
+        bumpSessionOwnershipGeneration();
+        setState(t, undefined, scope);
+        resetState(scope);
     } else {
-        setState(t, t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'api' } : undefined);
+        bumpSessionOwnershipGeneration();
+        clearBossSessionOnly();
+        setState(
+            t,
+            t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'api' } : undefined,
+            scope,
+        );
     }
-    res.json({ ok: true, state: getState() });
+    res.json({ ok: true, state: getState(scope) });
 });
 
 app.post('/api/stop', (req, res) => {
@@ -1068,7 +1081,9 @@ const shutdown = async (sig: string) => {
     killAllAgents('shutdown');
 
     // Reset orchestration state so next startup doesn't show stale P/A/B/C
-    resetState();
+    const staleRows = listActiveOrcStates.all() as Array<{ id: string }>;
+    for (const row of staleRows) resetState(row.id);
+    resetState();  // also reset default scope
 
     try {
         await Promise.race([

@@ -734,11 +734,17 @@ export async function ideHandler(args: string[], ctx: any) {
 
 export async function orchestrateHandler(args: string[], _ctx: any) {
     const { getState, setState, resetState, canTransition, getStatePrompt } = await import('../orchestrator/state-machine.js');
+    const { clearBossSessionOnly } = await import('../core/main-session.js');
+    const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
+    const { resolveOrcScope } = await import('../orchestrator/scope.js');
     type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
     const target = (args[0] || 'P').toUpperCase();
 
+    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
+
     if (target === 'RESET') {
-        resetState();
+        bumpSessionOwnershipGeneration();
+        resetState(scope);
         return { ok: true, text: '✅ State → IDLE (reset)' };
     }
 
@@ -747,25 +753,29 @@ export async function orchestrateHandler(args: string[], _ctx: any) {
         return { ok: false, text: `Invalid state: ${target}. Must be one of: P, A, B, C, D, reset` };
     }
 
-    const current = getState();
+    const current = getState(scope);
     const t = target as OrcStateName;
     if (!canTransition(current, t)) {
         return { ok: false, text: `Cannot transition: ${current} → ${t}` };
     }
 
     if (t === 'D') {
-        setState(t);
-        resetState();
+        bumpSessionOwnershipGeneration();
+        setState(t, undefined, scope);
+        resetState(scope);
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
 
     if (t === 'P') {
-        setState(t, { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' });
+        bumpSessionOwnershipGeneration();
+        clearBossSessionOnly();
+        setState(t, { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' }, scope);
     } else {
-        // A/B/C: preserve existing ctx, only update state
-        setState(t);
+        bumpSessionOwnershipGeneration();
+        clearBossSessionOnly();
+        setState(t, undefined, scope);
     }
     const statePrompt = getStatePrompt(t);
     const summary = statePrompt.split('\n')[0] || '';
-    return { ok: true, text: `✅ State → ${getState()}${summary ? `\n${summary}` : ''}` };
+    return { ok: true, text: `✅ State → ${getState(scope)}${summary ? `\n${summary}` : ''}` };
 }

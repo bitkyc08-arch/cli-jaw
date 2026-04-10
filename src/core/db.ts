@@ -120,8 +120,30 @@ export const upsertEmployeeSession = db.prepare(
 export const clearAllEmployeeSessions = db.prepare('DELETE FROM employee_sessions');
 
 // ─── PABCD State Machine ────────────────────────────
-export const getOrcState = () => db.prepare('SELECT * FROM orc_state WHERE id = ?').get('default') as { id: string; state: string; ctx: string | null; updated_at: string } | undefined;
-export const setOrcState = db.prepare('UPDATE orc_state SET state=?, ctx=?, updated_at=CURRENT_TIMESTAMP WHERE id=?');
-export const resetOrcState = () => db.prepare('UPDATE orc_state SET state=?, ctx=NULL, updated_at=CURRENT_TIMESTAMP WHERE id=?').run('IDLE', 'default');
+export const getOrcState = db.prepare(
+    'SELECT * FROM orc_state WHERE id = ?',
+);
+
+export const setOrcState = db.prepare(`
+    INSERT INTO orc_state (id, state, ctx, updated_at)
+    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+        state = excluded.state,
+        ctx = excluded.ctx,
+        updated_at = CURRENT_TIMESTAMP
+`);
+
+export const resetOrcState = db.prepare(`
+    INSERT INTO orc_state (id, state, ctx, updated_at)
+    VALUES (?, 'IDLE', NULL, CURRENT_TIMESTAMP)
+    ON CONFLICT(id) DO UPDATE SET
+        state = 'IDLE',
+        ctx = NULL,
+        updated_at = CURRENT_TIMESTAMP
+`);
+
+export const listActiveOrcStates = db.prepare(
+    "SELECT id, state, ctx, updated_at FROM orc_state WHERE state != 'IDLE'"
+);
 
 export { db };

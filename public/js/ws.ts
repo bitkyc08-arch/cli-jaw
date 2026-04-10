@@ -37,6 +37,7 @@ function positionShark(roadmap: HTMLElement, shark: HTMLElement, phase: string):
 
 interface WsMessage {
     type: string;
+    scope?: string;
     running?: boolean;
     status?: string;
     agentId?: string;
@@ -68,6 +69,8 @@ interface WsMessage {
 
 // Agent phase state (populated by agent_status events from orchestrator)
 const agentPhaseState: Record<string, { phase: string; phaseLabel: string }> = {};
+
+let currentOrcScope = '';
 
 /** Hydrate agent phase cache from snapshot (used after reconnect) */
 export function hydrateAgentPhases(workers: Array<{
@@ -263,6 +266,7 @@ export function connect(): void {
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
         } else if (msg.type === 'orc_state') {
+            if (msg.scope && currentOrcScope && msg.scope !== currentOrcScope) return;
             applyOrcState(typeof msg.state === 'string' ? msg.state : 'IDLE', msg.title);
         } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord')) {
             addMessage(msg.role === 'assistant' ? 'agent' : (msg.role || 'user'), msg.content || '');
@@ -282,6 +286,7 @@ export function connect(): void {
         fetch('/api/orchestrate/snapshot')
             .then(r => r.json())
             .then((snap: any) => {
+                currentOrcScope = String(snap.orc.scope || '');
                 applyOrcState(snap.orc.state);
                 hydrateAgentPhases(snap.workers);
                 updateQueueBadge(snap.runtime.queuePending);

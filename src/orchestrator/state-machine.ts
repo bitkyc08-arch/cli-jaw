@@ -15,6 +15,7 @@ export type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
 export interface OrcContext {
   originalPrompt: string;
   workingDir: string | null;
+  scopeId?: string;
   plan: string | null;
   workerResults: string[];
   origin: string;
@@ -26,13 +27,13 @@ export interface OrcContext {
 
 // ─── State Read/Write (DB-backed) ───────────────────
 
-export function getState(): OrcStateName {
-  const row = getOrcState();
+export function getState(scope = 'default'): OrcStateName {
+  const row = getOrcState.get(scope) as { state?: string } | undefined;
   return (row?.state as OrcStateName) || 'IDLE';
 }
 
-export function getCtx(): OrcContext | null {
-  const row = getOrcState();
+export function getCtx(scope = 'default'): OrcContext | null {
+  const row = getOrcState.get(scope) as { ctx?: string | null } | undefined;
   if (!row?.ctx) return null;
   try {
     const parsed = JSON.parse(row.ctx);
@@ -41,32 +42,39 @@ export function getCtx(): OrcContext | null {
   } catch { return null; }
 }
 
-export function setState(s: OrcStateName, ctx?: OrcContext | null): void {
+export function setState(
+  s: OrcStateName,
+  ctx?: OrcContext | null,
+  scope = 'default',
+  titleOverride?: string | null,
+): void {
   const ctxJson = ctx !== undefined
     ? (ctx ? JSON.stringify(ctx) : null)
-    : getOrcState()?.ctx || null;
-  setOrcState.run(s, ctxJson, 'default');
+    : ((getOrcState.get(scope) as { ctx?: string | null } | undefined)?.ctx || null);
+  setOrcState.run(scope, s, ctxJson);
 
   // Parse worklog title (max 2 words + …)
-  let title = 'PABCD';
-  try {
-    const wl = readLatestWorklog();
-    if (wl?.content) {
-      const firstLine = wl.content.split('\n')[0] || '';
-      const raw = firstLine.replace(/^#\s*Work Log:\s*"?/, '').replace(/"?\s*$/, '').trim();
-      if (raw) {
-        const words = raw.split(/\s+/);
-        title = words.slice(0, 2).join(' ') + (words.length > 2 ? '…' : '');
+  let title = titleOverride || 'PABCD';
+  if (!titleOverride) {
+    try {
+      const wl = readLatestWorklog();
+      if (wl?.content) {
+        const firstLine = wl.content.split('\n')[0] || '';
+        const raw = firstLine.replace(/^#\s*Work Log:\s*"?/, '').replace(/"?\s*$/, '').trim();
+        if (raw) {
+          const words = raw.split(/\s+/);
+          title = words.slice(0, 2).join(' ') + (words.length > 2 ? '…' : '');
+        }
       }
-    }
-  } catch { /* fallback to PABCD */ }
+    } catch { /* fallback to PABCD */ }
+  }
 
-  broadcast('orc_state', { state: s, title });
+  broadcast('orc_state', { state: s, title, scope });
 }
 
-export function resetState(): void {
-  resetOrcState();
-  broadcast('orc_state', { state: 'IDLE', title: '' });
+export function resetState(scope = 'default'): void {
+  resetOrcState.run(scope);
+  broadcast('orc_state', { state: 'IDLE', title: '', scope });
 }
 
 // ─── Prefix Map ─────────────────────────────────────

@@ -30,6 +30,7 @@ import {
     type OrcStateName,
     type OrcContext,
 } from './state-machine.js';
+import { resolveOrcScope } from './scope.js';
 import {
     dispatchResearchTask,
     injectResearchIntoPlanningPrompt,
@@ -97,7 +98,18 @@ export async function orchestrate(
     const runDispatchResearch = typeof meta._dispatchResearchTask === 'function'
         ? meta._dispatchResearchTask
         : dispatchResearchTask;
-    let state = getState();
+
+    // Resolve scope: prefer persisted scopeId from ctx, then compute fresh
+    let ctx = getCtx();
+    const scope = resolveOrcScope({
+        persistedScopeId: ctx?.scopeId || null,
+        origin,
+        target,
+        chatId,
+        workingDir: settings.workingDir || null,
+    });
+
+    let state = getState(scope);
     let skipPrefix = !!meta._skipPrefix;
 
     // Skip session clear during active PABCD (preserve resume)
@@ -110,7 +122,7 @@ export async function orchestrate(
 
     clearPromptCache();
 
-    let ctx = getCtx();
+    ctx = getCtx(scope);
     const planningTask = pickPlanningTask(userText, prompt, ctx);
     const isInitialPlanningTurn = state === 'P'
         && !meta._workerResult
@@ -126,6 +138,7 @@ export async function orchestrate(
             ...(ctx || {
                 originalPrompt: '',
                 workingDir: settings.workingDir || null,
+                scopeId: scope,
                 plan: null,
                 workerResults: [],
                 origin,
@@ -133,6 +146,7 @@ export async function orchestrate(
             }),
             originalPrompt: planningTask,
             workingDir: settings.workingDir || null,
+            scopeId: scope,
             origin,
             chatId,
         };
@@ -149,7 +163,7 @@ export async function orchestrate(
         // Create a fresh worklog before setState() so state/title reads the new latest worklog.
         const worklogSeed = pickWorklogSeed(nextCtx.originalPrompt, planningTask, userText);
         createWorklog(worklogSeed);
-        setState('P', nextCtx);
+        setState('P', nextCtx, scope, pickWorklogSeed(nextCtx.originalPrompt));
         ctx = nextCtx;
     }
 
@@ -181,17 +195,17 @@ export async function orchestrate(
 
     // Re-read state from DB — it may have changed during agent execution
     // (phase transitions via CLI commands, user reset, etc.)
-    state = getState();
+    state = getState(scope);
 
     if (state === 'P' && !meta._workerResult) {
-        const savedCtx = getCtx();
+        const savedCtx = getCtx(scope);
         if (savedCtx) {
             const newPlan = stripSubtaskJSON(result.text) || result.text || savedCtx.plan;
             if (newPlan) {
                 setState('P', {
                     ...savedCtx,
                     plan: newPlan,
-                });
+                }, scope);
             }
         }
     }
@@ -310,7 +324,14 @@ export async function orchestrateContinue(
     const chatId = meta.chatId;
     const target = meta.target;
     const requestId = meta.requestId;
-    const state = getState();
+    const scope = resolveOrcScope({
+        persistedScopeId: getCtx()?.scopeId || null,
+        origin,
+        target,
+        chatId,
+        workingDir: settings.workingDir || null,
+    });
+    const state = getState(scope);
 
     // Active PABCD → resume from current state
     if (state !== 'IDLE') {
@@ -365,7 +386,14 @@ export async function orchestrateReset(
     clearAllEmployeeSessions.run();
     // Reset boss session ID (prevents stale --resume) but keep message history
     clearBossSessionOnly();
-    resetState();
+    const scope = resolveOrcScope({
+        persistedScopeId: getCtx()?.scopeId || null,
+        origin,
+        target,
+        chatId,
+        workingDir: settings.workingDir || null,
+    });
+    resetState(scope);
     const latest = readLatestWorklog();
     if (!latest) {
         broadcast('orchestrate_done', {
