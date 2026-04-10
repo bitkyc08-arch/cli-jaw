@@ -91,6 +91,13 @@ test('TQ-006: processQueue no longer emits duplicate new_message broadcast', () 
     );
 });
 
+test('TQ-006b: processQueue respects worker busy guards', () => {
+    const queueStart = spawnSrc.indexOf('export async function processQueue()');
+    const queueBlock = spawnSrc.slice(queueStart, queueStart + 800);
+    assert.ok(queueBlock.includes('hasBlockingWorkers()'), 'processQueue should guard against active workers');
+    assert.ok(queueBlock.includes('hasPendingWorkerReplays()'), 'processQueue should guard against pending worker replay');
+});
+
 test('TQ-007: tgOrchestrate passes chatId to submitMessage', () => {
     const fnStart = botSrc.indexOf('async function tgOrchestrate');
     const fnBlock = botSrc.slice(fnStart, fnStart + 900);

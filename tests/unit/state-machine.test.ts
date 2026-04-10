@@ -6,26 +6,26 @@ import {
     type OrcStateName,
 } from '../../src/orchestrator/state-machine.ts';
 
-beforeEach(() => { resetState(); });
+beforeEach(() => { resetState('default'); });
 
 describe('PABCD state-machine', () => {
     test('1. getState() = IDLE initially', () => {
-        assert.equal(getState(), 'IDLE');
+        assert.equal(getState('default'), 'IDLE');
     });
     test('2. setState P', () => {
-        setState('P');
-        assert.equal(getState(), 'P');
+        setState('P', undefined, 'default');
+        assert.equal(getState('default'), 'P');
     });
     test('3. setState with ctx', () => {
         const ctx = { originalPrompt: 'test', workingDir: null, plan: null, workerResults: [], origin: 'web' };
-        setState('P', ctx);
-        assert.deepEqual(getCtx(), ctx);
+        setState('P', ctx, 'default');
+        assert.deepEqual(getCtx('default'), ctx);
     });
     test('4. resetState → IDLE + null', () => {
-        setState('B');
-        resetState();
-        assert.equal(getState(), 'IDLE');
-        assert.equal(getCtx(), null);
+        setState('B', undefined, 'default');
+        resetState('default');
+        assert.equal(getState('default'), 'IDLE');
+        assert.equal(getCtx('default'), null);
     });
     test('5. IDLE→P valid', () => {
         assert.equal(canTransition('IDLE', 'P'), true);
@@ -59,9 +59,9 @@ describe('PABCD state-machine', () => {
         assert.equal(canTransition('D', 'IDLE'), true);
     });
     test('15. D → reset → IDLE', () => {
-        setState('D');
-        resetState();
-        assert.equal(getState(), 'IDLE');
+        setState('D', undefined, 'default');
+        resetState('default');
+        assert.equal(getState('default'), 'IDLE');
     });
     test('16. P→D invalid (must go through C)', () => {
         assert.equal(canTransition('P', 'D'), false);
@@ -70,9 +70,9 @@ describe('PABCD state-machine', () => {
     });
     test('17. setState P with ctx preserves context', () => {
         const ctx = { originalPrompt: 'build settings', workingDir: null, plan: null, workerResults: [], origin: 'web' };
-        setState('P', ctx);
-        assert.equal(getState(), 'P');
-        const saved = getCtx();
+        setState('P', ctx, 'default');
+        assert.equal(getState('default'), 'P');
+        const saved = getCtx('default');
         assert.equal(saved!.originalPrompt, 'build settings');
         assert.equal(saved!.origin, 'web');
     });

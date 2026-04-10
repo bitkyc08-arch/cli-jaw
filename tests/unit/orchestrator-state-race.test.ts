@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { orchestrate } from '../../src/orchestrator/pipeline.ts';
 import { getCtx, getState, resetState, setState } from '../../src/orchestrator/state-machine.ts';
 
-beforeEach(() => { resetState(); });
+beforeEach(() => { resetState('default'); });
 
 test('OSR-001: reset during agent execution does not restore stale P state', async () => {
     setState('P', {
@@ -13,7 +13,7 @@ test('OSR-001: reset during agent execution does not restore stale P state', asy
         plan: null,
         workerResults: [],
         origin: 'test',
-    });
+    }, 'default');
 
     await orchestrate('investigate stale state', {
         origin: 'test',
@@ -22,14 +22,14 @@ test('OSR-001: reset during agent execution does not restore stale P state', asy
         _spawnAgent: () => ({
             promise: (async () => {
                 await Promise.resolve();
-                resetState();
+                resetState('default');
                 return { text: 'Plan output from stale P run', code: 0 };
             })(),
         }),
     } as any);
 
-    assert.equal(getState(), 'IDLE');
-    assert.equal(getCtx(), null);
+    assert.equal(getState('default'), 'IDLE');
+    assert.equal(getCtx('default'), null);
 });
 
 test('OSR-002: phase advance during agent execution preserves advanced state and ctx', async () => {
@@ -40,7 +40,7 @@ test('OSR-002: phase advance during agent execution preserves advanced state and
         workerResults: [],
         origin: 'test',
     };
-    setState('P', ctx);
+    setState('P', ctx, 'default');
 
     await orchestrate('advance after plan approval', {
         origin: 'test',
@@ -49,13 +49,13 @@ test('OSR-002: phase advance during agent execution preserves advanced state and
         _spawnAgent: () => ({
             promise: (async () => {
                 await Promise.resolve();
-                setState('A', ctx);
+                setState('A', ctx, 'default');
                 return { text: 'Stale planning response that must not overwrite A', code: 0 };
             })(),
         }),
     } as any);
 
-    assert.equal(getState(), 'A');
-    assert.equal(getCtx()?.plan, 'Approved plan from P');
-    assert.equal(getCtx()?.originalPrompt, 'advance after plan approval');
+    assert.equal(getState('default'), 'A');
+    assert.equal(getCtx('default')?.plan, 'Approved plan from P');
+    assert.equal(getCtx('default')?.originalPrompt, 'advance after plan approval');
 });
