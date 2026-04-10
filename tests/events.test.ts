@@ -64,7 +64,7 @@ test('claude system compact events emit compacting and boundary labels', () => {
     }, ctx);
 
     assert.deepEqual(compacting, [{ icon: '🗜️', label: 'compacting...', toolType: 'tool' }]);
-    assert.deepEqual(boundary, [{ icon: '✅', label: 'conversation compacted', toolType: 'tool' }]);
+    assert.deepEqual(boundary, [{ icon: '✅', label: 'conversation compacted', toolType: 'tool', status: 'done' }]);
 });
 
 test('extractSessionId handles all supported CLIs', () => {
@@ -123,13 +123,13 @@ test('tool label extraction fixture matrix covers codex, gemini, and opencode va
             name: 'gemini tool result success',
             cli: 'gemini',
             fixture: 'gemini-tool-result-success.json',
-            expected: [{ icon: '✅', label: 'success', toolType: 'tool', stepRef: 'gemini:tool:tool' }],
+            expected: [{ icon: '✅', label: 'success', toolType: 'tool', stepRef: 'gemini:tool:tool', status: 'done' }],
         },
         {
             name: 'gemini tool result error',
             cli: 'gemini',
             fixture: 'gemini-tool-result-error.json',
-            expected: [{ icon: '❌', label: 'error', toolType: 'tool', stepRef: 'gemini:tool:tool' }],
+            expected: [{ icon: '❌', label: 'error', toolType: 'tool', stepRef: 'gemini:tool:tool', status: 'error' }],
         },
         {
             name: 'opencode tool use',
@@ -141,7 +141,7 @@ test('tool label extraction fixture matrix covers codex, gemini, and opencode va
             name: 'opencode tool result',
             cli: 'opencode',
             fixture: 'opencode-tool-result.json',
-            expected: [{ icon: '✅', label: 'web-search', toolType: 'tool', stepRef: 'opencode:tool:web-search' }],
+            expected: [{ icon: '✅', label: 'web-search', toolType: 'tool', stepRef: 'opencode:tool:web-search', status: 'done' }],
         },
     ];
 
@@ -301,7 +301,7 @@ test('extractFromEvent updates context for each CLI path', () => {
 
 test('extractToolLabel keeps backward compatibility and claude keys are deterministic', () => {
     const first = extractToolLabel('gemini', { type: 'tool_result', status: 'failed' });
-    assert.deepEqual(first, { icon: '❌', label: 'failed', toolType: 'tool', stepRef: 'gemini:tool:tool' });
+    assert.deepEqual(first, { icon: '❌', label: 'failed', toolType: 'tool', stepRef: 'gemini:tool:tool', status: 'error' });
 
     const keyFromIndex = makeClaudeToolKeyForTest(
         { type: 'stream_event', event: { index: 3 } },

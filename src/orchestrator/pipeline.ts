@@ -11,7 +11,7 @@ import {
 } from '../core/db.js';
 import { clearMainSessionState, clearBossSessionOnly } from '../core/main-session.js';
 import { clearPromptCache } from '../prompt/builder.js';
-import { spawnAgent } from '../agent/spawn.js';
+import { spawnAgent, killAgentById, killActiveAgent } from '../agent/spawn.js';
 import {
     createWorklog,
     readLatestWorklog,
@@ -249,7 +249,11 @@ export async function orchestrate(
                     { origin },
                     [],  // priorResults (empty — worker runs independently)
                 );
-                finishWorker(emp.id, wResult.text || '');
+                if (wResult.status === 'done') {
+                    finishWorker(emp.id, wResult.text || '');
+                } else {
+                    failWorker(emp.id, wResult.text || `[worker error] ${emp.id}`);
+                }
             } catch (err) {
                 failWorker(emp.id, (err as Error).message || String(err));
                 throw err;
@@ -257,7 +261,7 @@ export async function orchestrate(
             anyWorkerRan = true;
             // Inject the worker result exactly once through the replay contract.
             // This keeps durable handoff semantics while avoiding duplicate boss processing.
-            if (claimWorkerReplay(emp.id)) {
+            if (wResult.status === 'done' && claimWorkerReplay(emp.id)) {
                 try {
                     await orchestrate(wResult.text, {
                         ...meta,
@@ -350,7 +354,9 @@ export async function orchestrateReset(
     const target = meta.target;
     const requestId = meta.requestId;
     // --- cancel running workers and clear replay state on reset ---
+    killActiveAgent('reset');
     for (const w of getActiveWorkers()) {
+        killAgentById(w.agentId);
         cancelWorker(w.agentId);
     }
     clearAllWorkers();

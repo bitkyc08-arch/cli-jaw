@@ -24,7 +24,8 @@ export function resetSvgCounter(): void { svgCounter = 0; }
  */
 export function shieldCodeFenceSvg(text: string): { text: string; fences: Map<string, string> } {
     const fences = new Map<string, string>();
-    const fenced = text.replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n\1[ \t]*$/gm, (match) => {
+    // CommonMark: 0-3 leading spaces allowed before opening fence
+    const fenced = text.replace(/^ {0,3}(`{3,}|~{3,})[^\n]*\n[\s\S]*?\n {0,3}\1[ \t]*$/gm, (match) => {
         const key = `\x00FENCE-${svgCounter++}\x00`;
         fences.set(key, match);
         return key;
@@ -34,7 +35,8 @@ export function shieldCodeFenceSvg(text: string): { text: string; fences: Map<st
 
 export function unshieldCodeFenceSvg(text: string, fences: Map<string, string>): string {
     for (const [key, val] of fences) {
-        text = text.replace(key, val);
+        // Use function replacement to avoid $& $' $` special patterns in val
+        text = text.replace(key, () => val);
     }
     return text;
 }

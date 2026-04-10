@@ -99,7 +99,8 @@ export function sanitizeHtml(html: string): string {
 // Only fragment references (#id) allowed — blocks external resource loading.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     const tag = node.tagName.toLowerCase();
-    if (tag === 'use' || tag === 'image') {
+    // <use>, <image>, <feImage>, <textPath> can all reference external URLs
+    if (tag === 'use' || tag === 'image' || tag === 'feimage' || tag === 'textpath') {
         const href = node.getAttribute('href') || '';
         if (href && !href.startsWith('#')) {
             node.removeAttribute('href');
@@ -111,6 +112,38 @@ DOMPurify.addHook('afterSanitizeAttributes', (node) => {
         if (xlinkHref && !xlinkHref.startsWith('#')) {
             node.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
             node.removeAttribute('xlink:href');
+        }
+        // SVG <image> may also carry src in HTML parser context (belt-and-suspenders)
+        if (tag === 'image' || tag === 'feimage') {
+            const src = node.getAttribute('src') || '';
+            if (src && !src.startsWith('#')) {
+                node.removeAttribute('src');
+            }
+        }
+    }
+    // Strip external url() from style and SVG presentation attributes
+    // Prevents outbound requests / beaconing via CSS or SVG attrs like
+    // filter="url(https://evil)", fill="url(https://evil)", mask, clip-path, marker-*
+    const URL_CAPABLE_ATTRS = [
+        'fill', 'stroke', 'filter', 'mask', 'clip-path',
+        'marker-start', 'marker-mid', 'marker-end', 'cursor',
+    ];
+    // For style: use cssText (browser-parsed) to defeat CSS hex-escape bypass (\75\72\6c = url)
+    if (node.hasAttribute('style')) {
+        const cssText = (node as HTMLElement).style?.cssText || '';
+        if (/url\s*\(/i.test(cssText)) {
+            const cleaned = cssText.replace(/url\s*\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
+            (node as HTMLElement).style.cssText = cleaned;
+        }
+    }
+    for (const attr of URL_CAPABLE_ATTRS) {
+        if (node.hasAttribute(attr)) {
+            const val = node.getAttribute(attr) || '';
+            if (/url\s*\(/i.test(val)) {
+                // Keep fragment-only url(#id), strip external url()
+                const cleaned = val.replace(/url\s*\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
+                node.setAttribute(attr, cleaned);
+            }
         }
     }
 });
@@ -354,7 +387,9 @@ function unshieldSvgBlocks(html: string, blocks: SvgBlock[]): string {
     for (const block of blocks) {
         const pattern = `<div\\b[^>]*?\\bdata-jaw-svg="${block.id}"[^>]*></div>`;
         const re = new RegExp(pattern, 'g');
-        html = html.replace(re, renderSvgBlock(block));
+        const rendered = renderSvgBlock(block);
+        // Use function replacement to avoid $& $' $` special patterns in SVG content
+        html = html.replace(re, () => rendered);
     }
     return html;
 }
@@ -381,8 +416,10 @@ export function openDiagramOverlay(innerHtml: string): void {
     overlay.className = 'diagram-overlay';
     overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-label', 'Expanded diagram');
+    // Re-sanitize to prevent mXSS from double HTML parsing
+    const safeHtml = sanitizeHtml(innerHtml);
     overlay.innerHTML = `
-        <div class="diagram-overlay-content">${innerHtml}</div>
+        <div class="diagram-overlay-content">${safeHtml}</div>
         <button class="diagram-overlay-close" type="button" aria-label="Close">✕</button>
     `;
 

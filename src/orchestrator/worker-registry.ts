@@ -92,7 +92,7 @@ export function hasPendingWorkerReplays(): boolean {
 export function listPendingWorkerResults(): Array<{ agentId: string; text: string }> {
     const results: Array<{ agentId: string; text: string }> = [];
     for (const slot of workers.values()) {
-        if (slot.pendingReplay && !slot.replayClaimed && slot.result) {
+        if (slot.state === 'done' && slot.pendingReplay && !slot.replayClaimed && slot.result) {
             results.push({ agentId: slot.agentId, text: slot.result });
         }
     }

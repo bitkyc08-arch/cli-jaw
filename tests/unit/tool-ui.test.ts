@@ -43,8 +43,8 @@ describe('tool-ui', () => {
             // Summary button with ARIA
             assert.match(html, /aria-expanded="false"/);
             assert.match(html, /aria-controls="td-\d+"/);
-            // Icon count in summary
-            assert.ok(html.includes('🔍×1'));
+            // Icon count in summary (× replaced with &times;)
+            assert.ok(html.includes('🔍&times;1'));
             // Tool item label
             assert.ok(html.includes('<span class="tool-item-label">Search</span>'));
         });
@@ -63,7 +63,7 @@ describe('tool-ui', () => {
                 { icon: '📄', label: 'Read file A' },
                 { icon: '📄', label: 'Read file B' },
             ]);
-            assert.ok(html.includes('📄×2'));
+            assert.ok(html.includes('📄&times;2'));
             assert.ok(html.includes('Read file A'));
             assert.ok(html.includes('Read file B'));
             // Exactly 2 tool-items
@@ -77,16 +77,16 @@ describe('tool-ui', () => {
                 { icon: '🔍', label: 'Search 2' },
                 { icon: '✏️', label: 'Edit 1' },
             ]);
-            assert.ok(html.includes('🔍×2'));
-            assert.ok(html.includes('📄×1'));
-            assert.ok(html.includes('✏️×1'));
+            assert.ok(html.includes('🔍&times;2'));
+            assert.ok(html.includes('📄&times;1'));
+            assert.ok(html.includes('✏️&times;1'));
             assert.equal(html.match(/class="tool-item"/g)?.length, 4);
         });
 
         it('escapes HTML in icon and label (XSS prevention)', () => {
             const html = buildToolGroupHtml([{ icon: '<script>', label: "a<b>'c" }]);
             // Escaped forms present
-            assert.ok(html.includes('&lt;script&gt;×1'));
+            assert.ok(html.includes('&lt;script&gt;&times;1'));
             assert.ok(html.includes('a&lt;b&gt;&#39;c'));
             // Raw dangerous strings absent
             assert.ok(!html.includes('<script>×'), 'raw <script> must be escaped');
@@ -110,7 +110,8 @@ describe('tool-ui', () => {
 
         it('chevron indicator present in summary', () => {
             const html = buildToolGroupHtml([{ icon: '🔍', label: 'test' }]);
-            assert.ok(html.includes('<span class="tool-group-chevron">▾</span>'));
+            assert.ok(html.includes('class="tool-group-chevron"'), 'chevron wrapper must exist');
+            assert.ok(html.includes('lucide'), 'chevron must use Lucide SVG icon');
         });
 
         it('done status dot present in summary', () => {

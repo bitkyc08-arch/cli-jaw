@@ -9,11 +9,33 @@ export function flushClaudeBuffers(ctx: SpawnContext, agentLabel?: string) {
     if (ctx.claudeThinkingBuf) {
         const merged = ctx.claudeThinkingBuf.trim();
         if (merged) {
+            const tool = {
+                icon: '💭',
+                label: buildPreview(merged, 80) || 'thinking...',
+                toolType: 'thinking' as const,
+                detail: merged,
+            };
+            ctx.toolLog.push(tool);
+            broadcast('agent_tool', { agentId: agentLabel, ...tool });
             pushTrace(ctx, `[${agentLabel || 'agent'}] 💭 ${merged.slice(0, 200)}`);
         }
         ctx.claudeThinkingBuf = '';
     }
     if (ctx.claudeInputJsonBuf) {
+        try {
+            const input = JSON.parse(ctx.claudeInputJsonBuf);
+            const toolName = ctx.claudeCurrentToolName || 'tool';
+            const detail = summarizeToolInput(toolName, input);
+            if (detail) {
+                const existing = [...ctx.toolLog].reverse().find(
+                    (t: any) => t.icon === '🔧' && t.label === toolName && !t.detail
+                );
+                if (existing) {
+                    existing.detail = detail;
+                    broadcast('agent_tool', { agentId: agentLabel, ...existing });
+                }
+            }
+        } catch { /* partial JSON — best effort */ }
         ctx.claudeInputJsonBuf = '';
         ctx.claudeCurrentToolName = '';
     }
@@ -392,11 +414,13 @@ export function summarizeToolInput(toolName: string, input: any, max = 0): strin
     let result = '';
     if (name.includes('bash') || name.includes('terminal') || name === 'execute_command')
         result = s(input.command || input.cmd);
-    else if (name.includes('read') || name === 'read_file' || name === 'view')
-        result = s(input.path || input.file_path || input.filename).split('/').pop() || s(input.path);
-    else if (name.includes('write') || name.includes('edit') || name === 'create_file')
-        result = s(input.path || input.file_path).split('/').pop() || s(input.path);
-    else if (name.includes('search') || name.includes('grep') || name === 'codebase_search')
+    else if (name.includes('read') || name === 'read_file' || name === 'view') {
+        const fullPath = s(input.path || input.file_path || input.filename);
+        result = max ? (fullPath.split('/').pop() || fullPath) : fullPath;
+    } else if (name.includes('write') || name.includes('edit') || name === 'create_file') {
+        const fullPath = s(input.path || input.file_path);
+        result = max ? (fullPath.split('/').pop() || fullPath) : fullPath;
+    } else if (name.includes('search') || name.includes('grep') || name === 'codebase_search')
         result = s(input.query || input.pattern || input.search_query);
     else if (name.includes('web') || name === 'web_search')
         result = s(input.query);

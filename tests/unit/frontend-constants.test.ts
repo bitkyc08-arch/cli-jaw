@@ -10,5 +10,5 @@ test('frontend copilot meta exposes selectable efforts', () => {
 
 test('frontend copilot meta preserves effortNote hint', () => {
     const meta = getCliMeta('copilot');
-    assert.equal(meta.effortNote, '→ ~/.copilot/config.json');
+    assert.equal(meta.effortNote, '-> ~/.copilot/config.json');
 });

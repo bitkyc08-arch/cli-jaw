@@ -33,7 +33,7 @@ test('extractFromAcpUpdate handles tool_call and tool_call_update fallback', () 
             id: 'tool-1',
         },
     });
-    assert.deepEqual(updateByName, { tool: { icon: '✅', label: 'Read', toolType: 'tool', stepRef: 'acp:tool:Read' } });
+    assert.deepEqual(updateByName, { tool: { icon: '✅', label: 'Read', toolType: 'tool', stepRef: 'acp:tool:Read', status: 'done' } });
 
     const updateById = extractFromAcpUpdate({
         update: {
@@ -41,7 +41,7 @@ test('extractFromAcpUpdate handles tool_call and tool_call_update fallback', () 
             id: 'tool-2',
         },
     });
-    assert.deepEqual(updateById, { tool: { icon: '✅', label: 'tool-2', toolType: 'tool', stepRef: 'acp:tool:tool-2' } });
+    assert.deepEqual(updateById, { tool: { icon: '✅', label: 'tool-2', toolType: 'tool', stepRef: 'acp:tool:tool-2', status: 'done' } });
 });
 
 test('extractFromAcpUpdate handles agent_message_chunk content shapes', () => {
