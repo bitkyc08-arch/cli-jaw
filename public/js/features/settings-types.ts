@@ -2,7 +2,7 @@
 
 export interface PerCliConfig { model?: string; effort?: string; fastMode?: boolean; contextWindow?: boolean; contextWindowSize?: number; contextCompactLimit?: number; }
 export interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; }
-export interface DiscordConfig { enabled?: boolean; token?: string; guildId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; }
+export interface DiscordConfig { enabled?: boolean; token?: string; guildId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; }
 export interface QuotaWindow { label: string; percent: number; resetsAt?: string | number | null; }
 export interface QuotaEntry {
     account?: { email?: string; type?: string; plan?: string; tier?: string };

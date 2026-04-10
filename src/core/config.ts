@@ -134,6 +134,7 @@ function createDefaultSettings() {
             channelIds: [] as string[],
             forwardAll: true,
             allowBots: false,
+            mentionOnly: false,
         },
         messaging: {
             latestSeen: { telegram: null, discord: null },
@@ -229,6 +230,7 @@ export function migrateSettings(s: Record<string, any>) {
             channelIds: [],
             forwardAll: true,
             allowBots: false,
+            mentionOnly: false,
         };
     }
     if (!s.messaging) {

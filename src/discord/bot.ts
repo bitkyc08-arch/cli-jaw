@@ -56,6 +56,10 @@ async function downloadDiscordAttachment(attachment: Attachment): Promise<{ buff
     return { buffer, name: attachment.name || 'attachment' };
 }
 
+function stripBotMention(text: string, botId: string): string {
+    return text.replace(new RegExp(`<@!?${botId}>`, 'g'), '').trim();
+}
+
 function currentLocale() {
     return normalizeLocale(settings.locale, 'ko');
 }
@@ -153,6 +157,11 @@ export async function initDiscord() {
                 && !(parentId && settings.discord.channelIds.includes(parentId))) return;
         }
 
+        // @mention gating: skip non-mentioned messages in guild channels
+        if (settings.discord.mentionOnly && msg.guild) {
+            if (!client.user || !msg.mentions.has(client.user, { ignoreRepliedUser: true })) return;
+        }
+
         markChannelActive(msg.channelId);
         const target = buildDiscordTarget(msg);
         setLastActiveTarget('discord', target);
@@ -164,8 +173,12 @@ export async function initDiscord() {
             try {
                 const dl = await downloadDiscordAttachment(first);
                 const filePath = saveUpload(dl.buffer, dl.name);
-                const prompt = buildMediaPrompt(filePath, msg.content || '');
-                dcOrchestrate(msg, prompt, `[📎 ${dl.name}] ${msg.content || ''}`).catch(e => console.error('[discord:orchestrate]', (e as Error).message));
+                let caption = msg.content || '';
+                if (settings.discord.mentionOnly && client.user) {
+                    caption = stripBotMention(caption, client.user.id);
+                }
+                const prompt = buildMediaPrompt(filePath, caption);
+                dcOrchestrate(msg, prompt, `[📎 ${dl.name}] ${caption}`).catch(e => console.error('[discord:orchestrate]', (e as Error).message));
             } catch (e) {
                 console.error('[discord:attachment]', (e as Error).message);
                 await msg.reply(`❌ ${(e as Error).message}`).catch(() => { });
@@ -174,7 +187,10 @@ export async function initDiscord() {
         }
 
         // Text message
-        const text = msg.content?.trim();
+        let text = msg.content?.trim() || '';
+        if (settings.discord.mentionOnly && client.user) {
+            text = stripBotMention(text, client.user.id);
+        }
         if (!text) return;
 
         console.log(`[discord:in] ${msg.channelId}: ${text.slice(0, 80)}`);
