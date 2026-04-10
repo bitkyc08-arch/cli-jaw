@@ -621,6 +621,7 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 | ---------------------------- | ------------------------------------------------------------------------------------------ |
 | `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                 |
 | `Error: node version`        | Upgrade to Node.js ≥ 22:`nvm install 22` or download from [nodejs.org](https://nodejs.org) |
+| `NODE_MODULE_VERSION` mismatch | Run `npm rebuild better-sqlite3` in the repo or reinstall dependencies for the current Node version |
 | Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`.    |
 | `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                       |
 | Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                              |
@@ -673,6 +674,24 @@ jaw doctor
 ```
 
 > 💡 Your backup is at `~/.cli-jaw.bak.<timestamp>` — copy back `settings.json` or `jaw.db` if you want to restore previous config or conversation history.
+
+</details>
+
+<details>
+<summary>🧱 Native module mismatch (<code>better-sqlite3</code>)</summary>
+
+If you upgraded Node.js and see a `NODE_MODULE_VERSION` error, rebuild native modules for the current runtime:
+
+```bash
+npm run rebuild:native
+```
+
+If that still fails, reinstall dependencies under the active Node version:
+
+```bash
+rm -rf node_modules package-lock.json
+npm install
+```
 
 </details>
 

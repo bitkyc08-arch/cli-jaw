@@ -42,6 +42,7 @@
   ],
   "scripts": {
     "dev": "tsx --env-file=.env server.ts",
+    "rebuild:native": "npm rebuild better-sqlite3",
     "postinstall": "node scripts/postinstall-guard.cjs && node dist/bin/postinstall.js",
     "clean:dist": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});\"",
     "check:copilot-gap": "tsx scripts/check-copilot-gap.ts",
