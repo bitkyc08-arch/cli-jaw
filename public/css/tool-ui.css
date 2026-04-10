@@ -29,7 +29,7 @@
 
 .tool-group-summary:hover {
     color: var(--text);
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
 }
 
 .tool-group-summary-text { flex: 1; }
@@ -110,7 +110,7 @@
 }
 
 .tool-item + .tool-item {
-    border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+    border-top: 1px solid color-mix(in oklch, var(--border) 50%, transparent);
 }
 
 .tool-item-header {
@@ -185,8 +185,8 @@
 .tool-item-details {
     margin-left: 22px;
     padding: 8px 10px;
-    border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    border-left: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    background: color-mix(in oklch, var(--surface) 70%, transparent);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
@@ -300,7 +300,7 @@
     align-items: center;
     gap: var(--space-2);
     width: 100%;
-    background: color-mix(in srgb, var(--surface) 50%, transparent);
+    background: color-mix(in oklch, var(--surface) 50%, transparent);
     border: 1px solid var(--border);
     border-radius: var(--radius-md);
     color: var(--text-dim);
@@ -311,7 +311,7 @@
 }
 
 .process-summary:hover {
-    border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+    border-color: color-mix(in oklch, var(--accent) 40%, var(--border));
 }
 
 .process-dot {
@@ -403,17 +403,17 @@
 }
 
 .process-step-badge.thinking {
-    background: color-mix(in srgb, var(--accent) 15%, transparent);
+    background: color-mix(in oklch, var(--accent) 15%, transparent);
     color: var(--accent);
 }
 
 .process-step-badge.tool {
-    background: color-mix(in srgb, var(--warning) 15%, transparent);
+    background: color-mix(in oklch, var(--warning) 15%, transparent);
     color: var(--warning);
 }
 
 .process-step-badge.search {
-    background: color-mix(in srgb, var(--success) 15%, transparent);
+    background: color-mix(in oklch, var(--success) 15%, transparent);
     color: var(--success);
 }
 
@@ -449,8 +449,8 @@
 .process-step-details {
     margin-left: 22px;
     padding: 8px 10px;
-    border-left: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
-    background: color-mix(in srgb, var(--surface) 70%, transparent);
+    border-left: 1px solid color-mix(in oklch, var(--border) 70%, transparent);
+    background: color-mix(in oklch, var(--surface) 70%, transparent);
     border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
 }
 
@@ -480,4 +480,39 @@
     .process-step-dot.running {
         animation: none;
     }
+}
+
+/* ── Native details/summary for tool blocks (future refactor) ── */
+details.tool-block summary {
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-2);
+    font-size: var(--text-sm);
+    color: var(--text-dim);
+    border-radius: var(--radius-sm);
+    transition: background var(--duration-fast);
+}
+details.tool-block summary:hover {
+    background: color-mix(in oklch, var(--accent) 8%, transparent);
+}
+details.tool-block summary::before {
+    content: '';
+    display: inline-block;
+    width: 0.5em;
+    height: 0.5em;
+    border-right: 2px solid currentColor;
+    border-bottom: 2px solid currentColor;
+    transform: rotate(-45deg);
+    transition: transform var(--duration-fast);
+    flex-shrink: 0;
+}
+details.tool-block[open] summary::before {
+    transform: rotate(45deg);
+}
+details.tool-block .tool-content {
+    content-visibility: auto;
+    contain-intrinsic-size: auto 200px;
 }

@@ -1,7 +1,7 @@
 /* ── Left Sidebar ── */
 .sidebar-left {
-    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 95%, #000) 100%);
-    border-right: 1px solid color-mix(in srgb, var(--border) 80%, var(--accent) 20%);
+    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in oklch, var(--surface) 95%, #000) 100%);
+    border-right: 1px solid color-mix(in oklch, var(--border) 80%, var(--accent) 20%);
     box-shadow: inset -1px 0 0 var(--border);
     padding: 48px 16px 16px;
     display: flex;
@@ -24,12 +24,12 @@
             0deg,
             transparent,
             transparent 2px,
-            color-mix(in srgb, var(--accent) var(--scanline-pct), transparent) 2px,
-            color-mix(in srgb, var(--accent) var(--scanline-pct), transparent) 4px
+            color-mix(in oklch, var(--accent) var(--scanline-pct), transparent) 2px,
+            color-mix(in oklch, var(--accent) var(--scanline-pct), transparent) 4px
         ),
         linear-gradient(
             180deg,
-            color-mix(in srgb, var(--accent) var(--glow-strength), transparent) 0%,
+            color-mix(in oklch, var(--accent) var(--glow-strength), transparent) 0%,
             transparent 200px
         );
 }
@@ -40,7 +40,7 @@
     color: var(--accent);
     font-family: var(--font-display);
     letter-spacing: 1px;
-    text-shadow: 0 0 20px color-mix(in srgb, var(--accent) 30%, transparent);
+    text-shadow: 0 0 20px color-mix(in oklch, var(--accent) 30%, transparent);
 }
 
 .section-title {
@@ -88,13 +88,13 @@
 .status-idle {
     background: var(--status-idle-bg);
     color: var(--green);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--success) 20%, transparent);
+    box-shadow: 0 0 6px color-mix(in oklch, var(--success) 20%, transparent);
 }
 
 .status-running {
     background: var(--status-running-bg);
     color: var(--status-running-color);
-    box-shadow: 0 0 6px color-mix(in srgb, var(--warning) 30%, transparent);
+    box-shadow: 0 0 6px color-mix(in oklch, var(--warning) 30%, transparent);
 }
 
 .btn-clear {
@@ -122,8 +122,8 @@
 
 /* ── Right Sidebar ── */
 .sidebar-right {
-    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in srgb, var(--surface) 95%, #000) 100%);
-    border-left: 1px solid color-mix(in srgb, var(--border) 80%, var(--accent) 20%);
+    background: linear-gradient(180deg, var(--surface) 0%, color-mix(in oklch, var(--surface) 95%, #000) 100%);
+    border-left: 1px solid color-mix(in oklch, var(--border) 80%, var(--accent) 20%);
     box-shadow: inset 1px 0 0 var(--border);
     overflow-y: auto;
     display: flex;

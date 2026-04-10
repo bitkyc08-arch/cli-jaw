@@ -60,7 +60,7 @@
 }
 
 .settings-group:hover {
-    border-color: color-mix(in srgb, var(--border) 60%, var(--accent));
+    border-color: color-mix(in oklch, var(--border) 60%, var(--accent));
 }
 
 .settings-group h4 {
@@ -105,7 +105,7 @@
 .perm-btn.active {
     border-color: var(--accent);
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+    background: color-mix(in oklch, var(--accent) 10%, var(--bg));
 }
 
 textarea.prompt-editor {
@@ -136,7 +136,7 @@ textarea.prompt-editor {
 .skill-filter.active {
     border-color: var(--accent);
     color: var(--accent);
-    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+    background: color-mix(in oklch, var(--accent) 10%, var(--bg));
 }
 
 .skill-card {
@@ -253,4 +253,18 @@ textarea.prompt-editor {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+/* ── Settings fieldset grouping ── */
+.settings-fieldset {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: var(--space-3);
+    margin-bottom: var(--space-3);
+}
+.settings-fieldset legend {
+    font-weight: 600;
+    font-size: var(--text-sm);
+    padding: 0 var(--space-2);
+    color: var(--text);
 }
