@@ -99,26 +99,30 @@ export function sanitizeHtml(html: string): string {
 // Only fragment references (#id) allowed — blocks external resource loading.
 DOMPurify.addHook('afterSanitizeAttributes', (node) => {
     const tag = node.tagName.toLowerCase();
-    // <use>, <image>, <feImage>, <textPath> can all reference external URLs
-    if (tag === 'use' || tag === 'image' || tag === 'feimage' || tag === 'textpath') {
+
+    // ── href / xlink:href: deny-by-default ──
+    // Only standard HTML elements may carry external href. Everything else
+    // (all SVG elements: use, image, pattern, linearGradient, filter, a[SVG], etc.)
+    // is restricted to fragment-only (#id) references.
+    const HTML_HREF_ALLOWED = new Set(['a', 'area', 'link']);
+    if (!HTML_HREF_ALLOWED.has(tag)) {
         const href = node.getAttribute('href') || '';
         if (href && !href.startsWith('#')) {
             node.removeAttribute('href');
         }
-        // Check BOTH forms: getAttributeNS for XML parsers, getAttribute for HTML parser
-        // DOMPurify uses createHTMLDocument() which stores xlink:href as plain attribute
-        const xlinkHref = node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
-            || node.getAttribute('xlink:href') || '';
-        if (xlinkHref && !xlinkHref.startsWith('#')) {
-            node.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
-            node.removeAttribute('xlink:href');
-        }
-        // SVG <image> may also carry src in HTML parser context (belt-and-suspenders)
-        if (tag === 'image' || tag === 'feimage') {
-            const src = node.getAttribute('src') || '';
-            if (src && !src.startsWith('#')) {
-                node.removeAttribute('src');
-            }
+    }
+    // xlink:href is SVG-only — always enforce fragment-only on ALL elements
+    const xlinkHref = node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
+        || node.getAttribute('xlink:href') || '';
+    if (xlinkHref && !xlinkHref.startsWith('#')) {
+        node.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
+        node.removeAttribute('xlink:href');
+    }
+    // SVG <image>/<feimage> may carry src in HTML parser context (belt-and-suspenders)
+    if (tag === 'image' || tag === 'feimage') {
+        const src = node.getAttribute('src') || '';
+        if (src && !src.startsWith('#')) {
+            node.removeAttribute('src');
         }
     }
     // Strip external url() from style and SVG presentation attributes
