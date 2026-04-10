@@ -449,7 +449,7 @@ app.put('/api/orchestrate/state', (req, res) => {
     }
     if (t === 'D') {
         bumpSessionOwnershipGeneration();
-        setState(t, undefined, scope);
+        setState(t, undefined, scope, 'Done');
         resetState(scope);
     } else {
         bumpSessionOwnershipGeneration();
@@ -458,6 +458,7 @@ app.put('/api/orchestrate/state', (req, res) => {
             t,
             t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'api' } : undefined,
             scope,
+            t === 'P' ? 'P' : t,
         );
     }
     res.json({ ok: true, state: getState(scope) });

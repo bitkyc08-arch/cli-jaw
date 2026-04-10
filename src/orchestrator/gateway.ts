@@ -13,6 +13,7 @@ import {
     isContinueIntent, isResetIntent,
 } from './pipeline.js';
 import { getState } from './state-machine.js';
+import { resolveOrcScope } from './scope.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 
 export type SubmitResult = {
@@ -55,7 +56,8 @@ export function submitMessage(
     const requestId = randomUUID();
 
     // ── continue intent (only when IDLE) ──
-    if (getState() === 'IDLE' && isContinueIntent(trimmed)) {
+    const scope = resolveOrcScope({ origin: meta.origin, chatId: meta.chatId, workingDir: settings.workingDir || null });
+    if (getState(scope) === 'IDLE' && isContinueIntent(trimmed)) {
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
         insertMessage.run('user', display, meta.origin, '', settings.workingDir || null);
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });

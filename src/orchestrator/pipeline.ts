@@ -30,7 +30,7 @@ import {
     type OrcStateName,
     type OrcContext,
 } from './state-machine.js';
-import { resolveOrcScope } from './scope.js';
+import { resolveOrcScope, findActiveScope } from './scope.js';
 import {
     dispatchResearchTask,
     injectResearchIntoPlanningPrompt,
@@ -99,15 +99,17 @@ export async function orchestrate(
         ? meta._dispatchResearchTask
         : dispatchResearchTask;
 
-    // Resolve scope: prefer persisted scopeId from ctx, then compute fresh
-    let ctx = getCtx();
-    const scope = resolveOrcScope({
-        persistedScopeId: ctx?.scopeId || null,
+    // Resolve scope: compute candidate from params, check for active scope (handles workingDir changes)
+    const candidateScope = resolveOrcScope({
+        persistedScopeId: null,
         origin,
         target,
         chatId,
         workingDir: settings.workingDir || null,
     });
+    let ctx = getCtx(candidateScope);
+    // If candidate scope has no active ctx, check if an existing active scope matches this origin
+    const scope = ctx?.scopeId || (ctx ? candidateScope : (findActiveScope(origin, chatId) || candidateScope));
 
     let state = getState(scope);
     let skipPrefix = !!meta._skipPrefix;
@@ -202,10 +204,12 @@ export async function orchestrate(
         if (savedCtx) {
             const newPlan = stripSubtaskJSON(result.text) || result.text || savedCtx.plan;
             if (newPlan) {
+                // Re-derive title from this scope's original prompt to avoid cross-scope worklog bleed
+                const title = pickWorklogSeed(savedCtx.originalPrompt);
                 setState('P', {
                     ...savedCtx,
                     plan: newPlan,
-                }, scope);
+                }, scope, title);
             }
         }
     }
@@ -324,13 +328,15 @@ export async function orchestrateContinue(
     const chatId = meta.chatId;
     const target = meta.target;
     const requestId = meta.requestId;
-    const scope = resolveOrcScope({
-        persistedScopeId: getCtx()?.scopeId || null,
+    const candidateScope = resolveOrcScope({
+        persistedScopeId: null,
         origin,
         target,
         chatId,
         workingDir: settings.workingDir || null,
     });
+    const ctxCandidate = getCtx(candidateScope);
+    const scope = ctxCandidate?.scopeId || (ctxCandidate ? candidateScope : (findActiveScope(origin, chatId) || candidateScope));
     const state = getState(scope);
 
     // Active PABCD → resume from current state
@@ -386,13 +392,15 @@ export async function orchestrateReset(
     clearAllEmployeeSessions.run();
     // Reset boss session ID (prevents stale --resume) but keep message history
     clearBossSessionOnly();
-    const scope = resolveOrcScope({
-        persistedScopeId: getCtx()?.scopeId || null,
+    const candidateScope = resolveOrcScope({
+        persistedScopeId: null,
         origin,
         target,
         chatId,
         workingDir: settings.workingDir || null,
     });
+    const ctxReset = getCtx(candidateScope);
+    const scope = ctxReset?.scopeId || (ctxReset ? candidateScope : (findActiveScope(origin, chatId) || candidateScope));
     resetState(scope);
     const latest = readLatestWorklog();
     if (!latest) {

@@ -761,7 +761,7 @@ export async function orchestrateHandler(args: string[], _ctx: any) {
 
     if (t === 'D') {
         bumpSessionOwnershipGeneration();
-        setState(t, undefined, scope);
+        setState(t, undefined, scope, 'Done');
         resetState(scope);
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
@@ -769,11 +769,11 @@ export async function orchestrateHandler(args: string[], _ctx: any) {
     if (t === 'P') {
         bumpSessionOwnershipGeneration();
         clearBossSessionOnly();
-        setState(t, { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' }, scope);
+        setState(t, { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'web' }, scope, 'P');
     } else {
         bumpSessionOwnershipGeneration();
         clearBossSessionOnly();
-        setState(t, undefined, scope);
+        setState(t, undefined, scope, t);
     }
     const statePrompt = getStatePrompt(t);
     const summary = statePrompt.split('\n')[0] || '';
