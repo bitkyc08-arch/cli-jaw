@@ -2,6 +2,29 @@
 // Phase 2: Inflates diagram-html placeholders into sandbox="allow-scripts" iframes
 // with validated postMessage bridge for theme sync, resize, and sendPrompt.
 
+import { ICONS } from '../icons.js';
+
+// ── Action Button Helpers ──
+function createDiagramCopyBtn(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'diagram-copy-btn';
+  btn.type = 'button';
+  btn.ariaLabel = 'Copy source';
+  btn.title = 'Copy';
+  btn.innerHTML = ICONS.copy;
+  return btn;
+}
+
+function createDiagramSaveBtn(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'diagram-save-btn';
+  btn.type = 'button';
+  btn.ariaLabel = 'Save as image';
+  btn.title = 'Save';
+  btn.innerHTML = ICONS.download;
+  return btn;
+}
+
 // ── CDN Allowlist (Phase 5 libraries) ──
 const CDN_ALLOWLIST = [
   'cdnjs.cloudflare.com',
@@ -17,10 +40,15 @@ const registeredIframes = new Set<Window>();
 const iframeNonces = new Map<Window, string>();
 
 // ── Cleanup: MutationObserver removes stale iframe refs ──
+// Scoped to #chatMessages (not document.body) to avoid firing on every DOM mutation.
 let cleanupObserver: MutationObserver | null = null;
 function ensureCleanupObserver(): void {
   if (cleanupObserver) return;
+  const chatEl = document.getElementById('chatMessages');
+  if (!chatEl) return;
   cleanupObserver = new MutationObserver((mutations) => {
+    // Early exit: skip if no iframes are registered
+    if (!registeredIframes.size) return;
     for (const m of mutations) {
       for (const node of m.removedNodes) {
         if (node instanceof HTMLIFrameElement && node.contentWindow) {
@@ -38,7 +66,7 @@ function ensureCleanupObserver(): void {
       }
     }
   });
-  cleanupObserver.observe(document.body, { childList: true, subtree: true });
+  cleanupObserver.observe(chatEl, { childList: true, subtree: true });
 }
 
 // ── CSP Meta Builder ──
@@ -96,6 +124,15 @@ function getBridgeScript(nonce: string): string {
     if (e.data.type === 'jaw-request-resize') {
       postHeight();
     }
+    if (e.data.type === 'jaw-request-screenshot') {
+      var canvas = document.querySelector('canvas');
+      if (canvas) {
+        try {
+          var dataUrl = canvas.toDataURL('image/png');
+          window.parent.postMessage({ type: 'jaw-screenshot', dataUrl: dataUrl, nonce: __nonce }, '*');
+        } catch(ex) { /* tainted canvas or other error */ }
+      }
+    }
   });
 
   function postHeight() {
@@ -130,6 +167,18 @@ function getBridgeScript(nonce: string): string {
     lastSend = now;
     window.parent.postMessage({ type: 'jaw-send-prompt', text: String(text).slice(0, 500), nonce: __nonce }, '*');
   };
+
+  // Ctrl+C / Cmd+C: forward selected text to host for clipboard access
+  document.addEventListener('copy', function() {
+    var sel = window.getSelection();
+    if (sel && sel.toString().trim()) {
+      window.parent.postMessage({
+        type: 'jaw-copy-text',
+        text: sel.toString().slice(0, 512),
+        nonce: __nonce
+      }, '*');
+    }
+  });
 })();
 <\/script>`;
 }
@@ -212,6 +261,8 @@ export function activateWidgets(container?: HTMLElement): void {
     // Preserve source for theme-change reload
     wrapper.dataset.widgetHtml = encoded;
 
+    wrapper.appendChild(createDiagramSaveBtn());
+    wrapper.appendChild(createDiagramCopyBtn());
     const { iframe, nonce } = createWidgetIframe(htmlCode);
     wrapper.appendChild(iframe);
 
@@ -272,6 +323,8 @@ export function activateWidgets(container?: HTMLElement): void {
 }
 
 // ── Widget Reactivation Observer ──
+// Only watches direct children of #chatMessages (not subtree) to avoid
+// firing on every streaming innerHTML update inside message bubbles.
 let widgetObserver: MutationObserver | null = null;
 function ensureWidgetObserver(): void {
   if (widgetObserver) return;
@@ -290,7 +343,9 @@ function ensureWidgetObserver(): void {
       }
     }
   });
-  widgetObserver.observe(chatEl, { childList: true, subtree: true });
+  // childList only (no subtree) — new messages are appended as direct children.
+  // activateWidgets is also called explicitly in ui.ts after rendering.
+  widgetObserver.observe(chatEl, { childList: true });
 }
 
 // ── Resize Throttle (max 1 per 100ms per iframe) ──
@@ -328,6 +383,8 @@ export function broadcastThemeToIframes(): void {
     // Recreate with fresh theme tokens
     const { iframe, nonce } = createWidgetIframe(htmlCode);
     container.innerHTML = '';
+    container.appendChild(createDiagramSaveBtn());
+    container.appendChild(createDiagramCopyBtn());
     container.appendChild(iframe);
 
     let initialLoadFired = false;
@@ -387,6 +444,29 @@ window.addEventListener('message', (e: MessageEvent) => {
         input.dispatchEvent(new Event('input', { bubbles: true }));
         input.focus();
       }
+      break;
+    }
+
+    case 'jaw-copy-text': {
+      const text = String(e.data.text || '').trim().slice(0, 512);
+      if (!text) return;
+      navigator.clipboard.writeText(text).catch(() => {});
+      break;
+    }
+
+    case 'jaw-screenshot': {
+      const dataUrl = String(e.data.dataUrl || '');
+      if (!dataUrl.startsWith('data:image/')) return;
+      // Cap at 5 MB to prevent abuse
+      if (dataUrl.length > 5_242_880) return;
+      fetch(dataUrl).then(r => r.blob()).then(blob => {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `widget-${Date.now()}.png`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }).catch(() => {});
       break;
     }
 

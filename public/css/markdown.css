@@ -305,6 +305,45 @@
     color: var(--text);
 }
 
+/* Mermaid action buttons (copy / save) */
+.mermaid-copy-btn,
+.mermaid-save-btn {
+    position: absolute;
+    top: 6px;
+    background: color-mix(in oklch, var(--text) 10%, transparent);
+    border: 1px solid color-mix(in oklch, var(--text) 15%, transparent);
+    color: var(--text-dim);
+    width: 28px;
+    height: 28px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity var(--duration-fast), background var(--duration-fast), color var(--duration-fast);
+    z-index: 2;
+}
+
+.mermaid-copy-btn { right: 6px; }
+.mermaid-save-btn { right: calc(6px + 32px); }
+
+.mermaid-container:hover .mermaid-copy-btn,
+.mermaid-container:hover .mermaid-save-btn {
+    opacity: 1;
+}
+
+.mermaid-copy-btn:hover,
+.mermaid-save-btn:hover {
+    background: color-mix(in oklch, var(--text) 20%, transparent);
+    color: var(--text);
+}
+
+.mermaid-copy-btn.copied,
+.mermaid-save-btn.copied {
+    color: var(--success);
+}
+
 /* Mermaid popup overlay */
 .mermaid-overlay {
     position: fixed;

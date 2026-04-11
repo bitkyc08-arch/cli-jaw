@@ -50,6 +50,8 @@ import {
     ChevronDown,
     ArrowLeft,
     ArrowRight,
+    Copy,
+    Download,
 } from '@lucide/icons';
 
 // ── Size presets ──
@@ -115,6 +117,8 @@ export const ICONS = {
     stop:        luc(Square),
     close:       luc(X, S),
     send:        luc(Send),
+    copy:        luc(Copy, S),
+    download:    luc(Download, S),
     checkSimple: luc(Check, S),
     chevronLeft: luc(ChevronLeft, S),
     chevronRight:luc(ChevronRight, S),
@@ -169,6 +173,8 @@ const iconMap: Partial<Record<IconName, (s: number) => string>> = {
     folder:     (s) => luc(FolderOpen, s),
     pencil:     (s) => luc(Pencil, s),
     chart:      (s) => luc(ChartBar, s),
+    copy:       (s) => luc(Copy, s),
+    download:   (s) => luc(Download, s),
 };
 
 // ── Emoji → Icon name mapping (for server protocol backward compat) ──

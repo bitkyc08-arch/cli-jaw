@@ -109,6 +109,52 @@
   color: var(--text);
 }
 
+/* ── Action Buttons (Copy / Save) ── */
+.diagram-copy-btn,
+.diagram-save-btn {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-dim);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--duration-fast), color var(--duration-fast);
+  z-index: 2;
+}
+
+/* Widget: copy rightmost, save left of copy */
+.diagram-widget .diagram-save-btn { right: calc(var(--space-2) + 36px); }
+
+/* SVG: zoom rightmost, copy middle, save leftmost */
+.diagram-svg .diagram-copy-btn { right: calc(var(--space-2) + 36px); }
+.diagram-svg .diagram-save-btn { right: calc(var(--space-2) + 72px); }
+
+.diagram-container:hover .diagram-copy-btn,
+.diagram-container:hover .diagram-save-btn,
+.diagram-container:focus-within .diagram-copy-btn,
+.diagram-container:focus-within .diagram-save-btn {
+  opacity: 1;
+}
+
+.diagram-copy-btn:hover,
+.diagram-save-btn:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+
+.diagram-copy-btn.copied,
+.diagram-save-btn.copied {
+  color: var(--success);
+}
+
 /* ── Zoom Overlay ── */
 .diagram-overlay {
   position: fixed;

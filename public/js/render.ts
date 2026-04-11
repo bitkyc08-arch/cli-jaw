@@ -317,6 +317,7 @@ export async function rerenderMermaidDiagrams(): Promise<void> {
         try {
             const { svg } = await mm.render(id, code);
             el.innerHTML = svg;
+            appendMermaidActionBtns(el as HTMLElement);
         } catch { /* keep existing render on failure */ }
     }
 }
@@ -337,6 +338,28 @@ function ensureMermaidObserver(): void {
     }, { rootMargin: '200px' }); // pre-render 200px before visible
 }
 
+function appendMermaidActionBtns(el: HTMLElement): void {
+    // Remove existing buttons if present (e.g. re-render)
+    el.querySelector('.mermaid-copy-btn')?.remove();
+    el.querySelector('.mermaid-save-btn')?.remove();
+
+    const saveBtn = document.createElement('button');
+    saveBtn.className = 'mermaid-save-btn';
+    saveBtn.type = 'button';
+    saveBtn.ariaLabel = 'Save as image';
+    saveBtn.title = 'Save';
+    saveBtn.innerHTML = ICONS.download;
+    el.appendChild(saveBtn);
+
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'mermaid-copy-btn';
+    copyBtn.type = 'button';
+    copyBtn.ariaLabel = 'Copy source';
+    copyBtn.title = 'Copy';
+    copyBtn.innerHTML = ICONS.copy;
+    el.appendChild(copyBtn);
+}
+
 async function renderSingleMermaid(el: HTMLElement): Promise<void> {
     el.classList.remove('mermaid-pending');
     const code = el.textContent || '';
@@ -347,6 +370,7 @@ async function renderSingleMermaid(el: HTMLElement): Promise<void> {
         const { svg } = await mm.render(id, code);
         el.innerHTML = svg;
         el.classList.add('mermaid-rendered');
+        appendMermaidActionBtns(el);
     } catch (err: unknown) {
         const errMsg = (err as { message?: string; str?: string })?.message
             || (err as { str?: string })?.str || 'Unknown error';
@@ -476,6 +500,131 @@ function ensureCopyDelegation(): void {
     });
 }
 
+// ── Diagram action button event delegation (copy + save) ──
+let diagramActionsReady = false;
+
+function ensureDiagramActionDelegation(): void {
+    if (diagramActionsReady) return;
+    diagramActionsReady = true;
+
+    document.addEventListener('click', (e: MouseEvent) => {
+        const target = e.target as HTMLElement;
+
+        // ── Copy buttons ──
+        const diagCopyBtn = target?.closest('.diagram-copy-btn') as HTMLElement | null;
+        if (diagCopyBtn) {
+            const container = diagCopyBtn.closest('.diagram-container') as HTMLElement | null;
+            if (!container) return;
+            let text = '';
+            if (container.dataset.widgetHtml) {
+                try { text = decodeURIComponent(escape(atob(container.dataset.widgetHtml))); }
+                catch { return; }
+            } else {
+                const svgEl = container.querySelector('svg');
+                if (svgEl) text = svgEl.outerHTML;
+            }
+            if (text) btnFeedback(diagCopyBtn, text, 'copy');
+            return;
+        }
+
+        const mermaidCopyBtn = target?.closest('.mermaid-copy-btn') as HTMLElement | null;
+        if (mermaidCopyBtn) {
+            const container = mermaidCopyBtn.closest('.mermaid-container') as HTMLElement | null;
+            if (!container) return;
+            const code = container.dataset.mermaidCode || '';
+            if (code) btnFeedback(mermaidCopyBtn, code, 'copy');
+            return;
+        }
+
+        // ── Save buttons ──
+        const diagSaveBtn = target?.closest('.diagram-save-btn') as HTMLElement | null;
+        if (diagSaveBtn) {
+            const container = diagSaveBtn.closest('.diagram-container') as HTMLElement | null;
+            if (!container) return;
+            // Widget: request screenshot via bridge
+            if (container.dataset.widgetHtml) {
+                const iframe = container.querySelector('iframe') as HTMLIFrameElement | null;
+                if (iframe?.contentWindow) {
+                    iframe.contentWindow.postMessage({ type: 'jaw-request-screenshot' }, '*');
+                    btnFeedback(diagSaveBtn, '', 'save');
+                }
+                return;
+            }
+            // SVG: convert to PNG
+            const svgEl = container.querySelector('svg');
+            if (svgEl) saveSvgAsPng(svgEl, diagSaveBtn);
+            return;
+        }
+
+        const mermaidSaveBtn = target?.closest('.mermaid-save-btn') as HTMLElement | null;
+        if (mermaidSaveBtn) {
+            const container = mermaidSaveBtn.closest('.mermaid-container') as HTMLElement | null;
+            if (!container) return;
+            const svgEl = container.querySelector('svg');
+            if (svgEl) saveSvgAsPng(svgEl, mermaidSaveBtn);
+            return;
+        }
+    });
+}
+
+function btnFeedback(btn: HTMLElement, text: string, action: 'copy' | 'save'): void {
+    const doFeedback = () => {
+        const orig = btn.innerHTML;
+        btn.innerHTML = ICONS.checkSimple;
+        btn.classList.add('copied');
+        setTimeout(() => { btn.innerHTML = orig; btn.classList.remove('copied'); }, 1500);
+    };
+    if (action === 'copy') {
+        navigator.clipboard.writeText(text).then(doFeedback).catch(() => {});
+    } else {
+        doFeedback();
+    }
+}
+
+function saveSvgAsPng(svgEl: SVGElement, btn: HTMLElement): void {
+    const clone = svgEl.cloneNode(true) as SVGElement;
+    // Ensure width/height attributes for canvas rendering
+    const bbox = svgEl.getBoundingClientRect();
+    if (!clone.getAttribute('width')) clone.setAttribute('width', String(bbox.width));
+    if (!clone.getAttribute('height')) clone.setAttribute('height', String(bbox.height));
+
+    const svgData = new XMLSerializer().serializeToString(clone);
+    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
+    const url = URL.createObjectURL(svgBlob);
+    const img = new Image();
+    img.onload = () => {
+        const scale = 2; // retina
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth * scale;
+        canvas.height = img.naturalHeight * scale;
+        const ctx = canvas.getContext('2d')!;
+        ctx.scale(scale, scale);
+        ctx.drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        canvas.toBlob(blob => {
+            if (!blob) return;
+            downloadBlob(blob, `diagram-${Date.now()}.png`);
+            btnFeedback(btn, '', 'save');
+        }, 'image/png');
+    };
+    img.onerror = () => {
+        // Fallback: download as SVG
+        URL.revokeObjectURL(url);
+        downloadBlob(svgBlob, `diagram-${Date.now()}.svg`);
+        btnFeedback(btn, '', 'save');
+    };
+    img.src = url;
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+}
+
 // ── SVG Block Rendering (Phase 1) ──
 
 function renderSvgBlock(block: SvgBlock): string {
@@ -492,6 +641,10 @@ function renderSvgBlock(block: SvgBlock): string {
     return `<div class="diagram-container diagram-svg" tabindex="0"
         role="figure" aria-label="SVG diagram">
         ${sanitized}
+        <button class="diagram-save-btn" type="button"
+            aria-label="Save as image" title="Save">${ICONS.download}</button>
+        <button class="diagram-copy-btn" type="button"
+            aria-label="Copy source" title="Copy">${ICONS.copy}</button>
         <button class="diagram-zoom-btn" type="button"
             aria-label="Expand diagram" title="Expand">⤢</button>
     </div>`;
@@ -519,7 +672,7 @@ export function bindDiagramZoom(): void {
             if (!container) return;
             // Clone without zoom button to prevent nesting
             const clone = container.cloneNode(true) as HTMLElement;
-            clone.querySelectorAll('.diagram-zoom-btn').forEach(b => b.remove());
+            clone.querySelectorAll('.diagram-zoom-btn, .diagram-copy-btn, .diagram-save-btn').forEach(b => b.remove());
             openDiagramOverlay(clone.innerHTML);
         });
     });
@@ -612,6 +765,7 @@ export function renderMarkdown(text: string, isStreaming = false): string {
     });
 
     ensureCopyDelegation();
+    ensureDiagramActionDelegation();
 
     return html;
 }

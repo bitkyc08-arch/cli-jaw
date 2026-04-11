@@ -13,7 +13,7 @@ export interface StreamState {
 }
 
 const FULL_RENDER_THRESHOLD = 2000;
-const THROTTLE_MS = 32;
+const THROTTLE_MS = 80;  // ~12fps — was 32ms (30fps), reduced to avoid blocking input
 
 export function createStreamRenderer(el: HTMLElement): StreamState {
     return { fullText: '', element: el, pendingRAF: null, isFinalized: false, lastRenderTime: 0 };
