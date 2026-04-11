@@ -334,7 +334,18 @@ async function renderMermaidBlocks(): Promise<void> {
         const id = `mermaid-${++mermaidId}`;
         try {
             const { svg } = await mm.render(id, code);
-            el.innerHTML = sanitizeMermaidSvg(svg);
+            // DEBUG: log Mermaid output for diagnosis
+            const hasStyle = svg.includes('<style');
+            const styleCount = (svg.match(/<style/g) || []).length;
+            console.log(`[mermaid] ${id}: hasStyle=${hasStyle}, styleBlocks=${styleCount}, svgLen=${svg.length}`);
+            if (hasStyle) {
+                const styleMatch = svg.match(/<style[^>]*>([\s\S]*?)<\/style>/);
+                if (styleMatch) console.log(`[mermaid] ${id} style preview:`, styleMatch[1].substring(0, 300));
+            }
+            const sanitized = sanitizeMermaidSvg(svg);
+            const sanitizedHasStyle = sanitized.includes('<style');
+            console.log(`[mermaid] ${id}: afterSanitize hasStyle=${sanitizedHasStyle}, len=${sanitized.length}`);
+            el.innerHTML = sanitized;
             el.classList.add('mermaid-rendered');
         } catch (err: unknown) {
             const errMsg = (err as { message?: string; str?: string })?.message
