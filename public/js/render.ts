@@ -114,18 +114,16 @@ async function getMermaid() {
     return mermaidModule.default;
 }
 
-// Mermaid SVG sanitizer — allows <style> (required for Mermaid theming)
-// Separate from sanitizeHtml() which blocks <style> for user-supplied SVGs.
-// IMPORTANT: Depends on getMermaid() setting securityLevel: 'strict'.
-// If changed to 'loose'/'sandbox', Mermaid uses <foreignObject> + HTML labels,
-// which would be stripped. Add html:true profile and remove foreignObject
-// from FORBID_TAGS if security level changes.
+// Mermaid SVG sanitizer — allows <style> and <foreignObject> (required for theming + text labels)
+// Separate from sanitizeHtml() which blocks both for user-supplied SVGs.
+// Mermaid v11 uses <foreignObject> + HTML for node labels even in securityLevel: 'strict'.
+// Stripping foreignObject removes ALL text from diagrams.
 function sanitizeMermaidSvg(svg: string): string {
     const clean = DOMPurify.sanitize(svg, {
-        USE_PROFILES: { svg: true, svgFilters: true },
+        USE_PROFILES: { html: true, svg: true, svgFilters: true },
         FORBID_TAGS: [
             'script', 'iframe', 'object', 'embed', 'form', 'input',
-            'foreignObject', 'animate', 'set', 'animateTransform', 'animateMotion',
+            'animate', 'set', 'animateTransform', 'animateMotion',
         ],
         FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur',
                       'background'],
@@ -334,18 +332,7 @@ async function renderMermaidBlocks(): Promise<void> {
         const id = `mermaid-${++mermaidId}`;
         try {
             const { svg } = await mm.render(id, code);
-            // DEBUG: log Mermaid output for diagnosis
-            const hasStyle = svg.includes('<style');
-            const styleCount = (svg.match(/<style/g) || []).length;
-            console.log(`[mermaid] ${id}: hasStyle=${hasStyle}, styleBlocks=${styleCount}, svgLen=${svg.length}`);
-            if (hasStyle) {
-                const styleMatch = svg.match(/<style[^>]*>([\s\S]*?)<\/style>/);
-                if (styleMatch) console.log(`[mermaid] ${id} style preview:`, styleMatch[1].substring(0, 300));
-            }
-            const sanitized = sanitizeMermaidSvg(svg);
-            const sanitizedHasStyle = sanitized.includes('<style');
-            console.log(`[mermaid] ${id}: afterSanitize hasStyle=${sanitizedHasStyle}, len=${sanitized.length}`);
-            el.innerHTML = sanitized;
+            el.innerHTML = sanitizeMermaidSvg(svg);
             el.classList.add('mermaid-rendered');
         } catch (err: unknown) {
             const errMsg = (err as { message?: string; str?: string })?.message

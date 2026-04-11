@@ -209,6 +209,8 @@ export function activateWidgets(container?: HTMLElement): void {
     }
     const wrapper = document.createElement('div');
     wrapper.className = 'diagram-container diagram-widget';
+    // Preserve source for theme-change reload
+    wrapper.dataset.widgetHtml = encoded;
 
     const { iframe, nonce } = createWidgetIframe(htmlCode);
     wrapper.appendChild(iframe);
@@ -306,17 +308,46 @@ function throttledResize(source: Window, height: number): void {
 }
 
 // ── Theme Broadcast to All Widget iframes ──
+// Also recreates iframes so baked-in chart colors update with new theme.
 export function broadcastThemeToIframes(): void {
-  const theme = getThemeTokens();
-  document.querySelectorAll('.diagram-widget iframe').forEach(iframe => {
-    const win = (iframe as HTMLIFrameElement).contentWindow;
-    if (win) {
-      win.postMessage({
-        type: 'jaw-theme-update',
-        isDark: theme.isDark,
-        tokens: theme.tokens,
-      }, '*');
+  document.querySelectorAll('.diagram-widget').forEach(container => {
+    const encoded = (container as HTMLElement).dataset.widgetHtml;
+    if (!encoded) return;
+    let htmlCode: string;
+    try {
+      htmlCode = decodeURIComponent(escape(atob(encoded)));
+    } catch { return; }
+
+    // Deregister old iframe
+    const oldIframe = container.querySelector('iframe') as HTMLIFrameElement | null;
+    if (oldIframe?.contentWindow) {
+      registeredIframes.delete(oldIframe.contentWindow);
+      iframeNonces.delete(oldIframe.contentWindow);
     }
+
+    // Recreate with fresh theme tokens
+    const { iframe, nonce } = createWidgetIframe(htmlCode);
+    container.innerHTML = '';
+    container.appendChild(iframe);
+
+    let initialLoadFired = false;
+    iframe.addEventListener('load', () => {
+      if (!initialLoadFired) {
+        initialLoadFired = true;
+        if (iframe.contentWindow) {
+          registeredIframes.add(iframe.contentWindow);
+          iframeNonces.set(iframe.contentWindow, nonce);
+          iframe.contentWindow.postMessage({ type: 'jaw-request-resize' }, '*');
+          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 300);
+          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 1000);
+        }
+      } else {
+        if (iframe.contentWindow) {
+          registeredIframes.delete(iframe.contentWindow);
+          iframeNonces.delete(iframe.contentWindow);
+        }
+      }
+    });
   });
 }
 
