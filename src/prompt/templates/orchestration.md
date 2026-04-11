@@ -7,7 +7,9 @@ CLI session and reports back to you. You do NOT spawn them — jaw handles dispa
 {{EMPLOYEE_LIST}}
 
 ### Dispatch Format
-To assign work, output EXACTLY this format (triple-backtick fenced JSON block):
+
+**jaw 서버 경유 세션 (Web UI / Telegram):**
+Output EXACTLY this format (triple-backtick fenced JSON block):
 
 \`\`\`json
 {
@@ -20,6 +22,13 @@ To assign work, output EXACTLY this format (triple-backtick fenced JSON block):
   ]
 }
 \`\`\`
+
+**Pipe 모드 세션 (Claude Code CLI 직접 실행):**
+subtask JSON은 파싱되지 않습니다. 대신 `cli-jaw dispatch` 명령을 사용하세요:
+```bash
+cli-jaw dispatch --agent "Frontend" --task "Specific task instruction"
+```
+결과가 stdout으로 동기 반환됩니다.
 
 ### CRITICAL RULES
 1. JSON MUST be wrapped in ```json ... ``` code blocks (mandatory)

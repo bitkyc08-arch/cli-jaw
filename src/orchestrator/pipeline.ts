@@ -66,6 +66,8 @@ function pickWorklogSeed(...candidates: Array<string | null | undefined>) {
     return 'orchestration';
 }
 
+const ACTIVE_PABCD_DISPATCH_STATES = new Set<OrcStateName>(['P', 'A', 'B', 'C']);
+
 // ─── orchestrate (PABCD sole entry point) ───────────
 
 export async function orchestrate(
@@ -216,12 +218,12 @@ export async function orchestrate(
 
     // Worker JSON detected → spawn workers → feed results back
     const workerTasks = parseSubtasks(result.text);
-    // Research subtasks use phase 1 and can run from any state (including IDLE).
-    // Non-Research subtasks only dispatch during active PABCD (P/A/B/C).
+    // Research subtasks can run from any state. Non-research blocked only in D.
     const isResearchOnly = workerTasks?.length && workerTasks.every(
         (wt: Record<string, any>) => /^research$/i.test(wt.agent || ''),
     );
-    if (workerTasks?.length && (state !== 'IDLE' || isResearchOnly)) {
+    const canDispatchWorkers = isResearchOnly || state !== 'D';
+    if (workerTasks?.length && canDispatchWorkers) {
         console.log(`[jaw:pabcd] worker JSON detected (${workerTasks.length} tasks, research=${!!isResearchOnly})`);
 
         // Map PABCD state → worker phase context

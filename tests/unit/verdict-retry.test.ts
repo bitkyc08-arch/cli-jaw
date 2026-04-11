@@ -23,7 +23,14 @@ test('VR-001: pipeline imports getState from state-machine', () => {
 });
 
 test('VR-002: pipeline uses PABCD state check before worker dispatch', () => {
-    assert.ok(pipelineSrc.includes("state !== 'IDLE'"), 'worker dispatch should be guarded by state check');
+    assert.ok(
+        pipelineSrc.includes("ACTIVE_PABCD_DISPATCH_STATES = new Set<OrcStateName>(['P', 'A', 'B', 'C'])"),
+        'worker dispatch should only allow active PABCD states P/A/B/C',
+    );
+    assert.ok(
+        pipelineSrc.includes('const canDispatchWorkers = isResearchOnly || ACTIVE_PABCD_DISPATCH_STATES.has(state);'),
+        'worker dispatch should use explicit phase gating instead of non-IDLE fallback',
+    );
 });
 
 test('VR-003: pipeline feeds worker results back via recursive orchestrate', () => {

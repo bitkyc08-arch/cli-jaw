@@ -66,7 +66,8 @@ import { resolveOrcScope } from './src/orchestrator/scope.js';
 import { listActiveOrcStates } from './src/core/db.js';
 import type { OrcStateName } from './src/orchestrator/state-machine.js';
 import { submitMessage } from './src/orchestrator/gateway.js';
-import { getActiveWorkers } from './src/orchestrator/worker-registry.js';
+import { getActiveWorkers, claimWorker, finishWorker, failWorker } from './src/orchestrator/worker-registry.js';
+import { findEmployee, runSingleAgent } from './src/orchestrator/distribute.js';
 import { makeCommandCtx } from './src/cli/command-context.js';
 import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram/bot.js';
 import './src/discord/bot.js'; // side-effect: registers discord transport
@@ -415,6 +416,32 @@ app.get('/api/orchestrate/snapshot', (_req, res) => {
         },
         workers: getActiveWorkers(),
     });
+});
+
+// ─── Dispatch: pipe-mode employee dispatch ──────────
+app.post('/api/orchestrate/dispatch', async (req, res) => {
+    const { agent: agentName, task } = req.body || {};
+    if (!agentName || !task) return fail(res, 400, 'Missing agent or task');
+
+    const emps = getEmployees.all() as Record<string, any>[];
+    const emp = findEmployee(emps, { agent: agentName });
+    if (!emp) return fail(res, 404, `Employee not found: ${agentName}`);
+
+    const slot = claimWorker(emp, task);
+    try {
+        const ap = {
+            agent: emp.name, role: emp.role || 'general developer',
+            task, parallel: false,
+            currentPhase: 3, currentPhaseIdx: 0,
+            phaseProfile: [3],
+        };
+        const result = await runSingleAgent(ap, emp, {}, 1, { origin: 'api' }, []);
+        finishWorker(slot.agentId, result.text || '');
+        res.json({ ok: true, result });
+    } catch (err: any) {
+        failWorker(slot.agentId, err.message);
+        res.status(500).json({ ok: false, error: err.message });
+    }
 });
 
 app.put('/api/orchestrate/state', (req, res) => {

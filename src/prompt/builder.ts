@@ -400,27 +400,30 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
         }
     } catch { /* vision-click not ready */ }
 
-    // ─── Subagent prohibition for pipe-mode CLIs ───
-    // Pipe-mode CLIs (codex, claude, gemini, opencode) exit after a single
-    // session. Internal Agent/subagent tools will fail because the process
-    // terminates before the subagent completes. ACP (copilot) is excluded
-    // because it maintains a persistent session.
+    // ─── Nested agent prohibition for pipe-mode CLIs ───
+    // Main agents and employees may use CLI-built-in Agent/subagent tools
+    // (1st-level). But those subagents must NOT spawn further subagents
+    // (2nd-level+). jaw employee dispatch (subtask JSON) is always allowed.
     const pipeActiveCli = opts.activeCli || settings.cli;
     const PIPE_MODE_CLIS = ['codex', 'claude', 'gemini', 'opencode'];
     if (!opts.forDisk && PIPE_MODE_CLIS.includes(pipeActiveCli || '')) {
         prompt += '\n\n---\n## Agent/Subagent Prohibition\n';
-        prompt += 'You are running in non-interactive pipe mode. ';
-        prompt += '**Do NOT use Agent tools, subagent spawning, or delegation tools.** ';
-        prompt += 'These tools will fail because the process exits after your response. ';
-        prompt += 'Instead, do the work directly yourself in this single session. ';
-        prompt += 'If the task is too large, break it into concrete steps and execute them sequentially — ';
-        prompt += 'do NOT delegate to another agent.\n';
-    }
-    if (opts.forDisk) {
-        prompt += '\n\n---\n## Agent/Subagent Prohibition\n';
         prompt += 'Do NOT use Agent, subagent, or delegation tools. ';
         prompt += 'This session runs in pipe mode — subprocesses will not complete. ';
         prompt += 'Do all work directly. Break large tasks into sequential steps.\n';
+        prompt += '\n### jaw Employee Dispatch (Pipe Mode)\n';
+        prompt += 'subtask JSON output will NOT be parsed in pipe mode. ';
+        prompt += 'To dispatch jaw employees, use the CLI command instead:\n';
+        prompt += '```bash\ncli-jaw dispatch --agent "Frontend" --task "task description"\n```\n';
+        prompt += 'Results are returned synchronously to stdout.\n';
+    }
+    if (opts.forDisk) {
+        prompt += '\n\n---\n## Nested Agent Prohibition\n';
+        prompt += 'You may use CLI-built-in Agent/subagent tools for your own subtasks (1st level). ';
+        prompt += 'However, **subagents you spawn must NOT spawn further subagents** (no 2nd-level nesting). ';
+        prompt += 'When spawning a subagent, include this instruction in its prompt: ';
+        prompt += '"Do NOT use Agent, subagent, or delegation tools. Do all work directly."\n';
+        prompt += 'jaw employee dispatch via subtask JSON is separate and always allowed.\n';
     }
 
     return prompt;
@@ -513,11 +516,12 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
     prompt += `\n- Focus only on your assigned area`;
     prompt += `\n- Report results clearly with specific file paths and line numbers`;
 
-    // ─── Subagent prohibition (employees always run in pipe mode) ───
-    prompt += `\n\n## Agent/Subagent Prohibition`;
-    prompt += `\nYou are running as an employee agent in pipe mode.`;
-    prompt += `\nDo NOT use Agent tools or subagent delegation.`;
-    prompt += `\nComplete all work directly in this session.`;
+    // ─── Nested agent prohibition (employees may use 1st-level subagents) ───
+    prompt += `\n\n## Nested Agent Prohibition`;
+    prompt += `\nYou may use CLI-built-in Agent/subagent tools for your own subtasks (1st level).`;
+    prompt += `\nHowever, subagents you spawn must NOT spawn further subagents (no 2nd-level nesting).`;
+    prompt += `\nWhen spawning a subagent, include this in its prompt: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."`;
+    prompt += `\nDo NOT output jaw employee subtask JSON — only the Boss does that.`;
 
     promptCache.set(cacheKey, prompt);
     return prompt;
