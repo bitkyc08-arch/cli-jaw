@@ -98,7 +98,8 @@ function buildCspMeta(htmlCode: string): string {
   const workerSrc = /Tone\.min\.js|tone@/.test(htmlCode) ? "worker-src blob:;" : '';
 
   const scriptSrc = CDN_ALLOWLIST.map(h => `https://${h}`).join(' ');
-  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${scriptSrc}; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src data: blob:; font-src https://fonts.gstatic.com; connect-src ${connectSrc}; ${workerSrc} base-uri 'none';">`;
+  const imgSrc = `data: blob: ${CDN_ALLOWLIST.map(h => `https://${h}`).join(' ')}`;
+  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${scriptSrc}; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src ${imgSrc}; font-src https://fonts.gstatic.com; connect-src ${connectSrc}; ${workerSrc} base-uri 'none';">`;
 }
 
 // ── Theme Token Injection ──
