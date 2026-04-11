@@ -219,25 +219,25 @@
 .c-orange-text   { fill: #fdba74; }
 .c-orange-bg     { fill: #431407; stroke: #f97316; stroke-width: 1; }
 
-/* ── SVG Primitives ── */
-.node {
+/* ── SVG Primitives (scoped to .diagram-svg to avoid Mermaid class collision) ── */
+.diagram-svg .node {
   rx: 8;
   ry: 8;
 }
 
-.connector {
+.diagram-svg .connector {
   stroke: var(--border);
   stroke-width: 1.5;
   fill: none;
 }
 
-.label {
+.diagram-svg .label {
   font-size: 14px;
   text-anchor: middle;
   dominant-baseline: central;
 }
 
-.diagram-title {
+.diagram-svg .diagram-title {
   font-size: 16px;
   font-weight: 600;
   text-anchor: middle;
@@ -292,6 +292,6 @@
 [data-theme="light"] .c-orange-text   { fill: #9a3412; }
 [data-theme="light"] .c-orange-bg     { fill: #ffedd5; stroke: #ea580c; }
 
-[data-theme="light"] .connector {
+[data-theme="light"] .diagram-svg .connector {
   stroke: var(--border);
 }

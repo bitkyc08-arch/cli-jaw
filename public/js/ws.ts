@@ -222,7 +222,7 @@ export function connect(): void {
             addSystemMsg(`${ICONS.clipboard} Worklog: ${escapeHtml(msg.path || '')}`);
         } else if (msg.type === 'round_start') {
             const agents = (msg.agentPhases || msg.subtasks || []);
-            const names = agents.map(a => a.agent || a.name || '').join(', ');
+            const names = agents.map(a => escapeHtml(a.agent || a.name || '')).join(', ');
             addSystemMsg(t('ws.roundStart', { round: msg.round || 0, count: agents.length, names }));
         } else if (msg.type === 'round_done') {
             if (msg.action === 'complete') {

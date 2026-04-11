@@ -62,17 +62,85 @@ hljs.registerLanguage('text', plaintext);
 
 // Lazy mermaid: loaded on first diagram encounter
 let mermaidModule: typeof import('mermaid') | null = null;
+let mermaidTheme: string | null = null;
+
+function getMermaidThemeVars() {
+    const isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    return isLight ? {
+        primaryColor: '#e2e8f0',
+        primaryTextColor: '#1a202c',
+        primaryBorderColor: '#a0aec0',
+        lineColor: '#718096',
+        secondaryColor: '#ebf8ff',
+        tertiaryColor: '#f7fafc',
+        background: 'transparent',
+        mainBkg: '#e2e8f0',
+        nodeBorder: '#a0aec0',
+        clusterBkg: '#f7fafc',
+        clusterBorder: '#cbd5e0',
+        titleColor: '#1a202c',
+        edgeLabelBackground: '#f7fafc',
+    } : {
+        primaryColor: '#2d3748',
+        primaryTextColor: '#e2e8f0',
+        primaryBorderColor: '#4a5568',
+        lineColor: '#718096',
+        secondaryColor: '#1a365d',
+        tertiaryColor: '#1a202c',
+        background: 'transparent',
+        mainBkg: '#2d3748',
+        nodeBorder: '#4a5568',
+        clusterBkg: '#1a202c',
+        clusterBorder: '#2d3748',
+        titleColor: '#e2e8f0',
+        edgeLabelBackground: '#1a202c',
+    };
+}
 
 async function getMermaid() {
+    const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     if (!mermaidModule) {
         mermaidModule = await import('mermaid');
+    }
+    if (mermaidTheme !== currentTheme) {
+        mermaidTheme = currentTheme;
         mermaidModule.default.initialize({
             startOnLoad: false,
-            theme: document.documentElement.getAttribute('data-theme') === 'light' ? 'default' : 'dark',
+            theme: 'base',
+            themeVariables: getMermaidThemeVars(),
             securityLevel: 'strict',
         });
     }
     return mermaidModule.default;
+}
+
+// Mermaid SVG sanitizer — allows <style> (required for Mermaid theming)
+// Separate from sanitizeHtml() which blocks <style> for user-supplied SVGs.
+// IMPORTANT: Depends on getMermaid() setting securityLevel: 'strict'.
+// If changed to 'loose'/'sandbox', Mermaid uses <foreignObject> + HTML labels,
+// which would be stripped. Add html:true profile and remove foreignObject
+// from FORBID_TAGS if security level changes.
+function sanitizeMermaidSvg(svg: string): string {
+    const clean = DOMPurify.sanitize(svg, {
+        USE_PROFILES: { svg: true, svgFilters: true },
+        FORBID_TAGS: [
+            'script', 'iframe', 'object', 'embed', 'form', 'input',
+            'foreignObject', 'animate', 'set', 'animateTransform', 'animateMotion',
+        ],
+        FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur',
+                      'background'],
+    });
+    // Sanitize CSS inside <style> blocks: strip @import, @font-face, external url()
+    const div = document.createElement('div');
+    div.innerHTML = clean;
+    for (const style of div.querySelectorAll('style')) {
+        let css = style.textContent || '';
+        css = css.replace(/@import\b[^;]*;?/gi, '/* stripped */');
+        css = css.replace(/@font-face\s*\{[^}]*\}/gi, '/* stripped */');
+        css = css.replace(/url\s*\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
+        style.textContent = css;
+    }
+    return div.innerHTML;
 }
 
 export function escapeHtml(str: string): string {
@@ -238,17 +306,35 @@ export function unshieldMath(html: string, blocks: MathBlock[]): string {
 // ── Mermaid deferred rendering (lazy-loaded) ──
 let mermaidId = 0;
 
-function renderMermaidBlocks(): void {
-    const pending = document.querySelectorAll('.mermaid-pending');
-    if (!pending.length) return;
-    pending.forEach(async (el) => {
-        el.classList.remove('mermaid-pending');
-        const code = el.textContent || '';
+/** Re-render all existing Mermaid diagrams (call on theme toggle). */
+export async function rerenderMermaidDiagrams(): Promise<void> {
+    mermaidTheme = null; // force re-init with new theme vars
+    const rendered = document.querySelectorAll('.mermaid-rendered');
+    if (!rendered.length) return;
+    const mm = await getMermaid();
+    for (const el of rendered) {
+        const code = (el as HTMLElement).dataset.mermaidCode;
+        if (!code) continue;
         const id = `mermaid-${++mermaidId}`;
         try {
-            const mm = await getMermaid();
             const { svg } = await mm.render(id, code);
-            el.innerHTML = sanitizeHtml(svg);
+            el.innerHTML = sanitizeMermaidSvg(svg);
+        } catch { /* keep existing render on failure */ }
+    }
+}
+
+async function renderMermaidBlocks(): Promise<void> {
+    const pending = document.querySelectorAll('.mermaid-pending');
+    if (!pending.length) return;
+    const mm = await getMermaid();
+    for (const el of pending) {
+        el.classList.remove('mermaid-pending');
+        const code = el.textContent || '';
+        (el as HTMLElement).dataset.mermaidCode = code;
+        const id = `mermaid-${++mermaidId}`;
+        try {
+            const { svg } = await mm.render(id, code);
+            el.innerHTML = sanitizeMermaidSvg(svg);
             el.classList.add('mermaid-rendered');
         } catch (err: unknown) {
             const errMsg = (err as { message?: string; str?: string })?.message
@@ -260,7 +346,7 @@ function renderMermaidBlocks(): void {
                     <pre class="mermaid-error-code"><code>${escapeHtml(code)}</code></pre>
                 </div>`;
         }
-    });
+    }
 }
 
 // ── marked.js configuration (ES module — always available) ──

@@ -5,6 +5,7 @@
 import githubDark from 'highlight.js/styles/github-dark.css?inline';
 import githubLight from 'highlight.js/styles/github.css?inline';
 import { broadcastThemeToIframes } from '../diagram/iframe-renderer.js';
+import { rerenderMermaidDiagrams } from '../render.js';
 
 const STORAGE_KEY = 'theme';
 let hljsStyleEl: HTMLStyleElement | null = null;
@@ -45,4 +46,5 @@ function applyTheme(theme: string): void {
 
     applyHljsTheme(theme);
     broadcastThemeToIframes();
+    rerenderMermaidDiagrams();
 }

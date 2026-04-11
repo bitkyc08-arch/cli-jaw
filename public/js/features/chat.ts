@@ -73,7 +73,7 @@ export async function sendMessage(): Promise<void> {
                 const chatEl = document.getElementById('chatMessages');
                 if (chatEl) chatEl.innerHTML = '';
             }
-            if (result?.text) addSystemMsg(result.text, '', result.type);
+            if (result?.text) addSystemMsg(escapeHtml(result.text), '', result.type);
         } catch (err) {
             addSystemMsg(t('chat.cmd.fail', { msg: (err as Error).message }), '', 'error');
         }
@@ -82,7 +82,7 @@ export async function sendMessage(): Promise<void> {
 
     if (state.attachedFiles.length) {
         const names = state.attachedFiles.map((f: File) => f.name).join(', ');
-        const displayMsg = `${ICONS.paperclip} [${names}] ${text}`;
+        const displayMsg = `📎 [${names}] ${text}`;
         addMessage('user', displayMsg);
         input.value = '';
         resetInputHeight();

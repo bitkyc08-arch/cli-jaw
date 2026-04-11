@@ -117,6 +117,9 @@ function getBridgeScript(nonce: string): string {
 
   window.addEventListener('load', function() {
     postHeight();
+    // Deferred re-measure for async chart renders (Chart.js animation, CDN loading)
+    setTimeout(postHeight, 200);
+    setTimeout(postHeight, 800);
     window.parent.postMessage({ type: 'jaw-widget-ready', nonce: __nonce }, '*');
   });
 
@@ -224,6 +227,9 @@ export function activateWidgets(container?: HTMLElement): void {
           iframeNonces.set(iframe.contentWindow, nonce);
           // Request initial resize now that channel is established
           iframe.contentWindow.postMessage({ type: 'jaw-request-resize' }, '*');
+          // Deferred resize for slow CDN loads / async chart renders
+          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 300);
+          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 1000);
         }
       } else {
         // Navigation detected — revoke postMessage trust permanently

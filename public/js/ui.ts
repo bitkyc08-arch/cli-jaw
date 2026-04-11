@@ -385,7 +385,7 @@ export async function loadMessages(): Promise<void> {
     const cached = await getCachedMessages();
     if (cached.length > 0) {
         cached.forEach(m => addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content));
-        addMessage('system', `${ICONS.warning} 오프라인 모드 — 캐시된 메시지 표시 중`);
+        addSystemMsg(`${ICONS.warning} 오프라인 모드 — 캐시된 메시지 표시 중`);
     }
     showEmptyState();
 }
