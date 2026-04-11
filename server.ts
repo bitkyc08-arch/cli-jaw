@@ -78,7 +78,7 @@ import { validateHeartbeatScheduleInput } from './src/memory/heartbeat-schedule.
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from './lib/quota-copilot.js';
 import { startTokenKeepAlive } from './lib/token-keepalive.js';
 import { CLI_REGISTRY } from './src/cli/registry.js';
-import { clearMainSessionState, clearBossSessionOnly, syncMainSessionToSettings, resetSessionPreservingHistory } from './src/core/main-session.js';
+import { clearMainSessionState, syncMainSessionToSettings, resetSessionPreservingHistory } from './src/core/main-session.js';
 import { applyRuntimeSettingsPatch } from './src/core/runtime-settings.js';
 import { getDefaultClaudeModel, migrateLegacyClaudeValue } from './src/cli/claude-models.js';
 import { DEFAULT_EMPLOYEES, seedDefaultEmployees } from './src/core/employees.js';
@@ -455,12 +455,9 @@ app.put('/api/orchestrate/state', (req, res) => {
         return fail(res, 409, `Cannot transition: ${current} → ${t}`);
     }
     if (t === 'D') {
-        bumpSessionOwnershipGeneration();
         setState(t, undefined, scope, 'Done');
         resetState(scope);
     } else {
-        bumpSessionOwnershipGeneration();
-        clearBossSessionOnly();
         setState(
             t,
             t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'api' } : undefined,
@@ -1091,7 +1088,6 @@ const shutdown = async (sig: string) => {
     // Reset orchestration state so next startup doesn't show stale P/A/B/C
     const staleRows = listActiveOrcStates.all() as Array<{ id: string }>;
     for (const row of staleRows) resetState(row.id);
-    resetState();  // also reset default scope
 
     try {
         await Promise.race([

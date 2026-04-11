@@ -1,5 +1,5 @@
 // Research worker unit tests
-import test, { beforeEach } from 'node:test';
+import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     dispatchResearchTask,
@@ -13,7 +13,18 @@ import { getCtx, resetState, setState } from '../../src/orchestrator/state-machi
 import { resolveOrcScope } from '../../src/orchestrator/scope.ts';
 import { clearAllBroadcastListeners } from '../../src/core/bus.ts';
 
-beforeEach(() => { resetState(); clearAllBroadcastListeners(); });
+const testScope = resolveOrcScope({ origin: 'test' });
+
+beforeEach(() => {
+    resetState();
+    resetState(testScope);
+    clearAllBroadcastListeners();
+});
+
+afterEach(() => {
+    resetState();
+    resetState(testScope);
+});
 
 // ─── isAmbiguousRequest ─────────────────────────────
 

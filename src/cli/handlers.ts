@@ -734,8 +734,6 @@ export async function ideHandler(args: string[], ctx: any) {
 
 export async function orchestrateHandler(args: string[], ctx: any) {
     const { getState, setState, resetState, canTransition, getStatePrompt } = await import('../orchestrator/state-machine.js');
-    const { clearBossSessionOnly } = await import('../core/main-session.js');
-    const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
     const { resolveOrcScope } = await import('../orchestrator/scope.js');
     type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
     const target = (args[0] || 'P').toUpperCase();
@@ -744,7 +742,6 @@ export async function orchestrateHandler(args: string[], ctx: any) {
     const scope = resolveOrcScope({ origin, workingDir: settings.workingDir || null });
 
     if (target === 'RESET') {
-        bumpSessionOwnershipGeneration();
         resetState(scope);
         return { ok: true, text: '✅ State → IDLE (reset)' };
     }
@@ -761,19 +758,14 @@ export async function orchestrateHandler(args: string[], ctx: any) {
     }
 
     if (t === 'D') {
-        bumpSessionOwnershipGeneration();
         setState(t, undefined, scope, 'Done');
         resetState(scope);
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
 
     if (t === 'P') {
-        bumpSessionOwnershipGeneration();
-        clearBossSessionOnly();
         setState(t, { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin }, scope, 'P');
     } else {
-        bumpSessionOwnershipGeneration();
-        clearBossSessionOnly();
         setState(t, undefined, scope, t);
     }
     const statePrompt = getStatePrompt(t);

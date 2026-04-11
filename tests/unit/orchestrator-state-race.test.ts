@@ -1,10 +1,11 @@
-import test, { beforeEach } from 'node:test';
+import test, { beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { orchestrate } from '../../src/orchestrator/pipeline.ts';
 import { getCtx, getState, resetState, setState } from '../../src/orchestrator/state-machine.ts';
 
 beforeEach(() => { resetState('default'); });
+afterEach(() => { resetState('default'); });
 
 test('OSR-001: reset during agent execution does not restore stale P state', async () => {
     setState('P', {

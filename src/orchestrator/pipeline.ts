@@ -9,7 +9,7 @@ import {
     clearAllEmployeeSessions,
     upsertEmployeeSession,
 } from '../core/db.js';
-import { clearMainSessionState, clearBossSessionOnly } from '../core/main-session.js';
+
 import { clearPromptCache } from '../prompt/builder.js';
 import { spawnAgent, killAgentById, killActiveAgent } from '../agent/spawn.js';
 import {
@@ -392,8 +392,6 @@ export async function orchestrateReset(
     messageQueue.length = 0;
 
     clearAllEmployeeSessions.run();
-    // Reset boss session ID (prevents stale --resume) but keep message history
-    clearBossSessionOnly();
     const candidateScope = resolveOrcScope({
         persistedScopeId: null,
         origin,
