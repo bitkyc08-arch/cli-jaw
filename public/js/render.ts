@@ -467,8 +467,10 @@ export function openDiagramOverlay(innerHtml: string): void {
 
 // ── Main export ──
 export function renderMarkdown(text: string, isStreaming = false): string {
-    const cleaned = stripOrchestration(text);
-    if (!cleaned) return `<em class="text-dim orchestrate-placeholder">${escapeHtml(t('orchestrator.dispatching'))}</em>`;
+    const rawCleaned = stripOrchestration(text);
+    if (!rawCleaned) return `<em class="text-dim orchestrate-placeholder">${escapeHtml(t('orchestrator.dispatching'))}</em>`;
+    // Collapse 3+ consecutive newlines → double newline (prevents excessive paragraph breaks)
+    const cleaned = rawCleaned.replace(/\n{3,}/g, '\n\n');
 
     // 1. Shield code fences (protect SVG in code blocks)
     const { text: fenceShielded, fences } = shieldCodeFenceSvg(cleaned);
