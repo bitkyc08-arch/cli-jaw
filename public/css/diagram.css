@@ -95,6 +95,7 @@
   font-size: 16px;
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--duration-fast);
   z-index: 2;
 }
@@ -102,6 +103,7 @@
 .diagram-container:hover .diagram-zoom-btn,
 .diagram-container:focus-within .diagram-zoom-btn {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .diagram-zoom-btn:hover {
@@ -126,6 +128,7 @@
   color: var(--text-dim);
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity var(--duration-fast), color var(--duration-fast);
   z-index: 2;
 }
@@ -142,6 +145,7 @@
 .diagram-container:focus-within .diagram-copy-btn,
 .diagram-container:focus-within .diagram-save-btn {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .diagram-copy-btn:hover,

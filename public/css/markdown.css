@@ -321,16 +321,20 @@
     align-items: center;
     justify-content: center;
     opacity: 0;
+    pointer-events: none;
     transition: opacity var(--duration-fast), background var(--duration-fast), color var(--duration-fast);
     z-index: 2;
 }
 
-.mermaid-copy-btn { right: 6px; }
-.mermaid-save-btn { right: calc(6px + 32px); }
+/* zoom at right:6px (rightmost), copy next, save leftmost */
+.mermaid-copy-btn { right: calc(6px + 32px); }
+.mermaid-save-btn { right: calc(6px + 64px); }
 
+.mermaid-container:hover .mermaid-zoom-btn,
 .mermaid-container:hover .mermaid-copy-btn,
 .mermaid-container:hover .mermaid-save-btn {
     opacity: 1;
+    pointer-events: auto;
 }
 
 .mermaid-copy-btn:hover,

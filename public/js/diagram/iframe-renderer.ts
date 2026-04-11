@@ -294,7 +294,10 @@ export function activateWidgets(container?: HTMLElement): void {
       }
     });
 
-    // Timeout: if no jaw-widget-ready within 10s, show error
+    // Timeout: if no jaw-widget-ready within 10s, show error.
+    // Uses a generation counter to detect iframe recreation (theme toggle).
+    const gen = Number(wrapper.dataset.gen || '0');
+    wrapper.dataset.gen = String(gen);
     let readyReceived = false;
     const readyHandler = (e: MessageEvent) => {
       if (e.source === iframe.contentWindow && e.data?.type === 'jaw-widget-ready'
@@ -307,6 +310,8 @@ export function activateWidgets(container?: HTMLElement): void {
 
     setTimeout(() => {
       window.removeEventListener('message', readyHandler);
+      // Skip if iframe was recreated (e.g. theme toggle)
+      if (Number(wrapper.dataset.gen || '0') !== gen) return;
       if (!readyReceived && wrapper.isConnected) {
         const failedWin = iframe.contentWindow;
         if (failedWin) {
@@ -379,6 +384,10 @@ export function broadcastThemeToIframes(): void {
       registeredIframes.delete(oldIframe.contentWindow);
       iframeNonces.delete(oldIframe.contentWindow);
     }
+
+    // Bump generation to invalidate pending timeouts from activateWidgets
+    const cEl = container as HTMLElement;
+    cEl.dataset.gen = String((Number(cEl.dataset.gen || '0') || 0) + 1);
 
     // Recreate with fresh theme tokens
     const { iframe, nonce } = createWidgetIframe(htmlCode);
@@ -465,7 +474,7 @@ window.addEventListener('message', (e: MessageEvent) => {
         a.href = url;
         a.download = `widget-${Date.now()}.png`;
         a.click();
-        URL.revokeObjectURL(url);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       }).catch(() => {});
       break;
     }
