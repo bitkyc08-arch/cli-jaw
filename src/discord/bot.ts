@@ -7,7 +7,7 @@ import { submitMessage } from '../orchestrator/gateway.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { addBroadcastListener, removeBroadcastListener, type BroadcastListener } from '../core/bus.js';
-import { saveUpload, buildMediaPrompt, isAgentBusy } from '../agent/spawn.js';
+import { saveUpload, buildMediaPromptMany, isAgentBusy } from '../agent/spawn.js';
 import { registerTransport, setLastActiveTarget, setLatestSeenTarget, getLastActiveTarget } from '../messaging/runtime.js';
 import { registerSendTransport } from '../messaging/send.js';
 import { t, normalizeLocale } from '../core/i18n.js';
@@ -23,6 +23,9 @@ import type { Attachment, Message } from 'discord.js';
 export let discordClient: Client | null = null;
 export const discordActiveChannelIds = new Set<string>();
 let forwarderHandler: BroadcastListener | null = null;
+
+type SavedDiscordAttachment = { name: string; filePath: string };
+type FailedDiscordAttachment = { name: string; reason: string };
 
 // ─── Helpers ────────────────────────────────────────
 
@@ -56,8 +59,43 @@ async function downloadDiscordAttachment(attachment: Attachment): Promise<{ buff
     return { buffer, name: attachment.name || 'attachment' };
 }
 
+async function downloadAndSaveDiscordAttachments(
+    attachments: Message['attachments'],
+): Promise<{ saved: SavedDiscordAttachment[]; failed: FailedDiscordAttachment[] }> {
+    const attachmentList = Array.from(attachments.values());
+    const results = await Promise.allSettled(
+        attachmentList.map(async (attachment) => {
+            const dl = await downloadDiscordAttachment(attachment);
+            const filePath = saveUpload(dl.buffer, dl.name);
+            return { name: dl.name, filePath };
+        }),
+    );
+
+    const saved: SavedDiscordAttachment[] = [];
+    const failed: FailedDiscordAttachment[] = [];
+
+    for (const [index, result] of results.entries()) {
+        const fallbackName = attachmentList[index]?.name || `attachment-${index + 1}`;
+        if (result.status === 'fulfilled') {
+            saved.push(result.value);
+        } else {
+            failed.push({
+                name: fallbackName,
+                reason: result.reason instanceof Error ? result.reason.message : String(result.reason),
+            });
+        }
+    }
+
+    return { saved, failed };
+}
+
 function stripBotMention(text: string, botId: string): string {
     return text.replace(new RegExp(`<@!?${botId}>`, 'g'), '').trim();
+}
+
+function buildAttachmentFailureWarning(failed: FailedDiscordAttachment[]): string | null {
+    if (!failed.length) return null;
+    return `⚠️ 제외된 첨부파일:\n${failed.map(item => `- ${item.name}: ${item.reason}`).join('\n')}`;
 }
 
 function currentLocale() {
@@ -180,18 +218,32 @@ export async function initDiscord() {
         setLastActiveTarget('discord', target);
         setLatestSeenTarget('discord', target);
 
+        let normalizedText = msg.content?.trim() || '';
+        if (settings.discord.mentionOnly && client.user) {
+            normalizedText = stripBotMention(normalizedText, client.user.id);
+        }
+
         // Attachment handling
         if (msg.attachments.size > 0) {
-            const first = msg.attachments.first()!;
             try {
-                const dl = await downloadDiscordAttachment(first);
-                const filePath = saveUpload(dl.buffer, dl.name);
-                let caption = msg.content || '';
-                if (settings.discord.mentionOnly && client.user) {
-                    caption = stripBotMention(caption, client.user.id);
+                const { saved, failed } = await downloadAndSaveDiscordAttachments(msg.attachments);
+                if (saved.length === 0) {
+                    const warning = buildAttachmentFailureWarning(failed) || '❌ No attachment could be processed';
+                    await msg.reply(warning).catch(() => { });
+                    return;
                 }
-                const prompt = buildMediaPrompt(filePath, caption);
-                dcOrchestrate(msg, prompt, `[📎 ${dl.name}] ${caption}`).catch(e => console.error('[discord:orchestrate]', (e as Error).message));
+
+                const prompt = buildMediaPromptMany(saved.map(item => item.filePath), normalizedText);
+                const fileLabel = saved.length === 1
+                    ? `[📎 ${saved[0]!.name}] ${normalizedText}`.trim()
+                    : `[📎 ${saved.length} files] ${normalizedText}`.trim();
+
+                const warning = buildAttachmentFailureWarning(failed);
+                if (warning) {
+                    await msg.reply(warning).catch(() => { });
+                }
+
+                dcOrchestrate(msg, prompt, fileLabel).catch(e => console.error('[discord:orchestrate]', (e as Error).message));
             } catch (e) {
                 console.error('[discord:attachment]', (e as Error).message);
                 await msg.reply(`❌ ${(e as Error).message}`).catch(() => { });
@@ -200,10 +252,7 @@ export async function initDiscord() {
         }
 
         // Text message
-        let text = msg.content?.trim() || '';
-        if (settings.discord.mentionOnly && client.user) {
-            text = stripBotMention(text, client.user.id);
-        }
+        const text = normalizedText;
         if (!text) return;
 
         console.log(`[discord:in] ${msg.channelId}: ${text.slice(0, 80)}`);

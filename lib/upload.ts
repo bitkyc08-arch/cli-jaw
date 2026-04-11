@@ -3,6 +3,7 @@
  * Media upload helpers: save files, build prompts, download Telegram files.
  * Pure I/O — no DB, no broadcast dependencies.
  */
+import { randomUUID } from 'node:crypto';
 import fs from 'fs';
 import https from 'node:https';
 import { join, extname, basename } from 'path';
@@ -18,7 +19,8 @@ export function saveUpload(uploadsDir: string, buffer: Buffer, originalName: str
     const ts = Date.now();
     const ext = extname(originalName) || '.bin';
     const stem = basename(originalName, ext).replace(/[^\p{L}\p{N}_-]/gu, '').slice(0, 100) || 'file';
-    const safeName = `${ts}_${stem}${ext}`;
+    const nonce = randomUUID().slice(0, 8);
+    const safeName = `${ts}_${nonce}_${stem}${ext}`;
     const filePath = join(uploadsDir, safeName);
     fs.writeFileSync(filePath, buffer);
     console.log(`[upload] saved ${filePath} (${buffer.length} bytes)`);
@@ -33,6 +35,19 @@ export function saveUpload(uploadsDir: string, buffer: Buffer, originalName: str
  */
 export function buildMediaPrompt(filePath: string, caption?: string) {
     return `[사용자가 파일을 보냈습니다: ${filePath}]\n이 파일을 Read 도구로 읽고 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
+}
+
+export function buildMediaPromptMany(filePaths: string[], caption?: string) {
+    const normalized = Array.from(new Set(filePaths.map(filePath => String(filePath).trim()).filter(Boolean)));
+    if (normalized.length === 0) {
+        throw new Error('buildMediaPromptMany requires at least one file path');
+    }
+    if (normalized.length === 1) {
+        return buildMediaPrompt(normalized[0]!, caption);
+    }
+
+    const fileList = normalized.map((filePath, index) => `${index + 1}. ${filePath}`).join('\n');
+    return `[사용자가 파일 ${normalized.length}개를 보냈습니다]\n${fileList}\n\n이 파일들을 모두 Read 도구로 읽고 비교 분석해주세요.${caption ? `\n\n사용자 메시지: ${caption}` : ''}`;
 }
 
 /**

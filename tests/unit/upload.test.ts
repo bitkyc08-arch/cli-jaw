@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { saveUpload } from '../../lib/upload.ts';
+import { saveUpload, buildMediaPromptMany } from '../../lib/upload.ts';
 
 const tmpDir = () => {
     const d = path.join(os.tmpdir(), `upload-test-${Date.now()}`);
@@ -38,4 +38,25 @@ test('UP-004: saveUpload defaults to .bin when no extension', () => {
     const p = saveUpload(dir, Buffer.from('x'), 'noext');
     assert.ok(p.endsWith('.bin'));
     fs.rmSync(dir, { recursive: true });
+});
+
+test('UP-005: saveUpload generates unique names for same original filename', () => {
+    const dir = tmpDir();
+    const a = saveUpload(dir, Buffer.from('a'), 'same.pdf');
+    const b = saveUpload(dir, Buffer.from('b'), 'same.pdf');
+    assert.notEqual(path.basename(a), path.basename(b));
+    fs.rmSync(dir, { recursive: true });
+});
+
+test('UP-006: buildMediaPromptMany falls back to single-file prompt for one path', () => {
+    const prompt = buildMediaPromptMany(['/tmp/a.pdf'], 'caption');
+    assert.match(prompt, /사용자가 파일을 보냈습니다/);
+});
+
+test('UP-007: buildMediaPromptMany includes all file paths for multi-file input', () => {
+    const prompt = buildMediaPromptMany(['/tmp/a.pdf', '/tmp/b.pdf'], 'compare');
+    assert.match(prompt, /파일 2개/);
+    assert.match(prompt, /1\. \/tmp\/a\.pdf/);
+    assert.match(prompt, /2\. \/tmp\/b\.pdf/);
+    assert.match(prompt, /사용자 메시지: compare/);
 });
