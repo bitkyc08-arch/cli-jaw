@@ -7,6 +7,7 @@
     <meta name="theme-color" content="#22d3ee">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦈</text></svg>">
     <link rel="manifest" href="/manifest.json">
     <link rel="apple-touch-icon" href="/icons/icon-192.png">
     <title>CLI-JAW</title>
@@ -249,7 +250,7 @@
 
             <!-- Telegram Bot -->
             <div id="channelTelegramSettings" class="settings-group">
-                <h4>📬 Telegram</h4>
+                <h4><span data-provider="telegram"></span> Telegram</h4>
                 <div class="settings-row">
                     <label data-i18n="label.enabled">활성화</label>
                     <div>
@@ -277,7 +278,7 @@
 
             <!-- Discord Bot -->
             <div id="channelDiscordSettings" class="settings-group" style="display:none">
-                <h4><span data-icon="gamepad"></span> Discord</h4>
+                <h4><span data-provider="discord"></span> Discord</h4>
                 <div class="settings-row">
                     <label data-i18n="label.enabled">활성화</label>
                     <div>
@@ -322,7 +323,7 @@
 
             <!-- Per-CLI Models -->
             <div class="settings-group">
-                <h4>🟣 Claude</h4>
+                <h4><span data-provider="claude"></span> Claude</h4>
                 <div class="settings-row">
                     <label>Model</label>
                     <select id="modelClaude"></select>
@@ -347,7 +348,7 @@
             </div>
 
             <div class="settings-group">
-                <h4>🟢 Codex</h4>
+                <h4><span data-provider="codex"></span> Codex</h4>
                 <div class="settings-row">
                     <label>Model</label>
                     <select id="modelCodex"></select>
@@ -392,7 +393,7 @@
             </div>
 
             <div class="settings-group">
-                <h4>🔵 Gemini</h4>
+                <h4><span data-provider="gemini"></span> Gemini</h4>
                 <div class="settings-row">
                     <label>Model</label>
                     <select id="modelGemini"></select>
@@ -402,7 +403,7 @@
             </div>
 
             <div class="settings-group">
-                <h4>🟠 OpenCode</h4>
+                <h4><span data-provider="opencode"></span> OpenCode</h4>
                 <div class="settings-row">
                     <label>Model</label>
                     <select id="modelOpencode"></select>
@@ -422,7 +423,7 @@
             </div>
 
             <div class="settings-group">
-                <h4>💙 Copilot</h4>
+                <h4><span data-provider="copilot"></span> Copilot</h4>
                 <div class="settings-row">
                     <label>Model</label>
                     <select id="modelCopilot"></select>

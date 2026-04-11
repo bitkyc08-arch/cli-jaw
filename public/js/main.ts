@@ -54,6 +54,7 @@ import { initGestures } from './features/gesture.js';
 import { initI18n, setLang, getLang, t } from './features/i18n.js';
 import { toggleRecording, cancelRecording } from './features/voice-recorder.js';
 import { ICONS, hydrateIcons } from './icons.js';
+import { hydrateProviderIcons } from './provider-icons.js';
 
 // ── Chat Actions ──
 document.getElementById('btnSend')?.addEventListener('click', sendMessage);
@@ -404,6 +405,7 @@ document.getElementById('basicMemoryFiles')?.addEventListener('click', (e) => {
 // ── Init ──
 async function bootstrap(): Promise<void> {
     hydrateIcons();
+    hydrateProviderIcons();
     await initI18n();
     const langBtn = document.getElementById('langToggle');
     if (langBtn) langBtn.innerHTML = `${ICONS.web} ${t('lang.' + getLang())}`;

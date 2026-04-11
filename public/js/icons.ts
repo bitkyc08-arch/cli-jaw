@@ -60,8 +60,8 @@ function luc(data: Parameters<typeof buildLucideSvg>[0], size = M): string {
     return buildLucideSvg(data, { size });
 }
 
-// ── Shark mascot SVG (replaces 🦈) ──
-const SHARK_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide icon-shark"><path d="M2 12c1-4 4-8 10-8 4 0 7 2 9 5l1 3-4-1c-2 0-4 1-5 3l-1 2-3-2c-2-1-4 0-5 1l-2 3v-6Z"/><circle cx="15" cy="11" r="1" fill="currentColor"/></svg>`;
+// ── Shark mascot (🦈 emoji — brand identity) ──
+const SHARK_SVG = '🦈';
 
 // ── Icon registry ──
 // Keys match the semantic role, NOT the old emoji codepoint.
