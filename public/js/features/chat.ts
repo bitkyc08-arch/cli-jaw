@@ -15,6 +15,11 @@ let activeObjectURLs: string[] = [];
 interface CommandResult { code?: string; text?: string; type?: string; }
 interface MessageResult { queued?: boolean; pending?: number; continued?: boolean; error?: string; }
 
+function getCommandTimeoutMs(text: string): number {
+    // Native compaction can take materially longer than the default command round-trip.
+    return /^\/compact(?:\s|$)/i.test(String(text || '').trim()) ? 5 * 60 * 1000 : 10_000;
+}
+
 export async function sendMessage(): Promise<void> {
     const input = document.getElementById('chatInput') as HTMLTextAreaElement | null;
     const btn = document.getElementById('btnSend');
@@ -42,12 +47,13 @@ export async function sendMessage(): Promise<void> {
         slashCmd.close();
         try {
             let signal: AbortSignal; let timer: ReturnType<typeof setTimeout> | undefined;
+            const timeoutMs = getCommandTimeoutMs(text);
             if (typeof AbortSignal?.timeout === 'function') {
-                signal = AbortSignal.timeout(10000);
+                signal = AbortSignal.timeout(timeoutMs);
             } else {
                 const ac = new AbortController();
                 signal = ac.signal;
-                timer = setTimeout(() => ac.abort(), 10000);
+                timer = setTimeout(() => ac.abort(), timeoutMs);
             }
             const locale = getPreferredLocale();
             const res = await fetch('/api/command', {
