@@ -122,38 +122,7 @@
     will-change: scroll-position;
 }
 
-/* Depth fade gradients — messages scroll beneath these */
-.chat-messages::before {
-    content: '';
-    position: sticky;
-    top: 0;
-    display: block;
-    height: 40px;
-    margin-bottom: -40px;
-    background: linear-gradient(180deg, var(--bg) 0%, transparent 100%);
-    pointer-events: none;
-    z-index: 10;
-    flex-shrink: 0;
-}
-
-.chat-messages::after {
-    content: '';
-    position: sticky;
-    bottom: 0;
-    display: block;
-    height: 30px;
-    margin-top: -30px;
-    background: linear-gradient(0deg, var(--bg) 0%, transparent 100%);
-    pointer-events: none;
-    z-index: 10;
-    flex-shrink: 0;
-}
-
-/* Hide fades when chat is empty */
-.chat-messages:not(:has(.msg))::before,
-.chat-messages:not(:has(.msg))::after {
-    display: none;
-}
+/* Depth fade gradients removed — caused visible white bars on scroll in light mode */
 
 /* ── Message Bubbles ── */
 .msg {
@@ -684,6 +653,14 @@
     color: var(--text);
     transition: all 0.2s;
     flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.btn-voice svg {
+    width: 20px;
+    height: 20px;
 }
 
 .btn-voice:hover {

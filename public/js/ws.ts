@@ -4,6 +4,7 @@ import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAge
 import { t, getLang } from './features/i18n.js';
 import { getVirtualScroll } from './virtual-scroll.js';
 import { ICONS, emojiToIcon } from './icons.js';
+import { escapeHtml } from './render.js';
 import type { OrcStateName } from './state.js';
 
 const ROADMAP_PHASES = ['P', 'A', 'B', 'C'] as const;
@@ -218,7 +219,7 @@ export function connect(): void {
         } else if (msg.type === 'queue_update') {
             updateQueueBadge(msg.pending || 0);
         } else if (msg.type === 'worklog_created') {
-            addSystemMsg(`${ICONS.clipboard} Worklog: ${msg.path || ''}`);
+            addSystemMsg(`${ICONS.clipboard} Worklog: ${escapeHtml(msg.path || '')}`);
         } else if (msg.type === 'round_start') {
             const agents = (msg.agentPhases || msg.subtasks || []);
             const names = agents.map(a => a.agent || a.name || '').join(', ');
@@ -251,7 +252,7 @@ export function connect(): void {
         } else if (msg.type === 'agent_fallback') {
             addSystemMsg(t('ws.fallback', { from: msg.from || '', to: msg.to || '' }), 'tool-activity');
         } else if (msg.type === 'agent_smoke') {
-            addSystemMsg(`${ICONS.warning} ${msg.cli || 'agent'}: smoke response detected — auto-continuing`, 'tool-activity');
+            addSystemMsg(`${ICONS.warning} ${escapeHtml(msg.cli || 'agent')}: smoke response detected — auto-continuing`, 'tool-activity');
         } else if (msg.type === 'agent_done') {
             finalizeAgent(msg.text || '', msg.toolLog);
         } else if (msg.type === 'orchestrate_done') {

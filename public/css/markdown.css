@@ -242,8 +242,11 @@
 
 /* Paragraphs */
 .msg-content p {
-    margin: 4px 0;
+    margin: 0.75em 0;
 }
+
+.msg-content p:first-child { margin-top: 0; }
+.msg-content p:last-child  { margin-bottom: 0; }
 
 /* KaTeX */
 .msg-content .katex-display {

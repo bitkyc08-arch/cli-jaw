@@ -119,7 +119,7 @@ export function addSystemMsg(text: string, extraClass?: string, type?: string): 
     const div = document.createElement('div');
     const typeClass = type ? ` msg-type-${type}` : '';
     div.className = 'msg msg-system' + typeClass + (extraClass ? ' ' + extraClass : '');
-    div.textContent = text;
+    div.innerHTML = text;
     container.appendChild(div);
     container.scrollTop = container.scrollHeight;
 }

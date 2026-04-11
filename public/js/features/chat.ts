@@ -108,7 +108,7 @@ export async function sendMessage(): Promise<void> {
         });
         const data: MessageResult = await res.json().catch(() => ({}));
         if (!res.ok) {
-            addSystemMsg(`${ICONS.error} ${data.error || t('chat.requestFail', { status: res.status })}`, '', 'error');
+            addSystemMsg(`${ICONS.error} ${escapeHtml(data.error || t('chat.requestFail', { status: res.status }))}`, '', 'error');
             return;
         }
         if (data.queued) {
@@ -280,8 +280,8 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
     const pendingFiles = [...state.attachedFiles];
 
     // Build user-facing display message
-    const displayParts: string[] = [`${ICONS.mic} [음성 메시지]`];
-    if (pendingFiles.length) displayParts.push(`${ICONS.paperclip} [${pendingFiles.map(f => f.name).join(', ')}]`);
+    const displayParts: string[] = ['🎤 [음성 메시지]'];
+    if (pendingFiles.length) displayParts.push(`📎 [${pendingFiles.map(f => f.name).join(', ')}]`);
     if (pendingText) displayParts.push(pendingText);
     addMessage('user', displayParts.join(' '));
 
@@ -307,7 +307,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
         const sttResult = await sttRes.json().catch(() => null);
         if (!sttResult?.text) throw new Error('Empty STT result');
 
-        addSystemMsg(`${ICONS.mic} STT (${sttResult.engine}, ${sttResult.elapsed?.toFixed(1)}s): "${sttResult.text.slice(0, 100)}"`, '', 'info');
+        addSystemMsg(`${ICONS.mic} STT (${escapeHtml(sttResult.engine || '')}, ${sttResult.elapsed?.toFixed(1)}s): "${escapeHtml(sttResult.text.slice(0, 100))}"`, '', 'info');
 
         // Step 2: Upload pending files (if any)
         let filePaths: string[] = [];
@@ -320,7 +320,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
         for (const p of filePaths) {
             promptParts.push(t('chat.file.sent', { path: p }));
         }
-        promptParts.push(`${ICONS.mic} ${sttResult.text}`);
+        promptParts.push(`🎤 ${sttResult.text}`);
         if (pendingText) promptParts.push(pendingText);
 
         await apiJson('/api/message', 'POST', { prompt: promptParts.join('\n') });
