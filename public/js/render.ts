@@ -109,7 +109,6 @@ async function getMermaid() {
             theme: 'base',
             themeVariables: getMermaidThemeVars(),
             securityLevel: 'strict',
-            flowchart: { htmlLabels: false },
         });
     }
     return mermaidModule.default;
@@ -317,34 +316,55 @@ export async function rerenderMermaidDiagrams(): Promise<void> {
         const id = `mermaid-${++mermaidId}`;
         try {
             const { svg } = await mm.render(id, code);
-            el.innerHTML = sanitizeMermaidSvg(svg);
+            el.innerHTML = svg;
         } catch { /* keep existing render on failure */ }
+    }
+}
+
+// Lazy Mermaid rendering — only render blocks near the viewport
+let mermaidObserver: IntersectionObserver | null = null;
+
+function ensureMermaidObserver(): void {
+    if (mermaidObserver) return;
+    mermaidObserver = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+            if (!entry.isIntersecting) continue;
+            const el = entry.target as HTMLElement;
+            if (!el.classList.contains('mermaid-pending')) continue;
+            mermaidObserver!.unobserve(el);
+            renderSingleMermaid(el);
+        }
+    }, { rootMargin: '200px' }); // pre-render 200px before visible
+}
+
+async function renderSingleMermaid(el: HTMLElement): Promise<void> {
+    el.classList.remove('mermaid-pending');
+    const code = el.textContent || '';
+    el.dataset.mermaidCode = code;
+    const id = `mermaid-${++mermaidId}`;
+    try {
+        const mm = await getMermaid();
+        const { svg } = await mm.render(id, code);
+        el.innerHTML = svg;
+        el.classList.add('mermaid-rendered');
+    } catch (err: unknown) {
+        const errMsg = (err as { message?: string; str?: string })?.message
+            || (err as { str?: string })?.str || 'Unknown error';
+        el.innerHTML = `
+            <div class="mermaid-error">
+                <div class="mermaid-error-title">${ICONS.warning} ${escapeHtml(t('mermaid.renderFail') || 'Mermaid render failed')}</div>
+                <div class="mermaid-error-msg">${escapeHtml(errMsg.slice(0, 200))}</div>
+                <pre class="mermaid-error-code"><code>${escapeHtml(code)}</code></pre>
+            </div>`;
     }
 }
 
 async function renderMermaidBlocks(): Promise<void> {
     const pending = document.querySelectorAll('.mermaid-pending');
     if (!pending.length) return;
-    const mm = await getMermaid();
+    ensureMermaidObserver();
     for (const el of pending) {
-        el.classList.remove('mermaid-pending');
-        const code = el.textContent || '';
-        (el as HTMLElement).dataset.mermaidCode = code;
-        const id = `mermaid-${++mermaidId}`;
-        try {
-            const { svg } = await mm.render(id, code);
-            el.innerHTML = sanitizeMermaidSvg(svg);
-            el.classList.add('mermaid-rendered');
-        } catch (err: unknown) {
-            const errMsg = (err as { message?: string; str?: string })?.message
-                || (err as { str?: string })?.str || 'Unknown error';
-            el.innerHTML = `
-                <div class="mermaid-error">
-                    <div class="mermaid-error-title">${ICONS.warning} ${escapeHtml(t('mermaid.renderFail') || 'Mermaid render failed')}</div>
-                    <div class="mermaid-error-msg">${escapeHtml(errMsg.slice(0, 200))}</div>
-                    <pre class="mermaid-error-code"><code>${escapeHtml(code)}</code></pre>
-                </div>`;
-        }
+        mermaidObserver!.observe(el);
     }
 }
 
