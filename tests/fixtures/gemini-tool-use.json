@@ -1,6 +1,7 @@
 {
   "type": "tool_use",
   "tool_name": "shell",
+  "tool_id": "run_shell_command_123",
   "parameters": {
     "command": "npm run lint"
   }

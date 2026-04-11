@@ -235,8 +235,9 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
             state.currentAgentDiv = addMessage('agent', '');
         }
         const content = (state.currentAgentDiv as HTMLElement)?.querySelector('.msg-content');
-        // Finalize rAF stream if active, otherwise use raw text
-        const finalText = currentStream ? finalizeStream(currentStream) || text : text;
+        // Live stream is preview-only; agent_done text stays authoritative.
+        const streamedText = currentStream ? finalizeStream(currentStream) : '';
+        const finalText = text || streamedText;
         currentStream = null;
         // Skip static tool HTML when process block already shows tool summary
         const toolHtml = hasTools && !hadProcessBlock ? buildProcessBlockHtml(toProcessSteps(toolLog!), true) : '';

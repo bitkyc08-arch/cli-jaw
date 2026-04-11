@@ -81,6 +81,22 @@ export function extractSessionId(cli: string, event: any) {
     }
 }
 
+export function extractOutputChunk(cli: string, event: any): string {
+    if (cli === 'gemini') {
+        if (event.type === 'message' && event.role === 'assistant' && event.content) {
+            return String(event.content);
+        }
+        return '';
+    }
+    if (cli === 'opencode') {
+        if (event.type === 'text' && event.part?.text) {
+            return String(event.part.text);
+        }
+        return '';
+    }
+    return '';
+}
+
 export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, agentLabel: string) {
     // ── Claude stream buffer: thinking_delta + input_json_delta ──
     if (cli === 'claude' && event.type === 'stream_event') {
@@ -165,7 +181,12 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
     const toolLabels = extractToolLabels(cli, event, ctx);
     for (const toolLabel of toolLabels) {
         // Dedupe: same logic as ACP path — skip already-seen tool keys
-        const key = `${toolLabel.icon}:${toolLabel.label}`;
+        const key = [
+            toolLabel.icon,
+            toolLabel.label,
+            toolLabel.stepRef || '',
+            toolLabel.status || '',
+        ].join(':');
         if (ctx.seenToolKeys && ctx.seenToolKeys.has(key)) continue;
         if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
         ctx.toolLog.push(toolLabel);
@@ -382,22 +403,35 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
         if (event.type === 'tool_use') {
             const detail = event.parameters?.command || summarizeToolInput(event.tool_name || '', event.parameters || {}, 0);
             const suffix = event.parameters?.command ? `: ${buildPreview(event.parameters.command, 40)}` : '';
-            const ref = `gemini:tool:${event.tool_name || 'tool'}`;
+            const ref = event.tool_id
+                ? `gemini:toolid:${event.tool_id}`
+                : `gemini:tool:${event.tool_name || 'tool'}`;
             labels.push({ icon: '🔧', label: `${event.tool_name || 'tool'}${suffix}`, toolType: 'tool', detail, stepRef: ref });
         }
         if (event.type === 'tool_result') {
-            const ref = `gemini:tool:${event.tool_name || 'tool'}`;
+            const ref = event.tool_id
+                ? `gemini:toolid:${event.tool_id}`
+                : `gemini:tool:${event.tool_name || 'tool'}`;
             labels.push({ icon: event.status === 'success' ? '✅' : '❌', label: `${event.status || 'done'}`, toolType: 'tool', stepRef: ref, status: event.status === 'success' ? 'done' : 'error' });
         }
     }
 
     if (cli === 'opencode') {
         if (event.type === 'tool_use' && event.part) {
-            const ref = `opencode:tool:${event.part.tool || 'tool'}`;
-            labels.push({ icon: '🔧', label: event.part.tool || 'tool', toolType: 'tool', stepRef: ref });
+            const ref = event.part.callID
+                ? `opencode:call:${event.part.callID}`
+                : `opencode:tool:${event.part.tool || 'tool'}`;
+            const detail = summarizeToolInput(event.part.tool || '', event.part.state?.input || {}, 0)
+                || String(event.part.state?.output || '').trim();
+            labels.push({ icon: '🔧', label: event.part.tool || 'tool', toolType: 'tool', stepRef: ref, detail });
+            if (event.part.state?.status === 'completed') {
+                labels.push({ icon: '✅', label: event.part.tool || 'done', toolType: 'tool', stepRef: ref, status: 'done' });
+            }
         }
         if (event.type === 'tool_result' && event.part) {
-            const ref = `opencode:tool:${event.part.tool || 'tool'}`;
+            const ref = event.part.callID
+                ? `opencode:call:${event.part.callID}`
+                : `opencode:tool:${event.part.tool || 'tool'}`;
             labels.push({ icon: '✅', label: event.part.tool || 'done', toolType: 'tool', stepRef: ref, status: 'done' });
         }
     }

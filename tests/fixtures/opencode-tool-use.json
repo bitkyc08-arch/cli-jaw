@@ -1,6 +1,15 @@
 {
   "type": "tool_use",
   "part": {
-    "tool": "web-search"
+    "tool": "bash",
+    "callID": "call_function_abc",
+    "state": {
+      "status": "completed",
+      "input": {
+        "command": "pwd",
+        "description": "Print current working directory"
+      },
+      "output": "/Users/jun/Developer/new/700_projects/cli-jaw\n"
+    }
   }
 }

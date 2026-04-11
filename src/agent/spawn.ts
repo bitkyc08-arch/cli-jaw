@@ -10,7 +10,7 @@ import {
     getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
 } from '../core/db.js';
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
-import { extractSessionId, extractFromEvent, extractFromAcpUpdate, logEventSummary, flushClaudeBuffers } from './events.js';
+import { extractSessionId, extractFromEvent, extractFromAcpUpdate, extractOutputChunk, logEventSummary, flushClaudeBuffers } from './events.js';
 import { detectSmokeResponse, buildContinuationPrompt } from './smoke-detector.js';
 import { saveUpload as _saveUpload, buildMediaPrompt } from '../../lib/upload.js';
 import { getMemoryFlushFilePath, getMemoryStatus } from '../memory/runtime.js';
@@ -876,6 +876,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 logEventSummary(agentLabel, cli, event, ctx);
                 if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, event);
                 extractFromEvent(cli, event, ctx, agentLabel);
+                const outputChunk = extractOutputChunk(cli, event);
+                if (outputChunk) {
+                    broadcast('agent_output', {
+                        agentId: agentLabel,
+                        cli,
+                        text: outputChunk,
+                    });
+                }
             } catch { /* non-JSON line */ }
         }
     });

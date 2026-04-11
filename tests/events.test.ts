@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     extractFromEvent,
+    extractOutputChunk,
     extractSessionId,
     extractToolLabel,
     extractToolLabelsForTest,
@@ -117,31 +118,34 @@ test('tool label extraction fixture matrix covers codex, gemini, and opencode va
             name: 'gemini tool use',
             cli: 'gemini',
             fixture: 'gemini-tool-use.json',
-            expected: [{ icon: '🔧', label: 'shell: npm run lint', toolType: 'tool', detail: 'npm run lint', stepRef: 'gemini:tool:shell' }],
+            expected: [{ icon: '🔧', label: 'shell: npm run lint', toolType: 'tool', detail: 'npm run lint', stepRef: 'gemini:toolid:run_shell_command_123' }],
         },
         {
             name: 'gemini tool result success',
             cli: 'gemini',
             fixture: 'gemini-tool-result-success.json',
-            expected: [{ icon: '✅', label: 'success', toolType: 'tool', stepRef: 'gemini:tool:tool', status: 'done' }],
+            expected: [{ icon: '✅', label: 'success', toolType: 'tool', stepRef: 'gemini:toolid:run_shell_command_123', status: 'done' }],
         },
         {
             name: 'gemini tool result error',
             cli: 'gemini',
             fixture: 'gemini-tool-result-error.json',
-            expected: [{ icon: '❌', label: 'error', toolType: 'tool', stepRef: 'gemini:tool:tool', status: 'error' }],
+            expected: [{ icon: '❌', label: 'error', toolType: 'tool', stepRef: 'gemini:toolid:run_shell_command_123', status: 'error' }],
         },
         {
             name: 'opencode tool use',
             cli: 'opencode',
             fixture: 'opencode-tool-use.json',
-            expected: [{ icon: '🔧', label: 'web-search', toolType: 'tool', stepRef: 'opencode:tool:web-search' }],
+            expected: [
+                { icon: '🔧', label: 'bash', toolType: 'tool', stepRef: 'opencode:call:call_function_abc', detail: 'pwd' },
+                { icon: '✅', label: 'bash', toolType: 'tool', stepRef: 'opencode:call:call_function_abc', status: 'done' },
+            ],
         },
         {
             name: 'opencode tool result',
             cli: 'opencode',
             fixture: 'opencode-tool-result.json',
-            expected: [{ icon: '✅', label: 'web-search', toolType: 'tool', stepRef: 'opencode:tool:web-search', status: 'done' }],
+            expected: [{ icon: '✅', label: 'bash', toolType: 'tool', stepRef: 'opencode:call:call_function_abc', status: 'done' }],
         },
     ];
 
@@ -319,4 +323,19 @@ test('extractToolLabel keeps backward compatibility and claude keys are determin
     assert.equal(keyFromIndex, 'claude:idx:3:🔧:Bash');
     assert.equal(keyFromMessageId, 'claude:msg:msg_1:🔧:Read');
     assert.equal(keyFromType, 'claude:type:assistant:🔧:Read');
+});
+
+test('extractOutputChunk returns live assistant text for gemini and opencode', () => {
+    assert.equal(
+        extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'hello', delta: true }),
+        'hello',
+    );
+    assert.equal(
+        extractOutputChunk('opencode', { type: 'text', part: { text: 'world' } }),
+        'world',
+    );
+    assert.equal(
+        extractOutputChunk('codex', { type: 'item.completed', item: { type: 'agent_message', text: 'ignored' } }),
+        '',
+    );
 });

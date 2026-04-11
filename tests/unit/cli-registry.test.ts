@@ -46,6 +46,21 @@ test('registry defaults for gemini and opencode are updated', () => {
     assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode/big-pickle');
 });
 
+test('opencode registry includes OpenCode Go models', () => {
+    const models = CLI_REGISTRY.opencode.models;
+    for (const model of [
+        'opencode-go/glm-5',
+        'opencode-go/glm-5.1',
+        'opencode-go/kimi-k2.5',
+        'opencode-go/mimo-v2-pro',
+        'opencode-go/mimo-v2-omni',
+        'opencode-go/minimax-m2.5',
+        'opencode-go/minimax-m2.7',
+    ]) {
+        assert.ok(models.includes(model), `missing OpenCode Go model: ${model}`);
+    }
+});
+
 // ─── buildDefaultPerCli ──────────────────────────────
 
 test('buildDefaultPerCli returns correct shape', () => {

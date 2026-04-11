@@ -1,4 +1,5 @@
 {
   "type": "tool_result",
+  "tool_id": "run_shell_command_123",
   "status": "error"
 }
