@@ -88,7 +88,7 @@ function blockShell(summaryText = '', collapsed = false): string {
     return `<div class="process-block${collapsed ? ' collapsed' : ''}">
         <button class="process-summary" aria-expanded="${collapsed ? 'false' : 'true'}">
             <span class="process-dot ${collapsed ? 'done' : 'running'}"></span>
-            <span class="process-summary-text">${escapeHtml(summaryText)}</span>
+            <span class="process-summary-text">${summaryText}</span>
             <span class="process-duration"></span>
             <span class="process-chevron">${collapsed ? ICONS.chevronRight : ICONS.chevronDown}</span>
         </button>
@@ -154,7 +154,7 @@ export function buildProcessBlockHtml(steps: ProcessStep[], collapsed = true): s
 
 function updateSummary(pb: ProcessBlockState): void {
     const summaryText = pb.element.querySelector('.process-summary-text');
-    if (summaryText) summaryText.textContent = buildSummaryText(pb.steps);
+    if (summaryText) summaryText.innerHTML = buildSummaryText(pb.steps);
 
     const anyRunning = pb.steps.some(s => s.status === 'running');
     const dot = pb.element.querySelector('.process-dot');

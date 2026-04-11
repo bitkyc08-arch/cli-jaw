@@ -104,7 +104,7 @@ export function renderLiveToolActivity(msgDiv: HTMLElement, label: string): void
         const content = msgDiv.querySelector('.msg-content');
         if (content) content.before(liveEl);
     }
-    liveEl.innerHTML = `<span class="tool-status-dot running"></span><span>${escapeHtml(label)}</span>`;
+    liveEl.innerHTML = `<span class="tool-status-dot running"></span><span>${label}</span>`;
 }
 
 /** Clean up all live tool activity indicators */

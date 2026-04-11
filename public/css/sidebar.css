@@ -81,6 +81,9 @@
     margin-bottom: 8px;
     font-family: var(--font-display);
     letter-spacing: 0.5px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
 }
 
 .settings-row {

@@ -302,7 +302,7 @@ function ensureMarked(): boolean {
     marked.setOptions({
         renderer,
         gfm: true,
-        breaks: true,
+        breaks: false,
     });
 
     markedReady = true;

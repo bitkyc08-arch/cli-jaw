@@ -160,11 +160,10 @@
     padding: var(--space-3) var(--space-4);
     border-radius: var(--radius-lg);
     font-size: var(--text-base);
-    line-height: 1.3;
+    line-height: 1.75;
     max-width: 85%;
     word-wrap: break-word;
     overflow-wrap: break-word;
-    white-space: pre-wrap;
     position: relative;
     transition: box-shadow var(--duration-base);
     contain: layout style;
@@ -191,6 +190,7 @@
     align-self: flex-end;
     border: 1px solid color-mix(in oklch, var(--accent) 18%, var(--border));
     border-radius: var(--radius-lg) var(--radius-lg) var(--radius-sm) var(--radius-lg);
+    white-space: pre-wrap;
     max-width: 75%;
     animation: msgEnterUser 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }

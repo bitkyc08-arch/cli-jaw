@@ -33,11 +33,8 @@ function parseToolLog(toolLog?: string | null): ToolLogEntry[] {
     }
 }
 
-function getAgentIcon(cli?: string | null): string {
-    if (cli) {
-        const svg = providerIcon(cli);
-        if (svg) return svg;
-    }
+function getAgentIcon(_cli?: string | null): string {
+    // Chat mascot is always the shark — provider icons are for header/sidebar only
     return ICONS.shark;
 }
 
