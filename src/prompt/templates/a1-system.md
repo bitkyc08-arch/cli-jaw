@@ -155,6 +155,10 @@ Before writing ANY code, you MUST read the relevant dev skill guides:
 4. Follow ALL guidelines from the skill before and during implementation
 5. If a skill contradicts these rules, the skill takes priority (skills are project-specific)
 
-## Diagrams
-When a visual explanation helps, output inline `<svg>` (static diagrams) or
-` ```diagram-html ` (interactive charts). See the diagram skill for the design system.
+## Diagrams (MANDATORY)
+`<svg>`, ` ```mermaid `, and ` ```diagram-html ` blocks render **inline in the chat response** — the jaw frontend mounts `diagram-html` in a sandboxed iframe automatically. Paste the raw block directly into your reply; that is the entire delivery mechanism.
+- ❌ Never save diagrams to a file (`.svg`/`.html`/`.png`) via Write/`cat >`/etc., and never send them through the channel endpoint — they are response text, not attachments.
+- ❌ Never wrap `diagram-html` in your own `<iframe>`/`<html>`/`<body>` — the host injects that.
+- ✅ Only write a file if the user explicitly asks for a file on disk (even then, also show it inline first).
+
+Before emitting any diagram, you MUST read `{{JAW_HOME}}/skills/diagram/SKILL.md` (and any `reference/*.md` it points you to). The skill file is the source of truth for SVG rules, complexity budget, color system, and widget patterns — follow it. If something seems missing from the skill, update the skill rather than inventing rules here.

@@ -103,9 +103,30 @@ function buildCspMeta(htmlCode: string): string {
   // Tone.js creates a blob: Worker for its internal clock
   const workerSrc = /Tone\.min\.js|tone@/.test(htmlCode) ? "worker-src blob:;" : '';
 
-  const scriptSrc = CDN_ALLOWLIST.map(h => `https://${h}`).join(' ');
-  const imgSrc = `data: blob: ${CDN_ALLOWLIST.map(h => `https://${h}`).join(' ')}`;
-  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${scriptSrc}; style-src 'unsafe-inline' https://fonts.googleapis.com; img-src ${imgSrc}; font-src https://fonts.gstatic.com; connect-src ${connectSrc}; ${workerSrc} base-uri 'none';">`;
+  // Base src lists — start from CDN_ALLOWLIST to prevent drift when allowlist changes
+  const allowlistUrls = CDN_ALLOWLIST.map(h => `https://${h}`);
+  const scriptSrc = allowlistUrls.join(' ');
+  const imgSrcs: string[] = ['data:', 'blob:', ...allowlistUrls];
+  const styleSrcs: string[] = ["'unsafe-inline'", 'https://fonts.googleapis.com'];
+
+  // Leaflet — narrow signal (real API usage, not bare "leaflet" mentions in prose)
+  // Adds OSM tile subdomains (a/b/c, no wildcard) to img-src and Leaflet CSS host to style-src.
+  // Marker icons are already covered by CDN_ALLOWLIST baseline in imgSrcs.
+  // Regex covers: L.map(), L.tileLayer, L.marker(), L.geoJSON, L.polyline, L.polygon, L.circle,
+  // any leaflet asset file (leaflet.js / leaflet.min.js / leaflet-src.esm.js / leaflet@1.9.4/dist/leaflet.js),
+  // and direct OSM tile URLs.
+  if (/L\.(map|tileLayer|marker|geoJSON|polyline|polygon|circle)\(|leaflet[\w.@/-]*\.(js|css)|tile\.openstreetmap\.org/.test(htmlCode)) {
+    imgSrcs.push(
+      'https://a.tile.openstreetmap.org',
+      'https://b.tile.openstreetmap.org',
+      'https://c.tile.openstreetmap.org',
+    );
+    styleSrcs.push('https://cdnjs.cloudflare.com', 'https://cdn.jsdelivr.net');
+  }
+
+  const imgSrc = imgSrcs.join(' ');
+  const styleSrc = styleSrcs.join(' ');
+  return `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' ${scriptSrc}; style-src ${styleSrc}; img-src ${imgSrc}; font-src https://fonts.gstatic.com; connect-src ${connectSrc}; ${workerSrc} base-uri 'none';">`;
 }
 
 // ── Theme Token Injection ──
