@@ -223,15 +223,7 @@
 .agent-body {
     flex: 1;
     min-width: 0;
-    container-type: inline-size;
-    container-name: agent-body;
     position: relative;
-}
-
-/* ── Container Queries for responsive message layout ── */
-@container agent-body (max-width: 400px) {
-    .msg-content pre { font-size: 0.75rem; }
-    .code-header .code-lang { display: none; }
 }
 
 .msg-system {
