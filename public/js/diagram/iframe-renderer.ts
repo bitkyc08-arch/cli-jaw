@@ -30,6 +30,8 @@ function createDiagramSaveBtn(): HTMLButtonElement {
 const CDN_ALLOWLIST = [
   'cdnjs.cloudflare.com',
   'cdn.jsdelivr.net',
+  'unpkg.com',
+  'esm.sh',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
 ];
@@ -72,13 +74,17 @@ function ensureCleanupObserver(): void {
 
 // ── Import Map Builder (ES Module bare specifier resolution) ──
 function buildImportMap(htmlCode: string): string {
+  // Skip if widget already defines its own importmap
+  if (htmlCode.includes('"importmap"') || htmlCode.includes("'importmap'")) return '';
   const imports: Record<string, string> = {};
   // Three.js: map bare 'three' to full CDN URL so addons (OrbitControls etc.) resolve
-  const threeMatch = htmlCode.match(/cdn\.jsdelivr\.net\/npm\/three@([\d.]+)/);
+  const threeMatch = htmlCode.match(/(?:cdn\.jsdelivr\.net\/npm|unpkg\.com)\/three@([\d.]+)/);
   if (threeMatch) {
     const ver = threeMatch[1];
-    imports['three'] = `https://cdn.jsdelivr.net/npm/three@${ver}/build/three.module.min.js`;
-    imports['three/addons/'] = `https://cdn.jsdelivr.net/npm/three@${ver}/examples/jsm/`;
+    const cdn = htmlCode.includes('unpkg.com/three@') ? 'unpkg.com' : 'cdn.jsdelivr.net/npm';
+    const buildPath = cdn === 'unpkg.com' ? 'build/three.module.js' : 'build/three.module.min.js';
+    imports['three'] = `https://${cdn}/three@${ver}/${buildPath}`;
+    imports['three/addons/'] = `https://${cdn}/three@${ver}/examples/jsm/`;
   }
   if (Object.keys(imports).length === 0) return '';
   return `<script type="importmap">${JSON.stringify({ imports })}<\/script>`;

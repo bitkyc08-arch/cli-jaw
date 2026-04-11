@@ -5,6 +5,8 @@
 const CDN_ALLOWLIST = [
   'cdnjs.cloudflare.com',
   'cdn.jsdelivr.net',
+  'unpkg.com',
+  'esm.sh',
   'fonts.googleapis.com',
   'fonts.gstatic.com',
 ];
