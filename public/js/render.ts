@@ -589,8 +589,8 @@ function saveSvgAsPng(svgEl: SVGElement, btn: HTMLElement): void {
     if (!clone.getAttribute('height')) clone.setAttribute('height', String(bbox.height));
 
     const svgData = new XMLSerializer().serializeToString(clone);
-    const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-    const url = URL.createObjectURL(svgBlob);
+    // Data URL avoids tainted canvas (blob URL treated as cross-origin)
+    const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
     const img = new Image();
     img.onload = () => {
         const scale = 2; // retina
@@ -600,7 +600,6 @@ function saveSvgAsPng(svgEl: SVGElement, btn: HTMLElement): void {
         const ctx = canvas.getContext('2d')!;
         ctx.scale(scale, scale);
         ctx.drawImage(img, 0, 0);
-        URL.revokeObjectURL(url);
         canvas.toBlob(blob => {
             if (!blob) return;
             downloadBlob(blob, `diagram-${Date.now()}.png`);
@@ -609,11 +608,11 @@ function saveSvgAsPng(svgEl: SVGElement, btn: HTMLElement): void {
     };
     img.onerror = () => {
         // Fallback: download as SVG
-        URL.revokeObjectURL(url);
+        const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
         downloadBlob(svgBlob, `diagram-${Date.now()}.svg`);
         btnFeedback(btn, '', 'save');
     };
-    img.src = url;
+    img.src = dataUrl;
 }
 
 function downloadBlob(blob: Blob, filename: string): void {
@@ -691,6 +690,17 @@ export function openDiagramOverlay(innerHtml: string): void {
         <div class="diagram-overlay-content">${safeHtml}</div>
         <button class="diagram-overlay-close" type="button" aria-label="Close">✕</button>
     `;
+
+    // Ensure SVGs scale inside overlay: add viewBox if missing, remove fixed dimensions
+    overlay.querySelectorAll<SVGSVGElement>('.diagram-overlay-content svg').forEach(svg => {
+        if (!svg.getAttribute('viewBox')) {
+            const w = svg.getAttribute('width') || svg.getBBox?.()?.width;
+            const h = svg.getAttribute('height') || svg.getBBox?.()?.height;
+            if (w && h) svg.setAttribute('viewBox', `0 0 ${parseFloat(String(w))} ${parseFloat(String(h))}`);
+        }
+        svg.removeAttribute('width');
+        svg.removeAttribute('height');
+    });
 
     const closeBtn = overlay.querySelector('.diagram-overlay-close') as HTMLElement;
 

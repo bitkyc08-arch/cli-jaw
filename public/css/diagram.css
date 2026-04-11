@@ -172,6 +172,7 @@
 }
 
 .diagram-overlay-content {
+  min-width: min(680px, 90vw);
   max-width: 95vw;
   max-height: 90vh;
   overflow: auto;

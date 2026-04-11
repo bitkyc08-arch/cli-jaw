@@ -3,6 +3,7 @@
 // with validated postMessage bridge for theme sync, resize, and sendPrompt.
 
 import { ICONS } from '../icons.js';
+import { validateWidgetHtml } from './widget-validator.js';
 
 // ── Action Button Helpers ──
 function createDiagramCopyBtn(): HTMLButtonElement {
@@ -256,6 +257,21 @@ export function activateWidgets(container?: HTMLElement): void {
       }));
       return;
     }
+
+    // Validate widget HTML before iframe injection
+    const validation = validateWidgetHtml(htmlCode);
+    if (!validation.valid) {
+      el.replaceWith(Object.assign(document.createElement('div'), {
+        className: 'diagram-error',
+        textContent: `Widget blocked: ${validation.reason}`,
+        role: 'alert',
+      }));
+      return;
+    }
+    if (validation.warnings.length) {
+      console.warn('[jaw-diagram] Widget warnings:', validation.warnings);
+    }
+
     const wrapper = document.createElement('div');
     wrapper.className = 'diagram-container diagram-widget';
     // Preserve source for theme-change reload
