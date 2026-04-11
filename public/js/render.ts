@@ -109,21 +109,22 @@ async function getMermaid() {
             theme: 'base',
             themeVariables: getMermaidThemeVars(),
             securityLevel: 'strict',
+            flowchart: { htmlLabels: false },
         });
     }
     return mermaidModule.default;
 }
 
-// Mermaid SVG sanitizer — allows <style> and <foreignObject> (required for theming + text labels)
-// Separate from sanitizeHtml() which blocks both for user-supplied SVGs.
-// Mermaid v11 uses <foreignObject> + HTML for node labels even in securityLevel: 'strict'.
-// Stripping foreignObject removes ALL text from diagrams.
+// Mermaid SVG sanitizer — allows <style> (required for Mermaid theming)
+// Separate from sanitizeHtml() which blocks <style> for user-supplied SVGs.
+// Mermaid is configured with htmlLabels:false so labels use SVG <text>,
+// not <foreignObject> + HTML. This avoids DOMPurify namespace issues.
 function sanitizeMermaidSvg(svg: string): string {
     const clean = DOMPurify.sanitize(svg, {
-        USE_PROFILES: { html: true, svg: true, svgFilters: true },
+        USE_PROFILES: { svg: true, svgFilters: true },
         FORBID_TAGS: [
             'script', 'iframe', 'object', 'embed', 'form', 'input',
-            'animate', 'set', 'animateTransform', 'animateMotion',
+            'foreignObject', 'animate', 'set', 'animateTransform', 'animateMotion',
         ],
         FORBID_ATTR: ['onerror', 'onclick', 'onload', 'onmouseover', 'onfocus', 'onblur',
                       'background'],
