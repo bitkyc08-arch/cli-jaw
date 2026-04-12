@@ -172,14 +172,19 @@ function createDefaultSettings() {
 
 export const DEFAULT_SETTINGS = createDefaultSettings();
 
+function normalizeModelForCli(cli: string, model: any) {
+    if (typeof model !== 'string') return model;
+    if (cli === 'claude') return migrateLegacyClaudeValue(model);
+    if (cli === 'copilot' && model === 'claude-opus-4.6-fast') return 'claude-opus-4.6';
+    return model;
+}
+
 function normalizePerCliModels(perCli: Record<string, any> = {}) {
     const next: Record<string, any> = {};
     for (const [cli, cfg] of Object.entries(perCli)) {
         next[cli] = {
             ...cfg,
-            model: typeof cfg?.model === 'string'
-                ? migrateLegacyClaudeValue(cfg.model)
-                : cfg?.model,
+            model: normalizeModelForCli(cli, cfg?.model),
         };
     }
     return next;
@@ -190,9 +195,7 @@ function normalizeActiveOverrides(activeOverrides: Record<string, any> = {}) {
     for (const [cli, cfg] of Object.entries(activeOverrides)) {
         next[cli] = {
             ...cfg,
-            model: typeof cfg?.model === 'string'
-                ? migrateLegacyClaudeValue(cfg.model)
-                : cfg?.model,
+            model: normalizeModelForCli(cli, cfg?.model),
         };
     }
     return next;
@@ -216,8 +219,8 @@ export function migrateSettings(s: Record<string, any>) {
     // Claude model alias migration
     s.perCli = normalizePerCliModels(s.perCli || {});
     s.activeOverrides = normalizeActiveOverrides(s.activeOverrides || {});
-    if (s.memory?.cli === 'claude' && typeof s.memory?.model === 'string') {
-        s.memory.model = migrateLegacyClaudeValue(s.memory.model);
+    if (typeof s.memory?.cli === 'string' && typeof s.memory?.model === 'string') {
+        s.memory.model = normalizeModelForCli(s.memory.cli, s.memory.model);
     }
 
     // Discord/channel migration

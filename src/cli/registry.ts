@@ -66,7 +66,6 @@ export const CLI_REGISTRY = {
         models: [
             'claude-sonnet-4.6',
             'claude-opus-4.6',
-            'claude-opus-4.6-fast',
             'claude-haiku-4.5',
             'gpt-5.4',
             'gpt-5.3-codex',
