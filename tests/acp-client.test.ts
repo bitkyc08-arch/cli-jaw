@@ -3,12 +3,12 @@ import assert from 'node:assert/strict';
 import { AcpClient } from '../src/cli/acp-client.ts';
 
 test('AcpClient buildSpawnArgs: auto includes full allow-all flags', () => {
-    const acp = new AcpClient({ permissions: 'auto', model: 'claude-opus-4.6-fast' });
+    const acp = new AcpClient({ permissions: 'auto', model: 'claude-opus-4.6' });
     const args = acp.buildSpawnArgs();
 
     assert.ok(args.includes('--acp'));
     assert.ok(args.includes('--model'));
-    assert.ok(args.includes('claude-opus-4.6-fast'));
+    assert.ok(args.includes('claude-opus-4.6'));
     assert.ok(args.includes('--allow-all-tools'));
     assert.ok(args.includes('--allow-all-paths'));
     assert.ok(args.includes('--allow-all-urls'));

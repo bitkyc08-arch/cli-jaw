@@ -83,3 +83,19 @@ test('CfgM-007: migrateSettings normalizes all 4 legacy values across perCli', (
     assert.equal(s.perCli.claude.model, 'sonnet');
     assert.equal(s.activeOverrides.claude.model, 'opus[1m]');
 });
+
+test('CfgM-008: migrateSettings rewrites deprecated Copilot fast opus model', () => {
+    const s = migrateSettings({
+        cli: 'copilot',
+        perCli: {
+            copilot: { model: 'claude-opus-4.6-fast', effort: 'high' },
+        },
+        activeOverrides: {
+            copilot: { model: 'claude-opus-4.6-fast' },
+        },
+        memory: { cli: 'copilot', model: 'claude-opus-4.6-fast' },
+    });
+    assert.equal(s.perCli.copilot.model, 'claude-opus-4.6');
+    assert.equal(s.activeOverrides.copilot.model, 'claude-opus-4.6');
+    assert.equal(s.memory.model, 'claude-opus-4.6');
+});

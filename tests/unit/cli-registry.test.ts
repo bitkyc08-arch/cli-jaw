@@ -61,6 +61,10 @@ test('opencode registry includes OpenCode Go models', () => {
     }
 });
 
+test('copilot registry excludes deprecated claude-opus-4.6-fast', () => {
+    assert.ok(!CLI_REGISTRY.copilot.models.includes('claude-opus-4.6-fast'));
+});
+
 // ─── buildDefaultPerCli ──────────────────────────────
 
 test('buildDefaultPerCli returns correct shape', () => {
