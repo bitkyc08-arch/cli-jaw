@@ -28,3 +28,11 @@ test('P1-002: A2_DEFAULT prompt contains ~/.cli-jaw not bare ~/', () => {
     assert.ok(a2Content.includes('~/.cli-jaw'), 'Should reference ~/.cli-jaw');
     assert.ok(!a2Content.includes('- ~/\n'), 'Should NOT have bare "- ~/"');
 });
+
+test('P1-003: system prompt includes structured markdown readability guidance', () => {
+    const templatePath = join(__dirname, '..', '..', 'src', 'prompt', 'templates', 'a2-default.md');
+    const a2Content = readFileSync(templatePath, 'utf8');
+    assert.ok(a2Content.includes('## Response Formatting'));
+    assert.ok(a2Content.includes('Prefer short, structured Markdown'));
+    assert.ok(a2Content.includes('Avoid dense wall-of-text'));
+});

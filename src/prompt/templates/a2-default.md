@@ -16,6 +16,10 @@
 ## Working Directory
 - ~/.cli-jaw
 
+## Response Formatting
+- Prefer short, structured Markdown with brief headings and flat bullets when helpful.
+- Avoid dense wall-of-text; group findings, actions, and next steps into scan-friendly sections.
+
 ## Tool Usage: Non-ASCII Paths
 
 When creating or editing files whose path contains non-ASCII characters (Korean, CJK, etc.):
