@@ -15,6 +15,7 @@ export interface WorkerSlot {
     completedAt: number | null;
     pendingReplay: boolean;
     replayClaimed: boolean;
+    replayAttempts: number;
     result: string | null;
 }
 
@@ -31,6 +32,7 @@ export function claimWorker(emp: Record<string, any>, task: string): WorkerSlot 
         completedAt: null,
         pendingReplay: false,
         replayClaimed: false,
+        replayAttempts: 0,
         result: null,
     };
     workers.set(emp.id, slot);
@@ -118,6 +120,12 @@ export function releaseWorkerReplay(agentId: string): void {
     const slot = workers.get(agentId);
     if (!slot) return;
     slot.replayClaimed = false;
+    slot.replayAttempts++;
+    if (slot.replayAttempts >= 3) {
+        console.error(`[worker-registry] ${agentId} replay failed 3 times — marking as failed`);
+        slot.state = 'failed';
+        slot.pendingReplay = false;
+    }
 }
 
 export function clearAllWorkers(): void {

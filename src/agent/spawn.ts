@@ -45,6 +45,7 @@ export function killAgentById(agentId: string): boolean {
 export let memoryFlushCounter = 0;
 export let flushCycleCount = 0;
 export const messageQueue: any[] = [];
+let queueProcessing = false;
 
 // ─── 429 Retry Timer State ──────────────────────────
 // INVARIANT: single-main — 동시에 1개의 main spawnAgent만 존재한다고 가정.
@@ -155,9 +156,15 @@ export async function steerAgent(newPrompt: string, source: string) {
     broadcast('new_message', { role: 'user', content: newPrompt, source });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    if (isResetIntent(newPrompt)) orchestrateReset({ origin, _skipInsert: true });
-    else if (isContinueIntent(newPrompt)) orchestrateContinue({ origin, _skipInsert: true });
-    else orchestrate(newPrompt, { origin, _skipInsert: true });
+    const task = isResetIntent(newPrompt)
+        ? orchestrateReset({ origin, _skipInsert: true })
+        : isContinueIntent(newPrompt)
+            ? orchestrateContinue({ origin, _skipInsert: true })
+            : orchestrate(newPrompt, { origin, _skipInsert: true });
+    task.catch((err: Error) => {
+        console.error('[steer:orchestrate]', err.message);
+        broadcast('orchestrate_done', { text: `[error] ${err.message}`, error: true, origin });
+    });
 }
 
 // ─── Message Queue ───────────────────────────────────
@@ -169,6 +176,7 @@ export function enqueueMessage(prompt: string, source: string, meta?: { target?:
 }
 
 export async function processQueue() {
+    if (queueProcessing) return;
     if (
         activeProcess
         || retryPendingTimer
@@ -176,6 +184,7 @@ export async function processQueue() {
         || hasPendingWorkerReplays()
         || messageQueue.length === 0
     ) return;
+    queueProcessing = true;
 
     // Group by source+target — only process the first group, leave rest in queue
     const first = messageQueue[0];
@@ -212,9 +221,18 @@ export async function processQueue() {
     broadcast('queue_update', { pending: messageQueue.length });
     const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    if (isResetIntent(combined)) orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true });
-    else if (isContinueIntent(combined)) orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true });
-    else orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
+    const task = isResetIntent(combined)
+        ? orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })
+        : isContinueIntent(combined)
+            ? orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })
+            : orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
+    task.catch((err: Error) => {
+        console.error('[queue:orchestrate]', err.message);
+        broadcast('orchestrate_done', { text: `[error] ${err.message}`, error: true, origin, chatId, target, requestId });
+    }).finally(() => {
+        queueProcessing = false;
+        processQueue();
+    });
 }
 
 // ─── Helpers ─────────────────────────────────────────
@@ -619,6 +637,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (code !== 0 && !killReason) {
                 console.warn(`[acp:unexpected-exit] code=${code} signal=${signal} sessionId=${ctx.sessionId || 'none'}`);
             }
+            const wasKilled = !!killReason;
             const wasSteer = killReason === 'steer';
             if (mainManaged) killReason = null;  // consume
             flushThinking();  // Flush any remaining thinking buffer
@@ -731,7 +750,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                         triggerMemoryFlush();
                     }
                 }
-            } else if (mainManaged && code !== 0 && !wasSteer) {
+            } else if (mainManaged && code !== 0 && !wasKilled) {
                 let errMsg = `Copilot CLI 실행 실패 (exit ${code})`;
                 const is429 = ctx.stderrBuf.includes('429') || ctx.stderrBuf.includes('RESOURCE_EXHAUSTED');
                 if (ctx.stderrBuf.includes('auth')) errMsg = '🔐 인증 오류 — `copilot login` 또는 `gh auth login` 실행 후 다시 시도해주세요';
@@ -782,7 +801,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                         const { promise: retryP } = spawnAgent(prompt, {
                             ...opts, cli: fallbackCli, _isFallback: true, _skipInsert: true,
                         });
-                        retryP.then(r => resolve(r));
+                        retryP.then(r => resolve(r)).catch(() => {
+                            broadcast('agent_done', { text: `❌ Fallback (${fallbackCli}) failed`, error: true, origin });
+                            resolve({ text: '', code: 1 });
+                            if (mainManaged) processQueue();
+                        });
                         return;
                     }
                 }
@@ -900,7 +923,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         flushClaudeBuffers(ctx, agentLabel);  // flush any pending thinking/input buffers
         opts.lifecycle?.onExit?.(code ?? null);
 
-        // Consume killReason early (before smoke check to prevent leak to continuation)
+        const wasKilled = !!killReason;
         const wasSteer = killReason === 'steer';
         if (mainManaged) killReason = null;
 
@@ -1023,7 +1046,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                     triggerMemoryFlush();
                 }
             }
-        } else if (mainManaged && code !== 0 && !wasSteer) {
+        } else if (mainManaged && code !== 0 && !wasKilled) {
             let errMsg = `CLI 실행 실패 (exit ${code})`;
             const is429 = ctx.stderrBuf.includes('429') || ctx.stderrBuf.includes('RESOURCE_EXHAUSTED');
             if (is429) {
@@ -1078,7 +1101,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                     const { promise: retryP } = spawnAgent(prompt, {
                         ...opts, cli: fallbackCli, _isFallback: true, _skipInsert: true,
                     });
-                    retryP.then(r => resolve(r));
+                    retryP.then(r => resolve(r)).catch(() => {
+                        broadcast('agent_done', { text: `❌ Fallback (${fallbackCli}) failed`, error: true, origin });
+                        resolve({ text: '', code: 1 });
+                        if (mainManaged) processQueue();
+                    });
                     return;
                 }
             }
@@ -1138,10 +1165,11 @@ ${convo}`;
     const flushCli = settings.memory?.cli || settings.cli;
     const flushModel = settings.memory?.model || (settings.perCli?.[flushCli]?.model) || 'default';
 
+    if (activeProcesses.has('memory-flush')) {
+        console.log('[memory] flush already running, skipping');
+        return;
+    }
     spawnAgent(flushPrompt, {
-        forceNew: true,
-        internal: true,
-        agentId: 'memory-flush',
         cli: flushCli,
         model: flushModel,
         sysPrompt: '',

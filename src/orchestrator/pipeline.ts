@@ -237,6 +237,7 @@ export async function orchestrate(
             : (readLatestWorklog() || { path: createWorklog(worklogSeed).path });
 
         let anyWorkerRan = false;
+        let anyWorkerDispatched = false;
         for (const wt of workerTasks) {
             const emp = findEmployee(
                 getEmployees.all() as Record<string, any>[],
@@ -255,6 +256,7 @@ export async function orchestrate(
             claimWorker(emp, wt.task);
             let wResult;
             try {
+                anyWorkerDispatched = true;
                 wResult = await runSingleAgent(
                     {
                         ...wt,
@@ -301,14 +303,17 @@ export async function orchestrate(
             }
         }
         // If no workers could be found, broadcast the original response
-        if (!anyWorkerRan) {
+        if (!anyWorkerRan && !anyWorkerDispatched) {
             const stripped = stripSubtaskJSON(result.text);
             broadcast('orchestrate_done', {
                 text: `[Worker dispatch failed — no matching employees]\n${stripped || result.text || ''}`,
-                origin,
-                chatId,
-                target,
-                requestId,
+                origin, chatId, target, requestId,
+            });
+        } else if (!anyWorkerRan && anyWorkerDispatched) {
+            const stripped = stripSubtaskJSON(result.text);
+            broadcast('orchestrate_done', {
+                text: `[All dispatched workers failed]\n${stripped || result.text || ''}`,
+                origin, chatId, target, requestId,
             });
         }
         // Ensure queue drains after all worker replays are processed

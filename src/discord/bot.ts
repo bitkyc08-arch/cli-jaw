@@ -118,14 +118,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         // Listen for queued result — correlate by requestId (request-level isolation)
         const requestId = result.requestId;
         let queueTimeout: ReturnType<typeof setTimeout>;
-        const queueHandler = (type: string, data: Record<string, any>) => {
+        const queueHandler = async (type: string, data: Record<string, any>) => {
             if (type === 'orchestrate_done' && data.text && data.origin === 'discord'
                 && data.requestId === requestId) {
                 clearTimeout(queueTimeout);
                 removeBroadcastListener(queueHandler);
                 const chunks = chunkDiscordMessage(data.text);
                 for (const chunk of chunks) {
-                    (msg.channel as any).send(chunk).catch((e: Error) => {
+                    await (msg.channel as any).send(chunk).catch((e: Error) => {
                         console.error('[discord:queue-send]', e.message);
                     });
                 }
