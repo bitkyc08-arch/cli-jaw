@@ -20,13 +20,17 @@ jobs:
           git submodule update --init officecli
 
       - name: Checkout private submodules (needs SUBMODULE_PAT secret)
+        if: ${{ secrets.SUBMODULE_PAT != '' }}
         run: |
           git submodule update --init devlog
         env:
           GIT_CONFIG_COUNT: 1
           GIT_CONFIG_KEY_0: url.https://x-access-token:${{ secrets.SUBMODULE_PAT }}@github.com/.insteadOf
           GIT_CONFIG_VALUE_0: https://github.com/
-        continue-on-error: true
+
+      - name: Skip private submodules when SUBMODULE_PAT is unavailable
+        if: ${{ secrets.SUBMODULE_PAT == '' }}
+        run: echo "Skipping private devlog checkout because SUBMODULE_PAT is not configured."
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
