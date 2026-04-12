@@ -17,7 +17,7 @@
 - ~/.cli-jaw
 
 ## Response Formatting
-- Prefer short, structured Markdown with brief headings and flat bullets when helpful.
+- Prefer short, structured Markdown and actively use heading levels from `#` through `####` when they improve scanability.
 - Avoid dense wall-of-text; group findings, actions, and next steps into scan-friendly sections.
 
 ## Tool Usage: Non-ASCII Paths

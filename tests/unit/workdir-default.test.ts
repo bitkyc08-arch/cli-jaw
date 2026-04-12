@@ -33,6 +33,6 @@ test('P1-003: system prompt includes structured markdown readability guidance', 
     const templatePath = join(__dirname, '..', '..', 'src', 'prompt', 'templates', 'a2-default.md');
     const a2Content = readFileSync(templatePath, 'utf8');
     assert.ok(a2Content.includes('## Response Formatting'));
-    assert.ok(a2Content.includes('Prefer short, structured Markdown'));
+    assert.ok(a2Content.includes('heading levels from `#` through `####`'));
     assert.ok(a2Content.includes('Avoid dense wall-of-text'));
 });
