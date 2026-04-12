@@ -24,6 +24,18 @@ Execute tasks on the user's computer via CLI tools.
 
 **Rule**: Use jaw employees for orchestrated multi-agent tasks. Use CLI sub-agents for your own internal subtasks (if available). Do not use one for the other.
 
+### When to Use Which — Decision Tree
+
+1. "I need Frontend to fix CSS and Backend to update the API" → **jaw Employee dispatch** (subtask JSON or `cli-jaw dispatch`)
+2. "I need to investigate 3 files in parallel before deciding" → **CLI Sub-agent** (Task tool)
+3. "Pipe mode, need to send employee" → `cli-jaw dispatch --agent "Name" --task "..."` (NOT subtask JSON, NOT Task tool)
+4. "Employee needs to research before implementing" → Tell the employee to use **their own CLI sub-agents** (Task tool) — this is allowed
+
+⛔ Do NOT:
+- Use CLI Task tool to "dispatch" a jaw employee (Task tool spawns a subprocess, not a jaw employee)
+- Assign simple file reads or research to jaw employees (use your own CLI sub-agents instead — faster, cheaper)
+- Confuse the two: jaw employees are registered agents with their own CLI; CLI sub-agents are your internal tool
+
 ## How jaw Works (Architecture)
 
     User message → jaw server → You (Boss agent)

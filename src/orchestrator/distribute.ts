@@ -315,13 +315,11 @@ ${instruction}
 - Code change + tests → Phases 3~4 at once
 
 Example: planning + development together → complete analysis + code in one pass.
-In that case, add this JSON at the end of your response:
+In that case, state which phases you completed at the end of your response:
 
-\`\`\`json
-{ "phases_completed": [${ap.phaseProfile.slice(ap.currentPhaseIdx).join(', ')}] }
-\`\`\`
+Phases completed: ${ap.phaseProfile.slice(ap.currentPhaseIdx).join(', ')}
 
-If you completed only one phase, you do not need to add this JSON.
+Use this exact plain-text format (NOT JSON). If you completed only one phase, you do not need to add this line.
 
 ${executionContext}
 
@@ -377,24 +375,39 @@ ${worklogBlock}`.trim();
         text: r.text || '',
     };
 
-    // Parse phases_completed from agent output
-    const pcMatch = (r.text || '').match(/\{[\s\S]*"phases_completed"\s*:\s*\[[\d,\s]+\][\s\S]*\}/);
-    if (pcMatch) {
+    // Parse phases_completed from agent output (supports both plain-text and legacy JSON)
+    const responseText = r.text || '';
+
+    // Plain-text format: "Phases completed: A, P, B" or "Phases completed: 1, 2, 3"
+    const plainMatch = responseText.match(/Phases completed:\s*(.+)/i);
+    // Legacy JSON format: { "phases_completed": [1, 2, 3] }
+    const jsonMatch = responseText.match(/\{[\s\S]*"phases_completed"\s*:\s*\[[\d,\s]+\][\s\S]*\}/);
+
+    let completedPhases: number[] | null = null;
+
+    if (plainMatch) {
+        const parts = plainMatch[1].split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
+        if (parts.length > 1) completedPhases = parts;
+    } else if (jsonMatch) {
         try {
-            const pc = JSON.parse(pcMatch[0]);
+            const pc = JSON.parse(jsonMatch[0]);
             if (Array.isArray(pc.phases_completed) && pc.phases_completed.length > 1) {
-                const maxCompleted = Math.max(...pc.phases_completed);
-                const newIdx = ap.phaseProfile.findIndex((p: number) => p > maxCompleted);
-                if (newIdx === -1) {
-                    ap.completed = true;
-                    console.log(`[claw:phase-skip] ${ap.agent} completed ALL phases in one pass`);
-                } else if (newIdx > ap.currentPhaseIdx + 1) {
-                    ap.currentPhaseIdx = newIdx;
-                    ap.currentPhase = ap.phaseProfile[newIdx];
-                    console.log(`[claw:phase-skip] ${ap.agent} jumped to phase ${ap.currentPhase} (completed: ${pc.phases_completed})`);
-                }
+                completedPhases = pc.phases_completed;
             }
         } catch (e) { console.debug('[orchestrator:phases] JSON parse failed'); }
+    }
+
+    if (completedPhases) {
+        const maxCompleted = Math.max(...completedPhases);
+        const newIdx = ap.phaseProfile.findIndex((p: number) => p > maxCompleted);
+        if (newIdx === -1) {
+            ap.completed = true;
+            console.log(`[claw:phase-skip] ${ap.agent} completed ALL phases in one pass`);
+        } else if (newIdx > ap.currentPhaseIdx + 1) {
+            ap.currentPhaseIdx = newIdx;
+            ap.currentPhase = ap.phaseProfile[newIdx];
+            console.log(`[claw:phase-skip] ${ap.agent} jumped to phase ${ap.currentPhase} (completed: ${completedPhases})`);
+        }
     }
 
     broadcast('agent_status', { agentId: emp.id, agentName: emp.name, status: result.status, phase: ap.currentPhase });

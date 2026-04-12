@@ -59,7 +59,7 @@ export function failWorker(agentId: string, result: string): void {
     slot.state = 'failed';
     slot.completedAt = Date.now();
     slot.result = result;
-    slot.pendingReplay = true;
+    slot.pendingReplay = false;  // Failed workers don't need replay — no result to feed back to Boss
 }
 
 export function cancelWorker(agentId: string): void {

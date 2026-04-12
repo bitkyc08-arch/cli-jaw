@@ -23,7 +23,7 @@ import {
     listPendingWorkerResults, claimWorkerReplay, markWorkerReplayed, releaseWorkerReplay,
     getActiveWorkers, cancelWorker, clearAllWorkers,
 } from './worker-registry.js';
-import { messageQueue } from '../agent/spawn.js';
+import { messageQueue, processQueue } from '../agent/spawn.js';
 import {
     getState, getPrefix, resetState, setState, getStatePrompt,
     getCtx,
@@ -88,6 +88,7 @@ export async function orchestrate(
             try {
                 await orchestrate(pr.text, { ...meta, _workerResult: true, _skipInsert: true, _skipReplayDrain: true });
                 markWorkerReplayed(pr.agentId);
+                processQueue();
             } catch {
                 releaseWorkerReplay(pr.agentId);
                 break;
@@ -276,7 +277,8 @@ export async function orchestrate(
                 }
             } catch (err) {
                 failWorker(emp.id, (err as Error).message || String(err));
-                throw err;
+                console.error(`[jaw:pabcd] worker ${emp.id} failed:`, (err as Error).message);
+                continue;  // Don't abort remaining workers
             }
             anyWorkerRan = true;
             // Inject the worker result exactly once through the replay contract.
@@ -290,9 +292,11 @@ export async function orchestrate(
                         _skipReplayDrain: true,
                     });
                     markWorkerReplayed(emp.id);
+                    processQueue();
                 } catch (err) {
                     releaseWorkerReplay(emp.id);
-                    throw err;
+                    console.error(`[jaw:pabcd] worker ${emp.id} replay failed:`, (err as Error).message);
+                    continue;  // Don't abort remaining worker replays
                 }
             }
         }
@@ -307,6 +311,8 @@ export async function orchestrate(
                 requestId,
             });
         }
+        // Ensure queue drains after all worker replays are processed
+        processQueue();
         return;
     }
 

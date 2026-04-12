@@ -24,11 +24,18 @@ Output EXACTLY this format (triple-backtick fenced JSON block):
 \`\`\`
 
 **Pipe 모드 세션 (Claude Code CLI 직접 실행):**
-subtask JSON은 파싱되지 않습니다. 대신 `cli-jaw dispatch` 명령을 사용하세요:
+subtask JSON은 파싱되지 않습니다. 두 가지 도구를 구분하세요:
+
+**jaw Employee dispatch** (역할 기반 작업 위임):
 ```bash
 cli-jaw dispatch --agent "Frontend" --task "Specific task instruction"
 ```
 결과가 stdout으로 동기 반환됩니다.
+
+**CLI Sub-agents** (자기 작업 내 병렬화):
+CLI의 Task/Agent 도구는 Pipe 모드에서도 정상 동작합니다.
+리서치, 파일 탐색, 코드 분석 등 자기 작업에는 CLI Sub-agent를 사용하세요.
+jaw Employee를 CLI Task tool로 보내지 마세요 — `cli-jaw dispatch`를 사용하세요.
 
 ### CRITICAL RULES
 1. JSON MUST be wrapped in ```json ... ``` code blocks (mandatory)

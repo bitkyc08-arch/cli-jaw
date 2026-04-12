@@ -400,31 +400,29 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
         }
     } catch { /* vision-click not ready */ }
 
-    // ─── Nested agent prohibition for pipe-mode CLIs ───
-    // Main agents and employees may use CLI-built-in Agent/subagent tools
-    // (1st-level). But those subagents must NOT spawn further subagents
-    // (2nd-level+). jaw employee dispatch (subtask JSON) is always allowed.
+    // ─── Delegation rules: jaw employees vs CLI sub-agents ───
+    // Both tools exist. The prompt must clarify WHEN to use which.
+    // Sub-agents (Task tool) are always available for internal work.
+    // jaw employees are dispatched via subtask JSON (server) or cli-jaw dispatch (pipe).
     const pipeActiveCli = opts.activeCli || settings.cli;
     const PIPE_MODE_CLIS = ['codex', 'claude', 'gemini', 'opencode'];
-    if (!opts.forDisk && PIPE_MODE_CLIS.includes(pipeActiveCli || '')) {
-        prompt += '\n\n---\n## Agent/Subagent Prohibition\n';
-        prompt += 'Do NOT use Agent, subagent, or delegation tools. ';
-        prompt += 'This session runs in pipe mode — subprocesses will not complete. ';
-        prompt += 'Do all work directly. Break large tasks into sequential steps.\n';
-        prompt += '\n### jaw Employee Dispatch (Pipe Mode)\n';
-        prompt += 'subtask JSON output will NOT be parsed in pipe mode. ';
-        prompt += 'To dispatch jaw employees, use the CLI command instead:\n';
+    const isPipe = !opts.forDisk && PIPE_MODE_CLIS.includes(pipeActiveCli || '');
+
+    prompt += '\n\n---\n## Delegation Rules\n';
+    prompt += '### CLI Sub-agents (Task/Agent tool)\n';
+    prompt += 'You CAN use your CLI\'s Task/Agent tools for internal subtasks: research, parallel file reads, code analysis.\n';
+    prompt += 'Subagents you spawn must NOT spawn further subagents (1-level only).\n';
+    prompt += 'When spawning a subagent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."\n';
+    prompt += '\n### jaw Employee Dispatch\n';
+    if (isPipe) {
+        prompt += 'subtask JSON is NOT parsed in pipe mode. Use the CLI command:\n';
         prompt += '```bash\ncli-jaw dispatch --agent "Frontend" --task "task description"\n```\n';
-        prompt += 'Results are returned synchronously to stdout.\n';
+    } else {
+        prompt += 'Output subtask JSON to dispatch jaw employees. jaw handles the rest.\n';
     }
-    if (opts.forDisk) {
-        prompt += '\n\n---\n## Nested Agent Prohibition\n';
-        prompt += 'You may use CLI-built-in Agent/subagent tools for your own subtasks (1st level). ';
-        prompt += 'However, **subagents you spawn must NOT spawn further subagents** (no 2nd-level nesting). ';
-        prompt += 'When spawning a subagent, include this instruction in its prompt: ';
-        prompt += '"Do NOT use Agent, subagent, or delegation tools. Do all work directly."\n';
-        prompt += 'jaw employee dispatch via subtask JSON is separate and always allowed.\n';
-    }
+    prompt += '\n### ⛔ Do NOT confuse the two\n';
+    prompt += '- Do NOT use CLI Task tool to "dispatch" jaw employees — use subtask JSON or `cli-jaw dispatch`.\n';
+    prompt += '- Do NOT assign simple research to jaw employees — use your CLI sub-agents instead.\n';
 
     return prompt;
 }
@@ -516,12 +514,13 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
     prompt += `\n- Focus only on your assigned area`;
     prompt += `\n- Report results clearly with specific file paths and line numbers`;
 
-    // ─── Nested agent prohibition (employees may use 1st-level subagents) ───
-    prompt += `\n\n## Nested Agent Prohibition`;
-    prompt += `\nYou may use CLI-built-in Agent/subagent tools for your own subtasks (1st level).`;
-    prompt += `\nHowever, subagents you spawn must NOT spawn further subagents (no 2nd-level nesting).`;
-    prompt += `\nWhen spawning a subagent, include this in its prompt: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."`;
-    prompt += `\nDo NOT output jaw employee subtask JSON — only the Boss does that.`;
+    // ─── Sub-agent usage (employees CAN use sub-agents; must NOT dispatch jaw employees) ───
+    prompt += `\n\n## Sub-agent Usage Rules`;
+    prompt += `\nYou CAN use your CLI's Task/Agent tools for your own work (parallel file reads, research, code analysis).`;
+    prompt += `\nSubagents you spawn must NOT spawn further subagents (1-level only).`;
+    prompt += `\nWhen spawning a subagent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."`;
+    prompt += `\n\n⛔ You must NOT output jaw employee subtask JSON — only the Boss can dispatch jaw employees.`;
+    prompt += `\nIf a task seems too large, use your CLI sub-agents to parallelize — do NOT try to dispatch other jaw employees.`;
 
     promptCache.set(cacheKey, prompt);
     return prompt;
