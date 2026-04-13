@@ -229,7 +229,7 @@ wss.on('connection', (ws) => {
                 if (!text) return;
                 console.log(`[ws:in] ${text.slice(0, 80)}`);
 
-                const result = submitMessage(text, { origin: 'cli' });
+                const result = submitMessage(text, { origin: 'web' });
                 if (result.action === 'rejected' && result.reason === 'busy') {
                     broadcast('agent_done', {
                         text: t('ws.agentBusy', {}, resolveRequestLocale(null, settings.locale)),
