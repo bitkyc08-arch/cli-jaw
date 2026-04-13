@@ -9,6 +9,8 @@ const __dirname = dirname(__filename);
 
 const postinstallSrc = fs.readFileSync(join(__dirname, '../../bin/postinstall.ts'), 'utf8');
 const initSrc = fs.readFileSync(join(__dirname, '../../bin/commands/init.ts'), 'utf8');
+const officeCliShellSrc = fs.readFileSync(join(__dirname, '../../scripts/install-officecli.sh'), 'utf8');
+const officeCliPowerShellSrc = fs.readFileSync(join(__dirname, '../../scripts/install-officecli.ps1'), 'utf8');
 
 // ── SAF-001: safe guard with JAW_SAFE ──
 
@@ -133,4 +135,14 @@ test('INIT-004: init.ts imports and calls extracted install functions', () => {
 test('INIT-005: --dry-run guards settings/dir writes', () => {
     assert.ok(initSrc.includes("!values['dry-run']"), 'dry-run guards file writes');
     assert.ok(initSrc.includes('[dry-run] would save settings'), 'dry-run reports settings skip');
+});
+
+test('OFF-001: shell installer supports update mode', () => {
+    assert.ok(officeCliShellSrc.includes('--update'), 'shell installer should expose --update');
+    assert.ok(officeCliShellSrc.includes('get_latest_version'), 'shell installer should compare latest version');
+});
+
+test('OFF-002: PowerShell installer exists for win32 postinstall', () => {
+    assert.ok(officeCliPowerShellSrc.includes('officecli-win-x64.exe'), 'PowerShell installer should map Windows x64 asset');
+    assert.ok(officeCliPowerShellSrc.includes('$env:LOCALAPPDATA'), 'PowerShell installer should install under LOCALAPPDATA');
 });
