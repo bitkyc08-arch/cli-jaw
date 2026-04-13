@@ -303,6 +303,9 @@ After completing your task, record results in the Execution Log section.`
     const taskPrompt = `## Task Instruction [${phaseLabel}]
 ${ap.task}
 
+## ⛔ Dispatch Prohibition
+You are an employee session. Do NOT dispatch other employees. Do NOT output subtask JSON. Do NOT run \`cli-jaw dispatch\`. Use CLI sub-agents (Task/Agent tool) for parallel work instead.
+
 ## Current Phase: ${ap.currentPhase} (${phaseLabel})
 ${instruction}
 
