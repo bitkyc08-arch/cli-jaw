@@ -37,6 +37,7 @@ import {
     shouldRunResearch,
 } from './research.js';
 import { buildTaskSnapshot, getMemoryStatus } from '../memory/runtime.js';
+import { buildMemoryInjection } from '../memory/injection.js';
 
 // ─── Parser re-exports ─────────────────────────────
 import {
@@ -239,10 +240,13 @@ export async function orchestrate(
     console.log(`[jaw:pabcd] state=${state}, spawning/resuming agent`);
     let memorySnapshot = '';
     try {
-        const mem = getMemoryStatus();
-        if (mem.routing?.searchRead === 'advanced' && !meta._workerResult) {
-            memorySnapshot = buildTaskSnapshot(userText || prompt, 2800);
-        }
+        const injection = buildMemoryInjection({
+            role: meta._workerResult ? 'employee' : 'boss',
+            currentPrompt: userText || prompt,
+            allowProfile: !meta._workerResult,
+            allowSnapshot: !meta._workerResult,
+        });
+        memorySnapshot = injection.snapshot || '';
     } catch (err) {
         console.warn('[jaw:memory-snapshot]', (err as Error).message);
     }

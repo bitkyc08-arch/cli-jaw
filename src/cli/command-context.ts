@@ -12,6 +12,7 @@ import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import * as browser from '../browser/index.js';
 import * as memory from '../memory/memory.js';
 import { bootstrapMemory, ensureMemoryStructure, getMemoryStatus, reindexMemory, searchIndexedMemory } from '../memory/runtime.js';
+import { searchMemoryWithPolicy } from '../memory/injection.js';
 import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll,
     runSkillReset,
@@ -93,12 +94,10 @@ export function makeCommandCtx(
 
         // Memory
         listMemory: () => memory.list(),
-        searchMemory: (q: any) => {
-            const status = getMemoryStatus();
-            return status.enabled && status.routing?.searchRead === 'advanced'
-                ? searchIndexedMemory(String(q || ''))
-                : memory.search(q);
-        },
+        searchMemory: (q: any) => searchMemoryWithPolicy({
+            query: String(q || ''),
+            role: 'read_only_tool',
+        }),
         getMemoryStatus: () => getMemoryStatus(),
         initMemoryRuntime: () => ensureMemoryStructure(),
         bootstrapMemory: (options?: Record<string, any>) => bootstrapMemory(options || {}),

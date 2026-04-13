@@ -7,6 +7,7 @@ import { getEmployees } from '../core/db.js';
 import { memoryFlushCounter, flushCycleCount } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
 import { buildTaskSnapshot, getMemoryStatus, loadProfileSummary } from '../memory/runtime.js';
+import { buildMemoryInjection } from '../memory/injection.js';
 import { loadAndRender, loadTemplate, renderTemplate, parseWorkerContexts, clearTemplateCache } from './template-loader.js';
 
 const promptCache = new Map();
@@ -315,13 +316,20 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
     // Phase 15: Telegram guidance is now part of A1_CONTENT (hardcoded)
     // No dynamic injection needed — Bot-First policy with curl examples included
 
-    if (!forDisk && mem.routing?.searchRead === 'advanced') {
-        prompt = appendAdvancedMemoryContext(prompt, currentPrompt, opts.memorySnapshot || '');
-    } else if (!forDisk) {
-        prompt = appendLegacyMemoryContext(prompt);
-        prompt += '\n\n---\n## Memory Status\n';
-        prompt += '- indexed memory is still initializing\n';
-        prompt += '- temporary fallback memory context is active\n';
+    if (!forDisk) {
+        const injected = buildMemoryInjection({
+            role: 'boss',
+            currentPrompt,
+            providedSnapshot: opts.memorySnapshot || '',
+        });
+        if (injected.mode === 'advanced') {
+            prompt += '\n\n' + injected.text;
+        } else {
+            prompt = appendLegacyMemoryContext(prompt);
+            prompt += '\n\n---\n## Memory Status\n';
+            prompt += '- indexed memory is still initializing\n';
+            prompt += '- temporary fallback memory context is active\n';
+        }
     } else {
         prompt = appendLegacyMemoryContext(prompt);
     }
