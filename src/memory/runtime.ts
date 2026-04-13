@@ -273,7 +273,12 @@ export function getLastReflectedAt(): string | null {
     try {
         const raw = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
         return raw.lastReflectedAt || null;
-    } catch { return null; }
+    } catch (err) {
+        if (fs.existsSync(metaPath)) {
+            console.warn('[jaw:reflect-meta] failed to read', (err as Error).message);
+        }
+        return null;
+    }
 }
 
 export function reflectMemory(options?: { sinceDays?: number; dryRun?: boolean }): ReflectionResult {
@@ -302,9 +307,6 @@ export {
 export {
     ensureIntegratedMemoryReady as ensureMemoryRuntimeReady,
     reindexAdvancedMemory as reindexMemory,
-    syncIntegratedCoreMemory,
-    reflectMemory,
-    getLastReflectedAt,
     listAdvancedMemoryFiles as listMemoryFiles,
     searchAdvancedMemory as searchIndexedMemory,
     readAdvancedMemorySnippet as readIndexedMemorySnippet,

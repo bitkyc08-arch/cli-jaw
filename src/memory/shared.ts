@@ -201,15 +201,15 @@ export function writeMeta(patch: Partial<AdvancedMeta>) {
 export function withMigrationLock<T>(fn: () => T) {
     const lockPath = getMigrationLockPath();
     ensureDir(dirname(lockPath));
-    let fd: number | null = null;
     try {
-        fd = fs.openSync(lockPath, 'wx');
-        fs.writeSync(fd, String(process.pid));
-        fs.closeSync(fd);
-        fd = null;
+        const fd = fs.openSync(lockPath, 'wx');
+        try { fs.writeSync(fd, String(process.pid)); } finally { fs.closeSync(fd); }
     } catch (err: any) {
-        if (fd !== null) try { fs.closeSync(fd); } catch { /* ignore */ }
-        if (err.code === 'EEXIST') return fn(); // Another process holds the lock
+        if (err.code === 'EEXIST') {
+            console.warn('[jaw:migration-lock] lock held by another process, proceeding without lock');
+            return fn();
+        }
+        try { fs.unlinkSync(lockPath); } catch { /* ignore cleanup */ }
         throw err;
     }
     try {

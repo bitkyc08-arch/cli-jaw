@@ -27,7 +27,9 @@ export function buildMemoryInjection(opts: BuildMemoryInjectionOptions) {
     const includeSnapshot = opts.allowSnapshot !== false && opts.role === 'boss';
     const profile = includeProfile ? loadAdvancedProfileSummary(800) : '';
     const snapshot = includeSnapshot
-        ? (opts.providedSnapshot || buildTaskSnapshot(opts.currentPrompt, 2800))
+        ? (opts.providedSnapshot !== undefined && opts.providedSnapshot !== ''
+            ? opts.providedSnapshot
+            : buildTaskSnapshot(opts.currentPrompt, 2800))
         : '';
 
     return {

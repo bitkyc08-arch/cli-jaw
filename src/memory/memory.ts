@@ -32,6 +32,7 @@ export function ensureMemoryDir() {
 }
 
 function resolveMemoryPath(filename: string) {
+    if (/\0/.test(filename)) throw new Error('memory_path_invalid_null_byte');
     const filepath = resolve(MEMORY_DIR, filename);
     const rel = relative(MEMORY_DIR, filepath).replace(/\\/g, '/');
     if (rel.startsWith('../') || rel === '..') {

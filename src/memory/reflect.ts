@@ -135,6 +135,14 @@ function writeReflectionTargets(
         const section = `\n## ${dateHeader}\n\n${bullets}\n`;
 
         if (existing) {
+            // Update frontmatter updated_at if present
+            const updatedContent = existing.replace(
+                /^(updated_at:\s+).+$/m,
+                `$1${new Date().toISOString()}`,
+            );
+            if (updatedContent !== existing) {
+                fs.writeFileSync(filePath, updatedContent);
+            }
             fs.appendFileSync(filePath, section);
         } else {
             const title = target.split('/').pop()?.replace('.md', '') || 'reflected';
