@@ -47,7 +47,8 @@ export function isApproveIntent(text: string) {
     return APPROVE_PATTERNS.some(re => re.test(t));
 }
 
-// ─── JSON Parsing (export 유지 — agent.js가 import) ──
+// ─── JSON Parsing (DEPRECATED — patch3에서 cli-jaw dispatch로 통일) ──
+// 하위호환 fallback으로 export 유지. 신규 코드에서 사용 금지.
 
 export function parseSubtasks(text: string) {
     if (!text) return null;

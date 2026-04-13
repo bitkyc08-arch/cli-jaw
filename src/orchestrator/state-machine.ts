@@ -145,18 +145,16 @@ You will receive user feedback with a [PLANNING MODE] prefix. Revise until appro
 You are now in Plan Audit mode. This phase audits YOUR PLAN — not the code.
 An employee must verify that your plan from P phase is feasible and safe before any coding begins.
 
-⚠️ You MUST output an employee JSON to audit the plan. Do NOT skip this step.
+⚠️ You MUST dispatch an audit employee. Do NOT skip this step.
 ⚠️ Do NOT say "audit is unnecessary" — every plan must be verified before coding.
-⚠️ The employee checks: import paths exist, function signatures match real code, no integration risks.
 
-Output this employee JSON now:
-\`\`\`json
-{"subtasks":[{"agent":"Research","task":"⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder. Audit the PLAN (not code). Verify: 1) All imports in the plan resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files.","priority":1}]}
+Run this command now:
+\`\`\`bash
+cli-jaw dispatch --agent "Research" --task "⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder. Audit the PLAN (not code). Verify: 1) All imports in the plan resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files."
 \`\`\`
 
-The system dispatches the employee automatically. Wait for results.
-After receiving employee results:
-- If FAIL: fix the plan and re-audit (output employee JSON again).
+The result is returned via stdout. Review it:
+- If FAIL: fix the plan and re-dispatch.
 - If PASS: report results to the user.
 
 ⛔ STOP after reporting. WAIT for user approval.
@@ -168,19 +166,18 @@ You are now in Build mode. The plan has been audited and approved.
 
 ⚠️ YOU (the Boss) must implement the code DIRECTLY. Write every file yourself.
 ⚠️ Do NOT delegate implementation to an employee. Employees are READ-ONLY verifiers.
-⚠️ Do NOT output an employee JSON that says "implement", "create", or "write code".
 
 Steps:
 1. Read the approved plan from Phase P.
 2. Implement ALL changes yourself — create/modify/delete files as specified in the plan.
-3. After YOU finish implementing, output an employee JSON to VERIFY (not implement) your work:
+3. After YOU finish implementing, dispatch a verification employee:
 
-\`\`\`json
-{"subtasks":[{"agent":"Research","task":"⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder. Verify: 1) Files in plan exist with expected content. 2) No syntax errors (run tsc --noEmit if TS). 3) Imports resolve. 4) No integration conflicts. Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only.","priority":1}]}
+\`\`\`bash
+cli-jaw dispatch --agent "Research" --task "⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder. Verify: 1) Files in plan exist with expected content. 2) No syntax errors (run tsc --noEmit if TS). 3) Imports resolve. 4) No integration conflicts. Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only."
 \`\`\`
 
-Wait for employee verification results.
-- NEEDS_FIX: YOU fix the issues yourself, then re-verify with another employee.
+Review the stdout result:
+- NEEDS_FIX: YOU fix the issues yourself, then re-dispatch verification.
 - DONE: Report results to the user.
 
 ⛔ STOP after reporting. WAIT for user approval.

@@ -305,7 +305,6 @@ export { buildMediaPrompt, buildMediaPromptMany };
 
 // ─── Spawn Agent ─────────────────────────────────────
 
-import { stripSubtaskJSON } from '../orchestrator/pipeline.js';
 import { AcpClient } from '../cli/acp-client.js';
 
 // ─── ACP Heartbeat Helper ────────────────────────────
@@ -756,8 +755,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             }
 
             if (ctx.fullText.trim()) {
-                const stripped = stripSubtaskJSON(ctx.fullText);
-                const cleaned = (stripped || ctx.fullText.trim())
+                const cleaned = ctx.fullText.trim()
                     .replace(/<\/?tool_call>/g, '')
                     .replace(/<\/?tool_result>[\s\S]*?(?:<\/tool_result>|$)/g, '')
                     .replace(/\n{3,}/g, '\n\n')
@@ -1052,9 +1050,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (ctx.turns) costParts.push(`${ctx.turns}턴`);
             if (ctx.duration) costParts.push(`${(ctx.duration / 1000).toFixed(1)}s`);
             const costLine = costParts.length ? `\n\n✅ ${costParts.join(' · ')}` : '';
-            const stripped = stripSubtaskJSON(ctx.fullText);
             // Strip raw XML tool tags (Claude sometimes includes these in output)
-            const cleaned = (stripped || ctx.fullText.trim())
+            const cleaned = ctx.fullText.trim()
                 .replace(/<\/?tool_call>/g, '')
                 .replace(/<\/?tool_result>[\s\S]*?(?:<\/tool_result>|$)/g, '')
                 .replace(/\n{3,}/g, '\n\n')

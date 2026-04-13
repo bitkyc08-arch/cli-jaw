@@ -41,11 +41,11 @@ import { buildTaskSnapshot, getMemoryStatus } from '../memory/runtime.js';
 // ─── Parser re-exports ─────────────────────────────
 import {
     isContinueIntent, isResetIntent, isApproveIntent,
-    parseSubtasks, parseDirectAnswer, stripSubtaskJSON,
+    parseDirectAnswer, stripSubtaskJSON,
 } from './parser.js';
 export {
     isContinueIntent, isResetIntent, isApproveIntent,
-    parseSubtasks, parseDirectAnswer, stripSubtaskJSON,
+    parseDirectAnswer,
 };
 
 type SpawnAgentLike = typeof spawnAgent;
@@ -273,114 +273,10 @@ export async function orchestrate(
         }
     }
 
-    // Worker JSON detected → spawn workers → feed results back
-    const workerTasks = parseSubtasks(result.text);
-    // Research subtasks can run from any state. Non-research blocked only in D.
-    const isResearchOnly = workerTasks?.length && workerTasks.every(
-        (wt: Record<string, any>) => /^research$/i.test(wt.agent || ''),
-    );
-    const canDispatchWorkers = isResearchOnly || state !== 'D';
-    if (workerTasks?.length && canDispatchWorkers) {
-        console.log(`[jaw:pabcd] worker JSON detected (${workerTasks.length} tasks, research=${!!isResearchOnly})`);
-
-        // Map PABCD state → worker phase context
-        const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 3, C: 4 };
-        const defaultPhase = PABCD_PHASE_MAP[state] || 3;
-
-        const worklogSeed = pickWorklogSeed(ctx?.originalPrompt, planningTask, userText);
-        const activeWorklog = isInitialPlanningTurn
-            ? readLatestWorklog()
-            : (readLatestWorklog() || { path: createWorklog(worklogSeed).path });
-
-        let anyWorkerRan = false;
-        let anyWorkerDispatched = false;
-        for (const wt of workerTasks) {
-            const emp = findEmployee(
-                getEmployees.all() as Record<string, any>[],
-                wt,
-            );
-            if (!emp) {
-                console.warn(`[jaw:pabcd] worker not found: ${wt.agent}`);
-                continue;
-            }
-            // Research workers always use phase 1 semantics
-            const workerPhase = /^research$/i.test(wt.agent || '') ? 1 : defaultPhase;
-
-            // Force fresh session for PABCD workers (prevent context contamination)
-            upsertEmployeeSession.run(emp.id, null, emp.cli);
-
-            claimWorker(emp, wt.task);
-            let wResult;
-            try {
-                anyWorkerDispatched = true;
-                wResult = await runSingleAgent(
-                    {
-                        ...wt,
-                        phaseProfile: [workerPhase],
-                        currentPhaseIdx: 0,
-                        currentPhase: workerPhase,
-                        completed: false,
-                        history: [],
-                    },
-                    emp,
-                    { path: activeWorklog?.path || '' },
-                    1,
-                    { origin },
-                    [],  // priorResults (empty — worker runs independently)
-                );
-                if (wResult.status === 'done') {
-                    finishWorker(emp.id, wResult.text || '');
-                } else {
-                    failWorker(emp.id, wResult.text || `[worker error] ${emp.id}`);
-                }
-            } catch (err) {
-                failWorker(emp.id, (err as Error).message || String(err));
-                console.error(`[jaw:pabcd] worker ${emp.id} failed:`, (err as Error).message);
-                continue;  // Don't abort remaining workers
-            }
-            anyWorkerRan = true;
-            // Inject the worker result exactly once through the replay contract.
-            // This keeps durable handoff semantics while avoiding duplicate boss processing.
-            if (wResult.status === 'done' && claimWorkerReplay(emp.id)) {
-                try {
-                    await orchestrate(wResult.text, {
-                        ...meta,
-                        _skipClear: true,
-                        _workerResult: true,
-                        _skipReplayDrain: true,
-                    });
-                    markWorkerReplayed(emp.id);
-                    processQueue();
-                } catch (err) {
-                    releaseWorkerReplay(emp.id);
-                    console.error(`[jaw:pabcd] worker ${emp.id} replay failed:`, (err as Error).message);
-                    continue;  // Don't abort remaining worker replays
-                }
-            }
-        }
-        // If no workers could be found, broadcast the original response
-        if (!anyWorkerRan && !anyWorkerDispatched) {
-            const stripped = stripSubtaskJSON(result.text);
-            broadcast('orchestrate_done', {
-                text: `[Worker dispatch failed — no matching employees]\n${stripped || result.text || ''}`,
-                origin, chatId, target, requestId,
-            });
-        } else if (!anyWorkerRan && anyWorkerDispatched) {
-            const stripped = stripSubtaskJSON(result.text);
-            broadcast('orchestrate_done', {
-                text: `[All dispatched workers failed]\n${stripped || result.text || ''}`,
-                origin, chatId, target, requestId,
-            });
-        }
-        // Ensure queue drains after all worker replays are processed
-        processQueue();
-        return;
-    }
-
     // Normal response → broadcast
-    const stripped = stripSubtaskJSON(result.text);
+    // (Worker JSON dispatch removed in patch3 — Boss calls `cli-jaw dispatch` directly)
     broadcast('orchestrate_done', {
-        text: stripped || result.text || '',
+        text: result.text || '',
         origin,
         chatId,
         target,

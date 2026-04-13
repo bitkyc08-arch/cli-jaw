@@ -422,8 +422,14 @@ app.post('/api/orchestrate/dispatch', async (req, res) => {
     if (String(req.headers['x-jaw-dispatch-source'] || '').toLowerCase() === 'employee') {
         return fail(res, 409, 'Employee self-dispatch is blocked in employee sessions');
     }
-    const { agent: agentName, task } = req.body || {};
+    const { agent: agentName, task, phase } = req.body || {};
     if (!agentName || !task) return fail(res, 400, 'Missing agent or task');
+
+    // Auto-map phase from current PABCD state if not explicitly provided
+    const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 3, C: 4 };
+    const dispatchScope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
+    const currentOrcState = getState(dispatchScope);
+    const resolvedPhase = phase ?? PABCD_PHASE_MAP[currentOrcState] ?? 3;
 
     const emps = getEmployees.all() as Record<string, any>[];
     const emp = findEmployee(emps, { agent: agentName });
@@ -434,8 +440,8 @@ app.post('/api/orchestrate/dispatch', async (req, res) => {
         const ap = {
             agent: emp.name, role: emp.role || 'general developer',
             task, parallel: false,
-            currentPhase: 3, currentPhaseIdx: 0,
-            phaseProfile: [3],
+            currentPhase: resolvedPhase, currentPhaseIdx: 0,
+            phaseProfile: [resolvedPhase],
         };
         const result = await runSingleAgent(ap, emp, {}, 1, { origin: 'api' }, []);
         finishWorker(slot.agentId, result.text || '');
