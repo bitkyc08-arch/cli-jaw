@@ -553,13 +553,13 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
     prompt += `\n- Focus only on your assigned area`;
     prompt += `\n- Report results clearly with specific file paths and line numbers`;
 
-    // ─── Sub-agent usage (employees CAN use sub-agents; must NOT dispatch jaw employees) ───
-    prompt += `\n\n## Sub-agent Usage Rules`;
-    prompt += `\nYou CAN use your CLI's Task/Agent tools for your own work (parallel file reads, research, code analysis).`;
-    prompt += `\nSubagents you spawn must NOT spawn further subagents (1-level only).`;
-    prompt += `\nWhen spawning a subagent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."`;
-    prompt += `\n\n⛔ You must NOT output jaw employee subtask JSON — only the Boss can dispatch jaw employees.`;
-    prompt += `\nIf a task seems too large, use your CLI sub-agents to parallelize — do NOT try to dispatch other jaw employees.`;
+    prompt += `\n\n## Delegation Rules`;
+    prompt += `\n- Execute the assigned task directly in this employee session.`;
+    prompt += `\n- You CAN use CLI sub-agents (Task/Agent tool) for parallel work: research, file reads, code analysis. This is encouraged.`;
+    prompt += `\nWhen spawning a sub-agent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."`;
+    prompt += `\n- ⛔ Do NOT output jaw dispatch JSON or phase-transition JSON.`;
+    prompt += `\n- ⛔ Do NOT run \`cli-jaw dispatch\` or any equivalent delegation command from this session.`;
+    prompt += `\n- ⛔ Do NOT describe Boss/employee orchestration structure in your answer.`;
 
     promptCache.set(cacheKey, prompt);
     return prompt;
