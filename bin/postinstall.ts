@@ -26,6 +26,7 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import { execSync, execFileSync } from 'child_process';
+import { fileURLToPath } from 'node:url';
 import { ensureSharedHomeSkillsLinks, initMcpConfig, copyDefaultSkills, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
 
 // ─── JAW_HOME inline (config.ts → registry.ts import 체인 제거) ───
@@ -36,6 +37,15 @@ const JAW_HOME = process.env.CLI_JAW_HOME
 const home = os.homedir();
 const jawHome = JAW_HOME;
 const PATH_LOOKUP_CMD = process.platform === 'win32' ? 'where' : 'which';
+const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = fs.existsSync(path.join(MODULE_DIR, '..', '..', 'scripts'))
+    ? path.resolve(MODULE_DIR, '..', '..')
+    : path.resolve(MODULE_DIR, '..');
+const OFFICECLI_DEFAULT_REPO = 'lidge-jun/OfficeCLI';
+const OFFICECLI_SKIP = process.env.CLI_JAW_SKIP_OFFICECLI === '1'
+    || process.env.CLI_JAW_SKIP_OFFICECLI === 'true';
+const OFFICECLI_FORCE = process.env.CLI_JAW_FORCE_OFFICECLI === '1'
+    || process.env.CLI_JAW_FORCE_OFFICECLI === 'true';
 
 // ─── Legacy migration ───
 // Moved into runPostinstall() to prevent side effects on dynamic import.
@@ -112,6 +122,61 @@ export type InstallOpts = {
     interactive?: boolean;
     ask?: (question: string, defaultVal: string) => Promise<string>;
 };
+
+export async function installOfficeCli(opts: InstallOpts = {}) {
+    if (OFFICECLI_SKIP) {
+        console.log('[jaw:init] ⏭️  officecli skipped (CLI_JAW_SKIP_OFFICECLI)');
+        return;
+    }
+
+    const repo = process.env.OFFICECLI_REPO || OFFICECLI_DEFAULT_REPO;
+    if (opts.interactive && opts.ask) {
+        const answer = await opts.ask(`Install/update OfficeCLI (${repo})? [Y/n]`, 'y');
+        if (answer.toLowerCase() === 'n') {
+            console.log('[jaw:init] ⏭️  skipped officecli');
+            return;
+        }
+    }
+
+    if (process.platform === 'win32') {
+        const ps = findBinaryPath('pwsh') || findBinaryPath('powershell');
+        const scriptPath = path.join(PROJECT_ROOT, 'scripts', 'install-officecli.ps1');
+        if (!ps || !fs.existsSync(scriptPath)) {
+            console.log('[jaw:init] ⚠️  officecli installer unavailable on win32 — skipped');
+            return;
+        }
+        const args = ps.toLowerCase().includes('powershell')
+            ? ['-ExecutionPolicy', 'Bypass', '-File', scriptPath, '-Update']
+            : ['-File', scriptPath, '-Update'];
+        if (OFFICECLI_FORCE) args.push('-Force');
+        if (repo !== OFFICECLI_DEFAULT_REPO) args.push('-Repo', repo);
+        if (opts.dryRun) {
+            console.log(`  [dry-run] would run ${ps} ${args.join(' ')}`);
+            return;
+        }
+        console.log(`[jaw:init] 📦 ensuring officecli (${repo}) via PowerShell installer...`);
+        execFileSync(ps, args, { stdio: 'inherit', timeout: 180000, env: process.env });
+        return;
+    }
+
+    const scriptPath = path.join(PROJECT_ROOT, 'scripts', 'install-officecli.sh');
+    if (!fs.existsSync(scriptPath)) {
+        console.log('[jaw:init] ⚠️  officecli installer script not found — skipped');
+        return;
+    }
+    const args = [scriptPath, '--update'];
+    if (OFFICECLI_FORCE) args.push('--force');
+    if (opts.dryRun) {
+        console.log(`  [dry-run] would run bash ${args.join(' ')}`);
+        return;
+    }
+    console.log(`[jaw:init] 📦 ensuring officecli (${repo}) via shell installer...`);
+    execFileSync('bash', args, {
+        stdio: 'inherit',
+        timeout: 180000,
+        env: { ...process.env, OFFICECLI_REPO: repo },
+    });
+}
 
 const CLI_PACKAGES = [
     { bin: 'claude', pkg: '@anthropic-ai/claude-code' },
@@ -313,10 +378,11 @@ export async function runPostinstall() {
     // 6. Default skills
     copyDefaultSkills();
 
-    // 7-8. Install CLI tools, MCP servers, skill deps
+    // 7-9. Install CLI tools, MCP servers, skill deps, officecli runtime
     await installCliTools();
     await installMcpServers();
     await installSkillDeps();
+    await installOfficeCli();
     console.log('[jaw:init] setup complete ✅');
 }
 
@@ -326,4 +392,3 @@ const isEntryPoint = process.argv[1]?.endsWith('postinstall.js')
 if (isEntryPoint) {
     runPostinstall().catch(e => { console.error(e); process.exit(1); });
 }
-

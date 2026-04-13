@@ -24,6 +24,7 @@ DOWNLOAD_BIN="${INSTALL_DIR}/officecli.download"
 
 UPSTREAM=false
 FORCE=false
+UPDATE=false
 for arg in "$@"; do
   case "$arg" in
     --upstream)
@@ -34,12 +35,14 @@ for arg in "$@"; do
       REPO="iOfficeAI/OfficeCLI"
       ;;
     --force)    FORCE=true ;;
+    --update)   UPDATE=true ;;
     -h|--help)
       cat <<'EOF'
-Usage: ./scripts/install-officecli.sh [--force] [--upstream]
+Usage: ./scripts/install-officecli.sh [--force] [--update] [--upstream]
 
 Options:
   --force      Reinstall even when officecli already exists
+  --update     Reinstall only when the installed version is older than latest
   --upstream   Use vanilla iOfficeAI/OfficeCLI instead of the CJK-enhanced fork
 EOF
       exit 0
@@ -84,15 +87,37 @@ esac
 
 info "Platform: ${OS}/${ARCH} → ${ASSET}"
 
+normalize_version() {
+  printf '%s' "${1:-}" | sed 's/^v//'
+}
+
+get_latest_version() {
+  curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" 2>/dev/null | sed -nE 's/.*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' | head -n 1
+}
+
 # ── Check existing installation ──
-if [ -f "$TARGET_BIN" ] && [ "$FORCE" = "false" ]; then
+if [ -f "$TARGET_BIN" ] && [ "$FORCE" = "false" ] && [ "$UPDATE" = "false" ]; then
   if CURRENT=$("$TARGET_BIN" --version 2>/dev/null); then
     ok "officecli already installed: v${CURRENT}"
-    echo "  Use --force to reinstall"
+    echo "  Use --force to reinstall or --update to refresh only when outdated"
     exit 0
   fi
 
   warn "Existing officecli is not executable; reinstalling"
+fi
+
+if [ -f "$TARGET_BIN" ] && [ "$FORCE" = "false" ] && [ "$UPDATE" = "true" ]; then
+  CURRENT=$("$TARGET_BIN" --version 2>/dev/null || true)
+  LATEST=$(get_latest_version)
+  if [ -n "$CURRENT" ] && [ -n "$LATEST" ] && [ "$(normalize_version "$CURRENT")" = "$(normalize_version "$LATEST")" ]; then
+    ok "officecli already up to date: v$(normalize_version "$CURRENT")"
+    exit 0
+  fi
+  if [ -n "$CURRENT" ] && [ -n "$LATEST" ]; then
+    info "Updating officecli v$(normalize_version "$CURRENT") → v$(normalize_version "$LATEST")"
+  else
+    warn "Could not compare installed version with latest release; reinstalling"
+  fi
 fi
 
 # ── Download ──
@@ -104,6 +129,15 @@ info "Downloading officecli from ${REPO}..."
 trap 'rm -f "$DOWNLOAD_BIN"' EXIT
 curl -fsSL "$DOWNLOAD_URL" -o "$DOWNLOAD_BIN" || fail "Download failed: $DOWNLOAD_URL"
 chmod +x "$DOWNLOAD_BIN"
+
+if [ "$OS" = "darwin" ]; then
+  if command -v xattr >/dev/null 2>&1; then
+    xattr -d com.apple.quarantine "$DOWNLOAD_BIN" >/dev/null 2>&1 || true
+  fi
+  if command -v codesign >/dev/null 2>&1; then
+    codesign --force --deep --sign - "$DOWNLOAD_BIN" >/dev/null 2>&1 || warn "Ad-hoc codesign failed; continuing"
+  fi
+fi
 
 # ── Verify checksum (best-effort) ──
 if command -v shasum &>/dev/null || command -v sha256sum &>/dev/null; then

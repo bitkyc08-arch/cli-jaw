@@ -198,7 +198,7 @@ if (!values['dry-run']) {
 }
 
 // Step-by-step component install — dynamic import to prevent postinstall top-level side effects
-const { installCliTools, installMcpServers, installSkillDeps } = await import('../postinstall.js') as
+const { installCliTools, installMcpServers, installSkillDeps, installOfficeCli } = await import('../postinstall.js') as
     typeof import('../postinstall.js');
 
 type InstallOpts = Parameters<typeof installCliTools>[0];
@@ -219,6 +219,7 @@ if (values['dry-run']) console.log('\n  \ud83d\udd0d Dry run mode — no changes
 await installCliTools(installOpts);
 await installMcpServers(installOpts);
 await installSkillDeps(installOpts);
+await installOfficeCli(installOpts);
 
 console.log(`
   ✅ 설정 완료!
