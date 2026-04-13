@@ -27,7 +27,7 @@ test('OWC-002: initial planning turn creates worklog before setState', () => {
 });
 
 test('OWC-003: worker handoff keeps object-shaped worklog contract', () => {
-    assert.ok(pipelineSrc.includes("{ path: activeWorklog?.path || '' }"));
+    assert.ok(pipelineSrc.includes("{ path: args.worklogPath }"));
 });
 
 test('OWC-004: distribute gates worklog prompt on truthy path', () => {

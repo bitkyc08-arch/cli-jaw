@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getEmployeePrompt, getEmployeePromptV2, clearPromptCache } from '../../src/prompt/builder.ts';
-import { parseSubtasks } from '../../src/orchestrator/pipeline.ts';
+import { parseSubtasks } from '../../src/orchestrator/parser.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const reviewerPath = join(__dirname, '../../skills_ref/dev-code-reviewer/SKILL.md');
@@ -32,7 +32,7 @@ test('EMP-003: getEmployeePrompt returns string with employee name', () => {
 test('EMP-004: getEmployeePrompt includes executor rules (no subtask output)', () => {
     const emp = { name: 'Backend', cli: 'claude', role: 'backend' };
     const prompt = getEmployeePrompt(emp);
-    assert.ok(prompt.includes('Do NOT output JSON subtasks'));
+    assert.ok(prompt.includes('subtask JSON'), 'should prohibit subtask JSON output');
     assert.ok(prompt.includes('executor'));
 });
 

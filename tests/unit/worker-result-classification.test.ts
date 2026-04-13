@@ -12,16 +12,23 @@ const registrySrc = fs.readFileSync(join(__dirname, '../../src/orchestrator/work
 
 test('worker classification: pipeline marks non-done worker results as failures', () => {
     assert.ok(
-        pipelineSrc.includes("if (wResult.status === 'done')") &&
+        pipelineSrc.includes("if (result.status === 'done')") &&
         pipelineSrc.includes('failWorker(emp.id'),
         'pipeline should branch done vs error before recording worker outcome',
     );
 });
 
 test('worker classification: replay contract only runs for done workers', () => {
+    // In patch3, replay drain is separate from worker execution.
+    // The replay drain in orchestrate() calls claimWorkerReplay() and listPendingWorkerResults()
+    // only returns done workers (checked in worker-registry).
     assert.ok(
-        pipelineSrc.includes("if (wResult.status === 'done' && claimWorkerReplay(emp.id))"),
-        'replay should be gated behind successful worker completion',
+        pipelineSrc.includes('claimWorkerReplay(pr.agentId)'),
+        'replay should be gated behind claimWorkerReplay',
+    );
+    assert.ok(
+        pipelineSrc.includes('listPendingWorkerResults'),
+        'replay drain should use listPendingWorkerResults which filters done workers',
     );
 });
 

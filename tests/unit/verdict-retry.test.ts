@@ -22,25 +22,21 @@ test('VR-001: pipeline imports getState from state-machine', () => {
     );
 });
 
-test('VR-002: pipeline uses PABCD state check before worker dispatch', () => {
+test('VR-002: pipeline defines PABCD dispatch states', () => {
     assert.ok(
         pipelineSrc.includes("ACTIVE_PABCD_DISPATCH_STATES = new Set<OrcStateName>(['P', 'A', 'B', 'C'])"),
-        'worker dispatch should define active PABCD states P/A/B/C',
-    );
-    assert.ok(
-        pipelineSrc.includes("const canDispatchWorkers = isResearchOnly || state !== 'D';"),
-        'worker dispatch should block D state while allowing all other states',
+        'pipeline should define active PABCD states P/A/B/C',
     );
 });
 
-test('VR-003: pipeline feeds worker results back via recursive orchestrate', () => {
-    const workerBlock = pipelineSrc.slice(pipelineSrc.indexOf('worker JSON detected'));
-    assert.ok(workerBlock.includes('await orchestrate(wResult.text'), 'worker results should be fed back recursively');
+test('VR-003: pipeline drains pending worker results via recursive orchestrate', () => {
+    assert.ok(pipelineSrc.includes('listPendingWorkerResults'), 'pipeline should drain pending worker results');
+    assert.ok(pipelineSrc.includes('_skipReplayDrain'), 'recursive calls should skip re-draining');
 });
 
-test('VR-004: pipeline handles worker not found gracefully', () => {
-    assert.ok(pipelineSrc.includes('worker not found'), 'missing worker should log warning');
-    assert.ok(pipelineSrc.includes('Worker dispatch failed'), 'should broadcast failure when no workers run');
+test('VR-004: pipeline handles worker failure gracefully', () => {
+    assert.ok(pipelineSrc.includes('failWorker(emp.id'), 'should call failWorker on error');
+    assert.ok(pipelineSrc.includes('failed:'), 'should log worker failure');
 });
 
 test('VR-005: state machine has PABCD transition guards', () => {

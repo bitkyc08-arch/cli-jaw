@@ -155,7 +155,7 @@ test('EG-006: acpSettled guard exists in both error and exit handlers', () => {
 test('EG-007: settled flag is set before resolve() in error handlers', () => {
     // Standard CLI error handler: stdSettled = true must come before resolve
     const errorIdx = spawnSrc.indexOf("child.on('error'");
-    const errorBlock = spawnSrc.slice(errorIdx, errorIdx + 700);
+    const errorBlock = spawnSrc.slice(errorIdx, errorIdx + 900);
     const settledIdx = errorBlock.indexOf('stdSettled = true;');
     const resolveIdx = errorBlock.indexOf('resolve!(');
     assert.ok(settledIdx > 0, 'stdSettled assignment should exist in error handler');
@@ -164,7 +164,7 @@ test('EG-007: settled flag is set before resolve() in error handlers', () => {
 
     // ACP error handler: acpSettled = true must come before resolve
     const acpErrorIdx = spawnSrc.indexOf("acp.on('error'");
-    const acpErrorBlock = spawnSrc.slice(acpErrorIdx, acpErrorIdx + 600);
+    const acpErrorBlock = spawnSrc.slice(acpErrorIdx, acpErrorIdx + 700);
     const acpSettledIdx = acpErrorBlock.indexOf('acpSettled = true;');
     const acpResolveIdx = acpErrorBlock.indexOf('resolve!(');
     assert.ok(acpSettledIdx > 0, 'acpSettled assignment should exist in ACP error handler');
@@ -201,7 +201,7 @@ test('EG-009: quota-copilot keychain lookup is darwin-only', () => {
 test('EG-010: preflight failure returns child: null', () => {
     const preflightIdx = spawnSrc.indexOf('not found in PATH');
     assert.ok(preflightIdx > 0, 'preflight block should exist');
-    const pfBlock = spawnSrc.slice(preflightIdx, preflightIdx + 300);
+    const pfBlock = spawnSrc.slice(preflightIdx, preflightIdx + 400);
     assert.ok(
         pfBlock.includes('child: null'),
         'preflight should return { child: null } to avoid caller crashes',
