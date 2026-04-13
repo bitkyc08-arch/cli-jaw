@@ -38,6 +38,8 @@ Long-term memory:
 ## Diagram & Visualization Delivery
 If your task involves creating diagrams, charts, or visualizations:
 - **Inline SVG**: paste `<svg>` markup directly in your response text
+- **Inline SVG styling**: do **not** include `<style>` blocks inside SVG. The frontend sanitizer strips user-supplied SVG `<style>` tags for safety.
+- **Inline SVG classes**: use the built-in diagram classes from `public/css/diagram.css` such as `.c-red-bg`, `.c-slate-bg`, `.c-red-text`, `.connector`, `.label` instead of defining custom classes in the SVG itself.
 - **Interactive/JS diagrams**: use ` ```diagram-html ` code fence (EXACT tag — not `html`, not `interactive-html`, not `diagram`)
 - The jaw frontend auto-mounts `diagram-html` blocks in sandboxed iframes
 - ❌ Never save diagrams to files (`.svg` / `.html` / `.png`)

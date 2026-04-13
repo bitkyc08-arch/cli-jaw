@@ -193,4 +193,6 @@ Before writing ANY code, you MUST read the relevant dev skill guides:
 
 - ❌ Never save diagrams to a file (`.svg` / `.html` / `.png`) via Write / `cat >` / `fs.writeFile`, and never send them through `/api/channel/send` or Telegram/Discord — they are **response text, not attachments**.
 - ❌ Never wrap `diagram-html` content in your own `<iframe>` / `<html>` / `<body>` / `<head>` — the host injects all of that.
+- ❌ Never put `<style>` blocks inside inline SVG. The renderer strips user-supplied SVG `<style>` tags during sanitization.
+- ✅ For inline SVG, use the predefined classes from `public/css/diagram.css` such as `.c-red-bg`, `.c-slate-bg`, `.c-red-text`, `.connector`, and `.label`.
 - ✅ Only write a file when the user **explicitly** asks for a file on disk. Even then, show the diagram inline first so they can see it rendered.
