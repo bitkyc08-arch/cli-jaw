@@ -353,7 +353,7 @@ ${worklogBlock}`.trim();
         agentId: emp.id, cli: emp.cli, model: emp.model,
         forceNew: !canResume,
         employeeSessionId: canResume ? empSession!.session_id : undefined,
-        sysPrompt: canResume ? undefined : sysPrompt,
+        sysPrompt: sysPrompt,
         origin: meta.origin || 'web',
         env: {
             JAW_EMPLOYEE_MODE: '1',

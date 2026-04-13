@@ -349,6 +349,13 @@ interface SpawnOpts {
     lifecycle?: SpawnLifecycle;
 }
 
+function cleanupEmployeeTmpDir(cwd: string, workingDir: string, label: string) {
+    if (cwd !== workingDir) {
+        try { fs.rmSync(cwd, { recursive: true, force: true }); }
+        catch (e) { console.warn(`[jaw:${label}] tmp cleanup failed:`, (e as Error).message); }
+    }
+}
+
 export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     // Ensure AGENTS.md on disk is fresh before CLI reads it
     // Skip for employee spawns — distribute.ts manages AGENTS.md isolation
@@ -416,6 +423,27 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     const agentLabel = agentId || 'main';
 
+    // ─── Universal employee isolation ────────────────────
+    // All CLIs auto-read AGENTS.md/CLAUDE.md/GEMINI.md from cwd.
+    // Employees must NOT see the Boss's instruction files.
+    let spawnCwd = settings.workingDir;
+
+    if (opts.agentId && (customSysPrompt || sysPrompt)) {
+        const empPrompt = customSysPrompt || sysPrompt;
+        const tmpDir = join(os.tmpdir(), `jaw-emp-${agentLabel}-${Date.now()}`);
+        fs.mkdirSync(tmpDir, { recursive: true });
+
+        for (const name of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'CONTEXT.md']) {
+            fs.writeFileSync(join(tmpDir, name), empPrompt);
+        }
+        const dotClaudeDir = join(tmpDir, '.claude');
+        fs.mkdirSync(dotClaudeDir, { recursive: true });
+        fs.writeFileSync(join(dotClaudeDir, 'CLAUDE.md'), empPrompt);
+
+        spawnCwd = tmpDir;
+        console.log(`[jaw:${agentLabel}] Employee isolated → ${tmpDir}`);
+    }
+
     // ─── DIFF-A: Preflight — verify CLI binary exists before spawn ───
     const detected = detectCli(cli);
     if (!detected.available) {
@@ -424,6 +452,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin });
         resolve!({ text: '', code: 127 });
         if (mainManaged) processQueue();
+        cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
         return { child: null, promise: resultPromise };
     }
 
@@ -464,7 +493,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (changed) fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2) + '\n');
         } catch (e: unknown) { console.warn('[jaw:copilot] config.json sync failed:', (e as Error).message); }
 
-        const acp = new AcpClient({ model, workDir: settings.workingDir, permissions, env: spawnEnv } as any);
+        const acp = new AcpClient({ model, workDir: spawnCwd, permissions, env: spawnEnv } as any);
         acp.spawn();
         const child = (acp as any).proc;
         if (mainManaged) activeProcess = child;
@@ -476,6 +505,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         acp.on('error', (err: Error) => {
             if (acpSettled) return;
             acpSettled = true;
+            cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
             opts.lifecycle?.onExit?.(null);
             const msg = `Copilot ACP spawn failed: ${err.message}`;
             console.error(`[acp:error] ${msg}`);
@@ -587,10 +617,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                         console.log(`[acp:session] loadSession OK: ${resumeSessionId.slice(0, 12)}...`);
                     } catch (loadErr: unknown) {
                         console.warn(`[acp:session] loadSession FAILED: ${(loadErr as Error).message} — falling back to createSession`);
-                        await acp.createSession(settings.workingDir);
+                        await acp.createSession(spawnCwd);
                     }
                 } else {
-                    await acp.createSession(settings.workingDir);
+                    await acp.createSession(spawnCwd);
                 }
                 replayMode = false;  // Phase 17.2: unmute after session load
                 ctx.sessionId = (acp as any).sessionId;
@@ -638,6 +668,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         acp.on('exit', ({ code, signal }) => {
             if (acpSettled) return;  // error handler already resolved
             acpSettled = true;
+            cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
             opts.lifecycle?.onExit?.(code ?? null);
             if (code !== 0 && !killReason) {
                 console.warn(`[acp:unexpected-exit] code=${code} signal=${signal} sessionId=${ctx.sessionId || 'none'}`);
@@ -828,7 +859,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     // ─── Standard CLI branch (claude/codex/gemini/opencode) ──────
     // DIFF-B: Windows needs shell:true to resolve .cmd shims (npm global installs)
     const child = spawn(cli, args, {
-        cwd: settings.workingDir,
+        cwd: spawnCwd,
         env: spawnEnv,
         stdio: ['pipe', 'pipe', 'pipe'],
         ...(process.platform === 'win32' ? { shell: true } : {}),
@@ -842,6 +873,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     child.on('error', (err: NodeJS.ErrnoException) => {
         if (stdSettled) return;
         stdSettled = true;
+        cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
         opts.lifecycle?.onExit?.(null);
         const msg = err.code === 'ENOENT'
             ? `CLI '${cli}' 실행 실패 (ENOENT). 설치/경로를 확인하세요.`
@@ -926,6 +958,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     child.on('close', (code) => {
         if (stdSettled) return;  // error handler already resolved
         flushClaudeBuffers(ctx, agentLabel);  // flush any pending thinking/input buffers
+        cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
         opts.lifecycle?.onExit?.(code ?? null);
 
         const wasKilled = !!killReason;

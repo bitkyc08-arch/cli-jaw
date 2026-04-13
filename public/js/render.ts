@@ -101,6 +101,9 @@ async function getMermaid() {
     const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
     if (!mermaidModule) {
         mermaidModule = await import('mermaid');
+        mermaidModule.default.setParseErrorHandler(() => {
+            // Keep Mermaid syntax failures local to the message block fallback UI.
+        });
     }
     if (mermaidTheme !== currentTheme) {
         mermaidTheme = currentTheme;
@@ -109,6 +112,7 @@ async function getMermaid() {
             theme: 'base',
             themeVariables: getMermaidThemeVars(),
             securityLevel: 'strict',
+            suppressErrorRendering: true,
         });
     }
     return mermaidModule.default;
@@ -360,6 +364,16 @@ function appendMermaidActionBtns(el: HTMLElement): void {
     el.appendChild(copyBtn);
 }
 
+function renderMermaidError(el: HTMLElement, code: string, errMsg: string): void {
+    el.classList.remove('mermaid-rendered');
+    el.innerHTML = `
+        <div class="mermaid-error">
+            <div class="mermaid-error-title">${ICONS.warning} ${escapeHtml(t('mermaid.renderFail') || 'Mermaid render failed')}</div>
+            <div class="mermaid-error-msg">${escapeHtml(errMsg.slice(0, 200))}</div>
+            <pre class="mermaid-error-code"><code>${escapeHtml(code)}</code></pre>
+        </div>`;
+}
+
 async function renderSingleMermaid(el: HTMLElement): Promise<void> {
     el.classList.remove('mermaid-pending');
     const code = el.textContent || '';
@@ -367,19 +381,19 @@ async function renderSingleMermaid(el: HTMLElement): Promise<void> {
     const id = `mermaid-${++mermaidId}`;
     try {
         const mm = await getMermaid();
+        const parsed = await mm.parse(code, { suppressErrors: true });
+        if (parsed === false) {
+            renderMermaidError(el, code, 'Syntax error in Mermaid block');
+            return;
+        }
         const { svg } = await mm.render(id, code);
-        el.innerHTML = svg;
+        el.innerHTML = sanitizeMermaidSvg(svg);
         el.classList.add('mermaid-rendered');
         appendMermaidActionBtns(el);
     } catch (err: unknown) {
         const errMsg = (err as { message?: string; str?: string })?.message
             || (err as { str?: string })?.str || 'Unknown error';
-        el.innerHTML = `
-            <div class="mermaid-error">
-                <div class="mermaid-error-title">${ICONS.warning} ${escapeHtml(t('mermaid.renderFail') || 'Mermaid render failed')}</div>
-                <div class="mermaid-error-msg">${escapeHtml(errMsg.slice(0, 200))}</div>
-                <pre class="mermaid-error-code"><code>${escapeHtml(code)}</code></pre>
-            </div>`;
+        renderMermaidError(el, code, errMsg);
     }
 }
 
