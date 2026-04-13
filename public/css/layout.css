@@ -355,6 +355,8 @@ body.right-collapsed .sidebar-right {
         min-width: unset !important;
         padding-top: calc(48px + env(safe-area-inset-top, 0px));
         padding-bottom: env(safe-area-inset-bottom, 0px);
+        visibility: hidden;
+        pointer-events: none;
     }
 
     .sidebar-right {
@@ -366,6 +368,8 @@ body.right-collapsed .sidebar-right {
     body.left-expanded .sidebar-left,
     body.right-expanded .sidebar-right {
         transform: translateX(0);
+        visibility: visible;
+        pointer-events: auto;
     }
 
     /* Backdrop overlay */
