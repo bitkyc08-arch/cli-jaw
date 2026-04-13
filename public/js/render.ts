@@ -3,6 +3,7 @@
 // All libs bundled via npm imports; mermaid lazy-loaded on first use
 
 import { marked, Renderer } from 'marked';
+import { apiJson } from './api.js';
 import hljs from 'highlight.js/lib/core';
 import javascript from 'highlight.js/lib/languages/javascript';
 import typescript from 'highlight.js/lib/languages/typescript';
@@ -483,6 +484,36 @@ export function rehighlightAll(scope?: HTMLElement | Document): void {
 
 const FILE_PATH_RE_G = /(?:~\/[^\s)`\]"'<>]+|\/(?:Users|home|tmp|var|opt|private)\/[^\s)`\]"'<>]+)/g;
 const TRAILING_PUNCT_RE = /[.,!?:;]+$/;
+const LOCAL_FILE_HREF_RE = /^(?:~\/|\/(?:Users|home|tmp|var|opt|private)\/)/;
+
+function isLocalFileHref(href: string): boolean {
+    return LOCAL_FILE_HREF_RE.test(href);
+}
+
+function openLocalPath(path: string, el?: HTMLElement | null): void {
+    if (el) el.classList.add('opening');
+
+    apiJson<{ ok?: boolean; error?: string }>('/api/file/open', 'POST', { path })
+        .then(data => {
+            el?.classList.remove('opening');
+            if (data?.ok !== false) {
+                el?.classList.add('opened');
+                setTimeout(() => el?.classList.remove('opened'), 1500);
+            } else {
+                el?.classList.add('open-failed');
+                if (el) el.title = data?.error || 'Failed to open';
+                setTimeout(() => {
+                    el?.classList.remove('open-failed');
+                    if (el) el.title = '';
+                }, 2000);
+            }
+        })
+        .catch(() => {
+            el?.classList.remove('opening');
+            el?.classList.add('open-failed');
+            setTimeout(() => el?.classList.remove('open-failed'), 2000);
+        });
+}
 
 /**
  * Walk text nodes inside container, wrap file paths in clickable spans.
@@ -570,36 +601,21 @@ function ensureFilePathDelegation(): void {
 
     document.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as HTMLElement;
+        const anchor = target?.closest('a') as HTMLAnchorElement | null;
+        const href = anchor?.getAttribute('href') || '';
+        if (anchor && isLocalFileHref(href)) {
+            e.preventDefault();
+            anchor.classList.add('file-path-link');
+            openLocalPath(href, anchor);
+            return;
+        }
+
         const link = target?.closest('.file-path-link') as HTMLElement | null;
         if (!link) return;
 
         const filePath = link.getAttribute('data-file-path');
         if (!filePath) return;
-
-        link.classList.add('opening');
-
-        fetch('/api/file/open', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ path: filePath }),
-        })
-            .then(r => r.json())
-            .then(data => {
-                link.classList.remove('opening');
-                if (data.ok) {
-                    link.classList.add('opened');
-                    setTimeout(() => link.classList.remove('opened'), 1500);
-                } else {
-                    link.classList.add('open-failed');
-                    link.title = data.error || 'Failed to open';
-                    setTimeout(() => { link.classList.remove('open-failed'); link.title = ''; }, 2000);
-                }
-            })
-            .catch(() => {
-                link.classList.remove('opening');
-                link.classList.add('open-failed');
-                setTimeout(() => link.classList.remove('open-failed'), 2000);
-            });
+        openLocalPath(filePath, link);
     });
 
     document.addEventListener('keydown', (e: KeyboardEvent) => {

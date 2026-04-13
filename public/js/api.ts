@@ -7,6 +7,29 @@ interface ApiResponse<T = unknown> {
     error?: string;
 }
 
+// Auth token cache (fetched once from same-origin endpoint)
+let _authToken: string | null = null;
+export async function getAuthToken(): Promise<string> {
+    if (_authToken) return _authToken;
+    try {
+        const res = await fetch('/api/auth/token');
+        if (res.ok) {
+            const json = await res.json();
+            _authToken = json.token || '';
+        }
+    } catch { /* ignore — server may not require auth yet */ }
+    return _authToken || '';
+}
+
+function authHeaders(extra?: Record<string, string>): Record<string, string> {
+    const h: Record<string, string> = { ...extra };
+    if (_authToken) h['Authorization'] = `Bearer ${_authToken}`;
+    return h;
+}
+
+// Pre-fetch token on module load
+getAuthToken();
+
 /**
  * @param path - API path (e.g. '/api/settings')
  * @param opts - fetch options
@@ -14,7 +37,17 @@ interface ApiResponse<T = unknown> {
  */
 export async function api<T = unknown>(path: string, opts: RequestInit = {}): Promise<T | null> {
     try {
-        const res = await fetch(path, opts);
+        await getAuthToken();
+        const headers = authHeaders(
+            opts.headers ? Object.fromEntries(
+                opts.headers instanceof Headers
+                    ? opts.headers.entries()
+                    : Array.isArray(opts.headers)
+                        ? opts.headers
+                        : Object.entries(opts.headers)
+            ) : undefined
+        );
+        const res = await fetch(path, { ...opts, headers });
         if (!res.ok) {
             console.warn(`[api] ${opts.method || 'GET'} ${path} → ${res.status}`);
             return null;
@@ -51,10 +84,11 @@ export async function apiJson<T = unknown>(path: string, method: string, body: u
 /**
  * fire-and-forget: ignores result
  */
-export function apiFire(path: string, method: string = 'POST', body?: unknown): void {
-    const opts: RequestInit = { method };
+export async function apiFire(path: string, method: string = 'POST', body?: unknown): Promise<void> {
+    await getAuthToken();
+    const opts: RequestInit = { method, headers: authHeaders() };
     if (body) {
-        opts.headers = { 'Content-Type': 'application/json' };
+        opts.headers = authHeaders({ 'Content-Type': 'application/json' });
         opts.body = JSON.stringify(body);
     }
     fetch(path, opts).catch(() => { });

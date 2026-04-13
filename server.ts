@@ -8,7 +8,7 @@ import { createServer } from 'http';
 import { spawn, execFileSync } from 'node:child_process';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { dirname, join, basename, resolve, normalize } from 'path';
+import { dirname, join, basename, resolve, normalize, extname } from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
 import os from 'os';
@@ -31,7 +31,7 @@ import { readCodexContextWindow } from './src/core/codex-config.js';
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 import * as memory from './src/memory/memory.js';
-import { bootstrapMemory, ensureMemoryRuntimeReady, getMemoryStatus, listMemoryFiles, readIndexedMemorySnippet, reindexMemory, searchIndexedMemory, syncKvShadowImport } from './src/memory/runtime.js';
+import { bootstrapMemory, ensureMemoryRuntimeReady, getMemoryStatus, getLastReflectedAt, listMemoryFiles, readIndexedMemorySnippet, reflectMemory, reindexMemory, searchIndexedMemory, syncKvShadowImport } from './src/memory/runtime.js';
 import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
     JAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
@@ -150,7 +150,20 @@ regenerateB();
 
 const app = express();
 const server = createServer(app);
-const wss = new WebSocketServer({ server });
+const wss = new WebSocketServer({
+    server,
+    verifyClient: (info, cb) => {
+        const host = info.req.headers.host;
+        if (host && !ALLOWED_HOSTS.has(host)) {
+            return cb(false, 403, 'Host not allowed');
+        }
+        const origin = info.origin || (info.req.headers.origin as string);
+        if (origin && !ALLOWED_ORIGINS.has(origin)) {
+            return cb(false, 403, 'Origin not allowed');
+        }
+        cb(true);
+    }
+});
 
 setWss(wss);
 
@@ -165,16 +178,45 @@ const ALLOWED_ORIGINS = new Set([
     `http://localhost:${PORT}`,
     `http://127.0.0.1:${PORT}`,
 ]);
+const ALLOWED_HOSTS = new Set([
+    `localhost:${PORT}`, `127.0.0.1:${PORT}`,
+    'localhost', '127.0.0.1',
+]);
+
+// Host header validation (DNS rebinding defense)
+app.use((req, res, next) => {
+    const host = req.headers.host;
+    if (host && !ALLOWED_HOSTS.has(host)) {
+        return res.status(403).json({ error: 'Host not allowed' });
+    }
+    next();
+});
+
 app.use((req, res, next) => {
     const origin = req.headers.origin;
-    if (!origin || ALLOWED_ORIGINS.has(origin)) {
-        res.setHeader('Access-Control-Allow-Origin', origin || '*');
+    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+        return res.status(403).json({ error: 'Origin not allowed' });
+    }
+    if (origin) {
+        res.setHeader('Access-Control-Allow-Origin', origin);
         res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
-        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Filename');
+        res.setHeader('Access-Control-Allow-Headers', 'Content-Type,X-Filename,Authorization');
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
     }
     if (req.method === 'OPTIONS') return res.sendStatus(204);
     next();
 });
+
+// ─── Bearer Token Auth (CRITICAL endpoints) ─────────
+const JAW_AUTH_TOKEN = process.env.JAW_AUTH_TOKEN || crypto.randomBytes(32).toString('hex');
+
+function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+    const token = (req.headers.authorization || '').replace('Bearer ', '');
+    if (token !== JAW_AUTH_TOKEN) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+    next();
+}
 
 // ─── Rate Limiting (in-memory, 120/min) ─────────────
 const rateLimitMap = new Map();
@@ -321,7 +363,10 @@ app.get('/api/messages', (req, res) => {
 });
 app.get('/api/runtime', (_, res) => ok(res, getRuntimeSnapshot(), getRuntimeSnapshot()));
 
-app.post('/api/command', async (req, res) => {
+// Auth token endpoint (same-origin only, protected by Host+CORS)
+app.get('/api/auth/token', (_, res) => res.json({ token: JAW_AUTH_TOKEN }));
+
+app.post('/api/command', requireAuth, async (req, res) => {
     try {
         const text = String(req.body?.text || '').trim().slice(0, 500);
         const parsed = parseCommand(text);
@@ -418,7 +463,7 @@ app.get('/api/orchestrate/snapshot', (_req, res) => {
 });
 
 // ─── Dispatch: pipe-mode employee dispatch ──────────
-app.post('/api/orchestrate/dispatch', async (req, res) => {
+app.post('/api/orchestrate/dispatch', requireAuth, async (req, res) => {
     if (String(req.headers['x-jaw-dispatch-source'] || '').toLowerCase() === 'employee') {
         return fail(res, 409, 'Employee self-dispatch is blocked in employee sessions');
     }
@@ -700,29 +745,103 @@ app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) 
 
 // Open file in system file manager (Finder reveal)
 // NOTE: cli-jaw is a localhost-only program. No remote access.
-app.post('/api/file/open', (req, res) => {
+const FILE_LINE_SUFFIX_RE = /^(.*?)(?::\d+(?::\d+)?)$/;
+const DOCUMENT_EXTENSIONS = new Set([
+    '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
+    '.json', '.md', '.txt', '.yml', '.yaml',
+    '.css', '.html', '.xml', '.svg',
+    '.py', '.go', '.rs', '.java', '.sh',
+    '.docx', '.xlsx', '.pptx', '.pdf',
+]);
+
+type OpenTarget = {
+    openedPath: string;
+    resolvedTarget: string;
+    strategy: 'reveal' | 'folder' | 'directory';
+};
+
+function expandOpenPath(rawPath: string): string {
+    return rawPath.startsWith('~/') ? os.homedir() + rawPath.slice(1) : rawPath;
+}
+
+function getExistingNormalizedPath(candidatePath: string): string | null {
+    const normalized = normalize(resolve(candidatePath));
+    return fs.existsSync(normalized) ? normalized : null;
+}
+
+function classifyOpenTarget(normalized: string): OpenTarget {
+    const stat = fs.statSync(normalized);
+    if (stat.isDirectory()) {
+        return {
+            openedPath: normalized,
+            resolvedTarget: normalized,
+            strategy: 'directory',
+        };
+    }
+
+    const ext = extname(normalized).toLowerCase();
+    if (DOCUMENT_EXTENSIONS.has(ext)) {
+        return {
+            openedPath: normalized,
+            resolvedTarget: normalized,
+            strategy: 'reveal',
+        };
+    }
+
+    return {
+        openedPath: dirname(normalized),
+        resolvedTarget: normalized,
+        strategy: 'folder',
+    };
+}
+
+function resolveOpenTarget(rawPath: string): OpenTarget {
+    const expanded = expandOpenPath(rawPath);
+    const exactMatch = getExistingNormalizedPath(expanded);
+    if (exactMatch) return classifyOpenTarget(exactMatch);
+
+    const strippedMatch = expanded.match(FILE_LINE_SUFFIX_RE)?.[1];
+    if (strippedMatch) {
+        const strippedPath = getExistingNormalizedPath(strippedMatch);
+        if (strippedPath) return classifyOpenTarget(strippedPath);
+    }
+
+    throw new Error('file_not_found');
+}
+
+app.post('/api/file/open', requireAuth, (req, res) => {
     const { path: rawPath } = req.body;
     if (!rawPath || typeof rawPath !== 'string') {
         return fail(res, 400, 'path_required');
     }
 
-    const expanded = rawPath.startsWith('~/') ? os.homedir() + rawPath.slice(1) : rawPath;
-    const normalized = normalize(resolve(expanded));
-
-    if (!fs.existsSync(normalized)) {
-        return fail(res, 404, 'file_not_found');
-    }
-
     try {
+        const target = resolveOpenTarget(rawPath);
         if (process.platform === 'darwin') {
-            execFileSync('open', ['-R', normalized]);
+            if (target.strategy === 'reveal') {
+                execFileSync('open', ['-R', target.resolvedTarget]);
+            } else {
+                execFileSync('open', [target.openedPath]);
+            }
         } else if (process.platform === 'win32') {
-            execFileSync('explorer', ['/select,', normalized]);
+            if (target.strategy === 'reveal') {
+                execFileSync('explorer', ['/select,', target.resolvedTarget]);
+            } else {
+                execFileSync('explorer', [target.openedPath]);
+            }
         } else {
-            execFileSync('xdg-open', [dirname(normalized)]);
+            execFileSync('xdg-open', [target.openedPath]);
         }
-        ok(res, { opened: normalized });
-    } catch {
+        ok(res, {
+            opened: target.openedPath,
+            resolvedTarget: target.resolvedTarget,
+            strategy: target.strategy,
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : 'open_failed';
+        if (message === 'file_not_found') {
+            return fail(res, 404, 'file_not_found');
+        }
         fail(res, 500, 'open_failed');
     }
 });
@@ -827,18 +946,18 @@ app.post('/api/discord/send', async (req, res) => {
 
 // MCP
 app.get('/api/mcp', (req, res) => res.json(loadUnifiedMcp()));
-app.put('/api/mcp', (req, res) => {
+app.put('/api/mcp', requireAuth, (req, res) => {
     const config = req.body;
     if (!config || !config.servers) return res.status(400).json({ error: 'servers object required' });
     saveUnifiedMcp(config);
     res.json({ ok: true, servers: Object.keys(config.servers) });
 });
-app.post('/api/mcp/sync', (req, res) => {
+app.post('/api/mcp/sync', requireAuth, (req, res) => {
     const config = loadUnifiedMcp();
     const results = syncToAll(config);
     res.json({ ok: true, results });
 });
-app.post('/api/mcp/install', async (req, res) => {
+app.post('/api/mcp/install', requireAuth, async (req, res) => {
     try {
         const config = loadUnifiedMcp();
         const { installMcpServers } = await import('./lib/mcp-sync.js');
@@ -851,7 +970,7 @@ app.post('/api/mcp/install', async (req, res) => {
         res.status(500).json({ error: (e as Error).message });
     }
 });
-app.post('/api/mcp/reset', (req, res) => {
+app.post('/api/mcp/reset', requireAuth, (req, res) => {
     try {
         const mcpPath = join(JAW_HOME, 'mcp.json');
         if (fs.existsSync(mcpPath)) fs.unlinkSync(mcpPath);
@@ -1086,6 +1205,15 @@ app.post('/api/jaw-memory/init', (_, res) => {
     catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
 });
 
+app.post('/api/jaw-memory/reflect', (req, res) => {
+    try {
+        const result = reflectMemory(req.body || {});
+        res.json({ ok: true, result, status: getMemoryStatus() });
+    } catch (e: unknown) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
 // ─── Browser API (Phase 7) — see src/routes/browser.js
 registerBrowserRoutes(app);
 
@@ -1152,7 +1280,7 @@ const shutdown = async (sig: string) => {
 process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
 
-server.listen(PORT, () => {
+server.listen(PORT, '127.0.0.1', () => {
     // Persist port so CLI commands auto-discover the running server
     const portStr = String(PORT);
     if (settings.port !== portStr) {
@@ -1167,7 +1295,8 @@ server.listen(PORT, () => {
     log.info(`  Perms:  ${settings.permissions}`);
     log.info(`  CWD:    ${settings.workingDir}`);
     log.info(`  DB:     ${DB_PATH}`);
-    log.info(`  Prompts: ${PROMPTS_DIR}\n`);
+    log.info(`  Prompts: ${PROMPTS_DIR}`);
+    log.info(`  Auth:   ${JAW_AUTH_TOKEN.slice(0, 8)}...\n`);
 
     // Auto-open browser (opt-in via JAW_OPEN_BROWSER=1, set by `jaw serve --open`)
     // Skip in test environments to prevent browser tabs during npm test

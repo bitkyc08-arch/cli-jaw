@@ -4,7 +4,7 @@ import { addMessage, addSystemMsg } from '../ui.js';
 import { getPreferredLocale } from '../locale.js';
 import { t } from './i18n.js';
 import * as slashCmd from './slash-commands.js';
-import { api, apiJson, apiFire } from '../api.js';
+import { api, apiJson, apiFire, getAuthToken } from '../api.js';
 import { escapeHtml, cancelPostRender } from '../render.js';
 import { getVirtualScroll } from '../virtual-scroll.js';
 import { clearCache } from './idb-cache.js';
@@ -56,11 +56,13 @@ export async function sendMessage(): Promise<void> {
                 timer = setTimeout(() => ac.abort(), timeoutMs);
             }
             const locale = getPreferredLocale();
+            const token = await getAuthToken();
             const res = await fetch('/api/command', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Accept-Language': locale,
+                    ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
                 },
                 body: JSON.stringify({ text, locale }),
                 signal,
