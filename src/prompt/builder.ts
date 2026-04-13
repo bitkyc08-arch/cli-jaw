@@ -409,27 +409,17 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
     } catch { /* vision-click not ready */ }
 
     // ─── Delegation rules: jaw employees vs CLI sub-agents ───
-    // Both tools exist. The prompt must clarify WHEN to use which.
-    // Sub-agents (Task tool) are always available for internal work.
-    // jaw employees are dispatched via subtask JSON (server) or cli-jaw dispatch (pipe).
-    const pipeActiveCli = opts.activeCli || settings.cli;
-    const PIPE_MODE_CLIS = ['codex', 'claude', 'gemini', 'opencode'];
-    const isPipe = !opts.forDisk && PIPE_MODE_CLIS.includes(pipeActiveCli || '');
-
     prompt += '\n\n---\n## Delegation Rules\n';
     prompt += '### CLI Sub-agents (Task/Agent tool)\n';
     prompt += 'You CAN use your CLI\'s Task/Agent tools for internal subtasks: research, parallel file reads, code analysis.\n';
     prompt += 'Subagents you spawn must NOT spawn further subagents (1-level only).\n';
     prompt += 'When spawning a subagent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."\n';
     prompt += '\n### jaw Employee Dispatch\n';
-    if (isPipe) {
-        prompt += 'subtask JSON is NOT parsed in pipe mode. Use the CLI command:\n';
-        prompt += '```bash\ncli-jaw dispatch --agent "Frontend" --task "task description"\n```\n';
-    } else {
-        prompt += 'Output subtask JSON to dispatch jaw employees. jaw handles the rest.\n';
-    }
+    prompt += 'To dispatch a jaw employee, run:\n';
+    prompt += '```bash\ncli-jaw dispatch --agent "Name" --task "task description"\n```\n';
+    prompt += 'Result is returned via stdout. Review and synthesize for the user.\n';
     prompt += '\n### ⛔ Do NOT confuse the two\n';
-    prompt += '- Do NOT use CLI Task tool to "dispatch" jaw employees — use subtask JSON or `cli-jaw dispatch`.\n';
+    prompt += '- Do NOT use CLI Task tool to "dispatch" jaw employees — use `cli-jaw dispatch`.\n';
     prompt += '- Do NOT assign simple research to jaw employees — use your CLI sub-agents instead.\n';
 
     return prompt;
@@ -557,8 +547,8 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
     prompt += `\n- Execute the assigned task directly in this employee session.`;
     prompt += `\n- You CAN use CLI sub-agents (Task/Agent tool) for parallel work: research, file reads, code analysis. This is encouraged.`;
     prompt += `\nWhen spawning a sub-agent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."`;
-    prompt += `\n- ⛔ Do NOT output jaw dispatch JSON or phase-transition JSON.`;
     prompt += `\n- ⛔ Do NOT run \`cli-jaw dispatch\` or any equivalent delegation command from this session.`;
+    prompt += `\n- ⛔ Do NOT output jaw dispatch JSON or subtask JSON.`;
     prompt += `\n- ⛔ Do NOT describe Boss/employee orchestration structure in your answer.`;
 
     promptCache.set(cacheKey, prompt);
