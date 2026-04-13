@@ -6,6 +6,11 @@ import { loadSettings, getServerUrl } from '../../src/core/config.js';
 
 loadSettings();
 
+if (process.env.JAW_EMPLOYEE_MODE === '1') {
+    console.error('❌ jaw employee sessions cannot dispatch other employees. Complete the assigned task directly.');
+    process.exit(2);
+}
+
 const portIdx = process.argv.indexOf('--port');
 const PORT = (portIdx !== -1 && process.argv[portIdx + 1]) ? process.argv[portIdx + 1] : undefined;
 const BASE = getServerUrl(PORT);
@@ -30,7 +35,10 @@ try {
     console.log(`🚀 Dispatching to ${agent}...`);
     const res = await fetch(`${BASE}/api/orchestrate/dispatch`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+            'Content-Type': 'application/json',
+            'X-Jaw-Dispatch-Source': process.env.JAW_EMPLOYEE_MODE === '1' ? 'employee' : 'boss',
+        },
         body: JSON.stringify({ agent, task }),
     });
     const body = await res.json() as any;
