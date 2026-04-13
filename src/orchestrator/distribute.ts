@@ -1,11 +1,7 @@
 // ─── Distribute Helpers (parallel/sequential agent execution) ──
 // Extracted from pipeline.ts for 500-line compliance.
 
-import fs from 'fs';
-import os from 'os';
-import { join } from 'path';
 import { broadcast } from '../core/bus.js';
-import { settings } from '../core/config.js';
 import { getEmployeeSession, upsertEmployeeSession } from '../core/db.js';
 import { getEmployeePromptV2 } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
@@ -350,37 +346,29 @@ ${worklogBlock}`.trim();
         },
     });
 
-    // ─── Employee AGENTS.md isolation: prevent Codex from reading Boss prompt ───
-    const agentsMdPath = join(settings.workingDir || os.homedir(), 'AGENTS.md');
-    let originalAgentsMd: string | null = null;
-    try {
-        originalAgentsMd = fs.readFileSync(agentsMdPath, 'utf8');
-        fs.writeFileSync(agentsMdPath, sysPrompt);
-    } catch { /* AGENTS.md may not exist yet */ }
-
+    const { promise } = spawnAgent(taskPrompt, {
+        agentId: emp.id, cli: emp.cli, model: emp.model,
+        forceNew: !canResume,
+        employeeSessionId: canResume ? empSession!.session_id : undefined,
+        sysPrompt: canResume ? undefined : sysPrompt,
+        origin: meta.origin || 'web',
+        env: {
+            JAW_EMPLOYEE_MODE: '1',
+            JAW_EMPLOYEE_NAME: String(emp.name || ''),
+            JAW_EMPLOYEE_ROLE: String(ap.role || emp.role || ''),
+        },
+        lifecycle: {
+            onActivity: (source) => monitor.touch(source as 'stdout' | 'stderr' | 'acp' | 'heartbeat'),
+            onExit: (code) => monitor.exit(code),
+        },
+    });
     let r: Record<string, any>;
     try {
-        const { promise } = spawnAgent(taskPrompt, {
-            agentId: emp.id, cli: emp.cli, model: emp.model,
-            forceNew: !canResume,
-            employeeSessionId: canResume ? empSession!.session_id : undefined,
-            sysPrompt: canResume ? undefined : sysPrompt,
-            origin: meta.origin || 'web',
-            lifecycle: {
-                onActivity: (source) => monitor.touch(source as 'stdout' | 'stderr' | 'acp' | 'heartbeat'),
-                onExit: (code) => monitor.exit(code),
-            },
-        });
         r = await promise as Record<string, any>;
         monitor.stop();
     } catch (err) {
         monitor.stop();
         throw err;
-    } finally {
-        // ─── Restore Boss AGENTS.md ───
-        if (originalAgentsMd !== null) {
-            try { fs.writeFileSync(agentsMdPath, originalAgentsMd); } catch { /* ignore */ }
-        }
     }
     if (r.code === 0 && r.sessionId) {
         upsertEmployeeSession.run(emp.id, r.sessionId, emp.cli);
