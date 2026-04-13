@@ -98,6 +98,6 @@ echo '[...]' | officecli batch data.xlsx --json                     # batch ops
 
 - Install: `bash scripts/install-officecli.sh`
 - Smoke test: `bash tests/smoke/test_officecli_integration.sh`
-- Binary selection: smoke test prefers `officecli/build-local/officecli`, override with `OFFICECLI_BIN=/path/to/officecli`
-- CJK-enhanced binary: `officecli/build-local/officecli`
+- Binary selection: smoke test prefers `OFFICECLI_BIN`, then global `officecli` on PATH, then `officecli/build-local/officecli` as fallback
+- CJK-enhanced binary: global install defaults to `lidge-jun/OfficeCLI`; repo-local `officecli/build-local/officecli` is fallback/dev-only
 - Full docs: [`docs/officecli-integration.md`](docs/officecli-integration.md)
