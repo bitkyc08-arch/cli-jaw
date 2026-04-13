@@ -51,6 +51,14 @@ test('SAF-006: installSkillDeps is exported', () => {
     assert.ok(postinstallSrc.includes('export async function installSkillDeps'), 'installSkillDeps exported');
 });
 
+test('SAF-006b: installOfficeCli is exported', () => {
+    assert.ok(postinstallSrc.includes('export async function installOfficeCli'), 'installOfficeCli exported');
+});
+
+test('SAF-006c: runPostinstall calls installOfficeCli', () => {
+    assert.ok(postinstallSrc.includes('await installOfficeCli();'), 'runPostinstall should call installOfficeCli');
+});
+
 // ── SAF-007: InstallOpts type exported ──
 
 test('SAF-007: InstallOpts type is exported', () => {
@@ -63,9 +71,11 @@ test('SAF-008: all install functions support dryRun', () => {
     const cliBlock = postinstallSrc.slice(postinstallSrc.indexOf('installCliTools'));
     const mcpBlock = postinstallSrc.slice(postinstallSrc.indexOf('installMcpServers'));
     const depsBlock = postinstallSrc.slice(postinstallSrc.indexOf('installSkillDeps'));
+    const officeBlock = postinstallSrc.slice(postinstallSrc.indexOf('installOfficeCli'));
     assert.ok(cliBlock.includes('opts.dryRun'), 'installCliTools supports dryRun');
     assert.ok(mcpBlock.includes('opts.dryRun'), 'installMcpServers supports dryRun');
     assert.ok(depsBlock.includes('opts.dryRun'), 'installSkillDeps supports dryRun');
+    assert.ok(officeBlock.includes('opts.dryRun'), 'installOfficeCli supports dryRun');
 });
 
 // ── SAF-009: isEntryPoint guard ──
@@ -115,6 +125,7 @@ test('INIT-004: init.ts imports and calls extracted install functions', () => {
     assert.ok(initSrc.includes('installCliTools'), 'calls installCliTools');
     assert.ok(initSrc.includes('installMcpServers'), 'calls installMcpServers');
     assert.ok(initSrc.includes('installSkillDeps'), 'calls installSkillDeps');
+    assert.ok(initSrc.includes('installOfficeCli'), 'calls installOfficeCli');
 });
 
 // ── INIT-005: --dry-run skips settings write ──

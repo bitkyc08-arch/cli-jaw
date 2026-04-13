@@ -12,6 +12,8 @@ WORKDIR="${SCRIPT_DIR}/.work/officecli"
 
 if [ -n "${OFFICECLI_BIN:-}" ]; then
   OFFICECLI="${OFFICECLI_BIN}"
+elif command -v officecli >/dev/null 2>&1; then
+  OFFICECLI="officecli"
 elif [ -x "${REPO_ROOT}/officecli/build-local/officecli" ]; then
   OFFICECLI="${REPO_ROOT}/officecli/build-local/officecli"
 else
