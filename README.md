@@ -45,7 +45,7 @@ Restart your computer when prompted. After reboot, open **Ubuntu** from the Star
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
 ```
 
-The script automatically installs prerequisites (`curl`, `unzip`, `git`), Node.js 22+, and CLI-JAW.
+The script automatically installs WSL prerequisites, Node.js 22+, user-local npm globals, browser deps, OfficeCLI, and CLI-JAW.
 
 **Step 3: Reload your shell** (important — picks up PATH changes)
 
@@ -81,6 +81,7 @@ jaw serve
 | `jaw: command not found` after install  | Run `source ~/.bashrc` to reload PATH                  |
 | Still can't find `jaw`                  | Run `export PATH="$(npm config get prefix)/bin:$PATH"` |
 | Permission errors with `npm install -g` | Run `sudo chown -R $USER $(npm config get prefix)`     |
+| `sudo` keeps blocking later tasks       | Rerun the WSL installer so it can install system deps once, then check `jaw doctor --json` for `wsl.sudoNonInteractive` and `wsl.npmPrefix` |
 
 </details>
 
@@ -630,7 +631,7 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 | ---------------------------- | ------------------------------------------------------------------------------------------ |
 | `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                 |
 | `Error: node version`        | Upgrade to Node.js ≥ 22:`nvm install 22` or download from [nodejs.org](https://nodejs.org) |
-| `NODE_MODULE_VERSION` mismatch | Run `npm rebuild better-sqlite3` in the repo or reinstall dependencies for the current Node version |
+| `NODE_MODULE_VERSION` mismatch | Run `npm run ensure:native` (auto-rebuild) or reinstall dependencies for the current Node version |
 | Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`.    |
 | `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                       |
 | Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                              |
@@ -689,11 +690,14 @@ jaw doctor
 <details>
 <summary>🧱 Native module mismatch (<code>better-sqlite3</code>)</summary>
 
-If you upgraded Node.js and see a `NODE_MODULE_VERSION` error, rebuild native modules for the current runtime:
+If you upgraded Node.js and see a `NODE_MODULE_VERSION` error, re-check and auto-rebuild native modules for the current runtime:
 
 ```bash
-npm run rebuild:native
+npm run ensure:native
 ```
+
+`npm test`, `npm run test:all`, `npm run test:integration`, `npm run test:smoke`, and `npm run build`
+now run this guard automatically before they start.
 
 If that still fails, reinstall dependencies under the active Node version:
 

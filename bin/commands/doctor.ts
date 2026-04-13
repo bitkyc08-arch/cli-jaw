@@ -51,6 +51,24 @@ function hasWslWindowsChrome() {
     return paths.some(p => fs.existsSync(p));
 }
 
+function canSudoNonInteractive() {
+    if (process.platform !== 'linux') return null;
+    try {
+        execSync('sudo -n true', { stdio: 'pipe', timeout: 3000 });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function getNpmPrefix() {
+    try {
+        return execSync('npm config get prefix', { encoding: 'utf8', stdio: 'pipe', timeout: 3000 }).trim();
+    } catch {
+        return null;
+    }
+}
+
 /** Detect headless server (no display, no desktop environment). */
 function isHeadless(): boolean {
     if (process.platform !== 'linux') return false;
@@ -220,6 +238,29 @@ check('uv (Python)', () => {
     }
 });
 
+if (isWSL()) {
+    check('WSL sudo', () => {
+        const ready = canSudoNonInteractive();
+        if (ready === true) return 'passwordless sudo available';
+        throw new Error('WARN: passwordless sudo unavailable — installer can still set up user-space tools, but apt installs may require manual sudo');
+    });
+
+    check('npm global prefix', () => {
+        const prefix = getNpmPrefix();
+        if (!prefix) throw new Error('WARN: npm prefix unavailable');
+        fs.accessSync(prefix, fs.constants.W_OK);
+        const expected = path.join(os.homedir(), '.local');
+        if (prefix === expected) return `${prefix} (user-local)`;
+        throw new Error(`WARN: ${prefix} (not user-local — recommended: npm config set prefix ~/.local)`);
+    });
+
+    check('OfficeCLI', () => {
+        const found = findBinaryPath('officecli') || path.join(os.homedir(), '.local', 'bin', 'officecli');
+        if (found && fs.existsSync(found)) return `installed (${found})`;
+        throw new Error('WARN: not installed — run: bash "$(npm root -g)/cli-jaw/scripts/install-officecli.sh"');
+    });
+}
+
 const headless = isHeadless();
 
 if (headless) {
@@ -340,6 +381,11 @@ if (values.json) {
         checks: results,
         activeChannel: (settings as Record<string, any> | null)?.channel || 'telegram',
         discord: buildDiscordStatus(),
+        wsl: isWSL() ? {
+            sudoNonInteractive: canSudoNonInteractive(),
+            npmPrefix: getNpmPrefix(),
+            windowsChromeFallback: hasWslWindowsChrome(),
+        } : null,
     };
     console.log(JSON.stringify(output, null, 2));
 }

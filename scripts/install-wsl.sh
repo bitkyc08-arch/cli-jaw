@@ -32,23 +32,59 @@ echo -e "${DIM}  WSL One-Click Installer${NC}"
 echo ""
 
 NODE_MAJOR=22
+SUDO=""
+HAS_SUDO=false
+
+ensure_sudo() {
+  if [ "$(id -u)" -eq 0 ]; then
+    HAS_SUDO=true
+    SUDO=""
+    ok "Running as root — full system install available"
+    return 0
+  fi
+
+  if ! command -v sudo &>/dev/null; then
+    warn "sudo not found — system package install will be skipped"
+    return 0
+  fi
+
+  info "Requesting sudo once for WSL system setup..."
+  if sudo -v; then
+    HAS_SUDO=true
+    SUDO="sudo"
+    ok "sudo ready — system dependencies can be installed"
+  else
+    warn "sudo authentication failed — continuing with user-space setup only"
+  fi
+}
 
 # ═══════════════════════════════════════
 #  Step 0: System prerequisites
 # ═══════════════════════════════════════
 install_prerequisites() {
-  local missing=()
-  for cmd in curl unzip git; do
-    command -v "$cmd" &>/dev/null || missing+=("$cmd")
-  done
+  local packages=(
+    curl
+    unzip
+    git
+    ca-certificates
+    build-essential
+    python3
+    make
+    g++
+    pkg-config
+    xdg-utils
+    file
+    fonts-noto-cjk
+  )
 
-  if [ ${#missing[@]} -gt 0 ]; then
-    info "Installing system prerequisites: ${missing[*]}..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq "${missing[@]}"
-    ok "Prerequisites installed: ${missing[*]}"
+  if [ "$HAS_SUDO" = true ]; then
+    info "Installing WSL system prerequisites..."
+    $SUDO apt-get update -qq
+    $SUDO apt-get install -y -qq "${packages[@]}"
+    ok "System prerequisites installed"
   else
-    ok "System prerequisites already satisfied (curl, unzip, git)"
+    warn "Skipping apt prerequisites (sudo unavailable)"
+    warn "Recommended packages: ${packages[*]}"
   fi
 }
 
@@ -98,7 +134,30 @@ install_node() {
 }
 
 # ═══════════════════════════════════════
-#  Step 2: Install cli-jaw
+#  Step 2: Configure user-local npm prefix
+# ═══════════════════════════════════════
+configure_npm_prefix() {
+  local prefix="$HOME/.local"
+  mkdir -p "$prefix/bin" "$prefix/lib"
+  npm config set prefix "$prefix"
+  export PATH="$prefix/bin:$PATH"
+
+  local profile="$HOME/.bashrc"
+  [ -f "$HOME/.zshrc" ] && profile="$HOME/.zshrc"
+  if ! grep -q 'export PATH="$HOME/.local/bin:$PATH"' "$profile" 2>/dev/null; then
+    {
+      echo ''
+      echo '# CLI-JAW: user-local npm global bin'
+      echo 'export PATH="$HOME/.local/bin:$PATH"'
+    } >> "$profile"
+    ok "Added ~/.local/bin to $profile"
+  fi
+
+  ok "npm global prefix set to $(npm config get prefix)"
+}
+
+# ═══════════════════════════════════════
+#  Step 3: Install cli-jaw
 # ═══════════════════════════════════════
 install_jaw() {
   if command -v jaw &>/dev/null; then
@@ -111,26 +170,41 @@ install_jaw() {
   fi
 
   ok "cli-jaw installed: $(jaw --version 2>/dev/null || echo 'done')"
-
-  # Ensure npm global bin is in PATH
-  local npm_bin
-  npm_bin="$(npm config get prefix 2>/dev/null)/bin"
-  if [ -d "$npm_bin" ] && [[ ":$PATH:" != *":$npm_bin:"* ]]; then
-    export PATH="$npm_bin:$PATH"
-    # Persist to shell profile
-    local profile="$HOME/.bashrc"
-    [ -f "$HOME/.zshrc" ] && profile="$HOME/.zshrc"
-    if ! grep -q "npm config get prefix" "$profile" 2>/dev/null; then
-      echo '' >> "$profile"
-      echo '# CLI-JAW: npm global bin' >> "$profile"
-      echo 'export PATH="$(npm config get prefix)/bin:$PATH"' >> "$profile"
-      ok "Added npm global bin to $profile"
-    fi
-  fi
 }
 
 # ═══════════════════════════════════════
-#  Step 3: Doctor check
+#  Step 4: Browser + Office dependencies
+# ═══════════════════════════════════════
+install_browser_deps() {
+  info "Installing browser dependencies..."
+  npm install -g playwright-core
+  ok "playwright-core installed"
+
+  if [ "$HAS_SUDO" = true ]; then
+    info "Installing Chromium (best effort)..."
+    $SUDO apt-get install -y -qq chromium-browser 2>/dev/null \
+      || $SUDO apt-get install -y -qq chromium 2>/dev/null \
+      || warn "Chromium package unavailable — Windows Chrome fallback will be used if present"
+  else
+    warn "Skipping Chromium apt install (sudo unavailable)"
+  fi
+}
+
+install_officecli() {
+  local global_root
+  global_root="$(npm root -g 2>/dev/null || true)"
+  local installer="${global_root}/cli-jaw/scripts/install-officecli.sh"
+  if [ ! -f "$installer" ]; then
+    warn "OfficeCLI installer not found in global package — skipping"
+    return 0
+  fi
+
+  info "Installing OfficeCLI..."
+  bash "$installer" || warn "OfficeCLI install failed — rerun later: bash \"$installer\""
+}
+
+# ═══════════════════════════════════════
+#  Step 5: Doctor check
 # ═══════════════════════════════════════
 run_doctor() {
   info "Running diagnostics..."
@@ -144,13 +218,25 @@ main() {
   info "Starting CLI-JAW installation on WSL..."
   echo ""
 
+  ensure_sudo
+  echo ""
+
   install_prerequisites
   echo ""
 
   install_node
   echo ""
 
+  configure_npm_prefix
+  echo ""
+
   install_jaw
+  echo ""
+
+  install_browser_deps
+  echo ""
+
+  install_officecli
   echo ""
 
   run_doctor
