@@ -17,7 +17,7 @@ import {
     readLatestWorklog,
     appendToWorklog, updateWorklogStatus,
 } from '../memory/worklog.js';
-import { findEmployee, runSingleAgent } from './distribute.js';
+import { findEmployee, runSingleAgent, validateParallelSafety } from './distribute.js';
 import {
     claimWorker, finishWorker, failWorker,
     listPendingWorkerResults, claimWorkerReplay, markWorkerReplayed, releaseWorkerReplay,
@@ -64,6 +64,62 @@ function pickWorklogSeed(...candidates: Array<string | null | undefined>) {
         if (value) return value;
     }
     return 'orchestration';
+}
+
+type WorkerTaskLike = Record<string, any>;
+type RunSingleAgentLike = typeof runSingleAgent;
+type FindEmployeeLike = typeof findEmployee;
+
+interface PreparedWorkerTask {
+    task: WorkerTaskLike;
+    emp: Record<string, any>;
+    workerPhase: number;
+}
+
+async function executePreparedWorkerTask(
+    prepared: PreparedWorkerTask,
+    args: {
+        worklogPath: string;
+        origin: string;
+        priorResults?: Record<string, any>[];
+        parallelPeers?: Record<string, any>[];
+        runSingle: RunSingleAgentLike;
+    },
+) {
+    const { task, emp, workerPhase } = prepared;
+    upsertEmployeeSession.run(emp.id, null, emp.cli);
+    claimWorker(emp, task.task);
+
+    try {
+        const result = await args.runSingle(
+            {
+                ...task,
+                phaseProfile: [workerPhase],
+                currentPhaseIdx: 0,
+                currentPhase: workerPhase,
+                completed: false,
+                history: [],
+            },
+            emp,
+            { path: args.worklogPath },
+            1,
+            { origin: args.origin },
+            args.priorResults || [],
+            args.parallelPeers || [],
+        );
+
+        if (result.status === 'done') {
+            finishWorker(emp.id, result.text || '');
+        } else {
+            failWorker(emp.id, result.text || `[worker error] ${emp.id}`);
+        }
+
+        return { emp, result, dispatched: true, ran: true };
+    } catch (err) {
+        failWorker(emp.id, (err as Error).message || String(err));
+        console.error(`[jaw:pabcd] worker ${emp.id} failed:`, (err as Error).message);
+        return { emp, result: null, dispatched: true, ran: false };
+    }
 }
 
 const ACTIVE_PABCD_DISPATCH_STATES = new Set<OrcStateName>(['P', 'A', 'B', 'C']);

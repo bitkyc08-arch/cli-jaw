@@ -419,6 +419,9 @@ app.get('/api/orchestrate/snapshot', (_req, res) => {
 
 // ─── Dispatch: pipe-mode employee dispatch ──────────
 app.post('/api/orchestrate/dispatch', async (req, res) => {
+    if (String(req.headers['x-jaw-dispatch-source'] || '').toLowerCase() === 'employee') {
+        return fail(res, 409, 'Employee self-dispatch is blocked in employee sessions');
+    }
     const { agent: agentName, task } = req.body || {};
     if (!agentName || !task) return fail(res, 400, 'Missing agent or task');
 

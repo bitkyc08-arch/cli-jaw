@@ -10,6 +10,7 @@ export class AcpClient extends EventEmitter {
     model: any;
     workDir: any;
     permissions: string;
+    env: Record<string, string | undefined>;
     sessionId: any;
     proc: any;
     _reqId: number;
@@ -18,11 +19,22 @@ export class AcpClient extends EventEmitter {
     _activityPing: (() => void) | null;
     _agentCapabilities: any;
 
-    constructor({ model, workDir, permissions = 'auto' }: { model?: any; workDir?: any; permissions?: string } = {}) {
+    constructor({
+        model,
+        workDir,
+        permissions = 'auto',
+        env = {},
+    }: {
+        model?: any;
+        workDir?: any;
+        permissions?: string;
+        env?: Record<string, string | undefined>;
+    } = {}) {
         super();
         this.model = model;
         this.workDir = workDir;
         this.permissions = permissions;
+        this.env = env;
         this.sessionId = null;
         this.proc = null;
         this._reqId = 0;
@@ -53,7 +65,7 @@ export class AcpClient extends EventEmitter {
         this.proc = spawn('copilot', args, {
             cwd: this.workDir,
             stdio: ['pipe', 'pipe', 'pipe'],
-            env: { ...process.env },
+            env: { ...process.env, ...this.env },
         });
 
         // NDJSON line parser on stdout
