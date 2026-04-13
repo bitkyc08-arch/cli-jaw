@@ -29,10 +29,9 @@ test('P1-002: A2_DEFAULT prompt contains ~/.cli-jaw not bare ~/', () => {
     assert.ok(!a2Content.includes('- ~/\n'), 'Should NOT have bare "- ~/"');
 });
 
-test('P1-003: system prompt includes structured markdown readability guidance', () => {
-    const templatePath = join(__dirname, '..', '..', 'src', 'prompt', 'templates', 'a2-default.md');
-    const a2Content = readFileSync(templatePath, 'utf8');
-    assert.ok(a2Content.includes('## Response Formatting'));
-    assert.ok(a2Content.includes('heading levels from `#` through `####`'));
-    assert.ok(a2Content.includes('Avoid dense wall-of-text'));
+test('P1-003: A1 system prompt includes structured markdown readability guidance', () => {
+    const templatePath = join(__dirname, '..', '..', 'src', 'prompt', 'templates', 'a1-system.md');
+    const a1Content = readFileSync(templatePath, 'utf8');
+    assert.ok(a1Content.includes('heading levels from `#` through `####`'));
+    assert.ok(a1Content.includes('Avoid dense wall-of-text'));
 });
