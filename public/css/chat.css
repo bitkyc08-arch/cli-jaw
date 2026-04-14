@@ -125,6 +125,14 @@
     will-change: scroll-position;
 }
 
+/* Virtual Scroll viewport — mirrors .chat-messages flex layout so
+   align-self on .msg-user / .msg-agent keeps working inside VS. */
+.vs-viewport {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+}
+
 /* Depth fade gradients removed — caused visible white bars on scroll in light mode */
 
 /* ── Message Bubbles ── */
