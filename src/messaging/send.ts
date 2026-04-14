@@ -2,6 +2,7 @@
 // Unified outbound message routing for all channels.
 
 import { settings } from '../core/config.js';
+import { assertSendFilePath } from '../security/path-guards.js';
 import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
 
@@ -30,11 +31,16 @@ export function registerSendTransport(channel: MessengerChannel, fn: TransportSe
 // ─── Normalize ──────────────────────────────────────
 
 export function normalizeChannelSendRequest(body: Record<string, any>): ChannelSendRequest {
+    const rawPath = body.file_path || body.filePath;
+    let filePath: string | undefined;
+    if (rawPath) {
+        filePath = assertSendFilePath(String(rawPath), settings.workingDir || undefined);
+    }
     return {
         channel: body.channel || 'active',
         type: (body.type || 'text') as OutboundType,
         text: body.text,
-        filePath: body.file_path || body.filePath,
+        filePath,
         caption: body.caption,
         target: body.target,
         chatId: body.chat_id || body.chatId,

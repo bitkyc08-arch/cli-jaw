@@ -3,7 +3,7 @@
 import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
-import { spawn, execSync, type ChildProcess } from 'child_process';
+import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, UPLOADS_DIR, detectCli } from '../core/config.js';
 import {
@@ -43,12 +43,12 @@ export const activeProcesses = new Map<string, ChildProcess>(); // agentId → c
  */
 function killProcessTree(pid: number, signal: NodeJS.Signals = 'SIGTERM'): void {
     if (process.platform === 'win32') {
-        try { execSync(`taskkill /PID ${pid} /T /F`, { stdio: 'ignore' }); } catch { /* best effort */ }
+        try { execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore' }); } catch { /* best effort */ }
         return;
     }
     let childPids: number[] = [];
     try {
-        const out = execSync(`pgrep -P ${pid}`, { encoding: 'utf8', timeout: 3000 });
+        const out = execFileSync('pgrep', ['-P', String(pid)], { encoding: 'utf8', timeout: 3000 });
         childPids = out.trim().split('\n').filter(Boolean).map(Number).filter(n => n > 0);
     } catch { /* no children or pgrep failed */ }
     for (const cpid of childPids) {
@@ -276,24 +276,43 @@ export async function processQueue() {
     const target = batch[0].target;
     const chatId = batch[0].chatId;
     const requestId = batch[0].requestId;
-    console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
-    insertMessage.run('user', combined, source, '', settings.workingDir || null);
-    // NOTE: no broadcast('new_message') here — gateway.ts already broadcast at enqueue time
-    broadcast('queue_update', { pending: messageQueue.length });
-    const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
     const origin = source || 'web';
-    const task = isResetIntent(combined)
-        ? orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })
-        : isContinueIntent(combined)
-            ? orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })
-            : orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
-    task.catch((err: Error) => {
-        console.error('[queue:orchestrate]', err.message);
-        broadcast('orchestrate_done', { text: `[error] ${err.message}`, error: true, origin, chatId, target, requestId });
-    }).finally(() => {
+    console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
+
+    let inserted = false;
+    try {
+        insertMessage.run('user', combined, source, '', settings.workingDir || null);
+        inserted = true;
+        // NOTE: no broadcast('new_message') here — gateway.ts already broadcast at enqueue time
+        broadcast('queue_update', { pending: messageQueue.length });
+
+        const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
+        const task = isResetIntent(combined)
+            ? orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })
+            : isContinueIntent(combined)
+                ? orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })
+                : orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
+
+        try {
+            await task;
+        } catch (err: unknown) {
+            const msg = (err as Error).message;
+            console.error('[queue:orchestrate]', msg);
+            broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId });
+        }
+    } catch (setupErr) {
+        console.error('[queue:setup]', setupErr);
+        if (!inserted) {
+            // insertMessage hasn't run yet — safe to requeue
+            messageQueue.unshift(batch[0]);
+        } else {
+            // Message is already in DB — broadcast error, don't requeue (would cause duplicate)
+            broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId });
+        }
+    } finally {
         queueProcessing = false;
-        processQueue();
-    });
+        queueMicrotask(() => processQueue());
+    }
 }
 
 // ─── Helpers ─────────────────────────────────────────

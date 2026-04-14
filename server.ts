@@ -5,83 +5,77 @@ import express from 'express';
 import helmet from 'helmet';
 import { log } from './src/core/logger.js';
 import { createServer } from 'http';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { dirname, join, basename, resolve, normalize, extname } from 'path';
+import { dirname, join } from 'path';
 import crypto from 'crypto';
 import fs from 'fs';
-import os from 'os';
-import { validateFileSize, sendTelegramFile } from './src/telegram/telegram-file.js';
-import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, readGeminiAccount } from './src/routes/quota.js';
+
 import { registerBrowserRoutes } from './src/routes/browser.js';
+import { registerEmployeeRoutes } from './src/routes/employees.js';
+import { registerHeartbeatRoutes } from './src/routes/heartbeat.js';
+import { registerSkillRoutes } from './src/routes/skills.js';
+import { registerJawMemoryRoutes } from './src/routes/jaw-memory.js';
+import { registerI18nRoutes } from './src/routes/i18n.js';
+import { registerOrchestrateRoutes } from './src/routes/orchestrate.js';
+import { registerMemoryRoutes } from './src/routes/memory.js';
+import { registerSettingsRoutes } from './src/routes/settings.js';
+import { registerMessagingRoutes } from './src/routes/messaging.js';
 import {
-    loadUnifiedMcp, saveUnifiedMcp, syncToAll,
     ensureWorkingDirSkillsLinks, initMcpConfig, copyDefaultSkills,
 } from './lib/mcp-sync.js';
 
 // ─── src/ modules ────────────────────────────────────
 
-import { assertSkillId, assertFilename, assertMemoryRelPath, safeResolveUnder } from './src/security/path-guards.js';
-import { decodeFilenameSafe } from './src/security/decode.js';
+
 import { ok, fail } from './src/http/response.js';
-import { asyncHandler } from './src/http/async-handler.js';
+
 import { errorHandler } from './src/http/error-middleware.js';
-import { readCodexContextWindow } from './src/core/codex-config.js';
+
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
-import * as memory from './src/memory/memory.js';
-import { bootstrapMemory, ensureMemoryRuntimeReady, getMemoryStatus, getLastReflectedAt, listMemoryFiles, readIndexedMemorySnippet, reflectMemory, reindexMemory, searchIndexedMemory, syncKvShadowImport } from './src/memory/runtime.js';
-import { getMigrationLockPath, hashText, safeReadFile } from './src/memory/shared.js';
+
+import { ensureMemoryRuntimeReady } from './src/memory/runtime.js';
+
 import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
-    JAW_HOME, PROMPTS_DIR, DB_PATH, UPLOADS_DIR,
-    SKILLS_DIR, SKILLS_REF_DIR,
+    PROMPTS_DIR, DB_PATH,
     settings, loadSettings, saveSettings,
     ensureDirs, runMigration,
-    loadHeartbeatFile, saveHeartbeatFile,
-    detectAllCli, APP_VERSION,
+    APP_VERSION,
 } from './src/core/config.js';
 import {
-    db, getSession, insertMessage, getMessages, getMessagesWithTrace,
-    getRecentMessages,
-    getMemory, upsertMemory, deleteMemory,
-    getEmployees, insertEmployee, deleteEmployee,
+    db, getSession, getMessages, getMessagesWithTrace,
 } from './src/core/db.js';
 import {
-    initPromptFiles, getMemoryDir, getSystemPrompt, regenerateB,
-    A2_PATH, HEARTBEAT_PATH,
-    getMergedSkills,
+    initPromptFiles, regenerateB,
 } from './src/prompt/builder.js';
-import { clearTemplateCache, getTemplateDir } from './src/prompt/template-loader.js';
+
 import {
-    activeProcess, activeProcesses, isAgentBusy, killActiveAgent, killAllAgents, waitForProcessEnd,
-    steerAgent, enqueueMessage, processQueue, messageQueue,
-    saveUpload, memoryFlushCounter, resetFallbackState,
+    isAgentBusy, killAllAgents,
+    messageQueue, resetFallbackState,
 } from './src/agent/spawn.js';
 import { bumpSessionOwnershipGeneration } from './src/agent/session-persistence.js';
 import { parseCommand, executeCommand, COMMANDS } from './src/cli/commands.js';
-import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from './src/orchestrator/pipeline.js';
-import { getState, getCtx, setState, resetState, canTransition } from './src/orchestrator/state-machine.js';
+
+import { getState, resetState } from './src/orchestrator/state-machine.js';
 import { resolveOrcScope } from './src/orchestrator/scope.js';
 import { listActiveOrcStates } from './src/core/db.js';
-import type { OrcStateName } from './src/orchestrator/state-machine.js';
+
 import { submitMessage } from './src/orchestrator/gateway.js';
-import { getActiveWorkers, claimWorker, finishWorker, failWorker, markWorkerReplayed } from './src/orchestrator/worker-registry.js';
-import { findEmployee, runSingleAgent } from './src/orchestrator/distribute.js';
+
 import { makeCommandCtx } from './src/cli/command-context.js';
-import { initTelegram, telegramBot, telegramActiveChatIds } from './src/telegram/bot.js';
+
 import './src/discord/bot.js'; // side-effect: registers discord transport
 import { initActiveMessagingRuntime, shutdownMessagingRuntime, hydrateTargetsFromSettings } from './src/messaging/runtime.js';
-import { sendChannelOutput, normalizeChannelSendRequest } from './src/messaging/send.js';
+
 import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/memory/heartbeat.js';
-import { validateHeartbeatScheduleInput } from './src/memory/heartbeat-schedule.js';
-import { fetchCopilotQuota, refreshCopilotFromKeychain } from './lib/quota-copilot.js';
-import { CLI_REGISTRY } from './src/cli/registry.js';
+
 import { clearMainSessionState, syncMainSessionToSettings, resetSessionPreservingHistory } from './src/core/main-session.js';
 import { applyRuntimeSettingsPatch } from './src/core/runtime-settings.js';
-import { getDefaultClaudeModel, migrateLegacyClaudeValue } from './src/cli/claude-models.js';
-import { DEFAULT_EMPLOYEES, seedDefaultEmployees } from './src/core/employees.js';
+
+import { seedDefaultEmployees } from './src/core/employees.js';
 
 // ─── Resolve paths ───────────────────────────────────
 
@@ -327,24 +321,12 @@ function resolveRequestLocale(req: any, preferred: string | null = null) {
     return normalizeLocale(fallback, 'ko');
 }
 
-function getLatestTelegramChatId() {
-    const ids = Array.from(telegramActiveChatIds);
-    return ids.at(-1) || null;
-}
-
 async function applySettingsPatch(rawPatch: Record<string, any> = {}) {
     bumpSessionOwnershipGeneration();
     return applyRuntimeSettingsPatch(rawPatch, {
         resetFallbackState,
     });
 }
-
-function normalizeAdvancedReadPath(file: string) {
-    const value = String(file || '').replace(/\\/g, '/').replace(/^\/+/, '');
-    return value.startsWith('structured/') ? value.slice('structured/'.length) : value;
-}
-
-// seedDefaultEmployees → src/core/employees.ts
 
 function makeWebCommandCtx(req: any, localeOverride: string | null = null) {
     return makeCommandCtx('web', resolveRequestLocale(req, localeOverride), {
@@ -364,8 +346,15 @@ app.get('/api/messages', (req, res) => {
 });
 app.get('/api/runtime', (_, res) => ok(res, getRuntimeSnapshot(), getRuntimeSnapshot()));
 
-// Auth token endpoint (same-origin only, protected by Host+CORS)
-app.get('/api/auth/token', (_, res) => res.json({ token: JAW_AUTH_TOKEN }));
+// Auth token endpoint — Sec-Fetch-Site guard blocks cross-origin XSS token theft
+// Browser-enforced header: cannot be set/spoofed by JS, absent from CLI/curl (passes through)
+app.get('/api/auth/token', (req, res) => {
+    const site = req.headers['sec-fetch-site'];
+    if (site && site !== 'same-origin' && site !== 'none') {
+        return res.status(403).json({ error: 'cross-origin token request blocked' });
+    }
+    res.json({ token: JAW_AUTH_TOKEN });
+});
 
 app.post('/api/command', requireAuth, async (req, res) => {
     try {
@@ -411,7 +400,7 @@ app.get('/api/commands', (req, res) => {
     );
 });
 
-app.post('/api/message', (req, res) => {
+app.post('/api/message', requireAuth, (req, res) => {
     const { prompt } = req.body;
     if (!prompt?.trim()) return res.status(400).json({ error: 'prompt required' });
 
@@ -423,862 +412,30 @@ app.post('/api/message', (req, res) => {
     res.json({ ok: true, ...result });
 });
 
-app.post('/api/orchestrate/continue', (req, res) => {
-    if (isAgentBusy()) {
-        return res.status(409).json({ error: 'agent already running' });
-    }
-    orchestrateContinue({ origin: 'web' });
-    res.json({ ok: true });
-});
-
-app.post('/api/orchestrate/reset', async (req, res) => {
-    try {
-        await orchestrateReset({ origin: 'web' });
-        res.json({ ok: true });
-    } catch (err) {
-        console.error('[orchestrate:reset] error', err);
-        res.status(500).json({ ok: false, error: String(err) });
-    }
-});
-
-app.get('/api/orchestrate/state', (_req, res) => {
-    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
-    res.json({ scope, state: getState(scope), ctx: getCtx(scope) });
-});
-
-app.get('/api/orchestrate/workers', (_req, res) => {
-    res.json(getActiveWorkers());
-});
-
-app.get('/api/orchestrate/snapshot', (_req, res) => {
-    const runtime = getRuntimeSnapshot();
-    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
-    res.json({
-        orc: { scope, state: getState(scope), ctx: getCtx(scope) },
-        runtime: {
-            ...runtime,
-            busy: runtime.activeAgent || getActiveWorkers().some(w => w.state === 'running'),
-        },
-        workers: getActiveWorkers(),
-    });
-});
-
-// ─── Dispatch: pipe-mode employee dispatch ──────────
-app.post('/api/orchestrate/dispatch', requireAuth, async (req, res) => {
-    if (String(req.headers['x-jaw-dispatch-source'] || '').toLowerCase() === 'employee') {
-        return fail(res, 409, 'Employee self-dispatch is blocked in employee sessions');
-    }
-    const { agent: agentName, task, phase } = req.body || {};
-    if (!agentName || !task) return fail(res, 400, 'Missing agent or task');
-
-    // Auto-map phase from current PABCD state if not explicitly provided
-    const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 3, C: 4 };
-    const dispatchScope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
-    const currentOrcState = getState(dispatchScope);
-    const resolvedPhase = phase ?? PABCD_PHASE_MAP[currentOrcState] ?? 3;
-
-    const emps = getEmployees.all() as Record<string, any>[];
-    const emp = findEmployee(emps, { agent: agentName });
-    if (!emp) return fail(res, 404, `Employee not found: ${agentName}`);
-
-    const slot = claimWorker(emp, task);
-    try {
-        const ap = {
-            agent: emp.name, role: emp.role || 'general developer',
-            task, parallel: false,
-            currentPhase: resolvedPhase, currentPhaseIdx: 0,
-            phaseProfile: [resolvedPhase],
-        };
-        const result = await runSingleAgent(ap, emp, {}, 1, { origin: 'api' }, []);
-        finishWorker(slot.agentId, result.text || '');
-        markWorkerReplayed(slot.agentId);
-        res.json({ ok: true, result });
-    } catch (err: any) {
-        failWorker(slot.agentId, err.message);
-        res.status(500).json({ ok: false, error: err.message });
-    }
-});
-
-app.put('/api/orchestrate/state', (req, res) => {
-    const target = String(req.body?.state || '').toUpperCase();
-    const valid: OrcStateName[] = ['P', 'A', 'B', 'C', 'D'];
-    if (!valid.includes(target as OrcStateName)) return fail(res, 400, `Invalid state: ${target}. Must be one of: ${valid.join(', ')}`);
-    const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
-    const current = getState(scope);
-    const t = target as OrcStateName;
-    if (!canTransition(current, t)) {
-        return fail(res, 409, `Cannot transition: ${current} → ${t}`);
-    }
-    if (t === 'D') {
-        setState(t, undefined, scope, 'Done');
-        resetState(scope);
-    } else {
-        setState(
-            t,
-            t === 'P' ? { originalPrompt: '', workingDir: settings.workingDir || null, plan: null, workerResults: [], origin: 'api' } : undefined,
-            scope,
-            t === 'P' ? 'P' : t,
-        );
-    }
-    res.json({ ok: true, state: getState(scope) });
-});
-
-app.post('/api/stop', (req, res) => {
+app.post('/api/stop', requireAuth, (req, res) => {
     const killed = killAllAgents('api');
     ok(res, { killed });
 });
 
-app.post('/api/clear', (_, res) => {
+app.post('/api/clear', requireAuth, (_, res) => {
     clearSessionState();
     ok(res, null);
 });
 
-// Settings
-app.get('/api/settings', (_, res) => {
-    const safe = { ...settings };
-    if (safe.stt) {
-        const gKey = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
-        const oKey = safe.stt.openaiApiKey || '';
-        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey, geminiKeyLast4: gKey.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey, openaiKeyLast4: oKey.slice(-4) || '' };
-    }
-    ok(res, safe, safe);
-});
-app.put('/api/settings', asyncHandler(async (req, res) => {
-    const result = await applySettingsPatch(req.body);
-    const safe = { ...result };
-    if (safe.stt) {
-        const gKey2 = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
-        const oKey2 = safe.stt.openaiApiKey || '';
-        safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey2, geminiKeyLast4: gKey2.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey2, openaiKeyLast4: oKey2.slice(-4) || '' };
-    }
-    ok(res, safe);
-}));
-
-app.get('/api/memory/status', (_req, res) => {
-    const base = getMemoryStatus();
-    // Phase 5-D: extended health fields
-    const lockPath = getMigrationLockPath();
-    const migrationLocked = fs.existsSync(lockPath);
-    const flushRunning = activeProcesses.has('memory-flush');
-    const lastReflectedAt = getLastReflectedAt();
-
-    // Profile freshness: compare MEMORY.md hash to profile source_hash
-    let profileFresh = true;
-    let profileSourceHash = '';
-    let coreSourceHash = '';
-    const staleWarnings: string[] = [];
-    try {
-        const corePath = join(JAW_HOME, 'memory', 'MEMORY.md');
-        if (fs.existsSync(corePath)) {
-            coreSourceHash = hashText(safeReadFile(corePath));
-            const profilePath = join(base.storageRoot, 'profile.md');
-            if (fs.existsSync(profilePath)) {
-                const profileContent = safeReadFile(profilePath);
-                const match = /^source_hash:\s+(\S+)$/m.exec(profileContent);
-                profileSourceHash = match?.[1] || '';
-                profileFresh = profileSourceHash === coreSourceHash;
-            } else {
-                profileFresh = false;
-            }
-        }
-    } catch { /* ignore */ }
-
-    if (!profileFresh) staleWarnings.push('profile out of sync with MEMORY.md');
-    if (migrationLocked) staleWarnings.push('migration lock held');
-    if (flushRunning) staleWarnings.push('memory flush in progress');
-
-    res.json({
-        ...base,
-        profileFresh,
-        profileSourceHash,
-        coreSourceHash,
-        lastReflectedAt,
-        flushRunning,
-        migrationLocked,
-        staleWarnings,
-    });
-});
-app.post('/api/memory/reindex', (_req, res) => {
-    const result = reindexMemory();
-    res.json({
-        ok: true,
-        message: 'Memory reindex completed.',
-        result,
-        status: getMemoryStatus(),
-    });
-});
-app.post('/api/memory/bootstrap', (req, res) => {
-    const result = bootstrapMemory(req.body || {});
-    res.json({
-        ok: true,
-        message: 'Memory bootstrap completed.',
-        result,
-        status: getMemoryStatus(),
-    });
-});
-app.get('/api/memory/files', (_req, res) => {
-    res.json(listMemoryFiles());
-});
-
-// Codex context window config
-app.get('/api/codex-context', (_, res) => {
-    res.json(readCodexContextWindow());
-});
-
-// Prompts (A-2)
-app.get('/api/prompt', (_, res) => {
-    const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
-    res.json({ content: a2 });
-});
-app.put('/api/prompt', (req, res) => {
-    const { content } = req.body;
-    if (content == null) return res.status(400).json({ error: 'content required' });
-    fs.writeFileSync(A2_PATH, content);
-    regenerateB();
-    res.json({ ok: true });
-});
-
-// Prompt Templates (Node Map + Editor)
-app.get('/api/prompt-templates', (_, res) => {
-    const dir = getTemplateDir();
-    const files = fs.readdirSync(dir).filter((f: string) => f.endsWith('.md'));
-    const templates = files.map((f: string) => ({
-        id: f.replace('.md', ''),
-        filename: f,
-        content: fs.readFileSync(join(dir, f), 'utf8'),
-    }));
-    const tree = [
-        {
-            id: 'system', label: 'getSystemPrompt()', emoji: '🟢',
-            children: ['a1-system', 'a2-default', 'orchestration', 'skills', 'heartbeat-jobs', 'heartbeat-default', 'vision-click']
-        },
-        {
-            id: 'employee', label: 'getEmployeePrompt()', emoji: '🟡',
-            children: ['employee', 'worker-context']
-        },
-    ];
-    res.json({ templates, tree });
-});
-app.put('/api/prompt-templates/:id', (req, res) => {
-    const { content } = req.body;
-    if (content == null || typeof content !== 'string') return res.status(400).json({ error: 'content required' });
-    const filename = req.params.id + '.md';
-    if (!/^[a-z0-9-]+\.md$/.test(filename)) return res.status(400).json({ error: 'invalid id' });
-    const dir = getTemplateDir();
-    fs.writeFileSync(join(dir, filename), content);
-    const srcDir = join(projectRoot, 'src/prompt/templates');
-    if (fs.existsSync(srcDir)) fs.writeFileSync(join(srcDir, filename), content);
-    clearTemplateCache();
-    regenerateB();
-    res.json({ ok: true });
-});
-
-// HEARTBEAT.md
-app.get('/api/heartbeat-md', (_, res) => {
-    const content = fs.existsSync(HEARTBEAT_PATH) ? fs.readFileSync(HEARTBEAT_PATH, 'utf8') : '';
-    res.json({ content });
-});
-app.put('/api/heartbeat-md', (req, res) => {
-    const { content } = req.body;
-    if (content == null) return res.status(400).json({ error: 'content required' });
-    fs.writeFileSync(HEARTBEAT_PATH, content);
-    res.json({ ok: true });
-});
-
-// Memory (key-value)
-app.get('/api/memory', (_, res) => ok(res, getMemory.all()));
-app.post('/api/memory', (req, res) => {
-    const { key, value, source = 'manual' } = req.body;
-    if (!key || !value) return fail(res, 400, 'key and value required');
-    upsertMemory.run(key, value, source);
-    try { syncKvShadowImport(); } catch { /* best-effort */ }
-    ok(res, null);
-});
-app.delete('/api/memory/:key', (req, res) => {
-    deleteMemory.run(req.params.key);
-    try { syncKvShadowImport(); } catch { /* best-effort */ }
-    ok(res, null);
-});
-
-// Memory files (Claude native)
-app.get('/api/memory-files', (_, res) => {
-    const memDir = getMemoryDir();
-    const files = memory.list()
-        .sort((a, b) => b.path.localeCompare(a.path))
-        .map(f => {
-            const fullPath = safeResolveUnder(memDir, f.path);
-            const content = fs.existsSync(fullPath) ? fs.readFileSync(fullPath, 'utf8') : '';
-            const entries = content.split(/^## /m).filter(Boolean).length;
-            return { name: f.path, entries, size: f.size };
-        });
-    res.json({
-        enabled: settings.memory?.enabled !== false,
-        flushEvery: settings.memory?.flushEvery ?? 10,
-        cli: settings.memory?.cli || '',
-        model: settings.memory?.model || '',
-        retentionDays: settings.memory?.retentionDays ?? 30,
-        path: memDir, files,
-        counter: memoryFlushCounter,
-    });
-});
-app.get('/api/memory-file', (req, res) => {
-    try {
-        const name = assertMemoryRelPath(String(req.query.path || ''), { allowExt: ['.md', '.txt', '.json'] });
-        const fp = safeResolveUnder(getMemoryDir(), name);
-        if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
-        res.json({ name, content: fs.readFileSync(fp, 'utf8') });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-app.get('/api/memory-files/:filename', (req, res) => {
-    try {
-        const name = assertFilename(req.params.filename);
-        const fp = safeResolveUnder(getMemoryDir(), name);
-        if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
-        res.json({ name, content: fs.readFileSync(fp, 'utf8') });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-app.delete('/api/memory-file', (req, res) => {
-    try {
-        const name = assertMemoryRelPath(String(req.query.path || ''), { allowExt: ['.md', '.txt', '.json'] });
-        const fp = safeResolveUnder(getMemoryDir(), name);
-        if (fs.existsSync(fp)) fs.unlinkSync(fp);
-        res.json({ ok: true });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-app.delete('/api/memory-files/:filename', (req, res) => {
-    try {
-        const name = assertFilename(req.params.filename);
-        const fp = safeResolveUnder(getMemoryDir(), name);
-        if (fs.existsSync(fp)) fs.unlinkSync(fp);
-        res.json({ ok: true });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-app.put('/api/memory-files/settings', (req, res) => {
-    const patch = { ...(req.body || {}) };
-    const targetCli = typeof patch.cli === 'string' && patch.cli
-        ? patch.cli
-        : settings.memory?.cli || settings.cli || '';
-    if (targetCli === 'claude' && typeof patch.model === 'string') {
-        patch.model = migrateLegacyClaudeValue(patch.model);
-    }
-    settings.memory = { ...settings.memory, ...patch };
-    saveSettings(settings);
-    res.json({ ok: true });
-});
-
-// File upload
-app.post('/api/upload', express.raw({ type: '*/*', limit: '20mb' }), (req, res) => {
-    try {
-        const filename = decodeFilenameSafe(req.headers['x-filename'] as string | undefined);
-        const filePath = saveUpload(req.body, filename);
-        res.json({ path: filePath, filename: basename(filePath) });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-
-// Open file in system file manager (Finder reveal)
-// NOTE: cli-jaw is a localhost-only program. No remote access.
-const FILE_LINE_SUFFIX_RE = /^(.*?)(?::\d+(?::\d+)?)$/;
-const DOCUMENT_EXTENSIONS = new Set([
-    '.ts', '.tsx', '.js', '.jsx', '.mjs', '.cjs',
-    '.json', '.md', '.txt', '.yml', '.yaml',
-    '.css', '.html', '.xml', '.svg',
-    '.py', '.go', '.rs', '.java', '.sh',
-    '.docx', '.xlsx', '.pptx', '.pdf',
-]);
-
-type OpenTarget = {
-    openedPath: string;
-    resolvedTarget: string;
-    strategy: 'reveal' | 'folder' | 'directory';
-};
-
-function expandOpenPath(rawPath: string): string {
-    return rawPath.startsWith('~/') ? os.homedir() + rawPath.slice(1) : rawPath;
-}
-
-function getExistingNormalizedPath(candidatePath: string): string | null {
-    const normalized = normalize(resolve(candidatePath));
-    return fs.existsSync(normalized) ? normalized : null;
-}
-
-function classifyOpenTarget(normalized: string): OpenTarget {
-    const stat = fs.statSync(normalized);
-    if (stat.isDirectory()) {
-        return {
-            openedPath: normalized,
-            resolvedTarget: normalized,
-            strategy: 'directory',
-        };
-    }
-
-    const ext = extname(normalized).toLowerCase();
-    if (DOCUMENT_EXTENSIONS.has(ext)) {
-        return {
-            openedPath: normalized,
-            resolvedTarget: normalized,
-            strategy: 'reveal',
-        };
-    }
-
-    return {
-        openedPath: dirname(normalized),
-        resolvedTarget: normalized,
-        strategy: 'folder',
-    };
-}
-
-function resolveOpenTarget(rawPath: string): OpenTarget {
-    const expanded = expandOpenPath(rawPath);
-    const exactMatch = getExistingNormalizedPath(expanded);
-    if (exactMatch) return classifyOpenTarget(exactMatch);
-
-    const strippedMatch = expanded.match(FILE_LINE_SUFFIX_RE)?.[1];
-    if (strippedMatch) {
-        const strippedPath = getExistingNormalizedPath(strippedMatch);
-        if (strippedPath) return classifyOpenTarget(strippedPath);
-    }
-
-    throw new Error('file_not_found');
-}
-
-app.post('/api/file/open', requireAuth, (req, res) => {
-    const { path: rawPath } = req.body;
-    if (!rawPath || typeof rawPath !== 'string') {
-        return fail(res, 400, 'path_required');
-    }
-
-    try {
-        const target = resolveOpenTarget(rawPath);
-        if (process.platform === 'darwin') {
-            if (target.strategy === 'reveal') {
-                execFileSync('open', ['-R', target.resolvedTarget]);
-            } else {
-                execFileSync('open', [target.openedPath]);
-            }
-        } else if (process.platform === 'win32') {
-            if (target.strategy === 'reveal') {
-                execFileSync('explorer', ['/select,', target.resolvedTarget]);
-            } else {
-                execFileSync('explorer', [target.openedPath]);
-            }
-        } else {
-            execFileSync('xdg-open', [target.openedPath]);
-        }
-        ok(res, {
-            opened: target.openedPath,
-            resolvedTarget: target.resolvedTarget,
-            strategy: target.strategy,
-        });
-    } catch (error) {
-        const message = error instanceof Error ? error.message : 'open_failed';
-        if (message === 'file_not_found') {
-            return fail(res, 404, 'file_not_found');
-        }
-        fail(res, 500, 'open_failed');
-    }
-});
-
-// Voice STT endpoint — receives raw audio blob, transcribes, submits as message
-app.post('/api/voice', express.raw({ type: ['audio/*', 'application/octet-stream'], limit: '20mb' }), async (req, res) => {
-    try {
-        const ext = (req.headers['x-voice-ext'] as string) || '.webm';
-        const mime = req.headers['content-type'] || 'audio/webm';
-        const filePath = saveUpload(req.body, `voice${ext}`);
-
-        const { transcribeVoice } = await import('./lib/stt.js');
-        const result = await transcribeVoice(filePath, mime);
-
-        if (!result.text.trim()) {
-            return res.status(422).json({ error: 'Empty transcription' });
-        }
-
-        console.log(`[web:voice] STT (${result.engine}, ${result.elapsed.toFixed(1)}s): ${result.text.slice(0, 80)}`);
-
-        const sttOnly = String(req.headers['x-stt-only'] || '') === 'true';
-        if (!sttOnly) {
-            const prompt = `🎤 ${result.text}`;
-            submitMessage(prompt, { origin: 'web' });
-        }
-
-        res.json({ ok: true, text: result.text, engine: result.engine, elapsed: result.elapsed });
-    } catch (e: unknown) {
-        console.error('[web:voice] STT failed:', (e as Error).message);
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
-
-// Telegram direct send (Phase 2.1)
-app.post('/api/telegram/send', async (req, res) => {
-    try {
-        if (!telegramBot) return res.status(503).json({ error: 'Telegram not connected' });
-
-        const type = String(req.body?.type || '').trim().toLowerCase();
-        const supportedTypes = new Set(['text', 'voice', 'photo', 'document']);
-        if (!supportedTypes.has(type)) {
-            return res.status(400).json({ error: 'type must be one of: text, voice, photo, document' });
-        }
-
-        const chatId = req.body?.chat_id || getLatestTelegramChatId();
-        if (!chatId) return res.status(400).json({ error: 'chat_id required (or send a Telegram message first)' });
-
-        if (type === 'text') {
-            const text = String(req.body?.text || '').trim();
-            if (!text) return res.status(400).json({ error: 'text required for type=text' });
-            await telegramBot.api.sendMessage(chatId, text);
-            return res.json({ ok: true, chat_id: chatId, type });
-        }
-
-        const filePath = String(req.body?.file_path || '').trim();
-        if (!filePath) return res.status(400).json({ error: 'file_path required for non-text types' });
-        if (!fs.existsSync(filePath)) return res.status(400).json({ error: `file not found: ${filePath}` });
-
-        // Validate file size before upload attempt
-        validateFileSize(filePath, type);
-
-        const caption = req.body?.caption ? String(req.body.caption) : undefined;
-        const result = await sendTelegramFile(telegramBot, chatId, filePath, type, { caption });
-
-        if (!result.ok) {
-            const sc = result.statusCode || 502;
-            return res.status(sc).json({
-                error: result.error, attempts: result.attempts,
-                ...(result.retryAfter != null && { retry_after: result.retryAfter }),
-            });
-        }
-        return res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
-    } catch (e: unknown) {
-        console.error('[telegram:send]', e);
-        const statusCode = (e as any).statusCode || 500;
-        return res.status(statusCode).json({ error: (e as Error).message, code: (e as any).code });
-    }
-});
-
-// Canonical channel send (Phase 2)
-app.post('/api/channel/send', async (req, res) => {
-    try {
-        const result = await sendChannelOutput(normalizeChannelSendRequest(req.body));
-        if (!result.ok) return res.status(502).json(result);
-        return res.json(result);
-    } catch (e: unknown) {
-        console.error('[channel:send]', e);
-        return res.status(500).json({ error: (e as Error).message });
-    }
-});
-
-app.post('/api/discord/send', async (req, res) => {
-    try {
-        const result = await sendChannelOutput({ ...normalizeChannelSendRequest(req.body), channel: 'discord' });
-        if (!result.ok) return res.status(502).json(result);
-        return res.json(result);
-    } catch (e: unknown) {
-        console.error('[discord:send]', e);
-        return res.status(500).json({ error: (e as Error).message });
-    }
-});
-
-// MCP
-app.get('/api/mcp', (req, res) => res.json(loadUnifiedMcp()));
-app.put('/api/mcp', requireAuth, (req, res) => {
-    const config = req.body;
-    if (!config || !config.servers) return res.status(400).json({ error: 'servers object required' });
-    saveUnifiedMcp(config);
-    res.json({ ok: true, servers: Object.keys(config.servers) });
-});
-app.post('/api/mcp/sync', requireAuth, (req, res) => {
-    const config = loadUnifiedMcp();
-    const results = syncToAll(config);
-    res.json({ ok: true, results });
-});
-app.post('/api/mcp/install', requireAuth, async (req, res) => {
-    try {
-        const config = loadUnifiedMcp();
-        const { installMcpServers } = await import('./lib/mcp-sync.js');
-        const results = await installMcpServers(config);
-        saveUnifiedMcp(config);
-        const syncResults = syncToAll(config);
-        res.json({ ok: true, results, synced: syncResults });
-    } catch (e: unknown) {
-        console.error('[mcp:install]', e);
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
-app.post('/api/mcp/reset', requireAuth, (req, res) => {
-    try {
-        const mcpPath = join(JAW_HOME, 'mcp.json');
-        if (fs.existsSync(mcpPath)) fs.unlinkSync(mcpPath);
-        const config = initMcpConfig(settings.workingDir);
-        const results = syncToAll(config);
-        res.json({
-            ok: true,
-            servers: Object.keys(config.servers),
-            count: Object.keys(config.servers).length,
-            synced: results,
-        });
-    } catch (e: unknown) {
-        console.error('[mcp:reset]', e);
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
-
-// CLI & Quota
-app.get('/api/cli-registry', (_, res) => res.json(CLI_REGISTRY));
-app.get('/api/cli-status', (_, res) => res.json(detectAllCli()));
-app.get('/api/quota', async (_, res) => {
-    const claudeCreds = readClaudeCreds();
-    const codexTokens = readCodexTokens();
-    const [claudeResult, codexResult, copilotResult] = await Promise.all([
-        fetchClaudeUsage(claudeCreds),
-        fetchCodexUsage(codexTokens),
-        fetchCopilotQuota(),
-    ]);
-    const geminiResult = readGeminiAccount();
-
-    // null → { authenticated: false } if no creds, { error: true } if API failure
-    const classify = (result: any, hasCreds: boolean) =>
-        result ?? (hasCreds ? { error: true } : { authenticated: false });
-
-    res.json({
-        claude: classify(claudeResult, !!claudeCreds),
-        codex: classify(codexResult, !!codexTokens),
-        gemini: geminiResult ?? { authenticated: false },
-        opencode: { authenticated: true },
-        copilot: copilotResult ?? { authenticated: false },
-    });
-});
-
-// Copilot: force keychain re-read (clears _keychainFailed suppression)
-app.post('/api/copilot/refresh', async (_, res) => {
-    try {
-        const result = await refreshCopilotFromKeychain();
-        res.json(result);
-    } catch (e: unknown) {
-        res.status(500).json({ ok: false, error: (e as Error).message });
-    }
-});
-
-// Employees
-app.get('/api/employees', (_, res) => ok(res, getEmployees.all()));
-app.post('/api/employees', (req, res) => {
-    const id = crypto.randomUUID();
-    const { name = 'New Agent', cli = 'claude', model = 'default', role = '' } = req.body || {};
-    const nextModel = cli === 'claude' && (!model || model === 'default')
-        ? getDefaultClaudeModel()
-        : model;
-    insertEmployee.run(id, name, cli, nextModel, role);
-    const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(id) as Record<string, any>;
-    broadcast('agent_added', emp);
-    regenerateB();
-    res.json(emp);
-});
-app.put('/api/employees/:id', (req, res) => {
-    const updates = req.body;
-    const allowed = ['name', 'cli', 'model', 'role', 'status'];
-    const sets = Object.keys(updates).filter(k => allowed.includes(k)).map(k => `${k} = ?`);
-    if (sets.length === 0) return res.status(400).json({ error: 'no valid fields' });
-    const vals = sets.map((_, i) => (updates as Record<string, any>)[Object.keys(updates).filter(k => allowed.includes(k))[i]!]);
-    db.prepare(`UPDATE employees SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.params.id);
-    const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id) as Record<string, any>;
-    broadcast('agent_updated', emp);
-    regenerateB();
-    res.json(emp);
-});
-app.delete('/api/employees/:id', (req, res) => {
-    deleteEmployee.run(req.params.id);
-    broadcast('agent_deleted', { id: req.params.id });
-    regenerateB();
-    res.json({ ok: true });
-});
-
-// Employee reset — delete all + re-seed 5 defaults
-app.post('/api/employees/reset', (req, res) => {
-    const { seeded } = seedDefaultEmployees({ reset: true, notify: true });
-    res.json({ ok: true, seeded });
-});
-
-// Heartbeat API
-app.get('/api/heartbeat', (req, res) => res.json(loadHeartbeatFile()));
-app.put('/api/heartbeat', (req, res) => {
-    const data = req.body;
-    if (!data || !Array.isArray(data.jobs)) return res.status(400).json({ error: 'jobs array required' });
-    const normalizedJobs = [];
-    const idPrefix = `hb_${Date.now()}`;
-    for (const [index, rawJob] of data.jobs.entries()) {
-        const job = (rawJob && typeof rawJob === 'object') ? rawJob as Record<string, unknown> : {};
-        const scheduleResult = validateHeartbeatScheduleInput(job.schedule);
-        const jobId = typeof job.id === 'string' && job.id.trim()
-            ? job.id.trim()
-            : `${idPrefix}_${index}`;
-        if (!scheduleResult.ok) {
-            return res.status(400).json({
-                error: 'invalid heartbeat schedule',
-                code: scheduleResult.code,
-                detail: scheduleResult.error,
-                index,
-                jobId,
-            });
-        }
-        normalizedJobs.push({
-            id: jobId,
-            name: typeof job.name === 'string' ? job.name : '',
-            enabled: job.enabled !== false,
-            schedule: scheduleResult.schedule,
-            prompt: typeof job.prompt === 'string' ? job.prompt : '',
-        });
-    }
-    const payload = { jobs: normalizedJobs };
-    saveHeartbeatFile(payload);
-    startHeartbeat();
-    res.json(payload);
-});
-
-// ─── Skills API (Phase 6) ────────────────────────────
-
-app.get('/api/skills', (req, res) => {
-    const lang = (String(req.query.locale || 'ko')).toLowerCase();
-    const skills = getMergedSkills().map(s => ({
-        ...s,
-        name: s[`name_${lang}`] || s.name,
-        description: s[`desc_${lang}`] || s.description,
-    }));
-    res.json(skills);
-});
-
-app.post('/api/skills/enable', (req, res) => {
-    try {
-        const id = assertSkillId(req.body?.id);
-        const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
-        const dstDir = join(SKILLS_DIR, id);
-        const dstPath = join(dstDir, 'SKILL.md');
-        if (fs.existsSync(dstPath)) return res.json({ ok: true, msg: 'already enabled' });
-        if (!fs.existsSync(refPath)) return res.status(404).json({ error: 'skill not found in ref' });
-        fs.cpSync(join(SKILLS_REF_DIR, id), dstDir, { recursive: true });
-        regenerateB();
-        res.json({ ok: true });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-
-app.post('/api/skills/disable', (req, res) => {
-    try {
-        const id = assertSkillId(req.body?.id);
-        const dstDir = join(SKILLS_DIR, id);
-        if (!fs.existsSync(dstDir)) return res.json({ ok: true, msg: 'already disabled' });
-        fs.rmSync(dstDir, { recursive: true });
-        regenerateB();
-        res.json({ ok: true });
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-
-app.get('/api/skills/:id', (req, res) => {
-    try {
-        const id = assertSkillId(req.params.id);
-        const activePath = join(SKILLS_DIR, id, 'SKILL.md');
-        const refPath = join(SKILLS_REF_DIR, id, 'SKILL.md');
-        const p = fs.existsSync(activePath) ? activePath : refPath;
-        if (!fs.existsSync(p)) return res.status(404).json({ error: 'not found' });
-        res.type('text/markdown').send(fs.readFileSync(p, 'utf8'));
-    } catch (e: unknown) {
-        res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
-    }
-});
-
-// ─── Skills Reset API ────────────────────────────────
-app.post('/api/skills/reset', async (req, res) => {
-    try {
-        const mode = (req.query.mode === 'hard') ? 'hard' as const : 'soft' as const;
-        const ctx = makeWebCommandCtx(req);
-        const result = await ctx.resetSkills(mode);
-        res.json({ ok: true, ...result });
-    } catch (e: unknown) {
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
-
-// ─── Memory API (Phase A) ────────────────────────────
-
-app.get('/api/jaw-memory/search', (req, res) => {
-    try {
-        const q = String(req.query.q || '');
-        const mem = getMemoryStatus();
-        res.json({ result: mem.routing.searchRead === 'advanced' ? searchIndexedMemory(q) : memory.search(q) });
-    }
-    catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
-});
-
-app.get('/api/jaw-memory/read', (req, res) => {
-    try {
-        const file = assertMemoryRelPath(String(req.query.file || ''), { allowExt: ['.md', '.txt', '.json'] });
-        const mem = getMemoryStatus();
-        const content = mem.routing.searchRead === 'advanced'
-            ? readIndexedMemorySnippet(normalizeAdvancedReadPath(file), { lines: req.query.lines as any })
-            : memory.read(file, { lines: req.query.lines as any });
-        res.json({ content });
-    } catch (e: unknown) { res.status((e as any).statusCode || 500).json({ error: (e as Error).message }); }
-});
-
-app.post('/api/jaw-memory/save', (req, res) => {
-    try {
-        const file = assertMemoryRelPath(String(req.body.file || ''), { allowExt: ['.md', '.txt', '.json'] });
-        const p = memory.save(file, req.body.content);
-        res.json({ ok: true, path: p });
-    } catch (e: unknown) { res.status((e as any).statusCode || 500).json({ error: (e as Error).message }); }
-});
-
-app.get('/api/jaw-memory/list', (_, res) => {
-    try { res.json({ files: memory.list() }); }
-    catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
-});
-
-app.post('/api/jaw-memory/init', (_, res) => {
-    try { memory.ensureMemoryDir(); res.json({ ok: true }); }
-    catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
-});
-
-app.post('/api/jaw-memory/reflect', (req, res) => {
-    try {
-        const result = reflectMemory(req.body || {});
-        res.json({ ok: true, result, status: getMemoryStatus() });
-    } catch (e: unknown) {
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
+// ─── Route modules ───────────────────────────────────
+registerEmployeeRoutes(app, requireAuth);
+registerHeartbeatRoutes(app, requireAuth);
+registerSkillRoutes(app, requireAuth, makeWebCommandCtx);
+registerJawMemoryRoutes(app, requireAuth);
+registerOrchestrateRoutes(app, requireAuth);
+registerMemoryRoutes(app, requireAuth);
+registerSettingsRoutes(app, requireAuth, applySettingsPatch, projectRoot);
+registerMessagingRoutes(app, requireAuth);
 
 // ─── Browser API (Phase 7) — see src/routes/browser.js
-registerBrowserRoutes(app);
+registerBrowserRoutes(app, requireAuth);
 
-
-// ─── i18n API ────────────────────────────────────────
-
-app.get('/api/i18n/languages', (_, res) => {
-    const localeDir = join(projectRoot, 'public', 'locales');
-    if (!fs.existsSync(localeDir)) return res.json({ languages: ['ko'], default: 'ko' });
-    const langs = fs.readdirSync(localeDir)
-        .filter(f => f.endsWith('.json') && !f.startsWith('skills-'))
-        .map(f => f.replace('.json', ''));
-    res.json({ languages: langs, default: normalizeLocale(settings.locale, 'ko') });
-});
-
-app.get('/api/i18n/:lang', (req, res) => {
-    const raw = req.params.lang.replace(/[^a-z-]/gi, '');
-    const lang = normalizeLocale(raw, '');
-    if (!lang) return res.status(404).json({ error: 'locale not found' });
-    const filePath = join(projectRoot, 'public', 'locales', `${lang}.json`);
-    if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'locale not found' });
-    res.json(JSON.parse(fs.readFileSync(filePath, 'utf8')));
-});
+registerI18nRoutes(app, requireAuth, projectRoot);
 
 // ─── Error Handler (must be last middleware) ─────────
 app.use(errorHandler as any);

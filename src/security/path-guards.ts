@@ -1,6 +1,7 @@
 // ─── Security: Path Guards ───────────────────────────
 // Phase 9.1 — path traversal, id injection, filename abuse 방어
 import path from 'node:path';
+import os from 'node:os';
 
 const SKILL_ID_RE = /^[a-z0-9][a-z0-9._-]*$/;
 const FILE_NAME_RE = /^[a-zA-Z0-9][a-zA-Z0-9._-]*$/;
@@ -79,4 +80,32 @@ export function safeResolveUnder(baseDir: string, unsafeName: string) {
     const pref = base.endsWith(path.sep) ? base : base + path.sep;
     if (resolved !== base && !resolved.startsWith(pref)) throw forbidden('path_escape');
     return resolved;
+}
+
+/**
+ * Send file path validation — only allow files under JAW_HOME or workingDir.
+ * Prevents arbitrary file exfiltration via /api/telegram/send, /api/channel/send, etc.
+ * @throws 403 path_not_allowed
+ */
+export function assertSendFilePath(filePath: string, workingDir?: string): string {
+    const resolved = path.resolve(filePath);
+
+    // Allow anything under JAW_HOME
+    const jawHome = path.resolve(process.env.JAW_HOME || path.join(process.env.HOME || '', '.cli-jaw'));
+    const homePref = jawHome.endsWith(path.sep) ? jawHome : jawHome + path.sep;
+    if (resolved.startsWith(homePref) || resolved === jawHome) return resolved;
+
+    // Allow files under the current workingDir (agent-generated files)
+    if (workingDir) {
+        const wd = path.resolve(workingDir);
+        const wdPref = wd.endsWith(path.sep) ? wd : wd + path.sep;
+        if (resolved.startsWith(wdPref) || resolved === wd) return resolved;
+    }
+
+    // Allow files under OS temp dir (TTS output, agent temp files)
+    const tmpDir = path.resolve(os.tmpdir());
+    const tmpPref = tmpDir.endsWith(path.sep) ? tmpDir : tmpDir + path.sep;
+    if (resolved.startsWith(tmpPref) || resolved === tmpDir) return resolved;
+
+    throw forbidden('path_not_allowed');
 }
