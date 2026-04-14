@@ -36,12 +36,14 @@ test('ACP unexpected exit is warned', () => {
         'spawn.ts must log unexpected ACP exits (code≠0 && !killReason)');
 });
 
-test('unexpected exit check is before killReason consumption', () => {
+test('unexpected exit check uses consumed killReason to detect truly unexpected exits', () => {
     const exitHandler = spawnSrc.slice(spawnSrc.indexOf("acp.on('exit'"));
-    const unexpectedIdx = exitHandler.indexOf('acp:unexpected-exit');
     const consumeIdx = exitHandler.indexOf('consumeKillReason(');
-    assert.ok(unexpectedIdx < consumeIdx,
-        'unexpected exit check must come before killReason is consumed via consumeKillReason');
+    const unexpectedIdx = exitHandler.indexOf('acp:unexpected-exit');
+    assert.ok(consumeIdx > 0, 'consumeKillReason should exist in exit handler');
+    assert.ok(unexpectedIdx > 0, 'unexpected-exit warning should exist');
+    assert.ok(consumeIdx < unexpectedIdx,
+        'consumeKillReason must come before unexpected-exit check (only warns when no kill reason)');
 });
 
 // ─── stderr_activity event ───────────────────────────
