@@ -173,6 +173,25 @@
     white-space: pre-wrap;
     max-width: 75%;
     animation: msgEnterUser 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    gap: var(--space-2);
+}
+
+.user-icon {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    font-size: 18px;
+    line-height: 24px;
+    text-align: center;
+    margin-top: 2px;
+    transition: opacity var(--duration-fast);
+}
+
+.user-body {
+    flex: 1;
+    min-width: 0;
+    position: relative;
 }
 
 .msg-agent {

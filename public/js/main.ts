@@ -49,6 +49,7 @@ import {
 import { state } from './state.js';
 import { loadCliRegistry, getCliKeys } from './constants.js';
 import { initAppName } from './features/appname.js';
+import { initAvatar } from './features/avatar.js';
 import { initSidebar, toggleLeft, toggleRight } from './features/sidebar.js';
 import { initTheme } from './features/theme.js';
 import { initGestures } from './features/gesture.js';
@@ -431,6 +432,7 @@ async function bootstrap(): Promise<void> {
     loadEmployees();
     initHeartbeatBadge();
     initAppName();
+    initAvatar();
     initSidebar();
     initMsgCopy();
     initGestures();
