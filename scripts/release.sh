@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # release.sh — 빌드 + 버전업 + npm publish + GitHub Release 한 번에 처리
+# Auto-detects the latest npm version to avoid version conflicts.
 set -e
 
 echo "🦈 cli-jaw release script"
@@ -7,6 +8,18 @@ echo "========================="
 
 # cd to project root (parent of scripts/)
 cd "$(dirname "$0")/.."
+
+# Detect current npm latest
+NPM_LATEST=$(npm view cli-jaw dist-tags.latest 2>/dev/null || echo "0.0.0")
+PKG_VERSION=$(node -p "require('./package.json').version")
+echo "📡 npm latest:   $NPM_LATEST"
+echo "📦 package.json: $PKG_VERSION"
+
+# Sync package.json to npm latest if behind
+if [ "$PKG_VERSION" != "$NPM_LATEST" ] && [ -n "$NPM_LATEST" ] && [ "$NPM_LATEST" != "0.0.0" ]; then
+  echo "⚠️  package.json ($PKG_VERSION) differs from npm ($NPM_LATEST). Syncing..."
+  npm version "$NPM_LATEST" --no-git-tag-version --allow-same-version
+fi
 
 # 1. TypeScript 빌드
 echo "📦 Building backend (tsc)..."

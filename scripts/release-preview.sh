@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
 # release-preview.sh — build + preview semver bump + npm publish --tag preview
+# Auto-detects the latest npm version and creates a preview on top of it.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-BASE_VERSION="${1:-1.5.0}"
+# Auto-detect base version from npm registry (latest tag)
+NPM_LATEST=$(npm view cli-jaw dist-tags.latest 2>/dev/null || echo "")
+PKG_VERSION=$(node -p "require('./package.json').version")
+
+# Use explicit arg > npm latest > package.json
+BASE_VERSION="${1:-${NPM_LATEST:-$PKG_VERSION}}"
+# Strip any existing prerelease suffix (e.g., 1.6.9-preview.xxx → 1.6.9)
+BASE_VERSION=$(echo "$BASE_VERSION" | sed 's/-.*//')
+
 PREID="${PREID:-preview}"
 STAMP="${STAMP:-$(date +%Y%m%d%H%M%S)}"
 
 if [[ ! "$BASE_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  echo "❌ BASE_VERSION must look like 1.4.0"
+  echo "❌ BASE_VERSION must look like 1.6.9 (got: $BASE_VERSION)"
   exit 1
 fi
 
@@ -17,6 +26,8 @@ PREVIEW_VERSION="${BASE_VERSION}-${PREID}.${STAMP}"
 
 echo "🦈 cli-jaw preview release script"
 echo "================================="
+echo "npm latest:      ${NPM_LATEST:-'(not found)'}"
+echo "package.json:    $PKG_VERSION"
 echo "Base version:    $BASE_VERSION"
 echo "Preview version: $PREVIEW_VERSION"
 echo "Dist-tag:        preview"
