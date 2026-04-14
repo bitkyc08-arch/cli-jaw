@@ -1,8 +1,16 @@
 <!DOCTYPE html>
-<html lang="ko" data-theme="dark">
+<html lang="ko">
 
 <head>
     <meta charset="UTF-8">
+    <script>
+      // Resolve theme before CSS paints — prevents FOUC and wrong Mermaid theme
+      (function() {
+        var t = localStorage.getItem('theme') ||
+          (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', t);
+      })();
+    </script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <meta name="theme-color" content="#22d3ee">
     <meta name="mobile-web-app-capable" content="yes">
