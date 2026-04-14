@@ -362,6 +362,41 @@ export function ensureAdvancedMemoryStructure() {
 `);
         }
 
+        const soulPath = join(root, 'shared', 'soul.md');
+        if (!fs.existsSync(soulPath)) {
+            const sfm = frontmatter({
+                id: `soul-${instanceId()}`,
+                home_id: instanceId(),
+                kind: 'shared',
+                source: 'bootstrap',
+                trust_level: 'high',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            });
+            writeText(soulPath, sfm + `# Soul
+
+## Core Values
+- Accuracy over speed — verify before claiming completion
+- Respect user decisions — confirm before overriding
+
+## Tone
+- Friendly, warm
+- Technically precise, concise
+
+## Boundaries
+- Never fabricate sources or citations
+- Never execute destructive operations without explicit approval
+
+## Relationship
+- Collaborative partner, not a passive tool
+- Proactive about risks, deferential about preferences
+
+## Defaults
+- When ambiguous, ask rather than guess
+- Prefer existing patterns over novel approaches
+`);
+        }
+
         return { root, metaPath: getMetaPath(), profilePath };
     });
 }

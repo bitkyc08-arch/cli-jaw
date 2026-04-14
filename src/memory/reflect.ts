@@ -16,12 +16,14 @@ import {
     listMarkdownFiles,
 } from './shared.js';
 import { instanceId } from '../core/instance.js';
+import { applySoulUpdate, type SoulSection } from './identity.js';
 
 type ReflectionTarget =
     | 'shared/preferences.md'
     | 'shared/decisions.md'
     | 'shared/projects.md'
-    | 'procedures/runbooks.md';
+    | 'procedures/runbooks.md'
+    | 'shared/soul.md';
 
 type RetainFact = {
     text: string;
@@ -62,6 +64,21 @@ function classifyLine(line: string): ReflectionTarget | null {
     return null;
 }
 
+const IDENTITY_KEYWORDS = /\b(always|never|prefer|tone|style|value|principle|boundary|relationship|trust)\b/i;
+
+function isIdentityRelevant(text: string): boolean {
+    return IDENTITY_KEYWORDS.test(text);
+}
+
+function classifyIdentitySection(text: string): SoulSection {
+    const lower = text.toLowerCase();
+    if (/never|boundary|forbidden|prohibit/.test(lower)) return 'Boundaries';
+    if (/tone|style|concise|verbose|friendly/.test(lower)) return 'Tone';
+    if (/value|principle|priority|accuracy/.test(lower)) return 'Core Values';
+    if (/relationship|partner|trust|collaborate/.test(lower)) return 'Relationship';
+    return 'Defaults';
+}
+
 function extractRetainFacts(files: string[]): RetainFact[] {
     const facts: RetainFact[] = [];
 
@@ -83,6 +100,8 @@ function extractRetainFacts(files: string[]): RetainFact[] {
             const target = classifyLine(trimmed);
             if (target) {
                 facts.push({ text: trimmed, target, sourceFile: file, date });
+            } else if (isIdentityRelevant(trimmed)) {
+                facts.push({ text: trimmed, target: 'shared/soul.md', sourceFile: file, date });
             }
         }
     }
@@ -120,6 +139,20 @@ function writeReflectionTargets(
         extractedFacts += facts.length;
 
         if (opts.dryRun) continue;
+
+        // Soul target: route through identity gate instead of direct write
+        if (target === 'shared/soul.md') {
+            for (const fact of facts) {
+                applySoulUpdate({
+                    section: classifyIdentitySection(fact.text),
+                    action: 'add',
+                    content: fact.text,
+                    reason: `reflection:${fact.sourceFile}`,
+                    confidence: 'medium',
+                });
+            }
+            continue;
+        }
 
         const existing = fs.existsSync(filePath) ? safeReadFile(filePath) : '';
         const existingLower = existing.toLowerCase();

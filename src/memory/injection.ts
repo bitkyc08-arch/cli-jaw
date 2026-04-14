@@ -4,7 +4,7 @@
  * Single source of truth for memory injection scoping.
  * Role-based: boss (full), employee (profile only), flush (none).
  */
-import { getAdvancedMemoryStatus, loadAdvancedProfileSummary, buildTaskSnapshot, searchAdvancedMemory } from './runtime.js';
+import { getAdvancedMemoryStatus, loadAdvancedProfileSummary, loadSoulSummary, buildTaskSnapshot, searchAdvancedMemory } from './runtime.js';
 import * as memory from './memory.js';
 
 export type MemoryInjectionRole = 'boss' | 'employee' | 'subagent' | 'flush' | 'read_only_tool';
@@ -25,7 +25,9 @@ export function buildMemoryInjection(opts: BuildMemoryInjectionOptions) {
 
     const includeProfile = opts.allowProfile !== false && opts.role !== 'flush';
     const includeSnapshot = opts.allowSnapshot !== false && opts.role === 'boss';
+    const includeSoul = opts.role === 'boss';
     const profile = includeProfile ? loadAdvancedProfileSummary(800) : '';
+    const soul = includeSoul ? loadSoulSummary(1000) : '';
     const snapshot = includeSnapshot
         ? (opts.providedSnapshot !== undefined && opts.providedSnapshot !== ''
             ? opts.providedSnapshot
@@ -35,18 +37,22 @@ export function buildMemoryInjection(opts: BuildMemoryInjectionOptions) {
     return {
         mode: 'advanced' as const,
         profile,
+        soul,
         snapshot,
-        text: renderMemoryInjectionBlock({ role: opts.role, profile, snapshot }),
+        text: renderMemoryInjectionBlock({ role: opts.role, profile, soul, snapshot }),
     };
 }
 
-function renderMemoryInjectionBlock(opts: { role: MemoryInjectionRole; profile: string; snapshot: string }) {
+function renderMemoryInjectionBlock(opts: { role: MemoryInjectionRole; profile: string; soul?: string; snapshot: string }) {
     const parts: string[] = ['---', '## Memory Runtime'];
     parts.push('- indexed memory context is active');
     parts.push(`- injection role: ${opts.role}`);
     parts.push('- use task snapshot and profile context before assuming missing memory');
     if (opts.profile) {
         parts.push('', '## Profile Context', opts.profile);
+    }
+    if (opts.soul) {
+        parts.push('', '## Soul & Identity', opts.soul);
     }
     if (opts.snapshot) {
         parts.push('', opts.snapshot);

@@ -129,6 +129,19 @@ export function loadAdvancedProfileSummary(maxChars = 800) {
     return trimmed.length > maxChars ? trimmed.slice(0, maxChars) + '\n...(truncated)' : trimmed;
 }
 
+export function loadSoulSummary(maxChars = 1000): string {
+    const file = join(getAdvancedMemoryDir(), 'shared', 'soul.md');
+    if (!fs.existsSync(file)) return '';
+    const { body } = parseMarkdownFileLight(safeReadFile(file));
+    const trimmed = body.trim();
+    if (!trimmed) return '';
+    return trimmed.length > maxChars ? trimmed.slice(0, maxChars) + '\n...(truncated)' : trimmed;
+}
+
+export function hasSoulFile(): boolean {
+    return fs.existsSync(join(getAdvancedMemoryDir(), 'shared', 'soul.md'));
+}
+
 function diversifyHits(
     hits: Array<{ kind: string; relpath: string; [k: string]: any }>,
     opts: { maxPerKind?: Record<string, number>; maxPerRelpath?: number } = {},
