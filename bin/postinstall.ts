@@ -182,7 +182,6 @@ const CLI_PACKAGES: { bin: string; pkg: string; brew?: string }[] = [
     { bin: 'claude', pkg: '@anthropic-ai/claude-code' },
     { bin: 'codex', pkg: '@openai/codex' },
     { bin: 'gemini', pkg: '@google/gemini-cli', brew: 'gemini-cli' },
-    { bin: 'copilot', pkg: 'copilot' },
     { bin: 'opencode', pkg: 'opencode-ai' },
 ];
 
@@ -221,6 +220,50 @@ function buildInstallCmd(mgr: PkgMgr, pkg: string, brewFormula?: string): string
     }
 }
 
+/** Check if a package is installed via a specific manager (independent of PATH order). */
+function isInstalledVia(mgr: PkgMgr, pkg: string, brewFormula?: string): boolean {
+    try {
+        switch (mgr) {
+            case 'npm':
+                execSync(`npm ls -g ${pkg} --depth=0`, { stdio: 'pipe', timeout: 5000 });
+                return true;
+            case 'bun': {
+                const bunGlobal = path.join(home, '.bun', 'install', 'global', 'node_modules', pkg.split('/').pop()!);
+                return fs.existsSync(bunGlobal);
+            }
+            case 'brew':
+                execSync(`brew list --formula ${brewFormula || pkg}`, { stdio: 'pipe', timeout: 5000 });
+                return true;
+        }
+    } catch { return false; }
+}
+
+function buildUninstallCmd(mgr: PkgMgr, pkg: string, brewFormula?: string): string {
+    switch (mgr) {
+        case 'npm':  return `npm uninstall -g ${pkg}`;
+        case 'bun':  return `bun remove -g ${pkg}`;
+        case 'brew': return `brew uninstall ${brewFormula || pkg}`;
+    }
+}
+
+/** Remove duplicate installations — keep the active one (PATH winner), remove the rest. */
+function deduplicateCliTool(bin: string, pkg: string, brew?: string): void {
+    const active = detectInstaller(bin);
+    if (!active) return; // not installed at all
+    const others: PkgMgr[] = (['bun', 'npm', 'brew'] as const).filter(m => m !== active);
+    for (const mgr of others) {
+        if (!isInstalledVia(mgr, pkg, brew)) continue;
+        const cmd = buildUninstallCmd(mgr, pkg, brew);
+        console.log(`[jaw:init] 🧹 ${bin}: removing duplicate from ${mgr} (active: ${active})`);
+        try {
+            execSync(cmd, { stdio: 'pipe', timeout: 30000 });
+            console.log(`[jaw:init]    removed ${pkg} from ${mgr}`);
+        } catch {
+            console.warn(`[jaw:init]    ⚠️  failed to remove ${pkg} from ${mgr} — remove manually: ${cmd}`);
+        }
+    }
+}
+
 export async function installCliTools(opts: InstallOpts = {}) {
     const defaultMgr = detectDefaultPkgMgr();
 
@@ -254,6 +297,8 @@ export async function installCliTools(opts: InstallOpts = {}) {
                 console.error(`[jaw:init] ⚠️  ${bin}: auto-install failed — install manually: npm i -g ${pkg}`);
             }
         }
+        // Clean up duplicate installations from other package managers
+        deduplicateCliTool(bin, pkg, brew);
     }
 }
 
