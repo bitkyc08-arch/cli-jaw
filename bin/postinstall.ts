@@ -178,33 +178,72 @@ export async function installOfficeCli(opts: InstallOpts = {}) {
     });
 }
 
-const CLI_PACKAGES = [
+const CLI_PACKAGES: { bin: string; pkg: string; brew?: string }[] = [
     { bin: 'claude', pkg: '@anthropic-ai/claude-code' },
     { bin: 'codex', pkg: '@openai/codex' },
-    { bin: 'gemini', pkg: '@google/gemini-cli' },
+    { bin: 'gemini', pkg: '@google/gemini-cli', brew: 'gemini-cli' },
     { bin: 'copilot', pkg: 'copilot' },
     { bin: 'opencode', pkg: 'opencode-ai' },
 ];
 
-export async function installCliTools(opts: InstallOpts = {}) {
-    const hasBun = (() => { try { execSync('bun --version', { stdio: 'pipe' }); return true; } catch { return false; } })();
-    const installGlobal = hasBun ? 'bun install -g' : 'npm i -g';
-    const installLabel = hasBun ? 'bun' : 'npm';
+type PkgMgr = 'bun' | 'npm' | 'brew';
 
-    console.log(`[jaw:init] installing CLI tools @latest (using ${installLabel})...`);
-    for (const { bin, pkg } of CLI_PACKAGES) {
+/** Detect which package manager originally installed a binary. */
+function detectInstaller(binName: string): PkgMgr | null {
+    try {
+        const binPath = execSync(`${PATH_LOOKUP_CMD} ${binName}`, {
+            encoding: 'utf8', stdio: 'pipe', timeout: 3000,
+        }).trim().split(/\r?\n/)[0]!;
+        if (binPath.includes('/.bun/')) return 'bun';
+        if (binPath.includes('/Cellar/') || binPath.includes('/homebrew/')) return 'brew';
+        // npm: check against npm global prefix or nvm paths
+        try {
+            const npmPrefix = execSync('npm prefix -g', { encoding: 'utf8', stdio: 'pipe', timeout: 3000 }).trim();
+            if (binPath.startsWith(npmPrefix)) return 'npm';
+        } catch { /* npm unavailable */ }
+        if (binPath.includes('/.nvm/') || binPath.includes('/nodejs/')) return 'npm';
+        return null;
+    } catch {
+        return null; // binary not found
+    }
+}
+
+/** Detect the default package manager for fresh installs. */
+function detectDefaultPkgMgr(): Exclude<PkgMgr, 'brew'> {
+    try { execSync('bun --version', { stdio: 'pipe' }); return 'bun'; } catch { return 'npm'; }
+}
+
+function buildInstallCmd(mgr: PkgMgr, pkg: string, brewFormula?: string): string {
+    switch (mgr) {
+        case 'brew': return `brew upgrade ${brewFormula || pkg} 2>/dev/null || brew install ${brewFormula || pkg}`;
+        case 'bun':  return `bun install -g ${pkg}@latest`;
+        case 'npm':  return `npm i -g ${pkg}@latest`;
+    }
+}
+
+export async function installCliTools(opts: InstallOpts = {}) {
+    const defaultMgr = detectDefaultPkgMgr();
+
+    console.log('[jaw:init] installing CLI tools @latest...');
+    for (const { bin, pkg, brew } of CLI_PACKAGES) {
         if (opts.dryRun) { console.log(`  [dry-run] would install ${pkg}`); continue; }
         if (opts.interactive && opts.ask) {
             const answer = await opts.ask(`Install ${bin} (${pkg})? [y/N]`, 'n');
             if (answer.toLowerCase() !== 'y') { console.log(`  ⏭️  skipped ${bin}`); continue; }
         }
-        console.log(`[jaw:init] 📦 ${installGlobal} ${pkg}@latest ...`);
+        // Respect the package manager that originally installed this tool
+        const existing = detectInstaller(bin);
+        const mgr = existing || defaultMgr;
+        const cmd = buildInstallCmd(mgr, pkg, brew);
+        const tag = existing ? `update via ${mgr}` : `fresh install via ${mgr}`;
+        console.log(`[jaw:init] 📦 ${bin} (${tag}): ${cmd}`);
         try {
-            execSync(`${installGlobal} ${pkg}@latest`, { stdio: 'pipe', timeout: 180000 });
+            execSync(cmd, { stdio: 'pipe', timeout: 180000 });
             console.log(`[jaw:init] ✅ ${bin} installed`);
         } catch {
-            if (hasBun) {
-                console.log(`[jaw:init] ⚠️  bun failed, trying npm i -g ${pkg}@latest ...`);
+            // Fallback: if preferred manager failed and it wasn't npm, try npm
+            if (mgr !== 'npm') {
+                console.log(`[jaw:init] ⚠️  ${mgr} failed, trying npm i -g ${pkg}@latest ...`);
                 try {
                     execSync(`npm i -g ${pkg}@latest`, { stdio: 'pipe', timeout: 180000 });
                     console.log(`[jaw:init] ✅ ${bin} installed (via npm fallback)`);
