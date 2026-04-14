@@ -64,12 +64,12 @@ function syncCliOptionSelects(settings: SettingsData | null = null): void {
         if (Array.from(selCli.options).some(o => o.value === current)) selCli.value = current;
     }
 
-    const memCli = document.getElementById('memCli') as HTMLSelectElement | null;
-    if (memCli) {
-        const current = settings?.memory?.cli || memCli.value || '';
-        memCli.innerHTML = '<option value="">(active CLI)</option>' +
+    const flushCli = document.getElementById('flushCli') as HTMLSelectElement | null;
+    if (flushCli) {
+        const current = settings?.memory?.cli || flushCli.value || '';
+        flushCli.innerHTML = '<option value="">(active CLI)</option>' +
             cliKeys.map(cli => `<option value="${escapeHtml(cli)}">${escapeHtml(cli)}</option>`).join('');
-        if (Array.from(memCli.options).some(o => o.value === current)) memCli.value = current;
+        if (Array.from(flushCli.options).some(o => o.value === current)) flushCli.value = current;
     }
 }
 
@@ -406,8 +406,9 @@ function updateFlushBadge(): void {
     if (!badge) return;
     const cli = (document.getElementById('flushCli') as HTMLSelectElement)?.value || '';
     const model = (document.getElementById('flushModel') as HTMLSelectElement)?.value || '';
+    const effectiveCli = cli || (document.getElementById('selCli') as HTMLSelectElement)?.value || '';
     const parts: string[] = [];
-    if (cli) parts.push(cli);
+    if (effectiveCli) parts.push(cli ? effectiveCli : `${effectiveCli}*`);
     if (model && model !== 'default') parts.push(model);
     badge.textContent = parts.length ? `(${parts.join(' / ')})` : '';
 }

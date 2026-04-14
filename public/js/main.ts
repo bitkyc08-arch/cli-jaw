@@ -388,8 +388,6 @@ document.getElementById('memTabBtnFiles')?.addEventListener('click', () => switc
 document.getElementById('memOn')?.addEventListener('click', () => setMemEnabled(true));
 document.getElementById('memOff')?.addEventListener('click', () => setMemEnabled(false));
 document.getElementById('memFlushEvery')?.addEventListener('change', saveMemSettings);
-document.getElementById('memCli')?.addEventListener('change', saveMemSettings);
-document.getElementById('memModel')?.addEventListener('change', saveMemSettings);
 document.getElementById('memRetention')?.addEventListener('change', saveMemSettings);
 document.getElementById('memFlushLang')?.addEventListener('change', saveMemSettings);
 document.getElementById('memFlushNowBtn')?.addEventListener('click', triggerFlushNow);

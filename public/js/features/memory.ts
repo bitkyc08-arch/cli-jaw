@@ -12,8 +12,6 @@ interface MemoryFile {
 interface MemoryData {
     enabled: boolean;
     flushEvery: number;
-    cli?: string;
-    model?: string;
     retentionDays: number;
     flushLanguage?: string;
     path: string;
@@ -297,14 +295,10 @@ export async function setMemEnabled(v: boolean): Promise<void> {
 
 export async function saveMemSettings(): Promise<void> {
     const flushEl = $('memFlushEvery') as HTMLSelectElement | null;
-    const cliEl = $('memCli') as HTMLSelectElement | null;
-    const modelEl = $('memModel') as HTMLSelectElement | null;
     const retEl = $('memRetention') as HTMLSelectElement | null;
     const langEl = $('memFlushLang') as HTMLSelectElement | null;
     await apiJson('/api/memory-files/settings', 'PUT', {
         flushEvery: +(flushEl?.value || 10),
-        cli: cliEl?.value || '',
-        model: modelEl?.value || '',
         retentionDays: +(retEl?.value || 30),
         flushLanguage: langEl?.value || 'en',
     });
