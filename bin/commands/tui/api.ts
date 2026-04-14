@@ -2,10 +2,11 @@
  * API helpers shared across TUI modules.
  */
 import { APP_VERSION } from '../../../src/core/config.js';
+import { getCliAuthToken, authHeaders } from '../../../src/cli/api-auth.js';
 import { cliColor, cliLabel, c, type TuiContext } from './types.js';
 
 export async function apiJson(ctx: TuiContext, path: string, init: Record<string, any> = {}, timeoutMs = 10000) {
-    const headers: Record<string, string> = { ...(init.headers || {}) };
+    const headers: Record<string, string> = { ...authHeaders(), ...(init.headers || {}) };
     const req: Record<string, any> = { ...init, headers, signal: AbortSignal.timeout(timeoutMs) };
     if (req.body && typeof req.body !== 'string') {
         req.body = JSON.stringify(req.body);
@@ -22,7 +23,8 @@ export async function apiJson(ctx: TuiContext, path: string, init: Record<string
 
 export async function refreshInfo(ctx: TuiContext): Promise<void> {
     try {
-        const r = await fetch(`${ctx.apiUrl}/api/settings`, { signal: AbortSignal.timeout(2000) });
+        await getCliAuthToken(ctx.apiUrl);
+        const r = await fetch(`${ctx.apiUrl}/api/settings`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
         if (r.ok) {
             const res = await r.json() as Record<string, any>;
             const s = res.data || res;
@@ -31,7 +33,7 @@ export async function refreshInfo(ctx: TuiContext): Promise<void> {
             if (s.locale) ctx.runtimeLocale = s.locale;
             if (s.tui && typeof s.tui === 'object') ctx.tuiConfig = { ...ctx.tuiConfig, ...s.tui };
         }
-        const sr = await fetch(`${ctx.apiUrl}/api/session`, { signal: AbortSignal.timeout(2000) });
+        const sr = await fetch(`${ctx.apiUrl}/api/session`, { headers: authHeaders(), signal: AbortSignal.timeout(2000) });
         if (sr.ok) {
             const ses = await sr.json() as Record<string, any>;
             const sd = ses.data || ses;

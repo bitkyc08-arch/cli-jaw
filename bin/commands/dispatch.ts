@@ -3,6 +3,7 @@
 // Dispatches a jaw employee via the server API (pipe-mode compatible).
 
 import { loadSettings, getServerUrl } from '../../src/core/config.js';
+import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 
 loadSettings();
 
@@ -31,9 +32,10 @@ if (!agent || !task) {
     process.exit(1);
 }
 
+await getCliAuthToken(PORT);
 try {
     console.log(`🚀 Dispatching to ${agent}...`);
-    const res = await fetch(`${BASE}/api/orchestrate/dispatch`, {
+    const res = await cliFetch(`${BASE}/api/orchestrate/dispatch`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',

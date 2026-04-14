@@ -3,13 +3,15 @@
  */
 import { parseArgs } from 'node:util';
 import { getServerUrl, JAW_HOME, loadSettings } from '../../src/core/config.js';
+import { getCliAuthToken, authHeaders } from '../../src/cli/api-auth.js';
 
 loadSettings();
 const SERVER = getServerUrl();
+await getCliAuthToken();
 const sub = process.argv[3];
 
 async function api(method: string, path: string, body?: any) {
-    const opts: Record<string, any> = { method, headers: { 'Content-Type': 'application/json' } };
+    const opts: Record<string, any> = { method, headers: { ...authHeaders(), 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
     const resp = await fetch(`${SERVER}/api/jaw-memory${path}`, opts);
     if (!resp.ok) {

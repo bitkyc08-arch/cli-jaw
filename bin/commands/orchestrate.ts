@@ -3,6 +3,7 @@
 // Calls the running server's API so WS broadcast reaches all clients in real-time.
 
 import { settings, loadSettings, getServerUrl } from '../../src/core/config.js';
+import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 
 loadSettings();  // ensure settings.port is loaded from this instance's settings.json
 
@@ -19,10 +20,11 @@ if (!valid.includes(target)) {
   process.exit(1);
 }
 
+await getCliAuthToken(PORT);
 try {
   // Reset: return to IDLE from any state
   if (target === 'RESET') {
-    const res = await fetch(`${BASE}/api/orchestrate/reset`, { method: 'POST' });
+    const res = await cliFetch(`${BASE}/api/orchestrate/reset`, { method: 'POST' });
     const body = await res.json() as any;
     if (!res.ok) {
       console.error(body.error || `Failed: ${res.status}`);
@@ -33,7 +35,7 @@ try {
   }
 
   // State transition: P|A|B|C|D
-  const res = await fetch(`${BASE}/api/orchestrate/state`, {
+  const res = await cliFetch(`${BASE}/api/orchestrate/state`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ state: target }),

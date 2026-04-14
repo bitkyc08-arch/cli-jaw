@@ -6,6 +6,7 @@
 import { parseArgs } from 'node:util';
 import { createInterface } from 'node:readline';
 import { getServerUrl } from '../../src/core/config.js';
+import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
@@ -29,7 +30,7 @@ function printHelp() {
 }
 
 async function apiJson(baseUrl: string, path: string, init: Record<string, any> = {}) {
-    const res = await fetch(baseUrl + path, { ...init, signal: AbortSignal.timeout(15000) });
+    const res = await cliFetch(baseUrl + path, { ...init, signal: AbortSignal.timeout(15000) });
     const text = await res.text();
     let data: Record<string, any> = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
@@ -57,6 +58,7 @@ const hasConfirm = values.yes || process.argv.slice(3).includes('confirm');
 
 // Check server is running
 try {
+    await getCliAuthToken(values.port as string);
     await fetch(`${baseUrl}/api/session`, { signal: AbortSignal.timeout(2000) });
 } catch {
     console.error(`  ❌ 서버에 연결할 수 없습니다 (localhost:${values.port})`);

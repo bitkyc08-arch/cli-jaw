@@ -6,9 +6,11 @@ import { parseArgs } from 'node:util';
 import { rmSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { getServerUrl, JAW_HOME, deriveCdpPort, loadSettings } from '../../src/core/config.js';
+import { getCliAuthToken, authHeaders } from '../../src/cli/api-auth.js';
 
 loadSettings();
 const SERVER = getServerUrl();
+await getCliAuthToken();
 const sub = process.argv[3];
 
 // ─── ANSI ────────────────────────────────────
@@ -19,7 +21,7 @@ const c = {
 };
 
 async function api(method: string, path: string, body?: any) {
-    const opts: Record<string, any> = { method, headers: { 'Content-Type': 'application/json' } };
+    const opts: Record<string, any> = { method, headers: { ...authHeaders(), 'Content-Type': 'application/json' } };
     if (body) opts.body = JSON.stringify(body);
     const resp = await fetch(`${SERVER}/api/browser${path}`, opts);
     if (!resp.ok) {

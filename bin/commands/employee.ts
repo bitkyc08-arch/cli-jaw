@@ -5,6 +5,7 @@
  */
 import { parseArgs } from 'node:util';
 import { getServerUrl } from '../../src/core/config.js';
+import { getCliAuthToken } from '../../src/cli/api-auth.js';
 
 const sub = String(process.argv[3] || '').toLowerCase();
 const isHelpSubcommand = sub === '--help' || sub === '-h' || sub === 'help';
@@ -34,7 +35,9 @@ async function apiJson(baseUrl: string, path: string, init: Record<string, any> 
         headers['Content-Type'] = 'application/json';
         body = JSON.stringify(body);
     }
-    const res = await fetch(baseUrl + path, { ...init, headers, body, signal: AbortSignal.timeout(10000) });
+    const { authHeaders } = await import('../../src/cli/api-auth.js');
+    const mergedHeaders = { ...authHeaders(), ...headers };
+    const res = await fetch(baseUrl + path, { ...init, headers: mergedHeaders, body, signal: AbortSignal.timeout(10000) });
     const text = await res.text();
     let data: Record<string, any> = {};
     try { data = text ? JSON.parse(text) : {}; } catch { data = { raw: text }; }
@@ -48,6 +51,7 @@ if (values.help || !sub || isHelpSubcommand) {
 }
 
 const baseUrl = getServerUrl(values.port as string);
+await getCliAuthToken(values.port as string);
 
 switch (sub) {
     case 'reset': {
