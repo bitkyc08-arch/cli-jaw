@@ -202,7 +202,7 @@ function renderFilePreview(): void {
 }
 
 export async function clearChat(): Promise<void> {
-    apiFire('/api/clear', 'POST');
+    // UI-only clear — do NOT call /api/clear (it deletes DB messages)
     cancelPostRender();
     getVirtualScroll().clear();
     const chatEl = document.getElementById('chatMessages');

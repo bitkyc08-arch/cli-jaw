@@ -1,6 +1,6 @@
 import { broadcast } from './bus.js';
 import { settings } from './config.js';
-import { clearMessages, getSession, updateSession } from './db.js';
+import { db, clearMessages, clearMessagesScoped, getSession, updateSession } from './db.js';
 
 export type MainSessionRecord = {
     active_cli?: string | null;
@@ -91,11 +91,20 @@ export function syncMainSessionToSettings(prevCli: string | null = null): MainSe
     return row;
 }
 
+// Atomic: delete messages + update session in one transaction
+const clearMainTx = db.transaction((row: MainSessionRow) => {
+    if (row.workingDir && row.workingDir !== '~') {
+        clearMessagesScoped.run(row.workingDir);
+    } else {
+        clearMessages.run();
+    }
+    writeMainSessionRow(row);
+});
+
 export function clearMainSessionState(): MainSessionRow {
-    clearMessages.run();
     const session = getSession() as MainSessionRecord;
     const row = buildClearedSessionRow(settings, session);
-    writeMainSessionRow(row);
+    clearMainTx(row);
     broadcast('clear', {});
     return row;
 }

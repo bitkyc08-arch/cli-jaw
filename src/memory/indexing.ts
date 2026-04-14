@@ -123,6 +123,7 @@ export function getIndexDb() {
     ensureDir(getAdvancedMemoryDir());
     const db = new Database(getAdvancedIndexDbPath());
     db.pragma('journal_mode = WAL');
+    db.pragma('busy_timeout = 3000');
     db.exec(`
         CREATE TABLE IF NOT EXISTS chunks (
             id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -91,7 +91,7 @@ try {
 } catch (e) { console.error(`  ⚠️  MCP 동기화 실패: ${(e as Error).message}`); }
 
 try {
-    await apiJson(baseUrl, '/api/clear', { method: 'POST' });
+    await apiJson(baseUrl, '/api/session/reset', { method: 'POST' });
     results.push('세션');
 } catch (e) { console.error(`  ⚠️  세션 초기화 실패: ${(e as Error).message}`); }
 

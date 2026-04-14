@@ -264,6 +264,8 @@ export function connect(): void {
             getVirtualScroll().clear();
             const el = document.getElementById('chatMessages');
             if (el) el.innerHTML = '';
+            // Intentional clear — also wipe IndexedDB cache
+            import('./features/idb-cache.js').then(m => m.clearCache()).catch(() => {});
         } else if (msg.type === 'session_reset') {
             addSystemMsg(`${ICONS.refresh} Session reset — history preserved`, 'tool-activity');
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
@@ -278,7 +280,7 @@ export function connect(): void {
     state.ws.onopen = () => {
         console.log('[ws] connected');
         const now = Date.now();
-        const skipReload = now - lastLoadTs < 3000;
+        const skipReload = now - lastLoadTs < 10000;
         import('./ui.js').then(async m => {
             m.cleanupToolActivity();
             if (!skipReload) {

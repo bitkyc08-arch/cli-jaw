@@ -11,9 +11,21 @@ function ensureDbDirExists(dbPath: string) {
     fs.mkdirSync(dbDir, { recursive: true });
 }
 
+function checkOrphanedWal(dbPath: string) {
+    const walPath = dbPath + '-wal';
+    const shmPath = dbPath + '-shm';
+    if (!fs.existsSync(dbPath) && (fs.existsSync(walPath) || fs.existsSync(shmPath))) {
+        console.error('[db] ⚠️  WARNING: WAL/SHM files exist without main DB. Cleaning orphaned files.');
+        try { fs.unlinkSync(walPath); } catch { /* ignore */ }
+        try { fs.unlinkSync(shmPath); } catch { /* ignore */ }
+    }
+}
+
 ensureDbDirExists(DB_PATH);
+checkOrphanedWal(DB_PATH);
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+db.pragma('busy_timeout = 5000');
 
 db.exec(`
     CREATE TABLE IF NOT EXISTS session (
@@ -104,6 +116,7 @@ export const getMessages = db.prepare('SELECT id, role, content, cli, model, too
 export const getMessagesWithTrace = db.prepare('SELECT * FROM messages ORDER BY id ASC');
 export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, created_at FROM messages WHERE working_dir = ? OR working_dir IS NULL ORDER BY id DESC LIMIT ?');
 export const clearMessages = db.prepare('DELETE FROM messages');
+export const clearMessagesScoped = db.prepare('DELETE FROM messages WHERE working_dir = ?');
 export const getMemory = db.prepare('SELECT key, value, source FROM memory ORDER BY updated_at DESC');
 export const upsertMemory = db.prepare(`
     INSERT INTO memory (key, value, source) VALUES (?, ?, ?)
@@ -145,5 +158,15 @@ export const resetOrcState = db.prepare(`
 export const listActiveOrcStates = db.prepare(
     "SELECT id, state, ctx, updated_at FROM orc_state WHERE state != 'IDLE'"
 );
+
+/** Checkpoint WAL and close the database. Call once during graceful shutdown. */
+export function closeDb(): void {
+    try {
+        db.pragma('wal_checkpoint(TRUNCATE)');
+    } catch { /* ignore if already closed */ }
+    try {
+        db.close();
+    } catch { /* ignore */ }
+}
 
 export { db };

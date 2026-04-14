@@ -46,7 +46,7 @@ import {
     APP_VERSION,
 } from './src/core/config.js';
 import {
-    db, getSession, getMessages, getMessagesWithTrace,
+    db, getSession, getMessages, getMessagesWithTrace, closeDb,
 } from './src/core/db.js';
 import {
     initPromptFiles, regenerateB,
@@ -115,6 +115,16 @@ ensureDirs();
 fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
 runMigration(projectRoot);
 loadSettings();
+
+// DB integrity check on startup
+{
+    const result = (db.prepare('PRAGMA quick_check').pluck().get()) as string;
+    if (result !== 'ok') {
+        console.error(`[db] ⚠️  INTEGRITY CHECK FAILED: ${result}`);
+        console.error('[db] Database may be corrupted. Consider restoring from backup.');
+    }
+}
+
 syncMainSessionToSettings();
 try {
     ensureMemoryRuntimeReady();
@@ -133,8 +143,10 @@ initPromptFiles();
 regenerateB();
 
 // Reset stale orchestration state left by unclean shutdown (kill -9, crash)
+// Only reset states older than 15 minutes to avoid wiping active orchestrations
 {
-    const staleRows = listActiveOrcStates.all() as Array<{ id: string; state: string }>;
+    const staleRows = (listActiveOrcStates.all() as Array<{ id: string; state: string; updated_at: string }>)
+        .filter(row => Date.now() - new Date(row.updated_at).getTime() > 15 * 60_000);
     for (const row of staleRows) {
         console.log(`[jaw:startup] resetting stale orc_state(${row.id}): ${row.state} → IDLE`);
         resetState(row.id);
@@ -422,7 +434,14 @@ app.post('/api/stop', requireAuth, (req, res) => {
     ok(res, { killed });
 });
 
+// UI-only screen clear — broadcasts to all clients but does NOT delete messages
 app.post('/api/clear', requireAuth, (_, res) => {
+    broadcast('clear', {});
+    ok(res, { uiOnly: true });
+});
+
+// Explicit session reset — deletes messages (used by /reset confirm, cli-jaw reset)
+app.post('/api/session/reset', requireAuth, (_, res) => {
     clearSessionState();
     ok(res, null);
 });
@@ -475,10 +494,18 @@ const shutdown = async (sig: string) => {
     server.close();
     if (server.closeAllConnections) server.closeAllConnections();
 
+    // Flush WAL and close SQLite before exiting
+    try {
+        closeDb();
+        console.log('[server] database closed');
+    } catch (e) {
+        console.warn('[server] database close failed:', (e as Error).message);
+    }
+
     setTimeout(() => {
         console.warn('[server] force exit (timeout)');
         process.exit(1);
-    }, 3000).unref();
+    }, 5000).unref();
 };
 
 process.once('SIGTERM', () => shutdown('SIGTERM'));

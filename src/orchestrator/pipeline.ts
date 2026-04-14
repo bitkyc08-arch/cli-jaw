@@ -175,8 +175,10 @@ export async function orchestrate(
     let skipPrefix = !!meta._skipPrefix;
 
     // Skip session clear during active PABCD (preserve resume)
+    // Employee sessions are preserved across normal prompts to maintain resume state
     if (!meta._skipClear && state === 'IDLE') {
-        clearAllEmployeeSessions.run();
+        // Removed: clearAllEmployeeSessions.run()
+        // Employee sessions should only be cleared on explicit /reset, not every message
     }
 
     // PABCD entry is explicit only — via `/orchestrate`, `/pabcd`, or LLM tool call.

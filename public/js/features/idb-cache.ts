@@ -74,6 +74,11 @@ function openDB(): Promise<IDBDatabase> {
 
 export async function cacheMessages(messages: CachedMessage[]): Promise<void> {
     try {
+        // Guard: never wipe the cache with an empty array — only a deliberate
+        // clearCache() call should empty the store. This prevents data loss when
+        // the server briefly returns [] during restarts or scope mismatches.
+        if (messages.length === 0) return;
+
         const db = await openDB();
         const tx = db.transaction(STORE, 'readwrite');
         const store = tx.objectStore(STORE);
