@@ -206,6 +206,11 @@ app.use((req, res, next) => {
 const JAW_AUTH_TOKEN = process.env.JAW_AUTH_TOKEN || crypto.randomBytes(32).toString('hex');
 
 function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
+    // Localhost (same-origin Web UI) — allow without token
+    const host = req.hostname || req.ip || '';
+    if (host === 'localhost' || host === '127.0.0.1' || host === '::1') {
+        return next();
+    }
     const token = (req.headers.authorization || '').replace('Bearer ', '');
     if (token !== JAW_AUTH_TOKEN) {
         return res.status(401).json({ error: 'Unauthorized' });
