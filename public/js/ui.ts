@@ -167,7 +167,13 @@ export function showProcessStep(step: ProcessStep): void {
                 : [...state.currentProcessBlock.steps].reverse()
                     .find(s => s.status === 'running' && s.label === step.label);
             if (match) {
-                updateStepStatus(state.currentProcessBlock, match.id, resolvedStatus);
+                // Replace entire step when incoming has detail the running step lacks
+                if (step.detail && !match.detail) {
+                    step.icon = emojiToIcon(step.icon);
+                    replaceStep(state.currentProcessBlock, match.id, { ...step, id: match.id });
+                } else {
+                    updateStepStatus(state.currentProcessBlock, match.id, resolvedStatus);
+                }
                 scrollToBottom();
                 return;
             }
@@ -175,7 +181,12 @@ export function showProcessStep(step: ProcessStep): void {
             const anyRunning = [...state.currentProcessBlock.steps].reverse()
                 .find(s => s.status === 'running');
             if (anyRunning) {
-                updateStepStatus(state.currentProcessBlock, anyRunning.id, resolvedStatus);
+                if (step.detail && !anyRunning.detail) {
+                    step.icon = emojiToIcon(step.icon);
+                    replaceStep(state.currentProcessBlock, anyRunning.id, { ...step, id: anyRunning.id });
+                } else {
+                    updateStepStatus(state.currentProcessBlock, anyRunning.id, resolvedStatus);
+                }
                 scrollToBottom();
                 return;
             }

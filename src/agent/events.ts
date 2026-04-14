@@ -224,6 +224,19 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
         ].join(':');
         if (ctx.seenToolKeys && ctx.seenToolKeys.has(key)) continue;
         if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
+
+        // Resolve running → done/error: replace existing running entry in toolLog
+        if (toolLabel.stepRef && (toolLabel.status === 'done' || toolLabel.status === 'error')) {
+            const runIdx = ctx.toolLog.findIndex(
+                (t: any) => t.stepRef === toolLabel.stepRef && t.status === 'running'
+            );
+            if (runIdx !== -1) {
+                ctx.toolLog[runIdx] = toolLabel;
+                broadcast('agent_tool', { agentId: agentLabel, ...toolLabel });
+                continue;
+            }
+        }
+
         ctx.toolLog.push(toolLabel);
         broadcast('agent_tool', { agentId: agentLabel, ...toolLabel });
     }
