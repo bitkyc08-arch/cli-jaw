@@ -178,10 +178,11 @@ export async function installOfficeCli(opts: InstallOpts = {}) {
     });
 }
 
-const CLI_PACKAGES: { bin: string; pkg: string; brew?: string }[] = [
+const CLI_PACKAGES: { bin: string; pkg: string; brew?: string; forceMgr?: PkgMgr }[] = [
     { bin: 'claude', pkg: '@anthropic-ai/claude-code' },
     { bin: 'codex', pkg: '@openai/codex' },
     { bin: 'gemini', pkg: '@google/gemini-cli', brew: 'gemini-cli' },
+    { bin: 'copilot', pkg: '@github/copilot', forceMgr: 'npm' },
     { bin: 'opencode', pkg: 'opencode-ai' },
 ];
 
@@ -268,15 +269,15 @@ export async function installCliTools(opts: InstallOpts = {}) {
     const defaultMgr = detectDefaultPkgMgr();
 
     console.log('[jaw:init] installing CLI tools @latest...');
-    for (const { bin, pkg, brew } of CLI_PACKAGES) {
+    for (const { bin, pkg, brew, forceMgr } of CLI_PACKAGES) {
         if (opts.dryRun) { console.log(`  [dry-run] would install ${pkg}`); continue; }
         if (opts.interactive && opts.ask) {
             const answer = await opts.ask(`Install ${bin} (${pkg})? [y/N]`, 'n');
             if (answer.toLowerCase() !== 'y') { console.log(`  ⏭️  skipped ${bin}`); continue; }
         }
-        // Respect the package manager that originally installed this tool
-        const existing = detectInstaller(bin);
-        const mgr = existing || defaultMgr;
+        // forceMgr overrides detection (e.g. copilot → always npm)
+        const existing = forceMgr ? null : detectInstaller(bin);
+        const mgr = forceMgr || existing || defaultMgr;
         const cmd = buildInstallCmd(mgr, pkg, brew);
         const tag = existing ? `update via ${mgr}` : `fresh install via ${mgr}`;
         console.log(`[jaw:init] 📦 ${bin} (${tag}): ${cmd}`);
