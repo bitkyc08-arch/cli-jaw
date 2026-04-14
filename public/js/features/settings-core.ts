@@ -365,3 +365,49 @@ export async function saveActiveCliSettings(): Promise<void> {
     if (effortEl && !effortEl.disabled) overrides[cli].effort = effortEl.value || '';
     await apiJson('/api/settings', 'PUT', { activeOverrides: overrides });
 }
+
+// ── Flush Agent Sidebar ──
+
+export function onFlushCliChange(): void {
+    const flushCli = (document.getElementById('flushCli') as HTMLSelectElement)?.value || '';
+    const effectiveCli = flushCli || (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude';
+    const models = MODEL_MAP[effectiveCli] || [];
+    const flushModelSel = document.getElementById('flushModel') as HTMLSelectElement | null;
+    setSelectOptions(flushModelSel, models, { includeDefault: true });
+    updateFlushBadge();
+    saveFlushAgentSettings();
+}
+
+export async function loadFlushAgentSidebar(): Promise<void> {
+    const data = await api<{ cli?: string; model?: string }>('/api/memory-files');
+    if (!data) return;
+    const flushCliSel = document.getElementById('flushCli') as HTMLSelectElement | null;
+    const flushModelSel = document.getElementById('flushModel') as HTMLSelectElement | null;
+    if (flushCliSel && data.cli) flushCliSel.value = data.cli;
+
+    const effectiveCli = data.cli || (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude';
+    const models = MODEL_MAP[effectiveCli] || [];
+    setSelectOptions(flushModelSel, models, { includeDefault: true });
+    if (flushModelSel && data.model) {
+        appendCustomOption(flushModelSel, data.model);
+        flushModelSel.value = data.model;
+    }
+    updateFlushBadge();
+}
+
+async function saveFlushAgentSettings(): Promise<void> {
+    const cli = (document.getElementById('flushCli') as HTMLSelectElement)?.value || '';
+    const model = (document.getElementById('flushModel') as HTMLSelectElement)?.value || '';
+    await apiJson('/api/memory-files/settings', 'PUT', { cli, model });
+}
+
+function updateFlushBadge(): void {
+    const badge = document.getElementById('flushAgentBadge');
+    if (!badge) return;
+    const cli = (document.getElementById('flushCli') as HTMLSelectElement)?.value || '';
+    const model = (document.getElementById('flushModel') as HTMLSelectElement)?.value || '';
+    const parts: string[] = [];
+    if (cli) parts.push(cli);
+    if (model && model !== 'default') parts.push(model);
+    badge.textContent = parts.length ? `(${parts.join(' / ')})` : '';
+}

@@ -50,6 +50,7 @@ interface AdvancedMemoryStatus {
     flushRunning?: boolean;
     migrationLocked?: boolean;
     staleWarnings?: string[];
+    hasSoul?: boolean;
 }
 
 interface AdvancedMemoryFiles {
@@ -79,6 +80,10 @@ function setChecked(id: string, value: boolean) {
 function syncSidebarBadge(status: AdvancedMemoryStatus | null, basicCount: number) {
     const sideBtn = $('memorySidebarBtn');
     if (!sideBtn) return;
+    if (status?.enabled && status?.hasSoul === false) {
+        sideBtn.innerHTML = `${ICONS.brain} Memory · <span style="color:var(--accent)">업데이트 필요</span>`;
+        return;
+    }
     const state = status?.indexState === 'ready'
         ? 'Ready'
         : status?.state === 'not_initialized'
@@ -96,6 +101,11 @@ function renderStatusBanner(status: AdvancedMemoryStatus | null) {
         return;
     }
     banner.style.display = '';
+    if (status.hasSoul === false) {
+        banner.innerHTML = `<span>Memory structure upgrade available.</span>
+            <button id="advUpgradeSoulBtn" class="btn-sm" style="margin-left:8px">메모리 업데이트하기</button>`;
+        return;
+    }
     if (status.state === 'not_initialized') {
         banner.textContent = 'Integrated memory is preparing its index. Temporary fallback memory context is active until initialization completes.';
         return;
@@ -126,8 +136,6 @@ function renderBasicSettings(data: MemoryData) {
     $('memOn')?.classList.toggle('active', data.enabled);
     $('memOff')?.classList.toggle('active', !data.enabled);
     setValue('memFlushEvery', data.flushEvery);
-    setValue('memCli', data.cli || '');
-    setValue('memModel', data.model || '');
     setValue('memRetention', data.retentionDays);
     setValue('memFlushLang', data.flushLanguage || 'en');
     setText('memPath', data.path);
@@ -177,6 +185,7 @@ function renderAdvancedOps(status: AdvancedMemoryStatus | null) {
     setText('advMigrationLock', status?.migrationLocked ? '⚠ locked' : 'none');
     const warnings = status?.staleWarnings || [];
     setText('advWarnings', warnings.length ? warnings.join(', ') : 'none');
+    setText('advSoulStatus', status?.hasSoul ? '✓ active' : '⚠ not created');
 }
 
 function renderBasicFiles(files: MemoryFile[]) {
@@ -319,6 +328,16 @@ export async function rerunAdvancedBootstrap(): Promise<void> {
     switchMemTab('status');
 }
 
+export async function upgradeSoulMemory(): Promise<void> {
+    setAdvBusy(true);
+    setAdvBanner('메모리 구조를 업데이트하는 중...', true);
+    await apiJson<{ message?: string }>('/api/memory/reindex', 'POST', {});
+    setAdvBusy(false);
+    setAdvBanner('✓ Memory structure upgraded. Soul identity created.');
+    await openMemoryModal();
+    switchMemTab('status');
+}
+
 export async function reindexAdvancedMemory(): Promise<void> {
     setAdvBusy(true);
     setAdvBanner('메모리 인덱스를 재생성하는 중...', true);
@@ -365,11 +384,11 @@ export function bindAdvancedProviderUi(): void {
 export async function triggerFlushNow(): Promise<void> {
     const btn = $('memFlushNowBtn') as HTMLButtonElement | null;
     if (btn) btn.disabled = true;
-    try {
-        await apiJson('/api/jaw-memory/flush', 'POST', {});
+    const result = await apiJson('/api/jaw-memory/flush', 'POST', {});
+    if (result) {
         if (btn) btn.textContent = '✅ Triggered';
         setTimeout(() => { if (btn) { btn.textContent = '🧠 Flush Now'; btn.disabled = false; } }, 2000);
-    } catch {
+    } else {
         if (btn) { btn.textContent = '❌ Failed'; btn.disabled = false; }
     }
 }

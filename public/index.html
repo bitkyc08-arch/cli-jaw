@@ -202,6 +202,34 @@
 
             <hr class="hr-divider">
 
+            <details id="flushAgentDetails" class="flush-agent-section">
+                <summary class="section-title" style="cursor:pointer; user-select:none;">
+                    <span data-icon="lightbulb"></span> Flush Agent
+                    <span id="flushAgentBadge" class="text-xs text-dim" style="margin-left:4px"></span>
+                </summary>
+                <div class="flush-agent-fields" style="margin-top:6px">
+                    <div>
+                        <label>CLI</label>
+                        <select id="flushCli" class="select-sm">
+                            <option value="">(active CLI)</option>
+                            <option value="claude">Claude</option>
+                            <option value="codex">Codex</option>
+                            <option value="gemini">Gemini</option>
+                            <option value="opencode">OpenCode</option>
+                            <option value="copilot">Copilot</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label>Model</label>
+                        <select id="flushModel" class="select-sm">
+                            <option value="">(CLI default)</option>
+                        </select>
+                    </div>
+                </div>
+            </details>
+
+            <hr class="hr-divider">
+
             <div class="flex justify-between items-center">
                 <div class="section-title" data-i18n="sidebar.employees">직원</div>
                 <button class="btn-clear btn-action-sm" data-action="addEmployee"
@@ -272,6 +300,13 @@
                     <div>
                         <button id="tgForwardOff" class="perm-btn" data-i18n="btn.off">끔</button>
                         <button id="tgForwardOn" class="perm-btn active" data-i18n="btn.on">켬</button>
+                    </div>
+                </div>
+                <div class="settings-row sub-row">
+                    <label data-i18n="label.mentionOnly">Mention Only</label>
+                    <div>
+                        <button id="tgMentionOff" class="perm-btn" data-i18n="btn.off">끔</button>
+                        <button id="tgMentionOn" class="perm-btn active" data-i18n="btn.on">켬</button>
                     </div>
                 </div>
             </div>
@@ -587,30 +622,6 @@
                         <option value="50">50 QA</option>
                     </select>
                 </div>
-                <div class="settings-row"><label>CLI</label>
-                    <select id="memCli"
-                        class="select-sm">
-                        <option value="">(active CLI)</option>
-                        <option>claude</option>
-                        <option>codex</option>
-                        <option>gemini</option>
-                        <option>opencode</option>
-                        <option>copilot</option>
-                    </select>
-                </div>
-                <div class="settings-row"><label>Model</label>
-                    <select id="memModel"
-                        class="select-sm">
-                        <option value="">(CLI default)</option>
-                        <option>haiku</option>
-                        <option>sonnet</option>
-                        <option>sonnet[1m]</option>
-                        <option>opus</option>
-                        <option>opus[1m]</option>
-                        <option>gemini-2.5-flash</option>
-                        <option>gpt-5.3-codex-spark</option>
-                    </select>
-                </div>
                 <div class="settings-row"><label>Save Path</label>
                     <span id="memPath"
                         class="text-xs text-dim mono-path"></span>
@@ -660,6 +671,7 @@
                 <div class="settings-row"><label>Flush Status</label><span id="advFlushRunning" class="text-status">-</span></div>
                 <div class="settings-row"><label>Migration Lock</label><span id="advMigrationLock" class="text-status">-</span></div>
                 <div class="settings-row"><label>Warnings</label><span id="advWarnings" class="text-status">-</span></div>
+                <div class="settings-row"><label>Soul Identity</label><span id="advSoulStatus" class="text-status">-</span></div>
                 <div
                     class="info-box">
                     Fixed Snapshot Budget: 2800 chars / 4 chunks / 700 chars each

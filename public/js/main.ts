@@ -24,8 +24,9 @@ import { toggleSkill, filterSkills } from './features/skills.js';
 import {
     loadSettings, handleModelSelect, applyCustomModel, onCliChange,
     saveActiveCliSettings, savePerCli, openPromptModal,
+    onFlushCliChange, loadFlushAgentSidebar,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
-    loadCliStatus, setTelegram, setForwardAll, saveTelegramSettings,
+    loadCliStatus, setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings,
     setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings, setActiveChannel,
     saveFallbackOrder,
     openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
@@ -42,7 +43,7 @@ import {
 import {
     openMemoryModal, closeMemoryModal, switchMemTab, setMemEnabled,
     saveMemSettings, deleteMemFile, viewMemFile,
-    rerunAdvancedBootstrap, reindexAdvancedMemory, openCorruptedFolder,
+    rerunAdvancedBootstrap, reindexAdvancedMemory, upgradeSoulMemory, openCorruptedFolder,
     bindAdvancedProviderUi, triggerFlushNow
 } from './features/memory.js';
 import { state } from './state.js';
@@ -120,6 +121,8 @@ document.querySelector('.sidebar-save-bar .btn-save')?.addEventListener('click',
 document.getElementById('selCli')?.addEventListener('change', () => onCliChange());
 document.getElementById('selModel')?.addEventListener('change', () => saveActiveCliSettings());
 document.getElementById('selEffort')?.addEventListener('change', () => saveActiveCliSettings());
+document.getElementById('flushCli')?.addEventListener('change', () => onFlushCliChange());
+document.getElementById('flushModel')?.addEventListener('change', () => onFlushCliChange());
 document.querySelector('[data-action="addEmployee"]')?.addEventListener('click', addEmployee);
 
 // ── Employees (Event Delegation) ──
@@ -176,6 +179,8 @@ document.getElementById('tgOff')?.addEventListener('click', () => setTelegram(fa
 document.getElementById('tgOn')?.addEventListener('click', () => setTelegram(true));
 document.getElementById('tgForwardOff')?.addEventListener('click', () => setForwardAll(false));
 document.getElementById('tgForwardOn')?.addEventListener('click', () => setForwardAll(true));
+document.getElementById('tgMentionOff')?.addEventListener('click', () => setTelegramMentionOnly(false));
+document.getElementById('tgMentionOn')?.addEventListener('click', () => setTelegramMentionOnly(true));
 document.getElementById('tgToken')?.addEventListener('change', saveTelegramSettings);
 document.getElementById('tgChatIds')?.addEventListener('change', saveTelegramSettings);
 // Discord
@@ -392,6 +397,9 @@ document.getElementById('advBootstrapBtn')?.addEventListener('click', rerunAdvan
 document.getElementById('advReindexBtn')?.addEventListener('click', reindexAdvancedMemory);
 document.getElementById('advReimportBtn')?.addEventListener('click', rerunAdvancedBootstrap);
 document.getElementById('advOpenCorruptedBtn')?.addEventListener('click', openCorruptedFolder);
+document.getElementById('advStatusBanner')?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement)?.id === 'advUpgradeSoulBtn') upgradeSoulMemory();
+});
 bindAdvancedProviderUi();
 
 // Memory files (event delegation)
@@ -418,6 +426,7 @@ async function bootstrap(): Promise<void> {
     initAutoResize();
     await loadCommands();
     await loadSettings();
+    loadFlushAgentSidebar();
     loadCliStatus();
     // loadMessages() is handled by ws.js onopen (clear + reload)
     loadEmployees();

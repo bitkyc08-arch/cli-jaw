@@ -23,6 +23,12 @@ export async function setForwardAll(enabled: boolean): Promise<void> {
     await apiJson('/api/settings', 'PUT', { telegram: { forwardAll: enabled } });
 }
 
+export async function setTelegramMentionOnly(enabled: boolean): Promise<void> {
+    document.getElementById('tgMentionOn')?.classList.toggle('active', enabled);
+    document.getElementById('tgMentionOff')?.classList.toggle('active', !enabled);
+    await apiJson('/api/settings', 'PUT', { telegram: { mentionOnly: enabled } });
+}
+
 export function loadTelegramSettings(s: SettingsData): void {
     if (!s.telegram) return;
     const tg = s.telegram;
@@ -37,4 +43,7 @@ export function loadTelegramSettings(s: SettingsData): void {
     const fwdOn = tg.forwardAll !== false;
     document.getElementById('tgForwardOn')?.classList.toggle('active', fwdOn);
     document.getElementById('tgForwardOff')?.classList.toggle('active', !fwdOn);
+    const mentionOnly = tg.mentionOnly !== false;
+    document.getElementById('tgMentionOn')?.classList.toggle('active', mentionOnly);
+    document.getElementById('tgMentionOff')?.classList.toggle('active', !mentionOnly);
 }
