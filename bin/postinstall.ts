@@ -155,7 +155,11 @@ export async function installOfficeCli(opts: InstallOpts = {}) {
             return;
         }
         console.log(`[jaw:init] 📦 ensuring officecli (${repo}) via PowerShell installer...`);
-        execFileSync(ps, args, { stdio: 'inherit', timeout: 180000, env: process.env });
+        try {
+            execFileSync(ps, args, { stdio: 'inherit', timeout: 180000, env: process.env });
+        } catch (e: any) {
+            console.warn(`[jaw:init] ⚠️  officecli install failed (exit ${e.status ?? '?'}); skipping — run manually: install-officecli.sh`);
+        }
         return;
     }
 
@@ -171,11 +175,15 @@ export async function installOfficeCli(opts: InstallOpts = {}) {
         return;
     }
     console.log(`[jaw:init] 📦 ensuring officecli (${repo}) via shell installer...`);
-    execFileSync('bash', args, {
-        stdio: 'inherit',
-        timeout: 180000,
-        env: { ...process.env, OFFICECLI_REPO: repo },
-    });
+    try {
+        execFileSync('bash', args, {
+            stdio: 'inherit',
+            timeout: 180000,
+            env: { ...process.env, OFFICECLI_REPO: repo },
+        });
+    } catch (e: any) {
+        console.warn(`[jaw:init] ⚠️  officecli install failed (exit ${e.status ?? '?'}); skipping — run manually: bash scripts/install-officecli.sh`);
+    }
 }
 
 const CLI_PACKAGES: { bin: string; pkg: string; brew?: string; forceMgr?: PkgMgr }[] = [
