@@ -117,6 +117,7 @@ function applyMermaidTheme() {
     mermaidModule!.default.initialize({
         startOnLoad: false,
         theme: 'base',
+        htmlLabels: false,
         themeVariables: getMermaidThemeVars(),
         securityLevel: 'strict',
         suppressErrorRendering: true,
@@ -333,7 +334,7 @@ export async function rerenderMermaidDiagrams(): Promise<void> {
         try {
             applyMermaidTheme();
             const { svg } = await mm.render(id, code);
-            el.innerHTML = svg;
+            el.innerHTML = sanitizeMermaidSvg(svg);
             appendMermaidActionBtns(el as HTMLElement);
         } catch { /* keep existing render on failure */ }
     }

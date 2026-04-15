@@ -6,9 +6,12 @@ import { join } from 'path';
 import { settings, JAW_HOME } from '../core/config.js';
 import { getRecentMessages } from '../core/db.js';
 import { getMemoryFlushFilePath } from '../memory/runtime.js';
+import { maybeAutoReflect } from '../memory/reflect.js';
 
 export let memoryFlushCounter = 0;
 export let flushCycleCount = 0;
+let _flushLock = false;
+let _lastFlushedMessageId: number | null = null;
 
 export function incrementMemoryFlush(): void {
     memoryFlushCounter++;
@@ -79,9 +82,26 @@ function loadFlushSysPrompt(): string {
 // ─── Trigger ─────────────────────────────────────────
 
 export async function triggerMemoryFlush(): Promise<void> {
+    if (_flushLock) {
+        console.log('[memory] flush lock held, skipping');
+        return;
+    }
+
     const threshold = settings.memory?.flushEvery ?? 10;
-    const recent = (getRecentMessages.all(settings.workingDir || null, threshold) as any[]).reverse();
+    const recent = (getRecentMessages.all(settings.workingDir || null, threshold) as any[])
+        .filter((m: any) => !_lastFlushedMessageId || m.id > _lastFlushedMessageId)
+        .reverse();
     if (recent.length < 4) return;
+
+    _flushLock = true;
+    const lockTimeout = setTimeout(() => {
+        if (_flushLock) {
+            _flushLock = false;
+            console.warn('[memory] flush lock auto-released after 5m timeout');
+        }
+    }, 5 * 60 * 1000);
+
+    const maxId = Math.max(...recent.map((m: any) => m.id));
 
     const lines = [];
     for (const m of recent) {
@@ -99,17 +119,39 @@ export async function triggerMemoryFlush(): Promise<void> {
     const flushCli = settings.memory?.cli || settings.cli;
     const flushModel = settings.memory?.model || (settings.perCli?.[flushCli]?.model) || 'default';
 
-    if (_activeProcesses?.has('memory-flush')) {
-        console.log('[memory] flush already running, skipping');
-        return;
+    try {
+        _spawnAgent(flushPrompt, {
+            agentId: 'memory-flush',
+            internal: true,
+            _skipInsert: true,
+            cli: flushCli,
+            model: flushModel,
+            sysPrompt: loadFlushSysPrompt(),
+            lifecycle: {
+                onExit: (code: number | null) => {
+                    clearTimeout(lockTimeout);
+                    _lastFlushedMessageId = maxId;
+                    _flushLock = false;
+                    maybeAutoReflect().catch(e =>
+                        console.error('[memory] post-flush auto-reflect failed:', e)
+                    );
+                    console.log(`[memory] flush complete (code=${code}), watermark=${maxId}`);
+                },
+            },
+        });
+        console.log(`[memory] auto-append triggered (${recent.length} msgs → ${flushCli}/${flushModel})`);
+    } catch (e) {
+        clearTimeout(lockTimeout);
+        _flushLock = false;
+        console.error('[memory] flush spawn failed:', e);
     }
-    _spawnAgent(flushPrompt, {
-        agentId: 'memory-flush',
-        internal: true,
-        _skipInsert: true,
-        cli: flushCli,
-        model: flushModel,
-        sysPrompt: loadFlushSysPrompt(),
-    });
-    console.log(`[memory] auto-append triggered (${recent.length} msgs → ${flushCli}/${flushModel})`);
+}
+
+export function getFlushStatus() {
+    return {
+        locked: _flushLock,
+        lastFlushedMessageId: _lastFlushedMessageId,
+        counter: memoryFlushCounter,
+        cycleCount: flushCycleCount,
+    };
 }

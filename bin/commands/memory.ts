@@ -90,6 +90,16 @@ try {
             console.log(`🧠 ${r.message || 'Memory flush triggered'}`);
             break;
         }
+        case 'cleanup': {
+            const { values: cleanupValues } = parseArgs({
+                args: process.argv.slice(4),
+                options: { days: { type: 'string', default: '90' } },
+                strict: false,
+            });
+            const r = await api('POST', '/cleanup', { retentionDays: parseInt(cleanupValues.days as string || '90') }) as Record<string, any>;
+            console.log(`🧠 Archived ${(r as any).moved ?? 0} episodes`);
+            break;
+        }
         default:
             console.log(`
   🧠 cli-jaw memory
@@ -102,6 +112,7 @@ try {
     init                         Initialize memory directory
     reflect [--sinceDays N]      Promote durable facts from episodes to shared pages
     flush                        Manually trigger memory flush
+    cleanup [--days N]           Archive episodes older than N days (default: 90)
 
   Files:
     MEMORY.md          Core knowledge (auto-injected into prompt)

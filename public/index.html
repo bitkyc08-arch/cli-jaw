@@ -94,26 +94,33 @@
             </div>
 
             <div class="section-title" style="margin-top:12px" data-i18n="sidebar.avatar">아바타</div>
-            <div class="flex gap-2 items-center">
-                <div class="flex gap-1 items-center flex-1 avatar-control">
-                    <label class="avatar-label">🤖</label>
-                    <input type="text" id="agentAvatarInput" value="🦈" class="input-avatar" maxlength="2" placeholder="🦈">
-                    <button class="sidebar-hb-btn btn-action-sm w-auto avatar-upload-btn" id="agentAvatarUploadBtn" title="Upload agent avatar image">Img</button>
-                    <button class="sidebar-hb-btn btn-action-sm w-auto avatar-reset-btn" id="agentAvatarResetBtn" title="Reset agent avatar image">↺</button>
+            <div class="avatar-row">
+                <div class="avatar-card">
+                    <div class="avatar-preview agent-icon" id="agentAvatarPreview" aria-hidden="true">🦈</div>
+                    <span class="avatar-card-label">Agent</span>
+                    <div class="avatar-card-actions">
+                        <button class="avatar-action-btn" id="agentAvatarUploadBtn" title="Upload image">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </button>
+                        <button class="avatar-action-btn" id="agentAvatarResetBtn" title="Reset to default">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        </button>
+                    </div>
                     <input type="file" id="agentAvatarFile" hidden accept="image/png,image/jpeg,image/webp,image/gif">
                 </div>
-                <div class="flex gap-1 items-center flex-1 avatar-control">
-                    <label class="avatar-label">👤</label>
-                    <input type="text" id="userAvatarInput" value="👤" class="input-avatar" maxlength="2" placeholder="👤">
-                    <button class="sidebar-hb-btn btn-action-sm w-auto avatar-upload-btn" id="userAvatarUploadBtn" title="Upload user avatar image">Img</button>
-                    <button class="sidebar-hb-btn btn-action-sm w-auto avatar-reset-btn" id="userAvatarResetBtn" title="Reset user avatar image">↺</button>
+                <div class="avatar-card">
+                    <div class="avatar-preview user-icon" id="userAvatarPreview" aria-hidden="true">👤</div>
+                    <span class="avatar-card-label">User</span>
+                    <div class="avatar-card-actions">
+                        <button class="avatar-action-btn" id="userAvatarUploadBtn" title="Upload image">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        </button>
+                        <button class="avatar-action-btn" id="userAvatarResetBtn" title="Reset to default">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                        </button>
+                    </div>
                     <input type="file" id="userAvatarFile" hidden accept="image/png,image/jpeg,image/webp,image/gif">
                 </div>
-                <button class="sidebar-hb-btn btn-action-sm w-auto" id="avatarSave">✓</button>
-            </div>
-            <div class="avatar-status-row">
-                <span class="avatar-status" id="agentAvatarStatus">emoji active</span>
-                <span class="avatar-status" id="userAvatarStatus">emoji active</span>
             </div>
             <button class="sidebar-hb-btn" id="btnClearChat">/clear</button>
             <button class="sidebar-hb-btn" id="hbSidebarBtn"><span data-icon="heartPulse"></span> Heartbeat (0)</button>

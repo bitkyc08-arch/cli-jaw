@@ -131,13 +131,30 @@
     gap: 0;
 }
 
+/* Spacers & viewport must NOT flex-shrink — flex default shrinks them,
+   collapsing scrollHeight and clamping scrollTop to 0 (RC1 fix) */
+.chat-messages.vs-active > .vs-spacer-top,
+.chat-messages.vs-active > .vs-spacer-bottom,
+.chat-messages.vs-active > .vs-viewport {
+    flex: 0 0 auto;
+}
+
 /* Virtual Scroll viewport — mirrors .chat-messages flex layout so
-   align-self on .msg-user / .msg-agent keeps working inside VS. */
+   align-self on .msg-user / .msg-agent keeps working inside VS.
+   Gap is via margin-bottom on .msg so getBoundingClientRect captures it (RC4 fix) */
 .vs-viewport {
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
+    gap: 0;
     overflow-anchor: none;
+}
+
+/* Gap between VS items via margin — captured by height measurement (RC4 fix) */
+.vs-active .msg {
+    margin-bottom: var(--space-3);
+}
+.vs-active .msg:last-child {
+    margin-bottom: 0;
 }
 
 /* Depth fade gradients removed — caused visible white bars on scroll in light mode */
@@ -550,7 +567,7 @@ div.math-placeholder {
                 box-shadow var(--duration-base),
                 filter var(--duration-fast);
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .btn-send:hover {

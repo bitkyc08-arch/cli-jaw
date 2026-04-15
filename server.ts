@@ -37,7 +37,7 @@ import { errorHandler } from './src/http/error-middleware.js';
 import { setWss, broadcast } from './src/core/bus.js';
 import * as browser from './src/browser/index.js';
 
-import { ensureMemoryRuntimeReady } from './src/memory/runtime.js';
+import { ensureMemoryRuntimeReady, hasSoulFile } from './src/memory/runtime.js';
 
 import { loadLocales, t, normalizeLocale } from './src/core/i18n.js';
 import {
@@ -153,6 +153,7 @@ loadSettings();
 syncMainSessionToSettings();
 try {
     ensureMemoryRuntimeReady();
+    console.log('[jaw:startup] memory ready, hasSoul:', hasSoulFile());
 } catch (e: unknown) {
     console.warn('[jaw:memory-init]', (e as Error).message);
 }

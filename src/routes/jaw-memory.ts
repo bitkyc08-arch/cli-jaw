@@ -2,7 +2,10 @@ import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import { assertMemoryRelPath } from '../security/path-guards.js';
 import * as memory from '../memory/memory.js';
-import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory } from '../memory/runtime.js';
+import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory, hasSoulFile, loadSoulSummary, getAdvancedMemoryDir } from '../memory/runtime.js';
+import { ensureAdvancedMemoryStructure } from '../memory/bootstrap.js';
+import { reindexSingleFile } from '../memory/indexing.js';
+import { join } from 'path';
 
 function normalizeAdvancedReadPath(file: string): string {
     const value = String(file || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -71,6 +74,25 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
         try {
             const { readSoul } = await import('../memory/identity.js');
             res.json({ soul: readSoul() });
+        } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/jaw-memory/soul/activate', requireAuth, async (_req, res) => {
+        try {
+            const hadSoul = hasSoulFile();
+            ensureAdvancedMemoryStructure();
+            const nowHasSoul = hasSoulFile();
+            const created = !hadSoul && nowHasSoul;
+            if (created) {
+                const root = getAdvancedMemoryDir();
+                reindexSingleFile(root, join(root, 'shared', 'soul.md'));
+            }
+            const soul = loadSoulSummary(2000);
+            res.json({
+                activated: true,
+                created,
+                preview: soul.slice(0, 200),
+            });
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 

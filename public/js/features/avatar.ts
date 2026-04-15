@@ -30,40 +30,25 @@ function stateFor(role: AvatarRole): AvatarState {
     return avatarState[role];
 }
 
-function defaultEmoji(role: AvatarRole): string {
-    return role === 'agent' ? DEFAULT_AGENT : DEFAULT_USER;
-}
-
 function storageKey(role: AvatarRole): string {
     return role === 'agent' ? AGENT_KEY : USER_KEY;
 }
 
-function inputId(role: AvatarRole): string {
-    return role === 'agent' ? 'agentAvatarInput' : 'userAvatarInput';
-}
-
-function statusId(role: AvatarRole): string {
-    return role === 'agent' ? 'agentAvatarStatus' : 'userAvatarStatus';
+function inputId(_role: AvatarRole): string {
+    return _role === 'agent' ? 'agentAvatarPreview' : 'userAvatarPreview';
 }
 
 function iconSelector(role: AvatarRole): string {
     return role === 'agent' ? '.agent-icon' : '.user-icon';
 }
 
-function getEmoji(role: AvatarRole): string {
-    return stateFor(role).emoji;
-}
-
-function syncInputs(role: AvatarRole): void {
-    const input = document.getElementById(inputId(role)) as HTMLInputElement | null;
-    if (input) input.value = getEmoji(role);
-    const status = document.getElementById(statusId(role));
-    if (status) status.textContent = stateFor(role).imageUrl ? 'image active' : 'emoji active';
-}
-
-function setStatus(role: AvatarRole, text: string): void {
-    const status = document.getElementById(statusId(role));
-    if (status) status.textContent = text;
+function syncPreview(role: AvatarRole): void {
+    const preview = document.getElementById(inputId(role));
+    if (preview) {
+        preview.innerHTML = avatarMarkup(role);
+        const kind = stateFor(role).imageUrl ? 'image' : 'emoji';
+        preview.setAttribute('data-avatar-kind', kind);
+    }
 }
 
 function avatarMarkup(role: AvatarRole): string {
@@ -91,7 +76,7 @@ function setServerAvatar(role: AvatarRole, payload?: AvatarServerEntry | null): 
         stateFor(role).imageUrl = '';
         stateFor(role).updatedAt = payload?.updatedAt ?? null;
     }
-    syncInputs(role);
+    syncPreview(role);
     applyAvatar(role);
 }
 
@@ -110,28 +95,20 @@ async function authorizedFetch(path: string, init: RequestInit): Promise<Respons
 }
 
 async function uploadAvatar(role: AvatarRole, file: File): Promise<void> {
-    setStatus(role, 'uploading...');
     const res = await authorizedFetch(`/api/avatar/${role}/upload`, {
         method: 'POST',
         headers: { 'X-Filename': encodeURIComponent(file.name) },
         body: file,
     });
     const json = await res.json().catch(() => null);
-    if (!res.ok) {
-        setStatus(role, 'upload failed');
-        throw new Error(json?.error || `avatar upload failed (${res.status})`);
-    }
+    if (!res.ok) throw new Error(json?.error || `avatar upload failed (${res.status})`);
     setServerAvatar(role, json?.data || json);
 }
 
 async function resetAvatarImage(role: AvatarRole): Promise<void> {
-    setStatus(role, 'resetting...');
     const res = await authorizedFetch(`/api/avatar/${role}/image`, { method: 'DELETE' });
     const json = await res.json().catch(() => null);
-    if (!res.ok) {
-        setStatus(role, 'reset failed');
-        throw new Error(json?.error || `avatar reset failed (${res.status})`);
-    }
+    if (!res.ok) throw new Error(json?.error || `avatar reset failed (${res.status})`);
     setServerAvatar(role, json?.data || json);
 }
 
@@ -166,8 +143,8 @@ function bindRoleControls(role: AvatarRole): void {
     });
 }
 
-export function getAgentAvatar(): string { return getEmoji('agent'); }
-export function getUserAvatar(): string { return getEmoji('user'); }
+export function getAgentAvatar(): string { return stateFor('agent').emoji; }
+export function getUserAvatar(): string { return stateFor('user').emoji; }
 export function getAgentAvatarMarkup(): string { return avatarMarkup('agent'); }
 export function getUserAvatarMarkup(): string { return avatarMarkup('user'); }
 
@@ -175,7 +152,7 @@ export function setAgentAvatar(emoji: string): void {
     const next = (emoji || '').trim() || DEFAULT_AGENT;
     stateFor('agent').emoji = next;
     localStorage.setItem(storageKey('agent'), next);
-    syncInputs('agent');
+    syncPreview('agent');
     if (!stateFor('agent').imageUrl) applyAvatar('agent');
 }
 
@@ -183,37 +160,18 @@ export function setUserAvatar(emoji: string): void {
     const next = (emoji || '').trim() || DEFAULT_USER;
     stateFor('user').emoji = next;
     localStorage.setItem(storageKey('user'), next);
-    syncInputs('user');
+    syncPreview('user');
     if (!stateFor('user').imageUrl) applyAvatar('user');
 }
 
 export async function initAvatar(): Promise<void> {
     stateFor('agent').emoji = localStorage.getItem(AGENT_KEY) || DEFAULT_AGENT;
     stateFor('user').emoji = localStorage.getItem(USER_KEY) || DEFAULT_USER;
-    syncInputs('agent');
-    syncInputs('user');
+    syncPreview('agent');
+    syncPreview('user');
 
     if (!initialized) {
         initialized = true;
-
-        document.getElementById('avatarSave')?.addEventListener('click', () => {
-            const agentInput = document.getElementById('agentAvatarInput') as HTMLInputElement | null;
-            const userInput = document.getElementById('userAvatarInput') as HTMLInputElement | null;
-            if (agentInput) setAgentAvatar(agentInput.value);
-            if (userInput) setUserAvatar(userInput.value);
-        });
-
-        for (const id of ['agentAvatarInput', 'userAvatarInput']) {
-            document.getElementById(id)?.addEventListener('keydown', (e: Event) => {
-                const keyEvent = e as KeyboardEvent;
-                if (keyEvent.key === 'Enter') {
-                    keyEvent.preventDefault();
-                    document.getElementById('avatarSave')?.click();
-                    (keyEvent.target as HTMLInputElement).blur();
-                }
-            });
-        }
-
         bindRoleControls('agent');
         bindRoleControls('user');
     }

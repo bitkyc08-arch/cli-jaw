@@ -2,6 +2,7 @@
 import { api, apiJson } from '../api.js';
 import { ICONS } from '../icons.js';
 import { escapeHtml } from '../render.js';
+import { t as i18n, getLang, setLang } from '../locale.js';
 
 // ── Prompt Modal ──
 
@@ -80,7 +81,7 @@ function openTemplateEditor(tmpl: TemplateInfo): void {
     const saveBtn = document.getElementById('templateSaveBtn');
     if (saveBtn) saveBtn.style.display = 'none';
     const toggle = document.getElementById('templateDevToggle');
-    if (toggle) { toggle.style.color = 'var(--text-dim)'; toggle.style.borderColor = 'var(--border)'; toggle.innerHTML = `${ICONS.tool} 개발자 모드`; }
+    if (toggle) { toggle.style.color = 'var(--text-dim)'; toggle.style.borderColor = 'var(--border)'; toggle.innerHTML = `${ICONS.tool} ${i18n('devMode')}`; }
     const title = document.getElementById('templateModalTitle');
     if (title) title.innerHTML = `${ICONS.file} ${escapeHtml(tmpl.filename)}`;
     showTemplateView('editor');
@@ -88,7 +89,7 @@ function openTemplateEditor(tmpl: TemplateInfo): void {
 
 export function toggleDevMode(): void {
     if (!_devMode) {
-        if (!confirm('⚠ 프롬프트를 직접 수정하면 예상치 못한 동작이 발생할 수 있습니다.\n계속하시겠습니까?')) return;
+        if (!confirm(i18n('promptEditWarning'))) return;
     }
     _devMode = !_devMode;
     const editor = document.getElementById('templateEditor') as HTMLTextAreaElement;
@@ -99,7 +100,7 @@ export function toggleDevMode(): void {
     if (toggle) {
         toggle.style.color = _devMode ? 'var(--stop-btn)' : 'var(--text-dim)';
         toggle.style.borderColor = _devMode ? 'var(--stop-btn)' : 'var(--border)';
-        toggle.innerHTML = _devMode ? `${ICONS.lockOpen} 개발자 모드 ON` : `${ICONS.tool} 개발자 모드`;
+        toggle.innerHTML = _devMode ? `${ICONS.lockOpen} ${i18n('devModeOn')}` : `${ICONS.tool} ${i18n('devMode')}`;
     }
 }
 
@@ -109,7 +110,7 @@ export async function saveTemplateFromModal(): Promise<void> {
     if (!id) return;
     await apiJson(`/api/prompt-templates/${id}`, 'PUT', { content: editor.value });
     const label = document.getElementById('templateEditorLabel');
-    if (label) { label.innerHTML = `${ICONS.check} 저장 + 핫리로드 완료!`; setTimeout(() => { label.innerHTML = `${ICONS.file} ${escapeHtml(id)}.md`; }, 2000); }
+    if (label) { label.innerHTML = `${ICONS.check} ${i18n('savedAndReloaded')}`; setTimeout(() => { label.innerHTML = `${ICONS.file} ${escapeHtml(id)}.md`; }, 2000); }
     const t = _templates.find(x => x.id === id);
     if (t) t.content = editor.value;
 }
@@ -120,7 +121,7 @@ function showTemplateView(view: 'tree' | 'editor'): void {
     if (treeView) treeView.style.display = view === 'tree' ? '' : 'none';
     if (editorView) editorView.style.display = view === 'editor' ? 'flex' : 'none';
     const title = document.getElementById('templateModalTitle');
-    if (title && view === 'tree') title.innerHTML = `${ICONS.plan} 프롬프트 구조`;
+    if (title && view === 'tree') title.innerHTML = `${ICONS.plan} ${i18n('promptStructure')}`;
 }
 
 export function templateGoBack(): void { showTemplateView('tree'); }

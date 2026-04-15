@@ -210,3 +210,47 @@ export function reflectRecentEpisodes(options?: { sinceDays?: number; dryRun?: b
     result.scannedFiles = recentFiles.length;
     return result;
 }
+
+function getLastReflectedAtLocal(): string | null {
+    const metaPath = join(getAdvancedMemoryDir(), '.reflect-meta.json');
+    try {
+        const raw = safeReadFile(metaPath);
+        if (!raw) return null;
+        const meta = JSON.parse(raw);
+        return meta.lastReflectedAt || null;
+    } catch { return null; }
+}
+
+export async function maybeAutoReflect(): Promise<boolean> {
+    const lastReflect = getLastReflectedAtLocal();
+    const hoursSince = lastReflect
+        ? (Date.now() - new Date(lastReflect).getTime()) / 3600000
+        : Infinity;
+    if (hoursSince < 24) return false;
+    reflectRecentEpisodes();
+    return true;
+}
+
+export function cleanupStaleEpisodes(opts: { retentionDays?: number } = {}): number {
+    const retention = opts.retentionDays ?? 90;
+    const cutoff = Date.now() - retention * 86400000;
+    const episodesDir = join(getAdvancedMemoryDir(), 'episodes');
+    const archiveDir = join(getAdvancedMemoryDir(), 'archive');
+    fs.mkdirSync(archiveDir, { recursive: true });
+
+    let moved = 0;
+    if (!fs.existsSync(episodesDir)) return 0;
+    const files = listMarkdownFiles(episodesDir);
+    for (const filePath of files) {
+        const stat = fs.statSync(filePath);
+        if (stat.mtimeMs < cutoff) {
+            const relName = filePath.slice(episodesDir.length + 1);
+            const destPath = join(archiveDir, relName);
+            fs.mkdirSync(join(destPath, '..'), { recursive: true });
+            fs.renameSync(filePath, destPath);
+            moved++;
+        }
+    }
+    if (moved > 0) console.log(`[memory] archived ${moved} stale episodes`);
+    return moved;
+}

@@ -403,21 +403,7 @@ export async function loadMessages(): Promise<void> {
         if (chatEl) chatEl.innerHTML = '';
 
         if (msgs.length >= VS_THRESHOLD) {
-            // Lazy render — store skeleton HTML, render on viewport entry
-            for (const m of msgs) {
-                const role = m.role === 'assistant' ? 'agent' : m.role;
-                const rawContent = stripOrchestration(m.content);
-                const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
-                const tools = m.role === 'assistant' ? parseToolLog(m.tool_log) : [];
-                const toolHtml = tools.length > 0 ? buildProcessBlockHtml(toProcessSteps(tools), true) : '';
-                const skeletonContent = '<div class="skeleton-line"></div><div class="skeleton-line"></div>';
-                const html = role === 'agent'
-                    ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body">${toolHtml}<div class="msg-content lazy-pending" data-raw="${escapeHtml(rawContent)}">${skeletonContent}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
-                    : `<div class="msg msg-${role}"><div class="user-body"><div class="msg-label">${label}</div><div class="msg-content lazy-pending" data-raw="${escapeHtml(rawContent)}">${skeletonContent}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
-                vs.addItem(generateId(), html);
-            }
-
-            // Register lazy render callback
+            // RC5 fix: register callbacks BEFORE feeding items so activate() has them
             vs.onLazyRender = (targets: HTMLElement[]) => {
                 for (const el of targets) {
                     if (!el.classList.contains('lazy-pending')) continue;
@@ -440,6 +426,22 @@ export async function loadMessages(): Promise<void> {
                 activateWidgets(viewport);
                 linkifyFilePaths(viewport);
             };
+
+            // Bulk-load all items at once — avoids mid-loop activate (RC5 fix)
+            const vsItems: import('./virtual-scroll.js').VirtualItem[] = [];
+            for (const m of msgs) {
+                const role = m.role === 'assistant' ? 'agent' : m.role;
+                const rawContent = stripOrchestration(m.content);
+                const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
+                const tools = m.role === 'assistant' ? parseToolLog(m.tool_log) : [];
+                const toolHtml = tools.length > 0 ? buildProcessBlockHtml(toProcessSteps(tools), true) : '';
+                const skeletonContent = '<div class="skeleton-line"></div><div class="skeleton-line"></div>';
+                const html = role === 'agent'
+                    ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body">${toolHtml}<div class="msg-content lazy-pending" data-raw="${escapeHtml(rawContent)}">${skeletonContent}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
+                    : `<div class="msg msg-${role}"><div class="user-body"><div class="msg-label">${label}</div><div class="msg-content lazy-pending" data-raw="${escapeHtml(rawContent)}">${skeletonContent}</div><button class="msg-copy" title="Copy" aria-label="Copy message"></button></div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
+                vsItems.push({ id: generateId(), html, height: 80 });
+            }
+            vs.setItems(vsItems);
 
             vs.scrollToBottom();
         } else {

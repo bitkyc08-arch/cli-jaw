@@ -39,9 +39,12 @@ export function readSoul(): string {
  * Medium-confidence updates are logged but require manual approval.
  */
 export function applySoulUpdate(update: SoulUpdate): SoulUpdateResult {
-    if (update.confidence !== 'high') {
-        console.log(`[identity] skipped soul update (${update.confidence}): ${update.content.slice(0, 80)}`);
-        return { applied: false, reason: `confidence too low: ${update.confidence}` };
+    if (update.confidence === 'medium') {
+        console.log(`[identity] medium-confidence soul update logged: ${update.content.slice(0, 80)}`);
+        const candidatesPath = join(getAdvancedMemoryDir(), 'shared', 'soul-candidates.log');
+        const entry = `[${new Date().toISOString()}] (${update.section}) ${update.content}\n`;
+        fs.appendFileSync(candidatesPath, entry);
+        return { applied: false, reason: 'medium confidence — logged for review' };
     }
 
     const soul = readSoul();

@@ -2,6 +2,7 @@
 import { escapeHtml } from '../render.js';
 import { api, apiJson } from '../api.js';
 import { ICONS } from '../icons.js';
+import { t } from '../locale.js';
 
 interface MemoryFile {
     name: string;
@@ -79,7 +80,7 @@ function syncSidebarBadge(status: AdvancedMemoryStatus | null, basicCount: numbe
     const sideBtn = $('memorySidebarBtn');
     if (!sideBtn) return;
     if (status?.enabled && status?.hasSoul === false) {
-        sideBtn.innerHTML = `${ICONS.brain} Memory · <span style="color:var(--accent)">업데이트 필요</span>`;
+        sideBtn.innerHTML = `${ICONS.brain} Memory · <span style="color:var(--accent)">${t('updateNeeded')}</span>`;
         return;
     }
     const state = status?.indexState === 'ready'
@@ -101,7 +102,7 @@ function renderStatusBanner(status: AdvancedMemoryStatus | null) {
     banner.style.display = '';
     if (status.hasSoul === false) {
         banner.innerHTML = `<span>Memory structure upgrade available.</span>
-            <button id="advUpgradeSoulBtn" class="btn-sm" style="margin-left:8px">메모리 업데이트하기</button>`;
+            <button id="advUpgradeSoulBtn" class="btn-sm" style="margin-left:8px">${t('memoryUpdateBtn')}</button>`;
         return;
     }
     if (status.state === 'not_initialized') {
@@ -324,12 +325,23 @@ export async function rerunAdvancedBootstrap(): Promise<void> {
 
 export async function upgradeSoulMemory(): Promise<void> {
     setAdvBusy(true);
-    setAdvBanner('메모리 구조를 업데이트하는 중...', true);
-    await apiJson<{ message?: string }>('/api/memory/reindex', 'POST', {});
+    setAdvBanner(t('memoryUpdating'), true);
+    const result = await apiJson<{
+        activated: boolean;
+        created: boolean;
+        preview: string;
+    }>('/api/jaw-memory/soul/activate', 'POST', {});
     setAdvBusy(false);
-    setAdvBanner('✓ Memory structure upgraded. Soul identity created.');
+    if (result?.created) {
+        setAdvBanner('✓ Soul identity created.');
+    } else {
+        setAdvBanner('✓ Soul already active.');
+    }
     await openMemoryModal();
     switchMemTab('status');
+    const freshStatus = await apiJson<any>('/api/memory/status');
+    syncSidebarBadge(freshStatus, 0);
+    renderStatusBanner(freshStatus);
 }
 
 export async function reindexAdvancedMemory(): Promise<void> {

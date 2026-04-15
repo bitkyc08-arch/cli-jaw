@@ -345,21 +345,7 @@ select:focus-visible {
     font-weight: 600;
     padding: var(--space-1) var(--space-2);
 }
-.input-avatar {
-    width: 40px;
-    text-align: center;
-    font-size: 20px;
-    padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    background: var(--surface);
-    color: var(--text);
-}
-.avatar-label {
-    font-size: 14px;
-    opacity: 0.6;
-    user-select: none;
-}
+/* (avatar inputs removed — Phase 5 card redesign) */
 .perm-auto {
     cursor: default;
     width: 100%;
@@ -495,4 +481,6 @@ select:focus-visible {
     align-items: center;
     justify-content: center;
     font-weight: bold;
+    z-index: 10;
+    box-shadow: 0 0 0 2px var(--bg);
 }
