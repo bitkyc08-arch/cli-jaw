@@ -38,7 +38,7 @@ export class VirtualScroll {
     private viewport: HTMLDivElement;
     private _active = false;
     private rafId: number | null = null;
-    private suppressScroll = false;
+    private suppressScrollDepth = 0;
     private _remeasuring = false;
     private firstVisible = -1;
     private lastVisible = -1;
@@ -240,7 +240,7 @@ export class VirtualScroll {
     }
 
     private scrollHandler = () => {
-        if (this.suppressScroll) return;
+        if (this.suppressScrollDepth > 0) return;
         this.scheduleRender();
     };
 
@@ -407,17 +407,21 @@ export class VirtualScroll {
         const delta = currentTop - anchor.top;
         if (Math.abs(delta) <= 1) return;
         const maxScrollTop = Math.max(0, this.container.scrollHeight - this.container.clientHeight);
-        // Suppress scroll events during anchor correction to prevent
-        // a redundant render cycle that causes visual flicker
-        this.suppressScroll = true;
+        // Suppress the asynchronous scroll event that fires after programmatic
+        // scrollTop changes. Cleared in a nested RAF so it outlives the browser's
+        // "update the rendering" step where scroll events are dispatched.
+        // Uses a depth counter so overlapping suppression windows are safe.
+        this.suppressScrollDepth++;
         this.container.scrollTop = Math.max(0, Math.min(this.container.scrollTop + delta, maxScrollTop));
-        this.suppressScroll = false;
+        requestAnimationFrame(() => { requestAnimationFrame(() => { this.suppressScrollDepth--; }); });
     }
 
     private remeasureVisible(anchor: ScrollAnchor | null): void {
         if (this._remeasuring) return;
 
-        const wasAtBottom = this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight < 80;
+        // Threshold must be small (< 1 wheel tick ≈ 30px on macOS) so that
+        // a single trackpad/wheel scroll-up escapes the "stick to bottom" zone.
+        const wasAtBottom = this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight < 5;
 
         const rects: { idx: number; newH: number }[] = [];
         this.viewport.querySelectorAll('[data-vs-idx]').forEach(el => {
@@ -456,7 +460,9 @@ export class VirtualScroll {
         const total = this.totalEffectiveHeight();
         this.spacerTop.style.height = `${total}px`;
         this.spacerBottom.style.height = '0px';
+        this.suppressScrollDepth++;
         this.container.scrollTop = this.container.scrollHeight;
+        requestAnimationFrame(() => { requestAnimationFrame(() => { this.suppressScrollDepth--; }); });
         this.firstVisible = -1;
         this.lastVisible = -1;
         this.render();
