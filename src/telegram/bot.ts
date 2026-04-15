@@ -492,7 +492,12 @@ export async function initTelegram() {
             if (result?.type === 'steer' && result?.steerPrompt) {
                 const steerPrompt = result.steerPrompt;
                 await ctx.reply(result.text || '🔄');
-                tgOrchestrate(ctx, steerPrompt, steerPrompt);
+                try {
+                    await tgOrchestrate(ctx, steerPrompt, steerPrompt);
+                } catch (err: unknown) {
+                    console.error('[tg:steer]', (err as Error).message);
+                    await ctx.reply(`❌ Steer failed: ${(err as Error).message}`.slice(0, 500)).catch(() => {});
+                }
                 return;
             }
 
