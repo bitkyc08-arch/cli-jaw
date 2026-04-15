@@ -7,6 +7,21 @@ const THRESHOLD = 80;
 const BUFFER = 5;
 const EST_HEIGHT = 80;
 
+interface ScrollAnchor {
+    index: number;
+    offsetWithinItem: number;
+}
+
+export function computeAnchoredScrollTop(
+    anchorTop: number,
+    offsetWithinItem: number,
+    containerPadTop: number,
+    maxScrollTop: number,
+): number {
+    const nextScrollTop = containerPadTop + anchorTop + offsetWithinItem;
+    return Math.max(0, Math.min(nextScrollTop, maxScrollTop));
+}
+
 export interface VirtualItem {
     id: string;
     html: string;
@@ -118,10 +133,36 @@ export class VirtualScroll {
         const containerStyle = getComputedStyle(this.container);
         this.containerPadTop = parseFloat(containerStyle.paddingTop) || 0;
         this.containerPadBottom = parseFloat(containerStyle.paddingBottom) || 0;
-        const sample = this.viewport.querySelector<HTMLElement>('.msg');
+        const msgs = Array.from(this.viewport.querySelectorAll<HTMLElement>('.msg'));
+        // Do not learn spacing from the viewport's last child.
+        // `.vs-active .msg:last-child` has margin-bottom: 0, which is a DOM-window
+        // artifact, not the global spacing between virtual items.
+        const sample = msgs.find((el) => el !== this.viewport.lastElementChild) ?? null;
         if (sample) {
-            this.itemSpacing = parseFloat(getComputedStyle(sample).marginBottom) || 0;
+            const spacing = parseFloat(getComputedStyle(sample).marginBottom) || 0;
+            if (spacing > 0) this.itemSpacing = spacing;
+            return;
         }
+        // Fallback: when the viewport currently contains only one large item,
+        // there is no non-last-child sample to learn spacing from. Probe the
+        // active CSS rule directly instead of collapsing spacing to 0.
+        if (this._active && this.viewport.isConnected) {
+            const probe = document.createElement('div');
+            probe.className = 'msg';
+            probe.style.position = 'absolute';
+            probe.style.visibility = 'hidden';
+            probe.style.pointerEvents = 'none';
+            probe.textContent = ' ';
+            this.viewport.appendChild(probe);
+            const spacing = parseFloat(getComputedStyle(probe).marginBottom) || 0;
+            probe.remove();
+            if (spacing > 0) this.itemSpacing = spacing;
+        }
+    }
+
+    private primeSpacingFromExisting(sample: HTMLElement | null): void {
+        if (!sample) return;
+        this.itemSpacing = parseFloat(getComputedStyle(sample).marginBottom) || 0;
     }
 
     // ── Public API ──
@@ -215,6 +256,7 @@ export class VirtualScroll {
         this._active = true;
         this._totalHeight = 0;
         const existing = this.container.querySelectorAll('.msg');
+        this.primeSpacingFromExisting(existing[0] as HTMLElement | null);
         existing.forEach((el, i) => {
             if (this.items[i]) {
                 this.items[i].height = el.getBoundingClientRect().height;
@@ -276,6 +318,7 @@ export class VirtualScroll {
         }
         this.firstVisible = first;
         this.lastVisible = last;
+        const anchor = this.captureScrollAnchor(contentScrollTop);
 
         // Build map of currently mounted items by vsIdx
         const mounted = new Map<number, HTMLElement>();
@@ -337,10 +380,45 @@ export class VirtualScroll {
             this.onPostRender(this.viewport);
         }
 
-        this.remeasureVisible();
+        this.remeasureVisible(anchor);
     }
 
-    private remeasureVisible(): void {
+    private captureScrollAnchor(contentScrollTop: number): ScrollAnchor | null {
+        if (this.items.length === 0) return null;
+        const index = this.indexForOffset(contentScrollTop);
+        return {
+            index,
+            offsetWithinItem: Math.max(0, contentScrollTop - this.effectiveOffset(index)),
+        };
+    }
+
+    private applyCurrentSpacers(): void {
+        if (this.firstVisible < 0 || this.lastVisible < 0 || this.items.length === 0) {
+            this.spacerTop.style.height = '0px';
+            this.spacerBottom.style.height = '0px';
+            return;
+        }
+        const topSpace = this.effectiveOffset(this.firstVisible);
+        const botSpace = this.bottomSpacerHeight(this.lastVisible);
+        this.spacerTop.style.height = `${topSpace}px`;
+        this.spacerBottom.style.height = `${botSpace}px`;
+    }
+
+    private restoreScrollAnchor(anchor: ScrollAnchor | null): void {
+        if (!anchor) return;
+        const maxScrollTop = Math.max(0, this.container.scrollHeight - this.container.clientHeight);
+        const nextScrollTop = computeAnchoredScrollTop(
+            this.effectiveOffset(anchor.index),
+            anchor.offsetWithinItem,
+            this.containerPadTop,
+            maxScrollTop,
+        );
+        if (Math.abs(this.container.scrollTop - nextScrollTop) > 1) {
+            this.container.scrollTop = nextScrollTop;
+        }
+    }
+
+    private remeasureVisible(anchor: ScrollAnchor | null): void {
         const wasAtBottom = this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight < 80;
 
         const rects: { idx: number; newH: number }[] = [];
@@ -360,9 +438,13 @@ export class VirtualScroll {
                 heightChanged = true;
             }
         }
-        if (heightChanged && wasAtBottom) {
+        if (!heightChanged) return;
+        this.applyCurrentSpacers();
+        if (wasAtBottom) {
             this.scrollToBottom();
+            return;
         }
+        this.restoreScrollAnchor(anchor);
     }
 
     /** Synchronous scroll — cancel pending RAF, update spacers, render directly */

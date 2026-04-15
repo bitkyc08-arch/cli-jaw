@@ -256,7 +256,7 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
     next();
 }
 
-// ─── Rate Limiting (in-memory, 120/min) ─────────────
+// ─── Rate Limiting (in-memory, API only, 120/min) ─────────────
 const rateLimitMap = new Map();
 setInterval(() => {
     const now = Date.now();
@@ -265,6 +265,10 @@ setInterval(() => {
     }
 }, 600_000);
 app.use((req, res, next) => {
+    // Do not throttle HTML/CSS/JS/image/favicon requests.
+    // A single page load can fan out into many static asset requests and
+    // self-trigger 429s before the UI even boots.
+    if (!req.path.startsWith('/api/')) return next();
     const ip = req.ip;
     const now = Date.now();
     const window = rateLimitMap.get(ip) || { count: 0, start: now };
