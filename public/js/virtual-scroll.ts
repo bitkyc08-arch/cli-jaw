@@ -96,18 +96,17 @@ export class VirtualScroll {
     }
 
     /** Total effective height of all items with spacing.
-     *  N items have N-1 gaps (last item's margin is 0 via :last-child). */
+     *  Every item has margin-bottom in CSS (.vs-active .msg), so N items
+     *  produce N spacing gaps. This equals effectiveOffset(n). */
     private totalEffectiveHeight(): number {
         const n = this.items.length;
         if (n === 0) return 0;
-        return this.offsetForIndex(n) + (n - 1) * this.itemSpacing;
+        return this.effectiveOffset(n);
     }
 
-    /** Spacer height below the last rendered item.
-     *  effectiveOffset(N) includes one extra spacing that compensates for
-     *  :last-child removing the viewport's last element's margin-bottom. */
+    /** Spacer height below the last rendered item. */
     private bottomSpacerHeight(lastVisible: number): number {
-        return Math.max(0, this.effectiveOffset(this.items.length) - this.effectiveOffset(lastVisible + 1));
+        return Math.max(0, this.totalEffectiveHeight() - this.effectiveOffset(lastVisible + 1));
     }
 
     /** Binary search: find item index at given scroll offset */
@@ -155,10 +154,6 @@ export class VirtualScroll {
         }
     }
 
-    private primeSpacingFromExisting(sample: HTMLElement | null): void {
-        if (!sample) return;
-        this.itemSpacing = parseFloat(getComputedStyle(sample).marginBottom) || 0;
-    }
 
     // ── Public API ──
 
@@ -245,7 +240,6 @@ export class VirtualScroll {
     private activate(toBottom = false): void {
         this._active = true;
         const existing = this.container.querySelectorAll('.msg');
-        this.primeSpacingFromExisting(existing[0] as HTMLElement | null);
         existing.forEach((el, i) => {
             if (this.items[i]) {
                 this.items[i].height = el.getBoundingClientRect().height;
@@ -257,6 +251,8 @@ export class VirtualScroll {
         this.container.classList.add('vs-active');
         this.container.replaceChildren(this.spacerTop, this.viewport, this.spacerBottom);
         this.container.addEventListener('scroll', this.scrollHandler, { passive: true });
+        // Measure spacing AFTER .vs-active is applied so CSS margin-bottom is active
+        this.refreshLayoutMetrics();
 
         if (toBottom) {
             const total = this.totalEffectiveHeight();
