@@ -8,8 +8,9 @@ import {
 import { generateId } from './uuid.js';
 
 // Activates at THRESHOLD messages to prevent DOM bloat
-// Below threshold: standard DOM append (zero overhead)
-const THRESHOLD = 80;
+// Activate immediately — tanstack virtualizes DOM so only visible
+// items are rendered, preventing DOM bloat at any message count
+const THRESHOLD = 1;
 const EST_HEIGHT = 80;
 const OVERSCAN = 5;
 

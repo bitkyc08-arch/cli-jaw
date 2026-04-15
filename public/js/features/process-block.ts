@@ -54,29 +54,34 @@ function renderStep(step: ProcessStep): string {
     const detail = step.detail || '';
     const detailId = `process-detail-${step.id}`;
 
-    // All steps are expandable — shows label as short preview line,
-    // full detail (or label) in collapsible section
-    const hasDetail = hasExpandableDetail(step);
-    const snippetSource = hasDetail ? detail : (step.label || '');
-    const snippetPreview = previewText(snippetSource, step.type === 'thinking' ? 120 : 80);
-    const snippetHtml = snippetPreview
-        ? `<span class="process-step-snippet">${escapeHtml(snippetPreview)}</span>`
-        : '';
-    const fullContent = hasDetail ? detail : (step.label || '');
+    // Only create expandable DOM when there's actual detail content
+    // to prevent DOM bloat (50 msgs × 10 steps = 500 extra DOM trees)
+    if (hasExpandableDetail(step)) {
+        const snippetPreview = previewText(detail, step.type === 'thinking' ? 120 : 80);
+        const snippetHtml = snippetPreview
+            ? `<span class="process-step-snippet">${escapeHtml(snippetPreview)}</span>`
+            : '';
+        return `<div class="process-step process-step-expandable" data-step-id="${step.id}" data-type="${step.type}">
+            <button class="process-step-toggle" aria-expanded="false" aria-controls="${detailId}">
+                <span class="${dotClass}"></span>
+                <span class="${badgeClass}">${badgeText}</span>
+                <span class="process-step-main">
+                    <span class="process-step-label">${label}</span>
+                    ${snippetHtml}
+                </span>
+                <span class="process-step-chevron">${ICONS.chevronRight}</span>
+            </button>
+            <div class="process-step-details collapsed" id="${detailId}">
+                <pre class="process-step-full">${escapeHtml(detail)}</pre>
+            </div>
+        </div>`;
+    }
 
-    return `<div class="process-step process-step-expandable" data-step-id="${step.id}" data-type="${step.type}">
-        <button class="process-step-toggle" aria-expanded="false" aria-controls="${detailId}">
-            <span class="${dotClass}"></span>
-            <span class="${badgeClass}">${badgeText}</span>
-            <span class="process-step-main">
-                <span class="process-step-label">${label}</span>
-                ${snippetHtml}
-            </span>
-            <span class="process-step-chevron">${ICONS.chevronRight}</span>
-        </button>
-        <div class="process-step-details collapsed" id="${detailId}">
-            <pre class="process-step-full">${escapeHtml(fullContent)}</pre>
-        </div>
+    // Lightweight flat render — no toggle, no hidden detail section
+    return `<div class="process-step" data-step-id="${step.id}" data-type="${step.type}">
+        <span class="${dotClass}"></span>
+        <span class="${badgeClass}">${badgeText}</span>
+        <span class="process-step-label">${label}</span>
     </div>`;
 }
 
