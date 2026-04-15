@@ -175,6 +175,11 @@ export class VirtualScroll {
             estimateSize: (i: number) => this.items[i]?.height ?? EST_HEIGHT,
             overscan: OVERSCAN,
             gap: this.itemGap,
+            // Our post-render pipeline mutates the mounted message DOM
+            // (markdown lazy render, widgets, linkification). Defer RO-driven
+            // measurements by one frame to avoid "ResizeObserver loop completed
+            // with undelivered notifications" during those mutations.
+            useAnimationFrameWithResizeObserver: true,
             onChange: () => this.renderItems(),
             observeElementRect,
             observeElementOffset,
