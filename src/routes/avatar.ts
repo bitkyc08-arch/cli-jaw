@@ -1,6 +1,7 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import fs from 'fs';
+import path from 'path';
 import { basename, extname } from 'path';
 import express from 'express';
 import { ok, fail } from '../http/response.js';
@@ -107,12 +108,16 @@ export function registerAvatarRoutes(app: Express, requireAuth: AuthMiddleware):
         if (!target) return fail(res, 400, 'invalid_avatar_target');
 
         try {
+            const contentType = String(req.headers['content-type'] || '').toLowerCase();
             const filename = decodeFilenameSafe(req.headers['x-filename'] as string | undefined) || `${target}.png`;
-            validateUpload(String(req.headers['content-type'] || '').toLowerCase(), filename, req.body);
+            const bodyLen = Buffer.isBuffer(req.body) ? req.body.length : 0;
+            console.log(`[avatar:upload] target=${target} ct=${contentType} file=${filename} bodyLen=${bodyLen}`);
+            validateUpload(contentType, filename, req.body);
             const filePath = saveUpload(req.body, filename);
             saveAvatarImage(target, filePath);
             return ok(res, serializeAvatar(target));
         } catch (error: unknown) {
+            console.error('[avatar:upload] failed:', error instanceof Error ? error.message : error);
             const status = (error as { statusCode?: number })?.statusCode || 400;
             return fail(res, status, error instanceof Error ? error.message : 'avatar_upload_failed');
         }
@@ -127,12 +132,14 @@ export function registerAvatarRoutes(app: Express, requireAuth: AuthMiddleware):
 
     app.get('/api/avatar/:target/image', (req, res) => {
         const target = parseTarget(String(req.params.target || ''));
+        console.log(`[avatar:image] GET target=${target} params=${JSON.stringify(req.params)}`);
         if (!target) return fail(res, 400, 'invalid_avatar_target');
 
         const imagePath = resolveAvatarImage(target);
         if (!imagePath) return fail(res, 404, 'avatar_image_not_found');
 
         res.setHeader('Cache-Control', 'no-store');
-        return res.sendFile(imagePath);
+        // Express 5: sendFile with absolute path needs root option
+        return res.sendFile(basename(imagePath), { root: path.dirname(imagePath) });
     });
 }

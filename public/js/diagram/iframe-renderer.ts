@@ -288,7 +288,7 @@ export function createWidgetIframe(htmlCode: string): { iframe: HTMLIFrameElemen
   const iframe = document.createElement('iframe');
   iframe.sandbox.add('allow-scripts');
   iframe.srcdoc = srcdoc;
-  iframe.style.cssText = 'width: 100%; border: none; overflow: hidden; display: block;';
+  iframe.style.cssText = 'width: 100%; min-height: 200px; border: none; overflow: hidden; display: block;';
   iframe.setAttribute('aria-label', 'Interactive diagram widget');
 
   return { iframe, nonce };
