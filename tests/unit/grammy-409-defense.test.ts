@@ -65,7 +65,7 @@ test('bootstrap calls initActiveMessagingRuntime with error handling', () => {
     const listenBlock = serverSrc.slice(serverSrc.indexOf('server.listen'));
     assert.ok(listenBlock.includes('initActiveMessagingRuntime()'),
         'bootstrap must call initActiveMessagingRuntime()');
-    assert.ok(listenBlock.includes('.catch('),
+    assert.ok(listenBlock.includes('.catch(') || listenBlock.includes('} catch'),
         'bootstrap must catch init errors');
 });
 

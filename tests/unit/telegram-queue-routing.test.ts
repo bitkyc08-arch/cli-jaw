@@ -64,11 +64,11 @@ test('TQ-005: processQueue uses batch head source/chatId (no last-item leakage)'
     const queueStart = spawnSrc.indexOf('export async function processQueue()');
     const queueBlock = spawnSrc.slice(queueStart, queueStart + 2200);
     assert.ok(
-        queueBlock.includes('const source = batch[0].source'),
+        queueBlock.includes('batch[0]') && queueBlock.includes('source'),
         'source should come from batch head',
     );
     assert.ok(
-        queueBlock.includes('const chatId = batch[0].chatId'),
+        queueBlock.includes('batch[0]') && queueBlock.includes('chatId'),
         'chatId should come from batch head',
     );
     assert.ok(

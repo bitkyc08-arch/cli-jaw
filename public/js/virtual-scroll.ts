@@ -27,7 +27,13 @@ export class VirtualScroll {
     private firstVisible = -1;
     private lastVisible = -1;
 
-    /** Called after render() mounts items in viewport — for lazy rendering and widget activation */
+    // Prefix sum for O(log n) offset lookup
+    private prefixHeights: number[] = [0];
+    private prefixDirtyFrom = 0;
+
+    // Spacing model — measured from rendered .msg margin-bottom
+    private itemSpacing = 0;
+
     onLazyRender: LazyRenderCallback | null = null;
     onPostRender: ((viewport: HTMLElement) => void) | null = null;
 
@@ -44,8 +50,69 @@ export class VirtualScroll {
     get active(): boolean { return this._active; }
     get count(): number { return this.items.length; }
 
-    /** Flush all virtual items to real DOM and deactivate VS.
-     *  Called on conversation clear or explicit reset. */
+    // ── Prefix sum helpers ──
+
+    private markPrefixDirty(from: number): void {
+        this.prefixDirtyFrom = Math.min(this.prefixDirtyFrom, Math.max(0, from));
+    }
+
+    private rebuildPrefixHeights(): void {
+        const n = this.items.length;
+        if (this.prefixHeights.length !== n + 1) {
+            this.prefixHeights = new Array(n + 1).fill(0);
+            this.prefixDirtyFrom = 0;
+        }
+        for (let i = this.prefixDirtyFrom; i < n; i++) {
+            this.prefixHeights[i + 1] = this.prefixHeights[i] + this.items[i].height;
+        }
+        this.prefixDirtyFrom = n;
+    }
+
+    /** Raw cumulative height up to (but not including) index */
+    private offsetForIndex(index: number): number {
+        this.rebuildPrefixHeights();
+        return this.prefixHeights[Math.max(0, Math.min(index, this.items.length))];
+    }
+
+    /** Effective offset including inter-item spacing (margin-bottom) */
+    private effectiveOffset(index: number): number {
+        return this.offsetForIndex(index) + index * this.itemSpacing;
+    }
+
+    /** Total effective height of all items with spacing */
+    private totalEffectiveHeight(): number {
+        const n = this.items.length;
+        if (n === 0) return 0;
+        return this.offsetForIndex(n) + (n - 1) * this.itemSpacing;
+    }
+
+    /** Binary search: find item index at given scroll offset */
+    private indexForOffset(offset: number): number {
+        this.rebuildPrefixHeights();
+        const n = this.items.length;
+        if (n === 0) return 0;
+        let lo = 0;
+        let hi = n - 1;
+        while (lo < hi) {
+            const mid = (lo + hi + 1) >> 1;
+            const effOff = this.prefixHeights[mid] + mid * this.itemSpacing;
+            if (effOff <= offset) lo = mid;
+            else hi = mid - 1;
+        }
+        return lo;
+    }
+
+    // ── Spacing model ──
+
+    private refreshLayoutMetrics(): void {
+        const sample = this.viewport.querySelector<HTMLElement>('.msg');
+        if (sample) {
+            this.itemSpacing = parseFloat(getComputedStyle(sample).marginBottom) || 0;
+        }
+    }
+
+    // ── Public API ──
+
     flushToDOM(): void {
         if (!this._active) return;
         this.container.classList.remove('vs-active');
@@ -57,15 +124,45 @@ export class VirtualScroll {
         this.lastVisible = -1;
         this.items = [];
         this._totalHeight = 0;
+        this.prefixHeights = [0];
+        this.prefixDirtyFrom = 0;
+        this.itemSpacing = 0;
     }
 
-    /** Bulk-load items without triggering activate mid-loop (RC5 fix).
-     *  Call this AFTER registering onLazyRender/onPostRender. */
-    setItems(items: VirtualItem[]): void {
+    /** Bulk-load items. Call AFTER registering onLazyRender/onPostRender. */
+    setItems(
+        items: VirtualItem[],
+        options?: { autoActivate?: boolean; toBottom?: boolean },
+    ): void {
         this.items = items;
         this._totalHeight = items.reduce((sum, it) => sum + it.height, 0);
+        this.prefixHeights = new Array(items.length + 1).fill(0);
+        this.prefixDirtyFrom = 0;
+        if (options?.autoActivate === false) return;
         if (!this._active && this.items.length >= THRESHOLD) {
-            this.activate(true);
+            this.activate(options?.toBottom ?? true);
+        }
+    }
+
+    /** Seed measured heights before activation. */
+    seedMeasuredHeights(startIndex: number, heights: number[]): void {
+        for (let offset = 0; offset < heights.length; offset++) {
+            const idx = startIndex + offset;
+            const item = this.items[idx];
+            if (!item) continue;
+            const oldH = item.height;
+            const nextH = heights[offset];
+            if (oldH === nextH) continue;
+            item.height = nextH;
+            this._totalHeight += nextH - oldH;
+            this.markPrefixDirty(idx);
+        }
+    }
+
+    /** Activate if threshold met. */
+    activateIfNeeded(toBottom = false): void {
+        if (!this._active && this.items.length >= THRESHOLD) {
+            this.activate(toBottom);
         }
     }
 
@@ -73,6 +170,7 @@ export class VirtualScroll {
         const item: VirtualItem = { id, html, height: EST_HEIGHT };
         this.items.push(item);
         this._totalHeight += EST_HEIGHT;
+        this.markPrefixDirty(this.items.length - 1);
         if (!this._active && this.items.length >= THRESHOLD) {
             this.activate(true);
         }
@@ -81,8 +179,6 @@ export class VirtualScroll {
         }
     }
 
-    /** Append a live DOM element while keeping VS active.
-     *  Serializes to HTML for virtual storage. */
     appendLiveItem(div: HTMLElement): void {
         if (!this._active) return;
         const html = div.outerHTML;
@@ -90,11 +186,10 @@ export class VirtualScroll {
         const item: VirtualItem = { id, html, height: EST_HEIGHT };
         this.items.push(item);
         this._totalHeight += EST_HEIGHT;
-        // RC7 fix: use synchronous scrollToBottom (which handles spacers + render)
+        this.markPrefixDirty(this.items.length - 1);
         this.scrollToBottom();
     }
 
-    /** Update cached HTML for a specific item index (used by lazy render). */
     updateItemHtml(idx: number, html: string): void {
         if (this.items[idx]) {
             this.items[idx].html = html;
@@ -103,7 +198,6 @@ export class VirtualScroll {
 
     private scrollHandler = () => this.scheduleRender();
 
-    /** RC6 fix: activate always scrolls to bottom (new messages are at the end) */
     private activate(toBottom = false): void {
         this._active = true;
         this._totalHeight = 0;
@@ -116,12 +210,16 @@ export class VirtualScroll {
         for (const item of this.items) {
             this._totalHeight += item.height;
         }
+        this.prefixHeights = new Array(this.items.length + 1).fill(0);
+        this.prefixDirtyFrom = 0;
+
         this.container.classList.add('vs-active');
         this.container.replaceChildren(this.spacerTop, this.viewport, this.spacerBottom);
         this.container.addEventListener('scroll', this.scrollHandler, { passive: true });
+
         if (toBottom) {
-            // Set spacers for bottom position BEFORE render to avoid top flash
-            this.spacerTop.style.height = `${this._totalHeight}px`;
+            const total = this.totalEffectiveHeight();
+            this.spacerTop.style.height = `${total}px`;
             this.spacerBottom.style.height = '0px';
             this.container.scrollTop = this.container.scrollHeight;
             this.firstVisible = -1;
@@ -142,36 +240,25 @@ export class VirtualScroll {
         const scrollTop = this.container.scrollTop;
         const viewHeight = this.container.clientHeight;
 
-        let accum = 0;
-        let startIdx = this.items.length - 1;
-        for (let i = 0; i < this.items.length; i++) {
-            if (accum + this.items[i].height > scrollTop) {
-                startIdx = i;
-                break;
-            }
-            accum += this.items[i].height;
-        }
-
+        const startIdx = this.indexForOffset(scrollTop);
         const first = Math.max(0, startIdx - BUFFER);
-        let endAccum = accum;
+
         let endIdx = startIdx;
         for (let i = startIdx; i < this.items.length; i++) {
-            endAccum += this.items[i].height;
             endIdx = i;
-            if (endAccum > scrollTop + viewHeight) break;
+            if (this.effectiveOffset(i + 1) > scrollTop + viewHeight) break;
         }
         const last = Math.min(this.items.length - 1, endIdx + BUFFER);
 
-        // RC3 fix: always update spacers even if range unchanged
-        let topSpace = 0;
-        for (let i = 0; i < first; i++) topSpace += this.items[i].height;
-        let bottomSpace = 0;
-        for (let i = last + 1; i < this.items.length; i++) bottomSpace += this.items[i].height;
-
-        this.spacerTop.style.height = `${topSpace}px`;
-        this.spacerBottom.style.height = `${bottomSpace}px`;
-
-        if (first === this.firstVisible && last === this.lastVisible) return;
+        if (first === this.firstVisible && last === this.lastVisible) {
+            // Still update spacers when heights changed (RC3)
+            this.refreshLayoutMetrics();
+            const topSpace = this.effectiveOffset(first);
+            const botSpace = this.effectiveOffset(this.items.length) - this.effectiveOffset(last + 1);
+            this.spacerTop.style.height = `${topSpace}px`;
+            this.spacerBottom.style.height = `${botSpace}px`;
+            return;
+        }
         this.firstVisible = first;
         this.lastVisible = last;
 
@@ -182,7 +269,6 @@ export class VirtualScroll {
             if (!isNaN(idx)) mounted.set(idx, child);
         }
 
-        // Remove items no longer in range
         for (const [idx, el] of mounted) {
             if (idx < first || idx > last) {
                 el.remove();
@@ -190,7 +276,6 @@ export class VirtualScroll {
             }
         }
 
-        // Build ordered list — reuse existing or create new
         const ordered: HTMLElement[] = [];
         for (let i = first; i <= last; i++) {
             const existing = mounted.get(i);
@@ -208,7 +293,6 @@ export class VirtualScroll {
             }
         }
 
-        // Reorder viewport children to match (minimal DOM moves)
         let nodeRef = this.viewport.firstChild as HTMLElement | null;
         for (const el of ordered) {
             if (el !== nodeRef) {
@@ -218,7 +302,15 @@ export class VirtualScroll {
             }
         }
 
-        // Fire lazy render callback FIRST (replaces skeleton with real content)
+        // Measure spacing from actual DOM AFTER mounting items
+        this.refreshLayoutMetrics();
+
+        // Compute spacers with correct spacing
+        const topSpace = this.effectiveOffset(first);
+        const botSpace = this.effectiveOffset(this.items.length) - this.effectiveOffset(last + 1);
+        this.spacerTop.style.height = `${topSpace}px`;
+        this.spacerBottom.style.height = `${botSpace}px`;
+
         if (this.onLazyRender) {
             const lazyTargets = this.viewport.querySelectorAll<HTMLElement>('.lazy-pending');
             if (lazyTargets.length > 0) {
@@ -226,17 +318,13 @@ export class VirtualScroll {
             }
         }
 
-        // Fire post-render callback for widget activation
         if (this.onPostRender) {
             this.onPostRender(this.viewport);
         }
 
-        // Batch-read heights AFTER lazy render + widget activation
         this.remeasureVisible();
     }
 
-    /** Batch-read heights from visible elements, batch-write to items array.
-     *  Separated read/write passes = single forced reflow. */
     private remeasureVisible(): void {
         const wasAtBottom = this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight < 80;
 
@@ -253,6 +341,7 @@ export class VirtualScroll {
             if (oldH !== newH) {
                 this.items[idx].height = newH;
                 this._totalHeight += (newH - oldH);
+                this.markPrefixDirty(idx);
                 heightChanged = true;
             }
         }
@@ -261,14 +350,13 @@ export class VirtualScroll {
         }
     }
 
-    /** RC2 fix: synchronous scroll — cancel pending RAF, update spacers, render directly */
+    /** Synchronous scroll — cancel pending RAF, update spacers, render directly */
     scrollToBottom(): void {
         if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = null; }
-        // Update spacers to reflect full content height at bottom position
-        this.spacerTop.style.height = `${this._totalHeight}px`;
+        const total = this.totalEffectiveHeight();
+        this.spacerTop.style.height = `${total}px`;
         this.spacerBottom.style.height = '0px';
         this.container.scrollTop = this.container.scrollHeight;
-        // Reset visible range to force full re-render at new position
         this.firstVisible = -1;
         this.lastVisible = -1;
         this.render();
@@ -277,6 +365,9 @@ export class VirtualScroll {
     clear(): void {
         this.items = [];
         this._totalHeight = 0;
+        this.prefixHeights = [0];
+        this.prefixDirtyFrom = 0;
+        this.itemSpacing = 0;
         if (this._active) {
             this.container.classList.remove('vs-active');
             this.container.removeEventListener('scroll', this.scrollHandler);

@@ -1,5 +1,6 @@
 import { escapeHtml } from '../render.js';
 import { api, getAuthToken } from '../api.js';
+import { ICONS } from '../icons.js';
 
 type AvatarRole = 'agent' | 'user';
 type AvatarServerEntry = {
@@ -16,8 +17,8 @@ type AvatarState = {
 
 const AGENT_KEY = 'agentAvatar';
 const USER_KEY = 'userAvatar';
-const DEFAULT_AGENT = '🦈';
-const DEFAULT_USER = '👤';
+const DEFAULT_AGENT = ICONS.shark;
+const DEFAULT_USER = ICONS.user;
 
 const avatarState: Record<AvatarRole, AvatarState> = {
     agent: { emoji: DEFAULT_AGENT, imageUrl: '', updatedAt: null },
@@ -56,7 +57,8 @@ function avatarMarkup(role: AvatarRole): string {
     if (current.imageUrl) {
         return `<img class="avatar-image" src="${escapeHtml(current.imageUrl)}" alt="" loading="lazy" decoding="async">`;
     }
-    return escapeHtml(current.emoji);
+    // Default icons are Lucide SVG strings — render as-is
+    return current.emoji;
 }
 
 function applyAvatar(role: AvatarRole): void {

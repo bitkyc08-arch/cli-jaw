@@ -58,7 +58,8 @@ test('loadSettings catch path applies env overrides', () => {
         configSrc.indexOf('export function loadSettings'),
         configSrc.indexOf('\nexport function saveSettings'),
     );
-    const catchBlock = loadSettingsFn.slice(loadSettingsFn.lastIndexOf('} catch'));
+    const outerCatchIdx = loadSettingsFn.indexOf('} catch');
+    const catchBlock = loadSettingsFn.slice(outerCatchIdx);
     assert.ok(catchBlock.includes('applyEnvOverrides'),
         'loadSettings catch path must call applyEnvOverrides');
 });

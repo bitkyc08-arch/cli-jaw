@@ -29,6 +29,7 @@ import {
     Package,
     ClipboardList,
     Bot,
+    CircleUserRound,
     Palette,
     Link,
     HandMetal,
@@ -54,6 +55,9 @@ import {
     Download,
 } from '@lucide/icons';
 
+// ── Inline SVG assets (embedded to avoid ?raw import issues in Node.js tests) ──
+const sharkSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12c0 0 2-4 6-4 1 0 2 .5 3 1l3-6c0 0 1 5 3 7 1.5 1.5 5 2 5 2s-1 4-5 4c-1 0-2-.3-3-.8L12 18c0 0-2-1-4-1-4 0-6-5-6-5z"/><circle cx="17" cy="11" r="0.5" fill="currentColor" stroke="none"/><path d="M7 12l1 2"/><path d="M9.5 12l1 2"/></svg>';
+
 // ── Size presets ──
 const S = 14;  // inline / small
 const M = 16;  // default UI
@@ -62,8 +66,7 @@ function luc(data: Parameters<typeof buildLucideSvg>[0], size = M): string {
     return buildLucideSvg(data, { size });
 }
 
-// ── Shark mascot (🦈 emoji — brand identity) ──
-const SHARK_SVG = '🦈';
+// ── Default avatar icons (Lucide-based, no emoji literals) ──
 
 // ── Icon registry ──
 // Keys match the semantic role, NOT the old emoji codepoint.
@@ -101,8 +104,9 @@ export const ICONS = {
     link:        luc(Link),
     salute:      luc(HandMetal),
 
-    // Mascot
-    shark:       SHARK_SVG,
+    // Avatar defaults
+    shark:       sharkSvg,
+    user:        luc(CircleUserRound),
 
     // HTML template icons
     paperclip:   luc(Paperclip),
@@ -165,6 +169,7 @@ const iconMap: Partial<Record<IconName, (s: number) => string>> = {
     palette:    (s) => luc(Palette, s),
     link:       (s) => luc(Link, s),
     salute:     (s) => luc(HandMetal, s),
+    user:       (s) => luc(CircleUserRound, s),
     paperclip:  (s) => luc(Paperclip, s),
     save:       (s) => luc(Save, s),
     gamepad:    (s) => luc(Gamepad2, s),
@@ -197,6 +202,7 @@ const EMOJI_TO_ICON: Record<string, IconName> = {
     '⚠️': 'warning',
     '💡': 'lightbulb',
     '🦈': 'shark',
+    '👤': 'user',
     '💭': 'thinking',
     '🔍': 'search',
     '🌐': 'web',
