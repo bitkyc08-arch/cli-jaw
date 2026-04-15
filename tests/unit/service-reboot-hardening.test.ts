@@ -9,6 +9,8 @@ const ROOT = process.cwd();
 const SERVER = path.join(ROOT, 'server.ts');
 const CONFIG = path.join(ROOT, 'src/core/config.ts');
 const SPAWN = path.join(ROOT, 'src/agent/spawn.ts');
+const LIFECYCLE = path.join(ROOT, 'src/agent/lifecycle-handler.ts');
+const DB = path.join(ROOT, 'src/core/db.ts');
 const LAUNCHD = path.join(ROOT, 'bin/commands/launchd.ts');
 const SERVICE = path.join(ROOT, 'bin/commands/service.ts');
 
@@ -56,9 +58,14 @@ test('SRH-004: service installers use shared service PATH builder instead of raw
 test('SRH-005: spawn path and detectCli logic use service-safe PATH handling', () => {
     const spawnSrc = fs.readFileSync(SPAWN, 'utf8');
     const configSrc = fs.readFileSync(CONFIG, 'utf8');
+    const lifecycleSrc = fs.readFileSync(LIFECYCLE, 'utf8');
+    const dbSrc = fs.readFileSync(DB, 'utf8');
 
     assert.match(spawnSrc, /env\.PATH = buildServicePath\(env\.PATH \|\| ''\)/);
     assert.match(spawnSrc, /const spawnCommand = process\.platform === 'win32' \? cli : \(detected\.path \|\| cli\)/);
+    assert.match(spawnSrc, /clearEmployeeSession\.run\(opts\.agentId\)/);
+    assert.match(lifecycleSrc, /clearEmployeeSession\.run\(opts\.agentId\)/);
+    assert.match(dbSrc, /export const clearEmployeeSession = db\.prepare\('DELETE FROM employee_sessions WHERE employee_id = \?'\)/);
     assert.match(configSrc, /PATH: buildServicePath\(process\.env\.PATH \|\| ''\)/);
 });
 
