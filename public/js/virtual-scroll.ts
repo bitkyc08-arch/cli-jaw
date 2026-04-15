@@ -33,6 +33,8 @@ export class VirtualScroll {
 
     // Spacing model — measured from rendered .msg margin-bottom
     private itemSpacing = 0;
+    private containerPadTop = 0;
+    private containerPadBottom = 0;
 
     onLazyRender: LazyRenderCallback | null = null;
     onPostRender: ((viewport: HTMLElement) => void) | null = null;
@@ -86,6 +88,14 @@ export class VirtualScroll {
         return this.offsetForIndex(n) + (n - 1) * this.itemSpacing;
     }
 
+    /** Spacer height needed after the last rendered item.
+     *  Viewport DOM omits margin after its last child, so add the boundary gap
+     *  back when there are still off-screen items below. */
+    private bottomSpacerHeight(lastVisible: number): number {
+        const remaining = this.totalEffectiveHeight() - this.effectiveOffset(lastVisible + 1);
+        return remaining + (lastVisible < this.items.length - 1 ? this.itemSpacing : 0);
+    }
+
     /** Binary search: find item index at given scroll offset */
     private indexForOffset(offset: number): number {
         this.rebuildPrefixHeights();
@@ -105,6 +115,9 @@ export class VirtualScroll {
     // ── Spacing model ──
 
     private refreshLayoutMetrics(): void {
+        const containerStyle = getComputedStyle(this.container);
+        this.containerPadTop = parseFloat(containerStyle.paddingTop) || 0;
+        this.containerPadBottom = parseFloat(containerStyle.paddingBottom) || 0;
         const sample = this.viewport.querySelector<HTMLElement>('.msg');
         if (sample) {
             this.itemSpacing = parseFloat(getComputedStyle(sample).marginBottom) || 0;
@@ -237,24 +250,26 @@ export class VirtualScroll {
     }
 
     private render(): void {
+        this.refreshLayoutMetrics();
         const scrollTop = this.container.scrollTop;
         const viewHeight = this.container.clientHeight;
+        const contentScrollTop = Math.max(0, scrollTop - this.containerPadTop);
+        const contentViewHeight = Math.max(0, viewHeight - this.containerPadTop - this.containerPadBottom);
 
-        const startIdx = this.indexForOffset(scrollTop);
+        const startIdx = this.indexForOffset(contentScrollTop);
         const first = Math.max(0, startIdx - BUFFER);
 
         let endIdx = startIdx;
         for (let i = startIdx; i < this.items.length; i++) {
             endIdx = i;
-            if (this.effectiveOffset(i + 1) > scrollTop + viewHeight) break;
+            if (this.effectiveOffset(i + 1) > contentScrollTop + contentViewHeight) break;
         }
         const last = Math.min(this.items.length - 1, endIdx + BUFFER);
 
         if (first === this.firstVisible && last === this.lastVisible) {
             // Still update spacers when heights changed (RC3)
-            this.refreshLayoutMetrics();
             const topSpace = this.effectiveOffset(first);
-            const botSpace = this.effectiveOffset(this.items.length) - this.effectiveOffset(last + 1);
+            const botSpace = this.bottomSpacerHeight(last);
             this.spacerTop.style.height = `${topSpace}px`;
             this.spacerBottom.style.height = `${botSpace}px`;
             return;
@@ -307,7 +322,7 @@ export class VirtualScroll {
 
         // Compute spacers with correct spacing
         const topSpace = this.effectiveOffset(first);
-        const botSpace = this.effectiveOffset(this.items.length) - this.effectiveOffset(last + 1);
+        const botSpace = this.bottomSpacerHeight(last);
         this.spacerTop.style.height = `${topSpace}px`;
         this.spacerBottom.style.height = `${botSpace}px`;
 
@@ -368,6 +383,8 @@ export class VirtualScroll {
         this.prefixHeights = [0];
         this.prefixDirtyFrom = 0;
         this.itemSpacing = 0;
+        this.containerPadTop = 0;
+        this.containerPadBottom = 0;
         if (this._active) {
             this.container.classList.remove('vs-active');
             this.container.removeEventListener('scroll', this.scrollHandler);

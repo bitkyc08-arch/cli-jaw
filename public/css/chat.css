@@ -141,7 +141,7 @@
 
 /* Virtual Scroll viewport — mirrors .chat-messages flex layout so
    align-self on .msg-user / .msg-agent keeps working inside VS.
-   Gap is via margin-bottom on .msg so getBoundingClientRect captures it (RC4 fix) */
+   Gap is via margin-bottom on .msg and is modeled explicitly in JS spacing math. */
 .vs-viewport {
     display: flex;
     flex-direction: column;
@@ -149,7 +149,7 @@
     overflow-anchor: none;
 }
 
-/* Gap between VS items via margin — captured by height measurement (RC4 fix) */
+/* Gap between VS items via margin — JS reads this as itemSpacing */
 .vs-active .msg {
     margin-bottom: var(--space-3);
 }
