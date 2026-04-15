@@ -352,11 +352,21 @@ export class VirtualScroll {
         // Measure spacing from actual DOM AFTER mounting items
         this.refreshLayoutMetrics();
 
-        // Compute spacers with correct spacing
+        // Compute spacers with correct spacing.
+        // When the visible range shifts, spacerTop can jump by hundreds of px
+        // (because previously-measured items have heights ≠ EST_HEIGHT).
+        // Compensate scrollTop by the delta so the viewport content stays put.
+        const oldTopSpace = parseFloat(this.spacerTop.style.height) || 0;
         const topSpace = this.effectiveOffset(first);
         const botSpace = this.bottomSpacerHeight(last);
+        const spacerDelta = topSpace - oldTopSpace;
         this.spacerTop.style.height = `${topSpace}px`;
         this.spacerBottom.style.height = `${botSpace}px`;
+        if (Math.abs(spacerDelta) > 1) {
+            this.suppressScrollDepth++;
+            this.container.scrollTop += spacerDelta;
+            requestAnimationFrame(() => { requestAnimationFrame(() => { this.suppressScrollDepth--; }); });
+        }
 
         if (this.onLazyRender) {
             const lazyTargets = this.viewport.querySelectorAll<HTMLElement>('.lazy-pending');
