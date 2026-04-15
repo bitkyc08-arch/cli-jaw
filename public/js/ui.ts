@@ -334,6 +334,11 @@ export function addMessage(role: string, text: string, cli?: string | null): HTM
 let scrollRAF: number | null = null;
 
 export function scrollToBottom(): void {
+    const vs = getVirtualScroll();
+    if (vs.active) {
+        vs.scrollToBottom();
+        return;
+    }
     if (scrollRAF) return;
     scrollRAF = requestAnimationFrame(() => {
         scrollRAF = null;

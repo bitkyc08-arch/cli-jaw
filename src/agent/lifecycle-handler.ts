@@ -4,7 +4,7 @@
 import fs from 'fs';
 import { broadcast } from '../core/bus.js';
 import { settings, detectCli } from '../core/config.js';
-import { insertMessageWithTrace, updateSession } from '../core/db.js';
+import { clearEmployeeSession, insertMessageWithTrace, updateSession } from '../core/db.js';
 import { persistMainSession } from './session-persistence.js';
 import { buildContinuationPrompt } from './smoke-detector.js';
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
@@ -204,9 +204,14 @@ export function handleAgentExit(params: ExitHandlerParams): void {
         // ─── Error handling ───
         const { is429, message: errMsg } = classifyExitError(cli, code, ctx.stderrBuf);
 
-        if (isResume && !empSid && shouldInvalidateResumeSession(cli, code, ctx.stderrBuf, ctx.fullText)) {
-            updateSession.run(cli, null, model, settings.permissions, settings.workingDir, effortVal);
-            console.log(`[jaw:session] invalidated stale resume — ${cli} session cleared`);
+        if (isResume && shouldInvalidateResumeSession(cli, code, ctx.stderrBuf, ctx.fullText)) {
+            if (empSid && opts.agentId) {
+                clearEmployeeSession.run(opts.agentId);
+                console.log(`[jaw:session] invalidated stale employee resume — ${cli} agent=${opts.agentId}`);
+            } else {
+                updateSession.run(cli, null, model, settings.permissions, settings.workingDir, effortVal);
+                console.log(`[jaw:session] invalidated stale resume — ${cli} session cleared`);
+            }
         }
 
         // ─── 429 delay retry (same engine, 1회만) ───

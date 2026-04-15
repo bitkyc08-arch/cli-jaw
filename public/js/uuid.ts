@@ -1,7 +1,9 @@
+// ── UUID Utility ──
 /**
  * Secure-context-safe UUID v4 generator.
  * crypto.randomUUID() requires Secure Context (HTTPS / localhost).
- * Fallback uses crypto.getRandomValues() which works in ALL contexts.
+ * Fallback chain: randomUUID → getRandomValues (RFC 4122) → Math.random.
+ * Math.random tier is NOT cryptographically secure — used only for UI element IDs.
  */
 export function generateId(): string {
     const c = globalThis.crypto;

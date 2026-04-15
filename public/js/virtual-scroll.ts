@@ -48,6 +48,7 @@ export class VirtualScroll {
      *  Called on conversation clear or explicit reset. */
     flushToDOM(): void {
         if (!this._active) return;
+        this.container.classList.remove('vs-active');
         this.container.removeEventListener('scroll', this.scrollHandler);
         if (this.rafId) { cancelAnimationFrame(this.rafId); this.rafId = null; }
         this.container.innerHTML = this.items.map(it => it.html).join('');
@@ -81,7 +82,7 @@ export class VirtualScroll {
         this._totalHeight += EST_HEIGHT;
         // Render immediately then scroll again after height is remeasured
         this.render();
-        this.container.scrollTop = this._totalHeight;
+        this.scrollToBottom();
     }
 
     /** Update cached HTML for a specific item index (used by lazy render). */
@@ -104,6 +105,7 @@ export class VirtualScroll {
             }
         });
         // Atomic swap — avoids visible blank frame during activation
+        this.container.classList.add('vs-active');
         this.container.replaceChildren(this.spacerTop, this.viewport, this.spacerBottom);
         this.container.addEventListener('scroll', this.scrollHandler, { passive: true });
         this.render();
@@ -122,7 +124,7 @@ export class VirtualScroll {
         const viewHeight = this.container.clientHeight;
 
         let accum = 0;
-        let startIdx = 0;
+        let startIdx = this.items.length - 1;   // fallback to bottom, not top
         for (let i = 0; i < this.items.length; i++) {
             if (accum + this.items[i].height > scrollTop) {
                 startIdx = i;
@@ -241,6 +243,7 @@ export class VirtualScroll {
         this.items = [];
         this._totalHeight = 0;
         if (this._active) {
+            this.container.classList.remove('vs-active');
             this.container.removeEventListener('scroll', this.scrollHandler);
             this.viewport.innerHTML = '';
             this.spacerTop.style.height = '0';

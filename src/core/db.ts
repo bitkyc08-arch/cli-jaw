@@ -130,6 +130,7 @@ export const getEmployeeSession = db.prepare('SELECT * FROM employee_sessions WH
 export const upsertEmployeeSession = db.prepare(
     'INSERT OR REPLACE INTO employee_sessions (employee_id, session_id, cli) VALUES (?, ?, ?)'
 );
+export const clearEmployeeSession = db.prepare('DELETE FROM employee_sessions WHERE employee_id = ?');
 export const clearAllEmployeeSessions = db.prepare('DELETE FROM employee_sessions');
 
 // ─── PABCD State Machine ────────────────────────────

@@ -7,7 +7,7 @@ import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, UPLOADS_DIR, detectCli } from '../core/config.js';
 import {
-    getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
+    clearEmployeeSession, getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
 } from '../core/db.js';
 import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, extractOutputChunk, logEventSummary, flushClaudeBuffers } from './events.js';
@@ -24,6 +24,7 @@ import { groupQueueKey } from '../messaging/session-key.js';
 import { isCompactMarkerRow } from '../core/compact.js';
 import { hasBlockingWorkers, hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 import { handleAgentExit, setSpawnAgent } from './lifecycle-handler.js';
+import { buildServicePath } from '../core/runtime-path.js';
 import {
     memoryFlushCounter as _memoryFlushCounter,
     flushCycleCount as _flushCycleCount,
@@ -331,7 +332,8 @@ function makeCleanEnv(extraEnv: Record<string, string> = {}) {
     const env = { ...process.env };
     delete env.CLAUDE_CODE_SSE_PORT;
     delete env.GEMINI_SYSTEM_MD;
-    return { ...env, ...extraEnv };
+    env.PATH = buildServicePath(env.PATH || '');
+    return { ...env, ...extraEnv, PATH: buildServicePath(extraEnv.PATH || env.PATH || '') };
 }
 
 function buildHistoryBlock(currentPrompt: string, workingDir?: string | null, maxSessions = 10, maxTotalChars = 8000) {
@@ -727,6 +729,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                         console.log(`[acp:session] loadSession OK: ${resumeSessionId.slice(0, 12)}...`);
                     } catch (loadErr: unknown) {
                         console.warn(`[acp:session] loadSession FAILED: ${(loadErr as Error).message} — falling back to createSession`);
+                        if (empSid && opts.agentId) {
+                            clearEmployeeSession.run(opts.agentId);
+                            console.warn(`[acp:session] cleared stale employee resume for ${opts.agentId}`);
+                        }
                         await acp.createSession(spawnCwd);
                     }
                 } else {
@@ -825,7 +831,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     // ─── Standard CLI branch (claude/codex/gemini/opencode) ──────
     // DIFF-B: Windows needs shell:true to resolve .cmd shims (npm global installs)
-    const child = spawn(cli, args, {
+    const spawnCommand = process.platform === 'win32' ? cli : (detected.path || cli);
+    const child = spawn(spawnCommand, args, {
         cwd: spawnCwd,
         env: spawnEnv,
         stdio: ['pipe', 'pipe', 'pipe'],

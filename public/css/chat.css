@@ -121,8 +121,14 @@
     position: relative;
     z-index: 1;
     animation: revealUp 0.4s var(--ease-out-expo) 0.2s both;
-    contain: content;
+    contain: layout style paint;
     will-change: scroll-position;
+    overflow-anchor: none;
+}
+
+/* Zero container gap when VS active — prevents gap/height mismatch in JS model */
+.chat-messages.vs-active {
+    gap: 0;
 }
 
 /* Virtual Scroll viewport — mirrors .chat-messages flex layout so
@@ -131,6 +137,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--space-3);
+    overflow-anchor: none;
 }
 
 /* Depth fade gradients removed — caused visible white bars on scroll in light mode */
