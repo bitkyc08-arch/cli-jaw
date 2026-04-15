@@ -328,13 +328,37 @@ export function addMessage(role: string, text: string, cli?: string | null): HTM
             }
         }
     }
-    scrollToBottom();
+    // Force scroll for user messages so they're always visible after sending;
+    // agent/system messages respect the user's current scroll position.
+    scrollToBottom(role === 'user');
     return div;
 }
 
 let scrollRAF: number | null = null;
+let userNearBottom = true;
+let scrollTrackingBound = false;
+const SCROLL_BOTTOM_THRESHOLD = 80; // px
 
-export function scrollToBottom(): void {
+function ensureScrollTracking(): void {
+    if (scrollTrackingBound) return;
+    const c = document.getElementById('chatMessages');
+    if (!c) return;
+    scrollTrackingBound = true;
+    c.addEventListener('scroll', () => {
+        const dist = c.scrollHeight - c.scrollTop - c.clientHeight;
+        userNearBottom = dist < SCROLL_BOTTOM_THRESHOLD;
+    }, { passive: true });
+}
+
+/** Scroll chat to bottom.
+ *  @param force - bypass user-scroll detection (use for explicit user actions) */
+export function scrollToBottom(force = false): void {
+    ensureScrollTracking();
+    if (!force && !userNearBottom) return;
+    // After force scroll, mark as near-bottom so subsequent
+    // streaming chunks keep auto-scrolling until user scrolls up
+    if (force) userNearBottom = true;
+
     const vs = getVirtualScroll();
     if (vs.active) {
         vs.scrollToBottom();

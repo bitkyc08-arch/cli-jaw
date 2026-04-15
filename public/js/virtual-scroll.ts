@@ -39,6 +39,7 @@ export class VirtualScroll {
     private _active = false;
     private rafId: number | null = null;
     private suppressScroll = false;
+    private _remeasuring = false;
     private firstVisible = -1;
     private lastVisible = -1;
 
@@ -227,7 +228,9 @@ export class VirtualScroll {
         const item: VirtualItem = { id, html, height: EST_HEIGHT };
         this.items.push(item);
         this.markPrefixDirty(this.items.length - 1);
-        this.scrollToBottom();
+        // Don't force scroll here — let the ui.ts wrapper decide
+        // based on userNearBottom state
+        this.scheduleRender();
     }
 
     updateItemHtml(idx: number, html: string): void {
@@ -412,6 +415,8 @@ export class VirtualScroll {
     }
 
     private remeasureVisible(anchor: ScrollAnchor | null): void {
+        if (this._remeasuring) return;
+
         const wasAtBottom = this.container.scrollHeight - this.container.scrollTop - this.container.clientHeight < 80;
 
         const rects: { idx: number; newH: number }[] = [];
@@ -431,12 +436,18 @@ export class VirtualScroll {
             }
         }
         if (!heightChanged) return;
-        this.applyCurrentSpacers();
-        if (wasAtBottom) {
-            this.scrollToBottom();
-            return;
+
+        this._remeasuring = true;
+        try {
+            this.applyCurrentSpacers();
+            if (wasAtBottom) {
+                this.scrollToBottom();
+                return;
+            }
+            this.restoreScrollAnchor(anchor);
+        } finally {
+            this._remeasuring = false;
         }
-        this.restoreScrollAnchor(anchor);
     }
 
     /** Synchronous scroll — cancel pending RAF, update spacers, render directly */
