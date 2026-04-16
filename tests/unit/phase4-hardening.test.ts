@@ -31,9 +31,11 @@ test('P4H-001: launchd rejects unknown option (e.g. --dry-run)', () => {
     assert.match(stderr, /Unknown option/i);
 });
 
-test('P4H-002: launchctl load/unload quotes plist path', () => {
-    assert.ok(launchdSrc.includes('launchctl unload "${PLIST_PATH}"'));
-    assert.ok(launchdSrc.includes('launchctl load -w "${PLIST_PATH}"'));
+test('P4H-002: launchctl bootstrap quotes plist path and bootout targets label', () => {
+    // bootstrap takes the plist path — must be quoted to handle spaces
+    assert.ok(launchdSrc.includes('launchctl bootstrap ${GUI_DOMAIN} "${PLIST_PATH}"'));
+    // bootout targets the domain/label, not a path
+    assert.ok(launchdSrc.includes('launchctl bootout ${GUI_DOMAIN}/${LABEL}'));
 });
 
 test('P4H-003: browser command uses dynamic server URL (no hardcoded 3457)', () => {
