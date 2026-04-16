@@ -8,7 +8,7 @@ import { settings, saveSettings, JAW_HOME } from '../core/config.js';
 import * as memoryModule from '../memory/memory.js';
 import { bootstrapMemory, getMemoryStatus, getLastReflectedAt, hasSoulFile, loadSoulSummary, listMemoryFiles, reindexMemory, syncKvShadowImport } from '../memory/runtime.js';
 import { getFlushStatus } from '../agent/memory-flush-controller.js';
-import { getMigrationLockPath, hashText, safeReadFile } from '../memory/shared.js';
+import { getMigrationLockPath, hashText, safeReadFile, readMeta } from '../memory/shared.js';
 import { activeProcesses, memoryFlushCounter } from '../agent/spawn.js';
 import { getMemoryDir } from '../prompt/builder.js';
 import { assertMemoryRelPath, assertFilename, safeResolveUnder } from '../security/path-guards.js';
@@ -56,6 +56,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
             migrationLocked,
             staleWarnings,
             hasSoul: hasSoulFile(),
+            soulSynthesized: readMeta()?.soulSynthesized || false,
             soulPreview: hasSoulFile() ? loadSoulSummary(200) : '',
             flushStatus: getFlushStatus(),
         });

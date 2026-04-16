@@ -20,7 +20,7 @@ export type RemoteTarget = {
 
 export type RemoteInterface = MessengerChannel;
 
-export type RuntimeOrigin = 'web' | 'cli' | MessengerChannel;
+export type RuntimeOrigin = 'web' | 'cli' | 'system' | MessengerChannel;
 
 export type OutboundType = 'text' | 'voice' | 'photo' | 'document';
 

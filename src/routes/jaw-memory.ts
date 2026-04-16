@@ -2,9 +2,13 @@ import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import { assertMemoryRelPath } from '../security/path-guards.js';
 import * as memory from '../memory/memory.js';
-import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory, hasSoulFile, loadSoulSummary, getAdvancedMemoryDir } from '../memory/runtime.js';
-import { ensureAdvancedMemoryStructure } from '../memory/bootstrap.js';
+import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory, hasSoulFile, loadSoulSummary, getAdvancedMemoryDir, safeReadFile, readMeta, writeMeta } from '../memory/runtime.js';
+import { ensureAdvancedMemoryStructure, scanSystemProfile } from '../memory/bootstrap.js';
 import { reindexSingleFile } from '../memory/indexing.js';
+import { getMemory } from '../core/db.js';
+import { settings } from '../core/config.js';
+import { submitMessage } from '../orchestrator/gateway.js';
+import { buildSoulBootstrapPrompt } from '../prompt/soul-bootstrap-prompt.js';
 import { join } from 'path';
 
 function normalizeAdvancedReadPath(file: string): string {
@@ -100,7 +104,52 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
         try {
             const { applySoulUpdate } = await import('../memory/identity.js');
             const result = applySoulUpdate(req.body);
+            // Mark soul as synthesized when called with reason: 'soul-bootstrap'
+            if (result.applied && req.body?.reason === 'soul-bootstrap') {
+                writeMeta({
+                    soulSynthesized: true,
+                    soulSynthesizedAt: new Date().toISOString(),
+                    soulSynthesizedCli: settings.cli || 'unknown',
+                });
+            }
             res.json(result);
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/soul/bootstrap', requireAuth, (req, res) => {
+        try {
+            const meta = readMeta();
+            if (meta?.soulSynthesized) {
+                return res.json({ ok: false, reason: 'already_synthesized' });
+            }
+
+            const root = getAdvancedMemoryDir();
+            const systemProfile = scanSystemProfile();
+            const currentSoul = safeReadFile(join(root, 'shared', 'soul.md'));
+            const profileContent = safeReadFile(join(root, 'profile.md'));
+            const kvEntries = (getMemory.all() as { key: string; value: string }[]) || [];
+            const lang = settings.locale || req.body?.lang || 'en';
+
+            const prompt = buildSoulBootstrapPrompt({
+                systemProfile,
+                currentSoul,
+                profileContent,
+                kvEntries,
+                lang,
+            });
+
+            const result = submitMessage(prompt, {
+                origin: 'system',
+                displayText: lang === 'ko' ? '🧠 Soul 최적화 중...' : '🧠 Optimizing soul...',
+            });
+
+            if (result.action === 'rejected') {
+                return res.json({ ok: false, reason: result.reason || 'no_active_agent' });
+            }
+
+            res.json({ ok: true, action: result.action, requestId: result.requestId });
+        } catch (e: unknown) {
+            res.status(500).json({ error: (e as Error).message });
+        }
     });
 }
