@@ -15,7 +15,7 @@ export type SoulSection = 'Core Values' | 'Tone' | 'Boundaries' | 'Relationship'
 
 export type SoulUpdate = {
     section: SoulSection;
-    action: 'add' | 'remove';
+    action: 'add' | 'remove' | 'replace';
     content: string;
     reason: string;
     confidence: 'high' | 'medium';
@@ -64,7 +64,10 @@ export function applySoulUpdate(update: SoulUpdate): SoulUpdateResult {
     }
 
     let newSoul: string;
-    if (update.action === 'add') {
+    if (update.action === 'replace') {
+        const newContent = `\n${update.content.trim()}\n`;
+        newSoul = soul.slice(0, afterHeader) + newContent + soul.slice(sectionEnd);
+    } else if (update.action === 'add') {
         const insertion = `\n- ${update.content.trim()}`;
         newSoul = soul.slice(0, sectionEnd) + insertion + soul.slice(sectionEnd);
     } else {

@@ -2,11 +2,12 @@ import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import { assertMemoryRelPath } from '../security/path-guards.js';
 import * as memory from '../memory/memory.js';
-import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory, hasSoulFile, loadSoulSummary, getAdvancedMemoryDir, safeReadFile, readMeta, writeMeta } from '../memory/runtime.js';
+import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory, hasSoulFile, loadSoulSummary, getAdvancedMemoryDir, safeReadFile, readMeta, writeMeta, listMemoryFiles, writeText } from '../memory/runtime.js';
 import { ensureAdvancedMemoryStructure, scanSystemProfile } from '../memory/bootstrap.js';
 import { reindexSingleFile } from '../memory/indexing.js';
 import { getMemory } from '../core/db.js';
 import { settings } from '../core/config.js';
+import { broadcast } from '../core/bus.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import { buildSoulBootstrapPrompt } from '../prompt/soul-bootstrap-prompt.js';
 import { join } from 'path';
@@ -14,6 +15,50 @@ import { join } from 'path';
 function normalizeAdvancedReadPath(file: string): string {
     const value = String(file || '').replace(/\\/g, '/').replace(/^\/+/, '');
     return value.startsWith('structured/') ? value.slice('structured/'.length) : value;
+}
+
+function countAdvancedMemoryFiles(): number {
+    const sections = listMemoryFiles().sections;
+    return Object.values(sections).reduce((sum, files) => sum + files.length, 0);
+}
+
+function flattenAdvancedMemoryFiles(): string[] {
+    const sections = listMemoryFiles().sections;
+    return [
+        ...sections.profile,
+        ...sections.shared,
+        ...sections.episodes,
+        ...sections.semantic,
+        ...sections.procedures,
+        ...sections.sessions,
+    ];
+}
+
+function buildMemorySyncPayload(reason: string) {
+    return {
+        reason,
+        status: {
+            ...getMemoryStatus(),
+            hasSoul: hasSoulFile(),
+            soulSynthesized: readMeta()?.soulSynthesized || false,
+            soulPreview: hasSoulFile() ? loadSoulSummary(200) : '',
+            legacyFileCount: memory.list().length,
+            advancedFileCount: countAdvancedMemoryFiles(),
+        },
+    };
+}
+
+function broadcastMemorySync(reason: string): void {
+    broadcast('memory_status', buildMemorySyncPayload(reason));
+}
+
+function saveCanonicalSoul(content: string): string {
+    const root = getAdvancedMemoryDir();
+    const soulPath = join(root, 'shared', 'soul.md');
+    // Soul bootstrap provides a full document, so this path must overwrite.
+    writeText(soulPath, String(content || ''));
+    reindexSingleFile(root, soulPath);
+    return soulPath;
 }
 
 export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddleware): void {
@@ -40,25 +85,48 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
     app.post('/api/jaw-memory/save', requireAuth, (req, res) => {
         try {
             const file = assertMemoryRelPath(String(req.body.file || ''), { allowExt: ['.md', '.txt', '.json'] });
-            const p = memory.save(file, req.body.content);
-            res.json({ ok: true, path: p });
+            const normalizedFile = file.replace(/\\/g, '/');
+            const p = normalizedFile === 'shared/soul.md' || normalizedFile === 'structured/shared/soul.md'
+                ? saveCanonicalSoul(req.body.content)
+                : memory.save(file, req.body.content);
+            const payload = buildMemorySyncPayload('save');
+            broadcastMemorySync('save');
+            res.json({ ok: true, path: p, ...payload });
         } catch (e: unknown) { res.status((e as any).statusCode || 500).json({ error: (e as Error).message }); }
     });
 
     app.get('/api/jaw-memory/list', (_, res) => {
-        try { res.json({ files: memory.list() }); }
+        try {
+            const mem = getMemoryStatus();
+            const files = mem.routing.searchRead === 'advanced'
+                ? flattenAdvancedMemoryFiles().map(path => ({ path, size: 0, modified: '' }))
+                : memory.list();
+            res.json({
+                files,
+                count: files.length,
+                mode: mem.routing.searchRead,
+                advancedFileCount: countAdvancedMemoryFiles(),
+            });
+        }
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
     app.post('/api/jaw-memory/init', requireAuth, (_, res) => {
-        try { memory.ensureMemoryDir(); res.json({ ok: true }); }
+        try {
+            memory.ensureMemoryDir();
+            const payload = buildMemorySyncPayload('init');
+            broadcastMemorySync('init');
+            res.json({ ok: true, ...payload });
+        }
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
     app.post('/api/jaw-memory/reflect', requireAuth, (req, res) => {
         try {
             const result = reflectMemory(req.body || {});
-            res.json({ ok: true, result, status: getMemoryStatus() });
+            const payload = buildMemorySyncPayload('reflect');
+            broadcastMemorySync('reflect');
+            res.json({ ok: true, result, ...payload });
         } catch (e: unknown) {
             res.status(500).json({ error: (e as Error).message });
         }
@@ -92,10 +160,13 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
                 reindexSingleFile(root, join(root, 'shared', 'soul.md'));
             }
             const soul = loadSoulSummary(2000);
+            const payload = buildMemorySyncPayload('soul_activate');
+            broadcastMemorySync('soul_activate');
             res.json({
                 activated: true,
                 created,
                 preview: soul.slice(0, 200),
+                ...payload,
             });
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
@@ -112,7 +183,18 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
                     soulSynthesizedCli: settings.cli || 'unknown',
                 });
             }
-            res.json(result);
+            if (!result.applied && req.body?.reason === 'soul-bootstrap' && hasSoulFile()) {
+                writeMeta({
+                    soulSynthesized: true,
+                    soulSynthesizedAt: new Date().toISOString(),
+                    soulSynthesizedCli: settings.cli || 'unknown',
+                });
+            }
+            const payload = buildMemorySyncPayload(req.body?.reason === 'soul-bootstrap' ? 'soul_bootstrap' : 'soul_update');
+            if (result.applied || req.body?.reason === 'soul-bootstrap') {
+                broadcastMemorySync(req.body?.reason === 'soul-bootstrap' ? 'soul_bootstrap' : 'soul_update');
+            }
+            res.json({ ...result, ...payload });
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 

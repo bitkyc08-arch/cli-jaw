@@ -58,6 +58,8 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
             hasSoul: hasSoulFile(),
             soulSynthesized: readMeta()?.soulSynthesized || false,
             soulPreview: hasSoulFile() ? loadSoulSummary(200) : '',
+            legacyFileCount: memoryModule.list().length,
+            advancedFileCount: Object.values(listMemoryFiles().sections).reduce((sum, files) => sum + files.length, 0),
             flushStatus: getFlushStatus(),
         });
     });
@@ -101,9 +103,9 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
         ok(res, null);
     });
 
-    // Memory files (Claude native)
+    // Memory files (integrated + Claude native)
     app.get('/api/memory-files', (_, res) => {
-        const memDir = getMemoryDir();
+        const memDir = memoryModule.MEMORY_DIR;
         const files = memoryModule.list()
             .sort((a, b) => b.path.localeCompare(a.path))
             .map(f => {
@@ -127,7 +129,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
     app.get('/api/memory-file', (req, res) => {
         try {
             const name = assertMemoryRelPath(String(req.query.path || ''), { allowExt: ['.md', '.txt', '.json'] });
-            const fp = safeResolveUnder(getMemoryDir(), name);
+            const fp = safeResolveUnder(memoryModule.MEMORY_DIR, name);
             if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
             res.json({ name, content: fs.readFileSync(fp, 'utf8') });
         } catch (e: unknown) {
@@ -138,7 +140,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
     app.get('/api/memory-files/:filename', (req, res) => {
         try {
             const name = assertFilename(req.params.filename);
-            const fp = safeResolveUnder(getMemoryDir(), name);
+            const fp = safeResolveUnder(memoryModule.MEMORY_DIR, name);
             if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
             res.json({ name, content: fs.readFileSync(fp, 'utf8') });
         } catch (e: unknown) {
@@ -149,7 +151,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
     app.delete('/api/memory-file', requireAuth, (req, res) => {
         try {
             const name = assertMemoryRelPath(String(req.query.path || ''), { allowExt: ['.md', '.txt', '.json'] });
-            const fp = safeResolveUnder(getMemoryDir(), name);
+            const fp = safeResolveUnder(memoryModule.MEMORY_DIR, name);
             if (fs.existsSync(fp)) fs.unlinkSync(fp);
             res.json({ ok: true });
         } catch (e: unknown) {
@@ -160,7 +162,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
     app.delete('/api/memory-files/:filename', requireAuth, (req, res) => {
         try {
             const name = assertFilename(String(req.params.filename));
-            const fp = safeResolveUnder(getMemoryDir(), name);
+            const fp = safeResolveUnder(memoryModule.MEMORY_DIR, name);
             if (fs.existsSync(fp)) fs.unlinkSync(fp);
             res.json({ ok: true });
         } catch (e: unknown) {
