@@ -1,9 +1,13 @@
-// ─── /compact Command Handler ───────────────────────
+// ─── /compact Command Handler (bootstrap model) ──────
+// Vendor-agnostic: resets session ID, harvests 5 slots, stores bootstrap
+// in pending field; next spawnAgent() prepends bootstrap 1-shot to user input.
 
 import {
     COMPACT_MARKER_CONTENT,
-    buildManagedCompactSummaryForTest,
-    getRowsSinceLatestCompactForTest,
+    BOOTSTRAP_TRACE_PREFIX,
+    harvestBootstrapSlots,
+    renderBootstrapPrompt,
+    normalizeWorkingDir,
 } from '../core/compact.js';
 
 function getActiveModel(settings: any, session: any, activeCli: string): string {
@@ -52,52 +56,64 @@ export async function compactHandler(args: string[], ctx: any) {
     }
 
     const activeCli = settings?.cli || session?.active_cli || session?.activeCli || 'claude';
-    if (activeCli === 'claude' && session?.session_id) {
-        const { spawnAgent } = await import('../agent/spawn.js');
-        const prompt = instructions ? `/compact ${instructions}` : '/compact';
-        const { promise } = spawnAgent(prompt, {
-            cli: 'claude',
-            origin: ctx?.interface || 'web',
-            _skipInsert: true,
-        });
-        const result: any = await promise;
-        if (result?.code === 0) {
-            return {
-                ok: true,
-                code: 'compact_done',
-                text: 'Conversation compacted.',
-                meta: { path: 'claude-native' },
-            };
-        }
-        return {
-            ok: false,
-            code: 'compact_failed',
-            text: `Compact failed: ${String(result?.text || `exit ${result?.code ?? 1}`)}`.trim(),
-        };
-    }
+    const workingDir = normalizeWorkingDir(settings?.workingDir || null);
 
-    const { getRecentMessages, insertMessageWithTrace } = await import('../core/db.js');
-    const { bumpSessionOwnershipGeneration } = await import('../agent/session-persistence.js');
-    const { clearBossSessionOnly } = await import('../core/main-session.js');
-    const recent = getRecentMessages.all(settings.workingDir || null, 40) as any[];
-    const compactionRows = getRowsSinceLatestCompactForTest(recent);
-    if (!compactionRows.length) {
+    const slots = harvestBootstrapSlots({ workingDir, instructions });
+    const hasAnyContent = Boolean(
+        slots.recent_turns
+        || slots.memory_hits
+        || slots.grep_hits
+        || slots.task_snapshot,
+    );
+    if (!hasAnyContent) {
         return {
             ok: false,
             code: 'compact_unavailable',
-            text: 'Compact failed: no conversation to compact.',
+            text: 'Compact failed: no conversation or memory to compact.',
         };
     }
 
-    const summary = buildManagedCompactSummaryForTest(recent, instructions);
+    const bootstrap = renderBootstrapPrompt(slots);
+    const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
+
+    const { insertMessageWithTrace } = await import('../core/db.js');
+    const {
+        bumpSessionOwnershipGeneration,
+    } = await import('../agent/session-persistence.js');
+    const {
+        clearBossSessionOnly,
+        setPendingBootstrapPrompt,
+    } = await import('../core/main-session.js');
+
     const model = getActiveModel(settings, session, activeCli);
-    insertMessageWithTrace.run('assistant', COMPACT_MARKER_CONTENT, activeCli, model, summary, null, settings.workingDir || null);
+    insertMessageWithTrace.run(
+        'assistant',
+        COMPACT_MARKER_CONTENT,
+        activeCli,
+        model,
+        trace,
+        null,
+        workingDir,
+    );
+    setPendingBootstrapPrompt(bootstrap);
     bumpSessionOwnershipGeneration();
     clearBossSessionOnly();
+
     return {
         ok: true,
         code: 'compact_done',
-        text: 'Conversation compacted. Next turn will use compact summary.',
-        meta: { path: 'managed', requiresNextTurn: true },
+        text: 'Conversation compacted. Next message will continue with a fresh session using the summary above.',
+        meta: {
+            path: 'bootstrap',
+            requiresNextTurn: true,
+            slots: {
+                goal_len: slots.goal.length,
+                recent_turns_len: slots.recent_turns.length,
+                memory_hits_len: slots.memory_hits.length,
+                grep_hits_len: slots.grep_hits.length,
+                task_snapshot_len: slots.task_snapshot.length,
+                total_len: bootstrap.length,
+            },
+        },
     };
 }

@@ -16,7 +16,7 @@ import { extractSessionId, extractFromEvent, extractFromAcpUpdate, extractOutput
 import { detectSmokeResponse, buildContinuationPrompt } from './smoke-detector.js';
 import { saveUpload as _saveUpload, buildMediaPrompt, buildMediaPromptMany } from '../../lib/upload.js';
 import { getMemoryFlushFilePath, getMemoryStatus } from '../memory/runtime.js';
-import { resolveMainCli } from '../core/main-session.js';
+import { resolveMainCli, consumePendingBootstrapPrompt } from '../core/main-session.js';
 import {
     getSessionOwnershipGeneration,
     persistMainSession,
@@ -550,6 +550,20 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const session: any = getSession();
     const ownerGeneration = getSessionOwnershipGeneration();
     let cli = resolveMainCli(opts.cli, settings, session);
+
+    // ─── Bootstrap compact 1-shot injection ───
+    // Vendor-agnostic: compact handler reset session_id and stored bootstrap.
+    // Inject only on fresh main spawns (not employee/fallback/internal/resume).
+    if (!opts.agentId && !opts._isFallback && !opts.internal) {
+        const isResumeGuess = !forceNew && session.session_id && session.active_cli === cli;
+        if (!isResumeGuess) {
+            const pending = consumePendingBootstrapPrompt();
+            if (pending) {
+                console.log(`[jaw:compact] injecting bootstrap (${pending.length} chars)`);
+                prompt = `${pending}\n\n---\n\n${prompt}`;
+            }
+        }
+    }
 
     // ─── Fallback retry: skip to fallback if retries exhausted ───
     if (!opts._isFallback && !opts.internal) {

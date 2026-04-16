@@ -100,17 +100,22 @@ test('CMP-SMOKE-001: managed /compact succeeds on isolated server with seeded hi
         const payload = await res.json();
         assert.equal(payload.ok, true);
         assert.equal(payload.code, 'compact_done');
-        assert.equal(payload.meta?.path, 'managed');
+        // bootstrap-compact model: vendor-agnostic, prepends to next spawn
+        assert.equal(payload.meta?.path, 'bootstrap');
+        assert.equal(payload.meta?.requiresNextTurn, true);
+        assert.ok(typeof payload.meta?.slots?.total_len === 'number');
+        assert.ok(payload.meta?.slots?.total_len > 0);
 
         const verifyDb = new Database(dbPath, { readonly: true });
         const latest = verifyDb.prepare('SELECT role, content, trace FROM messages ORDER BY id DESC LIMIT 1').get() as Record<string, string> | undefined;
-        assert.ok(latest, 'expected managed compact marker row to be written');
+        assert.ok(latest, 'expected compact marker row to be written');
         assert.equal(latest?.role, 'assistant');
         assert.equal(latest?.content, 'Conversation compacted.');
-        assert.match(String(latest?.trace || ''), /^\[assistant\] Managed compact summary:/);
+        assert.match(String(latest?.trace || ''), /^\[assistant\] Bootstrap compact payload:/);
+        assert.match(String(latest?.trace || ''), /# Compacted Session Handoff/);
 
         const session = verifyDb.prepare('SELECT session_id, active_cli FROM session WHERE id = ?').get('default') as Record<string, string | null> | undefined;
-        assert.equal(session?.session_id, null, 'managed compact should clear persisted session id');
+        assert.equal(session?.session_id, null, 'bootstrap compact should clear persisted session id');
         assert.equal(session?.active_cli, 'codex');
         verifyDb.close();
     } finally {

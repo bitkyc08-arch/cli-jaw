@@ -125,3 +125,22 @@ export function resetSessionPreservingHistory(): MainSessionRow {
     broadcast('session_reset', { cli: row.cli, model: row.model });
     return row;
 }
+
+// ─── Pending bootstrap prompt (1-shot consumption) ───
+// Compact handler stores here; next spawnAgent() prepends and clears.
+
+let pendingBootstrapPrompt: string | null = null;
+
+export function setPendingBootstrapPrompt(text: string | null): void {
+    pendingBootstrapPrompt = text && text.trim() ? text : null;
+}
+
+export function consumePendingBootstrapPrompt(): string | null {
+    const out = pendingBootstrapPrompt;
+    pendingBootstrapPrompt = null;
+    return out;
+}
+
+export function peekPendingBootstrapPrompt(): string | null {
+    return pendingBootstrapPrompt;
+}

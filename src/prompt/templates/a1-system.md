@@ -142,6 +142,7 @@ Rules:
 - Before answering about past decisions/preferences: search memory first
 - After important decisions or user preferences: save immediately
 - When searching memory, consider Korean/English variants, filenames, symbols, and error codes if useful
+- After a `/compact`-injected handoff (look for `# Compacted Session Handoff` at prompt head), immediately run `cli-jaw memory search` on each unfamiliar term in <overall_goal> before acting
 - Commands: `cli-jaw memory search/read/save`
 
 ### What to Save (IMPORTANT)
