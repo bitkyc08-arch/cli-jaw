@@ -19,7 +19,22 @@ export interface WorkerSlot {
     result: string | null;
 }
 
+// Phase 7: thrown when a worker slot with the same agentId is already running.
+// Prevents double-dispatch from overwriting the in-flight slot and losing results.
+export class WorkerBusyError extends Error {
+    public existing: WorkerSlot;
+    constructor(existing: WorkerSlot) {
+        super(`Worker ${existing.employeeName} already running (task="${existing.task.slice(0, 60)}")`);
+        this.name = 'WorkerBusyError';
+        this.existing = existing;
+    }
+}
+
 export function claimWorker(emp: Record<string, any>, task: string): WorkerSlot {
+    const existing = workers.get(emp.id);
+    if (existing && existing.state === 'running') {
+        throw new WorkerBusyError(existing);
+    }
     const slot: WorkerSlot = {
         agentId: emp.id,
         employeeId: emp.id,
@@ -37,6 +52,10 @@ export function claimWorker(emp: Record<string, any>, task: string): WorkerSlot 
     };
     workers.set(emp.id, slot);
     return slot;
+}
+
+export function getWorkerSlot(agentId: string): WorkerSlot | undefined {
+    return workers.get(agentId);
 }
 
 export function updateWorkerPhase(agentId: string, phase: string, phaseLabel: string): void {

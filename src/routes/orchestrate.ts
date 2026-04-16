@@ -7,10 +7,11 @@ import { orchestrateContinue, orchestrateReset } from '../orchestrator/pipeline.
 import { getState, getCtx, setState, resetState, canTransition } from '../orchestrator/state-machine.js';
 import type { OrcStateName } from '../orchestrator/state-machine.js';
 import { resolveOrcScope } from '../orchestrator/scope.js';
-import { getActiveWorkers, claimWorker, finishWorker, failWorker, markWorkerReplayed } from '../orchestrator/worker-registry.js';
+import { getActiveWorkers, claimWorker, finishWorker, failWorker, markWorkerReplayed, getWorkerSlot, WorkerBusyError } from '../orchestrator/worker-registry.js';
 import { findEmployee, runSingleAgent } from '../orchestrator/distribute.js';
 import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
+import { verifyBossToken } from '../core/boss-auth.js';
 
 function getRuntimeSnapshot() {
     return {
@@ -80,7 +81,35 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const emp = findEmployee(emps, { agent: agentName });
         if (!emp) return fail(res, 404, `Employee not found: ${agentName}`);
 
-        const slot = claimWorker(emp, task);
+        // Phase 7-2: reject concurrent dispatch of the same employee.
+        // Caller should poll GET /api/orchestrate/worker/:agentId/result.
+        let slot;
+        try {
+            slot = claimWorker(emp, task);
+        } catch (err) {
+            if (err instanceof WorkerBusyError) {
+                return res.status(409).json({
+                    ok: false,
+                    error: 'worker_busy',
+                    existing: {
+                        agentId: err.existing.agentId,
+                        employeeName: err.existing.employeeName,
+                        task: err.existing.task.slice(0, 200),
+                        startedAt: err.existing.startedAt,
+                    },
+                    hint: 'Poll GET /api/orchestrate/worker/:agentId/result for the in-flight run.',
+                });
+            }
+            throw err;
+        }
+
+        // Phase 7-1: detect client disconnect so we keep pendingReplay=true
+        // (so the next boss turn can drain the result) instead of discarding.
+        let clientDisconnected = false;
+        req.on('close', () => {
+            if (!res.writableEnded) clientDisconnected = true;
+        });
+
         try {
             const ap = {
                 agent: emp.name, role: emp.role || 'general developer',
@@ -90,12 +119,34 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             };
             const result = await runSingleAgent(ap, emp, {}, 1, { origin: 'api' }, []);
             finishWorker(slot.agentId, result.text || '');
-            markWorkerReplayed(slot.agentId);
+            if (clientDisconnected) {
+                console.warn(`[dispatch] client disconnected — keeping pendingReplay for ${slot.agentId}`);
+                // pendingReplay stays true; next boss orchestrate() call drains it.
+                return;
+            }
+            // Only clear replay flag after response is actually flushed to client.
+            res.on('finish', () => markWorkerReplayed(slot.agentId));
             res.json({ ok: true, result });
         } catch (err: any) {
             failWorker(slot.agentId, err.message);
-            res.status(500).json({ ok: false, error: err.message });
+            if (!res.writableEnded) res.status(500).json({ ok: false, error: err.message });
         }
+    });
+
+    // Phase 7-4: explicit result polling for 409 retries and reconnects.
+    app.get('/api/orchestrate/worker/:agentId/result', requireAuth, (req, res) => {
+        const agentId = String(req.params.agentId || '');
+        if (!agentId) return fail(res, 400, 'missing agentId');
+        const slot = getWorkerSlot(agentId);
+        if (!slot) return fail(res, 404, 'worker not found');
+        if (slot.state === 'running') {
+            return res.json({ ok: true, state: 'running', startedAt: slot.startedAt, task: slot.task });
+        }
+        // Consume pending replay — subsequent polls will return 404.
+        if (slot.state === 'done' && slot.pendingReplay) {
+            markWorkerReplayed(slot.agentId);
+        }
+        return res.json({ ok: true, state: slot.state, result: slot.result });
     });
 
     app.put('/api/orchestrate/state', requireAuth, (req, res) => {

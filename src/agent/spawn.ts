@@ -683,6 +683,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         acp.spawn();
         const child = (acp as any).proc;
         if (mainManaged) activeProcess = child;
+        // Phase 7-3: detect duplicate spawn for same agentLabel. claimWorker guards
+        // the route, but log here as a last-chance diagnostic if something slips past.
+        if (activeProcesses.has(agentLabel)) {
+            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
+        }
         activeProcesses.set(agentLabel, child);
         broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
         if (mainManaged) beginLiveRun(liveScope, cli);
@@ -948,6 +953,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         ...(process.platform === 'win32' ? { shell: true } : {}),
     });
     if (mainManaged) activeProcess = child;
+    // Phase 7-3: detect duplicate spawn for same agentLabel.
+    if (activeProcesses.has(agentLabel)) {
+        console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
+    }
     activeProcesses.set(agentLabel, child);
     broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
     if (mainManaged) beginLiveRun(liveScope, cli);
