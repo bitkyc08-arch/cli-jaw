@@ -136,8 +136,13 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
     if (cli === 'claude' && event.type === 'stream_event') {
         const inner = event.event;
 
-        // [P0-1.1] signature_delta: discard silently, do NOT trigger thinking flush
+        // [P0-1.1] signature_delta: discard silently, do NOT trigger thinking flush.
+        // [encrypted-thinking] Track signature length — used as evidence opus-4-7 reasoned server-side.
         if (inner?.type === 'content_block_delta' && inner.delta?.type === 'signature_delta') {
+            const sig = inner.delta.signature;
+            if (typeof sig === 'string') {
+                ctx.claudeSignatureLen = (ctx.claudeSignatureLen || 0) + sig.length;
+            }
             return;
         }
 
@@ -151,7 +156,15 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
         if (inner?.type === 'content_block_delta' && inner.delta?.type === 'thinking_delta') {
             if (!ctx.claudeThinkingBuf) ctx.claudeThinkingBuf = '';
             ctx.claudeThinkingBuf += inner.delta.thinking || '';
+            ctx.claudeThinkingHadDelta = true;
             return;
+        }
+
+        // [encrypted-thinking] Mark thinking block open so we can detect empty/encrypted case on stop.
+        if (inner?.type === 'content_block_start' && inner.content_block?.type === 'thinking') {
+            ctx.claudeThinkingBlockOpen = true;
+            ctx.claudeThinkingHadDelta = false;
+            ctx.claudeSignatureLen = 0;
         }
 
         // Buffer tool input JSON deltas
@@ -191,6 +204,28 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
                 }
                 ctx.claudeThinkingBuf = '';
+            } else if (ctx.claudeThinkingBlockOpen && !ctx.claudeThinkingHadDelta) {
+                // [encrypted-thinking] opus-4-7: thinking block opened but only signature streamed, no plaintext.
+                // Surface a badge so users know the model reasoned server-side even though the content is withheld.
+                const sigLen = ctx.claudeSignatureLen || 0;
+                const detail = sigLen > 0
+                    ? `server-side reasoning, plaintext withheld — signature ${sigLen}B`
+                    : 'server-side reasoning, plaintext withheld';
+                const tool = {
+                    icon: '🔒',
+                    label: 'encrypted thinking',
+                    toolType: 'thinking' as const,
+                    detail,
+                };
+                ctx.toolLog.push(tool);
+                syncLiveTools(ctx);
+                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
+                pushTrace(ctx, `[${agentLabel || 'agent'}] 🔒 encrypted thinking (sig ${sigLen}B)`);
+            }
+            if (ctx.claudeThinkingBlockOpen) {
+                ctx.claudeThinkingBlockOpen = false;
+                ctx.claudeThinkingHadDelta = false;
+                ctx.claudeSignatureLen = 0;
             }
             // Flush tool input → update existing tool label with detail
             if (ctx.claudeInputJsonBuf) {

@@ -438,6 +438,62 @@ test('P0-1.1: Claude signature_delta is discarded without flushing thinking buff
     assert.equal(ctx.toolLog.length, 0);
 });
 
+test('encrypted thinking: opus-4-7 pattern (signature only, no thinking_delta) emits 🔒 badge', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // 1. thinking block opens
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 0, 'block_start alone should not emit');
+    // 2. only signature_delta arrives (304 chars like real opus-4-7 stream)
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'x'.repeat(304) } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 0, 'signature_delta alone should not emit');
+    // 3. block_stop with empty thinking buffer → encrypted badge
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_stop', index: 0 },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1, 'encrypted thinking should emit one badge');
+    assert.equal(ctx.toolLog[0].icon, '🔒');
+    assert.equal(ctx.toolLog[0].label, 'encrypted thinking');
+    assert.equal(ctx.toolLog[0].toolType, 'thinking');
+    assert.ok(ctx.toolLog[0].detail.includes('304'), 'detail should mention signature length');
+    // 4. state should reset after stop
+    assert.equal(ctx.claudeThinkingBlockOpen, false);
+    assert.equal(ctx.claudeThinkingHadDelta, false);
+});
+
+test('encrypted thinking: plaintext thinking does NOT also emit 🔒 badge (regression)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Open thinking block
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'thinking', thinking: '', signature: '' } },
+    }, ctx, 'test');
+    // Plaintext thinking_delta arrives (sonnet/opus-4-6 path)
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', index: 0, delta: { type: 'thinking_delta', thinking: 'Reasoning about the problem.' } },
+    }, ctx, 'test');
+    // Then signature_delta (also arrives in plaintext path as closing signature)
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', index: 0, delta: { type: 'signature_delta', signature: 'sig' } },
+    }, ctx, 'test');
+    // Stop
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_stop', index: 0 },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1, 'should emit exactly one badge');
+    assert.equal(ctx.toolLog[0].icon, '💭', 'plaintext path must keep 💭 icon, not 🔒');
+    assert.ok(ctx.toolLog[0].detail.includes('Reasoning about'), 'plaintext content preserved');
+});
+
 test('P1-2.2: Claude rate_limit_event emits warning tool entry', () => {
     const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
     extractFromEvent('claude', {
