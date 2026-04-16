@@ -39,6 +39,8 @@ const INSTANCE = instanceId();
 const LABEL = `com.cli-jaw.${INSTANCE}`;
 const PLIST_PATH = join(homedir(), 'Library', 'LaunchAgents', `${LABEL}.plist`);
 const LOG_DIR = join(JAW_HOME, 'logs');
+const USER_ID = typeof process.getuid === 'function' ? process.getuid() : Number(process.env.UID || 0);
+const GUI_DOMAIN = `gui/${USER_ID}`;
 
 
 function generatePlist(): string {
@@ -67,6 +69,8 @@ function generatePlist(): string {
     <true/>
     <key>KeepAlive</key>
     <true/>
+    <key>LimitLoadToSessionType</key>
+    <string>Aqua</string>
     <key>WorkingDirectory</key>
     <string>${xmlEsc(JAW_HOME)}</string>
     <key>StandardOutPath</key>
@@ -86,8 +90,8 @@ function generatePlist(): string {
 
 function isLoaded(): boolean {
     try {
-        const out = execSync(`launchctl list | grep ${LABEL}`, { encoding: 'utf8' }).trim();
-        return !!out;
+        execSync(`launchctl print ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' });
+        return true;
     } catch { return false; }
 }
 
@@ -99,7 +103,7 @@ switch (sub) {
             console.log('⚠️  launchd에 등록되어 있지 않습니다');
             break;
         }
-        try { execSync(`launchctl unload "${PLIST_PATH}"`, { stdio: 'pipe' }); } catch { /* ok */ }
+        try { execSync(`launchctl bootout ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
         unlinkSync(PLIST_PATH);
         console.log('✅ jaw serve 자동 실행 해제 완료');
         break;
@@ -111,14 +115,15 @@ switch (sub) {
             break;
         }
         try {
-            const out = execSync(`launchctl list | grep ${LABEL}`, { encoding: 'utf8' }).trim();
-            const parts = out.split('\t');
-            const pid = parts[0] === '-' ? 'stopped' : `running (PID ${parts[0]})`;
+            const out = execSync(`launchctl print ${GUI_DOMAIN}/${LABEL}`, { encoding: 'utf8' });
+            const pidMatch = out.match(/pid = (\d+)/);
+            const pid = pidMatch ? `running (PID ${pidMatch[1]})` : 'loaded';
             console.log(`🦈 jaw serve — ${pid}`);
             console.log(`   instance: ${INSTANCE}`);
             console.log(`   port:     ${PORT}`);
             console.log(`   plist: ${PLIST_PATH}`);
             console.log(`   log:   ${LOG_DIR}/jaw-serve.log`);
+            console.log(`   domain: ${GUI_DOMAIN}`);
         } catch {
             console.log('🦈 jaw serve — not loaded');
             console.log(`   plist: ${PLIST_PATH} (exists but not loaded)`);
@@ -132,7 +137,7 @@ switch (sub) {
         // 1. plist 확인
         if (existsSync(PLIST_PATH)) {
             console.log('📄 plist 발견 — 재생성합니다');
-            try { execSync(`launchctl unload "${PLIST_PATH}"`, { stdio: 'pipe' }); } catch { /* ok */ }
+            try { execSync(`launchctl bootout ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
         } else {
             console.log('📄 plist 없음 — 새로 생성합니다');
         }
@@ -143,7 +148,7 @@ switch (sub) {
         console.log(`✅ plist 저장: ${PLIST_PATH}`);
 
         // 3. launchd 등록 + 시작
-        execSync(`launchctl load -w "${PLIST_PATH}"`);
+        execSync(`launchctl bootstrap ${GUI_DOMAIN} "${PLIST_PATH}"`);
         console.log('✅ launchd 등록 + 시작 완료\n');
 
         // 4. 상태 확인
