@@ -331,6 +331,7 @@ ${worklogBlock}`.trim();
     broadcast('agent_status', {
         agentId: emp.id, agentName: emp.name,
         status: 'running', phase: ap.currentPhase, phaseLabel,
+        isEmployee: true,
     });
     updateWorkerPhase(emp.id, String(ap.currentPhase), phaseLabel ?? '');
 
@@ -341,10 +342,10 @@ ${worklogBlock}`.trim();
         agentId: emp.id,
         stallThresholdMs: 120_000,
         maxDurationMs: 600_000,
-        onStall: (id) => broadcast('worker_stalled', { agentId: id, employeeName: emp.name }),
-        onDisconnect: (id, code) => broadcast('worker_disconnected', { agentId: id, exitCode: code }),
+        onStall: (id) => broadcast('worker_stalled', { agentId: id, employeeName: emp.name, isEmployee: true }),
+        onDisconnect: (id, code) => broadcast('worker_disconnected', { agentId: id, exitCode: code, isEmployee: true }),
         onTimeout: (id) => {
-            broadcast('worker_timeout', { agentId: id, employeeName: emp.name });
+            broadcast('worker_timeout', { agentId: id, employeeName: emp.name, isEmployee: true });
             killAgentById(id);
         },
     });
@@ -419,7 +420,7 @@ ${worklogBlock}`.trim();
         }
     }
 
-    broadcast('agent_status', { agentId: emp.id, agentName: emp.name, status: result.status, phase: ap.currentPhase });
+    broadcast('agent_status', { agentId: emp.id, agentName: emp.name, status: result.status, phase: ap.currentPhase, isEmployee: true });
 
     if (worklogPath) {
         appendToWorklog(worklogPath, 'Execution Log',

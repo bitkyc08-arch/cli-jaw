@@ -71,6 +71,7 @@ export async function dispatchResearchTask(
   broadcast('agent_status', {
     agentId: emp.id, agentName: emp.name,
     status: 'running', phase: 1, phaseLabel: 'Research',
+    isEmployee: true,
   });
 
   const researchPrompt = `## Research Task
@@ -115,6 +116,7 @@ Respond with this exact structure:
   broadcast('agent_status', {
     agentId: emp.id, agentName: emp.name,
     status: r.code === 0 ? 'done' : 'error', phase: 1,
+    isEmployee: true,
   });
 
   const parsed = parseResearchReport(r.text || '');

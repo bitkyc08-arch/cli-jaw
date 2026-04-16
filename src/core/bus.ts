@@ -14,9 +14,9 @@ export function addBroadcastListener(fn: BroadcastListener) { broadcastListeners
 export function removeBroadcastListener(fn: BroadcastListener) { broadcastListeners.delete(fn); }
 export function clearAllBroadcastListeners() { broadcastListeners.clear(); }
 
-export function broadcast(type: string, data: Record<string, any>) {
+export function broadcast(type: string, data: Record<string, any>, audience: 'public' | 'internal' = 'public') {
     const msg = JSON.stringify({ type, ...data, ts: Date.now() });
-    if (wss) {
+    if (audience === 'public' && wss) {
         wss.clients.forEach((c: WebSocket) => { if (c.readyState === 1) c.send(msg); });
     }
     for (const fn of broadcastListeners) fn(type, data);

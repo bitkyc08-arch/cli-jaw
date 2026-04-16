@@ -65,6 +65,7 @@ export interface ExitHandlerParams {
         setTimer: (t: ReturnType<typeof setTimeout> | null) => void;
         setResolve: (r: any) => void;
         setOrigin: (o: string | null) => void;
+        setIsEmployee: (v: boolean) => void;
     };
     fallbackState: Map<string, any>;
     fallbackMaxRetries: number;
@@ -88,6 +89,8 @@ export function handleAgentExit(params: ExitHandlerParams): void {
     } = params;
 
     const effortVal = cfg.effort || effortDefault;
+    const isEmployee = !mainManaged;
+    const empTag = isEmployee ? { isEmployee: true } : {};
 
     // ─── Smoke response auto-continuation ───
     if (
@@ -104,7 +107,8 @@ export function handleAgentExit(params: ExitHandlerParams): void {
         broadcast('agent_smoke', {
             cli, confidence: smokeResult.confidence,
             reason: smokeResult.reason, agentId: agentLabel,
-        });
+            ...empTag,
+        }, isEmployee ? 'internal' : 'public');
 
         const smokeSessionId = ctx.sessionId;
         if (smokeSessionId) {
@@ -118,7 +122,7 @@ export function handleAgentExit(params: ExitHandlerParams): void {
 
         activeProcesses.delete(agentLabel);
         setActiveProcess(null);
-        broadcast('agent_status', { running: false, agentId: agentLabel });
+        broadcast('agent_status', { running: false, agentId: agentLabel, ...empTag });
 
         const contPrompt = buildContinuationPrompt(prompt, ctx.fullText);
         const { promise: contPromise } = _spawnAgent(contPrompt, {
@@ -128,7 +132,8 @@ export function handleAgentExit(params: ExitHandlerParams): void {
             broadcast('agent_done', {
                 text: `❌ Smoke continuation failed. Original: ${ctx.fullText.slice(0, 200)}`,
                 error: true, origin,
-            });
+                ...empTag,
+            }, isEmployee ? 'internal' : 'public');
             resolve({
                 text: ctx.fullText, code: code ?? 1,
                 sessionId: ctx.sessionId, cost: ctx.cost,
@@ -143,7 +148,7 @@ export function handleAgentExit(params: ExitHandlerParams): void {
     activeProcesses.delete(agentLabel);
     if (mainManaged) {
         setActiveProcess(null);
-        broadcast('agent_status', { running: false, agentId: agentLabel });
+        broadcast('agent_status', { running: false, agentId: agentLabel, ...empTag });
     }
 
     // ─── Post-flush reindex (3-C) ───
@@ -172,6 +177,9 @@ export function handleAgentExit(params: ExitHandlerParams): void {
         const cleaned = ctx.fullText.trim()
             .replace(/<\/?tool_call>/g, '')
             .replace(/<\/?tool_result>[\s\S]*?(?:<\/tool_result>|$)/g, '')
+            // [#107] Strip inline thinking/reasoning blocks from any CLI
+            .replace(/<think>[\s\S]*?<\/think>/gi, '')
+            .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
             .replace(/\n{3,}/g, '\n\n')
             .trim();
         const displayText = cleaned || ctx.fullText.trim();
@@ -191,7 +199,7 @@ export function handleAgentExit(params: ExitHandlerParams): void {
                 'assistant', finalContent, cli, model,
                 traceText || null, toolLogJson, settings.workingDir || null,
             );
-            broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog, origin });
+            broadcast('agent_done', { text: finalContent, toolLog: ctx.toolLog, origin, ...empTag });
 
             incrementMemoryFlush();
             const threshold = settings.memory?.flushEvery ?? 10;
@@ -217,7 +225,8 @@ export function handleAgentExit(params: ExitHandlerParams): void {
         // ─── 429 delay retry (same engine, 1회만) ───
         if (!opts.internal && !opts._isFallback && is429 && !opts._isRetry) {
             console.log(`[jaw:retry] ${cli} 429 detected — waiting 10s before retry`);
-            broadcast('agent_retry', { cli, delay: 10, reason: errMsg });
+            broadcast('agent_retry', { cli, delay: 10, reason: errMsg, ...empTag }, isEmployee ? 'internal' : 'public');
+            retryState.setIsEmployee(isEmployee);
             retryState.setResolve(resolve);
             retryState.setOrigin(origin);
             retryState.setTimer(setTimeout(() => {
@@ -228,7 +237,7 @@ export function handleAgentExit(params: ExitHandlerParams): void {
                     ...opts, _isRetry: true, _skipInsert: true,
                 });
                 retryP.then((r: any) => resolve(r)).catch(() => {
-                    broadcast('agent_done', { text: `❌ ${errMsg} (재시도 실패)`, error: true, origin });
+                    broadcast('agent_done', { text: `❌ ${errMsg} (재시도 실패)`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
                     resolve({ text: '', code: 1 });
                     if (mainManaged) processQueue();
                 });
@@ -249,21 +258,22 @@ export function handleAgentExit(params: ExitHandlerParams): void {
                     fallbackState.set(cli, { fallbackCli, retriesLeft: fallbackMaxRetries });
                     console.log(`[jaw:fallback] ${cli} → ${fallbackCli}, ${fallbackMaxRetries} retries queued`);
                 }
-                broadcast('agent_fallback', { from: cli, to: fallbackCli, reason: errMsg });
+                broadcast('agent_fallback', { from: cli, to: fallbackCli, reason: errMsg, ...empTag }, isEmployee ? 'internal' : 'public');
                 const { promise: retryP } = _spawnAgent(prompt, {
                     ...opts, cli: fallbackCli, _isFallback: true, _skipInsert: true,
                 });
                 retryP.then((r: any) => resolve(r)).catch(() => {
                     broadcast('agent_done', {
                         text: `❌ Fallback (${fallbackCli}) failed`, error: true, origin,
-                    });
+                        ...empTag,
+                    }, isEmployee ? 'internal' : 'public');
                     resolve({ text: '', code: 1 });
                     if (mainManaged) processQueue();
                 });
                 return;
             }
         }
-        broadcast('agent_done', { text: `❌ ${errMsg}`, error: true, origin });
+        broadcast('agent_done', { text: `❌ ${errMsg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
     }
 
     // ─── Final resolve ───
@@ -271,6 +281,7 @@ export function handleAgentExit(params: ExitHandlerParams): void {
     broadcast('agent_status', {
         status: (resolvedCode === 0 || resolvedCode === null) ? 'done' : 'error',
         agentId: agentLabel,
+        ...empTag,
     });
     if (agentLabel !== 'main' || code !== null) {
         console.log(`[jaw:${agentLabel}] exited code=${code}, text=${ctx.fullText.length} chars`);

@@ -121,6 +121,7 @@ let queueProcessing = false;
 let retryPendingTimer: ReturnType<typeof setTimeout> | null = null;
 let retryPendingResolve: ((v: { text: string; code: number }) => void) | null = null;
 let retryPendingOrigin: string | null = null;
+let retryPendingIsEmployee = false;
 
 /** busy = process alive OR retry timer pending */
 export function isAgentBusy(): boolean {
@@ -146,10 +147,12 @@ export function clearRetryTimer(resumeQueue = true): void {
                 text: '⏹️ 재시도 취소됨',
                 error: true,
                 origin: retryPendingOrigin || 'web',
-            });
+                ...(retryPendingIsEmployee ? { isEmployee: true } : {}),
+            }, retryPendingIsEmployee ? 'internal' : 'public');
             retryPendingResolve({ text: '', code: -1 });
             retryPendingResolve = null;
             retryPendingOrigin = null;
+            retryPendingIsEmployee = false;
         }
         if (resumeQueue) processQueue();
     }
@@ -494,6 +497,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const origin = opts.origin || 'web';
     const empSid = opts.employeeSessionId || null;
     const mainManaged = !forceNew && !empSid;
+    const isEmployee = !mainManaged;
+    const empTag = isEmployee ? { isEmployee: true } : {};
 
     // INVARIANT: 모든 외부 호출은 gateway.ts isAgentBusy()를 거침.
     // 직접 spawnAgent 호출 시 retryPendingTimer도 확인할 것.
@@ -516,7 +521,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             const fbAvail = detectCli(st.fallbackCli)?.available;
             if (fbAvail) {
                 console.log(`[jaw:fallback] ${cli} retries exhausted → direct ${st.fallbackCli}`);
-                broadcast('agent_fallback', { from: cli, to: st.fallbackCli, reason: 'retries exhausted' });
+                broadcast('agent_fallback', { from: cli, to: st.fallbackCli, reason: 'retries exhausted', ...empTag }, isEmployee ? 'internal' : 'public');
                 return spawnAgent(prompt, {
                     ...opts, cli: st.fallbackCli, _isFallback: true, _skipInsert: true,
                 });
@@ -578,7 +583,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     if (!detected.available) {
         const msg = `CLI '${cli}' not found in PATH. Run \`jaw doctor --json\`.`;
         console.error(`[jaw:${agentLabel}] ${msg}`);
-        broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin });
+        broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
         resolve!({ text: '', code: 127 });
         if (mainManaged) processQueue();
         cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
@@ -627,7 +632,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         const child = (acp as any).proc;
         if (mainManaged) activeProcess = child;
         activeProcesses.set(agentLabel, child);
-        broadcast('agent_status', { running: true, agentId: agentLabel, cli });
+        broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
 
         // ─── DIFF-C: ACP error guard — prevent uncaught EventEmitter crash ───
         let acpSettled = false;  // guard: error→exit can fire sequentially
@@ -643,7 +648,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 activeProcess = null;
                 broadcast('agent_status', { running: false, agentId: agentLabel });
             }
-            broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin });
+            broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
             resolve!({ text: '', code: 1 });
             if (mainManaged) processQueue();
         });
@@ -651,7 +656,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         if (mainManaged && !opts.internal && !opts._skipInsert) {
             insertMessage.run('user', prompt, cli, model, settings.workingDir || null);
         }
-        broadcast('agent_status', { status: 'running', cli, agentId: agentLabel });
+        broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag });
 
         const ctx = {
             fullText: '', traceLog: [] as any[], toolLog: [] as any[], seenToolKeys: new Set<string>(),
@@ -670,7 +675,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 console.log(`  💭 ${label}`);
                 const tool = { icon: '💭', label, toolType: 'thinking' as const, detail: merged };
                 ctx.toolLog.push(tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...tool });
+                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
             }
             ctx.thinkingBuf = '';
         }
@@ -698,7 +703,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 if (!ctx.seenToolKeys.has(key)) {
                     ctx.seenToolKeys.add(key);
                     ctx.toolLog.push(parsed.tool);
-                    broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool });
+                    broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool, ...empTag });
                     // Reset heartbeat gate on actually visible broadcast (not 💭)
                     lastVisibleBroadcastTs = Date.now();
                     heartbeatSent = false;
@@ -719,7 +724,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             });
             if (parsed?.tool) {
                 ctx.toolLog.push(parsed.tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool });
+                broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool, ...empTag });
             }
         });
 
@@ -730,7 +735,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             });
             if (parsed?.tool) {
                 ctx.toolLog.push(parsed.tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool });
+                broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool, ...empTag });
             }
         });
 
@@ -750,6 +755,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                     agentId: agentLabel,
                     icon: '⏳',
                     label: 'working... (no visible progress)',
+                    ...empTag,
                 });
             }
         });
@@ -860,6 +866,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                     setTimer: (t) => { retryPendingTimer = t; },
                     setResolve: (r) => { retryPendingResolve = r; },
                     setOrigin: (o) => { retryPendingOrigin = o; },
+                    setIsEmployee: (v) => { retryPendingIsEmployee = v; },
                 },
                 fallbackState,
                 fallbackMaxRetries: FALLBACK_MAX_RETRIES,
@@ -881,7 +888,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     });
     if (mainManaged) activeProcess = child;
     activeProcesses.set(agentLabel, child);
-    broadcast('agent_status', { running: true, agentId: agentLabel, cli });
+    broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
 
     // ─── DIFF-A: error guard — prevent uncaught ENOENT crash ───
     let stdSettled = false;  // guard: error→close can fire sequentially
@@ -899,7 +906,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             activeProcess = null;
             broadcast('agent_status', { running: false, agentId: agentLabel });
         }
-        broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin });
+        broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
         resolve!({ text: '', code: 127 });
         if (mainManaged) processQueue();
     });
@@ -918,7 +925,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     }
     child.stdin.end();
 
-    broadcast('agent_status', { status: 'running', cli, agentId: agentLabel });
+    broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag });
 
     const ctx = {
         fullText: '',
@@ -951,7 +958,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 }
                 logEventSummary(agentLabel, cli, event, ctx);
                 if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, event);
-                extractFromEvent(cli, event, ctx, agentLabel);
+                extractFromEvent(cli, event, ctx, agentLabel, empTag);
                 // Sub-agent wait: keep stall timer alive
                 if (ctx.hasActiveSubAgent) {
                     opts.lifecycle?.onActivity?.('heartbeat');
@@ -962,7 +969,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                         agentId: agentLabel,
                         cli,
                         text: outputChunk,
-                    });
+                        ...empTag,
+                    }, isEmployee ? 'internal' : 'public');
                 }
             } catch { /* non-JSON line */ }
         }
@@ -983,15 +991,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 const lastEvent = JSON.parse(buffer);
                 logEventSummary(agentLabel, cli, lastEvent, ctx);
                 if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, lastEvent);
-                extractFromEvent(cli, lastEvent, ctx, agentLabel);
+                extractFromEvent(cli, lastEvent, ctx, agentLabel, empTag);
                 const outputChunk = extractOutputChunk(cli, lastEvent);
                 if (outputChunk) {
-                    broadcast('agent_output', { agentId: agentLabel, cli, text: outputChunk });
+                    broadcast('agent_output', { agentId: agentLabel, cli, text: outputChunk, ...empTag }, isEmployee ? 'internal' : 'public');
                 }
             } catch { /* incomplete JSON — discard */ }
             buffer = '';
         }
-        flushClaudeBuffers(ctx, agentLabel);  // flush any pending thinking/input buffers
+        flushClaudeBuffers(ctx, agentLabel, empTag);  // flush any pending thinking/input buffers
         cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
         opts.lifecycle?.onExit?.(code ?? null);
 
@@ -1029,6 +1037,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 setTimer: (t) => { retryPendingTimer = t; },
                 setResolve: (r) => { retryPendingResolve = r; },
                 setOrigin: (o) => { retryPendingOrigin = o; },
+                setIsEmployee: (v) => { retryPendingIsEmployee = v; },
             },
             fallbackState,
             fallbackMaxRetries: FALLBACK_MAX_RETRIES,

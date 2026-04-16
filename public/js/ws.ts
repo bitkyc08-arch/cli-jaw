@@ -66,6 +66,7 @@ interface WsMessage {
     delay?: number;
     state?: string;
     title?: string;
+    isEmployee?: boolean;
 }
 
 // Agent phase state (populated by agent_status events from orchestrator)
@@ -234,13 +235,14 @@ export function connect(): void {
                 addSystemMsg(t('ws.roundRetry', { round: msg.round || 0 }));
             }
         } else if (msg.type === 'agent_tool') {
+            const empPrefix = msg.isEmployee ? '(E) ' : '';
             const stepType = msg.toolType === 'thinking' ? 'thinking'
                 : msg.toolType === 'search' ? 'search' : 'tool';
             showProcessStep({
                 id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 type: stepType,
                 icon: msg.icon || ICONS.tool,
-                label: msg.label || '',
+                label: empPrefix + (msg.label || ''),
                 detail: msg.detail || '',
                 stepRef: msg.stepRef || '',
                 status: (msg.status as 'running' | 'done' | 'error') || 'running',

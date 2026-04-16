@@ -5,7 +5,7 @@ import type { SpawnContext } from '../types/agent.js';
 
 /** Flush Claude-specific stream buffers (thinking + input_json).
  *  Call on stream close to avoid data loss if content_block_stop never arrives. */
-export function flushClaudeBuffers(ctx: SpawnContext, agentLabel?: string) {
+export function flushClaudeBuffers(ctx: SpawnContext, agentLabel?: string, empTag: Record<string, any> = {}) {
     if (ctx.claudeThinkingBuf) {
         const merged = ctx.claudeThinkingBuf.trim();
         if (merged) {
@@ -16,7 +16,7 @@ export function flushClaudeBuffers(ctx: SpawnContext, agentLabel?: string) {
                 detail: merged,
             };
             ctx.toolLog.push(tool);
-            broadcast('agent_tool', { agentId: agentLabel, ...tool });
+            broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
             pushTrace(ctx, `[${agentLabel || 'agent'}] 💭 ${merged.slice(0, 200)}`);
         }
         ctx.claudeThinkingBuf = '';
@@ -32,7 +32,7 @@ export function flushClaudeBuffers(ctx: SpawnContext, agentLabel?: string) {
                 );
                 if (existing) {
                     existing.detail = detail;
-                    broadcast('agent_tool', { agentId: agentLabel, ...existing });
+                    broadcast('agent_tool', { agentId: agentLabel, ...existing, ...empTag });
                 }
             }
         } catch { /* partial JSON — best effort */ }
@@ -83,7 +83,14 @@ export function extractSessionId(cli: string, event: any) {
 
 export function extractOutputChunk(cli: string, event: any): string {
     if (cli === 'gemini') {
+        // [#107] Skip thought/thinking events (future-proofing for when Gemini CLI adds them)
+        if (event.type === 'thought' || event.thought === true) return '';
         if (event.type === 'message' && event.role === 'assistant' && event.content) {
+            // Skip message events with thought content parts (ACP path)
+            if (Array.isArray(event.content)) {
+                const textParts = event.content.filter((p: any) => p?.type === 'text');
+                return textParts.map((p: any) => String(p?.text || '')).join('');
+            }
             return String(event.content);
         }
         return '';
@@ -104,7 +111,7 @@ export function extractOutputChunk(cli: string, event: any): string {
     return '';
 }
 
-export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, agentLabel: string) {
+export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, agentLabel: string, empTag: Record<string, any> = {}) {
     // [P2-3.1] Claude system/init metadata: store model, tools, version
     if (cli === 'claude' && event.type === 'system') {
         if (event.model) ctx.model = event.model;
@@ -169,7 +176,7 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                         detail: merged,
                     };
                     ctx.toolLog.push(tool);
-                    broadcast('agent_tool', { agentId: agentLabel, ...tool });
+                    broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
                 }
                 ctx.claudeThinkingBuf = '';
             }
@@ -187,7 +194,7 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                         if (existing) {
                             existing.detail = detail;
                             // Re-broadcast with detail
-                            broadcast('agent_tool', { agentId: agentLabel, ...existing });
+                            broadcast('agent_tool', { agentId: agentLabel, ...existing, ...empTag });
                         }
                     }
                 } catch { /* partial JSON */ }
@@ -207,7 +214,7 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     detail: merged,
                 };
                 ctx.toolLog.push(tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...tool });
+                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
             }
             ctx.claudeThinkingBuf = '';
         }
@@ -232,13 +239,13 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             );
             if (runIdx !== -1) {
                 ctx.toolLog[runIdx] = toolLabel;
-                broadcast('agent_tool', { agentId: agentLabel, ...toolLabel });
+                broadcast('agent_tool', { agentId: agentLabel, ...toolLabel, ...empTag });
                 continue;
             }
         }
 
         ctx.toolLog.push(toolLabel);
-        broadcast('agent_tool', { agentId: agentLabel, ...toolLabel });
+        broadcast('agent_tool', { agentId: agentLabel, ...toolLabel, ...empTag });
     }
 
     switch (cli) {
@@ -266,7 +273,7 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 const msg = event.message || event.reason || 'rate limited';
                 const tool = { icon: '⚠️', label: buildPreview(msg, 60), toolType: 'tool' as const, status: 'warning' };
                 ctx.toolLog.push(tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...tool });
+                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
             // [P0-1.2] Parse user/tool_result feedback (stdout/stderr/is_error)
             } else if (event.type === 'user' && event.message?.content) {
                 for (const block of event.message.content) {
@@ -279,7 +286,7 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                             existing.icon = block.is_error ? '❌' : '✅';
                             const resultText = extractText(block.content);
                             if (resultText) existing.detail = (existing.detail || '') + '\n' + resultText;
-                            broadcast('agent_tool', { agentId: agentLabel, ...existing });
+                            broadcast('agent_tool', { agentId: agentLabel, ...existing, ...empTag });
                         }
                     }
                 }
@@ -309,7 +316,24 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             if (event.type === 'init' && event.model) {
                 ctx.model = event.model;
             }
+            // [#107] Skip thought/thinking events entirely — don't accumulate to fullText
+            if (event.type === 'thought' || event.thought === true) {
+                pushTrace(ctx, `[${agentLabel}] gemini thought (hidden)`);
+                break;
+            }
             if (event.type === 'message' && event.role === 'assistant') {
+                // [#107] If content is an array (ACP-style), extract only text parts
+                if (Array.isArray(event.content)) {
+                    const textOnly = event.content
+                        .filter((p: any) => p?.type === 'text')
+                        .map((p: any) => String(p?.text || ''))
+                        .join('');
+                    if (textOnly) {
+                        ctx.fullText += textOnly;
+                        pushTrace(ctx, `[${agentLabel}] gemini text (filtered)`);
+                    }
+                    break;
+                }
                 // [P2-3.8] Track delta vs full message (pre/post tool text)
                 if (event.delta) {
                     pushTrace(ctx, `[${agentLabel}] gemini delta text`);
