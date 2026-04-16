@@ -115,6 +115,81 @@ function logSkillsSymlinkReport(report: any) {
     }
 }
 
+const CODEx_COMPUTER_USE_CACHE_ROOT = path.join(
+    home,
+    '.codex',
+    'plugins',
+    'cache',
+    'openai-bundled',
+    'computer-use',
+);
+const CODEx_COMPUTER_USE_APP_NAME = 'Codex Computer Use.app';
+const APPLICATIONS_DIR = '/Applications';
+const LSREGISTER_PATH = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
+
+function findLatestCodexComputerUseApp(): string | null {
+    if (process.platform !== 'darwin' || !fs.existsSync(CODEx_COMPUTER_USE_CACHE_ROOT)) return null;
+
+    try {
+        const versions = fs.readdirSync(CODEx_COMPUTER_USE_CACHE_ROOT, { withFileTypes: true })
+            .filter(entry => entry.isDirectory())
+            .map(entry => entry.name)
+            .sort((a, b) => b.localeCompare(a, undefined, { numeric: true, sensitivity: 'base' }));
+
+        for (const version of versions) {
+            const appPath = path.join(CODEx_COMPUTER_USE_CACHE_ROOT, version, CODEx_COMPUTER_USE_APP_NAME);
+            if (fs.existsSync(appPath)) return appPath;
+        }
+    } catch (error: any) {
+        console.warn(`[jaw:init] ⚠️  failed to inspect Codex Computer Use cache (${error?.message || 'unknown'})`);
+    }
+
+    return null;
+}
+
+function ensureCodexComputerUseAppInstall() {
+    if (process.platform !== 'darwin') return;
+
+    const sourceApp = findLatestCodexComputerUseApp();
+    if (!sourceApp) {
+        console.log('[jaw:init] ⏭️  Codex Computer Use.app not found in cache — skipped');
+        return;
+    }
+
+    const targetApp = path.join(APPLICATIONS_DIR, CODEx_COMPUTER_USE_APP_NAME);
+    try {
+        ensureDir(APPLICATIONS_DIR);
+
+        if (fs.existsSync(targetApp)) {
+            const stat = fs.lstatSync(targetApp);
+            if (stat.isSymbolicLink()) {
+                const backupPath = `${targetApp}.symlink-backup-${Date.now()}`;
+                fs.renameSync(targetApp, backupPath);
+                console.log(`[jaw:init] moved existing symlink to backup: ${backupPath}`);
+            } else {
+                fs.rmSync(targetApp, { recursive: true, force: true });
+                console.log(`[jaw:init] removed existing app bundle: ${targetApp}`);
+            }
+        }
+
+        fs.cpSync(sourceApp, targetApp, { recursive: true, dereference: true });
+        console.log(`[jaw:init] copied ${CODEx_COMPUTER_USE_APP_NAME} to ${targetApp}`);
+
+        try {
+            execFileSync('xattr', ['-dr', 'com.apple.quarantine', targetApp], { stdio: 'pipe', timeout: 10000 });
+        } catch {
+            // The app is typically notarized already; quarantine may not be present.
+        }
+
+        if (fs.existsSync(LSREGISTER_PATH)) {
+            execFileSync(LSREGISTER_PATH, ['-f', '-R', targetApp], { stdio: 'pipe', timeout: 15000 });
+            console.log(`[jaw:init] registered ${CODEx_COMPUTER_USE_APP_NAME} with Launch Services`);
+        }
+    } catch (error: any) {
+        console.warn(`[jaw:init] ⚠️  failed to install ${CODEx_COMPUTER_USE_APP_NAME} (${error?.message || 'unknown'})`);
+    }
+}
+
 // ─── Exported install functions (module-level, no side effects) ─────
 
 export type InstallOpts = {
@@ -476,6 +551,7 @@ export async function runPostinstall() {
     await installMcpServers();
     await installSkillDeps();
     await installOfficeCli();
+    ensureCodexComputerUseAppInstall();
     console.log('[jaw:init] setup complete ✅');
 }
 
