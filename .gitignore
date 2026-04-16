@@ -34,3 +34,6 @@ build-local/zh-Hant/
 build-local/createdump
 build-local/mscorlib.dll
 build-local/netstandard.dll
+
+# reference repos (cloned for analysis, not tracked)
+devlog/_plan/*/_ref_*/
