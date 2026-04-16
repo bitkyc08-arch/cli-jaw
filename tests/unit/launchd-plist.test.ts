@@ -20,9 +20,9 @@ test('P04C-001: plist contains ProcessType=Interactive', () => {
     assert.match(plist, /<key>ProcessType<\/key>\s*<string>Interactive<\/string>/);
 });
 
-test('P04C-002: plist contains SessionCreate=true', () => {
+test('P04C-002: plist does not force SessionCreate (preserve caller audit session)', () => {
     const plist = generateLaunchdPlist(defaults);
-    assert.match(plist, /<key>SessionCreate<\/key>\s*<true\/>/);
+    assert.doesNotMatch(plist, /<key>SessionCreate<\/key>/);
 });
 
 test('P04C-003: plist preserves LimitLoadToSessionType=Aqua (regression)', () => {

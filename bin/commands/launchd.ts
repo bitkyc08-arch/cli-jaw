@@ -145,12 +145,16 @@ switch (sub) {
         // 원스텝: 확인 → 생성 → 시작
         console.log('🦈 jaw launchd setup\n');
 
-        // 0. legacy plist 경고 (삭제는 cleanup에서)
+        // 0. legacy plist 자동 bootout (도메인 오염 방지). 파일 삭제는 cleanup에서.
         const legacy = scanLegacyLabels();
         if (legacy.length > 0) {
-            console.log(`⚠️  legacy plist ${legacy.length}개 발견 — 정리 권장: jaw launchd cleanup`);
-            for (const l of legacy) console.log(`    - ${l}`);
-            console.log('');
+            console.log(`🧹 legacy plist ${legacy.length}개 자동 해제 (파일 삭제는 cleanup):`);
+            for (const l of legacy) {
+                try { execSync(`launchctl bootout ${GUI_DOMAIN}/${l}`, { stdio: 'pipe' }); } catch { /* ok */ }
+                try { execSync(`launchctl disable ${GUI_DOMAIN}/${l}`, { stdio: 'pipe' }); } catch { /* ok */ }
+                console.log(`    - ${l}`);
+            }
+            console.log('   정리: jaw launchd cleanup\n');
         }
 
         // 1. plist 생성 (무조건 재생성)
@@ -158,11 +162,22 @@ switch (sub) {
         writeFileSync(PLIST_PATH, plist);
         console.log(`✅ plist 저장: ${PLIST_PATH}`);
 
-        // 2. bootout 무조건 선수행 (에러 무시 — 미등록 상태는 정상)
+        // 2. 기존 등록 완전 해제 (kill → disable → bootout 순)
+        try { execSync(`launchctl kill SIGTERM ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
+        try { execSync(`launchctl disable ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
         try {
             execSync(`launchctl bootout ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' });
             console.log('🧹 기존 등록 해제');
         } catch { /* 미등록이면 정상 */ }
+
+        // 2b. label이 완전히 사라질 때까지 대기 (최대 3초)
+        for (let i = 0; i < 6; i++) {
+            try {
+                execSync(`launchctl print ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' });
+                try { execSync('sleep 0.5'); } catch { /* ok */ }
+            } catch { break; /* 없음 — 진행 */ }
+        }
+        try { execSync(`launchctl enable ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
 
         // 3. bootstrap + error 5 (I/O error) 복구
         try {
@@ -173,13 +188,27 @@ switch (sub) {
             const isBusy = /Bootstrap failed:\s*5/i.test(stderr)
                 || /already (bootstrapped|loaded)/i.test(stderr);
             if (isBusy) {
-                console.log('⚠️  기존 등록 충돌 — 강제 해제 후 재시도');
+                console.log('⚠️  Bootstrap error 5 — 2차 강제 복구 시도');
+                try { execSync(`launchctl kill SIGKILL ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
                 try { execSync(`launchctl disable ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
                 try { execSync(`launchctl bootout ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
-                try { execSync('sleep 0.5'); } catch { /* ok */ }
+                try { execSync('sleep 2'); } catch { /* ok */ }
                 try { execSync(`launchctl enable ${GUI_DOMAIN}/${LABEL}`, { stdio: 'pipe' }); } catch { /* ok */ }
-                execSync(`launchctl bootstrap ${GUI_DOMAIN} "${PLIST_PATH}"`, { stdio: 'inherit' });
-                console.log('✅ 재시도 성공\n');
+                try {
+                    execSync(`launchctl bootstrap ${GUI_DOMAIN} "${PLIST_PATH}"`, { stdio: 'pipe' });
+                    console.log('✅ 재시도 성공\n');
+                } catch (e2: any) {
+                    console.error('');
+                    console.error('❌ Bootstrap error 5 지속 — launchd 도메인 오염 가능성');
+                    console.error('   수동 복구:');
+                    console.error(`     jaw launchd cleanup`);
+                    console.error(`     launchctl bootout ${GUI_DOMAIN}/${LABEL} 2>/dev/null`);
+                    console.error(`     launchctl disable ${GUI_DOMAIN}/${LABEL} 2>/dev/null`);
+                    console.error(`     rm -f "${PLIST_PATH}"`);
+                    console.error(`     sleep 3 && jaw launchd`);
+                    console.error('   위 조치 후에도 실패하면 재부팅 필요');
+                    throw e2;
+                }
             } else {
                 throw e;
             }

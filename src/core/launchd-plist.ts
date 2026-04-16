@@ -41,8 +41,6 @@ export function generateLaunchdPlist(o: PlistOptions): string {
     <string>Aqua</string>
     <key>ProcessType</key>
     <string>Interactive</string>
-    <key>SessionCreate</key>
-    <true/>
     <key>WorkingDirectory</key>
     <string>${xmlEsc(o.jawHome)}</string>
     <key>StandardOutPath</key>
