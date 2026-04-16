@@ -1,6 +1,8 @@
 // ─── Agent CLI Argument Builders ──────────────────────
 // Extracted from agent.js for 500-line compliance.
 
+const isCodexSparkModel = (model: string) => !!model && /spark/i.test(model);
+
 export function buildArgs(cli: string, model: string, effort: string, prompt: string, sysPrompt: string, permissions = 'auto', options: { fastMode?: boolean } = {}) {
     const autoPerm = permissions === 'auto';
     switch (cli) {
@@ -12,15 +14,17 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
                 ...(model && model !== 'default' ? ['--model', model] : []),
                 ...(effort && effort !== 'medium' ? ['--effort', effort] : []),
                 ...(sysPrompt ? ['--append-system-prompt', sysPrompt] : [])];
-        case 'codex':
+        case 'codex': {
+            const spark = isCodexSparkModel(model);
             return ['exec',
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['-c', `model_reasoning_effort="${effort}"`] : []),
-                '-c', 'model_reasoning_summary="detailed"',
-                '-c', 'hide_agent_reasoning=false',
+                ...(spark ? [] : ['-c', 'model_reasoning_summary="detailed"']),
+                ...(spark ? [] : ['-c', 'hide_agent_reasoning=false']),
                 ...(options.fastMode ? ['-c', 'service_tier="fast"'] : []),
                 ...(autoPerm ? ['--dangerously-bypass-approvals-and-sandbox'] : []),
                 '--skip-git-repo-check', '--json'];
+        }
         case 'gemini':
             return ['-p', prompt || '',
                 ...(model && model !== 'default' ? ['-m', model] : []),
@@ -47,15 +51,17 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
                 '--max-turns', '50',
                 ...(model && model !== 'default' ? ['--model', model] : []),
                 ...(effort && effort !== 'medium' ? ['--effort', effort] : [])];
-        case 'codex':
+        case 'codex': {
+            const spark = isCodexSparkModel(model);
             return ['exec', 'resume',
                 ...(model && model !== 'default' ? ['--model', model] : []),
-                '-c', 'model_reasoning_summary="detailed"',
-                '-c', 'hide_agent_reasoning=false',
+                ...(spark ? [] : ['-c', 'model_reasoning_summary="detailed"']),
+                ...(spark ? [] : ['-c', 'hide_agent_reasoning=false']),
                 ...(options.fastMode ? ['-c', 'service_tier="fast"'] : []),
                 ...(autoPerm ? ['--dangerously-bypass-approvals-and-sandbox'] : []),
                 '--skip-git-repo-check',
                 sessionId, prompt || '', '--json'];
+        }
         case 'gemini':
             return ['--resume', sessionId,
                 '-p', prompt || '',
