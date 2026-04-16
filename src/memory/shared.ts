@@ -30,6 +30,9 @@ export type AdvancedMeta = {
         kv: number;
         claude: number;
     };
+    soulSynthesized?: boolean;
+    soulSynthesizedAt?: string | null;
+    soulSynthesizedCli?: string | null;
 };
 
 export type SearchHit = {

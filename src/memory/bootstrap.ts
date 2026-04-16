@@ -1,6 +1,7 @@
 import fs from 'fs';
 import os from 'os';
-import { join, relative } from 'path';
+import { join, relative, basename } from 'path';
+import { execFileSync } from 'child_process';
 import { JAW_HOME, settings } from '../core/config.js';
 import { instanceId } from '../core/instance.js';
 import { getMemory } from '../core/db.js';
@@ -307,6 +308,71 @@ export function syncKvShadowImport() {
     updateImportedCount('kv', count);
     reindexSingleFile(root, join(root, 'semantic', 'kv-imported.md'));
     return { ok: true, target: join(root, 'semantic', 'kv-imported.md'), count };
+}
+
+function tryExec(bin: string, args: string[]): string {
+    try { return execFileSync(bin, args, { timeout: 3000, encoding: 'utf8' }).trim(); }
+    catch { return ''; }
+}
+
+/** Scan hardware + project root info to seed profile when no legacy data exists */
+export function scanSystemProfile(): string {
+    const lines: string[] = [];
+
+    // Hardware
+    lines.push('## System');
+    lines.push(`- hostname: ${os.hostname()}`);
+    lines.push(`- platform: ${os.platform()} ${os.arch()}`);
+    lines.push(`- release: ${os.release()}`);
+    lines.push(`- cpus: ${os.cpus().length} cores (${os.cpus()[0]?.model || 'unknown'})`);
+    lines.push(`- memory: ${(os.totalmem() / 1073741824).toFixed(1)} GB`);
+    lines.push(`- shell: ${process.env.SHELL || 'unknown'}`);
+    lines.push(`- user: ${os.userInfo().username}`);
+    lines.push(`- home: ${os.homedir()}`);
+
+    // Node / runtime
+    lines.push('');
+    lines.push('## Runtime');
+    lines.push(`- node: ${process.version}`);
+    const npmVer = tryExec('npm', ['--version']);
+    if (npmVer) lines.push(`- npm: ${npmVer}`);
+    const bunVer = tryExec('bun', ['--version']);
+    if (bunVer) lines.push(`- bun: ${bunVer}`);
+
+    // Working directory / project root
+    const wd = settings.workingDir || process.cwd();
+    lines.push('');
+    lines.push('## Project Root');
+    lines.push(`- path: ${wd}`);
+    lines.push(`- name: ${basename(wd)}`);
+
+    const pkgPath = join(wd, 'package.json');
+    if (fs.existsSync(pkgPath)) {
+        try {
+            const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf8'));
+            if (pkg.name) lines.push(`- package: ${pkg.name}@${pkg.version || '?'}`);
+            if (pkg.description) lines.push(`- description: ${pkg.description}`);
+            const deps = Object.keys(pkg.dependencies || {}).length;
+            const devDeps = Object.keys(pkg.devDependencies || {}).length;
+            if (deps || devDeps) lines.push(`- dependencies: ${deps} prod, ${devDeps} dev`);
+        } catch { /* ignore */ }
+    }
+
+    const gitRemote = tryExec('git', ['-C', wd, 'remote', 'get-url', 'origin']);
+    if (gitRemote) lines.push(`- git remote: ${gitRemote}`);
+    const gitBranch = tryExec('git', ['-C', wd, 'branch', '--show-current']);
+    if (gitBranch) lines.push(`- git branch: ${gitBranch}`);
+
+    // Detect common project types
+    const markers: string[] = [];
+    if (fs.existsSync(join(wd, 'tsconfig.json'))) markers.push('TypeScript');
+    if (fs.existsSync(join(wd, 'Cargo.toml'))) markers.push('Rust');
+    if (fs.existsSync(join(wd, 'go.mod'))) markers.push('Go');
+    if (fs.existsSync(join(wd, 'requirements.txt')) || fs.existsSync(join(wd, 'pyproject.toml'))) markers.push('Python');
+    if (fs.existsSync(join(wd, 'Dockerfile'))) markers.push('Docker');
+    if (markers.length) lines.push(`- stack: ${markers.join(', ')}`);
+
+    return lines.join('\n');
 }
 
 export function ensureAdvancedMemoryStructure() {

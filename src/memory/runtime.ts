@@ -3,6 +3,7 @@ import os from 'os';
 import { join, relative } from 'path';
 import Database from 'better-sqlite3';
 import { JAW_HOME, settings } from '../core/config.js';
+import { instanceId } from '../core/instance.js';
 import { getMemory } from '../core/db.js';
 
 // Re-export everything from sub-modules for backward compatibility
@@ -62,14 +63,17 @@ import {
     getAdvancedIndexDbPath,
     getLegacyAdvancedMemoryDir,
     safeReadFile,
+    writeText,
+    frontmatter,
     listMarkdownFiles,
     countFiles,
     readMeta,
+    writeMeta,
 } from './shared.js';
 
 import { getLastExpansionTerms } from './keyword-expand.js';
 import { reindexAll, searchIndex, formatHits, reindexIndexCounts, reindexIntegratedMemoryFile } from './indexing.js';
-import { ensureAdvancedMemoryStructure, bootstrapAdvancedMemory, syncCoreProfile } from './bootstrap.js';
+import { ensureAdvancedMemoryStructure, bootstrapAdvancedMemory, syncCoreProfile, scanSystemProfile } from './bootstrap.js';
 import { reflectRecentEpisodes, type ReflectionResult } from './reflect.js';
 
 // ---------- Public API ----------
@@ -255,14 +259,38 @@ export function ensureIntegratedMemoryReady() {
     const created = ensureAdvancedMemoryStructure();
     syncCoreProfile(getAdvancedMemoryDir(), { force: false });
     const status = getAdvancedMemoryStatus();
-    if (status.indexState === 'ready') return { created, bootstrapped: false, status };
+    const meta = readMeta();
+    const alreadyBootstrapped = meta?.bootstrapStatus === 'done';
+    if (status.indexState === 'ready' && alreadyBootstrapped) return { created, bootstrapped: false, status };
     const hasLegacy = fs.existsSync(join(JAW_HOME, 'memory', 'MEMORY.md'))
         || fs.existsSync(join(JAW_HOME, 'memory', 'daily'))
         || fs.existsSync(getLegacyClaudeMemoryDir())
         || (getMemory.all() as any[]).length > 0
         || fs.existsSync(getLegacyAdvancedMemoryDir());
     if (!hasLegacy) {
-        const result = reindexAll(getAdvancedMemoryDir());
+        // No legacy data — seed profile from hardware/project scan
+        const root = getAdvancedMemoryDir();
+        const profilePath = join(root, 'profile.md');
+        const profileContent = safeReadFile(profilePath);
+        // Only overwrite if profile was auto-generated and has no real content
+        const isEmptyProfile = !profileContent
+            || (profileContent.includes('source: generated') && !profileContent.includes('- '));
+        if (isEmptyProfile) {
+            const systemInfo = scanSystemProfile();
+            const fm = frontmatter({
+                id: `profile-${instanceId()}`,
+                home_id: instanceId(),
+                kind: 'profile',
+                source: 'system-scan',
+                trust_level: 'high',
+                created_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+            });
+            writeText(profilePath, fm + `# Profile\n\n${systemInfo}\n`);
+            console.log('[jaw:bootstrap] seeded profile from system scan (no legacy data found)');
+        }
+        const result = reindexAll(root);
+        writeMeta({ bootstrapStatus: 'done', lastBootstrapAt: new Date().toISOString() });
         return { created, bootstrapped: false, status: getAdvancedMemoryStatus(), result };
     }
     const result = bootstrapAdvancedMemory({
