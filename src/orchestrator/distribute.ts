@@ -13,37 +13,42 @@ import { updateWorkerPhase } from './worker-registry.js';
 
 export const PHASES: Record<number, string> = { 1: 'Planning', 2: 'Plan Audit', 3: 'Development', 4: 'Debug/Check', 5: 'Integration' };
 
+// Employee-scoped phase agenda. Do NOT include delegation language
+// (dispatch, sub-agent, cross-agent coordination, "ALL risks", "thoroughly verify")
+// — those concepts belong to the boss, not the single employee executing a task.
 export const PHASE_INSTRUCTIONS: Record<number, string> = {
-    1: `[Planning] Validate the feasibility of this plan. Do NOT write code.
-     - Required: Impact scope analysis (which files will change)
-     - Required: Dependency check (no import/export conflicts)
-     - Required: Edge case list (null/empty/error handling)
-     - Record analysis results in the worklog.`,
-    2: `[Plan Audit — Strict] Referencing dev-code-reviewer and dev skill, conduct a strict audit of the current diff-level plan. Determine if the code is truly 'copy-paste ready' and free from dependency integrity issues.
-     Using context7 and web search, thoroughly verify the following and report ALL potential risks:
-     - Required (Dependency Validation): Ensure all imported libraries and versions in the plan match the latest stable releases (or the project's package.json/requirements.txt) to prevent version conflicts. Check every import statement against the actual file system.
-     - Required (API Integrity): Use Context7 to confirm that all function calls and methods exist in the current documentation and are not deprecated or hallucinated. Verify function signatures, parameter types, and return types match actual usage.
-     - Required (Integration Risks): Identify if copy-pasting will break existing logic, specifically looking for: missing imports or unresolved module paths, uninitialized variables or undefined references, context mismatches (wrong function arity, incompatible types), circular dependencies introduced by new files, existing callers that would break from API changes.
-     - Required: Conflict scan (does any other agent modify the same files)
-     - Required: Test strategy (define verifiable criteria)
-     - Report all findings as structured markdown with specific file paths and line numbers.
-     - Provide a final verdict: PASS (safe to implement) or FAIL (requires plan revision) with itemized issues.
+    1: `[Planning — single-employee scope] Read the files involved in the task yourself and write a planning note. No code.
+     - List the files you expect to change (based on your own reading)
+     - List imports you expect to add or remove
+     - List edge cases you can identify from the code you read
+     - Record in the worklog. Do NOT coordinate with other agents.`,
+    2: `[Plan Audit — single-employee scope] Audit the plan you were given. You are the single reviewer — do NOT dispatch other auditors.
+     - Read each target file referenced in the plan and check whether the diff applies cleanly (line anchors, surrounding context)
+     - Check imports in the diff against the file's existing imports
+     - Note any API signatures you cannot verify with the local code (mark as "unverifiable — needs boss follow-up") — do NOT web-search unless the plan explicitly names a new external library
+     - Produce a final verdict: PASS (safe to implement) or FAIL (list itemized issues with file:line refs)
      - Record audit results in the worklog.`,
-    3: `[Development] Refer to documentation and write the code.
-     - Required: List changed files with key changes per unit
-     - Required: Verify existing export/import not broken
-     - Required: Verify code runs without lint/build errors
+    3: `[Development — single-employee scope] Write the code yourself. No delegation.
+     - Apply the diff from the plan to each target file
+     - Verify your changes pass local lint/build (run once, report result)
      - Record change log in worklog Execution Log.`,
-    4: `[Debug/Check] Run/test the code and fix any bugs.
-     - Required: Attach execution results (screenshots/logs)
-     - Required: List discovered bugs and fixes
-     - Required: Edge case test results (null/empty/error)
-     - Record debug log in the worklog.`,
-    5: `[Integration] Verify integration with other areas.
-     - Required: Integration tests with other agent outputs
-     - Required: Final docs update (README, changelog)
-     - Required: Full workflow verification
-     - Record final verification results in the worklog.`,
+    4: `[Debug/Check — single-employee scope] Run the local tests yourself, fix the bugs you find.
+     - Attach execution output to the worklog
+     - If a test reveals a cross-agent issue, write "needs boss follow-up: <reason>" — do NOT try to coordinate it yourself.`,
+    5: `[Integration — single-employee scope] Verify your own output integrates with the files the plan references.
+     - Run the integration tests specified in the plan
+     - Record results. Cross-agent coordination belongs to boss.`,
+};
+
+// Boss-scoped phase agenda. This is the *orchestration* view — what the boss
+// must confirm before advancing phases. Kept separate so it never leaks into
+// employee task prompts. Reserved for future boss prompt wiring.
+export const BOSS_PHASE_AGENDA: Record<number, string> = {
+    1: `[Planning] Confirm feasibility before dispatching employees. Impact scope, dependency graph, edge cases.`,
+    2: `[Plan Audit — Strict] Dispatch reviewer(s) if needed. Cross-reference findings. Use Context7 / web search when external libraries are involved. Conflict scan across agents. Final PASS/FAIL verdict drives transition to Development.`,
+    3: `[Development] Dispatch developer(s). Track progress and conflicts.`,
+    4: `[Debug/Check] Collect test/debug output from employees. Decide whether to iterate.`,
+    5: `[Integration] Verify cross-agent integration. Final docs + changelog.`,
 };
 
 // ─── Prompt Context Helpers ──────────────────────────
@@ -303,8 +308,14 @@ After completing your task, record results in the Execution Log section.`
     const taskPrompt = `## Task Instruction [${phaseLabel}]
 ${ap.task}
 
-## ⛔ Dispatch Prohibition
-You are an employee session. Do NOT dispatch other employees. Do NOT output subtask JSON. Do NOT run \`cli-jaw dispatch\`. Use CLI sub-agents (Task/Agent tool) for parallel work instead.
+## ⛔ Isolation Requirements (hard blocks)
+You are an isolated employee session. The server will reject (HTTP 403) any of the following:
+- \`cli-jaw dispatch ...\`
+- \`curl\` / direct POST to \`/api/orchestrate/dispatch\`
+Additionally you MUST NOT:
+- Use your CLI's Task / Agent / Subagent tool — it creates a hidden sub-agent outside jaw's visibility and conflicts with phase accounting.
+- Output subtask JSON or reference the \`dev-code-reviewer\` skill as a delegation target. You are the single reviewer for this task.
+If the task seems to require parallel work, stop, write \`needs boss follow-up: <reason>\` in your output, and return. The boss will re-dispatch at the next phase.
 
 ## Current Phase: ${ap.currentPhase} (${phaseLabel})
 ${instruction}
