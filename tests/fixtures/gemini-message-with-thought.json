@@ -1,0 +1,9 @@
+{
+    "type": "message",
+    "role": "assistant",
+    "content": [
+        { "type": "thought", "thought": "I should check the directory structure first." },
+        { "type": "text", "text": "The current directory is /home/user." }
+    ],
+    "delta": true
+}

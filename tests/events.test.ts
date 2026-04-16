@@ -607,3 +607,77 @@ test('extractOutputChunk returns live assistant text for gemini, opencode, and c
         '',
     );
 });
+
+// ─── #107 Gemini thought/thinking filtering ───
+
+test('#107: extractOutputChunk skips Gemini thought events', () => {
+    // Standalone thought event type (future Gemini CLI)
+    assert.equal(
+        extractOutputChunk('gemini', { type: 'thought', content: 'internal reasoning' }),
+        '',
+    );
+    // Message event with thought flag
+    assert.equal(
+        extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'thinking...', thought: true }),
+        '',
+    );
+    // Normal message still works
+    assert.equal(
+        extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'hello' }),
+        'hello',
+    );
+});
+
+test('#107: extractOutputChunk filters thought parts from array content', () => {
+    const event = readFixture('gemini-message-with-thought.json');
+    const chunk = extractOutputChunk('gemini', event);
+    assert.equal(chunk, 'The current directory is /home/user.');
+    assert.ok(!chunk.includes('thought'));
+});
+
+test('#107: extractFromEvent skips Gemini thought events from fullText', () => {
+    const ctx = { toolLog: [], fullText: '', traceLog: [] };
+
+    // Thought event should not accumulate
+    extractFromEvent('gemini', {
+        type: 'thought',
+        content: 'Let me reason about this...',
+    }, ctx, 'gemini');
+    assert.equal(ctx.fullText, '');
+    assert.ok(ctx.traceLog.some(l => l.includes('thought (hidden)')));
+
+    // Message with thought=true should not accumulate
+    extractFromEvent('gemini', {
+        type: 'message',
+        role: 'assistant',
+        content: 'internal thinking',
+        thought: true,
+    }, ctx, 'gemini');
+    assert.equal(ctx.fullText, '');
+
+    // Normal message should still accumulate
+    extractFromEvent('gemini', {
+        type: 'message',
+        role: 'assistant',
+        content: 'final answer',
+        delta: true,
+    }, ctx, 'gemini');
+    assert.equal(ctx.fullText, 'final answer');
+});
+
+test('#107: extractFromEvent filters thought parts from array content', () => {
+    const ctx = { toolLog: [], fullText: '', traceLog: [] };
+    const event = readFixture('gemini-message-with-thought.json');
+    extractFromEvent('gemini', event, ctx, 'gemini');
+    assert.equal(ctx.fullText, 'The current directory is /home/user.');
+    assert.ok(!ctx.fullText.includes('should check'));
+});
+
+test('#107: extractOutputChunk handles null elements in content array', () => {
+    const chunk = extractOutputChunk('gemini', {
+        type: 'message',
+        role: 'assistant',
+        content: [null, { type: 'text', text: 'safe' }, undefined, { type: 'thought', thought: 'hidden' }],
+    });
+    assert.equal(chunk, 'safe');
+});
