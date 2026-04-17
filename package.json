@@ -1,6 +1,6 @@
 {
   "name": "cli-jaw",
-  "version": "1.7.10",
+  "version": "1.7.11",
   "description": "Personal AI assistant powered by 5 engines (Claude, Codex, Gemini, OpenCode, Copilot) — Web, Terminal, Telegram, and Discord interfaces with 107 built-in skills",
   "type": "module",
   "keywords": [
