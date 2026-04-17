@@ -75,7 +75,7 @@ Key rules:
 <!-- anchor:desktop-control -->
 ## Desktop / Browser Control (MANDATORY)
 
-> **macOS only.** Computer Use works exclusively on darwin. On other platforms, only CDP browser control is available.
+> **Desktop (Computer Use) control is macOS only.** On Windows/Linux/WSL/Docker, only the **CDP browser path** is available — never attempt `mcp__computer_use__.*` or claim desktop control on non-darwin platforms.
 >
 > **Before using Computer Use, you MUST read the `desktop-control` skill** in your active skills list (`mcp__jaw-skills__resource` for `desktop-control/SKILL.md` and its `reference/*.md`). The routing rules, stale-warning handling, transcript format, and vision-click fallback are all documented there — do not guess.
 >
@@ -102,12 +102,54 @@ cli-jaw browser screenshot                     # Save screenshot
 - Prefer `cli-jaw browser start --agent` for automation; plain `start` only when the user wants a visible window.
 - Ref IDs **reset on navigation** → always re-snapshot after navigate.
 
-### B. Computer Use path — `mcp__computer_use__.*`
+### B. Computer Use path — `mcp__computer_use__.*` (macOS only)
 Use for desktop apps and non-DOM UI: Finder, System Settings, Chrome tab bar, Spotify window, any native widget.
-- First call must be `get_app_state(app)`. Re-call after any state change.
-- Treat stale warnings as a signal to re-read state, not as failure.
-- Action classes: state-read, element-action, value-injection, keyboard-action, pointer-action, pointer-action+vision.
-- Do NOT claim visible cursor is guaranteed — it is best-effort in the current build.
+
+**How it actually works:** Computer Use drives the **real mouse cursor and keyboard** — it physically moves the pointer to the target location and clicks, then waits for the OS to process the event. This is NOT a headless API; every action produces a visible cursor movement and keystroke as if a human were operating the machine.
+
+**Workflow:** state-read → act → state-read → verify
+
+```
+# 1. Read state first (returns screenshot + element tree with element_index)
+get_app_state(app="Finder")
+  → {
+      elements: [
+        { element_index: 12, role: "button", label: "New Folder", bbox: [x,y,w,h] },
+        { element_index: 13, role: "textfield", label: "Search", ... },
+        ...
+      ],
+      screenshot: "...",
+      stale_warning: false,
+    }
+
+# 2. Prefer element_index (symbolic) over raw coordinates
+click(app="Finder", element_index=12)           # moves cursor to element's bbox center, clicks
+double_click(app="Finder", element_index=12)
+type_text(app="Finder", element_index=13, text="hello")
+
+# 3. Keyboard/hotkey goes to the frontmost window
+hotkey(keys="cmd+tab")                          # real ⌘⇥ keystroke
+key_press(key="escape")
+
+# 4. Raw pixel click — fallback only
+click(app="Chrome", x=1200, y=85)               # use when no element_index works
+
+# 5. After any state change, re-call get_app_state(app)
+# Stale warning is a signal to re-read, NOT a failure.
+```
+
+**Action classes** (record one per action in the transcript):
+- `state-read` — `get_app_state`
+- `element-action` — `click`/`double_click` by `element_index`
+- `value-injection` — `type_text` by `element_index`
+- `keyboard-action` — `hotkey`/`key_press` (no target element)
+- `pointer-action` — `click(x, y)` by raw pixel
+- `pointer-action+vision` — pixel click whose coordinates came from a vision model (e.g. `cli-jaw browser vision-click`)
+
+**Important:**
+- Real cursor moves — the user's actual mouse pointer will jump. Warn the user before long action sequences if they're watching.
+- Cursor overlay visibility is **best-effort**; never claim "the cursor is visible" as a fact.
+- Every action must re-check state before the next click — apps animate, modals appear, focus moves.
 
 ### C. Routing
 - DOM target → CDP.
