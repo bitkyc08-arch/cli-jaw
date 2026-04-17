@@ -7,6 +7,7 @@ import {
     STATIC_EMPLOYEES,
     findStaticEmployee,
     checkRuntimeHints,
+    checkModelSupport,
     resolveDispatchableEmployee,
 } from '../../src/core/employees.ts';
 
@@ -93,4 +94,14 @@ test('P37-CU-010: desktop-control skill includes control-workflow reference', as
 test('P37-CU-009: STATIC_EMPLOYEES has no duplicate names', () => {
     const names = STATIC_EMPLOYEES.map((e) => e.name.toLowerCase());
     assert.equal(new Set(names).size, names.length, 'STATIC_EMPLOYEES has duplicate names');
+});
+
+test('checkModelSupport: scaffold returns empty result for all inputs (Spark handled by args.ts, not dispatch)', () => {
+    // Spark's reasoning-param incompatibility is enforced at argv-build time (args.ts isCodexSparkModel),
+    // so the dispatch-level checkModelSupport has no active rules for Spark. Scaffold kept for future policies.
+    assert.deepEqual(checkModelSupport('codex', 'gpt-5.3-codex-spark', {}), { fail: [], warn: [] });
+    assert.deepEqual(checkModelSupport('codex', 'gpt-5.4', {}), { fail: [], warn: [] });
+    assert.deepEqual(checkModelSupport('claude', 'sonnet', {}), { fail: [], warn: [] });
+    assert.deepEqual(checkModelSupport(null, 'gpt-5.4'), { fail: [], warn: [] });
+    assert.deepEqual(checkModelSupport('codex', null), { fail: [], warn: [] });
 });

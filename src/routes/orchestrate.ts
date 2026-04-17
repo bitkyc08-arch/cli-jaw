@@ -13,7 +13,7 @@ import { findEmployee, runSingleAgent } from '../orchestrator/distribute.js';
 import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
 import { verifyBossToken } from '../core/boss-auth.js';
-import { resolveDispatchableEmployee, checkRuntimeHints } from '../core/employees.js';
+import { resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
 
 function getRuntimeSnapshot() {
     return {
@@ -123,6 +123,18 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             const checks = checkRuntimeHints(staticSpec.spec);
             if (checks.fail.length > 0) {
                 return fail(res, 412, `Preconditions not met: ${checks.fail.join('; ')}`);
+            }
+        }
+
+        // Model-level preflight (e.g. Spark family on ChatGPT OAuth) — fails fast
+        // rather than wasting a spawn on an API 400.
+        {
+            const modelChecks = checkModelSupport(emp.cli, emp.model);
+            if (modelChecks.fail.length > 0) {
+                return fail(res, 412, `Model not supported: ${modelChecks.fail.join('; ')}`);
+            }
+            for (const w of modelChecks.warn) {
+                console.warn(`[orchestrate] model warn: ${w}`);
             }
         }
 

@@ -107,6 +107,27 @@ export function checkRuntimeHints(
 }
 
 /**
+ * Evaluate model/CLI precondition at dispatch time — same shape as checkRuntimeHints
+ * so the caller (orchestrate.ts) can translate fail/warn into HTTP 412/warning.
+ * Pure function: no network, no probes. Encode KNOWN model-level incompatibilities
+ * we cannot recover from after spawn.
+ *
+ * Spark note: `gpt-5.3-codex-spark` does NOT accept the `reasoning.summary` /
+ * `reasoning.effort` parameters (server returns 400 "unsupported_parameter").
+ * `args.ts` already drops those flags via `isCodexSparkModel`, so no fail is
+ * needed here — the guard is exercised at argv-build time, not dispatch time.
+ * This scaffold is kept for future model-policy additions.
+ */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function checkModelSupport(
+    _cli: string | undefined | null,
+    _model: string | undefined | null,
+    _env: NodeJS.ProcessEnv = process.env,
+): RuntimeHintCheckResult {
+    return { fail: [], warn: [] };
+}
+
+/**
  * Resolve an employee name to a dispatchable row-shape used by worker-registry
  * and runSingleAgent. DB rows win; static entries produce a synthetic id.
  */
