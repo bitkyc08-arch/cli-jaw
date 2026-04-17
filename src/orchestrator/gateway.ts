@@ -4,7 +4,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { isAgentBusy, enqueueMessage, messageQueue } from '../agent/spawn.js';
-import { hasBlockingWorkers, hasPendingWorkerReplays } from './worker-registry.js';
+import { hasBlockingWorkers } from './worker-registry.js';
 import { insertMessage } from '../core/db.js';
 import { settings } from '../core/config.js';
 import { broadcast } from '../core/bus.js';
@@ -21,6 +21,10 @@ export type SubmitResult = {
     reason?: string;
     pending?: number;
     requestId?: string;
+    /** Queue item id (only present when action === 'queued') — lets clients
+     * tag their optimistic bubble with `data-queued-id` so applyQueuedOverlay's
+     * dedup catches it instead of rendering a duplicate. */
+    queuedId?: string;
     // backward-compat for REST consumers (chat.js expects these)
     queued?: true;
     continued?: true;
@@ -125,10 +129,14 @@ export function submitMessage(
     // ── busy → enqueue only ──
     // NOTE: insertMessage is NOT called here — processQueue() handles it.
     // This fixes the dual-insert bug where bot.ts called both enqueue + insert.
-    if (isAgentBusy() || hasBlockingWorkers() || hasPendingWorkerReplays()) {
-        enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId, requestId, scope });
+    // NOTE: hasPendingWorkerReplays() is intentionally NOT gated — orchestrate()
+    // drains pending replays at entry (pipeline.ts drainPendingReplays), so
+    // starting immediately is safe and avoids the processQueue deadlock
+    // documented in devlog/_plan/260417_message_duplication/02_*.
+    if (isAgentBusy() || hasBlockingWorkers()) {
+        const queuedId = enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId, requestId, scope });
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
-        return { action: 'queued', pending: messageQueue.length, queued: true, requestId };
+        return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId };
     }
 
     // ── idle → start immediately ──

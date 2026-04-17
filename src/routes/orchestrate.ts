@@ -1,9 +1,9 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
 import { ok, fail } from '../http/response.js';
-import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd } from '../agent/spawn.js';
+import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, getCurrentMainMeta } from '../agent/spawn.js';
 import { getLiveRun } from '../agent/live-run-state.js';
-import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } from '../orchestrator/pipeline.js';
+import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { insertMessage } from '../core/db.js';
 import { getState, getCtx, setState, resetState, canTransition } from '../orchestrator/state-machine.js';
 import type { OrcStateName } from '../orchestrator/state-machine.js';
@@ -91,13 +91,16 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         }
         const result = removeQueuedMessage(id);
         if (!result.removed) return fail(res, 404, 'queued item disappeared during steer');
-        // gateway.ts:130에서 enqueue 시점에 이미 broadcast('new_message') 했으므로
-        // 여기서는 broadcast하지 않는다 (processQueue 정책과 동일).
         try {
             insertMessage.run('user', prompt, origin, '', settings.workingDir || null);
         } catch (err) {
             console.warn('[steer:insert]', (err as Error).message);
         }
+        // Web client renders user bubble only on fromQueue=true (chat.ts dropped
+        // the optimistic bubble at enqueue time). processQueue does the same broadcast
+        // when an item drains naturally; steer is the manual equivalent.
+        const { broadcast } = await import('../core/bus.js');
+        broadcast('new_message', { role: 'user', content: prompt, source: origin, fromQueue: true });
         const task = isResetIntent(prompt)
             ? orchestrateReset({ origin, _skipInsert: true })
             : isContinueIntent(prompt)
@@ -158,9 +161,20 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
 
         // Phase 7-2: reject concurrent dispatch of the same employee.
         // Caller should poll GET /api/orchestrate/worker/:agentId/result.
+        // Capture the current Boss main session's channel so disconnected
+        // worker results later drain back to the correct origin/chatId,
+        // not a generic 'system' scope.
+        const bossMeta = getCurrentMainMeta();
+        const replayMeta = bossMeta ? {
+            origin: bossMeta.origin,
+            target: bossMeta.target,
+            chatId: bossMeta.chatId,
+            requestId: bossMeta.requestId,
+            scopeId: bossMeta.scopeId,
+        } : undefined;
         let slot;
         try {
-            slot = claimWorker(emp, task);
+            slot = claimWorker(emp, task, replayMeta);
         } catch (err) {
             if (err instanceof WorkerBusyError) {
                 return res.status(409).json({
@@ -178,11 +192,16 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             throw err;
         }
 
-        // Phase 7-1: detect client disconnect so we keep pendingReplay=true
-        // (so the next boss turn can drain the result) instead of discarding.
+        // Detect client abort: hook the RESPONSE's 'close' (not request's) and
+        // check writableFinished — per Node.js docs, response 'close' fires once
+        // the underlying connection is closed, and writableFinished is true only
+        // if ALL data was flushed. This correctly distinguishes normal completion
+        // from early abort. req.on('close') was unreliable because it fires on
+        // normal keep-alive teardown too, leading to false-positive disconnects.
+        // See: https://nodejs.org/docs/latest/api/http.html (response.writableFinished)
         let clientDisconnected = false;
-        req.on('close', () => {
-            if (!res.writableEnded) clientDisconnected = true;
+        res.on('close', () => {
+            if (!res.writableFinished) clientDisconnected = true;
         });
 
         try {
@@ -196,7 +215,16 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             finishWorker(slot.agentId, result.text || '');
             if (clientDisconnected) {
                 console.warn(`[dispatch] client disconnected — keeping pendingReplay for ${slot.agentId}`);
-                // pendingReplay stays true; next boss orchestrate() call drains it.
+                // Proactive drain: if Boss died before receiving the result, user input
+                // would otherwise stall forever. Trigger drainPendingReplays so the result
+                // is fed back via a fresh Boss session without waiting for the next user
+                // message. See devlog/_plan/260417_message_duplication/02_*.
+                if (!isAgentBusy()) {
+                    queueMicrotask(() => {
+                        drainPendingReplays({ origin: 'system' })
+                            .catch(err => console.error('[dispatch:drain]', (err as Error).message));
+                    });
+                }
                 return;
             }
             // Only clear replay flag after response is actually flushed to client.

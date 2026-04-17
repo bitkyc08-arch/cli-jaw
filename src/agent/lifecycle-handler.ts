@@ -24,6 +24,12 @@ export function setSpawnAgent(fn: Function): void {
     _spawnAgent = fn;
 }
 
+// Forward reference to setCurrentMainMeta — same reason.
+let _setCurrentMainMeta: ((meta: any) => void) | null = null;
+export function setMainMetaHandler(fn: (meta: any) => void): void {
+    _setCurrentMainMeta = fn;
+}
+
 export interface ExitContext {
     fullText: string;
     sessionId: string | null;
@@ -152,6 +158,9 @@ export function handleAgentExit(params: ExitHandlerParams): void {
     activeProcesses.delete(agentLabel);
     if (mainManaged) {
         setActiveProcess(null);
+        // Clear Boss channel context — subsequent dispatches (if any) should
+        // not inherit this session's meta.
+        _setCurrentMainMeta?.(null);
         broadcast('agent_status', { running: false, agentId: agentLabel, ...empTag });
     }
 

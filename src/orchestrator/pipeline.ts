@@ -125,6 +125,38 @@ async function executePreparedWorkerTask(
 
 const ACTIVE_PABCD_DISPATCH_STATES = new Set<OrcStateName>(['P', 'A', 'B', 'C']);
 
+// ─── drainPendingReplays ─────────────────────────────
+// Feed completed-but-unreceived worker results back to Boss. Safe to call
+// from any idle caller (dispatch route on client-disconnect, processQueue
+// entry, orchestrate entry). Bookkeeping via claim/mark/releaseWorkerReplay
+// prevents double-injection. Each iteration recurses into orchestrate() with
+// _skipReplayDrain:true so we don't re-enter this loop.
+export async function drainPendingReplays(fallbackMeta: Record<string, any> = {}): Promise<void> {
+    const pendingResults = listPendingWorkerResults();
+    for (const pr of pendingResults) {
+        if (!claimWorkerReplay(pr.agentId)) continue;
+        // Prefer per-slot replayMeta captured at dispatch time so the result
+        // routes back to the original channel (web/telegram/discord + chatId).
+        // Fallback meta (caller-supplied) only fills in when slot meta is absent.
+        const slotMeta = pr.meta || {};
+        const meta = {
+            ...fallbackMeta,
+            ...(slotMeta.origin ? { origin: slotMeta.origin } : {}),
+            ...(slotMeta.target ? { target: slotMeta.target } : {}),
+            ...(slotMeta.chatId != null ? { chatId: slotMeta.chatId } : {}),
+            ...(slotMeta.requestId ? { requestId: slotMeta.requestId } : {}),
+        };
+        try {
+            await orchestrate(pr.text, { ...meta, _workerResult: true, _skipInsert: true, _skipReplayDrain: true });
+            markWorkerReplayed(pr.agentId);
+            processQueue();
+        } catch {
+            releaseWorkerReplay(pr.agentId);
+            break;
+        }
+    }
+}
+
 // ─── orchestrate (PABCD sole entry point) ───────────
 
 export async function orchestrate(
@@ -139,18 +171,7 @@ export async function orchestrate(
 
     // --- drain pending worker results before normal processing ---
     if (!meta._skipReplayDrain) {
-        const pendingResults = listPendingWorkerResults();
-        for (const pr of pendingResults) {
-            if (!claimWorkerReplay(pr.agentId)) continue;
-            try {
-                await orchestrate(pr.text, { ...meta, _workerResult: true, _skipInsert: true, _skipReplayDrain: true });
-                markWorkerReplayed(pr.agentId);
-                processQueue();
-            } catch {
-                releaseWorkerReplay(pr.agentId);
-                break;
-            }
-        }
+        await drainPendingReplays(meta);
     }
     const runSpawnAgent: SpawnAgentLike = typeof meta._spawnAgent === 'function'
         ? meta._spawnAgent

@@ -26,8 +26,8 @@ import { shouldInvalidateResumeSession } from './resume-classifier.js';
 import { groupQueueKey } from '../messaging/session-key.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 import { isCompactMarkerRow } from '../core/compact.js';
-import { hasBlockingWorkers, hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
-import { handleAgentExit, setSpawnAgent } from './lifecycle-handler.js';
+import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAllWorkers } from '../orchestrator/worker-registry.js';
+import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
 import { resolveOrcScope } from '../orchestrator/scope.js';
 import { beginLiveRun, appendLiveRunText, clearLiveRun, replaceLiveRunTools } from './live-run-state.js';
@@ -42,6 +42,25 @@ import {
 
 export let activeProcess: ChildProcess | null = null;
 export const activeProcesses = new Map<string, ChildProcess>(); // agentId → child process
+
+// Current Boss main session context — set when a mainManaged spawnAgent starts,
+// cleared on exit. Used by dispatch routes to capture the original channel
+// (web/telegram/discord + chatId) so that disconnected worker results can be
+// replayed to the correct scope instead of defaulting to 'system'.
+export interface MainSessionMeta {
+    origin: string;
+    target?: string;
+    chatId?: string | number;
+    requestId?: string;
+    scopeId?: string;
+}
+let currentMainMeta: MainSessionMeta | null = null;
+export function getCurrentMainMeta(): MainSessionMeta | null {
+    return currentMainMeta;
+}
+export function setCurrentMainMeta(meta: MainSessionMeta | null): void {
+    currentMainMeta = meta;
+}
 
 /**
  * Recursively kill a process tree using pgrep -P.
@@ -220,11 +239,28 @@ function purgeQueueOnStop(reason: string) {
     broadcast('queue_update', { pending: 0 });
 }
 
+/**
+ * Fix C2: 사용자 stop 시 worker-registry 도 비운다.
+ * gateway.submitMessage가 isAgentBusy() 외에 hasBlockingWorkers()/hasPendingWorkerReplays()
+ * 도 검사하므로, 이걸 비우지 않으면 stop 직후 새 메시지가 busy 분기 → 큐로 떨어지고
+ * 프론트는 (1) 낙관 bubble + (2) applyQueuedOverlay 가 만든 queued bubble = 2개를 보여준다.
+ */
+function clearWorkerSlotsOnStop(reason: string) {
+    const active = getActiveWorkers().length;
+    if (active === 0 && !hasPendingWorkerReplays()) return;
+    clearAllWorkers();
+    console.log(`[jaw:stop] cleared worker registry (active=${active}, reason=${reason})`);
+}
+
 export function killActiveAgent(reason = 'user') {
     const hadTimer = !!retryPendingTimer;
     clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
     // Fix A: 사용자 stop은 큐도 폐기. steer/internal kill은 큐 보존.
-    if (reason === 'api' || reason === 'user') purgeQueueOnStop(reason);
+    // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
+    if (reason === 'api' || reason === 'user') {
+        purgeQueueOnStop(reason);
+        clearWorkerSlotsOnStop(reason);
+    }
     if (!activeProcess) return hadTimer;  // timer 취소도 "killed" 취급
     console.log(`[jaw:kill] reason=${reason}`);
     if (activeProcess.pid) killReasons.set(activeProcess.pid, reason);
@@ -245,8 +281,11 @@ export function killActiveAgent(reason = 'user') {
 export function killAllAgents(reason = 'user') {
     const hadTimer = !!retryPendingTimer;
     clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
-    // Fix A: 사용자 stop은 큐도 폐기.
-    if (reason === 'api' || reason === 'user') purgeQueueOnStop(reason);
+    // Fix A: 사용자 stop은 큐도 폐기. Fix C2: worker 슬롯도 비움.
+    if (reason === 'api' || reason === 'user') {
+        purgeQueueOnStop(reason);
+        clearWorkerSlotsOnStop(reason);
+    }
     let killed = 0;
     for (const [id, proc] of activeProcesses) {
         console.log(`[jaw:killAll] killing ${id}, reason=${reason}`);
@@ -345,7 +384,7 @@ export function removeQueuedMessage(id: string): { removed: QueueItem | null; pe
     return { removed: removed!, pending: messageQueue.length };
 }
 
-export function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string }) {
+export function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string }): string {
     const item: QueueItem = {
         id: crypto.randomUUID(),
         prompt,
@@ -361,17 +400,36 @@ export function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { t
     console.log(`[queue] +1 (${messageQueue.length} pending)`);
     broadcast('queue_update', { pending: messageQueue.length });
     processQueue();
+    return item.id;
 }
 
 export async function processQueue() {
     if (queueProcessing) return;
+
+    // Auto-drain pending worker replays when Boss is idle. Covers the case where
+    // Boss died after the dispatch client disconnected — the result was stuck in
+    // pendingReplay and nothing was triggering drainPendingReplays. Dynamic
+    // import avoids circular dep (pipeline.ts imports from this module).
+    if (!activeProcess && !retryPendingTimer && !hasBlockingWorkers() && hasPendingWorkerReplays()) {
+        queueMicrotask(() => {
+            import('../orchestrator/pipeline.js')
+                .then(({ drainPendingReplays }) => drainPendingReplays({ origin: 'system' }))
+                .catch(err => console.error('[processQueue:drain]', (err as Error).message));
+        });
+        // Fall through: if messageQueue has entries, we still process them below.
+        // orchestrate() inside drain will also drain — idempotent via claimWorkerReplay.
+    }
+
     if (
         activeProcess
         || retryPendingTimer
         || hasBlockingWorkers()
-        || hasPendingWorkerReplays()
         || messageQueue.length === 0
     ) return;
+    // NOTE: hasPendingWorkerReplays() is intentionally NOT gated here —
+    // orchestrate() drains pending replays at entry (pipeline.ts drainPendingReplays),
+    // so the queued user message still arrives AFTER the worker result. Keeping this
+    // gate caused a deadlock (see devlog/_plan/260417_message_duplication/02_*).
     queueProcessing = true;
 
     // Group by source+target — only process the first group, leave rest in queue
@@ -412,7 +470,10 @@ export async function processQueue() {
         insertMessage.run('user', combined, source, '', settings.workingDir || null);
         deleteQueuedMessage.run(item.id);
         inserted = true;
-        // NOTE: no broadcast('new_message') here — gateway.ts already broadcast at enqueue time
+        // Broadcast WITH fromQueue=true so the web client renders the user bubble
+        // now (not at enqueue time). gateway.ts:130 also broadcasts at enqueue,
+        // but the web client ignores that one — it only acts on fromQueue.
+        broadcast('new_message', { role: 'user', content: combined, source, fromQueue: true });
         broadcast('queue_update', { pending: messageQueue.length });
 
         const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await import('../orchestrator/pipeline.js');
@@ -556,6 +617,8 @@ interface SpawnOpts {
     agentId?: string;
     sysPrompt?: string;
     origin?: string;
+    target?: string;
+    requestId?: string;
     employeeSessionId?: string;
     chatId?: string | number;
     cli?: string;
@@ -592,6 +655,18 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     if (activeProcess && mainManaged) {
         console.log('[jaw] Agent already running, skipping');
         return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
+    }
+
+    // Capture Boss main session channel so disconnected worker results can be
+    // replayed to the correct origin/chatId later. Cleared in lifecycle-handler.
+    if (mainManaged) {
+        setCurrentMainMeta({
+            origin,
+            target: opts.target,
+            chatId: opts.chatId,
+            requestId: opts.requestId,
+            scopeId: liveScope,
+        });
     }
 
     let resolve: (value: any) => void;
@@ -1188,4 +1263,5 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 // ─── Forward References ──────────────────────────────
 // Set after spawnAgent is defined to avoid circular deps
 setSpawnAgent(spawnAgent);
+setMainMetaHandler(setCurrentMainMeta);
 setMemorySpawnRef(spawnAgent, activeProcesses);

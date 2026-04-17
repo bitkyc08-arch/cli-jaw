@@ -12,7 +12,7 @@ test('dispatch route clears pending replay only after response is flushed (phase
     assert.ok(routeStart >= 0, 'dispatch route should exist');
 
     // Window must cover both POST dispatch body + GET result polling route.
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 6000);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 7500);
     const finishIdx = routeBlock.indexOf("finishWorker(slot.agentId, result.text || '');");
     const finishHookIdx = routeBlock.indexOf('markWorkerReplayed(slot.agentId)');
     const responseIdx = routeBlock.indexOf("res.json({ ok: true, result });");

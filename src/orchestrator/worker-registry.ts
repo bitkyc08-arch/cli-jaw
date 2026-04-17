@@ -3,6 +3,18 @@
 
 const workers = new Map<string, WorkerSlot>();
 
+// Replay metadata captured when Boss dispatches the worker. Used by
+// drainPendingReplays so that when a disconnected employee's result is later
+// delivered, it reaches the ORIGINAL channel (web/telegram/discord/chatId)
+// rather than defaulting to a generic 'system' origin.
+export interface WorkerReplayMeta {
+    origin?: string;
+    target?: string;
+    chatId?: string | number;
+    requestId?: string;
+    scopeId?: string;
+}
+
 export interface WorkerSlot {
     agentId: string;          // same key used in spawn.ts activeProcesses
     employeeId: string;
@@ -17,6 +29,8 @@ export interface WorkerSlot {
     replayClaimed: boolean;
     replayAttempts: number;
     result: string | null;
+    /** Origin/target/chatId of the Boss session that dispatched this worker. */
+    replayMeta?: WorkerReplayMeta;
 }
 
 // Phase 7: thrown when a worker slot with the same agentId is already running.
@@ -30,7 +44,7 @@ export class WorkerBusyError extends Error {
     }
 }
 
-export function claimWorker(emp: Record<string, any>, task: string): WorkerSlot {
+export function claimWorker(emp: Record<string, any>, task: string, replayMeta?: WorkerReplayMeta): WorkerSlot {
     const existing = workers.get(emp.id);
     if (existing && existing.state === 'running') {
         throw new WorkerBusyError(existing);
@@ -49,6 +63,7 @@ export function claimWorker(emp: Record<string, any>, task: string): WorkerSlot 
         replayClaimed: false,
         replayAttempts: 0,
         result: null,
+        replayMeta: replayMeta && Object.keys(replayMeta).length ? { ...replayMeta } : undefined,
     };
     workers.set(emp.id, slot);
     return slot;
@@ -110,11 +125,11 @@ export function hasPendingWorkerReplays(): boolean {
     return false;
 }
 
-export function listPendingWorkerResults(): Array<{ agentId: string; text: string }> {
-    const results: Array<{ agentId: string; text: string }> = [];
+export function listPendingWorkerResults(): Array<{ agentId: string; text: string; meta?: WorkerReplayMeta }> {
+    const results: Array<{ agentId: string; text: string; meta?: WorkerReplayMeta }> = [];
     for (const slot of workers.values()) {
         if (slot.state === 'done' && slot.pendingReplay && !slot.replayClaimed && slot.result) {
-            results.push({ agentId: slot.agentId, text: slot.result });
+            results.push({ agentId: slot.agentId, text: slot.result, meta: slot.replayMeta });
         }
     }
     return results;
