@@ -8,8 +8,9 @@
  *   jaw service logs         — 로그 보기
  */
 import { execFileSync, spawn as nodeSpawn } from 'node:child_process';
-import { existsSync, writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { existsSync, writeFileSync, readFileSync, mkdirSync, unlinkSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 import { instanceId, getNodePath, getJawPath, sanitizeUnitName, buildServicePath } from '../../src/core/instance.js';
@@ -30,16 +31,16 @@ const knownKeys = new Set(['port', 'backend']);
 for (const key of Object.keys(opts)) {
     if (!knownKeys.has(key)) {
         console.error(`❌ Unknown option: --${key}`);
-        console.error('   Usage: jaw service [--port PORT] [--backend systemd|launchd|docker] [status|unset|logs]');
+        console.error('   Usage: jaw service [--port PORT] [--backend jawapp|launchd|systemd|docker] [status|unset|logs]');
         process.exit(1);
     }
 }
 
 // --backend whitelist validation
-const VALID_BACKENDS = new Set(['launchd', 'systemd', 'docker']);
+const VALID_BACKENDS = new Set(['jawapp', 'launchd', 'systemd', 'docker']);
 if (opts.backend && !VALID_BACKENDS.has(opts.backend as string)) {
     console.error(`❌ Unknown backend: ${opts.backend}`);
-    console.error('   Supported: launchd, systemd, docker');
+    console.error('   Supported: jawapp, launchd, systemd, docker');
     process.exit(1);
 }
 
@@ -58,11 +59,15 @@ const LOG_DIR = join(JAW_HOME, 'logs');
 
 // ─── Backend detection ───────────────────────────────
 
-type Backend = 'launchd' | 'systemd' | 'docker';
+type Backend = 'jawapp' | 'launchd' | 'systemd' | 'docker';
 
 function detectBackend(): Backend {
-    // macOS → launchd
-    if (process.platform === 'darwin') return 'launchd';
+    if (process.platform === 'darwin') {
+        if (existsSync('/Applications/Jaw.app/Contents/MacOS/jaw-launcher')) {
+            return 'jawapp';
+        }
+        return 'launchd';
+    }
 
     // Docker container detection
     if (existsSync('/.dockerenv')) return 'docker';
@@ -88,7 +93,145 @@ function detectBackend(): Backend {
 
 const backend: Backend = (opts.backend as Backend) || detectBackend();
 
-// ─── macOS: delegate to launchd command ──────────────
+// ─── Jaw.app helper ─────────────────────────────────
+
+const JAW_APP_LAUNCHER = '/Applications/Jaw.app/Contents/MacOS/jaw-launcher';
+
+function isJawAppRunning(): boolean {
+    try {
+        execFileSync('pgrep', ['-f', 'Jaw.app/Contents/MacOS/jaw-launcher'], { stdio: 'pipe' });
+        return true;
+    } catch { return false; }
+}
+
+function getJawAppPid(): string | null {
+    try {
+        return execFileSync('pgrep', ['-f', 'Jaw.app/Contents/MacOS/jaw-launcher'], {
+            encoding: 'utf8', stdio: 'pipe',
+        }).trim().split('\n')[0] || null;
+    } catch { return null; }
+}
+
+function restartJawApp(): void {
+    const pid = getJawAppPid();
+    if (pid) {
+        try { execFileSync('kill', [pid], { stdio: 'pipe' }); } catch { /* ok */ }
+        try { execFileSync('sleep', ['1']); } catch { /* ok */ }
+    }
+    try {
+        execFileSync('open', ['-a', 'Jaw'], { stdio: 'pipe' });
+    } catch (e: any) {
+        console.error(`❌ Jaw.app 실행 실패: ${e?.message || 'unknown'}`);
+        console.error('   설치: npm install -g cli-jaw');
+        process.exit(1);
+    }
+}
+
+function migrateLaunchdIfNeeded(): void {
+    const label = `com.cli-jaw.${INSTANCE}`;
+    const plistPath = join(homedir(), 'Library', 'LaunchAgents', `${label}.plist`);
+    if (!existsSync(plistPath)) return;
+
+    const uid = typeof process.getuid === 'function' ? process.getuid() : Number(process.env.UID || 0);
+    const domain = `gui/${uid}`;
+    console.log('  🔄 launchd → Jaw.app 마이그레이션...');
+    try { execFileSync('launchctl', ['bootout', `${domain}/${label}`], { stdio: 'pipe' }); } catch { /* ok */ }
+    try { unlinkSync(plistPath); } catch { /* ok */ }
+    console.log('  ✅ launchd plist 제거 완료');
+}
+
+// ─── macOS: Jaw.app backend ─────────────────────────
+
+if (backend === 'jawapp') {
+    const { addInstance, removeInstance, listInstances } = await import('../../src/core/jawapp-instances.js');
+    const subcommand = pos[0];
+
+    switch (subcommand) {
+        case 'status': {
+            const running = isJawAppRunning();
+            const instances = listInstances();
+            const icon = running ? '🟢' : '⚪';
+            console.log(`🦈 jaw serve (Jaw.app) — ${icon} ${running ? 'running' : 'stopped'}`);
+            console.log(`   backend:   jawapp (TCC inherited)`);
+            console.log(`   instances: ${instances.length}`);
+            for (const inst of instances) {
+                console.log(`     - ${inst.home} :${inst.port}`);
+            }
+            if (running) {
+                const pid = getJawAppPid();
+                if (pid) console.log(`   PID:       ${pid}`);
+            }
+            if (!running && instances.length > 0) {
+                console.log('\n   시작: jaw service');
+            }
+            console.log('\n   해제: jaw service unset');
+            break;
+        }
+        case 'unset': {
+            removeInstance(JAW_HOME, portNum);
+            console.log(`✅ 인스턴스 제거: ${JAW_HOME} :${portNum}`);
+            const remaining = listInstances();
+            if (remaining.length === 0) {
+                const pid = getJawAppPid();
+                if (pid) {
+                    try { execFileSync('kill', [pid], { stdio: 'pipe' }); } catch { /* ok */ }
+                }
+                console.log('✅ Jaw.app 중지 (인스턴스 없음)');
+            } else {
+                // SIGHUP → serve-manager re-reads registry
+                const pid = getJawAppPid();
+                if (pid) {
+                    try { execFileSync('kill', ['-HUP', pid], { stdio: 'pipe' }); } catch { /* ok */ }
+                    console.log('🔄 Jaw.app에 변경 알림 (SIGHUP)');
+                }
+            }
+            break;
+        }
+        case 'logs': {
+            const logDir = join(JAW_HOME, 'logs');
+            console.log(`📋 Jaw.app instance logs:\n`);
+            console.log(`   stdout: ${logDir}/jaw-serve.log`);
+            console.log(`   stderr: ${logDir}/jaw-serve.err\n`);
+            console.log(`   tail -f ${logDir}/jaw-serve.log`);
+            break;
+        }
+        default: {
+            console.log('🦈 jaw service setup (Jaw.app)\n');
+
+            if (!existsSync(JAW_APP_LAUNCHER)) {
+                console.error('❌ Jaw.app이 설치되어 있지 않습니다.');
+                console.error('   설치: npm install -g cli-jaw');
+                console.error('   또는: --backend launchd 로 대체 가능');
+                process.exit(1);
+            }
+
+            migrateLaunchdIfNeeded();
+
+            addInstance(JAW_HOME, portNum);
+            console.log(`✅ 인스턴스 등록: ${JAW_HOME} :${portNum}`);
+
+            restartJawApp();
+            console.log('✅ Jaw.app 실행\n');
+
+            setTimeout(() => {
+                if (isJawAppRunning()) {
+                    console.log('🦈 jaw serve — Jaw.app에서 실행 중 (TCC 권한 상속)');
+                    console.log(`   http://localhost:${PORT}`);
+                    console.log(`   로그: ${join(JAW_HOME, 'logs')}/jaw-serve.log`);
+                    console.log('\n   상태: jaw service status');
+                    console.log('   해제: jaw service unset');
+                } else {
+                    console.log('⚠️  Jaw.app이 시작되지 않았습니다.');
+                    console.log('   확인: open -a Jaw && tail -f ~/.cli-jaw/logs/jaw-serve.err');
+                }
+            }, 2000);
+            break;
+        }
+    }
+    process.exit(0);
+}
+
+// ─── macOS: delegate to launchd command (legacy) ────
 if (backend === 'launchd') {
     // launchd.ts supports: status, unset, default (install)
     // service.ts additionally supports: logs
