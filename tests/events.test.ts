@@ -467,6 +467,89 @@ test('encrypted thinking: opus-4-7 pattern (signature only, no thinking_delta) e
     assert.equal(ctx.claudeThinkingHadDelta, false);
 });
 
+test('spark-visibility: codex agent_message surfaces a 💬 toolLog entry so lightweight models are visible', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    extractFromEvent('codex', {
+        type: 'item.completed',
+        item: { id: 'item_0', type: 'agent_message', text: 'OK. 7 is prime.' },
+    }, ctx, 'spark');
+    assert.equal(ctx.fullText, 'OK. 7 is prime.', 'fullText still accumulates');
+    assert.equal(ctx.toolLog.length, 1, 'agent_message must create a visible toolLog entry');
+    assert.equal(ctx.toolLog[0].icon, '💬');
+    assert.equal(ctx.toolLog[0].status, 'done');
+    assert.equal(ctx.toolLog[0].stepRef, 'codex:item:item_0');
+    assert.ok(ctx.toolLog[0].detail.includes('7 is prime'));
+});
+
+test('spark-visibility: empty agent_message text does NOT create a spurious entry', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    extractFromEvent('codex', {
+        type: 'item.completed',
+        item: { id: 'item_0', type: 'agent_message', text: '   \n  ' },
+    }, ctx, 'codex');
+    assert.equal(ctx.toolLog.length, 0);
+});
+
+test('spark-visibility: repeated agent_message with same item.id is deduped', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    const evt = {
+        type: 'item.completed',
+        item: { id: 'item_DUP', type: 'agent_message', text: 'same' },
+    };
+    extractFromEvent('codex', evt, ctx, 'codex');
+    extractFromEvent('codex', evt, ctx, 'codex');
+    assert.equal(ctx.toolLog.length, 1, 'dedup via stepRef prevents double-entry on replay');
+});
+
+test('multi-turn: same tool name across distinct messages keeps separate toolLog entries (dedup fix)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Message A: first tool_use (index 0) with unique id
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_A', name: 'mcp__context7__resolve-library-id' } },
+    }, ctx, 'smoke');
+    // Message B: second call with same name, also index 0 but distinct id (was colliding before fix)
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_B', name: 'mcp__context7__resolve-library-id' } },
+    }, ctx, 'smoke');
+    assert.equal(ctx.toolLog.length, 2, 'both tool_uses must be recorded, not deduped by index collision');
+    assert.equal(ctx.toolLog[0].stepRef, 'claude:tooluse:toolu_A');
+    assert.equal(ctx.toolLog[1].stepRef, 'claude:tooluse:toolu_B');
+});
+
+test('multi-turn: true duplicate tool_use_id IS deduped (same stepRef → key collision)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Same id replayed (e.g. re-emission in assistant fallback) — should dedupe
+    const ev = {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'tool_use', id: 'toolu_SAME', name: 'Write' } },
+    };
+    extractFromEvent('claude', ev, ctx, 'smoke');
+    extractFromEvent('claude', ev, ctx, 'smoke');
+    assert.equal(ctx.toolLog.length, 1, 'true replay of same tool_use_id must dedupe');
+});
+
+test('codex turn.failed surfaces error tool entry with parsed message', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), traceLog: [] };
+    extractFromEvent('codex', {
+        type: 'turn.failed',
+        error: { message: '{"type":"error","status":400,"error":{"type":"invalid_request_error","message":"The \'gpt-5.3-spark\' model is not supported when using Codex with a ChatGPT account."}}' },
+    }, ctx, 'codex');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].icon, '❌');
+    assert.equal(ctx.toolLog[0].status, 'error');
+    assert.ok(ctx.toolLog[0].detail.includes('gpt-5.3-spark'), 'nested JSON error.message should be unwrapped');
+    assert.ok(!ctx.toolLog[0].detail.includes('"type":"error"'), 'outer JSON envelope should be stripped');
+});
+
+test('codex standalone error event surfaces ❌ entry', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), traceLog: [] };
+    extractFromEvent('codex', { type: 'error', message: 'network connection lost' }, ctx, 'codex');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].detail, 'network connection lost');
+});
+
 test('encrypted thinking: plaintext thinking does NOT also emit 🔒 badge (regression)', () => {
     const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
     // Open thinking block

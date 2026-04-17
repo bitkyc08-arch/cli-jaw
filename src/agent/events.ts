@@ -354,7 +354,33 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 pushTrace(ctx, `[${agentLabel}] codex turn started`);
             }
             if (event.type === 'item.completed') {
-                if (event.item?.type === 'agent_message') ctx.fullText += event.item.text || '';
+                if (event.item?.type === 'agent_message') {
+                    const text = String(event.item.text || '');
+                    ctx.fullText += text;
+                    // [spark-visibility] Spark and other lightweight codex models often
+                    // emit only an agent_message (no reasoning/command_execution), so the
+                    // toolLog would be empty and the run would be invisible in the UI.
+                    // Surface the final message as a 💬 entry so every codex run shows at
+                    // least one toolLog step. Dedup is handled by seenToolKeys via stepRef.
+                    if (text.trim()) {
+                        const itemId = event.item.id || '';
+                        const tool = {
+                            icon: '💬',
+                            label: buildPreview(text, 80) || 'message',
+                            toolType: 'tool' as const,
+                            detail: text,
+                            stepRef: itemId ? `codex:item:${itemId}` : undefined,
+                            status: 'done' as const,
+                        };
+                        const key = tool.stepRef || `codex:msg:${ctx.toolLog.length}:${text.slice(0, 30)}`;
+                        if (!ctx.seenToolKeys || !ctx.seenToolKeys.has(key)) {
+                            if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
+                            ctx.toolLog.push(tool);
+                            syncLiveTools(ctx);
+                            broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
+                        }
+                    }
+                }
                 if (event.item?.type === 'collab_tool_call') {
                     ctx.hasActiveSubAgent = (event.item.status === 'in_progress');
                 }
@@ -365,6 +391,26 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     output_tokens: event.usage.output_tokens ?? 0,
                     cached_input_tokens: event.usage.cached_input_tokens ?? 0,
                 };
+            } else if (event.type === 'error' || event.type === 'turn.failed') {
+                // codex emits {type:"error"} or {type:"turn.failed", error:{message}} for API failures
+                // (e.g. "The 'gpt-5.3-spark' model is not supported when using Codex with a ChatGPT account.")
+                const raw = event.error?.message ?? event.message ?? '';
+                let msg = String(raw);
+                try {
+                    const parsed = JSON.parse(msg);
+                    msg = parsed?.error?.message || parsed?.message || msg;
+                } catch { /* raw string is fine */ }
+                const tool = {
+                    icon: '❌',
+                    label: buildPreview(msg, 80) || 'codex error',
+                    toolType: 'tool' as const,
+                    detail: msg,
+                    status: 'error' as const,
+                };
+                ctx.toolLog.push(tool);
+                syncLiveTools(ctx);
+                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
+                pushTrace(ctx, `[${agentLabel}] codex ${event.type}: ${msg.slice(0, 200)}`);
             }
             break;
         case 'gemini':
@@ -558,9 +604,13 @@ export function logEventSummary(agentLabel: string, cli: string, event: any, ctx
 }
 
 function makeClaudeToolKey(event: any, label: any) {
-    const idx = event.event?.index;
-    if (idx !== undefined && idx !== null) return `claude:idx:${idx}:${label.icon}:${label.label}`;
+    // Prefer the unique tool_use id (carried in stepRef) so multi-turn streams with
+    // matching tool names across distinct messages don't collide on the per-message index.
+    if (label.stepRef) return `claude:ref:${label.stepRef}:${label.icon}:${label.label}`;
     const msgId = event.message?.id || '';
+    const idx = event.event?.index;
+    if (msgId && idx !== undefined && idx !== null) return `claude:msg:${msgId}:${idx}:${label.icon}:${label.label}`;
+    if (idx !== undefined && idx !== null) return `claude:idx:${idx}:${label.icon}:${label.label}`;
     if (msgId) return `claude:msg:${msgId}:${label.icon}:${label.label}`;
     return `claude:type:${event.type}:${label.icon}:${label.label}`;
 }
