@@ -28,6 +28,7 @@ import os from 'os';
 import { execSync, execFileSync } from 'child_process';
 import { fileURLToPath } from 'node:url';
 import { ensureSharedHomeSkillsLinks, initMcpConfig, copyDefaultSkills, loadUnifiedMcp, saveUnifiedMcp } from '../lib/mcp-sync.js';
+import { buildPinnedPath as _buildPinnedPath } from '../src/core/runtime-path.js';
 
 // ─── JAW_HOME inline (config.ts → registry.ts import 체인 제거) ───
 const JAW_HOME = process.env.CLI_JAW_HOME
@@ -238,6 +239,189 @@ export function ensureCodexComputerUseAppInstall() {
     } catch (error: any) {
         console.warn(`[jaw:init] ⚠️  failed to install ${CODEx_COMPUTER_USE_APP_NAME} (${error?.message || 'unknown'})`);
     }
+}
+
+// ─── Jaw.app (native launcher) install ─────────────────────────────
+// Bundle identity must be preserved for macOS TCC AppleEvents attribution.
+// Shell-shim launcher routes responsibility to /bin/bash — broken.
+// See devlog/_plan/computeruse/37_revisions_and_integration.md §A/§A'.
+
+const JAW_APP_NAME = 'Jaw.app';
+const JAW_APP_BUNDLE_ID = 'com.cli-jaw.agent';
+const JAW_APP_TARGET = path.join(APPLICATIONS_DIR, JAW_APP_NAME);
+const JAW_APP_TEMPLATE_DIR = path.join(PROJECT_ROOT, 'mac-app', 'Jaw.app.template');
+const JAW_APP_LAUNCHER_SRC = path.join(PROJECT_ROOT, 'mac-app', 'jaw-launcher.m');
+const JAW_APP_PREBUILT_DIR = path.join(PROJECT_ROOT, 'mac-app', 'prebuilt');
+const SKIP_JAW_APP = process.env.CLI_JAW_SKIP_APP === '1'
+    || process.env.CLI_JAW_SKIP_APP === 'true';
+
+// buildPinnedPath lives in src/core/runtime-path.ts — re-export for callers
+// that already import from this module.
+export const buildPinnedPath = _buildPinnedPath;
+
+function useFallbackPrebuiltLauncher(destPath: string): boolean {
+    const arch = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+    const candidates = [
+        path.join(JAW_APP_PREBUILT_DIR, `jaw-launcher-${arch}`),
+        path.join(JAW_APP_PREBUILT_DIR, 'jaw-launcher-universal'),
+    ];
+    for (const prebuilt of candidates) {
+        if (!fs.existsSync(prebuilt)) continue;
+        try {
+            fs.copyFileSync(prebuilt, destPath);
+            fs.chmodSync(destPath, 0o755);
+            console.log(`[jaw:init]    fallback launcher from ${path.basename(prebuilt)}`);
+            return true;
+        } catch (e: any) {
+            console.warn(`[jaw:init]    fallback copy failed: ${e?.message || 'unknown'}`);
+        }
+    }
+    return false;
+}
+
+/**
+ * Compile mac-app/jaw-launcher.m into destPath using clang.
+ * Falls back to mac-app/prebuilt/jaw-launcher-<arch> when clang is missing.
+ * Returns true on success.
+ */
+export function compileJawLauncher(destPath: string, pinnedPath: string): boolean {
+    if (!fs.existsSync(JAW_APP_LAUNCHER_SRC)) {
+        console.warn('[jaw:init] ⚠️  jaw-launcher.m missing — trying prebuilt fallback');
+        return useFallbackPrebuiltLauncher(destPath);
+    }
+    const clang = fs.existsSync('/usr/bin/clang') ? '/usr/bin/clang' : null;
+    if (!clang) {
+        console.log('[jaw:init] clang not found — using prebuilt launcher');
+        return useFallbackPrebuiltLauncher(destPath);
+    }
+    try {
+        execFileSync(clang, [
+            '-framework', 'Foundation',
+            '-O2',
+            `-DPINNED_PATH="${pinnedPath.replace(/"/g, '\\"')}"`,
+            '-o', destPath,
+            JAW_APP_LAUNCHER_SRC,
+        ], { stdio: 'pipe', timeout: 30000 });
+        fs.chmodSync(destPath, 0o755);
+        console.log(`[jaw:init]    compiled launcher (clang) with PINNED_PATH`);
+        return true;
+    } catch (e: any) {
+        const detail = (e?.stderr?.toString?.() || e?.message || '').slice(0, 200);
+        console.warn(`[jaw:init] ⚠️  clang compile failed — falling back to prebuilt: ${detail}`);
+        return useFallbackPrebuiltLauncher(destPath);
+    }
+}
+
+function readPackageVersion(): string {
+    try {
+        const pkg = JSON.parse(
+            fs.readFileSync(path.join(PROJECT_ROOT, 'package.json'), 'utf8'),
+        );
+        return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+    } catch {
+        return '0.0.0';
+    }
+}
+
+function copyJawAppTemplate(): boolean {
+    if (!fs.existsSync(JAW_APP_TEMPLATE_DIR)) {
+        console.log('[jaw:init] ⏭️  Jaw.app template missing — skipping (dev checkout?)');
+        return false;
+    }
+    try {
+        if (fs.existsSync(JAW_APP_TARGET)) {
+            const stat = fs.lstatSync(JAW_APP_TARGET);
+            if (stat.isSymbolicLink()) {
+                fs.renameSync(JAW_APP_TARGET, `${JAW_APP_TARGET}.symlink-backup-${Date.now()}`);
+            } else {
+                fs.rmSync(JAW_APP_TARGET, { recursive: true, force: true });
+            }
+        }
+        fs.cpSync(JAW_APP_TEMPLATE_DIR, JAW_APP_TARGET, {
+            recursive: true, dereference: true, force: true,
+        });
+        // .gitkeep inside MacOS/ is harmless but noisy — drop it
+        const ghost = path.join(JAW_APP_TARGET, 'Contents', 'MacOS', '.gitkeep');
+        if (fs.existsSync(ghost)) fs.rmSync(ghost, { force: true });
+        return true;
+    } catch (e: any) {
+        console.warn(`[jaw:init] ⚠️  Jaw.app copy failed: ${e?.message || 'unknown'}`);
+        return false;
+    }
+}
+
+function substituteInfoPlistVersion(version: string) {
+    const plistPath = path.join(JAW_APP_TARGET, 'Contents', 'Info.plist');
+    if (!fs.existsSync(plistPath)) return;
+    try {
+        const raw = fs.readFileSync(plistPath, 'utf8');
+        const next = raw.replace(/\{\{CLI_JAW_VERSION\}\}/g, version);
+        if (next !== raw) fs.writeFileSync(plistPath, next, 'utf8');
+    } catch (e: any) {
+        console.warn(`[jaw:init] ⚠️  Info.plist version substitution failed: ${e?.message || 'unknown'}`);
+    }
+}
+
+function adhocCodesignJawApp() {
+    try {
+        execFileSync('/usr/bin/codesign', [
+            '--sign', '-',
+            '--force',
+            '--deep',
+            '--timestamp=none',
+            JAW_APP_TARGET,
+        ], { stdio: 'pipe', timeout: 15000 });
+        console.log('[jaw:init]    ad-hoc codesigned Jaw.app');
+    } catch (e: any) {
+        const detail = (e?.stderr?.toString?.() || e?.message || '').slice(0, 200);
+        console.warn(`[jaw:init] ⚠️  ad-hoc codesign failed (TCC may reject): ${detail}`);
+    }
+}
+
+function registerJawAppWithLaunchServices() {
+    if (!fs.existsSync(LSREGISTER_PATH)) return;
+    try {
+        execFileSync(LSREGISTER_PATH, ['-f', '-R', JAW_APP_TARGET], {
+            stdio: 'pipe', timeout: 15000,
+        });
+        console.log(`[jaw:init]    registered ${JAW_APP_BUNDLE_ID} with Launch Services`);
+    } catch (e: any) {
+        console.warn(`[jaw:init] ⚠️  lsregister failed: ${e?.message || 'unknown'}`);
+    }
+}
+
+/**
+ * Install Jaw.app to /Applications with native Mach-O launcher.
+ * No-op outside darwin or when CLI_JAW_SKIP_APP=1.
+ */
+export function ensureJawAppInstall(): 'installed' | 'skipped' | 'failed' {
+    if (process.platform !== 'darwin') return 'skipped';
+    if (SKIP_JAW_APP) {
+        console.log('[jaw:init] ⏭️  Jaw.app install skipped (CLI_JAW_SKIP_APP)');
+        return 'skipped';
+    }
+
+    console.log('[jaw:init] installing Jaw.app (native launcher)...');
+    if (!copyJawAppTemplate()) return 'skipped';
+
+    const version = readPackageVersion();
+    substituteInfoPlistVersion(version);
+
+    const pinnedPath = buildPinnedPath();
+    console.log(`[jaw:init]    PATH pin: ${pinnedPath}`);
+
+    const launcherDest = path.join(JAW_APP_TARGET, 'Contents', 'MacOS', 'jaw-launcher');
+    fs.mkdirSync(path.dirname(launcherDest), { recursive: true });
+    if (!compileJawLauncher(launcherDest, pinnedPath)) {
+        console.error('[jaw:init] ❌ launcher compile + fallback both failed — Jaw.app unusable');
+        return 'failed';
+    }
+
+    adhocCodesignJawApp();
+    registerJawAppWithLaunchServices();
+
+    console.log(`[jaw:init] ✅ Jaw.app installed (${JAW_APP_BUNDLE_ID} v${version})`);
+    return 'installed';
 }
 
 /**
@@ -636,6 +820,7 @@ export async function runPostinstall() {
     await installSkillDeps();
     await installOfficeCli();
     ensureCodexComputerUseAppInstall();
+    ensureJawAppInstall();
     await maybeReregisterLaunchd();
     console.log('[jaw:init] setup complete ✅');
 }

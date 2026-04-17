@@ -1,0 +1,2 @@
+# launcher binary is compiled at install time by bin/postinstall.ts
+# see mac-app/jaw-launcher.m and mac-app/prebuilt/ fallback

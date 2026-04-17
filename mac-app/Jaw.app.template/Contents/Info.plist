@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleName</key>
+    <string>Jaw Agent</string>
+    <key>CFBundleDisplayName</key>
+    <string>Jaw Agent</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.cli-jaw.agent</string>
+    <key>CFBundleVersion</key>
+    <string>{{CLI_JAW_VERSION}}</string>
+    <key>CFBundleShortVersionString</key>
+    <string>{{CLI_JAW_VERSION}}</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleSignature</key>
+    <string>????</string>
+    <key>CFBundleExecutable</key>
+    <string>jaw-launcher</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>11.0</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Jaw Agent controls other apps on your behalf when you ask it to.</string>
+    <key>NSAccessibilityUsageDescription</key>
+    <string>Jaw Agent inspects and clicks UI elements to automate desktop tasks you request.</string>
+    <key>NSSystemAdministrationUsageDescription</key>
+    <string>Jaw Agent runs background services for automation.</string>
+</dict>
+</plist>

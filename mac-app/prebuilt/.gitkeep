@@ -1,0 +1,5 @@
+# CI fills this dir via mac-app/build-launcher.sh:
+#   jaw-launcher-arm64
+#   jaw-launcher-x86_64
+#   jaw-launcher-universal
+# postinstall falls back here when clang is missing on the user's machine.
