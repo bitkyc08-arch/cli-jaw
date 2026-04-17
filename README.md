@@ -1,18 +1,14 @@
 <div align="center">
 
-# 🦈 CLI-JAW
+# CLI-JAW
 
-### Your Personal AI Assistant — Powered by 5 AI Engines
+### All your AI subscriptions. One assistant.
 
-*One assistant. Five brains. Always on.*
-
-[![Tests](https://img.shields.io/badge/tests-rolling%20inventory-blue)](#-tests)
+[![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
-[![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Docker](https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white)](#-docker--container-isolation)
-[![Platforms](https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20WSL%20%7C%20Docker-lightgrey)](#)
+[![Docker](https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white)](#-docker)
 
 **English** / [한국어](README.ko.md) / [中文](README.zh-CN.md)
 
@@ -20,144 +16,120 @@
 
 </div>
 
-## Quick Links
+<table>
+<tr><td><b>Your existing subscriptions, unified</b></td><td>Claude Max, ChatGPT Pro, Copilot, Gemini Advanced — route through OAuth. Add any model via OpenCode. No per-token billing.</td></tr>
+<tr><td><b>Lives where you do</b></td><td>Web PWA with virtual scroll and WS streaming, Mac WebView app, terminal TUI, Telegram with voice, Discord — five surfaces, one conversation.</td></tr>
+<tr><td><b>3-layer memory</b></td><td>History Block (recent sessions) + Memory Flush (episodes, daily logs) + Soul and Task Snapshot (identity, semantic recall). SQLite FTS5 full-text search.</td></tr>
+<tr><td><b>Multi-agent orchestration</b></td><td>PABCD — a DB-persisted 5-phase FSM. Employee system with worker registry. Parallel subtasks with file-overlap detection. You approve every phase.</td></tr>
+<tr><td><b>Browser and desktop automation</b></td><td>Chrome CDP, vision-click, DOM reference for ChatGPT/Grok/Gemini, Computer Use integration via Codex App, diagram skill for SVG and interactive visualizations.</td></tr>
+<tr><td><b>MCP install once, 5 engines</b></td><td><code>jaw mcp install</code> syncs to Claude, Codex, Gemini, OpenCode, and Copilot simultaneously. One config file.</td></tr>
+<tr><td><b>Speaks your language</b></td><td>English, Korean, Chinese README. i18n web UI. HWP/HWPX Korean office document support via OfficeCLI.</td></tr>
+</table>
 
-- [Install & Run](#-install--run-30-seconds) · [Authenticate](#-authenticate-your-ai-engines) · [What is CLI-JAW?](#what-is-cli-jaw)
-- [Features](#what-can-your-assistant-do) · [Skills](#-skill-system) · [Telegram](#-telegram--your-assistant-in-your-pocket) · [Voice & STT](#-voice--stt--speech-to-text)
-- [PABCD Orchestration](#-multi-agent-orchestration--pabcd) · [MCP](#-mcp--one-config-six-ai-engines) · [CLI Commands](#️-cli-commands)
-- [Multi-Instance](#️-multi-instance--separate-projects-separate-contexts) · [Models](#-models) · [Docker](#-docker--container-isolation)
-- [Development](#️-development) · [Tests](#-tests) · [Docs](#-documentation) · [Troubleshooting](#-troubleshooting) · [Contributing](#-contributing)
+---
+
+## Quick links
+
+- [Install](#-install--run) · [Authenticate](#-authenticate) · [Surfaces](#-where-it-lives)
+- [Engine routing](#-engine-routing) · [Memory](#-memory) · [PABCD](#-orchestration--pabcd) · [Skills](#-skills)
+- [Browser automation](#-browser--desktop-automation) · [MCP](#-mcp) · [Messaging](#-messaging)
+- [CLI commands](#%EF%B8%8F-cli-commands) · [Docker](#-docker) · [Docs](#-documentation) · [How it compares](#-how-it-compares)
 
 <details>
-<summary>🪟 <b>Are you on Windows?</b> — WSL One-Click Setup</summary>
+<summary>Are you on Windows? — WSL one-click setup</summary>
 
-**Step 1: Install WSL** (PowerShell as Admin — one time only)
+**Step 1: Install WSL** (PowerShell as Admin)
 
 ```powershell
 wsl --install
 ```
 
-Restart your computer when prompted. After reboot, open **Ubuntu** from the Start Menu.
+Restart, then open **Ubuntu** from the Start Menu.
 
-**Step 2: Install CLI-JAW** (in the Ubuntu/WSL terminal)
+**Step 2: Install CLI-JAW**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
 ```
 
-The script automatically installs WSL prerequisites, Node.js 22+, user-local npm globals, browser deps, OfficeCLI, and CLI-JAW.
-
-**Step 3: Reload your shell** (important — picks up PATH changes)
+**Step 3: Reload shell and start**
 
 ```bash
 source ~/.bashrc
+copilot login    # or: claude auth / codex login / gemini
+jaw serve        # → http://localhost:3457
 ```
-
-**Step 4: Authenticate an AI Engine** (pick one)
-
-```bash
-copilot login    # GitHub Copilot (Free)
-opencode         # OpenCode (Free models available)
-claude auth      # Anthropic Claude
-codex login      # OpenAI Codex
-gemini           # Google Gemini
-```
-
-**Step 5: Start Chatting**
-
-```bash
-jaw serve
-# → http://localhost:3457
-```
-
-> 💡 The script uses [fnm](https://github.com/Schniz/fnm) for Node.js management. If you already have `nvm`, it will use that instead.
 
 <details>
-<summary>🔧 <b>Troubleshooting WSL</b></summary>
+<summary>Troubleshooting WSL</summary>
 
-| Problem                                 | Fix                                                    |
-| --------------------------------------- | ------------------------------------------------------ |
-| `unzip: command not found`              | Rerun the installer — it now auto-installs `unzip`     |
-| `jaw: command not found` after install  | Run `source ~/.bashrc` to reload PATH                  |
-| Still can't find `jaw`                  | Run `export PATH="$(npm config get prefix)/bin:$PATH"` |
-| Permission errors with `npm install -g` | Run `sudo chown -R $USER $(npm config get prefix)`     |
-| `sudo` keeps blocking later tasks       | Rerun the WSL installer so it can install system deps once, then check `jaw doctor --json` for `wsl.sudoNonInteractive` and `wsl.npmPrefix` |
+| Problem | Fix |
+|---|---|
+| `unzip: command not found` | Rerun the installer |
+| `jaw: command not found` | `source ~/.bashrc` |
+| Permission errors | `sudo chown -R $USER $(npm config get prefix)` |
 
 </details>
-
 </details>
 
 <details>
-<summary>🍎 <b>New to the terminal?</b> — One-click Node.js + CLI-JAW install</summary>
+<summary>New to the terminal? — One-click install (macOS)</summary>
 
-**Step 1: Open Terminal**
-
-Open **Finder** → **Applications** → **Utilities** → **Terminal.app**
-(or press `⌘ Space` and type `Terminal`)
-
-**Step 2: Paste this and hit Enter**
+1. Open **Terminal** (`Cmd + Space` → type `Terminal`)
+2. Paste and hit Enter:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
 ```
 
-This installs Node.js + CLI-JAW automatically. Just wait until you see 🎉.
-
-**Step 3: Login & Launch**
+3. Authenticate and launch:
 
 ```bash
-copilot login    # or: claude auth / codex login / gemini login
-jaw serve
+copilot login
+jaw serve        # → http://localhost:3457
 ```
-
-Open **http://localhost:3457** in your browser. That's it! 🦈
 
 </details>
 
 ---
 
-## 🚀 Install & Run (30 seconds)
+## 🚀 Install & run
 
 ```bash
 npm install -g cli-jaw
 jaw serve
 ```
 
-**That's it.** Open **http://localhost:3457** and start chatting. 🦈
+Open **http://localhost:3457**. Requires Node.js 22+ and at least one AI CLI authenticated below.
 
-> 🕐 **Want it running 24/7?** `jaw service install` — auto-detects systemd, launchd, or Docker.
-
-> Requires **Node.js ≥ 22** ([download](https://nodejs.org)) and **at least 1 AI CLI** authenticated below.
-
-> 🔒 **Shared path policy:** cli-jaw uses `~/.cli-jaw/*` by default. It does **not** modify shared harness paths (`~/.agents/*`, `~/.agent/*`, `~/.claude/*`) unless you explicitly opt in. See `jaw doctor --repair-shared-paths` to detect or fix contamination from older versions.
+> `jaw service install` — auto-start on boot (systemd, launchd, or Docker, auto-detected).
 
 ---
 
-## 🔑 Authenticate Your AI Engines
+## 🔑 Authenticate
 
-You only need **one** — pick whichever you have:
+You only need one. Pick whichever subscription you already have:
 
 ```bash
-# ── Free options ──
-copilot login                # GitHub Copilot (free tier)
-opencode                     # OpenCode — auto-auth on first run (free models available)
+# Free
+copilot login        # GitHub Copilot
+opencode             # OpenCode — free models available
 
-# ── Paid options ──
-claude auth                  # Anthropic Claude
-codex login                  # OpenAI Codex
-gemini                       # Google Gemini — first run triggers auth
+# Paid (monthly subscription)
+claude auth          # Anthropic Claude Max
+codex login          # OpenAI ChatGPT Pro
+gemini               # Google Gemini Advanced
 ```
 
-Check what's ready: `jaw doctor`
+Check status: `jaw doctor`
 
 <details>
-<summary>📋 Example <code>jaw doctor</code> output</summary>
+<summary>Example jaw doctor output</summary>
 
 ```
 🦈 CLI-JAW Doctor — 12 checks
 
  ✅ Node.js        v22.15.0
- ✅ npm             v10.9.4
  ✅ Claude CLI      installed
  ✅ Codex CLI       installed
  ⚠️ Gemini CLI      not found (optional)
@@ -172,423 +144,289 @@ Check what's ready: `jaw doctor`
 
 </details>
 
-> 💡 **You don't need all 5.** Even one CLI is enough. Your assistant auto-detects which engines are available and falls back gracefully.
+---
+
+## 🖥️ Where it lives
+
+CLI-JAW works from five surfaces. Same assistant, same memory, same skills across all of them.
+
+| Surface | What you get |
+|---|---|
+| **Web PWA** | Full UI with markdown/KaTeX/Mermaid rendering, virtual scroll, WS streaming, drag-and-drop file upload, voice recording, PABCD roadmap bar, i18n (English, Korean), dark/light theme, offline message cache via IndexedDB |
+| **Mac WebView app** | `jaw serve` wrapped in a native macOS app shell. Access from Dock without opening a browser |
+| **Terminal TUI** | Multiline editing, slash-command autocomplete, overlay selectors, session persistence, resume classification |
+| **Telegram** | Voice messages (multi-provider STT), photos, files. Scheduled task results delivered automatically. Slash commands for model/CLI switching |
+| **Discord** | Text and file messaging, command sync, channel/thread routing, forwarder for agent results |
 
 ---
 
-## What is CLI-JAW?
+## 🔀 Engine routing
 
-CLI-JAW is a **personal AI assistant** that lives on your machine and works from the interfaces you already use — **Web, Terminal, Telegram, and Discord**. Ask it anything, delegate tasks, automate your workflows.
-![1772128366759](image/README/1772128366759.png)
+Five CLI backends, routed through OAuth subscriptions you already pay for. No per-token API billing.
 
-> 💬 *"Summarize today's schedule"* → answer on Telegram
-> 💬 *"Refactor this module and write tests"* → sub-agents handle it while you grab coffee
-> 💬 *"Download that PDF and put the key points in Notion"* → browser + Notion skill, done
+| CLI | Default model | Auth | Cost model |
+|---|---|---|---|
+| **Claude** | `claude-sonnet-4-6` | `claude auth` | Claude Max subscription |
+| **Codex** | `gpt-5.3-codex` | `codex login` | ChatGPT Pro subscription |
+| **Gemini** | `gemini-2.5-pro` | `gemini` | Gemini Advanced subscription |
+| **OpenCode** | `claude-opus-4-6-thinking` | `opencode` | Free models available |
+| **Copilot** | `gpt-4.1` | `copilot login` | Free tier available |
 
-Unlike single-model assistants, CLI-JAW orchestrates **5 AI engines** (Claude, Codex, Gemini, OpenCode, Copilot) through their official CLIs — giving you the best of every provider in one unified experience. If one engine is busy, it automatically falls back to the next. **100+ built-in skills** handle everything from browser automation to document generation.
+**Fallback chain**: if one engine is rate-limited or down, the next picks up automatically. Configure with `/fallback [cli1 cli2...]`.
 
-|                           | Why CLI-JAW?                                                                                                                     |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
-| 🛡️**TOS-Safe**             | Uses official CLIs only — no API key scraping, no reverse engineering, no ban risk.                                              |
-| 🤖**Verified Agent Tools** | 5 battle-tested coding agents (Claude, Codex, Gemini, OpenCode, Copilot) under one roof.                                         |
-| ⚡**Multi-Agent Fallback** | One engine down? The next picks up automatically. Zero downtime.                                                                 |
-| 🎭**PABCD Orchestration**  | DB-persisted FSM pipeline — Plan → Audit → Build → Check → Done. Workers are read-only. You approve every phase.                 |
-| 📦**100+ Built-in Skills** | Browser automation, document generation, Telegram/Discord, memory — ready out of the box.                                          |
-| 🖥️**Cross-Platform**       | macOS, Linux, Windows — ENOENT-safe CLI spawn, auto-detection,`.cmd` shim support, and native install all work across platforms. |
+**OpenCode wildcard**: connect any model endpoint — OpenRouter, local LLMs, or any OpenAI-compatible API.
 
-![CLI-JAW Terminal](docs/screenshots/terminal-cli.png)
+> Switch engines: `/cli codex`. Switch models: `/model gpt-5.4`. All from Web, Terminal, Telegram, or Discord.
 
 ---
 
-## 🆕 What's New (v1.6.0)
+## 🧠 Memory
 
-`v1.6.0` is the documentation catch-up release that finally summarizes the major product expansion that happened after `v1.2.0`.
+Three layers, each serving a different recall horizon.
 
-- Full update log: [CHANGELOG.md](CHANGELOG.md#160---2026-04-13)
-- Range covered: `v1.2.0` → `v1.5.1`
-- Scope: `59` commits, `307` files changed, `32,760` insertions, `4,263` deletions
-- Theme: CLI-JAW grew from a capable personal assistant into a broader operating environment with richer orchestration, memory, channels, UI, and release tooling
+| Layer | What it stores | How it works |
+|---|---|---|
+| **History Block** | Recent session context | `buildHistoryBlock()` — last 10 sessions, max 8000 chars, scoped to working directory. Injected at prompt start |
+| **Memory Flush** | Structured knowledge extracted from conversations | Triggered after threshold (default 10 turns). Extractor prompt summarizes into episodes, daily logs (`YYYY-MM-DD.md`), live notes. Stored as markdown files |
+| **Soul + Task Snapshot** | Identity and semantic recall | `soul.md` defines core values, tone, boundaries. Task Snapshot searches FTS5 index for up to 4 semantically relevant hits (700 chars each) per prompt |
 
-| Feature | Description |
-| ------- | ----------- |
-| 🎭 **PABCD Orchestration** | Orchestration is now a first-class surface: `jaw dispatch`, `jaw orchestrate`, persisted PABCD state, worker registry, research dispatch, and live orchestration status in the product. |
-| 🧠 **Structured Memory Runtime** | Memory moved beyond plain persistence into a layered indexed subsystem: structured storage, bootstrap/migration, SQLite FTS5 indexing, query expansion, task snapshots, and UI controls for audit/reindex flows. |
-| 💬 **Discord + Voice Channels** | CLI-JAW now works across Web, Terminal, Telegram, and Discord. Voice/STT also became a first-class workflow with web recording, Telegram voice handling, and provider-configurable transcription. |
-| 🖥️ **Major Web UI Expansion** | The web app gained richer settings panes, memory and heartbeat controls, tool UI, provider icons, gesture handling, drag/drop protections, stronger streaming render behavior, and virtual scrolling. |
-| 📊 **Diagram & Widget Rendering** | Inline diagrams and sandboxed widget rendering became visible product features, backed by dedicated iframe rendering, validation, and CSS/runtime updates. |
-| ⌨️ **CLI/TUI Usability Pass** | Terminal workflows now include `/compact`, better overlays and selectors, session persistence, resume classification, readiness checks, and more stable command handling. |
-| 🧪 **Ops, CI, and Installability** | `jaw doctor`, browser launch policy, skill reset/fallback behavior, submodule-safe CI, preview releases, Vite-based frontend delivery, service worker assets, and stronger install troubleshooting all improved. |
-| 📄 **Office Automation Maturity** | OfficeCLI integration, smoke tests, local binaries, and Office/PDF workflows are much more production-ready than they were at `v1.2.0`. |
+All three layers feed into the system prompt automatically. Memory is searchable: `jaw memory search <query>` or `/memory <query>` from any interface.
+
+Advanced memory includes profile summary, bootstrap/migration, and reindex flows accessible from the Web UI settings.
 
 ---
 
-## What can your assistant do?
+## 🎭 Orchestration — PABCD
 
-```mermaid
-graph LR
-    YOU["👤 You"] -->|Web / Terminal / Telegram| JAW["🦈 CLI-JAW"]
-    JAW -->|spawn| C["Claude"]
-    JAW -->|spawn| X["Codex"]
-    JAW -->|spawn| G["Gemini"]
-    JAW -->|spawn| O["OpenCode"]
-    JAW -->|spawn| P["Copilot"]
-    JAW -->|inject| SK["📦 Skills"]
-    JAW -->|control| BR["🌐 Chrome"]
-    JAW -->|send| TG["📱 Telegram"]
-  
-    style JAW fill:#f5e6d3,stroke:#d4a574,stroke-width:2px,color:#5c4033
+For complex tasks, CLI-JAW uses a 5-phase state machine. You approve every transition.
+
+```
+P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
+   ⛔         ⛔          ⛔         auto        auto
 ```
 
-- 🤖 **5 AI engines, 1 assistant** — Claude · Codex · Gemini · OpenCode · Copilot. Switch with `/cli`.
-- ⚡ **Auto fallback** — If one engine is down, the next picks up seamlessly.
-- 🎭 **Multi-agent orchestration** — Complex tasks get split across specialized sub-agents automatically.
-- 🎤 **Voice input** — Mic button on the web + Telegram voice messages. Multi-provider STT (OpenAI, Vertex AI).
-- 📝 **Prompt templates** — Create, manage, and reuse prompt templates with a visual node-map editor.
-- 📦 **100+ skills** — Browser control, file editing, image generation, web search, and [much more](#-skill-system).
-- 🧠 **Persistent memory** — Your assistant remembers past conversations and preferences across sessions.
-- 📱 **Telegram bot** — Chat with your assistant from your phone, send voice/photos/files.
-- 🌐 **Browser automation** — Your assistant can navigate the web, click, type, and screenshot.
-- 🔌 **MCP ecosystem** — Install once, available to all 5 AI engines instantly.
-- 🔍 **Web search** — Real-time information via MCP tools.
-- ⏰ **Heartbeat jobs** — Schedule recurring tasks that run automatically.
+| Phase | What happens |
+|---|---|
+| **P** | Boss AI writes a diff-level plan. Stops for your review |
+| **A** | Read-only worker verifies the plan is feasible |
+| **B** | Boss implements. Read-only worker verifies the result |
+| **C** | Type-check, docs update, consistency check |
+| **D** | Summary of all changes. Returns to idle |
+
+State is DB-persisted and survives server restarts. Workers cannot modify files. Activate with `jaw orchestrate` or `/pabcd`.
 
 ---
 
-## 📦 Skill System
+## 📦 Skills
 
-**100+ skills** out of the box — browser, github, notion, telegram, memory, pdf, image generation, and [much more](#).
+100+ skills, organized by what they do.
 
-<details>
-<summary>View all skills</summary>
+| Category | Skills | What they cover |
+|---|---|---|
+| **Office** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | Read, create, edit documents. Korean HWP/HWPX via OfficeCLI |
+| **Automation** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome CDP, AI-powered coordinate click, macOS screenshot/camera, Computer Use |
+| **Media** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion video rendering, OpenAI image generation, lecture transcription, text-to-speech |
+| **Integration** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI, Notion pages, Telegram media delivery, persistent memory |
+| **Visualization** | `diagram` | SVG diagrams, charts, interactive visualizations rendered in chat |
+| **Dev guides** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd`, `dev-code-reviewer` | Engineering guidelines injected into sub-agent prompts |
 
-| Tier                 | Count | How it works                                              |
-| -------------------- | :---: | --------------------------------------------------------- |
-| **Active Skills**    |  22   | Auto-injected into every AI prompt. Always available.     |
-| **Reference Skills** |  94   | AI reads them on-demand when you ask for a relevant task. |
-
-#### Active Skills (always on)
-
-| Skill                                                               | What it does                                              |
-| ------------------------------------------------------------------- | --------------------------------------------------------- |
-| `browser`                                                           | Chrome automation — snapshot, click, navigate, screenshot  |
-| `github`                                                            | Issues, PRs, CI, code review via `gh` CLI                  |
-| `notion`                                                            | Create/manage Notion pages and databases                   |
-| `memory`                                                            | Persistent long-term memory across sessions                |
-| `telegram-send`                                                     | Send photos, documents, voice messages to Telegram         |
-| `vision-click`                                                      | Screenshot → AI finds coordinates → clicks (one command)   |
-| `pdf` / `pdf-expert` / `docx` / `xlsx` / `pptx` / `hwp`            | Read, create, edit office & PDF documents (incl. Korean HWP) |
-| `screen-capture`                                                    | macOS screenshot and camera capture                        |
-| `video`                                                             | Remotion-based programmatic video rendering from JSON      |
-| `dev` / `dev-frontend` / `dev-backend` / `dev-data` / `dev-testing` | Development guidelines for sub-agents                      |
-| `dev-pabcd` / `dev-scaffolding` / `dev-code-reviewer`               | Orchestration, scaffolding, and code review guides         |
-
-#### Reference Skills (on-demand)
-
-94 more skills ready to use — imagegen, openai-docs, spotify, weather, deep-research, tts, video-downloader, apple-reminders, 1password, terraform, postgres, jupyter-notebook, sentry, whatsapp, and more.
+22 active skills (always injected). 94+ reference skills (loaded on demand).
 
 ```bash
-jaw skill install <name>    # Activate a reference skill permanently
+jaw skill install <name>    # activate a reference skill
 ```
-
-</details>
 
 ---
 
-## 📱 Telegram — Your Assistant in Your Pocket
+## 🌐 Browser & desktop automation
 
-Your assistant isn't tied to your desk. Chat from anywhere via Telegram:
+| Capability | How it works |
+|---|---|
+| **Chrome CDP** | Navigate, click, type, screenshot, evaluate JS, scroll, focus, press keys — 10 actions via DevTools Protocol |
+| **Vision-click** | Screenshot the screen, AI extracts target coordinates, clicks. One command: `jaw browser vision-click "Login button"` |
+| **DOM reference** | Documented selector maps for ChatGPT, Grok, and Gemini web UIs — model selection, stop buttons, tool drawers |
+| **Computer Use** | Desktop app automation via Codex App Computer Use MCP. Routes DOM targets to CDP, desktop apps to Computer Use |
+| **Diagram skill** | Generate SVG diagrams and interactive HTML visualizations, rendered in sandboxed iframes with copy/save controls |
+
+---
+
+## 🔌 MCP
+
+[Model Context Protocol](https://modelcontextprotocol.io) lets AI agents use external tools. CLI-JAW manages MCP config for all five engines from one file.
+
+```bash
+jaw mcp install @anthropic/context7
+# → syncs to Claude, Codex, Gemini, OpenCode, Copilot config files
+```
+
+No more editing five different JSON files. Install once, all engines get it.
+
+```bash
+jaw mcp sync       # re-sync after manual edits
+```
+
+---
+
+## 💬 Messaging
+
+### Telegram
 
 ```
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
 <details>
-<summary>📋 Telegram setup (3 steps)</summary>
+<summary>Setup (3 steps)</summary>
 
-1. **Create a bot** — Message [@BotFather](https://t.me/BotFather) → `/newbot` → copy the token
-2. **Configure** — Run `jaw init --telegram-token YOUR_TOKEN` or edit settings in the Web UI
-3. **Start chatting** — Send any message to your bot. Your chat ID is auto-saved on first message.
+1. Create a bot — message [@BotFather](https://t.me/BotFather) → `/newbot` → copy the token
+2. Configure — `jaw init --telegram-token YOUR_TOKEN` or use the Web UI settings
+3. Send any message to your bot. Chat ID is auto-saved on first message
 
 </details>
 
-**What you can do from Telegram:**
+What works from Telegram: text chat, voice messages (auto-transcribed via multi-provider STT), file/photo upload, slash commands (`/cli`, `/model`, `/status`), scheduled task result delivery.
 
-- 💬 Chat with your assistant (any of 5 AI engines)
-- 🎤 Send voice messages (auto-transcribed via multi-provider STT)
-- 📎 Send files and photos for processing
-- 🎙️ Combine voice + text + attachments in a single message
-- ⚡ Run commands (`/cli`, `/model`, `/status`)
-- 🔄 Switch AI engines on the fly
+### Discord
 
-**What your assistant sends back:**
+Same capabilities as Telegram — text, files, commands. Channel and thread routing with forwarder for agent result broadcast. Setup via Web UI settings.
 
-- AI responses with markdown formatting
-- Generated images, PDFs, documents
-- Scheduled task results (heartbeat jobs)
-- Browser screenshots
+### Voice & STT
 
-<p align="center">
-  <img src="docs/screenshots/telegram-bot.png" width="300" alt="Telegram Bot" />
-</p>
+Voice input works on Web (mic button), Telegram (voice messages), and Discord. Providers: OpenAI-compatible, Google Vertex AI, or any custom endpoint. Configured in the Web UI settings.
 
 ---
 
-## 🎤 Voice & STT — Speech-to-Text
+## ⏰ Scheduling & heartbeat
 
-CLI-JAW supports voice input across all interfaces with multi-provider STT:
-
-| Provider              | How to enable                                 |
-| --------------------- | --------------------------------------------- |
-| **OpenAI-compatible** | Settings UI → STT → OpenAI endpoint + API key |
-| **Google Vertex AI**  | Settings UI → STT → Vertex AI credentials     |
-| **Custom endpoint**   | Any OpenAI-compatible STT API URL             |
-
-**Where you can use voice:**
-
-- 🌐 **Web UI** — Click the mic button to record and transcribe in real-time
-- 📱 **Telegram** — Send voice messages; auto-transcribed before reaching the AI
-- 🎙️ **Multimodal** — Combine voice + text + file attachments in a single message
-
-All STT settings (provider, API keys, language) are managed in the **Settings UI** — no config files to edit.
+| Feature | What it does |
+|---|---|
+| **Heartbeat jobs** | Cron-scheduled tasks that run unattended. Results delivered to Telegram/Discord |
+| **Service auto-start** | `jaw service install` — auto-detects systemd (Linux), launchd (macOS), or Docker |
+| **Memory auto-reflect** | Optional post-flush reflection for structured knowledge extraction |
 
 ---
 
-## 🎭 Multi-Agent Orchestration — PABCD
-
-For complex tasks, CLI-JAW uses **PABCD** — a finite state machine that enforces a strict 5-phase pipeline:
-
-```
- ┌─────────────────────────────────────────────────────────┐
- │  P          A            B           C          D       │
- │  Plan  →  Audit  →    Build   →  Check  →    Done      │
- │  📝        🔍          🔨          ✅          🏁       │
- │            ↑            ↑                               │
- │            └── reject ──┘── reject (self-heal loop)     │
- └─────────────────────────────────────────────────────────┘
-```
-
-| Phase | Name  | What happens                                                                                                |
-| :---: | ----- | ----------------------------------------------------------------------------------------------------------- |
-| **P** | Plan  | Boss AI writes a diff-level implementation plan. Stops and waits for your approval.                         |
-| **A** | Audit | A read-only worker verifies the plan is feasible — imports resolve, signatures match, no integration risks. |
-| **B** | Build | Boss implements the code directly. A read-only worker verifies the result. Self-heals on failure.           |
-| **C** | Check | Final verification — `tsc --noEmit`, docs update, consistency check.                                        |
-| **D** | Done  | Summary of all changes. State returns to IDLE.                                                              |
-
-**Key design decisions:**
-- **DB-persisted FSM** — state survives server restarts, CLI and Web UI share the same state
-- **Hard STOP at every phase** — the AI cannot self-advance; you approve each transition
-- **Workers are READ-ONLY** — audit and verify phases can never accidentally modify files
-- **Parallel-safe** — independent subtasks run concurrently via `Promise.all` with file-overlap detection
-
-```mermaid
-graph TD
-    USER["👤 Your Request"] --> TRIAGE["🔍 Triage — Simple or Complex?"]
-  
-    TRIAGE -->|Simple| DIRECT["⚡ Direct Response"]
-    TRIAGE -->|Complex| P["📝 P: Plan"]
-  
-    P -->|approved| A["🔍 A: Audit"]
-    A -->|pass| B["🔨 B: Build"]
-    A -->|fail| P
-    B -->|verified| C["✅ C: Check"]
-    B -->|needs fix| B
-    C --> D["🏁 D: Done"]
-    D --> IDLE["💤 IDLE"]
-
-    style USER fill:#f5e6d3,stroke:#d4a574,stroke-width:2px,color:#5c4033
-    style P fill:#fdf2e9,stroke:#d4a574,color:#5c4033
-    style A fill:#fdf2e9,stroke:#d4a574,color:#5c4033
-    style B fill:#f5e6d3,stroke:#d4a574,stroke-width:2px,color:#5c4033
-    style C fill:#f5e6d3,stroke:#d4a574,stroke-width:2px,color:#5c4033
-    style D fill:#f5e6d3,stroke:#d4a574,stroke-width:2px,color:#5c4033
-```
-
-Activate manually with `jaw orchestrate` or let the assistant decide automatically. The Web UI shows a live roadmap bar with phase indicators and a 🦈 runner animation.
-
-![Orchestration Log](docs/screenshots/orchestration-log.png)
-
----
-
-## 🔌 MCP — One Config, Six AI Engines
+## ⌨️ CLI commands
 
 ```bash
-jaw mcp install @anthropic/context7    # Install once
-# → Automatically syncs to Claude, Codex, Gemini, OpenCode, Copilot, Antigravity
-```
-
-```mermaid
-graph LR
-    MJ["📄 mcp.json"] -->|auto-sync| CL["Claude"]
-    MJ -->|auto-sync| CX["Codex"]
-    MJ -->|auto-sync| GM["Gemini"]
-    MJ -->|auto-sync| OC["OpenCode"]
-    MJ -->|auto-sync| CP["Copilot"]
-    MJ -->|auto-sync| AG["Antigravity"]
-  
-    style MJ fill:#f5e6d3,stroke:#d4a574,stroke-width:2px,color:#5c4033
-```
-
-No more editing 5 different config files. Install once → all AI engines get it.
-
----
-
-## ⌨️ CLI Commands
-
-```bash
-jaw serve                         # Start server
-jaw service install               # Auto-start on boot (systemd/launchd/docker auto-detected)
-jaw service status                # Check daemon status
-jaw service unset                 # Remove auto-start
-jaw service logs                  # View service logs
-jaw chat                          # Terminal TUI
-jaw doctor                        # Diagnostics (12 checks)
-jaw skill install <name>          # Install a skill
-jaw mcp install <package>         # Install MCP → syncs to all 6 CLIs
-jaw memory search <query>         # Search memory
-jaw browser start                 # Launch Chrome (CDP)
+jaw serve                         # start server → http://localhost:3457
+jaw chat                          # terminal TUI
+jaw doctor                        # 12-point diagnostics
+jaw service install               # auto-start on boot
+jaw skill install <name>          # activate a skill
+jaw mcp install <package>         # install MCP → syncs to 5 engines
+jaw memory search <query>         # search memory
+jaw browser start                 # launch Chrome (CDP)
 jaw browser vision-click "Login"  # AI-powered click
-jaw clone ~/my-project            # Clone instance for a separate project
-jaw --home ~/my-project serve --port 3458  # Run a second instance
-jaw reset                         # Full reset
+jaw clone ~/project               # clone instance
+jaw --home ~/project serve --port 3458  # run second instance
+jaw orchestrate                   # enter PABCD
+jaw dispatch --agent Research --task "..." # dispatch employee
+jaw reset                         # full reset
 ```
 
 ---
 
-## 🏗️ Multi-Instance — Separate Projects, Separate Contexts
+## 🏗️ Multi-instance
 
-Run multiple isolated instances of CLI-JAW — each with its own settings, memory, skills, and database.
+Run isolated instances with separate settings, memory, and database.
 
 ```bash
-# Clone your default instance to a new project
 jaw clone ~/my-project
-
-# Run it on a different port
 jaw --home ~/my-project serve --port 3458
-
-# Or auto-start both on boot
-jaw service                                    # default → port 3457 (auto-detect backend)
-jaw --home ~/my-project service --port 3458    # project → port 3458
 ```
 
-Each instance is fully independent — different working directory, different memory, different MCP config. Perfect for separating work/personal contexts or per-project AI setups.
-
-| Flag / Env            | What it does                              |
-| --------------------- | ----------------------------------------- |
-| `--home <path>`       | Use a custom home directory for this run  |
-| `--home=<path>`       | Same, with `=` syntax                     |
-| `CLI_JAW_HOME=<path>` | Set via environment variable              |
-| `jaw clone <target>`  | Clone current instance to a new directory |
-| `--port <port>`       | Custom port for `serve` / `service`       |
+Each instance is fully independent — different working directory, different memory, different MCP config.
 
 ---
 
-## 🤖 Models
-
-Each CLI comes with preconfigured presets, but you can type **any model ID** directly.
-
-<details>
-<summary>View all presets</summary>
-
-| CLI          | Default                    | Notable Models                                  |
-| ------------ | -------------------------- | ----------------------------------------------- |
-| **Claude**   | `claude-sonnet-4-6`        | opus-4-6, haiku-4-5, extended thinking variants |
-| **Codex**    | `gpt-5.3-codex`            | spark, 5.2, 5.1-max, 5.1-mini                   |
-| **Gemini**   | `gemini-2.5-pro`           | 3.0-pro-preview, 3-flash-preview, 2.5-flash     |
-| **OpenCode** | `claude-opus-4-6-thinking` | 🆓 big-pickle, GLM-5, MiniMax, Kimi, GPT-5-Nano  |
-| **Copilot**  | `gpt-4.1` 🆓                | 🆓 gpt-5-mini, claude-sonnet-4.6, opus-4.6       |
-
-</details>
-
-> 🔧 To add models: edit `src/cli/registry.ts` — one file, auto-propagates everywhere.
-
----
-
-## 🐳 Docker — Container Isolation
-
-Run CLI-JAW in a Docker container for **security isolation** — AI agents cannot access host files.
+## 🐳 Docker
 
 ```bash
-# Quick start (after npm publish)
-docker compose up -d
-# → http://localhost:3457
-
-# Or build manually
-docker build -t cli-jaw .
-docker run -d -p 3457:3457 --env-file .env --name jaw cli-jaw
+docker compose up -d       # → http://localhost:3457
 ```
 
+Non-root `jaw` user, Chromium sandbox enabled. Two Dockerfiles: `Dockerfile` (npm install) and `Dockerfile.dev` (local source). Data persists in `jaw-data` named volume.
+
 <details>
-<summary>📋 Docker details</summary>
-
-**Two Dockerfiles:**
-
-| File             | Purpose                    | Use Case                |
-| ---------------- | -------------------------- | ----------------------- |
-| `Dockerfile`     | Installs from npm registry | Production / deployment |
-| `Dockerfile.dev` | Builds from local source   | Development / testing   |
+<summary>Docker details</summary>
 
 ```bash
-# Dev build (local source)
+# Dev build
 docker build -f Dockerfile.dev -t cli-jaw:dev .
 docker run -d -p 3457:3457 --env-file .env cli-jaw:dev
 
-# Pin version for CI
+# Pin version
 docker build --build-arg CLI_JAW_VERSION=1.0.1 -t cli-jaw:1.0.1 .
 
-# If Chromium sandbox fails in your environment
+# If Chromium sandbox fails
 docker run -e CHROME_NO_SANDBOX=1 -p 3457:3457 cli-jaw
 ```
 
-**Security:**
-
-- Non-root `jaw` user — Chromium sandbox enabled by default
-- No `ipc: host` or `seccomp=unconfined` — full container isolation
-- `--no-sandbox` only via explicit `CHROME_NO_SANDBOX=1` opt-in
-- Build-time feature guard prevents outdated image deployment
-
-**Volumes:** Data persists in `jaw-data` named volume (`/home/jaw/.cli-jaw`).
-To use existing host config: `-v ~/.cli-jaw:/home/jaw/.cli-jaw`
-
 </details>
+
+---
+
+## 📖 Documentation
+
+| Document | What it covers |
+|---|---|
+| [CHANGELOG.md](CHANGELOG.md) | Release log, including the v1.6.0 catch-up covering v1.2.0 through v1.5.1 |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, module graph, 95 API handlers across 94 endpoints |
+| [TESTS.md](TESTS.md) | Test coverage, counts, and test plan |
+| [memory-architecture.md](docs/memory-architecture.md) | 3-layer memory model, indexing, and runtime behavior |
+| [env-vars.md](docs/env-vars.md) | Environment variable reference |
+| [skill-router-plan.md](docs/skill-router-plan.md) | Skill routing architecture |
+| [officecli-integration.md](docs/officecli-integration.md) | OfficeCLI setup for HWP/HWPX and Office documents |
+| [devlog/structure/](devlog/structure/) | Internal architecture reference — prompt pipeline, agent spawn, frontend, server API, commands, Telegram, memory |
+
+---
+
+## ⚖️ How it compares
+
+| | CLI-JAW | Hermes Agent | Claude Code |
+|---|---|---|---|
+| **Model access** | OAuth subscriptions (Claude Max, ChatGPT Pro, Copilot, Gemini) + OpenCode wildcard | API keys (OpenRouter 200+, Nous Portal) | Anthropic only |
+| **Cost model** | Monthly subscriptions you already pay for | Per-token API billing | Anthropic subscription |
+| **Primary UI** | Web PWA + Mac app + TUI | TUI only | CLI + IDE plugins |
+| **Messaging** | Telegram (voice) + Discord | Telegram/Discord/Slack/WhatsApp/Signal | None |
+| **Memory** | 3-layer (History/Flush/Soul) + FTS5 | Self-improving learning loop + Honcho | File-based auto-memory |
+| **Browser automation** | Chrome CDP + vision-click + DOM ref | Limited | Via MCP |
+| **Orchestration** | PABCD 5-phase FSM | Subagent spawn | Task tool |
+| **Execution** | Local + Docker | Local/Docker/SSH/Daytona/Modal/Singularity | Local |
+| **Skills** | 100+ bundled | Self-creating + agentskills.io | User-configured |
+| **i18n** | English, Korean, Chinese | English | English |
+
+CLI-JAW descends from the OpenClaw harness architecture (hybrid search manager, fallback patterns, session indexing). If migrating from OpenClaw, the slash-command surface and memory model will be familiar.
 
 ---
 
 ## 🛠️ Development
 
 <details>
-<summary>Build, run, and project structure</summary>
+<summary>Build and project structure</summary>
 
 ```bash
-# Build (TypeScript → JavaScript)
 npm run build          # tsc → dist/
-
-# Run from source (development)
-npm run dev            # tsx server.ts (hot-reload friendly)
-npx tsx bin/cli-jaw.ts serve   # Run CLI directly from .ts
-
-# Run from build (production)
-node dist/bin/cli-jaw.js serve
+npm run dev            # tsx server.ts (hot-reload)
 ```
-
-**Project structure:**
 
 ```
 src/
-├── agent/          # AI agent lifecycle & spawning
-├── browser/        # Chrome CDP automation
-├── cli/            # CLI registry & model presets
-├── core/           # DB, config, logging
-├── http/           # Express server & middleware
-├── memory/         # Persistent memory system
-├── orchestrator/   # Multi-agent orchestration pipeline
-├── prompt/         # Prompt injection & AGENTS.md generation
-├── routes/         # REST API endpoints (40+)
-├── security/       # Input sanitization & guardrails
-└── telegram/       # Telegram bot integration
+├── agent/          # AI agent lifecycle, spawn, history block
+├── browser/        # Chrome CDP, vision-click, launch policy
+├── cli/            # CLI registry, slash commands, model presets
+├── core/           # DB, config, employees, logging
+├── discord/        # Discord bot, commands, file send
+├── http/           # Express server, middleware
+├── memory/         # 3-layer memory, FTS5 indexing, flush, soul
+├── messaging/      # Channel routing, session keys
+├── orchestrator/   # PABCD state machine, worker registry, dispatch
+├── prompt/         # Prompt assembly pipeline, templates
+├── routes/         # REST API (95 handlers, 94 endpoints)
+├── security/       # Input sanitization, path guards
+└── telegram/       # Telegram bot, voice STT, forwarder
 ```
-
-> TypeScript with `strict: true`, `NodeNext` module resolution, targeting ES2022.
 
 </details>
 
@@ -596,29 +434,11 @@ src/
 
 ## 🧪 Tests
 
-<details>
-<summary>See TESTS.md for current pass counts and inventory</summary>
-
 ```bash
-npm test
+npm test             # tsx --test (native Node.js test runner)
 ```
 
-All tests run via `tsx --test` (native Node.js test runner + TypeScript).
-
-</details>
-
----
-
-
-
-## 📖 Documentation
-
-| Document | What's inside |
-| -------- | ------------- |
-| [CHANGELOG.md](CHANGELOG.md) | Long-form release log, including the `v1.6.0` catch-up notes covering `v1.2.0` → `v1.5.1` |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, module graph, REST API (40+ endpoints) |
-| [TESTS.md](TESTS.md) | Test coverage, current counts, and test plan |
-| [memory-architecture.md](docs/memory-architecture.md) | Structured memory model, indexing, and runtime behavior |
+See [TESTS.md](TESTS.md) for current inventory and pass counts.
 
 ---
 
@@ -627,83 +447,38 @@ All tests run via `tsx --test` (native Node.js test runner + TypeScript).
 <details>
 <summary>Common issues</summary>
 
-| Problem                      | Solution                                                                                   |
-| ---------------------------- | ------------------------------------------------------------------------------------------ |
-| `cli-jaw: command not found` | Run `npm install -g cli-jaw` again. Check `npm bin -g` is in your `$PATH`.                 |
-| `Error: node version`        | Upgrade to Node.js ≥ 22:`nvm install 22` or download from [nodejs.org](https://nodejs.org) |
-| `NODE_MODULE_VERSION` mismatch | Run `npm run ensure:native` (auto-rebuild) or reinstall dependencies for the current Node version |
-| Agent timeout / no response  | Run `jaw doctor` to check CLI auth. Re-authenticate with `claude auth` / `codex login`.    |
-| `EADDRINUSE: port 3457`      | Another instance is running. Stop it or use `jaw serve --port 3458`.                       |
-| Telegram bot not responding  | Check token with `jaw doctor`. Ensure `jaw serve` is running.                              |
-| Telegram ✓✓ delayed          | Normal — Telegram server-side delivery ack can take a few minutes under load. Not a bug.   |
-| Skills not loading           | Run `jaw skill reset` then `jaw mcp sync`.                                                 |
-| Browser commands fail        | Install Chrome/Chromium. Run `jaw browser start` first.                                    |
+| Problem | Solution |
+|---|---|
+| `cli-jaw: command not found` | `npm install -g cli-jaw` again. Check `npm bin -g` is in `$PATH` |
+| `Error: node version` | Upgrade to Node.js 22+: `nvm install 22` |
+| `NODE_MODULE_VERSION` mismatch | `npm run ensure:native` (auto-rebuild) |
+| Agent timeout | `jaw doctor` to check CLI auth |
+| `EADDRINUSE: port 3457` | Another instance running. Use `--port 3458` |
+| Telegram not responding | Check token with `jaw doctor`. Ensure `jaw serve` is running |
+| Skills not loading | `jaw skill reset` then `jaw mcp sync` |
+| Browser commands fail | Install Chrome. Run `jaw browser start` first |
 
 </details>
 
 <details>
-<summary>🔄 Fresh start — clean reinstall for legacy / cli-claw users</summary>
-
-If you previously used **cli-claw** or an older version of cli-jaw and want a completely clean slate:
+<summary>Fresh start — clean reinstall</summary>
 
 ```bash
-# ── 1. Uninstall ──
 npm uninstall -g cli-jaw
-
-# Verify removal
-which jaw && echo "⚠️  jaw still found" || echo "✅ jaw removed"
-
-# ── 2. Back up & remove data ──
-# Back up current data (just in case)
 [ -d ~/.cli-jaw ] && mv ~/.cli-jaw ~/.cli-jaw.bak.$(date +%s)
-
-# Remove work instances
-[ -d ~/.jaw-work ] && rm -rf ~/.jaw-work
-
-# ── 3. Remove launchd daemons (macOS) ──
-launchctl list | grep com.cli-jaw | awk '{print $3}' | \
-  xargs -I{} launchctl bootout gui/$(id -u) system/{}  2>/dev/null
-rm -f ~/Library/LaunchAgents/com.cli-jaw.*
-
-# ── 4. Remove legacy artifacts ──
-rm -f ~/AGENTS.md ~/CLAUDE.md          # postinstall symlinks
-# Do not remove shared harness paths (~/.agents, ~/.agent) unless you explicitly
-# created them for cli-jaw. Use: jaw doctor --repair-shared-paths
-rm -rf ~/.cli-claw                     # old cli-claw data
-rm -f ~/.copilot/mcp-config.json       # MCP config synced by jaw
-
-# ── 5. Verify clean state ──
-echo "=== Clean State Check ==="
-which jaw; which cli-jaw               # should be "not found"
-ls ~/.cli-jaw ~/.cli-claw 2>&1         # should be "No such file"
-
-# ── 6. Reinstall ──
 npm install -g cli-jaw
 jaw init
 jaw doctor
 ```
 
-> 💡 Your backup is at `~/.cli-jaw.bak.<timestamp>` — copy back `settings.json` or `jaw.db` if you want to restore previous config or conversation history.
-
 </details>
 
 <details>
-<summary>🧱 Native module mismatch (<code>better-sqlite3</code>)</summary>
-
-If you upgraded Node.js and see a `NODE_MODULE_VERSION` error, re-check and auto-rebuild native modules for the current runtime:
+<summary>Native module mismatch (better-sqlite3)</summary>
 
 ```bash
 npm run ensure:native
-```
-
-`npm test`, `npm run test:all`, `npm run test:integration`, `npm run test:smoke`, and `npm run build`
-now run this guard automatically before they start.
-
-If that still fails, reinstall dependencies under the active Node version:
-
-```bash
-rm -rf node_modules package-lock.json
-npm install
+# or: rm -rf node_modules package-lock.json && npm install
 ```
 
 </details>
@@ -712,22 +487,16 @@ npm install
 
 ## 🤝 Contributing
 
-Contributions are welcome! Here's how to get started:
+1. Fork and branch from `master`
+2. `npm run build && npm test`
+3. Submit a PR
 
-1. Fork the repo and create your branch from `master`
-2. Run `npm run build && npm test` to make sure everything works
-3. Submit a PR — we'll review it promptly
-
-> 📋 Found a bug or have a feature idea? [Open an issue](https://github.com/lidge-jun/cli-jaw/issues)
+Found a bug or have an idea? [Open an issue](https://github.com/lidge-jun/cli-jaw/issues)
 
 ---
 
 <div align="center">
 
-**⭐ If CLI-JAW helps you, give it a star — it means a lot!**
-
-Made with ❤️ by the CLI-JAW community
-
-[MIT License](LICENSE)
+**[MIT License](LICENSE)**
 
 </div>

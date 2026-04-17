@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLI-JAW — Your Personal AI Assistant</title>
+    <title>CLI-JAW — All Your AI Subscriptions. One Assistant.</title>
     <meta name="description"
-        content="One assistant. Five AI engines. Always on. CLI-JAW orchestrates Claude, Codex, Gemini, OpenCode, and Copilot through a unified interface — Web, Terminal, and Telegram.">
+        content="All your AI subscriptions. One assistant. CLI-JAW routes Claude Max, ChatGPT Pro, Copilot, and Gemini through OAuth — Web PWA, Terminal, Telegram, and Discord. No per-token billing.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -901,8 +901,8 @@
     <!-- ═══════════════ HERO ═══════════════ -->
     <section class="hero">
         <div class="block-art" id="blockArt"></div>
-        <h1 class="hero-tagline">Your Personal AI Assistant</h1>
-        <p class="hero-sub">5 Engines · One Brain · Always On</p>
+        <h1 class="hero-tagline">All Your AI Subscriptions. One Assistant.</h1>
+        <p class="hero-sub">Claude Max · ChatGPT Pro · Copilot · Gemini — routed through OAuth. No per-token billing.</p>
         <p style="color:var(--text-dim); font-size:14px; margin-bottom:12px; letter-spacing:1px;">Get your personal AI
             assistant in <span style="color:var(--accent); font-weight:600;">2 lines</span></p>
         <div class="hero-install">
@@ -958,9 +958,8 @@
     <section class="section" id="engines">
         <div class="container reveal">
             <span class="section-label">// engines</span>
-            <h2 class="section-title">Five AI Engines, One Roof</h2>
-            <p class="section-desc">Pick whichever you have. CLI-JAW auto-detects and falls back gracefully. Even one
-                engine is enough.</p>
+            <h2 class="section-title">Your subscriptions, unified</h2>
+            <p class="section-desc">Route through the AI subscriptions you already pay for. OAuth login, no API keys, no per-token billing. Even one engine is enough.</p>
             <div class="engines-grid">
                 <div class="engine-card">
                     <span class="engine-icon">🟣</span>
@@ -993,7 +992,7 @@
                     <span class="engine-badge badge-free">🆓 Free</span>
                 </div>
             </div>
-            <p class="fallback-line">Engine down? → <span>Next one picks up automatically. Zero downtime.</span></p>
+            <p class="fallback-line">Engine down? → <span>Next one picks up automatically.</span> OpenCode wildcard: connect any model endpoint.</p>
         </div>
     </section>
 
@@ -1001,51 +1000,45 @@
     <section class="section" id="features">
         <div class="container reveal">
             <span class="section-label">// features</span>
-            <h2 class="section-title">Why CLI-JAW?</h2>
-            <p class="section-desc">Not just another chatbot. A full-stack personal assistant with real capabilities.
+            <h2 class="section-title">What you get</h2>
+            <p class="section-desc">Not a chatbot wrapper. A full-stack assistant with real infrastructure.
             </p>
             <div class="features-grid">
                 <div class="feature-card">
-                    <span class="feature-icon">🛡️</span>
-                    <div class="feature-title">TOS-Safe</div>
-                    <p class="feature-desc">Uses official CLIs only — no API key scraping, no reverse engineering, no
-                        ban risk.</p>
+                    <span class="feature-icon">🧠</span>
+                    <div class="feature-title">3-layer memory</div>
+                    <p class="feature-desc">History Block (session context) + Memory Flush (episodes, daily logs) + Soul and Task Snapshot (identity, semantic recall). SQLite FTS5 search.</p>
                 </div>
                 <div class="feature-card">
                     <span class="feature-icon">🎭</span>
-                    <div class="feature-title">PABCD Orchestration</div>
-                    <p class="feature-desc">DB-persisted FSM pipeline — Plan → Audit → Build → Check → Done. Workers
+                    <div class="feature-title">PABCD orchestration</div>
+                    <p class="feature-desc">DB-persisted 5-phase FSM — Plan, Audit, Build, Check, Done. Workers
                         are read-only. You approve every phase.</p>
                 </div>
                 <div class="feature-card">
+                    <span class="feature-icon">🌐</span>
+                    <div class="feature-title">Browser automation</div>
+                    <p class="feature-desc">Chrome CDP, vision-click, DOM reference for ChatGPT/Grok/Gemini, Computer Use via Codex App, diagram skill for interactive visualizations.</p>
+                </div>
+                <div class="feature-card">
                     <span class="feature-icon">📦</span>
-                    <div class="feature-title">108 Skills</div>
-                    <p class="feature-desc">Browser automation, document generation, Telegram, memory, GitHub, Notion —
-                        ready out of the box.</p>
+                    <div class="feature-title">100+ skills</div>
+                    <p class="feature-desc">Office docs (PDF, DOCX, XLSX, PPTX, HWP), GitHub, Notion, image generation, video rendering, Telegram media — ready out of the box.</p>
                 </div>
                 <div class="feature-card">
-                    <span class="feature-icon">🔄</span>
-                    <div class="feature-title">Smart Retry</div>
-                    <p class="feature-desc">429 rate-limited? Same engine retries once, then auto-falls back to the next
-                        available engine. Zero downtime.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon">📱</span>
-                    <div class="feature-title">Telegram Bot</div>
-                    <p class="feature-desc">Chat from your phone. Send voice, photos, files. Get AI responses, generated
-                        docs, and screenshots back.</p>
+                    <span class="feature-icon">💬</span>
+                    <div class="feature-title">Telegram + Discord</div>
+                    <p class="feature-desc">Chat from your phone. Voice messages with multi-provider STT. Files, photos, slash commands, scheduled task results.</p>
                 </div>
                 <div class="feature-card">
                     <span class="feature-icon">🔌</span>
-                    <div class="feature-title">MCP Ecosystem</div>
-                    <p class="feature-desc">Install MCP once → syncs to all 6 AI engines instantly. One config, six
-                        agents.</p>
+                    <div class="feature-title">MCP — install once</div>
+                    <p class="feature-desc">Install MCP tools once, syncs to all 5 AI engines. One config file, five agents.</p>
                 </div>
                 <div class="feature-card">
                     <span class="feature-icon">🖥️</span>
-                    <div class="feature-title">Cross-Platform</div>
-                    <p class="feature-desc">macOS, Linux, WSL, Docker. ENOENT-safe spawn, auto-detection, container
-                        isolation.</p>
+                    <div class="feature-title">5 surfaces</div>
+                    <p class="feature-desc">Web PWA with virtual scroll, Mac WebView app, terminal TUI, Telegram, Discord. Same memory across all of them.</p>
                 </div>
             </div>
         </div>
@@ -1165,13 +1158,14 @@
     <section class="section" id="screenshots">
         <div class="container reveal">
             <span class="section-label">// interfaces</span>
-            <h2 class="section-title">Three Ways to Connect</h2>
-            <p class="section-desc">Web UI, Terminal TUI, or Telegram. Same assistant, same memory, same skills.</p>
+            <h2 class="section-title">Five ways to connect</h2>
+            <p class="section-desc">Web PWA, Mac app, Terminal TUI, Telegram, or Discord. Same assistant, same memory, same skills.</p>
             <div class="screenshots-tabs">
                 <button class="tab-btn active" onclick="showTab('web')">🌐 Web</button>
                 <button class="tab-btn" onclick="showTab('terminal')">⌨️ Terminal</button>
                 <button class="tab-btn" onclick="showTab('telegram')">📱 Telegram</button>
-                <button class="tab-btn" onclick="showTab('orchestration')">🎭 Orchestration</button>
+                <button class="tab-btn" onclick="showTab('discord')">💬 Discord</button>
+                <button class="tab-btn" onclick="showTab('orchestration')">🎭 PABCD</button>
             </div>
             <div class="screenshot-panel active" id="tab-web">
                 <img src="screenshots/web-ui.png" alt="CLI-JAW Web UI">
@@ -1182,6 +1176,9 @@
             <div class="screenshot-panel" id="tab-telegram">
                 <img src="screenshots/telegram-bot.png" alt="CLI-JAW Telegram Bot"
                     style="max-width: 400px; margin: 0 auto;">
+            </div>
+            <div class="screenshot-panel" id="tab-discord">
+                <img src="screenshots/discord-bot.png" alt="CLI-JAW Discord Bot">
             </div>
             <div class="screenshot-panel" id="tab-orchestration">
                 <img src="screenshots/orchestration-log.png" alt="CLI-JAW Orchestration">
