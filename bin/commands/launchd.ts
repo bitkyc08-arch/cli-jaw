@@ -14,9 +14,12 @@ import { homedir } from 'node:os';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 import { instanceId, getNodePath, getJawPath, buildServicePath } from '../../src/core/instance.js';
+import { buildPinnedPath } from '../../src/core/runtime-path.js';
 import { generateLaunchdPlist } from '../../src/core/launchd-plist.js';
 import { findLegacyCliJawLabels } from '../../src/core/launchd-cleanup.js';
 import { cuaAppInstalled } from '../../src/core/tcc.js';
+
+const JAW_APP_LAUNCHER = '/Applications/Jaw.app/Contents/MacOS/jaw-launcher';
 
 // parseArgs is safe here — launchd is a leaf command (no subcommands to absorb)
 const { values: launchdOpts, positionals: launchdPos } = parseArgs({
@@ -49,6 +52,8 @@ function generatePlist(): string {
     const nodePath = getNodePath();
     const jawPath = getJawPath();
     const servicePath = buildServicePath(process.env.PATH || '', [join(homedir(), '.local', 'bin')]);
+    const pinnedPath = buildPinnedPath();
+    const jawAppPath = existsSync(JAW_APP_LAUNCHER) ? JAW_APP_LAUNCHER : undefined;
     execSync(`mkdir -p "${LOG_DIR}"`);
 
     return generateLaunchdPlist({
@@ -59,6 +64,8 @@ function generatePlist(): string {
         jawHome: JAW_HOME,
         logDir: LOG_DIR,
         servicePath,
+        pinnedPath,
+        jawAppPath,
     });
 }
 
