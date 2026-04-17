@@ -89,8 +89,13 @@ export function renderEmployees(): void {
         const deleteBtn = isStatic
             ? ''
             : `<button style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px" data-emp-delete="${escapeHtml(a.id)}" title="${t('emp.delete')}">${ICONS.close}</button>`;
+        // Use <select disabled> (not <input disabled>) so it inherits the shared
+        // select styling from variables.css — a plain <input disabled> without
+        // `type="text"` skips the `input[type="text"]` rule and renders at the
+        // browser-default ~20ch width, blowing up the 1fr grid and squishing
+        // the Model column.
         const cliField = isStatic
-            ? `<input disabled value="${escapeHtml(a.cli)}" style="background:var(--bg);color:var(--text-dim);cursor:not-allowed" title="CLI fixed for built-in employee">`
+            ? `<select disabled title="CLI fixed for built-in employee"><option>${escapeHtml(a.cli)}</option></select>`
             : `<select data-emp-cli="${escapeHtml(a.id)}">${cliKeys.map(c => `<option${a.cli === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>`;
         const roleField = isStatic
             ? `<div style="font-size:11px;color:var(--text-dim);padding:4px 0">${escapeHtml(a.role || '')}</div>`
