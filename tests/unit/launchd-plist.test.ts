@@ -20,12 +20,9 @@ test('P04C-001: plist contains ProcessType=Interactive', () => {
     assert.match(plist, /<key>ProcessType<\/key>\s*<string>Interactive<\/string>/);
 });
 
-test('P04C-002: plist sets SessionCreate=true (TCC AppleEvents attribution)', () => {
-    // Why flipped: devlog/_plan/computeruse/32_launchd_refinement.md mandates
-    // SessionCreate=true so the launchd-spawned process owns its audit session
-    // and AppleEvents are attributed to the Jaw.app bundle, not to node.
+test('P04C-002: plist must NOT set SessionCreate (preserves caller audit session)', () => {
     const plist = generateLaunchdPlist(defaults);
-    assert.match(plist, /<key>SessionCreate<\/key>\s*<true\/>/);
+    assert.doesNotMatch(plist, /SessionCreate/);
 });
 
 test('P04C-003: plist preserves LimitLoadToSessionType=Aqua (regression)', () => {
