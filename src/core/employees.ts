@@ -71,6 +71,10 @@ export function findStaticEmployee(name: string): StaticEmployee | null {
 }
 
 export interface EmployeeListing {
+    /** DB employees have no synthetic id here (use row id separately);
+     *  static employees use `static:<name-lower>` so the frontend can PUT to
+     *  the overrides endpoint. */
+    id?: string;
     name: string;
     cli: string;
     model?: string | null;
@@ -143,12 +147,13 @@ export function resolveDispatchableEmployee(
     }
     const spec = findStaticEmployee(name);
     if (!spec) return null;
+    const override = (settings.staticEmployees as Record<string, { model?: string }> | undefined)?.[spec.name];
     return {
         row: {
             id: `static:${spec.name.toLowerCase()}`,
             name: spec.name,
             cli: spec.cli,
-            model: spec.model ?? 'default',
+            model: override?.model ?? spec.model ?? 'default',
             role: spec.description,
             status: 'idle',
         },
@@ -162,27 +167,23 @@ export function resolveDispatchableEmployee(
  * DB rows take precedence when names collide; static entries only fill gaps.
  */
 export function listEmployees(): EmployeeListing[] {
-    type Row = { name: string; cli: string; model: string | null; role: string | null };
+    type Row = { id: string; name: string; cli: string; model: string | null; role: string | null };
     const dbRows = getEmployees.all() as Row[];
     const seen = new Set<string>();
-    const out: EmployeeListing[] = [];
-    for (const r of dbRows) {
-        if (!r?.name) continue;
-        out.push({
-            name: r.name,
-            cli: r.cli,
-            model: r.model,
-            role: r.role ?? '',
-            source: 'db',
-        });
-        seen.add(r.name.toLowerCase());
-    }
+    const staticOut: EmployeeListing[] = [];
+    const dbOut: EmployeeListing[] = [];
+    const overrides = (settings.staticEmployees as Record<string, { model?: string }> | undefined) || {};
+
+    // Static employees first (rendered at top of UI list, CLI-locked, model editable).
     for (const s of STATIC_EMPLOYEES) {
-        if (seen.has(s.name.toLowerCase())) continue;
-        out.push({
+        const override = overrides[s.name];
+        staticOut.push({
+            // Use synthetic id matching resolveDispatchableEmployee so the frontend
+            // can round-trip PUT /api/employees/:id to the override storage.
+            id: `static:${s.name.toLowerCase()}`,
             name: s.name,
             cli: s.cli,
-            model: s.model,
+            model: override?.model ?? s.model ?? 'default',
             role: s.description,
             source: 'static',
             runtimeHints: s.runtimeHints,
@@ -191,8 +192,25 @@ export function listEmployees(): EmployeeListing[] {
             delegation: s.delegation,
             defer: s.defer,
         });
+        seen.add(s.name.toLowerCase());
     }
-    return out;
+
+    for (const r of dbRows) {
+        if (!r?.name) continue;
+        // DB entries with the same name as a static one take precedence for dispatch,
+        // but we keep the static slot visible in UI. Skip the DB dup in listing.
+        if (seen.has(r.name.toLowerCase())) continue;
+        dbOut.push({
+            id: r.id,
+            name: r.name,
+            cli: r.cli,
+            model: r.model,
+            role: r.role ?? '',
+            source: 'db',
+        });
+    }
+
+    return [...staticOut, ...dbOut];
 }
 
 export function seedDefaultEmployees({ reset = false, notify = false } = {}) {

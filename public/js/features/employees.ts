@@ -17,6 +17,8 @@ interface Employee {
     status?: string;
     phase?: string;
     phaseLabel?: string;
+    /** 'static' → baked-in employee (Control, etc.). CLI is locked, only model editable. */
+    source?: 'db' | 'static';
 }
 
 const LEGACY_MAP: Record<string, string> = {
@@ -59,6 +61,7 @@ export function renderEmployees(): void {
     }
     const cliKeys = getCliKeys();
     el.innerHTML = employees.map(a => {
+        const isStatic = a.source === 'static';
         const models = MODEL_MAP[a.cli] || [];
         const legacyVal = LEGACY_MAP[a.role || ''];
         const matched: RolePreset | undefined = legacyVal
@@ -73,22 +76,39 @@ export function renderEmployees(): void {
         const phaseBadge = p
             ? `<span style="background:${PHASE_COLORS[p] || '#888'};color:#000;padding:1px 6px;border-radius:9px;font-size:9px">${escapeHtml(pl || 'P' + p)}</span>`
             : '';
+        const staticBadge = isStatic
+            ? `<span style="background:#3b3b4f;color:#a78bfa;padding:1px 6px;border-radius:9px;font-size:9px;letter-spacing:0.3px">BUILT-IN</span>`
+            : '';
+        const borderStyle = isStatic ? 'border-left:2px solid #a78bfa;' : '';
+
+        // Static employees: name/CLI/role locked. Only model editable.
+        // DB employees: everything editable as before.
+        const nameField = isStatic
+            ? `<span style="flex:1;color:var(--text);font-size:12px;font-weight:600">${escapeHtml(a.name || 'Agent')}</span>`
+            : `<input style="flex:1;background:none;border:none;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;outline:none" value="${escapeHtml(a.name || 'Agent')}" data-emp-name="${escapeHtml(a.id)}">`;
+        const deleteBtn = isStatic
+            ? ''
+            : `<button style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px" data-emp-delete="${escapeHtml(a.id)}" title="${t('emp.delete')}">${ICONS.close}</button>`;
+        const cliField = isStatic
+            ? `<input disabled value="${escapeHtml(a.cli)}" style="background:var(--bg);color:var(--text-dim);cursor:not-allowed" title="CLI fixed for built-in employee">`
+            : `<select data-emp-cli="${escapeHtml(a.id)}">${cliKeys.map(c => `<option${a.cli === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}</select>`;
+        const roleField = isStatic
+            ? `<div style="font-size:11px;color:var(--text-dim);padding:4px 0">${escapeHtml(a.role || '')}</div>`
+            : `<select data-emp-role="${escapeHtml(a.id)}">${ROLE_PRESETS.map(r => `<option value="${r.value}"${presetVal === r.value ? ' selected' : ''}>${r.label}</option>`).join('')}</select>
+               <textarea data-emp-custom="${escapeHtml(a.id)}" style="display:${isCustom ? 'block' : 'none'};margin-top:4px;width:100%;height:40px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-size:10px;font-family:inherit;resize:vertical" placeholder="${t('emp.customRole')}">${isCustom ? escapeHtml(a.role || '') : ''}</textarea>`;
 
         return `
-        <div class="settings-group" style="margin-bottom:8px;padding:8px 10px">
+        <div class="settings-group" style="margin-bottom:8px;padding:8px 10px;${borderStyle}">
             <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
                 <span style="width:8px;height:8px;border-radius:50%;background:var(--accent);display:inline-block;flex-shrink:0"></span>
-                <input style="flex:1;background:none;border:none;color:var(--text);font-size:12px;font-weight:600;font-family:inherit;outline:none"
-                       value="${escapeHtml(a.name || 'Agent')}"
-                       data-emp-name="${escapeHtml(a.id)}">
-                <button style="background:none;border:none;color:var(--text-dim);cursor:pointer;font-size:12px" data-emp-delete="${escapeHtml(a.id)}" title="${t('emp.delete')}">${ICONS.close}</button>
+                ${nameField}
+                ${staticBadge}
+                ${deleteBtn}
             </div>
             <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:4px">
                 <div>
                     <label>CLI</label>
-                    <select data-emp-cli="${escapeHtml(a.id)}">
-                        ${cliKeys.map(c => `<option${a.cli === c ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('')}
-                    </select>
+                    ${cliField}
                 </div>
                 <div>
                     <label>Model</label>
@@ -102,11 +122,7 @@ export function renderEmployees(): void {
             </div>
             <div>
                 <label>Role</label>
-                <select data-emp-role="${escapeHtml(a.id)}">
-                    ${ROLE_PRESETS.map(r => `<option value="${r.value}"${presetVal === r.value ? ' selected' : ''}>${r.label}</option>`).join('')}
-                </select>
-                <textarea data-emp-custom="${escapeHtml(a.id)}" style="display:${isCustom ? 'block' : 'none'};margin-top:4px;width:100%;height:40px;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:4px 6px;border-radius:4px;font-size:10px;font-family:inherit;resize:vertical"
-                          placeholder="${t('emp.customRole')}">${isCustom ? escapeHtml(a.role || '') : ''}</textarea>
+                ${roleField}
             </div>
             <div style="margin-top:4px;font-size:10px;display:flex;align-items:center;gap:6px">
                 <span style="color:${a.status === 'running' ? '#fbbf24' : 'var(--green)'}"><span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:currentColor;vertical-align:middle;margin-right:4px"></span>${escapeHtml(a.status || 'idle')}</span>
