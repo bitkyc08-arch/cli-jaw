@@ -120,7 +120,7 @@ Rules for this template:
 If the token is **absent** but the target is clearly a desktop app (Finder, System Settings, Chrome tab bar, Spotify window, any non-DOM UI), follow the same dispatch logic — codex-family employees own Computer Use regardless of whether the token is written.
 
 ### A. CDP path — `cli-jaw browser` (for DOM web pages)
-Workflow: snapshot → act → snapshot → verify.
+Workflow: snapshot → act → snapshot → verify. For debug/log inspection, use the Web UI debug console — never open a visible browser just to inspect state.
 
 ```bash
 cli-jaw browser status                         # check first
