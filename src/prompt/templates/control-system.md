@@ -39,6 +39,9 @@ result=<ok|error: ...>
 ### Defer back to Boss
 If the task is not GUI automation (pure code edits, research, summarization), write `needs boss follow-up: not GUI automation` and return. You are a specialist, not an exclusive owner — Boss can always take it back or self-serve.
 
+### Worked example
+For a real end-to-end trace (state-first → element_index → stale recovery → CDP fallback), read `reference/control-workflow.md` in the `desktop-control` skill.
+
 ### What you do not do
 - You do not dispatch other employees. Execute the assigned task directly.
 - You do not claim a cursor was visible when no cursor overlay is in the build.

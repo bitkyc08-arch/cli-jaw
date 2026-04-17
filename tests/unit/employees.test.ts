@@ -82,6 +82,17 @@ test('P37-CU-008: unknown employee returns null', () => {
     assert.equal(res, null);
 });
 
+test('P37-CU-010: desktop-control skill includes control-workflow reference', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const refPath = path.join(
+        import.meta.dirname, '..', '..', 'skills_ref', 'desktop-control', 'reference', 'control-workflow.md',
+    );
+    assert.ok(fs.existsSync(refPath), `missing: ${refPath}`);
+    const content = fs.readFileSync(refPath, 'utf8');
+    assert.match(content, /Control workflow/, 'control-workflow.md must contain "Control workflow"');
+});
+
 test('P37-CU-009: STATIC_EMPLOYEES has no duplicate names', () => {
     const names = STATIC_EMPLOYEES.map((e) => e.name.toLowerCase());
     assert.equal(new Set(names).size, names.length, 'STATIC_EMPLOYEES has duplicate names');
