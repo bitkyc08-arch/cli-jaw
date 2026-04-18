@@ -11,7 +11,7 @@ import {
 } from '../core/db.js';
 
 import { clearPromptCache } from '../prompt/builder.js';
-import { spawnAgent, killAgentById, killActiveAgent } from '../agent/spawn.js';
+import { spawnAgent, killAgentById } from '../agent/spawn.js';
 import {
     createWorklog,
     readLatestWorklog,
@@ -23,7 +23,7 @@ import {
     listPendingWorkerResults, claimWorkerReplay, markWorkerReplayed, releaseWorkerReplay,
     getActiveWorkers, cancelWorker, clearAllWorkers,
 } from './worker-registry.js';
-import { messageQueue, processQueue } from '../agent/spawn.js';
+import { processQueue } from '../agent/spawn.js';
 import {
     getState, getPrefix, resetState, setState, getStatePrompt,
     getCtx,
@@ -354,15 +354,12 @@ export async function orchestrateReset(
     const chatId = meta.chatId;
     const target = meta.target;
     const requestId = meta.requestId;
-    // --- cancel running workers and clear replay state on reset ---
-    killActiveAgent('reset');
+    // --- cancel PABCD workers only — preserve main agent + message queue ---
     for (const w of getActiveWorkers()) {
         killAgentById(w.agentId);
         cancelWorker(w.agentId);
     }
     clearAllWorkers();
-    messageQueue.length = 0;
-
     clearAllEmployeeSessions.run();
     const candidateScope = resolveOrcScope({
         persistedScopeId: null,

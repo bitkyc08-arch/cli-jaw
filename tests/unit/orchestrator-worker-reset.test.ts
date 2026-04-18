@@ -8,13 +8,12 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const pipelineSrc = fs.readFileSync(join(__dirname, '../../src/orchestrator/pipeline.ts'), 'utf8');
 
-test('reset: orchestrateReset terminates main process before clearing worker registry', () => {
+test('reset: orchestrateReset does NOT kill the main agent (preserves conversation)', () => {
     const resetStart = pipelineSrc.indexOf('export async function orchestrateReset');
     const resetBlock = pipelineSrc.slice(resetStart, resetStart + 900);
-    const killMainIdx = resetBlock.indexOf("killActiveAgent('reset')");
-    const clearIdx = resetBlock.indexOf('clearAllWorkers()');
-    assert.ok(killMainIdx > 0, 'reset should kill main active agent');
-    assert.ok(clearIdx > killMainIdx, 'registry clear should happen after kill attempt');
+    assert.ok(!resetBlock.includes("killActiveAgent"), 'reset must NOT kill the main agent');
+    assert.ok(!resetBlock.includes("messageQueue.length = 0"), 'reset must NOT empty the message queue');
+    assert.ok(resetBlock.includes('clearAllWorkers()'), 'reset should still clear worker registry');
 });
 
 test('reset: orchestrateReset terminates each live worker before cancel/clear', () => {
