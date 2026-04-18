@@ -12,13 +12,13 @@
   background: var(--surface);
   border: 1px solid var(--border);
   padding: var(--space-4);
+  max-width: calc(680px + 2 * var(--space-4));
 }
 
 .diagram-svg svg {
   display: block;
   width: 100%;
   height: auto;
-  max-width: 680px;
 }
 
 .diagram-widget {

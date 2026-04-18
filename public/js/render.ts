@@ -763,15 +763,33 @@ function btnFeedback(btn: HTMLElement, text: string, action: 'copy' | 'save'): v
     }
 }
 
+function inlineComputedStyles(original: Element, clone: Element): void {
+    const origChildren = original.children;
+    const cloneChildren = clone.children;
+    const props = ['fill', 'stroke', 'stroke-width', 'color', 'opacity',
+        'rx', 'ry', 'font-size', 'font-weight', 'font-family',
+        'text-anchor', 'dominant-baseline'];
+    for (let i = 0; i < origChildren.length; i++) {
+        const oc = origChildren[i];
+        const cc = cloneChildren[i];
+        if (!oc || !cc) continue;
+        const cs = getComputedStyle(oc);
+        for (const p of props) {
+            const v = cs.getPropertyValue(p);
+            if (v) (cc as HTMLElement).style.setProperty(p, v);
+        }
+        if (oc.children.length) inlineComputedStyles(oc, cc);
+    }
+}
+
 function saveSvgAsPng(svgEl: SVGElement, btn: HTMLElement): void {
     const clone = svgEl.cloneNode(true) as SVGElement;
-    // Ensure width/height attributes for canvas rendering
+    inlineComputedStyles(svgEl, clone);
     const bbox = svgEl.getBoundingClientRect();
     if (!clone.getAttribute('width')) clone.setAttribute('width', String(bbox.width));
     if (!clone.getAttribute('height')) clone.setAttribute('height', String(bbox.height));
 
     const svgData = new XMLSerializer().serializeToString(clone);
-    // Data URL avoids tainted canvas (blob URL treated as cross-origin)
     const dataUrl = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svgData);
     const img = new Image();
     img.onload = () => {
@@ -789,7 +807,6 @@ function saveSvgAsPng(svgEl: SVGElement, btn: HTMLElement): void {
         }, 'image/png');
     };
     img.onerror = () => {
-        // Fallback: download as SVG
         const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
         downloadBlob(svgBlob, `diagram-${Date.now()}.svg`);
         btnFeedback(btn, '', 'save');
