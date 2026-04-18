@@ -145,3 +145,62 @@ test('NA-011c: extractHost returns null for empty', () => {
     assert.equal(extractHost(''), null);
     assert.equal(extractHost(undefined), null);
 });
+
+// ─── Tailscale (Issue #119) ─────────────────────────
+
+test('TS-001: 100.64.0.1 is private (Tailscale CGNAT)', () => {
+    assert.equal(isPrivateIP('100.64.0.1'), true);
+});
+
+test('TS-002: 100.127.255.254 is private (upper CGNAT bound)', () => {
+    assert.equal(isPrivateIP('100.127.255.254'), true);
+});
+
+test('TS-003: 100.63.255.255 is NOT private (below CGNAT)', () => {
+    assert.equal(isPrivateIP('100.63.255.255'), false);
+});
+
+test('TS-004: 100.128.0.0 is NOT private (above CGNAT)', () => {
+    assert.equal(isPrivateIP('100.128.0.0'), false);
+});
+
+test('TS-005: fd7a:115c:a1e0::1 is private (Tailscale ULA)', () => {
+    assert.equal(isPrivateIP('fd7a:115c:a1e0::1'), true);
+});
+
+test('TS-006: ::ffff:100.64.1.1 is private (mapped-v6 CGNAT)', () => {
+    assert.equal(isPrivateIP('::ffff:100.64.1.1'), true);
+});
+
+test('TS-007: *.ts.net host passes with lanAllowed=true', () => {
+    assert.equal(isAllowedHost('server.tail-fe8c.ts.net:3457', true), true);
+});
+
+test('TS-008: *.ts.net host blocked with lanAllowed=false', () => {
+    assert.equal(isAllowedHost('server.tail-fe8c.ts.net:3457', false), false);
+});
+
+test('TS-009: 100.64.1.1 host passes with lanAllowed=true', () => {
+    assert.equal(isAllowedHost('100.64.1.1:3457', true), true);
+});
+
+test('TS-010: *.ts.net origin passes with matching host', () => {
+    assert.equal(
+        isAllowedOrigin('http://foo.ts.net:3457', 'foo.ts.net:3457', true),
+        true,
+    );
+});
+
+test('TS-011: 100.x origin passes with matching host', () => {
+    assert.equal(
+        isAllowedOrigin('http://100.64.1.1:3457', '100.64.1.1:3457', true),
+        true,
+    );
+});
+
+test('TS-012: *.ts.net origin blocked when Host mismatches (rebinding guard)', () => {
+    assert.equal(
+        isAllowedOrigin('http://evil.ts.net:3457', 'foo.ts.net:3457', true),
+        false,
+    );
+});

@@ -323,7 +323,7 @@ jaw browser vision-click "Login"  # AI-powered click
 jaw clone ~/project               # clone instance
 jaw --home ~/project serve --port 3458  # run second instance
 jaw orchestrate                   # enter PABCD
-jaw dispatch --agent Research --task "..." # dispatch employee
+jaw dispatch --agent Backend --task "..." # dispatch employee
 jaw reset                         # full reset
 ```
 
@@ -339,6 +339,29 @@ jaw --home ~/my-project serve --port 3458
 ```
 
 Each instance is fully independent — different working directory, different memory, different MCP config.
+
+---
+
+## 🔗 Remote access (Tailscale)
+
+```bash
+jaw serve --lan                       # bind 0.0.0.0 + allow tailnet peers
+# settings.json: network.bindHost=0.0.0.0, lanBypass=true
+```
+
+Supported peer addresses when `lanBypass=true`:
+
+- `100.64.0.0/10` — Tailscale CGNAT (RFC 6598)
+- `fd7a:115c:a1e0::/48` — Tailscale ULA
+- `*.ts.net` — MagicDNS hostnames (Host + Origin both pass)
+
+Caveats:
+
+- Tailnet peers are WireGuard + IdP authenticated — treat them as LAN, not public.
+- Shared tailnets: combine with Tailscale ACL (`acl.tailnet`) to restrict who can reach the node.
+- Subnet router / exit node: SNAT collapses peer IPs to the router's 100.x — trust boundary blurs. Prefer direct tailnet membership.
+- Production: narrow `bindHost` to the `tailscale0` interface address instead of `0.0.0.0` when possible.
+- With `lanBypass=true`, tailnet peers skip the Bearer token (treated as LAN, same as RFC 1918). Set `lanBypass=false` to require `JAW_AUTH_TOKEN` from every non-loopback peer.
 
 ---
 

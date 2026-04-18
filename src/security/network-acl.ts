@@ -50,7 +50,8 @@ export function isPrivateIP(raw: string | undefined | null): boolean {
     // Pure IPv6 private ranges
     // fe80::/10 — first 10 bits are 1111111010, so first hextet is fe80..febf
     if (s.startsWith('fe8') || s.startsWith('fe9') || s.startsWith('fea') || s.startsWith('feb')) return true;
-    // fc00::/7 (ULA) — first 7 bits are 1111110, so first byte is fc or fd
+    // fc00::/7 (ULA) — first 7 bits are 1111110, so first byte is fc or fd.
+    // Includes Tailscale ULA fd7a:115c:a1e0::/48.
     if (s.startsWith('fc') || s.startsWith('fd')) return true;
 
     // IPv4 — JS bitwise returns signed Int32, so mask with `>>> 0` on both sides.
@@ -64,6 +65,9 @@ export function isPrivateIP(raw: string | undefined | null): boolean {
     if (((n & 0xffff0000) >>> 0) === (0xc0a80000 >>> 0)) return true;
     // 169.254.0.0/16 — link-local
     if (((n & 0xffff0000) >>> 0) === (0xa9fe0000 >>> 0)) return true;
+    // 100.64.0.0/10 — RFC 6598 shared address space (Tailscale CGNAT).
+    // Trusted-as-LAN when lanBypass=true; tailnet peers are WireGuard+IdP authenticated.
+    if (((n & 0xffc00000) >>> 0) === (0x64400000 >>> 0)) return true;
     return false;
 }
 
@@ -94,7 +98,13 @@ export function isAllowedHost(hostHeader: string | undefined, lanAllowed: boolea
     const h = extractHost(hostHeader);
     if (!h) return false;
     if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
-    if (lanAllowed && isPrivateIP(h)) return true;
+    if (lanAllowed) {
+        if (isPrivateIP(h)) return true;
+        // Tailscale MagicDNS hostnames (*.ts.net) resolve to 100.64/10 peers.
+        // Peer IP is the real trust boundary (server.ts requireAuth → req.ip);
+        // Host header pass-through here avoids DNS-vs-IP mismatch.
+        if (h.endsWith('.ts.net')) return true;
+    }
     return false;
 }
 
@@ -111,7 +121,7 @@ export function isAllowedOrigin(
         const h = normalizeHostname(u.hostname);
         if (h === 'localhost' || h === '127.0.0.1' || h === '::1') return true;
         if (!lanAllowed) return false;
-        if (!isPrivateIP(h)) return false;
+        if (!isPrivateIP(h) && !h.endsWith('.ts.net')) return false;
         // DNS rebinding guard: Origin host/port must equal Host header host/port.
         if (hostHeader && !originMatchesHost(originUrl, hostHeader)) return false;
         return true;
