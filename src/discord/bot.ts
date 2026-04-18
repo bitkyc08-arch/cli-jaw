@@ -304,6 +304,10 @@ export async function initDiscord() {
     } catch (err) {
         console.error(`[discord] ❌ Login failed (network?): ${(err as Error).message}`);
         console.error('[discord] Disabling Discord for this session — restart to retry');
+        if (forwarderHandler) {
+            removeBroadcastListener(forwarderHandler);
+            forwarderHandler = null;
+        }
         try { await client.destroy(); } catch { /* ignore */ }
         return;
     }

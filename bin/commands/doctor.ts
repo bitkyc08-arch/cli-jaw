@@ -7,11 +7,11 @@ import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH } from '../../src/core/config.js';
+import { JAW_HOME, SETTINGS_PATH, DB_PATH, HEARTBEAT_JOBS_PATH, detectCli } from '../../src/core/config.js';
 import { detectSharedPathContamination } from '../../lib/mcp-sync.js';
+import { classifyClaudeInstall } from '../../src/core/claude-install.js';
 
 const HEARTBEAT_PATH = HEARTBEAT_JOBS_PATH;
-const PATH_LOOKUP_CMD = process.platform === 'win32' ? 'where' : 'which';
 
 const { values } = parseArgs({
     args: process.argv.slice(3),
@@ -28,13 +28,7 @@ const { values } = parseArgs({
 const results: Array<{ name: string; status: string; detail: string }> = [];
 
 function findBinaryPath(name: string): string | null {
-    try {
-        const out = execSync(`${PATH_LOOKUP_CMD} ${name}`, { encoding: 'utf8', stdio: 'pipe', timeout: 3000 }).trim();
-        const first = out.split(/\r?\n/).map(x => x.trim()).find(Boolean);
-        return first || null;
-    } catch {
-        return null;
-    }
+    return detectCli(name).path;
 }
 
 function isWSL() {
@@ -132,7 +126,18 @@ check('heartbeat.json', () => {
 for (const cli of ['claude', 'codex', 'gemini', 'opencode', 'copilot']) {
     check(`CLI: ${cli}`, () => {
         const found = findBinaryPath(cli);
-        if (found) return `installed (${found})`;
+        if (found) {
+            if (cli === 'claude') {
+                const kind = classifyClaudeInstall(found);
+                if (kind === 'node-managed') {
+                    return `installed (${found}) — npm/bun build detected; computer-use MCP is safer with native Claude install`;
+                }
+                if (kind === 'native') {
+                    return `installed (${found}) — native install detected`;
+                }
+            }
+            return `installed (${found})`;
+        }
         throw new Error('WARN: not installed');
     });
 }
@@ -428,12 +433,16 @@ if (!values.json) {
     const bh = netCfg.bindHost || '127.0.0.1';
     const lb = netCfg.lanBypass === true;
     const tokenEnv = !!process.env.JAW_AUTH_TOKEN;
+    const isLoopback = bh === '127.0.0.1' || bh === '::1' || bh === 'localhost';
+    const bindLabel = isLoopback ? '  (loopback only — LAN blocked)'
+        : bh === '0.0.0.0' ? '  (all interfaces — LAN accessible)'
+        : `  (interface ${bh} — LAN may be accessible)`;
     console.log('\n  Network');
-    console.log(`    bindHost          : ${bh}${bh === '0.0.0.0' ? '  (LAN accessible)' : '  (loopback only — LAN blocked)'}`);
+    console.log(`    bindHost          : ${bh}${bindLabel}`);
     console.log(`    lanBypass         : ${lb}`);
     console.log(`    JAW_AUTH_TOKEN env: ${tokenEnv ? 'persisted' : 'ephemeral (regenerated each start)'}`);
-    if (lb && bh === '127.0.0.1') {
-        console.log('    ⚠️  lanBypass is true but bindHost is 127.0.0.1 — LAN devices cannot connect');
+    if (lb && isLoopback) {
+        console.log(`    ⚠️  lanBypass is true but bindHost is ${bh} (loopback) — LAN devices cannot connect`);
         console.log('      Fix: set network.bindHost to "0.0.0.0" in settings.json, or use: cli-jaw serve --lan');
     }
     if (bh === '0.0.0.0' && !lb) {
@@ -446,7 +455,11 @@ if (values.json) {
     const bh = netCfg.bindHost || '127.0.0.1';
     const lb = netCfg.lanBypass === true;
     const networkIssues: string[] = [];
-    if (lb && bh === '127.0.0.1') networkIssues.push('lanBypass enabled but bindHost is loopback');
+    const isLoopbackJson = bh === '127.0.0.1' || bh === '::1' || bh === 'localhost';
+    if (lb && isLoopbackJson) networkIssues.push('lanBypass enabled but bindHost is loopback');
+    if (!isLoopbackJson && bh !== '0.0.0.0') {
+        networkIssues.push(`bindHost=${bh} — specific interface, LAN accessibility depends on routing`);
+    }
     const output: Record<string, any> = {
         checks: results,
         network: { bindHost: bh, lanBypass: lb, authTokenPersisted: !!process.env.JAW_AUTH_TOKEN, issues: networkIssues },

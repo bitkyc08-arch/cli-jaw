@@ -108,6 +108,7 @@ function attachTelegramForwarder(bot: any) {
 // ─── Transport Contract Exports ─────────────────────
 
 export async function shutdownTelegram() {
+    if (tgRetryTimer) { clearTimeout(tgRetryTimer); tgRetryTimer = null; }
     detachTelegramForwarder();
     if (!telegramBot) return;
     const old = telegramBot;

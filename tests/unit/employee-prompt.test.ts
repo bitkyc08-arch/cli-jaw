@@ -107,21 +107,10 @@ test('EMP-023: String phase "2" works same as number 2 (type coercion safety)', 
     assert.ok(v2num.includes('Code Review Guide (Phase 2'), 'Number 2 must inject reviewer');
 });
 
-test('EMP-024: research role injects read-only guide and phase 1 context', () => {
-    const emp = { name: 'Research', cli: 'claude', role: 'research' };
-    clearPromptCache();
-    const v2 = getEmployeePromptV2(emp, 'research', 1);
-    assert.ok(v2.includes('You are a RESEARCH employee'), 'phase 1 employee context should be present');
-    assert.ok(
-        v2.includes('Do NOT create/modify/delete files') || v2.includes('Read-only search'),
-        'research prompt should emphasize read-only behavior',
-    );
-});
-
 test('EMP-025: employee prompt uses employee naming and dispatch prohibition', () => {
-    const emp = { name: 'Research', cli: 'claude', role: 'research' };
+    const emp = { name: 'Backend', cli: 'claude', role: 'backend' };
     clearPromptCache();
-    const v2 = getEmployeePromptV2(emp, 'research', 1);
+    const v2 = getEmployeePromptV2(emp, 'backend', 1);
     assert.ok(v2.includes('jaw employee'), 'should reference jaw employee identity');
     assert.ok(v2.includes('NEVER re-dispatch jaw employees'), 'should prohibit employee dispatch');
     assert.ok(!v2.includes('worker agent in pipe mode'), 'should not use old worker pipe mode wording');

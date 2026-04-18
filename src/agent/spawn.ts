@@ -1169,15 +1169,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                     console.log(`[jaw:raw:${agentLabel}] ${line.slice(0, 300)}`);
                 }
                 logEventSummary(agentLabel, cli, event, ctx);
-                // Gemini watchdog: after result event, start kill timer if close doesn't come
+                if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, event);
+                extractFromEvent(cli, event, ctx, agentLabel, empTag);
+                // Gemini watchdog: AFTER extractFromEvent sets geminiResultSeen
                 if (cli === 'gemini' && ctx.geminiResultSeen && !geminiWatchdog) {
                     geminiWatchdog = setTimeout(() => {
                         console.warn(`[jaw:gemini-watchdog] ${agentLabel} — result seen but close not received after 10s, killing`);
                         try { child.kill('SIGTERM'); } catch { /* already dead */ }
                     }, 10000);
                 }
-                if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, event);
-                extractFromEvent(cli, event, ctx, agentLabel, empTag);
                 // Sub-agent wait: keep stall timer alive
                 if (ctx.hasActiveSubAgent) {
                     opts.lifecycle?.onActivity?.('heartbeat');

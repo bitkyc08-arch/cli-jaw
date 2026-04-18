@@ -245,9 +245,9 @@ const JAW_AUTH_TOKEN = process.env.JAW_AUTH_TOKEN || crypto.randomBytes(32).toSt
 initBossToken();
 
 function requireAuth(req: express.Request, res: express.Response, next: express.NextFunction) {
-    const host = req.hostname || req.ip || '';
-    const isLoopback = host === 'localhost' || host === '127.0.0.1' || host === '::1';
-    const isLanBypass = lanAllowed() && isPrivateIP(host);
+    const remoteIp = req.ip || req.socket?.remoteAddress || '';
+    const isLoopback = remoteIp === '127.0.0.1' || remoteIp === '::1' || remoteIp === '::ffff:127.0.0.1';
+    const isLanBypass = lanAllowed() && isPrivateIP(remoteIp);
     if (isLoopback || isLanBypass) {
         return next();
     }

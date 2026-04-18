@@ -35,8 +35,6 @@ const LEGACY_MAP: Record<string, string> = {
     '문서화, README, API docs': 'docs',
     'UI/UX, CSS, components': 'frontend',
     'API, DB, server logic': 'backend',
-    'Search, codebase exploration, uncertainty reduction, read-only reports': 'research',
-    'Search, codebase exploration, uncertainty reduction, read-only': 'research',
     'Data pipeline, analysis, ML': 'data',
     'Documentation, README, API docs': 'docs',
 };

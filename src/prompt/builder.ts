@@ -570,10 +570,6 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
             join(SKILLS_DIR, 'dev-backend', 'SKILL.md'),
             getRepoBundledSkillPath('skills', 'dev-backend', 'SKILL.md'),
         ]),
-        research: findFirstExistingPath([
-            join(SKILLS_REF_DIR, 'research-worker', 'SKILL.md'),
-            getRepoBundledSkillPath('skills_ref', 'research-worker', 'SKILL.md'),
-        ]),
         data: findFirstExistingPath([
             join(SKILLS_DIR, 'dev-data', 'SKILL.md'),
             getRepoBundledSkillPath('skills', 'dev-data', 'SKILL.md'),

@@ -14,6 +14,9 @@ test('AB-001: requireAuth uses isLoopback || isLanBypass branch', () => {
     const fnEnd = serverSrc.indexOf('\n}\n', fnStart);
     const fnBody = serverSrc.slice(fnStart, fnEnd);
 
+    assert.ok(fnBody.includes('remoteIp'), 'requireAuth must use remoteIp (not hostname)');
+    assert.ok(fnBody.includes('req.ip'), 'requireAuth must read req.ip');
+    assert.ok(fnBody.includes('::ffff:127.0.0.1'), 'must handle IPv4-mapped loopback');
     assert.ok(fnBody.includes('isLoopback'), 'requireAuth must define isLoopback');
     assert.ok(fnBody.includes('isLanBypass'), 'requireAuth must define isLanBypass');
     assert.ok(fnBody.includes('lanAllowed()'), 'isLanBypass must gate on lanAllowed()');
