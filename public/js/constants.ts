@@ -14,7 +14,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     claude: {
         label: 'Claude',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-        models: ['claude-opus-4-6', 'claude-opus-4-6[1m]', 'sonnet', 'opus', 'sonnet[1m]', 'opus[1m]', 'haiku'],
+        models: ['claude-opus-4-6[1m]', 'claude-opus-4-6', 'claude-opus-4-7[1m]', 'claude-opus-4-7', 'claude-sonnet-4-6[1m]', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
     },
     codex: {
         label: 'Codex',
