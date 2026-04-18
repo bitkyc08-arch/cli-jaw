@@ -250,6 +250,9 @@ test('S-024: doctor uses npm root -g for playwright-core detection', async () =>
         'utf8'
     );
     assert.ok(doctorCode.includes('npm root -g'), 'doctor.ts should use npm root -g for global package detection');
+    assert.ok(doctorCode.includes('detectCli'), 'doctor.ts should reuse detectCli for CLI lookup');
+    assert.ok(doctorCode.includes('computer-use MCP is safer with native Claude install'),
+        'doctor.ts should warn when Claude looks node-managed');
 });
 
 test('S-025: install.sh verifies Chromium binary after install', async () => {
@@ -274,6 +277,12 @@ test('S-026: install.sh uses npm root -g for playwright-core detection', () => {
         'utf8'
     );
     assert.ok(installCode.includes('npm root -g'), 'install.sh should use npm root -g like doctor.ts');
+    assert.ok(installCode.includes('npm view cli-jaw version'),
+        'install.sh should check latest published cli-jaw version before reinstalling');
+    assert.ok(installCode.includes('skipping npm install'),
+        'install.sh should skip reinstall when the latest version is already installed');
+    assert.ok(installCode.includes('computer-use MCP'),
+        'install.sh should include Claude computer-use guidance');
 });
 
 test('S-027: install.sh verifies chromium via --version not just command -v', () => {

@@ -103,6 +103,8 @@ jaw serve
 Open **http://localhost:3457**. Requires Node.js 22+ and at least one AI CLI authenticated below.
 
 > `jaw service install` — auto-start on boot (systemd, launchd, or Docker, auto-detected).
+>
+> Claude Code note: if you need Anthropic computer-use MCP, prefer the native Claude installer (`curl -fsSL https://claude.ai/install.sh | bash` or `claude install`). `jaw doctor` now warns when `claude` looks npm/bun-managed.
 
 ---
 
@@ -116,8 +118,8 @@ copilot login        # GitHub Copilot
 opencode             # OpenCode — free models available
 
 # Paid (monthly subscription)
-claude auth          # Anthropic Claude Max
-codex login          # OpenAI ChatGPT Pro
+claude auth          # Anthropic Claude Max (computer-use MCP users: native Claude install recommended)
+codex login          # OpenAI ChatGPT Pro (npm/bun installs are fine)
 gemini               # Google Gemini Advanced
 ```
 
@@ -450,6 +452,7 @@ See [TESTS.md](TESTS.md) for current inventory and pass counts.
 | Problem | Solution |
 |---|---|
 | `cli-jaw: command not found` | `npm install -g cli-jaw` again. Check `npm bin -g` is in `$PATH` |
+| Claude computer-use MCP fails | Reinstall Claude natively: `curl -fsSL https://claude.ai/install.sh \| bash` or run `claude install`, then re-run `jaw doctor` |
 | `Error: node version` | Upgrade to Node.js 22+: `nvm install 22` |
 | `NODE_MODULE_VERSION` mismatch | `npm run ensure:native` (auto-rebuild) |
 | Agent timeout | `jaw doctor` to check CLI auth |

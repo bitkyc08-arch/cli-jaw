@@ -33,6 +33,133 @@ echo ""
 
 NODE_MAJOR=22
 
+extract_semver() {
+  printf '%s' "${1:-}" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1 || true
+}
+
+resolve_cmd() {
+  command -v "$1" 2>/dev/null || true
+}
+
+get_installed_jaw_binary() {
+  local jaw_bin
+  jaw_bin="$(resolve_cmd jaw)"
+  if [ -n "$jaw_bin" ]; then
+    printf '%s\n' "$jaw_bin"
+    return 0
+  fi
+
+  local cli_jaw_bin
+  cli_jaw_bin="$(resolve_cmd cli-jaw)"
+  if [ -n "$cli_jaw_bin" ]; then
+    printf '%s\n' "$cli_jaw_bin"
+    return 0
+  fi
+
+  return 1
+}
+
+get_binary_version() {
+  local bin_path="${1:-}"
+  if [ -z "$bin_path" ]; then
+    return 0
+  fi
+  extract_semver "$("$bin_path" --version 2>/dev/null | head -n1)"
+}
+
+get_latest_cli_jaw_version() {
+  extract_semver "$(npm view cli-jaw version 2>/dev/null || true)"
+}
+
+realpath_fallback() {
+  local target="${1:-}"
+  if [ -z "$target" ]; then
+    return 0
+  fi
+  node -e "const fs=require('fs');const p=process.argv[1];try{console.log(fs.realpathSync(p));}catch{console.log(p)}" "$target" 2>/dev/null || printf '%s\n' "$target"
+}
+
+# Shell-level Claude install classifier — mirrors src/core/claude-install.ts
+# Returns: native | node-managed | unknown
+classify_claude_install_sh() {
+  local bin_path="${1:-}"
+  local real_path="${2:-}"
+  if [ -z "$bin_path" ]; then
+    echo "unknown"
+    return 0
+  fi
+
+  # Check native paths
+  case "$bin_path" in
+    "$HOME/.local/bin/claude"|"$HOME/.claude/local/bin/claude")
+      echo "native"
+      return 0
+      ;;
+  esac
+
+  # Check realpath for node_modules or native
+  if [ -n "$real_path" ]; then
+    case "$real_path" in
+      */node_modules/@anthropic-ai/claude-code/*)
+        echo "node-managed"
+        return 0
+        ;;
+      */.claude/local/*)
+        echo "native"
+        return 0
+        ;;
+    esac
+  fi
+
+  # Check bun bin
+  case "$bin_path" in
+    */.bun/bin/claude)
+      echo "node-managed"
+      return 0
+      ;;
+  esac
+
+  echo "unknown"
+}
+
+print_cli_dependency_guidance() {
+  echo ""
+  info "CLI dependency guidance"
+
+  warn "Claude Code users who need computer-use MCP should prefer Anthropic's native installer:"
+  echo -e "${DIM}   curl -fsSL https://claude.ai/install.sh | bash${NC}"
+  echo -e "${DIM}   or run: claude install${NC}"
+
+  local claude_bin claude_real claude_kind
+  claude_bin="$(resolve_cmd claude)"
+  if [ -n "$claude_bin" ]; then
+    claude_real="$(realpath_fallback "$claude_bin")"
+    claude_kind="$(classify_claude_install_sh "$claude_bin" "$claude_real")"
+    case "$claude_kind" in
+      native)
+        ok "Claude CLI looks native (${claude_bin})"
+        ;;
+      node-managed)
+        warn "Claude CLI appears npm/bun-managed (${claude_bin})"
+        warn "For computer-use MCP, reinstall Claude natively or run: claude install"
+        ;;
+      *)
+        warn "Claude CLI detected at ${claude_bin} — verify it is native if you need computer-use MCP"
+        ;;
+    esac
+  else
+    warn "Claude CLI not detected — install only if you plan to use Claude"
+  fi
+
+  local codex_bin
+  codex_bin="$(resolve_cmd codex)"
+  if [ -n "$codex_bin" ]; then
+    ok "Codex CLI detected (${codex_bin}) — npm/bun/global installs are fine"
+  else
+    info "Optional: install Codex with npm or bun if you want OpenAI as a backend"
+  fi
+}
+
 # ═══════════════════════════════════════
 #  Step 1: Ensure Node.js ≥ 22
 # ═══════════════════════════════════════
@@ -97,9 +224,53 @@ ensure_node() {
 #  Step 2: Install CLI-JAW
 # ═══════════════════════════════════════
 install_cli_jaw() {
-  info "Installing CLI-JAW..."
-  npm install -g cli-jaw
-  ok "CLI-JAW $(jaw --version 2>/dev/null || echo '') installed"
+  local installed_bin installed_version latest_version
+  installed_bin="$(get_installed_jaw_binary || true)"
+  installed_version="$(get_binary_version "$installed_bin")"
+  latest_version="$(get_latest_cli_jaw_version)"
+
+  # If npm view failed (network issue) and we already have a working install, skip
+  if [ -z "$latest_version" ] && [ -n "$installed_bin" ] && [ -n "$installed_version" ]; then
+    warn "Could not fetch latest version (network issue?) — keeping existing ${installed_version}"
+    ok "CLI-JAW ${installed_version} at ${installed_bin} — skipping update"
+    return 0
+  fi
+
+  if [ -n "$installed_bin" ] && [ -n "$installed_version" ] && [ -n "$latest_version" ] && [ "$installed_version" = "$latest_version" ]; then
+    ok "CLI-JAW ${installed_version} already installed at ${installed_bin} — skipping npm install"
+    return 0
+  fi
+
+  # Detect package manager from existing install path to avoid shared-path contamination
+  local pkg_cmd="npm install -g cli-jaw"
+  if [ -n "$installed_bin" ]; then
+    case "$installed_bin" in
+      *"/.bun/bin/"*)
+        pkg_cmd="bun add -g cli-jaw"
+        info "Detected bun-managed install — using bun"
+        ;;
+      *)
+        info "Using npm for global install"
+        ;;
+    esac
+  fi
+
+  if [ -n "$installed_bin" ] && [ -n "$installed_version" ]; then
+    info "Updating CLI-JAW ${installed_version} → ${latest_version:-latest}"
+  else
+    info "Installing CLI-JAW..."
+  fi
+  eval "$pkg_cmd"
+
+  # Post-install verification: re-resolve and check version
+  local new_bin new_ver
+  new_bin="$(get_installed_jaw_binary || true)"
+  new_ver="$(get_binary_version "$new_bin")"
+  if [ -n "$new_bin" ] && [ -n "$new_ver" ]; then
+    ok "CLI-JAW ${new_ver} installed at ${new_bin}"
+  else
+    warn "CLI-JAW install completed but binary not responding — check your PATH"
+  fi
 }
 
 # ═══════════════════════════════════════
@@ -190,6 +361,7 @@ install_browser_deps() {
 ensure_node
 install_cli_jaw
 install_browser_deps
+print_cli_dependency_guidance
 
 echo ""
 echo -e "${GREEN}${BOLD}  🎉 All done!${NC}"

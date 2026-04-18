@@ -18,7 +18,10 @@ test('SRH-001: buildServicePath augments minimal PATH with common service-safe d
     const built = buildServicePath('/usr/bin:/bin', []);
     assert.match(built, /\/usr\/local\/bin/);
     assert.match(built, /\/opt\/homebrew\/bin/);
+    assert.match(built, /\.claude\/local\/bin/);
     assert.match(built, /\/usr\/bin/);
+    assert.match(built, /\.deno\/bin/, 'should include deno bin');
+    assert.match(built, /\/opt\/homebrew\/opt\/node@22\/bin/, 'should include keg-only node@22');
 });
 
 test('SRH-002: buildServicePath discovers managed node bins from a custom home', () => {
@@ -139,4 +142,66 @@ test('SRH-011: migration lock has PID staleness check', () => {
         'must use signal 0 to check PID existence');
     assert.match(src, /stale lock/,
         'must log when removing stale lock');
+});
+
+// ─── Phase 1: installer/PATH hardening ─────────────────
+
+const CLAUDE_INSTALL = path.join(ROOT, 'src/core/claude-install.ts');
+const DOCTOR = path.join(ROOT, 'bin/commands/doctor.ts');
+const INSTALL_SH = path.join(ROOT, 'scripts/install.sh');
+
+test('SRH-012: classifyClaudeInstall extracted to shared module', () => {
+    const src = fs.readFileSync(CLAUDE_INSTALL, 'utf8');
+    assert.match(src, /export function classifyClaudeInstall/,
+        'classifyClaudeInstall must be exported from shared module');
+    assert.match(src, /export type ClaudeInstallKind/,
+        'ClaudeInstallKind type must be exported');
+});
+
+test('SRH-013: doctor.ts imports classifyClaudeInstall from shared module', () => {
+    const src = fs.readFileSync(DOCTOR, 'utf8');
+    assert.match(src, /import \{ classifyClaudeInstall \} from '\.\.\/\.\.\/src\/core\/claude-install\.js'/,
+        'doctor must import from shared claude-install module');
+    assert.ok(!src.includes('function classifyClaudeInstall'),
+        'doctor must NOT define its own classifyClaudeInstall');
+});
+
+test('SRH-014: install.sh handles network failure gracefully', () => {
+    const src = fs.readFileSync(INSTALL_SH, 'utf8');
+    assert.ok(src.includes('Could not fetch latest version'),
+        'install.sh must warn on npm view failure');
+    assert.ok(src.includes('keeping existing'),
+        'install.sh must keep existing install on network failure');
+});
+
+test('SRH-015: install.sh detects package manager from install path', () => {
+    const src = fs.readFileSync(INSTALL_SH, 'utf8');
+    assert.ok(src.includes('bun add -g cli-jaw'),
+        'install.sh must use bun for bun-managed installs');
+    assert.ok(src.includes('Detected bun-managed install'),
+        'install.sh must inform about bun detection');
+});
+
+test('SRH-016: install.sh verifies binary after install', () => {
+    const src = fs.readFileSync(INSTALL_SH, 'utf8');
+    assert.ok(src.includes('binary not responding'),
+        'install.sh must warn if post-install verification fails');
+    assert.ok(src.includes('get_installed_jaw_binary') && src.includes('get_binary_version'),
+        'install.sh must re-resolve binary after install');
+});
+
+test('SRH-017: install.sh has shell-level classify_claude_install_sh', () => {
+    const src = fs.readFileSync(INSTALL_SH, 'utf8');
+    assert.ok(src.includes('classify_claude_install_sh()'),
+        'install.sh must define classify_claude_install_sh helper');
+    assert.ok(src.includes('mirrors src/core/claude-install.ts'),
+        'install.sh must document that shell classifier mirrors TS module');
+});
+
+test('SRH-018: runtime-path includes deno and keg-only node paths', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'src/core/runtime-path.ts'), 'utf8');
+    assert.ok(src.includes("'.deno', 'bin'"),
+        'runtime-path must include deno bin');
+    assert.ok(src.includes("'/opt/homebrew/opt/node@22/bin'"),
+        'runtime-path must include keg-only node@22');
 });

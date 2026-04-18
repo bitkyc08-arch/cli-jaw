@@ -47,6 +47,7 @@ export function buildServicePath(
     const defaults = [
         dirname(process.execPath),
         join(homeDir, '.local', 'bin'),
+        join(homeDir, '.claude', 'local', 'bin'),
         join(homeDir, 'bin'),
         join(homeDir, '.npm-global', 'bin'),
         join(homeDir, '.yarn', 'bin'),
@@ -54,12 +55,14 @@ export function buildServicePath(
         join(homeDir, '.cargo', 'bin'),
         join(homeDir, '.bun', 'bin'),
         join(homeDir, '.volta', 'bin'),
+        join(homeDir, '.deno', 'bin'),
         join(homeDir, '.asdf', 'shims'),
         join(homeDir, '.asdf', 'bin'),
         join(homeDir, '.nodenv', 'shims'),
         join(homeDir, '.nodenv', 'bin'),
         '/opt/homebrew/bin',
         '/opt/homebrew/sbin',
+        '/opt/homebrew/opt/node@22/bin',
         '/usr/local/bin',
         '/usr/local/sbin',
         '/home/linuxbrew/.linuxbrew/bin',
@@ -73,4 +76,3 @@ export function buildServicePath(
 
     return uniquePaths([...seeded, ...extraDirs, ...defaults]).join(delimiter);
 }
-
