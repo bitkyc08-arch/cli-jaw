@@ -596,7 +596,10 @@ server.listen(PORT, bindHost, async () => {
     }
     log.info(`  DB:     ${DB_PATH}`);
     log.info(`  Prompts: ${PROMPTS_DIR}`);
-    log.info(`  Auth:   ${JAW_AUTH_TOKEN.slice(0, 8)}... (token required for ALL requests)`);
+    const authDesc = lanAllowed()
+        ? 'token required for non-LAN requests'
+        : 'token required for remote requests (localhost bypassed)';
+    log.info(`  Auth:   ${JAW_AUTH_TOKEN.slice(0, 8)}... (${authDesc})`);
     log.info(`  curl:   curl -H "Authorization: Bearer $(cat ~/.cli-jaw/token)" http://localhost:${PORT}/api/status\n`);
 
     // Auto-open browser (opt-in via JAW_OPEN_BROWSER=1, set by `jaw serve --open`)
