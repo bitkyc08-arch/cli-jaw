@@ -21,8 +21,6 @@ export interface OrcContext {
   origin: string;
   target?: RemoteTarget;
   chatId?: string | number;
-  researchReport?: string | null;
-  researchNeeded?: boolean;
 }
 
 // ─── State Read/Write (DB-backed) ───────────────────
