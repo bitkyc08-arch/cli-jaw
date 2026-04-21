@@ -632,10 +632,19 @@ export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | 
 
 export function clearPromptCache() { promptCache.clear(); }
 
+let _lastPromptHash = '';
+
 export function regenerateB() {
     clearTemplateCache();
     clearPromptCache();
     const fullPrompt = getSystemPrompt({ forDisk: true });
+
+    // Skip file write if content unchanged — preserves mtime so CLI prompt
+    // caching (Claude --append, Codex resume) is not invalidated each turn.
+    const hash = createHash('sha256').update(fullPrompt).digest('hex');
+    if (hash === _lastPromptHash) return;
+    _lastPromptHash = hash;
+
     fs.writeFileSync(join(PROMPTS_DIR, 'B.md'), fullPrompt);
 
     // Generate {workDir}/AGENTS.md — read by Codex, Copilot, and OpenCode
@@ -646,8 +655,4 @@ export function regenerateB() {
     } catch (e: unknown) {
         console.error(`[prompt] AGENTS.md generation failed:`, (e as Error).message);
     }
-
-    // Session invalidation removed: all CLIs (Claude, Copilot, Codex, Gemini)
-    // dynamically reload AGENTS.md on resume. Nullifying session_id was breaking
-    // conversation continuity on every message.
 }
