@@ -43,6 +43,23 @@ const PHASE_COLORS: Record<string, string> = {
     '1': '#60a5fa', '2': '#a78bfa', '3': '#34d399', '4': '#fbbf24', '5': '#f472b6'
 };
 
+function normalizeEmployeeModel(cli: string, model?: string): string {
+    if (cli !== 'claude') return model || 'default';
+    switch ((model || '').trim()) {
+        case 'sonnet': return 'claude-sonnet-4-6';
+        case 'opus': return 'claude-opus-4-6';
+        case 'sonnet[1m]': return 'claude-sonnet-4-6[1m]';
+        case 'opus[1m]': return 'claude-opus-4-6[1m]';
+        default: return model || 'default';
+    }
+}
+
+function getDefaultEmployeeModel(cli: string, models: string[]): string {
+    if (cli !== 'claude') return 'default';
+    if (models.includes('claude-sonnet-4-6')) return 'claude-sonnet-4-6';
+    return models[0] || 'default';
+}
+
 export async function loadEmployees(): Promise<void> {
     const data = await api<Employee[]>('/api/employees');
     state.employees = data || [];
@@ -61,6 +78,7 @@ export function renderEmployees(): void {
     el.innerHTML = employees.map(a => {
         const isStatic = a.source === 'static';
         const models = MODEL_MAP[a.cli] || [];
+        const selectedModel = normalizeEmployeeModel(a.cli, a.model);
         const legacyVal = LEGACY_MAP[a.role || ''];
         const matched: RolePreset | undefined = legacyVal
             ? ROLE_PRESETS.find(r => r.value === legacyVal)
@@ -116,9 +134,9 @@ export function renderEmployees(): void {
                 <div>
                     <label>Model</label>
                     <select data-emp-model="${escapeHtml(a.id)}">
-                        <option value="default"${(!a.model || a.model === 'default') ? ' selected' : ''}>default</option>
-                        ${models.map(m => `<option${a.model === m ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}
-                        ${a.model && a.model !== 'default' && !models.includes(a.model) ? `<option selected>${escapeHtml(a.model)}</option>` : ''}
+                        <option value="default"${selectedModel === 'default' ? ' selected' : ''}>default</option>
+                        ${models.map(m => `<option${selectedModel === m ? ' selected' : ''}>${escapeHtml(m)}</option>`).join('')}
+                        ${selectedModel !== 'default' && !models.includes(selectedModel) ? `<option selected>${escapeHtml(selectedModel)}</option>` : ''}
                         <option value="__custom__">${t('emp.customModel')}</option>
                     </select>
                 </div>
@@ -149,13 +167,15 @@ export async function deleteEmployee(id: string): Promise<void> {
 
 export function onEmpCliChange(id: string, cli: string): void {
     const models = MODEL_MAP[cli] || [];
+    const nextModel = getDefaultEmployeeModel(cli, models);
     const sel = document.querySelector(`[data-emp-model="${id}"]`) as HTMLSelectElement | null;
     if (sel) {
-        sel.innerHTML = `<option value="default" selected>default</option>` +
+        sel.innerHTML = `<option value="default">default</option>` +
             models.map(m => `<option>${escapeHtml(m)}</option>`).join('') +
             `<option value="__custom__">${t('emp.customModel')}</option>`;
+        sel.value = nextModel;
     }
-    updateEmployee(id, { cli, model: cli === 'claude' ? 'sonnet' : 'default' });
+    updateEmployee(id, { cli, model: nextModel });
 }
 
 export function onEmpRoleChange(id: string, presetVal: string): void {
