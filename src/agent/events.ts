@@ -464,10 +464,16 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 const model = event.part?.model || event.model;
                 if (model) ctx.model = model;
                 ctx.opencodeStepText = '';
+                ctx.opencodeSawToolInStep = false;
+                ctx.opencodeTextAfterLastTool = false;
                 pushTrace(ctx, `[${agentLabel}] opencode step_start${model ? ` model=${model}` : ''}`);
             }
             if (event.type === 'text' && event.part?.text) {
                 ctx.opencodeStepText = (ctx.opencodeStepText || '') + String(event.part.text);
+                if (ctx.opencodeSawToolInStep) ctx.opencodeTextAfterLastTool = true;
+            } else if (event.type === 'tool_use') {
+                ctx.opencodeSawToolInStep = true;
+                ctx.opencodeTextAfterLastTool = false;
             } else if (event.type === 'step_finish' && event.part) {
                 ctx.sessionId = event.sessionID;
                 // [P0-1.7] Accumulate tokens across steps (not overwrite)
@@ -494,7 +500,10 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     ctx.finishReason = event.part.reason;
                 }
                 const stepText = ctx.opencodeStepText || '';
-                const shouldCommitText = stepText && event.part.reason !== 'tool-calls';
+                const shouldCommitText = stepText && (
+                    event.part.reason !== 'tool-calls'
+                    || !!ctx.opencodeTextAfterLastTool
+                );
                 if (shouldCommitText) {
                     ctx.fullText += stepText;
                     ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + stepText;
@@ -505,6 +514,8 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     );
                 }
                 ctx.opencodeStepText = '';
+                ctx.opencodeSawToolInStep = false;
+                ctx.opencodeTextAfterLastTool = false;
                 // [P2-3.12] Store step timing
                 if (event.part.time) {
                     if (!ctx.metadata) ctx.metadata = {};

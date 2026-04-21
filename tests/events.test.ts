@@ -780,6 +780,47 @@ test('opencode buffers pre-tool text until step_finish and discards tool-call ch
     );
 });
 
+test('opencode keeps text emitted after tool_use even when step_finish reason is tool-calls', () => {
+    const ctx = {
+        toolLog: [],
+        fullText: '',
+        traceLog: [],
+        pendingOutputChunk: '',
+        opencodeStepText: '',
+        opencodeSawToolInStep: false,
+        opencodeTextAfterLastTool: false,
+    };
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'tool_use',
+        part: {
+            tool: 'read',
+            callID: 'read:0',
+            state: { status: 'error', input: { filePath: '/Users/jun/.config/opencode/config.json' } },
+        },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'text',
+        part: { text: 'I could not read that file because permission was denied.' },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'step_finish',
+        sessionID: 'oc-1',
+        part: { reason: 'tool-calls' },
+    }, ctx, 'oc');
+
+    assert.equal(ctx.fullText, 'I could not read that file because permission was denied.');
+    assert.equal(
+        extractOutputChunk('opencode', {
+            type: 'step_finish',
+            sessionID: 'oc-1',
+            part: { reason: 'tool-calls' },
+        }, ctx),
+        'I could not read that file because permission was denied.',
+    );
+});
+
 // ─── #107 Gemini thought/thinking filtering ───
 
 test('#107: extractOutputChunk skips Gemini thought events', () => {
