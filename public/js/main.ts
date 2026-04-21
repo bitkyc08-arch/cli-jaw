@@ -1,15 +1,39 @@
 // ── App Entry Point ──
-// All event bindings happen here (no inline onclick in HTML)
-
-// CSS imports — bundled by Vite
+// All event bindings happen here (no inline onclick in HTML). CSS imports are bundled by Vite.
 import 'katex/dist/katex.min.css';
+
+const STALE_BUNDLE_RELOAD_KEY = 'jaw:stale-bundle-reload-pending';
+function recoverFromStaleBundle(error: unknown): boolean {
+    const message = typeof error === 'string' ? error
+        : error instanceof Error ? error.message
+        : typeof (error as { message?: unknown })?.message === 'string' ? (error as { message: string }).message
+        : '';
+    if (!/(failed to fetch dynamically imported module|error loading dynamically imported module|importing a module script failed|chunkloaderror)/i.test(message)) return false;
+    console.warn('[stale-bundle] detected dynamic import failure:', message);
+    try { if (sessionStorage.getItem(STALE_BUNDLE_RELOAD_KEY) === '1') return true; sessionStorage.setItem(STALE_BUNDLE_RELOAD_KEY, '1'); } catch {}
+    const reload = () => window.location.reload();
+    if ('serviceWorker' in navigator) {
+        void navigator.serviceWorker.getRegistration().then(r => r?.update()).catch(() => {}).finally(reload);
+        return true;
+    }
+    reload();
+    return true;
+}
 
 // ── Global Error Boundary ──
 window.addEventListener('unhandledrejection', (e) => {
+    if (recoverFromStaleBundle(e.reason)) {
+        e.preventDefault();
+        return;
+    }
     console.error('[unhandled]', e.reason);
     e.preventDefault();
 });
 window.addEventListener('error', (e) => {
+    if (recoverFromStaleBundle(e.error || e.message)) {
+        e.preventDefault();
+        return;
+    }
     console.error('[error]', e.message, e.filename, e.lineno);
 });
 
@@ -439,6 +463,7 @@ async function bootstrap(): Promise<void> {
     initSidebar();
     initMsgCopy();
     initGestures();
+    try { sessionStorage.removeItem(STALE_BUNDLE_RELOAD_KEY); } catch {}
 
     // Register Service Worker (production only — Vite HMR handles dev)
     if ('serviceWorker' in navigator && !import.meta.env.DEV) {
