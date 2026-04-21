@@ -21,6 +21,34 @@ export interface VirtualItem {
 }
 
 export type LazyRenderCallback = (targets: HTMLElement[]) => void;
+type MeasurableVirtualElement = Pick<HTMLElement, 'getBoundingClientRect'>;
+
+function readMeasuredHeight(el: MeasurableVirtualElement): number {
+    const height = Math.ceil(el.getBoundingClientRect().height);
+    return Number.isFinite(height) && height > 0 ? height : 0;
+}
+
+export function syncMeasuredItemHeight(
+    items: VirtualItem[],
+    index: number,
+    el: MeasurableVirtualElement,
+): void {
+    if (!items[index]) return;
+    const height = readMeasuredHeight(el);
+    if (height > 0) items[index].height = height;
+}
+
+export function remeasureMountedVirtualItems(
+    items: VirtualItem[],
+    mounted: Map<number, MeasurableVirtualElement>,
+    virtualizer: Pick<Virtualizer<HTMLElement, HTMLElement>, 'measureElement'> | null,
+): void {
+    if (!virtualizer) return;
+    for (const [index, el] of mounted) {
+        syncMeasuredItemHeight(items, index, el);
+        virtualizer.measureElement(el as HTMLElement);
+    }
+}
 
 export class VirtualScroll {
     private items: VirtualItem[] = [];
@@ -57,6 +85,19 @@ export class VirtualScroll {
         this.itemGap = parseFloat(getComputedStyle(probe).marginBottom) || 0;
         probe.remove();
         return this.itemGap;
+    }
+
+    private invalidateLayout(): void {
+        if (!this.virtualizer) return;
+        this.itemGap = 0;
+        const newGap = this.measureGap();
+        this.virtualizer.setOptions({
+            ...this.virtualizer.options,
+            gap: newGap,
+        });
+        this.virtualizer.measure();
+        remeasureMountedVirtualItems(this.items, this.mounted, this.virtualizer);
+        this.renderItems();
     }
 
     // ── Public API (preserved for callers) ──
@@ -189,7 +230,9 @@ export class VirtualScroll {
             indexAttribute: 'data-vs-idx',
         });
 
-        this.cleanupFn = this.virtualizer._didMount();
+        const cleanupFns: Array<() => void> = [];
+        const mountCleanup = this.virtualizer._didMount();
+        if (mountCleanup) cleanupFns.push(mountCleanup);
 
         // ── Resize invalidation ──
         // When viewport width changes, message text reflows and heights change.
@@ -197,26 +240,35 @@ export class VirtualScroll {
         // container width — a window resize doesn't trigger item RO callbacks
         // because items are position:absolute (width from left:0 + right:0).
         let resizeRaf = 0;
-        const onResize = () => {
+        const scheduleInvalidateLayout = () => {
             cancelAnimationFrame(resizeRaf);
             resizeRaf = requestAnimationFrame(() => {
-                if (!this.virtualizer) return;
-                this.itemGap = 0;
-                const newGap = this.measureGap();
-                this.virtualizer.setOptions({
-                    ...this.virtualizer.options,
-                    gap: newGap,
-                });
-                this.virtualizer.measure();
+                this.invalidateLayout();
             });
         };
+        const onResize = () => scheduleInvalidateLayout();
         window.addEventListener('resize', onResize);
-        const prevCleanup = this.cleanupFn;
-        this.cleanupFn = () => {
+        cleanupFns.push(() => {
             window.removeEventListener('resize', onResize);
             cancelAnimationFrame(resizeRaf);
-            prevCleanup?.();
-        };
+        });
+
+        if (typeof ResizeObserver !== 'undefined') {
+            let prevWidth = this.container.clientWidth;
+            let prevHeight = this.container.clientHeight;
+            const containerObserver = new ResizeObserver((entries) => {
+                const rect = entries[0]?.contentRect;
+                if (!rect) return;
+                const width = Math.round(rect.width);
+                const height = Math.round(rect.height);
+                if (width === prevWidth && height === prevHeight) return;
+                prevWidth = width;
+                prevHeight = height;
+                scheduleInvalidateLayout();
+            });
+            containerObserver.observe(this.container);
+            cleanupFns.push(() => containerObserver.disconnect());
+        }
 
         // ── bfcache restoration ──
         // pageshow fires when page is restored from bfcache (persisted=true).
@@ -224,19 +276,12 @@ export class VirtualScroll {
         // restores the JS heap with stale cached measurements.
         const onPageShow = (e: PageTransitionEvent) => {
             if (!e.persisted || !this.virtualizer) return;
-            this.itemGap = 0;
-            const newGap = this.measureGap();
-            this.virtualizer.setOptions({
-                ...this.virtualizer.options,
-                gap: newGap,
-            });
-            this.virtualizer.measure();
+            scheduleInvalidateLayout();
         };
         window.addEventListener('pageshow', onPageShow);
-        const prevCleanup2 = this.cleanupFn;
         this.cleanupFn = () => {
             window.removeEventListener('pageshow', onPageShow);
-            prevCleanup2?.();
+            for (const cleanup of cleanupFns.reverse()) cleanup();
         };
 
         this.virtualizer._willUpdate();
@@ -340,6 +385,8 @@ export class VirtualScroll {
         // Now measure real heights — elements have their final rendered content.
         // Only for newly mounted elements (already-observed ones are tracked).
         for (const el of newlyMounted) {
+            const index = Number(el.dataset.vsIdx || '-1');
+            syncMeasuredItemHeight(this.items, index, el);
             this.virtualizer!.measureElement(el);
         }
     }

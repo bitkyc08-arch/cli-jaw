@@ -9,7 +9,10 @@ import {
     bootstrapVirtualHistory,
     type VirtualHistoryBootstrapDeps,
 } from '../../public/js/virtual-scroll-bootstrap.js';
-import type { VirtualItem } from '../../public/js/virtual-scroll.js';
+import {
+    remeasureMountedVirtualItems,
+    type VirtualItem,
+} from '../../public/js/virtual-scroll.js';
 
 function makeMessageFixture(count: number): VirtualItem[] {
     return Array.from({ length: count }, (_, i) => ({
@@ -80,5 +83,30 @@ describe('bootstrapVirtualHistory', () => {
 
         const setEntry = log.find(s => s.startsWith('setItems'));
         assert.ok(setEntry?.includes('autoActivate=false'));
+    });
+
+    it('remeasureMountedVirtualItems refreshes cached heights for mounted rows', () => {
+        const items = makeMessageFixture(3);
+        const measured = [
+            { getBoundingClientRect: () => ({ height: 128 }) },
+            { getBoundingClientRect: () => ({ height: 212 }) },
+        ];
+        const mounted = new Map<number, any>([
+            [0, measured[0]],
+            [2, measured[1]],
+        ]);
+        const calls: unknown[] = [];
+        const virtualizer = {
+            measureElement: (el: unknown) => {
+                calls.push(el);
+            },
+        };
+
+        remeasureMountedVirtualItems(items, mounted, virtualizer);
+
+        assert.equal(items[0]?.height, 128);
+        assert.equal(items[1]?.height, 80);
+        assert.equal(items[2]?.height, 212);
+        assert.deepEqual(calls, measured);
     });
 });
