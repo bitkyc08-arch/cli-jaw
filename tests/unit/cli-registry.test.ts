@@ -52,6 +52,7 @@ test('opencode registry includes OpenCode Go models', () => {
         'opencode-go/glm-5',
         'opencode-go/glm-5.1',
         'opencode-go/kimi-k2.5',
+        'opencode-go/kimi-k2.6',
         'opencode-go/mimo-v2-pro',
         'opencode-go/mimo-v2-omni',
         'opencode-go/minimax-m2.5',
@@ -63,6 +64,10 @@ test('opencode registry includes OpenCode Go models', () => {
 
 test('copilot registry excludes deprecated claude-opus-4.6-fast', () => {
     assert.ok(!CLI_REGISTRY.copilot.models.includes('claude-opus-4.6-fast'));
+});
+
+test('copilot registry excludes claude-opus-4.6', () => {
+    assert.ok(!CLI_REGISTRY.copilot.models.includes('claude-opus-4.6'));
 });
 
 test('codex and copilot registries include gpt-5.4-mini', () => {

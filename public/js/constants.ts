@@ -41,6 +41,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'opencode-go/glm-5',
             'opencode-go/glm-5.1',
             'opencode-go/kimi-k2.5',
+            'opencode-go/kimi-k2.6',
             'opencode-go/mimo-v2-pro',
             'opencode-go/mimo-v2-omni',
             'opencode-go/minimax-m2.5',
@@ -59,7 +60,6 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         models: [
             'gpt-5.5',
             'claude-sonnet-4.6',
-            'claude-opus-4.6',
             'claude-haiku-4.5',
             'gpt-5.4',
             'gpt-5.3-codex',
