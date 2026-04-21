@@ -6,7 +6,7 @@ import crypto from 'node:crypto';
 import { join } from 'path';
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
-import { settings, UPLOADS_DIR, detectCli } from '../core/config.js';
+import { settings, UPLOADS_DIR, detectCli, normalizeModelForCli } from '../core/config.js';
 import {
     clearEmployeeSession, getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
     listQueuedMessages, insertQueuedMessage, deleteQueuedMessage,
@@ -602,6 +602,15 @@ export function shouldEmitHeartbeat(
     return (now - lastVisibleTs) > gateMs;
 }
 
+export function shouldResumeBucketSession(
+    cli: string,
+    requestedModel: string,
+    bucketModel: string | null | undefined,
+): boolean {
+    if (cli !== 'copilot' || !bucketModel) return true;
+    return normalizeModelForCli(cli, requestedModel) === normalizeModelForCli(cli, bucketModel);
+}
+
 export interface SpawnLifecycle {
     onActivity?: (source: string) => void;
     onExit?: (code: number | null) => void;
@@ -727,9 +736,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const currentBucket = resolveSessionBucket(cli, model);
     const bucketRow: any = currentBucket ? getSessionBucket.get(currentBucket) : null;
     const bucketSessionId = bucketRow?.session_id || null;
+    const bucketModel = typeof bucketRow?.model === 'string' ? bucketRow.model : null;
+    const canResumeBucketSession = !bucketSessionId || shouldResumeBucketSession(cli, model, bucketModel);
     const isResume = empSid
         ? true
-        : (!forceNew && !!bucketSessionId);
+        : (!forceNew && !!bucketSessionId && canResumeBucketSession);
+
+    if (!empSid && !forceNew && bucketSessionId && !canResumeBucketSession) {
+        console.log(`[jaw:resume] ${cli} model changed ${bucketModel} → ${model}; starting fresh session`);
+    }
 
     // ─── User prompt wrapper (boss main only) ───
     // #99: compact timestamp (moved from builder.ts system prompt → user prompt)
@@ -741,14 +756,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         prompt = `${ts}\n${prompt}\n(need history? cli-jaw memory search "<keywords>" in "ENGLISH")`;
     }
 
-    const resumeSessionId = empSid || bucketSessionId;
+    const resumeSessionId = empSid || (isResume ? bucketSessionId : null);
     const historyBlock = !isResume ? buildHistoryBlock(prompt, settings.workingDir) : '';
     const promptForArgs = (cli === 'gemini' || cli === 'opencode')
         ? withHistoryPrompt(prompt, historyBlock)
         : prompt;
     let args;
     if (isResume) {
-        console.log(`[jaw:resume] ${cli} session=${resumeSessionId.slice(0, 12)}...`);
+        console.log(`[jaw:resume] ${cli} session=${resumeSessionId!.slice(0, 12)}...`);
         args = buildResumeArgs(cli, model, effort, resumeSessionId, prompt, permissions, { fastMode: cfg.fastMode, sysPrompt });
     } else {
         args = buildArgs(cli, model, effort, promptForArgs, sysPrompt, permissions, { fastMode: cfg.fastMode });

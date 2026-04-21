@@ -2,7 +2,7 @@
 // 이미 export된 함수를 직접 검증 (추가 작업 없이 즉시 실행 가능)
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildArgs, buildResumeArgs, resolveSessionBucket } from '../../src/agent/spawn.ts';
+import { buildArgs, buildResumeArgs, resolveSessionBucket, shouldResumeBucketSession } from '../../src/agent/spawn.ts';
 
 // ─── buildArgs: claude ───────────────────────────────
 
@@ -129,6 +129,24 @@ test('AG-009m: resolveSessionBucket — null/undefined cli returns empty string'
     assert.equal(resolveSessionBucket(null, 'gpt-5.4'), '');
     assert.equal(resolveSessionBucket(undefined, 'gpt-5.4'), '');
     assert.equal(resolveSessionBucket('', null), '');
+});
+
+test('AG-009n: shouldResumeBucketSession — Copilot mismatch forces fresh session', () => {
+    assert.equal(shouldResumeBucketSession('copilot', 'claude-opus-4.7', 'claude-opus-4.6'), false);
+});
+
+test('AG-009o: shouldResumeBucketSession — Copilot match still resumes', () => {
+    assert.equal(shouldResumeBucketSession('copilot', 'claude-opus-4.6', 'claude-opus-4.6'), true);
+});
+
+test('AG-009p: shouldResumeBucketSession — Copilot normalizes deprecated fast alias before compare', () => {
+    assert.equal(shouldResumeBucketSession('copilot', 'claude-opus-4.6', 'claude-opus-4.6-fast'), true);
+});
+
+test('AG-009q: shouldResumeBucketSession — non-Copilot CLIs keep current resume behavior', () => {
+    assert.equal(shouldResumeBucketSession('claude', 'claude-opus-4-6', 'claude-sonnet-4-6'), true);
+    assert.equal(shouldResumeBucketSession('gemini', 'gemini-2.5-pro', 'gemini-2.5-flash'), true);
+    assert.equal(shouldResumeBucketSession('opencode', 'kimi-k2.6', 'kimi-k2.5'), true);
 });
 
 test('AG-009e: codex Spark resume also strips reasoning config', () => {
