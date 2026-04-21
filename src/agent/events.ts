@@ -92,7 +92,7 @@ export function extractSessionId(cli: string, event: any) {
     }
 }
 
-export function extractOutputChunk(cli: string, event: any): string {
+export function extractOutputChunk(cli: string, event: any, ctx?: SpawnContext): string {
     if (cli === 'gemini') {
         // [#107] Skip thought/thinking events (future-proofing for when Gemini CLI adds them)
         if (event.type === 'thought' || event.thought === true) return '';
@@ -107,8 +107,10 @@ export function extractOutputChunk(cli: string, event: any): string {
         return '';
     }
     if (cli === 'opencode') {
-        if (event.type === 'text' && event.part?.text) {
-            return String(event.part.text);
+        if (ctx?.pendingOutputChunk) {
+            const chunk = ctx.pendingOutputChunk;
+            ctx.pendingOutputChunk = '';
+            return chunk;
         }
         return '';
     }
@@ -461,10 +463,11 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             if (event.type === 'step_start') {
                 const model = event.part?.model || event.model;
                 if (model) ctx.model = model;
+                ctx.opencodeStepText = '';
                 pushTrace(ctx, `[${agentLabel}] opencode step_start${model ? ` model=${model}` : ''}`);
             }
             if (event.type === 'text' && event.part?.text) {
-                ctx.fullText += event.part.text;
+                ctx.opencodeStepText = (ctx.opencodeStepText || '') + String(event.part.text);
             } else if (event.type === 'step_finish' && event.part) {
                 ctx.sessionId = event.sessionID;
                 // [P0-1.7] Accumulate tokens across steps (not overwrite)
@@ -490,6 +493,18 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 if (event.part.reason) {
                     ctx.finishReason = event.part.reason;
                 }
+                const stepText = ctx.opencodeStepText || '';
+                const shouldCommitText = stepText && event.part.reason !== 'tool-calls';
+                if (shouldCommitText) {
+                    ctx.fullText += stepText;
+                    ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + stepText;
+                } else if (stepText) {
+                    pushTrace(
+                        ctx,
+                        `[${agentLabel}] opencode buffered text discarded before tool call (${stepText.length} chars)`,
+                    );
+                }
+                ctx.opencodeStepText = '';
                 // [P2-3.12] Store step timing
                 if (event.part.time) {
                     if (!ctx.metadata) ctx.metadata = {};

@@ -31,6 +31,8 @@ export interface SpawnContext {
   model?: string;
   metadata?: Record<string, any>;
   finishReason?: string;
+  pendingOutputChunk?: string;
+  opencodeStepText?: string;
   // Gemini watchdog flag (set on 'result' event, triggers kill timer in spawn.ts)
   geminiResultSeen?: boolean;
   // Claude-specific stream buffers (set by events.ts extractFromEvent)

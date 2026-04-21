@@ -726,13 +726,20 @@ test('P1-2.6: OpenCode failed exit code shows error icon', () => {
     assert.equal(labels[0].exitCode, 127);
 });
 
-test('extractOutputChunk returns live assistant text for gemini, opencode, and codex', () => {
+test('extractOutputChunk returns live assistant text for gemini, opencode final step, and codex', () => {
     assert.equal(
         extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'hello', delta: true }),
         'hello',
     );
+    const opencodeCtx = { pendingOutputChunk: '' };
+    extractFromEvent('opencode', { type: 'text', part: { text: 'world' } }, opencodeCtx, 'oc');
     assert.equal(
-        extractOutputChunk('opencode', { type: 'text', part: { text: 'world' } }),
+        extractOutputChunk('opencode', { type: 'text', part: { text: 'world' } }, opencodeCtx),
+        '',
+    );
+    extractFromEvent('opencode', { type: 'step_finish', part: { reason: 'stop' }, sessionID: 'oc-1' }, opencodeCtx, 'oc');
+    assert.equal(
+        extractOutputChunk('opencode', { type: 'step_finish', part: { reason: 'stop' }, sessionID: 'oc-1' }, opencodeCtx),
         'world',
     );
     // [P0-1.5] Codex now returns agent_message text as live chunk
@@ -744,6 +751,32 @@ test('extractOutputChunk returns live assistant text for gemini, opencode, and c
     assert.equal(
         extractOutputChunk('codex', { type: 'item.completed', item: { type: 'command_execution' } }),
         '',
+    );
+});
+
+test('opencode buffers pre-tool text until step_finish and discards tool-call chatter', () => {
+    const ctx = { toolLog: [], fullText: '', traceLog: [], pendingOutputChunk: '', opencodeStepText: '' };
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: 'Let me check that first.' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '');
+    assert.equal(extractOutputChunk('opencode', { type: 'text', part: { text: 'Let me check that first.' } }, ctx), '');
+
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'tool-calls' } }, ctx, 'oc');
+    assert.equal(ctx.fullText, '');
+    assert.equal(
+        extractOutputChunk('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'tool-calls' } }, ctx),
+        '',
+    );
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: 'Final answer.' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'stop' } }, ctx, 'oc');
+
+    assert.equal(ctx.fullText, 'Final answer.');
+    assert.equal(
+        extractOutputChunk('opencode', { type: 'step_finish', sessionID: 'oc-1', part: { reason: 'stop' } }, ctx),
+        'Final answer.',
     );
 });
 

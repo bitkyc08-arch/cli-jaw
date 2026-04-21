@@ -132,7 +132,7 @@ function normalizeQueueItem(row: { id: string; payload: string }): QueueItem[] {
             id: parsed.id,
             prompt: parsed.prompt,
             source: parsed.source,
-            scope: typeof parsed.scope === 'string' ? parsed.scope : 'default',
+            scope: 'default',
             target: parsed.target,
             chatId: parsed.chatId,
             requestId: parsed.requestId,
@@ -738,7 +738,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         const _d = new Date(); const _p = (n: number) => String(n).padStart(2, '0');
         const _h = _d.getHours(); const _h12 = _h % 12 || 12;
         const ts = `${_p(_d.getFullYear() % 100)}${_p(_d.getMonth() + 1)}${_p(_d.getDate())}-${_p(_h12)}:${_p(_d.getMinutes())}${_h < 12 ? 'AM' : 'PM'}.`;
-        prompt = `${ts}\n${prompt}\n(need project history? cli-jaw memory search "<keywords>")`;
+        prompt = `${ts}\n${prompt}\n(need history? cli-jaw memory search "<keywords>" in "ENGLISH")`;
     }
 
     const resumeSessionId = empSid || bucketSessionId;
@@ -1193,7 +1193,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 if (ctx.hasActiveSubAgent) {
                     opts.lifecycle?.onActivity?.('heartbeat');
                 }
-                const outputChunk = extractOutputChunk(cli, event);
+                const outputChunk = extractOutputChunk(cli, event, ctx);
                 if (outputChunk) {
                     appendLiveRunText(ctx.liveScope || 'default', outputChunk);
                     broadcast('agent_output', {
@@ -1224,7 +1224,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
                 logEventSummary(agentLabel, cli, lastEvent, ctx);
                 if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, lastEvent);
                 extractFromEvent(cli, lastEvent, ctx, agentLabel, empTag);
-                const outputChunk = extractOutputChunk(cli, lastEvent);
+                const outputChunk = extractOutputChunk(cli, lastEvent, ctx);
                 if (outputChunk) {
                     appendLiveRunText(ctx.liveScope || 'default', outputChunk);
                     broadcast('agent_output', { agentId: agentLabel, cli, text: outputChunk, ...empTag }, isEmployee ? 'internal' : 'public');
