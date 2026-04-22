@@ -6,11 +6,11 @@ test('CfgM-001: migrateSettings normalizes legacy Claude perCli model values', (
     const s = migrateSettings({
         cli: 'claude',
         perCli: {
-            claude: { model: 'claude-sonnet-4-6[1m]', effort: 'high' },
+            claude: { model: 'sonnet[1m]', effort: 'high' },
             codex: { model: 'gpt-5.4', effort: 'medium' },
         },
     });
-    assert.equal(s.perCli.claude.model, 'sonnet[1m]');
+    assert.equal(s.perCli.claude.model, 'claude-sonnet-4-6[1m]');
     assert.equal(s.perCli.claude.effort, 'high');
     assert.equal(s.perCli.codex.model, 'gpt-5.4');
 });
@@ -33,7 +33,7 @@ test('CfgM-003: migrateSettings normalizes Claude memory.model when cli is claud
         perCli: {},
         memory: { cli: 'claude', model: 'claude-sonnet-4-6' },
     });
-    assert.equal(s.memory.model, 'sonnet');
+    assert.equal(s.memory.model, 'claude-sonnet-4-6');
 });
 
 test('CfgM-004: migrateSettings does NOT normalize memory.model when cli is not claude', () => {
@@ -59,16 +59,16 @@ test('CfgM-006: migrateSettings is idempotent on already-canonical values', () =
     const s = migrateSettings({
         cli: 'claude',
         perCli: {
-            claude: { model: 'sonnet[1m]', effort: 'medium' },
+            claude: { model: 'claude-sonnet-4-6[1m]', effort: 'medium' },
         },
         activeOverrides: {
-            claude: { model: 'opus' },
+            claude: { model: 'claude-opus-4-6' },
         },
-        memory: { cli: 'claude', model: 'haiku' },
+        memory: { cli: 'claude', model: 'claude-haiku-4-5' },
     });
-    assert.equal(s.perCli.claude.model, 'sonnet[1m]');
-    assert.equal(s.activeOverrides.claude.model, 'opus');
-    assert.equal(s.memory.model, 'haiku');
+    assert.equal(s.perCli.claude.model, 'claude-sonnet-4-6[1m]');
+    assert.equal(s.activeOverrides.claude.model, 'claude-opus-4-6');
+    assert.equal(s.memory.model, 'claude-haiku-4-5');
 });
 
 test('CfgM-007: migrateSettings normalizes sonnet legacy values, preserves opus canonical', () => {
@@ -81,8 +81,7 @@ test('CfgM-007: migrateSettings normalizes sonnet legacy values, preserves opus 
             claude: { model: 'claude-opus-4-6[1m]' },
         },
     });
-    assert.equal(s.perCli.claude.model, 'sonnet');
-    // claude-opus-4-6[1m] is now canonical — not migrated
+    assert.equal(s.perCli.claude.model, 'claude-sonnet-4-6');
     assert.equal(s.activeOverrides.claude.model, 'claude-opus-4-6[1m]');
 });
 

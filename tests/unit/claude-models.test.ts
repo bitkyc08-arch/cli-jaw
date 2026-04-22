@@ -14,7 +14,7 @@ import {
 
 test('CM-001: canonical set contains exactly 7 models', () => {
     assert.equal(CLAUDE_CANONICAL_MODELS.length, 7);
-    assert.deepEqual([...CLAUDE_CANONICAL_MODELS].sort(), ['claude-opus-4-6', 'claude-opus-4-6[1m]', 'haiku', 'opus', 'opus[1m]', 'sonnet', 'sonnet[1m]']);
+    assert.deepEqual([...CLAUDE_CANONICAL_MODELS].sort(), ['claude-haiku-4-5', 'claude-opus-4-6', 'claude-opus-4-6[1m]', 'claude-opus-4-7', 'claude-opus-4-7[1m]', 'claude-sonnet-4-6', 'claude-sonnet-4-6[1m]']);
 });
 
 test('CM-002: isClaudeCanonicalModel accepts all canonical values', () => {
@@ -24,23 +24,22 @@ test('CM-002: isClaudeCanonicalModel accepts all canonical values', () => {
 });
 
 test('CM-003: isClaudeCanonicalModel rejects non-canonical values', () => {
-    assert.equal(isClaudeCanonicalModel('claude-sonnet-4-6'), false);
+    assert.equal(isClaudeCanonicalModel('sonnet'), false);
     assert.equal(isClaudeCanonicalModel('gpt-5.4'), false);
     assert.equal(isClaudeCanonicalModel(''), false);
 });
 
 // ─── Legacy migration ────────────────────────────────
 
-test('CM-004: migrateLegacyClaudeValue maps historical 1M values to aliases', () => {
-    assert.equal(migrateLegacyClaudeValue('claude-sonnet-4-6[1m]'), 'sonnet[1m]');
-    // claude-opus-4-6[1m] is now canonical — no longer migrated
-    assert.equal(migrateLegacyClaudeValue('claude-opus-4-6[1m]'), 'claude-opus-4-6[1m]');
+test('CM-004: migrateLegacyClaudeValue maps short aliases to full canonical names', () => {
+    assert.equal(migrateLegacyClaudeValue('sonnet[1m]'), 'claude-sonnet-4-6[1m]');
+    assert.equal(migrateLegacyClaudeValue('opus[1m]'), 'claude-opus-4-6[1m]');
 });
 
-test('CM-005: migrateLegacyClaudeValue maps historical sonnet full names to aliases', () => {
-    assert.equal(migrateLegacyClaudeValue('claude-sonnet-4-6'), 'sonnet');
-    // claude-opus-4-6 is now canonical — no longer migrated
-    assert.equal(migrateLegacyClaudeValue('claude-opus-4-6'), 'claude-opus-4-6');
+test('CM-005: migrateLegacyClaudeValue maps short sonnet/opus/haiku to full names', () => {
+    assert.equal(migrateLegacyClaudeValue('sonnet'), 'claude-sonnet-4-6');
+    assert.equal(migrateLegacyClaudeValue('opus'), 'claude-opus-4-6');
+    assert.equal(migrateLegacyClaudeValue('haiku'), 'claude-haiku-4-5');
 });
 
 test('CM-006: migrateLegacyClaudeValue preserves pinned Haiku', () => {
@@ -65,13 +64,13 @@ test('CM-008: migrateLegacyClaudeValue is idempotent on canonical values', () =>
 
 // ─── Legacy map ──────────────────────────────────────
 
-test('CM-009: legacy map covers exactly 2 historical values', () => {
-    assert.equal(Object.keys(CLAUDE_LEGACY_VALUE_MAP).length, 2);
-    assert.ok('claude-sonnet-4-6' in CLAUDE_LEGACY_VALUE_MAP);
-    assert.ok('claude-sonnet-4-6[1m]' in CLAUDE_LEGACY_VALUE_MAP);
-    // claude-opus-4-6 variants are now canonical — not in legacy map
-    assert.ok(!('claude-opus-4-6' in CLAUDE_LEGACY_VALUE_MAP));
-    assert.ok(!('claude-opus-4-6[1m]' in CLAUDE_LEGACY_VALUE_MAP));
+test('CM-009: legacy map covers exactly 5 short aliases', () => {
+    assert.equal(Object.keys(CLAUDE_LEGACY_VALUE_MAP).length, 5);
+    assert.ok('sonnet' in CLAUDE_LEGACY_VALUE_MAP);
+    assert.ok('sonnet[1m]' in CLAUDE_LEGACY_VALUE_MAP);
+    assert.ok('opus' in CLAUDE_LEGACY_VALUE_MAP);
+    assert.ok('opus[1m]' in CLAUDE_LEGACY_VALUE_MAP);
+    assert.ok('haiku' in CLAUDE_LEGACY_VALUE_MAP);
 });
 
 test('CM-010: Haiku is intentionally excluded from legacy map', () => {
@@ -80,19 +79,19 @@ test('CM-010: Haiku is intentionally excluded from legacy map', () => {
 
 // ─── Helpers ─────────────────────────────────────────
 
-test('CM-011: getDefaultClaudeModel returns sonnet', () => {
-    assert.equal(getDefaultClaudeModel(), 'sonnet');
+test('CM-011: getDefaultClaudeModel returns claude-sonnet-4-6', () => {
+    assert.equal(getDefaultClaudeModel(), 'claude-sonnet-4-6');
 });
 
 test('CM-012: getDefaultClaudeChoices returns all canonical values', () => {
     const choices = getDefaultClaudeChoices();
-    assert.deepEqual([...choices].sort(), ['claude-opus-4-6', 'claude-opus-4-6[1m]', 'haiku', 'opus', 'opus[1m]', 'sonnet', 'sonnet[1m]']);
+    assert.deepEqual([...choices].sort(), ['claude-haiku-4-5', 'claude-opus-4-6', 'claude-opus-4-6[1m]', 'claude-opus-4-7', 'claude-opus-4-7[1m]', 'claude-sonnet-4-6', 'claude-sonnet-4-6[1m]']);
 });
 
 test('CM-013: getClaudeModelKind classifies correctly', () => {
-    assert.equal(getClaudeModelKind('sonnet'), 'canonical');
-    assert.equal(getClaudeModelKind('opus[1m]'), 'canonical');
-    assert.equal(getClaudeModelKind('claude-sonnet-4-6'), 'legacy');
+    assert.equal(getClaudeModelKind('claude-sonnet-4-6'), 'canonical');
+    assert.equal(getClaudeModelKind('claude-opus-4-6[1m]'), 'canonical');
+    assert.equal(getClaudeModelKind('sonnet'), 'legacy');
     assert.equal(getClaudeModelKind('claude-sonnet-4-7-preview'), 'explicit');
     assert.equal(getClaudeModelKind('default'), 'explicit');
 });
