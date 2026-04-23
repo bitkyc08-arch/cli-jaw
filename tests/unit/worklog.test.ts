@@ -1,9 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseWorklogPending, PHASES } from '../../src/memory/worklog.ts';
+import fs from 'node:fs';
+import os from 'node:os';
+import { join } from 'node:path';
+import { parseWorklogPending, PHASES, upsertWorklogSection } from '../../src/memory/worklog.ts';
 
 // Note: createWorklog, appendToWorklog, updateMatrix write to ~/.cli-jaw/worklogs/
 // which requires JAW_HOME override. Testing only pure functions here.
+// upsertWorklogSection takes an explicit wlPath, so it is safe to test with tmp files.
 // Full I/O tests belong in integration/ with tmp-home helper.
 
 // ─── PHASES constant ────────────────────────────────
@@ -88,4 +92,74 @@ test('parseWorklogPending stops parsing at next section heading', () => {
     // B is under Execution Log, not Agent Status Matrix — should not be parsed
     assert.equal(pending.length, 1);
     assert.equal(pending[0].agent, 'A');
+});
+
+// ─── upsertWorklogSection (Phase 56.1) ───────────────
+
+function makeTmpWorklog(initial: string): string {
+    const dir = fs.mkdtempSync(join(os.tmpdir(), 'worklog-test-'));
+    const path = join(dir, 'test.md');
+    fs.writeFileSync(path, initial);
+    return path;
+}
+
+test('upsertWorklogSection replaces existing section body (middle section)', async () => {
+    const path = makeTmpWorklog(`# WL
+## Plan
+(대기 중)
+
+## Verification Criteria
+(대기 중)
+`);
+    await upsertWorklogSection(path, 'Plan', 'new plan body');
+    const content = fs.readFileSync(path, 'utf8');
+    assert.match(content, /## Plan\nnew plan body\n\s*## Verification Criteria/);
+    assert.ok(!content.includes('(대기 중)\n\n## Verification'),
+        'original placeholder under Plan must be removed');
+});
+
+test('upsertWorklogSection replaces last section up to EOF', async () => {
+    const path = makeTmpWorklog(`# WL
+## Final Summary
+(미완료)
+`);
+    await upsertWorklogSection(path, 'Final Summary', 'done');
+    const content = fs.readFileSync(path, 'utf8');
+    assert.match(content, /## Final Summary\ndone\n$/);
+    assert.ok(!content.includes('(미완료)'));
+});
+
+test('upsertWorklogSection appends new section when missing', async () => {
+    const path = makeTmpWorklog(`# WL
+## Plan
+body
+`);
+    await upsertWorklogSection(path, 'Follow-up', 'fu body');
+    const content = fs.readFileSync(path, 'utf8');
+    assert.match(content, /## Follow-up\nfu body\n$/);
+    // Existing Plan section preserved
+    assert.match(content, /## Plan\nbody\n/);
+});
+
+test('upsertWorklogSection is silent when file does not exist', async () => {
+    const ghost = join(os.tmpdir(), 'nonexistent-worklog-' + Date.now() + '.md');
+    await upsertWorklogSection(ghost, 'Plan', 'x');
+    assert.ok(!fs.existsSync(ghost), 'must not create the file');
+});
+
+test('upsertWorklogSection repeated calls overwrite (no accumulation)', async () => {
+    const path = makeTmpWorklog(`# WL
+## Plan
+(대기 중)
+
+## End
+`);
+    await upsertWorklogSection(path, 'Plan', 'first');
+    await upsertWorklogSection(path, 'Plan', 'second');
+    await upsertWorklogSection(path, 'Plan', 'third');
+    const content = fs.readFileSync(path, 'utf8');
+    assert.ok(content.includes('third'), 'latest body present');
+    assert.ok(!content.includes('first'), 'first body replaced');
+    assert.ok(!content.includes('second'), 'second body replaced');
+    assert.ok(!content.includes('(대기 중)'), 'placeholder replaced');
 });

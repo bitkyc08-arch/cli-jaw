@@ -12,7 +12,7 @@ test('dispatch route clears pending replay only after response is flushed (phase
     assert.ok(routeStart >= 0, 'dispatch route should exist');
 
     // Window must cover both POST dispatch body + GET result polling route.
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 7500);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
     const finishIdx = routeBlock.indexOf("finishWorker(slot.agentId, result.text || '');");
     const finishHookIdx = routeBlock.indexOf('markWorkerReplayed(slot.agentId)');
     const responseIdx = routeBlock.indexOf("res.json({ ok: true, result });");
@@ -31,7 +31,7 @@ test('dispatch route clears pending replay only after response is flushed (phase
 test('dispatch route maps PABCD phase from state-machine', () => {
     const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
     assert.ok(routeStart >= 0, 'dispatch route should exist');
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 5000);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
 
     // Phase map must exist in dispatch route
     assert.ok(
@@ -57,7 +57,7 @@ test('dispatch route maps PABCD phase from state-machine', () => {
 
 test('dispatch route accepts optional phase override in request body', () => {
     const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 5000);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
 
     // Must destructure phase from req.body
     assert.ok(
@@ -98,5 +98,66 @@ test('server boot does not import or start token keep-alive', () => {
     assert.ok(
         !serverSrc.includes('startTokenKeepAlive();'),
         'server.ts should not start token keep-alive at boot',
+    );
+});
+
+// ─── Phase 56.1: Shared Plan auto-injection contract ──
+
+test('dispatch route auto-injects full ctx.plan without truncation or file reference', () => {
+    const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
+    assert.ok(routeStart >= 0, 'dispatch route should exist');
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
+
+    // sharedPlanPath branch must be gone.
+    assert.ok(
+        !routeBlock.includes('dispatchCtx?.sharedPlanPath'),
+        'dispatch route must not reference dispatchCtx.sharedPlanPath after Phase 56.1',
+    );
+    assert.ok(
+        !routeBlock.includes('First read the approved plan at:'),
+        'dispatch must not instruct worker to read an external plan file',
+    );
+
+    // Truncation removed.
+    assert.ok(
+        !routeBlock.includes('plan.slice(0, 3000)') && !routeBlock.includes("slice(0, 3000)"),
+        'dispatch route must not truncate ctx.plan to 3000 chars after Phase 56.1',
+    );
+
+    // New inline prepend header must be present.
+    assert.ok(
+        routeBlock.includes('## Approved Plan'),
+        'dispatch route must prepend "## Approved Plan" header when ctx.plan exists',
+    );
+
+    // Must still guard on ctx.plan existing.
+    assert.ok(
+        routeBlock.includes('dispatchCtx?.plan'),
+        'dispatch route must still guard the prepend on dispatchCtx?.plan',
+    );
+});
+
+test('snapshot endpoint sanitizes ctx and does not expose sharedPlanPath', () => {
+    const snapStart = orchestrateSrc.indexOf("app.get('/api/orchestrate/snapshot'");
+    assert.ok(snapStart >= 0, 'snapshot route should exist');
+    const snapBlock = orchestrateSrc.slice(snapStart, snapStart + 3000);
+
+    // Whitelist builder must be present.
+    assert.ok(
+        snapBlock.includes('const safeCtx'),
+        'snapshot route must build a whitelisted safeCtx',
+    );
+
+    // Top-level sharedPlanPath field must be removed from the response body.
+    // (We only care about assignments like `sharedPlanPath: ctx?.sharedPlanPath`.)
+    assert.ok(
+        !snapBlock.match(/sharedPlanPath:\s*ctx\?\.sharedPlanPath/),
+        'snapshot must not expose top-level sharedPlanPath field',
+    );
+
+    // Response must use safeCtx, not the raw ctx.
+    assert.ok(
+        snapBlock.match(/ctx:\s*safeCtx/),
+        'snapshot response must use safeCtx instead of raw ctx',
     );
 });
