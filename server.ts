@@ -16,7 +16,7 @@ import { registerBrowserRoutes } from './src/routes/browser.js';
 import { registerEmployeeRoutes } from './src/routes/employees.js';
 import { registerHeartbeatRoutes } from './src/routes/heartbeat.js';
 import { registerSkillRoutes } from './src/routes/skills.js';
-import { registerJawMemoryRoutes } from './src/routes/jaw-memory.js';
+import { registerJawMemoryRoutes, buildMemorySyncPayload } from './src/routes/jaw-memory.js';
 import { registerI18nRoutes } from './src/routes/i18n.js';
 import { registerOrchestrateRoutes } from './src/routes/orchestrate.js';
 import { registerMemoryRoutes } from './src/routes/memory.js';
@@ -300,6 +300,13 @@ wss.on('connection', (ws) => {
     const orcState = getState(webScope);
     if (orcState && orcState !== 'IDLE') {
         ws.send(JSON.stringify({ type: 'orc_state', state: orcState, scope: webScope, ts: Date.now() }));
+    }
+    // Push current memory status so the sidebar badge hydrates without button click
+    try {
+        const payload = buildMemorySyncPayload('ws_connect');
+        ws.send(JSON.stringify({ type: 'memory_status', ...payload }));
+    } catch (e) {
+        console.warn('[ws:memory_status] initial push failed:', (e as Error).message);
     }
 
     ws.on('message', (raw) => {

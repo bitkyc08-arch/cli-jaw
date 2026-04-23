@@ -34,7 +34,7 @@ function flattenAdvancedMemoryFiles(): string[] {
     ];
 }
 
-function buildMemorySyncPayload(reason: string) {
+export function buildMemorySyncPayload(reason: string) {
     return {
         reason,
         status: {

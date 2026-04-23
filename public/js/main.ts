@@ -68,7 +68,7 @@ import {
     openMemoryModal, closeMemoryModal, switchMemTab, setMemEnabled,
     saveMemSettings, deleteMemFile, viewMemFile,
     rerunAdvancedBootstrap, reindexAdvancedMemory, upgradeSoulMemory, synthesizeSoul, openCorruptedFolder,
-    bindAdvancedProviderUi, triggerFlushNow
+    bindAdvancedProviderUi, triggerFlushNow, refreshMemorySidebar
 } from './features/memory.js';
 import { state } from './state.js';
 import { loadCliRegistry, getCliKeys } from './constants.js';
@@ -458,6 +458,7 @@ async function bootstrap(): Promise<void> {
     // loadMessages() is handled by ws.js onopen (clear + reload)
     loadEmployees();
     initHeartbeatBadge();
+    void refreshMemorySidebar();
     initAppName();
     await initAvatar();
     initSidebar();

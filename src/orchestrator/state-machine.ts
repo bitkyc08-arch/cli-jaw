@@ -21,6 +21,11 @@ export interface OrcContext {
   origin: string;
   target?: RemoteTarget;
   chatId?: string | number;
+  // ─── Phase 56: Shared Plan persistence ────────────
+  worklogPath?: string;
+  sharedPlanPath?: string;
+  planHash?: string;
+  planUpdatedAt?: string;
 }
 
 // ─── State Read/Write (DB-backed) ───────────────────
@@ -102,6 +107,17 @@ Otherwise revise and present again.
 
 User says:`,
 
+  // Phase 59: A-phase user (non-worker) message — e.g. first entry after P approval.
+  // Was previously reusing Ab2 ("Employee Results") which misled the model.
+  Ap: `[PLAN AUDIT — User Message]
+You are in PLAN AUDIT phase. The approved plan is in \`.shared_plan.md\` at project root.
+If you have not dispatched an audit worker yet, do so now. Every dispatch task
+MUST instruct the worker to read \`.shared_plan.md\` first.
+
+⛔ STOP after dispatching and reporting audit results. WAIT for user approval.
+
+User says:`,
+
   Ab2: `[PLAN AUDIT — Employee Results]
 Below are the plan audit results from the verification employee.
 If issues found: fix the plan and re-audit (output employee JSON again).
@@ -125,7 +141,8 @@ Employee results:`,
 
 export function getPrefix(state: OrcStateName, source: 'user' | 'worker' = 'user'): string | null {
   if (state === 'P') return PREFIXES.Pb2!;
-  if (state === 'A') return PREFIXES.Ab2!;
+  // Phase 59: distinguish first-entry user message (Ap) from worker verdict (Ab2).
+  if (state === 'A') return source === 'worker' ? PREFIXES.Ab2! : PREFIXES.Ap!;
   if (state === 'B' && source === 'worker') return PREFIXES.Bb2!;
   return null;
 }
@@ -160,9 +177,22 @@ An employee must verify that your plan from P phase is feasible and safe before 
 ⚠️ You MUST dispatch an audit employee. Do NOT skip this step.
 ⚠️ Do NOT say "audit is unnecessary" — every plan must be verified before coding.
 
+FIRST: The approved plan has been written to \`.shared_plan.md\` in the project root.
+Every dispatch task in this phase MUST reference this file so the worker can read it
+in their isolated directory.
+
 Run this command now:
 \`\`\`bash
-cli-jaw dispatch --agent "Backend" --task "⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder. Audit the PLAN (not code). Verify: 1) All imports in the plan resolve to real files. 2) Function signatures match actual code. 3) No copy-paste integration risks. Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files."
+cli-jaw dispatch --agent "Backend" --task "⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder.
+
+FIRST: Read .shared_plan.md in the project root — this is the approved plan.
+
+Audit the PLAN (not code). Verify:
+1) All imports in the plan resolve to real files.
+2) Function signatures match actual code.
+3) No copy-paste integration risks.
+
+Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files."
 \`\`\`
 
 The result is returned via stdout. Review it:
@@ -179,13 +209,26 @@ You are now in Build mode. The plan has been audited and approved.
 ⚠️ YOU (the Boss) must implement the code DIRECTLY. Write every file yourself.
 ⚠️ Do NOT delegate implementation to an employee. Employees are READ-ONLY verifiers.
 
+⛔ Forbidden dispatch examples: "implement the feature", "write the code", "create src/x.ts".
+✅ Allowed dispatch examples: "verify src/x.ts compiles", "check integration of Y reports DONE/NEEDS_FIX".
+
 Steps:
-1. Read the approved plan from Phase P.
+1. Read the approved plan: the full body is in \`.shared_plan.md\` at project root.
 2. Implement ALL changes yourself — create/modify/delete files as specified in the plan.
 3. After YOU finish implementing, dispatch a verification employee:
 
 \`\`\`bash
-cli-jaw dispatch --agent "Backend" --task "⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder. Verify: 1) Files in plan exist with expected content. 2) No syntax errors (run tsc --noEmit if TS). 3) Imports resolve. 4) No integration conflicts. Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only."
+cli-jaw dispatch --agent "Backend" --task "⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder.
+
+FIRST: Read .shared_plan.md in the project root — this is the approved plan.
+
+Verify:
+1) Files in plan exist with expected content.
+2) No syntax errors (run tsc --noEmit if TS).
+3) Imports resolve.
+4) No integration conflicts.
+
+Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only."
 \`\`\`
 
 Review the stdout result:

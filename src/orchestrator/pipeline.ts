@@ -2,6 +2,9 @@
 // Old round-loop pipeline fully removed.
 // PABCD state machine is the sole orchestration system.
 
+import fs from 'fs';
+import { join } from 'path';
+import crypto from 'crypto';
 import { broadcast } from '../core/bus.js';
 import { settings } from '../core/config.js';
 import {
@@ -220,7 +223,8 @@ export async function orchestrate(
 
         // Create a fresh worklog before setState() so state/title reads the new latest worklog.
         const worklogSeed = pickWorklogSeed(nextCtx.originalPrompt, planningTask, userText);
-        createWorklog(worklogSeed);
+        const worklogInfo = createWorklog(worklogSeed);
+        nextCtx.worklogPath = worklogInfo.path;
         setState('P', nextCtx, scope, pickWorklogSeed(nextCtx.originalPrompt));
         ctx = nextCtx;
     }
@@ -265,9 +269,42 @@ export async function orchestrate(
             if (newPlan) {
                 // Re-derive title from this scope's original prompt to avoid cross-scope worklog bleed
                 const title = pickWorklogSeed(savedCtx.originalPrompt);
+
+                // Phase 56: Write .shared_plan.md so workers (in isolated dirs) can read the plan.
+                let sharedPlanPath: string | undefined;
+                let planHash: string | undefined;
+                const updatedAt = new Date().toISOString();
+                try {
+                    const planDir = savedCtx.workingDir || settings.workingDir || process.cwd();
+                    sharedPlanPath = join(planDir, '.shared_plan.md');
+                    const content = [
+                        `# Shared Plan`,
+                        `> Generated: ${updatedAt}`,
+                        `> Scope: ${scope}`,
+                        ``,
+                        newPlan,
+                    ].join('\n');
+                    fs.writeFileSync(sharedPlanPath, content);
+                    planHash = crypto.createHash('sha256').update(content).digest('hex').slice(0, 12);
+                } catch (err) {
+                    console.warn('[jaw:shared-plan] write failed:', (err as Error).message);
+                }
+
+                // Phase 56: append plan body to worklog ## Plan section (replaces "(대기 중)")
+                if (savedCtx.worklogPath) {
+                    try {
+                        appendToWorklog(savedCtx.worklogPath, 'Plan', newPlan);
+                    } catch (err) {
+                        console.warn('[jaw:shared-plan] worklog append failed:', (err as Error).message);
+                    }
+                }
+
                 setState('P', {
                     ...savedCtx,
                     plan: newPlan,
+                    sharedPlanPath,
+                    planHash,
+                    planUpdatedAt: updatedAt,
                 }, scope, title);
             }
         }

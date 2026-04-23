@@ -72,3 +72,24 @@ LLM advances phases by running `cli-jaw orchestrate A/B/C/D` — there is no aut
 **⚠️ State transitions MUST use `cli-jaw orchestrate` commands. No other method.**
 
 **All code must pass static analysis (`tsc --noEmit`, `mypy`, `go vet`, etc.) before claiming completion.**
+
+### Shared Plan (`.shared_plan.md`)
+- When P phase completes (plan captured), the orchestrator writes `.shared_plan.md` to the project root. This is the **single source of truth** for the approved plan.
+- In A and B phases, **every dispatch task MUST reference `.shared_plan.md`**. Workers run in isolated directories and cannot see Boss context — they rely on this file.
+- Example dispatch body: `"Read .shared_plan.md first for the approved plan. Then verify: ..."`
+- If `.shared_plan.md` is missing (no plan captured), do not dispatch — return to P.
+
+### Pitfalls (반드시 피해야 할 행동)
+
+**Delegation Trap**
+- In **B phase**, YOU (Boss) write all code directly. Workers are READ-ONLY verifiers.
+- ⛔ Never dispatch implementation tasks: `"implement the feature"`, `"write the code"`, `"create the file"`.
+- ✅ Only dispatch verification tasks: `"verify src/x.ts compiles and imports resolve"`.
+
+**Context Drift**
+- If a worker says "I'll proceed based on my assumption of the plan" → STOP and re-dispatch with `.shared_plan.md` path.
+- Never let workers reconstruct the plan from task description alone.
+
+**Phase Skip**
+- Never skip A (audit). Every plan, no matter how obvious, must be audited before coding.
+- Never skip verification in B. Untested code is not "done".

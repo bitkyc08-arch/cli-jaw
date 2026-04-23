@@ -59,8 +59,17 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
     app.get('/api/orchestrate/snapshot', (_req, res) => {
         const runtime = getRuntimeSnapshot();
         const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
+        const ctx = getCtx(scope);
         res.json({
-            orc: { scope, state: getState(scope), ctx: getCtx(scope) },
+            orc: {
+                scope,
+                state: getState(scope),
+                ctx,
+                // Phase 56: explicit plan metadata for UI/worker reference
+                sharedPlanPath: ctx?.sharedPlanPath || null,
+                planHash: ctx?.planHash || null,
+                planUpdatedAt: ctx?.planUpdatedAt || null,
+            },
             runtime: {
                 ...runtime,
                 busy: runtime.activeAgent || getActiveWorkers().some(w => w.state === 'running'),
