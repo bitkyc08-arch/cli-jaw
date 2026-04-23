@@ -126,21 +126,50 @@ export function resetSessionPreservingHistory(): MainSessionRow {
     return row;
 }
 
-// ─── Pending bootstrap prompt (1-shot consumption) ───
+// ─── Pending bootstrap prompt (1-shot consumption, DB-backed) ───
+// Phase 52: persist to DB so a server crash between compact and consumption
+// no longer drops the bootstrap text. Stored in `memory` table with a reserved
+// key + source so the user-facing memory list filters it out.
+//
 // Compact handler stores here; next spawnAgent() prepends and clears.
 
-let pendingBootstrapPrompt: string | null = null;
+import { getMemory, upsertMemory, deleteMemory } from './db.js';
+
+const BOOTSTRAP_KEY = '__bootstrap_prompt';
+const BOOTSTRAP_SOURCE = '__system_bootstrap';
+
+function readBootstrapRow(): string | null {
+    try {
+        const rows = getMemory.all() as Array<{ key: string; value: string; source: string }>;
+        const row = rows.find(r => r.key === BOOTSTRAP_KEY && r.source === BOOTSTRAP_SOURCE);
+        return row?.value && row.value.trim() ? row.value : null;
+    } catch (e) {
+        console.warn('[jaw:bootstrap] readBootstrapRow failed:', (e as Error).message);
+        return null;
+    }
+}
 
 export function setPendingBootstrapPrompt(text: string | null): void {
-    pendingBootstrapPrompt = text && text.trim() ? text : null;
+    try {
+        if (text && text.trim()) {
+            upsertMemory.run(BOOTSTRAP_KEY, text, BOOTSTRAP_SOURCE);
+        } else {
+            deleteMemory.run(BOOTSTRAP_KEY);
+        }
+    } catch (e) {
+        console.warn('[jaw:bootstrap] setPendingBootstrapPrompt failed:', (e as Error).message);
+    }
 }
 
 export function consumePendingBootstrapPrompt(): string | null {
-    const out = pendingBootstrapPrompt;
-    pendingBootstrapPrompt = null;
+    const out = readBootstrapRow();
+    if (out) {
+        try { deleteMemory.run(BOOTSTRAP_KEY); }
+        catch (e) { console.warn('[jaw:bootstrap] consume delete failed:', (e as Error).message); }
+    }
     return out;
 }
 
 export function peekPendingBootstrapPrompt(): string | null {
-    return pendingBootstrapPrompt;
+    return readBootstrapRow();
 }

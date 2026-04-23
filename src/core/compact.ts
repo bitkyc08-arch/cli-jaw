@@ -2,6 +2,9 @@
 
 export const COMPACT_MARKER_CONTENT = 'Conversation compacted.';
 export const MANAGED_COMPACT_PREFIX = '[assistant] Managed compact summary:';
+// Phase 52: Bootstrap trace prefix (declared early so isCompactMarkerRow can OR-match).
+// The full bootstrap payload writer below references the same constant.
+export const BOOTSTRAP_TRACE_PREFIX = '[assistant] Bootstrap compact payload:';
 
 type MessageRow = {
     role?: string | null;
@@ -34,9 +37,12 @@ export function isCompactMarkerRow(row: MessageRow | null | undefined): boolean 
     const role = safeText(row.role);
     const content = safeText(row.content);
     const trace = safeText(row.trace);
+    // Phase 52: accept both managed-compact and bootstrap-compact prefixes.
+    // Content guard MUST stay so bootstrap rows that lack COMPACT_MARKER_CONTENT
+    // are not falsely treated as boundaries.
     return role === 'assistant'
         && content === COMPACT_MARKER_CONTENT
-        && trace.startsWith(MANAGED_COMPACT_PREFIX);
+        && (trace.startsWith(MANAGED_COMPACT_PREFIX) || trace.startsWith(BOOTSTRAP_TRACE_PREFIX));
 }
 
 export function getRowsSinceLatestCompactForTest(rows: MessageRow[]): MessageRow[] {
@@ -90,7 +96,7 @@ import { getRecentMessages } from './db.js';
 import { searchMemoryWithPolicy } from '../memory/injection.js';
 import { buildTaskSnapshot } from '../memory/runtime.js';
 
-export const BOOTSTRAP_TRACE_PREFIX = '[assistant] Bootstrap compact payload:';
+// BOOTSTRAP_TRACE_PREFIX is now declared at the top alongside MANAGED_COMPACT_PREFIX (Phase 52).
 
 export const BOOTSTRAP_BUDGET = {
     goal: 500,

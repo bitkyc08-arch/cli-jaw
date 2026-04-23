@@ -12,6 +12,9 @@ import type { RemoteTarget } from '../messaging/types.js';
 
 export type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
 
+export type AuditVerdict = 'pending' | 'pass' | 'fail';
+export type VerificationVerdict = 'pending' | 'done' | 'needs_fix';
+
 export interface OrcContext {
   originalPrompt: string;
   workingDir: string | null;
@@ -26,6 +29,10 @@ export interface OrcContext {
   sharedPlanPath?: string;
   planHash?: string;
   planUpdatedAt?: string;
+  // ─── Phase 58: Phase-transition gates ─────────────
+  auditStatus?: AuditVerdict;
+  verificationStatus?: VerificationVerdict;
+  userApproved?: boolean;
 }
 
 // ─── State Read/Write (DB-backed) ───────────────────
@@ -272,6 +279,54 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
   D: ['IDLE'],
 };
 
-export function canTransition(from: OrcStateName, to: OrcStateName): boolean {
-  return VALID_TRANSITIONS[from]?.includes(to) ?? false;
+export interface TransitionResult {
+  ok: boolean;
+  reason?: string;
+}
+
+export function canTransition(
+  from: OrcStateName,
+  to: OrcStateName,
+  ctx?: OrcContext | null,
+): TransitionResult {
+  if (!VALID_TRANSITIONS[from]?.includes(to)) {
+    return { ok: false, reason: `Invalid transition: ${from} → ${to}` };
+  }
+  // Phase 58: Gate A→B on audit verdict (strict equality, not truthy).
+  if (from === 'A' && to === 'B') {
+    if (ctx?.userApproved) return { ok: true };
+    if (ctx?.auditStatus !== 'pass') {
+      return {
+        ok: false,
+        reason: `A → B requires audit verdict 'pass' (current: ${ctx?.auditStatus ?? 'none'}). Run audit worker, or use --force to override.`,
+      };
+    }
+  }
+  // Phase 58: Gate B→C on verification verdict (strict equality, not truthy).
+  if (from === 'B' && to === 'C') {
+    if (ctx?.userApproved) return { ok: true };
+    if (ctx?.verificationStatus !== 'done') {
+      return {
+        ok: false,
+        reason: `B → C requires verification verdict 'done' (current: ${ctx?.verificationStatus ?? 'none'}). Run verification worker, or use --force to override.`,
+      };
+    }
+  }
+  return { ok: true };
+}
+
+// ─── Worker Verdict Parser ──────────────────────────
+// Phase 58: parses worker stdout for PASS/FAIL/DONE/NEEDS_FIX tokens.
+// Input is the worker's text response (string), not the result object.
+export type WorkerVerdict = 'pass' | 'fail' | 'done' | 'needs_fix';
+
+export function parseWorkerVerdict(text: string): WorkerVerdict | null {
+  if (!text || typeof text !== 'string') return null;
+  // NEEDS_FIX must be checked before FAIL because the substring "FIX" can co-occur with "FAIL".
+  // Use strict word-boundary matches to avoid catching prose like "passed previously" → 'pass'.
+  if (/\bNEEDS_FIX\b/.test(text)) return 'needs_fix';
+  if (/\bDONE\b/.test(text)) return 'done';
+  if (/\bPASS\b/.test(text)) return 'pass';
+  if (/\bFAIL\b/.test(text)) return 'fail';
+  return null;
 }

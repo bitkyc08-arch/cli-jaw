@@ -28,13 +28,13 @@ describe('PABCD state-machine', () => {
         assert.equal(getCtx('default'), null);
     });
     test('5. IDLE→P valid', () => {
-        assert.equal(canTransition('IDLE', 'P'), true);
+        assert.equal(canTransition('IDLE', 'P').ok, true);
     });
     test('6. IDLE→B invalid', () => {
-        assert.equal(canTransition('IDLE', 'B'), false);
+        assert.equal(canTransition('IDLE', 'B').ok, false);
     });
     test('7. P→A valid', () => {
-        assert.equal(canTransition('P', 'A'), true);
+        assert.equal(canTransition('P', 'A').ok, true);
     });
     test('8. prefix P user = Pb2', () => {
         assert.ok(getPrefix('P', 'user')!.includes('PLANNING MODE'));
@@ -55,8 +55,8 @@ describe('PABCD state-machine', () => {
         assert.ok(getStatePrompt('D').includes('PABCD'));
     });
     test('14. C→D and D→IDLE valid', () => {
-        assert.equal(canTransition('C', 'D'), true);
-        assert.equal(canTransition('D', 'IDLE'), true);
+        assert.equal(canTransition('C', 'D').ok, true);
+        assert.equal(canTransition('D', 'IDLE').ok, true);
     });
     test('15. D → reset → IDLE', () => {
         setState('D', undefined, 'default');
@@ -64,9 +64,9 @@ describe('PABCD state-machine', () => {
         assert.equal(getState('default'), 'IDLE');
     });
     test('16. P→D invalid (must go through C)', () => {
-        assert.equal(canTransition('P', 'D'), false);
-        assert.equal(canTransition('A', 'D'), false);
-        assert.equal(canTransition('B', 'D'), false);
+        assert.equal(canTransition('P', 'D').ok, false);
+        assert.equal(canTransition('A', 'D').ok, false);
+        assert.equal(canTransition('B', 'D').ok, false);
     });
     test('17. setState P with ctx preserves context', () => {
         const ctx = { originalPrompt: 'build settings', workingDir: null, plan: null, workerResults: [], origin: 'web' };

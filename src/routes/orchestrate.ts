@@ -5,7 +5,7 @@ import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueu
 import { getLiveRun } from '../agent/live-run-state.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { insertMessage } from '../core/db.js';
-import { getState, getCtx, setState, resetState, canTransition, resetAllStaleStates } from '../orchestrator/state-machine.js';
+import { getState, getCtx, setState, resetState, canTransition, resetAllStaleStates, parseWorkerVerdict } from '../orchestrator/state-machine.js';
 import type { OrcStateName } from '../orchestrator/state-machine.js';
 import { resolveOrcScope } from '../orchestrator/scope.js';
 import { getActiveWorkers, claimWorker, finishWorker, failWorker, markWorkerReplayed, getWorkerSlot, WorkerBusyError } from '../orchestrator/worker-registry.js';
@@ -135,10 +135,34 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const { agent: agentName, task, phase } = req.body || {};
         if (!agentName || !task) return fail(res, 400, 'Missing agent or task');
 
-        const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 3, C: 4 };
+        // Phase 57: B-phase workers are READ-ONLY verifiers (Phase 4=Check), not implementers (Phase 3=Dev).
+        // PABCD A=Plan Audit (Phase 2), B=Build but workers verify only (Phase 4), C=Check (Phase 4).
+        const PABCD_PHASE_MAP: Record<string, number> = { A: 2, B: 4, C: 4 };
         const dispatchScope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
         const currentOrcState = getState(dispatchScope);
         const resolvedPhase = phase ?? PABCD_PHASE_MAP[currentOrcState] ?? 3;
+        const dispatchCtx = getCtx(dispatchScope);
+
+        // Phase 57: Delegation Guard — block code-implementation tasks during B phase.
+        // Boss must implement directly; workers are read-only verifiers.
+        if (currentOrcState === 'B') {
+            const implPattern = /\b(implement|write\s+(?:the\s+)?code|create\s+(?:the\s+)?file|build\s+(?:the\s+)?feature|add\s+(?:the\s+)?(?:method|function|class))\b/i;
+            if (implPattern.test(String(task))) {
+                return res.status(400).json({
+                    ok: false,
+                    error: 'delegation_guard',
+                    message: 'B phase: Boss must implement directly. Workers are read-only verifiers. Reword the task as "verify X compiles" / "check integration of Y" / "report DONE or NEEDS_FIX".',
+                });
+            }
+        }
+
+        // Phase 57: Auto-prepend Shared Plan reference so workers (in isolated dirs) can read the plan.
+        let enrichedTask: string = String(task);
+        if (dispatchCtx?.sharedPlanPath) {
+            enrichedTask = `IMPORTANT: First read the approved plan at: ${dispatchCtx.sharedPlanPath}\n\n${enrichedTask}`;
+        } else if (dispatchCtx?.plan) {
+            enrichedTask = `## Shared Plan (truncated to 3000 chars)\n${dispatchCtx.plan.slice(0, 3000)}\n\n---\n\n${enrichedTask}`;
+        }
 
         const emps = getEmployees.all() as Record<string, any>[];
         // Try DB first (preserves existing id-based matching), then fall
@@ -221,12 +245,26 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         try {
             const ap = {
                 agent: emp.name, role: emp.role || 'general developer',
-                task, parallel: false,
+                task: enrichedTask, parallel: false,
                 currentPhase: resolvedPhase, currentPhaseIdx: 0,
                 phaseProfile: [resolvedPhase],
             };
-            const result = await runSingleAgent(ap, emp, {}, 1, { origin: 'api' }, []);
+            // Phase 57: Pass worklog path so the worker can append progress entries.
+            const worklog = dispatchCtx?.worklogPath ? { path: dispatchCtx.worklogPath } : {};
+            const result = await runSingleAgent(ap, emp, worklog, 1, { origin: 'api' }, []);
             finishWorker(slot.agentId, result.text || '');
+
+            // Phase 58: Auto-update audit/verification status from worker verdict.
+            // 'A' phase verdicts → auditStatus; 'B' phase verdicts → verificationStatus.
+            const verdict = parseWorkerVerdict(result.text || '');
+            if (verdict && dispatchCtx) {
+                const freshCtx = getCtx(dispatchScope) || dispatchCtx;
+                if (currentOrcState === 'A' && (verdict === 'pass' || verdict === 'fail')) {
+                    setState('A', { ...freshCtx, auditStatus: verdict }, dispatchScope);
+                } else if (currentOrcState === 'B' && (verdict === 'done' || verdict === 'needs_fix')) {
+                    setState('B', { ...freshCtx, verificationStatus: verdict }, dispatchScope);
+                }
+            }
             if (clientDisconnected) {
                 console.warn(`[dispatch] client disconnected — keeping pendingReplay for ${slot.agentId}`);
                 // Proactive drain: if Boss died before receiving the result, user input
@@ -275,8 +313,16 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
         const current = getState(scope);
         const t = target as OrcStateName;
-        if (!canTransition(current, t)) {
-            return fail(res, 409, `Cannot transition: ${current} → ${t}`);
+        // Phase 58: HTTP override via { force: true } body.
+        const force = req.body?.force === true;
+        const currentCtx = getCtx(scope);
+        const gateCtx = force && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
+        if (force && currentCtx) {
+            setState(current, gateCtx, scope);
+        }
+        const gate = canTransition(current, t, gateCtx);
+        if (!gate.ok) {
+            return fail(res, 409, gate.reason || `Cannot transition: ${current} → ${t}`);
         }
         if (t === 'D') {
             setState(t, undefined, scope, 'Done');

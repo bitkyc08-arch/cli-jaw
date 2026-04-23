@@ -695,25 +695,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const ownerGeneration = getSessionOwnershipGeneration();
     let cli = resolveMainCli(opts.cli, settings, session);
 
-    // ─── Bootstrap compact 1-shot injection ───
-    // Vendor-agnostic: compact handler reset session_id and stored bootstrap.
-    // Inject only on fresh main spawns (not employee/fallback/internal/resume).
-    if (!opts.agentId && !opts._isFallback && !opts.internal) {
-        // NOTE: this pre-check runs before `model` is resolved, so we can't use
-        // the per-bucket lookup yet. Fall back to the legacy heuristic — if a
-        // session exists under the same cli, assume it's a resume and skip the
-        // bootstrap. The bucket-aware decision below is what actually gates the
-        // spawn args. This over-suppresses bootstrap in rare cross-model toggle
-        // cases, which is the safer failure mode (no duplicate bootstrap).
-        const isResumeGuess = !forceNew && session.session_id && session.active_cli === cli;
-        if (!isResumeGuess) {
-            const pending = consumePendingBootstrapPrompt();
-            if (pending) {
-                console.log(`[jaw:compact] injecting bootstrap (${pending.length} chars)`);
-                prompt = `${pending}\n\n---\n\n${prompt}`;
-            }
-        }
-    }
+    // Phase 52: Bootstrap consumption is moved BELOW the bucket-aware `isResume`
+    // computation so we can use the authoritative per-bucket resume decision
+    // instead of the legacy `isResumeGuess` heuristic. See comment near line 762.
 
     // ─── Fallback retry: skip to fallback if retries exhausted ───
     if (!opts._isFallback && !opts.internal) {
@@ -760,6 +744,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     const isResume = empSid
         ? true
         : (!forceNew && !!bucketSessionId && canResumeBucketSession);
+
+    // ─── Bootstrap compact 1-shot injection (Phase 52: bucket-aware) ───
+    // Vendor-agnostic: compact handler reset session_id and stored bootstrap in DB.
+    // Inject only on fresh main spawns (not employee/fallback/internal/resume).
+    // Using `isResume` (bucket-aware) instead of legacy `isResumeGuess` so cross-model
+    // toggles (e.g. gpt-5.4 ↔ gpt-5.3-codex-spark) get the bootstrap they need.
+    if (!opts.agentId && !opts._isFallback && !opts.internal && !isResume) {
+        const pending = consumePendingBootstrapPrompt();
+        if (pending) {
+            console.log(`[jaw:compact] injecting bootstrap (${pending.length} chars)`);
+            prompt = `${pending}\n\n---\n\n${prompt}`;
+        }
+    }
 
     if (!empSid && !forceNew && bucketSessionId && !canResumeBucketSession) {
         if (cli === 'opencode' && resumeKey !== (bucketResumeKey ?? null)) {
