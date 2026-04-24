@@ -389,6 +389,10 @@ function renderMermaidError(el: HTMLElement, code: string, errMsg: string): void
 }
 
 async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
+    if (!el.isConnected) {
+        delete el.dataset.mermaidQueued;
+        return;
+    }
     el.classList.remove('mermaid-pending');
     // Phase 127-F1: raw source lives in data attribute (skeleton DOM has no source text).
     const encoded = el.dataset.mermaidCodeRaw || '';
@@ -401,6 +405,10 @@ async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
         // that could reset Mermaid's internal config state.
         applyMermaidTheme();
         const { svg } = await mm.render(id, code);
+        if (!el.isConnected) {
+            delete el.dataset.mermaidQueued;
+            return;
+        }
         el.innerHTML = sanitizeMermaidSvg(svg);
         el.classList.add('mermaid-rendered');
         appendMermaidActionBtns(el);

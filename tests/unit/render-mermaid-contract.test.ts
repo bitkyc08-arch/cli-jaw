@@ -36,6 +36,27 @@ test('F1: renderSingleMermaidImpl reads source from dataset first', () => {
         'must preserve the canonical mermaidCode dataset field for copy button');
 });
 
+test('F9: renderSingleMermaidImpl skips detached nodes instead of updating stale DOM', () => {
+    const idx = renderSrc.indexOf('async function renderSingleMermaidImpl');
+    assert.ok(idx >= 0, 'renderSingleMermaidImpl must exist');
+    const block = renderSrc.slice(idx, idx + 2200);
+
+    assert.ok(block.includes('!el.isConnected'),
+        'renderSingleMermaidImpl must guard detached elements');
+    assert.ok(block.includes('delete el.dataset.mermaidQueued'),
+        'detached guard must clear queued state on the stale element');
+
+    const renderIdx = block.indexOf('const { svg } = await mm.render');
+    const writeIdx = block.indexOf('el.innerHTML = sanitizeMermaidSvg(svg)');
+    const guardIdx = block.indexOf('if (!el.isConnected)', renderIdx);
+    assert.ok(renderIdx >= 0, 'must call mm.render in renderSingleMermaidImpl');
+    assert.ok(writeIdx >= 0, 'must write sanitized SVG into element');
+    assert.ok(guardIdx > renderIdx,
+        'must check detached state after async mm.render resolves');
+    assert.ok(guardIdx < writeIdx,
+        'post-render detached guard must run before writing innerHTML');
+});
+
 test('F5: renderMermaidBlocks is exported and accepts immediate option', () => {
     assert.ok(renderSrc.match(/export async function renderMermaidBlocks\(/),
         'renderMermaidBlocks must be exported');

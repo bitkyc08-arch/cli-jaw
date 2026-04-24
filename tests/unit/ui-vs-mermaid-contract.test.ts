@@ -24,6 +24,30 @@ test('F5: finalizeAgent triggers immediate mermaid render after innerHTML', () =
         'finalizeAgent mermaid call must use immediate mode');
 });
 
+test('F9: VS promotion clears transient mermaid queue state before snapshot', () => {
+    assert.ok(uiSrc.includes('function clearMermaidTransientState'),
+        'ui.ts must define a helper that clears transient Mermaid state');
+    const idx = uiSrc.indexOf('export function finalizeAgent');
+    assert.ok(idx >= 0, 'finalizeAgent must exist');
+    const block = uiSrc.slice(idx, idx + 4200);
+    const clearIdx = block.indexOf('clearMermaidTransientState(div)');
+    const appendIdx = block.indexOf('vs.appendLiveItem(div)');
+    assert.ok(clearIdx >= 0, 'finalizeAgent must clear Mermaid transient state');
+    assert.ok(appendIdx >= 0, 'finalizeAgent must append to Virtual Scroll');
+    assert.ok(clearIdx < appendIdx,
+        'transient Mermaid state must be cleared before VS snapshots outerHTML');
+});
+
+test('F9: finalizeAgent skips immediate Mermaid queue for DOM promoted to VS', () => {
+    const idx = uiSrc.indexOf('export function finalizeAgent');
+    assert.ok(idx >= 0, 'finalizeAgent must exist');
+    const block = uiSrc.slice(idx, idx + 4200);
+    assert.ok(block.includes('willPromoteToVirtualScroll'),
+        'finalizeAgent must compute the VS promotion condition before Mermaid rendering');
+    assert.ok(/if\s*\(\s*content\s*&&\s*!willPromoteToVirtualScroll\s*\)/.test(block),
+        'immediate Mermaid render must be skipped for DOM that will be promoted to VS');
+});
+
 test('F7a: VS onLazyRender triggers immediate mermaid render', () => {
     const idx = uiSrc.indexOf('vs.onLazyRender = ');
     assert.ok(idx >= 0, 'onLazyRender assignment must exist');

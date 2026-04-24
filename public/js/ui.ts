@@ -265,6 +265,13 @@ export function appendAgentText(text: string): void {
 
 let lastFinalizeTs = 0;
 
+function clearMermaidTransientState(root: HTMLElement): void {
+    root.querySelectorAll<HTMLElement>('.mermaid-pending').forEach(el => {
+        delete el.dataset.mermaidQueued;
+        delete el.dataset.mermaidQueuedAt;
+    });
+}
+
 export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
     // Guard: prevent double-render when both agent_done + orchestrate_done fire
     const now = Date.now();
@@ -292,19 +299,25 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         if (content) content.innerHTML = toolHtml + renderMarkdown(finalText);
         if (content) content.setAttribute('data-raw', stripOrchestration(finalText));
         if (content) activateWidgets(content as HTMLElement);
-        // Phase 127-F5: kick off mermaid render immediately for this message's scope —
-        // bypasses the 100ms postRender debounce so the just-finished answer doesn't
-        // sit in the "Rendering diagram…" skeleton longer than needed.
-        if (content) {
+
+        const vs = getVirtualScroll();
+        const willPromoteToVirtualScroll = !!(
+            vs.active && state.currentAgentDiv && state.currentAgentDiv.isConnected
+        );
+
+        // Phase 127-F5/F9: kick off mermaid render immediately for direct DOM only.
+        // If this message will be promoted into Virtual Scroll, let the mounted VS
+        // clone render via onPostRender; otherwise we can queue a soon-detached node.
+        if (content && !willPromoteToVirtualScroll) {
             void renderMermaidBlocks(content as HTMLElement, { immediate: true });
         }
 
         // Promote streaming div from real DOM into VS if active.
         // Revert activated widgets back to pending state so VS can
         // re-activate them after recreating the DOM from stored HTML.
-        const vs = getVirtualScroll();
-        if (vs.active && state.currentAgentDiv && state.currentAgentDiv.isConnected) {
+        if (willPromoteToVirtualScroll) {
             const div = state.currentAgentDiv;
+            clearMermaidTransientState(div);
             div.querySelectorAll('.diagram-widget').forEach(widget => {
                 const encoded = (widget as HTMLElement).dataset.widgetHtml;
                 if (!encoded) return;
