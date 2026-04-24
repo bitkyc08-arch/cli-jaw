@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { extractFromAcpUpdate } from '../src/agent/events.ts';
+import { extractFromAcpSubagent, extractFromAcpUpdate } from '../src/agent/events.ts';
 
 test('extractFromAcpUpdate keeps full thought detail while previewing the label', () => {
     const longThought = 'a'.repeat(80);
@@ -98,4 +98,94 @@ test('extractFromAcpUpdate handles plan and unknown update types', () => {
 
     assert.equal(extractFromAcpUpdate({ update: { sessionUpdate: 'unknown_type' } }), null);
     assert.equal(extractFromAcpUpdate({}), null);
+});
+
+test('extractFromAcpSubagent maps Copilot subagent lifecycle events', () => {
+    const started = extractFromAcpSubagent({
+        type: 'subagent.started',
+        data: {
+            toolCallId: 'tool-1',
+            agentName: 'general',
+            agentDisplayName: 'General Agent',
+            agentDescription: 'General helper',
+        },
+    });
+    assert.deepEqual(started, {
+        tool: {
+            icon: '🤖',
+            label: 'subagent: General Agent',
+            toolType: 'subagent',
+            stepRef: 'acp:subagent:tool-1',
+            status: 'running',
+            detail: 'General helper',
+        },
+    });
+
+    const completed = extractFromAcpSubagent({
+        type: 'subagent.completed',
+        data: { toolCallId: 'tool-1', agentName: 'general', agentDisplayName: 'General Agent' },
+    });
+    assert.equal(completed.tool.icon, '✅');
+    assert.equal(completed.tool.stepRef, 'acp:subagent:tool-1');
+    assert.equal(completed.tool.toolType, 'subagent');
+    assert.equal(completed.tool.status, 'done');
+
+    const selected = extractFromAcpSubagent({
+        type: 'subagent.selected',
+        data: { agentName: 'general', agentDisplayName: 'General Agent', tools: null },
+    });
+    assert.deepEqual(selected, {
+        tool: {
+            icon: '🎯',
+            label: 'selected: General Agent',
+            toolType: 'subagent',
+            stepRef: 'acp:subagent:selection:general',
+            status: 'done',
+            detail: 'tools: all',
+        },
+    });
+
+    assert.equal(extractFromAcpSubagent({ type: 'other.event' }), null);
+});
+
+test('extractFromAcpUpdate maps observed Copilot ACP task tool_call wire as subagent', () => {
+    const ctx = { acpSubagentToolCallIds: new Set() };
+    const started = extractFromAcpUpdate({
+        sessionId: 'session-1',
+        update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'toolu_1',
+            title: 'Reply DONE',
+            kind: 'other',
+            status: 'pending',
+            rawInput: {
+                agent_type: 'task',
+                description: 'Reply DONE',
+                name: 'echo-done',
+                prompt: 'Reply with exactly the single word: DONE',
+            },
+        },
+    }, ctx);
+
+    assert.equal(started.tool.icon, '🤖');
+    assert.equal(started.tool.label, 'subagent: Reply DONE');
+    assert.equal(started.tool.toolType, 'subagent');
+    assert.equal(started.tool.stepRef, 'acp:callid:toolu_1');
+    assert.equal(started.tool.status, 'running');
+    assert.equal(ctx.acpSubagentToolCallIds.has('toolu_1'), true);
+
+    const completed = extractFromAcpUpdate({
+        sessionId: 'session-1',
+        update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'toolu_1',
+            status: 'completed',
+            content: [{ type: 'content', content: { type: 'text', text: 'DONE' } }],
+        },
+    }, ctx);
+    assert.equal(completed.tool.icon, '✅');
+    assert.equal(completed.tool.label, 'subagent: Reply DONE');
+    assert.equal(completed.tool.toolType, 'subagent');
+    assert.equal(completed.tool.stepRef, 'acp:callid:toolu_1');
+    assert.equal(completed.tool.status, 'done');
 });

@@ -372,7 +372,7 @@
 
 .process-step-toggle {
     display: grid;
-    grid-template-columns: auto auto minmax(0, 1fr) auto;
+    grid-template-columns: auto 16px auto minmax(0, 1fr) auto;
     align-items: start;
     gap: var(--space-2);
     width: 100%;
@@ -399,6 +399,20 @@
 .process-step-dot.done { background: var(--success); }
 .process-step-dot.error { background: var(--error); }
 
+.process-step-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 16px;
+    height: 16px;
+    color: var(--text-dim);
+}
+
+.process-step-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
 .process-step-badge {
     font-size: 9px;
     font-weight: 700;
@@ -422,6 +436,11 @@
 .process-step-badge.search {
     background: color-mix(in oklch, var(--success) 15%, transparent);
     color: var(--success);
+}
+
+.process-step-badge.subagent {
+    background: color-mix(in oklch, var(--accent) 12%, transparent);
+    color: var(--accent);
 }
 
 .process-step-main {

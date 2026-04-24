@@ -29,6 +29,12 @@ interface MessageItem { role: string; content: string; tool_log?: string | null;
 interface QueuedOverlayItem { id: string; prompt: string; source?: string; ts?: number; }
 interface ActiveRunSnapshot { running?: boolean; cli?: string; text?: string; toolLog?: ToolLogEntry[]; }
 
+function processStepType(toolType?: string): ProcessStep['type'] {
+    return toolType === 'thinking' || toolType === 'search' || toolType === 'subagent'
+        ? toolType
+        : 'tool';
+}
+
 function parseToolLog(toolLog?: string | null): ToolLogEntry[] {
     if (!toolLog) return [];
     try {
@@ -47,8 +53,9 @@ function toProcessSteps(tools: ToolLogEntry[]): ProcessStep[] {
     return tools.map((tool: any) => ({
         id: generateId(),
         icon: tool.icon ? emojiToIcon(tool.icon) : ICONS.tool,
+        rawIcon: tool.rawIcon || tool.icon || '',
         label: tool.label || tool.name || 'tool',
-        type: tool.toolType || 'tool',
+        type: processStepType(tool.toolType),
         detail: tool.detail || '',
         stepRef: tool.stepRef || '',
         status: tool.status || 'done',
@@ -160,6 +167,7 @@ export function showProcessStep(step: ProcessStep): void {
         }
     }
     if (state.currentProcessBlock) {
+        const rawIcon = step.rawIcon || step.icon;
         // Completion detection: prefer semantic status field, fall back to emoji check
         const resolvedStatus = (step.status && step.status !== 'running')
             ? step.status
@@ -173,28 +181,54 @@ export function showProcessStep(step: ProcessStep): void {
                 : [...state.currentProcessBlock.steps].reverse()
                     .find(s => s.status === 'running' && s.label === step.label);
             if (match) {
-                // Replace entire step when incoming has detail the running step lacks
-                if (step.detail && !match.detail) {
-                    step.icon = emojiToIcon(step.icon);
-                    replaceStep(state.currentProcessBlock, match.id, { ...step, id: match.id });
-                } else {
-                    updateStepStatus(state.currentProcessBlock, match.id, resolvedStatus);
-                }
+                step.icon = emojiToIcon(step.icon);
+                const mergedDetail = step.detail
+                    ? (match.detail ? `${match.detail}\n${step.detail}` : step.detail)
+                    : match.detail;
+                replaceStep(state.currentProcessBlock, match.id, {
+                    ...match,
+                    ...step,
+                    id: match.id,
+                    rawIcon,
+                    detail: mergedDetail,
+                    label: step.label || match.label,
+                    status: resolvedStatus,
+                });
                 scrollToBottom();
                 return;
             }
-            // No matching running step — try any running step as fallback
-            const anyRunning = [...state.currentProcessBlock.steps].reverse()
-                .find(s => s.status === 'running');
-            if (anyRunning) {
-                if (step.detail && !anyRunning.detail) {
-                    step.icon = emojiToIcon(step.icon);
-                    replaceStep(state.currentProcessBlock, anyRunning.id, { ...step, id: anyRunning.id });
-                } else {
-                    updateStepStatus(state.currentProcessBlock, anyRunning.id, resolvedStatus);
+            if (!step.stepRef) {
+                // Legacy fallback only for uncorrelated tools. stepRef-bearing done events
+                // must not close another subagent's running row.
+                const anyRunning = [...state.currentProcessBlock.steps].reverse()
+                    .find(s => s.status === 'running');
+                if (anyRunning) {
+                    if (step.detail && !anyRunning.detail) {
+                        step.icon = emojiToIcon(step.icon);
+                        replaceStep(state.currentProcessBlock, anyRunning.id, { ...step, id: anyRunning.id, rawIcon });
+                    } else {
+                        updateStepStatus(state.currentProcessBlock, anyRunning.id, resolvedStatus);
+                    }
+                    scrollToBottom();
+                    return;
                 }
-                scrollToBottom();
-                return;
+            }
+            if (step.stepRef && (resolvedStatus === 'done' || resolvedStatus === 'error')) {
+                const existingDone = [...state.currentProcessBlock.steps].reverse()
+                    .find(s => s.stepRef === step.stepRef && (s.status === 'done' || s.status === 'error'));
+                if (existingDone) {
+                    step.icon = emojiToIcon(step.icon);
+                    replaceStep(state.currentProcessBlock, existingDone.id, {
+                        ...existingDone,
+                        ...step,
+                        id: existingDone.id,
+                        rawIcon,
+                        status: resolvedStatus,
+                        detail: step.detail,
+                    });
+                    scrollToBottom();
+                    return;
+                }
             }
         }
         // Dedupe: detail이 있는 재broadcast → 같은 label+type의 detail 없는 유령 교체
@@ -211,6 +245,7 @@ export function showProcessStep(step: ProcessStep): void {
             }
         }
         // Convert emoji icon to SVG before adding step
+        step.rawIcon = rawIcon;
         step.icon = emojiToIcon(step.icon);
         addStep(state.currentProcessBlock, step);
     }

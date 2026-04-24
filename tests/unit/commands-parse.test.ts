@@ -161,6 +161,21 @@ test('getArgumentCompletionItems: unknown command returns empty', () => {
     assert.deepEqual(items, []);
 });
 
+test('executeCommand: thought toggles showReasoning setting', async () => {
+    const calls = [];
+    const parsed = parseCommand('/thought on');
+    const r = await executeCommand(parsed, {
+        interface: 'web',
+        getSettings: async () => ({ showReasoning: false }),
+        updateSettings: async (patch) => {
+            calls.push(patch);
+            return { ok: true };
+        },
+    });
+    assert.equal(r.ok, true);
+    assert.deepEqual(calls, [{ showReasoning: true }]);
+});
+
 // ─── COMMANDS registry integrity ─────────────────────
 
 test('COMMANDS: every command has required fields', () => {

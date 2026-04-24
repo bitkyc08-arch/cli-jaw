@@ -219,14 +219,15 @@ test('AG-016: gemini resume includes --resume', () => {
     assert.ok(args.includes('sess-456'));
 });
 
-test('AG-017: opencode auto permissions include dangerously-skip-permissions', () => {
+test('AG-017: opencode auto permissions omit removed dangerously-skip-permissions flag', () => {
     const args = buildArgs('opencode', 'opencode-go/kimi-k2.6', 'high', 'hi', '', 'auto');
-    assert.ok(args.includes('--dangerously-skip-permissions'));
+    assert.ok(!args.includes('--dangerously-skip-permissions'));
+    assert.ok(args.includes('--format'));
 });
 
-test('AG-018: opencode yolo permissions also include dangerously-skip-permissions', () => {
+test('AG-018: opencode yolo permissions omit removed dangerously-skip-permissions flag', () => {
     const args = buildArgs('opencode', 'opencode-go/kimi-k2.6', 'high', 'hi', '', 'yolo');
-    assert.ok(args.includes('--dangerously-skip-permissions'));
+    assert.ok(!args.includes('--dangerously-skip-permissions'));
 });
 
 test('AG-019: opencode safe permissions exclude dangerously-skip-permissions', () => {
@@ -234,7 +235,7 @@ test('AG-019: opencode safe permissions exclude dangerously-skip-permissions', (
     assert.ok(!args.includes('--dangerously-skip-permissions'));
 });
 
-test('AG-020: opencode resume auto permissions include dangerously-skip-permissions', () => {
+test('AG-020: opencode resume auto permissions omit removed dangerously-skip-permissions flag', () => {
     const args = buildResumeArgs('opencode', 'opencode-go/kimi-k2.6', 'high', 'sess-oc-1', 'continue', 'auto');
-    assert.ok(args.includes('--dangerously-skip-permissions'));
+    assert.ok(!args.includes('--dangerously-skip-permissions'));
 });

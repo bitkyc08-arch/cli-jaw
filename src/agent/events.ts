@@ -76,6 +76,72 @@ function buildPreview(text: any, max = 80) {
     return clipText(toSingleLine(text), max);
 }
 
+function appendDetail(...parts: Array<string | null | undefined>): string {
+    return parts.map(p => String(p || '').trim()).filter(Boolean).join('\n');
+}
+
+function formatJsonDetail(label: string, value: any): string {
+    if (value == null) return '';
+    try {
+        return `${label}: ${typeof value === 'string' ? value : JSON.stringify(value, null, 2)}`;
+    } catch {
+        return `${label}: ${String(value)}`;
+    }
+}
+
+function formatAssistantTextSegment(ctx: SpawnContext, text: any): string {
+    const raw = String(text || '');
+    if (!raw) return '';
+    if (!ctx.outputTextStarted) {
+        ctx.outputTextStarted = true;
+        return raw;
+    }
+    if (/\s$/.test(ctx.fullText) || /^\s/.test(raw) || /^[,.;:!?)]/.test(raw) || /^-\S/.test(raw)) return raw;
+    return raw.startsWith('- ') || raw.startsWith('* ')
+        ? `\n${raw}`
+        : `\n- ${raw}`;
+}
+
+function appendAssistantTextSegment(ctx: SpawnContext, text: any): string {
+    const segment = formatAssistantTextSegment(ctx, text);
+    if (!segment) return '';
+    ctx.fullText += segment;
+    return segment;
+}
+
+function emitGeminiThought(
+    ctx: SpawnContext,
+    agentLabel: string,
+    empTag: Record<string, any>,
+    text: any,
+): void {
+    const detail = String(text || '').trim();
+    if (!detail) return;
+    const tool = {
+        icon: '💭',
+        label: buildPreview(detail, 80) || 'thinking...',
+        toolType: 'thinking' as const,
+        detail,
+    };
+    ctx.toolLog.push(tool);
+    syncLiveTools(ctx);
+    broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag });
+}
+
+function extractGeminiThoughtText(content: any): string {
+    if (typeof content === 'string') return content;
+    if (Array.isArray(content)) {
+        return content
+            .filter((p: any) => p?.type === 'thought' || p?.type === 'thinking')
+            .map((p: any) => String(p.thought || p.text || p.content || ''))
+            .join('');
+    }
+    if (content && typeof content === 'object') {
+        return String(content.thought || content.text || content.content || '');
+    }
+    return '';
+}
+
 function toIndentedPreview(text: any, max = 200) {
     const raw = String(text || '').trim();
     if (!raw) return '';
@@ -91,6 +157,28 @@ function isOpencodeToolFailure(part: any): boolean {
         || status === 'failed'
         || status === 'denied'
         || status === 'cancelled';
+}
+
+function cleanOpencodeTaskResult(output: any): string {
+    const raw = String(output || '').trim();
+    if (!raw) return '';
+    const match = raw.match(/<task_result>([\s\S]*?)<\/task_result>/);
+    return (match?.[1] || raw).trim();
+}
+
+function formatOpenCodeTaskDetail(part: any): string {
+    const state = part?.state || {};
+    const input = state.input || {};
+    const meta = state.metadata || {};
+    const model = meta.model
+        ? [meta.model.providerID, meta.model.modelID].filter(Boolean).join('/')
+        : '';
+    return appendDetail(
+        input.prompt ? `prompt: ${clipText(String(input.prompt), 300)}` : '',
+        model ? `model: ${model}` : '',
+        meta.sessionId ? `child_session: ${meta.sessionId}` : '',
+        cleanOpencodeTaskResult(state.output) ? `result: ${cleanOpencodeTaskResult(state.output)}` : '',
+    );
 }
 
 function finalizeOpencodePendingTools(
@@ -125,6 +213,11 @@ export function extractSessionId(cli: string, event: any) {
 
 export function extractOutputChunk(cli: string, event: any, ctx?: SpawnContext): string {
     if (cli === 'gemini') {
+        if (ctx?.pendingOutputChunk) {
+            const chunk = ctx.pendingOutputChunk;
+            ctx.pendingOutputChunk = '';
+            return chunk;
+        }
         // [#107] Skip thought/thinking events (future-proofing for when Gemini CLI adds them)
         if (event.type === 'thought' || event.thought === true) return '';
         if (event.type === 'message' && event.role === 'assistant' && event.content) {
@@ -147,6 +240,11 @@ export function extractOutputChunk(cli: string, event: any, ctx?: SpawnContext):
     }
     // [P0-1.5] Codex: emit agent_message text as live chunk
     if (cli === 'codex') {
+        if (ctx?.pendingOutputChunk) {
+            const chunk = ctx.pendingOutputChunk;
+            ctx.pendingOutputChunk = '';
+            return chunk;
+        }
         if (event.type === 'item.completed' && event.item?.type === 'agent_message') {
             return String(event.item.text || '');
         }
@@ -344,9 +442,9 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             if (event.type === 'assistant' && event.message?.content) {
                 for (const block of event.message.content) {
                     if (block.type === 'text') {
-                        ctx.fullText += block.text;
+                        const segment = appendAssistantTextSegment(ctx, block.text);
                         const scope = liveScopeOf(ctx);
-                        if (scope) appendLiveRunText(scope, block.text);
+                        if (scope) appendLiveRunText(scope, segment);
                     }
                 }
             } else if (event.type === 'result') {
@@ -397,23 +495,24 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             if (event.type === 'item.completed') {
                 if (event.item?.type === 'agent_message') {
                     const text = String(event.item.text || '');
-                    ctx.fullText += text;
+                    const segment = appendAssistantTextSegment(ctx, text);
+                    ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
                     // [spark-visibility] Spark and other lightweight codex models often
                     // emit only an agent_message (no reasoning/command_execution), so the
                     // toolLog would be empty and the run would be invisible in the UI.
                     // Surface the final message as a 💬 entry so every codex run shows at
                     // least one toolLog step. Dedup is handled by seenToolKeys via stepRef.
-                    if (text.trim()) {
+                    if (segment.trim()) {
                         const itemId = event.item.id || '';
                         const tool = {
                             icon: '💬',
-                            label: buildPreview(text, 80) || 'message',
+                            label: buildPreview(segment, 80) || 'message',
                             toolType: 'tool' as const,
-                            detail: text,
+                            detail: segment,
                             stepRef: itemId ? `codex:item:${itemId}` : undefined,
                             status: 'done' as const,
                         };
-                        const key = tool.stepRef || `codex:msg:${ctx.toolLog.length}:${text.slice(0, 30)}`;
+                        const key = tool.stepRef || `codex:msg:${ctx.toolLog.length}:${segment.slice(0, 30)}`;
                         if (!ctx.seenToolKeys || !ctx.seenToolKeys.has(key)) {
                             if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
                             ctx.toolLog.push(tool);
@@ -422,8 +521,14 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                         }
                     }
                 }
-                if (event.item?.type === 'collab_tool_call') {
-                    ctx.hasActiveSubAgent = (event.item.status === 'in_progress');
+                if (event.item?.type === 'collab_tool_call'
+                    && ['spawn_agent', 'wait'].includes(String(event.item.tool || event.item.name || ''))) {
+                    ctx.hasActiveSubAgent = false;
+                }
+            } else if (event.type === 'item.started') {
+                if (event.item?.type === 'collab_tool_call'
+                    && ['spawn_agent', 'wait'].includes(String(event.item.tool || event.item.name || ''))) {
+                    ctx.hasActiveSubAgent = true;
                 }
             } else if (event.type === 'turn.completed' && event.usage) {
                 // [P2-3.6] Include cached_input_tokens in token storage
@@ -459,20 +564,29 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             if (event.type === 'init' && event.model) {
                 ctx.model = event.model;
             }
-            // [#107] Skip thought/thinking events entirely — don't accumulate to fullText
+            // [#107/#121] Thought content never enters fullText; optional visibility uses process steps.
             if (event.type === 'thought' || event.thought === true) {
-                pushTrace(ctx, `[${agentLabel}] gemini thought (hidden)`);
+                if (ctx.showReasoning) {
+                    emitGeminiThought(ctx, agentLabel, empTag, event.content || event.thought || event.text);
+                    pushTrace(ctx, `[${agentLabel}] gemini thought (visible)`);
+                } else {
+                    pushTrace(ctx, `[${agentLabel}] gemini thought (hidden)`);
+                }
                 break;
             }
             if (event.type === 'message' && event.role === 'assistant') {
                 // [#107] If content is an array (ACP-style), extract only text parts
                 if (Array.isArray(event.content)) {
+                    if (ctx.showReasoning) {
+                        emitGeminiThought(ctx, agentLabel, empTag, extractGeminiThoughtText(event.content));
+                    }
                     const textOnly = event.content
                         .filter((p: any) => p?.type === 'text')
                         .map((p: any) => String(p?.text || ''))
                         .join('');
                     if (textOnly) {
-                        ctx.fullText += textOnly;
+                        const segment = appendAssistantTextSegment(ctx, textOnly);
+                        ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
                         pushTrace(ctx, `[${agentLabel}] gemini text (filtered)`);
                     }
                     break;
@@ -481,7 +595,8 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 if (event.delta) {
                     pushTrace(ctx, `[${agentLabel}] gemini delta text`);
                 }
-                ctx.fullText += event.content || '';
+                const segment = appendAssistantTextSegment(ctx, event.content || '');
+                ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
             } else if (event.type === 'result') {
                 ctx.geminiResultSeen = true;
                 ctx.duration = event.stats?.duration_ms;
@@ -547,26 +662,20 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     || (!!ctx.opencodeTextAfterLastTool && !!ctx.opencodeHadToolErrorInStep)
                 );
                 if (shouldCommitText) {
-                    ctx.fullText += stepText;
-                    ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + stepText;
+                    const segment = appendAssistantTextSegment(ctx, stepText);
+                    ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
                 } else if (stepText) {
-                    if (!ctx.opencodeTextAfterLastTool) {
-                        const thinkingTool = {
-                            icon: '💭',
-                            label: buildPreview(stepText, 80) || 'thinking...',
-                            toolType: 'thinking' as const,
-                            detail: stepText,
-                        };
-                        ctx.toolLog.push(thinkingTool);
-                        syncLiveTools(ctx);
-                        broadcast('agent_tool', { agentId: agentLabel, ...thinkingTool, ...empTag });
-                        pushTrace(ctx, `[${agentLabel}] opencode pre-tool thinking (${stepText.length} chars)`);
-                    } else {
-                        pushTrace(
-                            ctx,
-                            `[${agentLabel}] opencode buffered text discarded before tool call (${stepText.length} chars)`,
-                        );
-                    }
+                    const thinkingTool = {
+                        icon: '💭',
+                        label: buildPreview(stepText, 80) || 'thinking...',
+                        toolType: 'thinking' as const,
+                        detail: stepText,
+                    };
+                    ctx.toolLog.push(thinkingTool);
+                    syncLiveTools(ctx);
+                    broadcast('agent_tool', { agentId: agentLabel, ...thinkingTool, ...empTag });
+                    const phase = ctx.opencodeTextAfterLastTool ? 'post-tool' : 'pre-tool';
+                    pushTrace(ctx, `[${agentLabel}] opencode ${phase} intermediate text (${stepText.length} chars)`);
                 }
                 finalizeOpencodePendingTools(ctx, agentLabel, empTag);
                 ctx.opencodeStepText = '';
@@ -716,8 +825,8 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
     const item = event.item || event.part || event;
     const labels = [];
 
-    if (cli === 'codex' && event.type === 'item.completed' && item) {
-        if (item.type === 'web_search') {
+    if (cli === 'codex' && (event.type === 'item.started' || event.type === 'item.completed') && item) {
+        if (event.type === 'item.completed' && item.type === 'web_search') {
             const action = item.action?.type || '';
             if (action === 'search') {
                 const query = item.query || item.action?.query || 'search';
@@ -734,11 +843,11 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
                 labels.push({ icon: '🔍', label: buildPreview(query, 60), toolType: 'search', detail: query });
             }
         }
-        if (item.type === 'reasoning') {
+        if (event.type === 'item.completed' && item.type === 'reasoning') {
             const detail = String(item.text || '').replace(/\*+/g, '').trim();
             labels.push({ icon: '💭', label: buildPreview(detail, 60) || 'thinking...', toolType: 'thinking', detail });
         }
-        if (item.type === 'command_execution') {
+        if (event.type === 'item.completed' && item.type === 'command_execution') {
             const command = String(item.command || 'exec');
             const output = item.aggregated_output ? String(item.aggregated_output) : '';
             const detail = output ? `$ ${command}\n${output}` : command;
@@ -758,13 +867,24 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
             });
         }
         if (item.type === 'collab_tool_call') {
-            const name = item.name || 'sub-agent';
-            const status = item.status || '';
-            if (status === 'in_progress') {
-                labels.push({ icon: '🔀', label: `waiting: ${name}`, toolType: 'tool' });
-            } else {
-                labels.push({ icon: '✅', label: `sub-agent: ${name}`, toolType: 'tool', status: 'done' });
-            }
+            const tool = String(item.tool || item.name || 'subagent');
+            const ref = `codex:collab:${item.id || tool}`;
+            const isStarted = event.type === 'item.started' || item.status === 'in_progress';
+            const receiverIds = Array.isArray(item.receiver_thread_ids) ? item.receiver_thread_ids.join(', ') : '';
+            const detail = appendDetail(
+                item.sender_thread_id ? `sender: ${item.sender_thread_id}` : '',
+                receiverIds ? `receivers: ${receiverIds}` : '',
+                formatJsonDetail('agents', item.agents_states),
+                item.prompt ? `prompt: ${clipText(String(item.prompt), 300)}` : '',
+            );
+            labels.push({
+                icon: isStarted ? '🤖' : '✅',
+                label: isStarted ? `${tool}...` : `${tool} done`,
+                toolType: 'subagent',
+                stepRef: ref,
+                status: isStarted ? 'running' : 'done',
+                ...(detail ? { detail } : {}),
+            });
         }
     }
 
@@ -781,6 +901,48 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
         if (event.type === 'system') {
             const status = String(event.status || '');
             const subtype = String(event.subtype || event.event || '');
+            if (subtype === 'task_started') {
+                const taskId = event.task_id || event.id || event.tool_use_id || 'unknown';
+                const description = event.description || event.input?.description || event.task_type || 'subagent';
+                const detail = appendDetail(
+                    event.task_type ? `type: ${event.task_type}` : '',
+                    event.tool_use_id ? `tool_use_id: ${event.tool_use_id}` : '',
+                    event.prompt ? `prompt: ${clipText(String(event.prompt), 300)}` : '',
+                );
+                pushToolLabel(labels, {
+                    icon: '🤖',
+                    label: `subagent: ${buildPreview(description, 60)}`,
+                    toolType: 'subagent',
+                    stepRef: `claude:task:${taskId}`,
+                    status: 'running',
+                    ...(detail ? { detail } : {}),
+                }, cli, event, ctx);
+            }
+            if (subtype === 'task_notification') {
+                const taskId = event.task_id || event.id || event.tool_use_id || 'unknown';
+                const rawStatus = String(event.status || 'completed');
+                const failed = ['failed', 'error', 'cancelled', 'canceled'].includes(rawStatus);
+                const description = event.description || event.summary || event.task_type || 'subagent';
+                const usage = event.usage || {};
+                const usageDetail = [
+                    usage.total_tokens != null ? `${usage.total_tokens} tok` : '',
+                    usage.tool_uses != null ? `${usage.tool_uses} tools` : '',
+                    usage.duration_ms != null ? `${(Number(usage.duration_ms) / 1000).toFixed(1)}s` : '',
+                ].filter(Boolean).join(' · ');
+                const detail = appendDetail(
+                    event.summary ? `summary: ${event.summary}` : '',
+                    event.output_file ? `output_file: ${event.output_file}` : '',
+                    usageDetail,
+                );
+                pushToolLabel(labels, {
+                    icon: failed ? '❌' : '✅',
+                    label: `subagent: ${buildPreview(description, 60)}`,
+                    toolType: 'subagent',
+                    stepRef: `claude:task:${taskId}`,
+                    status: failed ? 'error' : 'done',
+                    ...(detail ? { detail } : {}),
+                }, cli, event, ctx);
+            }
             if (status === 'compacting' || subtype === 'compacting') {
                 pushToolLabel(labels, { icon: '🗜️', label: 'compacting...', toolType: 'tool' }, cli, event, ctx);
             }
@@ -792,12 +954,30 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
         if (event.type === 'stream_event' && event.event?.type === 'content_block_start') {
             if (ctx) ctx.hasClaudeStreamEvents = true;
             const cb = event.event.content_block;
-            if (cb?.type === 'tool_use') pushToolLabel(labels, { icon: '🔧', label: cb.name || 'tool', toolType: 'tool', stepRef: cb.id ? `claude:tooluse:${cb.id}` : undefined }, cli, event, ctx);
+            if (cb?.type === 'tool_use') {
+                const isAgent = cb.name === 'Agent';
+                pushToolLabel(labels, {
+                    icon: isAgent ? '🤖' : '🔧',
+                    label: isAgent ? 'subagent' : (cb.name || 'tool'),
+                    toolType: isAgent ? 'subagent' : 'tool',
+                    stepRef: cb.id ? `claude:tooluse:${cb.id}` : undefined,
+                }, cli, event, ctx);
+            }
             // thinking: don't emit placeholder — buffer in extractFromEvent will emit with real content
         }
         if (event.type === 'assistant' && event.message?.content && !ctx?.hasClaudeStreamEvents) {
             for (const block of event.message.content) {
-                if (block.type === 'tool_use') pushToolLabel(labels, { icon: '🔧', label: block.name || 'tool', toolType: 'tool', stepRef: block.id ? `claude:tooluse:${block.id}` : undefined }, cli, event, ctx);
+                if (block.type === 'tool_use') {
+                    const isAgent = block.name === 'Agent';
+                    const description = block.input?.description || block.input?.subagent_type || 'subagent';
+                    pushToolLabel(labels, {
+                        icon: isAgent ? '🤖' : '🔧',
+                        label: isAgent ? `subagent: ${buildPreview(description, 60)}` : (block.name || 'tool'),
+                        toolType: isAgent ? 'subagent' : 'tool',
+                        stepRef: block.id ? `claude:tooluse:${block.id}` : undefined,
+                        ...(isAgent && block.input?.prompt ? { detail: `prompt: ${clipText(String(block.input.prompt), 300)}` } : {}),
+                    }, cli, event, ctx);
+                }
                 if (block.type === 'thinking') {
                     const text = (block.thinking || '').trim();
                     pushToolLabel(labels, { icon: '💭', label: buildPreview(text, 80) || 'thinking...', toolType: 'thinking', detail: text }, cli, event, ctx);
@@ -833,6 +1013,43 @@ function extractToolLabels(cli: string, event: any, ctx: SpawnContext | null = n
     }
 
     if (cli === 'opencode') {
+        const isTaskToolUse = event.type === 'tool_use' && event.part?.tool === 'task';
+        const isTaskToolResult = event.type === 'tool_result'
+            && event.part?.callID
+            && ctx?.opencodeTaskCallIds?.has(event.part.callID);
+
+        if (isTaskToolUse || isTaskToolResult) {
+            const part = event.part;
+            const callID = part.callID || part.id || 'task';
+            if (isTaskToolResult && !part.state) return labels;
+            if (isTaskToolUse && ctx) {
+                if (!ctx.opencodeTaskCallIds) ctx.opencodeTaskCallIds = new Set();
+                ctx.opencodeTaskCallIds.add(callID);
+            }
+            const state = part.state || {};
+            const input = state.input || {};
+            const status = String(state.status || (event.type === 'tool_result' ? 'completed' : 'completed'));
+            const failed = isOpencodeToolFailure(part) || ['error', 'failed', 'cancelled', 'canceled'].includes(status);
+            const subagentType = input.subagent_type || 'general';
+            const description = input.description || state.title || part.tool || 'task';
+            const resultText = event.type === 'tool_result'
+                ? extractText(part.content || part.output || state.output)
+                : '';
+            const detail = appendDetail(
+                formatOpenCodeTaskDetail(part),
+                resultText ? `result: ${resultText}` : '',
+            );
+            labels.push({
+                icon: failed ? '❌' : (status === 'running' || status === 'in_progress' ? '🤖' : '✅'),
+                label: `subagent[${subagentType}]: ${buildPreview(description, 60)}`,
+                toolType: 'subagent',
+                stepRef: `opencode:call:${callID}`,
+                ...(detail ? { detail } : {}),
+                status: failed ? 'error' : (status === 'running' || status === 'in_progress' ? 'running' : 'done'),
+            });
+            return labels;
+        }
+
         if (event.type === 'tool_use' && event.part) {
             const ref = event.part.callID
                 ? `opencode:call:${event.part.callID}`
@@ -937,7 +1154,7 @@ function extractText(content: any) {
     return '';
 }
 
-export function extractFromAcpUpdate(params: any) {
+export function extractFromAcpUpdate(params: any, ctx: SpawnContext | null = null) {
     const update = params?.update;
     if (!update) return null;
 
@@ -958,20 +1175,33 @@ export function extractFromAcpUpdate(params: any) {
 
         case 'tool_call': {
             const toolName = update.name || 'tool';
+            const rawInput = update.rawInput || update.input || {};
+            const isSubagentTask = rawInput?.agent_type === 'task' || rawInput?.agentType === 'task';
+            const displayLabel = isSubagentTask
+                ? `subagent: ${update.title || rawInput.description || rawInput.name || toolName}`
+                : update.title || toolName;
+            if (isSubagentTask && update.toolCallId && ctx) {
+                if (!ctx.acpSubagentToolCallIds) ctx.acpSubagentToolCallIds = new Set();
+                if (!ctx.acpSubagentLabels) ctx.acpSubagentLabels = new Map();
+                ctx.acpSubagentToolCallIds.add(update.toolCallId);
+                ctx.acpSubagentLabels.set(update.toolCallId, displayLabel);
+            }
             const fullInput = update.input != null
                 ? (typeof update.input === 'object' ? JSON.stringify(update.input, null, 2) : String(update.input))
+                : update.rawInput != null
+                    ? (typeof update.rawInput === 'object' ? JSON.stringify(update.rawInput, null, 2) : String(update.rawInput))
                 : '';
             // [P1-2.10] Semantic icon from tool kind/title
             const kindIcon = toolKindIcon(update.kind);
-            const displayLabel = update.title || toolName;
             // [P0-1.11] Use toolCallId for unique stepRef
             return {
                 tool: {
-                    icon: kindIcon || '🔧',
+                    icon: isSubagentTask ? '🤖' : (kindIcon || '🔧'),
                     label: displayLabel,
-                    toolType: 'tool',
+                    toolType: isSubagentTask ? 'subagent' : 'tool',
                     detail: fullInput,
                     stepRef: `acp:callid:${update.toolCallId || update.id || toolName}`,
+                    ...(isSubagentTask ? { status: 'running' } : {}),
                 },
             };
         }
@@ -986,14 +1216,17 @@ export function extractFromAcpUpdate(params: any) {
                 failed: { icon: '❌', status: 'error' },
             };
             const mapped = statusMap[update.status] || { icon: '❔', status: update.status || 'unknown' };
+            const toolCallId = update.toolCallId || update.id || update.name || 'done';
+            const isSubagentTask = !!(toolCallId && ctx?.acpSubagentToolCallIds?.has(toolCallId));
+            const subagentLabel = toolCallId ? ctx?.acpSubagentLabels?.get(toolCallId) : '';
             // [P1-2.9] Extract content from tool result
             const resultText = update.content ? extractText(update.content) : '';
             return {
                 tool: {
                     icon: mapped.icon,
-                    label: update.name || update.id || 'done',
-                    toolType: 'tool',
-                    stepRef: `acp:callid:${update.toolCallId || update.id || update.name || 'done'}`,
+                    label: isSubagentTask ? (subagentLabel || `subagent: ${update.name || update.title || 'task'}`) : update.name || update.id || 'done',
+                    toolType: isSubagentTask ? 'subagent' : 'tool',
+                    stepRef: `acp:callid:${toolCallId}`,
                     status: mapped.status,
                     ...(resultText ? { detail: buildPreview(resultText, 200) } : {}),
                 },
@@ -1045,6 +1278,71 @@ export function extractFromAcpUpdate(params: any) {
             if (process.env.DEBUG) {
                 console.log(`[acp] unknown sessionUpdate: ${type}`, JSON.stringify(update).slice(0, 100));
             }
+            return null;
+    }
+}
+
+export function extractFromAcpSubagent(event: any) {
+    if (!event?.type || !String(event.type).startsWith('subagent.')) return null;
+    const data = event.data || {};
+    const display = data.agentDisplayName || data.agentName || 'subagent';
+    const agentName = data.agentName || display;
+
+    switch (event.type) {
+        case 'subagent.selected':
+            return {
+                tool: {
+                    icon: '🎯',
+                    label: `selected: ${display}`,
+                    toolType: 'subagent',
+                    stepRef: `acp:subagent:selection:${agentName}`,
+                    status: 'done',
+                    detail: `tools: ${Array.isArray(data.tools) ? data.tools.join(', ') : 'all'}`,
+                },
+            };
+        case 'subagent.deselected':
+            return {
+                tool: {
+                    icon: '⏭',
+                    label: `deselected: ${display}`,
+                    toolType: 'subagent',
+                    stepRef: `acp:subagent:selection:${agentName}`,
+                    status: 'done',
+                },
+            };
+        case 'subagent.started':
+            return {
+                tool: {
+                    icon: '🤖',
+                    label: `subagent: ${display}`,
+                    toolType: 'subagent',
+                    stepRef: `acp:subagent:${data.toolCallId || agentName}`,
+                    status: 'running',
+                    ...(data.agentDescription ? { detail: data.agentDescription } : {}),
+                },
+            };
+        case 'subagent.completed':
+            return {
+                tool: {
+                    icon: '✅',
+                    label: `subagent: ${display}`,
+                    toolType: 'subagent',
+                    stepRef: `acp:subagent:${data.toolCallId || agentName}`,
+                    status: 'done',
+                },
+            };
+        case 'subagent.failed':
+            return {
+                tool: {
+                    icon: '❌',
+                    label: `subagent: ${display}`,
+                    toolType: 'subagent',
+                    stepRef: `acp:subagent:${data.toolCallId || agentName}`,
+                    status: 'error',
+                    detail: `error: ${data.error || ''}`,
+                },
+            };
+        default:
             return null;
     }
 }

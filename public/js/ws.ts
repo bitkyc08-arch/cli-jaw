@@ -255,11 +255,13 @@ export function connect(): void {
         } else if (msg.type === 'agent_tool') {
             const empPrefix = msg.isEmployee ? '(E) ' : '';
             const stepType = msg.toolType === 'thinking' ? 'thinking'
-                : msg.toolType === 'search' ? 'search' : 'tool';
+                : msg.toolType === 'search' ? 'search'
+                    : msg.toolType === 'subagent' ? 'subagent' : 'tool';
             showProcessStep({
                 id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 type: stepType,
                 icon: msg.icon || ICONS.tool,
+                rawIcon: (msg as any).rawIcon || msg.icon || '',
                 label: empPrefix + (msg.label || ''),
                 detail: msg.detail || '',
                 stepRef: msg.stepRef || '',

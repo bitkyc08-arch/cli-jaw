@@ -931,24 +931,25 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
         acp.on('session/update', (params) => {
             if (replayMode) return;  // 리플레이 중 모든 이벤트 무시
-            const parsed = extractFromAcpUpdate(params);
+            const parsed = extractFromAcpUpdate(params, ctx);
             if (!parsed) return;
 
             if (parsed.tool) {
+                const parsedTool: any = parsed.tool;
                 // Buffer 💭 thought chunks → flush when different event arrives
-                if (parsed.tool.icon === '💭') {
-                    ctx.thinkingBuf += parsed.tool.detail || parsed.tool.label;
+                if (parsedTool.icon === '💭') {
+                    ctx.thinkingBuf += parsedTool.detail || parsedTool.label;
                     return;
                 }
                 // Non-💭 tool → flush any pending thinking first
                 flushThinking();
                 // [I3] Include stepRef + status in dedupe key to allow repeated same-name tool calls
-                const key = `${parsed.tool.icon}:${parsed.tool.label}:${parsed.tool.stepRef || ''}:${parsed.tool.status || ''}`;
+                const key = `${parsedTool.icon}:${parsedTool.label}:${parsedTool.stepRef || ''}:${parsedTool.status || ''}`;
                 if (!ctx.seenToolKeys.has(key)) {
                     ctx.seenToolKeys.add(key);
-                    ctx.toolLog.push(parsed.tool);
+                    ctx.toolLog.push(parsedTool);
                     if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
-                    broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool, ...empTag });
+                    broadcast('agent_tool', { agentId: agentLabel, ...parsedTool, ...empTag });
                     // Reset heartbeat gate on actually visible broadcast (not 💭)
                     lastVisibleBroadcastTs = Date.now();
                     heartbeatSent = false;
@@ -1199,6 +1200,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         tokens: null as any,
         stderrBuf: '',
         hasActiveSubAgent: false,
+        showReasoning: settings.showReasoning === true,
+        outputTextStarted: false,
         liveScope: effectiveLiveScope,
         geminiResultSeen: false,
     };

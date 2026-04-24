@@ -7,10 +7,12 @@ import { ICONS } from '../icons.js';
 
 export interface ToolLogEntry {
     icon: string;
+    rawIcon?: string;
     label: string;
     detail?: string;
     toolType?: string;
     stepRef?: string;
+    status?: string;
 }
 
 function hasExpandableDetail(tl: ToolLogEntry): boolean {

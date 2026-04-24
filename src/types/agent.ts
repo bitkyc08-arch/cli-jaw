@@ -3,6 +3,7 @@
 
 export interface ToolEntry {
   icon: string;
+  rawIcon?: string;
   label: string;
   toolType: string;
   detail?: string;
@@ -25,6 +26,8 @@ export interface SpawnContext {
   tokens: Record<string, number> | null;
   stderrBuf: string;
   hasActiveSubAgent?: boolean;
+  showReasoning?: boolean;
+  outputTextStarted?: boolean;
   thinkingBuf?: string;
   liveScope?: string | null;
   // Phase 3: model/metadata storage
@@ -37,6 +40,9 @@ export interface SpawnContext {
   opencodeTextAfterLastTool?: boolean;
   opencodeHadToolErrorInStep?: boolean;
   opencodePendingToolRefs?: string[];
+  opencodeTaskCallIds?: Set<string>;
+  acpSubagentToolCallIds?: Set<string>;
+  acpSubagentLabels?: Map<string, string>;
   // Gemini watchdog flag (set on 'result' event, triggers kill timer in spawn.ts)
   geminiResultSeen?: boolean;
   // Claude-specific stream buffers (set by events.ts extractFromEvent)

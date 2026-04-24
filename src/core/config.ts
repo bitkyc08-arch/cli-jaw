@@ -112,6 +112,7 @@ function createDefaultSettings() {
         port: '',  // persisted by server on startup; CLI commands use as fallback
         cli: DEFAULT_CLI,
         fallbackOrder: [],
+        showReasoning: false,
         permissions: 'auto',
         workingDir: JAW_HOME,
         perCli: buildDefaultPerCli(),

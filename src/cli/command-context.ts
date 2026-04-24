@@ -38,6 +38,7 @@ const REMOTE_ALLOWED_SETTINGS_KEYS = new Set([
     'fallbackOrder',  // /fallback
     'cli',            // /cli
     'perCli',         // /model
+    'showReasoning',  // /thought
     'memory',         // /flush
     'telegram',       // /forward (telegram)
     'discord',        // /forward (discord)

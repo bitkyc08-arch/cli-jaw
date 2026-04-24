@@ -219,6 +219,27 @@ export async function cliHandler(args: any[], ctx: any) {
     return { ok: true, text: t('cmd.cli.changed', { from: current, to: nextCli }, L) };
 }
 
+export async function thoughtHandler(args: any[], ctx: any) {
+    const settings = await safeCall(ctx.getSettings, null);
+    if (!settings) return { ok: false, text: t('cmd.settingsLoadFail', {}, ctx.locale || 'ko') };
+
+    const sub = String(args[0] || '').toLowerCase();
+    if (!sub || sub === 'status') {
+        return {
+            ok: true,
+            text: `Gemini thought visibility: ${settings.showReasoning === true ? 'ON' : 'OFF'}\nUsage: /thought on|off`,
+        };
+    }
+    if (sub !== 'on' && sub !== 'off') {
+        return { ok: false, text: 'Usage: /thought on|off' };
+    }
+
+    const next = sub === 'on';
+    const updateResult = await ctx.updateSettings({ showReasoning: next });
+    if (updateResult?.ok === false) return updateResult;
+    return { ok: true, text: `Gemini thought visibility: ${next ? 'ON' : 'OFF'}` };
+}
+
 export async function skillHandler(args: any[], ctx: any) {
     const L = ctx.locale || 'ko';
     const sub = (args[0] || 'list').toLowerCase();

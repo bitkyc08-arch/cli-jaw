@@ -6,6 +6,7 @@ import { t } from '../core/i18n.js';
 import {
     formatDuration, unknownCommand, unsupportedCommand, normalizeResult,
     statusHandler, modelHandler, cliHandler, skillHandler, employeeHandler,
+    thoughtHandler,
     clearHandler, resetHandler, versionHandler, mcpHandler, memoryHandler,
     browserHandler, promptHandler, quitHandler, fileHandler, fallbackHandler,
     steerHandler, flushHandler, forwardHandler, ideHandler, orchestrateHandler,
@@ -159,6 +160,7 @@ export const COMMANDS = [
     { name: 'cli', descKey: 'cmd.cli.desc', tgDescKey: 'cmd.cli.tg_desc', desc: 'View/change CLI', args: '[name]', category: 'model', interfaces: ['cli', 'web', 'telegram', 'discord'], getArgumentCompletions: cliArgumentCompletions, handler: cliHandler },
     { name: 'fallback', descKey: 'cmd.fallback.desc', tgDescKey: 'cmd.fallback.tg_desc', desc: 'Set fallback order', args: '[cli1 cli2...|off]', category: 'model', interfaces: ['cli', 'web', 'telegram', 'discord'], getArgumentCompletions: fallbackArgumentCompletions, handler: fallbackHandler },
     { name: 'forward', descKey: 'cmd.forward.desc', tgDescKey: 'cmd.forward.tg_desc', desc: 'Toggle forwarding (on/off)', args: '[on|off]', category: 'model', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: forwardHandler },
+    { name: 'thought', desc: 'Toggle Gemini thought visibility', args: '[on|off]', category: 'model', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: thoughtHandler },
     { name: 'flush', descKey: 'cmd.flush.desc', tgDescKey: 'cmd.flush.tg_desc', desc: 'Set flush model', args: '[cli] [model] | off', category: 'model', interfaces: ['cli', 'web', 'telegram', 'discord'], getArgumentCompletions: flushArgumentCompletions, handler: flushHandler },
     { name: 'version', descKey: 'cmd.version.desc', tgDescKey: 'cmd.version.tg_desc', desc: 'Version/CLI status', category: 'cli', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: versionHandler },
     { name: 'skill', descKey: 'cmd.skill.desc', tgDescKey: 'cmd.skill.tg_desc', desc: 'Skill list/reset', args: '[list|reset]', category: 'tools', interfaces: ['cli', 'web', 'telegram', 'discord'], getArgumentCompletions: skillArgumentCompletions, handler: skillHandler },

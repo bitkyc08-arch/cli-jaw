@@ -12,7 +12,7 @@ export interface QuotaEntry {
     reason?: string;
 }
 export interface SettingsData {
-    cli: string; workingDir: string; permissions: string; locale?: string;
+    cli: string; workingDir: string; permissions: string; locale?: string; showReasoning?: boolean;
     perCli?: Record<string, PerCliConfig>;
     activeOverrides?: Record<string, PerCliConfig>;
     telegram?: TelegramConfig;

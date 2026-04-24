@@ -726,6 +726,109 @@ test('P1-2.6: OpenCode failed exit code shows error icon', () => {
     assert.equal(labels[0].exitCode, 127);
 });
 
+test('21.1: Claude task lifecycle emits subagent steps', () => {
+    const ctx = createClaudeCtx();
+    const [started] = extractToolLabelsForTest('claude', {
+        type: 'system',
+        subtype: 'task_started',
+        task_id: 'task-1',
+        tool_use_id: 'toolu-1',
+        description: 'Investigate parser',
+        task_type: 'local_agent',
+        prompt: 'Check the parser.',
+    }, ctx);
+    assert.equal(started.icon, '🤖');
+    assert.equal(started.toolType, 'subagent');
+    assert.equal(started.stepRef, 'claude:task:task-1');
+    assert.equal(started.status, 'running');
+    assert.ok(started.detail.includes('tool_use_id: toolu-1'));
+
+    const [done] = extractToolLabelsForTest('claude', {
+        type: 'system',
+        subtype: 'task_notification',
+        task_id: 'task-1',
+        status: 'completed',
+        summary: 'Found the issue',
+        usage: { total_tokens: 1200, tool_uses: 2, duration_ms: 3456 },
+    }, createClaudeCtx());
+    assert.equal(done.icon, '✅');
+    assert.equal(done.toolType, 'subagent');
+    assert.equal(done.stepRef, 'claude:task:task-1');
+    assert.equal(done.status, 'done');
+    assert.ok(done.detail.includes('1200 tok'));
+});
+
+test('21.2: Codex collab_tool_call uses item.tool and toggles active subagent for spawn/wait', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    extractFromEvent('codex', {
+        type: 'item.started',
+        item: {
+            type: 'collab_tool_call',
+            id: 'collab-1',
+            tool: 'spawn_agent',
+            status: 'in_progress',
+            sender_thread_id: 'parent',
+        },
+    }, ctx, 'codex');
+    assert.equal(ctx.hasActiveSubAgent, true);
+    assert.equal(ctx.toolLog[0].toolType, 'subagent');
+    assert.equal(ctx.toolLog[0].stepRef, 'codex:collab:collab-1');
+    assert.equal(ctx.toolLog[0].label, 'spawn_agent...');
+
+    extractFromEvent('codex', {
+        type: 'item.completed',
+        item: {
+            type: 'collab_tool_call',
+            id: 'collab-1',
+            tool: 'spawn_agent',
+            status: 'completed',
+            receiver_thread_ids: ['child-1'],
+            agents_states: { 'child-1': { status: 'pending_init' } },
+        },
+    }, ctx, 'codex');
+    assert.equal(ctx.hasActiveSubAgent, false);
+    assert.equal(ctx.toolLog[0].status, 'done');
+    assert.equal(ctx.toolLog[0].label, 'spawn_agent done');
+    assert.ok(ctx.toolLog[0].detail.includes('child-1'));
+});
+
+test('21.3: OpenCode task tool is marked as subagent and absorbs same callID tool_result when ctx is present', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), opencodeTaskCallIds: new Set() };
+    extractFromEvent('opencode', {
+        type: 'tool_use',
+        part: {
+            tool: 'task',
+            callID: 'task:0',
+            state: {
+                status: 'completed',
+                title: 'Reply DONE',
+                input: {
+                    description: 'Reply DONE',
+                    prompt: 'Reply with DONE.',
+                    subagent_type: 'general',
+                },
+                output: '<task_result>DONE</task_result>',
+                metadata: {
+                    sessionId: 'ses_child',
+                    model: { providerID: 'opencode-go', modelID: 'kimi-k2.6' },
+                },
+            },
+        },
+    }, ctx, 'oc');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].toolType, 'subagent');
+    assert.equal(ctx.toolLog[0].stepRef, 'opencode:call:task:0');
+    assert.ok(ctx.toolLog[0].detail.includes('child_session: ses_child'));
+    assert.equal(ctx.opencodeTaskCallIds.has('task:0'), true);
+
+    extractFromEvent('opencode', {
+        type: 'tool_result',
+        part: { tool: 'task', callID: 'task:0', output: 'DONE' },
+    }, ctx, 'oc');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].status, 'done');
+});
+
 test('extractOutputChunk returns live assistant text for gemini, opencode final step, and codex', () => {
     assert.equal(
         extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'hello', delta: true }),
@@ -752,6 +855,34 @@ test('extractOutputChunk returns live assistant text for gemini, opencode final 
         extractOutputChunk('codex', { type: 'item.completed', item: { type: 'command_execution' } }),
         '',
     );
+});
+
+test('assistant output segments use a single markdown line break boundary', () => {
+    const geminiCtx = { toolLog: [], fullText: '', traceLog: [] };
+    const firstGemini = { type: 'message', role: 'assistant', content: 'a답변', delta: true };
+    const secondGemini = { type: 'message', role: 'assistant', content: 'b답변', delta: true };
+
+    extractFromEvent('gemini', firstGemini, geminiCtx, 'gemini');
+    assert.equal(extractOutputChunk('gemini', firstGemini, geminiCtx), 'a답변');
+    extractFromEvent('gemini', secondGemini, geminiCtx, 'gemini');
+    assert.equal(extractOutputChunk('gemini', secondGemini, geminiCtx), '\n- b답변');
+    assert.equal(geminiCtx.fullText, 'a답변\n- b답변');
+
+    const splitCtx = { toolLog: [], fullText: '', traceLog: [] };
+    const firstSplit = { type: 'message', role: 'assistant', content: 'BETA /tmp/cli', delta: true };
+    const secondSplit = { type: 'message', role: 'assistant', content: '-jaw', delta: true };
+    extractFromEvent('gemini', firstSplit, splitCtx, 'gemini');
+    assert.equal(extractOutputChunk('gemini', firstSplit, splitCtx), 'BETA /tmp/cli');
+    extractFromEvent('gemini', secondSplit, splitCtx, 'gemini');
+    assert.equal(extractOutputChunk('gemini', secondSplit, splitCtx), '-jaw');
+    assert.equal(splitCtx.fullText, 'BETA /tmp/cli-jaw');
+
+    const codexCtx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
+    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm1', text: 'first' } }, codexCtx, 'codex');
+    assert.equal(extractOutputChunk('codex', {}, codexCtx), 'first');
+    extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm2', text: 'second' } }, codexCtx, 'codex');
+    assert.equal(extractOutputChunk('codex', {}, codexCtx), '\n- second');
+    assert.equal(codexCtx.fullText, 'first\n- second');
 });
 
 test('opencode buffers pre-tool text until step_finish and discards tool-call chatter', () => {
@@ -894,6 +1025,8 @@ test('opencode discards post-tool progress text after successful tool_use when s
     );
     assert.equal(ctx.toolLog[0].status, 'done');
     assert.equal(ctx.toolLog[0].icon, '✅');
+    assert.equal(ctx.toolLog[1].toolType, 'thinking');
+    assert.ok(ctx.toolLog[1].detail.includes('파일 있네요'));
 });
 
 test('opencode marks unresolved bash exec as done when the step finishes cleanly', () => {
@@ -997,6 +1130,24 @@ test('#107: extractFromEvent filters thought parts from array content', () => {
     extractFromEvent('gemini', event, ctx, 'gemini');
     assert.equal(ctx.fullText, 'The current directory is /home/user.');
     assert.ok(!ctx.fullText.includes('should check'));
+});
+
+test('#121: Gemini thoughts can be surfaced as thinking steps without entering fullText', () => {
+    const thoughtCtx = { toolLog: [], fullText: '', traceLog: [], showReasoning: true };
+    extractFromEvent('gemini', {
+        type: 'thought',
+        content: 'I should inspect the repository first.',
+    }, thoughtCtx, 'gemini');
+    assert.equal(thoughtCtx.fullText, '');
+    assert.equal(thoughtCtx.toolLog.length, 1);
+    assert.equal(thoughtCtx.toolLog[0].toolType, 'thinking');
+    assert.equal(thoughtCtx.toolLog[0].detail, 'I should inspect the repository first.');
+    assert.ok(thoughtCtx.traceLog.some(l => l.includes('thought (visible)')));
+
+    const hiddenCtx = { toolLog: [], fullText: '', traceLog: [], showReasoning: false };
+    extractFromEvent('gemini', readFixture('gemini-message-with-thought.json'), hiddenCtx, 'gemini');
+    assert.equal(hiddenCtx.fullText, 'The current directory is /home/user.');
+    assert.equal(hiddenCtx.toolLog.length, 0);
 });
 
 test('#107: extractOutputChunk handles null elements in content array', () => {

@@ -6,8 +6,9 @@ import { ICONS } from '../icons.js';
 
 export interface ProcessStep {
     id: string;
-    type: 'tool' | 'thinking' | 'search';
+    type: 'tool' | 'thinking' | 'search' | 'subagent';
     icon: string;
+    rawIcon?: string;
     label: string;
     detail?: string;
     stepRef?: string;
@@ -26,6 +27,7 @@ function buildSummaryText(steps: ProcessStep[]): string {
     for (const s of steps) {
         const key = s.type === 'thinking' ? `${ICONS.thinking} Thinking`
             : s.type === 'search' ? `${ICONS.search} Search`
+            : s.type === 'subagent' ? `${ICONS.robot} Subagent`
             : `${ICONS.tool} Tool`;
         counts[key] = (counts[key] || 0) + 1;
     }
@@ -40,11 +42,17 @@ function previewText(text: string, max = 120): string {
     return singleLine.length > max ? `${singleLine.slice(0, max - 1)}…` : singleLine;
 }
 
+function renderTrustedIcon(icon: string | undefined): string {
+    const value = icon || ICONS.tool;
+    return value.trim().startsWith('<svg') ? value : escapeHtml(value);
+}
+
 function renderStep(step: ProcessStep): string {
     const dotClass = `process-step-dot ${step.status}`;
     const badgeClass = `process-step-badge ${step.type}`;
     const badgeText = step.type.toUpperCase();
     const label = escapeHtml(step.label || step.icon || '');
+    const icon = renderTrustedIcon(step.icon);
     const detail = step.detail || '';
     const detailId = `process-detail-${step.id}`;
 
@@ -57,6 +65,7 @@ function renderStep(step: ProcessStep): string {
     return `<div class="process-step process-step-expandable" data-step-id="${step.id}" data-type="${step.type}">
         <button class="process-step-toggle" aria-expanded="false" aria-controls="${detailId}">
             <span class="${dotClass}"></span>
+            <span class="process-step-icon" aria-hidden="true">${icon}</span>
             <span class="${badgeClass}">${badgeText}</span>
             <span class="process-step-main">
                 <span class="process-step-label">${label}</span>

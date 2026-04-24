@@ -67,7 +67,7 @@ test('CP-007: telegram menu excludes start/id/settings', { skip: !moduleLoaded &
 test('CP-008: telegram menu has exact expected command set', { skip: !moduleLoaded && 'policy.js not yet created' }, () => {
     const cmds = getTelegramMenuCommands();
     const names = new Set(cmds.map(c => c.name));
-    const expected = new Set(['help', 'status', 'clear', 'compact', 'model', 'cli', 'fallback', 'forward', 'flush', 'version', 'skill', 'browser', 'steer', 'reset', 'employee', 'mcp', 'memory', 'prompt', 'orchestrate']);
+    const expected = new Set(['help', 'status', 'clear', 'compact', 'model', 'cli', 'fallback', 'forward', 'thought', 'flush', 'version', 'skill', 'browser', 'steer', 'reset', 'employee', 'mcp', 'memory', 'prompt', 'orchestrate']);
     // All expected present
     for (const name of expected) {
         assert.ok(names.has(name), `expected "${name}" in telegram menu`);
