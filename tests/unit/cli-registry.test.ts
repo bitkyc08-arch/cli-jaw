@@ -43,23 +43,21 @@ test('every CLI defaultModel is included in its models list', () => {
 
 test('registry defaults for gemini and opencode are updated', () => {
     assert.equal(CLI_REGISTRY.gemini.defaultModel, 'gemini-3-flash-preview');
-    assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode/big-pickle');
+    assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode-go/kimi-k2.6');
 });
 
-test('opencode registry includes OpenCode Go models', () => {
+test('opencode registry exposes only the curated OpenCode Go models', () => {
     const models = CLI_REGISTRY.opencode.models;
-    for (const model of [
-        'opencode-go/glm-5',
+    assert.deepEqual(models, [
         'opencode-go/glm-5.1',
-        'opencode-go/kimi-k2.5',
         'opencode-go/kimi-k2.6',
-        'opencode-go/mimo-v2-pro',
-        'opencode-go/mimo-v2-omni',
-        'opencode-go/minimax-m2.5',
+        'opencode-go/mimo-v2.5-pro',
+        'opencode-go/mimo-v2.5',
         'opencode-go/minimax-m2.7',
-    ]) {
-        assert.ok(models.includes(model), `missing OpenCode Go model: ${model}`);
-    }
+        'opencode-go/qwen3.6-plus',
+        'opencode-go/deepseek-v4-pro',
+        'opencode-go/deepseek-v4-flash',
+    ]);
 });
 
 test('copilot registry excludes deprecated claude-opus-4.6-fast', () => {
