@@ -11,6 +11,8 @@ const mainPath = join(root, 'public/js/main.ts');
 const wsPath = join(root, 'public/js/ws.ts');
 const chatPath = join(root, 'public/js/features/chat.ts');
 const planPath = join(root, 'devlog/_plan/260425_browser_unread_badge/plan.md');
+const packagePath = join(root, 'package.json');
+const frontendTsconfigPath = join(root, 'tsconfig.frontend.json');
 
 test('AB-001: attention badge module exists and exports the public API', () => {
     assert.ok(existsSync(badgePath), 'attention-badge.ts should exist');
@@ -78,10 +80,19 @@ test('AB-006: attention badge handles title, favicon, badging API, and completio
     assert.ok(src.includes('lastNotifyAt'), 'implementation should track the last notify time for dedupe');
 });
 
-test('AB-007: plan requires frontend typecheck for public/js changes', () => {
-    const src = readFileSync(planPath, 'utf8');
-    assert.ok(
-        src.includes('npm run typecheck:frontend') || src.includes('tsconfig.frontend.json'),
-        'plan should require frontend typecheck because root tsc does not cover public/js'
-    );
+test('AB-007: frontend typecheck is available for public/js changes', () => {
+    const pkg = readFileSync(packagePath, 'utf8');
+    const tsconfig = readFileSync(frontendTsconfigPath, 'utf8');
+
+    assert.ok(pkg.includes('"typecheck:frontend"'), 'package.json should expose frontend typecheck');
+    assert.ok(pkg.includes('tsconfig.frontend.json'), 'frontend typecheck should use tsconfig.frontend.json');
+    assert.ok(tsconfig.includes('public/js/**/*.ts'), 'frontend tsconfig should include public/js TypeScript files');
+
+    if (existsSync(planPath)) {
+        const plan = readFileSync(planPath, 'utf8');
+        assert.ok(
+            plan.includes('npm run typecheck:frontend') || plan.includes('tsconfig.frontend.json'),
+            'plan should require frontend typecheck because root tsc does not cover public/js'
+        );
+    }
 });
