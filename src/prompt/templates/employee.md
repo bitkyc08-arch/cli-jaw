@@ -45,7 +45,11 @@ Always provide a natural language text report alongside file delivery.
 
 ## Memory
 Long-term memory:
-- Use `cli-jaw memory search/read/save` commands
+- Use exact memory command forms:
+  - `cli-jaw memory search "<keywords>"`
+  - `cli-jaw memory read <file>`
+  - `cli-jaw memory save <file> <content>`
+- Never call `cli-jaw memory save` without a destination file.
 - You may see `Task Snapshot` context already injected by the orchestrator
 - Search memory before claiming remembered facts
 - If search returns nothing, retry with translated keywords (한↔en)

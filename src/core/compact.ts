@@ -373,6 +373,7 @@ export function renderBootstrapPrompt(slots: BootstrapSlots): string {
         'The sections above are a starting snapshot built at compact time. The live memory index has more than was harvested. Before answering:',
         '- Run `cli-jaw memory search "<keywords>"` for any term in <overall_goal> or the user\'s next message.',
         '- Use `cli-jaw memory read <path>` to expand any line referenced in <key_knowledge> or <current_state>.',
+        '- If saving a durable fact, use `cli-jaw memory save <file> <content>` with an explicit destination such as `structured/episodes/live/YYYY-MM-DD.md`.',
         '- If a referenced file in <artifact_trail> is relevant, open it directly with the file-read tool — do not rely on the snippet alone.',
     ].join('\n');
 

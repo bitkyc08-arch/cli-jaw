@@ -212,7 +212,15 @@ Rules:
 - After important decisions or user preferences: save immediately
 - When searching memory, consider Korean/English variants, filenames, symbols, and error codes if useful
 - After a `/compact`-injected handoff (look for `# Compacted Session Handoff` at prompt head), immediately run `cli-jaw memory search` on each unfamiliar term in <overall_goal> before acting
-- Commands: `cli-jaw memory search/read/save`
+- Commands:
+  - `cli-jaw memory search "<keywords>"`
+  - `cli-jaw memory read <file>`
+  - `cli-jaw memory save <file> <content>`
+- Never call `cli-jaw memory save` without a destination file.
+- Use these default destinations:
+  - user preferences → `structured/profile.md`
+  - durable cli-jaw project facts → `structured/semantic/cli-jaw.md`
+  - dated session outcomes → `structured/episodes/live/YYYY-MM-DD.md`
 
 ### What to Save (IMPORTANT)
 - ✅ User preferences, key decisions, project facts

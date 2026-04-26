@@ -47,7 +47,16 @@ try {
         case 'save': {
             const file = process.argv[4];
             const content = process.argv.slice(5).join(' ');
-            if (!file || !content) { console.error('Usage: cli-jaw memory save <file> <content>'); process.exit(1); }
+            if (!file || !content) {
+                console.error([
+                    'Usage: cli-jaw memory save <file> <content>',
+                    'Examples:',
+                    '  cli-jaw memory save structured/profile.md "- User prefers concise Korean summaries"',
+                    '  cli-jaw memory save structured/semantic/cli-jaw.md "- cli-jaw memory save requires an explicit file path"',
+                    '  cli-jaw memory save structured/episodes/live/2026-04-26.md "## 10:20\\n- Completed help dialog refinement"',
+                ].join('\n'));
+                process.exit(1);
+            }
             const r = await api('POST', '/save', { file, content }) as Record<string, any>;
             console.log(`✅ Saved to ${r.path}`);
             break;
