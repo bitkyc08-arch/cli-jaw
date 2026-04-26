@@ -6,6 +6,14 @@ export type DashboardInstanceStatus =
     | 'unknown';
 
 export type DashboardServiceMode = 'unknown' | 'ad-hoc' | 'service';
+export type DashboardPreviewMode = 'direct' | 'proxy';
+
+export type DashboardProxyInfo = {
+    enabled: boolean;
+    basePath: string;
+    allowedFrom: number;
+    allowedTo: number;
+};
 
 export type DashboardInstance = {
     port: number;
@@ -30,7 +38,7 @@ export type DashboardScanResult = {
         rangeFrom: number;
         rangeTo: number;
         checkedAt: string;
+        proxy: DashboardProxyInfo;
     };
     instances: DashboardInstance[];
 };
-

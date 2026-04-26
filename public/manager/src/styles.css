@@ -148,6 +148,13 @@ button:disabled {
     gap: 8px;
 }
 
+.dashboard-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(320px, 42vw);
+    gap: 12px;
+    align-items: start;
+}
+
 .table-head,
 .instance-row {
     display: grid;
@@ -161,6 +168,16 @@ button:disabled {
 .instance-row span {
     display: block;
     overflow-wrap: anywhere;
+}
+
+.instance-row.is-selected {
+    border-color: #7fd7ff;
+}
+
+.instance-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
 }
 
 .status {
@@ -191,6 +208,77 @@ button:disabled {
     margin-top: 5px;
 }
 
+.preview-panel {
+    position: sticky;
+    top: 12px;
+    border: 1px solid #2b303a;
+    background: #181c24;
+    border-radius: 8px;
+    padding: 12px;
+    min-height: 520px;
+}
+
+.preview-header,
+.preview-controls {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.preview-header h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 500;
+    letter-spacing: 0;
+}
+
+.preview-controls {
+    margin: 12px 0;
+}
+
+.preview-controls select {
+    min-height: 40px;
+    color: #eef1f5;
+    padding: 8px 10px;
+    border: 1px solid #2b303a;
+    background: #181c24;
+    border-radius: 8px;
+}
+
+.preview-toggle {
+    min-height: 40px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: #aab3c2;
+    font-size: 13px;
+}
+
+.preview-frame {
+    width: 100%;
+    height: min(68dvh, 720px);
+    border: 1px solid #2b303a;
+    border-radius: 8px;
+    background: #0f1218;
+}
+
+.preview-empty {
+    min-height: 360px;
+    display: grid;
+    place-items: center;
+    border: 1px dashed #2b303a;
+    border-radius: 8px;
+    padding: 18px;
+}
+
+.preview-empty,
+.preview-note {
+    color: #aab3c2;
+    font-size: 13px;
+}
+
 @media (max-width: 860px) {
     .dashboard-topbar {
         align-items: flex-start;
@@ -210,3 +298,12 @@ button:disabled {
     }
 }
 
+@media (max-width: 1080px) {
+    .dashboard-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .preview-panel {
+        position: static;
+    }
+}

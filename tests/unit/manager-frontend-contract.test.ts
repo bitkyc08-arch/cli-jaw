@@ -37,3 +37,17 @@ test('manager frontend has API entry and Open action', () => {
     assert.ok(app.includes('Search port, home, CLI, model'), 'manager UI must include search');
 });
 
+test('manager frontend exposes one-instance preview controls', () => {
+    const app = read('public/manager/src/App.tsx');
+    const preview = read('public/manager/src/InstancePreview.tsx');
+    const helper = read('public/manager/src/preview.ts');
+
+    assert.ok(app.includes('selectedPort'), 'manager UI must track a selected preview instance');
+    assert.ok(app.includes('InstancePreview'), 'manager UI must render preview component');
+    assert.ok(preview.includes('<iframe'), 'preview component must mount iframe');
+    assert.ok(preview.includes('Enable preview'), 'preview component must expose enable toggle');
+    assert.ok(preview.includes('Proxy preview'), 'preview component must expose proxy mode');
+    assert.ok(preview.includes('Direct iframe'), 'preview component must expose direct mode');
+    assert.ok(helper.includes('buildPreviewState'), 'preview helper must centralize URL state');
+    assert.ok(helper.includes('/i'), 'preview helper must support manager proxy base path');
+});

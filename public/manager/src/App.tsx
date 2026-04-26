@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchInstances } from './api';
-import type { DashboardInstance, DashboardInstanceStatus, DashboardScanResult } from './types';
+import { InstancePreview } from './InstancePreview';
+import type { DashboardInstance, DashboardInstanceStatus, DashboardPreviewMode, DashboardScanResult } from './types';
 
 const STATUS_OPTIONS: Array<'all' | DashboardInstanceStatus> = ['all', 'online', 'offline', 'timeout', 'error', 'unknown'];
 
@@ -27,6 +28,9 @@ export function App() {
     const [error, setError] = useState<string | null>(null);
     const [query, setQuery] = useState('');
     const [status, setStatus] = useState<'all' | DashboardInstanceStatus>('all');
+    const [selectedPort, setSelectedPort] = useState<number | null>(null);
+    const [previewMode, setPreviewMode] = useState<DashboardPreviewMode>('proxy');
+    const [previewEnabled, setPreviewEnabled] = useState(true);
 
     async function load(): Promise<void> {
         setLoading(true);
@@ -70,6 +74,11 @@ export function App() {
             ].some(value => String(value || '').toLowerCase().includes(needle));
         });
     }, [instances, query, status]);
+
+    const selectedInstance = useMemo(() => {
+        if (selectedPort == null) return filtered.find(instance => instance.ok) || null;
+        return instances.find(instance => instance.port === selectedPort) || null;
+    }, [filtered, instances, selectedPort]);
 
     return (
         <main className="dashboard-shell">
@@ -117,40 +126,60 @@ export function App() {
             )}
 
             {!error && filtered.length > 0 && (
-                <section className="instance-table" aria-label="Jaw instances">
-                    <div className="table-head">
-                        <span>Status</span>
-                        <span>Instance</span>
-                        <span>Runtime</span>
-                        <span>Last checked</span>
-                        <span>Action</span>
-                    </div>
-                    {filtered.map(instance => (
-                        <article className="instance-row" key={instance.port}>
-                            <div>
-                                <span className={statusClass(instance.status)}>{instance.status}</span>
-                                <span className="port">:{instance.port}</span>
-                            </div>
-                            <div>
-                                <strong>{instanceLabel(instance)}</strong>
-                                <span>{instance.workingDir || instance.url}</span>
-                            </div>
-                            <div>
-                                <span>{instance.currentCli || 'cli n/a'} / {instance.currentModel || 'model n/a'}</span>
-                                <span>v{instance.version || 'n/a'} · {formatUptime(instance.uptime)}</span>
-                            </div>
-                            <div>
-                                <span>{new Date(instance.lastCheckedAt).toLocaleTimeString()}</span>
-                                <span>{instance.healthReason || 'ok'}</span>
-                            </div>
-                            <div>
-                                <a className="open-link" href={instance.url} target="_blank" rel="noreferrer">Open</a>
-                            </div>
-                        </article>
-                    ))}
+                <section className="dashboard-layout">
+                    <section className="instance-table" aria-label="Jaw instances">
+                        <div className="table-head">
+                            <span>Status</span>
+                            <span>Instance</span>
+                            <span>Runtime</span>
+                            <span>Last checked</span>
+                            <span>Action</span>
+                        </div>
+                        {filtered.map(instance => (
+                            <article
+                                className={`instance-row ${selectedInstance?.port === instance.port ? 'is-selected' : ''}`}
+                                key={instance.port}
+                            >
+                                <div>
+                                    <span className={statusClass(instance.status)}>{instance.status}</span>
+                                    <span className="port">:{instance.port}</span>
+                                </div>
+                                <div>
+                                    <strong>{instanceLabel(instance)}</strong>
+                                    <span>{instance.workingDir || instance.url}</span>
+                                </div>
+                                <div>
+                                    <span>{instance.currentCli || 'cli n/a'} / {instance.currentModel || 'model n/a'}</span>
+                                    <span>v{instance.version || 'n/a'} · {formatUptime(instance.uptime)}</span>
+                                </div>
+                                <div>
+                                    <span>{new Date(instance.lastCheckedAt).toLocaleTimeString()}</span>
+                                    <span>{instance.healthReason || 'ok'}</span>
+                                </div>
+                                <div className="instance-actions">
+                                    <button
+                                        type="button"
+                                        onClick={() => setSelectedPort(instance.port)}
+                                        disabled={!instance.ok}
+                                    >
+                                        Preview
+                                    </button>
+                                    <a className="open-link" href={instance.url} target="_blank" rel="noreferrer">Open</a>
+                                </div>
+                            </article>
+                        ))}
+                    </section>
+
+                    <InstancePreview
+                        instance={selectedInstance}
+                        data={data}
+                        mode={previewMode}
+                        previewEnabled={previewEnabled}
+                        onModeChange={setPreviewMode}
+                        onPreviewEnabledChange={setPreviewEnabled}
+                    />
                 </section>
             )}
         </main>
     );
 }
-
