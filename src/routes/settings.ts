@@ -12,7 +12,7 @@ import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll, initMcpConfig,
 } from '../../lib/mcp-sync.js';
 import { CLI_REGISTRY } from '../cli/registry.js';
-import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, readGeminiAccount } from './quota.js';
+import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, readGeminiAccount, fetchGeminiUsage } from './quota.js';
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 
@@ -160,12 +160,13 @@ export function registerSettingsRoutes(
     app.get('/api/quota', async (_, res) => {
         const claudeCreds = readClaudeCreds();
         const codexTokens = readCodexTokens();
-        const [claudeResult, codexResult, copilotResult] = await Promise.all([
+        const geminiAccount = readGeminiAccount();
+        const [claudeResult, codexResult, geminiResult, copilotResult] = await Promise.all([
             fetchClaudeUsage(claudeCreds),
             fetchCodexUsage(codexTokens),
+            fetchGeminiUsage(geminiAccount),
             fetchCopilotQuota(),
         ]);
-        const geminiResult = readGeminiAccount();
 
         const classify = (result: any, hasCreds: boolean) =>
             result ?? (hasCreds ? { error: true } : { authenticated: false });
@@ -173,7 +174,7 @@ export function registerSettingsRoutes(
         res.json({
             claude: classify(claudeResult, !!claudeCreds),
             codex: classify(codexResult, !!codexTokens),
-            gemini: geminiResult ?? { authenticated: false },
+            gemini: classify(geminiResult, !!geminiAccount),
             opencode: { authenticated: true },
             copilot: copilotResult ?? { authenticated: false },
         });

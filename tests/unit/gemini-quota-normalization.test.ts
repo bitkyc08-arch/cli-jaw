@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     classifyGeminiQuotaTier,
+    fetchGeminiUsage,
     normalizeGeminiQuotaBuckets,
 } from '../../src/routes/quota.ts';
 import { nextMonthFirstResetDate } from '../../lib/quota-copilot.ts';
@@ -73,4 +74,51 @@ test('GQN-006: Copilot monthly fallback uses next month first', () => {
         nextMonthFirstResetDate(new Date(2026, 11, 20, 16, 21, 0, 0)),
         new Date(2027, 0, 1, 0, 0, 0, 0).toISOString(),
     );
+});
+
+test('GQN-007: fetchGeminiUsage retrieves Code Assist quota windows', async () => {
+    const originalFetch = globalThis.fetch;
+    const calls: Array<{ url: string; body: unknown }> = [];
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        calls.push({ url, body: init?.body ? JSON.parse(String(init.body)) : null });
+        if (url.endsWith(':loadCodeAssist')) {
+            return Response.json({ cloudaicompanionProject: 'test-project' });
+        }
+        if (url.endsWith(':retrieveUserQuota')) {
+            return Response.json({
+                buckets: [
+                    { modelId: 'gemini-3-flash-preview', remainingFraction: 0.99, resetTime: '2026-04-27T00:38:00Z' },
+                    { modelId: 'gemini-3-pro-preview', remainingFraction: 0.98, resetTime: '2026-04-27T00:27:00Z' },
+                    { modelId: 'gemini-3.1-flash-lite-preview', remainingFraction: 0.1, resetTime: 'ignored' },
+                ],
+            });
+        }
+        return new Response('{}', { status: 404 });
+    }) as typeof fetch;
+
+    try {
+        const result = await fetchGeminiUsage({
+            token: 'token',
+            account: { email: 'user@example.com' },
+        });
+
+        assert.deepEqual(result, {
+            account: { email: 'user@example.com' },
+            windows: [
+                { label: 'F', percent: 1, resetsAt: '2026-04-27T00:38:00Z', modelId: 'gemini-3-flash-preview' },
+                { label: 'P', percent: 2, resetsAt: '2026-04-27T00:27:00Z', modelId: 'gemini-3-pro-preview' },
+            ],
+            raw: {
+                buckets: [
+                    { modelId: 'gemini-3-flash-preview', remainingFraction: 0.99, resetTime: '2026-04-27T00:38:00Z' },
+                    { modelId: 'gemini-3-pro-preview', remainingFraction: 0.98, resetTime: '2026-04-27T00:27:00Z' },
+                    { modelId: 'gemini-3.1-flash-lite-preview', remainingFraction: 0.1, resetTime: 'ignored' },
+                ],
+            },
+        });
+        assert.equal(calls[1]?.body && (calls[1].body as { project?: string }).project, 'test-project');
+    } finally {
+        globalThis.fetch = originalFetch;
+    }
 });
