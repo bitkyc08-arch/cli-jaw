@@ -153,6 +153,18 @@ export function hasCopilotAuthSync(): boolean {
     return !!getCopilotToken();
 }
 
+export function nextMonthFirstResetDate(now = new Date()): string {
+    return new Date(
+        now.getFullYear(),
+        now.getMonth() + 1,
+        1,
+        0,
+        0,
+        0,
+        0,
+    ).toISOString();
+}
+
 export async function fetchCopilotQuota() {
     const token = getCopilotToken();
     if (!token) return null;
@@ -179,11 +191,13 @@ export async function fetchCopilotQuota() {
         const windows = [];
 
         if (!pi.unlimited && pi.entitlement) {
+            const resetsAt = data.quota_reset_date || nextMonthFirstResetDate();
             windows.push({
                 label: 'Premium',
                 used: pi.entitlement - (pi.remaining ?? pi.entitlement),
                 limit: pi.entitlement,
                 percent: 100 - (pi.percent_remaining ?? 100),
+                resetsAt,
             });
         }
 

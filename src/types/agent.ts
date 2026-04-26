@@ -42,6 +42,7 @@ export interface SpawnContext {
   opencodeHadToolErrorInStep?: boolean;
   opencodePendingToolRefs?: string[];
   opencodeTaskCallIds?: Set<string>;
+  opencodeStepThinkingToolEmitted?: boolean;
   opencodeRawEvents?: string[];
   opencodeLastEventType?: string;
   opencodeLastEventAt?: number;

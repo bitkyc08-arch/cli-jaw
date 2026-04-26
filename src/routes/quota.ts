@@ -4,6 +4,61 @@ import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 
+export interface GeminiQuotaBucket {
+    remainingFraction?: number;
+    resetTime?: string;
+    modelId?: string;
+}
+
+export interface GeminiQuotaWindow {
+    label: 'F' | 'P';
+    percent: number;
+    resetsAt?: string | null;
+    modelId: string;
+}
+
+function clampPercent(value: number): number {
+    return Math.max(0, Math.min(100, value));
+}
+
+export function classifyGeminiQuotaTier(modelId: string): 'pro' | 'flash' | 'flash-lite' | null {
+    if (modelId.includes('flash-lite')) return 'flash-lite';
+    if (modelId.includes('pro')) return 'pro';
+    if (modelId.includes('flash')) return 'flash';
+    return null;
+}
+
+export function normalizeGeminiQuotaBuckets(buckets: GeminiQuotaBucket[]): GeminiQuotaWindow[] {
+    const selected = new Map<'flash' | 'pro', GeminiQuotaWindow & { remainingFraction: number }>();
+
+    for (const bucket of buckets) {
+        if (!bucket.modelId || bucket.remainingFraction == null) continue;
+        const tier = classifyGeminiQuotaTier(bucket.modelId);
+        if (tier !== 'flash' && tier !== 'pro') continue;
+
+        const remainingFraction = Math.max(0, Math.min(1, bucket.remainingFraction));
+        const percent = clampPercent(Math.round((1 - remainingFraction) * 100));
+        const existing = selected.get(tier);
+        if (existing && remainingFraction >= existing.remainingFraction) continue;
+
+        selected.set(tier, {
+            label: tier === 'pro' ? 'P' : 'F',
+            percent,
+            resetsAt: bucket.resetTime ?? null,
+            modelId: bucket.modelId,
+            remainingFraction,
+        });
+    }
+
+    const order: Array<'flash' | 'pro'> = ['flash', 'pro'];
+    return order.flatMap((tier) => {
+        const window = selected.get(tier);
+        if (!window) return [];
+        const { remainingFraction: _remainingFraction, ...publicWindow } = window;
+        return [publicWindow];
+    });
+}
+
 // macOS-only: reads Claude Code OAuth token from system keychain.
 // On Linux/WSL: returns null → classified as { authenticated: false } by /api/quota.
 export function readClaudeCreds() {

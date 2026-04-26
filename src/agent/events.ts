@@ -648,9 +648,26 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 ctx.opencodeSawToolInStep = false;
                 ctx.opencodeHadToolErrorInStep = false;
                 ctx.opencodePendingToolRefs = [];
+                ctx.opencodeStepThinkingToolEmitted = false;
                 pushTrace(ctx, `[${agentLabel}] opencode step_start${model ? ` model=${model}` : ''}`);
             }
-            if (event.type === 'text' && event.part?.text) {
+            if (event.type === 'reasoning') {
+                const text = String(event.part?.text || event.text || '').trim();
+                if (text) {
+                    const thinkingTool = {
+                        icon: '💭',
+                        label: buildPreview(text, 80) || 'thinking...',
+                        toolType: 'thinking' as const,
+                        detail: text,
+                        status: 'done' as const,
+                    };
+                    ctx.toolLog.push(thinkingTool);
+                    syncLiveTools(ctx);
+                    broadcast('agent_tool', { agentId: agentLabel, ...thinkingTool, ...empTag });
+                    ctx.opencodeStepThinkingToolEmitted = true;
+                    pushTrace(ctx, `[${agentLabel}] opencode reasoning (${text.length} chars)`);
+                }
+            } else if (event.type === 'text' && event.part?.text) {
                 if (ctx.opencodeSawToolInStep) {
                     ctx.opencodePostToolText = (ctx.opencodePostToolText || '') + String(event.part.text);
                 } else {
@@ -674,6 +691,9 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     // [P2-3.13] Accumulate total tokens across steps
                     if (event.part.tokens.total != null) {
                         ctx.tokens.total_tokens = (ctx.tokens.total_tokens ?? 0) + event.part.tokens.total;
+                    }
+                    if (event.part.tokens.reasoning != null) {
+                        ctx.tokens.reasoning_tokens = (ctx.tokens.reasoning_tokens ?? 0) + event.part.tokens.reasoning;
                     }
                 }
                 // Accumulate cost across steps
@@ -704,7 +724,27 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                     ctx.toolLog.push(thinkingTool);
                     syncLiveTools(ctx);
                     broadcast('agent_tool', { agentId: agentLabel, ...thinkingTool, ...empTag });
+                    ctx.opencodeStepThinkingToolEmitted = true;
                     pushTrace(ctx, `[${agentLabel}] opencode pre-tool intermediate text (${suppressedText.length} chars)`);
+                }
+                const reasoningTokens = Number(event.part.tokens?.reasoning || 0);
+                if (reasoningTokens > 0 && !ctx.opencodeStepThinkingToolEmitted) {
+                    const reason = String(event.part.reason || 'unknown');
+                    const thinkingTool = {
+                        icon: '💭',
+                        label: `reasoning used: ${reasoningTokens.toLocaleString()} tokens`,
+                        toolType: 'thinking' as const,
+                        detail: [
+                            `OpenCode reported ${reasoningTokens} reasoning tokens for this step, but did not emit plaintext reasoning content.`,
+                            `reason=${reason}`,
+                        ].join('\n'),
+                        status: 'done' as const,
+                    };
+                    ctx.toolLog.push(thinkingTool);
+                    syncLiveTools(ctx);
+                    broadcast('agent_tool', { agentId: agentLabel, ...thinkingTool, ...empTag });
+                    ctx.opencodeStepThinkingToolEmitted = true;
+                    pushTrace(ctx, `[${agentLabel}] opencode reasoning token fallback (${reasoningTokens} tokens)`);
                 }
                 finalizeOpencodePendingTools(ctx, agentLabel, empTag);
                 ctx.opencodePreToolText = '';
@@ -712,6 +752,7 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
                 ctx.opencodeSawToolInStep = false;
                 ctx.opencodeHadToolErrorInStep = false;
                 ctx.opencodePendingToolRefs = [];
+                ctx.opencodeStepThinkingToolEmitted = false;
                 // [P2-3.12] Store step timing
                 if (event.part.time) {
                     if (!ctx.metadata) ctx.metadata = {};

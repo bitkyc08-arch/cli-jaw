@@ -7,6 +7,25 @@ import { ICONS } from '../icons.js';
 import { providerIcon } from '../provider-icons.js';
 import type { QuotaEntry } from './settings-types.js';
 
+export function normalizeQuotaWindowLabel(cliName: string, label: string): string {
+    if (cliName === 'gemini') {
+        if (label === 'Pro' || label === 'P') return 'P';
+        if (label === 'Flash' || label === 'F') return 'F';
+        return label;
+    }
+
+    if (cliName === 'copilot') {
+        if (label === 'Premium' || label === 'Prem') return '30d';
+        if (label.includes('plus monthly subscriber quota')) return '30d';
+    }
+
+    return label
+        .replace('-hour', 'h')
+        .replace('-day', 'd')
+        .replace(' Sonnet', '')
+        .replace(' Opus', '');
+}
+
 export async function loadCliStatus(force = false): Promise<void> {
     const interval = Number(localStorage.getItem('cliStatusInterval') || 300);
     if (!force && state.cliStatusCache && interval > 0 && (Date.now() - state.cliStatusTs) < interval * 1000) {
@@ -91,7 +110,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             windowsHtml = q.windows.map(w => {
                 const pct = Math.round(w.percent);
                 const barColor = pct > 80 ? '#ef4444' : pct > 50 ? '#fbbf24' : '#38bdf8';
-                const shortLabel = w.label.replace('-hour', 'h').replace('-day', 'd').replace(' Sonnet', '').replace(' Opus', '').replace('plus monthly subscriber quota', 'plus').replace('Premium', 'Prem');
+                const shortLabel = normalizeQuotaWindowLabel(name, w.label);
                 let resetStr = '';
                 if (w.resetsAt) {
                     const d = new Date(typeof w.resetsAt === 'number' ? w.resetsAt * 1000 : w.resetsAt);

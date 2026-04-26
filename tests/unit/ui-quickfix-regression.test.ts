@@ -1,4 +1,4 @@
-// Regression tests for ui_quickfix: Premium label overlap + Agent name input visibility
+// Regression tests for ui_quickfix: quota label overlap + Agent name input visibility
 // Ref: devlog/_plan/ui_quickfix/plan.md
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,52 +17,69 @@ const indexHtml = fs.readFileSync(
 );
 
 // ══════════════════════════════════════════════
-// Bug 1: Premium / quota label overlap
+// Bug 1: quota label overlap
 // ══════════════════════════════════════════════
 
 // Extract the shortLabel replacement chain from source and build a reusable function
-function buildShortLabel(label: string): string {
+function buildShortLabel(cliName: string, label: string): string {
+    if (cliName === 'gemini') {
+        if (label === 'Pro' || label === 'P') return 'P';
+        if (label === 'Flash' || label === 'F') return 'F';
+        return label;
+    }
+
+    if (cliName === 'copilot') {
+        if (label === 'Premium' || label === 'Prem') return '30d';
+        if (label.includes('plus monthly subscriber quota')) return '30d';
+    }
+
     return label
         .replace('-hour', 'h')
         .replace('-day', 'd')
         .replace(' Sonnet', '')
-        .replace(' Opus', '')
-        .replace('plus monthly subscriber quota', 'plus')
-        .replace('Premium', 'Prem');
+        .replace(' Opus', '');
 }
 
-test('UQ-001: shortLabel truncates "Premium" to "Prem"', () => {
-    assert.equal(buildShortLabel('Premium'), 'Prem');
+test('UQ-001: shortLabel truncates Copilot monthly labels to "30d"', () => {
+    assert.equal(buildShortLabel('copilot', 'Premium'), '30d');
+    assert.equal(buildShortLabel('copilot', 'Prem'), '30d');
+    assert.equal(buildShortLabel('copilot', 'plus monthly subscriber quota'), '30d');
 });
 
-test('UQ-002: shortLabel truncates "plus monthly subscriber quota" to "plus"', () => {
-    assert.equal(buildShortLabel('plus monthly subscriber quota'), 'plus');
+test('UQ-002: shortLabel truncates Gemini model labels to "F/P"', () => {
+    assert.equal(buildShortLabel('gemini', 'Flash'), 'F');
+    assert.equal(buildShortLabel('gemini', 'F'), 'F');
+    assert.equal(buildShortLabel('gemini', 'Pro'), 'P');
+    assert.equal(buildShortLabel('gemini', 'P'), 'P');
+    assert.notEqual(buildShortLabel('gemini', 'Flash Lite'), 'F');
 });
 
 test('UQ-003: shortLabel preserves existing abbreviations', () => {
-    assert.equal(buildShortLabel('5-hour'), '5h');
-    assert.equal(buildShortLabel('1-day'), '1d');
-    assert.equal(buildShortLabel('3.5 Sonnet'), '3.5');
-    assert.equal(buildShortLabel('4 Opus'), '4');
+    assert.equal(buildShortLabel('claude', '5-hour'), '5h');
+    assert.equal(buildShortLabel('claude', '1-day'), '1d');
+    assert.equal(buildShortLabel('claude', '3.5 Sonnet'), '3.5');
+    assert.equal(buildShortLabel('claude', '4 Opus'), '4');
 });
 
 test('UQ-004: shortLabel handles unknown labels gracefully (passthrough)', () => {
-    assert.equal(buildShortLabel('Custom'), 'Custom');
-    assert.equal(buildShortLabel(''), '');
+    assert.equal(buildShortLabel('claude', 'Custom'), 'Custom');
+    assert.equal(buildShortLabel('claude', ''), '');
 });
 
-test('UQ-005: source shortLabel chain matches test helper exactly', () => {
-    // Verify the source code contains the same replacement chain we test against
-    const replacements = [
-        ".replace('-hour', 'h')",
-        ".replace('-day', 'd')",
-        ".replace(' Sonnet', '')",
-        ".replace(' Opus', '')",
-        ".replace('plus monthly subscriber quota', 'plus')",
-        ".replace('Premium', 'Prem')",
+test('UQ-005: source uses provider-aware quota label normalization', () => {
+    const snippets = [
+        'function normalizeQuotaWindowLabel(cliName: string, label: string): string',
+        "cliName === 'gemini'",
+        "label === 'Pro' || label === 'P'",
+        "label === 'Flash' || label === 'F'",
+        "cliName === 'copilot'",
+        "label === 'Premium' || label === 'Prem'",
+        "label.includes('plus monthly subscriber quota')",
+        "return '30d'",
+        'normalizeQuotaWindowLabel(name, w.label)',
     ];
-    for (const r of replacements) {
-        assert.ok(statusSrc.includes(r), `source should contain: ${r}`);
+    for (const snippet of snippets) {
+        assert.ok(statusSrc.includes(snippet), `source should contain: ${snippet}`);
     }
 });
 
@@ -95,15 +112,22 @@ test('UQ-007: label span has min-width for short labels (1-2 char)', () => {
 
 // Edge case: all shortLabel results fit within 48px at 10px font-size (~7 chars max)
 test('UQ-008: all known shortLabel outputs are ≤ 7 characters', () => {
-    const knownLabels = [
-        'Premium', 'plus monthly subscriber quota',
-        '5-hour', '1-day', '3.5 Sonnet', '4 Opus',
+    const knownLabels: Array<[string, string]> = [
+        ['copilot', 'Premium'],
+        ['copilot', 'Prem'],
+        ['copilot', 'plus monthly subscriber quota'],
+        ['gemini', 'Flash'],
+        ['gemini', 'Pro'],
+        ['claude', '5-hour'],
+        ['claude', '1-day'],
+        ['claude', '3.5 Sonnet'],
+        ['claude', '4 Opus'],
     ];
-    for (const label of knownLabels) {
-        const short = buildShortLabel(label);
+    for (const [cliName, label] of knownLabels) {
+        const short = buildShortLabel(cliName, label);
         assert.ok(
             short.length <= 7,
-            `shortLabel("${label}") = "${short}" (${short.length} chars) should be ≤ 7`,
+            `shortLabel("${cliName}", "${label}") = "${short}" (${short.length} chars) should be ≤ 7`,
         );
     }
 });

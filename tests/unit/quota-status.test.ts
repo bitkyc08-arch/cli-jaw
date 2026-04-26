@@ -129,6 +129,46 @@ test('QS-010: QuotaEntry type includes authenticated and error fields', () => {
     );
 });
 
+test('QS-010b: QuotaWindow type preserves source modelId for compact Gemini labels', () => {
+    assert.ok(
+        settingsSrc.includes('modelId?: string'),
+        'QuotaWindow should allow preserving source modelId',
+    );
+});
+
+test('QS-010c: Gemini quota normalization exposes compact F/P policy', () => {
+    assert.ok(
+        quotaSrc.includes('normalizeGeminiQuotaBuckets'),
+        'should expose Gemini quota normalization helper',
+    );
+    assert.ok(
+        quotaSrc.includes("label: tier === 'pro' ? 'P' : 'F'"),
+        'Gemini quota labels should normalize to P/F',
+    );
+    assert.ok(
+        quotaSrc.includes("tier !== 'flash' && tier !== 'pro'"),
+        'Gemini quota normalization should exclude non-Pro/Flash tiers',
+    );
+});
+
+test('QS-010d: Copilot monthly quota writes reset to window resetsAt', () => {
+    const copilotSrc = fs.readFileSync(
+        path.join(import.meta.dirname, '../../lib/quota-copilot.ts'), 'utf8',
+    );
+    assert.ok(
+        copilotSrc.includes('nextMonthFirstResetDate'),
+        'should have next-month-first fallback helper',
+    );
+    assert.ok(
+        copilotSrc.includes('data.quota_reset_date || nextMonthFirstResetDate()'),
+        'should fallback to next month first when API reset date is missing',
+    );
+    assert.ok(
+        copilotSrc.includes('resetsAt,'),
+        'Copilot Premium window should include resetsAt',
+    );
+});
+
 // ── CSS: .cli-dot.warn style ──
 
 test('QS-011: sidebar.css has .cli-dot.warn with yellow color', () => {

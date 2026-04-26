@@ -55,6 +55,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['--variant', effort] : []),
                 ...(fullPerm ? ['--dangerously-skip-permissions'] : []),
+                '--thinking',
                 '--format', 'json',
                 prompt || ''];
         default:
@@ -98,6 +99,7 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
                 ...(model && model !== 'default' ? ['-m', model] : []),
                 ...(effort ? ['--variant', effort] : []),
                 ...(fullPerm ? ['--dangerously-skip-permissions'] : []),
+                '--thinking',
                 '--format', 'json',
                 prompt || ''];
         default:

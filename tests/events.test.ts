@@ -951,6 +951,119 @@ test('opencode buffers pre-tool text until step_finish and discards tool-call ch
     );
 });
 
+test('opencode reasoning event emits thinking tool even when reasoning tokens are zero', () => {
+    const ctx = {
+        toolLog: [],
+        fullText: '',
+        traceLog: [],
+    };
+
+    extractFromEvent('opencode', {
+        type: 'reasoning',
+        part: {
+            type: 'reasoning',
+            text: 'The user wants me to think hard.',
+            time: { start: 1, end: 2 },
+        },
+    }, ctx, 'oc');
+
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].toolType, 'thinking');
+    assert.equal(ctx.toolLog[0].detail, 'The user wants me to think hard.');
+    assert.equal(ctx.opencodeStepThinkingToolEmitted, true);
+});
+
+test('opencode accumulates reasoning tokens and emits token-only fallback', () => {
+    const ctx = {
+        toolLog: [],
+        fullText: '',
+        traceLog: [],
+        pendingOutputChunk: '',
+    };
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'step_finish',
+        sessionID: 'oc-1',
+        part: {
+            reason: 'stop',
+            tokens: { input: 10, output: 5, total: 20, reasoning: 82 },
+        },
+    }, ctx, 'oc');
+
+    assert.equal(ctx.tokens.reasoning_tokens, 82);
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].toolType, 'thinking');
+    assert.equal(ctx.toolLog[0].label, 'reasoning used: 82 tokens');
+    assert.match(ctx.toolLog[0].detail, /did not emit plaintext reasoning content/);
+});
+
+test('opencode does not emit token-only fallback after plaintext reasoning in same step', () => {
+    const ctx = {
+        toolLog: [],
+        fullText: '',
+        traceLog: [],
+        pendingOutputChunk: '',
+    };
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'glm-5.1' } }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'reasoning',
+        part: { text: 'visible reasoning', time: { start: 1, end: 2 } },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'step_finish',
+        sessionID: 'oc-1',
+        part: {
+            reason: 'stop',
+            tokens: { input: 10, output: 5, total: 20, reasoning: 82 },
+        },
+    }, ctx, 'oc');
+
+    assert.equal(ctx.tokens.reasoning_tokens, 82);
+    assert.equal(ctx.toolLog.filter(t => t.toolType === 'thinking').length, 1);
+    assert.equal(ctx.toolLog[0].detail, 'visible reasoning');
+});
+
+test('opencode pre-tool thinking suppresses token-only fallback in same step', () => {
+    const ctx = {
+        toolLog: [],
+        fullText: '',
+        traceLog: [],
+        pendingOutputChunk: '',
+        opencodePreToolText: '',
+        opencodePostToolText: '',
+        opencodeSawToolInStep: false,
+        opencodeHadToolErrorInStep: false,
+        opencodePendingToolRefs: [],
+    };
+
+    extractFromEvent('opencode', { type: 'step_start', part: { model: 'kimi-k2.6' } }, ctx, 'oc');
+    extractFromEvent('opencode', { type: 'text', part: { text: 'I will inspect the file first.' } }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'tool_use',
+        part: {
+            tool: 'bash',
+            callID: 'bash:inspect-0',
+            state: { input: { command: 'ls' } },
+        },
+    }, ctx, 'oc');
+    extractFromEvent('opencode', {
+        type: 'step_finish',
+        sessionID: 'oc-1',
+        part: {
+            reason: 'tool-calls',
+            tokens: { input: 10, output: 5, total: 20, reasoning: 140 },
+        },
+    }, ctx, 'oc');
+
+    const thinkingTools = ctx.toolLog.filter(t => t.toolType === 'thinking');
+    assert.equal(ctx.tokens.reasoning_tokens, 140);
+    assert.equal(thinkingTools.length, 1);
+    assert.equal(thinkingTools[0].detail, 'I will inspect the file first.');
+    assert.ok(!thinkingTools[0].label.includes('reasoning used'));
+});
+
 test('opencode keeps post-tool text during tool-calls steps', () => {
     const ctx = {
         toolLog: [],
