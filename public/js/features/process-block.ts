@@ -167,14 +167,14 @@ function updateSummary(pb: ProcessBlockState): void {
 
 export function createProcessBlock(parentEl: HTMLElement): ProcessBlockState {
     const host = document.createElement('div');
-    host.innerHTML = blockShell('', false);
+    host.innerHTML = blockShell('', true);
     const el = host.firstElementChild as HTMLElement;
 
     const content = parentEl.querySelector('.msg-content');
     if (content) content.before(el);
     else parentEl.appendChild(el);
 
-    return { element: el, steps: [], collapsed: false };
+    return { element: el, steps: [], collapsed: true };
 }
 
 export function addStep(pb: ProcessBlockState, step: ProcessStep): void {

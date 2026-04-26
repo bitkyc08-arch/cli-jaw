@@ -34,6 +34,7 @@ test('WRS-002: queue updates rehydrate queued overlay from snapshot', { skip: !h
 test('WRS-002b: browser restore hooks resync authoritative orchestration snapshot', { skip: !hasWs && 'public/js/ws source not found' }, () => {
     const wsSrc = readFileSync(wsPath, 'utf8');
     assert.ok(wsSrc.includes('function registerOrchestrateRestoreHooks'), 'ws should register orchestration restore hooks');
+    assert.ok(wsSrc.includes('function syncAfterBrowserRestore(reason: string)'), 'browser restore hooks should route through one wrapper');
     assert.ok(wsSrc.includes('let snapshotSyncInFlight: Promise<void> | null = null'), 'snapshot sync should dedupe in-flight requests');
     assert.ok(wsSrc.includes('let lastSnapshotSyncAt = 0'), 'snapshot sync should track last sync timestamp');
     assert.ok(wsSrc.includes('const SNAPSHOT_SYNC_THROTTLE_MS = 750'), 'restore snapshot sync should have an explicit throttle window');
@@ -43,9 +44,16 @@ test('WRS-002b: browser restore hooks resync authoritative orchestration snapsho
     assert.ok(wsSrc.includes("window.addEventListener('focus'"), 'focus should trigger orchestrate snapshot sync');
     assert.ok(wsSrc.includes("window.addEventListener('pageshow'"), 'pageshow should trigger orchestrate snapshot sync');
     assert.ok(wsSrc.includes("document.addEventListener('visibilitychange'"), 'visibilitychange should trigger orchestrate snapshot sync');
-    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('focus')"), 'focus hook should call syncOrchestrateSnapshot');
-    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('pageshow')"), 'pageshow hook should call syncOrchestrateSnapshot');
-    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('visibilitychange')"), 'visibility hook should call syncOrchestrateSnapshot');
+    assert.ok(wsSrc.includes("document.addEventListener('resume'"), 'resume should trigger browser restore sync');
+    assert.ok(wsSrc.includes('wasDiscarded'), 'initial Chrome discard restore should be handled');
+    assert.ok(wsSrc.includes("syncAfterBrowserRestore('focus')"), 'focus hook should call the restore wrapper');
+    assert.ok(wsSrc.includes("syncAfterBrowserRestore('pageshow')"), 'pageshow hook should call the restore wrapper');
+    assert.ok(wsSrc.includes("syncAfterBrowserRestore('visibilitychange')"), 'visibility hook should call the restore wrapper');
+    assert.ok(wsSrc.includes("syncAfterBrowserRestore('resume')"), 'resume hook should call the restore wrapper');
+    assert.ok(wsSrc.includes("syncAfterBrowserRestore('discard')"), 'discard path should call the restore wrapper');
+    assert.ok(wsSrc.includes('showChatRestoreIndicator(reason)'), 'wrapper should show the restore indicator before sync');
+    assert.ok(wsSrc.includes('syncOrchestrateSnapshot(reason)'), 'wrapper should still refresh the authoritative snapshot');
+    assert.ok(wsSrc.includes('reconcileChatBottomAfterRestore(reason)'), 'wrapper should reconcile bottom after snapshot settles');
 });
 
 test('WRS-002c: orchestrate slash commands resync snapshot after command response', () => {
@@ -60,13 +68,15 @@ test('WRS-002c: orchestrate slash commands resync snapshot after command respons
     assert.ok(chatSrc.includes("syncOrchestrateSnapshot('command')"), 'orchestrate commands should trigger snapshot sync');
 });
 
-test('WRS-003: hydrateActiveRun keeps live process block expanded', { skip: !hasUi && 'public/js/ui source not found' }, () => {
+test('WRS-003: hydrateActiveRun keeps live process block collapsed by default', { skip: !hasUi && 'public/js/ui source not found' }, () => {
     const uiSrc = readFileSync(uiPath, 'utf8');
     const start = uiSrc.indexOf('export function hydrateActiveRun');
     const end = uiSrc.indexOf('export function appendAgentText');
     const hydrateBlock = uiSrc.slice(start, end);
     assert.ok(hydrateBlock.includes('hydrateStreamRenderer'), 'hydrateActiveRun should seed stream renderer state');
-    assert.ok(!hydrateBlock.includes('collapseBlock('), 'hydrateActiveRun should not collapse in-flight process blocks');
+    assert.ok(hydrateBlock.includes('createProcessBlock(body)'), 'hydrateActiveRun should use the shared process block constructor');
+    assert.ok(!hydrateBlock.includes('blockShell'), 'hydrateActiveRun should not bypass the shared constructor');
+    assert.ok(!uiSrc.includes('keeps live process block expanded'), 'old expanded-by-default contract should be removed');
 });
 
 test('WRS-004: applyQueuedOverlay no longer renders chat bubbles for queued items (pending-queue panel owns them)', { skip: !hasUi && 'public/js/ui source not found' }, () => {
@@ -112,6 +122,10 @@ test('WRS-007: ui exposes forced restore helper used by restore and reconnect pa
     assert.ok(uiSrc.includes('export function isChatNearBottom'), 'ui should export bottom intent reader');
     assert.ok(uiSrc.includes('export function reconcileChatBottomAfterLayout'), 'ui should export reconnect reconciliation helper');
     assert.ok(uiSrc.includes('export function reconcileChatBottomAfterRestore'), 'ui should export forced restore reconciliation helper');
+    assert.ok(uiSrc.includes('export function showChatRestoreIndicator'), 'ui should export restore indicator show helper');
+    assert.ok(uiSrc.includes('export function hideChatRestoreIndicatorAfterSettle'), 'ui should export settle-aware hide helper');
+    assert.ok(uiSrc.includes('showChatRestoreIndicator(reason)'), 'restore reconciliation should own indicator lifecycle');
+    assert.ok(uiSrc.includes('hideChatRestoreIndicatorAfterSettle()'), 'restore reconciliation should hide indicator after settle');
     assert.ok(uiSrc.includes("vs.reconcileBottomAfterLayout('reconnect', true)"), 'virtual-scroll reconnect should use the same reconciliation path');
     assert.ok(uiSrc.includes('vs.forceBottomAfterRestore'), 'restore helper should delegate to virtual scroll forced restore');
 });

@@ -133,6 +133,33 @@
     gap: 0;
 }
 
+.chat-restore-indicator {
+    position: absolute;
+    left: 50%;
+    bottom: var(--space-4);
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    transform: translateX(-50%);
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: color-mix(in oklch, var(--surface) 88%, transparent);
+    color: var(--text-dim);
+    box-shadow: var(--shadow-md);
+    font-size: var(--text-xs);
+    pointer-events: none;
+}
+
+.chat-restore-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--accent);
+    animation: processDotPulse 1.2s ease-in-out infinite;
+}
+
 /* Inner container provides scrollbar range via its height */
 .chat-messages.vs-active > .vs-inner {
     position: relative;

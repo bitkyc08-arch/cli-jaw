@@ -467,6 +467,8 @@ let scrollRAF: number | null = null;
 let userNearBottom = true;
 let scrollTrackingBound = false;
 const SCROLL_BOTTOM_THRESHOLD = 80; // px
+const RESTORE_INDICATOR_SETTLE_MS = 1100;
+let chatRestoreIndicatorHideTimer: number | null = null;
 
 function ensureScrollTracking(): void {
     if (scrollTrackingBound) return;
@@ -506,7 +508,47 @@ export function reconcileChatBottomAfterLayout(shouldFollow = isChatNearBottom()
     });
 }
 
+export function showChatRestoreIndicator(reason: string): void {
+    if (chatRestoreIndicatorHideTimer !== null) {
+        window.clearTimeout(chatRestoreIndicatorHideTimer);
+        chatRestoreIndicatorHideTimer = null;
+    }
+    const host = document.querySelector('.chat-area') as HTMLElement | null;
+    if (!host) return;
+    let indicator = host.querySelector('[data-restore-indicator="true"]') as HTMLElement | null;
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.className = 'chat-restore-indicator';
+        indicator.setAttribute('data-restore-indicator', 'true');
+        indicator.setAttribute('role', 'status');
+        indicator.setAttribute('aria-live', 'polite');
+        indicator.innerHTML = '<span class="chat-restore-dot"></span><span class="chat-restore-text">Restoring</span>';
+        host.appendChild(indicator);
+    }
+    indicator.dataset.restoreReason = reason;
+}
+
+export function hideChatRestoreIndicator(): void {
+    if (chatRestoreIndicatorHideTimer !== null) {
+        window.clearTimeout(chatRestoreIndicatorHideTimer);
+        chatRestoreIndicatorHideTimer = null;
+    }
+    document.querySelectorAll('[data-restore-indicator="true"]').forEach(el => el.remove());
+}
+
+export function hideChatRestoreIndicatorAfterSettle(delayMs = RESTORE_INDICATOR_SETTLE_MS): void {
+    if (chatRestoreIndicatorHideTimer !== null) {
+        window.clearTimeout(chatRestoreIndicatorHideTimer);
+    }
+    chatRestoreIndicatorHideTimer = window.setTimeout(() => {
+        chatRestoreIndicatorHideTimer = null;
+        hideChatRestoreIndicator();
+    }, delayMs);
+}
+
 export function reconcileChatBottomAfterRestore(reason: string): void {
+    showChatRestoreIndicator(reason);
+    hideChatRestoreIndicatorAfterSettle();
     ensureScrollTracking();
     userNearBottom = true;
     const vs = getVirtualScroll();

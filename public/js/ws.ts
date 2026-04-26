@@ -1,6 +1,6 @@
 // ── WebSocket Connection ──
 import { state } from './state.js';
-import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore } from './ui.js';
+import { setStatus, updateQueueBadge, addSystemMsg, appendAgentText, finalizeAgent, addMessage, showProcessStep, cleanupToolActivity, applyQueuedOverlay, hydrateActiveRun, reconcileChatBottomAfterRestore, showChatRestoreIndicator } from './ui.js';
 import { renderPendingQueue } from './features/pending-queue.js';
 import { t, getLang } from './features/i18n.js';
 import { getVirtualScroll } from './virtual-scroll.js';
@@ -118,20 +118,36 @@ export function syncOrchestrateSnapshot(reason = 'manual', options: { hydrateRun
     return refreshRuntimeSnapshot(options);
 }
 
+function syncAfterBrowserRestore(reason: string): void {
+    showChatRestoreIndicator(reason);
+    syncOrchestrateSnapshot(reason)
+        .finally(() => {
+            reconcileChatBottomAfterRestore(reason);
+        })
+        .catch(() => {});
+}
+
 function registerOrchestrateRestoreHooks(): void {
     if (restoreHooksRegistered) return;
     restoreHooksRegistered = true;
     window.addEventListener('focus', () => {
-        syncOrchestrateSnapshot('focus').catch(() => {});
+        syncAfterBrowserRestore('focus');
     });
     window.addEventListener('pageshow', () => {
-        syncOrchestrateSnapshot('pageshow').catch(() => {});
+        syncAfterBrowserRestore('pageshow');
     });
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
-            syncOrchestrateSnapshot('visibilitychange').catch(() => {});
+            syncAfterBrowserRestore('visibilitychange');
         }
     });
+    document.addEventListener('resume', () => {
+        syncAfterBrowserRestore('resume');
+    });
+    if ('wasDiscarded' in document
+        && Boolean((document as Document & { wasDiscarded?: boolean }).wasDiscarded)) {
+        syncAfterBrowserRestore('discard');
+    }
 }
 
 /** Hydrate agent phase cache from snapshot (used after reconnect) */
