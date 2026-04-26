@@ -289,7 +289,7 @@ export function canTransition(
   ctx?: OrcContext | null,
 ): TransitionResult {
   if (!VALID_TRANSITIONS[from]?.includes(to)) {
-    return { ok: false, reason: `Invalid transition: ${from} → ${to}` };
+    return { ok: false, reason: `Invalid transition: ${from} → ${to}. Force cannot skip phases; start from the next valid phase.` };
   }
   // Phase 58: Gate A→B on audit verdict (strict equality, not truthy).
   if (from === 'A' && to === 'B') {
@@ -297,7 +297,7 @@ export function canTransition(
     if (ctx?.auditStatus !== 'pass') {
       return {
         ok: false,
-        reason: `A → B requires audit verdict 'pass' (current: ${ctx?.auditStatus ?? 'none'}). Run audit worker, or use --force to override.`,
+        reason: `A → B requires audit verdict 'pass' or explicit user approval (current: ${ctx?.auditStatus ?? 'none'}). Run audit worker, use /orchestrate B, or use --force to override this audit gate.`,
       };
     }
   }
@@ -307,7 +307,7 @@ export function canTransition(
     if (ctx?.verificationStatus !== 'done') {
       return {
         ok: false,
-        reason: `B → C requires verification verdict 'done' (current: ${ctx?.verificationStatus ?? 'none'}). Run verification worker, or use --force to override.`,
+        reason: `B → C requires verification verdict 'done' or explicit user approval (current: ${ctx?.verificationStatus ?? 'none'}). Run verification worker, use /orchestrate C, or use --force to override this verification gate.`,
       };
     }
   }

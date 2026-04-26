@@ -390,6 +390,23 @@ export async function orchestrateHandler(args: string[], ctx: any) {
     const origin = ctx?.interface || 'web';
     const scope = resolveOrcScope({ origin, workingDir: settings.workingDir || null });
 
+    if (target === 'STATUS') {
+        const current = getState(scope);
+        const currentCtx = getCtx(scope);
+        return {
+            ok: true,
+            text: [
+                `State: ${current}`,
+                `Scope: ${scope}`,
+                `Audit: ${currentCtx?.auditStatus || 'none'}`,
+                `Verification: ${currentCtx?.verificationStatus || 'none'}`,
+                `User approved: ${currentCtx?.userApproved ? 'yes' : 'no'}`,
+                `Plan: ${currentCtx?.plan ? 'present' : 'none'}`,
+                `Worklog: ${currentCtx?.worklogPath || 'none'}`,
+            ].join('\n'),
+        };
+    }
+
     if (target === 'RESET') {
         resetState(scope);
         return { ok: true, text: '✅ State → IDLE (reset)' };
@@ -397,20 +414,22 @@ export async function orchestrateHandler(args: string[], ctx: any) {
 
     const valid: OrcStateName[] = ['P', 'A', 'B', 'C', 'D'];
     if (!valid.includes(target as OrcStateName)) {
-        return { ok: false, text: `Invalid state: ${target}. Must be one of: P, A, B, C, D, reset` };
+        return { ok: false, text: `Invalid state: ${target}. Must be one of: P, A, B, C, D, status, reset` };
     }
 
     const current = getState(scope);
     const t = target as OrcStateName;
     const currentCtx = getCtx(scope);
-    // Phase 58: Apply --force by stamping userApproved on ctx before gate check.
-    const gateCtx = force && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
-    if (force && currentCtx) {
+    // Phase 58/59: User-issued slash transitions are explicit approval for gate checks.
+    const userInitiated = true;
+    const hasExplicitApproval = force || userInitiated;
+    const gateCtx = hasExplicitApproval && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
+    if (hasExplicitApproval && currentCtx) {
         setState(current, gateCtx, scope);
     }
     const gate = canTransition(current, t, gateCtx);
     if (!gate.ok) {
-        return { ok: false, text: `Cannot transition: ${gate.reason}` };
+        return { ok: false, text: `Cannot transition: ${gate.reason}\nCurrent server state: ${current}` };
     }
 
     if (t === 'D') {

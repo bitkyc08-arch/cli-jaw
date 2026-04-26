@@ -8,6 +8,7 @@ import { ICONS, emojiToIcon } from './icons.js';
 import { escapeHtml, cancelPostRender } from './render.js';
 import type { OrcStateName } from './state.js';
 import { notifyUnreadResponse } from './features/attention-badge.js';
+import { shouldApplyOrcStateEvent } from './features/orchestrate-scope.js';
 
 const ROADMAP_PHASES = ['P', 'A', 'B', 'C'] as const;
 
@@ -77,6 +78,10 @@ const agentPhaseState: Record<string, { phase: string; phaseLabel: string }> = {
 
 let currentOrcScope = '';
 let lastLoadTs = 0;
+let snapshotSyncInFlight: Promise<void> | null = null;
+let lastSnapshotSyncAt = 0;
+let restoreHooksRegistered = false;
+const SNAPSHOT_SYNC_THROTTLE_MS = 750;
 
 async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): Promise<void> {
     const response = await fetch('/api/orchestrate/snapshot');
@@ -91,6 +96,41 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     setStatus(snap.runtime.busy ? 'running' : 'idle');
     import('./features/employees.js').then(m => {
         if (typeof m.renderEmployees === 'function') m.renderEmployees();
+    });
+}
+
+export function syncOrchestrateSnapshot(reason = 'manual', options: { hydrateRun?: boolean } = {}): Promise<void> {
+    const now = Date.now();
+    if (!options.hydrateRun) {
+        if (snapshotSyncInFlight) return snapshotSyncInFlight;
+        if (now - lastSnapshotSyncAt < SNAPSHOT_SYNC_THROTTLE_MS) return Promise.resolve();
+        lastSnapshotSyncAt = now;
+        snapshotSyncInFlight = refreshRuntimeSnapshot(options)
+            .catch(error => {
+                console.warn(`[ws] orchestrate snapshot sync failed (${reason})`, error);
+                throw error;
+            })
+            .finally(() => {
+                snapshotSyncInFlight = null;
+            });
+        return snapshotSyncInFlight;
+    }
+    return refreshRuntimeSnapshot(options);
+}
+
+function registerOrchestrateRestoreHooks(): void {
+    if (restoreHooksRegistered) return;
+    restoreHooksRegistered = true;
+    window.addEventListener('focus', () => {
+        syncOrchestrateSnapshot('focus').catch(() => {});
+    });
+    window.addEventListener('pageshow', () => {
+        syncOrchestrateSnapshot('pageshow').catch(() => {});
+    });
+    document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') {
+            syncOrchestrateSnapshot('visibilitychange').catch(() => {});
+        }
     });
 }
 
@@ -212,6 +252,7 @@ function applyOrcState(orcState: string, title?: string) {
 }
 
 export function connect(): void {
+    registerOrchestrateRestoreHooks();
     const wsBase = import.meta.env?.DEV ? 'ws://localhost:3458' : `ws://${location.host}`;
     state.ws = new WebSocket(`${wsBase}?lang=${getLang()}`);
     state.ws.onmessage = (e: MessageEvent) => {
@@ -239,7 +280,7 @@ export function connect(): void {
             }
         } else if (msg.type === 'queue_update') {
             updateQueueBadge(msg.pending || 0);
-            refreshRuntimeSnapshot().catch(() => { /* snapshot not critical — UI recovers on next event */ });
+            syncOrchestrateSnapshot('queue_update').catch(() => { /* snapshot not critical — UI recovers on next event */ });
         } else if (msg.type === 'worklog_created') {
             addSystemMsg(`${ICONS.clipboard} Worklog: ${escapeHtml(msg.path || '')}`);
         } else if (msg.type === 'round_start') {
@@ -297,7 +338,7 @@ export function connect(): void {
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
         } else if (msg.type === 'orc_state') {
-            if (msg.scope && currentOrcScope && msg.scope !== currentOrcScope) return;
+            if (!shouldApplyOrcStateEvent(msg.scope, currentOrcScope)) return;
             applyOrcState(typeof msg.state === 'string' ? msg.state : 'IDLE', msg.title);
         } else if (msg.type === 'memory_status') {
             import('./features/memory.js').then(m => m.refreshMemorySidebar());
@@ -322,7 +363,7 @@ export function connect(): void {
                     console.error('[ws] loadMessages failed', error);
                 }
             }
-            refreshRuntimeSnapshot({ hydrateRun: true })
+            syncOrchestrateSnapshot('reconnect', { hydrateRun: true })
                 .catch(() => { /* snapshot not critical — UI recovers on next WS event */ })
                 .finally(() => reconcileChatBottomAfterLayout(shouldFollowBottom));
         });

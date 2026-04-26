@@ -98,6 +98,14 @@ try {
         console.log('\n--- Employee Response ---');
         console.log(body.result.text);
     }
+    if (body.orchestration) {
+        const o = body.orchestration;
+        const verdict = o.verdict ? String(o.verdict).toUpperCase() : 'none';
+        const persisted = o.statusPersisted
+            ? `persisted to ${o.persistedField}`
+            : `not persisted (state=${o.currentState || 'unknown'}, ctx=${o.ctxPresent ? 'true' : 'false'})`;
+        console.log(`\nOrchestration verdict: ${verdict} ${persisted}`);
+    }
 } catch (e: any) {
     console.error(`❌ Error: ${e.message}`);
     process.exit(1);

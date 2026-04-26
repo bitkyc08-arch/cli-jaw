@@ -278,14 +278,27 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             // Phase 58: Auto-update audit/verification status from worker verdict.
             // 'A' phase verdicts → auditStatus; 'B' phase verdicts → verificationStatus.
             const verdict = parseWorkerVerdict(result.text || '');
+            let statusPersisted = false;
+            let persistedField: 'auditStatus' | 'verificationStatus' | null = null;
             if (verdict && dispatchCtx) {
                 const freshCtx = getCtx(dispatchScope) || dispatchCtx;
                 if (currentOrcState === 'A' && (verdict === 'pass' || verdict === 'fail')) {
                     setState('A', { ...freshCtx, auditStatus: verdict }, dispatchScope);
+                    statusPersisted = true;
+                    persistedField = 'auditStatus';
                 } else if (currentOrcState === 'B' && (verdict === 'done' || verdict === 'needs_fix')) {
                     setState('B', { ...freshCtx, verificationStatus: verdict }, dispatchScope);
+                    statusPersisted = true;
+                    persistedField = 'verificationStatus';
                 }
             }
+            const orchestration = {
+                verdict: verdict || null,
+                currentState: currentOrcState,
+                ctxPresent: Boolean(dispatchCtx),
+                statusPersisted,
+                persistedField,
+            };
             if (clientDisconnected) {
                 console.warn(`[dispatch] client disconnected — keeping pendingReplay for ${slot.agentId}`);
                 // Proactive drain: if Boss died before receiving the result, user input
@@ -302,7 +315,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             }
             // Only clear replay flag after response is actually flushed to client.
             res.on('finish', () => markWorkerReplayed(slot.agentId));
-            res.json({ ok: true, result });
+            res.json({ ok: true, result, orchestration });
         } catch (err: any) {
             failWorker(slot.agentId, err.message);
             if (!res.writableEnded) res.status(500).json({ ok: false, error: err.message });
@@ -334,16 +347,28 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const scope = resolveOrcScope({ origin: 'web', workingDir: settings.workingDir || null });
         const current = getState(scope);
         const t = target as OrcStateName;
-        // Phase 58: HTTP override via { force: true } body.
+        // Phase 58/59: HTTP override via { force: true } or explicit user command.
         const force = req.body?.force === true;
+        const userInitiated = req.body?.userInitiated === true;
+        const hasExplicitApproval = force || userInitiated;
         const currentCtx = getCtx(scope);
-        const gateCtx = force && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
-        if (force && currentCtx) {
+        const gateCtx = hasExplicitApproval && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
+        if (hasExplicitApproval && currentCtx) {
             setState(current, gateCtx, scope);
         }
         const gate = canTransition(current, t, gateCtx);
         if (!gate.ok) {
-            return fail(res, 409, gate.reason || `Cannot transition: ${current} → ${t}`);
+            const forceMissingCtx = force && !currentCtx && (current === 'A' || current === 'B');
+            const reason = forceMissingCtx
+                ? `Cannot force ${current} → ${t} because orchestration context is missing; restart from P.`
+                : (gate.reason || `Cannot transition: ${current} → ${t}`);
+            return fail(res, 409, reason, {
+                current,
+                target: t,
+                force,
+                userInitiated,
+                ctxPresent: Boolean(currentCtx),
+            });
         }
         if (t === 'D') {
             setState(t, undefined, scope, 'Done');
@@ -356,6 +381,6 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 t === 'P' ? 'P' : t,
             );
         }
-        res.json({ ok: true, state: getState(scope) });
+        res.json({ ok: true, state: getState(scope), current, target: t, force, userInitiated, ctxPresent: Boolean(currentCtx) });
     });
 }

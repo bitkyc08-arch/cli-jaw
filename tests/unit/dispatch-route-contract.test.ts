@@ -12,26 +12,40 @@ test('dispatch route clears pending replay only after response is flushed (phase
     assert.ok(routeStart >= 0, 'dispatch route should exist');
 
     // Window must cover both POST dispatch body + GET result polling route.
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 12000);
     const finishIdx = routeBlock.indexOf("finishWorker(slot.agentId, result.text || '');");
-    const finishHookIdx = routeBlock.indexOf('markWorkerReplayed(slot.agentId)');
-    const responseIdx = routeBlock.indexOf("res.json({ ok: true, result });");
+    const finishHookIdx = routeBlock.indexOf("res.on('finish', () => markWorkerReplayed(slot.agentId))", finishIdx);
+    const responseIdx = routeBlock.indexOf("res.json({ ok: true, result, orchestration });");
 
     assert.ok(finishIdx >= 0, 'dispatch route should call finishWorker on success');
     assert.ok(finishHookIdx > finishIdx, 'markWorkerReplayed should appear after finishWorker');
     assert.ok(responseIdx > finishIdx, 'dispatch route should respond after finishWorker');
+    assert.ok(routeBlock.includes('statusPersisted'), 'dispatch response should include verdict persistence diagnostics');
+    assert.ok(routeBlock.includes('persistedField'), 'dispatch response should name the persisted verdict field');
 
     // Phase 7: markWorkerReplayed must be scheduled via res.on('finish') so that
     // a client disconnecting before the flush keeps pendingReplay=true.
-    const hookPrefix = routeBlock.slice(Math.max(0, finishHookIdx - 60), finishHookIdx);
-    assert.ok(hookPrefix.includes("res.on('finish'"),
-        `markWorkerReplayed must be wrapped in res.on('finish'). context:\n${hookPrefix}`);
+    assert.ok(finishHookIdx >= 0,
+        'markWorkerReplayed must be wrapped in res.on(\'finish\') in the dispatch success path');
+});
+
+test('dispatch route reports verdict persistence diagnostics', () => {
+    const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
+    assert.ok(routeStart >= 0, 'dispatch route should exist');
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 12000);
+
+    assert.ok(routeBlock.includes('const orchestration = {'), 'dispatch route should build orchestration diagnostics');
+    assert.ok(routeBlock.includes('verdict: verdict || null'), 'diagnostics should include parsed verdict');
+    assert.ok(routeBlock.includes('currentState: currentOrcState'), 'diagnostics should include current PABCD state');
+    assert.ok(routeBlock.includes('ctxPresent: Boolean(dispatchCtx)'), 'diagnostics should include ctx presence');
+    assert.ok(routeBlock.includes("persistedField = 'auditStatus'"), 'PASS/FAIL in A should persist to auditStatus');
+    assert.ok(routeBlock.includes("persistedField = 'verificationStatus'"), 'DONE/NEEDS_FIX in B should persist to verificationStatus');
 });
 
 test('dispatch route maps PABCD phase from state-machine', () => {
     const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
     assert.ok(routeStart >= 0, 'dispatch route should exist');
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 12000);
 
     // Phase map must exist in dispatch route
     assert.ok(
@@ -57,7 +71,7 @@ test('dispatch route maps PABCD phase from state-machine', () => {
 
 test('dispatch route accepts optional phase override in request body', () => {
     const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
-    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 9000);
+    const routeBlock = orchestrateSrc.slice(routeStart, routeStart + 12000);
 
     // Must destructure phase from req.body
     assert.ok(

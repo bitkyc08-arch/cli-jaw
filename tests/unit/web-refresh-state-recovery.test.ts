@@ -20,15 +20,44 @@ const hasVirtualScroll = existsSync(virtualScrollPath);
 
 test('WRS-001: reconnect snapshot owns status instead of forced idle reset', { skip: !hasWs && 'public/js/ws source not found' }, () => {
     const wsSrc = readFileSync(wsPath, 'utf8');
-    assert.ok(wsSrc.includes('refreshRuntimeSnapshot({ hydrateRun: true })'), 'ws reconnect should hydrate runtime snapshot');
+    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('reconnect', { hydrateRun: true })"), 'ws reconnect should hydrate runtime snapshot');
     assert.ok(!wsSrc.includes("m.setStatus('idle');"), 'ws reconnect should not force idle before snapshot');
 });
 
 test('WRS-002: queue updates rehydrate queued overlay from snapshot', { skip: !hasWs && 'public/js/ws source not found' }, () => {
     const wsSrc = readFileSync(wsPath, 'utf8');
     const queueBlock = wsSrc.slice(wsSrc.indexOf("msg.type === 'queue_update'"), wsSrc.indexOf("msg.type === 'worklog_created'"));
-    assert.ok(queueBlock.includes('refreshRuntimeSnapshot().catch'), 'queue updates should refresh snapshot state');
+    assert.ok(queueBlock.includes("syncOrchestrateSnapshot('queue_update').catch"), 'queue updates should refresh snapshot state');
     assert.ok(queueBlock.includes('updateQueueBadge(msg.pending || 0)'), 'queue updates should still refresh badge count');
+});
+
+test('WRS-002b: browser restore hooks resync authoritative orchestration snapshot', { skip: !hasWs && 'public/js/ws source not found' }, () => {
+    const wsSrc = readFileSync(wsPath, 'utf8');
+    assert.ok(wsSrc.includes('function registerOrchestrateRestoreHooks'), 'ws should register orchestration restore hooks');
+    assert.ok(wsSrc.includes('let snapshotSyncInFlight: Promise<void> | null = null'), 'snapshot sync should dedupe in-flight requests');
+    assert.ok(wsSrc.includes('let lastSnapshotSyncAt = 0'), 'snapshot sync should track last sync timestamp');
+    assert.ok(wsSrc.includes('const SNAPSHOT_SYNC_THROTTLE_MS = 750'), 'restore snapshot sync should have an explicit throttle window');
+    assert.ok(wsSrc.includes('if (snapshotSyncInFlight) return snapshotSyncInFlight'), 'restore sync should reuse in-flight snapshot request');
+    assert.ok(wsSrc.includes('now - lastSnapshotSyncAt < SNAPSHOT_SYNC_THROTTLE_MS'), 'restore sync should throttle rapid duplicate calls');
+    assert.ok(wsSrc.includes('if (!options.hydrateRun)'), 'normal restore sync should be throttled separately from reconnect hydration');
+    assert.ok(wsSrc.includes("window.addEventListener('focus'"), 'focus should trigger orchestrate snapshot sync');
+    assert.ok(wsSrc.includes("window.addEventListener('pageshow'"), 'pageshow should trigger orchestrate snapshot sync');
+    assert.ok(wsSrc.includes("document.addEventListener('visibilitychange'"), 'visibilitychange should trigger orchestrate snapshot sync');
+    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('focus')"), 'focus hook should call syncOrchestrateSnapshot');
+    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('pageshow')"), 'pageshow hook should call syncOrchestrateSnapshot');
+    assert.ok(wsSrc.includes("syncOrchestrateSnapshot('visibilitychange')"), 'visibility hook should call syncOrchestrateSnapshot');
+});
+
+test('WRS-002c: orchestrate slash commands resync snapshot after command response', () => {
+    const chatPath = existsSync(join(__dirname, '../../public/js/features/chat.ts'))
+        ? join(__dirname, '../../public/js/features/chat.ts')
+        : join(__dirname, '../../public/js/features/chat.js');
+    const chatSrc = readFileSync(chatPath, 'utf8');
+    assert.ok(chatSrc.includes("import { syncOrchestrateSnapshot } from '../ws.js'"), 'chat should import orchestrate snapshot sync');
+    assert.ok(chatSrc.includes('function isOrchestrateCommand'), 'chat should classify orchestrate commands');
+    assert.match(chatSrc, /\/\^\s*\\\/\(\?:orchestrate\|pabcd\)/, 'classifier should match both /orchestrate and /pabcd');
+    assert.ok(chatSrc.includes('finally'), 'command path should sync after success and failure');
+    assert.ok(chatSrc.includes("syncOrchestrateSnapshot('command')"), 'orchestrate commands should trigger snapshot sync');
 });
 
 test('WRS-003: hydrateActiveRun keeps live process block expanded', { skip: !hasUi && 'public/js/ui source not found' }, () => {

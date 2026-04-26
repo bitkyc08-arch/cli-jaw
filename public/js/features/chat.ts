@@ -10,6 +10,7 @@ import { getVirtualScroll } from '../virtual-scroll.js';
 import { clearCache, upsertMessage } from './idb-cache.js';
 import { ICONS } from '../icons.js';
 import { clearUnreadResponses } from './attention-badge.js';
+import { syncOrchestrateSnapshot } from '../ws.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -19,6 +20,10 @@ interface MessageResult { queued?: boolean; pending?: number; continued?: boolea
 function getCommandTimeoutMs(text: string): number {
     // Native compaction can take materially longer than the default command round-trip.
     return /^\/compact(?:\s|$)/i.test(String(text || '').trim()) ? 5 * 60 * 1000 : 10_000;
+}
+
+function isOrchestrateCommand(text: string): boolean {
+    return /^\/(?:orchestrate|pabcd)(?:\s|$)/i.test(String(text || '').trim());
 }
 
 // In-flight guard: prevents double-send from rapid clicks / Enter-bursts while the
@@ -58,6 +63,7 @@ export async function sendMessage(): Promise<void> {
         const isFilePath = firstToken.includes('/') || firstToken.includes('\\');
 
         if (text.startsWith('/') && !state.attachedFiles.length && !isFilePath) {
+            const shouldSyncOrchestrate = isOrchestrateCommand(text);
             input.value = '';
             resetInputHeight();
             slashCmd.close();
@@ -102,6 +108,10 @@ export async function sendMessage(): Promise<void> {
                 if (result?.text) addSystemMsg(escapeHtml(result.text), '', result.type);
             } catch (err) {
                 addSystemMsg(t('chat.cmd.fail', { msg: (err as Error).message }), '', 'error');
+            } finally {
+                if (shouldSyncOrchestrate) {
+                    syncOrchestrateSnapshot('command').catch(() => {});
+                }
             }
             return;
         }
