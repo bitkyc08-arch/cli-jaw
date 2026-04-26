@@ -63,6 +63,24 @@ function pickWorklogSeed(...candidates: Array<string | null | undefined>) {
     return 'orchestration';
 }
 
+export function buildApprovedPlanPromptBlock(
+    ctx: OrcContext | null,
+    state: OrcStateName,
+): string {
+    if (!ctx?.plan) return '';
+    if (!['A', 'B', 'C'].includes(state)) return '';
+    return [
+        '## Approved Plan (authoritative)',
+        ctx.plan,
+        '---',
+        '## Plan consistency guard',
+        '- Treat the Approved Plan as the source of truth.',
+        '- Do not invent or change numeric targets, paths, resource IDs, dates, limits, or destructive operation parameters.',
+        '- If your intended action conflicts with the Approved Plan, STOP and ask the user to confirm.',
+        '---',
+    ].join('\n');
+}
+
 type WorkerTaskLike = Record<string, any>;
 type RunSingleAgentLike = typeof runSingleAgent;
 type FindEmployeeLike = typeof findEmployee;
@@ -232,6 +250,10 @@ export async function orchestrate(
     const prefix = getPrefix(state, source as 'user' | 'worker');
     if (prefix && !skipPrefix) {
         prompt = prefix + '\n' + prompt;
+    }
+    const approvedPlanBlock = buildApprovedPlanPromptBlock(ctx, state);
+    if (approvedPlanBlock) {
+        prompt = `${approvedPlanBlock}\n${prompt}`;
     }
 
     // spawn/resume agent

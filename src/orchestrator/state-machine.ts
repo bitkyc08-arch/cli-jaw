@@ -221,7 +221,8 @@ You are now in Build mode. The plan has been audited and approved.
 ✅ Allowed dispatch examples: "verify src/x.ts compiles", "check integration of Y reports DONE/NEEDS_FIX".
 
 Steps:
-1. Read the approved plan: the full body is auto-injected at the top of this task body (under \`## Approved Plan\`).
+1. Read the approved plan: the orchestrator injects it into Boss prompts and dispatch tasks under \`## Approved Plan\`.
+   Before any numeric, path, resource-id, date, limit, or destructive action, compare your intended value against the Approved Plan.
 2. Implement ALL changes yourself — create/modify/delete files as specified in the plan.
 3. After YOU finish implementing, dispatch a verification employee:
 
