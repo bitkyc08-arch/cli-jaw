@@ -72,3 +72,25 @@ test('B state prompt describes Boss and dispatch plan injection', () => {
     assert.ok(prompt.includes('injects it into Boss prompts and dispatch tasks'));
     assert.ok(prompt.includes('numeric, path, resource-id, date, limit, or destructive action'));
 });
+
+test('heartbeat origin does not receive PABCD prefix or Approved Plan block', async () => {
+    let capturedPrompt = '';
+    setState('B', ctx, 'default');
+
+    await orchestrate('heartbeat tick', {
+        origin: 'heartbeat',
+        _skipClear: true,
+        _skipInsert: true,
+        _spawnAgent: (prompt: string) => {
+            capturedPrompt = prompt;
+            return {
+                child: null,
+                promise: Promise.resolve({ text: 'ok', code: 0 }),
+            };
+        },
+    } as any);
+
+    assert.equal(capturedPrompt, 'heartbeat tick');
+    assert.ok(!capturedPrompt.includes('## Approved Plan'));
+    assert.ok(!capturedPrompt.includes('[PABCD'));
+});

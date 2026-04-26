@@ -14,6 +14,7 @@ import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
 import { verifyBossToken } from '../core/boss-auth.js';
 import { resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
+import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
 
 function getRuntimeSnapshot() {
     return {
@@ -77,6 +78,8 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             auditStatus: ctx.auditStatus,
             verificationStatus: ctx.verificationStatus,
             userApproved: ctx.userApproved,
+            taskAnchor: ctx.taskAnchor,
+            resolvedSelection: ctx.resolvedSelection,
         } : null;
         res.json({
             orc: {
@@ -91,6 +94,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 busy: runtime.activeAgent || getActiveWorkers().some(w => w.state === 'running'),
             },
             workers: getActiveWorkers(),
+            heartbeat: getHeartbeatRuntimeState(),
             queued: getQueuedMessageSnapshotForScope(scope),
             activeRun: getLiveRun(scope),
         });

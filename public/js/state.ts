@@ -30,6 +30,22 @@ export interface CliStatusCache {
 
 export type OrcStateName = 'IDLE' | 'P' | 'A' | 'B' | 'C' | 'D';
 
+export interface HeartbeatRuntimeState {
+    pending: number;
+    deferredPending: number;
+    reason?: 'busy' | 'pabcd_active';
+    policy?: 'defer';
+    jobId?: string;
+    jobName?: string;
+}
+
+export interface ResolvedSelectionState {
+    raw: string;
+    index: number;
+    text: string;
+    source: string;
+}
+
 export interface AppState {
     ws: WebSocket | null;
     agentBusy: boolean;
@@ -45,6 +61,9 @@ export interface AppState {
     cliStatusTs: number;
     isRecording: boolean;
     currentProcessBlock: ProcessBlockState | null;
+    heartbeatRuntime: HeartbeatRuntimeState;
+    orcTaskAnchor: string;
+    orcResolvedSelection: ResolvedSelectionState | null;
 }
 
 export const state: AppState = {
@@ -62,4 +81,7 @@ export const state: AppState = {
     orcState: 'IDLE',
     isRecording: false,
     currentProcessBlock: null,
+    heartbeatRuntime: { pending: 0, deferredPending: 0 },
+    orcTaskAnchor: '',
+    orcResolvedSelection: null,
 };

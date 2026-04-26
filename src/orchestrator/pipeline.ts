@@ -9,6 +9,7 @@ import {
     insertMessage, getEmployees,
     clearAllEmployeeSessions,
     upsertEmployeeSession,
+    getRecentMessages,
 } from '../core/db.js';
 
 import { clearPromptCache } from '../prompt/builder.js';
@@ -38,7 +39,7 @@ import { buildMemoryInjection } from '../memory/injection.js';
 // ─── Parser re-exports ─────────────────────────────
 import {
     isContinueIntent, isResetIntent, isApproveIntent,
-    parseDirectAnswer, stripSubtaskJSON,
+    parseDirectAnswer, stripSubtaskJSON, resolveNumericReference,
 } from './parser.js';
 export {
     isContinueIntent, isResetIntent, isApproveIntent,
@@ -209,7 +210,23 @@ export async function orchestrate(
     clearPromptCache();
 
     ctx = getCtx(scope);
-    const planningTask = pickPlanningTask(userText, prompt, ctx);
+    const numericResolution = state === 'P' && !ctx?.plan
+        ? resolveNumericReference(
+            userText,
+            getRecentMessages.all(settings.workingDir || null, 20) as Array<{ role?: string; content?: string }>,
+        )
+        : null;
+    if (numericResolution?.needsConfirmation) {
+        broadcast('orchestrate_done', {
+            text: `${numericResolution.matchedIndex}번이 어떤 항목인지 확실하지 않습니다. 직전 목록을 다시 보여주거나 항목 이름을 직접 말해주세요.`,
+            origin,
+            chatId,
+            target,
+            requestId,
+        });
+        return;
+    }
+    const planningTask = numericResolution?.resolved || pickPlanningTask(userText, prompt, ctx);
     const isInitialPlanningTurn = state === 'P'
         && !meta._workerResult
         && !meta._skipPrefix
@@ -235,23 +252,28 @@ export async function orchestrate(
             scopeId: scope,
             origin,
             chatId,
+            taskAnchor: planningTask,
+            ...(numericResolution?.selection ? { resolvedSelection: numericResolution.selection } : {}),
         };
 
         // Create a fresh worklog before setState() so state/title reads the new latest worklog.
         const worklogSeed = pickWorklogSeed(nextCtx.originalPrompt, planningTask, userText);
-        const worklogInfo = createWorklog(worklogSeed);
+        const worklogInfo = createWorklog(worklogSeed, nextCtx.taskAnchor);
         nextCtx.worklogPath = worklogInfo.path;
         setState('P', nextCtx, scope, pickWorklogSeed(nextCtx.originalPrompt));
         ctx = nextCtx;
     }
 
     // prefix injection
+    if (origin === 'heartbeat') {
+        skipPrefix = true;
+    }
     const source = meta._workerResult ? 'worker' : 'user';
     const prefix = getPrefix(state, source as 'user' | 'worker');
     if (prefix && !skipPrefix) {
         prompt = prefix + '\n' + prompt;
     }
-    const approvedPlanBlock = buildApprovedPlanPromptBlock(ctx, state);
+    const approvedPlanBlock = origin === 'heartbeat' ? '' : buildApprovedPlanPromptBlock(ctx, state);
     if (approvedPlanBlock) {
         prompt = `${approvedPlanBlock}\n${prompt}`;
     }
@@ -385,6 +407,12 @@ export async function orchestrateReset(
     clearAllEmployeeSessions.run();
     const scope = 'default';
     resetState(scope);
+    try {
+        const { drainPending } = await import('../memory/heartbeat.js');
+        await drainPending();
+    } catch (err) {
+        console.warn('[jaw:pabcd] heartbeat drain after reset failed:', (err as Error).message);
+    }
     const latest = readLatestWorklog();
     if (!latest) {
         broadcast('orchestrate_done', {

@@ -5,6 +5,7 @@ import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } f
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { broadcast } from '../core/bus.js';
 import { sendChannelOutput } from '../messaging/send.js';
+import { getState } from '../orchestrator/state-machine.js';
 import {
     describeHeartbeatSchedule,
     formatHeartbeatNow,
@@ -19,7 +20,43 @@ import {
 const heartbeatTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const heartbeatCronSlots = new Map<string, string>();
 let heartbeatBusy = false;
-const pendingJobs: Array<Record<string, any>> = [];
+type HeartbeatPendingReason = 'busy' | 'pabcd_active';
+type HeartbeatPendingPolicy = 'defer';
+interface PendingHeartbeatJob {
+    job: Record<string, any>;
+    reason: HeartbeatPendingReason;
+    policy?: HeartbeatPendingPolicy;
+}
+const pendingJobs: PendingHeartbeatJob[] = [];
+
+function pendingSnapshot(reason?: HeartbeatPendingReason, policy?: HeartbeatPendingPolicy) {
+    const deferredPending = pendingJobs.filter(item => item.reason === 'pabcd_active').length;
+    return {
+        pending: pendingJobs.length,
+        deferredPending,
+        ...(reason ? { reason } : {}),
+        ...(policy ? { policy } : {}),
+    };
+}
+
+function queueHeartbeatJob(
+    job: Record<string, any>,
+    reason: HeartbeatPendingReason,
+    policy?: HeartbeatPendingPolicy,
+): boolean {
+    if (pendingJobs.some(item => item.job.id === job.id)) return false;
+    pendingJobs.push({ job, reason, policy });
+    broadcast('heartbeat_pending', {
+        ...pendingSnapshot(reason, policy),
+        jobId: job.id,
+        jobName: job.name,
+    });
+    return true;
+}
+
+export function getHeartbeatRuntimeState() {
+    return pendingSnapshot();
+}
 
 export function startHeartbeat() {
     stopHeartbeat();
@@ -52,11 +89,14 @@ export function stopHeartbeat() {
 }
 
 async function runHeartbeatJob(job: Record<string, any>) {
+    if (getState('default') !== 'IDLE') {
+        const queued = queueHeartbeatJob(job, 'pabcd_active', 'defer');
+        console.log(`[heartbeat:${job.name}] ${queued ? 'deferred' : 'already deferred'} during active PABCD (${pendingJobs.length} pending)`);
+        return;
+    }
     if (heartbeatBusy) {
-        if (!pendingJobs.some(j => j.id === job.id)) {
-            pendingJobs.push(job);
+        if (queueHeartbeatJob(job, 'busy')) {
             console.log(`[heartbeat:${job.name}] queued (${pendingJobs.length} pending)`);
-            broadcast('heartbeat_pending', { pending: pendingJobs.length });
         } else {
             console.log(`[heartbeat:${job.name}] already queued, skip`);
         }
@@ -95,11 +135,11 @@ async function runHeartbeatJob(job: Record<string, any>) {
     }
 }
 
-async function drainPending() {
+export async function drainPending() {
     if (pendingJobs.length === 0) return;
-    const next = pendingJobs.shift();
+    const next = pendingJobs.shift()?.job;
     if (!next) return;
-    broadcast('heartbeat_pending', { pending: pendingJobs.length });
+    broadcast('heartbeat_pending', pendingSnapshot());
     console.log(`[heartbeat:${next.name}] dequeued (${pendingJobs.length} remaining)`);
     await runHeartbeatJob(next);
 }

@@ -7,6 +7,7 @@ import { getOrcState, setOrcState, resetOrcState, resetAllOrcStates, deleteNonDe
 import { broadcast } from '../core/bus.js';
 import { readLatestWorklog } from '../memory/worklog.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import type { ResolvedSelection } from './parser.js';
 
 // ─── Types ──────────────────────────────────────────
 
@@ -28,6 +29,8 @@ export interface OrcContext {
   worklogPath?: string;
   planHash?: string;
   planUpdatedAt?: string;
+  taskAnchor?: string;
+  resolvedSelection?: ResolvedSelection;
   // ─── Phase 58: Phase-transition gates ─────────────
   auditStatus?: AuditVerdict;
   verificationStatus?: VerificationVerdict;
@@ -80,7 +83,13 @@ export function setState(
     } catch { /* fallback to PABCD */ }
   }
 
-  broadcast('orc_state', { state: s, title, scope });
+  broadcast('orc_state', {
+    state: s,
+    title,
+    scope,
+    taskAnchor: ctx?.taskAnchor || null,
+    resolvedSelection: ctx?.resolvedSelection || null,
+  });
 }
 
 export function resetState(scope = 'default'): void {

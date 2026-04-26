@@ -95,6 +95,76 @@ export function stripSubtaskJSON(text: string) {
         .trim();
 }
 
+// ─── Numeric Reference Resolution ───────────────────
+
+export interface ResolvedSelection {
+    raw: string;
+    index: number;
+    text: string;
+    source: 'latest_assistant_numbered_list';
+}
+
+export interface NumericReferenceResolution {
+    resolved: string | null;
+    needsConfirmation: boolean;
+    matchedIndex?: number;
+    selection?: ResolvedSelection;
+}
+
+interface RecentMessageLike {
+    role?: string | null;
+    content?: string | null;
+}
+
+function extractRequestedIndex(text: string): number | null {
+    const trimmed = String(text || '').trim();
+    const match = trimmed.match(/^(\d+)\s*(?:번|[.):])?/);
+    if (!match) return null;
+    const index = Number(match[1]);
+    return Number.isInteger(index) && index > 0 ? index : null;
+}
+
+function extractNumberedItem(content: string, index: number): string | null {
+    const itemPattern = new RegExp(`^\\s*${index}[.):]\\s+(.+?)\\s*$`);
+    for (const line of String(content || '').split(/\r?\n/)) {
+        const match = line.match(itemPattern);
+        if (match?.[1]) return match[1].trim();
+    }
+    return null;
+}
+
+export function resolveNumericReference(
+    text: string,
+    messages: RecentMessageLike[],
+): NumericReferenceResolution | null {
+    const index = extractRequestedIndex(text);
+    if (!index) return null;
+
+    for (const message of messages) {
+        if (message.role !== 'assistant') continue;
+        const item = extractNumberedItem(String(message.content || ''), index);
+        if (!item) continue;
+        const selection: ResolvedSelection = {
+            raw: String(text || '').trim(),
+            index,
+            text: item,
+            source: 'latest_assistant_numbered_list',
+        };
+        return {
+            resolved: item,
+            needsConfirmation: false,
+            matchedIndex: index,
+            selection,
+        };
+    }
+
+    return {
+        resolved: null,
+        needsConfirmation: true,
+        matchedIndex: index,
+    };
+}
+
 // ─── Verdict JSON Parsing (이중 전략) ────────────────
 
 export function parseVerdicts(text: string) {

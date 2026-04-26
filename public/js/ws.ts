@@ -6,7 +6,7 @@ import { t, getLang } from './features/i18n.js';
 import { getVirtualScroll } from './virtual-scroll.js';
 import { ICONS, emojiToIcon } from './icons.js';
 import { escapeHtml, cancelPostRender } from './render.js';
-import type { OrcStateName } from './state.js';
+import type { HeartbeatRuntimeState, OrcStateName, ResolvedSelectionState } from './state.js';
 import { notifyUnreadResponse } from './features/attention-badge.js';
 import { shouldApplyOrcStateEvent } from './features/orchestrate-scope.js';
 
@@ -71,6 +71,13 @@ interface WsMessage {
     title?: string;
     isEmployee?: boolean;
     fromQueue?: boolean;
+    reason?: HeartbeatRuntimeState['reason'];
+    policy?: HeartbeatRuntimeState['policy'];
+    jobId?: string;
+    jobName?: string;
+    deferredPending?: number;
+    taskAnchor?: string | null;
+    resolvedSelection?: ResolvedSelectionState | null;
 }
 
 // Agent phase state (populated by agent_status events from orchestrator)
@@ -88,6 +95,8 @@ async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): P
     const snap = await response.json();
     currentOrcScope = String(snap.orc.scope || '');
     applyOrcState(snap.orc.state);
+    applyOrcContext(snap.orc.ctx || null);
+    applyHeartbeatRuntime(snap.heartbeat || { pending: 0, deferredPending: 0 });
     hydrateAgentPhases(snap.workers);
     updateQueueBadge(snap.runtime.queuePending);
     applyQueuedOverlay(snap.queued || []);
@@ -167,6 +176,45 @@ export function hydrateAgentPhases(workers: Array<{
                 phaseLabel: w.phaseLabel || '',
             };
         }
+    }
+}
+
+function applyHeartbeatRuntime(input: Partial<HeartbeatRuntimeState> | null | undefined): void {
+    const runtime: HeartbeatRuntimeState = {
+        pending: Number(input?.pending || 0),
+        deferredPending: Number(input?.deferredPending || 0),
+        ...(input?.reason ? { reason: input.reason } : {}),
+        ...(input?.policy ? { policy: input.policy } : {}),
+        ...(input?.jobId ? { jobId: input.jobId } : {}),
+        ...(input?.jobName ? { jobName: input.jobName } : {}),
+    };
+    state.heartbeatRuntime = runtime;
+
+    const el = document.getElementById('pabcHeartbeatStatus');
+    if (!el) return;
+    if (runtime.reason === 'pabcd_active' && runtime.deferredPending > 0) {
+        const suffix = runtime.jobName ? `: ${runtime.jobName}` : '';
+        el.textContent = `heartbeat deferred (${runtime.deferredPending})${suffix}`;
+        el.hidden = false;
+    } else {
+        el.textContent = '';
+        el.hidden = true;
+    }
+}
+
+function applyOrcContext(ctx: { taskAnchor?: string | null; resolvedSelection?: ResolvedSelectionState | null } | null): void {
+    state.orcTaskAnchor = String(ctx?.taskAnchor || '').trim();
+    state.orcResolvedSelection = ctx?.resolvedSelection || null;
+
+    const el = document.getElementById('pabcTaskAnchor');
+    if (!el) return;
+    if (state.orcTaskAnchor) {
+        const selected = state.orcResolvedSelection?.index ? `${state.orcResolvedSelection.index}. ` : '';
+        el.textContent = `anchor: ${selected}${state.orcTaskAnchor}`;
+        el.hidden = false;
+    } else {
+        el.textContent = '';
+        el.hidden = true;
     }
 }
 
@@ -353,9 +401,22 @@ export function connect(): void {
             addSystemMsg(`${ICONS.refresh} Session reset — history preserved`, 'tool-activity');
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
+        } else if (msg.type === 'heartbeat_pending') {
+            applyHeartbeatRuntime({
+                pending: msg.pending || 0,
+                deferredPending: msg.deferredPending || 0,
+                reason: msg.reason,
+                policy: msg.policy,
+                jobId: msg.jobId,
+                jobName: msg.jobName,
+            });
         } else if (msg.type === 'orc_state') {
             if (!shouldApplyOrcStateEvent(msg.scope, currentOrcScope)) return;
             applyOrcState(typeof msg.state === 'string' ? msg.state : 'IDLE', msg.title);
+            applyOrcContext({
+                taskAnchor: msg.taskAnchor || null,
+                resolvedSelection: msg.resolvedSelection || null,
+            });
         } else if (msg.type === 'memory_status') {
             import('./features/memory.js').then(m => m.refreshMemorySidebar());
         } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.fromQueue === true)) {

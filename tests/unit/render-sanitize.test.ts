@@ -1,5 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
+const projectRoot = join(import.meta.dirname, '../..');
+const renderSrc = readFileSync(join(projectRoot, 'public/js/render.ts'), 'utf8');
 
 // ── Test the regex fallback sanitizer (server-side, no DOMPurify) ──
 // In the browser, DOMPurify handles sanitization.
@@ -88,5 +93,30 @@ describe('render sanitize (regex fallback)', () => {
         assert.ok(!result.includes('onerror='), 'onerror removed');
         assert.ok(!result.includes('javascript:'), 'javascript: removed');
         assert.ok(result.includes('<p>Safe</p>'), 'safe content preserved');
+    });
+});
+
+describe('prompt leakage redaction contract', () => {
+    it('should define a dedicated orchestration prompt leak stripper', () => {
+        assert.ok(renderSrc.includes('export function stripPromptLeakage'));
+        assert.ok(renderSrc.includes('## Approved Plan'));
+        assert.ok(renderSrc.includes('[PABCD'));
+        assert.ok(renderSrc.includes('[PLANNING MODE'));
+        assert.ok(renderSrc.includes('[PLAN AUDIT'));
+    });
+
+    it('should run prompt leakage stripping through stripOrchestration', () => {
+        const stripIdx = renderSrc.indexOf('export function stripOrchestration');
+        const callIdx = renderSrc.indexOf('stripPromptLeakage(cleaned)', stripIdx);
+        assert.ok(stripIdx > -1);
+        assert.ok(callIdx > stripIdx);
+    });
+
+    it('should not redact every casual Approved Plan mention', () => {
+        assert.ok(renderSrc.includes('PROMPT_LEAK_START'), 'redaction must be marker based');
+        assert.ok(
+            !renderSrc.includes('/Approved Plan/'),
+            'redaction should not be a broad Approved Plan substring replace',
+        );
     });
 });

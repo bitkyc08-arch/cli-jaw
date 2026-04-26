@@ -182,6 +182,35 @@ body[data-orc-state].orc-pulse #chatMessages {
     animation: pabc-shimmer 1s ease-out forwards;
 }
 
+.pabc-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 18px 0;
+    min-height: 22px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--text-dim);
+}
+.pabc-meta span[hidden] {
+    display: none;
+}
+.pabc-anchor,
+.pabc-heartbeat-status {
+    max-width: min(42vw, 420px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 3px 7px;
+    background: color-mix(in oklch, var(--surface) 88%, var(--text) 12%);
+}
+.pabc-heartbeat-status {
+    color: var(--orc-glow-A);
+    border-color: color-mix(in oklch, var(--orc-glow-A) 45%, var(--border));
+}
+
 /* ─── Light Theme Overrides ─── */
 [data-theme="light"] .pabc-roadmap {
     background: linear-gradient(135deg, var(--surface) 0%, color-mix(in oklch, var(--surface) 90%, #000) 100%);

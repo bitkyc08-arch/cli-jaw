@@ -33,7 +33,7 @@ export const PHASES = {
 
 // ─── Create ──────────────────────────────────────────
 
-export function createWorklog(prompt: string) {
+export function createWorklog(prompt: string, taskAnchor?: string) {
     fs.mkdirSync(WORKLOG_DIR, { recursive: true });
     const ts = new Date().toISOString().replace(/[:-]/g, '').slice(0, 15);
     const slug = prompt.slice(0, 30).replace(/[^a-zA-Z가-힣0-9]/g, '_');
@@ -43,6 +43,7 @@ export function createWorklog(prompt: string) {
     const initial = `# Work Log: ${prompt.slice(0, 80)}
 - Created: ${new Date().toISOString()}
 - Status: planning
+- Task Anchor: ${(taskAnchor || prompt).slice(0, 160)}
 - Rounds: 0/3
 
 ## Plan

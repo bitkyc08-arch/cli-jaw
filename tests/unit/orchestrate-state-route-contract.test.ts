@@ -46,3 +46,9 @@ test('ORC-STATE-005: state route success response also includes transition diagn
         'successful state transition should include current/target/force/userInitiated/ctxPresent diagnostics',
     );
 });
+
+test('ORC-STATE-006: snapshot exposes task anchor and heartbeat runtime contracts', () => {
+    assert.ok(routeSrc.includes('taskAnchor: ctx.taskAnchor'), 'snapshot safeCtx should include taskAnchor');
+    assert.ok(routeSrc.includes('resolvedSelection: ctx.resolvedSelection'), 'snapshot safeCtx should include resolvedSelection');
+    assert.ok(routeSrc.includes('heartbeat: getHeartbeatRuntimeState()'), 'snapshot should include heartbeat runtime state');
+});
