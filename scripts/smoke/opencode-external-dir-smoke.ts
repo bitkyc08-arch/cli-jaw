@@ -154,7 +154,7 @@ function buildPrompt(
 }
 
 function permissionHit(text: string): boolean {
-    return /permission|external_directory|denied|confirmation|approve|allow|ask/i.test(text);
+    return /\b(?:permissions?|external_directory|denied|confirmation|approve|allow|ask)\b/i.test(text);
 }
 
 function classify(result: Omit<RunResult, 'classification' | 'pass'>): RunResult['classification'] {
