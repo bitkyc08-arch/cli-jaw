@@ -26,6 +26,26 @@ function createDiagramSaveBtn(): HTMLButtonElement {
   return btn;
 }
 
+function createDiagramZoomBtn(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'diagram-zoom-btn';
+  btn.type = 'button';
+  btn.ariaLabel = 'Expand diagram';
+  btn.title = 'Expand';
+  btn.textContent = '⤢';
+  return btn;
+}
+
+function createDiagramSizeToggleBtn(): HTMLButtonElement {
+  const btn = document.createElement('button');
+  btn.className = 'diagram-size-toggle-btn';
+  btn.type = 'button';
+  btn.ariaLabel = 'Expand diagram';
+  btn.title = 'Expand';
+  btn.textContent = '⤢';
+  return btn;
+}
+
 // ── CDN Allowlist (Phase 5 libraries) ──
 const CDN_ALLOWLIST = [
   'cdnjs.cloudflare.com',
@@ -41,6 +61,80 @@ const registeredIframes = new Set<Window>();
 
 // ── Per-iframe nonces for navigation defense ──
 const iframeNonces = new Map<Window, string>();
+
+const widgetLifecycleCleanups = new WeakMap<HTMLElement, () => void>();
+
+function cleanupWidgetOwner(owner: HTMLElement): void {
+  const cleanup = widgetLifecycleCleanups.get(owner);
+  if (!cleanup) return;
+  cleanup();
+  widgetLifecycleCleanups.delete(owner);
+}
+
+function revokeIframeTrust(iframe: HTMLIFrameElement): void {
+  if (!iframe.contentWindow) return;
+  registeredIframes.delete(iframe.contentWindow);
+  iframeNonces.delete(iframe.contentWindow);
+}
+
+function attachWidgetIframeLifecycle(input: {
+  iframe: HTMLIFrameElement;
+  nonce: string;
+  owner: HTMLElement;
+  onTimeout?: () => void;
+}): void {
+  cleanupWidgetOwner(input.owner);
+  let initialLoadFired = false;
+  let readyReceived = false;
+  const gen = Number(input.owner.dataset.gen || '0');
+  input.owner.dataset.gen = String(gen);
+
+  const requestResize = () => {
+    input.iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*');
+    setTimeout(() => input.iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 300);
+    setTimeout(() => input.iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 1000);
+  };
+
+  const onLoad = () => {
+    if (!initialLoadFired) {
+      initialLoadFired = true;
+      if (input.iframe.contentWindow) {
+        registeredIframes.add(input.iframe.contentWindow);
+        iframeNonces.set(input.iframe.contentWindow, input.nonce);
+        requestResize();
+      }
+      return;
+    }
+    revokeIframeTrust(input.iframe);
+    console.warn('[jaw-diagram] iframe navigated — postMessage channel revoked');
+  };
+
+  const readyHandler = (e: MessageEvent) => {
+    if (e.source !== input.iframe.contentWindow || e.data?.type !== 'jaw-widget-ready') return;
+    if (e.data.nonce !== input.nonce) return;
+    readyReceived = true;
+    window.removeEventListener('message', readyHandler);
+  };
+
+  const timeout = window.setTimeout(() => {
+    window.removeEventListener('message', readyHandler);
+    if (Number(input.owner.dataset.gen || '0') !== gen) return;
+    if (readyReceived || !input.owner.isConnected) return;
+    revokeIframeTrust(input.iframe);
+    input.onTimeout?.();
+  }, 10_000);
+
+  const cleanup = () => {
+    window.clearTimeout(timeout);
+    window.removeEventListener('message', readyHandler);
+    input.iframe.removeEventListener('load', onLoad);
+    revokeIframeTrust(input.iframe);
+  };
+
+  input.iframe.addEventListener('load', onLoad);
+  window.addEventListener('message', readyHandler);
+  widgetLifecycleCleanups.set(input.owner, cleanup);
+}
 
 // ── Cleanup: MutationObserver removes stale iframe refs ──
 // Scoped to #chatMessages (not document.body) to avoid firing on every DOM mutation.
@@ -302,11 +396,7 @@ export function activateWidgets(container?: HTMLElement): void {
     if (!encoded) return;
     let htmlCode: string;
     try {
-      // Cap widget payload at 512 KB to prevent memory/CPU abuse
-      if (encoded.length > 524_288) {
-        throw new Error('Widget payload too large');
-      }
-      htmlCode = decodeURIComponent(escape(atob(encoded)));
+      htmlCode = decodeWidgetHtml(encoded);
     } catch {
       el.replaceWith(Object.assign(document.createElement('div'), {
         className: 'diagram-error',
@@ -335,70 +425,115 @@ export function activateWidgets(container?: HTMLElement): void {
     // Preserve source for theme-change reload
     wrapper.dataset.widgetHtml = encoded;
 
+    wrapper.appendChild(createDiagramZoomBtn());
     wrapper.appendChild(createDiagramSaveBtn());
     wrapper.appendChild(createDiagramCopyBtn());
     const { iframe, nonce } = createWidgetIframe(htmlCode);
     wrapper.appendChild(iframe);
+    bindWidgetZoom(wrapper);
 
     el.replaceWith(wrapper);
 
-    // Navigation defense: register ONLY on the first load event.
-    // No pre-load registration — prevents race where widget JS reads
-    // the nonce and self-navigates before the first load fires.
-    let initialLoadFired = false;
-    iframe.addEventListener('load', () => {
-      if (!initialLoadFired) {
-        initialLoadFired = true;
-        if (iframe.contentWindow) {
-          registeredIframes.add(iframe.contentWindow);
-          iframeNonces.set(iframe.contentWindow, nonce);
-          // Request initial resize now that channel is established
-          iframe.contentWindow.postMessage({ type: 'jaw-request-resize' }, '*');
-          // Deferred resize for slow CDN loads / async chart renders
-          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 300);
-          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 1000);
-        }
-      } else {
-        // Navigation detected — revoke postMessage trust permanently
-        if (iframe.contentWindow) {
-          registeredIframes.delete(iframe.contentWindow);
-          iframeNonces.delete(iframe.contentWindow);
-        }
-        console.warn('[jaw-diagram] iframe navigated — postMessage channel revoked');
-      }
-    });
-
-    // Timeout: if no jaw-widget-ready within 10s, show error.
-    // Uses a generation counter to detect iframe recreation (theme toggle).
-    const gen = Number(wrapper.dataset.gen || '0');
-    wrapper.dataset.gen = String(gen);
-    let readyReceived = false;
-    const readyHandler = (e: MessageEvent) => {
-      if (e.source === iframe.contentWindow && e.data?.type === 'jaw-widget-ready'
-          && e.data.nonce === nonce) {
-        readyReceived = true;
-        window.removeEventListener('message', readyHandler);
-      }
-    };
-    window.addEventListener('message', readyHandler);
-
-    setTimeout(() => {
-      window.removeEventListener('message', readyHandler);
-      // Skip if iframe was recreated (e.g. theme toggle)
-      if (Number(wrapper.dataset.gen || '0') !== gen) return;
-      if (!readyReceived && wrapper.isConnected) {
-        const failedWin = iframe.contentWindow;
-        if (failedWin) {
-          registeredIframes.delete(failedWin);
-          iframeNonces.delete(failedWin);
-        }
+    attachWidgetIframeLifecycle({
+      iframe,
+      nonce,
+      owner: wrapper,
+      onTimeout: () => {
         wrapper.innerHTML = `<div class="diagram-error" role="alert">
           Widget failed to load within 10 seconds.
         </div>`;
         console.warn('[jaw-diagram] Widget timeout — iframe deregistered');
-      }
-    }, 10_000);
+      },
+    });
   });
+}
+
+function bindWidgetZoom(container: HTMLElement): void {
+  const btn = container.querySelector('.diagram-zoom-btn') as HTMLButtonElement | null;
+  if (!btn || btn.dataset.bound) return;
+  btn.dataset.bound = '1';
+  btn.addEventListener('click', () => {
+    const encoded = container.dataset.widgetHtml;
+    if (!encoded) return;
+    openWidgetOverlay(encoded);
+  });
+}
+
+function decodeWidgetHtml(encoded: string): string {
+  if (encoded.length > 524_288) throw new Error('Widget payload too large');
+  return decodeURIComponent(escape(atob(encoded)));
+}
+
+function openWidgetOverlay(encoded: string): void {
+  const previousFocus = document.activeElement as HTMLElement | null;
+  let htmlCode: string;
+  try {
+    htmlCode = decodeWidgetHtml(encoded);
+  } catch {
+    htmlCode = '';
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'diagram-overlay diagram-widget-overlay';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', 'Expanded interactive diagram');
+
+  const content = document.createElement('div');
+  content.className = 'diagram-overlay-content';
+  const closeBtn = document.createElement('button');
+  closeBtn.className = 'diagram-overlay-close';
+  closeBtn.type = 'button';
+  closeBtn.ariaLabel = 'Close';
+  closeBtn.textContent = '✕';
+  overlay.append(content, closeBtn);
+
+  const close = () => {
+    cleanupWidgetOwner(content);
+    overlay.remove();
+    document.removeEventListener('keydown', onKey);
+    if (previousFocus?.isConnected) previousFocus.focus();
+  };
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === 'Escape') { close(); return; }
+    if (e.key !== 'Tab') return;
+    const focusable = overlay.querySelectorAll<HTMLElement>(
+      'button, [href], iframe, [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault(); last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault(); first.focus();
+    }
+  };
+
+  const validation = htmlCode ? validateWidgetHtml(htmlCode) : { valid: false, reason: 'Failed to decode widget content', warnings: [] };
+  if (!validation.valid) {
+    content.innerHTML = `<div class="diagram-error" role="alert">Widget blocked: ${validation.reason}</div>`;
+  } else {
+    const widget = document.createElement('div');
+    widget.className = 'diagram-container diagram-widget diagram-widget-expanded';
+    widget.dataset.widgetHtml = encoded;
+    const sizeBtn = createDiagramSizeToggleBtn();
+    sizeBtn.addEventListener('click', () => {
+      const maximized = overlay.classList.toggle('maximized');
+      sizeBtn.textContent = maximized ? '⤡' : '⤢';
+      sizeBtn.title = maximized ? 'Shrink' : 'Expand';
+      sizeBtn.ariaLabel = maximized ? 'Shrink diagram' : 'Expand diagram';
+    });
+    widget.append(createDiagramSaveBtn(), createDiagramCopyBtn(), sizeBtn);
+    const { iframe, nonce } = createWidgetIframe(htmlCode);
+    widget.appendChild(iframe);
+    content.appendChild(widget);
+    attachWidgetIframeLifecycle({ iframe, nonce, owner: content });
+  }
+
+  closeBtn.addEventListener('click', close);
+  document.addEventListener('keydown', onKey);
+  document.body.appendChild(overlay);
+  closeBtn.focus();
 }
 
 // ── Widget Reactivation Observer ──
@@ -449,7 +584,7 @@ export function broadcastThemeToIframes(): void {
     if (!encoded) return;
     let htmlCode: string;
     try {
-      htmlCode = decodeURIComponent(escape(atob(encoded)));
+      htmlCode = decodeWidgetHtml(encoded);
     } catch { return; }
 
     // Deregister old iframe
@@ -466,28 +601,12 @@ export function broadcastThemeToIframes(): void {
     // Recreate with fresh theme tokens
     const { iframe, nonce } = createWidgetIframe(htmlCode);
     container.innerHTML = '';
+    container.appendChild(createDiagramZoomBtn());
     container.appendChild(createDiagramSaveBtn());
     container.appendChild(createDiagramCopyBtn());
     container.appendChild(iframe);
-
-    let initialLoadFired = false;
-    iframe.addEventListener('load', () => {
-      if (!initialLoadFired) {
-        initialLoadFired = true;
-        if (iframe.contentWindow) {
-          registeredIframes.add(iframe.contentWindow);
-          iframeNonces.set(iframe.contentWindow, nonce);
-          iframe.contentWindow.postMessage({ type: 'jaw-request-resize' }, '*');
-          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 300);
-          setTimeout(() => iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*'), 1000);
-        }
-      } else {
-        if (iframe.contentWindow) {
-          registeredIframes.delete(iframe.contentWindow);
-          iframeNonces.delete(iframe.contentWindow);
-        }
-      }
-    });
+    bindWidgetZoom(container as HTMLElement);
+    attachWidgetIframeLifecycle({ iframe, nonce, owner: container as HTMLElement });
   });
 }
 

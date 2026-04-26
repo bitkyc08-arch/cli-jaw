@@ -336,6 +336,7 @@ export async function rerenderMermaidDiagrams(): Promise<void> {
             const { svg } = await mm.render(id, code);
             el.innerHTML = sanitizeMermaidSvg(svg);
             appendMermaidActionBtns(el as HTMLElement);
+            bindDiagramZoom(el as HTMLElement);
         } catch { /* keep existing render on failure */ }
     }
 }
@@ -358,8 +359,17 @@ function ensureMermaidObserver(): void {
 
 function appendMermaidActionBtns(el: HTMLElement): void {
     // Remove existing buttons if present (e.g. re-render)
+    el.querySelector('.mermaid-zoom-btn')?.remove();
     el.querySelector('.mermaid-copy-btn')?.remove();
     el.querySelector('.mermaid-save-btn')?.remove();
+
+    const zoomBtn = document.createElement('button');
+    zoomBtn.className = 'mermaid-zoom-btn';
+    zoomBtn.type = 'button';
+    zoomBtn.ariaLabel = 'Expand diagram';
+    zoomBtn.title = 'Expand';
+    zoomBtn.textContent = '⤢';
+    el.appendChild(zoomBtn);
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'mermaid-save-btn';
@@ -412,6 +422,7 @@ async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
         el.innerHTML = sanitizeMermaidSvg(svg);
         el.classList.add('mermaid-rendered');
         appendMermaidActionBtns(el);
+        bindDiagramZoom(el);
     } catch (err: unknown) {
         const errMsg = (err as { message?: string; str?: string })?.message
             || (err as { str?: string })?.str || 'Unknown error';
@@ -929,14 +940,16 @@ function unshieldSvgBlocks(html: string, blocks: SvgBlock[]): string {
 
 export function bindDiagramZoom(scope?: HTMLElement | Document): void {
     const root = scope || document;
-    root.querySelectorAll('.diagram-zoom-btn').forEach(btn => {
+    root.querySelectorAll('.diagram-zoom-btn, .mermaid-zoom-btn').forEach(btn => {
         if ((btn as HTMLElement).dataset.bound) return;
         (btn as HTMLElement).dataset.bound = '1';
         btn.addEventListener('click', () => {
-            const container = btn.closest('.diagram-container');
+            if (btn.closest('.diagram-widget')) return;
+            const container = btn.closest('.diagram-container, .mermaid-container');
             if (!container) return;
             const clone = container.cloneNode(true) as HTMLElement;
-            clone.querySelectorAll('.diagram-zoom-btn, .diagram-copy-btn, .diagram-save-btn').forEach(b => b.remove());
+            clone.querySelectorAll('.diagram-zoom-btn, .mermaid-zoom-btn, .diagram-copy-btn, .diagram-save-btn, .mermaid-copy-btn, .mermaid-save-btn')
+                .forEach(b => b.remove());
             openDiagramOverlay(clone.innerHTML);
         });
     });

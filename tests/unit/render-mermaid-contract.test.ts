@@ -106,3 +106,38 @@ test('S3: sanitizer ADD_ATTR whitelists data-mermaid-code-raw', () => {
     assert.ok(addAttrMatch[1].includes("'data-mermaid-code-raw'"),
         'data-mermaid-code-raw must be in the sanitizer allowlist');
 });
+
+test('D1: rendered Mermaid diagrams restore expand control and binding', () => {
+    const actionIdx = renderSrc.indexOf('function appendMermaidActionBtns');
+    assert.ok(actionIdx >= 0, 'appendMermaidActionBtns must exist');
+    const actionBlock = renderSrc.slice(actionIdx, actionIdx + 1200);
+
+    assert.ok(actionBlock.includes("zoomBtn.className = 'mermaid-zoom-btn'"),
+        'Mermaid action helper must create a visible zoom button');
+    assert.ok(actionBlock.includes("zoomBtn.ariaLabel = 'Expand diagram'"),
+        'Mermaid zoom button must be accessible');
+    assert.ok(actionBlock.includes('el.appendChild(zoomBtn)'),
+        'Mermaid zoom button must be appended before copy/save controls');
+
+    const renderIdx = renderSrc.indexOf('async function renderSingleMermaidImpl');
+    const renderBlock = renderSrc.slice(renderIdx, renderIdx + 1800);
+    assert.ok(renderBlock.includes('appendMermaidActionBtns(el)'),
+        'Mermaid render must append action controls after sanitized SVG write');
+    assert.ok(renderBlock.includes('bindDiagramZoom(el)'),
+        'Mermaid render must bind zoom after async render completes');
+});
+
+test('D1: shared zoom binder supports Mermaid without routing widget iframes through sanitizer overlay', () => {
+    const bindIdx = renderSrc.indexOf('export function bindDiagramZoom');
+    assert.ok(bindIdx >= 0, 'bindDiagramZoom must exist');
+    const bindBlock = renderSrc.slice(bindIdx, bindIdx + 900);
+
+    assert.ok(bindBlock.includes("'.diagram-zoom-btn, .mermaid-zoom-btn'"),
+        'shared zoom binder must scan both SVG and Mermaid zoom buttons');
+    assert.ok(bindBlock.includes("btn.closest('.diagram-widget')"),
+        'shared zoom binder must skip widget iframe zoom buttons');
+    assert.ok(bindBlock.includes("btn.closest('.diagram-container, .mermaid-container')"),
+        'shared zoom binder must find Mermaid containers as well as SVG containers');
+    assert.ok(bindBlock.includes('.mermaid-copy-btn, .mermaid-save-btn'),
+        'overlay clone must remove Mermaid action buttons before rendering overlay');
+});
