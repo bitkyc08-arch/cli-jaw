@@ -1,7 +1,7 @@
 import express from 'express';
 import helmet from 'helmet';
 import { existsSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { basename, join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawn } from 'node:child_process';
 import {
@@ -111,6 +111,15 @@ const managerHtmlCandidates = [
     join(sourceRoot, 'manager', 'index.html'),
 ];
 
+function sendManagerHtml(res: express.Response, htmlPath: string): void {
+    res.sendFile(basename(htmlPath), { root: dirname(htmlPath) }, error => {
+        if (!error || res.headersSent) return;
+
+        console.error(`[dashboard] failed to serve manager html: ${error.message}`);
+        res.status(500).send('manager dashboard failed to load');
+    });
+}
+
 const server = app.listen(port, '127.0.0.1', () => {
     const url = `http://localhost:${port}`;
     console.log(`\n  Jaw Manager — ${url}`);
@@ -134,12 +143,20 @@ app.use('/dist', express.static(distRoot));
 app.use('/assets', express.static(join(distRoot, 'assets')));
 app.use('/manager', express.static(join(sourceRoot, 'manager')));
 
+app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req, res) => {
+    res.status(204).end();
+});
+
+app.get('/favicon.ico', (_req, res) => {
+    res.status(204).end();
+});
+
 app.get('/{*splat}', (_req, res) => {
     const htmlPath = managerHtmlCandidates.find(candidate => existsSync(candidate));
     if (!htmlPath) {
         return res.status(500).send('manager dashboard has not been built');
     }
-    res.sendFile(htmlPath);
+    sendManagerHtml(res, htmlPath);
 });
 
 server.on('error', (error: NodeJS.ErrnoException) => {
