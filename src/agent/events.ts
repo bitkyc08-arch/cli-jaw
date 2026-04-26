@@ -629,6 +629,16 @@ export function extractFromEvent(cli: string, event: any, ctx: SpawnContext, age
             }
             break;
         case 'opencode':
+            if (typeof event.type === 'string' && ![
+                'step_start',
+                'text',
+                'tool_use',
+                'step_finish',
+                'reasoning',
+                'error',
+            ].includes(event.type)) {
+                pushTrace(ctx, `[${agentLabel}] opencode unknown event type=${event.type}`);
+            }
             // [P2-3.10] step_start: emit UI indicator for step boundary
             if (event.type === 'step_start') {
                 const model = event.part?.model || event.model;

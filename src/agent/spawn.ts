@@ -26,6 +26,7 @@ import { shouldInvalidateResumeSession } from './resume-classifier.js';
 import { groupQueueKey } from '../messaging/session-key.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
 import { isCompactMarkerRow } from '../core/compact.js';
+import { isRuntimeSettingsMutationInFlight, waitForRuntimeSettingsIdle } from '../core/runtime-settings-gate.js';
 import { hasBlockingWorkers, hasPendingWorkerReplays, getActiveWorkers, clearAllWorkers } from '../orchestrator/worker-registry.js';
 import { handleAgentExit, setSpawnAgent, setMainMetaHandler } from './lifecycle-handler.js';
 import { buildServicePath } from '../core/runtime-path.js';
@@ -38,6 +39,13 @@ import {
     triggerMemoryFlush,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions } from './spawn-env.js';
+import {
+    buildOpencodeRuntimeSnapshot,
+    buildOpencodeSpawnAudit,
+    pushOpencodeRawEvent,
+    resolveOpencodeBinary,
+} from './opencode-diagnostics.js';
+import type { SpawnContext } from '../types/agent.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -161,10 +169,12 @@ let retryPendingTimer: ReturnType<typeof setTimeout> | null = null;
 let retryPendingResolve: ((v: { text: string; code: number }) => void) | null = null;
 let retryPendingOrigin: string | null = null;
 let retryPendingIsEmployee = false;
+let mainSpawnStarting = false;
+let cancelPendingMainSpawn: ((reason: string) => void) | null = null;
 
-/** busy = process alive OR retry timer pending */
+/** busy = process alive OR retry timer pending OR main spawn waiting on settings gate */
 export function isAgentBusy(): boolean {
-    return !!activeProcess || !!retryPendingTimer;
+    return !!activeProcess || !!retryPendingTimer || mainSpawnStarting;
 }
 
 /**
@@ -255,6 +265,7 @@ function clearWorkerSlotsOnStop(reason: string) {
 
 export function killActiveAgent(reason = 'user') {
     const hadTimer = !!retryPendingTimer;
+    const cancelledPendingMain = cancelPendingMainSpawn ? (cancelPendingMainSpawn(reason), true) : false;
     clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
     // Fix A: 사용자 stop은 큐도 폐기. steer/internal kill은 큐 보존.
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
@@ -262,7 +273,7 @@ export function killActiveAgent(reason = 'user') {
         purgeQueueOnStop(reason);
         clearWorkerSlotsOnStop(reason);
     }
-    if (!activeProcess) return hadTimer;  // timer 취소도 "killed" 취급
+    if (!activeProcess) return hadTimer || cancelledPendingMain;  // timer/gated spawn 취소도 "killed" 취급
     console.log(`[jaw:kill] reason=${reason}`);
     if (activeProcess.pid) killReasons.set(activeProcess.pid, reason);
     try { activeProcess.kill('SIGTERM'); } catch (e: unknown) { console.warn('[agent:kill] SIGTERM failed', { pid: activeProcess?.pid, error: (e as Error).message }); }
@@ -281,6 +292,7 @@ export function killActiveAgent(reason = 'user') {
 
 export function killAllAgents(reason = 'user') {
     const hadTimer = !!retryPendingTimer;
+    const cancelledPendingMain = cancelPendingMainSpawn ? (cancelPendingMainSpawn(reason), true) : false;
     clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
     // Fix A: 사용자 stop은 큐도 폐기. Fix C2: worker 슬롯도 비움.
     if (reason === 'api' || reason === 'user') {
@@ -324,7 +336,7 @@ export function killAllAgents(reason = 'user') {
         activeProcess = null;
         activeProcesses.clear();
     }
-    return killed > 0 || !!activeProcess || hadTimer;
+    return killed > 0 || !!activeProcess || hadTimer || cancelledPendingMain;
 }
 
 export function waitForProcessEnd(timeoutMs = 3000) {
@@ -411,7 +423,7 @@ export async function processQueue() {
     // Boss died after the dispatch client disconnected — the result was stuck in
     // pendingReplay and nothing was triggering drainPendingReplays. Dynamic
     // import avoids circular dep (pipeline.ts imports from this module).
-    if (!activeProcess && !retryPendingTimer && !hasBlockingWorkers() && hasPendingWorkerReplays()) {
+    if (!activeProcess && !retryPendingTimer && !mainSpawnStarting && !hasBlockingWorkers() && hasPendingWorkerReplays()) {
         queueMicrotask(() => {
             import('../orchestrator/pipeline.js')
                 .then(({ drainPendingReplays }) => drainPendingReplays({ origin: 'system' }))
@@ -424,6 +436,7 @@ export async function processQueue() {
     if (
         activeProcess
         || retryPendingTimer
+        || mainSpawnStarting
         || hasBlockingWorkers()
         || messageQueue.length === 0
     ) return;
@@ -645,7 +658,13 @@ interface SpawnOpts {
     memorySnapshot?: string;
     env?: Record<string, string>;
     lifecycle?: SpawnLifecycle;
+    _settingsGateWaited?: boolean;
 }
+
+type SpawnResult = {
+    child: ChildProcess | null;
+    promise: Promise<any>;
+};
 
 function cleanupEmployeeTmpDir(cwd: string, workingDir: string, label: string) {
     if (cwd !== workingDir) {
@@ -654,24 +673,56 @@ function cleanupEmployeeTmpDir(cwd: string, workingDir: string, label: string) {
     }
 }
 
-export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
-    // Ensure AGENTS.md on disk is fresh before CLI reads it
-    // Skip for employee spawns — distribute.ts manages AGENTS.md isolation
-    if (!opts.internal && !opts._isFallback && !opts.agentId) regenerateB();
-
+export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const { forceNew = false, agentId, sysPrompt: customSysPrompt, memorySnapshot } = opts;
     const origin = opts.origin || 'web';
     const empSid = opts.employeeSessionId || null;
     const mainManaged = !forceNew && !empSid;
+    const gateEligibleMain = mainManaged && !opts.agentId && !opts.internal && !opts._isFallback && !opts._isSmokeContinuation;
     const isEmployee = !mainManaged;
     const empTag = isEmployee ? { isEmployee: true } : {};
+
+    if (gateEligibleMain && !opts._settingsGateWaited && isRuntimeSettingsMutationInFlight()) {
+        if (activeProcess || retryPendingTimer || mainSpawnStarting) {
+            console.log('[jaw] Agent already running, skipping');
+            return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
+        }
+        mainSpawnStarting = true;
+        let cancelled = false;
+        let cancelReason = 'user';
+        const cancelThisSpawn = (reason: string) => {
+            cancelled = true;
+            cancelReason = reason;
+        };
+        cancelPendingMainSpawn = cancelThisSpawn;
+        const promise: Promise<any> = (async () => {
+            try {
+                await waitForRuntimeSettingsIdle();
+                if (cancelled) {
+                    return { text: `⏹️ [${cancelReason}]`, code: -1 };
+                }
+                const next: SpawnResult = spawnAgent(prompt, { ...opts, _settingsGateWaited: true });
+                return await next.promise;
+            } finally {
+                if (cancelPendingMainSpawn === cancelThisSpawn) cancelPendingMainSpawn = null;
+                mainSpawnStarting = false;
+                processQueue();
+            }
+        })();
+        return { child: null, promise };
+    }
+
+    // Ensure AGENTS.md on disk is fresh before CLI reads it
+    // Skip for employee spawns — distribute.ts manages AGENTS.md isolation
+    if (!opts.internal && !opts._isFallback && !opts.agentId) regenerateB();
+
     const liveScope = resolveOrcScope({ origin, chatId: opts.chatId, workingDir: settings.workingDir || null });
     // Employee must not pollute boss's liveRun (see devlog 260423_employee_liverun_contamination)
     const effectiveLiveScope = mainManaged ? liveScope : null;
 
     // INVARIANT: 모든 외부 호출은 gateway.ts isAgentBusy()를 거침.
     // 직접 spawnAgent 호출 시 retryPendingTimer도 확인할 것.
-    if (activeProcess && mainManaged) {
+    if ((activeProcess || (mainSpawnStarting && gateEligibleMain && !opts._settingsGateWaited)) && mainManaged) {
         console.log('[jaw] Agent already running, skipping');
         return { child: null, promise: Promise.resolve({ text: '', code: -1 }) };
     }
@@ -732,11 +783,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     // mismatched session_id to the server.
     const currentBucket = resolveSessionBucket(cli, model);
     const cliEnv = applyCliEnvDefaults(cli, opts.env);
+    const spawnEnv = makeCleanEnv(cliEnv);
     const bucketRow: any = currentBucket ? getSessionBucket.get(currentBucket) : null;
     const bucketSessionId = bucketRow?.session_id || null;
     const bucketModel = typeof bucketRow?.model === 'string' ? bucketRow.model : null;
     const bucketResumeKey = typeof bucketRow?.resume_key === 'string' ? bucketRow.resume_key : null;
-    const resumeKey = buildSessionResumeKey(cli, makeCleanEnv(cliEnv));
+    const resumeKey = buildSessionResumeKey(cli, spawnEnv);
     const canResumeBucketSession = !bucketSessionId || shouldResumeBucketSession(
         cli,
         model,
@@ -817,7 +869,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     // ─── DIFF-A: Preflight — verify CLI binary exists before spawn ───
     const detected = detectCli(cli);
-    if (!detected.available) {
+    const resolvedOpencodeBinary = cli === 'opencode'
+        ? resolveOpencodeBinary(spawnEnv, '')
+        : '';
+    const cliAvailable = cli === 'opencode'
+        ? detected.available || !!resolvedOpencodeBinary
+        : detected.available;
+    if (!cliAvailable) {
         const msg = `CLI '${cli}' not found in PATH. Run \`jaw doctor --json\`.`;
         console.error(`[jaw:${agentLabel}] ${msg}`);
         if (mainManaged) clearLiveRun(liveScope);
@@ -833,8 +891,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
     } else {
         console.log(`[jaw:${agentLabel}] Spawning: ${cli} ${args.join(' ').slice(0, 120)}...`);
     }
-
-    const spawnEnv = makeCleanEnv(cliEnv);
 
     if (cli === 'gemini' && sysPrompt) {
         const tmpSysFile = join(os.tmpdir(), `jaw-gemini-sys-${agentLabel}.md`);
@@ -1136,7 +1192,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     // ─── Standard CLI branch (claude/codex/gemini/opencode) ──────
     // DIFF-B: Windows needs shell:true to resolve .cmd shims (npm global installs)
-    const spawnCommand = process.platform === 'win32' ? cli : (detected.path || cli);
+    const spawnCommand = cli === 'opencode' && process.platform !== 'win32'
+        ? (resolvedOpencodeBinary || detected.path || cli)
+        : (process.platform === 'win32' ? cli : (detected.path || cli));
+    const opencodeSpawnAudit = cli === 'opencode'
+        ? buildOpencodeSpawnAudit({ args, cwd: spawnCwd, env: spawnEnv, binary: spawnCommand })
+        : undefined;
+    if (opencodeSpawnAudit) {
+        console.log(`[jaw:opencode:audit] ${JSON.stringify(opencodeSpawnAudit)}`);
+    }
     const child = spawn(spawnCommand, args, {
         cwd: spawnCwd,
         env: spawnEnv,
@@ -1154,7 +1218,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     // ─── DIFF-A: error guard — prevent uncaught ENOENT crash ───
     let stdSettled = false;  // guard: error→close can fire sequentially
+    let lastOpencodeIoAt = Date.now();
+    let opencodeIdleTimer: ReturnType<typeof setInterval> | null = null;
+    const clearOpencodeIdleTimer = () => {
+        if (!opencodeIdleTimer) return;
+        clearInterval(opencodeIdleTimer);
+        opencodeIdleTimer = null;
+    };
     child.on('error', (err: NodeJS.ErrnoException) => {
+        clearOpencodeIdleTimer();
         if (stdSettled) return;
         stdSettled = true;
         cleanupEmployeeTmpDir(spawnCwd, settings.workingDir, agentLabel);
@@ -1190,7 +1262,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     broadcast('agent_status', { status: 'running', cli, agentId: agentLabel, ...empTag });
 
-    const ctx = {
+    const ctx: SpawnContext = {
         fullText: '',
         traceLog: [] as any[],
         toolLog: [] as any[],
@@ -1207,12 +1279,30 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
         outputTextStarted: false,
         liveScope: effectiveLiveScope,
         geminiResultSeen: false,
+        opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> | undefined,
     };
     let geminiWatchdog: ReturnType<typeof setTimeout> | null = null;
     let buffer = '';
+    const recordOpencodeEvent = (line: string, event: any) => {
+        if (cli !== 'opencode') return;
+        ctx.opencodeRawEvents = pushOpencodeRawEvent(ctx.opencodeRawEvents, line);
+        ctx.opencodeLastEventType = typeof event?.type === 'string' ? event.type : 'unknown';
+        ctx.opencodeLastEventAt = Date.now();
+    };
+    if (cli === 'opencode') {
+        opencodeIdleTimer = setInterval(() => {
+            const idleMs = Date.now() - lastOpencodeIoAt;
+            if (idleMs < 60_000) return;
+            const snapshot = buildOpencodeRuntimeSnapshot(ctx);
+            const line = `[jaw:opencode:idle] ${idleMs}ms ${JSON.stringify(snapshot)}`;
+            console.warn(line);
+            ctx.traceLog.push(line);
+        }, 30_000);
+    }
 
     child.stdout.on('data', (chunk) => {
         opts.lifecycle?.onActivity?.('stdout');
+        lastOpencodeIoAt = Date.now();
         buffer += chunk.toString();
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
@@ -1220,6 +1310,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
             if (!line.trim()) continue;
             try {
                 const event = JSON.parse(line);
+                recordOpencodeEvent(line, event);
                 if (process.env.DEBUG) {
                     console.log(`[jaw:event:${agentLabel}] ${cli} type=${event.type}`);
                     console.log(`[jaw:raw:${agentLabel}] ${line.slice(0, 300)}`);
@@ -1254,18 +1345,21 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}) {
 
     child.stderr.on('data', (chunk) => {
         opts.lifecycle?.onActivity?.('stderr');
+        lastOpencodeIoAt = Date.now();
         const text = chunk.toString().trim();
         console.error(`[jaw:stderr:${agentLabel}] ${text}`);
         ctx.stderrBuf += text + '\n';
     });
 
     child.on('close', (code) => {
+        clearOpencodeIdleTimer();
         if (geminiWatchdog) { clearTimeout(geminiWatchdog); geminiWatchdog = null; }
         if (stdSettled) return;  // error handler already resolved
         // [I1] Flush residual NDJSON buffer — last event may lack trailing newline
         if (buffer.trim()) {
             try {
                 const lastEvent = JSON.parse(buffer);
+                recordOpencodeEvent(buffer, lastEvent);
                 logEventSummary(agentLabel, cli, lastEvent, ctx);
                 if (!ctx.sessionId) ctx.sessionId = extractSessionId(cli, lastEvent);
                 extractFromEvent(cli, lastEvent, ctx, agentLabel, empTag);

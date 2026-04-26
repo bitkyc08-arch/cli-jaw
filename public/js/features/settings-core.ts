@@ -12,6 +12,28 @@ import { loadActiveChannel, loadFallbackOrder } from './settings-channel.js';
 import { loadMcpServers } from './settings-mcp.js';
 import { providerIcon } from '../provider-icons.js';
 
+let activeSettingsSave: Promise<void> | null = null;
+
+function setHeaderCli(cli: string): void {
+    const hdr = document.getElementById('headerCli');
+    if (!hdr) return;
+    const ico = providerIcon(cli);
+    hdr.innerHTML = ico ? `${ico} ${escapeHtml(cli)}` : escapeHtml(cli);
+}
+
+function trackSettingsSave(promise: Promise<void>): Promise<void> {
+    const tracked = promise.finally(() => {
+        if (activeSettingsSave === tracked) activeSettingsSave = null;
+    });
+    activeSettingsSave = tracked;
+    return tracked;
+}
+
+export async function waitForSettingsSaveIdle(): Promise<void> {
+    const pending = activeSettingsSave;
+    if (pending) await pending;
+}
+
 function toCap(cli: string): string {
     return cli.charAt(0).toUpperCase() + cli.slice(1);
 }
@@ -224,12 +246,19 @@ export async function updateSettings(): Promise<void> {
     const s = {
         cli: (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude',
     };
-    const hdr = document.getElementById('headerCli');
-    if (hdr) {
-        const ico = providerIcon(s.cli);
-        hdr.innerHTML = ico ? `${ico} ${escapeHtml(s.cli)}` : escapeHtml(s.cli);
-    }
-    await apiJson('/api/settings', 'PUT', s);
+    return trackSettingsSave((async () => {
+        const result = await apiJson<SettingsData>('/api/settings', 'PUT', s);
+        if (!result) {
+            await loadSettings();
+            return;
+        }
+        const confirmedCli = result.cli || s.cli;
+        const selCli = document.getElementById('selCli') as HTMLSelectElement | null;
+        if (selCli && Array.from(selCli.options).some(o => o.value === confirmedCli)) {
+            selCli.value = confirmedCli;
+        }
+        setHeaderCli(confirmedCli);
+    })());
 }
 
 export function setPerm(_p: string, save = true): void {
@@ -308,11 +337,7 @@ export function onCliChange(save = true): void {
     const models = MODEL_MAP[cli] || [];
     const modelSel = document.getElementById('selModel') as HTMLSelectElement | null;
     setSelectOptions(modelSel, models, { includeCustom: true, includeDefault: true });
-    const hdrCli = document.getElementById('headerCli');
-    if (hdrCli) {
-        const ico = providerIcon(cli);
-        hdrCli.innerHTML = ico ? `${ico} ${escapeHtml(cli)}` : escapeHtml(cli);
-    }
+    setHeaderCli(cli);
     syncActiveEffortOptions(cli);
 
     const oldInput = document.getElementById('selModelCustom');

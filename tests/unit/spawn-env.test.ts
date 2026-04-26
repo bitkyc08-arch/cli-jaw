@@ -7,6 +7,7 @@ import {
     applyCliEnvDefaults,
     buildSessionResumeKey,
     ensureOpencodeAlwaysAllowPermissions,
+    getOpencodePreferredBinDir,
     withOpencodeAlwaysAllowPermissions,
 } from '../../src/agent/spawn-env.ts';
 
@@ -38,7 +39,15 @@ test('preserves inherited opencode env when already set', () => {
 
 test('prefers bun-installed opencode before older path entries', () => {
     const next = applyCliEnvDefaults('opencode', {}, { PATH: '/opt/homebrew/bin:/usr/bin' });
-    assert.ok(next.PATH?.startsWith(`${process.env.HOME}/.bun/bin:`));
+    assert.ok(next.PATH?.startsWith(`${getOpencodePreferredBinDir()}:`));
+});
+
+test('moves bun-installed opencode to the front when it already exists later in PATH', () => {
+    const bun = getOpencodePreferredBinDir();
+    const next = applyCliEnvDefaults('opencode', {}, { PATH: `/opt/homebrew/bin:${bun}:/usr/bin` });
+    const parts = next.PATH?.split(':') || [];
+    assert.equal(parts[0], bun);
+    assert.equal(parts.filter(part => part === bun).length, 1);
 });
 
 test('does not modify non-opencode env', () => {

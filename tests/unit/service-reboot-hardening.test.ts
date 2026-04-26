@@ -65,7 +65,9 @@ test('SRH-005: spawn path and detectCli logic use service-safe PATH handling', (
     const dbSrc = fs.readFileSync(DB, 'utf8');
 
     assert.match(spawnSrc, /env\.PATH = buildServicePath\(env\.PATH \|\| ''\)/);
-    assert.match(spawnSrc, /const spawnCommand = process\.platform === 'win32' \? cli : \(detected\.path \|\| cli\)/);
+    assert.match(spawnSrc, /const spawnCommand = cli === 'opencode' && process\.platform !== 'win32'/);
+    assert.match(spawnSrc, /\? \(resolvedOpencodeBinary \|\| detected\.path \|\| cli\)/);
+    assert.match(spawnSrc, /: \(process\.platform === 'win32' \? cli : \(detected\.path \|\| cli\)\)/);
     assert.match(spawnSrc, /clearEmployeeSession\.run\(opts\.agentId\)/);
     assert.match(lifecycleSrc, /clearEmployeeSession\.run\(opts\.agentId\)/);
     assert.match(dbSrc, /export const clearEmployeeSession = db\.prepare\('DELETE FROM employee_sessions WHERE employee_id = \?'\)/);

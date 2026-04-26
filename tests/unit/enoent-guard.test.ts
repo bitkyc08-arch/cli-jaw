@@ -42,7 +42,7 @@ test('EG-001: spawnAgent calls detectCli() before any spawn', () => {
 test('EG-002: standard CLI branch has child.on(\'error\') listener', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
     assert.ok(stdBranchIdx > 0, 'Standard CLI branch comment should exist');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 1200);
+    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 2400);
 
     assert.ok(
         block.includes("child.on('error'"),
@@ -75,7 +75,7 @@ test('EG-003: ACP branch has acp.on(\'error\') listener', () => {
 
 test('EG-004: standard CLI spawn uses shell:true on win32', () => {
     const stdBranchIdx = spawnSrc.indexOf('// ─── Standard CLI branch');
-    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 500);
+    const block = spawnSrc.slice(stdBranchIdx, stdBranchIdx + 1200);
 
     assert.ok(
         block.includes("process.platform === 'win32'"),
@@ -274,4 +274,3 @@ test('EG-015: clearCopilotTokenCache resets _keychainFailed flag', () => {
     assert.ok(clearFn.includes('_cachedToken = null'), 'should clear in-memory token');
     assert.ok(clearFn.includes('unlink'), 'should delete cache file');
 });
-

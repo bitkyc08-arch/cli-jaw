@@ -16,10 +16,11 @@ const compactSrc = fs.readFileSync(COMPACT, 'utf8');
 const runtimeSrc = fs.readFileSync(RUNTIME, 'utf8');
 const mainSessionSrc = fs.readFileSync(MAIN_SESSION, 'utf8');
 
-test('CSR-001: cliSwitchRefresh returns refreshed:false when slots are all empty', () => {
-    // Source: hasAnyContent guard short-circuits with refreshed:false
+test('CSR-001: cliSwitchRefresh always resets target session even when slots are empty', () => {
     assert.match(compactSrc, /const\s+hasAnyContent\s*=\s*Boolean\([\s\S]*?slots\.recent_turns[\s\S]*?slots\.memory_hits[\s\S]*?slots\.grep_hits[\s\S]*?slots\.task_snapshot[\s\S]*?\)/);
-    assert.match(compactSrc, /if\s*\(\s*!hasAnyContent\s*\)\s*return\s*\{\s*refreshed:\s*false\s*\}/);
+    assert.doesNotMatch(compactSrc, /if\s*\(\s*!hasAnyContent\s*\)\s*return\s*\{\s*refreshed:\s*false\s*\}/);
+    assert.match(compactSrc, /if\s*\(\s*hasAnyContent\s*\)\s*\{[\s\S]*?insertMessageWithTrace\.run[\s\S]*?setPendingBootstrapPromptStrict\(bootstrap\)[\s\S]*?\}/);
+    assert.match(compactSrc, /writeMainSessionRow\(clearedRow\);\s*if\s*\(\s*targetBucket\s*\)\s*clearSessionBucket\.run\(targetBucket\)/);
 });
 
 test('CSR-002: marker row is tagged with toCli + toModel and written to targetWorkDir', () => {
@@ -81,6 +82,15 @@ test('CSR-011: all four DB ops are inside a single db.transaction for atomicity'
     assert.match(body, /setPendingBootstrapPromptStrict\(bootstrap\)/);
     assert.match(body, /writeMainSessionRow\(clearedRow\)/);
     assert.match(body, /clearSessionBucket\.run\(targetBucket\)/);
+    assert.match(body, /if\s*\(\s*hasAnyContent\s*\)\s*\{/);
+});
+
+test('CSR-013: no-content switch preserves existing pending bootstrap', () => {
+    const txMatch = compactSrc.match(/const\s+tx\s*=\s*db\.transaction\(\(\)\s*=>\s*\{([\s\S]*?)\}\);\s*tx\(\);/);
+    assert.ok(txMatch, 'tx wrapper must exist');
+    const body = txMatch![1];
+    assert.doesNotMatch(body, /else\s*\{[\s\S]*setPendingBootstrapPromptStrict\(null\)/);
+    assert.doesNotMatch(body, /setPendingBootstrapPromptStrict\(null\)/);
 });
 
 test('CSR-012: cli-changed branch does NOT call syncMainSessionToSettings', () => {

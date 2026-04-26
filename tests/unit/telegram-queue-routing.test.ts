@@ -45,7 +45,8 @@ test('TQ-003: orchestrate paths forward target+chatId+requestId for continue/res
 
 test('TQ-004: processQueue isolates queue by groupQueueKey', () => {
     const queueStart = spawnSrc.indexOf('export async function processQueue()');
-    const queueBlock = spawnSrc.slice(queueStart, queueStart + 2400);
+    const queueEnd = spawnSrc.indexOf('// ─── Helpers');
+    const queueBlock = spawnSrc.slice(queueStart, queueEnd);
     assert.ok(
         queueBlock.includes('groupQueueKey(first.source, first.target)'),
         'processQueue should use groupQueueKey for group isolation',

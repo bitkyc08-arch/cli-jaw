@@ -42,6 +42,10 @@ export interface SpawnContext {
   opencodeHadToolErrorInStep?: boolean;
   opencodePendingToolRefs?: string[];
   opencodeTaskCallIds?: Set<string>;
+  opencodeRawEvents?: string[];
+  opencodeLastEventType?: string;
+  opencodeLastEventAt?: number;
+  opencodeSpawnAudit?: Record<string, unknown>;
   acpSubagentToolCallIds?: Set<string>;
   acpSubagentLabels?: Map<string, string>;
   // Gemini watchdog flag (set on 'result' event, triggers kill timer in spawn.ts)

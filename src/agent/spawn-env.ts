@@ -30,12 +30,15 @@ function prependPathDir(
     dir: string,
 ): Record<string, string> {
     const currentPath = extraEnv.PATH ?? inheritedEnv.PATH ?? '';
-    const parts = currentPath.split(':').filter(Boolean);
-    if (parts.includes(dir)) return extraEnv;
+    const parts = currentPath.split(':').filter(Boolean).filter(part => part !== dir);
     return {
         ...extraEnv,
         PATH: [dir, ...parts].join(':'),
     };
+}
+
+export function getOpencodePreferredBinDir(): string {
+    return join(os.homedir(), '.bun', 'bin');
 }
 
 export function applyCliEnvDefaults(
@@ -44,7 +47,7 @@ export function applyCliEnvDefaults(
     inheritedEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
     if (cli !== 'opencode') return extraEnv;
-    const withPath = prependPathDir(extraEnv, inheritedEnv, join(os.homedir(), '.bun', 'bin'));
+    const withPath = prependPathDir(extraEnv, inheritedEnv, getOpencodePreferredBinDir());
     if (withPath.OPENCODE_ENABLE_EXA !== undefined) return withPath;
     if (inheritedEnv.OPENCODE_ENABLE_EXA !== undefined) return withPath;
     return {

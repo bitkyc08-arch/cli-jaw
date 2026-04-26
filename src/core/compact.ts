@@ -275,15 +275,13 @@ export async function cliSwitchRefresh(opts: {
     fromCli: string;
     toCli: string;
     toModel: string;
-}): Promise<{ refreshed: boolean }> {
+}): Promise<{ refreshed: boolean; bootstrapWritten: boolean; targetBucketCleared: boolean }> {
     const slots = harvestBootstrapSlots({ workingDir: opts.sourceWorkDir, instructions: '' });
     const hasAnyContent = Boolean(
         slots.recent_turns || slots.memory_hits || slots.grep_hits || slots.task_snapshot,
     );
-    if (!hasAnyContent) return { refreshed: false };
-
-    const bootstrap = renderBootstrapPrompt(slots);
-    const trace = `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}`;
+    const bootstrap = hasAnyContent ? renderBootstrapPrompt(slots) : '';
+    const trace = bootstrap ? `${BOOTSTRAP_TRACE_PREFIX}\n${bootstrap}` : '';
 
     const { db, insertMessageWithTrace, clearSessionBucket } = await import('./db.js');
     const { resolveSessionBucket } = await import('../agent/args.js');
@@ -297,11 +295,13 @@ export async function cliSwitchRefresh(opts: {
     const clearedRow = buildClearedSessionRow();
 
     const tx = db.transaction(() => {
-        insertMessageWithTrace.run(
-            'assistant', COMPACT_MARKER_CONTENT,
-            opts.toCli, opts.toModel, trace, null, opts.targetWorkDir,
-        );
-        setPendingBootstrapPromptStrict(bootstrap);
+        if (hasAnyContent) {
+            insertMessageWithTrace.run(
+                'assistant', COMPACT_MARKER_CONTENT,
+                opts.toCli, opts.toModel, trace, null, opts.targetWorkDir,
+            );
+            setPendingBootstrapPromptStrict(bootstrap);
+        }
         writeMainSessionRow(clearedRow);
         if (targetBucket) clearSessionBucket.run(targetBucket);
     });
@@ -320,7 +320,7 @@ export async function cliSwitchRefresh(opts: {
         console.warn('[jaw:cli-switch] notice broadcast failed:', (e as Error).message);
     }
 
-    return { refreshed: true };
+    return { refreshed: true, bootstrapWritten: hasAnyContent, targetBucketCleared: !!targetBucket };
 }
 
 export async function autoCompactRefresh(opts: {

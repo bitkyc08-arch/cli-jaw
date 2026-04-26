@@ -11,6 +11,7 @@ import { clearCache, upsertMessage } from './idb-cache.js';
 import { ICONS } from '../icons.js';
 import { clearUnreadResponses } from './attention-badge.js';
 import { syncOrchestrateSnapshot } from '../ws.js';
+import { waitForSettingsSaveIdle } from './settings-core.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -57,6 +58,8 @@ export async function sendMessage(): Promise<void> {
     const prevDisabled = sendBtn.disabled;
     sendBtn.disabled = true;
     try {
+        await waitForSettingsSaveIdle();
+
         // File paths like /Users/junny/... or /tmp/foo — not commands
         const afterSlash = text.slice(1).trim();
         const firstToken = afterSlash.split(/\s+/)[0] || '';
