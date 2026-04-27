@@ -4,7 +4,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { saveUpload, buildMediaPromptMany } from '../../lib/upload.ts';
+import {
+    saveUpload,
+    buildMediaPromptMany,
+    TELEGRAM_DOWNLOAD_LIMITS,
+    TELEGRAM_DOWNLOAD_TIMEOUT_MS,
+    TELEGRAM_METADATA_MAX_BYTES,
+    __test__,
+} from '../../lib/upload.ts';
 
 const tmpDir = () => {
     const d = path.join(os.tmpdir(), `upload-test-${Date.now()}`);
@@ -59,4 +66,31 @@ test('UP-007: buildMediaPromptMany includes all file paths for multi-file input'
     assert.match(prompt, /1\. \/tmp\/a\.pdf/);
     assert.match(prompt, /2\. \/tmp\/b\.pdf/);
     assert.match(prompt, /사용자 메시지: compare/);
+});
+
+test('UP-008: Telegram download limits match inbound media ceilings', () => {
+    assert.equal(TELEGRAM_DOWNLOAD_LIMITS.voice, 50 * 1024 * 1024);
+    assert.equal(TELEGRAM_DOWNLOAD_LIMITS.photo, 10 * 1024 * 1024);
+    assert.equal(TELEGRAM_DOWNLOAD_LIMITS.document, 50 * 1024 * 1024);
+    assert.equal(TELEGRAM_DOWNLOAD_TIMEOUT_MS, 30_000);
+    assert.equal(TELEGRAM_METADATA_MAX_BYTES, 1024 * 1024);
+});
+
+test('UP-009: Telegram download size precheck rejects oversized metadata', () => {
+    assert.throws(
+        () => __test__.assertTelegramDownloadSize(11 * 1024 * 1024, TELEGRAM_DOWNLOAD_LIMITS.photo, 'photo'),
+        /Telegram photo too large/,
+    );
+    assert.doesNotThrow(
+        () => __test__.assertTelegramDownloadSize(9 * 1024 * 1024, TELEGRAM_DOWNLOAD_LIMITS.photo, 'photo'),
+    );
+});
+
+test('UP-010: downloadTelegramFile has bounded request contracts', () => {
+    const src = fs.readFileSync(path.join(process.cwd(), 'lib/upload.ts'), 'utf8');
+    assert.match(src, /status < 200 \|\| status >= 300/);
+    assert.match(src, /req\.setTimeout\(timeoutMs/);
+    assert.match(src, /total > maxBytes/);
+    assert.match(src, /TELEGRAM_METADATA_MAX_BYTES/);
+    assert.doesNotMatch(src, /Buffer\.concat\(chunks\)\s*,/);
 });

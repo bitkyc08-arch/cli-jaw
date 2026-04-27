@@ -4,6 +4,6 @@ export { setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSetting
 export { setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings } from './settings-discord.js';
 export { setActiveChannel, loadFallbackOrder, saveFallbackOrder } from './settings-channel.js';
 export { loadMcpServers, syncMcpServers, installMcpGlobal } from './settings-mcp.js';
-export { loadCliStatus } from './settings-cli-status.js';
+export { loadCliStatus, scheduleCliStatusRefresh, setCliStatusInterval } from './settings-cli-status.js';
 export { initSttSettings } from './settings-stt.js';
 export { openPromptModal, closePromptModal, savePromptFromModal, openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode } from './settings-templates.js';

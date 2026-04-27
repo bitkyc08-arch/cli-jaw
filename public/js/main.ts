@@ -51,7 +51,8 @@ import {
     saveActiveCliSettings, savePerCli, openPromptModal,
     onFlushCliChange, loadFlushAgentSidebar,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
-    loadCliStatus, setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings,
+    loadCliStatus, scheduleCliStatusRefresh, setCliStatusInterval,
+    setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings,
     setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings, setActiveChannel,
     saveFallbackOrder,
     openTemplateModal, saveTemplateFromModal, closeTemplateModal, templateGoBack, toggleDevMode
@@ -312,7 +313,7 @@ document.querySelector('[data-action="syncMcp"]')?.addEventListener('click', syn
 document.querySelector('[data-action="installMcp"]')?.addEventListener('click', installMcpGlobal);
 document.querySelector('[data-action="refreshCli"]')?.addEventListener('click', () => loadCliStatus(true));
 document.getElementById('cliStatusInterval')?.addEventListener('change', function (this: HTMLSelectElement) {
-    localStorage.setItem('cliStatusInterval', this.value);
+    setCliStatusInterval(this.value);
 });
 
 // ── Prompt Modal ──
@@ -460,6 +461,7 @@ async function bootstrap(): Promise<void> {
     await loadSettings();
     loadFlushAgentSidebar();
     loadCliStatus();
+    scheduleCliStatusRefresh();
     // loadMessages() is handled by ws.js onopen (clear + reload)
     loadEmployees();
     initHeartbeatBadge();

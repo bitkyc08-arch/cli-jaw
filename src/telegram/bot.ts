@@ -20,7 +20,7 @@ import { parseCommand, executeCommand } from '../cli/commands.js';
 import { getTelegramMenuCommands } from '../command-contract/policy.js';
 import { getMergedSkills } from '../prompt/builder.js';
 import * as memory from '../memory/memory.js';
-import { downloadTelegramFile } from '../../lib/upload.js';
+import { downloadTelegramFile, TELEGRAM_DOWNLOAD_LIMITS } from '../../lib/upload.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { seedDefaultEmployees } from '../core/employees.js';
@@ -550,7 +550,11 @@ async function _initTelegramInner() {
         const caption = ctx.message.caption || '';
         console.log(`[tg:photo] ${ctx.chat.id}: fileId=${largest.file_id.slice(0, 20)}... caption=${caption.slice(0, 40)}`);
         try {
-            const dlResult = await downloadTelegramFile(largest.file_id, settings.telegram.token) as Record<string, any>;
+            const dlResult = await downloadTelegramFile(largest.file_id, settings.telegram.token, {
+                kind: 'photo',
+                maxBytes: TELEGRAM_DOWNLOAD_LIMITS.photo,
+                fileSize: largest.file_size,
+            }) as Record<string, any>;
             const filePath = saveUpload(dlResult.buffer, `photo${dlResult.ext}`);
             const prompt = buildMediaPrompt(filePath, caption);
             tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`);
@@ -565,7 +569,11 @@ async function _initTelegramInner() {
         const caption = ctx.message.caption || '';
         console.log(`[tg:doc] ${ctx.chat.id}: ${doc.file_name} (${doc.file_size} bytes)`);
         try {
-            const dlResult = await downloadTelegramFile(doc.file_id, settings.telegram.token) as Record<string, any>;
+            const dlResult = await downloadTelegramFile(doc.file_id, settings.telegram.token, {
+                kind: 'document',
+                maxBytes: TELEGRAM_DOWNLOAD_LIMITS.document,
+                fileSize: doc.file_size,
+            }) as Record<string, any>;
             const filePath = saveUpload(dlResult.buffer, doc.file_name || 'document');
             const prompt = buildMediaPrompt(filePath, caption);
             tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);

@@ -7,6 +7,49 @@ import { ICONS } from '../icons.js';
 import { providerIcon } from '../provider-icons.js';
 import type { QuotaEntry } from './settings-types.js';
 
+const CLI_STATUS_INTERVAL_VALUES = new Set([0, 600, 1800]);
+const DEFAULT_CLI_STATUS_INTERVAL_SEC = 0;
+
+let cliStatusTimer: number | null = null;
+
+function readCliStatusInterval(): number {
+    const raw = Number(localStorage.getItem('cliStatusInterval') || DEFAULT_CLI_STATUS_INTERVAL_SEC);
+    return CLI_STATUS_INTERVAL_VALUES.has(raw) ? raw : DEFAULT_CLI_STATUS_INTERVAL_SEC;
+}
+
+function syncCliStatusIntervalSelect(interval = readCliStatusInterval()): void {
+    const select = document.getElementById('cliStatusInterval') as HTMLSelectElement | null;
+    if (!select) return;
+    const value = String(interval);
+    select.value = Array.from(select.options).some(option => option.value === value)
+        ? value
+        : String(DEFAULT_CLI_STATUS_INTERVAL_SEC);
+}
+
+export function scheduleCliStatusRefresh(): void {
+    if (cliStatusTimer != null) {
+        window.clearInterval(cliStatusTimer);
+        cliStatusTimer = null;
+    }
+
+    const interval = readCliStatusInterval();
+    syncCliStatusIntervalSelect(interval);
+    if (interval <= 0) return;
+
+    cliStatusTimer = window.setInterval(() => {
+        if (document.hidden || !document.hasFocus()) return;
+        void loadCliStatus(true);
+    }, interval * 1000);
+}
+
+export function setCliStatusInterval(value: string): void {
+    const parsed = Number(value);
+    const interval = CLI_STATUS_INTERVAL_VALUES.has(parsed) ? parsed : DEFAULT_CLI_STATUS_INTERVAL_SEC;
+    localStorage.setItem('cliStatusInterval', String(interval));
+    syncCliStatusIntervalSelect(interval);
+    scheduleCliStatusRefresh();
+}
+
 export function normalizeQuotaWindowLabel(cliName: string, label: string): string {
     if (cliName === 'gemini') {
         if (label === 'Pro' || label === 'P') return 'P';
@@ -27,7 +70,7 @@ export function normalizeQuotaWindowLabel(cliName: string, label: string): strin
 }
 
 export async function loadCliStatus(force = false): Promise<void> {
-    const interval = Number(localStorage.getItem('cliStatusInterval') || 300);
+    const interval = readCliStatusInterval();
     if (!force && state.cliStatusCache && interval > 0 && (Date.now() - state.cliStatusTs) < interval * 1000) {
         renderCliStatus({ cliStatus: (state.cliStatusCache as Record<string, unknown>)?.cliStatus as Record<string, { available: boolean }> | null, quota: (state.cliStatusCache as Record<string, unknown>)?.quota as Record<string, QuotaEntry> | null });
         return;
