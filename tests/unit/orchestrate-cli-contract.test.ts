@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 const projectRoot = join(import.meta.dirname, '../..');
 const cliSrc = readFileSync(join(projectRoot, 'bin/commands/orchestrate.ts'), 'utf8');
+const dispatchSrc = readFileSync(join(projectRoot, 'bin/commands/dispatch.ts'), 'utf8');
 const commandsSrc = readFileSync(join(projectRoot, 'src/cli/commands.ts'), 'utf8');
 const handlerSrc = readFileSync(join(projectRoot, 'src/cli/handlers-runtime.ts'), 'utf8');
 
@@ -40,4 +41,14 @@ test('ORC-CLI-005: slash command and command metadata expose status and force', 
     assert.ok(handlerSrc.includes('const userInitiated = true'), 'slash orchestrate transitions should count as explicit user approval');
     assert.ok(handlerSrc.includes('const hasExplicitApproval = force || userInitiated'), 'slash handler should apply user approval without requiring --force');
     assert.ok(handlerSrc.includes('Current server state:'), 'slash failure text should include current server state');
+});
+
+test('ORC-CLI-006: dispatch CLI polls worker result endpoint for rejoin', () => {
+    assert.match(
+        dispatchSrc,
+        /\/api\/orchestrate\/worker\/\$\{encodeURIComponent\(agentId\)\}\/result/,
+        'dispatch CLI should poll worker result endpoint',
+    );
+    assert.match(dispatchSrc, /pollWorkerResult/, 'dispatch CLI should define a polling helper');
+    assert.match(dispatchSrc, /status === 'failed'/, 'failed worker state should exit non-zero');
 });

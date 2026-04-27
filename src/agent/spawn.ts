@@ -656,6 +656,7 @@ interface SpawnOpts {
     effort?: string;
     permissions?: string;
     memorySnapshot?: string;
+    workspaceContext?: string;
     env?: Record<string, string>;
     lifecycle?: SpawnLifecycle;
     _settingsGateWaited?: boolean;
@@ -853,15 +854,23 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     if (opts.agentId && (customSysPrompt || sysPrompt)) {
         const empPrompt = customSysPrompt || sysPrompt;
+        const empPromptWithWorkspace = opts.workspaceContext
+            ? `${opts.workspaceContext}\n\n${empPrompt}`
+            : empPrompt;
         const tmpDir = join(os.tmpdir(), `jaw-emp-${agentLabel}-${Date.now()}`);
         fs.mkdirSync(tmpDir, { recursive: true });
 
         for (const name of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'CONTEXT.md']) {
-            fs.writeFileSync(join(tmpDir, name), empPrompt);
+            fs.writeFileSync(join(tmpDir, name), empPromptWithWorkspace);
         }
         const dotClaudeDir = join(tmpDir, '.claude');
         fs.mkdirSync(dotClaudeDir, { recursive: true });
-        fs.writeFileSync(join(dotClaudeDir, 'CLAUDE.md'), empPrompt);
+        fs.writeFileSync(join(dotClaudeDir, 'CLAUDE.md'), empPromptWithWorkspace);
+        try {
+            fs.symlinkSync(settings.workingDir, join(tmpDir, 'workspace'), 'dir');
+        } catch {
+            // Non-fatal: the absolute Project root in Workspace Context remains authoritative.
+        }
 
         spawnCwd = tmpDir;
         console.log(`[jaw:${agentLabel}] Employee isolated → ${tmpDir}`);

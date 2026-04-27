@@ -3,6 +3,8 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import {
     STATIC_EMPLOYEES,
     findStaticEmployee,
@@ -10,6 +12,8 @@ import {
     checkModelSupport,
     resolveDispatchableEmployee,
 } from '../../src/core/employees.ts';
+
+const ROOT = process.cwd();
 
 test('P37-CU-001: Control static employee is defined with Codex + darwin hint', () => {
     const control = findStaticEmployee('Control');
@@ -104,4 +108,11 @@ test('checkModelSupport: scaffold returns empty result for all inputs (Spark han
     assert.deepEqual(checkModelSupport('claude', 'sonnet', {}), { fail: [], warn: [] });
     assert.deepEqual(checkModelSupport(null, 'gpt-5.4'), { fail: [], warn: [] });
     assert.deepEqual(checkModelSupport('codex', null), { fail: [], warn: [] });
+});
+
+test('employee cli/model updates clear stale employee session', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'src/routes/employees.ts'), 'utf8');
+    assert.match(src, /clearEmployeeSession/);
+    assert.match(src, /keys\.includes\('cli'\)/);
+    assert.match(src, /keys\.includes\('model'\)/);
 });

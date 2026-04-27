@@ -3,7 +3,7 @@ import type { AuthMiddleware } from './types.js';
 import crypto from 'crypto';
 import { ok } from '../http/response.js';
 import { broadcast } from '../core/bus.js';
-import { db, getEmployees, insertEmployee, deleteEmployee } from '../core/db.js';
+import { clearEmployeeSession, db, getEmployees, insertEmployee, deleteEmployee } from '../core/db.js';
 import { regenerateB } from '../prompt/builder.js';
 import { getDefaultClaudeModel } from '../cli/claude-models.js';
 import { seedDefaultEmployees, listEmployees, findStaticEmployee } from '../core/employees.js';
@@ -51,17 +51,25 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
             overrides[spec.name] = { ...overrides[spec.name], model: newModel };
             settings.staticEmployees = overrides;
             saveSettings(settings);
+            clearEmployeeSession.run(req.params.id);
             const merged = listEmployees().find(e => e.id === req.params.id);
             if (merged) broadcast('agent_updated', merged as Record<string, any>);
             regenerateB();
             return res.json(merged);
         }
 
+        const before = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id) as Record<string, any> | undefined;
         const allowed = ['name', 'cli', 'model', 'role', 'status'];
-        const sets = Object.keys(updates).filter(k => allowed.includes(k)).map(k => `${k} = ?`);
+        const keys = Object.keys(updates).filter(k => allowed.includes(k));
+        const sets = keys.map(k => `${k} = ?`);
         if (sets.length === 0) return res.status(400).json({ error: 'no valid fields' });
-        const vals = sets.map((_, i) => (updates as Record<string, any>)[Object.keys(updates).filter(k => allowed.includes(k))[i]!]);
+        const vals = keys.map(k => (updates as Record<string, any>)[k]);
         db.prepare(`UPDATE employees SET ${sets.join(', ')} WHERE id = ?`).run(...vals, req.params.id);
+        const changedResumeKey = before && (
+            (keys.includes('cli') && String(before.cli || '') !== String(updates.cli || ''))
+            || (keys.includes('model') && String(before.model || '') !== String(updates.model || ''))
+        );
+        if (changedResumeKey) clearEmployeeSession.run(req.params.id);
         const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(req.params.id) as Record<string, any>;
         broadcast('agent_updated', emp);
         regenerateB();

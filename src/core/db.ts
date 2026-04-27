@@ -76,6 +76,7 @@ db.exec(`
         employee_id TEXT PRIMARY KEY,
         session_id  TEXT,
         cli         TEXT,
+        model       TEXT DEFAULT '',
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
 
@@ -121,6 +122,11 @@ if (!(messageCols as Record<string, unknown>[]).some(c => c.name === 'working_di
 }
 db.exec('CREATE INDEX IF NOT EXISTS idx_messages_wd ON messages(working_dir)');
 
+const employeeSessionCols = db.prepare('PRAGMA table_info(employee_sessions)').all();
+if (!(employeeSessionCols as Record<string, unknown>[]).some(c => c.name === 'model')) {
+    db.exec("ALTER TABLE employee_sessions ADD COLUMN model TEXT DEFAULT ''");
+}
+
 const sessionBucketCols = db.prepare('PRAGMA table_info(session_buckets)').all();
 if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c.name === 'resume_key')) {
     db.exec('ALTER TABLE session_buckets ADD COLUMN resume_key TEXT DEFAULT NULL');
@@ -151,7 +157,7 @@ export const insertEmployee = db.prepare('INSERT INTO employees (id, name, cli, 
 export const deleteEmployee = db.prepare('DELETE FROM employees WHERE id = ?');
 export const getEmployeeSession = db.prepare('SELECT * FROM employee_sessions WHERE employee_id = ?');
 export const upsertEmployeeSession = db.prepare(
-    'INSERT OR REPLACE INTO employee_sessions (employee_id, session_id, cli) VALUES (?, ?, ?)'
+    'INSERT OR REPLACE INTO employee_sessions (employee_id, session_id, cli, model) VALUES (?, ?, ?, ?)'
 );
 export const clearEmployeeSession = db.prepare('DELETE FROM employee_sessions WHERE employee_id = ?');
 export const clearAllEmployeeSessions = db.prepare('DELETE FROM employee_sessions');

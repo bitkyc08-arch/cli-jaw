@@ -133,3 +133,16 @@ test('PRD-006: finished worker transitions from pending to claimed after first i
         'worker should appear in pending list after finishWorker (pre-drain invariant)',
     );
 });
+
+test('PRD-012: empty worker result is still drainable', () => {
+    const id = `empty-${Date.now()}`;
+    const fakeEmp = { id, name: `test-${id}`, cli: 'claude' };
+    claimWorker(fakeEmp, 'empty test');
+    finishWorker(id, '');
+
+    const pending = listPendingWorkerResults();
+    assert.ok(
+        pending.some(p => p.agentId === id && p.text === ''),
+        'empty worker result should appear in pending list after finishWorker',
+    );
+});

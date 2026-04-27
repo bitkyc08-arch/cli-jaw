@@ -23,6 +23,7 @@ const OPENCODE_ALLOW_PERMISSIONS = [
     'webfetch',
     'websearch',
 ] as const;
+const GEMINI_TRUST_WORKSPACE_ENV = 'GEMINI_CLI_TRUST_WORKSPACE';
 
 function prependPathDir(
     extraEnv: Record<string, string>,
@@ -46,6 +47,15 @@ export function applyCliEnvDefaults(
     extraEnv: Record<string, string> = {},
     inheritedEnv: NodeJS.ProcessEnv = process.env,
 ): Record<string, string> {
+    if (cli === 'gemini') {
+        if (extraEnv[GEMINI_TRUST_WORKSPACE_ENV] !== undefined) return extraEnv;
+        if (inheritedEnv[GEMINI_TRUST_WORKSPACE_ENV] !== undefined) return extraEnv;
+        return {
+            ...extraEnv,
+            [GEMINI_TRUST_WORKSPACE_ENV]: 'true',
+        };
+    }
+
     if (cli !== 'opencode') return extraEnv;
     const withPath = prependPathDir(extraEnv, inheritedEnv, getOpencodePreferredBinDir());
     if (withPath.OPENCODE_ENABLE_EXA !== undefined) return withPath;

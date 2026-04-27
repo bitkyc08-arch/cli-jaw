@@ -37,6 +37,27 @@ test('preserves inherited opencode env when already set', () => {
     );
 });
 
+test('trusts Gemini workspaces by default for headless boss and employee spawns', () => {
+    assert.deepEqual(
+        applyCliEnvDefaults('gemini', {}, {}),
+        { GEMINI_CLI_TRUST_WORKSPACE: 'true' },
+    );
+});
+
+test('preserves explicit Gemini trust override', () => {
+    assert.deepEqual(
+        applyCliEnvDefaults('gemini', { GEMINI_CLI_TRUST_WORKSPACE: 'false' }, {}),
+        { GEMINI_CLI_TRUST_WORKSPACE: 'false' },
+    );
+});
+
+test('preserves inherited Gemini trust env when already set', () => {
+    assert.deepEqual(
+        applyCliEnvDefaults('gemini', { OTHER_FLAG: '1' }, { GEMINI_CLI_TRUST_WORKSPACE: '1' }),
+        { OTHER_FLAG: '1' },
+    );
+});
+
 test('prefers bun-installed opencode before older path entries', () => {
     const next = applyCliEnvDefaults('opencode', {}, { PATH: '/opt/homebrew/bin:/usr/bin' });
     assert.ok(next.PATH?.startsWith(`${getOpencodePreferredBinDir()}:`));

@@ -11,9 +11,14 @@ const DB = path.join(ROOT, 'src/core/db.ts');
 
 test('P100-001: pipeline uses employeeSessionId-based resume and global clear', () => {
     const src = fs.readFileSync(PIPELINE, 'utf8') + '\n' + fs.readFileSync(DISTRIBUTE, 'utf8');
+    const dbSrc = fs.readFileSync(DB, 'utf8');
     assert.match(src, /employeeSessionId:\s*canResume\s*\?\s*empSession!?\.session_id\s*:\s*undefined/);
     assert.match(src, /clearAllEmployeeSessions\.run\(\)/);
-    assert.match(src, /upsertEmployeeSession\.run\(.*\.id,\s*r\.sessionId,\s*.*\.cli\)/);
+    assert.match(src, /emp\.cli\s*!==\s*'claude'/);
+    assert.match(src, /empSession\?\.cli\s*===\s*emp\.cli/);
+    assert.match(src, /empSession\?\.model/);
+    assert.match(src, /upsertEmployeeSession\.run\(emp\.id,\s*r\.sessionId,\s*emp\.cli,\s*employeeModel\)/);
+    assert.match(dbSrc, /model\s+TEXT DEFAULT ''/);
 });
 
 test('P100-002: spawn guards main session update when employee session is used', () => {

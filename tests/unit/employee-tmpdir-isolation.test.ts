@@ -23,11 +23,13 @@ test('TMPISO-001: cleanupEmployeeTmpDir function exists in spawn.ts', () => {
 test('TMPISO-002: isolation block creates temp dir with all instruction files', () => {
     const src = readSrc('../../src/agent/spawn.ts');
     assert.ok(src.includes("jaw-emp-"));
+    assert.ok(src.includes('empPromptWithWorkspace'));
     assert.ok(src.includes("'AGENTS.md'"));
     assert.ok(src.includes("'CLAUDE.md'"));
     assert.ok(src.includes("'GEMINI.md'"));
     assert.ok(src.includes("'CONTEXT.md'"));
     assert.ok(src.includes(".claude"));
+    assert.ok(src.includes("join(dotClaudeDir, 'CLAUDE.md'), empPromptWithWorkspace"));
 });
 
 test('TMPISO-003: spawnCwd is used (not settings.workingDir) for AcpClient', () => {
@@ -69,6 +71,13 @@ test('TMPISO-007: cleanup is no-op when cwd === workingDir (main agent)', () => 
     assert.ok(src.includes('if (cwd !== workingDir)'));
 });
 
+test('TMPISO-007b: optional workspace symlink is non-fatal and keeps tmp cwd isolation', () => {
+    const src = readSrc('../../src/agent/spawn.ts');
+    assert.ok(src.includes("fs.symlinkSync(settings.workingDir, join(tmpDir, 'workspace'), 'dir')"));
+    assert.ok(src.includes('Non-fatal: the absolute Project root in Workspace Context remains authoritative.'));
+    assert.ok(src.includes('spawnCwd = tmpDir'), 'employee cwd isolation must remain in place');
+});
+
 test('TMPISO-008: distribute.ts passes sysPrompt unconditionally (not ternary)', () => {
     const src = readSrc('../../src/orchestrator/distribute.ts');
     // Must NOT have: sysPrompt: canResume ? undefined : sysPrompt
@@ -83,15 +92,17 @@ test('TMPISO-010: temp dir creation and cleanup works end-to-end', () => {
     const label = 'test-emp';
     const workingDir = '/fake/working/dir';
     const tmpDir = join(os.tmpdir(), `jaw-emp-${label}-${Date.now()}`);
+    const workspaceContext = '## Workspace Context (authoritative)\nProject root: /fake/working/dir';
+    const promptWithWorkspace = `${workspaceContext}\n\nTEST_EMPLOYEE_PROMPT`;
 
     // Create like spawn.ts does
     fs.mkdirSync(tmpDir, { recursive: true });
     for (const name of ['AGENTS.md', 'CLAUDE.md', 'GEMINI.md', 'CONTEXT.md']) {
-        fs.writeFileSync(join(tmpDir, name), 'TEST_EMPLOYEE_PROMPT');
+        fs.writeFileSync(join(tmpDir, name), promptWithWorkspace);
     }
     const dotClaudeDir = join(tmpDir, '.claude');
     fs.mkdirSync(dotClaudeDir, { recursive: true });
-    fs.writeFileSync(join(dotClaudeDir, 'CLAUDE.md'), 'TEST_EMPLOYEE_PROMPT');
+    fs.writeFileSync(join(dotClaudeDir, 'CLAUDE.md'), promptWithWorkspace);
 
     // Verify all files exist
     assert.ok(fs.existsSync(join(tmpDir, 'AGENTS.md')));
@@ -101,8 +112,9 @@ test('TMPISO-010: temp dir creation and cleanup works end-to-end', () => {
     assert.ok(fs.existsSync(join(tmpDir, '.claude', 'CLAUDE.md')));
 
     // Verify content
-    assert.equal(fs.readFileSync(join(tmpDir, 'AGENTS.md'), 'utf8'), 'TEST_EMPLOYEE_PROMPT');
-    assert.equal(fs.readFileSync(join(tmpDir, '.claude', 'CLAUDE.md'), 'utf8'), 'TEST_EMPLOYEE_PROMPT');
+    assert.equal(fs.readFileSync(join(tmpDir, 'AGENTS.md'), 'utf8'), promptWithWorkspace);
+    assert.equal(fs.readFileSync(join(tmpDir, '.claude', 'CLAUDE.md'), 'utf8'), promptWithWorkspace);
+    assert.ok(fs.readFileSync(join(tmpDir, '.claude', 'CLAUDE.md'), 'utf8').includes('## Workspace Context'));
 
     // Cleanup like cleanupEmployeeTmpDir does
     const cwd = tmpDir;

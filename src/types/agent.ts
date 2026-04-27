@@ -69,4 +69,5 @@ export interface SpawnResult {
   tools?: ToolEntry[];
   cost?: number | null;
   smoke?: string | null;
+  diagnostic?: string;
 }

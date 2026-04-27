@@ -116,6 +116,18 @@ test('EMP-025: employee prompt uses employee naming and dispatch prohibition', (
     assert.ok(!v2.includes('worker agent in pipe mode'), 'should not use old worker pipe mode wording');
 });
 
+test('EMP-026: employee prompt defers repository paths to Workspace Context', () => {
+    const emp = { name: 'Backend', cli: 'claude', role: 'backend' };
+    clearPromptCache();
+    const v2 = getEmployeePromptV2(emp, 'backend', 3);
+    assert.ok(v2.includes('process cwd may be an isolated temporary directory'),
+        'employee prompt must warn that cwd may not be the repository root');
+    assert.ok(v2.includes("task's ## Workspace Context block"),
+        'employee prompt must point employees to the injected Workspace Context');
+    assert.ok(v2.includes('Resolve relative repository paths against Project root'),
+        'employee prompt must define relative path resolution policy');
+});
+
 // ─── Phase 17: triage AI dispatch ────────────────────
 
 test('EMP-011: parseSubtasks extracts subtask JSON from agent response', { skip: 'DEPRECATED: patch3' }, () => {

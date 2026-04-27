@@ -50,6 +50,60 @@ function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+async function resolveAgentId(name: string): Promise<string | null> {
+    const res = await cliFetch(`${BASE}/api/employees`);
+    if (!res.ok) return null;
+    const employees = await res.json() as Array<Record<string, any>>;
+    const found = employees.find(e => e.name === name || e.id === name);
+    return found?.id || null;
+}
+
+async function pollWorkerResult(agentId: string): Promise<any> {
+    const deadline = Date.now() + 600_000;
+    while (Date.now() < deadline) {
+        const res = await cliFetch(`${BASE}/api/orchestrate/worker/${encodeURIComponent(agentId)}/result`);
+        const body = await res.json() as any;
+        if (!res.ok) throw new Error(body.error || `poll failed: ${res.status}`);
+        if (body.state !== 'running') return body;
+        await sleep(2_000);
+    }
+    throw new Error(`Timed out waiting for worker result: ${agentId}`);
+}
+
+function resultStatus(body: any): string {
+    if (typeof body?.result?.status === 'string') return body.result.status;
+    if (typeof body?.state === 'string') return body.state;
+    return 'done';
+}
+
+function resultText(body: any): string | undefined {
+    if (typeof body?.result?.text === 'string') return body.result.text;
+    if (typeof body?.result === 'string') return body.result;
+    return undefined;
+}
+
+function dispatchExitCode(body: any): number {
+    const status = resultStatus(body);
+    return status === 'error' || status === 'failed' || status === 'cancelled' ? 1 : 0;
+}
+
+function printDispatchResult(agentName: string, body: any): void {
+    console.log(`✅ ${agentName} completed (${resultStatus(body)})`);
+    const text = resultText(body);
+    if (text !== undefined) {
+        console.log('\n--- Employee Response ---');
+        console.log(text || '(empty response)');
+    }
+    if (body.orchestration) {
+        const o = body.orchestration;
+        const verdict = o.verdict ? String(o.verdict).toUpperCase() : 'none';
+        const persisted = o.statusPersisted
+            ? `persisted to ${o.persistedField}`
+            : `not persisted (state=${o.currentState || 'unknown'}, ctx=${o.ctxPresent ? 'true' : 'false'})`;
+        console.log(`\nOrchestration verdict: ${verdict} ${persisted}`);
+    }
+}
+
 await getCliAuthToken(PORT);
 try {
     console.log(`🚀 Dispatching to ${agent}...`);
@@ -90,22 +144,18 @@ try {
 
     const body = await res.json() as any;
     if (!res.ok) {
+        const pollAgentId = body?.worker?.agentId || body?.existing?.agentId || await resolveAgentId(agent);
+        if (res.status === 409 && pollAgentId) {
+            console.error(`⏳ ${agent} is already running, polling worker result...`);
+            const polled = await pollWorkerResult(pollAgentId);
+            printDispatchResult(agent, polled);
+            process.exit(dispatchExitCode(polled));
+        }
         console.error(`❌ ${body.error || `Failed: ${res.status}`}`);
         process.exit(1);
     }
-    console.log(`✅ ${agent} completed (${body.result?.status || 'done'})`);
-    if (body.result?.text) {
-        console.log('\n--- Employee Response ---');
-        console.log(body.result.text);
-    }
-    if (body.orchestration) {
-        const o = body.orchestration;
-        const verdict = o.verdict ? String(o.verdict).toUpperCase() : 'none';
-        const persisted = o.statusPersisted
-            ? `persisted to ${o.persistedField}`
-            : `not persisted (state=${o.currentState || 'unknown'}, ctx=${o.ctxPresent ? 'true' : 'false'})`;
-        console.log(`\nOrchestration verdict: ${verdict} ${persisted}`);
-    }
+    printDispatchResult(agent, body);
+    process.exit(dispatchExitCode(body));
 } catch (e: any) {
     console.error(`❌ Error: ${e.message}`);
     process.exit(1);

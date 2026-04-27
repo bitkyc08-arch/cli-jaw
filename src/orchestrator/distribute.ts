@@ -2,11 +2,13 @@
 // Extracted from pipeline.ts for 500-line compliance.
 
 import { broadcast } from '../core/bus.js';
-import { getEmployeeSession, upsertEmployeeSession } from '../core/db.js';
+import { settings } from '../core/config.js';
+import { clearEmployeeSession, getEmployeeSession, upsertEmployeeSession } from '../core/db.js';
 import { getEmployeePromptV2 } from '../prompt/builder.js';
 import { spawnAgent, killAgentById } from '../agent/spawn.js';
 import { appendToWorklog } from '../memory/worklog.js';
 import { startWorkerMonitor } from './worker-monitor.js';
+import { buildWorkspaceContextBlock } from './workspace-context.js';
 import { updateWorkerPhase } from './worker-registry.js';
 
 // ─── Phase Constants (shared with pipeline.ts) ───────
@@ -129,6 +131,19 @@ export function validateParallelSafety(agentPhases: Record<string, any>[]): void
             fileMap.set(file, ap.agent);
         }
     }
+}
+
+function formatEmployeeFailure(emp: Record<string, any>, r: Record<string, any>): string {
+    const parts = [
+        'Employee failed without assistant text.',
+        `agent=${emp.name || emp.id}`,
+        `cli=${emp.cli || 'unknown'}`,
+        `model=${emp.model || 'unknown'}`,
+        `exitCode=${r.code ?? 'unknown'}`,
+        r.sessionId ? `sessionId=${String(r.sessionId).slice(0, 24)}` : '',
+        r.diagnostic ? `diagnostic=${String(r.diagnostic).slice(0, 500)}` : '',
+    ].filter(Boolean);
+    return parts.join('\n');
 }
 
 // ─── Per-Agent Execution ─────────────────────────────
@@ -298,6 +313,12 @@ export async function runSingleAgent(
         .join('→');
 
     const worklogPath = String(worklog?.path || '').trim();
+    const workspaceBlock = buildWorkspaceContextBlock({
+        workingDir: settings.workingDir || null,
+        worklogPath,
+        employeeName: emp.name,
+        task: ap.task,
+    });
     // Phase 56.1: plan is auto-injected at the top of the task body via ## Approved Plan.
     // The worklog is now an optional reference for prior execution context; the worker
     // does NOT need to read it to find the plan.
@@ -307,7 +328,9 @@ The approved plan has already been injected above as \`## Approved Plan\` — yo
 If you want to review prior execution context or record your progress, the worklog lives at: ${worklogPath}`
         : '';
 
-    const taskPrompt = `## Task Instruction [${phaseLabel}]
+    const taskPrompt = `${workspaceBlock}
+
+## Task Instruction [${phaseLabel}]
 ${ap.task}
 
 ## ⛔ Isolation Requirements (hard blocks)
@@ -348,8 +371,17 @@ ${worklogBlock}`.trim();
     });
     updateWorkerPhase(emp.id, String(ap.currentPhase), phaseLabel ?? '');
 
+    const employeeModel = String(emp.model || '');
     const empSession = getEmployeeSession.get(emp.id) as Record<string, any> | undefined;
-    const canResume = !!(empSession?.session_id && empSession?.cli === emp.cli);
+    const canResume = !!(
+        emp.cli !== 'claude'
+        && empSession?.session_id
+        && empSession?.cli === emp.cli
+        && String(empSession?.model || '') === employeeModel
+    );
+    if (emp.cli === 'claude' && empSession?.session_id) {
+        clearEmployeeSession.run(emp.id);
+    }
 
     const monitor = startWorkerMonitor({
         agentId: emp.id,
@@ -368,11 +400,14 @@ ${worklogBlock}`.trim();
         forceNew: !canResume,
         employeeSessionId: canResume ? empSession!.session_id : undefined,
         sysPrompt: sysPrompt,
+        workspaceContext: workspaceBlock,
         origin: meta.origin || 'web',
         env: {
             JAW_EMPLOYEE_MODE: '1',
             JAW_EMPLOYEE_NAME: String(emp.name || ''),
             JAW_EMPLOYEE_ROLE: String(ap.role || emp.role || ''),
+            JAW_WORKSPACE_ROOT: settings.workingDir || '',
+            JAW_WORKLOG_PATH: worklogPath || '',
             PORT: String(process.env.PORT || ''),
         },
         lifecycle: {
@@ -389,18 +424,22 @@ ${worklogBlock}`.trim();
         throw err;
     }
     const isSuccess = r.code === 0 || (r.code == null && (r.text || '').trim().length > 0);
-    if (isSuccess && r.sessionId) {
-        upsertEmployeeSession.run(emp.id, r.sessionId, emp.cli);
+    if (isSuccess && r.sessionId && emp.cli !== 'claude') {
+        upsertEmployeeSession.run(emp.id, r.sessionId, emp.cli, employeeModel);
+    } else if (emp.cli === 'claude') {
+        clearEmployeeSession.run(emp.id);
     }
+    const text = String(r.text || '');
+    const diagnosticText = text || (isSuccess ? '' : formatEmployeeFailure(emp, r));
     const result = {
         agent: ap.agent, role: ap.role, id: emp.id,
         phase: ap.currentPhase, phaseLabel,
         status: isSuccess ? 'done' : 'error',
-        text: r.text || '',
+        text: diagnosticText,
     };
 
     // Parse phases_completed from agent output (supports both plain-text and legacy JSON)
-    const responseText = r.text || '';
+    const responseText = diagnosticText;
 
     // Plain-text format: "Phases completed: A, P, B" or "Phases completed: 1, 2, 3"
     const plainMatch = responseText.match(/Phases completed:\s*(.+)/i);
@@ -410,7 +449,7 @@ ${worklogBlock}`.trim();
     let completedPhases: number[] | null = null;
 
     if (plainMatch) {
-        const parts = plainMatch[1].split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
+        const parts = (plainMatch[1] ?? '').split(',').map((s: string) => parseInt(s.trim(), 10)).filter((n: number) => !isNaN(n));
         if (parts.length > 1) completedPhases = parts;
     } else if (jsonMatch) {
         try {

@@ -364,10 +364,14 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     if (agentLabel !== 'main' || code !== null) {
         console.log(`[jaw:${agentLabel}] exited code=${code}, text=${ctx.fullText.length} chars`);
     }
+    const diagnostic = resolvedCode !== 0 && resolvedCode !== null
+        ? classifyExitError(cli, resolvedCode, ctx.stderrBuf).message
+        : ctx.stderrBuf.trim().slice(0, 500);
     resolve({
         text: ctx.fullText, code: resolvedCode,
         sessionId: ctx.sessionId, cost: ctx.cost,
         tools: ctx.toolLog, smoke: smokeResult,
+        diagnostic,
     });
     if (mainManaged) processQueue();
 }
