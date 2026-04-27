@@ -8,6 +8,9 @@ import { InstanceGroups } from './components/InstanceGroups';
 import { ManagerShell } from './components/ManagerShell';
 import { MobileNav } from './components/MobileNav';
 import { SidebarRail } from './components/SidebarRail';
+import { Workbench } from './components/Workbench';
+import { WorkspaceLayout } from './components/WorkspaceLayout';
+import { InstancePreview } from './InstancePreview';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
 import { useDashboardView } from './hooks/useDashboardView';
 import type {
@@ -208,22 +211,31 @@ export function App() {
         </>
     );
 
+    const workbenchHeader = (
+        <div className="detail-header">
+            <div>
+                <p className="eyebrow">Selected instance</p>
+                <h2>{selectedInstance ? `:${selectedInstance.port} ${selectedInstance.instanceId || ''}`.trim() : 'No instance selected'}</h2>
+                <span>{selectedInstance?.workingDir || selectedInstance?.url || 'Select an online instance to inspect it.'}</span>
+            </div>
+            {selectedInstance && <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer">Open</a>}
+        </div>
+    );
+
+    const detailContent = (tab: DashboardDetailTab) => (
+        <InstanceDetailPanel
+            instance={selectedInstance}
+            data={data}
+            activeTab={tab}
+            onRegistryPatch={(port, patch) => {
+                void registry.save({ instances: { [String(port)]: patch } }).then(() => load());
+            }}
+        />
+    );
+
     return (
         <ManagerShell
             sidebarCollapsed={view.sidebarCollapsed}
-            sidebar={(
-                <>
-                    <SidebarRail
-                        onlineCount={summary.online || 0}
-                        collapsed={view.sidebarCollapsed}
-                        onSelectInstances={() => view.setActiveDetailTab('overview')}
-                        onSelectPreview={() => view.setActiveDetailTab('preview')}
-                        onSelectActivity={() => view.setActivityDockCollapsed(false)}
-                        onToggleSidebar={handleSidebarToggle}
-                    />
-                    <div className="manager-sidebar-list">{instanceListContent}</div>
-                </>
-            )}
             commandBar={(
                 <CommandBar
                     query={query}
@@ -250,52 +262,77 @@ export function App() {
                     onOpenDrawer={() => view.setDrawerOpen(true)}
                 />
             )}
-            detail={(
-                <>
-                    {lifecycleMessage && <section className="state lifecycle-state">{lifecycleMessage}</section>}
-                    <InstanceDetailPanel
-                        instance={selectedInstance}
-                        data={data}
-                        activeTab={view.activeDetailTab}
-                        previewMode={view.previewMode}
-                        previewEnabled={view.previewEnabled}
-                        onTabChange={handleTabChange}
-                        onPreviewModeChange={view.setPreviewMode}
-                        onPreviewEnabledChange={view.setPreviewEnabled}
-                        onRegistryPatch={(port, patch) => {
-                            void registry.save({ instances: { [String(port)]: patch } }).then(() => load());
-                        }}
-                    />
-                </>
-            )}
-            activity={(
-                <ActivityDock
-                    collapsed={view.activityDockCollapsed}
-                    height={view.activityDockHeight}
-                    loading={loading}
-                    error={error}
-                    lifecycleMessage={lifecycleMessage}
-                    selectedInstance={selectedInstance}
-                    previewMode={view.previewMode}
-                    registryMessage={registry.error}
-                    onToggle={handleActivityToggle}
-                    onHeightChange={handleActivityHeight}
+            workspace={(
+                <WorkspaceLayout
+                    sidebarCollapsed={view.sidebarCollapsed}
+                    inspectorCollapsed={view.activityDockCollapsed}
+                    inspectorHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
+                    navigator={(
+                        <>
+                            <SidebarRail
+                                onlineCount={summary.online || 0}
+                                collapsed={view.sidebarCollapsed}
+                                onSelectInstances={() => view.setActiveDetailTab('overview')}
+                                onSelectPreview={() => view.setActiveDetailTab('preview')}
+                                onSelectActivity={() => view.setActivityDockCollapsed(false)}
+                                onToggleSidebar={handleSidebarToggle}
+                            />
+                            <div className="manager-sidebar-list">{instanceListContent}</div>
+                        </>
+                    )}
+                    workbench={(
+                        <>
+                            {lifecycleMessage && <section className="state lifecycle-state">{lifecycleMessage}</section>}
+                            <Workbench
+                                mode={view.activeDetailTab}
+                                onModeChange={handleTabChange}
+                                header={workbenchHeader}
+                                overview={detailContent('overview')}
+                                preview={(
+                                    <InstancePreview
+                                        instance={selectedInstance}
+                                        data={data}
+                                        mode={view.previewMode}
+                                        previewEnabled={view.previewEnabled}
+                                        onModeChange={view.setPreviewMode}
+                                        onPreviewEnabledChange={view.setPreviewEnabled}
+                                    />
+                                )}
+                                logs={detailContent('logs')}
+                                settings={detailContent('settings')}
+                            />
+                        </>
+                    )}
+                    inspector={(
+                        <ActivityDock
+                            collapsed={view.activityDockCollapsed}
+                            height={view.activityDockHeight}
+                            loading={loading}
+                            error={error}
+                            lifecycleMessage={lifecycleMessage}
+                            selectedInstance={selectedInstance}
+                            previewMode={view.previewMode}
+                            registryMessage={registry.error}
+                            onToggle={handleActivityToggle}
+                            onHeightChange={handleActivityHeight}
+                        />
+                    )}
+                    mobileNav={(
+                        <MobileNav
+                            activeTab={view.activeDetailTab}
+                            onOpenInstances={() => view.setDrawerOpen(true)}
+                            onSelectTab={handleTabChange}
+                            onToggleActivity={handleActivityToggle}
+                        />
+                    )}
+                    drawer={(
+                        <InstanceDrawer open={view.drawerOpen} onClose={() => view.setDrawerOpen(false)}>
+                            {instanceListContent}
+                        </InstanceDrawer>
+                    )}
                 />
             )}
             activityHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
-            mobileNav={(
-                <MobileNav
-                    activeTab={view.activeDetailTab}
-                    onOpenInstances={() => view.setDrawerOpen(true)}
-                    onSelectTab={view.setActiveDetailTab}
-                    onToggleActivity={handleActivityToggle}
-                />
-            )}
-            drawer={(
-                <InstanceDrawer open={view.drawerOpen} onClose={() => view.setDrawerOpen(false)}>
-                    {instanceListContent}
-                </InstanceDrawer>
-            )}
         />
     );
 }

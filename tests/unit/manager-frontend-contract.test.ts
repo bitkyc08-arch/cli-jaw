@@ -42,14 +42,15 @@ test('manager frontend has API entry and Open action', () => {
 
 test('manager frontend exposes one-instance preview controls', () => {
     const app = read('public/manager/src/App.tsx');
-    const detail = read('public/manager/src/components/InstanceDetailPanel.tsx');
+    const workbench = read('public/manager/src/components/Workbench.tsx');
     const hook = read('public/manager/src/hooks/useDashboardView.ts');
     const preview = read('public/manager/src/InstancePreview.tsx');
     const helper = read('public/manager/src/preview.ts');
 
     assert.ok(hook.includes('selectedPort'), 'manager UI must track a selected preview instance');
     assert.ok(app.includes('handleSelectInstance'), 'manager UI must allow selecting any instance row');
-    assert.ok(detail.includes('InstancePreview'), 'manager UI must render preview component');
+    assert.ok(app.includes('InstancePreview'), 'manager UI must render preview component');
+    assert.ok(workbench.includes('preview: props.preview'), 'workbench must route preview slot content');
     assert.ok(preview.includes('<iframe'), 'preview component must mount iframe');
     assert.ok(preview.includes('Enable preview'), 'preview component must expose enable toggle');
     assert.ok(preview.includes('Proxy preview'), 'preview component must expose proxy mode');
@@ -91,15 +92,19 @@ test('manager instance rows are selectable independently from preview availabili
 test('manager frontend routes layout through responsive shell components', () => {
     const app = read('public/manager/src/App.tsx');
     const detail = read('public/manager/src/components/InstanceDetailPanel.tsx');
+    const workbench = read('public/manager/src/components/Workbench.tsx');
 
     assert.ok(app.includes('ManagerShell'), 'App must use ManagerShell after 10.5.2 extraction');
     assert.ok(app.includes('CommandBar'), 'App must render CommandBar');
     assert.ok(app.includes('InstanceGroups'), 'App must render grouped instance list');
     assert.ok(app.includes('ActivityDock'), 'App must render ActivityDock');
-    assert.ok(detail.includes("'overview'"), 'detail panel must expose Overview tab');
-    assert.ok(detail.includes("'preview'"), 'detail panel must expose Preview tab');
-    assert.ok(detail.includes("'logs'"), 'detail panel must expose Logs tab');
-    assert.ok(detail.includes("'settings'"), 'detail panel must expose Settings tab');
+    assert.ok(workbench.includes("'overview'"), 'workbench must expose Overview tab');
+    assert.ok(workbench.includes("'preview'"), 'workbench must expose Preview tab');
+    assert.ok(workbench.includes("'logs'"), 'workbench must expose Logs tab');
+    assert.ok(workbench.includes("'settings'"), 'workbench must expose Settings tab');
+    assert.ok(detail.includes("props.activeTab === 'overview'"), 'detail panel must render Overview content');
+    assert.ok(detail.includes("props.activeTab === 'logs'"), 'detail panel must render Logs content');
+    assert.ok(detail.includes("props.activeTab === 'settings'"), 'detail panel must render Settings content');
 });
 
 test('manager frontend exposes 10.6 persistence controls', () => {

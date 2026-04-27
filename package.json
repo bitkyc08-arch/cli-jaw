@@ -62,6 +62,7 @@
     "test:watch": "tsx --import ./tests/setup/test-home.ts --test --watch tests/*.test.ts tests/unit/*.test.ts",
     "test:events": "tsx --test tests/events.test.ts",
     "test:telegram": "tsx --test tests/telegram-forwarding.test.ts",
+    "test:manager:browser": "tsx --test tests/browser/manager-layout-smoke.test.ts",
     "test:smoke": "TEST_PORT=3457 tsx --test tests/integration/api-smoke.test.ts",
     "smoke:opencode": "tsx scripts/smoke/opencode-external-dir-smoke.ts",
     "test:fresh-install": "tsx scripts/fresh-install-smoke.ts",
