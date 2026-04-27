@@ -1,51 +1,60 @@
+/* Tokens are owned by manager-tokens.css. This file keeps only the body
+ * defaults and base control reset. */
+
 :root {
-    color-scheme: dark;
-    --bg-base: #080b0f;
-    --bg-panel: #10161d;
-    --bg-raised: #151c25;
-    --bg-elevated: #1a2430;
-    --border-subtle: #202a35;
-    --border-strong: #2d3b4c;
-    --text-primary: #e7edf5;
-    --text-secondary: #9aa6b5;
-    --text-dim: #657283;
-    --accent: #62a8f5;
-    --status-running: #34d399;
-    --status-warn: #f5a524;
-    --status-error: #f87171;
-    --status-idle: #7b8797;
-    --shadow-panel: 0 22px 70px rgba(0, 0, 0, 0.28);
     font-family: "Outfit", "Geist", "Satoshi", sans-serif;
     background: var(--bg-base);
     color: var(--text-primary);
 }
+
 * { box-sizing: border-box; }
+
 body {
     margin: 0;
-    min-width: 320px; height: 100%; overflow: hidden;
+    min-width: 320px;
+    height: 100%;
+    overflow: hidden;
     background:
-        radial-gradient(circle at 12% 0%, rgba(98, 168, 245, 0.12), transparent 32rem),
-        linear-gradient(135deg, #080b0f 0%, #0c1117 54%, #0a0f14 100%);
+        radial-gradient(circle at 12% 0%, var(--shell-tint), transparent 32rem),
+        var(--bg-base);
+    color: var(--text-primary);
+    transition: background-color 200ms ease, color 200ms ease;
 }
+
 #manager-root { height: 100dvh; overflow: hidden; }
+
 button, input, select { font: inherit; }
+
 button, .open-link {
-    min-height: 34px;
+    min-height: 30px;
     border: 1px solid var(--border-strong);
-    background: #142133;
+    background: var(--button-bg);
     color: var(--text-primary);
     border-radius: 7px;
-    padding: 7px 10px;
+    padding: 5px 10px;
+    font-size: 12px;
     text-decoration: none;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     transition: background 160ms ease, border-color 160ms ease, transform 160ms ease;
 }
-button:hover:not(:disabled), .open-link:hover { background: #1a2b42; border-color: #3a5470; }
-button:active:not(:disabled), .open-link:active { transform: translateY(1px); }
+
+button:hover:not(:disabled),
+.open-link:hover {
+    background: var(--button-bg-hover);
+    border-color: var(--button-border-hover);
+}
+
+button:active:not(:disabled),
+.open-link:active { transform: translateY(1px); }
+
 button:disabled { cursor: not-allowed; opacity: 0.5; }
-button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible {
-    outline: 2px solid var(--accent);
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+select:focus-visible {
+    outline: 2px solid var(--ring);
     outline-offset: 2px;
 }

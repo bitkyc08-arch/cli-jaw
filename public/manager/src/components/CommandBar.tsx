@@ -1,6 +1,7 @@
-import type { DashboardInstanceStatus, DashboardScanResult } from '../types';
+import type { DashboardInstanceStatus, DashboardScanResult, DashboardUiTheme } from '../types';
 import { CommandCenter } from './CommandCenter';
 import { CommandFilters } from './CommandFilters';
+import { ThemeSwitch } from './ThemeSwitch';
 
 type StatusFilter = 'all' | DashboardInstanceStatus;
 
@@ -15,6 +16,7 @@ type CommandBarProps = {
     registryMessage: string | null;
     scanFrom: string;
     scanCount: string;
+    theme: DashboardUiTheme;
     onQueryChange: (value: string) => void;
     onStatusChange: (value: StatusFilter) => void;
     onCustomHomeChange: (value: string) => void;
@@ -24,6 +26,8 @@ type CommandBarProps = {
     onScanRangeCommit: (from: string, count: string) => void;
     onRefresh: () => void;
     onOpenDrawer: () => void;
+    onThemeChange: (next: DashboardUiTheme) => void;
+    onOpenPalette: () => void;
 };
 
 export function CommandBar(props: CommandBarProps) {
@@ -44,17 +48,32 @@ export function CommandBar(props: CommandBarProps) {
                 </>
             )}
             search={(
-                <input
-                    value={props.query}
-                    onChange={event => props.onQueryChange(event.target.value)}
-                    placeholder="Search port, home, CLI, model"
-                    aria-label="Search instances"
-                />
+                <div className="search-input-wrapper">
+                    <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+                    <input
+                        value={props.query}
+                        onChange={event => props.onQueryChange(event.target.value)}
+                        placeholder="Search port, home, CLI, model"
+                        aria-label="Search instances"
+                    />
+                </div>
             )}
             actions={(
-                <button type="button" onClick={props.onRefresh} disabled={props.loading}>
-                    {props.loading ? 'Scanning' : 'Refresh'}
-                </button>
+                <div className="command-actions-group">
+                    <button
+                        type="button"
+                        className="command-palette-trigger"
+                        onClick={props.onOpenPalette}
+                        aria-label="Open command palette"
+                        title="Open command palette (⌘K / Ctrl+K)"
+                    >
+                        <span aria-hidden="true">⌘K</span>
+                    </button>
+                    <ThemeSwitch theme={props.theme} onChange={props.onThemeChange} />
+                    <button type="button" onClick={props.onRefresh} disabled={props.loading}>
+                        {props.loading ? 'Scanning' : 'Refresh'}
+                    </button>
+                </div>
             )}
             filters={(
                 <CommandFilters

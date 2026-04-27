@@ -3,7 +3,7 @@
     display: grid; grid-template-columns: minmax(0, 1fr);
     grid-template-rows: max-content minmax(0, 1fr);
     grid-template-areas: "command" "workspace";
-    background: rgba(8, 11, 15, 0.84);
+    background: var(--bg-base);
 }
 .manager-workspace {
     grid-area: workspace;
@@ -17,17 +17,17 @@
 }
 .manager-shell.is-sidebar-collapsed .manager-workspace,
 .manager-workspace.is-sidebar-collapsed { grid-template-columns: 56px minmax(0, 1fr); }
-.manager-sidebar { grid-area: sidebar; min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--border-subtle); background: #0b1016; }
+.manager-sidebar { grid-area: sidebar; min-width: 0; min-height: 0; overflow: hidden; border-right: 1px solid var(--border-subtle); background: var(--canvas-deep); }
 .manager-command {
     grid-area: command;
     min-width: 0;
     border-bottom: 1px solid var(--border-subtle);
-    background: rgba(16, 22, 29, 0.94);
+    background: var(--bg-panel);
 }
 .manager-detail { grid-area: detail; min-width: 0; min-height: 0; overflow: hidden; background: var(--bg-panel); }
 .manager-activity {
     grid-area: activity; min-width: 0; min-height: 0; overflow: hidden;
-    border-top: 1px solid var(--border-subtle); background: #0c1218;
+    border-top: 1px solid var(--border-subtle); background: var(--canvas-mid);
 }
 .manager-mobile-nav { display: none; grid-area: mobile-nav; }
 .sidebar-rail {

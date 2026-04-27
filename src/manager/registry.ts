@@ -14,6 +14,7 @@ import type {
     DashboardRegistryStatus,
     DashboardRegistryUi,
     DashboardScanResult,
+    DashboardUiTheme,
 } from './types.js';
 
 const REGISTRY_FILE = 'manager-instances.json';
@@ -21,6 +22,7 @@ const MIN_ACTIVITY_HEIGHT = 88;
 const MAX_ACTIVITY_HEIGHT = 320;
 const DEFAULT_ACTIVITY_HEIGHT = 150;
 const DETAIL_TABS: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings'];
+const UI_THEMES: DashboardUiTheme[] = ['auto', 'dark', 'light'];
 
 export type DashboardRegistryLoadResult = {
     registry: DashboardRegistry;
@@ -73,6 +75,7 @@ function defaultUi(): DashboardRegistryUi {
         sidebarCollapsed: false,
         activityDockCollapsed: false,
         activityDockHeight: DEFAULT_ACTIVITY_HEIGHT,
+        uiTheme: 'auto',
     };
 }
 
@@ -92,12 +95,16 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
     const selectedTab = DETAIL_TABS.includes(input.selectedTab as DashboardDetailTab)
         ? input.selectedTab as DashboardDetailTab
         : fallback.selectedTab;
+    const uiTheme = UI_THEMES.includes(input.uiTheme as DashboardUiTheme)
+        ? input.uiTheme as DashboardUiTheme
+        : fallback.uiTheme;
     return {
         selectedPort,
         selectedTab,
         sidebarCollapsed: typeof input.sidebarCollapsed === 'boolean' ? input.sidebarCollapsed : fallback.sidebarCollapsed,
         activityDockCollapsed: typeof input.activityDockCollapsed === 'boolean' ? input.activityDockCollapsed : fallback.activityDockCollapsed,
         activityDockHeight: clampInt(input.activityDockHeight, fallback.activityDockHeight, MIN_ACTIVITY_HEIGHT, MAX_ACTIVITY_HEIGHT),
+        uiTheme,
     };
 }
 

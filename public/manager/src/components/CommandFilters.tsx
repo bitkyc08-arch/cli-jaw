@@ -31,13 +31,16 @@ export function CommandFilters(props: CommandFiltersProps) {
             >
                 {STATUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
             </select>
-            <input
-                className="home-input"
-                value={props.customHome}
-                onChange={event => props.onCustomHomeChange(event.target.value)}
-                placeholder="Custom home, default ~/.cli-jaw-<port>"
-                aria-label="Custom home for started instances"
-            />
+            <div className="launch-home-control">
+                <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+                <input
+                    className="home-input"
+                    value={props.customHome}
+                    onChange={event => props.onCustomHomeChange(event.target.value)}
+                    placeholder="Launch home (e.g. ~/.cli-jaw-custom)"
+                    aria-label="Custom home for started instances"
+                />
+            </div>
             <label className="toggle-control">
                 <input
                     type="checkbox"
@@ -53,6 +56,7 @@ export function CommandFilters(props: CommandFiltersProps) {
                     onBlur={commitScanRange}
                     onKeyDown={event => { if (event.key === 'Enter') commitScanRange(); }}
                     inputMode="numeric"
+                    placeholder="from"
                     aria-label="Scan from port"
                 />
                 <input
@@ -61,6 +65,7 @@ export function CommandFilters(props: CommandFiltersProps) {
                     onBlur={commitScanRange}
                     onKeyDown={event => { if (event.key === 'Enter') commitScanRange(); }}
                     inputMode="numeric"
+                    placeholder="count"
                     aria-label="Scan port count"
                 />
             </div>

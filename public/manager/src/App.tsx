@@ -2,9 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { fetchInstances, runLifecycleAction } from './api';
 import { ActivityDock } from './components/ActivityDock';
 import { CommandBar } from './components/CommandBar';
+import { CommandPalette } from './components/CommandPalette';
 import { InstanceDetailPanel } from './components/InstanceDetailPanel';
 import { InstanceDrawer } from './components/InstanceDrawer';
 import { InstanceGroups } from './components/InstanceGroups';
+import { EmptyNavigator } from './components/EmptyNavigator';
 import { InstanceNavigator } from './components/InstanceNavigator';
 import { ManagerShell } from './components/ManagerShell';
 import { MobileNav } from './components/MobileNav';
@@ -14,6 +16,8 @@ import { WorkspaceLayout } from './components/WorkspaceLayout';
 import { InstancePreview } from './InstancePreview';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
 import { useDashboardView } from './hooks/useDashboardView';
+import { useTheme, syncThemeFromRegistry } from './hooks/useTheme';
+import { useCommandPalette } from './hooks/useCommandPalette';
 import type {
     DashboardDetailTab,
     DashboardInstance,
@@ -50,6 +54,31 @@ export function App() {
     const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
     const registry = useDashboardRegistry();
     const view = useDashboardView();
+    const theme = useTheme((next) => {
+        if (!hydrated) return;
+        void registry.save({ ui: { uiTheme: next } });
+    });
+    const palette = useCommandPalette();
+
+    function cycleTheme(): void {
+        const order: ('auto' | 'light' | 'dark')[] = ['auto', 'light', 'dark'];
+        const next = order[(order.indexOf(theme.theme) + 1) % order.length];
+        theme.setTheme(next);
+    }
+
+    function focusScanRange(): void {
+        const target = document.querySelector('.scan-range-control');
+        if (target instanceof HTMLElement) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            const firstInput = target.querySelector('input');
+            if (firstInput instanceof HTMLInputElement) firstInput.focus();
+        }
+    }
+
+    function openSelectedInBrowser(): void {
+        if (!selectedInstance) return;
+        window.open(selectedInstance.url, '_blank', 'noopener,noreferrer');
+    }
 
     async function load(nextShowHidden = showHidden): Promise<void> {
         setLoading(true);
@@ -78,6 +107,7 @@ export function App() {
                 view.setSidebarCollapsed(ui.sidebarCollapsed);
                 view.setActivityDockCollapsed(ui.activityDockCollapsed);
                 view.setActivityDockHeight(ui.activityDockHeight);
+                syncThemeFromRegistry(ui.uiTheme);
                 setScanFromInput(String(loaded.registry.scan.from));
                 setScanCountInput(String(loaded.registry.scan.count));
             } finally {
@@ -139,19 +169,24 @@ export function App() {
         view.setSelectedPort(instance.port);
         view.setActiveDetailTab('preview');
         view.setPreviewEnabled(true);
+        view.setActivityDockCollapsed(true);
         view.setDrawerOpen(false);
-        void saveUi({ selectedPort: instance.port, selectedTab: 'preview' });
+        void saveUi({ selectedPort: instance.port, selectedTab: 'preview', activityDockCollapsed: true });
     }
 
     function handleSelectInstance(instance: DashboardInstance): void {
         view.setSelectedPort(instance.port);
-        view.setActiveDetailTab('overview');
         view.setDrawerOpen(false);
-        void saveUi({ selectedPort: instance.port, selectedTab: 'overview' });
+        void saveUi({ selectedPort: instance.port });
     }
 
     function handleTabChange(tab: DashboardDetailTab): void {
         view.setActiveDetailTab(tab);
+        if (tab === 'preview') {
+            view.setActivityDockCollapsed(true);
+            void saveUi({ selectedTab: tab, activityDockCollapsed: true });
+            return;
+        }
         void saveUi({ selectedTab: tab });
     }
 
@@ -198,11 +233,20 @@ export function App() {
             ? filtered.filter(instance => instance.port !== selectedInstance.port)
             : filtered;
 
+        const showEmpty = !error && !loading && instances.length === 0
+            && !instances.some(instance => instance.hidden);
+
         return (
         <>
             {error && <section className="state error-state">Scan failed: {error}</section>}
             {!error && loading && <section className="state">Scanning local Jaw instances...</section>}
-            {!error && (
+            {showEmpty && data?.manager && (
+                <EmptyNavigator
+                    rangeFrom={data.manager.rangeFrom}
+                    rangeTo={data.manager.rangeTo}
+                />
+            )}
+            {!error && !showEmpty && (
                 <InstanceGroups
                     instances={listInstances}
                     selectedPort={selectedInstance?.port || null}
@@ -225,7 +269,7 @@ export function App() {
                 <h2>{selectedInstance ? `:${selectedInstance.port} ${selectedInstance.instanceId || ''}`.trim() : 'No instance selected'}</h2>
                 <span>{selectedInstance?.workingDir || selectedInstance?.url || 'Select an online instance to inspect it.'}</span>
             </div>
-            {selectedInstance && <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer">Open</a>}
+            {selectedInstance && <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>Open</a>}
         </div>
     );
 
@@ -241,6 +285,7 @@ export function App() {
     );
 
     return (
+        <>
         <ManagerShell
             sidebarCollapsed={view.sidebarCollapsed}
             commandBar={(
@@ -267,6 +312,9 @@ export function App() {
                     onScanRangeCommit={(from, count) => void commitScanRange(from, count)}
                     onRefresh={() => void load()}
                     onOpenDrawer={() => view.setDrawerOpen(true)}
+                    theme={theme.theme}
+                    onThemeChange={theme.setTheme}
+                    onOpenPalette={palette.toggle}
                 />
             )}
             workspace={(
@@ -279,12 +327,14 @@ export function App() {
                             <SidebarRail
                                 onlineCount={summary.online || 0}
                                 collapsed={view.sidebarCollapsed}
-                                onSelectInstances={() => view.setActiveDetailTab('overview')}
-                                onSelectPreview={() => view.setActiveDetailTab('preview')}
-                                onSelectActivity={() => view.setActivityDockCollapsed(false)}
+                                activeTab={view.activeDetailTab}
+                                activityOpen={!view.activityDockCollapsed}
+                                onSelectInstances={() => handleTabChange('overview')}
+                                onSelectPreview={() => handleTabChange('preview')}
+                                onSelectActivity={handleActivityToggle}
                                 onToggleSidebar={handleSidebarToggle}
                             />
-                            <div className="manager-sidebar-list">
+                            <div id="manager-sidebar-list" className="manager-sidebar-list">
                                 <InstanceNavigator
                                     active={selectedInstance}
                                     hiddenCount={instances.filter(instance => instance.hidden).length}
@@ -358,5 +408,25 @@ export function App() {
             )}
             activityHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
         />
+        <CommandPalette
+            open={palette.open}
+            onClose={palette.close}
+            instances={instances}
+            getLabel={instanceLabel}
+            onSelectInstance={handleSelectInstance}
+            theme={theme.theme}
+            onCycleTheme={cycleTheme}
+            onRefresh={() => void load()}
+            onToggleHidden={() => {
+                const next = !showHidden;
+                setShowHidden(next);
+                void load(next);
+            }}
+            showHidden={showHidden}
+            onFocusScanRange={focusScanRange}
+            onOpenSelected={openSelectedInBrowser}
+            selectedInstance={selectedInstance}
+        />
+        </>
     );
 }

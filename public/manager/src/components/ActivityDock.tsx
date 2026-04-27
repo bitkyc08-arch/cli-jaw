@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import type { DashboardInstance } from '../types';
+import { ActivityTimeline, type ActivityEntry } from './ActivityTimeline';
 
 const MIN_ACTIVITY_HEIGHT = 88;
 const MAX_ACTIVITY_HEIGHT = 320;
@@ -25,6 +26,7 @@ function clampActivityHeight(height: number): number {
 export function ActivityDock(props: ActivityDockProps) {
     const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
     const { onHeightChange } = props;
+    const entries = useEntries(props);
 
     useEffect(() => {
         function handlePointerMove(event: PointerEvent): void {
@@ -71,15 +73,41 @@ export function ActivityDock(props: ActivityDockProps) {
                 </button>
             </div>
             {!props.collapsed && (
-                <div className="activity-list">
-                    <p><strong>scan</strong> {props.loading ? 'scanning local ports' : 'latest scan loaded'}</p>
-                    {props.error && <p><strong>error</strong> {props.error}</p>}
-                    {props.registryMessage && <p><strong>registry</strong> {props.registryMessage}</p>}
-                    {props.lifecycleMessage && <p><strong>lifecycle</strong> {props.lifecycleMessage}</p>}
-                    <p><strong>selected</strong> {props.selectedInstance ? `:${props.selectedInstance.port}` : 'none'}</p>
-                    <p><strong>preview</strong> {props.previewMode === 'proxy' ? 'proxy path is primary' : 'direct iframe is best-effort'}</p>
-                </div>
+                <ActivityTimeline entries={entries} />
             )}
         </aside>
     );
+}
+
+function useEntries(props: ActivityDockProps): ActivityEntry[] {
+    return useMemo(() => {
+        const now = new Date().toISOString();
+        const out: ActivityEntry[] = [];
+        out.push({
+            at: now,
+            source: 'scan',
+            message: props.loading ? 'scanning local ports' : 'latest scan loaded',
+        });
+        if (props.error) out.push({ at: now, source: 'error', message: props.error });
+        if (props.registryMessage) out.push({ at: now, source: 'registry', message: props.registryMessage });
+        if (props.lifecycleMessage) out.push({ at: now, source: 'lifecycle', message: props.lifecycleMessage });
+        out.push({
+            at: now,
+            source: 'selected',
+            message: props.selectedInstance ? `:${props.selectedInstance.port}` : 'none',
+        });
+        out.push({
+            at: now,
+            source: 'preview',
+            message: props.previewMode === 'proxy' ? 'proxy path is primary' : 'direct iframe is best-effort',
+        });
+        return out;
+    }, [
+        props.loading,
+        props.error,
+        props.registryMessage,
+        props.lifecycleMessage,
+        props.selectedInstance,
+        props.previewMode,
+    ]);
 }

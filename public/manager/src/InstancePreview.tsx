@@ -21,34 +21,34 @@ export function InstancePreview(props: InstancePreviewProps) {
         <aside className="preview-panel" aria-label="Instance preview">
             <div className="preview-header">
                 <div>
-                    <p className="eyebrow">Preview</p>
-                    <h2>{props.instance ? `:${props.instance.port}` : 'No instance selected'}</h2>
+                    <p className="eyebrow">Preview workbench</p>
+                    <h2>{props.mode === 'proxy' ? 'Proxy preview' : 'Direct iframe'}</h2>
+                    <p>{props.instance ? `:${props.instance.port}` : 'No instance selected'}</p>
                 </div>
-                {props.instance && (
-                    <a className="open-link" href={props.instance.url} target="_blank" rel="noreferrer">
-                        Open
-                    </a>
-                )}
-            </div>
+                <div className="preview-controls" aria-label="Preview controls">
+                    <label className="preview-toggle">
+                        <input
+                            type="checkbox"
+                            checked={props.previewEnabled}
+                            onChange={event => props.onPreviewEnabledChange(event.target.checked)}
+                        />
+                        Enable
+                    </label>
 
-            <div className="preview-controls" aria-label="Preview controls">
-                <label className="preview-toggle">
-                    <input
-                        type="checkbox"
-                        checked={props.previewEnabled}
-                        onChange={event => props.onPreviewEnabledChange(event.target.checked)}
-                    />
-                    Enable preview
-                </label>
-
-                <select
-                    value={props.mode}
-                    onChange={event => props.onModeChange(event.target.value as DashboardPreviewMode)}
-                    aria-label="Preview mode"
-                >
-                    <option value="proxy">Proxy preview</option>
-                    <option value="direct">Direct iframe</option>
-                </select>
+                    <select
+                        value={props.mode}
+                        onChange={event => props.onModeChange(event.target.value as DashboardPreviewMode)}
+                        aria-label="Preview mode"
+                    >
+                        <option value="proxy">Proxy</option>
+                        <option value="direct">Direct</option>
+                    </select>
+                    {props.instance && (
+                        <a className="open-link" href={props.instance.url} target="_blank" rel="noreferrer">
+                            Open
+                        </a>
+                    )}
+                </div>
             </div>
 
             {!state.canPreview && <div className="preview-empty">{state.reason}</div>}

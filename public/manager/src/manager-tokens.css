@@ -1,0 +1,244 @@
+/* ──────────────────────────────────────────────────────────────────────────
+ * 10.6.9a — Theme tokens for the manager dashboard.
+ *
+ * Three-tier hierarchy:
+ *   primitive  raw color values (referenced only inside this file)
+ *   semantic   intent-based aliases (consumed by all other CSS)
+ *   component  declared in component CSS only when truly divergent
+ *
+ * The semantic layer keeps the legacy variable names so existing CSS files
+ * (styles, layout, components, persistence, polish) keep rendering without
+ * being rewritten in this slice. New `--surface-*` and `--ink-*` aliases are
+ * exposed for future code; they map to the same legacy values.
+ *
+ * Theme resolution lives on <html data-theme="dark|light|auto">. The inline
+ * boot script in index.html sets this attribute before paint to prevent FOUC.
+ * ────────────────────────────────────────────────────────────────────────── */
+
+/* Primitive scale ─ never consumed outside this file. */
+:root {
+    --jp-gray-50:  #f7f8fa;
+    --jp-gray-100: #eef0f3;
+    --jp-gray-200: #e2e6ec;
+    --jp-gray-300: #cdd3dc;
+    --jp-gray-400: #a8b0bc;
+    --jp-gray-500: #6b7382;
+    --jp-gray-600: #4d5662;
+    --jp-gray-700: #2f3742;
+    --jp-gray-800: #1a2027;
+    --jp-gray-900: #111418;
+
+    --jp-blue-100: #dbe7ff;
+    --jp-blue-300: #8fb8f7;
+    --jp-blue-400: #62a8f5;
+    --jp-blue-500: #3884ff;
+    --jp-blue-600: #1f6feb;
+    --jp-blue-700: #155bbb;
+
+    --jp-green-400: #34d399;
+    --jp-green-600: #15803d;
+    --jp-amber-400: #f5a524;
+    --jp-amber-600: #b45309;
+    --jp-red-400:   #f87171;
+    --jp-red-600:   #b91c1c;
+    --jp-slate-400: #7b8797;
+    --jp-slate-500: #6b7382;
+}
+
+/* Default = dark (matches the previous behavior). */
+:root,
+:root[data-theme="dark"] {
+    color-scheme: dark;
+
+    /* legacy variable names — keep so existing CSS still renders */
+    --bg-base:        #080b0f;
+    --bg-panel:       #10161d;
+    --bg-raised:      #151c25;
+    --bg-elevated:    #1a2430;
+    --border-subtle:  #202a35;
+    --border-strong:  #2d3b4c;
+    --text-primary:   #e7edf5;
+    --text-secondary: #9aa6b5;
+    --text-dim:       #657283;
+    --accent:         #62a8f5;
+    --accent-soft:    #1e2b3d;
+    --status-running: #34d399;
+    --status-warn:    #f5a524;
+    --status-error:   #f87171;
+    --status-idle:    #7b8797;
+    --shadow-panel:    0 22px 70px rgba(0, 0, 0, 0.28);
+    --shadow-elevated: 0 1px 3px rgba(0, 0, 0, 0.18);
+    --scrim-overlay:   rgba(5, 8, 12, 0.68);
+
+    /* new semantic aliases — used by 10.6.9 components and onward */
+    --surface-base:    var(--bg-base);
+    --surface-panel:   var(--bg-panel);
+    --surface-raised:  var(--bg-raised);
+    --surface-overlay: var(--bg-elevated);
+    --surface-canvas:  var(--bg-base);
+    --ink-primary:     var(--text-primary);
+    --ink-secondary:   var(--text-secondary);
+    --ink-muted:       var(--text-dim);
+    --ink-on-accent:   #ffffff;
+    --ring:            var(--accent);
+
+    /* common composite values previously inlined as raw hex */
+    --button-bg:       #142133;
+    --button-bg-hover: #1a2b42;
+    --button-border-hover: #3a5470;
+    --row-bg:          #111b26;
+    --row-bg-hover:    rgba(21, 28, 37, 0.62);
+    --canvas-deep:     #0b1016;
+    --canvas-mid:      #0c1218;
+    --canvas-soft:     #0d141c;
+    --shell-tint:      rgba(98, 168, 245, 0.12);
+    --error-border:    #70303a;
+    --error-text:      #ffc0c6;
+    --lifecycle-border:#315a82;
+    --lifecycle-text:  #cfe8ff;
+    --highlight-bg:    #20344e;
+    --highlight-border:#426483;
+    --placeholder-ink: #728093;
+    --segment-track:   rgba(255, 255, 255, 0.03);
+    --segment-border:  rgba(255, 255, 255, 0.05);
+    --segment-hover:   rgba(255, 255, 255, 0.05);
+    --segment-active:  #232c38;
+    --segment-active-ink: #e2e8f0;
+    --link-border:     rgba(255, 255, 255, 0.12);
+    --link-bg-hover:   rgba(255, 255, 255, 0.06);
+    --link-border-hover: rgba(255, 255, 255, 0.2);
+    --link-ink:        #a1b0c0;
+    --inset-glow:      rgba(255, 255, 255, 0.03);
+    --rail-top:        #0d141c;
+    --rail-bottom:     #0a1017;
+}
+
+/* Light palette. */
+:root[data-theme="light"] {
+    color-scheme: light;
+
+    --bg-base:        var(--jp-gray-50);
+    --bg-panel:       #ffffff;
+    --bg-raised:      var(--jp-gray-100);
+    --bg-elevated:    #ffffff;
+    --border-subtle:  var(--jp-gray-200);
+    --border-strong:  var(--jp-gray-300);
+    --text-primary:   var(--jp-gray-900);
+    --text-secondary: var(--jp-gray-600);
+    --text-dim:       var(--jp-gray-500);
+    --accent:         var(--jp-blue-600);
+    --accent-soft:    var(--jp-blue-100);
+    --status-running: var(--jp-green-600);
+    --status-warn:    var(--jp-amber-600);
+    --status-error:   var(--jp-red-600);
+    --status-idle:    var(--jp-slate-500);
+    --shadow-panel:    0 18px 50px rgba(17, 20, 24, 0.08);
+    --shadow-elevated: 0 1px 3px rgba(17, 20, 24, 0.08);
+    --scrim-overlay:   rgba(17, 20, 24, 0.32);
+
+    --surface-base:    var(--bg-base);
+    --surface-panel:   var(--bg-panel);
+    --surface-raised:  var(--bg-raised);
+    --surface-overlay: var(--bg-elevated);
+    --surface-canvas:  var(--bg-base);
+    --ink-primary:     var(--text-primary);
+    --ink-secondary:   var(--text-secondary);
+    --ink-muted:       var(--text-dim);
+    --ink-on-accent:   #ffffff;
+    --ring:            var(--jp-blue-500);
+
+    --button-bg:       #ffffff;
+    --button-bg-hover: var(--jp-gray-100);
+    --button-border-hover: var(--jp-gray-400);
+    --row-bg:          #ffffff;
+    --row-bg-hover:    rgba(31, 111, 235, 0.06);
+    --canvas-deep:     var(--jp-gray-50);
+    --canvas-mid:      #ffffff;
+    --canvas-soft:     var(--jp-gray-100);
+    --shell-tint:      rgba(31, 111, 235, 0.05);
+    --error-border:    #f5b7bd;
+    --error-text:      #8a1f2a;
+    --lifecycle-border:#b3d2f5;
+    --lifecycle-text:  #1f4e84;
+    --highlight-bg:    var(--jp-blue-100);
+    --highlight-border: var(--jp-blue-300);
+    --placeholder-ink: var(--jp-gray-500);
+    --segment-track:   var(--jp-gray-100);
+    --segment-border:  var(--jp-gray-200);
+    --segment-hover:   rgba(17, 20, 24, 0.04);
+    --segment-active:  #ffffff;
+    --segment-active-ink: var(--jp-gray-900);
+    --link-border:     var(--jp-gray-200);
+    --link-bg-hover:   var(--jp-gray-100);
+    --link-border-hover: var(--jp-gray-300);
+    --link-ink:        var(--jp-gray-600);
+    --inset-glow:      rgba(0, 0, 0, 0.02);
+    --rail-top:        #ffffff;
+    --rail-bottom:     var(--jp-gray-50);
+}
+
+/* Auto: follow OS, default to dark when query is unsupported. */
+@media (prefers-color-scheme: light) {
+    :root[data-theme="auto"] {
+        color-scheme: light;
+
+        --bg-base:        var(--jp-gray-50);
+        --bg-panel:       #ffffff;
+        --bg-raised:      var(--jp-gray-100);
+        --bg-elevated:    #ffffff;
+        --border-subtle:  var(--jp-gray-200);
+        --border-strong:  var(--jp-gray-300);
+        --text-primary:   var(--jp-gray-900);
+        --text-secondary: var(--jp-gray-600);
+        --text-dim:       var(--jp-gray-500);
+        --accent:         var(--jp-blue-600);
+        --accent-soft:    var(--jp-blue-100);
+        --status-running: var(--jp-green-600);
+        --status-warn:    var(--jp-amber-600);
+        --status-error:   var(--jp-red-600);
+        --status-idle:    var(--jp-slate-500);
+        --shadow-panel:    0 18px 50px rgba(17, 20, 24, 0.08);
+        --shadow-elevated: 0 1px 3px rgba(17, 20, 24, 0.08);
+        --scrim-overlay:   rgba(17, 20, 24, 0.32);
+
+        --surface-base:    var(--bg-base);
+        --surface-panel:   var(--bg-panel);
+        --surface-raised:  var(--bg-raised);
+        --surface-overlay: var(--bg-elevated);
+        --surface-canvas:  var(--bg-base);
+        --ink-primary:     var(--text-primary);
+        --ink-secondary:   var(--text-secondary);
+        --ink-muted:       var(--text-dim);
+        --ink-on-accent:   #ffffff;
+        --ring:            var(--jp-blue-500);
+
+        --button-bg:       #ffffff;
+        --button-bg-hover: var(--jp-gray-100);
+        --button-border-hover: var(--jp-gray-400);
+        --row-bg:          #ffffff;
+        --row-bg-hover:    rgba(31, 111, 235, 0.06);
+        --canvas-deep:     var(--jp-gray-50);
+        --canvas-mid:      #ffffff;
+        --canvas-soft:     var(--jp-gray-100);
+        --shell-tint:      rgba(31, 111, 235, 0.05);
+        --error-border:    #f5b7bd;
+        --error-text:      #8a1f2a;
+        --lifecycle-border:#b3d2f5;
+        --lifecycle-text:  #1f4e84;
+        --highlight-bg:    var(--jp-blue-100);
+        --highlight-border: var(--jp-blue-300);
+        --placeholder-ink: var(--jp-gray-500);
+        --segment-track:   var(--jp-gray-100);
+        --segment-border:  var(--jp-gray-200);
+        --segment-hover:   rgba(17, 20, 24, 0.04);
+        --segment-active:  #ffffff;
+        --segment-active-ink: var(--jp-gray-900);
+        --link-border:     var(--jp-gray-200);
+        --link-bg-hover:   var(--jp-gray-100);
+        --link-border-hover: var(--jp-gray-300);
+        --link-ink:        var(--jp-gray-600);
+        --inset-glow:      rgba(0, 0, 0, 0.02);
+        --rail-top:        #ffffff;
+        --rail-bottom:     var(--jp-gray-50);
+    }
+}

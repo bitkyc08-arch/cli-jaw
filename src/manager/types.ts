@@ -10,6 +10,7 @@ export type DashboardPreviewMode = 'direct' | 'proxy';
 export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
+export type DashboardUiTheme = 'auto' | 'dark' | 'light';
 
 export type DashboardProxyInfo = {
     enabled: boolean;
@@ -97,6 +98,7 @@ export type DashboardRegistryUi = {
     sidebarCollapsed: boolean;
     activityDockCollapsed: boolean;
     activityDockHeight: number;
+    uiTheme: DashboardUiTheme;
 };
 
 export type DashboardRegistryInstance = {
