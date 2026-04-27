@@ -1,15 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { fetchInstances, runLifecycleAction } from './api';
-import { InstancePreview } from './InstancePreview';
+import { ActivityDock } from './components/ActivityDock';
+import { CommandBar } from './components/CommandBar';
+import { InstanceDetailPanel } from './components/InstanceDetailPanel';
+import { InstanceDrawer } from './components/InstanceDrawer';
+import { InstanceGroups } from './components/InstanceGroups';
+import { ManagerShell } from './components/ManagerShell';
+import { MobileNav } from './components/MobileNav';
+import { SidebarRail } from './components/SidebarRail';
+import { useDashboardView } from './hooks/useDashboardView';
 import type {
     DashboardInstance,
     DashboardInstanceStatus,
     DashboardLifecycleAction,
-    DashboardPreviewMode,
     DashboardScanResult,
 } from './types';
-
-const STATUS_OPTIONS: Array<'all' | DashboardInstanceStatus> = ['all', 'online', 'offline', 'timeout', 'error', 'unknown'];
 
 function formatUptime(seconds: number | null): string {
     if (seconds == null) return 'n/a';
@@ -24,22 +29,16 @@ function instanceLabel(instance: DashboardInstance): string {
     return instance.instanceId || instance.homeDisplay || `port-${instance.port}`;
 }
 
-function statusClass(status: DashboardInstanceStatus): string {
-    return `status status-${status}`;
-}
-
 export function App() {
     const [data, setData] = useState<DashboardScanResult | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [query, setQuery] = useState('');
     const [status, setStatus] = useState<'all' | DashboardInstanceStatus>('all');
-    const [selectedPort, setSelectedPort] = useState<number | null>(null);
-    const [previewMode, setPreviewMode] = useState<DashboardPreviewMode>('proxy');
-    const [previewEnabled, setPreviewEnabled] = useState(true);
     const [customHome, setCustomHome] = useState('');
     const [lifecycleBusyPort, setLifecycleBusyPort] = useState<number | null>(null);
     const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
+    const view = useDashboardView();
 
     async function load(): Promise<void> {
         setLoading(true);
@@ -85,9 +84,22 @@ export function App() {
     }, [instances, query, status]);
 
     const selectedInstance = useMemo(() => {
-        if (selectedPort == null) return filtered.find(instance => instance.ok) || null;
-        return instances.find(instance => instance.port === selectedPort) || null;
-    }, [filtered, instances, selectedPort]);
+        if (view.selectedPort == null) return filtered.find(instance => instance.ok) || null;
+        return instances.find(instance => instance.port === view.selectedPort) || null;
+    }, [filtered, instances, view.selectedPort]);
+
+    function handlePreview(instance: DashboardInstance): void {
+        view.setSelectedPort(instance.port);
+        view.setActiveDetailTab('preview');
+        view.setPreviewEnabled(true);
+        view.setDrawerOpen(false);
+    }
+
+    function handleSelectInstance(instance: DashboardInstance): void {
+        view.setSelectedPort(instance.port);
+        view.setActiveDetailTab('overview');
+        view.setDrawerOpen(false);
+    }
 
     async function handleLifecycle(action: DashboardLifecycleAction, instance: DashboardInstance): Promise<void> {
         const lifecycle = instance.lifecycle;
@@ -102,7 +114,7 @@ export function App() {
             const result = await runLifecycleAction(action, instance.port, home);
             setLifecycleMessage(result.message);
             await load();
-            setSelectedPort(instance.port);
+            view.setSelectedPort(instance.port);
         } catch (err) {
             setLifecycleMessage((err as Error).message);
         } finally {
@@ -110,136 +122,93 @@ export function App() {
         }
     }
 
+    const instanceList = (
+        <InstanceGroups
+            instances={filtered}
+            selectedPort={selectedInstance?.port || null}
+            lifecycleBusyPort={lifecycleBusyPort}
+            getLabel={instanceLabel}
+            formatUptime={formatUptime}
+            onSelect={handleSelectInstance}
+            onPreview={handlePreview}
+            onLifecycle={(action, instance) => void handleLifecycle(action, instance)}
+        />
+    );
+
     return (
-        <main className="dashboard-shell">
-            <header className="dashboard-topbar">
-                <div>
-                    <p className="eyebrow">Jaw Manager</p>
-                    <h1>Instance dashboard</h1>
-                </div>
-                <div className="topbar-meta">
-                    <span>Manager {data?.manager.port || 24576}</span>
-                    <span>Scan {data ? `${data.manager.rangeFrom}-${data.manager.rangeTo}` : '3457-3506'}</span>
-                    <button type="button" onClick={() => void load()} disabled={loading}>
-                        {loading ? 'Scanning' : 'Refresh'}
-                    </button>
-                </div>
-            </header>
-
-            <section className="summary-grid" aria-label="Instance summary">
-                <div><span>Total</span><strong>{summary.total || 0}</strong></div>
-                <div><span>Online</span><strong>{summary.online || 0}</strong></div>
-                <div><span>Offline</span><strong>{summary.offline || 0}</strong></div>
-                <div><span>Timeout</span><strong>{summary.timeout || 0}</strong></div>
-            </section>
-
-            <section className="toolbar" aria-label="Filters">
-                <input
-                    value={query}
-                    onChange={event => setQuery(event.target.value)}
-                    placeholder="Search port, home, CLI, model"
-                    aria-label="Search instances"
+        <ManagerShell
+            rail={(
+                <SidebarRail
+                    onlineCount={summary.online || 0}
+                    onSelectInstances={() => view.setDrawerOpen(true)}
+                    onSelectPreview={() => view.setActiveDetailTab('preview')}
+                    onSelectActivity={() => view.setActivityDockCollapsed(false)}
                 />
-                <select
-                    value={status}
-                    onChange={event => setStatus(event.target.value as 'all' | DashboardInstanceStatus)}
-                    aria-label="Filter by status"
-                >
-                    {STATUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
-                </select>
-                <input
-                    className="home-input"
-                    value={customHome}
-                    onChange={event => setCustomHome(event.target.value)}
-                    placeholder="Custom home, default ~/.cli-jaw-<port>"
-                    aria-label="Custom home for started instances"
-                />
-            </section>
-
-            {error && <section className="state error-state">Scan failed: {error}</section>}
-            {lifecycleMessage && <section className="state lifecycle-state">{lifecycleMessage}</section>}
-            {!error && loading && <section className="state">Scanning local Jaw instances...</section>}
-            {!error && !loading && filtered.length === 0 && (
-                <section className="state">No matching instances found.</section>
             )}
-
-            {!error && filtered.length > 0 && (
-                <section className="dashboard-layout">
-                    <section className="instance-table" aria-label="Jaw instances">
-                        <div className="table-head">
-                            <span>Status</span>
-                            <span>Instance</span>
-                            <span>Runtime</span>
-                            <span>Last checked</span>
-                            <span>Actions</span>
-                        </div>
-                        {filtered.map(instance => (
-                            <article
-                                className={`instance-row ${selectedInstance?.port === instance.port ? 'is-selected' : ''}`}
-                                key={instance.port}
-                            >
-                                <div>
-                                    <span className={statusClass(instance.status)}>{instance.status}</span>
-                                    <span className="port">:{instance.port}</span>
-                                </div>
-                                <div>
-                                    <strong>{instanceLabel(instance)}</strong>
-                                    <span>{instance.workingDir || instance.url}</span>
-                                </div>
-                                <div>
-                                    <span>{instance.currentCli || 'cli n/a'} / {instance.currentModel || 'model n/a'}</span>
-                                    <span>v{instance.version || 'n/a'} · {formatUptime(instance.uptime)}</span>
-                                </div>
-                                <div>
-                                    <span>{new Date(instance.lastCheckedAt).toLocaleTimeString()}</span>
-                                    <span>{instance.lifecycle?.reason || instance.healthReason || 'ok'}</span>
-                                </div>
-                                <div className="instance-actions">
-                                    <button
-                                        type="button"
-                                        onClick={() => setSelectedPort(instance.port)}
-                                        disabled={!instance.ok}
-                                    >
-                                        Preview
-                                    </button>
-                                    <a className="open-link" href={instance.url} target="_blank" rel="noreferrer">Open</a>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleLifecycle('start', instance)}
-                                        disabled={!instance.lifecycle?.canStart || lifecycleBusyPort === instance.port}
-                                        title={instance.lifecycle?.commandPreview.join(' ')}
-                                    >
-                                        Start
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleLifecycle('stop', instance)}
-                                        disabled={!instance.lifecycle?.canStop || lifecycleBusyPort === instance.port}
-                                    >
-                                        Stop
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => void handleLifecycle('restart', instance)}
-                                        disabled={!instance.lifecycle?.canRestart || lifecycleBusyPort === instance.port}
-                                    >
-                                        Restart
-                                    </button>
-                                </div>
-                            </article>
-                        ))}
-                    </section>
-
-                    <InstancePreview
+            commandBar={(
+                <CommandBar
+                    query={query}
+                    status={status}
+                    customHome={customHome}
+                    loading={loading}
+                    summary={summary}
+                    manager={data?.manager || null}
+                    onQueryChange={setQuery}
+                    onStatusChange={setStatus}
+                    onCustomHomeChange={setCustomHome}
+                    onRefresh={() => void load()}
+                    onOpenDrawer={() => view.setDrawerOpen(true)}
+                />
+            )}
+            list={(
+                <>
+                    {error && <section className="state error-state">Scan failed: {error}</section>}
+                    {!error && loading && <section className="state">Scanning local Jaw instances...</section>}
+                    {!error && instanceList}
+                </>
+            )}
+            detail={(
+                <>
+                    {lifecycleMessage && <section className="state lifecycle-state">{lifecycleMessage}</section>}
+                    <InstanceDetailPanel
                         instance={selectedInstance}
                         data={data}
-                        mode={previewMode}
-                        previewEnabled={previewEnabled}
-                        onModeChange={setPreviewMode}
-                        onPreviewEnabledChange={setPreviewEnabled}
+                        activeTab={view.activeDetailTab}
+                        previewMode={view.previewMode}
+                        previewEnabled={view.previewEnabled}
+                        onTabChange={view.setActiveDetailTab}
+                        onPreviewModeChange={view.setPreviewMode}
+                        onPreviewEnabledChange={view.setPreviewEnabled}
                     />
-                </section>
+                </>
             )}
-        </main>
+            activity={(
+                <ActivityDock
+                    collapsed={view.activityDockCollapsed}
+                    height={view.activityDockHeight}
+                    loading={loading}
+                    error={error}
+                    lifecycleMessage={lifecycleMessage}
+                    selectedInstance={selectedInstance}
+                    previewMode={view.previewMode}
+                    onToggle={() => view.setActivityDockCollapsed(!view.activityDockCollapsed)}
+                    onHeightChange={view.setActivityDockHeight}
+                />
+            )}
+            activityHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
+            mobileNav={(
+                <MobileNav
+                    activeTab={view.activeDetailTab}
+                    onOpenInstances={() => view.setDrawerOpen(true)}
+                    onSelectTab={view.setActiveDetailTab}
+                    onToggleActivity={() => view.setActivityDockCollapsed(!view.activityDockCollapsed)}
+                />
+            )}
+            drawer={(
+                <InstanceDrawer open={view.drawerOpen} onClose={() => view.setDrawerOpen(false)}>
+                    {instanceList}
+                </InstanceDrawer>
+            )}
+        />
     );
 }

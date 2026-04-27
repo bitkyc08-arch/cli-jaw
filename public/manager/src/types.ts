@@ -9,6 +9,7 @@ export type DashboardServiceMode = 'unknown' | 'ad-hoc' | 'service' | 'manager';
 export type DashboardPreviewMode = 'direct' | 'proxy';
 export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
+export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 
 export type DashboardProxyInfo = {
     enabled: boolean;
@@ -67,5 +68,11 @@ export type DashboardScanResult = {
         checkedAt: string;
         proxy: DashboardProxyInfo;
     };
+    instances: DashboardInstance[];
+};
+
+export type DashboardInstanceGroup = {
+    id: 'running' | 'attention' | 'offline';
+    label: string;
     instances: DashboardInstance[];
 };
