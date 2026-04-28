@@ -29,7 +29,7 @@ const PAGE_REGISTRY: Record<
     model: lazy(() => import('./pages/ModelProvider')),
     'channels-telegram': lazy(() => import('./pages/ChannelsTelegram')),
     'channels-discord': lazy(() => import('./pages/ChannelsDiscord')),
-    speech: undefined,
+    speech: lazy(() => import('./pages/SpeechKeys')),
     heartbeat: undefined,
     memory: undefined,
     employees: undefined,

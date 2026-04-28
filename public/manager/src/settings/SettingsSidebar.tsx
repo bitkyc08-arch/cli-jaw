@@ -13,7 +13,8 @@ const CATEGORIES: SidebarEntry[] = [
     { id: 'identity-preview', label: 'Identity (preview)', group: 'core' },
     { id: 'channels-telegram', label: 'Channels — Telegram', group: 'channels' },
     { id: 'channels-discord', label: 'Channels — Discord', group: 'channels' },
-    // Phases 4–9 will register their entries here.
+    { id: 'speech', label: 'Speech & keys', group: 'integrations' },
+    // Phases 5–9 will register their entries here.
 ];
 
 type Props = {
