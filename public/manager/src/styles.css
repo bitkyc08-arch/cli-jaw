@@ -49,7 +49,8 @@ button:hover:not(:disabled),
 button:active:not(:disabled),
 .open-link:active { transform: translateY(1px); }
 
-button:disabled { cursor: not-allowed; opacity: 0.5; }
+button:disabled,
+.open-link[aria-disabled="true"] { cursor: not-allowed; opacity: 0.5; pointer-events: none; }
 
 button:focus-visible,
 a:focus-visible,

@@ -95,10 +95,19 @@ export function InstanceRow(props: InstanceRowProps) {
                 </button>
                 <a
                     className="open-link"
-                    href={props.instance.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    onClick={stopAction}
+                    href={props.instance.ok ? props.instance.url : undefined}
+                    target={props.instance.ok ? '_blank' : undefined}
+                    rel={props.instance.ok ? 'noreferrer' : undefined}
+                    aria-disabled={!props.instance.ok || undefined}
+                    tabIndex={props.instance.ok ? undefined : -1}
+                    onClick={(event) => {
+                        if (!props.instance.ok) {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            return;
+                        }
+                        stopAction(event);
+                    }}
                 >
                     Open
                 </a>
