@@ -80,14 +80,16 @@ test('manager frontend exposes lifecycle controls without hiding discovery actio
 
 test('manager frontend keeps rows compact while preserving model visibility', () => {
     const row = read('public/manager/src/components/InstanceRow.tsx');
-    const polish = read('public/manager/src/manager-polish.css');
+    const compact = read('public/manager/src/manager-p0-1-1.css');
+    const main = read('public/manager/src/main.tsx');
 
     assert.ok(row.includes('instance-row-runtime'), 'instance rows must expose CLI/model as a stable runtime line');
     assert.ok(row.includes('instance-row-version'), 'instance rows must keep version metadata addressable');
     assert.ok(row.includes('instance-row-reason'), 'instance rows must keep reason metadata addressable');
-    assert.ok(polish.includes('.manager-sidebar .instance-row-version'), 'sidebar polish must hide secondary row metadata in compact mode');
-    assert.ok(polish.includes('.manager-sidebar .instance-actions'), 'sidebar polish must control action-row density');
-    assert.ok(polish.includes('.manager-shell.is-sidebar-collapsed .manager-workspace'), 'sidebar collapse must reclaim detail width');
+    assert.ok(main.includes('./manager-p0-1-1.css'), 'P0-1.1 compact manager CSS must be loaded last');
+    assert.ok(compact.includes('.manager-sidebar .instance-row-version'), 'sidebar polish must hide secondary row metadata in compact mode');
+    assert.ok(compact.includes('.manager-sidebar .instance-actions'), 'sidebar polish must control action-row density');
+    assert.ok(compact.includes('.manager-shell.is-sidebar-collapsed .manager-workspace'), 'sidebar collapse must reclaim detail width');
 });
 
 test('manager instance rows are selectable independently from preview availability', () => {

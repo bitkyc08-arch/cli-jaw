@@ -1,0 +1,166 @@
+.command-bar {
+    gap: 4px;
+    padding: 6px 10px;
+}
+
+.command-primary {
+    gap: 8px;
+    grid-template-columns: auto minmax(108px, 150px) minmax(280px, 1fr) auto;
+}
+
+.command-secondary {
+    gap: 6px;
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.command-title .eyebrow {
+    display: none;
+}
+
+.command-title h1 {
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.command-summary {
+    display: none;
+}
+
+.command-filter-strip {
+    gap: 6px;
+    flex-wrap: nowrap;
+}
+
+.command-filter-strip select {
+    max-width: 118px;
+}
+
+.command-filter-strip .launch-home-control input.home-input {
+    width: 180px;
+}
+
+.workbench-preview .workbench-header {
+    padding: 6px 10px;
+}
+
+.workbench-preview .workbench-mode-tabs button {
+    min-height: 26px;
+    padding: 4px 8px;
+}
+
+.workbench-preview .preview-panel {
+    gap: 3px;
+    padding: 3px 4px 4px;
+}
+
+.workbench-preview .preview-header {
+    padding: 0;
+}
+
+.workbench-preview .preview-controls {
+    gap: 5px;
+}
+
+.workbench-preview .preview-controls select {
+    width: 78px;
+    min-height: 24px;
+    padding: 2px 7px;
+}
+
+.workbench-preview .preview-toggle {
+    min-height: 22px;
+    padding: 0 2px;
+}
+
+.workbench-preview .preview-frame {
+    border-radius: 4px;
+}
+
+.manager-shell.is-sidebar-collapsed .manager-workspace,
+.manager-workspace.is-sidebar-collapsed {
+    grid-template-columns: 44px minmax(0, 1fr);
+}
+
+.manager-shell.is-sidebar-collapsed .sidebar-rail {
+    padding: 6px 4px;
+}
+
+.manager-shell.is-sidebar-collapsed .rail-button {
+    width: 32px;
+    min-width: 32px;
+    min-height: 32px;
+}
+
+.manager-sidebar .instance-groups {
+    padding: 5px 6px;
+}
+
+.manager-sidebar .instance-group {
+    margin-bottom: 6px;
+}
+
+.manager-sidebar .instance-group-header {
+    padding: 5px 3px 3px;
+}
+
+.manager-sidebar .instance-row {
+    gap: 4px;
+    margin-bottom: 4px;
+    border-radius: 6px;
+    padding: 7px 8px;
+}
+
+.manager-sidebar .instance-row.density-compact {
+    gap: 4px;
+    padding: 7px 8px;
+}
+
+.manager-sidebar .instance-row-select {
+    gap: 3px;
+}
+
+.manager-sidebar .instance-row-title {
+    gap: 1px;
+}
+
+.manager-sidebar .instance-row-title strong {
+    font-size: 12px;
+}
+
+.manager-sidebar .instance-row-title span {
+    display: none;
+}
+
+.manager-sidebar .port {
+    padding: 2px 5px;
+}
+
+.manager-sidebar .instance-row-meta {
+    gap: 0;
+}
+
+.manager-sidebar .instance-row-version,
+.manager-sidebar .instance-row-reason {
+    display: none;
+}
+
+.manager-sidebar .instance-actions {
+    display: none;
+}
+
+.manager-sidebar .instance-row.is-selected .instance-actions,
+.manager-sidebar .instance-row:hover .instance-actions,
+.manager-sidebar .instance-row:focus-within .instance-actions {
+    display: grid;
+    gap: 4px;
+}
+
+.manager-sidebar .instance-actions button,
+.manager-sidebar .instance-actions .open-link {
+    min-height: 24px;
+    padding-inline: 4px;
+    font-size: 11px;
+}

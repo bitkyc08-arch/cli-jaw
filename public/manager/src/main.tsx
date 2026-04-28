@@ -8,6 +8,7 @@ import './manager-emerging.css';
 import './manager-persistence.css';
 import './manager-profiles.css';
 import './manager-polish.css';
+import './manager-p0-1-1.css';
 
 const root = document.getElementById('manager-root');
 if (!root) throw new Error('manager-root not found');
