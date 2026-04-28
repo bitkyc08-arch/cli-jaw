@@ -176,8 +176,11 @@ h2 { font-size: 13px; }
 }
 .instance-row:hover, .instance-row:focus-within { border-color: transparent; background: var(--row-bg-hover); }
 .instance-row-select {
-    min-height: 0; min-width: 0; display: grid; gap: 8px; border: 0;
+    width: 100%; min-height: 0; min-width: 0; display: grid; gap: 8px; border: 0;
     background: transparent; color: inherit; border-radius: 6px; padding: 0;
+    grid-template-columns: minmax(0, 1fr);
+    justify-self: stretch; justify-content: start; justify-items: stretch;
+    align-content: start; align-items: start;
     text-align: left; cursor: pointer;
 }
 .instance-row-select:hover:not(:disabled) {
@@ -195,6 +198,7 @@ h2 { font-size: 13px; }
     width: 2px; border-radius: 2px; background: var(--accent);
 }
 .instance-row-main {
+    width: 100%;
     min-width: 0;
     display: grid;
     grid-template-columns: 12px minmax(0, 1fr) auto;

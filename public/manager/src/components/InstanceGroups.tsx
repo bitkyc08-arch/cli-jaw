@@ -1,5 +1,4 @@
 import { InstanceRow } from './InstanceRow';
-import { ProfileSection } from './ProfileSection';
 import type {
     DashboardInstance,
     DashboardInstanceGroup,
@@ -23,6 +22,18 @@ type InstanceGroupsProps = {
 
 function withoutPorts(instances: DashboardInstance[], used: Set<number>): DashboardInstance[] {
     return instances.filter(instance => !used.has(instance.port));
+}
+
+function profileRank(profile: DashboardProfile): number {
+    return profile.label === 'default' || profile.profileId === 'default' ? 0 : 1;
+}
+
+function sortProfiles(profiles: DashboardProfile[]): DashboardProfile[] {
+    return [...profiles].sort((left, right) => {
+        const rankDelta = profileRank(left) - profileRank(right);
+        if (rankDelta !== 0) return rankDelta;
+        return left.label.localeCompare(right.label, undefined, { numeric: true, sensitivity: 'base' });
+    });
 }
 
 function groupInstances(instances: DashboardInstance[], selectedPort: number | null): DashboardInstanceGroup[] {
@@ -63,6 +74,28 @@ function groupInstances(instances: DashboardInstance[], selectedPort: number | n
     return groups.filter(group => group.instances.length > 0);
 }
 
+function renderInstanceRow(
+    props: InstanceGroupsProps,
+    instance: DashboardInstance,
+    profile?: DashboardProfile,
+) {
+    return (
+        <InstanceRow
+            key={instance.port}
+            instance={instance}
+            profile={profile}
+            selected={props.selectedPort === instance.port}
+            busy={props.lifecycleBusyPort === instance.port}
+            transitioning={props.transitioningPort === instance.port ? props.transitionAction || null : null}
+            label={props.getLabel(instance)}
+            uptime={props.formatUptime(instance.uptime)}
+            onSelect={props.onSelect}
+            onPreview={props.onPreview}
+            onLifecycle={props.onLifecycle}
+        />
+    );
+}
+
 function renderRows(props: InstanceGroupsProps, instances: DashboardInstance[]) {
     return groupInstances(instances, props.selectedPort).map(group => (
         <section className="instance-group" key={group.id} aria-label={`${group.label} instances`}>
@@ -70,20 +103,7 @@ function renderRows(props: InstanceGroupsProps, instances: DashboardInstance[]) 
                 <span>{group.label}</span>
                 <strong>{group.instances.length}</strong>
             </div>
-            {group.instances.map(instance => (
-                <InstanceRow
-                    key={instance.port}
-                    instance={instance}
-                    selected={props.selectedPort === instance.port}
-                    busy={props.lifecycleBusyPort === instance.port}
-                    transitioning={props.transitioningPort === instance.port ? props.transitionAction || null : null}
-                    label={props.getLabel(instance)}
-                    uptime={props.formatUptime(instance.uptime)}
-                    onSelect={props.onSelect}
-                    onPreview={props.onPreview}
-                    onLifecycle={props.onLifecycle}
-                />
-            ))}
+            {group.instances.map(instance => renderInstanceRow(props, instance))}
         </section>
     ));
 }
@@ -99,16 +119,18 @@ export function InstanceGroups(props: InstanceGroupsProps) {
     if (profileMap.size > 0) {
         const used = new Set<number>();
         return (
-            <div className="instance-groups profile-instance-groups">
-                {Array.from(profileMap.values()).map((profile) => {
+            <div className="instance-groups profile-instance-groups is-profile-merged">
+                {sortProfiles(Array.from(profileMap.values())).map((profile) => {
                     const profileInstances = props.instances.filter(instance => instance.profileId === profile.profileId);
                     profileInstances.forEach(instance => used.add(instance.port));
+                    if (profileInstances.length > 0) {
+                        return profileInstances.map(instance => renderInstanceRow(props, instance, profile));
+                    }
+
                     return (
-                        <section className="profile-section" key={profile.profileId}>
-                            <ProfileSection profile={profile} count={profileInstances.length} />
-                            {profileInstances.length > 0
-                                ? renderRows(props, profileInstances)
-                                : <section className="state profile-empty">No online instances for this profile.</section>}
+                        <section className="state profile-empty" key={profile.profileId}>
+                            <strong>{profile.label}</strong>
+                            <span>No online instances for this profile.</span>
                         </section>
                     );
                 })}

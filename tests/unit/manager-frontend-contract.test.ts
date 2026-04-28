@@ -118,6 +118,28 @@ test('manager navigator does not exclude the selected instance from profile grou
     assert.equal(navigator.includes('InstanceRow'), false, 'InstanceNavigator must not render a second selected instance card');
 });
 
+test('manager profile rows merge profile headers into the instance row', () => {
+    const groups = read('public/manager/src/components/InstanceGroups.tsx');
+    const row = read('public/manager/src/components/InstanceRow.tsx');
+    const components = read('public/manager/src/manager-components.css');
+    const compact = read('public/manager/src/manager-p0-1-1.css');
+
+    assert.equal(groups.includes("import { ProfileSection }"), false, 'profile groups must not render a separate profile header card');
+    assert.ok(groups.includes('function sortProfiles'), 'profile groups must use a stable ordering helper');
+    assert.ok(groups.includes("profile.label === 'default'"), 'default profile must be ranked first');
+    assert.ok(groups.includes('is-profile-merged'), 'profile instance groups must expose merged-row styling');
+    assert.ok(groups.includes('profile={profile}'), 'profile context must be forwarded into the row');
+    assert.ok(row.includes('props.profile?.label'), 'instance row must use the profile label as the primary merged label');
+    assert.ok(row.includes('instanceSecondaryLine'), 'instance row must keep exact instance id/path metadata after merging');
+    assert.ok(compact.includes('.profile-instance-groups.is-profile-merged .instance-row-title span'), 'merged sidebar rows must keep the exact identity line visible');
+    assert.ok(compact.includes('.profile-instance-groups.is-profile-merged .instance-row-main'), 'merged sidebar rows must align primary labels from the top-left row area');
+    assert.ok(components.includes('.instance-row-select'), 'base row select styling must exist');
+    assert.ok(components.includes('justify-self: stretch'), 'all selected rows must keep the same left alignment width');
+    assert.ok(components.includes('width: 100%; min-height: 0'), 'base row selection must span the full row width');
+    assert.ok(compact.includes('justify-self: stretch'), 'selected rows must not shrink their select area and visually center labels');
+    assert.ok(compact.includes('width: 100%'), 'selected and non-selected rows must share the same left alignment width');
+});
+
 test('manager frontend routes layout through responsive shell components', () => {
     const app = read('public/manager/src/App.tsx');
     const detail = read('public/manager/src/components/InstanceDetailPanel.tsx');
@@ -166,7 +188,7 @@ test('manager frontend exposes 10.8 profile controls', () => {
     assert.ok(filters.includes('profile-chip-strip'), 'CommandFilters must expose profile chips');
     assert.ok(app.includes('activeProfileIds'), 'App must own active profile filter state');
     assert.ok(app.includes('activeProfileFilter'), 'App must persist active profile filters through registry');
-    assert.ok(groups.includes('ProfileSection'), 'InstanceGroups must render profile sections');
+    assert.ok(groups.includes('is-profile-merged'), 'InstanceGroups must merge profile sections into instance rows');
     assert.ok(drawer.includes('drawer-profile-filters'), 'mobile drawer must mirror profile filters');
     assert.ok(main.includes('./manager-profiles.css'), 'profile styling must stay split from large CSS files');
 });

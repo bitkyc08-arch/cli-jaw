@@ -1,8 +1,9 @@
 import type { MouseEvent } from 'react';
-import type { DashboardInstance, DashboardLifecycleAction } from '../types';
+import type { DashboardInstance, DashboardLifecycleAction, DashboardProfile } from '../types';
 
 type InstanceRowProps = {
     instance: DashboardInstance;
+    profile?: DashboardProfile;
     selected: boolean;
     busy: boolean;
     label: string;
@@ -25,6 +26,21 @@ function statusClass(status: DashboardInstance['status']): string {
     return `instance-status status-${status}`;
 }
 
+function instanceSecondaryLine(instance: DashboardInstance, label: string, profile?: DashboardProfile): string {
+    if (profile) {
+        return [
+            label !== profile.label ? label : null,
+            instance.workingDir || instance.url,
+        ].filter(Boolean).join(' · ');
+    }
+
+    if (instance.group) {
+        return `${instance.group} · ${instance.workingDir || instance.url}`;
+    }
+
+    return instance.workingDir || instance.url;
+}
+
 export function InstanceRow(props: InstanceRowProps) {
     const lifecycle = props.instance.lifecycle;
     const reason = lifecycle?.reason || props.instance.healthReason || 'ok';
@@ -35,6 +51,10 @@ export function InstanceRow(props: InstanceRowProps) {
 
     const transitionLabel = props.transitioning ? TRANSITION_LABELS[props.transitioning] : null;
     const dotClass = `${statusClass(props.instance.status)}${transitionLabel ? ' is-transitioning' : ''}`;
+    const primaryLabel = props.profile?.label || props.label;
+    const secondaryLine = transitionLabel
+        ? null
+        : instanceSecondaryLine(props.instance, props.label, props.profile);
 
     return (
         <article className={`instance-row density-${props.density || 'comfortable'} priority-${props.priority || 'normal'} ${props.selected ? 'is-selected' : ''}${transitionLabel ? ' is-transitioning-row' : ''}`}>
@@ -47,11 +67,11 @@ export function InstanceRow(props: InstanceRowProps) {
                 <div className="instance-row-main">
                     <span className={dotClass} aria-label={props.instance.status} />
                     <div className="instance-row-title">
-                        <strong>{props.instance.favorite ? `Pinned ${props.label}` : props.label}</strong>
+                        <strong>{props.instance.favorite ? `Pinned ${primaryLabel}` : primaryLabel}</strong>
                         <span>
                             {transitionLabel
                                 ? <em className="instance-row-transition">{transitionLabel}</em>
-                                : (props.instance.group ? `${props.instance.group} · ${props.instance.workingDir || props.instance.url}` : props.instance.workingDir || props.instance.url)}
+                                : secondaryLine}
                         </span>
                     </div>
                     <span className="port">:{props.instance.port}</span>
