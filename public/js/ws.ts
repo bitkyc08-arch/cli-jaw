@@ -88,7 +88,9 @@ let lastLoadTs = 0;
 let snapshotSyncInFlight: Promise<void> | null = null;
 let lastSnapshotSyncAt = 0;
 let restoreHooksRegistered = false;
+let lastRestoreTriggerAt = 0;
 const SNAPSHOT_SYNC_THROTTLE_MS = 750;
+const RESTORE_TRIGGER_DEBOUNCE_MS = 750;
 
 async function refreshRuntimeSnapshot(options: { hydrateRun?: boolean } = {}): Promise<void> {
     const response = await fetch('/api/orchestrate/snapshot');
@@ -129,33 +131,41 @@ export function syncOrchestrateSnapshot(reason = 'manual', options: { hydrateRun
 
 function syncAfterBrowserRestore(reason: string): void {
     showChatRestoreIndicator(reason);
-    syncOrchestrateSnapshot(reason)
+    syncOrchestrateSnapshot(reason, { hydrateRun: true })
         .finally(() => {
             reconcileChatBottomAfterRestore(reason);
         })
         .catch(() => {});
 }
 
+function requestBrowserRestoreSync(reason: string): void {
+    const now = Date.now();
+    if (reason !== 'discard' && now - lastRestoreTriggerAt < RESTORE_TRIGGER_DEBOUNCE_MS) return;
+    lastRestoreTriggerAt = now;
+    syncAfterBrowserRestore(reason);
+}
+
 function registerOrchestrateRestoreHooks(): void {
     if (restoreHooksRegistered) return;
     restoreHooksRegistered = true;
     window.addEventListener('focus', () => {
-        syncAfterBrowserRestore('focus');
+        requestBrowserRestoreSync('focus');
     });
-    window.addEventListener('pageshow', () => {
-        syncAfterBrowserRestore('pageshow');
+    window.addEventListener('pageshow', (event: PageTransitionEvent) => {
+        if (!event.persisted) return;
+        requestBrowserRestoreSync('pageshow');
     });
     document.addEventListener('visibilitychange', () => {
         if (document.visibilityState === 'visible') {
-            syncAfterBrowserRestore('visibilitychange');
+            requestBrowserRestoreSync('visibilitychange');
         }
     });
     document.addEventListener('resume', () => {
-        syncAfterBrowserRestore('resume');
+        requestBrowserRestoreSync('resume');
     });
     if ('wasDiscarded' in document
         && Boolean((document as Document & { wasDiscarded?: boolean }).wasDiscarded)) {
-        syncAfterBrowserRestore('discard');
+        requestBrowserRestoreSync('discard');
     }
 }
 

@@ -46,13 +46,13 @@ test('WRS-002b: browser restore hooks resync authoritative orchestration snapsho
     assert.ok(wsSrc.includes("document.addEventListener('visibilitychange'"), 'visibilitychange should trigger orchestrate snapshot sync');
     assert.ok(wsSrc.includes("document.addEventListener('resume'"), 'resume should trigger browser restore sync');
     assert.ok(wsSrc.includes('wasDiscarded'), 'initial Chrome discard restore should be handled');
-    assert.ok(wsSrc.includes("syncAfterBrowserRestore('focus')"), 'focus hook should call the restore wrapper');
-    assert.ok(wsSrc.includes("syncAfterBrowserRestore('pageshow')"), 'pageshow hook should call the restore wrapper');
-    assert.ok(wsSrc.includes("syncAfterBrowserRestore('visibilitychange')"), 'visibility hook should call the restore wrapper');
-    assert.ok(wsSrc.includes("syncAfterBrowserRestore('resume')"), 'resume hook should call the restore wrapper');
-    assert.ok(wsSrc.includes("syncAfterBrowserRestore('discard')"), 'discard path should call the restore wrapper');
+    assert.ok(wsSrc.includes("requestBrowserRestoreSync('focus')"), 'focus hook should call the debounced restore wrapper');
+    assert.ok(wsSrc.includes("requestBrowserRestoreSync('pageshow')"), 'pageshow hook should call the debounced restore wrapper');
+    assert.ok(wsSrc.includes("requestBrowserRestoreSync('visibilitychange')"), 'visibility hook should call the debounced restore wrapper');
+    assert.ok(wsSrc.includes("requestBrowserRestoreSync('resume')"), 'resume hook should call the debounced restore wrapper');
+    assert.ok(wsSrc.includes("requestBrowserRestoreSync('discard')"), 'discard path should call the restore wrapper');
     assert.ok(wsSrc.includes('showChatRestoreIndicator(reason)'), 'wrapper should show the restore indicator before sync');
-    assert.ok(wsSrc.includes('syncOrchestrateSnapshot(reason)'), 'wrapper should still refresh the authoritative snapshot');
+    assert.ok(wsSrc.includes('syncOrchestrateSnapshot(reason, { hydrateRun: true })'), 'wrapper should still refresh and hydrate the authoritative snapshot');
     assert.ok(wsSrc.includes('reconcileChatBottomAfterRestore(reason)'), 'wrapper should reconcile bottom after snapshot settles');
 });
 
@@ -77,6 +77,27 @@ test('WRS-003: hydrateActiveRun keeps live process block collapsed by default', 
     assert.ok(hydrateBlock.includes('createProcessBlock(body)'), 'hydrateActiveRun should use the shared process block constructor');
     assert.ok(!hydrateBlock.includes('blockShell'), 'hydrateActiveRun should not bypass the shared constructor');
     assert.ok(!uiSrc.includes('keeps live process block expanded'), 'old expanded-by-default contract should be removed');
+});
+
+test('WRS-003b: hydrateActiveRun reuses one live active-run bubble across snapshots', { skip: !hasUi && 'public/js/ui source not found' }, () => {
+    const uiSrc = readFileSync(uiPath, 'utf8');
+    const hydrateStart = uiSrc.indexOf('export function hydrateActiveRun');
+    const hydrateEnd = uiSrc.indexOf('export function appendAgentText');
+    const hydrateBlock = uiSrc.slice(hydrateStart, hydrateEnd);
+    const helperStart = uiSrc.indexOf('function ensureActiveRunMessage');
+    const helperEnd = uiSrc.indexOf('export function hydrateActiveRun');
+    const helperBlock = uiSrc.slice(helperStart, helperEnd);
+
+    assert.ok(uiSrc.includes("const ACTIVE_RUN_HYDRATED_ATTR = 'data-active-run-hydrated'"), 'hydrated active-run DOM must be explicitly marked');
+    assert.ok(uiSrc.includes('function removeStaleHydratedActiveRuns'), 'stale hydrated active-run bubbles must be removable');
+    assert.ok(uiSrc.includes('function ensureActiveRunMessage'), 'hydrate should use a shared active-run message helper');
+    assert.ok(helperBlock.includes('state.currentAgentDiv && state.currentAgentDiv.isConnected'), 'helper should prefer the connected live agent bubble');
+    assert.ok(helperBlock.includes("addMessage('agent', '', cli || null)"), 'helper should add only when no live bubble exists');
+    assert.ok(helperBlock.includes('removeStaleHydratedActiveRuns(existing)'), 'helper should remove old hydrated bubbles while preserving the live one');
+    assert.ok(hydrateBlock.includes('removeStaleHydratedActiveRuns();'), 'non-running snapshots should clean stale hydrated bubbles');
+    assert.ok(hydrateBlock.includes('state.currentAgentDiv = ensureActiveRunMessage(snapshot.cli || null)'), 'hydrateActiveRun must not call addMessage directly');
+    assert.ok(!hydrateBlock.includes("state.currentAgentDiv = addMessage('agent'"), 'hydrateActiveRun should not append a new bubble on every snapshot');
+    assert.ok(uiSrc.includes('state.currentAgentDiv.removeAttribute(ACTIVE_RUN_HYDRATED_ATTR)'), 'finalized active-run bubbles should become normal chat messages');
 });
 
 test('WRS-004: applyQueuedOverlay no longer renders chat bubbles for queued items (pending-queue panel owns them)', { skip: !hasUi && 'public/js/ui source not found' }, () => {

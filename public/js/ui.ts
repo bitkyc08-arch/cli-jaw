@@ -254,6 +254,25 @@ export function showProcessStep(step: ProcessStep): void {
 
 let currentStream: StreamState | null = null;
 
+const ACTIVE_RUN_HYDRATED_ATTR = 'data-active-run-hydrated';
+
+function removeStaleHydratedActiveRuns(keep?: HTMLElement | null): void {
+    document.querySelectorAll<HTMLElement>(`[${ACTIVE_RUN_HYDRATED_ATTR}="true"]`).forEach(el => {
+        if (keep && el === keep) return;
+        el.remove();
+    });
+}
+
+function ensureActiveRunMessage(cli?: string | null): HTMLElement {
+    const existing = state.currentAgentDiv && state.currentAgentDiv.isConnected
+        ? state.currentAgentDiv as HTMLElement
+        : null;
+    removeStaleHydratedActiveRuns(existing);
+    const div = existing || addMessage('agent', '', cli || null);
+    div.setAttribute(ACTIVE_RUN_HYDRATED_ATTR, 'true');
+    return div;
+}
+
 /**
  * Queued items are surfaced exclusively by the pending-queue panel
  * (renderPendingQueue) — they do NOT appear as chat bubbles until they
@@ -266,10 +285,13 @@ export function applyQueuedOverlay(_items: QueuedOverlayItem[] = []): void {
 }
 
 export function hydrateActiveRun(snapshot?: ActiveRunSnapshot | null): void {
-    if (!snapshot?.running) return;
+    if (!snapshot?.running) {
+        removeStaleHydratedActiveRuns();
+        return;
+    }
     cleanupToolElements();
     removeSkeleton();
-    state.currentAgentDiv = addMessage('agent', '', snapshot.cli || null);
+    state.currentAgentDiv = ensureActiveRunMessage(snapshot.cli || null);
     state.currentProcessBlock = null;
     const body = state.currentAgentDiv.querySelector('.agent-body') as HTMLElement | null;
     if (body && snapshot.toolLog?.length) {
@@ -324,6 +346,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         if (!state.currentAgentDiv || !state.currentAgentDiv.isConnected) {
             state.currentAgentDiv = addMessage('agent', '');
         }
+        state.currentAgentDiv.removeAttribute(ACTIVE_RUN_HYDRATED_ATTR);
         const content = (state.currentAgentDiv as HTMLElement)?.querySelector('.msg-content');
         // Live stream is preview-only; agent_done text stays authoritative.
         const streamedText = currentStream ? finalizeStream(currentStream, true) : '';
