@@ -23,7 +23,7 @@ import cpp from 'highlight.js/lib/languages/cpp';
 import diff from 'highlight.js/lib/languages/diff';
 import plaintext from 'highlight.js/lib/languages/plaintext';
 import katex from 'katex';
-import createDOMPurify from '../../node_modules/dompurify/dist/purify.cjs.js';
+import { getDOMPurify } from './sanitizer.js';
 import { t } from './features/i18n.js';
 import { ICONS } from './icons.js';
 import { fixCjkPunctuationBoundary } from './cjk-fix.js';
@@ -32,23 +32,7 @@ import {
     extractTopLevelSvg,
 } from './diagram/types.js';
 
-type DOMPurifyLike = {
-    sanitize(input: string, config?: Record<string, unknown>): string;
-    addHook(name: string, callback: (node: Element) => void): void;
-};
-
-const DOMPurify = (() => {
-    const purify = createDOMPurify as unknown as Partial<DOMPurifyLike> &
-        ((win?: Window) => DOMPurifyLike);
-    if (typeof purify.sanitize === 'function' && typeof purify.addHook === 'function') {
-        return purify as DOMPurifyLike;
-    }
-    if (typeof window !== 'undefined') return purify(window);
-    return {
-        sanitize: (input: string) => input,
-        addHook: () => undefined,
-    };
-})();
+const DOMPurify = getDOMPurify();
 
 // Register hljs languages (core-only import: ~25KB vs ~1MB full)
 hljs.registerLanguage('javascript', javascript);
@@ -190,69 +174,10 @@ export function sanitizeHtml(html: string): string {
                       'background'],  // legacy HTML attr that triggers remote fetch
         ADD_TAGS: ['use'],
         ADD_ATTR: ['aria-hidden', 'xmlns', 'viewBox', 'role', 'aria-label',
-                   'data-jaw-svg', 'data-jaw-kind', 'data-mermaid-code-raw'],
+                   'data-jaw-svg', 'data-jaw-kind', 'data-mermaid-code-raw',
+                   'href', 'xlink:href'],
     });
 }
-
-// Hook: strip external href/xlink:href on <use> and <image>
-// Only fragment references (#id) allowed — blocks external resource loading.
-const SVG_NS = 'http://www.w3.org/2000/svg';
-const HTML_HREF_ALLOWED = new Set(['a', 'area', 'link']);
-
-DOMPurify.addHook('afterSanitizeAttributes', (node) => {
-    const tag = node.tagName.toLowerCase();
-
-    // ── href / xlink:href: deny-by-default ──
-    // Only standard HTML (non-SVG) elements in the allow-set may carry external href.
-    // SVG <a> shares tagName 'a' with HTML <a>, so we also check namespaceURI
-    // to distinguish them — SVG elements always get fragment-only.
-    const isSvgElement = node.namespaceURI === SVG_NS;
-    if (isSvgElement || !HTML_HREF_ALLOWED.has(tag)) {
-        const href = node.getAttribute('href') || '';
-        if (href && !href.startsWith('#')) {
-            node.removeAttribute('href');
-        }
-    }
-    // xlink:href is SVG-only — always enforce fragment-only on ALL elements
-    const xlinkHref = node.getAttributeNS('http://www.w3.org/1999/xlink', 'href')
-        || node.getAttribute('xlink:href') || '';
-    if (xlinkHref && !xlinkHref.startsWith('#')) {
-        node.removeAttributeNS('http://www.w3.org/1999/xlink', 'href');
-        node.removeAttribute('xlink:href');
-    }
-    // SVG <image>/<feimage> may carry src in HTML parser context (belt-and-suspenders)
-    if (tag === 'image' || tag === 'feimage') {
-        const src = node.getAttribute('src') || '';
-        if (src && !src.startsWith('#')) {
-            node.removeAttribute('src');
-        }
-    }
-    // Strip external url() from style and SVG presentation attributes
-    // Prevents outbound requests / beaconing via CSS or SVG attrs like
-    // filter="url(https://evil)", fill="url(https://evil)", mask, clip-path, marker-*
-    const URL_CAPABLE_ATTRS = [
-        'fill', 'stroke', 'filter', 'mask', 'clip-path',
-        'marker-start', 'marker-mid', 'marker-end', 'cursor',
-    ];
-    // For style: use cssText (browser-parsed) to defeat CSS hex-escape bypass (\75\72\6c = url)
-    if (node.hasAttribute('style')) {
-        const cssText = (node as HTMLElement).style?.cssText || '';
-        if (/url\s*\(/i.test(cssText)) {
-            const cleaned = cssText.replace(/url\s*\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
-            (node as HTMLElement).style.cssText = cleaned;
-        }
-    }
-    for (const attr of URL_CAPABLE_ATTRS) {
-        if (node.hasAttribute(attr)) {
-            const val = node.getAttribute(attr) || '';
-            if (/url\s*\(/i.test(val)) {
-                // Keep fragment-only url(#id), strip external url()
-                const cleaned = val.replace(/url\s*\(\s*(?!['"]?#)[^)]*\)/gi, 'none');
-                node.setAttribute(attr, cleaned);
-            }
-        }
-    }
-});
 
 // ── Orchestration JSON stripping ──
 // Only strip JSON blocks that contain orchestration-specific keys, not all JSON blocks
@@ -355,19 +280,26 @@ let mermaidId = 0;
 export async function rerenderMermaidDiagrams(): Promise<void> {
     const rendered = document.querySelectorAll('.mermaid-rendered');
     if (!rendered.length) return;
-    const mm = await ensureMermaidLoaded();
-    for (const el of rendered) {
-        const code = (el as HTMLElement).dataset.mermaidCode;
-        if (!code) continue;
-        const id = `mermaid-${++mermaidId}`;
-        try {
-            applyMermaidTheme();
-            const { svg } = await mm.render(id, code);
-            el.innerHTML = sanitizeMermaidSvg(svg);
-            appendMermaidActionBtns(el as HTMLElement);
-            bindDiagramZoom(el as HTMLElement);
-        } catch { /* keep existing render on failure */ }
-    }
+    mermaidQueue = mermaidQueue.then(async () => {
+        const mm = await ensureMermaidLoaded();
+        for (const el of rendered) {
+            const htmlEl = el as HTMLElement;
+            const code = htmlEl.dataset.mermaidCode;
+            if (!code || !htmlEl.isConnected) continue;
+            const id = `mermaid-${++mermaidId}`;
+            try {
+                applyMermaidTheme();
+                const { svg } = await mm.render(id, code);
+                if (!htmlEl.isConnected) continue;
+                htmlEl.innerHTML = sanitizeMermaidSvg(svg);
+                appendMermaidActionBtns(htmlEl);
+                bindDiagramZoom(htmlEl);
+            } catch { /* keep existing render on failure */ }
+        }
+    }).catch(err => {
+        console.error('[mermaid:queue] rerender failed, keeping queue alive:', err);
+    });
+    await mermaidQueue;
 }
 
 // Lazy Mermaid rendering — only render blocks near the viewport
@@ -430,6 +362,7 @@ function renderMermaidError(el: HTMLElement, code: string, errMsg: string): void
 async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
     if (!el.isConnected) {
         delete el.dataset.mermaidQueued;
+        delete el.dataset.mermaidInflight;
         return;
     }
     el.classList.remove('mermaid-pending');
@@ -437,8 +370,8 @@ async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
     const encoded = el.dataset.mermaidCodeRaw || '';
     const code = encoded ? decodeURIComponent(encoded) : (el.textContent || '');
     el.dataset.mermaidCode = code;
-    delete el.dataset.mermaidCodeRaw;
     const id = `mermaid-${++mermaidId}`;
+    el.dataset.mermaidInflight = '1';
     try {
         const mm = await ensureMermaidLoaded();
         // Apply theme immediately before render — no intermediate parse()
@@ -446,17 +379,20 @@ async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
         applyMermaidTheme();
         const { svg } = await mm.render(id, code);
         if (!el.isConnected) {
-            delete el.dataset.mermaidQueued;
             return;
         }
         el.innerHTML = sanitizeMermaidSvg(svg);
         el.classList.add('mermaid-rendered');
+        delete el.dataset.mermaidCodeRaw;
         appendMermaidActionBtns(el);
         bindDiagramZoom(el);
     } catch (err: unknown) {
         const errMsg = (err as { message?: string; str?: string })?.message
             || (err as { str?: string })?.str || 'Unknown error';
         renderMermaidError(el, code, errMsg);
+    } finally {
+        delete el.dataset.mermaidQueued;
+        delete el.dataset.mermaidInflight;
     }
 }
 
@@ -511,13 +447,23 @@ export async function renderMermaidBlocks(
 
 export function releaseMermaidNodes(scope: HTMLElement): void {
     if (!mermaidObserver) return;
+    const selector = [
+        '.mermaid-pending',
+        '[data-mermaid-queued="1"]',
+        '[data-mermaid-inflight="1"]',
+    ].join(',');
     const nodes: HTMLElement[] = [];
-    if (scope.classList.contains('mermaid-pending')) nodes.push(scope);
-    scope.querySelectorAll<HTMLElement>('.mermaid-pending').forEach((el) => nodes.push(el));
+    if (scope.matches(selector)) nodes.push(scope);
+    scope.querySelectorAll<HTMLElement>(selector).forEach((el) => nodes.push(el));
     for (const el of nodes) {
         mermaidObserver.unobserve(el);
         delete el.dataset.mermaidQueued;
         delete el.dataset.mermaidQueuedAt;
+        delete el.dataset.mermaidInflight;
+        if (!el.classList.contains('mermaid-rendered')
+            && (el.dataset.mermaidCodeRaw || el.dataset.mermaidCode)) {
+            el.classList.add('mermaid-pending');
+        }
     }
 }
 

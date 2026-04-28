@@ -48,6 +48,7 @@
     "clean:dist": "node -e \"const fs=require('fs');fs.rmSync('dist',{recursive:true,force:true});\"",
     "check:copilot-gap": "tsx scripts/check-copilot-gap.ts",
     "check:deps": "tsx scripts/check-deps-offline.ts",
+    "check:frontend-build-output": "tsx scripts/check-web-ui-build-output.ts",
     "i18n:registry": "tsx scripts/i18n-registry.ts",
     "check:deps:online": "bash scripts/check-deps-online.sh",
     "prebuild": "npm run ensure:native",
@@ -60,6 +61,7 @@
     "test:integration": "tsx --experimental-test-module-mocks --test tests/integration/*.test.ts",
     "test:coverage": "tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test --experimental-test-coverage tests/*.test.ts tests/**/*.test.ts",
     "test:watch": "tsx --import ./tests/setup/test-home.ts --test --watch tests/*.test.ts tests/unit/*.test.ts",
+    "test:web-ui-runtime": "tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/web-ui-runtime-*.test.ts tests/unit/web-ui-processblock-runtime.test.ts tests/unit/web-ui-mermaid-runtime.test.ts tests/unit/web-ui-sanitizer.test.ts tests/unit/web-ui-build-output-guard.test.ts",
     "test:events": "tsx --test tests/events.test.ts",
     "test:telegram": "tsx --test tests/telegram-forwarding.test.ts",
     "test:manager:browser": "tsx --test tests/browser/manager-layout-smoke.test.ts",
@@ -106,6 +108,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/ws": "^8.5.0",
     "@vitejs/plugin-react": "^5.2.0",
+    "jsdom": "^29.1.0",
     "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "vite": "^8.0.3"

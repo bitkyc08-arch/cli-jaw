@@ -35,9 +35,15 @@ test('releaseMermaidNodes unobserves pending Mermaid nodes and clears transient 
 
     assert.ok(block.includes('if (!mermaidObserver) return'),
         'release helper must be safe before observer initialization');
-    assert.ok(block.includes("scope.classList.contains('mermaid-pending')"),
-        'release helper must include the scope itself when pending');
-    assert.ok(block.includes("querySelectorAll<HTMLElement>('.mermaid-pending')"),
+    assert.ok(block.includes("'.mermaid-pending'"),
+        'release helper must include pending Mermaid nodes');
+    assert.ok(block.includes("'[data-mermaid-queued=\"1\"]'"),
+        'release helper must include queued Mermaid nodes');
+    assert.ok(block.includes("'[data-mermaid-inflight=\"1\"]'"),
+        'release helper must include inflight Mermaid nodes');
+    assert.ok(block.includes('scope.matches(selector)'),
+        'release helper must include the scope itself when it matches release selector');
+    assert.ok(block.includes('querySelectorAll<HTMLElement>(selector)'),
         'release helper must scan pending descendants');
     assert.ok(block.includes('mermaidObserver.unobserve(el)'),
         'release helper must unobserve each pending element');
@@ -45,6 +51,8 @@ test('releaseMermaidNodes unobserves pending Mermaid nodes and clears transient 
         'release helper must clear queued marker');
     assert.ok(block.includes('delete el.dataset.mermaidQueuedAt'),
         'release helper must clear queued timestamp marker');
+    assert.ok(block.includes('delete el.dataset.mermaidInflight'),
+        'release helper must clear inflight marker');
 });
 
 test('virtual-scroll releases Mermaid observer targets before unmount and deactivate', () => {

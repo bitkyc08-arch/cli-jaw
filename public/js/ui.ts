@@ -77,6 +77,15 @@ function agentToolBlocks(agentMsg: HTMLElement): HTMLElement[] {
     return body ? Array.from(body.querySelectorAll<HTMLElement>(TOOL_BLOCK_SELECTOR)) : [];
 }
 
+function preferredAgentToolBlock(body: HTMLElement): HTMLElement | null {
+    const content = body.querySelector(':scope > .msg-content') as HTMLElement | null;
+    return body.querySelector(':scope > .process-block')
+        ?? body.querySelector(':scope > .tool-group')
+        ?? content?.querySelector(':scope > .process-block')
+        ?? content?.querySelector(':scope > .tool-group')
+        ?? null;
+}
+
 function normalizeAgentToolBlocks(agentMsg: HTMLElement): void {
     const body = agentBody(agentMsg);
     if (!body) return;
@@ -85,7 +94,7 @@ function normalizeAgentToolBlocks(agentMsg: HTMLElement): void {
     const blocks = agentToolBlocks(agentMsg);
     if (blocks.length === 0) return;
 
-    const keep = blocks.find((block) => block.parentElement === body) ?? blocks[0];
+    const keep = preferredAgentToolBlock(body) ?? blocks[0];
     if (content && keep.parentElement !== body) {
         body.insertBefore(keep, content);
     }
@@ -99,14 +108,64 @@ function hasAgentToolBlock(agentMsg: HTMLElement): boolean {
     return agentToolBlocks(agentMsg).length > 0;
 }
 
+function processStepTypeFromDom(type?: string): ProcessStep['type'] {
+    return type === 'thinking' || type === 'search' || type === 'subagent'
+        ? type
+        : 'tool';
+}
+
+function processStepStatusFromDom(status?: string): ProcessStep['status'] {
+    return status === 'done' || status === 'error' ? status : 'running';
+}
+
+function processStepFromDom(row: HTMLElement): ProcessStep | null {
+    const id = row.dataset.stepId || '';
+    if (!id) return null;
+    const label = row.querySelector('.process-step-label')?.textContent?.trim() || '';
+    const detail = row.querySelector('.process-step-full')?.textContent || '';
+    const iconEl = row.querySelector('.process-step-icon') as HTMLElement | null;
+    const icon = iconEl?.innerHTML || ICONS.tool;
+    const startTime = Number(row.dataset.startTime || '');
+    return {
+        id,
+        type: processStepTypeFromDom(row.dataset.type),
+        icon,
+        label,
+        detail,
+        stepRef: row.dataset.stepRef || '',
+        status: processStepStatusFromDom(row.dataset.status),
+        startTime: Number.isFinite(startTime) && startTime > 0 ? startTime : Date.now(),
+    };
+}
+
 function currentProcessBlockFromDom(agentMsg: HTMLElement): ProcessBlockState | null {
     const block = agentBody(agentMsg)?.querySelector(':scope > .process-block') as HTMLElement | null;
     if (!block) return null;
+    const steps = Array.from(block.querySelectorAll<HTMLElement>('.process-step'))
+        .map(processStepFromDom)
+        .filter((step): step is ProcessStep => Boolean(step));
     return {
         element: block,
-        steps: [],
+        steps,
         collapsed: block.classList.contains('collapsed'),
     };
+}
+
+function findLegacyRunningMatch(steps: ProcessStep[], step: ProcessStep): ProcessStep | null {
+    const matches = steps.filter(s => s.status === 'running'
+        && !s.stepRef
+        && s.label === step.label
+        && s.type === step.type);
+    return matches.length === 1 ? matches[0] : null;
+}
+
+function findRunningProcessStepMatch(steps: ProcessStep[], step: ProcessStep): ProcessStep | null {
+    const running = [...steps].reverse().filter(s => s.status === 'running');
+    if (step.stepRef) {
+        return running.find(s => s.stepRef === step.stepRef)
+            ?? findLegacyRunningMatch(running, step);
+    }
+    return findLegacyRunningMatch(running, step);
 }
 
 function removeAgentToolBlocks(agentMsg: HTMLElement): void {
@@ -230,12 +289,7 @@ export function showProcessStep(step: ProcessStep): void {
             : emojiToStatus(step.icon);
         if (resolvedStatus === 'done' || resolvedStatus === 'error') {
             // Prefer matching by stepRef (stable correlation), fall back to label
-            const ref = step.stepRef;
-            const match = ref
-                ? [...state.currentProcessBlock.steps].reverse()
-                    .find(s => s.status === 'running' && s.stepRef === ref)
-                : [...state.currentProcessBlock.steps].reverse()
-                    .find(s => s.status === 'running' && s.label === step.label);
+            const match = findRunningProcessStepMatch(state.currentProcessBlock.steps, step);
             if (match) {
                 step.icon = emojiToIcon(step.icon);
                 const mergedDetail = step.detail
@@ -252,22 +306,6 @@ export function showProcessStep(step: ProcessStep): void {
                 });
                 scrollToBottom();
                 return;
-            }
-            if (!step.stepRef) {
-                // Legacy fallback only for uncorrelated tools. stepRef-bearing done events
-                // must not close another subagent's running row.
-                const anyRunning = [...state.currentProcessBlock.steps].reverse()
-                    .find(s => s.status === 'running');
-                if (anyRunning) {
-                    if (step.detail && !anyRunning.detail) {
-                        step.icon = emojiToIcon(step.icon);
-                        replaceStep(state.currentProcessBlock, anyRunning.id, { ...step, id: anyRunning.id, rawIcon });
-                    } else {
-                        updateStepStatus(state.currentProcessBlock, anyRunning.id, resolvedStatus);
-                    }
-                    scrollToBottom();
-                    return;
-                }
             }
             if (step.stepRef && (resolvedStatus === 'done' || resolvedStatus === 'error')) {
                 const existingDone = [...state.currentProcessBlock.steps].reverse()

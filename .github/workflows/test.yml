@@ -62,6 +62,12 @@ jobs:
       - name: Run tests
         run: npm test
 
+      - name: Build frontend
+        run: npm run build:frontend
+
+      - name: Check frontend build output
+        run: npm run check:frontend-build-output
+
       - name: Fresh install smoke (safe mode)
         run: npm run test:fresh-install
 

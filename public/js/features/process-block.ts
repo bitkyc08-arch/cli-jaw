@@ -62,7 +62,12 @@ function renderStep(step: ProcessStep): string {
     const snippetHtml = snippetPreview
         ? `<span class="process-step-snippet">${escapeHtml(snippetPreview)}</span>`
         : '';
-    return `<div class="process-step process-step-expandable" data-step-id="${step.id}" data-type="${step.type}">
+    return `<div class="process-step process-step-expandable"
+        data-step-id="${step.id}"
+        data-type="${escapeHtml(step.type)}"
+        data-status="${escapeHtml(step.status)}"
+        data-step-ref="${escapeHtml(step.stepRef || '')}"
+        data-start-time="${String(step.startTime || Date.now())}">
         <button class="process-step-toggle" aria-expanded="false" aria-controls="${detailId}">
             <span class="${dotClass}"></span>
             <span class="process-step-icon" aria-hidden="true">${icon}</span>
@@ -204,6 +209,7 @@ export function updateStepStatus(pb: ProcessBlockState, stepId: string, status: 
     step.status = status;
     const stepEl = pb.element.querySelector(`[data-step-id="${stepId}"]`);
     if (stepEl) {
+        (stepEl as HTMLElement).dataset.status = status;
         const dot = stepEl.querySelector('.process-step-dot');
         if (dot) {
             dot.classList.remove('running', 'done', 'error');
@@ -227,6 +233,8 @@ export function collapseBlock(pb: ProcessBlockState): void {
     pb.element.querySelectorAll('.process-step-dot.running').forEach(dot => {
         dot.classList.remove('running');
         dot.classList.add('done');
+        const row = dot.closest('.process-step') as HTMLElement | null;
+        if (row) row.dataset.status = 'done';
     });
     updateSummary(pb);
 }
