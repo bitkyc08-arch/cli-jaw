@@ -15,6 +15,7 @@ import { scanDashboardInstances, scanSinglePort } from './scan.js';
 import { installDashboardProxy } from './proxy.js';
 import { createPreviewOriginProxyController } from './preview-origin-proxy.js';
 import { DashboardLifecycleManager } from './lifecycle.js';
+import { createDashboardShutdown } from './shutdown.js';
 import { parsePositiveCount, parsePositivePort } from './security.js';
 import {
     applyDashboardRegistry,
@@ -294,6 +295,7 @@ function sendManagerHtml(res: express.Response, htmlPath: string): void {
 
 app.use('/dist', express.static(distRoot));
 app.use('/assets', express.static(join(distRoot, 'assets')));
+app.use('/icons', express.static(join(sourceRoot, 'icons')));
 app.use('/manager', express.static(join(sourceRoot, 'manager')));
 
 app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req, res) => {
@@ -301,7 +303,10 @@ app.get('/.well-known/appspecific/com.chrome.devtools.json', (_req, res) => {
 });
 
 app.get('/favicon.ico', (_req, res) => {
-    res.status(204).end();
+    res.sendFile('icon-192.png', { root: join(sourceRoot, 'icons') }, error => {
+        if (!error || res.headersSent) return;
+        res.status(204).end();
+    });
 });
 
 app.get('/{*splat}', (_req, res) => {
@@ -325,15 +330,12 @@ server.on('error', (error: NodeJS.ErrnoException) => {
     process.exit(1);
 });
 
-let shuttingDown = false;
-
-async function shutdown(): Promise<void> {
-    if (shuttingDown) return;
-    shuttingDown = true;
-    await previewProxy.close();
-    await new Promise<void>(resolve => server.close(() => resolve()));
-    process.exit(0);
-}
+const shutdown = createDashboardShutdown({
+    lifecycle,
+    previewProxy,
+    server,
+    exit: code => process.exit(code),
+});
 
 process.once('SIGINT', () => void shutdown());
 process.once('SIGTERM', () => void shutdown());

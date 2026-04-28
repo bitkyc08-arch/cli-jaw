@@ -246,6 +246,16 @@ export class DashboardLifecycleManager {
         }
     }
 
+    async stopAll(): Promise<DashboardLifecycleResult[]> {
+        const entries = [...this.registry.entries()];
+        const results: DashboardLifecycleResult[] = [];
+        for (const [managedPort] of entries) {
+            if (!this.activeEntry(managedPort)) continue;
+            results.push(await this.stop(managedPort));
+        }
+        return results;
+    }
+
     async restart(port: number): Promise<DashboardLifecycleResult> {
         const action: DashboardLifecycleAction = 'restart';
         const entry = this.activeEntry(port);

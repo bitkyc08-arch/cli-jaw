@@ -141,6 +141,55 @@ test('lifecycle stop/restart are limited to manager-owned child processes', asyn
     assert.equal(children[0]?.killed, true);
 });
 
+test('lifecycle stopAll returns empty when no child is managed', async () => {
+    const manager = new DashboardLifecycleManager({
+        from: 3457,
+        count: 50,
+        jawPath: '/usr/local/bin/jaw',
+    });
+
+    assert.deepEqual(await manager.stopAll(), []);
+});
+
+test('lifecycle stopAll stops all manager-owned children and is idempotent', async () => {
+    const children: FakeChild[] = [];
+    const manager = new DashboardLifecycleManager({
+        from: 3457,
+        count: 50,
+        jawPath: '/usr/local/bin/jaw',
+        isPortOccupied: async () => false,
+        spawnImpl: (() => {
+            const child = new FakeChild();
+            children.push(child);
+            return child;
+        }) as never,
+    });
+
+    assert.equal((await manager.start(3457)).ok, true);
+    assert.equal((await manager.start(3458)).ok, true);
+
+    const stopped = await manager.stopAll();
+
+    assert.equal(stopped.length, 2);
+    assert.deepEqual(stopped.map(result => result.port).sort(), [3457, 3458]);
+    assert.ok(stopped.every(result => result.ok));
+    assert.ok(children.every(child => child.killed));
+    assert.deepEqual(await manager.stopAll(), []);
+});
+
+test('lifecycle stopAll ignores external online instances', async () => {
+    const manager = new DashboardLifecycleManager({
+        from: 3457,
+        count: 50,
+        jawPath: '/usr/local/bin/jaw',
+    });
+
+    const row = manager.decorateInstance(makeOnline(3457));
+
+    assert.equal(row.lifecycle?.owner, 'external');
+    assert.deepEqual(await manager.stopAll(), []);
+});
+
 test('lifecycle start reports immediate child process failures', async () => {
     const manager = new DashboardLifecycleManager({
         from: 3457,
