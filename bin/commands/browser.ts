@@ -31,6 +31,24 @@ async function api(method: string, path: string, body?: any) {
     return resp.json();
 }
 
+function qs(params: Record<string, any>) {
+    const search = new URLSearchParams();
+    for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== false) search.set(key, String(value));
+    }
+    const out = search.toString();
+    return out ? `?${out}` : '';
+}
+
+function parseClip(values: Record<string, any>) {
+    const clip = values.clip as string[] | undefined;
+    if (!clip) return undefined;
+    if (clip.length !== 4) throw new Error('--clip requires four values: x y width height');
+    const [x, y, width, height] = clip.map(Number);
+    if (![x, y, width, height].every(Number.isFinite)) throw new Error('--clip values must be numbers');
+    return { x, y, width, height };
+}
+
 try {
     switch (sub) {
         case 'start': {
@@ -62,9 +80,21 @@ try {
         case 'snapshot': {
             const { values } = parseArgs({
                 args: process.argv.slice(4),
-                options: { interactive: { type: 'boolean', default: false } }, strict: false
+                options: {
+                    interactive: { type: 'boolean', default: false },
+                    'max-nodes': { type: 'string' },
+                    json: { type: 'boolean', default: false },
+                }, strict: false
             });
-            const r = await api('GET', `/snapshot?interactive=${values.interactive}`) as Record<string, any>;
+            const r = await api('GET', `/snapshot${qs({
+                interactive: values.interactive,
+                'max-nodes': values['max-nodes'],
+                json: values.json,
+            })}`) as Record<string, any>;
+            if (values.json) {
+                console.log(JSON.stringify(r, null, 2));
+                break;
+            }
             for (const n of r.nodes || []) {
                 const indent = '  '.repeat(n.depth);
                 const val = n.value ? ` = "${n.value}"` : '';
@@ -75,10 +105,15 @@ try {
         case 'screenshot': {
             const { values } = parseArgs({
                 args: process.argv.slice(4),
-                options: { 'full-page': { type: 'boolean' }, ref: { type: 'string' } }, strict: false
+                options: {
+                    'full-page': { type: 'boolean' },
+                    ref: { type: 'string' },
+                    clip: { type: 'string', multiple: true },
+                    json: { type: 'boolean', default: false },
+                }, strict: false
             });
-            const r = await api('POST', '/screenshot', { fullPage: values['full-page'], ref: values.ref }) as Record<string, any>;
-            console.log(r.path);
+            const r = await api('POST', '/screenshot', { fullPage: values['full-page'], ref: values.ref, clip: parseClip(values) }) as Record<string, any>;
+            console.log(values.json ? JSON.stringify(r, null, 2) : r.path);
             break;
         }
         case 'click': {
@@ -86,6 +121,7 @@ try {
             if (!ref) { console.error('Usage: cli-jaw browser click <ref>'); process.exit(1); }
             const opts: Record<string, any> = {};
             if (process.argv.includes('--double')) opts.doubleClick = true;
+            if (process.argv.includes('--right')) opts.button = 'right';
             await api('POST', '/act', { kind: 'click', ref, ...opts });
             console.log(`clicked ${ref}`);
             break;
@@ -122,15 +158,31 @@ try {
             break;
         }
         case 'vision-click': {
-            const target = process.argv.slice(4).filter(a => !a.startsWith('--')).join(' ');
+            const { values, positionals } = parseArgs({
+                args: process.argv.slice(4),
+                allowPositionals: true,
+                options: {
+                    provider: { type: 'string' },
+                    double: { type: 'boolean' },
+                    'prepare-stable': { type: 'boolean' },
+                    region: { type: 'string' },
+                    clip: { type: 'string', multiple: true },
+                    'verify-before-click': { type: 'boolean' },
+                }, strict: false,
+            });
+            const target = positionals.join(' ');
             if (!target) {
                 console.error('Usage: cli-jaw browser vision-click "<target>" [--provider codex] [--double]');
                 process.exit(1);
             }
-            const opts: Record<string, any> = {};
-            if (process.argv.includes('--double')) opts.doubleClick = true;
-            const providerIdx = process.argv.indexOf('--provider');
-            if (providerIdx !== -1) opts.provider = process.argv[providerIdx + 1];
+            const opts: Record<string, any> = {
+                provider: values.provider,
+                doubleClick: values.double,
+                prepareStable: values['prepare-stable'],
+                region: values.region,
+                clip: parseClip(values),
+                verifyBeforeClick: values['verify-before-click'],
+            };
 
             console.log(`${c.dim}👁️ vision-click: "${target}"...${c.reset}`);
             const r = await api('POST', '/vision-click', { target, ...opts }) as Record<string, any>;
@@ -155,7 +207,23 @@ try {
         }
         case 'tabs': {
             const r = await api('GET', '/tabs') as Record<string, any>;
-            (r.tabs || []).forEach((t: any, i: number) => console.log(`${i + 1}. ${t.title}\n   ${t.url}`));
+            if (process.argv.includes('--json')) {
+                console.log(JSON.stringify(r.tabs || r.data?.tabs || [], null, 2));
+                break;
+            }
+            (r.tabs || r.data?.tabs || []).forEach((t: any, i: number) => console.log(`${i + 1}. ${t.title}\n   ${t.url}`));
+            break;
+        }
+        case 'active-tab': {
+            const r = await api('GET', '/active-tab') as Record<string, any>;
+            console.log(JSON.stringify(r, null, 2));
+            break;
+        }
+        case 'tab-switch': {
+            const target = process.argv[4];
+            if (!target) { console.error('Usage: cli-jaw browser tab-switch <index-or-targetId>'); process.exit(1); }
+            const r = await api('POST', '/tab-switch', { target }) as Record<string, any>;
+            console.log(JSON.stringify(r, null, 2));
             break;
         }
         case 'text': {
@@ -165,6 +233,102 @@ try {
             });
             const r = await api('GET', `/text?format=${values.format}`) as Record<string, any>;
             console.log(r.text);
+            break;
+        }
+        case 'get-dom': {
+            const { values } = parseArgs({
+                args: process.argv.slice(4),
+                options: { selector: { type: 'string' }, 'max-chars': { type: 'string' }, json: { type: 'boolean' } },
+                strict: false,
+            });
+            const r = await api('GET', `/dom${qs({ selector: values.selector, 'max-chars': values['max-chars'] })}`) as Record<string, any>;
+            console.log(values.json ? JSON.stringify(r, null, 2) : r.html);
+            break;
+        }
+        case 'wait-for-selector': {
+            const selector = process.argv[4];
+            const { values } = parseArgs({
+                args: process.argv.slice(5),
+                options: { timeout: { type: 'string' }, state: { type: 'string' } },
+                strict: false,
+            });
+            await api('POST', '/wait-for-selector', { selector, timeout: values.timeout, state: values.state });
+            console.log(`waited for selector ${selector}`);
+            break;
+        }
+        case 'wait-for-text': {
+            const { values, positionals } = parseArgs({
+                args: process.argv.slice(4),
+                allowPositionals: true,
+                options: { timeout: { type: 'string' } },
+                strict: false,
+            }) as { values: Record<string, any>; positionals: string[] };
+            const text = positionals.join(' ');
+            await api('POST', '/wait-for-text', { text, timeout: values.timeout });
+            console.log(`waited for text ${text}`);
+            break;
+        }
+        case 'reload': {
+            const r = await api('POST', '/reload', {}) as Record<string, any>;
+            console.log(`reloaded → ${r.url}`);
+            break;
+        }
+        case 'resize': {
+            await api('POST', '/resize', { width: Number(process.argv[4]), height: Number(process.argv[5]) });
+            console.log(`resized to ${process.argv[4]}x${process.argv[5]}`);
+            break;
+        }
+        case 'scroll': {
+            const { values } = parseArgs({
+                args: process.argv.slice(4),
+                options: { x: { type: 'string' }, y: { type: 'string' }, ref: { type: 'string' } },
+                strict: false,
+            });
+            await api('POST', '/act', { kind: 'scroll', x: Number(values.x || 0), y: Number(values.y || 0), ref: values.ref });
+            console.log('scrolled');
+            break;
+        }
+        case 'select': {
+            const [ref, ...values] = process.argv.slice(4);
+            await api('POST', '/act', { kind: 'select', ref, values });
+            console.log(`selected ${values.join(', ')} in ${ref}`);
+            break;
+        }
+        case 'drag': {
+            await api('POST', '/act', { kind: 'drag', fromRef: process.argv[4], toRef: process.argv[5] });
+            console.log(`dragged ${process.argv[4]} to ${process.argv[5]}`);
+            break;
+        }
+        case 'move-mouse': {
+            await api('POST', '/act', { kind: 'move-mouse', x: Number(process.argv[4]), y: Number(process.argv[5]) });
+            console.log(`moved mouse to (${process.argv[4]}, ${process.argv[5]})`);
+            break;
+        }
+        case 'mouse-down':
+        case 'mouse-up': {
+            const button = process.argv.includes('--right') ? 'right' : 'left';
+            await api('POST', '/act', { kind: sub, button });
+            console.log(sub);
+            break;
+        }
+        case 'console': {
+            const { values } = parseArgs({
+                args: process.argv.slice(4),
+                options: { json: { type: 'boolean' }, limit: { type: 'string' }, clear: { type: 'boolean' } },
+                strict: false,
+            });
+            const r = await api('GET', `/console${qs({ limit: values.limit, clear: values.clear })}`) as Record<string, any>;
+            console.log(values.json ? JSON.stringify(r, null, 2) : (r.entries || []).map((e: any) => `[${e.type}] ${e.text}`).join('\n'));
+            break;
+        }
+        case 'network': {
+            const { values } = parseArgs({
+                args: process.argv.slice(4),
+                options: { json: { type: 'boolean' }, limit: { type: 'string' }, filter: { type: 'string' } },
+                strict: false,
+            });
+            const r = await api('GET', `/network${qs({ limit: values.limit, filter: values.filter })}`) as Record<string, any>;
+            console.log(values.json ? JSON.stringify(r, null, 2) : (r.entries || []).map((e: any) => `${e.method} ${e.origin}${e.path || ''}`).join('\n'));
             break;
         }
         case 'evaluate': {
@@ -229,7 +393,10 @@ try {
     screenshot             Capture screenshot
       --full-page          Full page
       --ref <ref>          Specific element only
+      --clip x y w h       Screenshot clip
+      --json               Print metadata as JSON
     click <ref>            Click element [--double]
+      --right              Right-click element
     mouse-click <x> <y>   Click at pixel coordinates [--double] (vision-click)
     vision-click <target>  Vision AI click [--provider codex] [--double]
     type <ref> <text>      Type text [--submit]
@@ -237,8 +404,22 @@ try {
     hover <ref>            Hover element
     navigate <url>         Go to URL
     open <url>             Open URL (alias for navigate)
-    tabs                   List tabs
+    tabs [--json]          List tabs
+    active-tab --json      Show active tab contract
+    tab-switch <target>    Bring tab index or targetId to front
     text                   Page text [--format text|html]
+    get-dom                DOM HTML [--selector <css>] [--max-chars <n>] [--json]
+    wait-for-selector      Wait for CSS selector
+    wait-for-text          Wait for visible text
+    reload                 Reload active page
+    resize <w> <h>         Resize viewport
+    scroll                 Scroll page [--x <dx>] [--y <dy>] [--ref <ref>]
+    select <ref> <value>   Select option(s)
+    drag <fromRef> <toRef> Drag element to element
+    move-mouse <x> <y>     Move mouse pointer
+    mouse-down/up          Low-level mouse buttons [--right]
+    console                Read bounded console entries [--json]
+    network                Read redacted network entries [--json]
     evaluate <js>          Execute JavaScript
 `);
     }

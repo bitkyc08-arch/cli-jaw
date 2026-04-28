@@ -5,6 +5,15 @@
 import { spawn } from 'child_process';
 import { screenshot, mouseClick, snapshot } from './actions.js';
 
+export interface VisionClickOptions {
+    provider?: 'codex';
+    doubleClick?: boolean;
+    prepareStable?: boolean;
+    region?: 'left-panel' | 'center-map' | 'top-bar';
+    clip?: { x: number; y: number; width: number; height: number };
+    verifyBeforeClick?: boolean;
+}
+
 /**
  * Extract click coordinates from screenshot using vision AI.
  * @param {string} screenshotPath - Path to screenshot image
@@ -99,9 +108,28 @@ function codexVision(screenshotPath: string, target: string) {
  * @param {string} target - Element description (e.g. "Login button")
  * @param {object} opts - { provider, doubleClick }
  */
-export async function visionClick(port: number, target: string, opts: Record<string, any> = {}) {
+export function resolveRegionClip(region: VisionClickOptions['region'], viewport: { width: number; height: number } | null) {
+    if (!region || !viewport) return undefined;
+    if (region === 'left-panel') return { x: 0, y: 0, width: Math.round(viewport.width * 0.33), height: viewport.height };
+    if (region === 'center-map') return { x: Math.round(viewport.width * 0.25), y: 0, width: Math.round(viewport.width * 0.5), height: viewport.height };
+    if (region === 'top-bar') return { x: 0, y: 0, width: viewport.width, height: Math.round(viewport.height * 0.2) };
+    return undefined;
+}
+
+export function toCssPoint(raw: { x: number; y: number }, dpr: number, clip?: { x: number; y: number }) {
+    return {
+        x: Math.round(raw.x / dpr + (clip?.x || 0)),
+        y: Math.round(raw.y / dpr + (clip?.y || 0)),
+    };
+}
+
+export async function visionClick(port: number, target: string, opts: VisionClickOptions = {}) {
+    if (opts.prepareStable) await new Promise(r => setTimeout(r, 500));
+
     // 1. Screenshot (includes DPR)
-    const ss = await screenshot(port);
+    const viewportProbe = await screenshot(port, { json: true });
+    const clip = opts.clip || resolveRegionClip(opts.region, viewportProbe.viewport);
+    const ss = clip ? await screenshot(port, { clip, json: true }) : viewportProbe;
     const dpr = ss.dpr || 1;
 
     // 2. Vision → coordinates (image pixel space)
@@ -116,11 +144,15 @@ export async function visionClick(port: number, target: string, opts: Record<str
     // 3. DPR correction: image pixels → CSS pixels
     // Playwright screenshots are captured at device pixel resolution
     // page.mouse.click() expects CSS pixels
-    const cssX = Math.round(result.x / dpr);
-    const cssY = Math.round(result.y / dpr);
+    const css = toCssPoint({ x: result.x, y: result.y }, dpr, clip);
+
+    if (opts.verifyBeforeClick) {
+        const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' }) as Record<string, any>;
+        if (!verify.found) return { success: false, reason: 'verification failed', provider: result.provider };
+    }
 
     // 4. Click
-    await mouseClick(port, cssX, cssY, { doubleClick: opts.doubleClick });
+    await mouseClick(port, css.x, css.y, { doubleClick: opts.doubleClick });
 
     // 5. Verify (optional snapshot)
     let snap = null;
@@ -128,8 +160,9 @@ export async function visionClick(port: number, target: string, opts: Record<str
 
     return {
         success: true,
-        clicked: { x: cssX, y: cssY },
+        clicked: css,
         raw: { x: result.x, y: result.y },
+        clip,
         dpr,
         provider: result.provider,
         description: result.description,

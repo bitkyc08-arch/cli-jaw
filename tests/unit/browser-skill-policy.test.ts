@@ -16,6 +16,23 @@ test('BSP-001: browser skill documents --agent automation mode', { skip: !hasBro
     assert.match(browserSkill, /headless/i);
 });
 
+test('BSP-003: browser skill separates planned runtime delta from current commands', { skip: !hasBrowserSkill && 'skills_ref submodule not checked out' }, () => {
+    const browserSkill = fs.readFileSync(browserSkillPath, 'utf8');
+    assert.match(browserSkill, /## Current Commands/);
+    assert.match(browserSkill, /## Planned Runtime Delta/);
+    assert.match(browserSkill, /snapshot --interactive --max-nodes 30/);
+    assert.match(browserSkill, /screenshot --clip 0 0 320 180 --json/);
+    assert.match(browserSkill, /wait-for-selector/);
+    assert.match(browserSkill, /not current commands/i);
+});
+
+test('BSP-004: browser skill documents snapshot-scoped refs and vision fallback policy', { skip: !hasBrowserSkill && 'skills_ref submodule not checked out' }, () => {
+    const browserSkill = fs.readFileSync(browserSkillPath, 'utf8');
+    assert.match(browserSkill, /latest-snapshot scoped/i);
+    assert.match(browserSkill, /Ref IDs are short-lived/i);
+    assert.match(browserSkill, /vision-click.*fallback/i);
+});
+
 test('BSP-002: vision-click skill documents screenshot-based coordinate click', { skip: !hasVisionSkill && 'skills_ref submodule not checked out' }, () => {
     const visionSkill = fs.readFileSync(visionSkillPath, 'utf8');
     assert.match(visionSkill, /screenshot/i);

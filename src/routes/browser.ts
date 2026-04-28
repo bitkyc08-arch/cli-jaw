@@ -45,13 +45,15 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
-    app.get('/api/browser/snapshot', async (req: Request, res: Response) => {
+    app.get('/api/browser/snapshot', requireAuth, async (req: Request, res: Response) => {
         try {
-            res.json({
-                nodes: await browser.snapshot(cdpPort(req), {
-                    interactive: req.query.interactive === 'true',
-                })
+            const result = await browser.snapshot(cdpPort(req), {
+                interactive: req.query.interactive === 'true',
+                maxNodes: req.query.maxNodes || req.query['max-nodes'],
+                json: req.query.json === 'true',
             });
+            if (Array.isArray(result)) res.json({ nodes: result });
+            else res.json(result);
         } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
@@ -62,14 +64,20 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
 
     app.post('/api/browser/act', requireAuth, async (req: Request, res: Response) => {
         try {
-            const { kind, ref, text, key, submit, doubleClick, x, y } = req.body;
+            const { kind, ref, fromRef, toRef, text, key, submit, doubleClick, x, y, button, values } = req.body;
             let result;
             switch (kind) {
-                case 'click': result = await browser.click(cdpPort(req), ref, { doubleClick }); break;
-                case 'mouse-click': result = await browser.mouseClick(cdpPort(req), x, y, { doubleClick }); break;
+                case 'click': result = await browser.click(cdpPort(req), ref, { doubleClick, button }); break;
+                case 'mouse-click': result = await browser.mouseClick(cdpPort(req), x, y, { doubleClick, button }); break;
+                case 'move-mouse': result = await browser.mouseMove(cdpPort(req), x, y); break;
+                case 'mouse-down': result = await browser.mouseDown(cdpPort(req), { button }); break;
+                case 'mouse-up': result = await browser.mouseUp(cdpPort(req), { button }); break;
                 case 'type': result = await browser.type(cdpPort(req), ref, text, { submit }); break;
                 case 'press': result = await browser.press(cdpPort(req), key); break;
                 case 'hover': result = await browser.hover(cdpPort(req), ref); break;
+                case 'scroll': result = await browser.scroll(cdpPort(req), { x, y, ref }); break;
+                case 'select': result = await browser.select(cdpPort(req), ref, values || []); break;
+                case 'drag': result = await browser.drag(cdpPort(req), fromRef, toRef); break;
                 default: return res.status(400).json({ error: `unknown action: ${kind}` });
             }
             res.json(result);
@@ -78,9 +86,16 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
 
     app.post('/api/browser/vision-click', requireAuth, async (req: Request, res: Response) => {
         try {
-            const { target, provider, doubleClick } = req.body;
+            const { target, provider, doubleClick, prepareStable, region, clip, verifyBeforeClick } = req.body;
             if (!target) return res.status(400).json({ error: 'target required' });
-            const result = await browser.visionClick(cdpPort(req), target, { provider, doubleClick });
+            const result = await browser.visionClick(cdpPort(req), target, {
+                provider,
+                doubleClick,
+                prepareStable,
+                region,
+                clip,
+                verifyBeforeClick,
+            });
             res.json(result);
         } catch (e: unknown) {
             res.status(500).json({ error: (e as Error).message });
@@ -92,9 +107,32 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
-    app.get('/api/browser/tabs', async (req: Request, res: Response) => {
-        try { ok(res, { tabs: await browser.listTabs(cdpPort(req)) }); }
+    app.post('/api/browser/reload', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.reload(cdpPort(req))); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/resize', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.resize(cdpPort(req), Number(req.body.width), Number(req.body.height))); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.get('/api/browser/tabs', requireAuth, async (req: Request, res: Response) => {
+        try {
+            const tabs = await browser.listTabs(cdpPort(req));
+            res.json({ ok: true, tabs, data: { tabs } });
+        }
         catch (e: unknown) { console.warn('[browser:tabs] failed', { error: (e as Error).message }); ok(res, { tabs: [] }); }
+    });
+
+    app.get('/api/browser/active-tab', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.getActiveTab(cdpPort(req))); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/tab-switch', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.switchTab(cdpPort(req), String(req.body.target || ''))); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
     app.post('/api/browser/evaluate', requireAuth, async (req: Request, res: Response) => {
@@ -102,8 +140,33 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 
-    app.get('/api/browser/text', async (req: Request, res: Response) => {
+    app.get('/api/browser/text', requireAuth, async (req: Request, res: Response) => {
         try { res.json(await browser.getPageText(cdpPort(req), req.query.format as string | undefined)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.get('/api/browser/dom', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.getDom(cdpPort(req), req.query)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.get('/api/browser/console', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.getConsole(cdpPort(req), req.query)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.get('/api/browser/network', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.getNetwork(cdpPort(req), req.query)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/wait-for-selector', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.waitForSelector(cdpPort(req), req.body.selector, req.body)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/wait-for-text', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.waitForText(cdpPort(req), req.body.text, req.body)); }
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
 }

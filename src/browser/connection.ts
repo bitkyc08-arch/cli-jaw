@@ -10,6 +10,40 @@ const PROFILE_DIR = join(JAW_HOME, 'browser-profile');
 let cached: any = null;   // { browser, cdpUrl }
 let chromeProc: any = null;
 let activePort: number | null = null;
+let verifiedActiveTargetId: string | null = null;
+let browserStateVersion = 0;
+
+export interface BrowserTabInfo {
+    tabId: string;
+    targetId: string;
+    index: number;
+    title: string;
+    url: string;
+    type: string;
+    active: boolean;
+    attached: boolean;
+}
+
+export interface ActiveTabResult {
+    ok: boolean;
+    tab?: BrowserTabInfo;
+    reason?: 'none' | 'ambiguous' | 'unverified' | 'not-found';
+}
+
+type RawCdpTab = {
+    id?: string;
+    title?: string;
+    url?: string;
+    type?: string;
+};
+
+export function markBrowserStateChanged() {
+    browserStateVersion++;
+}
+
+export function getBrowserStateVersion() {
+    return browserStateVersion;
+}
 
 /** Check if a port is already listening via TCP connect */
 function isPortListening(port: number, host = '127.0.0.1'): Promise<boolean> {
@@ -190,9 +224,69 @@ export async function getActivePage(port = getActivePort()) {
     return pages[pages.length - 1] || null;
 }
 
-export async function listTabs(port = getActivePort()) {
+async function readCdpPageTargets(port = getActivePort()): Promise<RawCdpTab[]> {
     const resp = await fetch(`http://127.0.0.1:${port}/json/list`);
-    return ((await resp.json()) as any[]).filter((t: any) => t.type === 'page');
+    return ((await resp.json()) as RawCdpTab[]).filter((t) => t.type === 'page');
+}
+
+function toBrowserTabInfo(tab: RawCdpTab, index: number, activeTargetId: string | null): BrowserTabInfo {
+    const targetId = tab.id || '';
+    return {
+        tabId: targetId,
+        targetId,
+        index: index + 1,
+        title: tab.title || '',
+        url: tab.url || '',
+        type: tab.type || 'page',
+        active: Boolean(activeTargetId && targetId === activeTargetId),
+        attached: true,
+    };
+}
+
+async function resolveActiveTargetId(port: number, tabs: RawCdpTab[]): Promise<string | null> {
+    if (verifiedActiveTargetId && tabs.some((t) => t.id === verifiedActiveTargetId)) {
+        return verifiedActiveTargetId;
+    }
+    return null;
+}
+
+export async function listTabs(port = getActivePort()): Promise<BrowserTabInfo[]> {
+    const tabs = await readCdpPageTargets(port);
+    const activeTargetId = await resolveActiveTargetId(port, tabs);
+    return tabs.map((tab, index) => toBrowserTabInfo(tab, index, activeTargetId));
+}
+
+export async function getActiveTab(port = getActivePort()): Promise<ActiveTabResult> {
+    const tabs = await listTabs(port);
+    const active = tabs.filter((t) => t.active);
+    if (active.length === 0) return { ok: false, reason: 'none' };
+    if (active.length > 1) return { ok: false, reason: 'ambiguous' };
+    return { ok: true, tab: active[0] };
+}
+
+export async function switchTab(port = getActivePort(), target: string): Promise<ActiveTabResult> {
+    const tabs = await readCdpPageTargets(port);
+    const wantedIndex = Number(target);
+    const wanted = Number.isInteger(wantedIndex)
+        ? tabs[wantedIndex - 1]
+        : tabs.find((t) => t.id === target);
+    if (!wanted?.id) return { ok: false, reason: 'not-found' };
+
+    const { browser } = await connectCdp(port);
+    const pages = browser.contexts().flatMap((c: any) => c.pages());
+    const matches = [];
+    for (const page of pages) {
+        const title = await page.title().catch(() => '');
+        if (page.url() === wanted.url && title === (wanted.title || '')) matches.push(page);
+    }
+    if (matches.length !== 1) return { ok: false, reason: matches.length ? 'ambiguous' : 'not-found' };
+
+    await matches[0].bringToFront();
+    verifiedActiveTargetId = wanted.id;
+    markBrowserStateChanged();
+    const active = await getActiveTab(port);
+    if (!active.ok || active.tab?.targetId !== wanted.id) return { ok: false, reason: 'unverified' };
+    return active;
 }
 
 export async function getBrowserStatus(port = getActivePort()) {
@@ -212,4 +306,6 @@ export async function closeBrowser() {
     if (cached?.browser) { await cached.browser.close().catch(() => { }); cached = null; }
     if (chromeProc && !chromeProc.killed) { chromeProc.kill('SIGTERM'); chromeProc = null; }
     activePort = null;
+    verifiedActiveTargetId = null;
+    markBrowserStateChanged();
 }
