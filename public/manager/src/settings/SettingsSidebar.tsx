@@ -17,7 +17,9 @@ const CATEGORIES: SidebarEntry[] = [
     { id: 'heartbeat', label: 'Heartbeat & schedules', group: 'automation' },
     { id: 'memory', label: 'Memory', group: 'integrations' },
     { id: 'employees', label: 'Employees', group: 'integrations' },
-    // Phases 7–9 will register their entries here.
+    { id: 'network', label: 'Network', group: 'core' },
+    { id: 'permissions', label: 'Permissions', group: 'core' },
+    // Phases 8–9 will register their entries here.
 ];
 
 type Props = {
