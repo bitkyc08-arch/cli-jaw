@@ -93,6 +93,8 @@ test('manager scan derives instance metadata from settings response', async () =
     assert.equal(row.workingDir, '/Users/jun/Developer/new/700_projects/cli-jaw');
     assert.equal(row.currentCli, 'codex');
     assert.equal(row.currentModel, 'gpt-5.5');
+    assert.equal(row.profileId, 'default');
+    assert.equal(result.manager.profiles?.[0]?.profileId, 'default');
 });
 
 test('manager scan falls back to workingDir for instance id when home is absent', async () => {

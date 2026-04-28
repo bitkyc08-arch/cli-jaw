@@ -11,6 +11,7 @@ export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 export type DashboardUiTheme = 'auto' | 'dark' | 'light';
+export type DashboardProfileId = string;
 
 export type DashboardProxyInfo = {
     enabled: boolean;
@@ -32,6 +33,7 @@ export type DashboardInstance = {
     currentCli: string | null;
     currentModel: string | null;
     serviceMode: DashboardServiceMode;
+    profileId?: DashboardProfileId | null;
     label?: string | null;
     favorite?: boolean;
     group?: string | null;
@@ -39,6 +41,19 @@ export type DashboardInstance = {
     lifecycle?: DashboardLifecycleCapability;
     lastCheckedAt: string;
     healthReason: string | null;
+};
+
+export type DashboardProfile = {
+    profileId: DashboardProfileId;
+    label: string;
+    homePath: string;
+    preferredPort: number | null;
+    serviceMode: DashboardServiceMode;
+    defaultCli: string | null;
+    notes: string | null;
+    lastSeenAt: string | null;
+    pinned: boolean;
+    color: string | null;
 };
 
 export type DashboardLifecycleCapability = {
@@ -84,6 +99,7 @@ export type DashboardScanResult = {
         checkedAt: string;
         proxy: DashboardProxyInfo;
         registry?: DashboardRegistryStatus;
+        profiles?: DashboardProfile[];
     };
     instances: DashboardInstance[];
 };
@@ -115,6 +131,8 @@ export type DashboardRegistry = {
     scan: DashboardRegistryScan;
     ui: DashboardRegistryUi;
     instances: Record<string, DashboardRegistryInstance>;
+    profiles: Record<DashboardProfileId, Partial<DashboardProfile>>;
+    activeProfileFilter: DashboardProfileId[];
 };
 
 export type DashboardRegistryStatus = {
@@ -128,4 +146,6 @@ export type DashboardRegistryPatch = {
     scan?: Partial<DashboardRegistryScan>;
     ui?: Partial<DashboardRegistryUi>;
     instances?: Record<string, Partial<DashboardRegistryInstance> | null>;
+    profiles?: Record<DashboardProfileId, Partial<DashboardProfile> | null>;
+    activeProfileFilter?: DashboardProfileId[];
 };

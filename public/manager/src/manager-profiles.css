@@ -1,0 +1,117 @@
+.profile-chip-strip {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+
+.profile-chip {
+    flex: 0 0 auto;
+    min-height: 30px;
+    gap: 6px;
+    border-color: var(--border-subtle);
+    background: var(--surface-raised);
+    color: var(--text-secondary);
+}
+
+.profile-chip.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.profile-chip strong {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+}
+
+.profile-instance-groups {
+    gap: 12px;
+}
+
+.profile-section {
+    display: grid;
+    gap: 8px;
+}
+
+.profile-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--canvas-soft);
+    padding: 9px 10px;
+}
+
+.profile-section-header div {
+    min-width: 0;
+    display: grid;
+    gap: 2px;
+}
+
+.profile-section-header span,
+.profile-summary-card span {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.profile-section-header small {
+    overflow: hidden;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.profile-section-header strong {
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+}
+
+.profile-empty {
+    padding: 8px 10px;
+}
+
+.drawer-profile-filters {
+    padding: 0 0 10px;
+}
+
+.profile-summary-card {
+    display: grid;
+    gap: 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--canvas-mid);
+    padding: 11px;
+}
+
+.profile-summary-card strong {
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.profile-summary-card dl {
+    display: grid;
+    gap: 6px;
+    margin: 0;
+}
+
+.profile-summary-card div {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.profile-summary-card dt,
+.profile-summary-card dd {
+    margin: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+}

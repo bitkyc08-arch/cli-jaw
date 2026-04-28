@@ -237,17 +237,20 @@
 /* Polish Workbench Mode Tabs (Segmented Control Style) */
 .workbench-mode-tabs {
     display: inline-flex;
+    align-items: center;
     background: var(--segment-track);
     border-radius: 8px;
     padding: 3px;
     gap: 2px;
+    min-height: 34px;
     border: 1px solid var(--segment-border);
 }
 
 .workbench-mode-tabs button {
     background: transparent;
     border: none;
-    min-height: 24px;
+    height: 26px;
+    min-height: 26px;
     padding: 4px 10px;
     color: var(--text-dim);
     font-size: 12px;
@@ -281,7 +284,8 @@
     color: var(--link-ink);
     font-size: 12px;
     font-weight: 500;
-    height: 28px;
+    height: 34px;
+    min-height: 34px;
     padding: 0 10px;
     border-radius: 7px;
     transition: all 0.2s ease;
@@ -296,12 +300,9 @@
 }
 
 
-/* Fix Workbench Header Vertical Alignment */
-.workbench-header {
-    align-items: center;
-}
-
 .workbench-header .detail-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     padding: 0;
     border-bottom: none;
     align-items: center;

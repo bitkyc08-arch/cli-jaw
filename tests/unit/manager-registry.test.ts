@@ -29,6 +29,7 @@ function makeInstance(port: number): DashboardInstance {
         currentCli: null,
         currentModel: null,
         serviceMode: 'unknown',
+        profileId: `profile-${port}`,
         lastCheckedAt: '2026-04-27T00:00:00.000Z',
         healthReason: null,
     };
@@ -54,6 +55,8 @@ test('manager registry defaults when file is missing', () => {
     assert.equal(loaded.registry.scan.from, 3457);
     assert.equal(loaded.registry.scan.count, 50);
     assert.equal(loaded.registry.ui.selectedTab, 'overview');
+    assert.deepEqual(loaded.registry.profiles, {});
+    assert.deepEqual(loaded.registry.activeProfileFilter, []);
     assert.equal(loaded.status.loaded, true);
     assert.equal(loaded.status.error, null);
 });
@@ -84,6 +87,11 @@ test('manager registry clamps scan and UI values', () => {
             3457: { label: ' main ', favorite: true, group: 'daily', hidden: false },
             bad: { label: 'ignored' },
         },
+        profiles: {
+            default: { label: ' Default ', homePath: '/Users/jun/.cli-jaw', pinned: true },
+            bad_profile: { label: 'ignored' },
+        },
+        activeProfileFilter: ['default', 'BAD'],
     }));
 
     const loaded = loadDashboardRegistry({ path });
@@ -96,6 +104,8 @@ test('manager registry clamps scan and UI values', () => {
     assert.equal(loaded.registry.ui.activityDockHeight, 320);
     assert.equal(loaded.registry.instances['3457']?.label, 'main');
     assert.equal(loaded.registry.instances.bad, undefined);
+    assert.equal(loaded.registry.profiles.default?.label, 'Default');
+    assert.deepEqual(loaded.registry.activeProfileFilter, ['default']);
 });
 
 test('manager registry patch persists instance preferences', () => {
@@ -104,6 +114,8 @@ test('manager registry patch persists instance preferences', () => {
         scan: { from: 3460, count: 8 },
         ui: { selectedPort: 3461, selectedTab: 'settings' },
         instances: { 3461: { label: 'worker', favorite: true, hidden: true } },
+        profiles: { default: { label: 'Default', homePath: '/Users/jun/.cli-jaw', pinned: true } },
+        activeProfileFilter: ['default'],
     }, { path });
 
     assert.equal(saved.registry.scan.from, 3460);
@@ -112,6 +124,8 @@ test('manager registry patch persists instance preferences', () => {
     assert.equal(saved.registry.instances['3461']?.label, 'worker');
     assert.equal(saved.registry.instances['3461']?.favorite, true);
     assert.equal(saved.registry.instances['3461']?.hidden, true);
+    assert.equal(saved.registry.profiles.default?.pinned, true);
+    assert.deepEqual(saved.registry.activeProfileFilter, ['default']);
 });
 
 test('manager registry overlays scan results and hides hidden rows by default', () => {
@@ -126,6 +140,7 @@ test('manager registry overlays scan results and hides hidden rows by default', 
     assert.deepEqual(visible.instances.map(instance => instance.port), [3457]);
     assert.equal(visible.instances[0]?.label, 'main');
     assert.equal(visible.instances[0]?.favorite, true);
+    assert.ok(Array.isArray(visible.manager.profiles));
     assert.deepEqual(withHidden.instances.map(instance => instance.port), [3457, 3458]);
     assert.equal(withHidden.instances[1]?.hidden, true);
 });

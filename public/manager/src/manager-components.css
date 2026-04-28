@@ -260,7 +260,7 @@ h2 { font-size: 13px; }
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 12px;
-    align-items: start;
+    align-items: center;
     border-bottom: 1px solid var(--border-subtle);
     padding: 12px 14px 10px;
 }

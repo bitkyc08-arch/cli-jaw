@@ -6,6 +6,7 @@ import './manager-layout.css';
 import './manager-components.css';
 import './manager-emerging.css';
 import './manager-persistence.css';
+import './manager-profiles.css';
 import './manager-polish.css';
 
 const root = document.getElementById('manager-root');

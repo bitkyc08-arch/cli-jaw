@@ -1,4 +1,4 @@
-import type { DashboardInstanceStatus, DashboardScanResult, DashboardUiTheme } from '../types';
+import type { DashboardInstanceStatus, DashboardProfile, DashboardScanResult, DashboardUiTheme } from '../types';
 import { CommandCenter } from './CommandCenter';
 import { CommandFilters } from './CommandFilters';
 import { ThemeSwitch } from './ThemeSwitch';
@@ -13,6 +13,9 @@ type CommandBarProps = {
     summary: Record<string, number>;
     manager: DashboardScanResult['manager'] | null;
     showHidden: boolean;
+    profiles: DashboardProfile[];
+    activeProfileIds: string[];
+    profileCounts: Record<string, number>;
     registryMessage: string | null;
     scanFrom: string;
     scanCount: string;
@@ -21,6 +24,7 @@ type CommandBarProps = {
     onStatusChange: (value: StatusFilter) => void;
     onCustomHomeChange: (value: string) => void;
     onShowHiddenChange: (value: boolean) => void;
+    onProfileToggle: (profileId: string) => void;
     onScanFromChange: (value: string) => void;
     onScanCountChange: (value: string) => void;
     onScanRangeCommit: (from: string, count: string) => void;
@@ -80,12 +84,16 @@ export function CommandBar(props: CommandBarProps) {
                     status={props.status}
                     customHome={props.customHome}
                     showHidden={props.showHidden}
+                    profiles={props.profiles}
+                    activeProfileIds={props.activeProfileIds}
+                    profileCounts={props.profileCounts}
                     registryMessage={props.registryMessage}
                     scanFrom={props.scanFrom}
                     scanCount={props.scanCount}
                     onStatusChange={props.onStatusChange}
                     onCustomHomeChange={props.onCustomHomeChange}
                     onShowHiddenChange={props.onShowHiddenChange}
+                    onProfileToggle={props.onProfileToggle}
                     onScanFromChange={props.onScanFromChange}
                     onScanCountChange={props.onScanCountChange}
                     onScanRangeCommit={props.onScanRangeCommit}

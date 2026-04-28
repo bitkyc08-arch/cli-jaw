@@ -5,9 +5,12 @@ import {
     MANAGED_INSTANCE_PORT_COUNT,
     MANAGED_INSTANCE_PORT_FROM,
 } from './constants.js';
+import { deriveProfiles, mergeProfiles } from './profiles.js';
 import type {
     DashboardDetailTab,
     DashboardInstance,
+    DashboardProfile,
+    DashboardProfileId,
     DashboardRegistry,
     DashboardRegistryInstance,
     DashboardRegistryPatch,
@@ -68,6 +71,10 @@ function readString(value: unknown): string | null {
     return typeof value === 'string' && value.trim() ? value.trim().slice(0, 120) : null;
 }
 
+function readProfileId(value: unknown): DashboardProfileId | null {
+    return typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/.test(value) ? value : null;
+}
+
 function defaultUi(): DashboardRegistryUi {
     return {
         selectedPort: null,
@@ -83,7 +90,7 @@ export function defaultDashboardRegistry(options: RegistryOptions = {}): Dashboa
     const from = clampInt(options.from, MANAGED_INSTANCE_PORT_FROM, 1, 65535);
     const maxCount = Math.max(1, 65535 - from + 1);
     const count = clampInt(options.count, MANAGED_INSTANCE_PORT_COUNT, 1, Math.min(MANAGED_INSTANCE_PORT_COUNT, maxCount));
-    return { scan: { from, count }, ui: defaultUi(), instances: {} };
+    return { scan: { from, count }, ui: defaultUi(), instances: {}, profiles: {}, activeProfileFilter: [] };
 }
 
 function normalizeUi(value: unknown): DashboardRegistryUi {
@@ -118,6 +125,28 @@ function normalizeInstance(value: unknown): DashboardRegistryInstance {
     };
 }
 
+function normalizeProfile(key: string, value: unknown): Partial<DashboardProfile> | null {
+    const profileId = readProfileId(key);
+    const input = isRecord(value) ? value : {};
+    if (!profileId) return null;
+    const homePath = readString(input.homePath);
+    if (!homePath && Object.keys(input).length > 0) return null;
+    return {
+        profileId,
+        label: readString(input.label) || undefined,
+        homePath: homePath || undefined,
+        preferredPort: input.preferredPort == null ? undefined : clampInt(input.preferredPort, 0, 1, 65535),
+        serviceMode: ['unknown', 'ad-hoc', 'service', 'manager'].includes(String(input.serviceMode))
+            ? input.serviceMode as DashboardProfile['serviceMode']
+            : undefined,
+        defaultCli: readString(input.defaultCli) || undefined,
+        notes: readString(input.notes) || undefined,
+        lastSeenAt: typeof input.lastSeenAt === 'string' && !Number.isNaN(Date.parse(input.lastSeenAt)) ? input.lastSeenAt : undefined,
+        pinned: typeof input.pinned === 'boolean' ? input.pinned : undefined,
+        color: readString(input.color) || undefined,
+    };
+}
+
 export function normalizeDashboardRegistry(value: unknown, options: RegistryOptions = {}): DashboardRegistry {
     const input = isRecord(value) ? value : {};
     const defaults = defaultDashboardRegistry(options);
@@ -126,6 +155,8 @@ export function normalizeDashboardRegistry(value: unknown, options: RegistryOpti
     const count = clampInt(scan.count, defaults.scan.count, 1, Math.min(MANAGED_INSTANCE_PORT_COUNT, 65535 - from + 1));
     const instances: Record<string, DashboardRegistryInstance> = {};
     const rawInstances = isRecord(input.instances) ? input.instances : {};
+    const profiles: Record<string, Partial<DashboardProfile>> = {};
+    const rawProfiles = isRecord(input.profiles) ? input.profiles : {};
 
     for (const [key, raw] of Object.entries(rawInstances)) {
         const port = Number(key);
@@ -133,7 +164,17 @@ export function normalizeDashboardRegistry(value: unknown, options: RegistryOpti
         instances[String(port)] = normalizeInstance(raw);
     }
 
-    return { scan: { from, count }, ui: normalizeUi(input.ui), instances };
+    for (const [key, raw] of Object.entries(rawProfiles)) {
+        if (raw == null) continue;
+        const normalized = normalizeProfile(key, raw);
+        if (normalized) profiles[key] = normalized;
+    }
+
+    const activeProfileFilter = Array.isArray(input.activeProfileFilter)
+        ? input.activeProfileFilter.map(readProfileId).filter((value): value is DashboardProfileId => Boolean(value))
+        : [];
+
+    return { scan: { from, count }, ui: normalizeUi(input.ui), instances, profiles, activeProfileFilter };
 }
 
 function statusFor(path: string, loaded: boolean, error: string | null, registry: DashboardRegistry): DashboardRegistryStatus {
@@ -170,6 +211,8 @@ export function patchDashboardRegistry(patch: DashboardRegistryPatch, options: R
         scan: { ...current.scan, ...patch.scan },
         ui: { ...current.ui, ...patch.ui },
         instances: { ...current.instances },
+        profiles: { ...current.profiles },
+        activeProfileFilter: patch.activeProfileFilter ?? current.activeProfileFilter,
     }, options);
 
     for (const [key, value] of Object.entries(patch.instances || {})) {
@@ -180,6 +223,17 @@ export function patchDashboardRegistry(patch: DashboardRegistryPatch, options: R
             continue;
         }
         next.instances[String(port)] = normalizeInstance({ ...next.instances[String(port)], ...value });
+    }
+
+    for (const [key, value] of Object.entries(patch.profiles || {})) {
+        const profileId = readProfileId(key);
+        if (!profileId) continue;
+        if (value === null) {
+            delete next.profiles[profileId];
+            continue;
+        }
+        const normalized = normalizeProfile(profileId, { ...next.profiles[profileId], ...value });
+        if (normalized) next.profiles[profileId] = normalized;
     }
 
     return saveDashboardRegistry(next, options);
@@ -197,12 +251,34 @@ function overlayInstance(instance: DashboardInstance, registry: DashboardRegistr
 }
 
 export function applyDashboardRegistry(result: DashboardScanResult, registry: DashboardRegistry, status: DashboardRegistryStatus, options: ApplyOptions = {}): DashboardScanResult {
-    const instances = result.instances
+    const derived = deriveProfiles(result.instances);
+    const registryProfiles = Object.entries(registry.profiles)
+        .map(([profileId, profile]) => materializeProfile(profileId, profile))
+        .filter((profile): profile is DashboardProfile => Boolean(profile));
+    const profiles = mergeProfiles(mergeProfiles(derived.profiles, registryProfiles), result.manager.profiles || []);
+    const instances = derived.instances
         .map(instance => overlayInstance(instance, registry))
         .filter(instance => options.showHidden || !instance.hidden);
 
     return {
-        manager: { ...result.manager, registry: status },
+        manager: { ...result.manager, registry: status, profiles },
         instances,
+    };
+}
+
+function materializeProfile(profileId: string, profile: Partial<DashboardProfile>): DashboardProfile | null {
+    const normalizedId = readProfileId(profileId);
+    if (!normalizedId || !profile.homePath) return null;
+    return {
+        profileId: normalizedId,
+        label: readString(profile.label) || normalizedId,
+        homePath: profile.homePath,
+        preferredPort: profile.preferredPort ?? null,
+        serviceMode: profile.serviceMode || 'unknown',
+        defaultCli: profile.defaultCli || null,
+        notes: profile.notes || null,
+        lastSeenAt: profile.lastSeenAt || null,
+        pinned: profile.pinned === true,
+        color: profile.color || null,
     };
 }

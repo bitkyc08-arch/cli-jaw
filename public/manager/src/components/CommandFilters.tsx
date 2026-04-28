@@ -1,4 +1,5 @@
-import type { DashboardInstanceStatus } from '../types';
+import { ProfileChip } from './ProfileChip';
+import type { DashboardInstanceStatus, DashboardProfile } from '../types';
 
 type StatusFilter = 'all' | DashboardInstanceStatus;
 
@@ -6,12 +7,16 @@ type CommandFiltersProps = {
     status: StatusFilter;
     customHome: string;
     showHidden: boolean;
+    profiles: DashboardProfile[];
+    activeProfileIds: string[];
+    profileCounts: Record<string, number>;
     registryMessage: string | null;
     scanFrom: string;
     scanCount: string;
     onStatusChange: (value: StatusFilter) => void;
     onCustomHomeChange: (value: string) => void;
     onShowHiddenChange: (value: boolean) => void;
+    onProfileToggle: (profileId: string) => void;
     onScanFromChange: (value: string) => void;
     onScanCountChange: (value: string) => void;
     onScanRangeCommit: (from: string, count: string) => void;
@@ -31,6 +36,19 @@ export function CommandFilters(props: CommandFiltersProps) {
             >
                 {STATUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
             </select>
+            {props.profiles.length > 0 && (
+                <div className="profile-chip-strip" aria-label="Profile filters">
+                    {props.profiles.map(profile => (
+                        <ProfileChip
+                            key={profile.profileId}
+                            profile={profile}
+                            active={props.activeProfileIds.includes(profile.profileId)}
+                            count={props.profileCounts[profile.profileId] || 0}
+                            onToggle={props.onProfileToggle}
+                        />
+                    ))}
+                </div>
+            )}
             <div className="launch-home-control">
                 <svg viewBox="0 0 24 24" width="14" height="14" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
                 <input

@@ -128,3 +128,20 @@ test('manager frontend exposes 10.6 persistence controls', () => {
     assert.ok(command.includes('onScanRangeCommit'), 'CommandBar must support committed scan range changes');
     assert.ok(main.includes('./manager-persistence.css'), 'manager persistence styling must be split into its own CSS module');
 });
+
+test('manager frontend exposes 10.8 profile controls', () => {
+    const app = read('public/manager/src/App.tsx');
+    const filters = read('public/manager/src/components/CommandFilters.tsx');
+    const groups = read('public/manager/src/components/InstanceGroups.tsx');
+    const drawer = read('public/manager/src/components/InstanceDrawer.tsx');
+    const main = read('public/manager/src/main.tsx');
+
+    assert.ok(existsSync(join(projectRoot, 'public/manager/src/components/ProfileChip.tsx')), 'ProfileChip must exist');
+    assert.ok(existsSync(join(projectRoot, 'public/manager/src/components/ProfileSection.tsx')), 'ProfileSection must exist');
+    assert.ok(filters.includes('profile-chip-strip'), 'CommandFilters must expose profile chips');
+    assert.ok(app.includes('activeProfileIds'), 'App must own active profile filter state');
+    assert.ok(app.includes('activeProfileFilter'), 'App must persist active profile filters through registry');
+    assert.ok(groups.includes('ProfileSection'), 'InstanceGroups must render profile sections');
+    assert.ok(drawer.includes('drawer-profile-filters'), 'mobile drawer must mirror profile filters');
+    assert.ok(main.includes('./manager-profiles.css'), 'profile styling must stay split from large CSS files');
+});

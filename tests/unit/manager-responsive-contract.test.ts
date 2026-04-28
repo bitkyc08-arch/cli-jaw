@@ -17,6 +17,7 @@ function readManagerCss(): string {
         'public/manager/src/manager-layout.css',
         'public/manager/src/manager-components.css',
         'public/manager/src/manager-persistence.css',
+        'public/manager/src/manager-profiles.css',
     ].map(read).join('\n');
 }
 
@@ -60,6 +61,9 @@ test('manager responsive components exist', () => {
         'ActivityDock',
         'MobileNav',
         'InstanceDrawer',
+        'ProfileChip',
+        'ProfileSection',
+        'ProfileSummaryCard',
     ].forEach(name => {
         assert.equal(
             existsSync(join(projectRoot, 'public', 'manager', 'src', 'components', `${name}.tsx`)),
@@ -89,6 +93,7 @@ test('manager responsive CSS defines shell regions and breakpoints', () => {
     assert.ok(css.includes('command-secondary'), 'command center secondary row must exist');
     assert.ok(css.includes('command-filter-strip'), 'command filters must have an isolated secondary area');
     assert.ok(css.includes('instance-navigator-active'), 'navigator must keep the active instance outside the scroll body');
+    assert.ok(css.includes('profile-chip-strip'), 'profile filters must have a stable horizontal strip');
 });
 
 test('manager tablet and mobile breakpoints override desktop sidebar state', () => {

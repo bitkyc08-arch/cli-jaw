@@ -1,12 +1,15 @@
 import { InstanceRow } from './InstanceRow';
+import { ProfileSection } from './ProfileSection';
 import type {
     DashboardInstance,
     DashboardInstanceGroup,
     DashboardLifecycleAction,
+    DashboardProfile,
 } from '../types';
 
 type InstanceGroupsProps = {
     instances: DashboardInstance[];
+    profiles?: DashboardProfile[];
     selectedPort: number | null;
     lifecycleBusyPort: number | null;
     transitioningPort?: number | null;
@@ -60,37 +63,63 @@ function groupInstances(instances: DashboardInstance[], selectedPort: number | n
     return groups.filter(group => group.instances.length > 0);
 }
 
+function renderRows(props: InstanceGroupsProps, instances: DashboardInstance[]) {
+    return groupInstances(instances, props.selectedPort).map(group => (
+        <section className="instance-group" key={group.id} aria-label={`${group.label} instances`}>
+            <div className="instance-group-header">
+                <span>{group.label}</span>
+                <strong>{group.instances.length}</strong>
+            </div>
+            {group.instances.map(instance => (
+                <InstanceRow
+                    key={instance.port}
+                    instance={instance}
+                    selected={props.selectedPort === instance.port}
+                    busy={props.lifecycleBusyPort === instance.port}
+                    transitioning={props.transitioningPort === instance.port ? props.transitionAction || null : null}
+                    label={props.getLabel(instance)}
+                    uptime={props.formatUptime(instance.uptime)}
+                    onSelect={props.onSelect}
+                    onPreview={props.onPreview}
+                    onLifecycle={props.onLifecycle}
+                />
+            ))}
+        </section>
+    ));
+}
+
 export function InstanceGroups(props: InstanceGroupsProps) {
     const groups = groupInstances(props.instances, props.selectedPort);
+    const profileMap = new Map((props.profiles || []).map(profile => [profile.profileId, profile]));
 
-    if (groups.length === 0) {
+    if (groups.length === 0 && profileMap.size === 0) {
         return <section className="state">No matching instances found.</section>;
+    }
+
+    if (profileMap.size > 0) {
+        const used = new Set<number>();
+        return (
+            <div className="instance-groups profile-instance-groups">
+                {Array.from(profileMap.values()).map((profile) => {
+                    const profileInstances = props.instances.filter(instance => instance.profileId === profile.profileId);
+                    profileInstances.forEach(instance => used.add(instance.port));
+                    return (
+                        <section className="profile-section" key={profile.profileId}>
+                            <ProfileSection profile={profile} count={profileInstances.length} />
+                            {profileInstances.length > 0
+                                ? renderRows(props, profileInstances)
+                                : <section className="state profile-empty">No online instances for this profile.</section>}
+                        </section>
+                    );
+                })}
+                {renderRows(props, props.instances.filter(instance => !used.has(instance.port)))}
+            </div>
+        );
     }
 
     return (
         <div className="instance-groups">
-            {groups.map(group => (
-                <section className="instance-group" key={group.id} aria-label={`${group.label} instances`}>
-                    <div className="instance-group-header">
-                        <span>{group.label}</span>
-                        <strong>{group.instances.length}</strong>
-                    </div>
-                    {group.instances.map(instance => (
-                        <InstanceRow
-                            key={instance.port}
-                            instance={instance}
-                            selected={props.selectedPort === instance.port}
-                            busy={props.lifecycleBusyPort === instance.port}
-                            transitioning={props.transitioningPort === instance.port ? props.transitionAction || null : null}
-                            label={props.getLabel(instance)}
-                            uptime={props.formatUptime(instance.uptime)}
-                            onSelect={props.onSelect}
-                            onPreview={props.onPreview}
-                            onLifecycle={props.onLifecycle}
-                        />
-                    ))}
-                </section>
-            ))}
+            {renderRows(props, props.instances)}
         </div>
     );
 }

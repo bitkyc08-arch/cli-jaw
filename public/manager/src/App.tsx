@@ -11,6 +11,7 @@ import { EmptyNavigator } from './components/EmptyNavigator';
 import { InstanceNavigator } from './components/InstanceNavigator';
 import { ManagerShell } from './components/ManagerShell';
 import { MobileNav } from './components/MobileNav';
+import { ProfileChip } from './components/ProfileChip';
 import { SidebarRail } from './components/SidebarRail';
 import { Workbench } from './components/Workbench';
 import { WorkspaceLayout } from './components/WorkspaceLayout';
@@ -25,6 +26,7 @@ import type {
     DashboardInstance,
     DashboardInstanceStatus,
     DashboardLifecycleAction,
+    DashboardProfile,
     DashboardScanResult,
 } from './types';
 
@@ -56,6 +58,7 @@ export function App() {
     const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
     const [transitioningPort, setTransitioningPort] = useState<number | null>(null);
     const [transitionAction, setTransitionAction] = useState<DashboardLifecycleAction | null>(null);
+    const [activeProfileIds, setActiveProfileIds] = useState<string[]>([]);
     const registry = useDashboardRegistry();
     const view = useDashboardView();
     const theme = useTheme((next) => {
@@ -112,6 +115,7 @@ export function App() {
                 view.setSidebarCollapsed(ui.sidebarCollapsed);
                 view.setActivityDockCollapsed(ui.activityDockCollapsed);
                 view.setActivityDockHeight(ui.activityDockHeight);
+                setActiveProfileIds(loaded.registry.activeProfileFilter || []);
                 syncThemeFromRegistry(ui.uiTheme);
                 setScanFromInput(String(loaded.registry.scan.from));
                 setScanCountInput(String(loaded.registry.scan.count));
@@ -137,6 +141,13 @@ export function App() {
     }
 
     const instances = data?.instances || [];
+    const profiles = useMemo(() => data?.manager.profiles || [], [data]);
+    const profileCounts = useMemo(() => {
+        return instances.reduce((acc, instance) => {
+            if (instance.profileId) acc[instance.profileId] = (acc[instance.profileId] || 0) + 1;
+            return acc;
+        }, {} as Record<string, number>);
+    }, [instances]);
     const summary = useMemo(() => {
         return instances.reduce((acc, instance) => {
             acc.total += 1;
@@ -149,6 +160,7 @@ export function App() {
         const needle = query.trim().toLowerCase();
         return instances.filter((instance) => {
             if (status !== 'all' && instance.status !== status) return false;
+            if (activeProfileIds.length > 0 && (!instance.profileId || !activeProfileIds.includes(instance.profileId))) return false;
             if (!needle) return true;
             return [
                 String(instance.port),
@@ -161,9 +173,18 @@ export function App() {
                 instance.healthReason,
                 instance.label,
                 instance.group,
+                instance.profileId,
             ].some(value => String(value || '').toLowerCase().includes(needle));
         });
-    }, [instances, query, status]);
+    }, [activeProfileIds, instances, query, status]);
+
+    function toggleProfile(profileId: string): void {
+        const next = activeProfileIds.includes(profileId)
+            ? activeProfileIds.filter(id => id !== profileId)
+            : [...activeProfileIds, profileId];
+        setActiveProfileIds(next);
+        void registry.save({ activeProfileFilter: next });
+    }
 
     const selectedInstance = useMemo(() => {
         if (view.selectedPort == null) return filtered.find(instance => instance.ok) || null;
@@ -274,6 +295,7 @@ export function App() {
                     lifecycleBusyPort={lifecycleBusyPort}
                     transitioningPort={transitioningPort}
                     transitionAction={transitionAction}
+                    profiles={profiles}
                     getLabel={instanceLabel}
                     formatUptime={formatUptime}
                     onSelect={handleSelectInstance}
@@ -295,6 +317,20 @@ export function App() {
             {selectedInstance && <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>Open</a>}
         </div>
     );
+
+    const profileChipStrip = (chipProfiles: DashboardProfile[]) => chipProfiles.length > 0 ? (
+        <div className="profile-chip-strip drawer-chip-strip" aria-label="Profile filters">
+            {chipProfiles.map(profile => (
+                <ProfileChip
+                    key={profile.profileId}
+                    profile={profile}
+                    active={activeProfileIds.includes(profile.profileId)}
+                    count={profileCounts[profile.profileId] || 0}
+                    onToggle={toggleProfile}
+                />
+            ))}
+        </div>
+    ) : null;
 
     const detailContent = (tab: DashboardDetailTab) => (
         <InstanceDetailPanel
@@ -320,6 +356,9 @@ export function App() {
                     summary={summary}
                     manager={data?.manager || null}
                     showHidden={showHidden}
+                    profiles={profiles}
+                    activeProfileIds={activeProfileIds}
+                    profileCounts={profileCounts}
                     registryMessage={registry.saving ? 'Saving' : registry.error}
                     scanFrom={scanFromInput}
                     scanCount={scanCountInput}
@@ -330,6 +369,7 @@ export function App() {
                         setShowHidden(value);
                         void load(value);
                     }}
+                    onProfileToggle={toggleProfile}
                     onScanFromChange={setScanFromInput}
                     onScanCountChange={setScanCountInput}
                     onScanRangeCommit={(from, count) => void commitScanRange(from, count)}
@@ -424,7 +464,11 @@ export function App() {
                         />
                     )}
                     drawer={(
-                        <InstanceDrawer open={view.drawerOpen} onClose={() => view.setDrawerOpen(false)}>
+                        <InstanceDrawer
+                            open={view.drawerOpen}
+                            profileFilters={profileChipStrip(profiles)}
+                            onClose={() => view.setDrawerOpen(false)}
+                        >
                             {renderInstanceListContent(false)}
                         </InstanceDrawer>
                     )}

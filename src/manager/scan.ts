@@ -6,6 +6,7 @@ import {
     MANAGED_INSTANCE_PORT_FROM,
 } from './constants.js';
 import { deriveDashboardInstanceId, normalizeSettingsMetadata } from './metadata.js';
+import { deriveProfiles } from './profiles.js';
 import type {
     DashboardInstance,
     DashboardScanOptions,
@@ -122,9 +123,10 @@ export async function scanDashboardInstances(options: DashboardScanOptions = {})
     const managerPort = toPositiveInt(options.managerPort, Number(DASHBOARD_DEFAULT_PORT));
     const ports = Array.from({ length: count }, (_, index) => from + index);
 
-    const instances = await Promise.all(
+    const scanned = await Promise.all(
         ports.map(port => scanPort(port, fetchImpl, timeoutMs, checkedAt))
     );
+    const { instances, profiles } = deriveProfiles(scanned);
 
     return {
         manager: {
@@ -138,6 +140,7 @@ export async function scanDashboardInstances(options: DashboardScanOptions = {})
                 allowedFrom: from,
                 allowedTo: to,
             },
+            profiles,
         },
         instances,
     };

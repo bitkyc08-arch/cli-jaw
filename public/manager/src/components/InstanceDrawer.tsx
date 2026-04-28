@@ -3,6 +3,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 type InstanceDrawerProps = {
     open: boolean;
     children: ReactNode;
+    profileFilters?: ReactNode;
     onClose: () => void;
 };
 
@@ -42,7 +43,10 @@ export function InstanceDrawer(props: InstanceDrawerProps) {
                     <span>Instances</span>
                     <button ref={closeButtonRef} type="button" onClick={onClose}>Close</button>
                 </div>
-                <div className="drawer-body">{children}</div>
+                <div className="drawer-body">
+                    {props.profileFilters && <div className="drawer-profile-filters">{props.profileFilters}</div>}
+                    {children}
+                </div>
             </aside>
         </div>
     );
