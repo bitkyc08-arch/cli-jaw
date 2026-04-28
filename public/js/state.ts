@@ -53,6 +53,7 @@ export interface AppState {
     employees: unknown[];
     allSkills: unknown[];
     currentSkillFilter: string;
+    currentSkillSearch: string;
     currentAgentDiv: HTMLElement | null;
     attachedFiles: File[];
     heartbeatJobs: HeartbeatJob[];
@@ -72,6 +73,7 @@ export const state: AppState = {
     employees: [],
     allSkills: [],
     currentSkillFilter: 'all',
+    currentSkillSearch: '',
     currentAgentDiv: null,
     attachedFiles: [],
     heartbeatJobs: [],

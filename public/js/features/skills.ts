@@ -18,6 +18,20 @@ interface SkillItem {
 
 const KNOWN_CATS = ['productivity', 'communication', 'devtools', 'ai-media', 'utility', 'smarthome', 'automation'];
 
+function matchesSkillSearch(skill: SkillItem, query: string): boolean {
+    if (!query) return true;
+    const haystack = [
+        skill.id,
+        skill.name,
+        skill.description,
+        skill.category,
+        skill.requires?.env?.join(' '),
+        skill.requires?.bins?.join(' '),
+        skill.install,
+    ].filter(Boolean).join(' ').toLowerCase();
+    return haystack.includes(query);
+}
+
 export async function loadSkills(): Promise<void> {
     try {
         const res = await fetchWithLocale('/api/skills');
@@ -42,8 +56,17 @@ export function renderSkills(): void {
     } else if (state.currentSkillFilter !== 'all') {
         filtered = skills.filter(s => s.category === state.currentSkillFilter);
     }
+    const searchQuery = state.currentSkillSearch.trim().toLowerCase();
+    filtered = filtered.filter(s => matchesSkillSearch(s, searchQuery));
     const enabledCount = skills.filter(s => s.enabled).length;
-    count.textContent = t('skill.count', { active: enabledCount, total: skills.length });
+    count.textContent = searchQuery
+        ? t('skill.countFiltered', { shown: filtered.length, active: enabledCount, total: skills.length })
+        : t('skill.count', { active: enabledCount, total: skills.length });
+
+    if (!filtered.length) {
+        list.innerHTML = `<div class="skill-empty">${escapeHtml(t('skill.search.empty'))}</div>`;
+        return;
+    }
 
     list.innerHTML = filtered.map(s => {
         const reqParts: string[] = [];
@@ -79,5 +102,10 @@ export function filterSkills(cat: string, btn?: Element): void {
     state.currentSkillFilter = cat;
     document.querySelectorAll('.skill-filter').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
+    renderSkills();
+}
+
+export function searchSkills(query: string): void {
+    state.currentSkillSearch = query;
     renderSkills();
 }

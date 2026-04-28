@@ -319,6 +319,13 @@
                 <button class="help-trigger" type="button" data-help-topic="skills"
                     data-i18n-aria="help.skills.aria" aria-label="스킬 도움말">?</button>
             </div>
+            <div class="skill-search">
+                <span class="skill-search-icon" data-icon="search" aria-hidden="true"></span>
+                <input id="skillSearchInput" class="skill-search-input" type="search"
+                    data-i18n-placeholder="skill.search.placeholder" placeholder="스킬 검색..."
+                    data-i18n-aria="skill.search.aria" aria-label="스킬 검색"
+                    autocomplete="off" spellcheck="false">
+            </div>
             <div class="flex gap-2 flex-wrap">
                 <button class="skill-filter active" data-filter="all" data-i18n="skill.filter.all">전체</button>
                 <button class="skill-filter" data-filter="installed" data-i18n="skill.filter.installed"><span data-icon="compacting"></span> 설치됨</button>

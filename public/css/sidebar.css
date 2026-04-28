@@ -137,6 +137,49 @@ textarea.prompt-editor {
 }
 
 /* ── Skills Tab ── */
+.skill-search {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    margin-bottom: 8px;
+    padding: 6px 9px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.skill-search:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px color-mix(in oklch, var(--accent) 14%, transparent);
+}
+
+.skill-search-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 14px;
+    height: 14px;
+    color: var(--text-dim);
+    flex-shrink: 0;
+}
+
+.skill-search-input {
+    width: 100%;
+    min-width: 0;
+    border: 0;
+    outline: 0;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    font-size: 11px;
+}
+
+.skill-search-input::placeholder {
+    color: var(--text-dim);
+}
+
 .skill-filter {
     padding: 4px 10px;
     background: none;
@@ -152,6 +195,13 @@ textarea.prompt-editor {
     border-color: var(--accent);
     color: var(--accent);
     background: color-mix(in oklch, var(--accent) 10%, var(--bg));
+}
+
+.skill-empty {
+    padding: 12px 4px;
+    color: var(--text-dim);
+    font-size: 11px;
+    text-align: center;
 }
 
 .skill-card {

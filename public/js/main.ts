@@ -45,7 +45,7 @@ import {
     loadCommands, update as updateSlashDropdown, handleKeydown as handleSlashKeydown,
     handleClick as handleSlashClick, handleOutsideClick as handleSlashOutsideClick,
 } from './features/slash-commands.js';
-import { toggleSkill, filterSkills } from './features/skills.js';
+import { toggleSkill, filterSkills, searchSkills } from './features/skills.js';
 import {
     loadSettings, handleModelSelect, applyCustomModel, onCliChange,
     saveActiveCliSettings, savePerCli, openPromptModal,
@@ -202,6 +202,9 @@ document.querySelector('#tabSkills')?.addEventListener('click', (e) => {
         const cat = filterBtn.dataset.filter || 'all';
         filterSkills(cat, filterBtn);
     }
+});
+document.getElementById('skillSearchInput')?.addEventListener('input', (e) => {
+    searchSkills((e.target as HTMLInputElement).value);
 });
 
 // ── Settings Tab ──
