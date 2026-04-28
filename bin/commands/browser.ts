@@ -12,6 +12,7 @@ loadSettings();
 const SERVER = getServerUrl();
 await getCliAuthToken();
 const sub = process.argv[3];
+const WEB_AI_COMMANDS = new Set(['render', 'status', 'send', 'poll', 'query', 'stop']);
 
 // ─── ANSI ────────────────────────────────────
 const c = {
@@ -49,8 +50,85 @@ function parseClip(values: Record<string, any>) {
     return { x, y, width, height };
 }
 
+function rejectFutureWebAiFlags(values: Record<string, any>) {
+    if (values.vendor && values.vendor !== 'chatgpt') throw new Error(`unsupported vendor: ${values.vendor}`);
+    if (values.file) throw new Error('--file is future scope. Use --inline-only.');
+    if (values.model) throw new Error('--model is future scope.');
+    if (values['thinking-time']) throw new Error('--thinking-time is future scope.');
+}
+
+async function runWebAiCommand(args: string[]) {
+    const command = args[0];
+    if (!command || !WEB_AI_COMMANDS.has(command)) {
+        throw new Error(`Usage: cli-jaw browser web-ai <${[...WEB_AI_COMMANDS].join('|')}> --vendor chatgpt`);
+    }
+    const { values } = parseArgs({
+        args: args.slice(1),
+        options: {
+            vendor: { type: 'string', default: 'chatgpt' },
+            prompt: { type: 'string' },
+            system: { type: 'string' },
+            project: { type: 'string' },
+            goal: { type: 'string' },
+            context: { type: 'string' },
+            question: { type: 'string' },
+            output: { type: 'string' },
+            constraints: { type: 'string' },
+            timeout: { type: 'string' },
+            'inline-only': { type: 'boolean', default: false },
+            file: { type: 'string' },
+            model: { type: 'string' },
+            'thinking-time': { type: 'string' },
+            json: { type: 'boolean', default: false },
+        },
+        strict: false,
+    });
+    rejectFutureWebAiFlags(values);
+    if (['send', 'query'].includes(command) && !values['inline-only']) {
+        throw new Error('web-ai send/query require --inline-only in PRD32 first slice');
+    }
+    const body = {
+        vendor: values.vendor,
+        prompt: values.prompt,
+        system: values.system,
+        project: values.project,
+        goal: values.goal,
+        context: values.context,
+        question: values.question,
+        output: values.output,
+        constraints: values.constraints,
+        timeout: values.timeout,
+        attachmentPolicy: 'inline-only',
+    };
+    const result = await callWebAiEndpoint(command, body, values);
+    if (values.json) console.log(JSON.stringify(result, null, 2));
+    else printWebAiHuman(command, result as Record<string, any>);
+}
+
+async function callWebAiEndpoint(command: string, body: Record<string, any>, values: Record<string, any>) {
+    if (command === 'status') return api('GET', `/web-ai/status${qs({ vendor: values.vendor })}`);
+    if (command === 'poll') return api('GET', `/web-ai/poll${qs({ vendor: values.vendor, timeout: values.timeout })}`);
+    return api('POST', `/web-ai/${command}`, body);
+}
+
+function printWebAiHuman(command: string, result: Record<string, any>) {
+    if (command === 'render') {
+        console.log(result.rendered?.composerText || result.rendered?.markdown || '');
+        if (result.warnings?.length) console.error(`[warnings] ${result.warnings.join(', ')}`);
+        return;
+    }
+    if (result.answerText) {
+        console.log(result.answerText);
+        return;
+    }
+    console.log(`${result.status}: ${result.url || result.vendor || 'web-ai'}`);
+}
+
 try {
     switch (sub) {
+        case 'web-ai':
+            await runWebAiCommand(process.argv.slice(4));
+            break;
         case 'start': {
             const { values } = parseArgs({
                 args: process.argv.slice(4),
@@ -421,6 +499,12 @@ try {
     console                Read bounded console entries [--json]
     network                Read redacted network entries [--json]
     evaluate <js>          Execute JavaScript
+    web-ai render           Render Oracle-style ChatGPT prompt envelope
+    web-ai status           Check verified ChatGPT active tab
+    web-ai send             Send inline-only prompt to ChatGPT
+    web-ai poll             Poll for answer after baseline
+    web-ai query            Send and poll in one command
+    web-ai stop             Stop current generation with Escape
 `);
     }
 } catch (e) {

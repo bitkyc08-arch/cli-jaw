@@ -15,3 +15,5 @@ export {
 } from './actions.js';
 
 export { visionClick, extractCoordinates } from './vision.js';
+export * as webAi from './web-ai/index.js';
+export type * from './web-ai/index.js';

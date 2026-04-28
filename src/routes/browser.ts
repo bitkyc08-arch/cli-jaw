@@ -169,4 +169,38 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
         try { res.json(await browser.waitForText(cdpPort(req), req.body.text, req.body)); }
         catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
     });
+
+    app.post('/api/browser/web-ai/render', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.webAi.render(req.body)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.get('/api/browser/web-ai/status', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.webAi.status(cdpPort(req), { vendor: String(req.query.vendor || 'chatgpt') })); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/web-ai/send', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.webAi.send(cdpPort(req), req.body)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.get('/api/browser/web-ai/poll', requireAuth, async (req: Request, res: Response) => {
+        try {
+            res.json(await browser.webAi.poll(cdpPort(req), {
+                vendor: String(req.query.vendor || 'chatgpt'),
+                timeout: String(req.query.timeout || '600'),
+            }));
+        } catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/web-ai/query', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.webAi.query(cdpPort(req), req.body)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
+
+    app.post('/api/browser/web-ai/stop', requireAuth, async (req: Request, res: Response) => {
+        try { res.json(await browser.webAi.stop(cdpPort(req), req.body)); }
+        catch (e: unknown) { res.status(500).json({ error: (e as Error).message }); }
+    });
 }
