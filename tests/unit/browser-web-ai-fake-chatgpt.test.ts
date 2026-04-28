@@ -7,8 +7,12 @@ import { fileURLToPath } from 'node:url';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const fakeFixturePath = join(root, 'devlog/_plan/web_connect/_ref/30_browser/test/integration/web-ai-fake-chatgpt.test.mjs');
 const standaloneTypesPath = join(root, 'devlog/_plan/web_connect/_ref/30_browser/web-ai/types.mjs');
+const hasFakeFixture = fs.existsSync(fakeFixturePath);
+const hasStandaloneTypes = fs.existsSync(standaloneTypesPath);
 
-test('BWAF-001: 30_browser fake ChatGPT fixture covers DOM runtime flow', () => {
+test('BWAF-001: 30_browser fake ChatGPT fixture covers DOM runtime flow', {
+    skip: !hasFakeFixture && 'private devlog reference fixture not checked out',
+}, () => {
     const fixture = fs.readFileSync(fakeFixturePath, 'utf8');
     assert.match(fixture, /queryWebAi/);
     assert.match(fixture, /createFakeChatGptPage/);
@@ -17,7 +21,9 @@ test('BWAF-001: 30_browser fake ChatGPT fixture covers DOM runtime flow', () => 
     assert.match(fixture, /assistantCount/);
 });
 
-test('BWAF-002: 30_browser standalone web-ai has explicit types surface', () => {
+test('BWAF-002: 30_browser standalone web-ai has explicit types surface', {
+    skip: !hasStandaloneTypes && 'private devlog reference fixture not checked out',
+}, () => {
     const types = fs.readFileSync(standaloneTypesPath, 'utf8');
     assert.match(types, /QuestionEnvelope/);
     assert.match(types, /RenderedQuestionBundle/);
