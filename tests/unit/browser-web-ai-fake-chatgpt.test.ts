@@ -19,6 +19,9 @@ test('BWAF-001: 30_browser fake ChatGPT fixture covers DOM runtime flow', {
     assert.match(fixture, /Pro thinking/);
     assert.match(fixture, /## Question\\nReply exactly: OK/);
     assert.match(fixture, /assistantCount/);
+    assert.match(fixture, /insertText/);
+    assert.match(fixture, /clickedSend/);
+    assert.match(fixture, /not\.toContain\('Enter'\)/);
 });
 
 test('BWAF-002: 30_browser standalone web-ai has explicit types surface', {

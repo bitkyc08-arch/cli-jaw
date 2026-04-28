@@ -24,9 +24,9 @@ test('BWAC-002: active tab must be verified before web-ai actions', () => {
 
 test('BWAC-003: send captures baseline before prompt insertion', () => {
     const assistantIndex = chatgptSrc.indexOf('const assistantCount = await countAssistantMessages');
-    const fillIndex = chatgptSrc.indexOf('await fillComposer');
+    const insertIndex = chatgptSrc.indexOf('await adapter.insertPrompt');
     assert.ok(assistantIndex > -1);
-    assert.ok(fillIndex > assistantIndex);
+    assert.ok(insertIndex > assistantIndex);
 });
 
 test('BWAC-004: baseline uses promptHash and targetId only', () => {
@@ -48,4 +48,7 @@ test('BWAC-005: placeholder answers are filtered', () => {
     assert.match(chatgptSrc, /PLACEHOLDER_PATTERNS/);
     assert.match(chatgptSrc, /Answer now/i);
     assert.match(chatgptSrc, /Pro thinking/i);
+    assert.match(chatgptSrc, /finalizing answer/i);
+    assert.match(chatgptSrc, /cleanAssistantText/);
+    assert.match(chatgptSrc, /Thought for\\s\+\\d\+s/);
 });

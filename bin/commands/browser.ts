@@ -12,7 +12,7 @@ loadSettings();
 const SERVER = getServerUrl();
 await getCliAuthToken();
 const sub = process.argv[3];
-const WEB_AI_COMMANDS = new Set(['render', 'status', 'send', 'poll', 'query', 'stop']);
+const WEB_AI_COMMANDS = new Set(['render', 'status', 'send', 'poll', 'query', 'stop', 'diagnose']);
 
 // ─── ANSI ────────────────────────────────────
 const c = {
@@ -51,10 +51,11 @@ function parseClip(values: Record<string, any>) {
 }
 
 function rejectFutureWebAiFlags(values: Record<string, any>) {
-    if (values.vendor && values.vendor !== 'chatgpt') throw new Error(`unsupported vendor: ${values.vendor}`);
-    if (values.file) throw new Error('--file is future scope. Use --inline-only.');
-    if (values.model) throw new Error('--model is future scope.');
-    if (values['thinking-time']) throw new Error('--thinking-time is future scope.');
+    const vendor = values.vendor ?? 'chatgpt';
+    if (vendor !== 'chatgpt' && vendor !== 'gemini') throw new Error(`unsupported vendor: ${vendor}`);
+    if (values.file) throw new Error('--file is fail-closed (PRD32.7 Phase B pending). Use --inline-only.');
+    if (values.model) throw new Error('--model is rejected-until-verified per capability registry.');
+    if (values['thinking-time']) throw new Error('--thinking-time is reserved for 32.8B Gemini Deep Think.');
 }
 
 async function runWebAiCommand(args: string[]) {
@@ -75,7 +76,10 @@ async function runWebAiCommand(args: string[]) {
             output: { type: 'string' },
             constraints: { type: 'string' },
             timeout: { type: 'string' },
+            session: { type: 'string' },
+            stage: { type: 'string' },
             'inline-only': { type: 'boolean', default: false },
+            'allow-copy-markdown-fallback': { type: 'boolean', default: false },
             file: { type: 'string' },
             model: { type: 'string' },
             'thinking-time': { type: 'string' },
@@ -84,8 +88,12 @@ async function runWebAiCommand(args: string[]) {
         strict: false,
     });
     rejectFutureWebAiFlags(values);
+    const vendor = values.vendor ?? 'chatgpt';
+    if (vendor === 'gemini' && command !== 'status' && command !== 'diagnose') {
+        throw new Error('gemini runtime is contract-only (PRD32.8A). Use --vendor chatgpt or web-ai status --vendor gemini.');
+    }
     if (['send', 'query'].includes(command) && !values['inline-only']) {
-        throw new Error('web-ai send/query require --inline-only in PRD32 first slice');
+        throw new Error('web-ai send/query require --inline-only until PRD32.7 Phase B lands');
     }
     const body = {
         vendor: values.vendor,
@@ -107,7 +115,8 @@ async function runWebAiCommand(args: string[]) {
 
 async function callWebAiEndpoint(command: string, body: Record<string, any>, values: Record<string, any>) {
     if (command === 'status') return api('GET', `/web-ai/status${qs({ vendor: values.vendor })}`);
-    if (command === 'poll') return api('GET', `/web-ai/poll${qs({ vendor: values.vendor, timeout: values.timeout })}`);
+    if (command === 'poll') return api('GET', `/web-ai/poll${qs({ vendor: values.vendor, timeout: values.timeout, session: values.session, allowCopyMarkdownFallback: values['allow-copy-markdown-fallback'] })}`);
+    if (command === 'diagnose') return api('GET', `/web-ai/diagnose${qs({ vendor: values.vendor, stage: values.stage })}`);
     return api('POST', `/web-ai/${command}`, body);
 }
 
@@ -500,11 +509,12 @@ try {
     network                Read redacted network entries [--json]
     evaluate <js>          Execute JavaScript
     web-ai render           Render Oracle-style ChatGPT prompt envelope
-    web-ai status           Check verified ChatGPT active tab
+    web-ai status           Check verified ChatGPT active tab (or Gemini contract-only status)
     web-ai send             Send inline-only prompt to ChatGPT
-    web-ai poll             Poll for answer after baseline
+    web-ai poll             Poll for answer after baseline (--session optional, --allow-copy-markdown-fallback opt-in)
     web-ai query            Send and poll in one command
     web-ai stop             Stop current generation with Escape
+    web-ai diagnose         Capture redacted diagnostics for the active web-ai page
 `);
     }
 } catch (e) {
