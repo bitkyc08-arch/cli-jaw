@@ -92,7 +92,7 @@ test('manager responsive CSS defines shell regions and breakpoints', () => {
     assert.ok(css.includes('command-primary'), 'command center primary row must exist');
     assert.ok(css.includes('command-secondary'), 'command center secondary row must exist');
     assert.ok(css.includes('command-filter-strip'), 'command filters must have an isolated secondary area');
-    assert.ok(css.includes('instance-navigator-active'), 'navigator must keep the active instance outside the scroll body');
+    assert.equal(css.includes('instance-navigator-active'), false, 'navigator must not duplicate the selected instance outside the scroll body');
     assert.ok(css.includes('profile-chip-strip'), 'profile filters must have a stable horizontal strip');
 });
 

@@ -147,11 +147,6 @@ h2 { font-size: 13px; }
     font-size: 11px;
     white-space: nowrap;
 }
-.instance-navigator-active {
-    border-bottom: 1px solid var(--border-subtle);
-    background: var(--row-bg-hover);
-    padding: 4px 8px 8px;
-}
 .instance-navigator-scroll {
     flex: 1;
     min-height: 0;

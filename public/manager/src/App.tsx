@@ -402,12 +402,6 @@ export function App() {
                                     active={selectedInstance}
                                     hiddenCount={instances.filter(instance => instance.hidden).length}
                                     collapsed={view.sidebarCollapsed}
-                                    busyPort={lifecycleBusyPort}
-                                    getLabel={instanceLabel}
-                                    formatUptime={formatUptime}
-                                    onSelect={handleSelectInstance}
-                                    onPreview={handlePreview}
-                                    onLifecycle={(action, instance) => void handleLifecycle(action, instance)}
                                 >
                                     {renderInstanceListContent(true)}
                                 </InstanceNavigator>
