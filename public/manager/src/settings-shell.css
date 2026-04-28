@@ -1,6 +1,6 @@
 .settings-shell {
     display: grid;
-    grid-template-columns: 168px minmax(0, 1fr);
+    grid-template-columns: 200px minmax(0, 1fr);
     gap: 12px;
     height: 100%;
     min-height: 0;
@@ -9,15 +9,69 @@
 .settings-sidebar {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     overflow: auto;
     padding: 6px 4px;
     border-right: 1px solid var(--border-subtle);
 }
 
+.settings-sidebar-search {
+    padding: 4px 6px;
+}
+
+.settings-sidebar-search input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+
+.settings-sidebar-empty {
+    margin: 8px 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.settings-sidebar-group {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
+.settings-sidebar-group-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 10px;
+    border: 0;
+    background: transparent;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    cursor: pointer;
+    text-align: left;
+}
+
+.settings-sidebar-group-caret {
+    width: 10px;
+    display: inline-block;
+    color: var(--text-secondary);
+}
+
+.settings-sidebar-group-items {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+}
+
 .settings-sidebar-item {
     text-align: left;
-    padding: 7px 10px;
+    padding: 7px 10px 7px 24px;
     border-radius: 6px;
     background: transparent;
     border: 0;
@@ -88,16 +142,71 @@
     color: var(--text-primary);
 }
 
-.settings-action-row {
+.settings-action-row,
+.settings-save-bar {
     position: sticky;
     bottom: 0;
     display: flex;
+    align-items: center;
     justify-content: flex-end;
     gap: 8px;
-    padding: 10px 0 4px 0;
+    padding: 10px 12px;
     margin-top: 16px;
     background: var(--surface-base);
     border-top: 1px solid var(--border-subtle);
+    border-radius: 6px 6px 0 0;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+    z-index: 2;
+}
+
+.settings-save-bar-status {
+    margin-right: auto;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.settings-save-bar-error {
+    margin-right: auto;
+    font-size: 11px;
+    color: var(--text-danger, #c83232);
+}
+
+.settings-toast {
+    position: sticky;
+    bottom: 70px;
+    align-self: flex-end;
+    margin-left: auto;
+    margin-top: 8px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    background: var(--surface-raised);
+    color: var(--text-primary);
+    border: 1px solid var(--border-subtle);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.16);
+    max-width: 360px;
+    z-index: 3;
+}
+
+.settings-toast-ok {
+    border-color: rgba(50, 200, 110, 0.5);
+}
+
+.settings-toast-err {
+    border-color: rgba(255, 80, 80, 0.5);
+    color: var(--text-danger, #c83232);
+}
+
+.settings-toast-dismiss {
+    border: 0;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 16px;
+    line-height: 1;
 }
 
 .settings-action {
@@ -179,14 +288,22 @@
         grid-template-columns: minmax(0, 1fr);
     }
     .settings-sidebar {
-        flex-direction: row;
-        flex-wrap: wrap;
+        flex-direction: column;
         border-right: 0;
         border-bottom: 1px solid var(--border-subtle);
+        max-height: 200px;
+    }
+    .settings-sidebar-group-items {
+        flex-direction: row;
+        flex-wrap: wrap;
+        gap: 4px;
+    }
+    .settings-sidebar-item {
+        padding: 6px 10px;
     }
 }
 
- Phase  page sections, avatar card, per- */CLI rows, overrides 2 /* 
+/* Phase 2+ — page sections, avatar card, per-CLI rows, overrides */
 
 .settings-section {
     border: 1px solid var(--border-subtle);

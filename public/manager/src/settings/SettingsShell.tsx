@@ -18,12 +18,15 @@ import type {
 import { SettingsSidebar } from './SettingsSidebar';
 import { createDirtyStore } from './dirty-store';
 import { createSettingsClient } from './settings-client';
+import { SaveBar } from './components/SaveBar';
+import { Toast, type ToastShape } from './components/Toast';
+import { useSaveShortcut } from './components/useSaveShortcut';
+import { describeError } from './components/error-normalize';
 
 const PAGE_REGISTRY: Record<
     SettingsCategoryId,
-    LazyExoticComponent<ComponentType<SettingsPageProps>> | undefined
+    LazyExoticComponent<ComponentType<SettingsPageProps>>
 > = {
-    'identity-preview': lazy(() => import('./pages/IdentityPreview')),
     profile: lazy(() => import('./pages/Profile')),
     display: lazy(() => import('./pages/Display')),
     model: lazy(() => import('./pages/ModelProvider')),
@@ -38,7 +41,8 @@ const PAGE_REGISTRY: Record<
     prompts: lazy(() => import('./pages/Prompts')),
     mcp: lazy(() => import('./pages/Mcp')),
     browser: lazy(() => import('./pages/Browser')),
-    'dashboard-meta': undefined,
+    'dashboard-meta': lazy(() => import('./pages/DashboardMeta')),
+    'advanced-export': lazy(() => import('./pages/AdvancedExport')),
 };
 
 type Props = { port: number; instanceUrl: string };
@@ -57,27 +61,38 @@ function useDirtyFlag(store: DirtyStore): boolean {
     );
 }
 
+function usePendingCount(store: DirtyStore): number {
+    return useSyncExternalStore(
+        useCallback((listener) => store.subscribe(listener), [store]),
+        useCallback(() => store.pending.size, [store]),
+        useCallback(() => 0, []),
+    );
+}
+
 export function SettingsShell({ port, instanceUrl }: Props) {
-    const [activeId, setActiveId] = useState<SettingsCategoryId>('identity-preview');
+    const [activeId, setActiveId] = useState<SettingsCategoryId>('profile');
     const dirty = useDirtyStore();
     const isDirty = useDirtyFlag(dirty);
+    const pendingCount = usePendingCount(dirty);
     const client = useMemo(() => createSettingsClient(port), [port]);
 
     const saveHandlerRef = useRef<SaveHandler | null>(null);
     const [saving, setSaving] = useState(false);
     const [saveError, setSaveError] = useState<string | null>(null);
+    const [toast, setToast] = useState<ToastShape | null>(null);
+
+    const containerRef = useRef<HTMLDivElement | null>(null);
 
     const registerSave = useCallback((handler: SaveHandler | null) => {
         saveHandlerRef.current = handler;
     }, []);
 
     // Phase 2: switching instances mid-edit must not carry dirty state across.
-    // The dirty store is owned by the shell (useRef) so without this effect
-    // pending edits from instance A would silently surface on instance B.
     useEffect(() => {
         dirty.clear();
         saveHandlerRef.current = null;
         setSaveError(null);
+        setToast(null);
     }, [port, dirty]);
 
     const onSelect = useCallback(
@@ -87,6 +102,7 @@ export function SettingsShell({ port, instanceUrl }: Props) {
             if (dirty.isDirty() && !window.confirm('Discard unsaved changes?')) return;
             dirty.clear();
             setSaveError(null);
+            setToast(null);
             saveHandlerRef.current = null;
             setActiveId(next);
         },
@@ -104,24 +120,34 @@ export function SettingsShell({ port, instanceUrl }: Props) {
         const handler = saveHandlerRef.current;
         setSaveError(null);
         if (!handler) {
-            // No page-level handler registered (e.g. Phase 1 placeholder).
             dirty.clear();
             return;
         }
         setSaving(true);
         try {
             await handler();
+            setToast({ kind: 'ok', message: 'Saved.' });
         } catch (err: unknown) {
-            setSaveError(err instanceof Error ? err.message : String(err));
+            const message = describeError(err);
+            setSaveError(message);
+            setToast({ kind: 'err', message: `Failed: ${message}` });
         } finally {
             setSaving(false);
         }
     }, [dirty, saving]);
 
+    useSaveShortcut({
+        enabled: isDirty && !saving,
+        containerRef,
+        onSave: () => {
+            void onSave();
+        },
+    });
+
     const Page = PAGE_REGISTRY[activeId];
 
     return (
-        <div className="settings-shell">
+        <div className="settings-shell" ref={containerRef}>
             <SettingsSidebar activeId={activeId} onSelect={onSelect} />
             <section className="settings-page" aria-live="polite">
                 <Suspense fallback={<div className="settings-loading">Loading…</div>}>
@@ -139,35 +165,21 @@ export function SettingsShell({ port, instanceUrl }: Props) {
                         </div>
                     )}
                 </Suspense>
-                {(isDirty || saving || saveError) && (
-                    <div
-                        className="settings-action-row"
-                        role="group"
-                        aria-label="Unsaved changes"
-                    >
-                        {saveError ? (
-                            <span className="settings-action-error" role="alert">
-                                {saveError}
-                            </span>
-                        ) : null}
-                        <button
-                            type="button"
-                            className="settings-action settings-action-discard"
-                            onClick={onDiscard}
-                            disabled={saving || !isDirty}
-                        >
-                            Discard
-                        </button>
-                        <button
-                            type="button"
-                            className="settings-action settings-action-save"
-                            onClick={onSave}
-                            disabled={saving || !isDirty}
-                        >
-                            {saving ? 'Saving…' : 'Save'}
-                        </button>
-                    </div>
-                )}
+                <SaveBar
+                    isDirty={isDirty}
+                    saving={saving}
+                    pendingCount={pendingCount}
+                    error={saveError}
+                    onDiscard={onDiscard}
+                    onSave={() => void onSave()}
+                />
+                {toast ? (
+                    <Toast
+                        kind={toast.kind}
+                        message={toast.message}
+                        onDismiss={() => setToast(null)}
+                    />
+                ) : null}
             </section>
         </div>
     );

@@ -1,7 +1,6 @@
 import type { ComponentType, LazyExoticComponent } from 'react';
 
 export type SettingsCategoryId =
-    | 'identity-preview'
     | 'profile'
     | 'display'
     | 'model'
@@ -16,13 +15,15 @@ export type SettingsCategoryId =
     | 'prompts'
     | 'mcp'
     | 'browser'
-    | 'dashboard-meta';
+    | 'dashboard-meta'
+    | 'advanced-export';
 
 export type SettingsCategoryGroup =
     | 'core'
     | 'channels'
     | 'automation'
     | 'integrations'
+    | 'security'
     | 'meta';
 
 export type SettingsCategory = {

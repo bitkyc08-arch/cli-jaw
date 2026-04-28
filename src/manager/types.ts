@@ -144,6 +144,7 @@ export type DashboardRegistryInstance = {
     favorite: boolean;
     group: string | null;
     hidden: boolean;
+    notes: string | null;
 };
 
 export type DashboardRegistry = {

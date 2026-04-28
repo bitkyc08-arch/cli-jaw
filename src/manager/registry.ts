@@ -122,6 +122,7 @@ function normalizeInstance(value: unknown): DashboardRegistryInstance {
         favorite: input.favorite === true,
         group: readString(input.group),
         hidden: input.hidden === true,
+        notes: readString(input.notes),
     };
 }
 
