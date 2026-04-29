@@ -2,6 +2,7 @@ import type {
     DashboardInstance,
     DashboardLifecycleAction,
     DashboardLifecycleResult,
+    DashboardProcessControlState,
     DashboardRegistryLoadResult,
     DashboardRegistryPatch,
     DashboardScanResult,
@@ -48,6 +49,27 @@ export async function runLifecycleAction(
         throw new Error(result.message || `${action} failed: ${response.status}`);
     }
     return result;
+}
+
+export async function fetchProcessControlState(): Promise<DashboardProcessControlState> {
+    const response = await fetch('/api/dashboard/process-control');
+    if (!response.ok) throw new Error(`process control fetch failed: ${response.status}`);
+    const body = await response.json() as { ok: boolean; state: DashboardProcessControlState };
+    return body.state;
+}
+
+export async function adoptManagedProcesses(): Promise<DashboardProcessControlState> {
+    const response = await fetch('/api/dashboard/process-control/adopt', { method: 'POST' });
+    if (!response.ok) throw new Error(`adopt managed failed: ${response.status}`);
+    const body = await response.json() as { ok: boolean; state: DashboardProcessControlState };
+    return body.state;
+}
+
+export async function stopManagedProcesses(): Promise<DashboardProcessControlState> {
+    const response = await fetch('/api/dashboard/process-control/stop-managed', { method: 'POST' });
+    if (!response.ok) throw new Error(`stop managed failed: ${response.status}`);
+    const body = await response.json() as { ok: boolean; state: DashboardProcessControlState };
+    return body.state;
 }
 
 export async function fetchInstanceStatus(port: number, options: { signal?: AbortSignal } = {}): Promise<DashboardInstance | null> {

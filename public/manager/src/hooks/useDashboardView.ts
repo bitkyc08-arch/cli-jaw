@@ -1,10 +1,8 @@
 import { useState } from 'react';
-import type { DashboardDetailTab, DashboardPreviewMode } from '../types';
+import type { DashboardDetailTab } from '../types';
 
 export function useDashboardView() {
     const [selectedPort, setSelectedPort] = useState<number | null>(null);
-    const [previewMode, setPreviewMode] = useState<DashboardPreviewMode>('proxy');
-    const [previewEnabled, setPreviewEnabled] = useState(false);
     const [activeDetailTab, setActiveDetailTab] = useState<DashboardDetailTab>('overview');
     const [drawerOpen, setDrawerOpen] = useState(false);
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -14,10 +12,6 @@ export function useDashboardView() {
     return {
         selectedPort,
         setSelectedPort,
-        previewMode,
-        setPreviewMode,
-        previewEnabled,
-        setPreviewEnabled,
         activeDetailTab,
         setActiveDetailTab,
         drawerOpen,

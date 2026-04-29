@@ -58,12 +58,7 @@
 
 .command-primary {
     gap: 8px;
-    grid-template-columns: auto minmax(108px, 150px) minmax(280px, 1fr) auto;
-}
-
-.command-secondary {
-    gap: 6px;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(108px, 150px) max-content minmax(max-content, 1fr);
 }
 
 .command-title .eyebrow {
@@ -75,11 +70,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
-}
-
-.command-summary {
-    display: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 700;
 }
 
 .command-filter-strip {
@@ -91,10 +84,15 @@
     max-width: 118px;
 }
 
+.command-mini-stat {
+    min-height: 28px;
+    display: inline-flex;
+    align-items: center;
+}
+
 .command-search input,
 .command-filter-strip input,
-.command-filter-strip select,
-.preview-controls select {
+.command-filter-strip select {
     box-shadow: inset 0 1px 0 var(--inset-glow);
 }
 
@@ -115,7 +113,7 @@
 
 .workbench-preview .workbench-header {
     align-items: center;
-    padding: 6px 10px;
+    padding: 4px 8px;
 }
 
 .workbench-preview .workbench-header .detail-header {
@@ -125,17 +123,17 @@
 }
 
 .workbench-preview .detail-header .eyebrow,
-.workbench-preview .detail-header span {
+.workbench-preview .detail-header > div:first-child > span {
     display: none;
 }
 
 .workbench-preview .detail-header h2 {
-    font-size: 13px;
+    font-size: 12px;
 }
 
 .workbench-preview .workbench-mode-tabs button {
-    min-height: 26px;
-    padding: 4px 8px;
+    min-height: 24px;
+    padding: 3px 8px;
     font-size: 12px;
 }
 
@@ -143,47 +141,6 @@
     gap: 3px;
     padding: 3px 4px 4px;
     background: var(--bg-base);
-}
-
-/* The inner preview-header duplicates info already shown in the workbench-header
-   (eyebrow, instance label, Open link). Inside the preview workbench mode, hide
-   the text block + redundant Open and shrink the strip so the iframe gains the
-   reclaimed vertical space. */
-.workbench-preview .preview-header {
-    min-height: 0;
-    flex-wrap: nowrap;
-    border: 0;
-    border-radius: 0;
-    background: transparent;
-    padding: 0;
-    justify-content: flex-end;
-}
-
-.workbench-preview .preview-header > div:first-child {
-    display: none;
-}
-
-.workbench-preview .preview-header .open-link {
-    display: none;
-}
-
-.workbench-preview .preview-controls {
-    flex: 0 0 auto;
-    justify-content: flex-end;
-    gap: 5px;
-}
-
-.workbench-preview .preview-controls select {
-    width: 78px;
-    min-height: 24px;
-    padding: 2px 7px;
-    font-size: 12px;
-}
-
-.workbench-preview .preview-toggle {
-    min-height: 22px;
-    font-size: 12px;
-    padding: 0 2px;
 }
 
 .workbench-preview .preview-frame {
@@ -363,16 +320,16 @@
     border-radius: 8px;
     padding: 3px;
     gap: 2px;
-    min-height: 34px;
+    min-height: 30px;
     border: 1px solid var(--segment-border);
 }
 
 .workbench-mode-tabs button {
     background: transparent;
     border: none;
-    height: 26px;
-    min-height: 26px;
-    padding: 4px 10px;
+    height: 24px;
+    min-height: 24px;
+    padding: 3px 9px;
     color: var(--text-dim);
     font-size: 12px;
     font-weight: 500;
@@ -405,9 +362,9 @@
     color: var(--link-ink);
     font-size: 12px;
     font-weight: 500;
-    height: 34px;
-    min-height: 34px;
-    padding: 0 10px;
+    height: 30px;
+    min-height: 30px;
+    padding: 0 9px;
     border-radius: 7px;
     transition: all 0.2s ease;
     box-sizing: border-box;

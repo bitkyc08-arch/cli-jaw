@@ -74,15 +74,6 @@ export function App() {
         theme.setTheme(next);
     }
 
-    function focusScanRange(): void {
-        const target = document.querySelector('.scan-range-control');
-        if (target instanceof HTMLElement) {
-            target.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            const firstInput = target.querySelector('input');
-            if (firstInput instanceof HTMLInputElement) firstInput.focus();
-        }
-    }
-
     function openSelectedInBrowser(): void {
         if (!selectedInstance) return;
         window.open(selectedInstance.url, '_blank', 'noopener,noreferrer');
@@ -194,7 +185,6 @@ export function App() {
     function handlePreview(instance: DashboardInstance): void {
         view.setSelectedPort(instance.port);
         view.setActiveDetailTab('preview');
-        view.setPreviewEnabled(true);
         view.setActivityDockCollapsed(true);
         view.setDrawerOpen(false);
         void saveUi({ selectedPort: instance.port, selectedTab: 'preview', activityDockCollapsed: true });
@@ -307,10 +297,19 @@ export function App() {
         <div className="detail-header">
             <div>
                 <p className="eyebrow">Selected instance</p>
-                <h2>{selectedInstance ? `:${selectedInstance.port} ${selectedInstance.instanceId || ''}`.trim() : 'No instance selected'}</h2>
+                <h2>{selectedInstance ? instanceLabel(selectedInstance) : 'No instance selected'}</h2>
                 <span>{selectedInstance?.workingDir || selectedInstance?.url || 'Select an online instance to inspect it.'}</span>
             </div>
-            {selectedInstance && <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>Open</a>}
+            {selectedInstance && (
+                <div className="detail-header-actions">
+                    <span
+                        className={`preview-inline-status ${selectedInstance.ok ? 'is-ready' : 'is-unavailable'}`}
+                        aria-label={selectedInstance.ok ? 'Preview ready' : 'Preview unavailable'}
+                        title={selectedInstance.ok ? 'Preview ready' : 'Preview unavailable'}
+                    />
+                    <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>Open</a>
+                </div>
+            )}
         </div>
     );
 
@@ -346,29 +345,8 @@ export function App() {
             commandBar={(
                 <CommandBar
                     query={query}
-                    status={status}
-                    customHome={customHome}
                     loading={loading}
-                    summary={summary}
-                    manager={data?.manager || null}
-                    showHidden={showHidden}
-                    profiles={profiles}
-                    activeProfileIds={activeProfileIds}
-                    profileCounts={profileCounts}
-                    registryMessage={registry.saving ? 'Saving' : registry.error}
-                    scanFrom={scanFromInput}
-                    scanCount={scanCountInput}
                     onQueryChange={setQuery}
-                    onStatusChange={setStatus}
-                    onCustomHomeChange={setCustomHome}
-                    onShowHiddenChange={(value) => {
-                        setShowHidden(value);
-                        void load(value);
-                    }}
-                    onProfileToggle={toggleProfile}
-                    onScanFromChange={setScanFromInput}
-                    onScanCountChange={setScanCountInput}
-                    onScanRangeCommit={(from, count) => void commitScanRange(from, count)}
                     onRefresh={() => void load()}
                     onOpenDrawer={() => view.setDrawerOpen(true)}
                     theme={theme.theme}
@@ -416,10 +394,6 @@ export function App() {
                                     <InstancePreview
                                         instance={selectedInstance}
                                         data={data}
-                                        mode={view.previewMode}
-                                        previewEnabled={view.previewEnabled}
-                                        onModeChange={view.setPreviewMode}
-                                        onPreviewEnabledChange={view.setPreviewEnabled}
                                     />
                                 )}
                                 logs={detailContent('logs')}
@@ -435,7 +409,6 @@ export function App() {
                             error={error}
                             lifecycleMessage={lifecycleMessage}
                             selectedInstance={selectedInstance}
-                            previewMode={view.previewMode}
                             registryMessage={registry.error || managerEvents.error}
                             events={managerEvents.events}
                             onToggle={handleActivityToggle}
@@ -481,7 +454,6 @@ export function App() {
                 void load(next);
             }}
             showHidden={showHidden}
-            onFocusScanRange={focusScanRange}
             onOpenSelected={openSelectedInBrowser}
             selectedInstance={selectedInstance}
         />

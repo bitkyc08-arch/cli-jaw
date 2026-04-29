@@ -26,7 +26,6 @@ type CommandPaletteProps = {
     onRefresh: () => void;
     onToggleHidden: () => void;
     showHidden: boolean;
-    onFocusScanRange: () => void;
     onOpenSelected: () => void;
     selectedInstance: DashboardInstance | null;
 };
@@ -91,7 +90,6 @@ export function CommandPalette(props: CommandPaletteProps) {
             hint: 'Auto → Light → Dark',
             run: props.onCycleTheme,
         },
-        { id: 'scan-range', label: 'Adjust scan range', hint: 'Focus the from/count inputs', run: props.onFocusScanRange },
         {
             id: 'hidden',
             label: props.showHidden ? 'Hide hidden instances' : 'Show hidden instances',
@@ -104,7 +102,6 @@ export function CommandPalette(props: CommandPaletteProps) {
         props.onRefresh,
         props.theme,
         props.onCycleTheme,
-        props.onFocusScanRange,
         props.showHidden,
         props.onToggleHidden,
         props.selectedInstance,

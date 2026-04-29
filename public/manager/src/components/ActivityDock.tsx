@@ -14,7 +14,6 @@ type ActivityDockProps = {
     lifecycleMessage: string | null;
     registryMessage: string | null;
     selectedInstance: DashboardInstance | null;
-    previewMode: string;
     events?: ManagerEvent[];
     onToggle: () => void;
     onHeightChange: (height: number) => void;

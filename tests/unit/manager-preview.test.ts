@@ -42,7 +42,7 @@ test('preview helper builds proxy preview url', () => {
         src: '/i/3457/',
         reason: null,
         transport: 'legacy-path',
-        warning: 'Using legacy path proxy. Root-relative assets, API calls, or WebSockets may fail.',
+        warning: 'legacy proxy fallback',
     });
 });
 
@@ -75,7 +75,7 @@ test('preview helper prefers origin-port preview url', () => {
         src: 'http://127.0.0.1:24602/',
         reason: null,
         transport: 'origin-port',
-        warning: 'Origin proxy. Root paths are preserved through a dedicated loopback preview port.',
+        warning: 'origin proxy ready',
     });
 });
 
@@ -109,13 +109,12 @@ test('preview helper falls back when origin-port preview is unavailable', () => 
     assert.equal(state.transport, 'legacy-path');
 });
 
-test('preview helper builds direct iframe url', () => {
-    const state = buildPreviewState(online, data, 'direct');
+test('preview helper ignores legacy direct mode argument and keeps proxy path', () => {
+    const state = buildPreviewState(online, data, 'direct' as any);
 
-    assert.equal(state.src, 'http://localhost:3457');
-    assert.equal(state.transport, 'direct');
-    assert.match(state.warning || '', /frame policy/);
-    assert.doesNotMatch(state.warning || '', /disable/i);
+    assert.equal(state.src, '/i/3457/');
+    assert.equal(state.transport, 'legacy-path');
+    assert.equal(state.warning, 'legacy proxy fallback');
 });
 
 test('preview helper rejects offline instances', () => {

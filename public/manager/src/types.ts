@@ -6,7 +6,6 @@ export type DashboardInstanceStatus =
     | 'unknown';
 
 export type DashboardServiceMode = 'unknown' | 'ad-hoc' | 'service' | 'manager';
-export type DashboardPreviewMode = 'direct' | 'proxy';
 export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
@@ -100,6 +99,27 @@ export type DashboardLifecycleResult = {
     expectedStateAfter?: DashboardLifecycleExpectedState;
     stderr?: string;
     stdout?: string;
+};
+
+export type DashboardProcessProof = 'child' | 'registry';
+
+export type DashboardProcessControlEntry = {
+    port: number;
+    pid: number | null;
+    home: string | null;
+    proof: DashboardProcessProof;
+    canStop: boolean;
+    canForceRelease: boolean;
+    reason: string;
+};
+
+export type DashboardProcessControlState = {
+    managed: DashboardProcessControlEntry[];
+    unsupported: {
+        dashboardService: true;
+        forceRelease: true;
+        reason: string;
+    };
 };
 
 export type ManagerEvent =

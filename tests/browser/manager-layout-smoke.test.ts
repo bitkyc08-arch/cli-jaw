@@ -38,12 +38,33 @@ const VIEWPORTS = [
     { width: 390, height: 844 },
 ] as const;
 
-let browser: Browser | null = null;
+const browsers: Browser[] = [];
 
 async function pageForManager(): Promise<Page> {
-    browser = await chromium.connectOverCDP(CDP_URL);
-    const context = browser.contexts()[0] ?? await browser.newContext();
-    return context.pages()[0] ?? await context.newPage();
+    const browser = await chromium.connectOverCDP(CDP_URL);
+    browsers.push(browser);
+    const context = await browser.newContext();
+    return context.newPage();
+}
+
+async function selectFirstOnlineInstance(page: Page): Promise<void> {
+    await page.waitForSelector('.dashboard-shell.manager-shell');
+    const port = await page.evaluate(async () => {
+        const response = await fetch('/api/dashboard/instances?showHidden=1');
+        const data = await response.json() as { instances?: Array<{ port: number; ok: boolean }> };
+        const selected = data.instances?.find(instance => instance.ok);
+        if (!selected) throw new Error('No online instance available for preview smoke');
+        await fetch('/api/dashboard/registry', {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ ui: { selectedPort: selected.port, selectedTab: 'preview' } }),
+        });
+        return selected.port;
+    });
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.waitForFunction((selectedPort) => {
+        return document.body.textContent?.includes(String(selectedPort)) ?? false;
+    }, port);
 }
 
 async function measure(page: Page): Promise<LayoutMetrics> {
@@ -83,7 +104,7 @@ async function measure(page: Page): Promise<LayoutMetrics> {
 }
 
 after(async () => {
-    await browser?.close();
+    await Promise.allSettled(browsers.map(browser => browser.close()));
 });
 
 test('manager dashboard shell has measured layout coverage at critical viewports', async () => {
@@ -93,6 +114,7 @@ test('manager dashboard shell has measured layout coverage at critical viewports
     for (const viewport of VIEWPORTS) {
         await page.setViewportSize(viewport);
         await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+        await page.waitForSelector('.dashboard-shell.manager-shell');
         await page.screenshot({
             fullPage: false,
             path: join(SCREENSHOT_DIR, `manager-layout-smoke-${viewport.width}x${viewport.height}.png`),
@@ -127,4 +149,60 @@ test('manager dashboard shell has measured layout coverage at critical viewports
             assert.ok(Math.abs(metrics.mobileNav.width - viewport.width) <= 1, `${viewport.width}x${viewport.height}: mobile nav uses full width`);
         }
     }
+});
+
+test('manager preview iframe survives Workbench tab changes', async () => {
+    const page = await pageForManager();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await selectFirstOnlineInstance(page);
+
+    await page.getByRole('tab', { name: 'Preview' }).click();
+    await page.waitForSelector('[data-preview-host="persistent"]');
+    await page.waitForSelector('iframe.preview-frame', { timeout: 5000 });
+
+    const before = await page.evaluate(() => {
+        const host = document.querySelector('[data-preview-host="persistent"]');
+        const frame = document.querySelector('iframe.preview-frame');
+        (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame = frame;
+        return {
+            hostHidden: host?.hasAttribute('hidden') ?? null,
+            hasFrame: Boolean(frame),
+            src: frame?.getAttribute('src') || null,
+        };
+    });
+
+    assert.equal(before.hostHidden, false, 'preview host should be visible on Preview tab');
+    assert.equal(before.hasFrame, true, 'preview iframe should render for an online selected instance');
+
+    await page.getByRole('tab', { name: 'Settings' }).click();
+
+    const during = await page.evaluate(() => {
+        const host = document.querySelector('[data-preview-host="persistent"]');
+        const frame = document.querySelector('iframe.preview-frame');
+        return {
+            hostHidden: host?.hasAttribute('hidden') ?? null,
+            sameFrame: frame === (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame,
+            src: frame?.getAttribute('src') || null,
+        };
+    });
+
+    assert.equal(during.hostHidden, true, 'preview host should be hidden off Preview tab');
+    assert.equal(during.sameFrame, true, 'preview iframe must stay mounted while hidden');
+
+    await page.getByRole('tab', { name: 'Preview' }).click();
+
+    const after = await page.evaluate(() => {
+        const host = document.querySelector('[data-preview-host="persistent"]');
+        const frame = document.querySelector('iframe.preview-frame');
+        return {
+            hostHidden: host?.hasAttribute('hidden') ?? null,
+            sameFrame: frame === (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame,
+            src: frame?.getAttribute('src') || null,
+        };
+    });
+
+    assert.equal(after.hostHidden, false, 'preview host should show again on Preview tab');
+    assert.equal(after.sameFrame, true, 'preview iframe must remain the same DOM node after returning');
+    assert.equal(after.src, before.src, 'preview source should not change across tab-only navigation');
 });

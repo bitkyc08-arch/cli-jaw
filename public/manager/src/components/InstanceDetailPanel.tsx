@@ -5,6 +5,7 @@ import type {
     DashboardScanResult,
 } from '../types';
 import { SettingsShell } from '../settings/SettingsShell';
+import { ProcessControlPanel } from './ProcessControlPanel';
 
 type InstanceDetailPanelProps = {
     instance: DashboardInstance | null;

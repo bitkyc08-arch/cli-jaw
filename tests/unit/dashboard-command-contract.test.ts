@@ -62,13 +62,16 @@ test('dashboard noisy browser probe routes are handled before SPA fallback', () 
     const managerServer = read('src/manager/server.ts');
     const wellKnownIndex = managerServer.indexOf("app.get('/.well-known/appspecific/com.chrome.devtools.json'");
     const faviconIndex = managerServer.indexOf("app.get('/favicon.ico'");
+    const proxyIndex = managerServer.indexOf('installDashboardProxy(app, server');
     const fallbackIndex = managerServer.indexOf("app.get('/{*splat}'");
 
     assert.ok(wellKnownIndex >= 0, 'manager server must handle Chrome DevTools probe route');
     assert.ok(faviconIndex >= 0, 'manager server must handle favicon route');
+    assert.ok(proxyIndex >= 0, 'manager server must install dashboard proxy route');
     assert.ok(fallbackIndex >= 0, 'manager server must keep SPA fallback route');
     assert.ok(wellKnownIndex < fallbackIndex, 'Chrome DevTools probe route must be before SPA fallback');
     assert.ok(faviconIndex < fallbackIndex, 'favicon route must be before SPA fallback');
+    assert.ok(proxyIndex < fallbackIndex, 'dashboard proxy must be before SPA fallback');
 });
 
 test('dashboard serves manager favicon from packaged icons', () => {

@@ -279,6 +279,35 @@ app.post('/api/dashboard/lifecycle/:action', async (req, res) => {
     }
 });
 
+app.get('/api/dashboard/process-control', (_req, res) => {
+    res.json({ ok: true, state: lifecycle.processControlState() });
+});
+
+app.post('/api/dashboard/process-control/adopt', async (_req, res) => {
+    try {
+        const result = await lifecycle.hydrate();
+        res.json({ ok: true, result, state: lifecycle.processControlState() });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: (error as Error).message });
+    }
+});
+
+app.post('/api/dashboard/process-control/stop-managed', async (_req, res) => {
+    try {
+        const results = await lifecycle.stopAll();
+        res.json({ ok: true, results, state: lifecycle.processControlState() });
+    } catch (error) {
+        res.status(500).json({ ok: false, error: (error as Error).message });
+    }
+});
+
+app.post('/api/dashboard/process-control/force-release', (_req, res) => {
+    res.status(501).json({
+        ok: false,
+        error: 'Force release is planned but disabled until strict command/home ownership proof is implemented.',
+    });
+});
+
 const distRoot = join(projectRoot, 'public', 'dist');
 const sourceRoot = join(projectRoot, 'public');
 const managerHtmlCandidates = [
@@ -313,6 +342,9 @@ app.get('/favicon.ico', (_req, res) => {
     });
 });
 
+const server = http.createServer(app);
+installDashboardProxy(app, server, { from: scanFrom, count: scanCount });
+
 app.get('/{*splat}', (_req, res) => {
     const htmlPath = managerHtmlCandidates.find(candidate => existsSync(candidate));
     if (!htmlPath) {
@@ -320,9 +352,6 @@ app.get('/{*splat}', (_req, res) => {
     }
     sendManagerHtml(res, htmlPath);
 });
-
-const server = http.createServer(app);
-installDashboardProxy(app, server, { from: scanFrom, count: scanCount });
 
 server.on('error', (error: NodeJS.ErrnoException) => {
     void previewProxy.close();

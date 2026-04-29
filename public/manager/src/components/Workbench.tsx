@@ -18,13 +18,6 @@ function modeLabel(mode: DashboardDetailTab): string {
 }
 
 export function Workbench(props: WorkbenchProps) {
-    const contentByMode: Record<DashboardDetailTab, ReactNode> = {
-        overview: props.overview,
-        preview: props.preview,
-        logs: props.logs,
-        settings: props.settings,
-    };
-
     return (
         <section className={`workbench workbench-${props.mode}`} aria-label="Selected instance workbench">
             <div className="workbench-header">
@@ -44,7 +37,26 @@ export function Workbench(props: WorkbenchProps) {
                     ))}
                 </div>
             </div>
-            <div className="workbench-body">{contentByMode[props.mode]}</div>
+            <div className="workbench-body">
+                {props.mode === 'overview' && (
+                    <div key="overview" className="workbench-panel workbench-panel-overview">{props.overview}</div>
+                )}
+                <div
+                    key="preview"
+                    className="workbench-panel workbench-panel-preview"
+                    hidden={props.mode !== 'preview'}
+                    aria-hidden={props.mode !== 'preview'}
+                    data-preview-host="persistent"
+                >
+                    {props.preview}
+                </div>
+                {props.mode === 'logs' && (
+                    <div key="logs" className="workbench-panel workbench-panel-logs">{props.logs}</div>
+                )}
+                {props.mode === 'settings' && (
+                    <div key="settings" className="workbench-panel workbench-panel-settings">{props.settings}</div>
+                )}
+            </div>
         </section>
     );
 }

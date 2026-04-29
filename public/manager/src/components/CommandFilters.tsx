@@ -20,6 +20,9 @@ type CommandFiltersProps = {
     onScanFromChange: (value: string) => void;
     onScanCountChange: (value: string) => void;
     onScanRangeCommit: (from: string, count: string) => void;
+    rangeLabel: string;
+    managerPort: number;
+    countLabel: string;
 };
 
 const STATUS_OPTIONS: StatusFilter[] = ['all', 'online', 'offline', 'timeout', 'error', 'unknown'];
@@ -33,9 +36,13 @@ export function CommandFilters(props: CommandFiltersProps) {
                 value={props.status}
                 onChange={event => props.onStatusChange(event.target.value as StatusFilter)}
                 aria-label="Filter by status"
+                title="Filter by status"
             >
                 {STATUS_OPTIONS.map(option => <option key={option} value={option}>{option}</option>)}
             </select>
+            <span className="command-mini-stat" title="Online / total instances">
+                {props.countLabel}
+            </span>
             {props.profiles.length > 0 && (
                 <div className="profile-chip-strip" aria-label="Profile filters">
                     {props.profiles.map(profile => (
@@ -60,7 +67,7 @@ export function CommandFilters(props: CommandFiltersProps) {
                     title="Custom home, default ~/.cli-jaw-<port>"
                 />
             </div>
-            <label className="toggle-control">
+            <label className="toggle-control compact-toggle" title="Show hidden instances">
                 <input
                     type="checkbox"
                     checked={props.showHidden}
@@ -88,6 +95,9 @@ export function CommandFilters(props: CommandFiltersProps) {
                     aria-label="Scan port count"
                 />
             </div>
+            <span className="command-mini-stat" title={`Manager ${props.managerPort}, scan ${props.rangeLabel}`}>
+                :{props.managerPort} / {props.rangeLabel}
+            </span>
             {props.registryMessage && <span className="registry-state-chip">{props.registryMessage}</span>}
         </>
     );

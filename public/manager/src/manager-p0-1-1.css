@@ -5,12 +5,7 @@
 
 .command-primary {
     gap: 8px;
-    grid-template-columns: auto minmax(108px, 150px) minmax(280px, 1fr) auto;
-}
-
-.command-secondary {
-    gap: 6px;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(108px, 150px) max-content minmax(max-content, 1fr);
 }
 
 .command-title .eyebrow {
@@ -22,11 +17,9 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: 12px;
-}
-
-.command-summary {
-    display: none;
+    color: var(--text-primary);
+    font-size: 14px;
+    font-weight: 700;
 }
 
 .command-filter-strip {
@@ -39,40 +32,21 @@
 }
 
 .command-filter-strip .launch-home-control input.home-input {
-    width: 180px;
+    width: 150px;
 }
 
 .workbench-preview .workbench-header {
-    padding: 6px 10px;
+    padding: 4px 8px;
 }
 
 .workbench-preview .workbench-mode-tabs button {
-    min-height: 26px;
-    padding: 4px 8px;
+    min-height: 24px;
+    padding: 3px 8px;
 }
 
 .workbench-preview .preview-panel {
     gap: 3px;
     padding: 3px 4px 4px;
-}
-
-.workbench-preview .preview-header {
-    padding: 0;
-}
-
-.workbench-preview .preview-controls {
-    gap: 5px;
-}
-
-.workbench-preview .preview-controls select {
-    width: 78px;
-    min-height: 24px;
-    padding: 2px 7px;
-}
-
-.workbench-preview .preview-toggle {
-    min-height: 22px;
-    padding: 0 2px;
 }
 
 .workbench-preview .preview-frame {
@@ -153,6 +127,10 @@
     display: none;
 }
 
+.manager-sidebar .instance-row-title .instance-unread-badge {
+    display: inline;
+}
+
 .manager-sidebar .profile-instance-groups.is-profile-merged .instance-row-title span {
     display: block;
     max-width: 100%;
@@ -162,6 +140,13 @@
     line-height: 1.25;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.manager-sidebar .profile-instance-groups.is-profile-merged .instance-row-title .instance-unread-badge {
+    display: inline;
+    color: var(--status-error);
+    font-size: 12px;
+    line-height: inherit;
 }
 
 .manager-sidebar .port {
