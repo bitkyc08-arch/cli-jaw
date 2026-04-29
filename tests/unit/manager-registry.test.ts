@@ -55,6 +55,8 @@ test('manager registry defaults when file is missing', () => {
     assert.equal(loaded.registry.scan.from, 3457);
     assert.equal(loaded.registry.scan.count, 50);
     assert.equal(loaded.registry.ui.selectedTab, 'overview');
+    assert.equal(loaded.registry.ui.activitySeenAt, null);
+    assert.deepEqual(loaded.registry.ui.activitySeenByPort, {});
     assert.deepEqual(loaded.registry.profiles, {});
     assert.deepEqual(loaded.registry.activeProfileFilter, []);
     assert.equal(loaded.status.loaded, true);
@@ -82,6 +84,12 @@ test('manager registry clamps scan and UI values', () => {
             sidebarCollapsed: true,
             activityDockCollapsed: true,
             activityDockHeight: 9999,
+            activitySeenAt: 'not-date',
+            activitySeenByPort: {
+                3462: '2026-04-29T04:40:00.000Z',
+                bad: '2026-04-29T04:40:00.000Z',
+                3463: 'bad-date',
+            },
         },
         instances: {
             3457: { label: ' main ', favorite: true, group: 'daily', hidden: false },
@@ -102,6 +110,8 @@ test('manager registry clamps scan and UI values', () => {
     assert.equal(loaded.registry.ui.selectedTab, 'overview');
     assert.equal(loaded.registry.ui.sidebarCollapsed, true);
     assert.equal(loaded.registry.ui.activityDockHeight, 320);
+    assert.equal(loaded.registry.ui.activitySeenAt, null);
+    assert.deepEqual(loaded.registry.ui.activitySeenByPort, { 3462: '2026-04-29T04:40:00.000Z' });
     assert.equal(loaded.registry.instances['3457']?.label, 'main');
     assert.equal(loaded.registry.instances.bad, undefined);
     assert.equal(loaded.registry.profiles.default?.label, 'Default');
@@ -112,7 +122,12 @@ test('manager registry patch persists instance preferences', () => {
     const path = registryPath();
     const saved = patchDashboardRegistry({
         scan: { from: 3460, count: 8 },
-        ui: { selectedPort: 3461, selectedTab: 'settings' },
+        ui: {
+            selectedPort: 3461,
+            selectedTab: 'settings',
+            activitySeenAt: '2026-04-29T04:40:00.000Z',
+            activitySeenByPort: { 3461: '2026-04-29T04:41:00.000Z' },
+        },
         instances: { 3461: { label: 'worker', favorite: true, hidden: true } },
         profiles: { default: { label: 'Default', homePath: '/Users/jun/.cli-jaw', pinned: true } },
         activeProfileFilter: ['default'],
@@ -121,6 +136,8 @@ test('manager registry patch persists instance preferences', () => {
     assert.equal(saved.registry.scan.from, 3460);
     assert.equal(saved.registry.scan.count, 8);
     assert.equal(saved.registry.ui.selectedTab, 'settings');
+    assert.equal(saved.registry.ui.activitySeenAt, '2026-04-29T04:40:00.000Z');
+    assert.deepEqual(saved.registry.ui.activitySeenByPort, { 3461: '2026-04-29T04:41:00.000Z' });
     assert.equal(saved.registry.instances['3461']?.label, 'worker');
     assert.equal(saved.registry.instances['3461']?.favorite, true);
     assert.equal(saved.registry.instances['3461']?.hidden, true);

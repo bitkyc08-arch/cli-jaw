@@ -11,8 +11,10 @@ type InstanceRowProps = {
     density?: 'compact' | 'comfortable' | 'rail';
     priority?: 'active' | 'pinned' | 'normal' | 'hidden';
     transitioning?: DashboardLifecycleAction | null;
+    activityUnreadCount?: number;
     onSelect: (instance: DashboardInstance) => void;
     onPreview: (instance: DashboardInstance) => void;
+    onMarkActivitySeen: (port: number) => void;
     onLifecycle: (action: DashboardLifecycleAction, instance: DashboardInstance) => void;
 };
 
@@ -26,21 +28,6 @@ function statusClass(status: DashboardInstance['status']): string {
     return `instance-status status-${status}`;
 }
 
-function instanceSecondaryLine(instance: DashboardInstance, label: string, profile?: DashboardProfile): string {
-    if (profile) {
-        return [
-            label !== profile.label ? label : null,
-            instance.workingDir || instance.url,
-        ].filter(Boolean).join(' · ');
-    }
-
-    if (instance.group) {
-        return `${instance.group} · ${instance.workingDir || instance.url}`;
-    }
-
-    return instance.workingDir || instance.url;
-}
-
 export function InstanceRow(props: InstanceRowProps) {
     const lifecycle = props.instance.lifecycle;
     const reason = lifecycle?.reason || props.instance.healthReason || 'ok';
@@ -52,9 +39,6 @@ export function InstanceRow(props: InstanceRowProps) {
     const transitionLabel = props.transitioning ? TRANSITION_LABELS[props.transitioning] : null;
     const dotClass = `${statusClass(props.instance.status)}${transitionLabel ? ' is-transitioning' : ''}`;
     const primaryLabel = props.profile?.label || props.label;
-    const secondaryLine = transitionLabel
-        ? null
-        : instanceSecondaryLine(props.instance, props.label, props.profile);
 
     return (
         <article className={`instance-row density-${props.density || 'comfortable'} priority-${props.priority || 'normal'} ${props.selected ? 'is-selected' : ''}${transitionLabel ? ' is-transitioning-row' : ''}`}>
@@ -62,17 +46,22 @@ export function InstanceRow(props: InstanceRowProps) {
                 className="instance-row-select"
                 type="button"
                 aria-pressed={props.selected}
-                onClick={() => props.onSelect(props.instance)}
+                onClick={() => {
+                    props.onSelect(props.instance);
+                }}
             >
                 <div className="instance-row-main">
                     <span className={dotClass} aria-label={props.instance.status} />
                     <div className="instance-row-title">
-                        <strong>{props.instance.favorite ? `Pinned ${primaryLabel}` : primaryLabel}</strong>
-                        <span>
-                            {transitionLabel
-                                ? <em className="instance-row-transition">{transitionLabel}</em>
-                                : secondaryLine}
-                        </span>
+                        <div className="instance-row-title-line">
+                            <strong>{props.instance.favorite ? `Pinned ${primaryLabel}` : primaryLabel}</strong>
+                            {props.activityUnreadCount ? (
+                                <span className="instance-unread-badge" aria-label={`${props.activityUnreadCount} unread activity`}>
+                                    ({props.activityUnreadCount > 99 ? '99+' : props.activityUnreadCount})
+                                </span>
+                            ) : null}
+                        </div>
+                        {transitionLabel && <span><em className="instance-row-transition">{transitionLabel}</em></span>}
                     </div>
                     <span className="port">:{props.instance.port}</span>
                 </div>
@@ -107,6 +96,7 @@ export function InstanceRow(props: InstanceRowProps) {
                             return;
                         }
                         stopAction(event);
+                        props.onMarkActivitySeen(props.instance.port);
                     }}
                 >
                     Open

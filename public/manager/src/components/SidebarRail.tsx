@@ -73,7 +73,12 @@ export function SidebarRail(props: SidebarRailProps) {
             </button>
             <RailItem label="Instances" shortLabel="I" active={props.activeTab === 'overview'} onClick={props.onSelectInstances} />
             <RailItem label="Preview" shortLabel="P" active={props.activeTab === 'preview'} onClick={props.onSelectPreview} />
-            <RailItem label="Activity" shortLabel="A" active={props.activityOpen} onClick={props.onSelectActivity} />
+            <RailItem
+                label="Activity"
+                shortLabel="A"
+                active={props.activityOpen}
+                onClick={props.onSelectActivity}
+            />
             <RailItem label="Settings" shortLabel="S" active={props.activeTab === 'settings'} />
             <div className="rail-spacer" />
             <span className="rail-status-dot" aria-label={`${props.onlineCount} online instances`} />

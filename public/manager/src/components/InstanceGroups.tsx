@@ -13,10 +13,12 @@ type InstanceGroupsProps = {
     lifecycleBusyPort: number | null;
     transitioningPort?: number | null;
     transitionAction?: DashboardLifecycleAction | null;
+    activityUnreadByPort?: Record<number, number>;
     getLabel: (instance: DashboardInstance) => string;
     formatUptime: (seconds: number | null) => string;
     onSelect: (instance: DashboardInstance) => void;
     onPreview: (instance: DashboardInstance) => void;
+    onMarkActivitySeen: (port: number) => void;
     onLifecycle: (action: DashboardLifecycleAction, instance: DashboardInstance) => void;
 };
 
@@ -87,10 +89,12 @@ function renderInstanceRow(
             selected={props.selectedPort === instance.port}
             busy={props.lifecycleBusyPort === instance.port}
             transitioning={props.transitioningPort === instance.port ? props.transitionAction || null : null}
+            activityUnreadCount={props.activityUnreadByPort?.[instance.port] || 0}
             label={props.getLabel(instance)}
             uptime={props.formatUptime(instance.uptime)}
             onSelect={props.onSelect}
             onPreview={props.onPreview}
+            onMarkActivitySeen={props.onMarkActivitySeen}
             onLifecycle={props.onLifecycle}
         />
     );

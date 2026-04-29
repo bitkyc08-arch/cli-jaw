@@ -75,6 +75,18 @@ function readProfileId(value: unknown): DashboardProfileId | null {
     return typeof value === 'string' && /^[a-z0-9][a-z0-9-]{0,79}$/.test(value) ? value : null;
 }
 
+function normalizeActivitySeenByPort(value: unknown): Record<string, string> {
+    const input = isRecord(value) ? value : {};
+    const seenByPort: Record<string, string> = {};
+    for (const [key, seenAt] of Object.entries(input)) {
+        const port = Number(key);
+        if (!Number.isInteger(port) || port < 1 || port > 65535) continue;
+        if (typeof seenAt !== 'string' || Number.isNaN(Date.parse(seenAt))) continue;
+        seenByPort[String(port)] = seenAt;
+    }
+    return seenByPort;
+}
+
 function defaultUi(): DashboardRegistryUi {
     return {
         selectedPort: null,
@@ -82,6 +94,8 @@ function defaultUi(): DashboardRegistryUi {
         sidebarCollapsed: false,
         activityDockCollapsed: false,
         activityDockHeight: DEFAULT_ACTIVITY_HEIGHT,
+        activitySeenAt: null,
+        activitySeenByPort: {},
         uiTheme: 'auto',
     };
 }
@@ -111,6 +125,10 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
         sidebarCollapsed: typeof input.sidebarCollapsed === 'boolean' ? input.sidebarCollapsed : fallback.sidebarCollapsed,
         activityDockCollapsed: typeof input.activityDockCollapsed === 'boolean' ? input.activityDockCollapsed : fallback.activityDockCollapsed,
         activityDockHeight: clampInt(input.activityDockHeight, fallback.activityDockHeight, MIN_ACTIVITY_HEIGHT, MAX_ACTIVITY_HEIGHT),
+        activitySeenAt: typeof input.activitySeenAt === 'string' && !Number.isNaN(Date.parse(input.activitySeenAt))
+            ? input.activitySeenAt
+            : null,
+        activitySeenByPort: normalizeActivitySeenByPort(input.activitySeenByPort),
         uiTheme,
     };
 }

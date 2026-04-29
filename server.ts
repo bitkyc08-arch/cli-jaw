@@ -49,7 +49,7 @@ import {
     APP_VERSION,
 } from './src/core/config.js';
 import {
-    db, getSession, getMessages, getMessagesWithTrace, closeDb,
+    db, getSession, getMessages, getMessagesWithTrace, getLatestAssistantMessage, closeDb,
     clearAllEmployeeSessions,
 } from './src/core/db.js';
 import {
@@ -404,6 +404,9 @@ app.get('/api/messages', (req, res) => {
     const includeTrace = ['1', 'true', 'yes'].includes(String(req.query.includeTrace || '').toLowerCase());
     const rows = includeTrace ? getMessagesWithTrace.all() : getMessages.all();
     ok(res, rows);
+});
+app.get('/api/messages/latest', (_req, res) => {
+    ok(res, getLatestAssistantMessage.get() || null);
 });
 app.get('/api/runtime', (_, res) => ok(res, getRuntimeSnapshot(), getRuntimeSnapshot()));
 

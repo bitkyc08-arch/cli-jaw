@@ -125,6 +125,7 @@ export type DashboardProcessControlState = {
 export type ManagerEvent =
     | { kind: 'scan-completed'; from: number; to: number; reachable: number; at: string }
     | { kind: 'scan-failed'; reason: string; at: string }
+    | { kind: 'instance-message'; port: number; messageId: number; role: string; at: string }
     | { kind: 'lifecycle-result'; port: number; action: DashboardLifecycleAction; status: string; message: string; at: string }
     | { kind: 'health-changed'; port: number; from: DashboardInstanceStatus; to: DashboardInstanceStatus; reason: string | null; at: string }
     | { kind: 'version-mismatch'; port: number; expected: string | null; seen: string; at: string }
@@ -183,6 +184,8 @@ export type DashboardRegistryUi = {
     sidebarCollapsed: boolean;
     activityDockCollapsed: boolean;
     activityDockHeight: number;
+    activitySeenAt: string | null;
+    activitySeenByPort: Record<string, string>;
     uiTheme: DashboardUiTheme;
 };
 

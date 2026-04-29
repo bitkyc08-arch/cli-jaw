@@ -18,8 +18,10 @@ import { WorkspaceLayout } from './components/WorkspaceLayout';
 import { InstancePreview } from './InstancePreview';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
 import { useDashboardView } from './hooks/useDashboardView';
+import { useActivityUnread } from './hooks/useActivityUnread';
 import { useTheme, syncThemeFromRegistry } from './hooks/useTheme';
 import { useCommandPalette } from './hooks/useCommandPalette';
+import { useInstanceMessageEvents } from './hooks/useInstanceMessageEvents';
 import { useManagerEvents } from './hooks/useManagerEvents';
 import type {
     DashboardDetailTab,
@@ -39,8 +41,19 @@ function formatUptime(seconds: number | null): string {
     return `${hours}h ${minutes % 60}m`;
 }
 
+function compactGeneratedInstanceName(value: string, port: number): string {
+    const rawName = value.split('/').filter(Boolean).pop() || value;
+    const withoutHash = rawName
+        .replace(/^\.?cli-jaw-(\d+)-[a-f0-9]{7,}$/i, 'cli-jaw $1')
+        .replace(/^\.?cli-jaw-(\d+)$/i, 'cli-jaw $1');
+    return withoutHash || `cli-jaw ${port}`;
+}
+
 function instanceLabel(instance: DashboardInstance): string {
-    return instance.label || instance.instanceId || instance.homeDisplay || `port-${instance.port}`;
+    if (instance.label) return instance.label;
+    const rawLabel = instance.instanceId || instance.homeDisplay || '';
+    const rawName = rawLabel.split('/').filter(Boolean).pop() || rawLabel;
+    return compactGeneratedInstanceName(rawName, instance.port);
 }
 
 export function App() {
@@ -67,6 +80,14 @@ export function App() {
     });
     const palette = useCommandPalette();
     const managerEvents = useManagerEvents();
+    const instances = data?.instances || [];
+    const messageEvents = useInstanceMessageEvents(instances);
+    const activityUnread = useActivityUnread({
+        events: [...managerEvents.events, ...messageEvents],
+        activityDockCollapsed: view.activityDockCollapsed,
+        setActivityDockCollapsed: view.setActivityDockCollapsed,
+        saveUi,
+    });
 
     function cycleTheme(): void {
         const order: ('auto' | 'light' | 'dark')[] = ['auto', 'light', 'dark'];
@@ -106,6 +127,7 @@ export function App() {
                 view.setSidebarCollapsed(ui.sidebarCollapsed);
                 view.setActivityDockCollapsed(ui.activityDockCollapsed);
                 view.setActivityDockHeight(ui.activityDockHeight);
+                activityUnread.hydrateSeenAt(ui.activitySeenAt ?? null, ui.activitySeenByPort || {});
                 setActiveProfileIds(loaded.registry.activeProfileFilter || []);
                 syncThemeFromRegistry(ui.uiTheme);
                 setScanFromInput(String(loaded.registry.scan.from));
@@ -131,7 +153,6 @@ export function App() {
         await load();
     }
 
-    const instances = data?.instances || [];
     const profiles = useMemo(() => data?.manager.profiles || [], [data]);
     const profileCounts = useMemo(() => {
         return instances.reduce((acc, instance) => {
@@ -183,6 +204,7 @@ export function App() {
     }, [filtered, instances, view.selectedPort]);
 
     function handlePreview(instance: DashboardInstance): void {
+        activityUnread.markPortSeen(instance.port);
         view.setSelectedPort(instance.port);
         view.setActiveDetailTab('preview');
         view.setActivityDockCollapsed(true);
@@ -191,6 +213,7 @@ export function App() {
     }
 
     function handleSelectInstance(instance: DashboardInstance): void {
+        activityUnread.markPortSeen(instance.port);
         view.setSelectedPort(instance.port);
         view.setDrawerOpen(false);
         void saveUi({ selectedPort: instance.port });
@@ -213,9 +236,11 @@ export function App() {
     }
 
     function handleActivityToggle(): void {
-        const next = !view.activityDockCollapsed;
-        view.setActivityDockCollapsed(next);
-        void saveUi({ activityDockCollapsed: next });
+        if (view.activityDockCollapsed) {
+            activityUnread.openAndMarkSeen();
+            return;
+        }
+        activityUnread.closeAndPersistSeen();
     }
 
     function handleActivityHeight(height: number): void {
@@ -281,11 +306,13 @@ export function App() {
                     lifecycleBusyPort={lifecycleBusyPort}
                     transitioningPort={transitioningPort}
                     transitionAction={transitionAction}
+                    activityUnreadByPort={activityUnread.unreadByPort}
                     profiles={profiles}
                     getLabel={instanceLabel}
                     formatUptime={formatUptime}
                     onSelect={handleSelectInstance}
                     onPreview={handlePreview}
+                    onMarkActivitySeen={activityUnread.markPortSeen}
                     onLifecycle={(action, instance) => void handleLifecycle(action, instance)}
                 />
             )}
@@ -420,10 +447,7 @@ export function App() {
                             activeTab={view.activeDetailTab}
                             onOpenInstances={() => view.setDrawerOpen(true)}
                             onSelectTab={handleTabChange}
-                            onToggleActivity={() => {
-                                view.setActivityDockCollapsed(false);
-                                void saveUi({ activityDockCollapsed: false });
-                            }}
+                            onToggleActivity={activityUnread.openAndMarkSeen}
                         />
                     )}
                     drawer={(

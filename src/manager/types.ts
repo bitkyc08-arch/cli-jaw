@@ -102,6 +102,27 @@ export type DashboardLifecycleResult = {
     stdout?: string;
 };
 
+export type DashboardProcessProof = 'child' | 'registry';
+
+export type DashboardProcessControlEntry = {
+    port: number;
+    pid: number | null;
+    home: string | null;
+    proof: DashboardProcessProof;
+    canStop: boolean;
+    canForceRelease: boolean;
+    reason: string;
+};
+
+export type DashboardProcessControlState = {
+    managed: DashboardProcessControlEntry[];
+    unsupported: {
+        dashboardService: true;
+        forceRelease: true;
+        reason: string;
+    };
+};
+
 export type DashboardScanOptions = {
     from?: number;
     count?: number;
@@ -136,6 +157,8 @@ export type DashboardRegistryUi = {
     sidebarCollapsed: boolean;
     activityDockCollapsed: boolean;
     activityDockHeight: number;
+    activitySeenAt: string | null;
+    activitySeenByPort: Record<string, string>;
     uiTheme: DashboardUiTheme;
 };
 
