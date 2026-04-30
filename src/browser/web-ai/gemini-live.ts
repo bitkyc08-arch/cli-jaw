@@ -26,7 +26,8 @@ import {
     assertSameTarget,
 } from './session.js';
 import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
-import { buildInlineContextOrFail, summarizeContextPack } from './context-pack/index.js';
+import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
+import { captureCopiedResponseText, GEMINI_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
 
@@ -232,7 +233,12 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
         (err as any).stage = 'attachment-preflight';
         throw err;
     }
-    const contextPack = await buildInlineContextOrFail({ ...input, vendor: 'gemini' });
+    const contextPack = await prepareContextForBrowser({ ...input, vendor: 'gemini' });
+    if (contextPack?.transport === 'upload') {
+        const err = new Error('gemini context package upload is not implemented; pass --inline-only to inline context');
+        (err as any).stage = 'attachment-preflight';
+        throw err;
+    }
     const rendered = renderQuestionEnvelopeWithContext(envelope, contextPack?.composerText);
     const usedFallbacks: string[] = [];
     const warnings: string[] = [...rendered.warnings, ...(contextPack?.warnings || [])];
@@ -324,7 +330,7 @@ async function dismissBlockingOverlays(page: Page, warnings: string[]): Promise<
     if (await backdrop.isVisible().catch(() => false)) warnings.push('overlay backdrop remained visible before composer focus');
 }
 
-export async function geminiPoll(port: number, input: { timeout?: number | string; session?: string } = {}): Promise<WebAiOutput> {
+export async function geminiPoll(port: number, input: { timeout?: number | string; session?: string; allowCopyMarkdownFallback?: boolean } = {}): Promise<WebAiOutput> {
     const tab = await getActiveTab(port);
     if (!tab.tab) throw new Error('no active tab');
     const page = await getActivePage(port);
@@ -353,18 +359,31 @@ export async function geminiPoll(port: number, input: { timeout?: number | strin
                         await page.waitForTimeout(5_000).catch(() => undefined);
                         continue;
                     }
+                    let answerText = text.trim();
+                    const usedFallbacks: string[] = [];
+                    const warnings: string[] = [];
+                    if (input.allowCopyMarkdownFallback === true) {
+                        const copied = await captureCopiedResponseText(page, GEMINI_COPY_SELECTORS);
+                        const copiedText = preferCopiedText(answerText, copied);
+                        if (copiedText) {
+                            answerText = normalizeGeminiResponseText(copiedText);
+                            usedFallbacks.push('copy-markdown');
+                        } else {
+                            warnings.push(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
+                        }
+                    }
                     if (session) updateSessionStatus(session.sessionId, 'complete');
-                    if (session) updateSessionResult({ sessionId: session.sessionId, status: 'complete', url: page.url(), conversationUrl: page.url(), answerText: text.trim() });
+                    if (session) updateSessionResult({ sessionId: session.sessionId, status: 'complete', url: page.url(), conversationUrl: page.url(), answerText });
                     return {
                         ok: true,
                         vendor: 'gemini',
                         status: 'complete',
                         url: page.url(),
-                        answerText: text.trim(),
+                        answerText,
                         baseline,
                         ...(session ? { sessionId: session.sessionId } : {}),
-                        usedFallbacks: [],
-                        warnings: [],
+                        usedFallbacks,
+                        warnings,
                     };
                 }
             }

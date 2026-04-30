@@ -51,9 +51,17 @@ test('BWCLI-006: web-ai CLI exposes Oracle-style context packaging flags', () =>
     assert.match(cliWebAiSrc, /'context-exclude': \{ type: 'string', multiple: true \}/);
     assert.match(cliWebAiSrc, /'context-file': \{ type: 'string' \}/);
     assert.match(cliWebAiSrc, /'max-input': \{ type: 'string' \}/);
+    assert.match(cliWebAiSrc, /'context-transport': \{ type: 'string' \}/);
+    assert.match(cliWebAiSrc, /hasContextPackage/);
     assert.match(cliWebAiSrc, /renderContextDryRunReport/);
     assert.match(routeSrc, /\/api\/browser\/web-ai\/context-dry-run', requireAuth/);
     assert.match(routeSrc, /\/api\/browser\/web-ai\/context-render', requireAuth/);
+});
+
+test('BWCLI-007: copy-markdown fallback flag is wired through CLI and routes', () => {
+    assert.match(cliWebAiSrc, /'allow-copy-markdown-fallback': \{ type: 'boolean', default: false \}/);
+    assert.match(cliWebAiSrc, /allowCopyMarkdownFallback: true/);
+    assert.match(routeSrc, /allowCopyMarkdownFallback === 'true'/);
 });
 
 test('BWCLI-004: browser index exports webAi namespace', () => {

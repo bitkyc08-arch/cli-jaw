@@ -32,12 +32,12 @@ test('RESP-004: chatgpt-response source has no Oracle imports and no public eval
 
 test('RESP-005: captureAssistantResponse records copy fallback through ActionTranscript', async () => {
     const page = fakeResponsePage({
-        assistantTexts: ['old answer'],
+        assistantTexts: ['old answer', 'dom answer'],
         copyText: 'copied answer',
     });
     const result = await captureAssistantResponse(page, {
         minTurnIndex: 1,
-        timeoutMs: 1,
+        timeoutMs: 80,
         allowCopyMarkdownFallback: true,
         stableWindowMs: 1,
         pollIntervalMs: 1,
@@ -51,7 +51,7 @@ function fakeResponsePage(input: { assistantTexts: string[]; copyText: string })
     return {
         evaluate: async (fn: any, selectors?: readonly string[]) => {
             const source = String(fn);
-            if (source.includes('navigator')) return input.copyText;
+            if (source.includes('selectorSet')) return { ok: true, text: input.copyText };
             if (Array.isArray(selectors)) return input.assistantTexts;
             return [];
         },

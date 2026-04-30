@@ -30,7 +30,7 @@ import {
 import { reportGeminiContractOnlyStatus, GEMINI_DEEP_THINK_OFFICIAL_SOURCES } from './gemini-contract.js';
 import { geminiSend, geminiPoll, geminiStop, geminiStatus } from './gemini-live.js';
 import { ProviderRuntimeDisabledError } from './provider-adapter.js';
-import { buildInlineContextOrFail, summarizeContextPack } from './context-pack/index.js';
+import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -67,9 +67,11 @@ export function isChatGptUrl(url: string): boolean {
 
 export async function render(input: QuestionEnvelopeInput = {}): Promise<WebAiOutput> {
     const envelope = normalizeEnvelope(input);
-    const contextPack = await buildInlineContextOrFail(input);
+    const contextPack = await prepareContextForBrowser(input);
     const rendered = contextPack
-        ? renderQuestionEnvelopeWithContext(envelope, contextPack.composerText)
+        ? contextPack.transport === 'inline'
+            ? renderQuestionEnvelopeWithContext(envelope, contextPack.composerText)
+            : renderQuestionEnvelope(envelope)
         : renderQuestionEnvelope(envelope);
     return {
         ok: true,
@@ -103,9 +105,11 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     const envelope = normalizeEnvelope(input);
     const active = await requireVerifiedChatGptTab(port, envelope.vendor);
     const page = await requireActivePage(port);
-    const contextPack = await buildInlineContextOrFail(input);
+    const contextPack = await prepareContextForBrowser(input);
     const rendered = contextPack
-        ? renderQuestionEnvelopeWithContext(envelope, contextPack.composerText)
+        ? contextPack.transport === 'inline'
+            ? renderQuestionEnvelopeWithContext(envelope, contextPack.composerText)
+            : renderQuestionEnvelope(envelope)
         : renderQuestionEnvelope(envelope);
     const selectedModel = await selectChatGptModel(page, input.model);
     await waitForStableAssistantCount(page);
@@ -142,15 +146,20 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         await adapter.waitForReady();
         const commitBaseline = { turnsCount: await countConversationTurns(page).catch(() => assistantCount) };
         await adapter.insertPrompt(rendered.composerText);
-        if (input.filePath) {
-            const info = localFileInfo(input.filePath);
+        const contextAttachmentPath = contextPack?.attachments?.[0]?.path;
+        if (contextAttachmentPath && input.filePath) {
+            throw new Error('context package upload and --file upload cannot be combined yet');
+        }
+        const uploadPath = input.filePath || contextAttachmentPath;
+        if (uploadPath) {
+            const info = localFileInfo(uploadPath);
             const uploaded = await attachLocalFileLive(page, info);
             if (!uploaded.ok) throw new Error(uploaded.error);
         }
         await adapter.submitPrompt();
         await adapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
-        if (input.filePath) {
-            const sentAttachment = await verifySentTurnAttachmentLive(page, localFileInfo(input.filePath));
+        if (uploadPath) {
+            const sentAttachment = await verifySentTurnAttachmentLive(page, localFileInfo(uploadPath));
             if (!sentAttachment.ok) throw new Error(sentAttachment.error);
         }
         updateSessionStatus(session.sessionId, 'streaming');
@@ -170,6 +179,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         warnings: [
             ...rendered.warnings,
             ...(contextPack?.warnings || []),
+            ...(contextPack?.attachments?.[0] ? [`context package attached: ${contextPack.attachments[0].displayPath}`] : []),
             ...(selectedModel ? [`model selected: ${selectedModel.selected}${selectedModel.alreadySelected ? ' (already selected)' : ''}`] : []),
         ],
     };
@@ -185,7 +195,11 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
     const vendor = parseVendor(input.vendor);
     if (vendor === 'gemini') {
         try {
-            return await geminiPoll(port, { timeout: input.timeout, session: input.session });
+            return await geminiPoll(port, {
+                timeout: input.timeout,
+                session: input.session,
+                allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
+            });
         } catch (e) {
             throw stageError(e, 'poll-timeout');
         }

@@ -58,6 +58,7 @@ export async function runWebAiCommand(
             'max-input': { type: 'string' },
             'max-file-size': { type: 'string' },
             'files-report': { type: 'boolean', default: false },
+            'context-transport': { type: 'string' },
             'dry-run': { type: 'string' },
             full: { type: 'boolean', default: false },
             json: { type: 'boolean', default: false },
@@ -65,7 +66,8 @@ export async function runWebAiCommand(
         strict: false,
     });
     rejectFutureWebAiFlags(values);
-    if (['send', 'query'].includes(command) && !values['inline-only'] && !values.file) {
+    const hasContextPackage = Boolean(values['context-file'] || (Array.isArray(values['context-from-files']) && values['context-from-files'].length > 0));
+    if (['send', 'query'].includes(command) && !values['inline-only'] && !values.file && !hasContextPackage) {
         throw new Error('web-ai send/query require --inline-only or --file=<path>');
     }
     const body = {
@@ -90,6 +92,9 @@ export async function runWebAiCommand(
         ...(values['max-input'] ? { maxInput: values['max-input'] } : {}),
         ...(values['max-file-size'] ? { maxFileSize: values['max-file-size'] } : {}),
         ...(values['files-report'] ? { filesReport: values['files-report'] } : {}),
+        ...(values['context-transport'] ? { contextTransport: values['context-transport'] } : {}),
+        ...(values['inline-only'] ? { inlineOnly: true } : {}),
+        ...(values['allow-copy-markdown-fallback'] ? { allowCopyMarkdownFallback: true } : {}),
     };
     const result = await callWebAiEndpoint(command, body, values, deps) as Record<string, unknown>;
     const fullContextOutput = values.full === true || command === 'context-render';

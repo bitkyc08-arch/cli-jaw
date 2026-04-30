@@ -9,6 +9,7 @@
 
 import type { ResponseCaptureResult } from './provider-adapter.js';
 import { ActionTranscript, captureTextBaseline } from '../primitives.js';
+import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 
 declare const document: any;
 
@@ -27,11 +28,6 @@ export const CANVAS_SELECTORS = [
 export const STOP_BUTTON_SELECTORS = [
     'button[data-testid="stop-button"]',
     'button[aria-label*="Stop" i]',
-];
-
-export const COPY_MARKDOWN_SELECTORS = [
-    'button[data-testid="copy-turn-action-button"]',
-    'button[aria-label*="Copy" i]',
 ];
 
 const PLACEHOLDER_PATTERNS: RegExp[] = [
@@ -142,6 +138,15 @@ export async function captureAssistantResponse(page: any, options: CaptureOption
         if (!snap.streaming && snap.latestNewText) {
             if (snap.latestNewText === stableText) {
                 if (stableSince !== null && Date.now() - stableSince >= stableWindowMs) {
+                    if (options.allowCopyMarkdownFallback) {
+                        const copied = await captureCopiedResponseText(page, CHATGPT_COPY_SELECTORS);
+                        const copiedText = preferCopiedText(snap.latestNewText, copied);
+                        if (copiedText) {
+                            transcript.fallback('copy-markdown');
+                            return { ok: true, answerText: normalizeAssistantText(copiedText), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings };
+                        }
+                        transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
+                    }
                     return { ok: true, answerText: snap.latestNewText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings };
                 }
             } else {
@@ -155,13 +160,14 @@ export async function captureAssistantResponse(page: any, options: CaptureOption
         await wait(pollIntervalMs);
     }
 
-    if (options.allowCopyMarkdownFallback) {
-        const fallbackText = await tryCopyMarkdownFallback(page);
-        if (fallbackText) {
+    if (options.allowCopyMarkdownFallback && stableText) {
+        const copied = await captureCopiedResponseText(page, CHATGPT_COPY_SELECTORS);
+        const copiedText = preferCopiedText(stableText, copied);
+        if (copiedText) {
             transcript.fallback('copy-markdown');
-            return { ok: true, answerText: fallbackText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings };
+            return { ok: true, answerText: normalizeAssistantText(copiedText), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings };
         }
-        transcript.warn('copy-markdown-fallback-unavailable');
+        transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
     }
     return { ok: false, answerText: stableText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings };
 }
@@ -198,27 +204,6 @@ async function isCanvasOpened(page: any): Promise<boolean> {
         }
     }
     return false;
-}
-
-async function tryCopyMarkdownFallback(page: any): Promise<string | undefined> {
-    for (const selector of COPY_MARKDOWN_SELECTORS) {
-        try {
-            const buttons = await safeAll(page, selector);
-            const last = buttons[buttons.length - 1];
-            if (!last || !(await last.isVisible().catch(() => false))) continue;
-            await last.click({ trial: false }).catch(() => undefined);
-            const clipboard = await page.evaluate?.(async () => {
-                try {
-                    const nav = navigator as unknown as { clipboard?: { readText: () => Promise<string> } };
-                    return (await nav.clipboard?.readText()) ?? '';
-                } catch { return ''; }
-            });
-            if (clipboard && typeof clipboard === 'string') return normalizeAssistantText(clipboard);
-        } catch {
-            // ignore
-        }
-    }
-    return undefined;
 }
 
 async function safeAll(page: any, selector: string): Promise<any[]> {

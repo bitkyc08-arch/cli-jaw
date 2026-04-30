@@ -399,11 +399,6 @@ export function App() {
                                 <SidebarRail
                                     onlineCount={summary.online || 0}
                                     collapsed={view.sidebarCollapsed}
-                                    activeTab={view.activeDetailTab}
-                                    activityOpen={!view.activityDockCollapsed}
-                                    onSelectInstances={() => handleTabChange('overview')}
-                                    onSelectPreview={() => handleTabChange('preview')}
-                                    onSelectActivity={handleActivityToggle}
                                     onToggleSidebar={handleSidebarToggle}
                                 />
                                 <div id="manager-sidebar-list" className="manager-sidebar-list">

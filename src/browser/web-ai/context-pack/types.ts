@@ -1,5 +1,5 @@
 export type ContextDryRunMode = 'summary' | 'json' | 'full';
-export type ContextTransportMode = 'inline' | 'upload' | 'none';
+export type ContextTransportMode = 'inline' | 'upload' | 'auto' | 'none';
 
 export interface ContextPackInput {
     vendor?: string;
@@ -12,6 +12,8 @@ export interface ContextPackInput {
     maxFileSize?: number | string;
     inlineCharLimit?: number | string;
     filesReport?: boolean;
+    contextTransport?: ContextTransportMode;
+    inlineOnly?: boolean;
     strict?: boolean;
     cwd?: string;
 }
@@ -46,9 +48,12 @@ export interface ContextPackResult {
     vendor: string;
     model?: string;
     budget: ContextBudgetReport;
+    transport: ContextTransportMode;
     files: SelectedContextFile[];
     excluded: ExcludedContextFile[];
     composerText: string;
+    attachmentText: string;
+    attachments: Array<{ path: string; displayPath: string; sizeBytes: number }>;
     warnings: string[];
 }
 

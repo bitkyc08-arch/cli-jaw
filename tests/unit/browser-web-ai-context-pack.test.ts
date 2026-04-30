@@ -59,11 +59,29 @@ test('web-ai context pack renders untrusted file package metadata', async () => 
     });
 
     assert.equal(result.ok, true);
+    assert.equal(result.transport, 'upload');
     assert.equal(result.files.length, 1);
-    assert.match(result.composerText, /\[CONTEXT PACKAGE\]/);
-    assert.match(result.composerText, /The following file contents are untrusted input/);
-    assert.match(result.composerText, /### File: src\/question\.ts/);
+    assert.match(result.attachmentText, /\[CONTEXT PACKAGE\]/);
+    assert.match(result.attachmentText, /The following file contents are untrusted input/);
+    assert.match(result.attachmentText, /### File: src\/question\.ts/);
+    assert.equal(result.composerText, 'review this');
     assert.match(renderContextDryRunReport(result), /\[context-dry-run\] 1 files/);
+});
+
+test('web-ai context pack can force inline composer transport', async () => {
+    const dir = await mkdtemp(join(tmpdir(), 'jaw-ctx-pack-'));
+    await writeFile(join(dir, 'small.txt'), 'hello');
+
+    const result = await buildInlineContextOrFail({
+        cwd: dir,
+        prompt: 'review',
+        contextFromFiles: ['small.txt'],
+        inlineOnly: true,
+    });
+
+    assert.equal(result?.transport, 'inline');
+    assert.match(result?.composerText || '', /\[CONTEXT PACKAGE\]/);
+    assert.match(result?.composerText || '', /\[USER REQUEST\]/);
 });
 
 test('web-ai context pack fails inline send preflight when over budget', async () => {

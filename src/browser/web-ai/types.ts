@@ -42,6 +42,9 @@ export interface QuestionEnvelopeInput {
     maxInput?: string | number;
     maxFileSize?: string | number;
     filesReport?: boolean;
+    contextTransport?: 'inline' | 'upload' | 'auto' | 'none';
+    inlineOnly?: boolean;
+    allowCopyMarkdownFallback?: boolean;
 }
 
 export interface RenderedQuestionBundle {

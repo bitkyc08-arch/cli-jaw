@@ -126,6 +126,10 @@ test('manager instance activity unread badges are row-scoped and registry-backed
     assert.ok(row.includes('onMarkActivitySeen'), 'InstanceRow must clear the clicked instance unread count');
     assert.ok(row.includes('instance-unread-badge'), 'InstanceRow must render the compact row badge');
     assert.ok(row.includes('99+'), 'InstanceRow badge must cap large counts');
+    assert.equal(rail.includes('label="Instances"'), false, 'SidebarRail must not duplicate the Workbench instance tab');
+    assert.equal(rail.includes('label="Preview"'), false, 'SidebarRail must not duplicate the Workbench preview tab');
+    assert.equal(rail.includes('label="Activity"'), false, 'SidebarRail must not duplicate the Activity dock toggle');
+    assert.equal(rail.includes('label="Settings"'), false, 'SidebarRail must not duplicate the Workbench settings tab');
     assert.equal(rail.includes('activityUnreadCount'), false, 'SidebarRail must not show the unread count on the top Activity item');
     assert.equal(rail.includes('rail-badge'), false, 'SidebarRail must not render the Activity unread badge');
     assert.equal(app.includes('attention-badge'), false, 'manager dashboard must not import legacy chat attention badge');
