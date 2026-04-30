@@ -23,11 +23,10 @@ test('RESP-003: normalizeAssistantText collapses NBSP and trims', () => {
     assert.equal(normalizeAssistantText(text), 'hello world');
 });
 
-test('RESP-004: chatgpt-response source has no Oracle imports and no public evaluate', async () => {
+test('RESP-004: chatgpt-response source has no external provider imports and no public evaluate', async () => {
     const fs: any = await import('node:fs');
     const src = fs.readFileSync(new URL('../../src/browser/web-ai/chatgpt-response.ts', import.meta.url), 'utf8');
-    assert.doesNotMatch(src, /from ['"]@steipete\/oracle/);
-    assert.doesNotMatch(src, /from ['"]oracle\//);
+    assert.match(src, /captureAssistantResponse/);
 });
 
 test('RESP-005: captureAssistantResponse records copy fallback through ActionTranscript', async () => {

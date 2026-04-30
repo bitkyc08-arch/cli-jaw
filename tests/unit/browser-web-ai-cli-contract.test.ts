@@ -48,7 +48,7 @@ test('BWCLI-005: web-ai CLI supports durable watcher commands and URL reattach',
     assert.match(routeSrc, /\/api\/browser\/web-ai\/capabilities', requireAuth/);
 });
 
-test('BWCLI-006: web-ai CLI exposes Oracle-style context packaging flags', () => {
+test('BWCLI-006: web-ai CLI exposes context packaging flags', () => {
     assert.match(cliWebAiSrc, /'context-from-files': \{ type: 'string', multiple: true \}/);
     assert.match(cliWebAiSrc, /'context-exclude': \{ type: 'string', multiple: true \}/);
     assert.match(cliWebAiSrc, /'context-file': \{ type: 'string' \}/);

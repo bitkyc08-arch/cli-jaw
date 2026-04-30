@@ -8,9 +8,9 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const skillPath = join(root, 'skills_ref/web-ai/SKILL.md');
 const browserSkillPath = join(root, 'skills_ref/browser/SKILL.md');
 
-test('WAIS-001: web-ai skill exists and documents Oracle-style prompt shape', () => {
+test('WAIS-001: web-ai skill exists and documents structured prompt shape', () => {
     const skill = fs.readFileSync(skillPath, 'utf8');
-    assert.match(skill, /Oracle-style/);
+    assert.match(skill, /structured question envelope/);
     assert.match(skill, /\[SYSTEM\]/);
     assert.match(skill, /## Project/);
     assert.match(skill, /## Constraints/);
@@ -31,7 +31,7 @@ test('WAIS-003: web-ai skill keeps PRD32 first-slice scope narrow', () => {
     assert.match(skill, /file upload/);
 });
 
-test('WAIS-003b: web-ai skill documents Oracle-style context packaging before upload', () => {
+test('WAIS-003b: web-ai skill documents context packaging before upload', () => {
     const skill = fs.readFileSync(skillPath, 'utf8');
     assert.match(skill, /context-dry-run/);
     assert.match(skill, /context-render/);

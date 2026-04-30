@@ -85,7 +85,7 @@ test('CAP-REG-008: headed-observed frontend tools are schema-ready but remain fa
     assert.throws(() => requireCapabilityOrFailClosed('chatgpt-web-search-toggle'), /fail-closed|not enabled|stage=capability-preflight/);
 });
 
-test('CAP-REG-009: frontend observed list excludes unannotated Oracle rows', () => {
+test('CAP-REG-009: frontend observed list excludes unannotated legacy rows', () => {
     const observed = listFrontendObservedCapabilities();
     assert.ok(observed.some((entry) => entry.id === 'chatgpt-model-selection'));
     assert.ok(observed.some((entry) => entry.id === 'gemini-deep-think'));

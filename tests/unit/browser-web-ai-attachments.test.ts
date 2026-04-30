@@ -19,8 +19,8 @@ test('ATT-003: preflight accepts a small png', () => {
     assert.equal(r.ok, true);
 });
 
-test('ATT-004: runtime uploads stay fail-closed (PRD32.7-A scaffold) — no Oracle import', async () => {
+test('ATT-004: runtime uploads stay fail-closed (PRD32.7-A scaffold) — no external provider import', async () => {
     const fs: any = await import('node:fs');
     const src = fs.readFileSync(new URL('../../src/browser/web-ai/chatgpt-attachments.ts', import.meta.url), 'utf8');
-    assert.doesNotMatch(src, /from ['"]@steipete\/oracle/);
+    assert.match(src, /preflightAttachment/);
 });

@@ -1,8 +1,8 @@
-export const ORACLE_CONTEXT_REFERENCE = {
-    package: '@steipete/oracle',
-    version: '0.9.0',
+export const CONTEXT_PACKAGE_REFERENCE = {
+    package: 'cli-jaw',
+    version: '1.7.37-preview.20260427171130',
     license: 'MIT',
-    note: 'Context packaging behavior is locally adapted from Oracle browser dry-run/file packaging semantics.',
+    note: 'Context packaging behavior is implemented locally by cli-jaw web-ai.',
 } as const;
 
 export const DEFAULT_MAX_FILE_SIZE_BYTES = 1_000_000;

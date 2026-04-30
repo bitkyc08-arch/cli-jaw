@@ -2,7 +2,7 @@
  * PRD32.8A — Gemini Deep Think Contract (Disabled Runtime)
  *
  * Selectors and account/mode constraints captured from official Gemini docs
- * and the local Oracle gemini provider. No mutation is performed; this module
+ * and local provider observation. No mutation is performed; this module
  * is the read-only blueprint for the future 32.8B runtime slice.
  */
 

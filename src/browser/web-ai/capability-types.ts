@@ -30,7 +30,7 @@ export type MutationRisk = 'none' | 'read-only' | 'low' | 'medium' | 'high';
 
 export interface FrontendCapabilityObservation {
     status: FrontendObservationStatus;
-    source: 'live-frontend' | 'code-inventory' | 'oracle-audit' | 'planning';
+    source: 'live-frontend' | 'code-inventory' | 'external-audit' | 'planning';
     selectorCandidates: string[];
     textCandidates: string[];
     activationPath: string[];
@@ -65,4 +65,3 @@ export interface CapabilitySchemaRow {
     activeStateSignals: string[];
     failureStage: string;
 }
-

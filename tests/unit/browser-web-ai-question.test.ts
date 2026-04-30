@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { normalizeEnvelope, renderQuestionEnvelope } from '../../src/browser/web-ai/question.ts';
 import { hashPrompt } from '../../src/browser/web-ai/session.ts';
 
-test('BWAQ-001: renders Oracle-style question envelope', () => {
+test('BWAQ-001: renders structured question envelope', () => {
     const rendered = renderQuestionEnvelope({
         vendor: 'chatgpt',
         project: 'cli-jaw',

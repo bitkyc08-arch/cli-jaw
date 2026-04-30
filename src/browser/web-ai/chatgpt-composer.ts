@@ -69,7 +69,7 @@ export async function insertPromptIntoComposer(page: any, text: string, options:
     const candidate = await findComposerCandidate(page);
     await focusComposerLikeUser(candidate.locator);
     try {
-        await insertTextLikeOracle(page, text, options);
+        await insertTextLikeProvider(page, text, options);
     } catch {
         await writeComposerFallback(page, candidate.locator, text);
     }
@@ -151,7 +151,7 @@ async function focusComposerLikeUser(locator: any): Promise<void> {
     }).catch(() => undefined);
 }
 
-async function insertTextLikeOracle(page: any, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
+async function insertTextLikeProvider(page: any, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
     if (typeof options.insertText === 'function') {
         await options.insertText(text);
         return;

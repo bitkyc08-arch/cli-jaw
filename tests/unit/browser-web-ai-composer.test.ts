@@ -11,7 +11,7 @@ const modelSrc = fs.readFileSync(join(root, 'src/browser/web-ai/chatgpt-model.ts
 
 test('BWCOMP-001: ChatGPT composer uses user-input insertion path', () => {
     assert.match(chatgptSrc, /Input\.insertText/);
-    assert.match(composerSrc, /insertTextLikeOracle/);
+    assert.match(composerSrc, /insertTextLikeProvider/);
     assert.doesNotMatch(chatgptSrc, /await fillComposer/);
     assert.doesNotMatch(chatgptSrc, /locator\.fill/);
 });
@@ -33,7 +33,7 @@ test('BWCOMP-003: composer verification reads multiple paths', () => {
     assert.match(composerSrc, /normalizePrompt\(expected\)/);
 });
 
-test('BWCOMP-004: composer selection prefers visible candidates like Oracle', () => {
+test('BWCOMP-004: composer selection prefers visible candidates', () => {
     assert.match(composerSrc, /findVisibleCandidate/);
     assert.match(composerSrc, /allowFirstCandidateFallback: true/);
 });
