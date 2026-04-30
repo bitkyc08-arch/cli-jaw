@@ -1,4 +1,4 @@
-export type WebAiVendorScope = 'chatgpt' | 'gemini' | 'shared';
+export type WebAiVendorScope = 'chatgpt' | 'gemini' | 'grok' | 'shared';
 
 export type CapabilityStatus =
     | 'implemented-30_browser'

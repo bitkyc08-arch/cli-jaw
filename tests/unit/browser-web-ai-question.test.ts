@@ -24,8 +24,9 @@ test('BWAQ-002: rejects empty and over-budget prompts', () => {
     assert.throws(() => renderQuestionEnvelope({ vendor: 'chatgpt', prompt: 'x'.repeat(50001) }), /inline prompt too large/);
 });
 
-test('BWAQ-003: supports Gemini/upload and rejects unknown vendors/policies', () => {
+test('BWAQ-003: supports Gemini/Grok/upload and rejects unknown vendors/policies', () => {
     assert.equal(normalizeEnvelope({ vendor: 'gemini', prompt: 'hello' }).vendor, 'gemini');
+    assert.equal(normalizeEnvelope({ vendor: 'grok', prompt: 'hello' }).vendor, 'grok');
     assert.equal(normalizeEnvelope({ vendor: 'chatgpt', prompt: 'hello', attachmentPolicy: 'upload' }).attachmentPolicy, 'upload');
     assert.throws(() => normalizeEnvelope({ vendor: 'claude', prompt: 'hello' }), /unsupported vendor/);
     assert.throws(() => normalizeEnvelope({ vendor: 'chatgpt', prompt: 'hello', attachmentPolicy: 'drive' }), /unsupported attachment policy/);

@@ -12,9 +12,11 @@
  */
 
 import type { Page } from 'playwright-core';
+import { basename } from 'node:path';
+import { statSync } from 'node:fs';
 import { getActivePage, getActiveTab } from '../connection.js';
 import { GEMINI_DEEP_THINK_SELECTORS, GEMINI_DEEP_THINK_OFFICIAL_SOURCES, GEMINI_DEEP_THINK_CONSTRAINTS, type GeminiAccountStatus, type GeminiStatusReport } from './gemini-contract.js';
-import { normalizeEnvelope, renderQuestionEnvelopeWithContext } from './question.js';
+import { normalizeEnvelope, renderQuestionEnvelope, renderQuestionEnvelopeWithContext } from './question.js';
 import {
     createSession,
     findSessionByTarget,
@@ -28,6 +30,8 @@ import {
 import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import { captureCopiedResponseText, GEMINI_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
+import { selectGeminiModel } from './gemini-model.js';
+import { preflightAttachment } from './chatgpt-attachments.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
 
@@ -228,18 +232,20 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
         throw new Error(`active tab is not gemini.google.com (${page.url()})`);
     }
     const envelope = normalizeEnvelope({ ...input, vendor: 'gemini' });
-    if (input.filePath || envelope.attachmentPolicy !== 'inline-only') {
-        const err = new Error('gemini file/context upload is not implemented; fail closed before browser mutation');
-        (err as any).stage = 'attachment-preflight';
-        throw err;
-    }
     const contextPack = await prepareContextForBrowser({ ...input, vendor: 'gemini' });
-    if (contextPack?.transport === 'upload') {
-        const err = new Error('gemini context package upload is not implemented; pass --inline-only to inline context');
+    if (contextPack?.attachments?.[0] && input.filePath) {
+        throw new Error('context package upload and --file upload cannot be combined yet');
+    }
+    if (envelope.attachmentPolicy !== 'inline-only' && !input.filePath && !contextPack?.attachments?.[0]) {
+        const err = new Error('gemini upload requested without a file or context package attachment');
         (err as any).stage = 'attachment-preflight';
         throw err;
     }
-    const rendered = renderQuestionEnvelopeWithContext(envelope, contextPack?.composerText);
+    const rendered = contextPack
+        ? contextPack.transport === 'inline'
+            ? renderQuestionEnvelopeWithContext(envelope, contextPack.composerText)
+            : renderQuestionEnvelope(envelope)
+        : renderQuestionEnvelopeWithContext(envelope, undefined);
     const usedFallbacks: string[] = [];
     const warnings: string[] = [...rendered.warnings, ...(contextPack?.warnings || [])];
 
@@ -247,22 +253,41 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
     const inputSel = await findFirstSelector(page, GEMINI_DEEP_THINK_SELECTORS.input, 10_000);
     if (!inputSel) throw new Error('gemini composer not visible');
 
-    const deepActivated = await ensureDeepThinkMode(page, usedFallbacks, warnings);
-    if (!deepActivated) {
-        const err = new Error('gemini Deep Think requested but active Deep Think chip was not verified; fail closed before prompt submit');
-        (err as any).stage = 'provider-select-mode';
-        throw err;
+    const selectedModel = await selectGeminiModel(page, input.model);
+    if (selectedModel) {
+        usedFallbacks.push(...selectedModel.usedFallbacks);
+        warnings.push(`model selected: ${selectedModel.selected}${selectedModel.alreadySelected ? ' (already selected)' : ''}`);
+    } else {
+        const deepActivated = await ensureDeepThinkMode(page, usedFallbacks, warnings);
+        if (!deepActivated) {
+            const err = new Error('gemini Deep Think requested but active Deep Think chip was not verified; fail closed before prompt submit');
+            (err as any).stage = 'provider-select-mode';
+            throw err;
+        }
+        warnings.push('deep-think activated');
     }
 
     await dismissBlockingOverlays(page, warnings);
+    await clearGeminiComposerAttachments(page, warnings);
     await page.locator(inputSel).first().click({ timeout: 5_000 });
     await page.keyboard.type(rendered.composerText, { delay: 5 });
+    const uploadPath = input.filePath || contextPack?.attachments?.[0]?.path;
+    if (uploadPath) {
+        const uploaded = await attachGeminiLocalFileLive(page, localFileInfo(uploadPath));
+        if (!uploaded.ok) throw new Error(uploaded.error);
+        usedFallbacks.push(...uploaded.usedFallbacks);
+        warnings.push(...uploaded.warnings);
+    }
 
     const sendSel = await findFirstSelector(page, GEMINI_DEEP_THINK_SELECTORS.sendButton, 5_000);
     if (!sendSel) throw new Error('gemini send button not visible');
 
     const turnsBefore = await page.locator(GEMINI_DEEP_THINK_SELECTORS.responseTurn[0]).count().catch(() => 0);
     await page.locator(sendSel).first().click({ timeout: 5_000 });
+    if (uploadPath) {
+        const sentAttachment = await verifyGeminiSentTurnAttachment(page, localFileInfo(uploadPath));
+        if (!sentAttachment.ok) throw new Error(sentAttachment.error);
+    }
 
     const baseline = saveBaseline({
         vendor: 'gemini',
@@ -291,8 +316,108 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
         sessionId: session.sessionId,
         ...(contextPack ? { contextPack: summarizeContextPack(contextPack) } : {}),
         usedFallbacks,
-        warnings: [...warnings, 'deep-think activated'],
+        warnings: [
+            ...warnings,
+            ...(contextPack?.attachments?.[0] ? [`context package attached: ${contextPack.attachments[0].displayPath}`] : []),
+        ],
     };
+}
+
+function localFileInfo(filePath: string): { path: string; basename: string; sizeBytes: number } {
+    const stat = statSync(filePath);
+    if (!stat.isFile()) throw new Error(`not a regular file: ${filePath}`);
+    return { path: filePath, basename: basename(filePath), sizeBytes: stat.size };
+}
+
+async function attachGeminiLocalFileLive(
+    page: Page,
+    file: { path: string; basename: string; sizeBytes: number },
+): Promise<{ ok: true; usedFallbacks: string[]; warnings: string[] } | { ok: false; error: string; usedFallbacks: string[] }> {
+    const usedFallbacks: string[] = [];
+    const warnings: string[] = [];
+    const preflight = preflightAttachment(file);
+    if (!preflight.ok) {
+        return { ok: false, error: preflight.rejectedReason || 'preflight rejected', usedFallbacks };
+    }
+    warnings.push(...preflight.softWarnings);
+
+    const uploadButton = await findFirstSelector(page, ['button[aria-label="Open upload file menu"]', 'button[aria-label*="upload file menu" i]'], 5_000);
+    if (!uploadButton) return { ok: false, error: 'gemini upload file menu button not visible', usedFallbacks };
+
+    try {
+        await page.keyboard.press('Escape').catch(() => undefined);
+        await page.locator(uploadButton).first().click({ timeout: 5_000 });
+        const uploadItem = page.locator('[role="menuitem"][aria-label^="Upload files"], button[aria-label^="Upload files"]').first();
+        await uploadItem.waitFor({ state: 'visible', timeout: 5_000 });
+        const chooserPromise = page.waitForEvent('filechooser', { timeout: 15_000 });
+        await uploadItem.click({ timeout: 5_000, force: true });
+        const chooser = await chooserPromise;
+        await chooser.setFiles(file.path);
+    } catch (e) {
+        usedFallbacks.push(`gemini-filechooser-failed:${(e as Error).message}`);
+        return { ok: false, error: `gemini file chooser upload failed: ${(e as Error).message}`, usedFallbacks };
+    }
+
+    const accepted = await waitForGeminiAttachmentAccepted(page, file);
+    if (!accepted.ok) return { ok: false, error: accepted.error, usedFallbacks };
+    return { ok: true, usedFallbacks, warnings };
+}
+
+async function waitForGeminiAttachmentAccepted(
+    page: Page,
+    expectedFile: { basename: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    const deadline = Date.now() + 45_000;
+    while (Date.now() < deadline) {
+        if (await hasGeminiAttachmentEvidence(page, expectedFile)) return { ok: true };
+        const busy = await page.locator('[role="progressbar"], [aria-label*="uploading" i], [aria-label*="processing" i]').count().catch(() => 0);
+        if (busy === 0) await page.waitForTimeout(500).catch(() => undefined);
+        else await page.waitForTimeout(1_000).catch(() => undefined);
+    }
+    return { ok: false, error: 'gemini attachment never showed visible chip' };
+}
+
+async function clearGeminiComposerAttachments(page: Page, warnings: string[]): Promise<void> {
+    const removeButtons = await page.locator('button[aria-label^="Remove file"]').all().catch(() => []);
+    for (const button of removeButtons) {
+        try {
+            await button.click({ timeout: 2_000 });
+        } catch (e) {
+            warnings.push(`gemini attachment remove failed: ${(e as Error).message}`);
+        }
+    }
+}
+
+async function verifyGeminiSentTurnAttachment(
+    page: Page,
+    expectedFile: { basename: string },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+    const deadline = Date.now() + 8_000;
+    while (Date.now() < deadline) {
+        if (await hasGeminiAttachmentEvidence(page, expectedFile)) return { ok: true };
+        await page.waitForTimeout(500).catch(() => undefined);
+    }
+    return { ok: false, error: 'Gemini sent turn has no attachment evidence' };
+}
+
+async function hasGeminiAttachmentEvidence(page: Page, expectedFile: { basename: string }): Promise<boolean> {
+    const expected = [expectedFile.basename, stripExtension(expectedFile.basename), expectedFile.basename.replace(/\(\d+\)(?=\.)/, '')]
+        .filter(Boolean);
+    const bodyText = await page.innerText('body').catch(() => '');
+    if (expected.some((name) => bodyText.includes(name))) return true;
+    const chipCount = await page.locator([
+        'uploader-file-preview',
+        '.file-preview-chip',
+        '.attachment-preview-wrapper',
+        '.file-preview-container',
+        'button[aria-label^="Remove file"]',
+    ].join(',')).count().catch(() => 0);
+    return chipCount > 0;
+}
+
+function stripExtension(name: string): string {
+    const idx = name.lastIndexOf('.');
+    return idx < 0 ? name : name.slice(0, idx);
 }
 
 async function openFreshGeminiChat(page: Page, warnings: string[]): Promise<void> {

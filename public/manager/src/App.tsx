@@ -6,41 +6,37 @@ import { CommandBar } from './components/CommandBar';
 import { CommandPalette } from './components/CommandPalette';
 import { InstanceDetailPanel } from './components/InstanceDetailPanel';
 import { InstanceDrawer } from './components/InstanceDrawer';
-import { InstanceGroups } from './components/InstanceGroups';
-import { EmptyNavigator } from './components/EmptyNavigator';
+import { InstanceListContent } from './components/InstanceListContent';
 import { InstanceNavigator } from './components/InstanceNavigator';
 import { ManagerShell } from './components/ManagerShell';
 import { MobileNav } from './components/MobileNav';
 import { ProfileChip } from './components/ProfileChip';
 import { SidebarRail } from './components/SidebarRail';
 import { Workbench } from './components/Workbench';
+import { WorkbenchHeader } from './components/WorkbenchHeader';
 import { WorkspaceLayout } from './components/WorkspaceLayout';
 import { InstancePreview } from './InstancePreview';
+import { NotesSidebar } from './notes/NotesSidebar';
+import { NotesWorkspace } from './notes/NotesWorkspace';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
 import { useDashboardView } from './hooks/useDashboardView';
 import { useActivityUnread } from './hooks/useActivityUnread';
-import { useTheme, syncThemeFromRegistry } from './hooks/useTheme';
+import { useTheme } from './hooks/useTheme';
 import { useCommandPalette } from './hooks/useCommandPalette';
+import { useInstanceLabelEditor } from './hooks/useInstanceLabelEditor';
 import { useInstanceMessageEvents } from './hooks/useInstanceMessageEvents';
 import { useManagerEvents } from './hooks/useManagerEvents';
-import { instanceLabel } from './instance-label';
+import { formatUptime, instanceLabel } from './instance-label';
 import type {
     DashboardDetailTab,
     DashboardInstance,
     DashboardInstanceStatus,
     DashboardLifecycleAction,
+    DashboardNotesViewMode,
     DashboardProfile,
     DashboardScanResult,
+    DashboardSidebarMode,
 } from './types';
-
-function formatUptime(seconds: number | null): string {
-    if (seconds == null) return 'n/a';
-    const minutes = Math.floor(seconds / 60);
-    if (minutes < 1) return `${Math.round(seconds)}s`;
-    const hours = Math.floor(minutes / 60);
-    if (hours < 1) return `${minutes}m`;
-    return `${hours}h ${minutes % 60}m`;
-}
 
 export function App() {
     const [data, setData] = useState<DashboardScanResult | null>(null);
@@ -50,8 +46,6 @@ export function App() {
     const [status, setStatus] = useState<'all' | DashboardInstanceStatus>('all');
     const [customHome, setCustomHome] = useState('');
     const [showHidden, setShowHidden] = useState(false);
-    const [scanFromInput, setScanFromInput] = useState('');
-    const [scanCountInput, setScanCountInput] = useState('');
     const [hydrated, setHydrated] = useState(false);
     const [lifecycleBusyPort, setLifecycleBusyPort] = useState<number | null>(null);
     const [lifecycleMessage, setLifecycleMessage] = useState<string | null>(null);
@@ -59,6 +53,9 @@ export function App() {
     const [transitionAction, setTransitionAction] = useState<DashboardLifecycleAction | null>(null);
     const [activeProfileIds, setActiveProfileIds] = useState<string[]>([]);
     const [settingsDirty, setSettingsDirty] = useState(false);
+    const [notesDirtyPath, setNotesDirtyPath] = useState<string | null>(null);
+    const [previewEnabled, setPreviewEnabled] = useState(true);
+    const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
     const registry = useDashboardRegistry();
     const view = useDashboardView();
     const theme = useTheme((next) => {
@@ -68,9 +65,10 @@ export function App() {
     const palette = useCommandPalette();
     const managerEvents = useManagerEvents();
     const instances = data?.instances || [];
-    const messageEvents = useInstanceMessageEvents(instances);
+    const messageActivity = useInstanceMessageEvents(instances);
+    const labelEditor = useInstanceLabelEditor(registry.save, setData);
     const activityUnread = useActivityUnread({
-        events: [...managerEvents.events, ...messageEvents],
+        events: [...managerEvents.events, ...messageActivity.events],
         activityDockCollapsed: view.activityDockCollapsed,
         setActivityDockCollapsed: view.setActivityDockCollapsed,
         saveUi,
@@ -93,15 +91,20 @@ export function App() {
         try {
             const result = await fetchInstances(nextShowHidden);
             setData(result);
-            if (result.manager.registry) {
-                setScanFromInput(String(result.manager.rangeFrom));
-                setScanCountInput(String(result.manager.rangeTo - result.manager.rangeFrom + 1));
-            }
         } catch (err) {
             setError((err as Error).message);
         } finally {
             setLoading(false);
         }
+    }
+
+    async function refreshInstance(port: number): Promise<void> {
+        const instance = await fetchInstanceStatus(port);
+        if (!instance) return;
+        setData((current) => current ? {
+            ...current,
+            instances: current.instances.map(row => row.port === port ? instance : row),
+        } : current);
     }
 
     useEffect(() => {
@@ -114,11 +117,14 @@ export function App() {
                 view.setSidebarCollapsed(ui.sidebarCollapsed);
                 view.setActivityDockCollapsed(ui.activityDockCollapsed);
                 view.setActivityDockHeight(ui.activityDockHeight);
+                view.setSidebarMode(ui.sidebarMode);
+                view.setNotesSelectedPath(ui.notesSelectedPath);
+                view.setNotesViewMode(ui.notesViewMode);
+                view.setNotesWordWrap(ui.notesWordWrap);
+                view.setNotesTreeWidth(ui.notesTreeWidth);
                 activityUnread.hydrateSeenAt(ui.activitySeenAt ?? null, ui.activitySeenByPort || {});
                 setActiveProfileIds(loaded.registry.activeProfileFilter || []);
-                syncThemeFromRegistry(ui.uiTheme);
-                setScanFromInput(String(loaded.registry.scan.from));
-                setScanCountInput(String(loaded.registry.scan.count));
+                theme.syncFromRegistry(ui.uiTheme);
             } finally {
                 setHydrated(true);
                 await load();
@@ -132,15 +138,11 @@ export function App() {
         await registry.save({ ui });
     }
 
-    async function commitScanRange(fromValue = scanFromInput, countValue = scanCountInput): Promise<void> {
-        const from = Number(fromValue);
-        const count = Number(countValue);
-        if (!Number.isInteger(from) || !Number.isInteger(count)) return;
-        await registry.save({ scan: { from, count } });
-        await load();
-    }
-
     const profiles = useMemo(() => data?.manager.profiles || [], [data]);
+    const effectiveProfileIds = useMemo(() => {
+        const known = new Set(profiles.map(profile => profile.profileId));
+        return activeProfileIds.filter(profileId => known.has(profileId));
+    }, [activeProfileIds, profiles]);
     const profileCounts = useMemo(() => {
         return instances.reduce((acc, instance) => {
             if (instance.profileId) acc[instance.profileId] = (acc[instance.profileId] || 0) + 1;
@@ -159,7 +161,7 @@ export function App() {
         const needle = query.trim().toLowerCase();
         return instances.filter((instance) => {
             if (status !== 'all' && instance.status !== status) return false;
-            if (activeProfileIds.length > 0 && (!instance.profileId || !activeProfileIds.includes(instance.profileId))) return false;
+            if (effectiveProfileIds.length > 0 && (!instance.profileId || !effectiveProfileIds.includes(instance.profileId))) return false;
             if (!needle) return true;
             return [
                 String(instance.port),
@@ -175,7 +177,7 @@ export function App() {
                 instance.profileId,
             ].some(value => String(value || '').toLowerCase().includes(needle));
         });
-    }, [activeProfileIds, instances, query, status]);
+    }, [effectiveProfileIds, instances, query, status]);
 
     function toggleProfile(profileId: string): void {
         const next = activeProfileIds.includes(profileId)
@@ -196,7 +198,7 @@ export function App() {
         if (!selectedInstance?.ok) return;
         if (selectedInstance.port !== view.selectedPort) return;
         activityUnread.markPortSeen(selectedInstance.port);
-    }, [messageEvents, managerEvents.events, selectedInstance, view.activeDetailTab, view.selectedPort]);
+    }, [messageActivity.events, managerEvents.events, selectedInstance, view.activeDetailTab, view.selectedPort]);
 
     function canLeaveDirtySettings(): boolean {
         if (view.activeDetailTab !== 'settings' || !settingsDirty) return true;
@@ -254,6 +256,26 @@ export function App() {
         void saveUi({ activityDockHeight: height });
     }
 
+    function handleSidebarModeChange(mode: DashboardSidebarMode): void {
+        view.setSidebarMode(mode); void saveUi({ sidebarMode: mode });
+    }
+
+    function handleNotesSelectedPathChange(path: string | null): void {
+        view.setNotesSelectedPath(path); void saveUi({ notesSelectedPath: path });
+    }
+
+    function handleNotesViewModeChange(mode: DashboardNotesViewMode): void {
+        view.setNotesViewMode(mode); void saveUi({ notesViewMode: mode });
+    }
+
+    function handleNotesWordWrapChange(value: boolean): void {
+        view.setNotesWordWrap(value); void saveUi({ notesWordWrap: value });
+    }
+
+    function handleNotesTreeWidthChange(value: number): void {
+        view.setNotesTreeWidth(value); void saveUi({ notesTreeWidth: value });
+    }
+
     async function handleLifecycle(action: DashboardLifecycleAction, instance: DashboardInstance): Promise<void> {
         const lifecycle = instance.lifecycle;
         if (!lifecycle) return;
@@ -292,59 +314,37 @@ export function App() {
         }
     }
 
-    function renderInstanceListContent() {
-        const showEmpty = !error && !loading && instances.length === 0
-            && !instances.some(instance => instance.hidden);
-
-        return (
-        <>
-            {error && <section className="state error-state">Scan failed: {error}</section>}
-            {!error && loading && <section className="state">Scanning local Jaw instances...</section>}
-            {showEmpty && data?.manager && (
-                <EmptyNavigator
-                    rangeFrom={data.manager.rangeFrom}
-                    rangeTo={data.manager.rangeTo}
-                />
-            )}
-            {!error && !showEmpty && (
-                <InstanceGroups
-                    instances={filtered}
-                    selectedPort={selectedInstance?.port || null}
-                                    lifecycleBusyPort={lifecycleBusyPort}
-                                    transitioningPort={transitioningPort}
-                                    transitionAction={transitionAction}
-                                    activityUnreadByPort={activityUnread.unreadByPort}
-                                    profiles={profiles}
-                    getLabel={instanceLabel}
-                    formatUptime={formatUptime}
-                                    onSelect={handleSelectInstance}
-                                    onPreview={handlePreview}
-                                    onMarkActivitySeen={activityUnread.markPortSeen}
-                                    onLifecycle={(action, instance) => void handleLifecycle(action, instance)}
-                />
-            )}
-        </>
-        );
-    }
+    const instanceListContent = (
+        <InstanceListContent
+            error={error}
+            loading={loading}
+            instances={instances}
+            filtered={filtered}
+            selectedInstance={selectedInstance}
+            data={data}
+            lifecycleBusyPort={lifecycleBusyPort}
+            transitioningPort={transitioningPort}
+            transitionAction={transitionAction}
+            activityUnreadByPort={activityUnread.unreadByPort}
+            latestTitleByPort={messageActivity.titlesByPort}
+            profiles={profiles}
+            getLabel={instanceLabel}
+            formatUptime={formatUptime}
+            onSelect={handleSelectInstance}
+            onPreview={handlePreview}
+            onMarkActivitySeen={activityUnread.markPortSeen}
+            onInstanceLabelSave={labelEditor.saveInstanceLabel}
+            onLifecycle={(action, instance) => void handleLifecycle(action, instance)}
+        />
+    );
 
     const workbenchHeader = (
-        <div className="detail-header">
-            <div>
-                <p className="eyebrow">Selected instance</p>
-                <h2>{selectedInstance ? instanceLabel(selectedInstance) : 'No instance selected'}</h2>
-                <span>{selectedInstance?.workingDir || selectedInstance?.url || 'Select an online instance to inspect it.'}</span>
-            </div>
-            {selectedInstance && (
-                <div className="detail-header-actions">
-                    <span
-                        className={`preview-inline-status ${selectedInstance.ok ? 'is-ready' : 'is-unavailable'}`}
-                        aria-label={selectedInstance.ok ? 'Preview ready' : 'Preview unavailable'}
-                        title={selectedInstance.ok ? 'Preview ready' : 'Preview unavailable'}
-                    />
-                    <a className="open-link" href={selectedInstance.url} target="_blank" rel="noreferrer"><svg viewBox="0 0 24 24" width="12" height="12" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px' }}><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>Open</a>
-                </div>
-            )}
-        </div>
+        <WorkbenchHeader
+            instance={selectedInstance}
+            previewEnabled={previewEnabled}
+            onPreviewEnabledChange={setPreviewEnabled}
+            onPreviewRefresh={() => setPreviewRefreshKey(key => key + 1)}
+        />
     );
 
     const profileChipStrip = (chipProfiles: DashboardProfile[]) => chipProfiles.length > 0 ? (
@@ -367,6 +367,9 @@ export function App() {
             data={data}
             activeTab={tab}
             onSettingsDirtyChange={setSettingsDirty}
+            onSettingsSaved={() => {
+                if (selectedInstance) void refreshInstance(selectedInstance.port);
+            }}
             onRegistryPatch={(port, patch) => {
                 void registry.save({ instances: { [String(port)]: patch } }).then(() => load());
             }}
@@ -396,39 +399,28 @@ export function App() {
                         inspectorHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
                         navigator={(
                             <>
-                                <SidebarRail
-                                    onlineCount={summary.online || 0}
-                                    collapsed={view.sidebarCollapsed}
-                                    onToggleSidebar={handleSidebarToggle}
-                                />
+                                <SidebarRail onlineCount={summary.online || 0} collapsed={view.sidebarCollapsed} mode={view.sidebarMode} onModeChange={handleSidebarModeChange} onToggleSidebar={handleSidebarToggle} />
                                 <div id="manager-sidebar-list" className="manager-sidebar-list">
-                                    <InstanceNavigator
-                                        active={selectedInstance}
-                                        hiddenCount={instances.filter(instance => instance.hidden).length}
-                                        collapsed={view.sidebarCollapsed}
-                                    >
-                                        {renderInstanceListContent()}
-                                    </InstanceNavigator>
+                                    {view.sidebarMode === 'notes' ? (
+                                        <NotesSidebar selectedPath={view.notesSelectedPath} dirtyPath={notesDirtyPath} treeWidth={view.notesTreeWidth} onSelectedPathChange={handleNotesSelectedPathChange} />
+                                    ) : (
+                                        <InstanceNavigator active={selectedInstance} hiddenCount={instances.filter(instance => instance.hidden).length} collapsed={view.sidebarCollapsed}>
+                                            {instanceListContent}
+                                        </InstanceNavigator>
+                                    )}
                                 </div>
                             </>
                         )}
                         workbench={(
                             <>
                                 {lifecycleMessage && <section className="state lifecycle-state">{lifecycleMessage}</section>}
-                                <Workbench
-                                    mode={view.activeDetailTab}
-                                    onModeChange={handleTabChange}
-                                    header={workbenchHeader}
-                                    overview={detailContent('overview')}
-                                    preview={(
-                                        <InstancePreview
-                                            instance={selectedInstance}
-                                            data={data}
-                                        />
-                                    )}
-                                    logs={detailContent('logs')}
-                                    settings={detailContent('settings')}
-                                />
+                                {view.sidebarMode === 'notes' ? (
+                                    <NotesWorkspace selectedPath={view.notesSelectedPath} viewMode={view.notesViewMode} wordWrap={view.notesWordWrap} treeWidth={view.notesTreeWidth} onSelectedPathChange={handleNotesSelectedPathChange} onDirtyPathChange={setNotesDirtyPath} onViewModeChange={handleNotesViewModeChange} onWordWrapChange={handleNotesWordWrapChange} onTreeWidthChange={handleNotesTreeWidthChange} />
+                                ) : (
+                                    <Workbench mode={view.activeDetailTab} onModeChange={handleTabChange} header={workbenchHeader} overview={detailContent('overview')} preview={(
+                                        <InstancePreview instance={selectedInstance} data={data} enabled={previewEnabled} refreshKey={previewRefreshKey} theme={theme.resolved} />
+                                    )} logs={detailContent('logs')} settings={detailContent('settings')} />
+                                )}
                             </>
                         )}
                         inspector={(
@@ -439,7 +431,7 @@ export function App() {
                                 error={error}
                                 lifecycleMessage={lifecycleMessage}
                                 selectedInstance={selectedInstance}
-                                registryMessage={registry.error || managerEvents.error}
+                                registryMessage={registry.error || labelEditor.error || managerEvents.error}
                                 events={managerEvents.events}
                                 onToggle={handleActivityToggle}
                                 onHeightChange={handleActivityHeight}
@@ -459,7 +451,7 @@ export function App() {
                                 profileFilters={profileChipStrip(profiles)}
                                 onClose={() => view.setDrawerOpen(false)}
                             >
-                                {renderInstanceListContent()}
+                                {instanceListContent}
                             </InstanceDrawer>
                         )}
                     />

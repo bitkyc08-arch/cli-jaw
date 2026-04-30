@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import { randomBytes } from 'node:crypto';
+import { resolveDashboardHome } from './dashboard-home.js';
 
 export const REGISTRY_SCHEMA_VERSION = 1;
 export const MARKER_SCHEMA_VERSION = 1;
@@ -19,10 +20,15 @@ export type PersistedEntry = {
     token: string;
 };
 
+export type LifecycleRegistrySource = 'current' | 'legacy' | 'missing' | 'corrupt';
+
 export type PersistedRegistry = {
     schemaVersion: 1;
     managerPort: number;
     entries: PersistedEntry[];
+    source?: LifecycleRegistrySource;
+    sourcePath?: string | null;
+    legacyPath?: string | null;
 };
 
 export type HomeMarker = {
@@ -46,7 +52,9 @@ export type LifecycleStoreFs = {
 
 export type LifecycleStoreOptions = {
     managerPort: number;
+    dashboardHome?: string;
     storageRoot?: string;
+    legacyStorageRoot?: string;
     fsImpl?: LifecycleStoreFs;
 };
 
@@ -63,14 +71,21 @@ export class LifecycleStore {
     private readonly managerPort: number;
     private readonly registryDir: string;
     private readonly registryPath: string;
+    private readonly legacyRegistryPath: string;
     private readonly fs: LifecycleStoreFs;
     private writeQueue: Promise<void> = Promise.resolve();
 
     constructor(options: LifecycleStoreOptions) {
         this.managerPort = options.managerPort;
-        const root = options.storageRoot || homedir();
-        this.registryDir = join(root, `.cli-jaw-manager-${options.managerPort}`);
+        const dashboardHome = options.dashboardHome || options.storageRoot || resolveDashboardHome();
+        const legacyRoot = options.legacyStorageRoot || options.storageRoot || homedir();
+        this.registryDir = join(dashboardHome, 'lifecycle', 'managers', String(options.managerPort));
         this.registryPath = join(this.registryDir, 'dashboard-managed.json');
+        this.legacyRegistryPath = join(
+            legacyRoot,
+            `.cli-jaw-manager-${options.managerPort}`,
+            'dashboard-managed.json',
+        );
         this.fs = options.fsImpl || DEFAULT_FS;
     }
 
@@ -82,15 +97,35 @@ export class LifecycleStore {
         return this.registryPath;
     }
 
+    legacyPath(): string {
+        return this.legacyRegistryPath;
+    }
+
     async load(): Promise<PersistedRegistry> {
         const empty: PersistedRegistry = {
             schemaVersion: 1,
             managerPort: this.managerPort,
             entries: [],
+            source: 'missing',
+            sourcePath: null,
+            legacyPath: this.legacyRegistryPath,
         };
-        if (!this.fs.existsSync(this.registryPath)) return empty;
+        if (this.fs.existsSync(this.registryPath)) {
+            return await this.loadFromPath(this.registryPath, 'current', empty);
+        }
+        if (this.fs.existsSync(this.legacyRegistryPath)) {
+            return await this.loadFromPath(this.legacyRegistryPath, 'legacy', empty);
+        }
+        return empty;
+    }
+
+    private async loadFromPath(
+        path: string,
+        source: LifecycleRegistrySource,
+        empty: PersistedRegistry,
+    ): Promise<PersistedRegistry> {
         try {
-            const raw = await this.fs.readFile(this.registryPath, 'utf8');
+            const raw = await this.fs.readFile(path, 'utf8');
             const parsed = JSON.parse(String(raw)) as PersistedRegistry;
             if (parsed.schemaVersion !== REGISTRY_SCHEMA_VERSION) return empty;
             if (parsed.managerPort !== this.managerPort) return empty;
@@ -98,9 +133,16 @@ export class LifecycleStore {
                 schemaVersion: 1,
                 managerPort: this.managerPort,
                 entries: Array.isArray(parsed.entries) ? parsed.entries : [],
+                source,
+                sourcePath: path,
+                legacyPath: this.legacyRegistryPath,
             };
         } catch {
-            return empty;
+            return {
+                ...empty,
+                source: 'corrupt',
+                sourcePath: path,
+            };
         }
     }
 

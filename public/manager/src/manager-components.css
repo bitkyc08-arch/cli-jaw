@@ -245,6 +245,55 @@ h2 { font-size: 13px; }
     color: var(--text-primary);
 }
 .instance-row-meta { display: grid; gap: 3px; }
+.instance-row-activity-title {
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 600;
+}
+.instance-label-edit-button {
+    position: absolute;
+    top: 7px;
+    right: 8px;
+    width: 22px;
+    min-width: 22px;
+    height: 22px;
+    min-height: 22px;
+    padding: 0;
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 13px;
+    line-height: 1;
+}
+.instance-label-edit-button:hover {
+    color: var(--text-primary);
+}
+.instance-label-edit-form {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 5px;
+    align-items: center;
+}
+.instance-label-input {
+    min-width: 0;
+    height: 26px;
+    border: 1px solid var(--border-strong);
+    border-radius: 6px;
+    background: var(--surface);
+    color: var(--text-primary);
+    padding: 0 7px;
+    font-size: 12px;
+}
+.instance-label-save,
+.instance-label-cancel {
+    min-height: 26px;
+    padding-inline: 7px;
+    font-size: 11px;
+}
+.instance-label-error {
+    grid-column: 1 / -1;
+    color: var(--status-error);
+    font-size: 11px;
+}
 .instance-actions { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 6px; }
 .instance-actions button, .instance-actions .open-link {
     min-width: 0;
@@ -487,6 +536,53 @@ h2 { font-size: 13px; }
 .preview-inline-status.is-unavailable {
     background: var(--status-error);
     color: var(--status-error);
+}
+.preview-switch,
+.preview-refresh-button {
+    min-height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    padding: 0 9px;
+    border-radius: 7px;
+    font-size: 12px;
+    font-weight: 500;
+}
+.preview-switch {
+    color: var(--text-secondary);
+}
+.preview-switch.is-on {
+    color: var(--text-primary);
+}
+.preview-switch-track {
+    position: relative;
+    width: 25px;
+    height: 14px;
+    flex: 0 0 auto;
+    border-radius: 999px;
+    background: var(--border-strong);
+}
+.preview-switch-track::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    background: var(--canvas-deep);
+    transition: transform 160ms ease, background 160ms ease;
+}
+.preview-switch.is-on .preview-switch-track {
+    background: var(--status-running);
+}
+.preview-switch.is-on .preview-switch-track::after {
+    background: var(--bg-raised);
+    transform: translateX(11px);
+}
+.detail-header .open-link svg {
+    margin-right: 6px;
 }
 .preview-frame {
     width: 100%;

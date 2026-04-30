@@ -78,10 +78,13 @@
     "prepublishOnly": "npm run build && npm run build:frontend"
   },
   "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/language-data": "^6.5.2",
     "@grammyjs/runner": "^2.0.3",
     "@grammyjs/transformer-throttler": "^1.2.1",
     "@lucide/icons": "^1.8.0",
     "@tanstack/virtual-core": "^3.13.23",
+    "@uiw/react-codemirror": "^4.25.9",
     "better-sqlite3": "^12.8.0",
     "discord.js": "^14.25.1",
     "dompurify": "^3.3.3",
@@ -98,6 +101,11 @@
     "playwright-core": "^1.58.2",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "rehype-sanitize": "^6.0.0",
+    "remark-math": "^6.0.0",
+    "trash": "^10.1.1",
     "ws": "^8.18.0"
   },
   "devDependencies": {

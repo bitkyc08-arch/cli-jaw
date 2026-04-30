@@ -202,6 +202,30 @@
     display: none;
 }
 
+.manager-sidebar .instance-row-activity-title {
+    display: block;
+    max-width: 100%;
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.3;
+}
+
+.manager-sidebar .instance-label-edit-button {
+    top: 6px;
+    right: 6px;
+    opacity: 0;
+}
+
+.manager-sidebar .instance-row:hover .instance-label-edit-button,
+.manager-sidebar .instance-row:focus-within .instance-label-edit-button {
+    opacity: 1;
+}
+
+.manager-sidebar .instance-label-edit-form {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 4px;
+}
+
 .manager-sidebar .port {
     padding: 2px 5px;
 }
@@ -369,6 +393,29 @@
     transition: all 0.2s ease;
     box-sizing: border-box;
     text-decoration: none;
+}
+
+.detail-header .preview-switch,
+.detail-header .preview-refresh-button {
+    background: transparent;
+    border: 1px solid var(--link-border);
+    color: var(--link-ink);
+    height: 30px;
+    min-height: 30px;
+    box-sizing: border-box;
+    transition: all 0.2s ease;
+}
+
+.detail-header .preview-switch.is-on {
+    background: var(--canvas-soft);
+    color: var(--text-primary);
+}
+
+.detail-header .preview-switch:hover:not(:disabled),
+.detail-header .preview-refresh-button:hover:not(:disabled) {
+    background: var(--link-bg-hover);
+    color: var(--text-primary);
+    border-color: var(--link-border-hover);
 }
 
 .detail-header .open-link:hover {

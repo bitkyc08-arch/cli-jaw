@@ -18,6 +18,7 @@ function readManagerCss(): string {
         'public/manager/src/manager-components.css',
         'public/manager/src/manager-persistence.css',
         'public/manager/src/manager-profiles.css',
+        'public/manager/src/manager-notes.css',
     ].map(read).join('\n');
 }
 
@@ -93,6 +94,7 @@ test('manager responsive CSS defines shell regions and breakpoints', () => {
     assert.equal(css.includes('command-secondary'), false, 'command center must not allocate a second command row');
     assert.equal(css.includes('instance-navigator-active'), false, 'navigator must not duplicate the selected instance outside the scroll body');
     assert.ok(css.includes('profile-chip-strip'), 'profile filters must have a stable horizontal strip');
+    assert.ok(css.includes('notes-workspace'), 'notes workspace styling must exist');
 });
 
 test('manager tablet and mobile breakpoints override desktop sidebar state', () => {
@@ -121,6 +123,15 @@ test('manager tablet and mobile breakpoints override desktop sidebar state', () 
         mobile.includes('grid-template-columns: 1fr'),
         'mobile breakpoint must not retain a desktop sidebar column',
     );
+});
+
+test('manager Notes workspace has a mobile path without desktop sidebar forcing', () => {
+    const css = read('public/manager/src/manager-notes.css');
+    const mobile = cssBlock(css, '@media (max-width: 767px)');
+
+    assert.ok(mobile.includes('.notes-workspace'), 'mobile breakpoint must include Notes workspace rules');
+    assert.ok(mobile.includes('grid-template-columns: 1fr'), 'mobile Notes layout must collapse to one column');
+    assert.ok(mobile.includes('.notes-tree'), 'mobile Notes tree must not be forced into the desktop sidebar column');
 });
 
 test('manager desktop layout uses one unified sidebar', () => {
@@ -157,6 +168,7 @@ test('manager UI state is persisted through 10.6 registry without localStorage',
     assert.ok(hook.includes('activityDockHeight'), 'view hook must own runtime-only activity dock height');
     assert.ok(hook.includes('sidebarCollapsed'), 'view hook must own runtime-only sidebar collapse state');
     assert.ok(rail.includes('rail-collapse-button'), 'sidebar rail must expose a collapse button');
+    assert.ok(rail.indexOf('rail-collapse-button') < rail.indexOf("onModeChange('instances')"), 'collapse button must be the leading rail control');
     assert.ok(rail.includes('aria-pressed={props.collapsed}'), 'collapse button must expose pressed state');
     assert.ok(drawer.includes("event.key === 'Escape'"), 'drawer must close on Escape');
     assert.ok(drawer.includes('previousFocusRef'), 'drawer must restore focus');
@@ -175,6 +187,9 @@ test('manager instance activity unread badge has compact row styling', () => {
 
     assert.ok(css.includes('.instance-row-title-line'), 'instance row title line must align label and unread count');
     assert.ok(css.includes('.instance-unread-badge'), 'per-instance Activity unread badge styling must exist');
+    assert.ok(css.includes('.instance-row-activity-title'), 'latest activity titles must have compact row styling');
+    assert.ok(css.includes('.instance-label-edit-button'), 'custom label edit affordance must have compact row styling');
+    assert.ok(css.includes('.instance-label-edit-form'), 'custom label edit form must have compact row styling');
     assert.ok(css.includes('font-variant-numeric: tabular-nums'), 'Activity unread badge must keep counts stable');
     assert.equal(css.includes('.rail-badge'), false, 'Activity unread badge must not attach to the top rail');
 });

@@ -31,6 +31,7 @@ export type ThemeApi = {
     theme: DashboardUiTheme;
     resolved: 'dark' | 'light';
     setTheme: (next: DashboardUiTheme) => void;
+    syncFromRegistry: (next: DashboardUiTheme | null | undefined) => void;
 };
 
 export function useTheme(persist: (theme: DashboardUiTheme) => void): ThemeApi {
@@ -60,10 +61,18 @@ export function useTheme(persist: (theme: DashboardUiTheme) => void): ThemeApi {
         if (!isTheme(next)) return;
         setThemeState(next);
         applyDocumentTheme(next);
+        setResolved(resolveTheme(next));
         persist(next);
     }, [persist]);
 
-    return { theme, resolved, setTheme };
+    const syncFromRegistry = useCallback((next: DashboardUiTheme | null | undefined) => {
+        if (!isTheme(next)) return;
+        setThemeState(next);
+        applyDocumentTheme(next);
+        setResolved(resolveTheme(next));
+    }, []);
+
+    return { theme, resolved, setTheme, syncFromRegistry };
 }
 
 export function syncThemeFromRegistry(theme: DashboardUiTheme | null | undefined): void {

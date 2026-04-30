@@ -6,7 +6,9 @@
     <script>
       // Resolve theme before CSS paints — prevents FOUC and wrong Mermaid theme
       (function() {
-        var t = localStorage.getItem('theme') ||
+        var q = new URLSearchParams(location.search).get('jawTheme');
+        var t = (q === 'dark' || q === 'light') ? q :
+          localStorage.getItem('theme') ||
           (matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
         document.documentElement.setAttribute('data-theme', t);
       })();

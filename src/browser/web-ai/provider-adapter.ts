@@ -10,7 +10,7 @@
 
 import type { WebAiDiagnostics, WebAiFailureStage } from './diagnostics.js';
 
-export type WebAiVendorId = 'chatgpt' | 'gemini';
+export type WebAiVendorId = 'chatgpt' | 'gemini' | 'grok';
 
 export interface WaitForResponseOptions {
     timeoutMs: number;

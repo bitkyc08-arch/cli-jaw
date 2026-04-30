@@ -144,6 +144,7 @@ export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, co
 export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, cost_usd, duration_ms, working_dir, created_at FROM messages ORDER BY id ASC');
 export const getMessagesWithTrace = db.prepare('SELECT * FROM messages ORDER BY id ASC');
 export const getLatestAssistantMessage = db.prepare("SELECT id, role, created_at FROM messages WHERE role = 'assistant' ORDER BY id DESC LIMIT 1");
+export const getLatestDashboardActivityMessage = db.prepare("SELECT id, role, substr(content, 1, 240) AS excerpt, created_at FROM messages WHERE role IN ('user', 'assistant') ORDER BY id DESC LIMIT 1");
 export const getRecentMessages = db.prepare('SELECT id, role, content, cli, model, trace, created_at FROM messages WHERE working_dir = ? OR working_dir IS NULL ORDER BY id DESC LIMIT ?');
 export const clearMessages = db.prepare('DELETE FROM messages');
 export const clearMessagesScoped = db.prepare('DELETE FROM messages WHERE working_dir = ?');

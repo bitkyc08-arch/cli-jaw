@@ -18,7 +18,9 @@ test('BWCLI-001: CLI exposes closed web-ai command surface', () => {
 
 test('BWCLI-002: send and query gating + flag rejection (32.7B live)', () => {
     assert.match(cliWebAiSrc, /require --inline-only or --file/);
-    assert.match(cliWebAiSrc, /--model is currently supported only for --vendor chatgpt/);
+    assert.match(cliWebAiSrc, /isSupportedWebAiModel/);
+    assert.match(cliWebAiSrc, /gemini: new Set/);
+    assert.match(cliWebAiSrc, /grok: new Set/);
 });
 
 test('BWCLI-003: web-ai routes are authenticated', () => {

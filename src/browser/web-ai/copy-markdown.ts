@@ -42,6 +42,14 @@ export const GEMINI_COPY_SELECTORS: CopyMarkdownSelectorSet = {
     ],
 };
 
+export const GROK_COPY_SELECTORS: CopyMarkdownSelectorSet = {
+    turnSelectors: ['[data-testid="assistant-message"]', '[id^="response-"]:has([data-testid="assistant-message"])'],
+    copyButtonSelectors: [
+        'button[aria-label="Copy"]',
+        'button[aria-label*="Copy" i]',
+    ],
+};
+
 export async function captureCopiedResponseText(
     page: any,
     selectors: CopyMarkdownSelectorSet,

@@ -117,6 +117,15 @@
     .workbench-header .detail-header > div:first-child > span {
         display: none;
     }
+    .detail-header-actions {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+    .detail-header .preview-switch,
+    .detail-header .preview-refresh-button,
+    .detail-header .open-link {
+        min-height: 28px;
+    }
     .workbench-header {
         grid-template-columns: minmax(0, 1fr);
         gap: 8px;

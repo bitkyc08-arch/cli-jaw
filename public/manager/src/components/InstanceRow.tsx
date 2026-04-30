@@ -1,4 +1,5 @@
-import type { MouseEvent } from 'react';
+import { useState } from 'react';
+import type { FormEvent, MouseEvent } from 'react';
 import type { DashboardInstance, DashboardLifecycleAction, DashboardProfile } from '../types';
 
 type InstanceRowProps = {
@@ -12,9 +13,11 @@ type InstanceRowProps = {
     priority?: 'active' | 'pinned' | 'normal' | 'hidden';
     transitioning?: DashboardLifecycleAction | null;
     activityUnreadCount?: number;
+    latestActivityTitle?: string | null;
     onSelect: (instance: DashboardInstance) => void;
     onPreview: (instance: DashboardInstance) => void;
     onMarkActivitySeen: (port: number) => void;
+    onInstanceLabelSave: (port: number, label: string | null) => Promise<void>;
     onLifecycle: (action: DashboardLifecycleAction, instance: DashboardInstance) => void;
 };
 
@@ -31,6 +34,10 @@ function statusClass(status: DashboardInstance['status']): string {
 export function InstanceRow(props: InstanceRowProps) {
     const lifecycle = props.instance.lifecycle;
     const reason = lifecycle?.reason || props.instance.healthReason || 'ok';
+    const [editing, setEditing] = useState(false);
+    const [draft, setDraft] = useState(props.instance.label || props.profile?.label || props.label);
+    const [savingLabel, setSavingLabel] = useState(false);
+    const [labelError, setLabelError] = useState<string | null>(null);
 
     function stopAction(event: MouseEvent<HTMLElement>): void {
         event.stopPropagation();
@@ -38,7 +45,22 @@ export function InstanceRow(props: InstanceRowProps) {
 
     const transitionLabel = props.transitioning ? TRANSITION_LABELS[props.transitioning] : null;
     const dotClass = `${statusClass(props.instance.status)}${transitionLabel ? ' is-transitioning' : ''}`;
-    const primaryLabel = props.profile?.label || props.label;
+    const primaryLabel = props.instance.label || props.profile?.label || props.label;
+
+    async function submitLabel(event: FormEvent<HTMLFormElement>): Promise<void> {
+        event.preventDefault();
+        event.stopPropagation();
+        setSavingLabel(true);
+        setLabelError(null);
+        try {
+            await props.onInstanceLabelSave(props.instance.port, draft);
+            setEditing(false);
+        } catch (error) {
+            setLabelError((error as Error).message);
+        } finally {
+            setSavingLabel(false);
+        }
+    }
 
     return (
         <article className={`instance-row density-${props.density || 'comfortable'} priority-${props.priority || 'normal'} ${props.selected ? 'is-selected' : ''}${transitionLabel ? ' is-transitioning-row' : ''}`}>
@@ -66,11 +88,55 @@ export function InstanceRow(props: InstanceRowProps) {
                     <span className="port">:{props.instance.port}</span>
                 </div>
                 <div className="instance-row-meta">
+                    {props.latestActivityTitle && <span className="instance-row-activity-title">{props.latestActivityTitle}</span>}
                     <span className="instance-row-runtime">{props.instance.currentCli || 'cli n/a'} / {props.instance.currentModel || 'model n/a'}</span>
                     <span className="instance-row-version">v{props.instance.version || 'n/a'} · {props.uptime}</span>
                     <span className="instance-row-reason">{new Date(props.instance.lastCheckedAt).toLocaleTimeString()} · {reason}</span>
                 </div>
             </button>
+            {editing ? (
+                <form className="instance-label-edit-form" onSubmit={(event) => void submitLabel(event)} onClick={stopAction}>
+                    <input
+                        className="instance-label-input"
+                        value={draft}
+                        maxLength={120}
+                        aria-label={`Rename ${primaryLabel}`}
+                        onChange={event => setDraft(event.target.value)}
+                    />
+                    <button className="instance-label-save" type="submit" disabled={savingLabel}>Save</button>
+                    <button
+                        className="instance-label-cancel"
+                        type="button"
+                        disabled={savingLabel}
+                        onClick={() => {
+                            setDraft(props.instance.label || props.profile?.label || props.label);
+                            setLabelError(null);
+                            setEditing(false);
+                        }}
+                    >
+                        Cancel
+                    </button>
+                    {labelError && <span className="instance-label-error">{labelError}</span>}
+                </form>
+            ) : (
+                <button
+                    className="instance-label-edit-button"
+                    type="button"
+                    aria-label={`Rename ${primaryLabel}`}
+                    title="Rename"
+                    onClick={(event) => {
+                        stopAction(event);
+                        setDraft(props.instance.label || props.profile?.label || props.label);
+                        setLabelError(null);
+                        setEditing(true);
+                    }}
+                >
+                    <svg viewBox="0 0 24 24" width="13" height="13" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M12 20h9" />
+                        <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                    </svg>
+                </button>
+            )}
             <div className="instance-actions">
                 <button
                     type="button"

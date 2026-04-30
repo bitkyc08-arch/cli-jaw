@@ -1,4 +1,4 @@
-export type WebAiVendor = 'chatgpt' | 'gemini';
+export type WebAiVendor = 'chatgpt' | 'gemini' | 'grok';
 export type WebAiStatus = 'ready' | 'rendered' | 'sent' | 'streaming' | 'complete' | 'blocked' | 'timeout' | 'error';
 export type WebAiNotificationStatus = 'pending' | 'sent' | 'failed' | 'skipped';
 /**

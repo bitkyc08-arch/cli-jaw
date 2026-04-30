@@ -18,6 +18,8 @@ import type {
     DashboardRegistryStatus,
     DashboardRegistryUi,
     DashboardScanResult,
+    DashboardSidebarMode,
+    DashboardNotesViewMode,
     DashboardUiTheme,
 } from './types.js';
 
@@ -25,8 +27,13 @@ const REGISTRY_FILE = 'manager-instances.json';
 const MIN_ACTIVITY_HEIGHT = 88;
 const MAX_ACTIVITY_HEIGHT = 320;
 const DEFAULT_ACTIVITY_HEIGHT = 150;
+const MIN_NOTES_TREE_WIDTH = 220;
+const MAX_NOTES_TREE_WIDTH = 420;
+const DEFAULT_NOTES_TREE_WIDTH = 280;
 const DETAIL_TABS: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings'];
 const UI_THEMES: DashboardUiTheme[] = ['auto', 'dark', 'light'];
+const SIDEBAR_MODES: DashboardSidebarMode[] = ['instances', 'notes'];
+const NOTES_VIEW_MODES: DashboardNotesViewMode[] = ['raw', 'split', 'preview', 'settings'];
 
 export type DashboardRegistryLoadResult = {
     registry: DashboardRegistry;
@@ -107,6 +114,11 @@ function defaultUi(): DashboardRegistryUi {
         activitySeenAt: null,
         activitySeenByPort: {},
         uiTheme: 'auto',
+        sidebarMode: 'instances',
+        notesSelectedPath: null,
+        notesViewMode: 'split',
+        notesWordWrap: true,
+        notesTreeWidth: DEFAULT_NOTES_TREE_WIDTH,
     };
 }
 
@@ -129,6 +141,12 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
     const uiTheme = UI_THEMES.includes(input.uiTheme as DashboardUiTheme)
         ? input.uiTheme as DashboardUiTheme
         : fallback.uiTheme;
+    const sidebarMode = SIDEBAR_MODES.includes(input.sidebarMode as DashboardSidebarMode)
+        ? input.sidebarMode as DashboardSidebarMode
+        : fallback.sidebarMode;
+    const notesViewMode = NOTES_VIEW_MODES.includes(input.notesViewMode as DashboardNotesViewMode)
+        ? input.notesViewMode as DashboardNotesViewMode
+        : fallback.notesViewMode;
     return {
         selectedPort,
         selectedTab,
@@ -140,6 +158,13 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
             : null,
         activitySeenByPort: normalizeActivitySeenByPort(input.activitySeenByPort),
         uiTheme,
+        sidebarMode,
+        notesSelectedPath: typeof input.notesSelectedPath === 'string' && input.notesSelectedPath.trim()
+            ? input.notesSelectedPath.trim()
+            : null,
+        notesViewMode,
+        notesWordWrap: typeof input.notesWordWrap === 'boolean' ? input.notesWordWrap : fallback.notesWordWrap,
+        notesTreeWidth: clampInt(input.notesTreeWidth, fallback.notesTreeWidth, MIN_NOTES_TREE_WIDTH, MAX_NOTES_TREE_WIDTH),
     };
 }
 

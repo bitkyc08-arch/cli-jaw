@@ -29,6 +29,7 @@ import {
 } from './diagnostics.js';
 import { reportGeminiContractOnlyStatus, GEMINI_DEEP_THINK_OFFICIAL_SOURCES } from './gemini-contract.js';
 import { geminiSend, geminiPoll, geminiStop, geminiStatus } from './gemini-live.js';
+import { grokSend, grokPoll, grokStop, grokStatus, isGrokUrl } from './grok-live.js';
 import { ProviderRuntimeDisabledError } from './provider-adapter.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import type {
@@ -88,6 +89,9 @@ export async function status(port: number, input: { vendor?: string } = {}): Pro
     if (vendor === 'gemini') {
         return await geminiStatus(port);
     }
+    if (vendor === 'grok') {
+        return await grokStatus(port);
+    }
     const active = await requireVerifiedChatGptTab(port, vendor);
     return { ok: true, vendor: 'chatgpt', status: 'ready', url: active.url, warnings: [] };
 }
@@ -97,6 +101,13 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     if (requestedVendor === 'gemini') {
         try {
             return await geminiSend(port, input);
+        } catch (e) {
+            throw stageError(e, 'send-click');
+        }
+    }
+    if (requestedVendor === 'grok') {
+        try {
+            return await grokSend(port, input);
         } catch (e) {
             throw stageError(e, 'send-click');
         }
@@ -196,6 +207,17 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
     if (vendor === 'gemini') {
         try {
             return await geminiPoll(port, {
+                timeout: input.timeout,
+                session: input.session,
+                allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
+            });
+        } catch (e) {
+            throw stageError(e, 'poll-timeout');
+        }
+    }
+    if (vendor === 'grok') {
+        try {
+            return await grokPoll(port, {
                 timeout: input.timeout,
                 session: input.session,
                 allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
@@ -346,6 +368,9 @@ export async function stop(port: number, input: { vendor?: string } = {}): Promi
     if (vendor === 'gemini') {
         try { return await geminiStop(port); } catch (e) { throw stageError(e, 'send-click'); }
     }
+    if (vendor === 'grok') {
+        try { return await grokStop(port); } catch (e) { throw stageError(e, 'send-click'); }
+    }
     const active = await requireVerifiedChatGptTab(port, vendor);
     const page = await requireActivePage(port);
     const session = findSessionByTarget(vendor, active.targetId);
@@ -375,6 +400,7 @@ function stageError(error: unknown, stage: WebAiFailureStage): Error {
 function parseVendor(vendor?: string): WebAiVendor {
     if (!vendor || vendor === 'chatgpt') return 'chatgpt';
     if (vendor === 'gemini') return 'gemini';
+    if (vendor === 'grok') return 'grok';
     throw new Error(`unsupported vendor: ${vendor}`);
 }
 
@@ -406,6 +432,9 @@ async function navigateRequestedConversation(port: number, url: string | undefin
     const loadedUrl = page.url();
     if (vendor === 'chatgpt' && !isChatGptUrl(loadedUrl)) {
         throw stageError(new Error(`requested URL did not load ChatGPT: ${loadedUrl}`), 'status');
+    }
+    if (vendor === 'grok' && !isGrokUrl(loadedUrl)) {
+        throw stageError(new Error(`requested URL did not load Grok: ${loadedUrl}`), 'status');
     }
 }
 

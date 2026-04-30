@@ -50,6 +50,7 @@ type Props = {
     port: number;
     instanceUrl: string;
     onDirtyChange?: (dirty: boolean) => void;
+    onSaved?: () => void;
 };
 
 function useDirtyStore(): DirtyStore {
@@ -74,7 +75,7 @@ function usePendingCount(store: DirtyStore): number {
     );
 }
 
-export function SettingsShell({ port, instanceUrl, onDirtyChange }: Props) {
+export function SettingsShell({ port, instanceUrl, onDirtyChange, onSaved }: Props) {
     const [activeId, setActiveId] = useState<SettingsCategoryId>('agent');
     const dirty = useDirtyStore();
     const isDirty = useDirtyFlag(dirty);
@@ -139,6 +140,7 @@ export function SettingsShell({ port, instanceUrl, onDirtyChange }: Props) {
         setSaving(true);
         try {
             await handler();
+            onSaved?.();
             setToast({ kind: 'ok', message: 'Saved.' });
         } catch (err: unknown) {
             const message = describeError(err);
@@ -147,7 +149,7 @@ export function SettingsShell({ port, instanceUrl, onDirtyChange }: Props) {
         } finally {
             setSaving(false);
         }
-    }, [dirty, saving]);
+    }, [dirty, onSaved, saving]);
 
     useSaveShortcut({
         enabled: isDirty && !saving,

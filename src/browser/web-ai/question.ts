@@ -1,7 +1,7 @@
 import type { AttachmentPolicy, QuestionEnvelope, QuestionEnvelopeInput, RenderedQuestionBundle, WebAiVendor } from './types.js';
 
 const INLINE_CHAR_LIMIT = 50000;
-const SUPPORTED_VENDORS = new Set<WebAiVendor>(['chatgpt', 'gemini']);
+const SUPPORTED_VENDORS = new Set<WebAiVendor>(['chatgpt', 'gemini', 'grok']);
 const SUPPORTED_ATTACHMENT_POLICIES = new Set<AttachmentPolicy>(['inline-only', 'upload', 'auto']);
 
 export function normalizeEnvelope(input: QuestionEnvelopeInput = {}): QuestionEnvelope {

@@ -25,6 +25,10 @@ import {
 import { createHealthHistory, type HealthEvent } from './health-history.js';
 import { createObservability } from './observability.js';
 import { fetchInstanceLogs } from './logs.js';
+import {
+    createDashboardNotesRouter,
+    createNotesJsonErrorHandler,
+} from './notes/routes.js';
 import type {
     DashboardInstance,
     DashboardLifecycleAction,
@@ -116,6 +120,12 @@ app.use(helmet({
     contentSecurityPolicy: false,
     crossOriginEmbedderPolicy: false,
 }));
+app.use(
+    '/api/dashboard/notes',
+    express.json({ limit: '1100kb' }),
+    createNotesJsonErrorHandler(),
+    createDashboardNotesRouter({ managerPort: port }),
+);
 app.use(express.json({ limit: '64kb' }));
 
 app.get('/api/dashboard/health', (_req, res) => {

@@ -9,6 +9,11 @@ import { rerenderMermaidDiagrams } from '../render.js';
 
 const STORAGE_KEY = 'theme';
 let hljsStyleEl: HTMLStyleElement | null = null;
+type ThemeValue = 'dark' | 'light';
+
+function isThemeValue(value: unknown): value is ThemeValue {
+    return value === 'dark' || value === 'light';
+}
 
 function applyHljsTheme(theme: string): void {
     const css = theme === 'light' ? githubLight : githubDark;
@@ -21,12 +26,14 @@ function applyHljsTheme(theme: string): void {
 }
 
 export function initTheme(): void {
+    const previewTheme = readPreviewThemeParam();
     const saved = localStorage.getItem(STORAGE_KEY);
     const prefer = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    const theme = saved || prefer;
+    const theme = previewTheme || saved || prefer;
     applyTheme(theme);
 
     document.getElementById('toggleTheme')?.addEventListener('click', toggleTheme);
+    window.addEventListener('message', handlePreviewThemeMessage);
 }
 
 function toggleTheme(): void {
@@ -47,4 +54,31 @@ function applyTheme(theme: string): void {
     applyHljsTheme(theme);
     broadcastThemeToIframes();
     rerenderMermaidDiagrams();
+}
+
+function readPreviewThemeParam(): ThemeValue | null {
+    const value = new URLSearchParams(window.location.search).get('jawTheme');
+    return isThemeValue(value) ? value : null;
+}
+
+function isLocalThemeOrigin(origin: string): boolean {
+    if (origin === window.location.origin) return true;
+    try {
+        const hostname = new URL(origin).hostname;
+        return hostname === 'localhost'
+            || hostname === '127.0.0.1'
+            || hostname === '::1'
+            || hostname === '[::1]';
+    } catch {
+        return false;
+    }
+}
+
+function handlePreviewThemeMessage(event: MessageEvent): void {
+    if (window.parent === window) return;
+    if (event.source !== window.parent) return;
+    if (!isLocalThemeOrigin(event.origin)) return;
+    const data = event.data as { type?: unknown; theme?: unknown } | null;
+    if (!data || data.type !== 'jaw-preview-theme-sync' || !isThemeValue(data.theme)) return;
+    applyTheme(data.theme);
 }

@@ -14,3 +14,12 @@ export function instanceLabel(instance: DashboardInstance): string {
     const rawName = rawLabel.split('/').filter(Boolean).pop() || rawLabel;
     return compactGeneratedInstanceName(rawName, instance.port);
 }
+
+export function formatUptime(seconds: number | null): string {
+    if (seconds == null) return 'n/a';
+    const minutes = Math.floor(seconds / 60);
+    if (minutes < 1) return `${Math.round(seconds)}s`;
+    const hours = Math.floor(minutes / 60);
+    if (hours < 1) return `${minutes}m`;
+    return `${hours}h ${minutes % 60}m`;
+}

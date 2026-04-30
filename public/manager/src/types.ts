@@ -10,6 +10,8 @@ export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 export type DashboardUiTheme = 'auto' | 'dark' | 'light';
+export type DashboardSidebarMode = 'instances' | 'notes';
+export type DashboardNotesViewMode = 'raw' | 'split' | 'preview' | 'settings';
 export type DashboardProfileId = string;
 
 export type DashboardProxyInfo = {
@@ -131,6 +133,20 @@ export type ManagerEvent =
     | { kind: 'version-mismatch'; port: number; expected: string | null; seen: string; at: string }
     | { kind: 'port-collision'; port: number; pids: number[]; at: string };
 
+export type InstanceLatestMessageSummary = {
+    latestAssistant: {
+        id: number;
+        role: 'assistant';
+        created_at: string;
+    } | null;
+    activity: {
+        messageId: number;
+        role: string;
+        title: string;
+        updatedAt: string;
+    } | null;
+};
+
 export type HealthEvent = {
     port: number;
     at: string;
@@ -187,6 +203,11 @@ export type DashboardRegistryUi = {
     activitySeenAt: string | null;
     activitySeenByPort: Record<string, string>;
     uiTheme: DashboardUiTheme;
+    sidebarMode: DashboardSidebarMode;
+    notesSelectedPath: string | null;
+    notesViewMode: DashboardNotesViewMode;
+    notesWordWrap: boolean;
+    notesTreeWidth: number;
 };
 
 export type DashboardRegistryInstance = {
@@ -224,4 +245,34 @@ export type DashboardRegistryPatch = {
 export type DashboardRegistryLoadResult = {
     registry: DashboardRegistry;
     status: DashboardRegistryStatus;
+};
+
+export type DashboardNoteTreeEntry = {
+    path: string;
+    name: string;
+    kind: 'file' | 'folder';
+    mtimeMs: number;
+    size: number;
+    children?: DashboardNoteTreeEntry[];
+};
+
+export type DashboardNoteFileResponse = {
+    path: string;
+    name: string;
+    content: string;
+    revision: string;
+    mtimeMs: number;
+    size: number;
+};
+
+export type DashboardPutNoteRequest = {
+    path: string;
+    content: string;
+    baseRevision?: string;
+};
+
+export type DashboardTrashNoteResponse = {
+    path: string;
+    deletedTo: 'os-trash' | 'dashboard-trash';
+    restoreHint?: string;
 };

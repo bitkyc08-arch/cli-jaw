@@ -9,6 +9,8 @@ import './manager-persistence.css';
 import './manager-profiles.css';
 import './manager-polish.css';
 import './manager-p0-1-1.css';
+import 'katex/dist/katex.min.css';
+import './manager-notes.css';
 import './settings-shell.css';
 import './settings-controls.css';
 import './settings-agent.css';

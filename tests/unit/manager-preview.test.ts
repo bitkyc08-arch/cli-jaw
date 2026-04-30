@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPreviewState } from '../../public/manager/src/preview.js';
+import { appendPreviewTheme, buildPreviewState } from '../../public/manager/src/preview.js';
 import type { DashboardInstance, DashboardScanResult } from '../../public/manager/src/types.js';
 
 const online: DashboardInstance = {
@@ -46,6 +46,17 @@ test('preview helper builds proxy preview url', () => {
     });
 });
 
+test('preview helper appends theme to proxy preview url', () => {
+    const state = buildPreviewState(online, data, 'dark');
+
+    assert.equal(state.src, '/i/3457/?jawTheme=dark');
+    assert.equal(state.transport, 'legacy-path');
+});
+
+test('preview helper preserves query and hash when appending theme', () => {
+    assert.equal(appendPreviewTheme('/i/3457/?existing=1#top', 'light'), '/i/3457/?existing=1&jawTheme=light#top');
+});
+
 test('preview helper prefers origin-port preview url', () => {
     assert.deepEqual(buildPreviewState(online, {
         ...data,
@@ -77,6 +88,36 @@ test('preview helper prefers origin-port preview url', () => {
         transport: 'origin-port',
         warning: 'origin proxy ready',
     });
+});
+
+test('preview helper appends theme to origin-port preview url', () => {
+    const state = buildPreviewState(online, {
+        ...data,
+        manager: {
+            ...data.manager,
+            proxy: {
+                ...data.manager.proxy,
+                preview: {
+                    enabled: true,
+                    kind: 'origin-port',
+                    previewFrom: 24602,
+                    previewTo: 24651,
+                    instances: {
+                        '3457': {
+                            targetPort: 3457,
+                            previewPort: 24602,
+                            url: 'http://127.0.0.1:24602/?x=1#frame',
+                            status: 'ready',
+                            reason: null,
+                        },
+                    },
+                },
+            },
+        },
+    }, 'light');
+
+    assert.equal(state.src, 'http://127.0.0.1:24602/?x=1&jawTheme=light#frame');
+    assert.equal(state.transport, 'origin-port');
 });
 
 test('preview helper falls back when origin-port preview is unavailable', () => {

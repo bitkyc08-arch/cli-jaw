@@ -13,6 +13,7 @@ type InstanceDetailPanelProps = {
     activeTab: DashboardDetailTab;
     onRegistryPatch: (port: number, patch: Partial<DashboardRegistryInstance>) => void;
     onSettingsDirtyChange?: (dirty: boolean) => void;
+    onSettingsSaved?: () => void;
 };
 
 export function InstanceDetailPanel(props: InstanceDetailPanelProps) {
@@ -47,6 +48,7 @@ export function InstanceDetailPanel(props: InstanceDetailPanelProps) {
                         port={instance.port}
                         instanceUrl={`http://localhost:${instance.port}`}
                         onDirtyChange={props.onSettingsDirtyChange}
+                        onSaved={props.onSettingsSaved}
                     />
                 )}
 

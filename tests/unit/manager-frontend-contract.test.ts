@@ -36,31 +36,71 @@ test('manager frontend has API entry and Open action', () => {
     assert.ok(api.includes('/api/dashboard/instances'), 'manager API must call dashboard instances endpoint');
     assert.ok(api.includes('/api/dashboard/lifecycle/'), 'manager API must call dashboard lifecycle endpoint');
     assert.ok(api.includes('/api/dashboard/registry'), 'manager API must call dashboard registry endpoint');
+    assert.ok(api.includes('/api/dashboard/notes/tree'), 'manager API must call dashboard notes tree endpoint');
+    assert.ok(api.includes('/api/dashboard/notes/file'), 'manager API must call dashboard notes file endpoint');
+    assert.ok(api.includes('/api/dashboard/notes/folder'), 'manager API must call dashboard notes folder endpoint');
+    assert.ok(api.includes('/api/dashboard/notes/rename'), 'manager API must call dashboard notes rename endpoint');
+    assert.ok(api.includes('/api/dashboard/notes/trash'), 'manager API must call dashboard notes trash endpoint');
     assert.ok(row.includes('Open'), 'manager UI must expose Open action');
+    assert.ok(row.includes('href={props.instance.ok ? props.instance.url : undefined}'), 'Open must stay active for online instances');
+    assert.ok(row.includes('aria-disabled={!props.instance.ok || undefined}'), 'Open must only disable when the instance is not reachable');
     assert.ok(command.includes('Search port, home, CLI, model'), 'manager UI must include search');
 });
 
 test('manager frontend exposes one-instance preview controls', () => {
     const app = read('public/manager/src/App.tsx');
     const workbench = read('public/manager/src/components/Workbench.tsx');
+    const header = read('public/manager/src/components/WorkbenchHeader.tsx');
     const hook = read('public/manager/src/hooks/useDashboardView.ts');
+    const themeHook = read('public/manager/src/hooks/useTheme.ts');
     const preview = read('public/manager/src/InstancePreview.tsx');
     const helper = read('public/manager/src/preview.ts');
+    const childTheme = read('public/js/features/theme.ts');
+    const childHtml = read('public/index.html');
     const components = read('public/manager/src/manager-components.css');
+    const detail = read('public/manager/src/components/InstanceDetailPanel.tsx');
+    const settingsShell = read('public/manager/src/settings/SettingsShell.tsx');
 
     assert.ok(hook.includes('selectedPort'), 'manager UI must track a selected preview instance');
     assert.ok(app.includes('handleSelectInstance'), 'manager UI must allow selecting any instance row');
     assert.ok(app.includes('InstancePreview'), 'manager UI must render preview component');
+    assert.ok(app.includes('refreshInstance'), 'manager UI must refresh one selected instance without a full page reload');
+    assert.ok(app.includes('fetchInstanceStatus(port)'), 'selected refresh must use the single-instance status endpoint');
     assert.equal(workbench.includes('contentByMode'), false, 'workbench must not unmount preview through contentByMode switching');
     assert.ok(workbench.includes('workbench-panel-preview'), 'workbench must render preview in a dedicated panel');
     assert.ok(workbench.includes("hidden={props.mode !== 'preview'}"), 'preview panel must hide without unmounting across tab changes');
     assert.ok(workbench.includes('data-preview-host="persistent"'), 'preview host must be explicitly persistent');
     assert.ok(workbench.includes('{props.preview}'), 'persistent preview panel must render the preview slot');
+    assert.ok(header.includes('role="switch"'), 'workbench header must expose a compact preview on/off switch');
+    assert.ok(header.includes('onPreviewRefresh'), 'workbench header must expose iframe preview refresh');
+    assert.ok(app.includes('previewRefreshKey'), 'App must track a preview refresh key');
+    assert.ok(app.includes('theme.resolved'), 'App must pass the concrete resolved dashboard theme to preview');
+    assert.ok(app.includes('theme.syncFromRegistry'), 'App must hydrate registry theme through hook state');
+    assert.ok(themeHook.includes('syncFromRegistry'), 'theme hook must expose registry sync that updates React state');
+    assert.ok(themeHook.includes('setThemeState(next)'), 'registry theme sync must update React state');
+    assert.ok(preview.includes('props.enabled'), 'InstancePreview must obey the header preview on/off switch');
+    assert.ok(preview.includes('props.refreshKey'), 'InstancePreview must remount the iframe when refreshed');
+    assert.ok(preview.includes('jaw-preview-theme-sync'), 'InstancePreview must post dashboard theme to iframe');
+    assert.ok(preview.includes('previewTargetOrigin(state.src)'), 'InstancePreview must target the preview origin instead of using wildcard postMessage');
+    assert.equal(preview.includes("postMessage(\n            { type: 'jaw-preview-theme-sync', theme: props.theme },\n            '*',"), false, 'InstancePreview must not post preview theme with wildcard origin');
+    assert.ok(helper.includes('PreviewTheme'), 'preview helper must type dark/light preview themes');
+    assert.ok(helper.includes('jawTheme'), 'preview helper must append jawTheme query');
+    assert.ok(helper.includes("PreviewTransport = 'origin-port' | 'legacy-path' | 'none'"), 'preview helper must not expose direct transport');
+    assert.ok(childHtml.includes('jawTheme'), 'child Web UI first-paint bootstrap must read jawTheme');
+    assert.ok(childTheme.includes('jaw-preview-theme-sync'), 'child Web UI must listen for preview theme sync messages');
+    assert.ok(childTheme.includes('event.source !== window.parent'), 'child Web UI must only accept theme messages from parent frame');
+    assert.ok(childTheme.includes('isLocalThemeOrigin'), 'child Web UI must validate local/same origins');
+    assert.ok(childTheme.includes('applyTheme(data.theme)'), 'child Web UI must apply preview theme without using the persistent toggle path');
+    assert.equal(childTheme.includes("localStorage.setItem(STORAGE_KEY, data.theme"), false, 'preview message theme changes must not persist to localStorage');
+    assert.ok(detail.includes('onSettingsSaved'), 'settings save must notify the detail host');
+    assert.ok(settingsShell.includes('onSaved?.()'), 'SettingsShell must emit a save-complete callback');
     assert.ok(components.includes('.workbench-panel'), 'workbench panels must have stable sizing');
     assert.ok(components.includes('.workbench-panel[hidden]'), 'inactive persistent preview panel must not reserve space');
+    assert.ok(components.includes('.preview-switch'), 'preview switch must have compact header styling');
+    assert.ok(components.includes('.preview-refresh-button'), 'preview refresh button must have compact header styling');
     assert.ok(preview.includes('<iframe'), 'preview component must mount iframe');
     assert.ok(preview.includes('clipboard-read; clipboard-write'), 'preview iframe must explicitly allow clipboard read/write');
-    assert.ok(app.includes('preview-inline-status'), 'workbench header must expose compact preview status');
+    assert.ok(header.includes('preview-inline-status'), 'workbench header must expose compact preview status');
     assert.equal(preview.includes('preview-status-row'), false, 'preview iframe area must not spend a row on status');
     assert.equal(preview.includes('Enable preview'), false, 'preview tab must not require a second enable toggle');
     assert.equal(preview.includes('<select'), false, 'preview mode dropdown must be removed');
@@ -126,7 +166,8 @@ test('manager instance activity unread badges are row-scoped and registry-backed
     assert.ok(row.includes('onMarkActivitySeen'), 'InstanceRow must clear the clicked instance unread count');
     assert.ok(row.includes('instance-unread-badge'), 'InstanceRow must render the compact row badge');
     assert.ok(row.includes('99+'), 'InstanceRow badge must cap large counts');
-    assert.equal(rail.includes('label="Instances"'), false, 'SidebarRail must not duplicate the Workbench instance tab');
+    assert.ok(rail.includes('aria-label="Instances"'), 'SidebarRail must expose the Instances workspace mode');
+    assert.ok(rail.includes('aria-label="Notes"'), 'SidebarRail must expose the Notes workspace mode');
     assert.equal(rail.includes('label="Preview"'), false, 'SidebarRail must not duplicate the Workbench preview tab');
     assert.equal(rail.includes('label="Activity"'), false, 'SidebarRail must not duplicate the Activity dock toggle');
     assert.equal(rail.includes('label="Settings"'), false, 'SidebarRail must not duplicate the Workbench settings tab');
@@ -139,6 +180,55 @@ test('manager instance activity unread badges are row-scoped and registry-backed
     assert.equal(messageHook.includes('api/messages`'), false, 'message unread hook must not poll full message history');
     assert.ok(messageHook.includes('POLL_INTERVAL_MS = 5_000'), 'message unread hook must refresh without manual dashboard reload');
     assert.ok(messageHook.includes('previousId == null'), 'message unread hook must baseline existing messages without backfilling badges');
+});
+
+test('manager instance rows support custom labels and latest activity titles', () => {
+    const app = read('public/manager/src/App.tsx');
+    const list = read('public/manager/src/components/InstanceListContent.tsx');
+    const groups = read('public/manager/src/components/InstanceGroups.tsx');
+    const row = read('public/manager/src/components/InstanceRow.tsx');
+    const labelHook = read('public/manager/src/hooks/useInstanceLabelEditor.ts');
+    const messageHook = read('public/manager/src/hooks/useInstanceMessageEvents.ts');
+    const server = read('server.ts');
+    const db = read('src/core/db.ts');
+    const latestRoute = server.slice(
+        server.indexOf("app.get('/api/messages/latest'"),
+        server.indexOf("app.get('/api/runtime'"),
+    );
+
+    assert.ok(app.includes('useInstanceLabelEditor'), 'App must use a focused hook for custom label persistence');
+    assert.ok(app.includes('messageActivity.titlesByPort'), 'App must pass latest activity titles into the instance list');
+    assert.ok(app.includes('messageActivity.events'), 'App must keep message events in the unread derivation');
+    assert.ok(list.includes('latestTitleByPort'), 'InstanceListContent must accept latest title map');
+    assert.ok(list.includes('onInstanceLabelSave'), 'InstanceListContent must accept custom label save callback');
+    assert.ok(groups.includes('latestActivityTitle={props.latestTitleByPort?.[instance.port] || null}'), 'InstanceGroups must attach titles to matching ports');
+    assert.ok(groups.includes('onInstanceLabelSave={props.onInstanceLabelSave}'), 'InstanceGroups must forward label save callback');
+    assert.ok(row.includes('instance-label-edit-button'), 'InstanceRow must expose a rename affordance');
+    assert.ok(row.includes('instance-label-edit-form'), 'InstanceRow must render inline label edit form');
+    assert.ok(row.includes('props.instance.label || props.profile?.label || props.label'), 'explicit instance labels must override profile/generated labels');
+    assert.ok(row.includes('instance-row-activity-title'), 'InstanceRow must render a one-line latest activity title');
+    assert.ok(labelHook.includes("instances: { [String(port)]: { label: nextLabel } }"), 'label save must patch the registry instance entry');
+    assert.ok(labelHook.includes('label?.trim() || null'), 'blank label must clear to fallback');
+    assert.ok(messageHook.includes('InstanceMessageActivityState'), 'message hook must return both unread events and titles');
+    assert.ok(messageHook.includes('titlesByPort'), 'message hook must derive titles by port');
+    assert.ok(messageHook.includes('latestAssistantFromEnvelope'), 'message hook must preserve legacy assistant unread baseline');
+    assert.ok(latestRoute.includes("app.get('/api/messages/latest'"), 'backend must extend the existing latest endpoint');
+    assert.ok(latestRoute.includes('latestAssistant'), 'latest endpoint must preserve latest assistant field');
+    assert.ok(latestRoute.includes('activity:'), 'latest endpoint must include latest activity title payload');
+    assert.ok(db.includes('substr(content, 1, 240) AS excerpt'), 'latest activity query must fetch only a bounded content excerpt');
+    assert.equal(latestRoute.includes('getMessages.all()'), false, 'latest endpoint must not fetch full message history');
+});
+
+test('manager workbench modes remain instance-only while Notes renders outside Workbench', () => {
+    const app = read('public/manager/src/App.tsx');
+    const workbench = read('public/manager/src/components/Workbench.tsx');
+
+    assert.ok(app.includes('NotesWorkspace'), 'App must render the Notes workspace');
+    assert.ok(app.includes("view.sidebarMode === 'notes'"), 'Notes must be selected by workspace mode, not a Workbench tab');
+    assert.ok(workbench.includes("const MODES: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings']"), 'Workbench tabs must stay Overview/Preview/Logs/Settings only');
+    assert.equal(workbench.includes("'notes'"), false, 'Workbench must not add Notes as a detail tab');
+    assert.ok(app.includes('notesSelectedPath'), 'App must hydrate and persist selected note path');
+    assert.ok(app.includes('notesViewMode'), 'App must hydrate and persist Notes view mode');
 });
 
 test('manager process control panel exposes safe managed-process actions only', () => {
@@ -194,23 +284,28 @@ test('manager instance rows are selectable independently from preview availabili
 test('manager navigator does not exclude the selected instance from profile groups', () => {
     const app = read('public/manager/src/App.tsx');
     const navigator = read('public/manager/src/components/InstanceNavigator.tsx');
+    const list = read('public/manager/src/components/InstanceListContent.tsx');
 
     assert.equal(app.includes('renderInstanceListContent(true)'), false, 'selected instance must remain in the grouped list after removing duplicate active card');
     assert.equal(app.includes('filtered.filter(instance => instance.port !== selectedInstance.port)'), false, 'App must not remove selected instances from sidebar groups');
+    assert.ok(list.includes('[props.selectedInstance, ...props.filtered]'), 'extracted instance list must keep selected instances visible even when filters exclude them');
     assert.equal(navigator.includes('InstanceRow'), false, 'InstanceNavigator must not render a second selected instance card');
 });
 
-test('manager profile rows merge profile headers into the instance row', () => {
+test('manager profile rows keep Active/Running grouping while merging profile labels into rows', () => {
     const groups = read('public/manager/src/components/InstanceGroups.tsx');
     const row = read('public/manager/src/components/InstanceRow.tsx');
     const components = read('public/manager/src/manager-components.css');
     const compact = read('public/manager/src/manager-p0-1-1.css');
 
     assert.equal(groups.includes("import { ProfileSection }"), false, 'profile groups must not render a separate profile header card');
-    assert.ok(groups.includes('function sortProfiles'), 'profile groups must use a stable ordering helper');
-    assert.ok(groups.includes("profile.label === 'default'"), 'default profile must be ranked first');
     assert.ok(groups.includes('is-profile-merged'), 'profile instance groups must expose merged-row styling');
+    assert.ok(groups.includes("label: 'Active'"), 'profile merged sidebar must preserve the Active group header');
+    assert.ok(groups.includes("label: 'Running'"), 'profile merged sidebar must preserve the Running group header');
+    assert.equal(groups.includes('selected.forEach(instance => used.add(instance.port))'), false, 'selected active/running rows must remain in their original Running group');
+    assert.ok(groups.includes('profileMap.get(instance.profileId)'), 'profile context must be resolved per grouped instance row');
     assert.ok(groups.includes('profile={profile}'), 'profile context must be forwarded into the row');
+    assert.equal(groups.includes('No online instances for this profile.'), false, 'sidebar must not replace instance groups with profile-empty cards');
     assert.ok(row.includes('props.profile?.label'), 'instance row must use the profile label as the primary merged label');
     assert.equal(row.includes('instanceSecondaryLine'), false, 'instance row must not add path metadata under compact sidebar labels');
     assert.ok(row.includes('instance-row-transition'), 'instance row may still show transition state under the primary label');
@@ -229,7 +324,7 @@ test('manager frontend routes layout through responsive shell components', () =>
 
     assert.ok(app.includes('ManagerShell'), 'App must use ManagerShell after 10.5.2 extraction');
     assert.ok(app.includes('CommandBar'), 'App must render CommandBar');
-    assert.ok(app.includes('InstanceGroups'), 'App must render grouped instance list');
+    assert.ok(app.includes('InstanceListContent'), 'App must render grouped instance list through extracted content');
     assert.ok(app.includes('ActivityDock'), 'App must render ActivityDock');
     assert.ok(workbench.includes("'overview'"), 'workbench must expose Overview tab');
     assert.ok(workbench.includes("'preview'"), 'workbench must expose Preview tab');
@@ -270,6 +365,8 @@ test('manager frontend exposes 10.8 profile controls', () => {
     assert.ok(existsSync(join(projectRoot, 'public/manager/src/components/ProfileSection.tsx')), 'ProfileSection must exist');
     assert.ok(app.includes('activeProfileIds'), 'App must own active profile filter state');
     assert.ok(app.includes('activeProfileFilter'), 'App must persist active profile filters through registry');
+    assert.ok(app.includes('effectiveProfileIds'), 'App must ignore stale profile filters that are absent from the current scan');
+    assert.ok(app.includes('known.has(profileId)'), 'App must derive profile filtering from currently visible profile ids');
     assert.ok(groups.includes('is-profile-merged'), 'InstanceGroups must merge profile sections into instance rows');
     assert.ok(drawer.includes('drawer-profile-filters'), 'mobile drawer must mirror profile filters');
     assert.ok(main.includes('./manager-profiles.css'), 'profile styling must stay split from large CSS files');

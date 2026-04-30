@@ -37,6 +37,7 @@ test('store load returns empty entries when registry file is missing', async (t)
     assert.equal(result.schemaVersion, 1);
     assert.equal(result.managerPort, MGR);
     assert.deepEqual(result.entries, []);
+    assert.equal(result.source, 'missing');
 });
 
 test('store save writes atomically and load round-trips', async (t) => {
@@ -47,6 +48,7 @@ test('store save writes atomically and load round-trips', async (t) => {
     await store.save(entries);
 
     const reload = await new LifecycleStore({ managerPort: MGR, storageRoot: root }).load();
+    assert.equal(reload.source, 'current');
     assert.equal(reload.entries.length, 2);
     assert.equal(reload.entries[0]?.port, 3458);
     assert.equal(reload.entries[1]?.pid, 67890);
@@ -56,6 +58,7 @@ test('store load returns empty on schemaVersion mismatch', async (t) => {
     const root = tmpRoot();
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const store = new LifecycleStore({ managerPort: MGR, storageRoot: root });
+    assert.equal(store.path(), join(root, 'lifecycle', 'managers', String(MGR), 'dashboard-managed.json'));
     await store.save([makeEntry()]);
     writeFileSync(store.path(), JSON.stringify({ schemaVersion: 99, managerPort: MGR, entries: [makeEntry()] }));
     const result = await store.load();
@@ -80,6 +83,7 @@ test('store load returns empty on JSON parse error (no throw)', async (t) => {
     writeFileSync(store.path(), '{not valid json');
     const result = await store.load();
     assert.deepEqual(result.entries, []);
+    assert.equal(result.source, 'corrupt');
 });
 
 test('store writeMarker / readMarker round-trip', async (t) => {

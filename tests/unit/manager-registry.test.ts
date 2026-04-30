@@ -165,3 +165,16 @@ test('manager registry overlays scan results and hides hidden rows by default', 
     assert.deepEqual(withHidden.instances.map(instance => instance.port), [3457, 3458]);
     assert.equal(withHidden.instances[1]?.hidden, true);
 });
+
+test('manager registry clears blank instance labels back to fallback', () => {
+    const path = registryPath();
+    patchDashboardRegistry({
+        instances: { 3462: { label: 'dashboard qa' } },
+    }, { path });
+
+    const saved = patchDashboardRegistry({
+        instances: { 3462: { label: '' } },
+    }, { path });
+
+    assert.equal(saved.registry.instances['3462']?.label, null);
+});

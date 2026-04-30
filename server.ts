@@ -49,9 +49,10 @@ import {
     APP_VERSION,
 } from './src/core/config.js';
 import {
-    db, getSession, getMessages, getMessagesWithTrace, getLatestAssistantMessage, closeDb,
+    db, getSession, getMessages, getMessagesWithTrace, getLatestAssistantMessage, getLatestDashboardActivityMessage, closeDb,
     clearAllEmployeeSessions,
 } from './src/core/db.js';
+import { dashboardActivityTitleFromExcerpt } from './src/core/message-summary.js';
 import {
     initPromptFiles, regenerateB,
 } from './src/prompt/builder.js';
@@ -406,7 +407,23 @@ app.get('/api/messages', (req, res) => {
     ok(res, rows);
 });
 app.get('/api/messages/latest', (_req, res) => {
-    ok(res, getLatestAssistantMessage.get() || null);
+    const latestAssistant = getLatestAssistantMessage.get() || null;
+    const activityRow = getLatestDashboardActivityMessage.get() as {
+        id?: number;
+        role?: string;
+        excerpt?: string | null;
+        created_at?: string;
+    } | null;
+    const title = dashboardActivityTitleFromExcerpt(activityRow?.excerpt || null);
+    ok(res, {
+        latestAssistant,
+        activity: activityRow && title ? {
+            messageId: Number(activityRow.id),
+            role: String(activityRow.role || ''),
+            title,
+            updatedAt: String(activityRow.created_at || ''),
+        } : null,
+    });
 });
 app.get('/api/runtime', (_, res) => ok(res, getRuntimeSnapshot(), getRuntimeSnapshot()));
 

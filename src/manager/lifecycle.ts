@@ -61,7 +61,9 @@ export type DashboardLifecycleManagerOptions = {
     count: number;
     jawPath?: string;
     homeRoot?: string;
+    dashboardHome?: string;
     storageRoot?: string;
+    legacyStorageRoot?: string;
     spawnImpl?: typeof spawn;
     processVerify?: Partial<ProcessVerifyImpl>;
 };
@@ -88,7 +90,9 @@ export class DashboardLifecycleManager {
         this.verify = { ...defaultProcessVerify, ...(options.processVerify || {}) };
         this.store = new LifecycleStore({
             managerPort: options.managerPort,
+            dashboardHome: options.dashboardHome,
             storageRoot: options.storageRoot,
+            legacyStorageRoot: options.legacyStorageRoot,
         });
     }
 
@@ -149,7 +153,7 @@ export class DashboardLifecycleManager {
             survivors.push(entry);
             adopted += 1;
         }
-        if (pruned > 0) await this.store.save(survivors);
+        if (pruned > 0 || persisted.source === 'legacy') await this.store.save(survivors);
         return { adopted, pruned };
     }
 

@@ -154,7 +154,8 @@ test('manager dashboard shell has measured layout coverage at critical viewports
 test('manager preview iframe survives Workbench tab changes', async () => {
     const page = await pageForManager();
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.goto(MANAGER_URL, { waitUntil: 'domcontentloaded' });
+    await page.waitForSelector('.dashboard-shell.manager-shell');
     await selectFirstOnlineInstance(page);
 
     await page.getByRole('tab', { name: 'Preview' }).click();
@@ -205,4 +206,37 @@ test('manager preview iframe survives Workbench tab changes', async () => {
     assert.equal(after.hostHidden, false, 'preview host should show again on Preview tab');
     assert.equal(after.sameFrame, true, 'preview iframe must remain the same DOM node after returning');
     assert.equal(after.src, before.src, 'preview source should not change across tab-only navigation');
+});
+
+test('manager preview header toggles and refreshes the iframe', async () => {
+    const page = await pageForManager();
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await selectFirstOnlineInstance(page);
+
+    await page.getByRole('tab', { name: 'Preview' }).click();
+    await page.waitForSelector('iframe.preview-frame', { timeout: 5000 });
+    await page.getByRole('switch', { name: /Preview on/i }).click();
+    await page.waitForSelector('iframe.preview-frame', { state: 'detached' });
+    await page.getByRole('switch', { name: /Preview off/i }).click();
+    await page.waitForSelector('iframe.preview-frame', { timeout: 5000 });
+
+    const beforeRefresh = await page.evaluate(() => {
+        const frame = document.querySelector('iframe.preview-frame');
+        (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame = frame;
+        return frame?.getAttribute('src') || null;
+    });
+
+    await page.locator('.preview-refresh-button').click();
+    await page.waitForFunction(() => {
+        const frame = document.querySelector('iframe.preview-frame');
+        return Boolean(frame && frame !== (window as Window & { __jawPreviewFrame?: Element | null }).__jawPreviewFrame);
+    });
+
+    const afterRefresh = await page.evaluate(() => {
+        const frame = document.querySelector('iframe.preview-frame');
+        return frame?.getAttribute('src') || null;
+    });
+
+    assert.equal(afterRefresh, beforeRefresh, 'refresh must reload the existing preview URL without changing target');
 });

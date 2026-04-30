@@ -8,14 +8,26 @@ const WEB_AI_COMMANDS = new Set(['render', 'status', 'send', 'poll', 'query', 'w
 
 function rejectFutureWebAiFlags(values: Record<string, unknown>): void {
     const vendor = values.vendor ?? 'chatgpt';
-    if (vendor !== 'chatgpt' && vendor !== 'gemini') throw new Error(`unsupported vendor: ${vendor}`);
-    if (values.model && vendor !== 'chatgpt') throw new Error('--model is currently supported only for --vendor chatgpt.');
-    if (values.model && !isSupportedChatGptModel(values.model)) throw new Error(`unsupported ChatGPT model selection: ${values.model}`);
+    if (vendor !== 'chatgpt' && vendor !== 'gemini' && vendor !== 'grok') throw new Error(`unsupported vendor: ${vendor}`);
+    if (values.model && !isSupportedWebAiModel(vendor, values.model)) throw new Error(`unsupported ${webAiVendorLabel(vendor)} model selection: ${values.model}`);
 }
 
-function isSupportedChatGptModel(model: unknown): boolean {
-    return new Set(['instant', 'fast', 'gpt-5-3', 'gpt-5.3', 'thinking', 'think', 'gpt-5-5-thinking', 'gpt-5.5-thinking', 'pro', 'gpt-5-5-pro', 'gpt-5.5-pro'])
-        .has(String(model || '').trim().toLowerCase());
+function isSupportedWebAiModel(vendor: unknown, model: unknown): boolean {
+    const key = String(model || '').trim().toLowerCase();
+    const byVendor: Record<string, Set<string>> = {
+        chatgpt: new Set(['instant', 'fast', 'gpt-5-3', 'gpt-5.3', 'thinking', 'think', 'gpt-5-5-thinking', 'gpt-5.5-thinking', 'pro', 'gpt-5-5-pro', 'gpt-5.5-pro']),
+        gemini: new Set(['fast', 'flash', 'gemini-fast', 'thinking', 'think', 'gemini-thinking', 'pro', 'gemini-pro', '3.1-pro']),
+        grok: new Set(['auto', 'automatic', 'fast', 'quick', 'expert', 'thinking', 'think', 'grok-4.3', 'grok43', 'grok-43', 'beta', 'heavy']),
+    };
+    return Boolean(byVendor[String(vendor || 'chatgpt')]?.has(key));
+}
+
+function webAiVendorLabel(vendor: unknown): string {
+    const key = String(vendor || 'chatgpt');
+    if (key === 'chatgpt') return 'ChatGPT';
+    if (key === 'gemini') return 'Gemini';
+    if (key === 'grok') return 'Grok';
+    return key;
 }
 
 export async function runWebAiCommand(
