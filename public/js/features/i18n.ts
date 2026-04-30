@@ -3,6 +3,8 @@
 
 type LocaleDict = Record<string, string>;
 
+const SUPPORTED_LOCALES = ['en', 'ko', 'zh', 'ja'];
+
 let currentLocale = 'ko';
 let dict: LocaleDict = {};
 let fallbackDict: LocaleDict = {};
@@ -16,7 +18,7 @@ export async function initI18n(): Promise<void> {
 
     if (!saved) {
         const browserLang = (navigator.language || 'ko').split(/[-_]/)[0].toLowerCase();
-        saved = ['en', 'ko'].includes(browserLang) ? browserLang : 'ko';
+        saved = SUPPORTED_LOCALES.includes(browserLang) ? browserLang : 'ko';
     }
 
     fallbackDict = await fetchLocale('ko');
@@ -26,6 +28,7 @@ export async function initI18n(): Promise<void> {
         dict = await fetchLocale(saved);
     }
     currentLocale = saved;
+    document.documentElement.lang = currentLocale;
     applyI18n();
 }
 
@@ -78,12 +81,14 @@ export function applyI18n(): void {
  */
 export async function setLang(lang: string): Promise<void> {
     if (lang === currentLocale) return;
+    if (!SUPPORTED_LOCALES.includes(lang)) lang = 'ko';
     if (lang === 'ko') {
         dict = fallbackDict;
     } else {
         dict = await fetchLocale(lang);
     }
     currentLocale = lang;
+    document.documentElement.lang = currentLocale;
     try { localStorage.setItem('claw_locale', lang); } catch { /* Safari private */ }
     applyI18n();
 

@@ -13,6 +13,7 @@ import type { DashboardPutNoteRequest } from '../types.js';
 import { type NotePathError, notePathError } from './path-guards.js';
 import { NotesStore } from './store.js';
 import { NotesTrash } from './trash.js';
+import type { DashboardTrashNoteKind } from '../types.js';
 
 export type DashboardNotesRouterOptions = {
     managerPort: number;
@@ -64,6 +65,12 @@ function optionalString(value: unknown): string | undefined {
 function requireString(value: unknown, code: string, message: string): string {
     if (typeof value !== 'string') throw notePathError(400, code, message);
     return value;
+}
+
+function optionalTrashKind(value: unknown): DashboardTrashNoteKind {
+    if (value === undefined || value === null || value === '') return 'file';
+    if (value === 'file' || value === 'folder') return value;
+    throw notePathError(400, 'invalid_note_trash_kind', 'trash kind must be file or folder');
 }
 
 export function createNotesJsonErrorHandler(): ErrorRequestHandler {
@@ -172,7 +179,8 @@ export function createDashboardNotesRouter(options: DashboardNotesRouterOptions)
     router.post('/trash', asyncRoute(async (req, res) => {
         const body = bodyObject(req);
         const path = requireString(body.path, 'invalid_note_path', 'path is required');
-        res.json(await trash.trashFile(store.rootPath(), path));
+        const kind = optionalTrashKind(body.kind);
+        res.json(await trash.trashPath(store.rootPath(), path, kind));
     }));
 
     return router;

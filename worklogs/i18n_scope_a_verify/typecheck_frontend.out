@@ -1,0 +1,4 @@
+
+> cli-jaw@1.7.37-preview.20260427171130 typecheck:frontend
+> tsc --noEmit -p tsconfig.frontend.json
+

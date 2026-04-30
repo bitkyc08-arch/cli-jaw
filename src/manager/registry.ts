@@ -19,6 +19,7 @@ import type {
     DashboardRegistryUi,
     DashboardScanResult,
     DashboardSidebarMode,
+    DashboardNotesAuthoringMode,
     DashboardNotesViewMode,
     DashboardUiTheme,
     DashboardLocale,
@@ -33,9 +34,10 @@ const MAX_NOTES_TREE_WIDTH = 420;
 const DEFAULT_NOTES_TREE_WIDTH = 280;
 const DETAIL_TABS: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings'];
 const UI_THEMES: DashboardUiTheme[] = ['auto', 'dark', 'light'];
-const LOCALES: DashboardLocale[] = ['ko', 'en'];
+const LOCALES: DashboardLocale[] = ['ko', 'en', 'zh', 'ja'];
 const SIDEBAR_MODES: DashboardSidebarMode[] = ['instances', 'notes', 'settings'];
 const NOTES_VIEW_MODES: DashboardNotesViewMode[] = ['raw', 'split', 'preview', 'settings'];
+const NOTES_AUTHORING_MODES: DashboardNotesAuthoringMode[] = ['plain', 'rich'];
 
 export type DashboardRegistryLoadResult = {
     registry: DashboardRegistry;
@@ -120,6 +122,7 @@ function defaultUi(): DashboardRegistryUi {
         sidebarMode: 'instances',
         notesSelectedPath: null,
         notesViewMode: 'split',
+        notesAuthoringMode: 'plain',
         notesWordWrap: true,
         notesTreeWidth: DEFAULT_NOTES_TREE_WIDTH,
         showLatestActivityTitles: true,
@@ -157,6 +160,9 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
     const notesViewMode = NOTES_VIEW_MODES.includes(input.notesViewMode as DashboardNotesViewMode)
         ? input.notesViewMode as DashboardNotesViewMode
         : fallback.notesViewMode;
+    const notesAuthoringMode = NOTES_AUTHORING_MODES.includes(input.notesAuthoringMode as DashboardNotesAuthoringMode)
+        ? input.notesAuthoringMode as DashboardNotesAuthoringMode
+        : fallback.notesAuthoringMode;
     return {
         selectedPort,
         selectedTab,
@@ -174,6 +180,7 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
             ? input.notesSelectedPath.trim()
             : null,
         notesViewMode,
+        notesAuthoringMode,
         notesWordWrap: typeof input.notesWordWrap === 'boolean' ? input.notesWordWrap : fallback.notesWordWrap,
         notesTreeWidth: clampInt(input.notesTreeWidth, fallback.notesTreeWidth, MIN_NOTES_TREE_WIDTH, MAX_NOTES_TREE_WIDTH),
         showLatestActivityTitles: typeof input.showLatestActivityTitles === 'boolean' ? input.showLatestActivityTitles : fallback.showLatestActivityTitles,

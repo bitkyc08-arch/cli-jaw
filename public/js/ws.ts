@@ -458,7 +458,7 @@ export function connect(): void {
         console.log('[ws] disconnected, reconnecting in 2s...');
         import('./ui.js').then(m => m.cleanupToolActivity());
         setStatus('idle');
-        addSystemMsg(`${ICONS.exec} 연결 끊김 — 재연결 중...`, 'tool-activity');
+        addSystemMsg(`${ICONS.exec} ${t('ws.disconnected')}`, 'tool-activity');
         setTimeout(connect, 2000);
     };
 }

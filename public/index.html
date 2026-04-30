@@ -130,11 +130,19 @@
             <button class="sidebar-hb-btn" id="btnClearChat">/clear</button>
             <button class="sidebar-hb-btn" id="hbSidebarBtn"><span data-icon="heartPulse"></span> Heartbeat (0)</button>
             <div class="sidebar-action-row">
-                <button class="sidebar-hb-btn" data-action="openTemplates"><span data-icon="plan"></span> 프롬프트 템플릿</button>
+                <button class="sidebar-hb-btn" data-action="openTemplates"><span data-icon="plan"></span> <span data-i18n="sidebar.promptTemplates">프롬프트 템플릿</span></button>
                 <button class="help-trigger" type="button" data-help-topic="promptTemplates"
                     data-i18n-aria="help.promptTemplates.aria" aria-label="프롬프트 템플릿 도움말">?</button>
             </div>
-            <button class="sidebar-hb-btn" id="langToggle" title="한국어 ⇄ English"><span data-icon="web"></span> 한국어</button>
+            <div class="sidebar-lang-row">
+                <span class="sidebar-lang-icon" data-icon="web" aria-hidden="true"></span>
+                <select class="sidebar-hb-btn sidebar-lang-select" id="langSelect" title="Language" aria-label="Language">
+                    <option value="ko">한국어</option>
+                    <option value="en">English</option>
+                    <option value="zh">中文</option>
+                    <option value="ja">日本語</option>
+                </select>
+            </div>
         </div>
     </nav>
 
@@ -750,6 +758,8 @@
                         class="select-sm">
                         <option value="en">English</option>
                         <option value="ko">한국어</option>
+                        <option value="zh">中文</option>
+                        <option value="ja">日本語</option>
                         <option value="auto">Auto</option>
                     </select>
                 </div>
@@ -825,7 +835,7 @@
     <div class="modal-overlay" id="templateModal" role="dialog" aria-modal="true" aria-label="Prompt templates">
         <div class="modal-box modal-template" >
             <div class="modal-header">
-                <span id="templateModalTitle"><span data-icon="plan"></span> 프롬프트 구조</span>
+                <span id="templateModalTitle"><span data-icon="plan"></span> <span data-i18n="templates.title">프롬프트 구조</span></span>
                 <button data-action="closeTemplate"
                     class="btn-modal-close" aria-label="Close">✕</button>
             </div>
@@ -833,7 +843,7 @@
             <div id="templateTreeView" class="template-tree-area">
                 <div id="templateTree"></div>
                 <div class="template-hint">
-                    <span data-icon="lock"></span> 클릭하면 프롬프트 내용 확인 · <span data-icon="warning"></span> 개발자 모드에서 편집
+                    <span data-icon="lock"></span> <span data-i18n="templates.hint.click">클릭하면 프롬프트 내용 확인</span> · <span data-icon="warning"></span> <span data-i18n="templates.hint.devEdit">개발자 모드에서 편집</span>
                 </div>
             </div>
             <!-- View 2: Editor (hidden by default) -->
@@ -842,18 +852,18 @@
                     class="template-editor-bar">
                     <button id="templateBack"
                         class="btn-back">←
-                        뒤로</button>
+                        <span data-i18n="templates.back">뒤로</span></button>
                     <span id="templateEditorLabel" class="flex-1 text-sm text-dim"></span>
                     <button id="templateDevToggle"
                         class="btn-dev-toggle"><span data-icon="tool"></span>
-                        개발자 모드</button>
+                        <span data-i18n="templates.devMode">개발자 모드</span></button>
                 </div>
                 <textarea class="modal-textarea template-textarea" id="templateEditor" readonly
                     ></textarea>
                 <div class="modal-footer">
                     <span id="templateVars" class="text-xs text-dim mr-auto"></span>
                     <button class="btn-save" data-action="saveTemplate" style="display:none" id="templateSaveBtn"><span data-icon="save"></span>
-                        저장</button>
+                        <span data-i18n="btn.save">저장</span></button>
                 </div>
             </div>
         </div>

@@ -3,6 +3,7 @@ import { escapeHtml } from '../render.js';
 import { api, apiJson } from '../api.js';
 import { ICONS } from '../icons.js';
 import { t } from '../locale.js';
+import { t as i18n } from './i18n.js';
 
 interface MemoryFile {
     name: string;
@@ -85,7 +86,7 @@ function syncSidebarBadge(status: AdvancedMemoryStatus | null, basicCount: numbe
         return;
     }
     if (status?.enabled && status?.hasSoul && !status?.soulSynthesized) {
-        sideBtn.innerHTML = `${ICONS.brain} Memory · <span style="color:var(--accent)">Soul 최적화</span>`;
+        sideBtn.innerHTML = `${ICONS.brain} Memory · <span style="color:var(--accent)">${i18n('memory.banner.soulOptimize')}</span>`;
         return;
     }
     const state = status?.indexState === 'ready'
@@ -112,7 +113,7 @@ function renderStatusBanner(status: AdvancedMemoryStatus | null) {
     }
     if (status.hasSoul && !status.soulSynthesized) {
         banner.innerHTML = `<span>Soul identity can be personalized with your active CLI.</span>
-            <button id="advSynthesizeSoulBtn" class="btn-sm" style="margin-left:8px">Soul 최적화</button>`;
+            <button id="advSynthesizeSoulBtn" class="btn-sm" style="margin-left:8px">${i18n('memory.banner.soulOptimize')}</button>`;
         return;
     }
     if (status.state === 'not_initialized') {
@@ -325,7 +326,7 @@ export async function initializeAdvancedMemory(): Promise<void> {
 
 export async function rerunAdvancedBootstrap(): Promise<void> {
     setAdvBusy(true);
-    setAdvBanner('메모리 bootstrap을 다시 실행하는 중...', true);
+    setAdvBanner(i18n('memory.banner.bootstrapRerun'), true);
     const result = await apiJson<{ message?: string }>('/api/memory/bootstrap', 'POST', getBootstrapOptions());
     setAdvBusy(false);
     if (result?.message) alert(result.message);
@@ -356,7 +357,7 @@ export async function upgradeSoulMemory(): Promise<void> {
 
 export async function synthesizeSoul(): Promise<void> {
     setAdvBusy(true);
-    setAdvBanner('Soul 최적화 중... (활성 CLI가 작업합니다)', true);
+    setAdvBanner(i18n('memory.banner.soulOptimizing'), true);
     const result = await apiJson<{
         ok: boolean;
         reason?: string;
@@ -372,7 +373,7 @@ export async function synthesizeSoul(): Promise<void> {
         setAdvBanner(msg);
         return;
     }
-    setAdvBanner('✓ Soul 최적화 프롬프트 전송됨. 채팅창을 확인하세요.');
+    setAdvBanner(i18n('memory.banner.soulPromptSent'));
     await openMemoryModal();
     switchMemTab('status');
     const freshStatus = await api<any>('/api/memory/status');
@@ -382,7 +383,7 @@ export async function synthesizeSoul(): Promise<void> {
 
 export async function reindexAdvancedMemory(): Promise<void> {
     setAdvBusy(true);
-    setAdvBanner('메모리 인덱스를 재생성하는 중...', true);
+    setAdvBanner(i18n('memory.banner.reindexing'), true);
     const result = await apiJson<{ message?: string }>('/api/memory/reindex', 'POST', {});
     setAdvBusy(false);
     if (result?.message) alert(result.message);

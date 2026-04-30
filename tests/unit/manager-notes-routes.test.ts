@@ -114,7 +114,71 @@ test('notes routes create, read, update, tree, rename, and trash markdown files'
         });
         assert.equal(trashed.status, 200);
         const trashBody = await readJson(trashed);
+        assert.equal(trashBody.kind, 'file');
         assert.equal(trashBody.deletedTo, 'dashboard-trash');
+    });
+});
+
+test('notes routes trash folders with explicit kind', async (t) => {
+    await withNotesServer(t, async (baseUrl) => {
+        const folder = await fetch(`${baseUrl}/api/dashboard/notes/folder`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: 'daily' }),
+        });
+        assert.equal(folder.status, 201);
+
+        const created = await fetch(`${baseUrl}/api/dashboard/notes/file`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: 'daily/today.md', content: '# Today' }),
+        });
+        assert.equal(created.status, 201);
+
+        const trashed = await fetch(`${baseUrl}/api/dashboard/notes/trash`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: 'daily', kind: 'folder' }),
+        });
+
+        assert.equal(trashed.status, 200);
+        const body = await readJson(trashed);
+        assert.equal(body.kind, 'folder');
+        assert.equal(body.deletedTo, 'dashboard-trash');
+        assert.equal(typeof body.restoreHint, 'string');
+    });
+});
+
+test('notes trash route rejects invalid trash kind', async (t) => {
+    await withNotesServer(t, async (baseUrl) => {
+        const response = await fetch(`${baseUrl}/api/dashboard/notes/trash`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: 'note.md', kind: 'directory' }),
+        });
+        assert.equal(response.status, 400);
+        const body = await readJson(response);
+        assert.equal(body.code, 'invalid_note_trash_kind');
+    });
+});
+
+test('notes trash route rejects invalid folder trash paths', async (t) => {
+    await withNotesServer(t, async (baseUrl) => {
+        const traversal = await fetch(`${baseUrl}/api/dashboard/notes/trash`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: '../outside', kind: 'folder' }),
+        });
+        assert.equal(traversal.status, 400);
+        assert.equal((await readJson(traversal)).code, 'invalid_note_path');
+
+        const fileShapedFolder = await fetch(`${baseUrl}/api/dashboard/notes/trash`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ path: 'note.md', kind: 'folder' }),
+        });
+        assert.equal(fileShapedFolder.status, 400);
+        assert.equal((await readJson(fileShapedFolder)).code, 'invalid_note_folder_path');
     });
 });
 

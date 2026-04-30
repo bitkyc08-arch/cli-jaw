@@ -11,9 +11,10 @@ export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 export type DashboardUiTheme = 'auto' | 'dark' | 'light';
-export type DashboardLocale = 'ko' | 'en';
+export type DashboardLocale = 'ko' | 'en' | 'zh' | 'ja';
 export type DashboardSidebarMode = 'instances' | 'notes' | 'settings';
 export type DashboardNotesViewMode = 'raw' | 'split' | 'preview' | 'settings';
+export type DashboardNotesAuthoringMode = 'plain' | 'rich';
 export type DashboardProfileId = string;
 
 export type DashboardProxyInfo = {
@@ -167,6 +168,7 @@ export type DashboardRegistryUi = {
     sidebarMode: DashboardSidebarMode;
     notesSelectedPath: string | null;
     notesViewMode: DashboardNotesViewMode;
+    notesAuthoringMode: DashboardNotesAuthoringMode;
     notesWordWrap: boolean;
     notesTreeWidth: number;
     showLatestActivityTitles: boolean;
@@ -232,8 +234,11 @@ export type DashboardPutNoteRequest = {
     baseRevision?: string;
 };
 
+export type DashboardTrashNoteKind = 'file' | 'folder';
+
 export type DashboardTrashNoteResponse = {
     path: string;
+    kind: DashboardTrashNoteKind;
     deletedTo: 'os-trash' | 'dashboard-trash';
     restoreHint?: string;
 };

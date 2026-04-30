@@ -220,6 +220,42 @@
     box-shadow: 0 0 0 1px var(--accent);
 }
 
+.sidebar-lang-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+}
+
+.sidebar-lang-row .sidebar-lang-icon {
+    position: absolute;
+    left: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    pointer-events: none;
+    color: var(--text);
+    display: inline-flex;
+    align-items: center;
+}
+
+.sidebar-lang-select {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-left: 26px;
+    padding-right: 22px;
+    background-image: linear-gradient(45deg, transparent 50%, var(--text-dim) 50%),
+        linear-gradient(135deg, var(--text-dim) 50%, transparent 50%);
+    background-position: calc(100% - 12px) 50%, calc(100% - 8px) 50%;
+    background-size: 4px 4px, 4px 4px;
+    background-repeat: no-repeat;
+}
+
+.sidebar-lang-select:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px var(--accent);
+}
+
 /* ── Sidebar Collapse ── */
 .sidebar-toggle {
     background: none;

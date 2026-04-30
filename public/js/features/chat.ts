@@ -358,7 +358,7 @@ export async function sendVoiceToServer(blob: Blob, ext: string, mime: string): 
     const pendingFiles = [...state.attachedFiles];
 
     // Build user-facing display message
-    const displayParts: string[] = ['🎤 [음성 메시지]'];
+    const displayParts: string[] = [t('chat.voice.label')];
     if (pendingFiles.length) displayParts.push(`📎 [${pendingFiles.map(f => f.name).join(', ')}]`);
     if (pendingText) displayParts.push(pendingText);
     addMessage('user', displayParts.join(' '));

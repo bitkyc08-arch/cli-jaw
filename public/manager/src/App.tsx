@@ -37,6 +37,7 @@ import type {
     DashboardInstance,
     DashboardInstanceStatus,
     DashboardLifecycleAction,
+    DashboardNotesAuthoringMode,
     DashboardNotesViewMode,
     DashboardProfile,
     DashboardScanResult,
@@ -138,6 +139,10 @@ export function App() {
         window.open(selectedInstance.url, '_blank', 'noopener,noreferrer');
     }
 
+    useEffect(() => {
+        document.documentElement.lang = view.locale;
+    }, [view.locale]);
+
     async function load(nextShowHidden = showHidden): Promise<void> {
         setLoading(true);
         setError(null);
@@ -175,6 +180,7 @@ export function App() {
                 view.setSidebarMode(ui.sidebarMode);
                 view.setNotesSelectedPath(ui.notesSelectedPath);
                 view.setNotesViewMode(ui.notesViewMode);
+                view.setNotesAuthoringMode(ui.notesAuthoringMode ?? 'plain');
                 view.setNotesWordWrap(ui.notesWordWrap);
                 view.setNotesTreeWidth(ui.notesTreeWidth);
                 view.setShowLatestActivityTitles(ui.showLatestActivityTitles);
@@ -288,6 +294,10 @@ export function App() {
 
     function handleNotesViewModeChange(mode: DashboardNotesViewMode): void {
         view.setNotesViewMode(mode); void saveUi({ notesViewMode: mode });
+    }
+
+    function handleNotesAuthoringModeChange(mode: DashboardNotesAuthoringMode): void {
+        view.setNotesAuthoringMode(mode); void saveUi({ notesAuthoringMode: mode });
     }
 
     function handleNotesWordWrapChange(value: boolean): void {
@@ -453,7 +463,7 @@ export function App() {
                                         )} logs={detailContent('logs')} settings={detailContent('settings')} />
                                     </WorkspaceSurface>
                                     <WorkspaceSurface active={view.sidebarMode === 'notes'}>
-                                        <NotesWorkspace active={view.sidebarMode === 'notes'} selectedPath={view.notesSelectedPath} viewMode={view.notesViewMode} wordWrap={view.notesWordWrap} treeWidth={view.notesTreeWidth} onSelectedPathChange={handleNotesSelectedPathChange} onDirtyPathChange={setNotesDirtyPath} onViewModeChange={handleNotesViewModeChange} onWordWrapChange={handleNotesWordWrapChange} onTreeWidthChange={handleNotesTreeWidthChange} />
+                                        <NotesWorkspace active={view.sidebarMode === 'notes'} selectedPath={view.notesSelectedPath} viewMode={view.notesViewMode} authoringMode={view.notesAuthoringMode} wordWrap={view.notesWordWrap} treeWidth={view.notesTreeWidth} onSelectedPathChange={handleNotesSelectedPathChange} onDirtyPathChange={setNotesDirtyPath} onViewModeChange={handleNotesViewModeChange} onAuthoringModeChange={handleNotesAuthoringModeChange} onWordWrapChange={handleNotesWordWrapChange} onTreeWidthChange={handleNotesTreeWidthChange} />
                                     </WorkspaceSurface>
                                     <WorkspaceSurface active={view.sidebarMode === 'settings'}>
                                         <DashboardSettingsWorkspace activeSection={dashboardSettingsSection} ui={dashboardSettingsUi} titleSupport={titleSupport} onUiPatch={handleDashboardSettingsPatch} />

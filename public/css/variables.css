@@ -23,8 +23,8 @@
     --delete-color: var(--error);
     --code-label-color: oklch(66% 0.01 250);
     --modal-bg: oklch(0% 0 0 / 0.6);
-    --font-display: 'Chakra Petch', 'Outfit', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
-    --font-ui: 'Outfit', 'Pretendard', 'Apple SD Gothic Neo', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
+    --font-display: 'Chakra Petch', 'Outfit', 'Pretendard', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', system-ui, sans-serif;
+    --font-ui: 'Outfit', 'Pretendard', 'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans KR', 'Apple SD Gothic Neo', 'Malgun Gothic', -apple-system, system-ui, sans-serif;
     --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', monospace;
     --sidebar-left-w: 220px;
     --sidebar-right-w: 260px;
@@ -107,6 +107,11 @@ body {
     grid-template-columns: var(--sidebar-left-w) 1fr var(--sidebar-right-w);
     transition: grid-template-columns 0.2s cubic-bezier(0.4, 0, 0.2, 1);
     will-change: grid-template-columns;
+}
+
+:lang(zh),
+:lang(ja) {
+    letter-spacing: 0;
 }
 
 body.left-collapsed {

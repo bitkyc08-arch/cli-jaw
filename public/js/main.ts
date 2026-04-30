@@ -81,7 +81,7 @@ import { initTheme } from './features/theme.js';
 import { initGestures } from './features/gesture.js';
 import { initI18n, setLang, getLang, t } from './features/i18n.js';
 import { toggleRecording, cancelRecording } from './features/voice-recorder.js';
-import { ICONS, hydrateIcons } from './icons.js';
+import { hydrateIcons } from './icons.js';
 import { hydrateProviderIcons } from './provider-icons.js';
 import { initPendingQueue } from './features/pending-queue.js';
 import { initAttentionBadge } from './features/attention-badge.js';
@@ -125,12 +125,11 @@ document.getElementById('memorySidebarBtn')?.addEventListener('click', openMemor
 document.getElementById('btnClearChat')?.addEventListener('click', clearChat);
 document.getElementById('hbSidebarBtn')?.addEventListener('click', openHeartbeatModal);
 
-// Language toggle
-document.getElementById('langToggle')?.addEventListener('click', async () => {
-    const next = getLang() === 'ko' ? 'en' : 'ko';
+// Language dropdown
+document.getElementById('langSelect')?.addEventListener('change', async (e) => {
+    const next = (e.target as HTMLSelectElement).value;
+    if (!['ko', 'en', 'zh', 'ja'].includes(next)) return;
     await setLang(next);
-    const btn = document.getElementById('langToggle');
-    if (btn) btn.innerHTML = `${ICONS.web} ${t('lang.' + next)}`;
     // Reconnect WS with new locale
     if (state.ws) { state.ws.close(); }
 });
@@ -451,8 +450,8 @@ async function bootstrap(): Promise<void> {
     hydrateProviderIcons();
     initTheme();
     await initI18n();
-    const langBtn = document.getElementById('langToggle');
-    if (langBtn) langBtn.innerHTML = `${ICONS.web} ${t('lang.' + getLang())}`;
+    const langSel = document.getElementById('langSelect') as HTMLSelectElement | null;
+    if (langSel) langSel.value = getLang();
     await loadCliRegistry();
     bindPerCliControlEvents();
     initHelpDialog();

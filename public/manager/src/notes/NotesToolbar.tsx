@@ -1,19 +1,22 @@
-import type { NotesViewMode } from './notes-types';
+import type { NotesAuthoringMode, NotesViewMode } from './notes-types';
 import { canSaveNote, noteDisplayName } from './note-revisions';
 
 type NotesToolbarProps = {
     selectedPath: string | null;
     viewMode: NotesViewMode;
+    authoringMode: NotesAuthoringMode;
     dirty: boolean;
     saving: boolean;
     loading: boolean;
     conflict: boolean;
     onViewModeChange: (mode: NotesViewMode) => void;
+    onAuthoringModeChange: (mode: NotesAuthoringMode) => void;
     onSave: () => void;
     onReload: () => void;
 };
 
 const VIEW_MODES: NotesViewMode[] = ['raw', 'split', 'preview', 'settings'];
+const AUTHORING_MODES: NotesAuthoringMode[] = ['plain', 'rich'];
 
 export function NotesToolbar(props: NotesToolbarProps) {
     return (
@@ -34,6 +37,20 @@ export function NotesToolbar(props: NotesToolbarProps) {
                             onClick={() => props.onViewModeChange(mode)}
                         >
                             {mode[0].toUpperCase() + mode.slice(1)}
+                        </button>
+                    ))}
+                </div>
+                <div className="notes-authoring-toggle" role="group" aria-label="Notes authoring mode">
+                    {AUTHORING_MODES.map(mode => (
+                        <button
+                            key={mode}
+                            type="button"
+                            aria-pressed={props.authoringMode === mode}
+                            className={props.authoringMode === mode ? 'is-active' : ''}
+                            disabled={!props.selectedPath}
+                            onClick={() => props.onAuthoringModeChange(mode)}
+                        >
+                            {mode === 'plain' ? 'Plain' : 'Rich'}
                         </button>
                     ))}
                 </div>

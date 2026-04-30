@@ -1,0 +1,36 @@
+✔ t(): returns key as fallback when no locales loaded (0.395625ms)
+✔ t(): loadLocales loads ko and en (1.461458ms)
+✔ t(): returns Korean string for ko locale (0.038125ms)
+✔ t(): returns English string for en locale (0.031834ms)
+✔ t(): parameter interpolation works (0.045208ms)
+✔ t(): multiple occurrences of same param are replaced (0.0345ms)
+✔ t(): falls back to ko when unknown locale requested (0.031417ms)
+✔ t(): falls back to key itself when key not found (0.031792ms)
+✔ locale JSON: ko.json and en.json have same keys (0.751292ms)
+✔ locale JSON: no empty values in ko.json (0.335583ms)
+✔ locale JSON: no empty values in en.json (0.22125ms)
+✔ COMMANDS: every command with descKey has matching locale key (0.827542ms)
+✔ COMMANDS: every command still has desc string (fallback) (0.041041ms)
+✔ ROLE_PRESETS: every labelKey has matching locale entry (0.265917ms)
+✔ ROLE_PRESETS: research preset removed (dispatch unified) (0.024875ms)
+✔ getPromptLocale: returns ko for non-existent file (0.085458ms)
+✔ getPromptLocale: parses Language: Korean → ko (0.293542ms)
+✔ getPromptLocale: parses Language: English → en (0.173459ms)
+✔ getPromptLocale: parses Language: 한국어 → ko (0.183167ms)
+✔ getPromptLocale: unknown language falls back to ko (0.136416ms)
+✔ getPromptLocale: no Language field falls back to ko (0.197667ms)
+✔ locale files: ko.json has at least 100 keys (0.258583ms)
+✔ locale files: en.json has at least 100 keys (0.164667ms)
+✔ normalizeLocale: en-US → en (0.067ms)
+✔ normalizeLocale: ko-KR → ko (0.021083ms)
+✔ normalizeLocale: EN (uppercase) → en (0.020417ms)
+✔ normalizeLocale: unsupported locale → default ko (0.017916ms)
+✔ normalizeLocale: null/undefined → default ko (0.018583ms)
+ℹ tests 28
+ℹ suites 0
+ℹ pass 28
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 141.573417

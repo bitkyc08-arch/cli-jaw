@@ -9,6 +9,7 @@ import type {
     DashboardRegistryLoadResult,
     DashboardRegistryPatch,
     DashboardScanResult,
+    DashboardTrashNoteKind,
     DashboardTrashNoteResponse,
     HealthEvent,
     InstanceLogSnapshot,
@@ -186,11 +187,14 @@ export async function renameNotePath(from: string, to: string): Promise<{ from: 
     return await parseNotesResponse<{ from: string; to: string }>(response, `note rename failed: ${response.status}`);
 }
 
-export async function trashNotePath(path: string): Promise<DashboardTrashNoteResponse> {
+export async function trashNotePath(
+    path: string,
+    kind: DashboardTrashNoteKind = 'file',
+): Promise<DashboardTrashNoteResponse> {
     const response = await fetch('/api/dashboard/notes/trash', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ path }),
+        body: JSON.stringify({ path, kind }),
     });
     return await parseNotesResponse<DashboardTrashNoteResponse>(response, `note trash failed: ${response.status}`);
 }

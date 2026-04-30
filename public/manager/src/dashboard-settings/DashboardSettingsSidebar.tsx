@@ -27,6 +27,24 @@ const COPY = {
             activity: { label: 'Preview & activity', hint: 'Title source and defaults' },
         },
     },
+    zh: {
+        navLabel: '仪表盘设置分区',
+        eyebrow: '仪表盘',
+        title: '设置',
+        sections: {
+            display: { label: '侧边栏列表', hint: '密度与行内控件' },
+            activity: { label: '预览与活动', hint: '标题来源与默认值' },
+        },
+    },
+    ja: {
+        navLabel: 'ダッシュボード設定セクション',
+        eyebrow: 'ダッシュボード',
+        title: '設定',
+        sections: {
+            display: { label: 'サイドバーの行', hint: '密度と行内コントロール' },
+            activity: { label: 'プレビューとアクティビティ', hint: 'タイトルの取得元と既定値' },
+        },
+    },
 } as const;
 
 const SECTION_IDS: DashboardSettingsSection[] = ['display', 'activity'];

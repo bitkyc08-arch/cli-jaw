@@ -20,6 +20,7 @@ export function dashboardSettingsUiFromView(
         sidebarMode: view.sidebarMode,
         notesSelectedPath: view.notesSelectedPath,
         notesViewMode: view.notesViewMode,
+        notesAuthoringMode: view.notesAuthoringMode,
         notesWordWrap: view.notesWordWrap,
         notesTreeWidth: view.notesTreeWidth,
         showLatestActivityTitles: view.showLatestActivityTitles,

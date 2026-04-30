@@ -4,17 +4,19 @@ import { MarkdownPreview } from './MarkdownPreview';
 import { NotesEmptyState } from './NotesEmptyState';
 import { NotesToolbar } from './NotesToolbar';
 import { useNoteDocument } from './useNoteDocument';
-import type { NotesViewMode } from './notes-types';
+import type { NotesAuthoringMode, NotesViewMode } from './notes-types';
 
 type NotesWorkspaceProps = {
     active: boolean;
     selectedPath: string | null;
     viewMode: NotesViewMode;
+    authoringMode: NotesAuthoringMode;
     wordWrap: boolean;
     treeWidth: number;
     onSelectedPathChange: (path: string | null) => void;
     onDirtyPathChange: (path: string | null) => void;
     onViewModeChange: (mode: NotesViewMode) => void;
+    onAuthoringModeChange: (mode: NotesAuthoringMode) => void;
     onWordWrapChange: (value: boolean) => void;
     onTreeWidthChange: (value: number) => void;
 };
@@ -52,11 +54,13 @@ export function NotesWorkspace(props: NotesWorkspaceProps) {
                 <NotesToolbar
                     selectedPath={props.selectedPath}
                     viewMode={props.viewMode}
+                    authoringMode={props.authoringMode}
                     dirty={document.dirty}
                     saving={document.saving}
                     loading={document.loading}
                     conflict={Boolean(document.conflict)}
                     onViewModeChange={props.onViewModeChange}
+                    onAuthoringModeChange={props.onAuthoringModeChange}
                     onSave={() => void document.save()}
                     onReload={() => void document.reloadFromDisk()}
                 />
@@ -94,7 +98,9 @@ export function NotesWorkspace(props: NotesWorkspaceProps) {
                 {!props.selectedPath && props.viewMode !== 'settings' && <NotesEmptyState />}
                 {props.selectedPath && props.viewMode !== 'settings' && (
                     <div className="notes-document-grid">
-                        {showEditor && <MarkdownEditor content={document.content} wordWrap={props.wordWrap} onChange={document.setContent} />}
+                        <div className="notes-editor-pane" hidden={!showEditor} aria-hidden={!showEditor}>
+                            <MarkdownEditor active={props.active && showEditor} authoringMode={props.authoringMode} content={document.content} wordWrap={props.wordWrap} onChange={document.setContent} />
+                        </div>
                         {showPreview && <MarkdownPreview markdown={document.content} />}
                     </div>
                 )}

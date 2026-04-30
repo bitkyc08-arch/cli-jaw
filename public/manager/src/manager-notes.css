@@ -92,7 +92,8 @@
     padding-left: 16px;
 }
 
-.notes-tree-list button {
+.notes-tree-list .notes-tree-file-button,
+.notes-tree-list .notes-tree-folder-button {
     width: 100%;
     display: flex;
     align-items: center;
@@ -107,6 +108,7 @@
 .notes-tree-folder-row {
     display: flex;
     align-items: center;
+    min-width: 0;
     border: 1px solid transparent;
     border-radius: 8px;
 }
@@ -114,6 +116,15 @@
 .notes-tree-file-row .notes-tree-file-button,
 .notes-tree-folder-row .notes-tree-folder-button {
     flex: 1 1 auto;
+    min-width: 0;
+}
+
+.notes-tree-file-button span,
+.notes-tree-folder-button span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .notes-tree-file-row.is-selected {
@@ -181,6 +192,12 @@
     font-size: 12px;
 }
 
+.notes-status-state {
+    margin: 8px 10px;
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
 .notes-main {
     min-width: 0;
     min-height: 0;
@@ -216,20 +233,23 @@
     font-size: 12px;
 }
 
-.notes-view-tabs {
+.notes-view-tabs,
+.notes-authoring-toggle {
     display: inline-flex;
     border: 1px solid var(--border-subtle);
     border-radius: 8px;
     overflow: hidden;
 }
 
-.notes-view-tabs button {
+.notes-view-tabs button,
+.notes-authoring-toggle button {
     border: 0;
     border-radius: 0;
     background: transparent;
 }
 
 .notes-view-tabs button.is-active,
+.notes-authoring-toggle button.is-active,
 .notes-save-button {
     background: var(--accent-soft);
 }
@@ -245,11 +265,20 @@
     grid-template-columns: minmax(0, 1fr);
 }
 
+.notes-editor-pane,
 .notes-editor,
 .notes-preview {
     min-width: 0;
     min-height: 0;
     overflow: auto;
+}
+
+.notes-editor-pane {
+    display: grid;
+}
+
+.notes-editor-pane[hidden] {
+    display: none;
 }
 
 .notes-editor {

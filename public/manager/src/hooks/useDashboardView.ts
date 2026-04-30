@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { DashboardDetailTab, DashboardLocale, DashboardNotesViewMode, DashboardSidebarMode } from '../types';
+import type { DashboardDetailTab, DashboardLocale, DashboardNotesAuthoringMode, DashboardNotesViewMode, DashboardSidebarMode } from '../types';
 
 export function useDashboardView() {
     const [selectedPort, setSelectedPort] = useState<number | null>(null);
@@ -11,6 +11,7 @@ export function useDashboardView() {
     const [sidebarMode, setSidebarMode] = useState<DashboardSidebarMode>('instances');
     const [notesSelectedPath, setNotesSelectedPath] = useState<string | null>(null);
     const [notesViewMode, setNotesViewMode] = useState<DashboardNotesViewMode>('split');
+    const [notesAuthoringMode, setNotesAuthoringMode] = useState<DashboardNotesAuthoringMode>('plain');
     const [notesWordWrap, setNotesWordWrap] = useState(true);
     const [notesTreeWidth, setNotesTreeWidth] = useState(280);
     const [showLatestActivityTitles, setShowLatestActivityTitles] = useState(true);
@@ -38,6 +39,8 @@ export function useDashboardView() {
         setNotesSelectedPath,
         notesViewMode,
         setNotesViewMode,
+        notesAuthoringMode,
+        setNotesAuthoringMode,
         notesWordWrap,
         setNotesWordWrap,
         notesTreeWidth,

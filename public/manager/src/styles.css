@@ -2,7 +2,9 @@
  * defaults and base control reset. */
 
 :root {
-    font-family: "Outfit", "Geist", "Satoshi", sans-serif;
+    font-family: 'Outfit', 'Geist', 'Satoshi', 'Inter', 'Pretendard',
+        'Noto Sans CJK SC', 'Noto Sans CJK JP', 'Noto Sans KR',
+        system-ui, sans-serif;
     background: var(--bg-base);
     color: var(--text-primary);
 }
@@ -58,4 +60,25 @@ input:focus-visible,
 select:focus-visible {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
+}
+
+/* CJK typography  undo Latin tracking, lift line-height floor, polish
+ * and forbid ultra-light weights on CJK headings (they render hairline
+ * and break readability). Selectors rely on `<html lang="zh|ja|ko">`
+ * which App.tsx keeps in sync with the saved DashboardLocale. */
+:lang(zh),
+:lang(ja) {
+    letter-spacing: 0;
+}
+
+:lang(zh) p,
+:lang(ja) p,
+:lang(ko) p {
+    line-height: 1.55;
+}
+
+:lang(zh) :is(h1, h2, h3, h4, h5, h6),
+:lang(ja) :is(h1, h2, h3, h4, h5, h6),
+:lang(ko) :is(h1, h2, h3, h4, h5, h6) {
+    font-weight: max(500, var(--heading-weight, 600));
 }

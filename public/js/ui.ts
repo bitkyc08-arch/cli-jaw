@@ -531,7 +531,7 @@ function formatUserPrompt(text: string): string {
         const fileName = fileMatch[1].split('/').pop() || fileMatch[1];
         // Check if voice is also present (🎤 after file block)
         const voiceMatch = text.match(/🎤\s*(.{0,80})/);
-        const voicePart = voiceMatch ? `🎤 [음성 메시지] ` : '';
+        const voicePart = voiceMatch ? `${t('chat.voice.label')} ` : '';
         const userMsgMatch = text.match(/(?:사용자 메시지|User message): (.+)$/s);
         const userMsg = userMsgMatch ? ' ' + userMsgMatch[1].trim() : '';
         return `${voicePart}📎 [${fileName}]${userMsg}`;
@@ -901,7 +901,7 @@ export async function loadMessages(): Promise<void> {
                 }
             });
         }
-        addSystemMsg(`${ICONS.warning} 오프라인 모드 — 캐시된 메시지 표시 중`);
+        addSystemMsg(`${ICONS.warning} ${t('ui.offline.banner')}`);
         updateStatMsgs(cached.length);
     }
     showEmptyState();

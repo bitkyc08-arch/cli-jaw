@@ -58,6 +58,32 @@ export const notesEditorTheme = EditorView.theme({
         outline: '1px solid var(--accent)',
         backgroundColor: 'var(--accent-soft)',
     },
+    '.cm-rich-widget': {
+        color: 'var(--text-primary)',
+        backgroundColor: 'var(--canvas-soft)',
+        border: '1px solid var(--border-subtle)',
+        borderRadius: '6px',
+    },
+    '.cm-rich-block': {
+        display: 'block',
+        margin: '6px 0',
+        padding: '8px 10px',
+        overflowX: 'auto',
+    },
+    '.cm-rich-inline': {
+        display: 'inline-flex',
+        alignItems: 'center',
+        maxWidth: '100%',
+        padding: '0 4px',
+        verticalAlign: 'baseline',
+    },
+    '.cm-rich-source-muted': {
+        color: 'var(--text-tertiary, var(--text-secondary))',
+    },
+    '.cm-rich-widget-error': {
+        color: 'var(--danger-strong, var(--text-primary))',
+        borderColor: 'var(--danger-strong, var(--border-subtle))',
+    },
 }, { dark: true });
 
 const notesHighlightStyle = HighlightStyle.define([

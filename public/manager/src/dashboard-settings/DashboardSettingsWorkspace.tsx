@@ -12,6 +12,8 @@ type DashboardSettingsWorkspaceProps = {
 const LOCALE_OPTIONS = [
     { value: 'ko', label: '한국어 (ko)' },
     { value: 'en', label: 'English (en)' },
+    { value: 'zh', label: '中文 (zh)' },
+    { value: 'ja', label: '日本語 (ja)' },
 ] as const;
 
 function normalizeDashboardLocale(input: unknown): DashboardLocale {
@@ -106,6 +108,94 @@ const COPY = {
             offline: 'Offline',
             empty: 'No instances are currently visible.',
             restart: 'Restart legacy instances to enable latest activity titles.',
+        },
+    },
+    zh: {
+        ariaLabel: '仪表盘设置',
+        eyebrow: '管理器偏好',
+        title: '仪表盘设置',
+        displayTitle: '实例列表显示',
+        displayDescription: '这些设置只影响左侧实例列表与已保存的管理器界面偏好。',
+        activityTitle: '预览与活动',
+        activityDescription: '最近活动标题取决于各实例服务器的 endpoint 版本。',
+        fields: {
+            activity: {
+                label: '最近活动预览',
+                scope: '左侧实例列表',
+                description: '当实例支持摘要 endpoint 时,显示最近一条 user 或 assistant 消息整理后的单行内容。',
+            },
+            rename: {
+                label: '重命名控件',
+                scope: '左侧实例列表',
+                description: '显示用于编辑仪表盘内实例标签的铅笔按钮。',
+            },
+            runtime: {
+                label: '运行时信息行',
+                scope: '左侧实例列表',
+                description: '在每个实例标签下方显示 CLI 与模型信息,例如 codex / gpt-5.5。',
+            },
+            actions: {
+                label: '展开行操作',
+                scope: '已选中的实例行',
+                description: '在已选中的实例行上显示 Preview、Open、Start、Stop、Restart 按钮。',
+            },
+            language: {
+                label: '语言',
+                scope: '整个 Jaw 界面',
+                description: '为支持 i18n 的管理器仪表盘界面设置已保存的语言。',
+            },
+        },
+        support: {
+            ariaLabel: '活动标题来源就绪状态',
+            ready: '就绪',
+            legacy: '旧版 endpoint',
+            offline: '离线',
+            empty: '当前没有可显示的实例。',
+            restart: '请重启旧版实例以启用最近活动标题。',
+        },
+    },
+    ja: {
+        ariaLabel: 'ダッシュボード設定',
+        eyebrow: 'マネージャー環境設定',
+        title: 'ダッシュボード設定',
+        displayTitle: 'インスタンス一覧の表示',
+        displayDescription: 'これらの設定は左側のインスタンス一覧と保存済みのマネージャー UI 設定にのみ反映されます。',
+        activityTitle: 'プレビューとアクティビティ',
+        activityDescription: '最近のアクティビティタイトルは各インスタンスサーバーの endpoint バージョンによって変わります。',
+        fields: {
+            activity: {
+                label: '最近のアクティビティのプレビュー',
+                scope: '左側のインスタンス一覧',
+                description: 'サマリ endpoint をサポートするインスタンスでは、直近の user または assistant メッセージを整形した 1 行を表示します。',
+            },
+            rename: {
+                label: '名前変更コントロール',
+                scope: '左側のインスタンス一覧',
+                description: 'ダッシュボード専用のインスタンス表示名を編集する鉛筆ボタンを表示します。',
+            },
+            runtime: {
+                label: 'ランタイム行',
+                scope: '左側のインスタンス一覧',
+                description: '各インスタンス名の下に codex / gpt-5.5 のような CLI とモデル情報を表示します。',
+            },
+            actions: {
+                label: '展開行アクション',
+                scope: '選択中のインスタンス行',
+                description: '選択中のインスタンス行に Preview、Open、Start、Stop、Restart のボタンを表示します。',
+            },
+            language: {
+                label: '言語',
+                scope: 'Jaw UI 全体',
+                description: 'i18n 対応のマネージャーダッシュボード画面で使用する言語を保存します。',
+            },
+        },
+        support: {
+            ariaLabel: 'アクティビティタイトル取得元の準備状態',
+            ready: '準備完了',
+            legacy: '旧 endpoint',
+            offline: 'オフライン',
+            empty: '現在表示できるインスタンスはありません。',
+            restart: '最新のアクティビティタイトルを使うには、旧バージョンのインスタンスを再起動してください。',
         },
     },
 } as const;

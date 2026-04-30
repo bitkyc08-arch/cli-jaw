@@ -1,9 +1,10 @@
 import { existsSync } from 'node:fs';
-import { mkdir, rename } from 'node:fs/promises';
+import { mkdir, rename, stat } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { dashboardPath } from '../dashboard-home.js';
-import type { DashboardTrashNoteResponse } from '../types.js';
+import type { DashboardTrashNoteKind, DashboardTrashNoteResponse } from '../types.js';
 import {
+    assertNoteFolderRelPath,
     assertNoteRelPath,
     assertNotSymlink,
     assertRealPathInside,
@@ -55,23 +56,49 @@ export class NotesTrash {
         this.fs = options.fsImpl || DEFAULT_FS;
     }
 
-    async trashFile(root: string, relPathInput: string): Promise<DashboardTrashNoteResponse> {
-        const relPath = assertNoteRelPath(relPathInput);
+    async trashPath(
+        root: string,
+        relPathInput: string,
+        kind: DashboardTrashNoteKind = 'file',
+    ): Promise<DashboardTrashNoteResponse> {
+        const relPath = kind === 'folder'
+            ? assertNoteFolderRelPath(relPathInput)
+            : assertNoteRelPath(relPathInput);
         const target = resolveNotePath(root, relPath);
         await assertNotSymlink(target);
         await assertRealPathInside(root, target);
+        await this.assertTargetKind(target, kind);
 
         try {
             const restoreHint = await this.adapter.moveToOsTrash(target);
-            return { path: relPath, deletedTo: 'os-trash', restoreHint };
+            return { path: relPath, kind, deletedTo: 'os-trash', restoreHint };
         } catch {
-            return await this.moveToDashboardTrash(target, relPath);
+            return await this.moveToDashboardTrash(target, relPath, kind);
+        }
+    }
+
+    async trashFile(root: string, relPathInput: string): Promise<DashboardTrashNoteResponse> {
+        return await this.trashPath(root, relPathInput, 'file');
+    }
+
+    async trashFolder(root: string, relPathInput: string): Promise<DashboardTrashNoteResponse> {
+        return await this.trashPath(root, relPathInput, 'folder');
+    }
+
+    private async assertTargetKind(target: string, kind: DashboardTrashNoteKind): Promise<void> {
+        const targetStat = await stat(target);
+        if (kind === 'folder' && !targetStat.isDirectory()) {
+            throw notePathError(400, 'invalid_note_folder_path', 'folder path must reference a directory');
+        }
+        if (kind === 'file' && !targetStat.isFile()) {
+            throw notePathError(400, 'invalid_note_path', 'note path must reference a file');
         }
     }
 
     private async moveToDashboardTrash(
         source: string,
         relPath: string,
+        kind: DashboardTrashNoteKind,
     ): Promise<DashboardTrashNoteResponse> {
         const trashRoot = join(this.dashboardHome, '.trash', 'notes');
         await this.fs.mkdir(trashRoot, { recursive: true });
@@ -85,7 +112,7 @@ export class NotesTrash {
             }
             throw error;
         }
-        return { path: relPath, deletedTo: 'dashboard-trash', restoreHint: target };
+        return { path: relPath, kind, deletedTo: 'dashboard-trash', restoreHint: target };
     }
 
     private uniqueTrashPath(root: string, relPath: string): string {

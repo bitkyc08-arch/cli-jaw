@@ -1,4 +1,4 @@
-import { useState, type CSSProperties, type DragEvent } from 'react';
+import { useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
 import type { NotesTreeEntry } from './notes-types';
 
 type NotesFileTreeProps = {
@@ -12,6 +12,7 @@ type NotesFileTreeProps = {
     onSelectFolder: (path: string | null) => void;
     onMovePath: (from: string, toFolder: string | null) => void;
     onRenamePath: (path: string, kind: NotesTreeEntry['kind']) => void;
+    onTrashPath: (path: string, kind: NotesTreeEntry['kind']) => void;
     onCreateNote: () => void;
     onCreateFolder: () => void;
     onRefresh: () => void;
@@ -87,6 +88,38 @@ function hasNotePathDrag(event: DragEvent): boolean {
     return Array.from(event.dataTransfer.types).some(type => type === 'application/x-cli-jaw-note-path' || type === 'text/plain');
 }
 
+function handleTreeKey(
+    event: KeyboardEvent,
+    entry: NotesTreeEntry,
+    options: {
+        toggleFolder?: (path: string) => void;
+        onSelectPath: (path: string) => void;
+        onSelectFolder?: (path: string | null) => void;
+        onRenamePath: (path: string, kind: NotesTreeEntry['kind']) => void;
+        onTrashPath: (path: string, kind: NotesTreeEntry['kind']) => void;
+    },
+): void {
+    if (event.key === 'F2') {
+        event.preventDefault();
+        options.onRenamePath(entry.path, entry.kind);
+        return;
+    }
+    if (event.key === 'Delete' || event.key === 'Backspace') {
+        event.preventDefault();
+        options.onTrashPath(entry.path, entry.kind);
+        return;
+    }
+    if (event.key === 'Enter') {
+        event.preventDefault();
+        if (entry.kind === 'folder') {
+            options.onSelectFolder?.(entry.path);
+            options.toggleFolder?.(entry.path);
+            return;
+        }
+        options.onSelectPath(entry.path);
+    }
+}
+
 function renderEntry(
     entry: NotesTreeEntry,
     props: NotesFileTreeProps,
@@ -127,6 +160,25 @@ function renderEntry(
                             setDropTargetPath(null);
                             if (draggedPath) props.onMovePath(draggedPath, entry.path);
                         }}
+                        onKeyDown={(event) => {
+                            if (event.key === 'ArrowRight' && !expanded) {
+                                event.preventDefault();
+                                toggleFolder(entry.path);
+                                return;
+                            }
+                            if (event.key === 'ArrowLeft' && expanded) {
+                                event.preventDefault();
+                                toggleFolder(entry.path);
+                                return;
+                            }
+                            handleTreeKey(event, entry, {
+                                toggleFolder,
+                                onSelectPath: props.onSelectPath,
+                                onSelectFolder: props.onSelectFolder,
+                                onRenamePath: props.onRenamePath,
+                                onTrashPath: props.onTrashPath,
+                            });
+                        }}
                     >
                         <TreeChevron expanded={expanded} />
                         <FolderIcon open={expanded} />
@@ -137,7 +189,10 @@ function renderEntry(
                         className="notes-tree-inline-action"
                         title="Rename folder"
                         aria-label={`Rename folder ${entry.name}`}
-                        onClick={() => props.onRenamePath(entry.path, entry.kind)}
+                        onClick={(event) => {
+                            event.stopPropagation();
+                            props.onRenamePath(entry.path, entry.kind);
+                        }}
                     >
                         <PencilIcon />
                     </button>
@@ -163,6 +218,11 @@ function renderEntry(
                         event.dataTransfer.setData('text/plain', entry.path);
                     }}
                     onClick={() => props.onSelectPath(entry.path)}
+                    onKeyDown={(event) => handleTreeKey(event, entry, {
+                        onSelectPath: props.onSelectPath,
+                        onRenamePath: props.onRenamePath,
+                        onTrashPath: props.onTrashPath,
+                    })}
                 >
                     <FileIcon />
                     <span>{entry.name}</span>
@@ -173,7 +233,10 @@ function renderEntry(
                     className="notes-tree-inline-action"
                     title="Rename"
                     aria-label={`Rename ${entry.name}`}
-                    onClick={() => props.onRenamePath(entry.path, entry.kind)}
+                    onClick={(event) => {
+                        event.stopPropagation();
+                        props.onRenamePath(entry.path, entry.kind);
+                    }}
                 >
                     <PencilIcon />
                 </button>

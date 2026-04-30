@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { mkdir, rename } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { NotesTrash } from '../../src/manager/notes/trash.js';
 
 function tmpRoot(): string {
@@ -12,6 +12,7 @@ function tmpRoot(): string {
 
 function writeNote(root: string, path = 'note.md'): string {
     const target = join(root, path);
+    mkdirSync(dirname(target), { recursive: true });
     writeFileSync(target, 'note');
     return target;
 }
@@ -40,6 +41,7 @@ test('system trash success uses CLI_JAW_TEST_SYSTEM_TRASH_DIR', async (t) => {
     writeNote(root);
 
     const result = await new NotesTrash({ dashboardHome }).trashFile(root, 'note.md');
+    assert.equal(result.kind, 'file');
     assert.equal(result.deletedTo, 'os-trash');
     assert.equal(existsSync(join(root, 'note.md')), false);
     assert.equal(readdirSync(systemTrash).length, 1);
@@ -57,6 +59,7 @@ test('system trash failure falls back to dashboard trash', async (t) => {
         dashboardHome,
         adapter: { moveToOsTrash: async () => { throw new Error('no system trash'); } },
     }).trashFile(root, 'note.md');
+    assert.equal(result.kind, 'file');
     assert.equal(result.deletedTo, 'dashboard-trash');
     assert.equal(existsSync(join(root, 'note.md')), false);
     assert.equal(typeof result.restoreHint, 'string');
@@ -124,4 +127,79 @@ test('trash rejects symlink files', async (t) => {
         () => new NotesTrash({ dashboardHome }).trashFile(root, 'link.md'),
         /symlinks/,
     );
+});
+
+test('folder trash falls back to dashboard trash with nested notes', async (t) => {
+    const root = tmpRoot();
+    const dashboardHome = tmpRoot();
+    t.after(() => {
+        rmSync(root, { recursive: true, force: true });
+        rmSync(dashboardHome, { recursive: true, force: true });
+    });
+    writeNote(root, 'daily/today.md');
+
+    const result = await new NotesTrash({
+        dashboardHome,
+        adapter: { moveToOsTrash: async () => { throw new Error('no system trash'); } },
+    }).trashFolder(root, 'daily');
+
+    assert.equal(result.kind, 'folder');
+    assert.equal(result.deletedTo, 'dashboard-trash');
+    assert.equal(existsSync(join(root, 'daily')), false);
+    assert.equal(existsSync(result.restoreHint!), true);
+});
+
+test('folder trash rejects symlink folders', async (t) => {
+    const root = tmpRoot();
+    const outside = tmpRoot();
+    const dashboardHome = tmpRoot();
+    t.after(() => {
+        rmSync(root, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
+        rmSync(dashboardHome, { recursive: true, force: true });
+    });
+    mkdirSync(join(outside, 'outside-folder'), { recursive: true });
+    symlinkSync(join(outside, 'outside-folder'), join(root, 'link-folder'));
+
+    await assert.rejects(
+        () => new NotesTrash({ dashboardHome }).trashFolder(root, 'link-folder'),
+        /symlinks/,
+    );
+});
+
+test('folder trash with symlink child preserves outside target', async (t) => {
+    const root = tmpRoot();
+    const outside = tmpRoot();
+    const dashboardHome = tmpRoot();
+    t.after(() => {
+        rmSync(root, { recursive: true, force: true });
+        rmSync(outside, { recursive: true, force: true });
+        rmSync(dashboardHome, { recursive: true, force: true });
+    });
+    writeNote(root, 'daily/today.md');
+    writeNote(outside, 'outside.md');
+    symlinkSync(join(outside, 'outside.md'), join(root, 'daily', 'outside-link.md'));
+
+    const result = await new NotesTrash({
+        dashboardHome,
+        adapter: { moveToOsTrash: async () => { throw new Error('no system trash'); } },
+    }).trashFolder(root, 'daily');
+
+    assert.equal(result.kind, 'folder');
+    assert.equal(existsSync(join(root, 'daily')), false);
+    assert.equal(existsSync(join(outside, 'outside.md')), true);
+});
+
+test('folder trash rejects traversal and file-shaped folder paths', async (t) => {
+    const root = tmpRoot();
+    const dashboardHome = tmpRoot();
+    t.after(() => {
+        rmSync(root, { recursive: true, force: true });
+        rmSync(dashboardHome, { recursive: true, force: true });
+    });
+    writeNote(root, 'note.md');
+    const notesTrash = new NotesTrash({ dashboardHome });
+
+    await assert.rejects(() => notesTrash.trashFolder(root, '../outside'), /escape notes root|invalid/);
+    await assert.rejects(() => notesTrash.trashFolder(root, 'note.md'), /folder paths must not use \.md/);
 });

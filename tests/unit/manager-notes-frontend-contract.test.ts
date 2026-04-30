@@ -30,6 +30,7 @@ test('Notes workspace frontend files and API wrapper exist', () => {
     assert.ok(api.includes('fetchNotesTree'), 'notes API wrapper must re-export tree fetch');
     assert.ok(api.includes('fetchNoteFile'), 'notes API wrapper must re-export file fetch');
     assert.ok(api.includes('saveNoteFile'), 'notes API wrapper must re-export file save');
+    assert.ok(api.includes('trashNotePath'), 'notes API wrapper must expose trash');
 });
 
 test('Notes API and create actions surface backend/fallback failures without uncaught JSON parse crashes', () => {
@@ -37,6 +38,7 @@ test('Notes API and create actions surface backend/fallback failures without unc
     const sidebar = read('public/manager/src/notes/NotesSidebar.tsx');
     const tree = read('public/manager/src/notes/NotesFileTree.tsx');
     const workspace = read('public/manager/src/notes/NotesWorkspace.tsx');
+    const css = read('public/manager/src/manager-notes.css');
 
     assert.ok(api.includes('response.text()'), 'notes response parsing must inspect text before JSON parsing');
     assert.ok(api.includes('invalid_json'), 'notes response parsing must classify non-JSON responses');
@@ -56,6 +58,15 @@ test('Notes API and create actions surface backend/fallback failures without unc
     assert.ok(sidebar.includes('function pathName('), 'notes sidebar must derive compact basename defaults for rename prompts');
     assert.ok(sidebar.includes('function renameTarget('), 'notes sidebar must preserve the current parent folder for basename-only renames');
     assert.ok(sidebar.includes('async function renamePath('), 'notes sidebar must own file and folder rename error handling');
+    assert.ok(sidebar.includes('trashNotePath'), 'notes sidebar must call trash API');
+    assert.ok(sidebar.includes('async function trashPath('), 'notes sidebar must own trash error handling');
+    assert.ok(sidebar.includes('window.confirm'), 'notes trash must confirm destructive action');
+    assert.ok(sidebar.includes('props.dirtyPath'), 'notes trash must account for dirty selected notes');
+    assert.ok(sidebar.includes('props.onSelectedPathChange(null)'), 'trashing selected path must clear stale selection before repair');
+    assert.ok(sidebar.includes('restoreHint'), 'dashboard trash status must surface restore hints');
+    assert.ok(sidebar.includes("const folderWasInside = kind === 'folder'"), 'file trash must not clear selectedFolderPath');
+    assert.ok(sidebar.includes(': false;'), 'non-folder trash must keep selectedFolderPath unchanged');
+    assert.ok(sidebar.includes('Restore from: ${result.restoreHint}'), 'dashboard trash status must include the concrete restore hint path');
     assert.ok(sidebar.includes("kind === 'folder' ? 'Rename folder' : 'Rename note'"), 'notes sidebar must prompt for the correct rename target type');
     assert.ok(sidebar.includes('window.prompt(label, pathName(path))'), 'rename prompts must show only the item name by default');
     assert.ok(sidebar.includes("parent ? `${parent}/${nextName}` : nextName"), 'basename-only rename must keep the file or folder in its current parent');
@@ -65,6 +76,19 @@ test('Notes API and create actions surface backend/fallback failures without unc
     assert.ok(tree.includes('function PencilIcon()'), 'notes tree must expose a pencil rename icon');
     assert.ok(tree.includes('aria-expanded={expanded}'), 'folder rows must expose expandable tree state');
     assert.ok(tree.includes('onSelectFolder'), 'folder rows must be selectable as creation targets');
+    assert.ok(tree.includes('onTrashPath'), 'notes tree must expose trash action prop');
+    assert.ok(tree.includes("event.key === 'Delete'"), 'tree keyboard delete must route through trash');
+    assert.ok(tree.includes("event.key === 'Backspace'"), 'tree keyboard backspace must route through trash');
+    assert.ok(tree.includes("event.key === 'F2'"), 'tree keyboard rename must be available');
+    assert.ok(tree.includes("event.key === 'Enter'"), 'tree keyboard enter must open files or toggle folders');
+    assert.ok(tree.includes('options.onSelectFolder?.(entry.path)'), 'folder Enter must select the folder target');
+    assert.ok(tree.includes('options.toggleFolder?.(entry.path)'), 'folder Enter must toggle folder expansion');
+    assert.ok(tree.includes('event.stopPropagation()'), 'inline file and folder actions must not select/open rows');
+    assert.equal(tree.includes('function TrashIcon()'), false, 'notes tree must not expose a visible trash icon');
+    assert.equal(tree.includes('notes-tree-danger-action'), false, 'notes tree must keep trash as keyboard-only action');
+    assert.equal(css.includes('.notes-tree-list button'), false, 'tree-wide button width must not stretch inline action buttons');
+    assert.ok(css.includes('text-overflow: ellipsis'), 'long note and folder names must truncate with ellipsis');
+    assert.ok(css.includes('white-space: nowrap'), 'note and folder names must stay on one line');
     assert.ok(tree.includes('draggable'), 'note files must be draggable in the tree');
     assert.ok(tree.includes('onDrop'), 'folders must accept dropped note files');
     assert.ok(tree.includes('application/x-cli-jaw-note-path'), 'drag payload must carry a typed note path');
@@ -86,7 +110,8 @@ test('Notes markdown editor uses Manager-token CodeMirror theme', () => {
     const theme = read('public/manager/src/notes/editor-theme.ts');
 
     assert.ok(editor.includes("import { notesEditorTheme, notesSyntaxHighlighting } from './editor-theme'"), 'MarkdownEditor must import the shared notes editor theme');
-    assert.ok(editor.includes('notesEditorTheme, notesSyntaxHighlighting, markdown'), 'CodeMirror extensions must include the token-driven theme before markdown support');
+    assert.ok(editor.includes('notesEditorTheme') && editor.indexOf('notesEditorTheme') < editor.indexOf('markdown({ codeLanguages: languages })'),
+        'CodeMirror extensions must include the token-driven theme before markdown support');
     assert.ok(theme.includes('EditorView.theme'), 'editor theme must use CodeMirror EditorView.theme');
     assert.ok(theme.includes('syntaxHighlighting(notesHighlightStyle)'), 'syntax highlighting must be exported as a CodeMirror extension');
     assert.ok(theme.includes('HighlightStyle.define'), 'editor theme must define syntax token colors');
