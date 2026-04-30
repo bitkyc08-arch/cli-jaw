@@ -164,10 +164,19 @@ test('manager instance activity unread badges are row-scoped and registry-backed
     assert.ok(hook.includes('seenActivityByPort'), 'activity unread hook must track per-port seen timestamps');
     assert.ok(hook.includes('markPortSeen'), 'activity unread hook must expose click-to-clear behavior for one row');
     assert.ok(hook.includes('Date.parse(latest) <= Date.parse(portSeenAt)'), 'markPortSeen must avoid redundant per-port seen saves');
-    assert.ok(hook.includes('Date.parse(latest) <= Date.parse(seenActivityAt)'), 'markPortSeen must respect global seen timestamps before saving');
+    assert.equal(
+        hook.includes('Date.parse(latest) <= Date.parse(seenActivityAt)'),
+        false,
+        'markPortSeen must NOT short-circuit on the global seen ceiling — per-port suppression is independent (devlog 260501)',
+    );
     assert.ok(app.includes('activitySeenAt'), 'App must hydrate/persist activitySeenAt through registry UI');
     assert.ok(app.includes('activitySeenByPort'), 'App must hydrate/persist per-port activity seen state');
-    assert.ok(hook.includes('if (!options.activityDockCollapsed) return {}'), 'App must hide row unread counts while Activity is open');
+    assert.equal(
+        hook.includes('if (!options.activityDockCollapsed) return {}'),
+        false,
+        'opening the Activity dock must NOT wipe per-port badges for other ports (devlog 260501)',
+    );
+    assert.ok(hook.includes('activePreviewPort'), 'activity unread hook must accept the currently-viewed iframe port to suppress its own badge only');
     assert.ok(app.includes('activityUnread.unreadByPort'), 'App must pass per-port unread counts into instance groups');
     assert.ok(app.includes('useInstanceMessageEvents(instances)'), 'App must poll instance messages without dashboard refresh');
     assert.ok(app.includes('activityUnread.markPortSeen'), 'App must mark the selected instance as seen when clicked');

@@ -37,11 +37,21 @@ export async function sendMessage(): Promise<void> {
     const btn = document.getElementById('btnSend');
     if (!input || !btn) return;
 
-    // Stop mode: only explicit button interaction should stop the agent.
-    // Prevent accidental Enter key presses in the input from sending /api/stop.
+    // Stop-mode click policy (devlog 260501_chat_pause_and_unread_badge):
+    //  - busy + click  → no-op. Do not kill the running agent (Bug 1) and do
+    //    not fall through into the send path which would queue the typed text
+    //    and drain it as a steer (Bug 2).
+    //  - idle + empty  → fire /api/stop as the runaway escape hatch (legacy).
+    //  - any stop-mode click never falls through to the send path; the
+    //    textarea contents and attachments are preserved.
+    // Enter-key send is unaffected because document.activeElement is the
+    // textarea, not the button, so stopByExplicitButton is false.
     const stopByExplicitButton = document.activeElement === btn;
-    if (btn.classList.contains('stop-mode') && stopByExplicitButton && !input.value.trim() && !state.attachedFiles.length) {
-        apiFire('/api/stop', 'POST');
+    if (btn.classList.contains('stop-mode') && stopByExplicitButton) {
+        if (state.agentBusy) return;
+        if (!input.value.trim() && !state.attachedFiles.length) {
+            apiFire('/api/stop', 'POST');
+        }
         return;
     }
 

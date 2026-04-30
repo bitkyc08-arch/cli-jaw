@@ -48,15 +48,24 @@ function effectiveSeenAt(globalSeenAt: string | null, portSeenAt: string | null)
 
 export function countUnreadActivityEventsByPort(
     events: ManagerEvent[],
-    seenAt: string | null,
+    _seenAt: string | null,
     seenByPort: Record<number, string> = {},
+    suppressedPort: number | null = null,
 ): Record<number, number> {
+    // Per-port semantics (devlog 260501): each port's badge is gated only by
+    // its own seenByPort timestamp. The legacy global ceiling (`seenAt` /
+    // `effectiveSeenAt`) is intentionally ignored here so viewing the iframe
+    // of one port never suppresses badges on other ports. The legacy global
+    // is still used by `countUnreadActivityEvents` (single-number variant)
+    // for the activity dock indicator, hence kept exported.
+    void effectiveSeenAt; // retained for backward compat with external callers
     const seen = new Set<string>();
     const counts: Record<number, number> = {};
     for (const event of events) {
         if (!('port' in event)) continue;
+        if (suppressedPort != null && event.port === suppressedPort) continue;
         if (!isUnreadActivityEvent(event)) continue;
-        const portSeenAt = effectiveSeenAt(seenAt, seenByPort[event.port] || null);
+        const portSeenAt = seenByPort[event.port] || null;
         if (portSeenAt && Date.parse(event.at) <= Date.parse(portSeenAt)) continue;
         const key = activityEventDedupeKey(event);
         if (seen.has(key)) continue;

@@ -81,11 +81,13 @@ export function App() {
     const instances = data?.instances || [];
     const messageActivity = useInstanceMessageEvents(instances);
     const labelEditor = useInstanceLabelEditor(registry.save, setData);
+    const activePreviewPort = view.activeDetailTab === 'preview' && view.sidebarMode === 'instances' ? (view.selectedPort ?? null) : null;
     const activityUnread = useActivityUnread({
         events: [...managerEvents.events, ...messageActivity.events],
         activityDockCollapsed: view.activityDockCollapsed,
         setActivityDockCollapsed: view.setActivityDockCollapsed,
         saveUi,
+        activePreviewPort,
     });
 
     function cycleTheme(): void {
@@ -241,6 +243,8 @@ export function App() {
         if (tab !== 'settings') setSettingsDirty(false);
         view.setActiveDetailTab(tab);
         if (tab === 'preview') {
+            const port = view.selectedPort;
+            if (port != null) activityUnread.markPortSeen(port);
             view.setActivityDockCollapsed(true);
             void saveUi({ selectedTab: tab, activityDockCollapsed: true });
             return;
