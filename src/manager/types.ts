@@ -11,6 +11,7 @@ export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
 export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 export type DashboardUiTheme = 'auto' | 'dark' | 'light';
+export type DashboardLocale = 'ko' | 'en';
 export type DashboardSidebarMode = 'instances' | 'notes' | 'settings';
 export type DashboardNotesViewMode = 'raw' | 'split' | 'preview' | 'settings';
 export type DashboardProfileId = string;
@@ -162,6 +163,7 @@ export type DashboardRegistryUi = {
     activitySeenAt: string | null;
     activitySeenByPort: Record<string, string>;
     uiTheme: DashboardUiTheme;
+    locale: DashboardLocale;
     sidebarMode: DashboardSidebarMode;
     notesSelectedPath: string | null;
     notesViewMode: DashboardNotesViewMode;

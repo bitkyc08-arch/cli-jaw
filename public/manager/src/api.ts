@@ -27,18 +27,6 @@ export class DashboardApiError extends Error {
     }
 }
 
-export type DashboardRuntimeSettings = {
-    locale?: string;
-    [key: string]: unknown;
-};
-
-function unwrapOkData<T>(body: T | { ok?: boolean; data?: T }): T {
-    if (body && typeof body === 'object' && 'data' in body) {
-        return (body as { data: T }).data;
-    }
-    return body as T;
-}
-
 export async function fetchInstances(showHidden = false): Promise<DashboardScanResult> {
     const path = showHidden ? '/api/dashboard/instances?showHidden=1' : '/api/dashboard/instances';
     const response = await fetch(path);
@@ -60,24 +48,6 @@ export async function patchDashboardRegistry(patch: DashboardRegistryPatch): Pro
     });
     if (!response.ok) throw new Error(`registry save failed: ${response.status}`);
     return await response.json() as DashboardRegistryLoadResult;
-}
-
-export async function fetchDashboardRuntimeSettings(): Promise<DashboardRuntimeSettings> {
-    const response = await fetch('/api/settings');
-    if (!response.ok) throw new Error(`settings fetch failed: ${response.status}`);
-    const body = await response.json() as DashboardRuntimeSettings | { ok: boolean; data: DashboardRuntimeSettings };
-    return unwrapOkData(body);
-}
-
-export async function updateDashboardRuntimeSettings(patch: Partial<DashboardRuntimeSettings>): Promise<DashboardRuntimeSettings> {
-    const response = await fetch('/api/settings', {
-        method: 'PUT',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(patch),
-    });
-    if (!response.ok) throw new Error(`settings save failed: ${response.status}`);
-    const body = await response.json() as DashboardRuntimeSettings | { ok: boolean; data: DashboardRuntimeSettings };
-    return unwrapOkData(body);
 }
 
 export async function runLifecycleAction(

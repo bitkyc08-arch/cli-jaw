@@ -140,6 +140,7 @@ export function App() {
                 view.setShowInlineLabelEditor(ui.showInlineLabelEditor);
                 view.setShowSidebarRuntimeLine(ui.showSidebarRuntimeLine);
                 view.setShowSelectedRowActions(ui.showSelectedRowActions);
+                view.setLocale(ui.locale);
                 activityUnread.hydrateSeenAt(ui.activitySeenAt ?? null, ui.activitySeenByPort || {});
                 setActiveProfileIds(loaded.registry.activeProfileFilter || []);
                 theme.syncFromRegistry(ui.uiTheme);
@@ -291,6 +292,7 @@ export function App() {
         if (ui.showInlineLabelEditor !== undefined) view.setShowInlineLabelEditor(ui.showInlineLabelEditor);
         if (ui.showSidebarRuntimeLine !== undefined) view.setShowSidebarRuntimeLine(ui.showSidebarRuntimeLine);
         if (ui.showSelectedRowActions !== undefined) view.setShowSelectedRowActions(ui.showSelectedRowActions);
+        if (ui.locale !== undefined) view.setLocale(ui.locale);
         void saveUi(ui);
     }
 

@@ -1,5 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
-import { fetchDashboardRuntimeSettings, updateDashboardRuntimeSettings } from '../api';
+import { useEffect, type ReactNode } from 'react';
 import type { DashboardRegistryUi } from '../types';
 import type { DashboardActivityTitleSupport } from './activity-title-support';
 
@@ -10,13 +9,9 @@ type DashboardSettingsWorkspaceProps = {
     onUiPatch: (patch: Partial<DashboardRegistryUi>) => void;
 };
 
-type LocaleSaveState = 'idle' | 'saving' | 'saved' | 'error';
-
 const LOCALE_OPTIONS = [
     { value: 'ko', label: '한국어 (ko)' },
     { value: 'en', label: 'English (en)' },
-    { value: 'ja', label: '日本語 (ja)' },
-    { value: 'zh', label: '中文 (zh)' },
 ] as const;
 
 type DashboardLocale = typeof LOCALE_OPTIONS[number]['value'];
@@ -81,19 +76,10 @@ type DashboardSettingSelectProps = {
     description: string;
     value: DashboardLocale;
     options: readonly { value: DashboardLocale; label: string }[];
-    status: LocaleSaveState;
     onChange: (value: DashboardLocale) => void;
 };
 
 function DashboardSettingSelect(props: DashboardSettingSelectProps) {
-    const statusLabel = props.status === 'saving'
-        ? 'Saving...'
-        : props.status === 'saved'
-            ? 'Saved'
-            : props.status === 'error'
-                ? 'Save failed'
-                : '';
-
     return (
         <DashboardSettingRow id={props.id} label={props.label} scope={props.scope} description={props.description}>
             <select
@@ -106,9 +92,6 @@ function DashboardSettingSelect(props: DashboardSettingSelectProps) {
                     <option key={option.value} value={option.value}>{option.label}</option>
                 ))}
             </select>
-            <span className={`dashboard-settings-save-state ${props.status === 'error' ? 'is-error' : ''}`} aria-live="polite">
-                {statusLabel}
-            </span>
         </DashboardSettingRow>
     );
 }
@@ -135,40 +118,9 @@ function TitleSupportSummary({ support }: { support: DashboardActivityTitleSuppo
 }
 
 export function DashboardSettingsWorkspace(props: DashboardSettingsWorkspaceProps) {
-    const [locale, setLocale] = useState<DashboardLocale>('ko');
-    const [localeState, setLocaleState] = useState<LocaleSaveState>('idle');
-
     useEffect(() => {
-        let cancelled = false;
-
-        async function loadLocale() {
-            try {
-                const settings = await fetchDashboardRuntimeSettings();
-                if (!cancelled) setLocale(normalizeDashboardLocale(settings.locale));
-            } catch {
-                if (!cancelled) setLocaleState('error');
-            }
-        }
-
-        void loadLocale();
-        return () => {
-            cancelled = true;
-        };
-    }, []);
-
-    async function handleLocaleChange(next: DashboardLocale) {
-        const previous = locale;
-        setLocale(next);
-        setLocaleState('saving');
-        try {
-            const settings = await updateDashboardRuntimeSettings({ locale: next });
-            setLocale(normalizeDashboardLocale(settings.locale ?? next));
-            setLocaleState('saved');
-        } catch {
-            setLocale(previous);
-            setLocaleState('error');
-        }
-    }
+        document.documentElement.lang = props.ui.locale;
+    }, [props.ui.locale]);
 
     return (
         <main className="dashboard-settings-workspace" aria-label="Dashboard settings">
@@ -219,11 +171,10 @@ export function DashboardSettingsWorkspace(props: DashboardSettingsWorkspaceProp
                             id="dashboard-locale"
                             label="Language"
                             scope="Global Jaw UI"
-                            value={locale}
+                            value={normalizeDashboardLocale(props.ui.locale)}
                             options={LOCALE_OPTIONS}
-                            status={localeState}
-                            description="Sets the saved Jaw locale used by i18n-aware surfaces. Reload open dashboards after changing it."
-                            onChange={(next) => void handleLocaleChange(next)}
+                            description="Sets the saved manager dashboard locale for i18n-aware surfaces."
+                            onChange={(next) => props.onUiPatch({ locale: next })}
                         />
                     </div>
                 </section>

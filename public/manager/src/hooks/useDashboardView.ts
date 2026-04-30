@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { DashboardDetailTab, DashboardNotesViewMode, DashboardSidebarMode } from '../types';
+import type { DashboardDetailTab, DashboardLocale, DashboardNotesViewMode, DashboardSidebarMode } from '../types';
 
 export function useDashboardView() {
     const [selectedPort, setSelectedPort] = useState<number | null>(null);
@@ -17,6 +17,7 @@ export function useDashboardView() {
     const [showInlineLabelEditor, setShowInlineLabelEditor] = useState(true);
     const [showSidebarRuntimeLine, setShowSidebarRuntimeLine] = useState(true);
     const [showSelectedRowActions, setShowSelectedRowActions] = useState(true);
+    const [locale, setLocale] = useState<DashboardLocale>('ko');
 
     return {
         selectedPort,
@@ -49,5 +50,7 @@ export function useDashboardView() {
         setShowSidebarRuntimeLine,
         showSelectedRowActions,
         setShowSelectedRowActions,
+        locale,
+        setLocale,
     };
 }

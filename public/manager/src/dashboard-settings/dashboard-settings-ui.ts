@@ -16,6 +16,7 @@ export function dashboardSettingsUiFromView(
         activitySeenAt: null,
         activitySeenByPort: {},
         uiTheme,
+        locale: view.locale,
         sidebarMode: view.sidebarMode,
         notesSelectedPath: view.notesSelectedPath,
         notesViewMode: view.notesViewMode,

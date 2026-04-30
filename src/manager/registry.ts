@@ -21,6 +21,7 @@ import type {
     DashboardSidebarMode,
     DashboardNotesViewMode,
     DashboardUiTheme,
+    DashboardLocale,
 } from './types.js';
 
 const REGISTRY_FILE = 'manager-instances.json';
@@ -32,6 +33,7 @@ const MAX_NOTES_TREE_WIDTH = 420;
 const DEFAULT_NOTES_TREE_WIDTH = 280;
 const DETAIL_TABS: DashboardDetailTab[] = ['overview', 'preview', 'logs', 'settings'];
 const UI_THEMES: DashboardUiTheme[] = ['auto', 'dark', 'light'];
+const LOCALES: DashboardLocale[] = ['ko', 'en'];
 const SIDEBAR_MODES: DashboardSidebarMode[] = ['instances', 'notes', 'settings'];
 const NOTES_VIEW_MODES: DashboardNotesViewMode[] = ['raw', 'split', 'preview', 'settings'];
 
@@ -114,6 +116,7 @@ function defaultUi(): DashboardRegistryUi {
         activitySeenAt: null,
         activitySeenByPort: {},
         uiTheme: 'auto',
+        locale: 'ko',
         sidebarMode: 'instances',
         notesSelectedPath: null,
         notesViewMode: 'split',
@@ -145,6 +148,9 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
     const uiTheme = UI_THEMES.includes(input.uiTheme as DashboardUiTheme)
         ? input.uiTheme as DashboardUiTheme
         : fallback.uiTheme;
+    const locale = LOCALES.includes(input.locale as DashboardLocale)
+        ? input.locale as DashboardLocale
+        : fallback.locale;
     const sidebarMode = SIDEBAR_MODES.includes(input.sidebarMode as DashboardSidebarMode)
         ? input.sidebarMode as DashboardSidebarMode
         : fallback.sidebarMode;
@@ -162,6 +168,7 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
             : null,
         activitySeenByPort: normalizeActivitySeenByPort(input.activitySeenByPort),
         uiTheme,
+        locale,
         sidebarMode,
         notesSelectedPath: typeof input.notesSelectedPath === 'string' && input.notesSelectedPath.trim()
             ? input.notesSelectedPath.trim()

@@ -11,9 +11,31 @@ type InstancePreviewProps = {
     theme: PreviewTheme;
 };
 
-function previewTargetOrigin(src: string): string {
+function previewTargetOrigin(src: string, frame: HTMLIFrameElement | null): string | null {
     if (typeof window === 'undefined') return 'http://localhost';
-    return new URL(src, window.location.href).origin;
+    try {
+        const actualOrigin = frame?.contentWindow?.location.origin;
+        if (actualOrigin && actualOrigin !== 'null') return actualOrigin;
+    } catch {
+        // Cross-origin previews hide location; fall back to the expected source origin.
+    }
+    const expectedOrigin = new URL(src, window.location.href).origin;
+    return expectedOrigin === 'null' ? null : expectedOrigin;
+}
+
+function postPreviewTheme(frame: HTMLIFrameElement | null, src: string, theme: PreviewTheme): void {
+    const targetWindow = frame?.contentWindow;
+    if (!targetWindow) return;
+    const targetOrigin = previewTargetOrigin(src, frame);
+    if (!targetOrigin) return;
+    try {
+        targetWindow.postMessage(
+            { type: 'jaw-preview-theme-sync', theme },
+            targetOrigin,
+        );
+    } catch (error) {
+        console.warn('[manager-preview] theme sync skipped', error);
+    }
 }
 
 export function InstancePreview(props: InstancePreviewProps) {
@@ -28,10 +50,7 @@ export function InstancePreview(props: InstancePreviewProps) {
         : state.reason;
     const syncTheme = useCallback((): void => {
         if (!props.enabled || !state.canPreview || !state.src) return;
-        iframeRef.current?.contentWindow?.postMessage(
-            { type: 'jaw-preview-theme-sync', theme: props.theme },
-            previewTargetOrigin(state.src),
-        );
+        postPreviewTheme(iframeRef.current, state.src, props.theme);
     }, [props.enabled, props.theme, state.canPreview, state.src]);
 
     useEffect(() => {
