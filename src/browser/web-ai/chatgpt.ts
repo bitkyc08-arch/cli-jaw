@@ -33,6 +33,7 @@ import { geminiSend, geminiPoll, geminiStop, geminiStatus } from './gemini-live.
 import { grokSend, grokPoll, grokStop, grokStatus, isGrokUrl } from './grok-live.js';
 import { ProviderRuntimeDisabledError } from './provider-adapter.js';
 import { fromCliJawStructuredError, WebAiError } from './errors.js';
+import { listCapabilitySchemas } from './capability-registry.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import type {
     QuestionEnvelopeInput,
@@ -86,16 +87,25 @@ export async function render(input: QuestionEnvelopeInput = {}): Promise<WebAiOu
     };
 }
 
-export async function status(port: number, input: { vendor?: string } = {}): Promise<WebAiOutput> {
+export async function status(port: number, input: { vendor?: string; probe?: string } = {}): Promise<WebAiOutput> {
     const vendor = parseVendor(input.vendor);
+    let inner: WebAiOutput;
     if (vendor === 'gemini') {
-        return await geminiStatus(port);
+        inner = await geminiStatus(port);
+    } else if (vendor === 'grok') {
+        inner = await grokStatus(port);
+    } else {
+        const active = await requireVerifiedChatGptTab(port, vendor);
+        inner = { ok: true, vendor: 'chatgpt', status: 'ready', url: active.url, warnings: [] };
     }
-    if (vendor === 'grok') {
-        return await grokStatus(port);
-    }
-    const active = await requireVerifiedChatGptTab(port, vendor);
-    return { ok: true, vendor: 'chatgpt', status: 'ready', url: active.url, warnings: [] };
+    const allRows = listCapabilitySchemas({ vendor: vendor as any });
+    const rows = input.probe
+        ? allRows.filter((row: { capabilityId: string }) => row.capabilityId === input.probe)
+        : allRows;
+    return {
+        ...inner,
+        capabilities: rows,
+    } as WebAiOutput;
 }
 
 export async function send(port: number, input: QuestionEnvelopeInput = {}): Promise<WebAiOutput> {

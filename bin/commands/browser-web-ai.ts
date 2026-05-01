@@ -75,6 +75,7 @@ export async function runWebAiCommand(
             'dry-run': { type: 'string' },
             'older-than-ms': { type: 'string' },
             before: { type: 'string' },
+            probe: { type: 'string' },
             full: { type: 'boolean', default: false },
             json: { type: 'boolean', default: false },
         },
@@ -137,7 +138,7 @@ async function callWebAiEndpoint(
     values: Record<string, unknown>,
     deps: { api: BrowserApi; qs: QueryString },
 ): Promise<unknown> {
-    if (command === 'status') return deps.api('GET', `/web-ai/status${deps.qs({ vendor: values.vendor })}`);
+    if (command === 'status') return deps.api('GET', `/web-ai/status${deps.qs({ vendor: values.vendor, probe: values.probe })}`);
     if (command === 'sessions') return deps.api('GET', `/web-ai/sessions${deps.qs({ vendor: values.vendor, status: values.status })}`);
     if (command === 'sessions-prune') {
         const olderThanMs = values['older-than-ms'] ? Number(values['older-than-ms']) : undefined;
