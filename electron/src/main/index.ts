@@ -27,6 +27,11 @@ function assertLoopbackManagerUrl(raw: string): void {
   } catch (err) {
     throw new Error(`[jaw-electron] invalid manager URL: ${raw}`);
   }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(
+      `[jaw-electron] manager URL must use http: or https:. Got: ${parsed.protocol}`,
+    );
+  }
   const host = parsed.hostname.replace(/^\[|\]$/g, '').toLowerCase();
   if (!LOOPBACK_HOSTS.has(host)) {
     throw new Error(
@@ -117,7 +122,11 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', async (event) => {
-  if (shuttingDown || !managerProcess) return;
+  if (shuttingDown) {
+    event.preventDefault();
+    return;
+  }
+  if (!managerProcess) return;
   event.preventDefault();
   shuttingDown = true;
   try {
@@ -125,6 +134,12 @@ app.on('before-quit', async (event) => {
   } finally {
     managerProcess = null;
     app.quit();
+  }
+});
+
+app.on('activate', () => {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    void bootstrap();
   }
 });
 
@@ -150,7 +165,9 @@ function installSecurityHeaders(managerOrigin: string): void {
     `connect-src 'self' ${managerOrigin} ${wsOrigin}`,
     `object-src 'none'`,
     `base-uri 'self'`,
-    `frame-ancestors 'none'`,
+    `frame-ancestors 'self'`,
+    `frame-src 'self'`,
+    `form-action 'self'`,
   ].join('; ');
 
   const filter = { urls: [`${managerOrigin}/*`] };
@@ -246,7 +263,20 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
       void showCrashLoopDialog(ringBuffer.read()).then(() => app.quit());
       return;
     }
-    void spawnAndWait();
+    try {
+      await spawnAndWait();
+      if (await probeOnce(MANAGER_URL)) {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          try {
+            await mainWindow.loadURL(MANAGER_URL);
+          } catch (err) {
+            ringBuffer.append(`[respawn reload error] ${(err as Error)?.message ?? err}\n`);
+          }
+        }
+      }
+    } catch (err) {
+      ringBuffer.append(`[respawn error] ${(err as Error)?.message ?? err}\n`);
+    }
   })();
 }
 
@@ -267,7 +297,7 @@ async function createWindow(): Promise<void> {
     },
   });
 
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  const guardNavigation = (event: Electron.Event, url: string): void => {
     try {
       if (new URL(url).origin !== MANAGER_ORIGIN) {
         event.preventDefault();
@@ -275,17 +305,27 @@ async function createWindow(): Promise<void> {
     } catch {
       event.preventDefault();
     }
+  };
+
+  mainWindow.webContents.on('will-navigate', guardNavigation);
+  mainWindow.webContents.on('will-redirect', guardNavigation);
+  mainWindow.webContents.on('will-frame-navigate', (event) => {
+    guardNavigation(event, event.url);
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {
-      const host = new URL(url).hostname.toLowerCase();
+      const parsed = new URL(url);
+      if (parsed.protocol !== 'https:') return { action: 'deny' };
+      if (parsed.username || parsed.password) return { action: 'deny' };
+      const host = parsed.hostname.toLowerCase();
       const allow = EXTERNAL_ALLOWLIST.some(
         (h) => host === h || host.endsWith(`.${h}`),
       );
-      if (allow) void shell.openExternal(url);
+      if (!allow) return { action: 'deny' };
+      void shell.openExternal(parsed.toString()).catch(() => {});
     } catch {
-      // deny
+      return { action: 'deny' };
     }
     return { action: 'deny' };
   });
