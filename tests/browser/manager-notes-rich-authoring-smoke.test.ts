@@ -97,6 +97,12 @@ test('notes rich authoring toggles renderer-backed CodeMirror widgets without be
     await expectInputValueIncludes(codeSource, '```ts\n');
     await expectInputValueIncludes(codeSource, '\n```');
     await codeSource.fill('```ts\nconst milkdownCodeBlock = true;\n```');
+    await page.getByRole('heading', { name: 'Rich smoke' }).click();
+    assert.equal(await page.locator('.notes-code-source-node[data-editing="true"]').count(), 0,
+        'clicking outside an open fenced code source must return it to rendered mode');
+    await page.locator('.notes-code-source-node[data-language="ts"]').first().click();
+    await expectInputValueIncludes(codeSource, 'const milkdownCodeBlock = true;');
+    await codeSource.fill('```ts\nconst milkdownCodeBlock = true;\n```');
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('.notes-code-source-node[data-editing="true"]').count(), 0,
         'closed fenced code source followed by Enter must exit the raw block');
@@ -105,8 +111,11 @@ test('notes rich authoring toggles renderer-backed CodeMirror widgets without be
         0,
         'closed fenced code source exit must leave the code block unselected (no Cmd+A overlay)',
     );
+    await page.keyboard.press('ArrowUp');
+    await reopenedCodeSource(page).waitFor({ timeout: 2000 });
+    await page.keyboard.press('Escape');
     await page.keyboard.press('Backspace');
-    const reopenedSource = page.locator('.notes-code-source-node[data-editing="true"] textarea.notes-code-raw');
+    const reopenedSource = reopenedCodeSource(page);
     await reopenedSource.waitFor({ timeout: 2000 });
     const reopenedValue = await reopenedSource.inputValue();
     assert.ok(reopenedValue.endsWith('```'),
@@ -144,6 +153,10 @@ async function expectInputValue(locator: Locator, expected: string): Promise<voi
         await new Promise(resolve => setTimeout(resolve, 100));
     }
     assert.equal(value, expected);
+}
+
+function reopenedCodeSource(page: Page): Locator {
+    return page.locator('.notes-code-source-node[data-editing="true"] textarea.notes-code-raw');
 }
 
 async function expectInputValueIncludes(locator: Locator, expected: string): Promise<void> {

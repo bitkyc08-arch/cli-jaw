@@ -198,7 +198,7 @@ function createCodeBlockView(): NodeViewConstructor {
             if (dom.dataset.editing !== 'true') return;
             if (dom.contains(event.target as Node)) return;
             setTimeout(() => {
-                if (dom.dataset.editing === 'true') setEditing(false);
+                if (dom.dataset.editing === 'true') setEditing(false, { commit: false });
             }, 0);
         }
 
@@ -252,7 +252,7 @@ function createCodeBlockView(): NodeViewConstructor {
         raw.addEventListener('keydown', event => {
             if (event.key === 'Escape') {
                 event.preventDefault();
-                setEditing(false);
+                setEditing(false, { commit: false });
                 view.focus();
                 return;
             }
@@ -287,7 +287,7 @@ function createCodeBlockView(): NodeViewConstructor {
             }
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
                 event.preventDefault();
-                setEditing(false);
+                setEditing(false, { commit: false });
                 view.focus();
             }
         });
@@ -302,7 +302,7 @@ function createCodeBlockView(): NodeViewConstructor {
         raw.addEventListener('blur', () => {
             setTimeout(() => {
                 if (dom.dataset.editing === 'true' && document.activeElement !== raw) {
-                    setEditing(false);
+                    setEditing(false, { commit: false });
                 }
             }, 0);
         });
@@ -342,7 +342,7 @@ function createCodeBlockView(): NodeViewConstructor {
             deselectNode: () => {
                 dom.dataset.selected = 'false';
                 if (dom.dataset.editing === 'true') {
-                    setEditing(false);
+                    setEditing(false, { commit: false });
                 }
             },
             stopEvent: event =>
