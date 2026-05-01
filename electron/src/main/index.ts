@@ -93,6 +93,8 @@ let restartTimestamps: number[] = [];
 let crashLoopStopped = false;
 let shuttingDown = false;
 let shutdownComplete = false;
+let bootstrapPromise: Promise<void> | null = null;
+let managerReadyPromise: Promise<void> | null = null;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -111,7 +113,15 @@ if (!gotLock) {
     }
   });
 
-  app.whenReady().then(bootstrap).catch((err) => {
+  app.whenReady().then(async () => {
+    await bootstrapOnce();
+
+    app.on('activate', () => {
+      if (!mainWindow || mainWindow.isDestroyed()) {
+        void bootstrapOnce();
+      }
+    });
+  }).catch((err) => {
     console.error('[jaw-electron] bootstrap failed', err);
     dialog.showErrorBox('jaw Electron', String(err?.stack ?? err));
     app.quit();
@@ -140,12 +150,6 @@ app.on('before-quit', async (event) => {
   }
 });
 
-app.on('activate', () => {
-  if (!mainWindow || mainWindow.isDestroyed()) {
-    void bootstrap();
-  }
-});
-
 async function bootstrap(): Promise<void> {
   installSecurityHeaders(MANAGER_ORIGIN);
   session.defaultSession.setPermissionRequestHandler((_wc, _permission, cb) => cb(false));
@@ -153,6 +157,16 @@ async function bootstrap(): Promise<void> {
 
   await ensureManagerRunning();
   await createWindow();
+}
+
+function bootstrapOnce(): Promise<void> {
+  if (shuttingDown || shutdownComplete) return Promise.resolve();
+  if (!bootstrapPromise) {
+    bootstrapPromise = bootstrap().finally(() => {
+      bootstrapPromise = null;
+    });
+  }
+  return bootstrapPromise;
 }
 
 function installSecurityHeaders(managerOrigin: string): void {
@@ -191,18 +205,28 @@ function installSecurityHeaders(managerOrigin: string): void {
 async function ensureManagerRunning(): Promise<void> {
   if (await isManagerHealthy(MANAGER_URL)) return;
 
-  if (FLAGS.attachOnly) {
-    const ok = await waitForManagerReady(MANAGER_URL, { timeoutMs: 60_000 });
-    if (!ok) {
-      await showSpawnFailedDialog(
-        `${MANAGER_URL} 에 연결할 수 없습니다. --attach-only 모드이므로 서버를 자동 spawn하지 않습니다.`,
-      );
-      app.quit();
-    }
-    return;
-  }
+  if (managerReadyPromise) return managerReadyPromise;
 
-  await spawnAndWait();
+  managerReadyPromise = (async () => {
+    if (await isManagerHealthy(MANAGER_URL)) return;
+
+    if (FLAGS.attachOnly) {
+      const ok = await waitForManagerReady(MANAGER_URL, { timeoutMs: 60_000 });
+      if (!ok) {
+        await showSpawnFailedDialog(
+          `${MANAGER_URL} 에 연결할 수 없습니다. --attach-only 모드이므로 서버를 자동 spawn하지 않습니다.`,
+        );
+        app.quit();
+      }
+      return;
+    }
+
+    await spawnAndWait();
+  })().finally(() => {
+    managerReadyPromise = null;
+  });
+
+  return managerReadyPromise;
 }
 
 async function spawnAndWait(): Promise<void> {
@@ -267,7 +291,7 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
       return;
     }
     try {
-      await spawnAndWait();
+      await ensureManagerRunning();
       if (await probeOnce(MANAGER_URL)) {
         if (mainWindow && !mainWindow.isDestroyed()) {
           try {
