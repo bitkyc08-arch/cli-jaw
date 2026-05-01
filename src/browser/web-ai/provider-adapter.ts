@@ -46,6 +46,7 @@ export class ProviderRuntimeDisabledError extends Error {
     readonly stage: WebAiFailureStage;
     constructor(vendor: WebAiVendorId, stage: WebAiFailureStage = 'provider-select-mode') {
         super(`provider runtime disabled: ${vendor} (PRD32.8A contract-only). stage=${stage}`);
+        this.name = 'ProviderRuntimeDisabledError';
         this.vendor = vendor;
         this.stage = stage;
     }

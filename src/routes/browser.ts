@@ -320,11 +320,31 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
     });
 }
 
-function toWebAiHttpError(e: unknown): { ok: false; error: string; stage: string } {
+function toWebAiHttpError(e: unknown): { ok: false; error: string; stage: string; errorCode?: string; retryHint?: string; vendor?: string; mutationAllowed?: boolean; selectorsTried?: string[]; evidence?: unknown } {
+    if (isWebAiErrorLike(e)) {
+        const json = (e as { toJSON?: () => unknown }).toJSON?.() as Record<string, unknown> | undefined;
+        if (json && typeof json === 'object') {
+            return {
+                ok: false,
+                error: String(json.message ?? ''),
+                stage: String(json.stage ?? 'unknown'),
+                errorCode: json.errorCode as string | undefined,
+                retryHint: json.retryHint as string | undefined,
+                vendor: json.vendor as string | undefined,
+                mutationAllowed: json.mutationAllowed as boolean | undefined,
+                selectorsTried: json.selectorsTried as string[] | undefined,
+                evidence: json.evidence,
+            };
+        }
+    }
     const err = e as { message?: string; stage?: string };
     return {
         ok: false,
         error: String(err?.message ?? e),
         stage: String(err?.stage ?? 'unknown'),
     };
+}
+
+function isWebAiErrorLike(e: unknown): boolean {
+    return Boolean(e && typeof e === 'object' && (e as { name?: string }).name === 'WebAiError' && typeof (e as { toJSON?: unknown }).toJSON === 'function');
 }

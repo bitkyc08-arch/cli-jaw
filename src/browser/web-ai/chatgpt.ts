@@ -31,6 +31,7 @@ import { reportGeminiContractOnlyStatus, GEMINI_DEEP_THINK_OFFICIAL_SOURCES } fr
 import { geminiSend, geminiPoll, geminiStop, geminiStatus } from './gemini-live.js';
 import { grokSend, grokPoll, grokStop, grokStatus, isGrokUrl } from './grok-live.js';
 import { ProviderRuntimeDisabledError } from './provider-adapter.js';
+import { fromCliJawStructuredError, WebAiError } from './errors.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import type {
     QuestionEnvelopeInput,
@@ -229,7 +230,13 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
     const active = await requireVerifiedChatGptTab(port, vendor);
     let session = input.session ? getSession(input.session) : findSessionByTarget(vendor, active.targetId);
     const baseline = getBaseline(vendor, active.targetId);
-    if (!baseline) throw stageError(new Error('baseline required. Run web-ai send or query first.'), 'poll-timeout');
+    if (!baseline) throw new WebAiError({
+        errorCode: 'provider.poll-timeout',
+        stage: 'poll-timeout',
+        vendor,
+        retryHint: 'poll-or-resume',
+        message: 'baseline required. Run web-ai send or query first.',
+    });
     if (session) assertSameTarget(session, active.targetId);
 
     const page = await requireActivePage(port);
@@ -392,8 +399,17 @@ export async function diagnose(port: number, input: { vendor?: string; stage?: s
 function toJsonDiagnostics<T>(d: T): T { return d; }
 
 function stageError(error: unknown, stage: WebAiFailureStage): Error {
+    const mapped = fromCliJawStructuredError(error, stage);
+    if (mapped) {
+        if (!mapped.stage || mapped.stage === 'internal') mapped.stage = stage;
+        return mapped;
+    }
+    if (error instanceof WebAiError) {
+        if (!error.stage || error.stage === 'internal') error.stage = stage;
+        return error;
+    }
     const wrapped = error instanceof Error ? error : new Error(String(error));
-    if (!(wrapped as any).stage) (wrapped as any).stage = stage;
+    if (!(wrapped as { stage?: string }).stage) (wrapped as { stage?: string }).stage = stage;
     return wrapped;
 }
 
@@ -401,7 +417,13 @@ function parseVendor(vendor?: string): WebAiVendor {
     if (!vendor || vendor === 'chatgpt') return 'chatgpt';
     if (vendor === 'gemini') return 'gemini';
     if (vendor === 'grok') return 'grok';
-    throw new Error(`unsupported vendor: ${vendor}`);
+    throw new WebAiError({
+        errorCode: 'provider.runtime-disabled',
+        stage: 'provider-runtime-gate',
+        retryHint: 'enable-or-skip',
+        message: `unsupported vendor: ${vendor}`,
+        evidence: { vendor },
+    });
 }
 
 async function requireVerifiedChatGptTab(port: number, vendor?: string): Promise<BrowserTabInfo> {

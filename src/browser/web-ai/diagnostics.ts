@@ -233,8 +233,22 @@ export function toWebAiErrorEnvelope(
     fallbackStage: WebAiFailureStage = 'unknown',
     diagnostics?: WebAiDiagnostics,
 ): WebAiErrorEnvelope {
+    // Phase 2 PR2 mirror: if the error is a typed WebAiError, prefer its
+    // serializer so the HTTP and CLI layers agree on errorCode/retryHint
+    // semantics. Legacy fallback shape stays for non-typed throws during the
+    // transition window.
+    const typed = (error && typeof error === 'object' && (error as { name?: string }).name === 'WebAiError' && typeof (error as { toJSON?: unknown }).toJSON === 'function')
+        ? ((error as { toJSON: () => Record<string, unknown> }).toJSON())
+        : null;
+    if (typed) {
+        const message = redactDiagnosticText(String(typed.message ?? ''), { maxChars: 512 });
+        const stage = normalizeFailureStage(String(typed.stage ?? diagnostics?.stage ?? fallbackStage));
+        return diagnostics
+            ? { ok: false, error: message, stage, diagnostics }
+            : { ok: false, error: message, stage };
+    }
     const message = redactDiagnosticText((error as Error)?.message ?? error, { maxChars: 512 });
-    const stage = normalizeFailureStage((error as any)?.stage ?? diagnostics?.stage ?? fallbackStage);
+    const stage = normalizeFailureStage((error as { stage?: string })?.stage ?? diagnostics?.stage ?? fallbackStage);
     return diagnostics
         ? { ok: false, error: message, stage, diagnostics }
         : { ok: false, error: message, stage };
