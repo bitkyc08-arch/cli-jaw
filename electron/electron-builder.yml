@@ -1,0 +1,41 @@
+appId: com.lidge.cli-jaw
+productName: cli-jaw
+directories:
+  output: dist
+  buildResources: build
+files:
+  - out/**/*
+  - package.json
+asar: true
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch:
+        - universal
+    - target: zip
+      arch:
+        - universal
+  identity: null
+  gatekeeperAssess: false
+  notarize: false
+  hardenedRuntime: false
+dmg:
+  sign: false
+win:
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: zip
+      arch:
+        - x64
+  signAndEditExecutable: false
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+linux:
+  target:
+    - AppImage
+  category: Development
+publish: null

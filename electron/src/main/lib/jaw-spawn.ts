@@ -28,18 +28,64 @@ function isExecutable(p: string): boolean {
   }
 }
 
-function whichJaw(): string | null {
+function whichJawCandidates(): string[] {
   try {
-    const out = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['jaw'], {
+    const command = process.platform === 'win32' ? 'where' : 'which';
+    const args = process.platform === 'win32' ? ['jaw'] : ['-a', 'jaw'];
+    const out = execFileSync(command, args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'ignore'],
     }).trim();
-    const first = out.split(/\r?\n/)[0]?.trim();
-    if (first && isExecutable(first)) return first;
+    return out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
   } catch {
     // not found
   }
-  return null;
+  return [];
+}
+
+function commandOutputFromError(error: unknown): string {
+  const err = error as { stdout?: unknown; stderr?: unknown; message?: unknown };
+  const stdout = Buffer.isBuffer(err.stdout) ? err.stdout.toString('utf8') : String(err.stdout ?? '');
+  const stderr = Buffer.isBuffer(err.stderr) ? err.stderr.toString('utf8') : String(err.stderr ?? '');
+  const message = typeof err.message === 'string' ? err.message : '';
+  return `${stdout}\n${stderr}\n${message}`;
+}
+
+export function hasDashboardCommand(binary: string): boolean {
+  if (!isExecutable(binary)) return false;
+  try {
+    execFileSync(binary, ['dashboard', '__jaw_electron_probe__'], {
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+      timeout: 2000,
+    });
+    return true;
+  } catch (error) {
+    const output = commandOutputFromError(error);
+    return (
+      output.includes('Unknown dashboard command: __jaw_electron_probe__') ||
+      output.includes('Usage: jaw dashboard') ||
+      output.includes('jaw dashboard serve')
+    );
+  }
+}
+
+function addCandidate(candidate: string, searched: string[], seen: Set<string>, label = candidate): string | null {
+  if (seen.has(candidate)) return null;
+  seen.add(candidate);
+  if (!isExecutable(candidate)) {
+    searched.push(`${label} (not executable)`);
+    return null;
+  }
+  if (!hasDashboardCommand(candidate)) {
+    searched.push(`${label} (no dashboard support)`);
+    return null;
+  }
+  searched.push(label);
+  return candidate;
 }
 
 function expandNvmCandidates(): string[] {
@@ -76,22 +122,23 @@ export interface FindResult {
 export async function findJawBinary(): Promise<FindResult> {
   await ensureFixedPath();
   const searched: string[] = [];
+  const seen = new Set<string>();
 
   if (process.env.JAW_BIN) {
-    searched.push(`$JAW_BIN=${process.env.JAW_BIN}`);
-    if (isExecutable(process.env.JAW_BIN)) {
-      return { path: process.env.JAW_BIN, searched };
-    }
+    const found = addCandidate(process.env.JAW_BIN, searched, seen, `$JAW_BIN=${process.env.JAW_BIN}`);
+    if (found) return { path: found, searched };
   }
 
-  const w = whichJaw();
-  searched.push(`which jaw → ${w ?? '(not found)'}`);
-  if (w) return { path: w, searched };
+  const whichCandidates = whichJawCandidates();
+  if (whichCandidates.length === 0) searched.push('which -a jaw → (not found)');
+  for (const c of whichCandidates) {
+    const found = addCandidate(c, searched, seen, `which -a jaw → ${c}`);
+    if (found) return { path: found, searched };
+  }
 
   for (const c of buildCandidateList()) {
-    if (searched.includes(c)) continue;
-    searched.push(c);
-    if (isExecutable(c)) return { path: c, searched };
+    const found = addCandidate(c, searched, seen);
+    if (found) return { path: found, searched };
   }
 
   return { path: null, searched };

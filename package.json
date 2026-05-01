@@ -76,8 +76,9 @@
     "typecheck": "tsc --noEmit",
     "typecheck:frontend": "tsc --noEmit -p tsconfig.frontend.json",
     "prepublishOnly": "npm run build && npm run build:frontend",
-    "electron:dev": "concurrently -k -n jaw,electron \"jaw dashboard serve --port 24576\" \"npm --prefix electron run dev\"",
-    "electron:build": "npm --prefix electron run build && cd electron && npx electron-builder --mac --win",
+    "electron:dev": "concurrently -k -n jaw,electron \"node scripts/electron-dev-manager.mjs\" \"npm --prefix electron run dev\"",
+    "electron:build": "npm --prefix electron run build",
+    "electron:dist:mac": "npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac",
     "electron:start": "npm --prefix electron run start",
     "check:electron-no-native": "node scripts/check-electron-no-native.cjs"
   },

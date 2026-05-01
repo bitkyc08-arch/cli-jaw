@@ -6,6 +6,53 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# ─── Flag parsing ──────────────────────────────────────
+WITH_DESKTOP=0
+POSITIONAL=()
+for arg in "$@"; do
+  case "$arg" in
+    --with-desktop)
+      WITH_DESKTOP=1
+      ;;
+    *)
+      POSITIONAL+=("$arg")
+      ;;
+  esac
+done
+set -- "${POSITIONAL[@]+"${POSITIONAL[@]}"}"
+
+run_electron_release_checks() {
+  echo "🖥️  Checking Electron npm boundary..."
+  npm run check:electron-no-native
+
+  echo "🖥️  Type checking Electron shell..."
+  npm --prefix electron run typecheck
+
+  echo "🖥️  Building Electron shell..."
+  npm --prefix electron run build
+}
+
+ELECTRON_RELEASE_NOTES_BASE="### Desktop / Electron
+- Electron shell validated with \`npm --prefix electron run typecheck\` and \`npm --prefix electron run build\`.
+- npm package boundary validated with \`npm run check:electron-no-native\`; Electron app artifacts remain outside the npm package.
+- Desktop app distribution remains separate from \`npm install -g cli-jaw\` and should be shipped through the GitHub/download channel."
+
+ELECTRON_RELEASE_NOTES_UNSIGNED="
+#### ⚠️ Desktop app downloads are unsigned
+The macOS \`.dmg\` / \`.zip\` and Windows installers attached to this release are **unsigned** (no Apple Developer ID / Windows code-signing cert configured).
+
+- macOS: Gatekeeper will block first launch. Either right-click → Open → Open, or remove the quarantine attribute:
+  \`\`\`sh
+  xattr -d com.apple.quarantine /Applications/cli-jaw.app
+  \`\`\`
+- Windows: SmartScreen will warn on first run. Click \"More info\" → \"Run anyway\".
+- For trusted distribution, install via \`npm install -g cli-jaw\` instead."
+
+ELECTRON_RELEASE_NOTES="$ELECTRON_RELEASE_NOTES_BASE"
+if [ "$WITH_DESKTOP" = "1" ]; then
+  ELECTRON_RELEASE_NOTES="$ELECTRON_RELEASE_NOTES_BASE$ELECTRON_RELEASE_NOTES_UNSIGNED"
+fi
+
 # ─── Version detection ─────────────────────────────────
 NPM_LATEST=$(npm view cli-jaw dist-tags.latest 2>/dev/null || echo "")
 PKG_VERSION=$(node -p "require('./package.json').version")
@@ -72,6 +119,25 @@ npm run build
 echo "📦 Building frontend..."
 npm run build:frontend
 
+run_electron_release_checks
+
+# ─── Desktop dist (optional, --with-desktop) ───────────
+DESKTOP_ARTIFACTS=()
+if [ "$WITH_DESKTOP" = "1" ]; then
+  if [ "$(uname -s)" = "Darwin" ]; then
+    echo "🖥️  Building desktop app (unsigned)..."
+    rm -rf electron/dist
+    CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac
+    while IFS= read -r f; do
+      [ -n "$f" ] && DESKTOP_ARTIFACTS+=("$f")
+    done < <(ls electron/dist/*.dmg electron/dist/*.zip 2>/dev/null || true)
+    echo "📦 Desktop artifacts collected: ${#DESKTOP_ARTIFACTS[@]}"
+    printf '   - %s\n' "${DESKTOP_ARTIFACTS[@]+"${DESKTOP_ARTIFACTS[@]}"}"
+  else
+    echo "⚠️  --with-desktop requested but host is not Darwin; skipping macOS dist."
+  fi
+fi
+
 echo "🧪 Verifying npm package contents..."
 npm pack --dry-run >/dev/null
 
@@ -101,13 +167,16 @@ RELEASE_BODY="## Preview Release v$VERSION
 **Commits since $PREV_TAG**: $COMMIT_COUNT
 
 ### Changes
-$CHANGELOG"
+$CHANGELOG
+
+$ELECTRON_RELEASE_NOTES"
 
 if command -v gh &>/dev/null; then
   gh release create "v$VERSION" \
     --title "v$VERSION (preview)" \
     --notes "$RELEASE_BODY" \
-    --prerelease
+    --prerelease \
+    "${DESKTOP_ARTIFACTS[@]+"${DESKTOP_ARTIFACTS[@]}"}"
   echo "✅ GitHub prerelease v$VERSION created!"
 else
   echo "⚠️  Skipped GitHub prerelease (gh CLI not found)"

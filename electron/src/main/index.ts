@@ -5,6 +5,13 @@ import type { ChildProcess } from 'node:child_process';
 import { findJawBinary, spawnJawDashboard, gracefulShutdown } from './lib/jaw-spawn.js';
 import { waitForManagerReady, isManagerHealthy, probeOnce } from './lib/health-check.js';
 import {
+  buildManagerCsp,
+  buildPreviewFrameOrigins,
+  isManagerNavigation,
+  isPreviewFrameNavigation,
+  resolvePreviewFramePolicy,
+} from './lib/navigation-policy.js';
+import {
   showJawNotFoundDialog,
   showCrashLoopDialog,
   showSpawnFailedDialog,
@@ -73,6 +80,7 @@ function parseArgs(argv: string[]): CliFlags {
 const FLAGS = parseArgs(process.argv.slice(1));
 const MANAGER_URL = FLAGS.managerUrl;
 const MANAGER_ORIGIN = new URL(MANAGER_URL).origin;
+const PREVIEW_FRAME_POLICY = resolvePreviewFramePolicy(process.env);
 
 const EXTERNAL_ALLOWLIST = [
   'github.com',
@@ -170,22 +178,10 @@ function bootstrapOnce(): Promise<void> {
 }
 
 function installSecurityHeaders(managerOrigin: string): void {
-  const wsOrigin = managerOrigin
-    .replace(/^http:/, 'ws:')
-    .replace(/^https:/, 'wss:');
-  const csp = [
-    `default-src 'self'`,
-    `script-src 'self'`,
-    `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data: blob:`,
-    `font-src 'self' data:`,
-    `connect-src 'self' ${managerOrigin} ${wsOrigin}`,
-    `object-src 'none'`,
-    `base-uri 'self'`,
-    `frame-ancestors 'self'`,
-    `frame-src 'self'`,
-    `form-action 'self'`,
-  ].join('; ');
+  const csp = buildManagerCsp(
+    managerOrigin,
+    buildPreviewFrameOrigins(PREVIEW_FRAME_POLICY),
+  );
 
   const filter = { urls: [`${managerOrigin}/*`] };
   session.defaultSession.webRequest.onHeadersReceived(filter, (details, callback) => {
@@ -200,6 +196,11 @@ function installSecurityHeaders(managerOrigin: string): void {
     headers['X-Content-Type-Options'] = ['nosniff'];
     callback({ responseHeaders: headers });
   });
+}
+
+function isAllowedFrameNavigation(raw: string): boolean {
+  return isManagerNavigation(raw, MANAGER_ORIGIN)
+    || isPreviewFrameNavigation(raw, PREVIEW_FRAME_POLICY);
 }
 
 async function ensureManagerRunning(): Promise<void> {
@@ -325,11 +326,7 @@ async function createWindow(): Promise<void> {
   });
 
   const guardNavigation = (event: Electron.Event, url: string): void => {
-    try {
-      if (new URL(url).origin !== MANAGER_ORIGIN) {
-        event.preventDefault();
-      }
-    } catch {
+    if (!isManagerNavigation(url, MANAGER_ORIGIN)) {
       event.preventDefault();
     }
   };
@@ -337,7 +334,9 @@ async function createWindow(): Promise<void> {
   mainWindow.webContents.on('will-navigate', guardNavigation);
   mainWindow.webContents.on('will-redirect', guardNavigation);
   mainWindow.webContents.on('will-frame-navigate', (event) => {
-    guardNavigation(event, event.url);
+    if (!isAllowedFrameNavigation(event.url)) {
+      event.preventDefault();
+    }
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
