@@ -14,7 +14,7 @@ export type DashboardUiTheme = 'auto' | 'dark' | 'light';
 export type DashboardLocale = 'ko' | 'en' | 'zh' | 'ja';
 export type DashboardSidebarMode = 'instances' | 'notes' | 'settings';
 export type DashboardNotesViewMode = 'raw' | 'split' | 'preview' | 'settings';
-export type DashboardNotesAuthoringMode = 'plain' | 'rich';
+export type DashboardNotesAuthoringMode = 'plain' | 'rich' | 'wysiwyg';
 export type DashboardProfileId = string;
 
 export type DashboardProxyInfo = {

@@ -118,7 +118,8 @@ test('Notes markdown editor uses Manager-token CodeMirror theme', () => {
     assert.ok(theme.includes('var(--text-primary)'), 'editor theme must use Manager text tokens');
     assert.ok(theme.includes('var(--canvas-deep)'), 'editor theme must use Manager canvas tokens');
     assert.ok(theme.includes('var(--border-subtle)'), 'editor theme must use Manager border tokens');
-    assert.ok(theme.includes('var(--accent-soft)'), 'editor theme must use Manager accent tokens for selection/matching states');
+    assert.ok(theme.includes('var(--accent-soft)'), 'editor theme must use Manager accent tokens for matching/active-line states');
+    assert.ok(theme.includes('var(--selection-bg)'), 'editor theme must use the dedicated selection token so Cmd/Ctrl+A is visibly highlighted in both themes');
     assert.equal(theme.includes('@uiw/codemirror-theme'), false, 'Notes must not add a separate CodeMirror theme dependency');
     assert.equal(theme.includes('#ffffff'), false, 'editor theme must not hardcode light backgrounds');
     assert.equal(theme.includes('#000000'), false, 'editor theme must not hardcode pure black backgrounds');

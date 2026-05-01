@@ -35,8 +35,11 @@ export const notesEditorTheme = EditorView.theme({
     '.cm-cursor, .cm-dropCursor': {
         borderLeftColor: 'var(--text-primary)',
     },
+    /* Selection backgrounds are also enforced from global CSS in manager-notes.css to beat
+       CodeMirror baseTheme `&dark.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground { background: #233 }`,
+       which has higher specificity than any &-prefixed rule we can write inside EditorView.theme. */
     '&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection': {
-        backgroundColor: 'var(--accent-soft)',
+        backgroundColor: 'var(--selection-bg)',
     },
     '&.cm-focused': {
         outline: '1px solid var(--border-strong)',

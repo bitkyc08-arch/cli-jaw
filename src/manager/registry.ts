@@ -37,7 +37,7 @@ const UI_THEMES: DashboardUiTheme[] = ['auto', 'dark', 'light'];
 const LOCALES: DashboardLocale[] = ['ko', 'en', 'zh', 'ja'];
 const SIDEBAR_MODES: DashboardSidebarMode[] = ['instances', 'notes', 'settings'];
 const NOTES_VIEW_MODES: DashboardNotesViewMode[] = ['raw', 'split', 'preview', 'settings'];
-const NOTES_AUTHORING_MODES: DashboardNotesAuthoringMode[] = ['plain', 'rich'];
+const NOTES_AUTHORING_MODES: DashboardNotesAuthoringMode[] = ['plain', 'rich', 'wysiwyg'];
 
 export type DashboardRegistryLoadResult = {
     registry: DashboardRegistry;

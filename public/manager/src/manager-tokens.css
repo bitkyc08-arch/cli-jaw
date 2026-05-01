@@ -62,6 +62,7 @@
     --text-dim:       #657283;
     --accent:         #62a8f5;
     --accent-soft:    #1e2b3d;
+    --selection-bg:   color-mix(in srgb, var(--accent) 40%, transparent);
     --status-running: #34d399;
     --status-warn:    #f5a524;
     --status-error:   #f87171;
@@ -128,6 +129,7 @@
     --text-dim:       var(--jp-gray-500);
     --accent:         var(--jp-blue-600);
     --accent-soft:    var(--jp-blue-100);
+    --selection-bg:   color-mix(in srgb, var(--accent) 30%, transparent);
     --status-running: var(--jp-green-600);
     --status-warn:    var(--jp-amber-600);
     --status-error:   var(--jp-red-600);
@@ -193,6 +195,7 @@
         --text-dim:       var(--jp-gray-500);
         --accent:         var(--jp-blue-600);
         --accent-soft:    var(--jp-blue-100);
+        --selection-bg:   color-mix(in srgb, var(--accent) 30%, transparent);
         --status-running: var(--jp-green-600);
         --status-warn:    var(--jp-amber-600);
         --status-error:   var(--jp-red-600);

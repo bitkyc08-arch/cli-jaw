@@ -11,7 +11,7 @@ const routeSrc = fs.readFileSync(join(root, 'src/routes/browser.ts'), 'utf8');
 const indexSrc = fs.readFileSync(join(root, 'src/browser/index.ts'), 'utf8');
 
 test('BWCLI-001: CLI exposes closed web-ai command surface', () => {
-    assert.match(cliWebAiSrc, /const WEB_AI_COMMANDS = new Set\(\['render', 'status', 'send', 'poll', 'query', 'watch', 'watchers', 'sessions', 'notifications', 'capabilities', 'stop', 'diagnose', 'context-dry-run', 'context-render'\]\)/);
+    assert.match(cliWebAiSrc, /const WEB_AI_COMMANDS = new Set\(\['render', 'status', 'send', 'poll', 'query', 'watch', 'watchers', 'sessions', 'sessions-prune', 'notifications', 'capabilities', 'stop', 'diagnose', 'context-dry-run', 'context-render'\]\)/);
     assert.match(cliSrc, /case 'web-ai'/);
     assert.match(cliSrc, /runWebAiCommand/);
 });

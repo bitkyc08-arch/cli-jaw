@@ -19,11 +19,11 @@ test('Notes authoring mode is separate from Notes view mode', () => {
 
     assert.ok(notesTypes.includes("export type NotesViewMode = 'raw' | 'split' | 'preview' | 'settings';"),
         'NotesViewMode must not include rich');
-    assert.ok(notesTypes.includes("export type NotesAuthoringMode = 'plain' | 'rich';"),
+    assert.ok(notesTypes.includes("export type NotesAuthoringMode = 'plain' | 'rich' | 'wysiwyg';"),
         'NotesAuthoringMode must exist separately');
-    assert.ok(publicTypes.includes("export type DashboardNotesAuthoringMode = 'plain' | 'rich';"),
+    assert.ok(publicTypes.includes("export type DashboardNotesAuthoringMode = 'plain' | 'rich' | 'wysiwyg';"),
         'frontend registry type must include authoring mode');
-    assert.ok(serverTypes.includes("export type DashboardNotesAuthoringMode = 'plain' | 'rich';"),
+    assert.ok(serverTypes.includes("export type DashboardNotesAuthoringMode = 'plain' | 'rich' | 'wysiwyg';"),
         'server registry type must include authoring mode');
     assert.ok(registry.includes('NOTES_AUTHORING_MODES'), 'registry must validate authoring mode');
     assert.ok(registry.includes("notesAuthoringMode: 'plain'"), 'registry default must be plain authoring');
@@ -36,10 +36,10 @@ test('Notes toolbar exposes Plain/Rich authoring independently from layout tabs'
 
     assert.ok(toolbar.includes("const VIEW_MODES: NotesViewMode[] = ['raw', 'split', 'preview', 'settings'];"),
         'Rich must not be a view tab');
-    assert.ok(toolbar.includes("const AUTHORING_MODES: NotesAuthoringMode[] = ['plain', 'rich'];"),
+    assert.ok(toolbar.includes("const AUTHORING_MODES: NotesAuthoringMode[] = ['plain', 'rich', 'wysiwyg'];"),
         'toolbar must expose authoring modes separately');
     assert.ok(toolbar.includes('aria-label="Notes authoring mode"'), 'authoring control must be accessible');
-    assert.ok(toolbar.includes("mode === 'plain' ? 'Plain' : 'Rich'"), 'authoring labels must be explicit');
+    assert.ok(toolbar.includes('authoringModeLabel'), 'authoring labels must be explicit');
     assert.ok(app.includes('handleNotesAuthoringModeChange'), 'App must persist authoring mode changes');
     assert.ok(workspace.includes('authoringMode={props.authoringMode}'), 'workspace must pass authoring mode to the editor');
 });

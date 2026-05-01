@@ -1,7 +1,7 @@
 import type { DashboardNoteFileResponse, DashboardNoteTreeEntry } from '../types';
 
 export type NotesViewMode = 'raw' | 'split' | 'preview' | 'settings';
-export type NotesAuthoringMode = 'plain' | 'rich';
+export type NotesAuthoringMode = 'plain' | 'rich' | 'wysiwyg';
 
 export type NotesTreeSelection = {
     selectedPath: string | null;

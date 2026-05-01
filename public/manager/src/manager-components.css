@@ -201,6 +201,9 @@ h2 { font-size: 13px; }
     align-items: center;
     gap: 8px;
 }
+.instance-row-main .instance-status {
+    margin-top: 1px;
+}
 .instance-row-title { min-width: 0; display: grid; gap: 3px; }
 .instance-row-title-line {
     min-width: 0;
@@ -246,9 +249,10 @@ h2 { font-size: 13px; }
 }
 .instance-row-meta { display: grid; gap: 3px; }
 .instance-row-activity-title {
-    color: var(--text-primary);
-    font-size: 11px;
-    font-weight: 600;
+    color: var(--accent);
+    font-size: 10px;
+    font-weight: 400;
+    line-height: 1.4;
 }
 .instance-label-edit-button {
     position: absolute;

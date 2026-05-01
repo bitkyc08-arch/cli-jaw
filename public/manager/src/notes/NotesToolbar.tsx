@@ -16,7 +16,13 @@ type NotesToolbarProps = {
 };
 
 const VIEW_MODES: NotesViewMode[] = ['raw', 'split', 'preview', 'settings'];
-const AUTHORING_MODES: NotesAuthoringMode[] = ['plain', 'rich'];
+const AUTHORING_MODES: NotesAuthoringMode[] = ['plain', 'rich', 'wysiwyg'];
+
+function authoringModeLabel(mode: NotesAuthoringMode): string {
+    if (mode === 'plain') return 'Plain';
+    if (mode === 'rich') return 'Rich';
+    return 'WYSIWYG';
+}
 
 export function NotesToolbar(props: NotesToolbarProps) {
     return (
@@ -50,7 +56,7 @@ export function NotesToolbar(props: NotesToolbarProps) {
                             disabled={!props.selectedPath}
                             onClick={() => props.onAuthoringModeChange(mode)}
                         >
-                            {mode === 'plain' ? 'Plain' : 'Rich'}
+                            {authoringModeLabel(mode)}
                         </button>
                     ))}
                 </div>

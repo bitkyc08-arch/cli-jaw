@@ -285,6 +285,349 @@
     border-right: 1px solid var(--border-subtle);
 }
 
+.notes-wysiwyg-editor {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+}
+
+.notes-milkdown-shell {
+    min-width: 0;
+    min-height: 0;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+}
+
+.notes-wysiwyg-loading {
+    display: grid;
+    place-items: center;
+    min-height: 220px;
+    color: var(--text-secondary);
+}
+
+.notes-wysiwyg-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 3px;
+    min-height: 34px;
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    background: color-mix(in srgb, var(--canvas-panel) 82%, var(--canvas-base));
+}
+
+.notes-wysiwyg-toolbar button {
+    min-width: 28px;
+    height: 26px;
+    padding: 0 7px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    color: var(--text-secondary);
+    background: transparent;
+    font-size: 12px;
+    line-height: 1;
+    transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.notes-wysiwyg-toolbar button:hover,
+.notes-wysiwyg-toolbar button:focus-visible {
+    color: var(--text-primary);
+    border-color: var(--border-subtle);
+    background: var(--accent-soft);
+}
+
+.notes-wysiwyg-toolbar button:disabled {
+    cursor: wait;
+    opacity: 0.55;
+}
+
+.notes-milkdown-root {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+    background: var(--canvas-base);
+}
+
+.notes-wysiwyg-error {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border-subtle);
+    color: var(--danger-strong, var(--text-primary));
+    background: var(--danger-soft, var(--canvas-panel));
+}
+
+.notes-milkdown-root .ProseMirror {
+    min-height: 100%;
+    padding: 24px 28px 160px;
+    outline: none;
+    color: var(--text-primary);
+    font-size: 17px;
+    line-height: 1.65;
+}
+
+.notes-milkdown-root .ProseMirror :where(h1, h2, h3, p, ul, ol, blockquote, pre) {
+    margin-top: 0;
+}
+
+.notes-milkdown-root .ProseMirror h1 {
+    margin-bottom: 16px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 30px;
+    line-height: 1.2;
+}
+
+.notes-milkdown-root .ProseMirror h2 {
+    margin-bottom: 12px;
+    font-size: 23px;
+    line-height: 1.25;
+}
+
+.notes-milkdown-root .ProseMirror p,
+.notes-milkdown-root .ProseMirror ul,
+.notes-milkdown-root .ProseMirror ol,
+.notes-milkdown-root .ProseMirror blockquote,
+.notes-milkdown-root .ProseMirror pre {
+    margin-bottom: 14px;
+}
+
+.notes-milkdown-root .ProseMirror blockquote {
+    margin-left: 0;
+    padding-left: 14px;
+    border-left: 3px solid var(--accent);
+    color: var(--text-secondary);
+}
+
+.notes-milkdown-root .ProseMirror code {
+    padding: 2px 5px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 5px;
+    background: var(--canvas-panel);
+}
+
+.notes-milkdown-root .ProseMirror pre {
+    position: relative;
+    overflow: auto;
+    padding: 13px 14px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--canvas-panel) 84%, var(--canvas-base));
+    box-shadow: inset 0 1px 0 color-mix(in srgb, var(--text-primary) 5%, transparent);
+}
+
+.notes-milkdown-root .ProseMirror pre[data-language]:not([data-language=""]) {
+    padding-top: 32px;
+}
+
+.notes-milkdown-root .ProseMirror pre[data-language]:not([data-language=""])::before {
+    content: attr(data-language);
+    position: absolute;
+    top: 7px;
+    right: 10px;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--text-secondary);
+    text-transform: lowercase;
+}
+
+.notes-milkdown-root .ProseMirror pre code {
+    padding: 0;
+    border: 0;
+    background: transparent;
+}
+
+.notes-milkdown-root .ProseMirror [data-type="math_inline"] {
+    display: inline-flex;
+    max-width: 100%;
+    padding: 1px 4px;
+    border-radius: 5px;
+    vertical-align: baseline;
+    background: var(--accent-soft);
+    overflow-x: auto;
+}
+
+.notes-milkdown-root .ProseMirror [data-type="math_block"] {
+    display: block;
+    max-width: 100%;
+    margin: 14px 0;
+    padding: 12px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--canvas-panel);
+    overflow-x: auto;
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-node {
+    cursor: text;
+    border: 1px solid transparent;
+    transition: border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-node[data-selected="true"],
+.notes-milkdown-root .ProseMirror .notes-math-node[data-editing="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-inline-node {
+    display: inline-grid;
+    max-width: min(100%, 52rem);
+    padding: 1px 5px;
+    border-radius: 5px;
+    vertical-align: baseline;
+    background: color-mix(in srgb, var(--accent-soft) 78%, transparent);
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-block-node {
+    display: grid;
+    gap: 8px;
+    max-width: 100%;
+    margin: 14px 0;
+    padding: 10px 12px 12px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--canvas-panel) 86%, var(--canvas-base));
+    overflow-x: auto;
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-label {
+    justify-self: start;
+    font: 500 11px/1 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    color: var(--text-muted, var(--text-secondary));
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-rendered {
+    min-width: 0;
+    overflow-x: auto;
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-raw {
+    display: none;
+    width: 100%;
+    min-width: min(20rem, 100%);
+    margin: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: 5px;
+    color: var(--text-primary);
+    background: var(--canvas-base);
+    font: 500 13px/1.5 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    outline: none;
+}
+
+.notes-milkdown-root .ProseMirror input.notes-math-raw {
+    height: 28px;
+    padding: 2px 7px;
+}
+
+.notes-milkdown-root .ProseMirror textarea.notes-math-raw {
+    min-height: 92px;
+    padding: 8px 9px;
+    resize: vertical;
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-node[data-editing="true"] .notes-math-rendered {
+    display: none;
+}
+
+.notes-milkdown-root .ProseMirror .notes-math-node[data-editing="true"] .notes-math-raw {
+    display: block;
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-source-node {
+    display: grid;
+    gap: 0;
+    max-width: 100%;
+    margin: 12px 0;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: text;
+    transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-source-node[data-selected="true"],
+.notes-milkdown-root .ProseMirror .notes-code-source-node[data-editing="true"] {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent) 24%, transparent);
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-source-header {
+    display: flex;
+    align-items: center;
+    min-height: 24px;
+    padding: 6px 10px 0;
+    color: var(--text-muted, var(--text-secondary));
+    font: 600 11px/1 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    text-transform: lowercase;
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-rendered pre {
+    margin-top: 0;
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-raw {
+    display: none;
+    width: 100%;
+    min-height: 132px;
+    margin: 0;
+    padding: 10px 11px;
+    border: 0;
+    border-radius: 5px;
+    color: var(--text-primary);
+    background: var(--canvas-base);
+    font: 500 13px/1.55 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    outline: none;
+    resize: vertical;
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-source-node[data-editing="true"] .notes-code-rendered {
+    display: none;
+}
+
+.notes-milkdown-root .ProseMirror .notes-code-source-node[data-editing="true"] .notes-code-raw {
+    display: block;
+}
+
+.notes-milkdown-root .ProseMirror table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 14px;
+}
+
+.notes-milkdown-root .ProseMirror th,
+.notes-milkdown-root .ProseMirror td {
+    padding: 7px 9px;
+    border: 1px solid var(--border-subtle);
+    vertical-align: top;
+}
+
+.notes-milkdown-root .ProseMirror img {
+    max-width: 100%;
+    height: auto;
+}
+
+.notes-milkdown-root .ProseMirror hr {
+    border: 0;
+    border-top: 1px solid var(--border-subtle);
+    margin: 22px 0;
+}
+
+.notes-milkdown-root .ProseMirror-selectednode {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+/* Force the Cmd/Ctrl+A selection highlight to use --selection-bg in both light and dark
+   modes. CodeMirror baseTheme injects `&dark.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`
+   with a near-canvas-color background (#222 / #233), which makes selection invisible
+   on our dark canvas. These rules have higher specificity AND !important so they win
+   regardless of cm-light / cm-dark class on the editor. */
+.notes-editor .cm-editor .cm-selectionLayer .cm-selectionBackground,
+.notes-editor .cm-editor.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground {
+    background: var(--selection-bg) !important;
+}
+
+.notes-editor .cm-editor .cm-content ::selection,
+.notes-editor .cm-editor .cm-line ::selection {
+    background-color: var(--selection-bg) !important;
+}
+
 .notes-preview {
     padding: 22px;
     line-height: 1.65;

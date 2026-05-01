@@ -19,23 +19,40 @@ test('MarkdownPreview remains backed by the shared MarkdownRenderer', () => {
 
 test('WYSIWYG contract files do not duplicate preview renderer dependencies', () => {
     const wysiwygDir = join(projectRoot, 'public/manager/src/notes/wysiwyg');
-    const source = readdirSync(wysiwygDir)
+    const sources = readdirSync(wysiwygDir)
         .filter(file => file.endsWith('.ts') || file.endsWith('.tsx'))
-        .map(file => read(`public/manager/src/notes/wysiwyg/${file}`))
-        .join('\n');
+        .map(file => ({
+            file,
+            source: read(`public/manager/src/notes/wysiwyg/${file}`),
+        }));
+    const source = sources.map(entry => entry.source).join('\n');
 
     [
         "import { MarkdownRenderer",
         "from 'mermaid'",
-        "from 'katex'",
         "from 'highlight.js'",
         'ReactMarkdown',
         'rehypeRaw',
         'rehypeKatex',
         'rehypeSanitize',
-        'remarkMath',
         'dangerouslySetInnerHTML',
     ].forEach(forbidden => {
         assert.equal(source.includes(forbidden), false, `WYSIWYG contracts must not include ${forbidden}`);
+    });
+
+    sources.forEach(entry => {
+        const importsKatex = entry.source.includes("from 'katex'");
+        assert.equal(
+            importsKatex,
+            entry.file === 'milkdown-math.ts',
+            'Only the local Milkdown math authoring plugin may import KaTeX directly',
+        );
+
+        const importsRemarkMath = entry.source.includes('remarkMath');
+        assert.equal(
+            importsRemarkMath,
+            entry.file === 'milkdown-math.ts',
+            'Only the local Milkdown math authoring plugin may import remark-math directly',
+        );
     });
 });
