@@ -45,13 +45,16 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     const editor = read('public/manager/src/notes/MarkdownEditor.tsx');
     const workspace = read('public/manager/src/notes/NotesWorkspace.tsx');
     const milkdown = read('public/manager/src/notes/wysiwyg/MilkdownWysiwygEditor.tsx');
+    const gfmPlugin = read('public/manager/src/notes/wysiwyg/milkdown-gfm-safe.ts');
     const mathPlugin = read('public/manager/src/notes/wysiwyg/milkdown-math.ts');
     const codePlugin = read('public/manager/src/notes/wysiwyg/milkdown-code-block-view.ts');
 
     assert.ok(editor.includes('MilkdownWysiwygEditor'), 'WYSIWYG mode must render the Milkdown authoring surface');
     assert.ok(milkdown.includes('@milkdown/kit/core'), 'WYSIWYG mode must use Milkdown core directly');
     assert.ok(milkdown.includes('@milkdown/kit/preset/commonmark'), 'Milkdown WYSIWYG must support CommonMark editing');
-    assert.ok(milkdown.includes('@milkdown/kit/preset/gfm'), 'Milkdown WYSIWYG must support GFM editing');
+    assert.ok(milkdown.includes('./milkdown-gfm-safe'), 'Milkdown WYSIWYG must support GFM editing through the local safe wrapper');
+    assert.ok(milkdown.includes('.use(notesMilkdownGfm)'), 'Milkdown WYSIWYG must install the local GFM wrapper');
+    assert.equal(milkdown.includes('.use(gfm)'), false, 'WYSIWYG must not install the upstream GFM bundle with the unsafe task input rule');
     assert.ok(milkdown.includes('./milkdown-math'), 'Milkdown WYSIWYG must use the local math plugin instead of a deprecated dependency');
     assert.ok(milkdown.includes('./milkdown-code-block-view'), 'Milkdown WYSIWYG must use the local code block source view');
     assert.ok(milkdown.includes('notesMilkdownKatexOptionsCtx'), 'Milkdown WYSIWYG must configure KaTeX options');
@@ -60,6 +63,7 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     assert.ok(milkdown.includes('insertInlineMath'), 'Milkdown WYSIWYG must expose inline math insertion');
     assert.ok(milkdown.includes('insertBlockMath'), 'Milkdown WYSIWYG must expose block math insertion');
     assert.ok(milkdown.includes('insertTaskListItem'), 'Milkdown WYSIWYG must expose task list insertion');
+    assert.ok(milkdown.includes('normalizeEscapedTaskMarkers'), 'WYSIWYG must save literal task markers as canonical GFM task list markdown');
     assert.ok(milkdown.includes('toggleStrikethroughCommand'), 'Milkdown WYSIWYG must expose GFM strikethrough');
     assert.ok(milkdown.includes('insertTableCommand'), 'Milkdown WYSIWYG must expose GFM tables');
     assert.ok(milkdown.includes('handleTaskListClick'), 'Milkdown WYSIWYG must let users toggle task list checkboxes');
@@ -68,6 +72,12 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     assert.ok(milkdown.includes("item.setAttribute('aria-checked'"), 'Milkdown WYSIWYG task items must expose checked state');
     assert.ok(milkdown.includes('createLanguageCodeBlock'), 'Milkdown WYSIWYG must create language-aware code blocks');
     assert.ok(milkdown.includes('normalizeCodeLanguage'), 'code block language input must be normalized before reaching Markdown');
+    assert.ok(gfmPlugin.includes('rule !== wrapInTaskListInputRule'), 'GFM wrapper must exclude Milkdown upstream task-list input rule');
+    assert.equal(gfmPlugin.includes('$inputRule'), false, 'GFM wrapper must not add any task-list input rule on the live typing path');
+    assert.ok(milkdown.includes('observer.disconnect()'), 'WYSIWYG task accessibility observer must be disconnected on unmount');
+    assert.ok(milkdown.includes("root.removeEventListener('click', handleTaskListClick)"), 'WYSIWYG task click listener must be removed on unmount');
+    assert.ok(milkdown.includes("root.removeEventListener('keydown', handleTaskListKeyDown, true)"), 'WYSIWYG task key listener must be removed on unmount');
+    assert.ok(milkdown.includes('<button type="button" title="Task list" aria-label="Task list" disabled'), 'Task toolbar insertion must stay disabled until a safe non-freezing command exists');
     assert.ok(mathPlugin.includes('$view'), 'Milkdown math must use node views for rendered/raw editing');
     assert.ok(mathPlugin.includes('notesMathInlineView'), 'inline math must have a rendered/raw node view');
     assert.ok(mathPlugin.includes('notesMathBlockView'), 'block math must have a rendered/raw node view');
@@ -95,7 +105,7 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     assert.equal(mathPlugin.includes('function moveAfterMathNode'), false,
         'math node exit must not use the legacy multi-dispatch moveAfterMathNode helper');
     assert.ok(milkdown.includes('listenerCtx'), 'Milkdown WYSIWYG must publish markdown changes through listenerCtx');
-    assert.ok(milkdown.includes('onChangeRef.current(markdown)'), 'Milkdown WYSIWYG must keep the existing markdown save path');
+    assert.ok(milkdown.includes('onChangeRef.current(normalizedMarkdown)') || milkdown.includes('onChangeRef.current(markdown)'), 'Milkdown WYSIWYG must keep the existing markdown save path');
     assert.ok(milkdown.includes('syncingFromPropsRef'), 'Milkdown WYSIWYG must suppress controlled prop sync writes');
     assert.ok(milkdown.includes('latestPropContentRef'), 'Milkdown WYSIWYG must reconcile async creation with latest props');
     assert.ok(workspace.includes('key={props.selectedPath}'), 'WYSIWYG history must reset on note boundaries');

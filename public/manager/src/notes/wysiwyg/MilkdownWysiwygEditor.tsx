@@ -10,7 +10,7 @@ import {
     wrapInBulletListCommand,
     wrapInHeadingCommand,
 } from '@milkdown/kit/preset/commonmark';
-import { gfm, insertTableCommand, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
+import { insertTableCommand, toggleStrikethroughCommand } from '@milkdown/kit/preset/gfm';
 import { clipboard } from '@milkdown/kit/plugin/clipboard';
 import { history } from '@milkdown/kit/plugin/history';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
@@ -18,6 +18,7 @@ import { callCommand, getMarkdown, insert, replaceAll } from '@milkdown/kit/util
 import { safeMarkdownUrl } from '../markdown-security';
 import { notesMilkdownBlockKeymap } from './milkdown-block-keymap';
 import { notesMilkdownCodeBlockView } from './milkdown-code-block-view';
+import { notesMilkdownGfm } from './milkdown-gfm-safe';
 import { notesMilkdownKatexOptionsCtx, notesMilkdownMath } from './milkdown-math';
 
 type MilkdownWysiwygEditorProps = {
@@ -40,6 +41,12 @@ function htmlToPlainText(html: string): string {
 
 function normalizeCodeLanguage(language: string): string {
     return language.trim().toLowerCase().replace(/[^a-z0-9_+-]/g, '');
+}
+
+function normalizeEscapedTaskMarkers(markdown: string): string {
+    // Milkdown can serialize typed task markers as escaped literal text after
+    // the unsafe input rule is removed; keep canonical GFM at the save boundary.
+    return markdown.replace(/^([ \t]*[-*+][ \t]+)\\?\[([ xX])\\?\]([ \t]*)/gm, '$1[$2]$3');
 }
 
 export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
@@ -75,13 +82,14 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
                     strict: 'warn',
                 });
                 ctx.get(listenerCtx).markdownUpdated((_, markdown) => {
-                    latestMarkdownRef.current = markdown;
+                    const normalizedMarkdown = normalizeEscapedTaskMarkers(markdown);
+                    latestMarkdownRef.current = normalizedMarkdown;
                     if (syncingFromPropsRef.current) return;
-                    onChangeRef.current(markdown);
+                    onChangeRef.current(normalizedMarkdown);
                 });
             })
             .use(commonmark)
-            .use(gfm)
+            .use(notesMilkdownGfm)
             .use(notesMilkdownMath)
             .use(notesMilkdownCodeBlockView)
             .use(notesMilkdownBlockKeymap)
@@ -216,7 +224,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
                         ...node.attrs,
                         checked: !node.attrs.checked,
                     }).scrollIntoView());
-                    const markdown = getMarkdown()(ctx);
+                    const markdown = normalizeEscapedTaskMarkers(getMarkdown()(ctx));
                     latestMarkdownRef.current = markdown;
                     if (!syncingFromPropsRef.current) onChangeRef.current(markdown);
                     queueMicrotask(syncTaskListAccessibility);
@@ -261,11 +269,11 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
         const observer = new MutationObserver(syncTaskListAccessibility);
         observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-checked'] });
         root.addEventListener('click', handleTaskListClick);
-        root.addEventListener('keydown', handleTaskListKeyDown);
+        root.addEventListener('keydown', handleTaskListKeyDown, true);
         return () => {
             observer.disconnect();
             root.removeEventListener('click', handleTaskListClick);
-            root.removeEventListener('keydown', handleTaskListKeyDown);
+            root.removeEventListener('keydown', handleTaskListKeyDown, true);
         };
     }, [ready]);
 
@@ -291,7 +299,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
                 <button type="button" title="Block math" aria-label="Block math" disabled={!ready} onClick={insertBlockMath}>Math Block</button>
                 <button type="button" title="Heading" aria-label="Heading level 2" disabled={!ready} onClick={() => run(editor => editor.action(callCommand(wrapInHeadingCommand.key, 2)))}>H2</button>
                 <button type="button" title="List" aria-label="Bullet list" disabled={!ready} onClick={() => run(editor => editor.action(callCommand(wrapInBulletListCommand.key)))}>List</button>
-                <button type="button" title="Task list" aria-label="Task list" disabled={!ready} onClick={insertTaskListItem}>Task</button>
+                <button type="button" title="Task list" aria-label="Task list" disabled onClick={insertTaskListItem}>Task</button>
                 <button type="button" title="Quote" aria-label="Quote" disabled={!ready} onClick={() => run(editor => editor.action(callCommand(wrapInBlockquoteCommand.key)))}>Quote</button>
                 <button type="button" title="Table" aria-label="Table" disabled={!ready} onClick={insertTable}>Table</button>
                 <button type="button" title="Code block" aria-label="Code block" disabled={!ready} onClick={createLanguageCodeBlock}>Block</button>
