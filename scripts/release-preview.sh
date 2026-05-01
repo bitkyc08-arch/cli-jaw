@@ -1,18 +1,33 @@
 #!/usr/bin/env bash
 # release-preview.sh — build + preview semver bump + npm publish --tag preview
-# Auto-detects npm latest, bumps patch +1, then appends -preview.TIMESTAMP
-# Example: npm latest = 1.6.9 → preview = 1.6.10-preview.20260414153000
+# Auto-detects npm latest, bumps (default patch +1), then appends -preview.TIMESTAMP
+# Usage:
+#   ./release-preview.sh                 → patch bump (1.6.9 → 1.6.10-preview.*)
+#   ./release-preview.sh --minor         → minor bump (1.6.9 → 1.7.0-preview.*)
+#   ./release-preview.sh --major         → major bump (1.6.9 → 2.0.0-preview.*)
+#   ./release-preview.sh 1.8.0           → explicit base version
+#   ./release-preview.sh --with-desktop  → also build & attach unsigned macOS app
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
 # ─── Flag parsing ──────────────────────────────────────
 WITH_DESKTOP=0
+BUMP_KIND="patch"
 POSITIONAL=()
 for arg in "$@"; do
   case "$arg" in
     --with-desktop)
       WITH_DESKTOP=1
+      ;;
+    --major|major)
+      BUMP_KIND="major"
+      ;;
+    --minor|minor)
+      BUMP_KIND="minor"
+      ;;
+    --patch|patch)
+      BUMP_KIND="patch"
       ;;
     *)
       POSITIONAL+=("$arg")
@@ -61,10 +76,13 @@ PKG_VERSION=$(node -p "require('./package.json').version")
 RAW_VERSION="${NPM_LATEST:-$PKG_VERSION}"
 RAW_VERSION=$(echo "$RAW_VERSION" | sed 's/-.*//')
 
-# Bump patch +1 for preview (so preview > latest in semver)
+# Bump per BUMP_KIND so preview > latest in semver
 IFS='.' read -r MAJOR MINOR PATCH <<< "$RAW_VERSION"
-NEXT_PATCH=$((PATCH + 1))
-BASE_VERSION="${MAJOR}.${MINOR}.${NEXT_PATCH}"
+case "$BUMP_KIND" in
+  major) BASE_VERSION="$((MAJOR + 1)).0.0" ;;
+  minor) BASE_VERSION="${MAJOR}.$((MINOR + 1)).0" ;;
+  patch) BASE_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))" ;;
+esac
 
 # Allow explicit override: ./release-preview.sh 2.0.0
 if [ "${1:-}" != "" ]; then
@@ -85,13 +103,13 @@ echo "🦈 cli-jaw preview release script"
 echo "================================="
 echo "npm latest:      ${NPM_LATEST:-'(not found)'}"
 echo "package.json:    $PKG_VERSION"
-echo "Preview version: $PREVIEW_VERSION  (base $RAW_VERSION + patch bump)"
+echo "Preview version: $PREVIEW_VERSION  (base $RAW_VERSION + $BUMP_KIND bump)"
 echo "Dist-tag:        preview"
 
 # ─── Collect changelog from commits since last tag ─────
 PREV_TAG=$(git tag --sort=-v:refname | grep -E '^v[0-9]' | head -1)
 if [ -n "$PREV_TAG" ]; then
-  CHANGELOG=$(git log "$PREV_TAG"..HEAD --pretty=format:"- %s" --no-merges | head -30)
+  CHANGELOG=$(git log "$PREV_TAG"..HEAD -n 30 --pretty=format:"- %s" --no-merges)
   COMMIT_COUNT=$(git rev-list "$PREV_TAG"..HEAD --count)
 else
   CHANGELOG=$(git log --oneline -10 --pretty=format:"- %s" --no-merges)
@@ -100,7 +118,7 @@ fi
 
 echo ""
 echo "📝 Changes since $PREV_TAG ($COMMIT_COUNT commits):"
-echo "$CHANGELOG" | head -10
+head -n 10 <<< "$CHANGELOG"
 echo ""
 
 # ─── Build ─────────────────────────────────────────────

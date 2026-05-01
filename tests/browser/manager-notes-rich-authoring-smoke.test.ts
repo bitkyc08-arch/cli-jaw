@@ -222,7 +222,7 @@ test('notes render and edit GitHub Flavored Markdown affordances', async () => {
         const body = await response.json();
         return body.content as string;
     }, { noteName });
-    assert.ok(savedContent.includes('- [x] unchecked task'),
+    assert.ok(/[-*] \[x\] unchecked task/.test(savedContent),
         'WYSIWYG task checkbox toggles must round-trip back to GFM markdown');
     assert.ok(savedContent.includes('~~done later~~'),
         'GFM strikethrough must round-trip back to canonical markdown');
