@@ -13,20 +13,28 @@ const employeesSrc = fs.readFileSync(
     'utf8',
 );
 
-test('FCC-001: settings-core normalizes legacy full IDs to short Claude aliases for display', () => {
-    assert.ok(settingsCoreSrc.includes("case 'claude-opus-4-6[1m]':"));
-    assert.ok(settingsCoreSrc.includes("case 'claude-opus-4-6':"));
-    assert.ok(settingsCoreSrc.includes("case 'claude-sonnet-4-6[1m]': return 'sonnet[1m]';"));
-    assert.ok(settingsCoreSrc.includes("case 'claude-sonnet-4-6':"));
-    assert.ok(settingsCoreSrc.includes("case 'claude-haiku-4-5':"));
-    assert.ok(!settingsCoreSrc.includes("case 'sonnet': return 'claude-sonnet-4-6';"));
+test('FCC-001: settings-core normalizeModelForDisplay is trim-only (passthrough policy)', () => {
+    assert.ok(settingsCoreSrc.includes('function normalizeModelForDisplay'));
+    assert.ok(/return\s*\(model\s*\|\|\s*''\)\.trim\(\);/.test(settingsCoreSrc),
+        'normalizeModelForDisplay must be a trim-only no-op');
+    assert.ok(!settingsCoreSrc.includes("case 'claude-opus-4-6[1m]':"),
+        'no legacy-rewrite cases should remain');
+    assert.ok(!settingsCoreSrc.includes("case 'claude-opus-4-7':"),
+        'no legacy-rewrite cases should remain');
+    assert.ok(!settingsCoreSrc.includes("return 'sonnet[1m]';"),
+        'no alias-rewrite return statements should remain');
 });
 
-test('FCC-002: employees normalizes legacy full IDs to short aliases before rendering', () => {
+test('FCC-002: employees normalizeEmployeeModel is trim-only (passthrough policy)', () => {
     assert.ok(employeesSrc.includes('function normalizeEmployeeModel'));
-    assert.ok(employeesSrc.includes("case 'claude-sonnet-4-6':"));
-    assert.ok(employeesSrc.includes("case 'claude-opus-4-6[1m]':"));
-    assert.ok(employeesSrc.includes('const selectedModel = normalizeEmployeeModel(a.cli, a.model);'));
+    assert.ok(/return trimmed \|\| 'default';/.test(employeesSrc),
+        'normalizeEmployeeModel must return trimmed-or-default');
+    assert.ok(!employeesSrc.includes("case 'claude-sonnet-4-6':"),
+        'no legacy-rewrite cases should remain');
+    assert.ok(!employeesSrc.includes("case 'claude-opus-4-7':"),
+        'no legacy-rewrite cases should remain');
+    assert.ok(employeesSrc.includes('const selectedModel = normalizeEmployeeModel(a.cli, a.model);'),
+        'render call site must still use the helper');
 });
 
 test('FCC-003: employees use sonnet alias as Claude default on CLI switch', () => {

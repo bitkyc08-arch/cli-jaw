@@ -31,20 +31,18 @@ test('CM-003: isClaudeCanonicalModel rejects non-canonical values', () => {
 
 // ─── Legacy migration ────────────────────────────────
 
-test('CM-004: migrateLegacyClaudeValue maps full IDs to short aliases', () => {
-    assert.equal(migrateLegacyClaudeValue('claude-sonnet-4-6[1m]'), 'sonnet[1m]');
-    assert.equal(migrateLegacyClaudeValue('claude-opus-4-6[1m]'), 'opus');
-    assert.equal(migrateLegacyClaudeValue('claude-opus-4-7'), 'opus');
+test('CM-004: migrateLegacyClaudeValue passes full Claude IDs through unchanged', () => {
+    assert.equal(migrateLegacyClaudeValue('claude-sonnet-4-6[1m]'), 'claude-sonnet-4-6[1m]');
+    assert.equal(migrateLegacyClaudeValue('claude-opus-4-6[1m]'), 'claude-opus-4-6[1m]');
+    assert.equal(migrateLegacyClaudeValue('claude-opus-4-7'), 'claude-opus-4-7');
+    assert.equal(migrateLegacyClaudeValue('claude-opus-4-7[1m]'), 'claude-opus-4-7[1m]');
 });
 
-test('CM-005: migrateLegacyClaudeValue maps full sonnet/opus/haiku to aliases', () => {
-    assert.equal(migrateLegacyClaudeValue('claude-sonnet-4-6'), 'sonnet');
-    assert.equal(migrateLegacyClaudeValue('claude-opus-4-6'), 'opus');
-    assert.equal(migrateLegacyClaudeValue('claude-haiku-4-5'), 'haiku');
-});
-
-test('CM-006: migrateLegacyClaudeValue maps pinned Haiku to haiku alias', () => {
-    assert.equal(migrateLegacyClaudeValue('claude-haiku-4-5-20251001'), 'haiku');
+test('CM-005: migrateLegacyClaudeValue passes pinned Haiku/Sonnet IDs through unchanged', () => {
+    assert.equal(migrateLegacyClaudeValue('claude-sonnet-4-6'), 'claude-sonnet-4-6');
+    assert.equal(migrateLegacyClaudeValue('claude-opus-4-6'), 'claude-opus-4-6');
+    assert.equal(migrateLegacyClaudeValue('claude-haiku-4-5'), 'claude-haiku-4-5');
+    assert.equal(migrateLegacyClaudeValue('claude-haiku-4-5-20251001'), 'claude-haiku-4-5-20251001');
 });
 
 test('CM-007: migrateLegacyClaudeValue preserves unknown explicit values', () => {
@@ -62,13 +60,8 @@ test('CM-008: migrateLegacyClaudeValue is idempotent on canonical alias values',
 
 // ─── Legacy map ──────────────────────────────────────
 
-test('CM-009: legacy map covers old full IDs', () => {
-    assert.ok('claude-sonnet-4-6' in CLAUDE_LEGACY_VALUE_MAP);
-    assert.ok('claude-opus-4-6' in CLAUDE_LEGACY_VALUE_MAP);
-    assert.ok('claude-opus-4-7' in CLAUDE_LEGACY_VALUE_MAP);
-    assert.ok('claude-haiku-4-5' in CLAUDE_LEGACY_VALUE_MAP);
-    assert.ok('claude-haiku-4-5-20251001' in CLAUDE_LEGACY_VALUE_MAP);
-    assert.ok('opus[1m]' in CLAUDE_LEGACY_VALUE_MAP);
+test('CM-009: legacy map is empty by default (passthrough policy)', () => {
+    assert.equal(Object.keys(CLAUDE_LEGACY_VALUE_MAP).length, 0);
 });
 
 // ─── Helpers ─────────────────────────────────────────
@@ -77,16 +70,29 @@ test('CM-011: getDefaultClaudeModel returns sonnet alias', () => {
     assert.equal(getDefaultClaudeModel(), 'sonnet');
 });
 
-test('CM-012: getDefaultClaudeChoices returns all canonical aliases', () => {
+test('CM-012: getDefaultClaudeChoices returns aliases + verified pinned full IDs', () => {
     const choices = getDefaultClaudeChoices();
-    assert.deepEqual([...choices].sort(), ['haiku', 'opus', 'sonnet', 'sonnet[1m]']);
+    assert.deepEqual([...choices].sort(), [
+        'claude-haiku-4-5',
+        'claude-opus-4-6',
+        'claude-opus-4-6[1m]',
+        'claude-opus-4-7',
+        'claude-opus-4-7[1m]',
+        'claude-sonnet-4-6',
+        'claude-sonnet-4-6[1m]',
+        'haiku',
+        'opus',
+        'sonnet',
+        'sonnet[1m]',
+    ]);
 });
 
-test('CM-013: getClaudeModelKind classifies correctly', () => {
+test('CM-013: getClaudeModelKind classifies correctly with empty legacy map', () => {
     assert.equal(getClaudeModelKind('sonnet'), 'canonical');
     assert.equal(getClaudeModelKind('opus'), 'canonical');
-    assert.equal(getClaudeModelKind('claude-sonnet-4-6'), 'legacy');
-    assert.equal(getClaudeModelKind('claude-opus-4-6[1m]'), 'legacy');
+    assert.equal(getClaudeModelKind('claude-sonnet-4-6'), 'explicit');
+    assert.equal(getClaudeModelKind('claude-opus-4-6[1m]'), 'explicit');
+    assert.equal(getClaudeModelKind('claude-opus-4-7'), 'explicit');
     assert.equal(getClaudeModelKind('claude-sonnet-4-7-preview'), 'explicit');
     assert.equal(getClaudeModelKind('default'), 'explicit');
 });

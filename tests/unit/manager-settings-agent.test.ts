@@ -19,7 +19,7 @@ const dbEmployee: RuntimeEmployeeRecord = {
     id: 'db-1',
     name: 'Frontend',
     cli: 'claude',
-    model: 'claude-sonnet-4.6',
+    model: 'claude-sonnet-4-6',
     role: 'UI',
     status: 'idle',
     source: 'db',
@@ -42,7 +42,7 @@ test('splitAgentSaveBundle keeps synthetic keys out of /api/settings patch', () 
         'activeOverrides.codex.model': 'gpt-5.5',
         permissions: 'auto',
         flushCli: 'claude',
-        flushModel: 'claude-haiku-4.5',
+        flushModel: 'claude-haiku-4-5',
         runtimeEmployees: [dbEmployee],
     };
     const split = splitAgentSaveBundle(bundle);
@@ -52,7 +52,7 @@ test('splitAgentSaveBundle keeps synthetic keys out of /api/settings patch', () 
         activeOverrides: { codex: { model: 'gpt-5.5' } },
         permissions: 'auto',
     });
-    assert.deepEqual(split.flushPatch, { cli: 'claude', model: 'claude-haiku-4.5' });
+    assert.deepEqual(split.flushPatch, { cli: 'claude', model: 'claude-haiku-4-5' });
     assert.deepEqual(split.runtimeEmployeesNext, [dbEmployee]);
 });
 

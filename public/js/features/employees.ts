@@ -43,22 +43,12 @@ const PHASE_COLORS: Record<string, string> = {
     '1': '#60a5fa', '2': '#a78bfa', '3': '#34d399', '4': '#fbbf24', '5': '#f472b6'
 };
 
-function normalizeEmployeeModel(cli: string, model?: string): string {
-    if (cli !== 'claude') return model || 'default';
+function normalizeEmployeeModel(_cli: string, model?: string): string {
+    // Same passthrough policy as normalizeModelForDisplay — preserve whatever
+    // the user pinned (alias or full ID); the cli arg is kept for call-site
+    // compatibility but no longer drives any rewrites.
     const trimmed = (model || '').trim();
-    switch (trimmed) {
-        case 'claude-opus-4-6[1m]':
-        case 'claude-opus-4-6':
-        case 'claude-opus-4-7[1m]':
-        case 'claude-opus-4-7':
-        case 'opus[1m]': return 'opus';
-        case 'claude-sonnet-4-6[1m]': return 'sonnet[1m]';
-        case 'claude-sonnet-4-6':
-        case 'claude-sonnet-4-5': return 'sonnet';
-        case 'claude-haiku-4-5':
-        case 'claude-haiku-4-5-20251001': return 'haiku';
-        default: return trimmed || 'default';
-    }
+    return trimmed || 'default';
 }
 
 function getDefaultEmployeeModel(cli: string, models: string[]): string {

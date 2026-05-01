@@ -21,7 +21,27 @@ export type ActiveOverride = {
 export const CLI_META: Record<string, CliMeta> = {
     claude: {
         label: 'Claude',
-        models: ['claude-opus-4.7', 'claude-sonnet-4.6', 'claude-haiku-4.5'],
+        // Aliases + pinned full IDs (hyphen form — Anthropic API rejects
+        // dot form). Aliases (opus/sonnet/...) follow Claude Code's
+        // firstPartyNameToCanonical resolution; pinned IDs reach the API
+        // verbatim for stable prompt-cache prefixes. The `[1m]` suffix is
+        // parsed by Claude Code (stripped before send, enables 1M context
+        // on Opus 4.7/4.6 + Sonnet 4.6). Mirrors getDefaultClaudeChoices()
+        // in src/cli/claude-models.ts. Verified via Grok web research
+        // 2026-05-01 (devlog/_plan/260501_claude_model_passthrough/).
+        models: [
+            'opus',
+            'sonnet',
+            'sonnet[1m]',
+            'haiku',
+            'claude-opus-4-7',
+            'claude-opus-4-7[1m]',
+            'claude-opus-4-6',
+            'claude-opus-4-6[1m]',
+            'claude-sonnet-4-6',
+            'claude-sonnet-4-6[1m]',
+            'claude-haiku-4-5',
+        ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
     codex: {

@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { migrateSettings } from '../../src/core/config.ts';
 
-test('CfgM-001: migrateSettings normalizes legacy Claude full-ID perCli model to alias', () => {
+test('CfgM-001: migrateSettings preserves user-typed Claude full-ID perCli model', () => {
     const s = migrateSettings({
         cli: 'claude',
         perCli: {
@@ -10,12 +10,12 @@ test('CfgM-001: migrateSettings normalizes legacy Claude full-ID perCli model to
             codex: { model: 'gpt-5.4', effort: 'medium' },
         },
     });
-    assert.equal(s.perCli.claude.model, 'sonnet[1m]');
+    assert.equal(s.perCli.claude.model, 'claude-sonnet-4-6[1m]');
     assert.equal(s.perCli.claude.effort, 'high');
     assert.equal(s.perCli.codex.model, 'gpt-5.4');
 });
 
-test('CfgM-002: migrateSettings normalizes full-ID Claude activeOverrides to alias', () => {
+test('CfgM-002: migrateSettings preserves full-ID Claude activeOverrides verbatim', () => {
     const s = migrateSettings({
         cli: 'claude',
         perCli: {},
@@ -23,16 +23,16 @@ test('CfgM-002: migrateSettings normalizes full-ID Claude activeOverrides to ali
             claude: { model: 'claude-opus-4-6' },
         },
     });
-    assert.equal(s.activeOverrides.claude.model, 'opus');
+    assert.equal(s.activeOverrides.claude.model, 'claude-opus-4-6');
 });
 
-test('CfgM-003: migrateSettings normalizes Claude memory.model when cli is claude', () => {
+test('CfgM-003: migrateSettings preserves Claude memory.model verbatim when cli is claude', () => {
     const s = migrateSettings({
         cli: 'claude',
         perCli: {},
         memory: { cli: 'claude', model: 'claude-sonnet-4-6' },
     });
-    assert.equal(s.memory.model, 'sonnet');
+    assert.equal(s.memory.model, 'claude-sonnet-4-6');
 });
 
 test('CfgM-004: migrateSettings does NOT normalize memory.model when cli is not claude', () => {
@@ -44,14 +44,14 @@ test('CfgM-004: migrateSettings does NOT normalize memory.model when cli is not 
     assert.equal(s.memory.model, 'gpt-5.4');
 });
 
-test('CfgM-005: migrateSettings normalizes pinned Haiku to haiku alias', () => {
+test('CfgM-005: migrateSettings preserves pinned Haiku ID verbatim', () => {
     const s = migrateSettings({
         cli: 'claude',
         perCli: {
             claude: { model: 'claude-haiku-4-5-20251001' },
         },
     });
-    assert.equal(s.perCli.claude.model, 'haiku');
+    assert.equal(s.perCli.claude.model, 'claude-haiku-4-5-20251001');
 });
 
 test('CfgM-006: migrateSettings is idempotent on already-alias canonical values', () => {
@@ -70,7 +70,7 @@ test('CfgM-006: migrateSettings is idempotent on already-alias canonical values'
     assert.equal(s.memory.model, 'haiku');
 });
 
-test('CfgM-007: migrateSettings normalizes sonnet/opus full IDs to aliases', () => {
+test('CfgM-007: migrateSettings preserves sonnet/opus full IDs verbatim', () => {
     const s = migrateSettings({
         cli: 'claude',
         perCli: {
@@ -80,8 +80,20 @@ test('CfgM-007: migrateSettings normalizes sonnet/opus full IDs to aliases', () 
             claude: { model: 'claude-opus-4-6[1m]' },
         },
     });
-    assert.equal(s.perCli.claude.model, 'sonnet');
-    assert.equal(s.activeOverrides.claude.model, 'opus');
+    assert.equal(s.perCli.claude.model, 'claude-sonnet-4-6');
+    assert.equal(s.activeOverrides.claude.model, 'claude-opus-4-6[1m]');
+});
+
+test('CfgM-009: migrateSettings preserves claude-opus-4-7 verbatim across PUT cycle', () => {
+    const s = migrateSettings({
+        cli: 'claude',
+        perCli: { claude: { model: 'claude-opus-4-7', effort: 'medium' } },
+        activeOverrides: { claude: { model: 'claude-opus-4-7[1m]' } },
+        memory: { cli: 'claude', model: 'claude-opus-4-7' },
+    });
+    assert.equal(s.perCli.claude.model, 'claude-opus-4-7');
+    assert.equal(s.activeOverrides.claude.model, 'claude-opus-4-7[1m]');
+    assert.equal(s.memory.model, 'claude-opus-4-7');
 });
 
 test('CfgM-008: migrateSettings rewrites deprecated Copilot fast opus model', () => {

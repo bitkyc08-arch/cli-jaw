@@ -183,23 +183,24 @@ test('FC-008: flushHandler source has cliUnavailable guard for unavailable match
 
 // ─── FC-009: legacy full-name infers Claude via hint table ───
 
-test('FC-009: /flush <legacy-full-name> infers claude via LEGACY_MODEL_CLI_HINTS', async () => {
+test('FC-009: /flush <full-id> infers claude via LEGACY_MODEL_CLI_HINTS and preserves the literal', async () => {
     await withIsolatedPath(['claude'], async () => {
         const ctx = makeCtx();
         const result = await flushHandler(['claude-opus-4-6[1m]'], ctx);
         assert.equal(result.ok, true);
         assert.equal(ctx.settings.memory.cli, 'claude');
-        // Runtime migrateSettings normalizes full ID → alias on save
-        assert.equal(ctx.settings.memory.model, 'opus');
+        // Passthrough policy: user-pinned full ID survives runtime migration
+        // verbatim so claude --model receives exactly what the user typed.
+        assert.equal(ctx.settings.memory.model, 'claude-opus-4-6[1m]');
     });
 });
 
-test('FC-010: /flush claude <legacy-full-name> normalizes model to alias via migration', async () => {
+test('FC-010: /flush claude <full-id> preserves the literal across migration', async () => {
     await withIsolatedPath(['claude'], async () => {
         const ctx = makeCtx();
         const result = await flushHandler(['claude', 'claude-opus-4-6[1m]'], ctx);
         assert.equal(result.ok, true);
         assert.equal(ctx.settings.memory.cli, 'claude');
-        assert.equal(ctx.settings.memory.model, 'opus');
+        assert.equal(ctx.settings.memory.model, 'claude-opus-4-6[1m]');
     });
 });

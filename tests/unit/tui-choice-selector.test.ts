@@ -20,8 +20,8 @@ import { createSelectorState, createOverlayState } from '../../src/cli/tui/store
 // ─── filterSelectorItems ─────────────────────
 
 const ITEMS: ChoiceSelectorItem[] = [
-    { value: 'claude-opus-4.6', label: 'claude', current: true },
-    { value: 'claude-sonnet-4.6', label: 'claude', current: false },
+    { value: 'claude-opus-4-6', label: 'claude', current: true },
+    { value: 'claude-sonnet-4-6', label: 'claude', current: false },
     { value: 'gpt-4.1', label: 'openai', current: false },
     { value: 'gemini-2.5-pro', label: 'google', current: false },
     { value: 'codex-mini', label: 'openai', current: false },
@@ -35,13 +35,13 @@ test('CS-001: filterSelectorItems returns all items when filter is empty', () =>
 test('CS-002: filterSelectorItems matches value substring', () => {
     const result = filterSelectorItems(ITEMS, 'opus');
     assert.equal(result.length, 1);
-    assert.equal(result[0]!.value, 'claude-opus-4.6');
+    assert.equal(result[0]!.value, 'claude-opus-4-6');
 });
 
 test('CS-003: filterSelectorItems is case insensitive', () => {
     const result = filterSelectorItems(ITEMS, 'SONNET');
     assert.equal(result.length, 1);
-    assert.equal(result[0]!.value, 'claude-sonnet-4.6');
+    assert.equal(result[0]!.value, 'claude-sonnet-4-6');
 });
 
 test('CS-004: filterSelectorItems matches label', () => {
@@ -206,7 +206,7 @@ test('CS-015: modelHandler no-arg returns readable text (Telegram/Discord contra
     const ctx = {
         locale: 'ko',
         interface: 'telegram',
-        getSettings: async () => ({ cli: 'claude', perCli: { claude: { model: 'claude-opus-4.6' } } }),
+        getSettings: async () => ({ cli: 'claude', perCli: { claude: { model: 'claude-opus-4-6' } } }),
         getSession: async () => ({}),
     };
     const result = await modelHandler([], ctx);
@@ -259,7 +259,7 @@ test('CS-018: modelHandler respects en locale when set', async () => {
     const ctx = {
         locale: 'en',
         interface: 'cli',
-        getSettings: async () => ({ cli: 'claude', perCli: { claude: { model: 'claude-opus-4.6' } } }),
+        getSettings: async () => ({ cli: 'claude', perCli: { claude: { model: 'claude-opus-4-6' } } }),
         getSession: async () => ({}),
     };
     const result = await modelHandler([], ctx);

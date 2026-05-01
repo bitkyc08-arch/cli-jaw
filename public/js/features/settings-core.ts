@@ -95,22 +95,11 @@ function syncCliOptionSelects(settings: SettingsData | null = null): void {
     }
 }
 
-function normalizeModelForDisplay(cli: string, model: string): string {
-    if (cli !== 'claude') return model;
-    const trimmed = (model || '').trim();
-    switch (trimmed) {
-        case 'claude-opus-4-6[1m]':
-        case 'claude-opus-4-6':
-        case 'claude-opus-4-7[1m]':
-        case 'claude-opus-4-7':
-        case 'opus[1m]': return 'opus';
-        case 'claude-sonnet-4-6[1m]': return 'sonnet[1m]';
-        case 'claude-sonnet-4-6':
-        case 'claude-sonnet-4-5': return 'sonnet';
-        case 'claude-haiku-4-5':
-        case 'claude-haiku-4-5-20251001': return 'haiku';
-        default: return trimmed;
-    }
+function normalizeModelForDisplay(_cli: string, model: string): string {
+    // Backend passes Claude model strings through unchanged so user-typed
+    // pinned IDs (e.g. claude-opus-4-7) survive a refresh and reach
+    // `claude --model` literally. The frontend just trims; it must not rewrite.
+    return (model || '').trim();
 }
 
 function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {

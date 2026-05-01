@@ -14,7 +14,23 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     claude: {
         label: 'Claude',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-        models: ['opus', 'sonnet', 'sonnet[1m]', 'haiku'],
+        // Mirrors getDefaultClaudeChoices() in src/cli/claude-models.ts —
+        // aliases first, then verified pinned full IDs (hyphen form). The
+        // [1m] suffix activates Claude Code's 1M-context window (Opus 4.7,
+        // Opus 4.6, Sonnet 4.6 only).
+        models: [
+            'opus',
+            'sonnet',
+            'sonnet[1m]',
+            'haiku',
+            'claude-opus-4-7',
+            'claude-opus-4-7[1m]',
+            'claude-opus-4-6',
+            'claude-opus-4-6[1m]',
+            'claude-sonnet-4-6',
+            'claude-sonnet-4-6[1m]',
+            'claude-haiku-4-5',
+        ],
     },
     codex: {
         label: 'Codex',
