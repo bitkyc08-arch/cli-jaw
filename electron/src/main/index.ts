@@ -92,6 +92,7 @@ let mainWindow: BrowserWindow | null = null;
 let restartTimestamps: number[] = [];
 let crashLoopStopped = false;
 let shuttingDown = false;
+let shutdownComplete = false;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -122,6 +123,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', async (event) => {
+  if (shutdownComplete) return;
   if (shuttingDown) {
     event.preventDefault();
     return;
@@ -133,6 +135,7 @@ app.on('before-quit', async (event) => {
     await gracefulShutdown(managerProcess, 5000);
   } finally {
     managerProcess = null;
+    shutdownComplete = true;
     app.quit();
   }
 });
