@@ -341,14 +341,14 @@ export function App() {
     async function handleLifecycle(action: DashboardLifecycleAction, instance: DashboardInstance): Promise<void> {
         const lifecycle = instance.lifecycle;
         if (!lifecycle) return;
-        if (action === 'perm' && !window.confirm(`Register :${instance.port} as a persistent macOS service? It will auto-start on login and auto-restart on crash.`)) {
+        if (action === 'perm' && !window.confirm(`Register :${instance.port} as a persistent system service? It will auto-start on login and auto-restart on crash.`)) {
             return;
         }
         if (action === 'unperm' && !window.confirm(`Remove persistent service for :${instance.port}? The instance will stop and won't auto-start.`)) {
             return;
         }
         if (action === 'stop' && lifecycle.owner === 'service') {
-            if (!window.confirm(`Stop :${instance.port}? This will also remove the persistent launchd service.`)) return;
+            if (!window.confirm(`Stop :${instance.port}? This will also remove the persistent service.`)) return;
         } else if ((action === 'stop' || action === 'restart') && !window.confirm(`${action} :${instance.port}?`)) {
             return;
         }

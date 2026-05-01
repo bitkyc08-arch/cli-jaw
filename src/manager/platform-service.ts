@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process';
 import { homedir } from 'node:os';
 import type { DashboardServiceState, DashboardLifecycleResult } from './types.js';
 
@@ -7,7 +8,6 @@ export function detectBackend(): ServiceBackend {
     if (process.platform === 'darwin') return 'launchd';
     if (process.platform === 'linux') {
         try {
-            const { execFileSync } = require('node:child_process');
             execFileSync('which', ['systemctl'], { stdio: 'pipe' });
             return 'systemd';
         } catch { return 'none'; }

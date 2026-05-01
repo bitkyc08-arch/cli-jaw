@@ -1,7 +1,8 @@
-import { execFile } from 'node:child_process';
+import { execFile, execFileSync } from 'node:child_process';
 import { existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
+import { createHash } from 'node:crypto';
 import { getNodePath, getJawPath, buildServicePath } from '../core/instance.js';
 import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from './constants.js';
 import type { DashboardServiceState, DashboardLifecycleResult } from './types.js';
@@ -12,16 +13,14 @@ const OP_TIMEOUT_MS = 5000;
 export function isSystemdSupported(): boolean {
     if (process.platform !== 'linux') return false;
     try {
-        const { execFileSync } = require('node:child_process');
         execFileSync('which', ['systemctl'], { stdio: 'pipe' });
         return true;
     } catch { return false; }
 }
 
 function instanceIdForHome(home: string): string {
-    const base = require('node:path').basename(home);
+    const base = basename(home);
     if (base === '.cli-jaw') return 'default';
-    const { createHash } = require('node:crypto');
     const hash = createHash('md5').update(home).digest('hex').slice(0, 8);
     return `${base.replace(/^\./, '')}-${hash}`;
 }

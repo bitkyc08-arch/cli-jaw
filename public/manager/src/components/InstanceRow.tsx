@@ -221,7 +221,7 @@ export function InstanceRow(props: InstanceRowProps) {
                         props.onLifecycle('perm', props.instance);
                     }}
                     disabled={!lifecycle?.canPerm || props.busy}
-                    title="Register as launchd service"
+                    title="Register as persistent service"
                 >
                     Perm
                 </button>
