@@ -98,7 +98,7 @@ test('notes rich authoring toggles renderer-backed CodeMirror widgets without be
     await expectInputValueIncludes(codeSource, '\n```');
     await codeSource.fill('```ts\nconst milkdownCodeBlock = true;\n```');
     await page.getByRole('heading', { name: 'Rich smoke' }).click();
-    assert.equal(await page.locator('.notes-code-source-node[data-editing="true"]').count(), 0,
+    await expectNoOpenCodeSource(page,
         'clicking outside an open fenced code source must return it to rendered mode');
     await page.locator('.notes-code-source-node[data-language="ts"]').first().click();
     await expectInputValueIncludes(codeSource, 'const milkdownCodeBlock = true;');
@@ -157,6 +157,17 @@ async function expectInputValue(locator: Locator, expected: string): Promise<voi
 
 function reopenedCodeSource(page: Page): Locator {
     return page.locator('.notes-code-source-node[data-editing="true"] textarea.notes-code-raw');
+}
+
+async function expectNoOpenCodeSource(page: Page, message: string): Promise<void> {
+    const deadline = Date.now() + 2000;
+    let count = 0;
+    while (Date.now() < deadline) {
+        count = await page.locator('.notes-code-source-node[data-editing="true"]').count();
+        if (count === 0) return;
+        await page.waitForTimeout(25);
+    }
+    assert.equal(count, 0, message);
 }
 
 async function expectInputValueIncludes(locator: Locator, expected: string): Promise<void> {
