@@ -30,6 +30,8 @@ const TRANSITION_LABELS: Record<DashboardLifecycleAction, string> = {
     start: 'starting…',
     stop: 'stopping…',
     restart: 'restarting…',
+    perm: 'registering…',
+    unperm: 'unregistering…',
 };
 
 function statusClass(status: DashboardInstance['status']): string {
@@ -204,6 +206,19 @@ export function InstanceRow(props: InstanceRowProps) {
                 >
                     Restart
                 </button>
+                {(lifecycle?.canPerm || lifecycle?.canUnperm) && (
+                    <button
+                        type="button"
+                        onClick={(event) => {
+                            stopAction(event);
+                            props.onLifecycle(lifecycle?.canUnperm ? 'unperm' : 'perm', props.instance);
+                        }}
+                        disabled={(!lifecycle?.canPerm && !lifecycle?.canUnperm) || props.busy}
+                        title={lifecycle?.canUnperm ? 'Remove launchd service' : 'Register as launchd service'}
+                    >
+                        {lifecycle?.canUnperm ? 'Unperm' : 'Perm'}
+                    </button>
+                )}
             </div>
             )}
         </article>

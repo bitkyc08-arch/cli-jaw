@@ -7,8 +7,8 @@ export type DashboardInstanceStatus =
 
 export type DashboardServiceMode = 'unknown' | 'ad-hoc' | 'service' | 'manager';
 export type DashboardPreviewMode = 'direct' | 'proxy';
-export type DashboardLifecycleAction = 'start' | 'stop' | 'restart';
-export type DashboardLifecycleOwner = 'none' | 'external' | 'manager';
+export type DashboardLifecycleAction = 'start' | 'stop' | 'restart' | 'perm' | 'unperm';
+export type DashboardLifecycleOwner = 'none' | 'external' | 'manager' | 'launchd';
 export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 export type DashboardUiTheme = 'auto' | 'dark' | 'light';
 export type DashboardLocale = 'ko' | 'en' | 'zh' | 'ja';
@@ -84,10 +84,20 @@ export type DashboardLifecycleCapability = {
     canStart: boolean;
     canStop: boolean;
     canRestart: boolean;
+    canPerm: boolean;
+    canUnperm: boolean;
     reason: string;
     defaultHome: string;
     commandPreview: string[];
     pid: number | null;
+};
+
+export type DashboardLaunchdState = {
+    plistExists: boolean;
+    loaded: boolean;
+    pid: number | null;
+    label: string;
+    plistPath: string;
 };
 
 export type DashboardLifecycleExpectedState = 'online' | 'offline' | 'restart-detected';
@@ -96,7 +106,7 @@ export type DashboardLifecycleResult = {
     ok: boolean;
     action: DashboardLifecycleAction;
     port: number;
-    status: 'started' | 'stopped' | 'restarted' | 'rejected' | 'error';
+    status: 'started' | 'stopped' | 'restarted' | 'permed' | 'unpermed' | 'rejected' | 'error';
     message: string;
     home: string | null;
     pid: number | null;

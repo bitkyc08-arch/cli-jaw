@@ -29,12 +29,18 @@ import {
     createDashboardNotesRouter,
     createNotesJsonErrorHandler,
 } from './notes/routes.js';
+import { createDesktopStatusRouter } from './routes/desktop-status.js';
+import { createElectronMetricsRouter } from './routes/electron-metrics.js';
 import type {
     DashboardInstance,
+    DashboardLaunchdState,
     DashboardLifecycleAction,
+    DashboardLifecycleResult,
     DashboardRegistryPatch,
     DashboardScanResult,
 } from './types.js';
+import { detectAllLaunchdStates, detectLaunchdState, isLaunchdSupported } from './launchd-service.js';
+import { defaultHomeForPort } from './lifecycle-helpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const serverRoot = join(__dirname, '..', '..');
@@ -65,7 +71,18 @@ const previewProxy = createPreviewOriginProxyController({
     managerPort: port,
     bindHost: '127.0.0.1',
 });
+const platformDarwin = process.platform === 'darwin';
 const previousStatusByPort = new Map<number, { status: string; version: string | null }>();
+
+async function launchdDetect(range: { from: number; to: number }): Promise<Map<number, DashboardLaunchdState>> {
+    if (!platformDarwin) return new Map();
+    return detectAllLaunchdStates(range);
+}
+
+async function launchdDetectSingle(port: number, home?: string): Promise<DashboardLaunchdState | null> {
+    if (!platformDarwin) return null;
+    return detectLaunchdState(port, home || defaultHomeForPort(port));
+}
 
 function recordScanEvents(result: DashboardScanResult): void {
     const at = result.manager.checkedAt;
@@ -127,6 +144,8 @@ app.use(
     createDashboardNotesRouter({ managerPort: port }),
 );
 app.use(express.json({ limit: '64kb' }));
+app.use('/api/dashboard/desktop-status', createDesktopStatusRouter());
+app.use('/api/dashboard/electron-metrics', createElectronMetricsRouter());
 
 app.get('/api/dashboard/health', (_req, res) => {
     res.json({
@@ -151,8 +170,10 @@ app.get('/api/dashboard/instances', async (req, res) => {
         await previewProxy.reconcileOnlineTargets(
             result.instances.filter(instance => instance.ok).map(instance => instance.port)
         );
-        const decorated = lifecycle.decorateScanResult(result);
-        res.json(applyDashboardRegistry(attachPreviewSnapshot(decorated), loaded.registry, loaded.status, { showHidden }));
+        const launchdStates = await launchdDetect({ from, to: from + count - 1 });
+        const decorated = lifecycle.decorateScanResult(result, launchdStates);
+        const applied = applyDashboardRegistry(attachPreviewSnapshot(decorated), loaded.registry, loaded.status, { showHidden });
+        res.json({ ...applied, platform: process.platform });
     } catch (error) {
         observability.publish({ kind: 'scan-failed', reason: (error as Error).message, at: new Date().toISOString() });
         res.status(500).json({ ok: false, error: (error as Error).message });
@@ -168,6 +189,7 @@ app.get('/api/dashboard/instances/:port', async (req, res) => {
         const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
         const instance = await scanSinglePort(portValue);
         if (instance.ok) await previewProxy.ensureTarget(instance.port);
+        const launchdStates = await launchdDetect({ from: portValue, to: portValue });
         const decorated = lifecycle.decorateScanResult({
             manager: {
                 port,
@@ -177,9 +199,9 @@ app.get('/api/dashboard/instances/:port', async (req, res) => {
                 proxy: { enabled: true, basePath: '/i', allowedFrom: scanFrom, allowedTo: scanFrom + scanCount - 1 },
             },
             instances: [instance],
-        });
+        }, launchdStates);
         const applied = applyDashboardRegistry(attachPreviewSnapshot(decorated), loaded.registry, loaded.status, { showHidden: true });
-        res.json({ ok: true, instance: applied.instances[0] || null, manager: applied.manager });
+        res.json({ ok: true, instance: applied.instances[0] || null, manager: applied.manager, platform: process.platform });
     } catch (error) {
         res.status(500).json({ ok: false, error: (error as Error).message });
     }
@@ -238,7 +260,7 @@ app.post('/api/dashboard/lifecycle/:action', async (req, res) => {
     const action = String(req.params.action || '') as DashboardLifecycleAction;
     const portValue = Number(req.body?.port);
     const home = typeof req.body?.home === 'string' ? req.body.home : undefined;
-    if (!['start', 'stop', 'restart'].includes(action)) {
+    if (!['start', 'stop', 'restart', 'perm', 'unperm'].includes(action)) {
         return res.status(400).json({
             ok: false,
             action,
@@ -264,11 +286,19 @@ app.post('/api/dashboard/lifecycle/:action', async (req, res) => {
     }
 
     try {
-        const result = action === 'start'
-            ? await lifecycle.start(portValue, home)
-            : action === 'stop'
-                ? await lifecycle.stop(portValue)
-                : await lifecycle.restart(portValue);
+        let result: DashboardLifecycleResult;
+        if (action === 'perm') {
+            result = await lifecycle.perm(portValue, home);
+        } else if (action === 'unperm') {
+            result = await lifecycle.unperm(portValue, home);
+        } else {
+            const launchdState = platformDarwin ? await launchdDetectSingle(portValue, home) : null;
+            result = action === 'start'
+                ? await lifecycle.start(portValue, home, launchdState)
+                : action === 'stop'
+                    ? await lifecycle.stop(portValue, launchdState)
+                    : await lifecycle.restart(portValue, launchdState);
+        }
         observability.publish({
             kind: 'lifecycle-result',
             port: portValue,

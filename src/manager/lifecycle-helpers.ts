@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import type {
     DashboardInstance,
+    DashboardLaunchdState,
     DashboardLifecycleAction,
     DashboardLifecycleCapability,
     DashboardLifecycleResult,
@@ -66,16 +67,20 @@ export function waitForStartupGrace<T extends { child: ChildProcessWithoutNullSt
 export function buildCapability(args: {
     instance: DashboardInstance;
     managed: { mode: 'attached' | 'detached'; pid: number } | null;
+    launchdState?: DashboardLaunchdState | null;
     defaultHome: string;
     commandPreview: string[];
 }): DashboardLifecycleCapability {
-    const { instance, managed, defaultHome, commandPreview } = args;
+    const { instance, managed, launchdState, defaultHome, commandPreview } = args;
     if (managed) {
+        const hasPlist = launchdState?.plistExists ?? false;
         return {
             owner: 'manager',
             canStart: false,
             canStop: true,
             canRestart: true,
+            canPerm: false,
+            canUnperm: hasPlist,
             reason: managed.mode === 'attached'
                 ? 'dashboard-owned'
                 : 'dashboard-owned (recovered)',
@@ -84,12 +89,42 @@ export function buildCapability(args: {
             pid: managed.pid || null,
         };
     }
+    if (launchdState?.plistExists) {
+        if (launchdState.loaded) {
+            return {
+                owner: 'launchd',
+                canStart: false,
+                canStop: true,
+                canRestart: true,
+                canPerm: false,
+                canUnperm: true,
+                reason: 'launchd service',
+                defaultHome,
+                commandPreview,
+                pid: launchdState.pid,
+            };
+        }
+        return {
+            owner: 'launchd',
+            canStart: true,
+            canStop: false,
+            canRestart: false,
+            canPerm: false,
+            canUnperm: true,
+            reason: 'launchd paused',
+            defaultHome,
+            commandPreview,
+            pid: null,
+        };
+    }
     if (instance.status === 'offline') {
         return {
             owner: 'none',
             canStart: true,
             canStop: false,
             canRestart: false,
+            canPerm: true,
+            canUnperm: false,
             reason: 'free port',
             defaultHome,
             commandPreview,
@@ -101,6 +136,8 @@ export function buildCapability(args: {
         canStart: false,
         canStop: false,
         canRestart: false,
+        canPerm: false,
+        canUnperm: false,
         reason: 'not dashboard-owned',
         defaultHome,
         commandPreview,

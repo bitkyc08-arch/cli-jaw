@@ -3,6 +3,7 @@ import { homedir } from 'node:os';
 import { getJawPath } from '../core/instance.js';
 import type {
     DashboardInstance,
+    DashboardLaunchdState,
     DashboardLifecycleAction,
     DashboardLifecycleCapability,
     DashboardLifecycleResult,
@@ -104,7 +105,7 @@ export class DashboardLifecycleManager {
         return [this.jawPath, '--home', home, 'serve', '--port', String(port), '--no-open'];
     }
 
-    decorateScanResult(result: DashboardScanResult): DashboardScanResult {
+    decorateScanResult(result: DashboardScanResult, launchdStates?: Map<number, DashboardLaunchdState>): DashboardScanResult {
         const decorated = result.instances.map((instance) => {
             if (instance.status === 'offline') {
                 const stale = this.registry.get(instance.port);
@@ -114,17 +115,17 @@ export class DashboardLifecycleManager {
                     void this.store.deleteMarker(stale.home).catch(() => undefined);
                 }
             }
-            return this.decorateInstance(instance);
+            return this.decorateInstance(instance, launchdStates?.get(instance.port));
         });
         return { ...result, instances: decorated };
     }
 
-    decorateInstance(instance: DashboardInstance): DashboardInstance {
+    decorateInstance(instance: DashboardInstance, launchdState?: DashboardLaunchdState | null): DashboardInstance {
         const managed = this.activeEntry(instance.port);
         return {
             ...instance,
-            serviceMode: managed ? 'manager' : instance.serviceMode,
-            lifecycle: this.capabilityFor(instance, managed),
+            serviceMode: managed ? 'manager' : (launchdState?.loaded ? 'service' : instance.serviceMode),
+            lifecycle: this.capabilityFor(instance, managed, launchdState),
         };
     }
 
@@ -157,16 +158,26 @@ export class DashboardLifecycleManager {
         return { adopted, pruned };
     }
 
-    async start(port: number, customHome?: string): Promise<DashboardLifecycleResult> {
-        return this.withLock(port, () => this.startLocked(port, customHome));
+    async start(port: number, customHome?: string, launchdState?: DashboardLaunchdState | null): Promise<DashboardLifecycleResult> {
+        return this.withLock(port, () => this.startLocked(port, customHome, launchdState));
     }
 
-    async stop(port: number): Promise<DashboardLifecycleResult> {
-        return this.withLock(port, () => this.stopLocked(port));
+    async stop(port: number, launchdState?: DashboardLaunchdState | null): Promise<DashboardLifecycleResult> {
+        return this.withLock(port, () => this.stopLocked(port, launchdState));
     }
 
-    async restart(port: number): Promise<DashboardLifecycleResult> {
-        return this.withLock(port, () => this.restartLocked(port));
+    async restart(port: number, launchdState?: DashboardLaunchdState | null): Promise<DashboardLifecycleResult> {
+        return this.withLock(port, () => this.restartLocked(port, launchdState));
+    }
+
+    async perm(port: number, home?: string): Promise<DashboardLifecycleResult> {
+        const { permInstance } = await import('./launchd-service.js');
+        return permInstance(port, home || this.defaultHome(port));
+    }
+
+    async unperm(port: number, home?: string): Promise<DashboardLifecycleResult> {
+        const { unpermInstance } = await import('./launchd-service.js');
+        return unpermInstance(port, home || this.defaultHome(port));
     }
 
     async stopAll(): Promise<DashboardLifecycleResult[]> {
@@ -214,6 +225,7 @@ export class DashboardLifecycleManager {
     private async startLocked(
         port: number,
         customHome?: string,
+        launchdState?: DashboardLaunchdState | null,
     ): Promise<DashboardLifecycleResult> {
         const action: DashboardLifecycleAction = 'start';
         const home = customHome?.trim() || this.defaultHome(port);
@@ -222,6 +234,9 @@ export class DashboardLifecycleManager {
         if (rejected) return rejected;
         if (this.activeEntry(port)) {
             return rejectResult(action, port, home, command, 'Port is already manager-owned.');
+        }
+        if (launchdState?.loaded) {
+            return rejectResult(action, port, home, command, 'Port is managed by launchd. Unperm first.');
         }
         if (await this.verify.isPortOccupied(port)) {
             return rejectResult(action, port, home, command, 'Port is already occupied.');
@@ -325,13 +340,18 @@ export class DashboardLifecycleManager {
         }
     }
 
-    private async stopLocked(port: number): Promise<DashboardLifecycleResult> {
+    private async stopLocked(port: number, launchdState?: DashboardLaunchdState | null): Promise<DashboardLifecycleResult> {
         const action: DashboardLifecycleAction = 'stop';
         const entry = this.activeEntry(port);
         const home = entry?.home || this.defaultHome(port);
         const command = entry?.command || this.buildStartCommand(port, home);
         const rejected = this.validatePort(action, port, home, command);
         if (rejected) return rejected;
+        if (!entry && launchdState?.loaded) {
+            const { stopLaunchdInstance } = await import('./launchd-service.js');
+            const result = await stopLaunchdInstance(launchdState.label);
+            return { ...result, port, home, expectedStateAfter: 'offline' };
+        }
         if (!entry) {
             return rejectResult(action, port, home, command, 'Only dashboard-owned instances can be stopped.');
         }
@@ -373,13 +393,18 @@ export class DashboardLifecycleManager {
         }
     }
 
-    private async restartLocked(port: number): Promise<DashboardLifecycleResult> {
+    private async restartLocked(port: number, launchdState?: DashboardLaunchdState | null): Promise<DashboardLifecycleResult> {
         const action: DashboardLifecycleAction = 'restart';
         const entry = this.activeEntry(port);
         const home = entry?.home || this.defaultHome(port);
         const command = entry?.command || this.buildStartCommand(port, home);
         const rejected = this.validatePort(action, port, home, command);
         if (rejected) return rejected;
+        if (!entry && launchdState?.loaded) {
+            const { restartLaunchdInstance } = await import('./launchd-service.js');
+            const result = await restartLaunchdInstance(launchdState.label);
+            return { ...result, port, home, expectedStateAfter: 'restart-detected' };
+        }
         if (!entry) {
             return rejectResult(action, port, home, command, 'Only dashboard-owned instances can be restarted.');
         }
@@ -458,10 +483,12 @@ export class DashboardLifecycleManager {
     private capabilityFor(
         instance: DashboardInstance,
         managed: ManagedProcess | null,
+        launchdState?: DashboardLaunchdState | null,
     ): DashboardLifecycleCapability {
         return buildCapability({
             instance,
             managed: managed ? { mode: managed.mode, pid: managed.pid } : null,
+            launchdState,
             defaultHome: this.defaultHome(instance.port),
             commandPreview: this.buildStartCommand(instance.port, this.defaultHome(instance.port)),
         });

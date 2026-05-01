@@ -16,6 +16,7 @@ import { Workbench } from './components/Workbench';
 import { WorkbenchHeader } from './components/WorkbenchHeader';
 import { WorkspaceLayout } from './components/WorkspaceLayout';
 import { InstancePreview } from './InstancePreview';
+import { ElectronMetricsPanel } from './electron-metrics';
 import { DashboardSettingsSidebar, type DashboardSettingsSection } from './dashboard-settings/DashboardSettingsSidebar';
 import { DashboardSettingsWorkspace } from './dashboard-settings/DashboardSettingsWorkspace';
 import { summarizeActivityTitleSupport } from './dashboard-settings/activity-title-support';
@@ -320,6 +321,12 @@ export function App() {
     async function handleLifecycle(action: DashboardLifecycleAction, instance: DashboardInstance): Promise<void> {
         const lifecycle = instance.lifecycle;
         if (!lifecycle) return;
+        if (action === 'perm' && !window.confirm(`Register :${instance.port} as a persistent macOS service? It will auto-start on login and auto-restart on crash.`)) {
+            return;
+        }
+        if (action === 'unperm' && !window.confirm(`Remove persistent service for :${instance.port}? The instance will stop and won't auto-start.`)) {
+            return;
+        }
         if ((action === 'stop' || action === 'restart') && !window.confirm(`${action} :${instance.port}?`)) {
             return;
         }
@@ -334,7 +341,7 @@ export function App() {
             const home = action === 'start' ? customHome : undefined;
             const result = await runLifecycleAction(action, instance.port, home);
             const expected = result.expectedStateAfter
-                || (action === 'start' ? 'online' : action === 'stop' ? 'offline' : 'restart-detected');
+                || (action === 'start' || action === 'perm' ? 'online' : action === 'stop' || action === 'unperm' ? 'offline' : 'restart-detected');
             const polled = await pollUntilSettled({
                 port: instance.port,
                 expected,
@@ -526,6 +533,7 @@ export function App() {
                 onOpenSelected={openSelectedInBrowser}
                 selectedInstance={selectedInstance}
             />
+            <ElectronMetricsPanel />
         </>
     );
 }
