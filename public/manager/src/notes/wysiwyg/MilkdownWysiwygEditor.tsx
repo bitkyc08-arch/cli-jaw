@@ -16,6 +16,7 @@ import { history } from '@milkdown/kit/plugin/history';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { callCommand, insert, replaceAll } from '@milkdown/kit/utils';
 import { safeMarkdownUrl } from '../markdown-security';
+import { notesMilkdownBlockKeymap } from './milkdown-block-keymap';
 import { notesMilkdownCodeBlockView } from './milkdown-code-block-view';
 import { notesMilkdownKatexOptionsCtx, notesMilkdownMath } from './milkdown-math';
 
@@ -83,6 +84,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
             .use(gfm)
             .use(notesMilkdownMath)
             .use(notesMilkdownCodeBlockView)
+            .use(notesMilkdownBlockKeymap)
             .use(history)
             .use(clipboard)
             .use(listener)

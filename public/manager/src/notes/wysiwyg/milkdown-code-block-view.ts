@@ -36,6 +36,19 @@ function isCaretAtEnd(input: HTMLTextAreaElement): boolean {
     return input.selectionStart === input.value.length && input.selectionEnd === input.value.length;
 }
 
+function isCaretAtFenceBoundary(input: HTMLTextAreaElement): boolean {
+    const { selectionStart, selectionEnd, value } = input;
+    if (selectionStart !== selectionEnd) {
+        return selectionStart === 0 && selectionEnd === value.length;
+    }
+    if (selectionStart === 0 || selectionStart === value.length) return true;
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const nextNewline = value.indexOf('\n', selectionStart);
+    const lineEnd = nextNewline === -1 ? value.length : nextNewline;
+    const line = value.slice(lineStart, lineEnd);
+    return /^```[^\n`]*$/.test(line);
+}
+
 function updateCodeBlockNode(view: EditorView, getPos: () => number | undefined, source: string): void {
     const pos = getPos();
     if (pos === undefined) return;
@@ -50,17 +63,61 @@ function updateCodeBlockNode(view: EditorView, getPos: () => number | undefined,
     view.dispatch(tr);
 }
 
-function moveAfterCodeBlock(view: EditorView, getPos: () => number | undefined): void {
+function commitAndExitCodeBlock(
+    view: EditorView,
+    getPos: () => number | undefined,
+    source: string,
+    direction: 'above' | 'below',
+): void {
     const pos = getPos();
     if (pos === undefined) return;
-    const node = view.state.doc.nodeAt(pos);
-    if (!node) return;
-    const after = pos + node.nodeSize;
+    const current = view.state.doc.nodeAt(pos);
+    if (!current) return;
+    const parsed = parseFencedCodeSource(source);
+    const nextText = parsed.code ? view.state.schema.text(parsed.code) : [];
+    const tr = view.state.tr
+        .setNodeMarkup(pos, undefined, { ...current.attrs, language: parsed.language })
+        .replaceWith(pos + 1, pos + current.nodeSize - 1, nextText);
+
+    if (direction === 'below') {
+        const paragraph = view.state.schema.nodes.paragraph?.create();
+        if (!paragraph) return;
+        const codeAfter = tr.mapping.map(pos + current.nodeSize);
+        tr.insert(codeAfter, paragraph);
+        tr.setSelection(TextSelection.create(tr.doc, codeAfter + 1));
+        view.dispatch(tr.scrollIntoView());
+        return;
+    }
+
+    const $code = tr.doc.resolve(pos);
+    const prevIndex = $code.index() - 1;
+    if (prevIndex >= 0) {
+        const prevNode = $code.parent.child(prevIndex);
+        if (prevNode.isTextblock) {
+            const prevEnd = pos - 1;
+            tr.setSelection(TextSelection.create(tr.doc, prevEnd));
+            view.dispatch(tr.scrollIntoView());
+            return;
+        }
+    }
+
     const paragraph = view.state.schema.nodes.paragraph?.create();
     if (!paragraph) return;
-    const tr = view.state.tr.insert(after, paragraph);
-    tr.setSelection(TextSelection.create(tr.doc, after + 1));
+    tr.insert(pos, paragraph);
+    tr.setSelection(TextSelection.create(tr.doc, pos + 1));
     view.dispatch(tr.scrollIntoView());
+}
+
+function exitDirectionForCaret(raw: HTMLTextAreaElement): 'above' | 'below' {
+    const { selectionStart, value } = raw;
+    if (selectionStart === 0) return 'above';
+    if (selectionStart === value.length) return 'below';
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const nextNewline = value.indexOf('\n', selectionStart);
+    const lineEnd = nextNewline === -1 ? value.length : nextNewline;
+    const line = value.slice(lineStart, lineEnd);
+    if (/^```[^\n`]*$/.test(line)) return lineStart === 0 ? 'above' : 'below';
+    return 'below';
 }
 
 function createCodeBlockView(): NodeViewConstructor {
@@ -94,15 +151,27 @@ function createCodeBlockView(): NodeViewConstructor {
             if (dom.dataset.editing !== 'true') raw.value = fencedCodeSource(currentNode);
         }
 
-        function setEditing(editing: boolean): void {
+        function setEditing(editing: boolean, options: { commit?: boolean } = {}): void {
             if (dom.dataset.editing === 'true' && editing) return;
-            if (!editing && dom.dataset.editing === 'true') updateCodeBlockNode(view, getPos, raw.value);
+            if (!editing && dom.dataset.editing !== 'true') return;
+            if (!editing && options.commit !== false) {
+                updateCodeBlockNode(view, getPos, raw.value);
+            }
             dom.dataset.editing = editing ? 'true' : 'false';
             if (editing) {
                 raw.value = fencedCodeSource(currentNode);
                 raw.focus();
                 raw.select();
+            } else {
+                raw.blur();
             }
+        }
+
+        function exitToNextParagraph(direction: 'above' | 'below' = 'below'): void {
+            const value = raw.value;
+            setEditing(false, { commit: false });
+            commitAndExitCodeBlock(view, getPos, value, direction);
+            view.focus();
         }
 
         function revealRawControl(targetDom: Element | null): void {
@@ -138,6 +207,7 @@ function createCodeBlockView(): NodeViewConstructor {
         dom.addEventListener('mousedown', openFromRenderedEvent, { capture: true });
         dom.addEventListener('click', openFromRenderedEvent);
         dom.addEventListener('keydown', event => {
+            if (event.target !== dom) return;
             if (dom.dataset.editing === 'true') return;
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
@@ -149,12 +219,35 @@ function createCodeBlockView(): NodeViewConstructor {
                 event.preventDefault();
                 setEditing(false);
                 view.focus();
+                return;
             }
-            if (event.key === 'Enter' && isClosedFencedCodeSource(raw.value) && isCaretAtEnd(raw)) {
+            if (event.key === 'Enter' && isClosedFencedCodeSource(raw.value) && isCaretAtFenceBoundary(raw)) {
                 event.preventDefault();
-                setEditing(false);
-                moveAfterCodeBlock(view, getPos);
-                view.focus();
+                exitToNextParagraph(exitDirectionForCaret(raw));
+                return;
+            }
+            if (event.key === 'ArrowUp' && isClosedFencedCodeSource(raw.value)
+                && !raw.value.slice(0, raw.selectionStart).includes('\n')) {
+                event.preventDefault();
+                exitToNextParagraph('above');
+                return;
+            }
+            if (event.key === 'ArrowDown' && isClosedFencedCodeSource(raw.value)
+                && !raw.value.slice(raw.selectionEnd).includes('\n')) {
+                event.preventDefault();
+                exitToNextParagraph('below');
+                return;
+            }
+            if (event.key === 'ArrowLeft' && isClosedFencedCodeSource(raw.value)
+                && raw.selectionStart === 0 && raw.selectionEnd === 0) {
+                event.preventDefault();
+                exitToNextParagraph('above');
+                return;
+            }
+            if (event.key === 'ArrowRight' && isClosedFencedCodeSource(raw.value)
+                && raw.selectionStart === raw.value.length && raw.selectionEnd === raw.value.length) {
+                event.preventDefault();
+                exitToNextParagraph('below');
                 return;
             }
             if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
@@ -166,15 +259,17 @@ function createCodeBlockView(): NodeViewConstructor {
         raw.addEventListener('input', () => {
             updateCodeBlockNode(view, getPos, raw.value);
             if (isClosedFencedCodeSource(raw.value) && isCaretAtEnd(raw)) {
-                setTimeout(() => {
-                    setEditing(false);
-                    moveAfterCodeBlock(view, getPos);
-                    view.focus();
-                }, 0);
+                queueMicrotask(exitToNextParagraph);
             }
         });
         raw.addEventListener('mousedown', event => event.stopPropagation());
         raw.addEventListener('click', event => event.stopPropagation());
+        dom.addEventListener('notes-enter-editing', (event: Event) => {
+            setEditing(true);
+            const detail = (event as CustomEvent<{ caretPosition?: 'start' | 'end' }>).detail;
+            const target = detail?.caretPosition === 'start' ? 0 : raw.value.length;
+            raw.setSelectionRange(target, target);
+        });
 
         sync();
 

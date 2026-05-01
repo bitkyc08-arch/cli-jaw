@@ -75,21 +75,80 @@ function isCaretAtEnd(raw: HTMLInputElement | HTMLTextAreaElement): boolean {
     return raw.selectionStart === raw.value.length && raw.selectionEnd === raw.value.length;
 }
 
-function moveAfterMathNode(view: EditorView, getPos: () => number | undefined, block: boolean): void {
+function isCaretAtMathBoundary(raw: HTMLInputElement | HTMLTextAreaElement, block: boolean): boolean {
+    const selectionStart = raw.selectionStart ?? 0;
+    const selectionEnd = raw.selectionEnd ?? 0;
+    const value = raw.value;
+    if (selectionStart !== selectionEnd) {
+        return selectionStart === 0 && selectionEnd === value.length;
+    }
+    if (selectionStart === 0 || selectionStart === value.length) return true;
+    if (!block) return false;
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const nextNewline = value.indexOf('\n', selectionStart);
+    const lineEnd = nextNewline === -1 ? value.length : nextNewline;
+    const line = value.slice(lineStart, lineEnd);
+    return /^\$\$$/.test(line);
+}
+
+function commitAndExitMathNode(
+    view: EditorView,
+    getPos: () => number | undefined,
+    block: boolean,
+    value: string,
+    direction: 'above' | 'below',
+): void {
     const pos = getPos();
     if (pos === undefined) return;
     const node = view.state.doc.nodeAt(pos);
     if (!node) return;
-    const after = pos + node.nodeSize;
-    const paragraph = view.state.schema.nodes.paragraph?.create();
-    if (!paragraph) return;
-    if (block) {
-        const tr = view.state.tr.insert(after, paragraph);
-        tr.setSelection(TextSelection.create(tr.doc, after + 1));
+    const tr = view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, value });
+
+    if (direction === 'above' && block) {
+        const $math = tr.doc.resolve(pos);
+        const prevIndex = $math.index() - 1;
+        if (prevIndex >= 0) {
+            const prevNode = $math.parent.child(prevIndex);
+            if (prevNode.isTextblock) {
+                tr.setSelection(TextSelection.create(tr.doc, pos - 1));
+                view.dispatch(tr.scrollIntoView());
+                return;
+            }
+        }
+        const paragraph = view.state.schema.nodes.paragraph?.create();
+        if (!paragraph) return;
+        tr.insert(pos, paragraph);
+        tr.setSelection(TextSelection.create(tr.doc, pos + 1));
         view.dispatch(tr.scrollIntoView());
         return;
     }
-    view.dispatch(view.state.tr.setSelection(TextSelection.near(view.state.doc.resolve(after), 1)).scrollIntoView());
+
+    const after = tr.mapping.map(pos + node.nodeSize);
+    if (block) {
+        const paragraph = view.state.schema.nodes.paragraph?.create();
+        if (!paragraph) return;
+        tr.insert(after, paragraph);
+        tr.setSelection(TextSelection.create(tr.doc, after + 1));
+    } else if (direction === 'above') {
+        tr.setSelection(TextSelection.near(tr.doc.resolve(pos), -1));
+    } else {
+        tr.setSelection(TextSelection.near(tr.doc.resolve(after), 1));
+    }
+    view.dispatch(tr.scrollIntoView());
+}
+
+function exitDirectionForMathCaret(raw: HTMLInputElement | HTMLTextAreaElement, block: boolean): 'above' | 'below' {
+    const selectionStart = raw.selectionStart ?? 0;
+    const value = raw.value;
+    if (selectionStart === 0) return 'above';
+    if (selectionStart === value.length) return 'below';
+    if (!block) return 'below';
+    const lineStart = value.lastIndexOf('\n', selectionStart - 1) + 1;
+    const nextNewline = value.indexOf('\n', selectionStart);
+    const lineEnd = nextNewline === -1 ? value.length : nextNewline;
+    const line = value.slice(lineStart, lineEnd);
+    if (/^\$\$$/.test(line)) return lineStart === 0 ? 'above' : 'below';
+    return 'below';
 }
 
 function createMathView(options: {
@@ -125,12 +184,22 @@ function createMathView(options: {
 
         function setEditing(editing: boolean): void {
             if (dom.dataset.editing === 'true' && editing) return;
+            if (!editing && dom.dataset.editing !== 'true') return;
             dom.dataset.editing = editing ? 'true' : 'false';
             if (editing) {
                 raw.value = options.block ? blockMathSource(value()) : inlineMathSource(value());
                 raw.focus();
                 raw.select();
+            } else {
+                raw.blur();
             }
+        }
+
+        function exitToNextParagraph(direction: 'above' | 'below' = 'below'): void {
+            const parsed = options.block ? parseBlockMathSource(raw.value) : parseInlineMathSource(raw.value);
+            setEditing(false);
+            commitAndExitMathNode(view, getPos, options.block, parsed, direction);
+            view.focus();
         }
 
         function sync(): void {
@@ -176,6 +245,7 @@ function createMathView(options: {
         dom.addEventListener('click', openFromRenderedEvent);
         dom.addEventListener('keydown', event => {
             const keyEvent = event as KeyboardEvent;
+            if (keyEvent.target !== dom) return;
             if (dom.dataset.editing === 'true') return;
             if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
                 keyEvent.preventDefault();
@@ -186,12 +256,13 @@ function createMathView(options: {
             updateMathNode(view, getPos, options.block
                 ? parseBlockMathSource(raw.value)
                 : parseInlineMathSource(raw.value));
-            if (isClosedMathSource(raw.value, options.block) && isCaretAtEnd(raw)) {
-                setTimeout(() => {
-                    setEditing(false);
-                    moveAfterMathNode(view, getPos, options.block);
-                    view.focus();
-                }, 0);
+            // Auto-exit on input only fires for block math: typing the closing
+            // `$$` line is a clear "I am done" signal. Inline math, by contrast,
+            // is often re-edited after the closing `$` is already in place
+            // (e.g. user opens a closed inline math and adds characters); an
+            // auto-exit on every keystroke would trap them out of the node.
+            if (options.block && isClosedMathSource(raw.value, options.block) && isCaretAtEnd(raw)) {
+                queueMicrotask(exitToNextParagraph);
             }
         });
         raw.addEventListener('blur', () => setEditing(false));
@@ -201,12 +272,35 @@ function createMathView(options: {
                 keyEvent.preventDefault();
                 setEditing(false);
                 view.focus();
+                return;
             }
-            if (keyEvent.key === 'Enter' && isClosedMathSource(raw.value, options.block) && isCaretAtEnd(raw)) {
+            if (keyEvent.key === 'Enter' && isClosedMathSource(raw.value, options.block) && isCaretAtMathBoundary(raw, options.block)) {
                 keyEvent.preventDefault();
-                setEditing(false);
-                moveAfterMathNode(view, getPos, options.block);
-                view.focus();
+                exitToNextParagraph(exitDirectionForMathCaret(raw, options.block));
+                return;
+            }
+            if (keyEvent.key === 'ArrowUp' && isClosedMathSource(raw.value, options.block)
+                && !raw.value.slice(0, raw.selectionStart ?? 0).includes('\n')) {
+                keyEvent.preventDefault();
+                exitToNextParagraph('above');
+                return;
+            }
+            if (keyEvent.key === 'ArrowDown' && isClosedMathSource(raw.value, options.block)
+                && !raw.value.slice(raw.selectionEnd ?? raw.value.length).includes('\n')) {
+                keyEvent.preventDefault();
+                exitToNextParagraph('below');
+                return;
+            }
+            if (keyEvent.key === 'ArrowLeft' && isClosedMathSource(raw.value, options.block)
+                && (raw.selectionStart ?? 0) === 0 && (raw.selectionEnd ?? 0) === 0) {
+                keyEvent.preventDefault();
+                exitToNextParagraph('above');
+                return;
+            }
+            if (keyEvent.key === 'ArrowRight' && isClosedMathSource(raw.value, options.block)
+                && (raw.selectionStart ?? 0) === raw.value.length && (raw.selectionEnd ?? 0) === raw.value.length) {
+                keyEvent.preventDefault();
+                exitToNextParagraph('below');
                 return;
             }
             if (!options.block && keyEvent.key === 'Enter') {
@@ -222,6 +316,12 @@ function createMathView(options: {
         });
         raw.addEventListener('mousedown', event => event.stopPropagation());
         raw.addEventListener('click', event => event.stopPropagation());
+        dom.addEventListener('notes-enter-editing', (event: Event) => {
+            setEditing(true);
+            const detail = (event as CustomEvent<{ caretPosition?: 'start' | 'end' }>).detail;
+            const target = detail?.caretPosition === 'start' ? 0 : raw.value.length;
+            raw.setSelectionRange(target, target);
+        });
 
         sync();
 

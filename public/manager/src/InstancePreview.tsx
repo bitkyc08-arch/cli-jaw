@@ -27,7 +27,7 @@ function postPreviewTheme(frame: HTMLIFrameElement | null, src: string, theme: P
     const targetWindow = frame?.contentWindow;
     if (!targetWindow) return;
     const targetOrigin = previewTargetOrigin(src, frame);
-    if (!targetOrigin) return;
+    if (!targetOrigin || targetOrigin === 'null') return;
     try {
         targetWindow.postMessage(
             { type: 'jaw-preview-theme-sync', theme },

@@ -1,5 +1,7 @@
-import { useState, type CSSProperties, type DragEvent, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type MouseEvent } from 'react';
 import type { NotesTreeEntry } from './notes-types';
+
+type NotesTrashItem = { path: string; kind: NotesTreeEntry['kind'] };
 
 type NotesFileTreeProps = {
     entries: NotesTreeEntry[];
@@ -8,11 +10,13 @@ type NotesFileTreeProps = {
     dirtyPath: string | null;
     loading: boolean;
     width: number;
+    notesRoot: string | null;
     onSelectPath: (path: string) => void;
     onSelectFolder: (path: string | null) => void;
     onMovePath: (from: string, toFolder: string | null) => void;
     onRenamePath: (path: string, kind: NotesTreeEntry['kind']) => void;
     onTrashPath: (path: string, kind: NotesTreeEntry['kind']) => void;
+    onTrashPaths: (items: NotesTrashItem[]) => void;
     onCreateNote: () => void;
     onCreateFolder: () => void;
     onRefresh: () => void;
@@ -88,6 +92,45 @@ function hasNotePathDrag(event: DragEvent): boolean {
     return Array.from(event.dataTransfer.types).some(type => type === 'application/x-cli-jaw-note-path' || type === 'text/plain');
 }
 
+function flattenEntries(entries: NotesTreeEntry[], expandedFolders: Set<string>): string[] {
+    const result: string[] = [];
+    for (const entry of entries) {
+        result.push(entry.path);
+        if (entry.kind === 'folder' && expandedFolders.has(entry.path) && entry.children) {
+            result.push(...flattenEntries(entry.children, expandedFolders));
+        }
+    }
+    return result;
+}
+
+function collectPathKinds(entries: NotesTreeEntry[], target: Map<string, NotesTreeEntry['kind']>): void {
+    for (const entry of entries) {
+        target.set(entry.path, entry.kind);
+        if (entry.kind === 'folder' && entry.children) collectPathKinds(entry.children, target);
+    }
+}
+
+function buildTrashItems(
+    paths: Iterable<string>,
+    pathKindLookup: Map<string, NotesTreeEntry['kind']>,
+): NotesTrashItem[] {
+    const items: NotesTrashItem[] = [];
+    for (const path of paths) {
+        const kind = pathKindLookup.get(path);
+        if (kind) items.push({ path, kind });
+    }
+    return items;
+}
+
+function rangeSelect(flatPaths: string[], anchor: string, target: string): Set<string> {
+    const anchorIndex = flatPaths.indexOf(anchor);
+    const targetIndex = flatPaths.indexOf(target);
+    if (anchorIndex === -1 || targetIndex === -1) return new Set([target]);
+    const start = Math.min(anchorIndex, targetIndex);
+    const end = Math.max(anchorIndex, targetIndex);
+    return new Set(flatPaths.slice(start, end + 1));
+}
+
 function handleTreeKey(
     event: KeyboardEvent,
     entry: NotesTreeEntry,
@@ -97,6 +140,9 @@ function handleTreeKey(
         onSelectFolder?: (path: string | null) => void;
         onRenamePath: (path: string, kind: NotesTreeEntry['kind']) => void;
         onTrashPath: (path: string, kind: NotesTreeEntry['kind']) => void;
+        onTrashPaths: (items: NotesTrashItem[]) => void;
+        multiSelected: Set<string>;
+        pathKindLookup: Map<string, NotesTreeEntry['kind']>;
     },
 ): void {
     if (event.key === 'F2') {
@@ -106,6 +152,11 @@ function handleTreeKey(
     }
     if (event.key === 'Delete' || event.key === 'Backspace') {
         event.preventDefault();
+        if (options.multiSelected.size > 1 && options.multiSelected.has(entry.path)) {
+            const items = buildTrashItems(options.multiSelected, options.pathKindLookup);
+            if (items.length > 0) options.onTrashPaths(items);
+            return;
+        }
         options.onTrashPath(entry.path, entry.kind);
         return;
     }
@@ -127,20 +178,28 @@ function renderEntry(
     toggleFolder: (path: string) => void,
     dropTargetPath: string | null,
     setDropTargetPath: (path: string | null) => void,
+    multiSelected: Set<string>,
+    pathKindLookup: Map<string, NotesTreeEntry['kind']>,
+    onEntryClick: (path: string, event: MouseEvent) => void,
 ) {
     const selected = entry.path === props.selectedPath;
+    const isMultiSelected = multiSelected.has(entry.path);
     if (entry.kind === 'folder') {
         const expanded = expandedFolders.has(entry.path);
         const folderSelected = entry.path === props.selectedFolderPath;
         const children = entry.children || [];
         return (
             <li key={entry.path} className="notes-tree-folder">
-                <div className={`notes-tree-folder-row ${folderSelected ? 'is-folder-selected' : ''} ${dropTargetPath === entry.path ? 'is-drop-target' : ''}`}>
+                <div className={`notes-tree-folder-row ${folderSelected ? 'is-folder-selected' : ''} ${dropTargetPath === entry.path ? 'is-drop-target' : ''} ${isMultiSelected ? 'is-multi-selected' : ''}`}>
                     <button
                         type="button"
                         className="notes-tree-folder-button"
                         aria-expanded={expanded}
-                        onClick={() => {
+                        onClick={(event) => {
+                            if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                                onEntryClick(entry.path, event);
+                                return;
+                            }
                             props.onSelectFolder(entry.path);
                             toggleFolder(entry.path);
                         }}
@@ -177,6 +236,9 @@ function renderEntry(
                                 onSelectFolder: props.onSelectFolder,
                                 onRenamePath: props.onRenamePath,
                                 onTrashPath: props.onTrashPath,
+                                onTrashPaths: props.onTrashPaths,
+                                multiSelected,
+                                pathKindLookup,
                             });
                         }}
                     >
@@ -198,7 +260,7 @@ function renderEntry(
                     </button>
                 </div>
                 {expanded && children.length > 0 && (
-                    <ul>{children.map(child => renderEntry(child, props, expandedFolders, toggleFolder, dropTargetPath, setDropTargetPath))}</ul>
+                    <ul>{children.map(child => renderEntry(child, props, expandedFolders, toggleFolder, dropTargetPath, setDropTargetPath, multiSelected, pathKindLookup, onEntryClick))}</ul>
                 )}
             </li>
         );
@@ -206,7 +268,7 @@ function renderEntry(
     const dirty = entry.path === props.dirtyPath;
     return (
         <li key={entry.path}>
-            <div className={`notes-tree-file-row ${selected ? 'is-selected' : ''} ${dirty ? 'is-dirty' : ''}`}>
+            <div className={`notes-tree-file-row ${selected ? 'is-selected' : ''} ${dirty ? 'is-dirty' : ''} ${isMultiSelected ? 'is-multi-selected' : ''}`}>
                 <button
                     type="button"
                     className="notes-tree-file-button"
@@ -217,11 +279,20 @@ function renderEntry(
                         event.dataTransfer.setData('application/x-cli-jaw-note-path', entry.path);
                         event.dataTransfer.setData('text/plain', entry.path);
                     }}
-                    onClick={() => props.onSelectPath(entry.path)}
+                    onClick={(event) => {
+                        if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                            onEntryClick(entry.path, event);
+                            return;
+                        }
+                        props.onSelectPath(entry.path);
+                    }}
                     onKeyDown={(event) => handleTreeKey(event, entry, {
                         onSelectPath: props.onSelectPath,
                         onRenamePath: props.onRenamePath,
                         onTrashPath: props.onTrashPath,
+                        onTrashPaths: props.onTrashPaths,
+                        multiSelected,
+                        pathKindLookup,
                     })}
                 >
                     <FileIcon />
@@ -249,6 +320,8 @@ export function NotesFileTree(props: NotesFileTreeProps) {
     const style = { '--notes-tree-width': `${props.width}px` } as CSSProperties;
     const [expandedFolders, setExpandedFolders] = useState<Set<string>>(() => new Set());
     const [dropTargetPath, setDropTargetPath] = useState<string | null>(null);
+    const [multiSelected, setMultiSelected] = useState<Set<string>>(() => new Set());
+    const [anchorPath, setAnchorPath] = useState<string | null>(null);
 
     function toggleFolder(path: string): void {
         setExpandedFolders(current => {
@@ -258,6 +331,75 @@ export function NotesFileTree(props: NotesFileTreeProps) {
             return next;
         });
     }
+
+    const flatPaths = flattenEntries(props.entries, expandedFolders);
+    const pathKindLookup = (() => {
+        const map = new Map<string, NotesTreeEntry['kind']>();
+        collectPathKinds(props.entries, map);
+        return map;
+    })();
+
+    function trashSelected(): void {
+        if (multiSelected.size === 0) return;
+        const items = buildTrashItems(multiSelected, pathKindLookup);
+        if (items.length === 0) return;
+        props.onTrashPaths(items);
+    }
+
+    const onEntryClick = useCallback((path: string, event: MouseEvent) => {
+        if (event.shiftKey && anchorPath) {
+            const range = rangeSelect(flatPaths, anchorPath, path);
+            setMultiSelected(range);
+        } else if (event.metaKey || event.ctrlKey) {
+            setMultiSelected(prev => {
+                const next = new Set(prev);
+                if (next.size === 0 && props.selectedPath) next.add(props.selectedPath);
+                if (next.has(path)) next.delete(path);
+                else next.add(path);
+                return next;
+            });
+            setAnchorPath(path);
+        }
+    }, [anchorPath, flatPaths, props.selectedPath]);
+
+    useEffect(() => {
+        if (props.selectedPath) {
+            setAnchorPath(props.selectedPath);
+        }
+    }, [props.selectedPath]);
+
+    useEffect(() => {
+        if (multiSelected.size === 0) return;
+        setMultiSelected(prev => {
+            let changed = false;
+            const next = new Set<string>();
+            for (const path of prev) {
+                if (pathKindLookup.has(path)) next.add(path);
+                else changed = true;
+            }
+            return changed ? next : prev;
+        });
+    }, [props.entries]);
+
+    useEffect(() => {
+        function handleCopyPath(event: globalThis.KeyboardEvent): void {
+            if (!(event.metaKey || event.ctrlKey) || !event.shiftKey || event.key.toLowerCase() !== 'c') return;
+            const root = props.notesRoot;
+            if (!root) return;
+
+            const paths = multiSelected.size > 0
+                ? Array.from(multiSelected)
+                : props.selectedPath ? [props.selectedPath] : [];
+            if (paths.length === 0) return;
+
+            event.preventDefault();
+            const absolute = paths.map(p => `${root}/${p}`).join('\n');
+            void navigator.clipboard.writeText(absolute);
+        }
+
+        window.addEventListener('keydown', handleCopyPath);
+        return () => window.removeEventListener('keydown', handleCopyPath);
+    }, [multiSelected, props.selectedPath, props.notesRoot]);
 
     return (
         <aside
@@ -283,10 +425,22 @@ export function NotesFileTree(props: NotesFileTreeProps) {
                     <button type="button" onClick={props.onRefresh} disabled={props.loading} title="Refresh notes" aria-label="Refresh notes"><RefreshIcon /></button>
                 </div>
             </div>
+            {multiSelected.size > 0 && (
+                <div className="notes-tree-selection-info">
+                    {multiSelected.size} selected
+                    <button
+                        type="button"
+                        className="notes-tree-selection-delete"
+                        onClick={trashSelected}
+                        disabled={multiSelected.size === 0}
+                    >Delete</button>
+                    <button type="button" className="notes-tree-clear-selection" onClick={() => setMultiSelected(new Set())}>Clear</button>
+                </div>
+            )}
             {props.loading && <div className="notes-tree-state">Loading notes...</div>}
             {!props.loading && props.entries.length === 0 && <div className="notes-tree-state">No notes or folders</div>}
             {!props.loading && props.entries.length > 0 && (
-                <ul className="notes-tree-list">{props.entries.map(entry => renderEntry(entry, props, expandedFolders, toggleFolder, dropTargetPath, setDropTargetPath))}</ul>
+                <ul className="notes-tree-list">{props.entries.map(entry => renderEntry(entry, props, expandedFolders, toggleFolder, dropTargetPath, setDropTargetPath, multiSelected, pathKindLookup, onEntryClick))}</ul>
             )}
         </aside>
     );

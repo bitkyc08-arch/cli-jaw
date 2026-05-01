@@ -141,6 +141,11 @@ async function parseNotesResponse<T>(response: Response, fallback: string): Prom
     return body as T;
 }
 
+export async function fetchNotesInfo(): Promise<{ root: string }> {
+    const response = await fetch('/api/dashboard/notes/info');
+    return await parseNotesResponse<{ root: string }>(response, `notes info fetch failed: ${response.status}`);
+}
+
 export async function fetchNotesTree(): Promise<DashboardNoteTreeEntry[]> {
     const response = await fetch('/api/dashboard/notes/tree');
     return await parseNotesResponse<DashboardNoteTreeEntry[]>(response, `notes tree fetch failed: ${response.status}`);

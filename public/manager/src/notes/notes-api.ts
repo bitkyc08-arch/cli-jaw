@@ -1,4 +1,5 @@
 export {
+    fetchNotesInfo,
     fetchNotesTree,
     fetchNoteFile,
     createNoteFile,

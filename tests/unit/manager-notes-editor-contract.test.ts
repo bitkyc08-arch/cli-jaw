@@ -73,6 +73,14 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     assert.ok(codePlugin.includes('fencedCodeSource'), 'code block raw editing must expose fenced markdown source');
     assert.ok(codePlugin.includes('notes-code-raw'), 'code block node views must expose raw editable source');
     assert.ok(codePlugin.includes('updateCodeBlockNode'), 'raw code block edits must write back into the ProseMirror node');
+    assert.ok(codePlugin.includes('commitAndExitCodeBlock'),
+        'code block exit must commit and move caret in a single transaction');
+    assert.equal(codePlugin.includes('function moveAfterCodeBlock'), false,
+        'code block exit must not use the legacy multi-dispatch moveAfterCodeBlock helper');
+    assert.ok(mathPlugin.includes('commitAndExitMathNode'),
+        'math node exit must commit and move caret in a single transaction');
+    assert.equal(mathPlugin.includes('function moveAfterMathNode'), false,
+        'math node exit must not use the legacy multi-dispatch moveAfterMathNode helper');
     assert.ok(milkdown.includes('listenerCtx'), 'Milkdown WYSIWYG must publish markdown changes through listenerCtx');
     assert.ok(milkdown.includes('onChangeRef.current(markdown)'), 'Milkdown WYSIWYG must keep the existing markdown save path');
     assert.ok(milkdown.includes('syncingFromPropsRef'), 'Milkdown WYSIWYG must suppress controlled prop sync writes');

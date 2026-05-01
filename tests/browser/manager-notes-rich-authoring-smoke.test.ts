@@ -73,6 +73,8 @@ test('notes rich authoring toggles renderer-backed CodeMirror widgets without be
     assert.ok(await page.locator('.notes-wysiwyg-toolbar button[title="Bold"]').count() === 1,
         'WYSIWYG authoring must expose visual formatting controls');
     await page.waitForSelector('.notes-milkdown-root .ProseMirror', { timeout: 5000 });
+    await page.waitForSelector('.notes-math-inline-node', { timeout: 5000 });
+    await page.waitForTimeout(300);
     await page.locator('.notes-math-inline-node').first().click();
     const inlineMathSource = page.locator('.notes-math-inline-node[data-editing="true"] input.notes-math-raw');
     await expectInputValue(inlineMathSource, '$E = mc^2$');
@@ -98,6 +100,18 @@ test('notes rich authoring toggles renderer-backed CodeMirror widgets without be
     await page.keyboard.press('Enter');
     assert.equal(await page.locator('.notes-code-source-node[data-editing="true"]').count(), 0,
         'closed fenced code source followed by Enter must exit the raw block');
+    assert.equal(
+        await page.locator('.notes-code-source-node.ProseMirror-selectednode, .notes-code-source-node[data-selected="true"]').count(),
+        0,
+        'closed fenced code source exit must leave the code block unselected (no Cmd+A overlay)',
+    );
+    await page.keyboard.press('Backspace');
+    const reopenedSource = page.locator('.notes-code-source-node[data-editing="true"] textarea.notes-code-raw');
+    await reopenedSource.waitFor({ timeout: 2000 });
+    const reopenedValue = await reopenedSource.inputValue();
+    assert.ok(reopenedValue.endsWith('```'),
+        'Backspace from the line below a code block must re-open its raw textarea at end of source');
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'Save' }).click();
 
     const savedContent = await page.evaluate(async ({ noteName }) => {
@@ -116,7 +130,19 @@ test('notes rich authoring toggles renderer-backed CodeMirror widgets without be
 });
 
 async function expectInputValue(locator: Locator, expected: string): Promise<void> {
-    const value = await locator.inputValue();
+    // Replace Playwright's auto-wait inputValue (which has shown flake under
+    // tsx --test for inline math node views even when the underlying DOM is
+    // ready) with an explicit deadline-based poll over a fresh evaluate read.
+    const deadline = Date.now() + 5000;
+    let value = '';
+    while (Date.now() < deadline) {
+        value = await locator.evaluate(el => (el as HTMLInputElement | HTMLTextAreaElement).value ?? '').catch(() => '');
+        if (value === expected) {
+            assert.equal(value, expected);
+            return;
+        }
+        await new Promise(resolve => setTimeout(resolve, 100));
+    }
     assert.equal(value, expected);
 }
 

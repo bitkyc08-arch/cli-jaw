@@ -138,6 +138,10 @@ export function createDashboardNotesRouter(options: DashboardNotesRouterOptions)
 
     router.use(requireManagerOrigin(options.managerPort));
 
+    router.get('/info', (_req, res) => {
+        res.json({ root: store.rootPath() });
+    });
+
     router.get('/tree', asyncRoute(async (_req, res) => {
         res.json(await store.listTree());
     }));

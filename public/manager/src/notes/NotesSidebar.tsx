@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { createNoteFile, createNoteFolder, fetchNotesTree, renameNotePath, trashNotePath } from './notes-api';
+import { createNoteFile, createNoteFolder, fetchNotesInfo, fetchNotesTree, renameNotePath, trashNotePath } from './notes-api';
 import { NotesFileTree } from './NotesFileTree';
 import type { NotesTreeEntry } from './notes-types';
 
@@ -75,12 +75,28 @@ function trashConfirmMessage(path: string, kind: NotesTreeEntry['kind'], dirty: 
     return dirty ? `${label}\n\nThere are unsaved changes inside this target.` : label;
 }
 
+function batchTrashConfirmMessage(items: { path: string; kind: NotesTreeEntry['kind'] }[], dirty: boolean): string {
+    const fileCount = items.filter(it => it.kind === 'file').length;
+    const folderCount = items.length - fileCount;
+    const parts: string[] = [];
+    if (folderCount > 0) parts.push(`${folderCount} folder${folderCount === 1 ? '' : 's'}`);
+    if (fileCount > 0) parts.push(`${fileCount} note${fileCount === 1 ? '' : 's'}`);
+    const subject = parts.length > 0 ? parts.join(' + ') : `${items.length} items`;
+    const label = `Move ${subject} to trash?`;
+    return dirty ? `${label}\n\nThere are unsaved changes inside this selection.` : label;
+}
+
 export function NotesSidebar(props: NotesSidebarProps) {
     const [tree, setTree] = useState<NotesTreeEntry[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [status, setStatus] = useState<string | null>(null);
     const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null);
+    const [notesRoot, setNotesRoot] = useState<string | null>(null);
+
+    useEffect(() => {
+        void fetchNotesInfo().then(info => setNotesRoot(info.root)).catch(() => {});
+    }, []);
 
     async function refreshTree(selectPath = props.selectedPath): Promise<void> {
         setLoading(true);
@@ -161,6 +177,53 @@ export function NotesSidebar(props: NotesSidebarProps) {
         }
     }
 
+    async function trashPaths(items: { path: string; kind: NotesTreeEntry['kind'] }[]): Promise<void> {
+        if (items.length === 0) return;
+        if (items.length === 1) {
+            await trashPath(items[0].path, items[0].kind);
+            return;
+        }
+        const dirtyHit = items.some(item => isDirtyTarget(item.path, item.kind, props.dirtyPath));
+        if (!window.confirm(batchTrashConfirmMessage(items, dirtyHit))) return;
+
+        setStatus(null);
+        let succeeded = 0;
+        let selectedCleared = false;
+        let folderCleared = false;
+        let firstError: string | null = null;
+
+        for (const item of items) {
+            try {
+                await trashNotePath(item.path, item.kind);
+                succeeded += 1;
+                if (!selectedCleared) {
+                    const selectedHit = item.kind === 'folder'
+                        ? pathContains(item.path, props.selectedPath)
+                        : props.selectedPath === item.path;
+                    if (selectedHit) selectedCleared = true;
+                }
+                if (!folderCleared && item.kind === 'folder' && pathContains(item.path, selectedFolderPath)) {
+                    folderCleared = true;
+                }
+            } catch (err) {
+                firstError = `Failed at ${item.path}: ${(err as Error).message}`;
+                break;
+            }
+        }
+
+        if (selectedCleared) props.onSelectedPathChange(null);
+        if (folderCleared) setSelectedFolderPath(null);
+
+        if (firstError) {
+            setError(firstError);
+            setStatus(succeeded > 0 ? `Moved ${succeeded} of ${items.length} to trash before stopping.` : null);
+        } else {
+            setStatus(`Moved ${succeeded} item${succeeded === 1 ? '' : 's'} to trash.`);
+        }
+
+        await refreshTree(selectedCleared ? null : props.selectedPath);
+    }
+
     async function trashPath(path: string, kind: NotesTreeEntry['kind']): Promise<void> {
         const dirty = isDirtyTarget(path, kind, props.dirtyPath);
         if (!window.confirm(trashConfirmMessage(path, kind, dirty))) return;
@@ -199,11 +262,13 @@ export function NotesSidebar(props: NotesSidebarProps) {
                 dirtyPath={props.dirtyPath}
                 loading={loading}
                 width={props.treeWidth}
+                notesRoot={notesRoot}
                 onSelectPath={props.onSelectedPathChange}
                 onSelectFolder={setSelectedFolderPath}
                 onMovePath={(from, toFolder) => void moveNote(from, toFolder)}
                 onRenamePath={(path, kind) => void renamePath(path, kind)}
                 onTrashPath={(path, kind) => void trashPath(path, kind)}
+                onTrashPaths={items => void trashPaths(items)}
                 onCreateNote={() => void createNote()}
                 onCreateFolder={() => void createFolder()}
                 onRefresh={() => void refreshTree()}
