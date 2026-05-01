@@ -251,11 +251,11 @@ h2 { font-size: 13px; }
     min-width: 0;
     display: grid;
     grid-template-columns: 12px minmax(0, 1fr) auto;
-    align-items: center;
+    align-items: start;
     gap: 8px;
 }
 .instance-row-main .instance-status {
-    margin-top: 1px;
+    margin-top: 5px;
 }
 .instance-row-quick {
     display: flex;
