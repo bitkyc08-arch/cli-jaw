@@ -71,7 +71,7 @@ export function InstancePreview(props: InstancePreviewProps) {
                     className="preview-frame"
                     src={state.src}
                     sandbox="allow-forms allow-modals allow-popups allow-same-origin allow-scripts allow-downloads"
-                    allow="clipboard-read; clipboard-write"
+                    allow="clipboard-read; clipboard-write; microphone"
                     onLoad={() => {
                         loadedSrcRef.current = state.src;
                         syncTheme();
