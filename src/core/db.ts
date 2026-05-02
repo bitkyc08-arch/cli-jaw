@@ -105,6 +105,22 @@ db.exec(`
         resume_key  TEXT DEFAULT NULL,
         updated_at  DATETIME DEFAULT CURRENT_TIMESTAMP
     );
+
+    CREATE TABLE IF NOT EXISTS heartbeat_events (
+        id            INTEGER PRIMARY KEY AUTOINCREMENT,
+        job_id        TEXT,
+        job_name      TEXT NOT NULL,
+        origin        TEXT NOT NULL DEFAULT 'heartbeat',
+        working_dir   TEXT,
+        channel       TEXT,
+        chat_id       TEXT,
+        prompt        TEXT,
+        output        TEXT NOT NULL,
+        created_at    INTEGER NOT NULL,
+        delivered_at  INTEGER,
+        consumed_at   INTEGER,
+        visible       INTEGER NOT NULL DEFAULT 0
+    );
 `);
 
 // Lightweight migration for existing DBs created before `trace` column existed.
@@ -182,6 +198,24 @@ export const listQueuedMessages = db.prepare('SELECT id, payload FROM queued_mes
 export const insertQueuedMessage = db.prepare('INSERT OR REPLACE INTO queued_messages (id, payload) VALUES (?, ?)');
 export const deleteQueuedMessage = db.prepare('DELETE FROM queued_messages WHERE id = ?');
 export const clearQueuedMessages = db.prepare('DELETE FROM queued_messages');
+
+// ─── Heartbeat Anchor Persistence ───────────────────
+export const insertHeartbeatAnchor = db.prepare(
+    `INSERT INTO heartbeat_events (job_id, job_name, working_dir, channel, chat_id, prompt, output, created_at, delivered_at, visible)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+);
+export const getLatestUnconsumedAnchor = db.prepare(
+    `SELECT * FROM heartbeat_events
+     WHERE working_dir = ? AND consumed_at IS NULL AND visible = 1
+     ORDER BY created_at DESC LIMIT 1`
+);
+export const markAnchorConsumed = db.prepare(
+    `UPDATE heartbeat_events SET consumed_at = ? WHERE id = ?`
+);
+export const getUnconsumedAnchors = db.prepare(
+    `SELECT id, job_name, output, created_at FROM heartbeat_events
+     WHERE consumed_at IS NULL AND visible = 1`
+);
 
 // ─── PABCD State Machine ────────────────────────────
 export const getOrcState = db.prepare(

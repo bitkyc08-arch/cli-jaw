@@ -569,9 +569,14 @@ function buildHistoryBlock(currentPrompt: string, workingDir?: string | null, ma
             break;
         }
 
-        const entry = role === 'assistant' && row.trace
-            ? String(row.trace).trim()
-            : (content ? `[${role || 'user'}] ${content}` : '');
+        let entry: string;
+        if (content) {
+            entry = `[${role || 'user'}] ${content}`;
+        } else if (role === 'assistant' && row.trace) {
+            entry = `[assistant trace] ${String(row.trace).slice(0, 2000)}`;
+        } else {
+            entry = '';
+        }
         if (!entry) continue;
         if (charCount + entry.length > maxTotalChars) break;
         blocks.push(entry);
@@ -660,6 +665,7 @@ interface SpawnOpts {
     env?: Record<string, string>;
     lifecycle?: SpawnLifecycle;
     _settingsGateWaited?: boolean;
+    _heartbeatAnchorId?: number;
 }
 
 type SpawnResult = {

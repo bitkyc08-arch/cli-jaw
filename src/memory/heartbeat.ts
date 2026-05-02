@@ -1,10 +1,12 @@
 // ─── Heartbeat (Scheduled Jobs + fs.watch) ───────────
 
 import fs from 'fs';
+import crypto from 'crypto';
 import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } from '../core/config.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { broadcast } from '../core/bus.js';
 import { sendChannelOutput } from '../messaging/send.js';
+import { insertHeartbeatAnchor } from '../core/db.js';
 import { getState } from '../orchestrator/state-machine.js';
 import {
     describeHeartbeatSchedule,
@@ -109,7 +111,8 @@ async function runHeartbeatJob(job: Record<string, any>) {
         const now = formatHeartbeatNow(schedule);
         const prompt = `[heartbeat:${job.name}] 현재 시간: ${now} (${timeZone})\n\nBefore responding, you MUST search memory (cli-jaw memory search) for recent conversation context, user preferences, and ongoing tasks. Use this context to ground your response.\n\n${job.prompt || '정기 점검입니다. 할 일 없으면 [SILENT]로 응답.'}`;
         console.log(`[heartbeat:${job.name}] tick (${describeHeartbeatSchedule(schedule)})`);
-        const result: string = String(await orchestrateAndCollect(prompt, { origin: 'heartbeat' }));
+        const requestId = crypto.randomUUID();
+        const result: string = String(await orchestrateAndCollect(prompt, { origin: 'heartbeat', requestId }));
 
         if (result.includes('[SILENT]')) {
             console.log(`[heartbeat:${job.name}] silent`);
@@ -126,6 +129,19 @@ async function runHeartbeatJob(job: Record<string, any>) {
         });
         if (!sendResult.ok) {
             console.error(`[heartbeat:${job.name}] send failed: ${sendResult.error}`);
+        }
+
+        // Record heartbeat anchor for context injection on next user turn
+        if (sendResult.ok) {
+            const now = Date.now();
+            try {
+                insertHeartbeatAnchor.run(
+                    job.id, job.name, settings.workingDir, 'active', null,
+                    job.prompt, result, now, now,
+                );
+            } catch (e) {
+                console.error(`[heartbeat:${job.name}] anchor save failed:`, (e as Error).message);
+            }
         }
     } catch (err) {
         console.error(`[heartbeat:${job.name}] error:`, (err as Error).message);

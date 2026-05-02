@@ -4,7 +4,7 @@
 import fs from 'fs';
 import { broadcast } from '../core/bus.js';
 import { settings, detectCli } from '../core/config.js';
-import { clearEmployeeSession, insertMessageWithTrace, updateSession, clearSessionBucket } from '../core/db.js';
+import { clearEmployeeSession, insertMessageWithTrace, updateSession, clearSessionBucket, markAnchorConsumed } from '../core/db.js';
 import { persistMainSession } from './session-persistence.js';
 import { resolveSessionBucket } from './args.js';
 import { buildContinuationPrompt } from './smoke-detector.js';
@@ -276,6 +276,14 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 traceText || null, toolLogJson, settings.workingDir || null,
             );
             broadcast('agent_done', { text: finalContent, toolLog: mergedToolLog, origin, ...empTag });
+
+            if (opts._heartbeatAnchorId) {
+                try {
+                    markAnchorConsumed.run(Date.now(), opts._heartbeatAnchorId);
+                } catch (e) {
+                    console.error('[lifecycle] Failed to mark heartbeat anchor consumed:', (e as Error).message);
+                }
+            }
 
             incrementMemoryFlush();
             const threshold = settings.memory?.flushEvery ?? 10;
