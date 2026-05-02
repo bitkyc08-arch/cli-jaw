@@ -26,8 +26,9 @@ import { summarizeActivityTitleSupport } from './dashboard-settings/activity-tit
 import { dashboardSettingsUiFromView } from './dashboard-settings/dashboard-settings-ui';
 import { NotesSidebar } from './notes/NotesSidebar';
 import { NotesWorkspace } from './notes/NotesWorkspace';
-import { DashboardBoardSidebar, type BoardLane } from './dashboard-board/DashboardBoardSidebar';
+import { DashboardBoardSidebar } from './dashboard-board/DashboardBoardSidebar';
 import { DashboardBoardWorkspace } from './dashboard-board/DashboardBoardWorkspace';
+import type { BoardView } from './dashboard-board/board-view';
 import { DashboardScheduleSidebar, type ScheduleGroup } from './dashboard-schedule/DashboardScheduleSidebar';
 import { DashboardScheduleWorkspace } from './dashboard-schedule/DashboardScheduleWorkspace';
 import { SCHEDULE_WORKSPACE_ENABLED, normalizeSidebarModeForBuild } from './dashboard-features';
@@ -79,7 +80,7 @@ export function App() {
     const [settingsDirty, setSettingsDirty] = useState(false);
     const [notesDirtyPath, setNotesDirtyPath] = useState<string | null>(null);
     const [dashboardSettingsSection, setDashboardSettingsSection] = useState<DashboardSettingsSection>('display');
-    const [boardLane, setBoardLane] = useState<BoardLane>('backlog');
+    const [boardView, setBoardView] = useState<BoardView>({ kind: 'overall' });
     const [scheduleGroup, setScheduleGroup] = useState<ScheduleGroup>('today');
     const [previewEnabled, setPreviewEnabled] = useState<boolean>(() => loadPreviewEnabled());
     const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
@@ -488,7 +489,7 @@ export function App() {
                                     ) : view.sidebarMode === 'notes' ? (
                                         <NotesSidebar selectedPath={view.notesSelectedPath} dirtyPath={notesDirtyPath} treeWidth={view.notesTreeWidth} onSelectedPathChange={handleNotesSelectedPathChange} />
                                     ) : view.sidebarMode === 'board' ? (
-                                        <DashboardBoardSidebar activeLane={boardLane} onLaneChange={setBoardLane} instances={instances} titlesByPort={messageActivity.titlesByPort} busyPorts={messageActivity.busyPorts} />
+                                        <DashboardBoardSidebar view={boardView} onViewChange={setBoardView} instances={instances} titlesByPort={messageActivity.titlesByPort} busyPorts={messageActivity.busyPorts} />
                                     ) : SCHEDULE_WORKSPACE_ENABLED && view.sidebarMode === 'schedule' ? (
                                         <DashboardScheduleSidebar activeGroup={scheduleGroup} onGroupChange={setScheduleGroup} />
                                     ) : (
@@ -527,7 +528,7 @@ export function App() {
                                         <DashboardSettingsWorkspace activeSection={dashboardSettingsSection} ui={dashboardSettingsUi} titleSupport={titleSupport} onUiPatch={handleDashboardSettingsPatch} />
                                     </WorkspaceSurface>
                                     <WorkspaceSurface active={view.sidebarMode === 'board'}>
-                                        <DashboardBoardWorkspace active={view.sidebarMode === 'board'} activeLane={boardLane} instances={instances} selectedPort={selectedInstance?.port ?? null} titlesByPort={messageActivity.titlesByPort} busyPorts={messageActivity.busyPorts} />
+                                        <DashboardBoardWorkspace active={view.sidebarMode === 'board'} view={boardView} onViewChange={setBoardView} instances={instances} selectedPort={selectedInstance?.port ?? null} titlesByPort={messageActivity.titlesByPort} busyPorts={messageActivity.busyPorts} />
                                     </WorkspaceSurface>
                                     {SCHEDULE_WORKSPACE_ENABLED ? (
                                         <>

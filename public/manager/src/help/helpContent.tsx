@@ -24,6 +24,8 @@ const BoardHelp = (
         <p className="help-lead">사람이 먼저 일반 칸반 블럭을 만들고, 실행 인스턴스 블럭을 그 안에 붙이는 계층형 보드예요.</p>
         <ul className="help-bullets">
             <li>레인 5개는 <strong>Backlog / Ready / In Progress / Review / Done</strong> 순서예요. Backlog는 아직 commit 전 옵션, Ready는 바로 pull 가능한 작업이에요.</li>
+            <li><strong>Overall</strong>은 5열 전체 보드이고, 사이드바에서 각 레인을 누르면 해당 레인만 보는 detail 화면으로 전환돼요.</li>
+            <li><strong>Done</strong>은 Overall에서 최근 4개만 full card로 보여주고, 나머지는 <strong>+ N more</strong>를 눌러 Done detail 화면에서 2줄 row로 확인해요.</li>
             <li>각 레인 하단의 <strong>+ Add task</strong>로 일반 칸반 블럭을 만들고, 그 블럭 제목에 쿼리나 작업 메모를 적으시면 돼요.</li>
             <li>좌측 <strong>Running</strong> 섹션에는 현재 실행 중인 인스턴스만 인스턴스 블럭으로 보여요.</li>
             <li>인스턴스 블럭을 일반 칸반 블럭 안의 드롭 영역으로 끌어 넣으면 내부 자식 블럭으로 병합돼요. 인스턴스 실행에는 영향 없어요.</li>

@@ -47,6 +47,18 @@ test('manager frontend has API entry and Open action', () => {
     assert.ok(command.includes('Search port, home, CLI, model'), 'manager UI must include search');
 });
 
+test('manager command bar exposes polished dashboard brand', () => {
+    const command = read('public/manager/src/components/CommandBar.tsx');
+    const compact = read('public/manager/src/manager-p0-1-1.css');
+
+    assert.ok(command.includes('CLI-JAW'), 'command bar must render compact CLI-JAW wordmark');
+    assert.ok(command.includes('DASH'), 'command bar must render one-line DASH label');
+    assert.equal(command.includes('🦈'), false, 'top dashboard brand must not use emoji');
+    assert.ok(compact.includes('manager-brand-heading'), 'brand heading must have explicit polish styling');
+    assert.ok(compact.includes('manager-brand-dash'), 'DASH label must be styled as secondary context');
+    assert.ok(compact.includes('font-weight: 850'), 'brand heading must use stronger typography');
+});
+
 test('manager frontend exposes one-instance preview controls', () => {
     const app = read('public/manager/src/App.tsx');
     const workbench = read('public/manager/src/components/Workbench.tsx');
@@ -470,4 +482,17 @@ test('manager frontend exposes 10.8 profile controls', () => {
     assert.ok(groups.includes('is-profile-merged'), 'InstanceGroups must merge profile sections into instance rows');
     assert.ok(drawer.includes('drawer-profile-filters'), 'mobile drawer must mirror profile filters');
     assert.ok(main.includes('./manager-profiles.css'), 'profile styling must stay split from large CSS files');
+});
+
+test('board overall view limits done preview and exposes lane detail navigation', () => {
+    const app = read('public/manager/src/App.tsx');
+    const sidebar = read('public/manager/src/dashboard-board/DashboardBoardSidebar.tsx');
+    const workspace = read('public/manager/src/dashboard-board/DashboardBoardWorkspace.tsx');
+    const detail = read('public/manager/src/dashboard-board/BoardLaneDetailView.tsx');
+
+    assert.ok(app.includes('boardView'), 'App must own Board view state');
+    assert.ok(sidebar.includes('Overall'), 'Board sidebar must expose Overall navigation');
+    assert.ok(workspace.includes('DONE_PREVIEW_LIMIT'), 'Board workspace must cap Done preview count');
+    assert.ok(workspace.includes("onViewChange({ kind: 'lane', lane: 'done' })"), 'Done more action must open Done lane detail');
+    assert.ok(detail.includes('dashboard-board-compact-row'), 'Lane detail must render compact rows');
 });

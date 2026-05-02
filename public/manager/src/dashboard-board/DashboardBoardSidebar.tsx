@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import type { DashboardInstance } from '../types';
+import type { BoardView } from './board-view';
 import { RUNNING_CHIP_MIME, deriveRunningChips, encodeRunningChip } from './running-chips';
 
 type BoardLane = 'backlog' | 'ready' | 'active' | 'review' | 'done';
@@ -13,8 +14,8 @@ const LANES: { id: BoardLane; label: string; policy: string }[] = [
 ];
 
 type Props = {
-    activeLane: BoardLane;
-    onLaneChange: (lane: BoardLane) => void;
+    view: BoardView;
+    onViewChange: (view: BoardView) => void;
     instances: DashboardInstance[];
     titlesByPort: Record<number, string>;
     busyPorts: Set<number>;
@@ -64,13 +65,24 @@ export function DashboardBoardSidebar(props: Props) {
             </section>
             <div className="dashboard-board-sidebar-section-title">Lanes</div>
             <ul className="dashboard-board-sidebar-list">
+                <li>
+                    <button
+                        type="button"
+                        className={`dashboard-board-sidebar-item${props.view.kind === 'overall' ? ' is-active' : ''}`}
+                        onClick={() => props.onViewChange({ kind: 'overall' })}
+                        aria-pressed={props.view.kind === 'overall'}
+                    >
+                        <span>Overall</span>
+                        <small>Five-column workflow</small>
+                    </button>
+                </li>
                 {LANES.map(lane => (
                     <li key={lane.id}>
                         <button
                             type="button"
-                            className={`dashboard-board-sidebar-item${props.activeLane === lane.id ? ' is-active' : ''}`}
-                            onClick={() => props.onLaneChange(lane.id)}
-                            aria-pressed={props.activeLane === lane.id}
+                            className={`dashboard-board-sidebar-item${props.view.kind === 'lane' && props.view.lane === lane.id ? ' is-active' : ''}`}
+                            onClick={() => props.onViewChange({ kind: 'lane', lane: lane.id })}
+                            aria-pressed={props.view.kind === 'lane' && props.view.lane === lane.id}
                         >
                             <span>{lane.label}</span>
                             <small>{lane.policy}</small>

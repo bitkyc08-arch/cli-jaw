@@ -1,24 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import type { DashboardInstance } from '../types';
 import { BOARD_LANES, type BoardLane } from './DashboardBoardSidebar';
+import { BoardLaneDetailView } from './BoardLaneDetailView';
 import { listTasks, createTask, updateTask, deleteTask, type DashboardTask, type DashboardTaskPatch } from './board-api';
+import { DONE_PREVIEW_LIMIT, type BoardCard, type BoardView } from './board-view';
 import { DashboardBoardTaskDialog, type BoardTaskDialogCard } from './DashboardBoardTaskDialog';
 import { RUNNING_CHIP_MIME, decodeRunningChip, deriveRunningChips, encodeRunningChip } from './running-chips';
 
-type BoardCard = {
-    id: string;
-    title: string;
-    summary: string | null;
-    detail: string | null;
-    lane: BoardLane;
-    port: number | null;
-    source: string;
-    persisted: boolean;
-};
-
 type Props = {
     active: boolean;
-    activeLane: BoardLane;
+    view: BoardView;
+    onViewChange: (view: BoardView) => void;
     instances: DashboardInstance[];
     selectedPort: number | null;
     titlesByPort: Record<number, string>;
@@ -225,6 +217,7 @@ export function DashboardBoardWorkspace(props: Props) {
         [props.instances, props.titlesByPort, props.busyPorts],
     );
     const runningChipByPort = useMemo(() => new Map(runningChips.map(chip => [chip.port, chip])), [runningChips]);
+    const detailLane = props.view.kind === 'lane' ? props.view.lane : null;
 
     return (
         <section className="dashboard-board-workspace" aria-hidden={!props.active}>
@@ -236,15 +229,18 @@ export function DashboardBoardWorkspace(props: Props) {
                     </p>
                 </div>
             </header>
+            {detailLane === null ? (
             <div className="dashboard-board-lanes">
                 {BOARD_LANES.map(lane => {
                     const laneCards = cards.filter(card => card.lane === lane.id);
+                    const visibleLaneCards = lane.id === 'done' ? laneCards.slice(0, DONE_PREVIEW_LIMIT) : laneCards;
+                    const hiddenDoneCount = lane.id === 'done' ? Math.max(0, laneCards.length - DONE_PREVIEW_LIMIT) : 0;
                     const isComposing = composerLane === lane.id;
                     const isDropTarget = dropTarget === lane.id;
                     return (
                         <div
                             key={lane.id}
-                            className={`dashboard-board-lane${props.activeLane === lane.id ? ' is-focused' : ''}${isDropTarget ? ' is-drop-target' : ''}`}
+                            className={`dashboard-board-lane${isDropTarget ? ' is-drop-target' : ''}`}
                             data-lane={lane.id}
                             onDragOver={e => {
                                 if (hasDragType(e, BOARD_TASK_MIME)) {
@@ -266,7 +262,7 @@ export function DashboardBoardWorkspace(props: Props) {
                             <ul className="dashboard-board-lane-cards">
                                 {laneCards.length === 0 ? (
                                     <li className="dashboard-board-lane-empty">No items</li>
-                                ) : laneCards.map(card => {
+                                ) : visibleLaneCards.map(card => {
                                     const assignedChip = card.port === null ? null : runningChipByPort.get(card.port) ?? null;
                                     const isCardDropTarget = cardDropTarget === card.id;
                                     return (
@@ -378,6 +374,18 @@ export function DashboardBoardWorkspace(props: Props) {
                                     </li>
                                     );
                                 })}
+                                {hiddenDoneCount > 0 ? (
+                                    <li>
+                                        <button
+                                            type="button"
+                                            className="dashboard-board-done-more"
+                                            onClick={() => props.onViewChange({ kind: 'lane', lane: 'done' })}
+                                        >
+                                            <span>+ {hiddenDoneCount} more done</span>
+                                            <small>Open archive</small>
+                                        </button>
+                                    </li>
+                                ) : null}
                             </ul>
                             <div className="dashboard-board-lane-add">
                                 {isComposing ? (
@@ -419,6 +427,15 @@ export function DashboardBoardWorkspace(props: Props) {
                     );
                 })}
             </div>
+            ) : (
+                <BoardLaneDetailView
+                    lane={detailLane}
+                    cards={cards.filter(card => card.lane === detailLane)}
+                    runningChipByPort={runningChipByPort}
+                    onBackToOverall={() => props.onViewChange({ kind: 'overall' })}
+                    onOpenCard={setDialogCardId}
+                />
+            )}
             <DashboardBoardTaskDialog
                 card={dialogCard}
                 busy={dialogBusy}
