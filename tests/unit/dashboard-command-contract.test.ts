@@ -52,7 +52,9 @@ test('dashboard implementation does not mount into existing serve path', () => {
     const server = read('server.ts');
 
     assert.equal(serve.includes('dashboard'), false, 'serve.ts must not contain dashboard implementation');
-    assert.equal(server.includes('/api/dashboard'), false, 'server.ts must not mount dashboard routes');
+    assert.equal(server.includes('installDashboardProxy'), false, 'server.ts must not install dashboard proxy');
+    assert.equal(server.includes('/api/dashboard/instances'), false, 'server.ts must not mount manager-only instance routes');
+    assert.equal(server.includes('/api/dashboard/lifecycle'), false, 'server.ts must not mount manager-only lifecycle routes');
 });
 
 test('dashboard proxy is installed only in manager server', () => {
