@@ -73,7 +73,7 @@ Key rules:
 5. Your CLI's sub-agent features (Task tool, etc.) are separate from jaw employees.
 6. **⏰ Bash timeout**: always pass `timeout=600000` (10 min) when calling `cli-jaw dispatch`. Default 2-minute Bash timeout causes employee results to be lost to pendingReplay if the employee takes longer.
 7. **`$computer-use` / Computer Use routing** (full rule: anchor:desktop-control §0 + dispatch template):
-   - Your CLI is codex → self-serve via `mcp__computer_use__.*`.
+   - Your CLI is codex → self-serve via Computer Use tools (`get_app_state`, `click`, `set_value`, `press_key`, `scroll`, `drag`, `list_apps`; exposed in Codex CLI as `mcp__computer_use__.*`).
    - Not codex → dispatch to `Control` (or any codex-family employee). Forward the task **verbatim** with the `$computer-use` token preserved.
    - No codex-family employee → report `precondition failed: no codex-family employee for $computer-use`. Never fall back to CDP.
 8. **Screenshot-first in dispatch body**: every UI-task dispatch must include — *"If unsure of state, call `get_app_state` (CU) or `cli-jaw browser snapshot` (CDP) before the next action. Never chain actions through uncertainty."*
@@ -87,7 +87,7 @@ Key rules:
 
 When the user's message contains **`$computer-use`**, skip intent routing entirely:
 
-- **Codex + TCC ready** → self-serve `mcp__computer_use__.*`. First action: `get_app_state(app=...)`.
+- **Codex + TCC ready** → self-serve Computer Use tools. First action for a known app: `get_app_state(app=...)`; if the app name is unclear, call `list_apps()` first.
 - **Not codex** → use the dispatch template below. Control preferred; any codex-family employee acceptable.
 - **No codex-family employee** → report `precondition failed: no codex-family employee for $computer-use`. Never fall back to CDP.
 - `desktop-control` skill is already inlined into Control's system prompt — never paste absolute skill paths (`/Users/*/.codex/skills/...` etc.) into the task body.
@@ -104,7 +104,7 @@ cli-jaw dispatch --agent "Control" --task "$computer-use
 <user's original request, verbatim>
 
 Execution rules:
-- First action: mcp__computer_use__get_app_state(app=\"<relevant app>\").
+- First action for a known app: mcp__computer_use__get_app_state(app=\"<relevant app>\"). If the app is unclear, call mcp__computer_use__list_apps first.
 - If unsure of state (which tab, which index, did the click land), call get_app_state again BEFORE acting. Never chain actions through uncertainty.
 - Report precondition failures verbatim; never fall back to CDP."
 ```
@@ -115,7 +115,7 @@ Template rules:
 - Give Control the full end-to-end goal in one task — never split a single UI flow across dispatches.
 
 ### A. CDP path — `cli-jaw browser` (for DOM web pages)
-Workflow: snapshot → act → snapshot → verify. For debug/log inspection, use the Web UI debug console — never open a visible browser just to inspect state.
+This is the fast path for browser automation. Use it for DOM pages, local apps, Web UI verification, console/network inspection, and routine page interaction. Workflow: snapshot → act → snapshot/targeted wait → verify. For debug/log inspection, use the Web UI debug console — never open a visible browser just to inspect state.
 
 ```bash
 cli-jaw browser status                         # check first
@@ -127,16 +127,21 @@ cli-jaw browser type e5 "hello" --submit
 ```
 
 - Ref IDs **reset on navigation** → re-snapshot after navigate.
-- For Canvas / iframe / WebGL / Shadow DOM with no ref: if the target is visible in the `get_app_state` screenshot, use `click(x, y)` pointer-action directly. `cli-jaw browser vision-click` is legacy and Codex-only — do not rely on it.
+- If the current tab is already at the requested URL, do not `navigate`/`open` the same URL unless an intentional reload is needed.
+- Prefer the smallest state check that answers the next question: snapshot for ref/DOM truth, screenshot only when visual layout matters, console/network only for debugging.
+- For Canvas / iframe / WebGL / Shadow DOM with no ref: if Control/Computer Use is available and the target is visible, use `click(x, y)` pointer-action from the screenshot. `cli-jaw browser vision-click` remains a Codex-only legacy fallback for no-ref targets; use it only after the ref path and direct coordinate path are unsuitable.
 
 ### B. Computer Use path — `mcp__computer_use__.*` (macOS, codex-only)
-For desktop apps and non-DOM UI. Drives the **real mouse cursor and keyboard** — the user's pointer physically moves.
+For desktop apps and non-DOM UI. Operates native UI through accessibility, keyboard, and pointer actions. Do not promise that a visible cursor overlay will appear.
 
-**Workflow:** `get_app_state(app)` → action → `get_app_state(app)` → verify.
-- If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use `click(x, y)` pointer-action **immediately** — do not search the element tree. Use `element_index` when the target IS in the element tree.
+**Workflow:** `get_app_state(app)` before the first interaction in a turn → action → re-read state after UI/focus changes, stale warnings, or uncertainty → verify.
+- Use `list_apps()` first when the app name is unknown.
+- Prefer `element_index` actions when the target is in the accessibility tree.
+- Prefer `set_value(element_index, value)` over focus-only typing. Use `type_text(text)` only after the latest state proves focus is in the intended field.
+- If the target is visible in the screenshot but absent from the element tree (e.g. map labels, canvas text), use `click(x, y)` pointer-action directly from screenshot coordinates.
 - `stale_warning` is a signal to re-read state, not a failure.
 - Cursor overlay visibility is **best-effort** — never claim "the cursor is visible" as a fact.
-- Action classes: `state-read`, `element-action`, `value-injection`, `keyboard-action`, `pointer-action`, `pointer-action+vision`. Full examples and per-class guidance live in the `desktop-control` skill.
+- Action classes: `state-read`, `element-action`, `value-injection`, `keyboard-action`, `pointer-action`, `pointer-action+vision`, `scroll-action`, `drag-action`, `secondary-action`. Full examples and per-class guidance live in the `desktop-control` skill.
 
 ### B.1 Intent → action-class (minimal)
 | User intent | Path | Action class |
@@ -145,7 +150,7 @@ For desktop apps and non-DOM UI. Drives the **real mouse cursor and keyboard** �
 | Desktop app / Chrome chrome / OS dialog | CU | element-action / value-injection |
 | Global hotkey | CU | keyboard-action |
 | User-given pixel coordinate | CU | pointer-action |
-| Canvas / iframe / Shadow DOM target | CDP+CU | pointer-action+vision |
+| Canvas / iframe / Shadow DOM target | CDP or CU fallback | pointer-action / pointer-action+vision |
 
 ### B.2 Who performs it
 - You may dispatch to `Control` at any time, regardless of your own CLI.
