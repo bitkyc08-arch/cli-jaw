@@ -155,6 +155,10 @@ test('CodeMirror rich widgets render and toggle task markers without Milkdown ta
         'task widget replacement ranges must be exposed as atomic ranges');
     assert.ok(extension.includes('let inFence = false'),
         'task widget scanner must avoid rendering checkboxes inside fenced code blocks');
+    assert.ok(extension.includes('decorations.sort'),
+        'task and rich markdown decorations must be sorted before RangeSetBuilder.add');
+    assert.ok(extension.includes('left.decoration.startSide - right.decoration.startSide'),
+        'decoration sorting must honor CodeMirror startSide ordering for equal from positions');
     assert.ok(css.includes('.cm-rich-task-widget'), 'task widgets must have scoped notes styling');
 });
 

@@ -19,6 +19,12 @@ type TaskLineRange = {
     text: string;
 };
 
+type DecorationEntry = {
+    from: number;
+    to: number;
+    decoration: Decoration;
+};
+
 class TaskLineWidget extends WidgetType {
     constructor(private readonly range: TaskLineRange) {
         super();
@@ -123,25 +129,44 @@ function buildDecorations(state: EditorState, options: RichMarkdownExtensionOpti
         maxMermaidWidgets: MAX_MERMAID_WIDGETS_PER_VIEWPORT,
         largeNoteDisableThreshold: LARGE_NOTE_RICH_DISABLE_THRESHOLD,
     });
-    const builder = new RangeSetBuilder<Decoration>();
+    const decorations: DecorationEntry[] = [];
     for (const taskRange of scanTaskLineRanges(state)) {
-        builder.add(taskRange.from, taskRange.to, Decoration.replace({
-            widget: new TaskLineWidget(taskRange),
-        }));
+        decorations.push({
+            from: taskRange.from,
+            to: taskRange.to,
+            decoration: Decoration.replace({
+                widget: new TaskLineWidget(taskRange),
+            }),
+        });
     }
     for (const range of ranges) {
-        builder.add(range.from, range.to, Decoration.replace({
-            block: range.block,
-            widget: new RichMarkdownWidget({
-                id: rangeId(range),
-                kind: range.kind,
-                markdown: range.markdown,
+        decorations.push({
+            from: range.from,
+            to: range.to,
+            decoration: Decoration.replace({
                 block: range.block,
-                registerWidget: options.registerWidget,
-                unregisterWidget: options.unregisterWidget,
-                requestMeasure: options.requestMeasure,
+                widget: new RichMarkdownWidget({
+                    id: rangeId(range),
+                    kind: range.kind,
+                    markdown: range.markdown,
+                    block: range.block,
+                    registerWidget: options.registerWidget,
+                    unregisterWidget: options.unregisterWidget,
+                    requestMeasure: options.requestMeasure,
+                }),
             }),
-        }));
+        });
+    }
+    decorations.sort((left, right) => {
+        const fromDelta = left.from - right.from;
+        if (fromDelta !== 0) return fromDelta;
+        const startSideDelta = left.decoration.startSide - right.decoration.startSide;
+        if (startSideDelta !== 0) return startSideDelta;
+        return left.to - right.to;
+    });
+    const builder = new RangeSetBuilder<Decoration>();
+    for (const entry of decorations) {
+        builder.add(entry.from, entry.to, entry.decoration);
     }
     return builder.finish();
 }

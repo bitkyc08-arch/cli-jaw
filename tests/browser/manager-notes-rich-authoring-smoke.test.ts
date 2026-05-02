@@ -118,7 +118,17 @@ async function seedTaskOnlyNote(page: Page, notePath: string): Promise<void> {
             headers,
             body: JSON.stringify({
                 path: notePath,
-                content: ['# Task smoke', '', '- [ ] existing task'].join('\n'),
+                content: [
+                    '# Task smoke',
+                    '',
+                    '$a+b$',
+                    '',
+                    '```ts',
+                    'const beforeTask = true;',
+                    '```',
+                    '',
+                    '- [ ] existing task',
+                ].join('\n'),
             }),
         });
         if (!note.ok) throw new Error(`note seed failed: ${note.status}`);
@@ -401,9 +411,11 @@ test('notes render and edit GitHub Flavored Markdown affordances', async () => {
     await page.locator('.notes-tree-file-button').filter({ hasText: taskOnlyNoteName }).first().click();
     await page.getByRole('tab', { name: 'WYSIWYG' }).click();
     await page.waitForSelector('.notes-wysiwyg-error', { timeout: 5000 });
+    await page.waitForSelector('.cm-rich-widget[data-rich-widget-kind="math-inline"]', { timeout: 5000 });
+    await page.waitForSelector('.cm-rich-widget[data-rich-widget-kind="code"]', { timeout: 5000 });
     await page.waitForSelector('.cm-rich-task-widget input[type="checkbox"]', { timeout: 5000 });
     assert.equal(await page.locator('.notes-milkdown-root').count(), 0,
-        'task-only notes must use safe CodeMirror task widgets instead of mounting Milkdown task nodes');
+        'mixed rich/task notes must use sorted CodeMirror widgets instead of mounting Milkdown task nodes');
 
     const savedContent = await page.evaluate(async ({ noteName }) => {
         const response = await fetch(`/api/dashboard/notes/file?path=${encodeURIComponent(noteName)}`);
