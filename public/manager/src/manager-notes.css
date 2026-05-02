@@ -832,9 +832,12 @@
     vertical-align: top;
 }
 
+.notes-preview img,
 .notes-milkdown-root .ProseMirror img {
+    display: block;
     max-width: 100%;
     height: auto;
+    border-radius: 6px;
 }
 
 .notes-milkdown-root .ProseMirror hr {

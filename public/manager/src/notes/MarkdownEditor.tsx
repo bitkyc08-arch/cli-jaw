@@ -22,6 +22,7 @@ type MarkdownEditorProps = {
     active: boolean;
     authoringMode: NotesAuthoringMode;
     content: string;
+    notePath: string;
     wordWrap: boolean;
     onChange: (value: string) => void;
 };
@@ -53,7 +54,10 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
             notesEditorTheme,
             notesSyntaxHighlighting,
             markdown({ codeLanguages: languages }),
-            richMarkdownPastePolicy(),
+            richMarkdownPastePolicy({
+                notePath: props.notePath,
+                onError: error => console.warn('[notes-image-paste]', error),
+            }),
             richMarkdownExtension({
                 enabled: props.authoringMode === 'rich' || props.authoringMode === 'wysiwyg',
                 active: props.active,
@@ -64,13 +68,13 @@ export function MarkdownEditor(props: MarkdownEditorProps) {
         ];
         if (props.wordWrap) base.push(EditorView.lineWrapping);
         return base;
-    }, [props.active, props.authoringMode, props.wordWrap, registerWidget, requestMeasure, unregisterWidget]);
+    }, [props.active, props.authoringMode, props.notePath, props.wordWrap, registerWidget, requestMeasure, unregisterWidget]);
 
     if (isWysiwyg) {
         return (
             <div className="notes-editor notes-wysiwyg-editor">
                 <Suspense fallback={<div className="notes-wysiwyg-loading">Loading WYSIWYG editor...</div>}>
-                    <MilkdownWysiwygEditor active={props.active} content={props.content} onChange={props.onChange} />
+                    <MilkdownWysiwygEditor active={props.active} content={props.content} notePath={props.notePath} onChange={props.onChange} />
                 </Suspense>
             </div>
         );

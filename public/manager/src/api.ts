@@ -2,6 +2,7 @@ import type {
     DashboardInstance,
     DashboardLifecycleAction,
     DashboardLifecycleResult,
+    DashboardNoteAssetResponse,
     DashboardNoteFileResponse,
     DashboardNoteTreeEntry,
     DashboardPutNoteRequest,
@@ -172,6 +173,30 @@ export async function saveNoteFile(request: DashboardPutNoteRequest): Promise<Da
         body: JSON.stringify(request),
     });
     return await parseNotesResponse<DashboardNoteFileResponse>(response, `note save failed: ${response.status}`);
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let index = 0; index < bytes.length; index += chunkSize) {
+        const chunk = bytes.subarray(index, index + chunkSize);
+        binary += String.fromCharCode(...chunk);
+    }
+    return btoa(binary);
+}
+
+export async function uploadNoteAsset(notePath: string, file: File): Promise<DashboardNoteAssetResponse> {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    const response = await fetch('/api/dashboard/notes/asset', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+            notePath,
+            mime: file.type,
+            dataBase64: bytesToBase64(bytes),
+        }),
+    });
+    return await parseNotesResponse<DashboardNoteAssetResponse>(response, `note asset upload failed: ${response.status}`);
 }
 
 export async function createNoteFolder(path: string): Promise<{ path: string }> {

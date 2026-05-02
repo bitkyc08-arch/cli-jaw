@@ -10,6 +10,7 @@ import {
     isExpectedHostHeader,
 } from '../security.js';
 import type { DashboardPutNoteRequest } from '../types.js';
+import { NOTE_ASSET_JSON_LIMIT, NotesAssetStore } from './assets.js';
 import { type NotePathError, notePathError } from './path-guards.js';
 import { NotesStore } from './store.js';
 import { NotesTrash } from './trash.js';
@@ -18,6 +19,7 @@ import type { DashboardTrashNoteKind } from '../types.js';
 export type DashboardNotesRouterOptions = {
     managerPort: number;
     store?: NotesStore;
+    assetStore?: NotesAssetStore;
     trash?: NotesTrash;
 };
 
@@ -134,9 +136,34 @@ function requireManagerOrigin(managerPort: number): RequestHandler {
 export function createDashboardNotesRouter(options: DashboardNotesRouterOptions): express.Router {
     const router = express.Router();
     const store = options.store || new NotesStore();
+    const assetStore = options.assetStore || new NotesAssetStore({ notesRoot: store.rootPath() });
     const trash = options.trash || new NotesTrash();
 
     router.use(requireManagerOrigin(options.managerPort));
+
+    router.post('/asset', express.json({ limit: NOTE_ASSET_JSON_LIMIT }), asyncRoute(async (req, res) => {
+        const body = bodyObject(req);
+        res.status(201).json(await assetStore.saveAsset({
+            notePath: requireString(body.notePath, 'invalid_note_path', 'notePath is required'),
+            mime: requireString(body.mime, 'note_asset_unsupported_type', 'mime is required'),
+            dataBase64: requireString(body.dataBase64, 'note_asset_invalid_base64', 'dataBase64 is required'),
+        }));
+    }));
+
+    router.get('/asset', asyncRoute(async (req, res) => {
+        const path = requireString(req.query.path, 'invalid_note_asset_path', 'path query is required');
+        const asset = await assetStore.resolveAsset(path);
+        res.setHeader('Content-Type', asset.mime);
+        res.setHeader('Cache-Control', 'private, max-age=3600');
+        res.setHeader('X-Content-Type-Options', 'nosniff');
+        res.sendFile(asset.absolutePath, { dotfiles: 'allow' }, error => {
+            if (error && !res.headersSent) sendError(res, error);
+        });
+    }));
+
+    router.use(createNotesJsonErrorHandler());
+    router.use(express.json({ limit: '1100kb' }));
+    router.use(createNotesJsonErrorHandler());
 
     router.get('/info', (_req, res) => {
         res.json({ root: store.rootPath() });

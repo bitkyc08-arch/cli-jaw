@@ -1,4 +1,5 @@
 import { EditorView } from '@codemirror/view';
+import { handleClipboardImagePaste, type NotesImagePasteOptions } from '../image-assets/insert-image-markdown';
 
 function htmlToPlainText(html: string): string {
     const template = document.createElement('template');
@@ -6,9 +7,10 @@ function htmlToPlainText(html: string): string {
     return template.content.textContent || '';
 }
 
-export function richMarkdownPastePolicy() {
+export function richMarkdownPastePolicy(options?: NotesImagePasteOptions) {
     return EditorView.domEventHandlers({
         paste(event, view) {
+            if (options && handleClipboardImagePaste(event, view, options)) return true;
             const text = event.clipboardData?.getData('text/plain');
             if (text) return false;
             const html = event.clipboardData?.getData('text/html');
@@ -19,4 +21,3 @@ export function richMarkdownPastePolicy() {
         },
     });
 }
-

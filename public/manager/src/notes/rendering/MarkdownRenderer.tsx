@@ -11,6 +11,7 @@ import { MermaidBlock } from './MermaidBlock';
 import {
     isSafeExternalHref,
     markdownSanitizeSchema,
+    notesImageSrc,
     safeMarkdownUrl,
 } from './markdown-render-security';
 
@@ -69,6 +70,11 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
                     const code = textFromNode(children).replace(/\n$/, '');
                     if (language === 'mermaid') return <MermaidBlock code={code} />;
                     return <CodeBlock code={code} language={language} />;
+                },
+                img: ({ src, alt, ...imageProps }: ComponentProps<'img'>) => {
+                    const safeSrc = typeof src === 'string' ? notesImageSrc(src) : '';
+                    if (!safeSrc) return null;
+                    return <img {...imageProps} src={safeSrc} alt={alt ?? ''} loading="lazy" />;
                 },
             }}
         >

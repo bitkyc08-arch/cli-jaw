@@ -8,7 +8,6 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
     createDashboardNotesRouter,
-    createNotesJsonErrorHandler,
 } from '../../src/manager/notes/routes.js';
 import { NotesStore } from '../../src/manager/notes/store.js';
 import { NotesTrash } from '../../src/manager/notes/trash.js';
@@ -37,8 +36,6 @@ async function withNotesServer(
     const port = address.port;
     app.use(
         '/api/dashboard/notes',
-        express.json({ limit: '1100kb' }),
-        createNotesJsonErrorHandler(),
         createDashboardNotesRouter({
             managerPort: port,
             store: new NotesStore({ root }),
@@ -55,6 +52,12 @@ async function withNotesServer(
 async function readJson(response: Response): Promise<Record<string, unknown>> {
     return await response.json() as Record<string, unknown>;
 }
+
+const PNG_BASE64 = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/p9sAAAAASUVORK5CYII=';
+const LARGE_PNG_BASE64 = Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    Buffer.alloc(1_200_000),
+]).toString('base64');
 
 test('notes routes create, read, update, tree, rename, and trash markdown files', async (t) => {
     await withNotesServer(t, async (baseUrl) => {
@@ -116,6 +119,49 @@ test('notes routes create, read, update, tree, rename, and trash markdown files'
         const trashBody = await readJson(trashed);
         assert.equal(trashBody.kind, 'file');
         assert.equal(trashBody.deletedTo, 'dashboard-trash');
+    });
+});
+
+test('notes asset routes upload JSON images and serve them with nosniff headers', async (t) => {
+    await withNotesServer(t, async (baseUrl) => {
+        const uploaded = await fetch(`${baseUrl}/api/dashboard/notes/asset`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ notePath: 'daily/today.md', mime: 'image/png', dataBase64: PNG_BASE64 }),
+        });
+        assert.equal(uploaded.status, 201);
+        const uploadBody = await readJson(uploaded);
+        assert.equal(uploadBody.ok, true);
+        assert.match(String(uploadBody.path), /^\.assets\/daily__today\/.+\.png$/);
+        assert.equal(uploadBody.markdown, `![pasted image](./${uploadBody.path})`);
+
+        const asset = await fetch(`${baseUrl}/api/dashboard/notes/asset?path=${encodeURIComponent(String(uploadBody.path))}`);
+        assert.equal(asset.status, 200);
+        assert.equal(asset.headers.get('content-type'), 'image/png');
+        assert.equal(asset.headers.get('x-content-type-options'), 'nosniff');
+        assert.ok((await asset.arrayBuffer()).byteLength > 0);
+    });
+});
+
+test('notes asset route keeps its larger JSON parser isolated and origin protected', async (t) => {
+    await withNotesServer(t, async (baseUrl) => {
+        const foreignOrigin = await fetch(`${baseUrl}/api/dashboard/notes/asset`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', origin: 'http://evil.com' },
+            body: JSON.stringify({ notePath: 'note.md', mime: 'image/png', dataBase64: PNG_BASE64 }),
+        });
+        assert.equal(foreignOrigin.status, 403);
+        assert.equal((await readJson(foreignOrigin)).code, 'notes_origin_forbidden');
+
+        const largerThanGenericNotesLimit = await fetch(`${baseUrl}/api/dashboard/notes/asset`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ notePath: 'large.md', mime: 'image/png', dataBase64: LARGE_PNG_BASE64 }),
+        });
+        assert.equal(largerThanGenericNotesLimit.status, 201);
+        const body = await readJson(largerThanGenericNotesLimit);
+        assert.equal(body.ok, true);
+        assert.equal(body.mime, 'image/png');
     });
 });
 

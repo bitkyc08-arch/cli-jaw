@@ -27,7 +27,6 @@ import { createObservability } from './observability.js';
 import { fetchInstanceLogs } from './logs.js';
 import {
     createDashboardNotesRouter,
-    createNotesJsonErrorHandler,
 } from './notes/routes.js';
 import { createDesktopStatusRouter } from './routes/desktop-status.js';
 import { createElectronMetricsRouter } from './routes/electron-metrics.js';
@@ -141,8 +140,6 @@ app.use(helmet({
 }));
 app.use(
     '/api/dashboard/notes',
-    express.json({ limit: '1100kb' }),
-    createNotesJsonErrorHandler(),
     createDashboardNotesRouter({ managerPort: port }),
 );
 app.use(express.json({ limit: '64kb' }));

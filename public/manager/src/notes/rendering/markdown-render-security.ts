@@ -17,6 +17,24 @@ export function safeMarkdownUrl(url: string): string {
     return isSafeExternalHref(url) ? url : '';
 }
 
+export function notesImageSrc(src: string): string {
+    const trimmed = src.trim();
+    if (!trimmed || /^(?:javascript|data|file):/i.test(trimmed)) return '';
+    if (/^\/(?:Users|home|var|tmp|private|etc)\//i.test(trimmed)) return '';
+    const assetPath = trimmed.startsWith('./.assets/')
+        ? trimmed.slice(2)
+        : trimmed.startsWith('.assets/')
+            ? trimmed
+            : null;
+    if (assetPath) {
+        if (assetPath.includes('\\') || assetPath.split('/').some(segment => !segment || segment === '.' || segment === '..')) {
+            return '';
+        }
+        return `/api/dashboard/notes/asset?path=${encodeURIComponent(assetPath)}`;
+    }
+    return isSafeExternalHref(trimmed) ? trimmed : '';
+}
+
 // rehype-raw is intentionally absent: Notes render user-authored markdown only,
 // and raw HTML must stay disabled before future WYSIWYG reuse.
 export const markdownSanitizeSchema: RehypeSanitizeSchema = {

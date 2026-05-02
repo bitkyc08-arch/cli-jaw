@@ -291,6 +291,20 @@ export type DashboardPutNoteRequest = {
     baseRevision?: string;
 };
 
+export type DashboardNoteAssetUploadRequest = {
+    notePath: string;
+    mime: string;
+    dataBase64: string;
+};
+
+export type DashboardNoteAssetResponse = {
+    ok: true;
+    path: string;
+    markdown: string;
+    mime: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif';
+    size: number;
+};
+
 export type DashboardTrashNoteKind = 'file' | 'folder';
 
 export type DashboardTrashNoteResponse = {

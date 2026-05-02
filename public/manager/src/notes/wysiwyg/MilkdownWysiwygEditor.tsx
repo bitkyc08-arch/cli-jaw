@@ -16,6 +16,8 @@ import { history } from '@milkdown/kit/plugin/history';
 import { listener, listenerCtx } from '@milkdown/kit/plugin/listener';
 import { callCommand, getMarkdown, insert, replaceAll } from '@milkdown/kit/utils';
 import { safeMarkdownUrl } from '../markdown-security';
+import { firstClipboardImage } from '../image-assets/clipboard-images';
+import { uploadClipboardImageMarkdown } from '../image-assets/insert-image-markdown';
 import { notesMilkdownBlockKeymap } from './milkdown-block-keymap';
 import { notesMilkdownCodeBlockView } from './milkdown-code-block-view';
 import { notesMilkdownGfm } from './milkdown-gfm-safe';
@@ -26,6 +28,7 @@ import { normalizeEscapedTaskMarkers, protectUnsupportedGfmForMilkdown } from '.
 type MilkdownWysiwygEditorProps = {
     active: boolean;
     content: string;
+    notePath: string;
     onChange: (value: string) => void;
 };
 
@@ -298,6 +301,23 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
     }, [ready]);
 
     function handlePasteCapture(event: ClipboardEvent<HTMLDivElement>): void {
+        const imageFallback = event.clipboardData.getData('text/plain');
+        if (firstClipboardImage(event.clipboardData)) {
+            event.preventDefault();
+            void uploadClipboardImageMarkdown(props.notePath, event.clipboardData)
+                .then(markdown => {
+                    if (markdown) {
+                        run(editor => editor.action(insert(markdown, true)));
+                        return;
+                    }
+                    if (imageFallback) run(editor => editor.action(insert(imageFallback)));
+                })
+                .catch(error => {
+                    console.warn('[notes-image-paste]', error);
+                    if (imageFallback) run(editor => editor.action(insert(imageFallback)));
+                });
+            return;
+        }
         const html = event.clipboardData.getData('text/html');
         if (!html) return;
         event.preventDefault();
