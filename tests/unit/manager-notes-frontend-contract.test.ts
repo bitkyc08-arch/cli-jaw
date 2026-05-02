@@ -47,6 +47,18 @@ test('Notes API and create actions surface backend/fallback failures without unc
     assert.ok(sidebar.includes('async function createFolder()'), 'notes sidebar must own create folder action');
     assert.ok(sidebar.includes('catch (err)'), 'notes sidebar create actions must catch async API failures');
     assert.ok(sidebar.includes('setError((err as Error).message)'), 'notes sidebar create failures must render as tree errors');
+    assert.ok(sidebar.includes('function handleCreateNoteShortcut(event: KeyboardEvent): void'),
+        'notes sidebar must register a typed Alt/Option+N create-note shortcut handler');
+    assert.ok(sidebar.includes('!event.altKey'),
+        'notes create shortcut must require Alt/Option to avoid browser new-window shortcuts');
+    assert.ok(sidebar.includes('event.metaKey || event.ctrlKey || event.shiftKey'),
+        'notes create shortcut must avoid reserved Cmd/Ctrl/Shift browser combinations');
+    assert.ok(sidebar.includes("event.key.toLowerCase() !== 'n'"),
+        'notes create shortcut must be bound to N');
+    assert.ok(sidebar.includes('event.preventDefault()'),
+        'notes create shortcut must suppress the browser new-window default');
+    assert.ok(sidebar.includes('void createNote()'),
+        'notes create shortcut must reuse the existing file-path create flow');
     assert.ok(sidebar.includes('function hasFile('), 'notes sidebar must verify registry-selected note paths against the current tree');
     assert.ok(sidebar.includes('props.onSelectedPathChange(nextSelected)'), 'notes sidebar must clear stale selected paths when the tree does not contain them');
     assert.ok(sidebar.includes('selectedFolderPath'), 'notes sidebar must track the selected folder for nested note/folder creation');
@@ -84,6 +96,12 @@ test('Notes API and create actions surface backend/fallback failures without unc
     assert.ok(tree.includes('options.onSelectFolder?.(entry.path)'), 'folder Enter must select the folder target');
     assert.ok(tree.includes('options.toggleFolder?.(entry.path)'), 'folder Enter must toggle folder expansion');
     assert.ok(tree.includes('event.stopPropagation()'), 'inline file and folder actions must not select/open rows');
+    assert.ok(tree.includes('if (multiSelected.size > 0) setMultiSelected(new Set())'),
+        'plain tree item clicks must clear multi-selection');
+    assert.match(tree, /onEntryClick\(entry\.path, event\);\s*props\.onSelectPath\(entry\.path\);/,
+        'plain file clicks must clear multi-selection before selecting the file');
+    assert.match(tree, /onEntryClick\(entry\.path, event\);\s*props\.onSelectFolder\(entry\.path\);/,
+        'plain folder clicks must clear multi-selection before selecting the folder');
     assert.equal(tree.includes('function TrashIcon()'), false, 'notes tree must not expose a visible trash icon');
     assert.equal(tree.includes('notes-tree-danger-action'), false, 'notes tree must keep trash as keyboard-only action');
     assert.equal(css.includes('.notes-tree-list button'), false, 'tree-wide button width must not stretch inline action buttons');
@@ -103,6 +121,10 @@ test('Notes API and create actions surface backend/fallback failures without unc
     assert.ok(workspace.includes("event.key.toLowerCase() !== 's'"), 'notes save shortcut must be limited to the S key');
     assert.ok(workspace.includes('event.preventDefault()'), 'notes save shortcut must suppress browser Save Page');
     assert.ok(workspace.includes('void document.save()'), 'notes save shortcut must call the existing manual save path');
+    assert.ok(workspace.includes('className="notes-content"'), 'notes toolbar body must be wrapped so document panes land in a constrained scroll row');
+    assert.ok(css.includes('grid-template-rows: max-content minmax(0, 1fr);'), 'notes main grid must reserve a fixed toolbar row and a constrained scroll content row');
+    assert.ok(css.includes('.notes-content'), 'notes content wrapper must own the error/conflict/document rows');
+    assert.ok(css.includes('.notes-document-grid {\n    grid-row: 3;'), 'notes document grid must be pinned to the 1fr scroll row even when no error/conflict row is rendered');
 });
 
 test('Notes markdown editor uses Manager-token CodeMirror theme', () => {

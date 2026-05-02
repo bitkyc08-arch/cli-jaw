@@ -19,6 +19,7 @@ import { safeMarkdownUrl } from '../markdown-security';
 import { notesMilkdownBlockKeymap } from './milkdown-block-keymap';
 import { notesMilkdownCodeBlockView } from './milkdown-code-block-view';
 import { notesMilkdownGfm } from './milkdown-gfm-safe';
+import { notesMilkdownHeadingSourceView } from './milkdown-heading-source-view';
 import { notesMilkdownKatexOptionsCtx, notesMilkdownMath } from './milkdown-math';
 import { normalizeEscapedTaskMarkers, protectUnsupportedGfmForMilkdown } from './milkdown-task-markers';
 
@@ -85,6 +86,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
             })
             .use(commonmark)
             .use(notesMilkdownGfm)
+            .use(notesMilkdownHeadingSourceView)
             .use(notesMilkdownMath)
             .use(notesMilkdownCodeBlockView)
             .use(notesMilkdownBlockKeymap)
@@ -138,6 +140,25 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
     useEffect(() => {
         if (props.active && ready) focusEditable(rootRef.current);
     }, [props.active, ready]);
+
+    useEffect(() => {
+        if (!ready) return undefined;
+        const root = rootRef.current;
+        if (!root) return undefined;
+
+        function handleHeadingSourceUpdated(): void {
+            editorRef.current?.action(ctx => {
+                const markdown = normalizeEscapedTaskMarkers(getMarkdown()(ctx));
+                latestMarkdownRef.current = markdown;
+                if (!syncingFromPropsRef.current) onChangeRef.current(markdown);
+            });
+        }
+
+        root.addEventListener('notes-heading-source-updated', handleHeadingSourceUpdated);
+        return () => {
+            root.removeEventListener('notes-heading-source-updated', handleHeadingSourceUpdated);
+        };
+    }, [ready]);
 
     function run(command: MilkdownCommand): void {
         const editor = editorRef.current;

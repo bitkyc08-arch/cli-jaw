@@ -93,46 +93,48 @@ export function NotesWorkspace(props: NotesWorkspaceProps) {
                     onSave={() => void document.save()}
                     onReload={() => void document.reloadFromDisk()}
                 />
-                {document.error && <section className="state error-state">{document.error}</section>}
-                {document.conflict && (
-                    <section className="notes-conflict">
-                        <span>{document.conflict.message}</span>
-                        <button type="button" onClick={() => void document.reloadFromDisk()}>Reload</button>
-                        <button type="button" onClick={() => void document.overwrite()}>Overwrite</button>
-                        <button type="button" onClick={document.clearConflict}>Keep local</button>
-                    </section>
-                )}
-                {props.viewMode === 'settings' && (
-                    <section className="notes-settings">
-                        <label>
-                            <input
-                                type="checkbox"
-                                checked={props.wordWrap}
-                                onChange={event => props.onWordWrapChange(event.currentTarget.checked)}
-                            />
-                            Word wrap
-                        </label>
-                        <label>
-                            Tree width
-                            <input
-                                type="range"
-                                min="220"
-                                max="420"
-                                value={props.treeWidth}
-                                onChange={event => props.onTreeWidthChange(Number(event.currentTarget.value))}
-                            />
-                        </label>
-                    </section>
-                )}
-                {!props.selectedPath && props.viewMode !== 'settings' && <NotesEmptyState />}
-                {props.selectedPath && props.viewMode !== 'settings' && (
-                    <div className="notes-document-grid">
-                        {showEditor && <div className="notes-editor-pane">
-                            <MarkdownEditor key={props.selectedPath} active={props.active && showEditor} authoringMode={props.authoringMode} content={document.content} wordWrap={props.wordWrap} onChange={document.setContent} />
-                        </div>}
-                        {showPreview && <MarkdownPreview markdown={document.content} />}
-                    </div>
-                )}
+                <div className="notes-content">
+                    {document.error && <section className="state error-state">{document.error}</section>}
+                    {document.conflict && (
+                        <section className="notes-conflict">
+                            <span>{document.conflict.message}</span>
+                            <button type="button" onClick={() => void document.reloadFromDisk()}>Reload</button>
+                            <button type="button" onClick={() => void document.overwrite()}>Overwrite</button>
+                            <button type="button" onClick={document.clearConflict}>Keep local</button>
+                        </section>
+                    )}
+                    {props.viewMode === 'settings' && (
+                        <section className="notes-settings">
+                            <label>
+                                <input
+                                    type="checkbox"
+                                    checked={props.wordWrap}
+                                    onChange={event => props.onWordWrapChange(event.currentTarget.checked)}
+                                />
+                                Word wrap
+                            </label>
+                            <label>
+                                Tree width
+                                <input
+                                    type="range"
+                                    min="220"
+                                    max="420"
+                                    value={props.treeWidth}
+                                    onChange={event => props.onTreeWidthChange(Number(event.currentTarget.value))}
+                                />
+                            </label>
+                        </section>
+                    )}
+                    {!props.selectedPath && props.viewMode !== 'settings' && <NotesEmptyState />}
+                    {props.selectedPath && props.viewMode !== 'settings' && (
+                        <div className="notes-document-grid">
+                            {showEditor && <div className="notes-editor-pane">
+                                <MarkdownEditor key={props.selectedPath} active={props.active && showEditor} authoringMode={props.authoringMode} content={document.content} wordWrap={props.wordWrap} onChange={document.setContent} />
+                            </div>}
+                            {showPreview && <MarkdownPreview markdown={document.content} />}
+                        </div>
+                    )}
+                </div>
             </main>
         </section>
     );

@@ -339,6 +339,44 @@ test('notes WYSIWYG toolbar commands can be used together without conflicts', as
     assert.ok(savedContent.includes('|'), 'Table command must insert table markdown');
 });
 
+test('notes WYSIWYG heading marker supports level 6 source editing', async () => {
+    const page = await pageForManager();
+    const noteName = `browser-heading-six-${Date.now()}.md`;
+
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await seedSimpleNote(page, noteName);
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.notes-tree');
+
+    await page.locator('.notes-tree-file-button').filter({ hasText: noteName }).first().click();
+    await page.getByRole('tab', { name: 'WYSIWYG' }).click();
+    await page.waitForSelector('.notes-heading-source-node[data-level="1"]', { timeout: 5000 });
+
+    const headingMarker = page.locator('.notes-heading-source-marker').first();
+    await headingMarker.click({ force: true });
+    await page.keyboard.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
+    await page.keyboard.type('######');
+    await page.waitForSelector('.notes-heading-source-node[data-level="6"]', { timeout: 5000 });
+    await page.getByRole('tab', { name: 'Raw' }).click();
+    const rawContent = await page.locator('.notes-editor').first().textContent();
+    assert.ok(rawContent?.includes('###### Task toolbar smoke'),
+        'heading marker typing must immediately update the raw markdown state');
+    await page.getByRole('tab', { name: 'WYSIWYG' }).click();
+    await page.waitForSelector('.notes-heading-source-node[data-level="6"]', { timeout: 5000 });
+    await headingMarker.click({ force: true });
+    await page.keyboard.press('Enter');
+    await page.waitForSelector('.notes-heading-source-node[data-level="6"]', { timeout: 5000 });
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+
+    const savedContent = await page.evaluate(async ({ noteName }) => {
+        const response = await fetch(`/api/dashboard/notes/file?path=${encodeURIComponent(noteName)}`);
+        const body = await response.json();
+        return body.content as string;
+    }, { noteName });
+    assert.ok(savedContent.includes('###### Task toolbar smoke'),
+        'WYSIWYG heading marker must serialize six # characters as an h6 heading');
+});
+
 test('notes WYSIWYG Task toolbar stays in Milkdown without fallback', async () => {
     const page = await pageForManager();
     const noteName = `browser-task-toolbar-${Date.now()}.md`;

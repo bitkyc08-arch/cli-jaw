@@ -105,3 +105,43 @@ test('notes keyboard trash confirms dirty notes and repairs selection', async ()
     await waitForPageApiStatus(page, notePath, 404);
     assert.equal(await pageApiStatus(page, notePath), 404, 'confirming trash must move the note out of the notes tree');
 });
+
+test('notes Alt/Option+N creates a note from a file path prompt', async () => {
+    const page = await pageForManager();
+    const runId = `shortcut-${Date.now()}`;
+    const notePath = `${runId}.md`;
+
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.evaluate(async () => {
+        const headers = { 'content-type': 'application/json' };
+        await fetch('/api/dashboard/registry', {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({ ui: { sidebarMode: 'notes', notesSelectedPath: null, notesViewMode: 'raw', notesAuthoringMode: 'plain' } }),
+        });
+    });
+    await page.goto(MANAGER_URL, { waitUntil: 'networkidle' });
+    await page.waitForSelector('.notes-tree');
+
+    const dialogPromise = new Promise<string>((resolve) => {
+        page.once('dialog', async (dialog) => {
+            const message = dialog.message();
+            await dialog.accept(notePath);
+            resolve(message);
+        });
+    });
+    await page.locator('.notes-tree').click();
+    await page.keyboard.press('Alt+N');
+    const message = await Promise.race([
+        dialogPromise,
+        new Promise<string>((_, reject) => {
+            setTimeout(() => reject(new Error('notes create shortcut prompt did not appear')), 5000);
+        }),
+    ]);
+
+    assert.match(message, /note path/i);
+    await waitForPageApiStatus(page, notePath, 200);
+    await page.waitForSelector('.cm-content[contenteditable="true"]', { timeout: 5000 });
+    assert.equal(await page.locator('.notes-tree-file-button').filter({ hasText: `${runId}.md` }).count(), 1,
+        'shortcut-created note must appear in the notes tree');
+});

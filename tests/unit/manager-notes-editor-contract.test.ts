@@ -52,6 +52,8 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     const gfmPlugin = read('public/manager/src/notes/wysiwyg/milkdown-gfm-safe.ts');
     const mathPlugin = read('public/manager/src/notes/wysiwyg/milkdown-math.ts');
     const codePlugin = read('public/manager/src/notes/wysiwyg/milkdown-code-block-view.ts');
+    const headingPlugin = read('public/manager/src/notes/wysiwyg/milkdown-heading-source-view.ts');
+    const css = read('public/manager/src/manager-notes.css');
 
     assert.ok(editor.includes('MilkdownWysiwygEditor'), 'WYSIWYG mode must render the Milkdown authoring surface');
     assert.equal(editor.includes('hasMilkdownUnsafeGfm'), false, 'WYSIWYG mode must not swap in a fallback editor');
@@ -70,6 +72,8 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
     assert.equal(milkdown.includes('.use(gfm)'), false, 'WYSIWYG must not install the upstream GFM bundle with the unsafe task input rule');
     assert.ok(milkdown.includes('./milkdown-math'), 'Milkdown WYSIWYG must use the local math plugin instead of a deprecated dependency');
     assert.ok(milkdown.includes('./milkdown-code-block-view'), 'Milkdown WYSIWYG must use the local code block source view');
+    assert.ok(milkdown.includes('./milkdown-heading-source-view'), 'Milkdown WYSIWYG must expose editable heading source markers');
+    assert.ok(milkdown.includes('.use(notesMilkdownHeadingSourceView)'), 'WYSIWYG must install the heading source marker node view');
     assert.ok(milkdown.includes('protectUnsupportedGfmForMilkdown'),
         'WYSIWYG must protect unsupported GFM markers before Milkdown parses them');
     assert.ok(milkdown.includes('notesMilkdownKatexOptionsCtx'), 'Milkdown WYSIWYG must configure KaTeX options');
@@ -126,6 +130,28 @@ test('Markdown editor exposes WYSIWYG toolbar without changing the save path', (
         'code block exit must commit and move caret in a single transaction');
     assert.equal(codePlugin.includes('function moveAfterCodeBlock'), false,
         'code block exit must not use the legacy multi-dispatch moveAfterCodeBlock helper');
+    assert.ok(headingPlugin.includes('$view(headingSchema.node'), 'heading source markers must be implemented as a scoped heading node view');
+    assert.ok(headingPlugin.includes('notes-heading-source-marker'), 'heading source view must render a marker input for # editing');
+    assert.ok(headingPlugin.includes('setNodeMarkup(pos, undefined, { ...node.attrs, level })'),
+        'heading marker edits must update only the heading level attribute');
+    assert.ok(headingPlugin.includes('notes-heading-source-updated'),
+        'heading marker edits must notify the React markdown state after ProseMirror attribute changes');
+    assert.ok(milkdown.includes("root.addEventListener('notes-heading-source-updated'"),
+        'WYSIWYG shell must listen for heading marker updates that Milkdown markdownUpdated does not publish immediately');
+    assert.ok(headingPlugin.includes('setNodeMarkup(pos, paragraph as NodeType)'),
+        'empty heading marker edits must support downgrading the heading to a paragraph');
+    assert.ok(headingPlugin.includes('view.state.selection.map(tr.doc, tr.mapping)'),
+        'heading level edits must preserve the ProseMirror text selection through the transaction');
+    assert.ok(headingPlugin.includes("dom.setAttribute('role', 'heading')"),
+        'heading source node view must preserve heading accessibility semantics');
+    assert.ok(headingPlugin.includes("dom.setAttribute('aria-level', String(level))"),
+        'heading source node view must expose the current heading level to assistive tech');
+    assert.ok(headingPlugin.includes('event.stopPropagation()'),
+        'heading marker DOM events must not leak into ProseMirror text input');
+    assert.ok(headingPlugin.includes('marker.contains(event.target as Node)'), 'heading marker events must stay out of ProseMirror text handling');
+    assert.ok(headingPlugin.includes('destroy(): void'), 'heading source node view must clean up marker event listeners');
+    assert.ok(css.includes('.notes-heading-source-node'), 'heading source node view must have scoped notes styling');
+    assert.ok(css.includes('.notes-heading-source-marker'), 'heading marker input must be visually scoped to WYSIWYG headings');
     assert.ok(mathPlugin.includes('commitAndExitMathNode'),
         'math node exit must commit and move caret in a single transaction');
     assert.equal(mathPlugin.includes('function moveAfterMathNode'), false,

@@ -131,6 +131,17 @@ export function NotesSidebar(props: NotesSidebarProps) {
         }
     }
 
+    useEffect(() => {
+        function handleCreateNoteShortcut(event: KeyboardEvent): void {
+            if (!event.altKey || event.metaKey || event.ctrlKey || event.shiftKey || event.key.toLowerCase() !== 'n') return;
+            event.preventDefault();
+            void createNote();
+        }
+
+        window.addEventListener('keydown', handleCreateNoteShortcut);
+        return () => window.removeEventListener('keydown', handleCreateNoteShortcut);
+    });
+
     async function createFolder(): Promise<void> {
         const fallback = selectedFolderPath ? `${selectedFolderPath}/new-folder` : 'new-folder';
         const name = window.prompt('Folder path', fallback);
