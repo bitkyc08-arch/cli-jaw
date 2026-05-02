@@ -13,6 +13,8 @@ import './manager-dashboard-settings.css';
 import 'katex/dist/katex.min.css';
 import './manager-notes.css';
 import './manager-dashboard-board.css';
+import './manager-dashboard-board-stages.css';
+import './manager-dashboard-board-interactions.css';
 import './manager-help.css';
 import './manager-dashboard-schedule.css';
 import './settings-shell.css';

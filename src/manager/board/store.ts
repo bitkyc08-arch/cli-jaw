@@ -13,6 +13,8 @@ function isLane(v: unknown): v is DashboardTaskLane {
 export type DashboardTask = {
     id: string;
     title: string;
+    summary: string | null;
+    detail: string | null;
     lane: DashboardTaskLane;
     port: number | null;
     threadKey: string | null;
@@ -24,6 +26,8 @@ export type DashboardTask = {
 
 export type DashboardTaskInput = {
     title: string;
+    summary?: string | null;
+    detail?: string | null;
     lane?: DashboardTaskLane;
     port?: number | null;
     threadKey?: string | null;
@@ -36,6 +40,8 @@ export type DashboardTaskPatch = Partial<Omit<DashboardTaskInput, 'source'>>;
 type Row = {
     id: string;
     title: string;
+    summary: string | null;
+    detail: string | null;
     lane: string;
     port: number | null;
     thread_key: string | null;
@@ -50,6 +56,8 @@ function rowToTask(row: Row): DashboardTask {
     return {
         id: row.id,
         title: row.title,
+        summary: row.summary,
+        detail: row.detail,
         lane,
         port: row.port,
         threadKey: row.thread_key,
@@ -63,6 +71,14 @@ function rowToTask(row: Row): DashboardTask {
 function ensureDir(p: string) {
     const d = dirname(p);
     if (!existsSync(d)) mkdirSync(d, { recursive: true });
+}
+
+function normalizeOptionalText(value: string | null | undefined, maxLength: number): string | null {
+    if (value === undefined || value === null) return null;
+    const text = String(value).trim();
+    if (!text) return null;
+    if (text.length > maxLength) throw new Error('text too long');
+    return text;
 }
 
 export type BoardStoreOptions = { dbPath?: string };
@@ -80,6 +96,8 @@ export class BoardStore {
             CREATE TABLE IF NOT EXISTS dashboard_tasks (
                 id          TEXT PRIMARY KEY,
                 title       TEXT NOT NULL,
+                summary     TEXT,
+                detail      TEXT,
                 lane        TEXT NOT NULL DEFAULT 'inbox',
                 port        INTEGER,
                 thread_key  TEXT,
@@ -91,6 +109,14 @@ export class BoardStore {
             CREATE INDEX IF NOT EXISTS idx_dashboard_tasks_lane ON dashboard_tasks(lane);
             CREATE INDEX IF NOT EXISTS idx_dashboard_tasks_updated ON dashboard_tasks(updated_at);
         `);
+        this.ensureColumn('summary', 'TEXT');
+        this.ensureColumn('detail', 'TEXT');
+    }
+
+    private ensureColumn(name: string, ddl: string): void {
+        const rows = this.db.prepare('PRAGMA table_info(dashboard_tasks)').all() as Array<{ name: string }>;
+        if (rows.some(row => row.name === name)) return;
+        this.db.exec(`ALTER TABLE dashboard_tasks ADD COLUMN ${name} ${ddl}`);
     }
 
     list(): DashboardTask[] {
@@ -110,12 +136,16 @@ export class BoardStore {
         const title = String(input.title || '').trim();
         if (!title) throw new Error('title required');
         if (title.length > 500) throw new Error('title too long');
+        const summary = normalizeOptionalText(input.summary, 500);
+        const detail = normalizeOptionalText(input.detail, 20000);
         this.db.prepare(`
-            INSERT INTO dashboard_tasks (id, title, lane, port, thread_key, note_path, source)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO dashboard_tasks (id, title, summary, detail, lane, port, thread_key, note_path, source)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(
             id,
             title,
+            summary,
+            detail,
             lane,
             input.port ?? null,
             input.threadKey ?? null,
@@ -136,6 +166,12 @@ export class BoardStore {
             const t = String(patch.title).trim();
             if (!t || t.length > 500) throw new Error('invalid title');
             fields.push('title = ?'); values.push(t);
+        }
+        if (patch.summary !== undefined) {
+            fields.push('summary = ?'); values.push(normalizeOptionalText(patch.summary, 500));
+        }
+        if (patch.detail !== undefined) {
+            fields.push('detail = ?'); values.push(normalizeOptionalText(patch.detail, 20000));
         }
         if (patch.lane !== undefined) {
             if (!isLane(patch.lane)) throw new Error('invalid lane');

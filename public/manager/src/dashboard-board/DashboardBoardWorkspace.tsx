@@ -1,11 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react';
 import type { DashboardInstance } from '../types';
 import { BOARD_LANES, type BoardLane } from './DashboardBoardSidebar';
-import { listTasks, createTask, updateTask, deleteTask, type DashboardTask } from './board-api';
+import { listTasks, createTask, updateTask, deleteTask, type DashboardTask, type DashboardTaskPatch } from './board-api';
+import { DashboardBoardTaskDialog, type BoardTaskDialogCard } from './DashboardBoardTaskDialog';
+import { RUNNING_CHIP_MIME, decodeRunningChip, deriveRunningChips, encodeRunningChip } from './running-chips';
 
 type BoardCard = {
     id: string;
     title: string;
+    summary: string | null;
+    detail: string | null;
     lane: BoardLane;
     port: number | null;
     source: string;
@@ -21,76 +25,40 @@ type Props = {
     busyPorts: Set<number>;
 };
 
-// ---------------------------------------------------------------------------
-// Board model (2026-05-02 redesign):
-// - Kanban lanes always exist and only contain persisted user tasks.
-// - Running instances render in a separate "pool" above the lanes as draggable
-//   chips. Dragging a chip into a persisted card attaches that port to the card
-//   as child context — it does NOT alter the instance itself.
-// - Persisted cards are draggable across lanes.
-// - No port focus / filter. All persisted tasks render unconditionally.
-// - Legacy `deriveCards` removed; per-port focus toggle removed.
-// ---------------------------------------------------------------------------
-type RunningChip = {
-    port: number;
-    label: string;
-    activity: string | null;
-    state: 'busy' | 'online' | 'error';
-};
-
-const RUNNING_CHIP_MIME = 'application/x-jaw-running-chip';
 const BOARD_TASK_MIME = 'application/x-jaw-board-task';
 
-function deriveRunningChips(
-    instances: DashboardInstance[],
-    titlesByPort: Record<number, string>,
-    busyPorts: Set<number>,
-): RunningChip[] {
-    const chips: RunningChip[] = [];
-    const seen = new Set<number>();
-    for (const instance of instances) {
-        if (instance.hidden) continue;
-        const port = instance.port;
-        if (seen.has(port)) continue;
-        seen.add(port);
-        const isBusy = busyPorts.has(port);
-        const isOnline = instance.status === 'online';
-        const isError = instance.status === 'error';
-        if (!isBusy && !isOnline && !isError) continue;
-        chips.push({
-            port,
-            label: instance.label || instance.instanceId || `Port ${port}`,
-            activity: titlesByPort[port] || null,
-            state: isBusy ? 'busy' : isError ? 'error' : 'online',
-        });
+function CardActionIcon(props: { kind: 'open' | 'move' | 'delete' }) {
+    if (props.kind === 'open') {
+        return (
+            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M7 4h-2.5a1.5 1.5 0 0 0-1.5 1.5v10a1.5 1.5 0 0 0 1.5 1.5h10a1.5 1.5 0 0 0 1.5-1.5V13" />
+                <path d="M10 3h7v7" />
+                <path d="M9 11 17 3" />
+            </svg>
+        );
     }
-    return chips;
-}
-
-function encodeRunningChip(chip: RunningChip): string {
-    return JSON.stringify({
-        port: chip.port,
-        label: chip.label,
-        activity: chip.activity,
-        state: chip.state,
-    });
-}
-
-function decodeRunningChip(e: DragEvent): RunningChip | null {
-    const raw = e.dataTransfer.getData(RUNNING_CHIP_MIME);
-    if (!raw) return null;
-    try {
-        const parsed = JSON.parse(raw) as Partial<RunningChip>;
-        if (typeof parsed.port !== 'number') return null;
-        return {
-            port: parsed.port,
-            label: typeof parsed.label === 'string' ? parsed.label : `Port ${parsed.port}`,
-            activity: typeof parsed.activity === 'string' ? parsed.activity : null,
-            state: parsed.state === 'busy' || parsed.state === 'error' ? parsed.state : 'online',
-        };
-    } catch {
-        return null;
+    if (props.kind === 'move') {
+        return (
+            <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M10 2v16" />
+                <path d="M6 6 10 2l4 4" />
+                <path d="m6 14 4 4 4-4" />
+                <path d="M2 10h16" />
+                <path d="m6 6-4 4 4 4" />
+                <path d="m14 6 4 4-4 4" />
+            </svg>
+        );
     }
+    return (
+        <svg viewBox="0 0 20 20" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <path d="M3 5h14" />
+            <path d="M8 5V3h4v2" />
+            <path d="M6 8v8" />
+            <path d="M10 8v8" />
+            <path d="M14 8v8" />
+            <path d="M5 5l1 13h8l1-13" />
+        </svg>
+    );
 }
 
 function encodeBoardTask(card: BoardCard): string {
@@ -119,11 +87,19 @@ function taskToCard(t: DashboardTask): BoardCard {
     return {
         id: t.id,
         title: t.title,
+        summary: t.summary ?? null,
+        detail: t.detail ?? null,
         lane: t.lane,
         port: t.port,
         source: t.source,
         persisted: true,
     };
+}
+
+function normalizeOptionalText(value: string | null | undefined): string | null {
+    if (value === undefined || value === null) return null;
+    const text = value.trim();
+    return text ? text : null;
 }
 
 export function DashboardBoardWorkspace(props: Props) {
@@ -134,6 +110,8 @@ export function DashboardBoardWorkspace(props: Props) {
     const [movePopoverFor, setMovePopoverFor] = useState<string | null>(null);
     const [dropTarget, setDropTarget] = useState<BoardLane | null>(null);
     const [cardDropTarget, setCardDropTarget] = useState<string | null>(null);
+    const [dialogCardId, setDialogCardId] = useState<string | null>(null);
+    const [dialogBusy, setDialogBusy] = useState(false);
     const popoverRef = useRef<HTMLDivElement | null>(null);
 
     const reload = useCallback(async () => {
@@ -180,6 +158,29 @@ export function DashboardBoardWorkspace(props: Props) {
         catch { /* ignore */ }
     }, [reload]);
 
+    const onSaveCardDetails = useCallback(async (id: string, patch: DashboardTaskPatch) => {
+        if (dialogBusy) return;
+        setDialogBusy(true);
+        try {
+            const updated = await updateTask(id, patch);
+            setTasks(current => current.map(task => {
+                if (task.id !== id) return task;
+                return {
+                    ...task,
+                    ...updated,
+                    summary: patch.summary !== undefined
+                        ? normalizeOptionalText(patch.summary)
+                        : updated.summary ?? task.summary,
+                    detail: patch.detail !== undefined
+                        ? normalizeOptionalText(patch.detail)
+                        : updated.detail ?? task.detail,
+                };
+            }));
+            setDialogCardId(null);
+        } catch { /* ignore */ }
+        finally { setDialogBusy(false); }
+    }, [dialogBusy]);
+
     const onAttachInstance = useCallback(async (id: string, port: number) => {
         try { await updateTask(id, { port }); await reload(); }
         catch { /* ignore */ }
@@ -209,6 +210,15 @@ export function DashboardBoardWorkspace(props: Props) {
     }, [onAttachInstance]);
 
     const cards = useMemo(() => tasks.map(taskToCard), [tasks]);
+    const dialogCard = useMemo<BoardTaskDialogCard | null>(() => {
+        const card = dialogCardId ? cards.find(candidate => candidate.id === dialogCardId) : null;
+        return card ? {
+            id: card.id,
+            title: card.title,
+            summary: card.summary,
+            detail: card.detail,
+        } : null;
+    }, [cards, dialogCardId]);
 
     const runningChips = useMemo(
         () => deriveRunningChips(props.instances, props.titlesByPort, props.busyPorts),
@@ -226,39 +236,6 @@ export function DashboardBoardWorkspace(props: Props) {
                     </p>
                 </div>
             </header>
-            <div
-                className="dashboard-board-running-pool"
-                aria-label="Running instances pool"
-                data-empty={runningChips.length === 0 ? 'true' : 'false'}
-            >
-                <span className="dashboard-board-running-pool-label">Running</span>
-                {runningChips.length === 0 ? (
-                    <span className="dashboard-board-running-pool-empty">
-                        No running instances. Start one from the Instances tab to see it here.
-                    </span>
-                ) : runningChips.map(chip => (
-                    <div
-                        key={chip.port}
-                        className="dashboard-board-running-chip"
-                        data-state={chip.state}
-                        draggable
-                        onDragStart={e => {
-                            e.dataTransfer.effectAllowed = 'copy';
-                            e.dataTransfer.setData(RUNNING_CHIP_MIME, encodeRunningChip(chip));
-                        }}
-                        title={chip.activity ? `${chip.label} — ${chip.activity}` : chip.label}
-                    >
-                        <span className="dashboard-board-running-chip-port">:{chip.port}</span>
-                        <span className="dashboard-board-running-chip-label">{chip.label}</span>
-                        {chip.activity ? (
-                            <span className="dashboard-board-running-chip-activity">{chip.activity}</span>
-                        ) : null}
-                        <span className="dashboard-board-running-chip-state" data-state={chip.state}>
-                            {chip.state}
-                        </span>
-                    </div>
-                ))}
-            </div>
             <div className="dashboard-board-lanes">
                 {BOARD_LANES.map(lane => {
                     const laneCards = cards.filter(card => card.lane === lane.id);
@@ -268,6 +245,7 @@ export function DashboardBoardWorkspace(props: Props) {
                         <div
                             key={lane.id}
                             className={`dashboard-board-lane${props.activeLane === lane.id ? ' is-focused' : ''}${isDropTarget ? ' is-drop-target' : ''}`}
+                            data-lane={lane.id}
                             onDragOver={e => {
                                 if (hasDragType(e, BOARD_TASK_MIME)) {
                                     e.preventDefault();
@@ -294,6 +272,7 @@ export function DashboardBoardWorkspace(props: Props) {
                                         <li
                                             key={card.id}
                                             className={`dashboard-board-card${isCardDropTarget ? ' is-instance-drop-target' : ''}`}
+                                            data-lane={card.lane}
                                             data-source={card.source}
                                             data-persisted={card.persisted ? 'true' : 'false'}
                                             draggable
@@ -315,7 +294,9 @@ export function DashboardBoardWorkspace(props: Props) {
                                             onDrop={e => onDropToCard(card.id, e)}
                                         >
                                         <span className="dashboard-board-card-title">{card.title}</span>
-                                        <span className="dashboard-board-card-meta">kanban block • saved</span>
+                                        {card.summary ? (
+                                            <span className="dashboard-board-card-summary" title={card.summary}>{card.summary}</span>
+                                        ) : null}
                                         <div className="dashboard-board-card-instance-slot" data-empty={assignedChip ? 'false' : 'true'}>
                                             {assignedChip ? (
                                                 <div
@@ -331,15 +312,16 @@ export function DashboardBoardWorkspace(props: Props) {
                                                 >
                                                     <span className="dashboard-board-card-instance-port">:{assignedChip.port}</span>
                                                     <span className="dashboard-board-card-instance-label">{assignedChip.label}</span>
-                                                    {assignedChip.activity ? (
-                                                        <span className="dashboard-board-card-instance-activity">{assignedChip.activity}</span>
-                                                    ) : null}
                                                     <button
                                                         type="button"
                                                         className="dashboard-board-card-instance-detach"
                                                         onClick={() => void onDetachInstance(card.id)}
-                                                        aria-label="Detach instance from card"
-                                                    >Detach</button>
+                                                        aria-label={`Detach :${assignedChip.port} from card`}
+                                                        title="Detach instance"
+                                                    >-</button>
+                                                    {assignedChip.activity ? (
+                                                        <span className="dashboard-board-card-instance-activity" title={assignedChip.activity}>{assignedChip.activity}</span>
+                                                    ) : null}
                                                 </div>
                                             ) : (
                                                 <span className="dashboard-board-card-instance-empty">Drop a running instance here</span>
@@ -354,18 +336,28 @@ export function DashboardBoardWorkspace(props: Props) {
                                                     type="button"
                                                     className="dashboard-board-card-action"
                                                     onMouseDown={e => e.stopPropagation()}
+                                                    onClick={() => setDialogCardId(card.id)}
+                                                    aria-label="Open card details"
+                                                    title="Open"
+                                                ><CardActionIcon kind="open" /></button>
+                                                <button
+                                                    type="button"
+                                                    className="dashboard-board-card-action"
+                                                    onMouseDown={e => e.stopPropagation()}
                                                     onClick={() => setMovePopoverFor(prev => prev === card.id ? null : card.id)}
                                                     aria-haspopup="menu"
                                                     aria-expanded={movePopoverFor === card.id}
                                                     aria-label="Move card"
-                                                >Move</button>
+                                                    title="Move"
+                                                ><CardActionIcon kind="move" /></button>
                                                 <button
                                                     type="button"
                                                     className="dashboard-board-card-action"
                                                     data-danger="true"
                                                     onClick={() => void onDelete(card.id)}
                                                     aria-label="Delete card"
-                                                >Delete</button>
+                                                    title="Delete"
+                                                ><CardActionIcon kind="delete" /></button>
                                                 {movePopoverFor === card.id && (
                                                     <div ref={popoverRef} className="dashboard-board-popover" role="menu">
                                                         {BOARD_LANES.map(l => (
@@ -426,6 +418,12 @@ export function DashboardBoardWorkspace(props: Props) {
                     );
                 })}
             </div>
+            <DashboardBoardTaskDialog
+                card={dialogCard}
+                busy={dialogBusy}
+                onClose={() => setDialogCardId(null)}
+                onSave={onSaveCardDetails}
+            />
         </section>
     );
 }

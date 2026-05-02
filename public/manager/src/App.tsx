@@ -30,6 +30,7 @@ import { DashboardBoardSidebar, type BoardLane } from './dashboard-board/Dashboa
 import { DashboardBoardWorkspace } from './dashboard-board/DashboardBoardWorkspace';
 import { DashboardScheduleSidebar, type ScheduleGroup } from './dashboard-schedule/DashboardScheduleSidebar';
 import { DashboardScheduleWorkspace } from './dashboard-schedule/DashboardScheduleWorkspace';
+import { SCHEDULE_WORKSPACE_ENABLED, normalizeSidebarModeForBuild } from './dashboard-features';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
 import { useDashboardView } from './hooks/useDashboardView';
 import { useActivityUnread } from './hooks/useActivityUnread';
@@ -206,7 +207,9 @@ export function App() {
                 view.setSidebarCollapsed(ui.sidebarCollapsed);
                 view.setActivityDockCollapsed(ui.activityDockCollapsed);
                 view.setActivityDockHeight(ui.activityDockHeight);
-                view.setSidebarMode(ui.sidebarMode);
+                const sidebarMode = normalizeSidebarModeForBuild(ui.sidebarMode);
+                view.setSidebarMode(sidebarMode);
+                if (sidebarMode !== ui.sidebarMode) void saveUi({ sidebarMode });
                 view.setNotesSelectedPath(ui.notesSelectedPath);
                 view.setNotesViewMode(ui.notesViewMode);
                 view.setNotesAuthoringMode(ui.notesAuthoringMode ?? 'plain');
@@ -314,7 +317,8 @@ export function App() {
     }
 
     function handleSidebarModeChange(mode: DashboardSidebarMode): void {
-        view.setSidebarMode(mode); void saveUi({ sidebarMode: mode });
+        const sidebarMode = normalizeSidebarModeForBuild(mode);
+        view.setSidebarMode(sidebarMode); void saveUi({ sidebarMode });
     }
 
     function handleNotesSelectedPathChange(path: string | null): void {
@@ -477,15 +481,15 @@ export function App() {
                         inspectorHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
                         navigator={(
                             <>
-                                <SidebarRail onlineCount={summary.online || 0} collapsed={view.sidebarCollapsed} mode={view.sidebarMode} onModeChange={handleSidebarModeChange} onToggleSidebar={handleSidebarToggle} helpOpen={helpOpen} onToggleHelp={() => setHelpOpen(open => !open)} />
+                                <SidebarRail onlineCount={summary.online || 0} collapsed={view.sidebarCollapsed} mode={view.sidebarMode} scheduleWorkspaceEnabled={SCHEDULE_WORKSPACE_ENABLED} onModeChange={handleSidebarModeChange} onToggleSidebar={handleSidebarToggle} helpOpen={helpOpen} onToggleHelp={() => setHelpOpen(open => !open)} />
                                 <div id="manager-sidebar-list" className="manager-sidebar-list">
                                     {view.sidebarMode === 'settings' ? (
                                         <DashboardSettingsSidebar activeSection={dashboardSettingsSection} locale={view.locale} onSectionChange={setDashboardSettingsSection} />
                                     ) : view.sidebarMode === 'notes' ? (
                                         <NotesSidebar selectedPath={view.notesSelectedPath} dirtyPath={notesDirtyPath} treeWidth={view.notesTreeWidth} onSelectedPathChange={handleNotesSelectedPathChange} />
                                     ) : view.sidebarMode === 'board' ? (
-                                        <DashboardBoardSidebar activeLane={boardLane} onLaneChange={setBoardLane} instances={instances} selectedPort={selectedInstance?.port ?? null} />
-                                    ) : view.sidebarMode === 'schedule' ? (
+                                        <DashboardBoardSidebar activeLane={boardLane} onLaneChange={setBoardLane} instances={instances} titlesByPort={messageActivity.titlesByPort} busyPorts={messageActivity.busyPorts} />
+                                    ) : SCHEDULE_WORKSPACE_ENABLED && view.sidebarMode === 'schedule' ? (
                                         <DashboardScheduleSidebar activeGroup={scheduleGroup} onGroupChange={setScheduleGroup} />
                                     ) : (
                                         <InstanceNavigator active={selectedInstance} hiddenCount={instances.filter(instance => instance.hidden).length} collapsed={view.sidebarCollapsed}>
@@ -525,9 +529,13 @@ export function App() {
                                     <WorkspaceSurface active={view.sidebarMode === 'board'}>
                                         <DashboardBoardWorkspace active={view.sidebarMode === 'board'} activeLane={boardLane} instances={instances} selectedPort={selectedInstance?.port ?? null} titlesByPort={messageActivity.titlesByPort} busyPorts={messageActivity.busyPorts} />
                                     </WorkspaceSurface>
-                                    <WorkspaceSurface active={view.sidebarMode === 'schedule'}>
-                                        <DashboardScheduleWorkspace active={view.sidebarMode === 'schedule'} activeGroup={scheduleGroup} busyPorts={messageActivity.busyPorts} />
-                                    </WorkspaceSurface>
+                                    {SCHEDULE_WORKSPACE_ENABLED ? (
+                                        <>
+                                            <WorkspaceSurface active={view.sidebarMode === 'schedule'}>
+                                                <DashboardScheduleWorkspace active={view.sidebarMode === 'schedule'} activeGroup={scheduleGroup} busyPorts={messageActivity.busyPorts} />
+                                            </WorkspaceSurface>
+                                        </>
+                                    ) : null}
                                 </div>
                             </div>
                         )}

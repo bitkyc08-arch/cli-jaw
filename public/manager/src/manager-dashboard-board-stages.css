@@ -1,0 +1,26 @@
+/* Board stage color system. Kept separate so core board CSS stays under 500 lines. */
+
+.dashboard-board-lane[data-lane="inbox"] {
+    --board-lane-color: #64748b;
+    --board-lane-soft: color-mix(in srgb, #64748b 12%, transparent);
+}
+
+.dashboard-board-lane[data-lane="planning"] {
+    --board-lane-color: #2563eb;
+    --board-lane-soft: color-mix(in srgb, #2563eb 12%, transparent);
+}
+
+.dashboard-board-lane[data-lane="working"] {
+    --board-lane-color: #0891b2;
+    --board-lane-soft: color-mix(in srgb, #0891b2 12%, transparent);
+}
+
+.dashboard-board-lane[data-lane="blocked"] {
+    --board-lane-color: #dc2626;
+    --board-lane-soft: color-mix(in srgb, #dc2626 12%, transparent);
+}
+
+.dashboard-board-lane[data-lane="done"] {
+    --board-lane-color: #16a34a;
+    --board-lane-soft: color-mix(in srgb, #16a34a 12%, transparent);
+}

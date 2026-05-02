@@ -3,6 +3,8 @@ export type DashboardTaskLane = 'inbox' | 'doing' | 'blocked' | 'review' | 'done
 export type DashboardTask = {
     id: string;
     title: string;
+    summary: string | null;
+    detail: string | null;
     lane: DashboardTaskLane;
     port: number | null;
     threadKey: string | null;
@@ -14,6 +16,8 @@ export type DashboardTask = {
 
 export type DashboardTaskInput = {
     title: string;
+    summary?: string | null;
+    detail?: string | null;
     lane?: DashboardTaskLane;
     port?: number | null;
     threadKey?: string | null;
@@ -25,6 +29,14 @@ export type DashboardTaskPatch = Partial<Omit<DashboardTaskInput, 'source'>>;
 
 const BASE = '/api/dashboard/board';
 
+function normalizeTask(task: DashboardTask): DashboardTask {
+    return {
+        ...task,
+        summary: task.summary ?? null,
+        detail: task.detail ?? null,
+    };
+}
+
 async function asJson<T>(res: Response): Promise<T> {
     if (!res.ok) {
         const body = await res.text().catch(() => '');
@@ -34,9 +46,9 @@ async function asJson<T>(res: Response): Promise<T> {
 }
 
 export async function listTasks(): Promise<DashboardTask[]> {
-    const res = await fetch(`${BASE}/tasks`, { credentials: 'same-origin' });
+    const res = await fetch(`${BASE}/tasks`, { credentials: 'same-origin', cache: 'no-store' });
     const body = await asJson<{ ok: boolean; tasks?: DashboardTask[] }>(res);
-    return Array.isArray(body.tasks) ? body.tasks : [];
+    return Array.isArray(body.tasks) ? body.tasks.map(normalizeTask) : [];
 }
 
 export async function createTask(input: DashboardTaskInput): Promise<DashboardTask> {
@@ -47,7 +59,7 @@ export async function createTask(input: DashboardTaskInput): Promise<DashboardTa
         body: JSON.stringify(input),
     });
     const body = await asJson<{ ok: boolean; task: DashboardTask }>(res);
-    return body.task;
+    return normalizeTask(body.task);
 }
 
 export async function updateTask(id: string, patch: DashboardTaskPatch): Promise<DashboardTask> {
@@ -58,7 +70,7 @@ export async function updateTask(id: string, patch: DashboardTaskPatch): Promise
         body: JSON.stringify(patch),
     });
     const body = await asJson<{ ok: boolean; task: DashboardTask }>(res);
-    return body.task;
+    return normalizeTask(body.task);
 }
 
 export async function deleteTask(id: string): Promise<void> {
@@ -84,5 +96,5 @@ export async function createTaskFromMessage(input: FromMessageInput): Promise<Da
         body: JSON.stringify(input),
     });
     const body = await asJson<{ ok: boolean; task: DashboardTask }>(res);
-    return body.task;
+    return normalizeTask(body.task);
 }

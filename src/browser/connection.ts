@@ -284,9 +284,15 @@ export async function launchChrome(
     const noSandbox = process.env.CHROME_NO_SANDBOX === '1';
     const headless = launchPolicy.headless;
 
+    // Minimum window size to prevent responsive layout shifts
+    // that cause Playwright "element is not stable" errors
+    const minWidth = 1280;
+    const minHeight = 720;
+
     chromeProc = spawn(chrome, [
         `--remote-debugging-port=${port}`,
         `--user-data-dir=${PROFILE_DIR}`,
+        `--window-size=${minWidth},${minHeight}`,
         '--no-first-run', '--no-default-browser-check',
         '--disable-dev-shm-usage',
         '--disable-background-networking',

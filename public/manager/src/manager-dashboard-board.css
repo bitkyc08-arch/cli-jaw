@@ -45,6 +45,35 @@
     gap: 2px;
 }
 
+.dashboard-board-sidebar-running {
+    display: grid;
+    gap: 6px;
+    padding: 8px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.dashboard-board-sidebar-section-title {
+    padding: 8px 8px 4px;
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.dashboard-board-sidebar-empty {
+    margin: 0;
+    padding: 6px 2px;
+    color: var(--ink-muted);
+    font-size: 12px;
+    font-style: italic;
+}
+
+.dashboard-board-sidebar-running-list {
+    display: grid;
+    gap: 6px;
+}
+
 .dashboard-board-sidebar-item {
     display: block;
     width: 100%;
@@ -97,24 +126,28 @@
 .dashboard-board-lanes {
     display: grid;
     grid-template-columns: repeat(5, minmax(200px, 1fr));
+    align-items: start;
     gap: 12px;
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
+    min-height: max-content;
 }
 
 .dashboard-board-lane {
+    --board-lane-color: var(--accent);
+    --board-lane-soft: var(--accent-soft);
     display: flex;
     flex-direction: column;
     background: var(--surface-panel);
     border: 1px solid var(--border-subtle);
+    border-top: 3px solid var(--board-lane-color);
     border-radius: 10px;
     padding: 10px;
     min-height: 220px;
 }
 
 .dashboard-board-lane.is-focused {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent-soft);
+    border-color: var(--board-lane-color);
+    box-shadow: 0 0 0 1px var(--board-lane-soft);
 }
 
 .dashboard-board-lane-header {
@@ -131,16 +164,16 @@
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.05em;
-    color: var(--ink-secondary);
+    color: var(--board-lane-color);
 }
 
 .dashboard-board-lane-count {
     font-size: 11px;
-    color: var(--ink-muted);
-    background: var(--surface-raised);
+    color: var(--board-lane-color);
+    background: var(--board-lane-soft);
     padding: 1px 6px;
     border-radius: 999px;
-    border: 1px solid var(--border-subtle);
+    border: 1px solid color-mix(in srgb, var(--board-lane-color) 30%, transparent);
 }
 
 .dashboard-board-lane-cards {
@@ -150,7 +183,7 @@
     display: flex;
     flex-direction: column;
     gap: 6px;
-    flex: 1;
+    flex: 0 0 auto;
 }
 
 /* ---------- Card ---------- */
@@ -158,8 +191,9 @@
     position: relative;
     background: var(--surface-raised);
     border: 1px solid var(--border-subtle);
+    border-left: 3px solid var(--board-lane-color);
     border-radius: 8px;
-    padding: 8px 10px;
+    padding: 8px 10px 8px 9px;
     font-size: 13px;
     display: flex;
     flex-direction: column;
@@ -187,10 +221,13 @@
     word-break: break-word;
 }
 
-.dashboard-board-card-meta {
-    font-size: 11px;
-    color: var(--ink-muted);
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+.dashboard-board-card-summary {
+    color: var(--ink-secondary);
+    font-size: 12px;
+    line-height: 1.35;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .dashboard-board-card-instance-slot {
@@ -215,11 +252,12 @@
 
 .dashboard-board-card-instance {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    gap: 4px 6px;
+    grid-template-columns: auto minmax(0, 1fr) 24px;
+    gap: 6px;
     align-items: center;
     width: 100%;
-    padding: 5px 7px;
+    min-width: 0;
+    padding: 5px 6px 5px 7px;
     border: 1px solid var(--border-subtle);
     border-radius: 6px;
     background: var(--surface-raised);
@@ -249,21 +287,28 @@
 .dashboard-board-card-instance-activity {
     grid-column: 1 / -1;
     min-width: 0;
+    padding-left: 14px;
     color: var(--ink-secondary);
     font-size: 11px;
+    line-height: 1.3;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
 
 .dashboard-board-card-instance-detach {
+    width: 24px;
+    height: 24px;
+    display: inline-grid;
+    place-items: center;
     background: transparent;
     border: 1px solid var(--border-subtle);
     border-radius: 5px;
     color: var(--ink-muted);
     cursor: pointer;
-    font-size: 10px;
-    padding: 2px 6px;
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
 }
 
 .dashboard-board-card-instance-detach:hover {
@@ -273,9 +318,12 @@
 }
 
 .dashboard-board-card-actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 3;
     display: flex;
     gap: 4px;
-    margin-top: 4px;
     align-items: center;
     opacity: 0;
     transition: opacity 0.12s ease;
@@ -367,15 +415,24 @@
 /* ---------- Card action buttons ---------- */
 .dashboard-board-card-action,
 .dashboard-board-card-pin {
+    width: 24px;
+    height: 24px;
+    display: inline-grid;
+    place-items: center;
     background: transparent;
     border: 1px solid var(--border-subtle);
     color: var(--ink-secondary);
     border-radius: 5px;
-    padding: 2px 8px;
-    font-size: 11px;
+    padding: 0;
+    font-size: 0;
     cursor: pointer;
-    line-height: 1.4;
+    line-height: 1;
     transition: border-color 0.1s ease, color 0.1s ease, background-color 0.1s ease;
+}
+
+.dashboard-board-card-action svg,
+.dashboard-board-card-pin svg {
+    display: block;
 }
 
 .dashboard-board-card-action:hover,
@@ -433,107 +490,4 @@
 .dashboard-board-popover-item.is-current:hover {
     background: transparent;
     color: var(--ink-muted);
-}
-
-/* ---------- Running instances pool (2026-05-02 redesign) ---------- */
-.dashboard-board-running-pool {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    align-items: center;
-    padding: 10px 14px;
-    margin: 0 0 12px;
-    background: var(--surface-panel);
-    border: 1px solid var(--border-subtle);
-    border-radius: 10px;
-}
-.dashboard-board-running-pool[data-empty="true"] {
-    background: transparent;
-    border-style: dashed;
-}
-.dashboard-board-running-pool-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--ink-muted);
-    padding-right: 4px;
-}
-.dashboard-board-running-pool-empty {
-    font-size: 12px;
-    color: var(--ink-muted);
-    font-style: italic;
-}
-.dashboard-board-running-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    background: var(--surface-raised);
-    border: 1px solid var(--border-subtle);
-    border-radius: 999px;
-    cursor: grab;
-    user-select: none;
-    font-size: 12px;
-    color: var(--ink-primary);
-    transition: transform 0.08s ease, box-shadow 0.08s ease;
-}
-.dashboard-board-running-chip:hover {
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
-    transform: translateY(-1px);
-}
-.dashboard-board-running-chip:active {
-    cursor: grabbing;
-}
-.dashboard-board-running-chip-port {
-    font-family: ui-monospace, SFMono-Regular, monospace;
-    font-size: 11px;
-    color: var(--ink-muted);
-}
-.dashboard-board-running-chip-label {
-    font-weight: 500;
-}
-.dashboard-board-running-chip-activity {
-    color: var(--ink-secondary);
-    max-width: 220px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-.dashboard-board-running-chip-state {
-    font-size: 10px;
-    text-transform: uppercase;
-    padding: 1px 6px;
-    border-radius: 4px;
-    background: var(--accent-soft);
-    color: var(--accent);
-}
-.dashboard-board-running-chip-state[data-state="busy"] {
-    background: var(--accent-soft);
-    color: var(--accent);
-}
-.dashboard-board-running-chip-state[data-state="error"] {
-    background: rgba(220, 38, 38, 0.12);
-    color: rgb(220, 38, 38);
-}
-.dashboard-board-running-chip-state[data-state="online"] {
-    background: rgba(16, 185, 129, 0.12);
-    color: rgb(16, 185, 129);
-}
-
-/* Drop-target highlight on lanes */
-.dashboard-board-lane.is-drop-target {
-    outline: 2px dashed var(--accent);
-    outline-offset: -2px;
-    background: var(--accent-soft);
-}
-
-.dashboard-board-card.is-instance-drop-target {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px var(--accent-soft);
-}
-
-.dashboard-board-card.is-instance-drop-target .dashboard-board-card-instance-slot {
-    border-color: var(--accent);
-    background: var(--accent-soft);
 }

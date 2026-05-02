@@ -14,6 +14,8 @@ function sendErr(res: Response, status: number, code: string, error: unknown) {
 function pickInput(body: Record<string, unknown>): DashboardTaskInput {
     return {
         title: typeof body.title === 'string' ? body.title : '',
+        summary: typeof body.summary === 'string' ? body.summary : null,
+        detail: typeof body.detail === 'string' ? body.detail : null,
         lane: typeof body.lane === 'string' ? body.lane as DashboardTaskInput['lane'] : undefined,
         port: typeof body.port === 'number' ? body.port : null,
         threadKey: typeof body.threadKey === 'string' ? body.threadKey : null,
@@ -25,6 +27,8 @@ function pickInput(body: Record<string, unknown>): DashboardTaskInput {
 function pickPatch(body: Record<string, unknown>): DashboardTaskPatch {
     const patch: DashboardTaskPatch = {};
     if (typeof body.title === 'string') patch.title = body.title;
+    if ('summary' in body) patch.summary = typeof body.summary === 'string' ? body.summary : null;
+    if ('detail' in body) patch.detail = typeof body.detail === 'string' ? body.detail : null;
     if (typeof body.lane === 'string') patch.lane = body.lane as DashboardTaskPatch['lane'];
     if ('port' in body) patch.port = typeof body.port === 'number' ? body.port : null;
     if ('threadKey' in body) patch.threadKey = typeof body.threadKey === 'string' ? body.threadKey : null;

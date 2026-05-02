@@ -4,6 +4,7 @@ type SidebarRailProps = {
     onlineCount: number;
     collapsed: boolean;
     mode: DashboardSidebarMode;
+    scheduleWorkspaceEnabled: boolean;
     onModeChange: (mode: DashboardSidebarMode) => void;
     onToggleSidebar: () => void;
     helpOpen: boolean;
@@ -123,16 +124,18 @@ export function SidebarRail(props: SidebarRailProps) {
             >
                 <BoardIcon />
             </button>
-            <button
-                className={`rail-button rail-workspace-button${props.mode === 'schedule' ? ' is-active' : ''}`}
-                type="button"
-                onClick={() => props.onModeChange('schedule')}
-                aria-label="Schedule"
-                aria-pressed={props.mode === 'schedule'}
-                title="Schedule"
-            >
-                <ScheduleIcon />
-            </button>
+            {props.scheduleWorkspaceEnabled ? (
+                <button
+                    className={`rail-button rail-workspace-button${props.mode === 'schedule' ? ' is-active' : ''}`}
+                    type="button"
+                    onClick={() => props.onModeChange('schedule')}
+                    aria-label="Schedule"
+                    aria-pressed={props.mode === 'schedule'}
+                    title="Schedule"
+                >
+                    <ScheduleIcon />
+                </button>
+            ) : null}
             <button
                 className={`rail-button rail-workspace-button${props.mode === 'notes' ? ' is-active' : ''}`}
                 type="button"

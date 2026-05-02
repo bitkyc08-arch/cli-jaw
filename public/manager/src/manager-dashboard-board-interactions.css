@@ -1,0 +1,274 @@
+/* ---------- Running instances pool ---------- */
+.dashboard-board-running-pool {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    padding: 10px 14px;
+    margin: 0 0 12px;
+    background: var(--surface-panel);
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+}
+
+.dashboard-board-running-pool[data-empty="true"] {
+    background: transparent;
+    border-style: dashed;
+}
+
+.dashboard-board-running-pool-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--ink-muted);
+    padding-right: 4px;
+}
+
+.dashboard-board-running-pool-empty {
+    font-size: 12px;
+    color: var(--ink-muted);
+    font-style: italic;
+}
+
+.dashboard-board-running-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    background: var(--surface-raised);
+    border: 1px solid var(--border-subtle);
+    border-radius: 999px;
+    cursor: grab;
+    user-select: none;
+    font-size: 12px;
+    color: var(--ink-primary);
+    transition: transform 0.08s ease, box-shadow 0.08s ease;
+}
+
+.dashboard-board-running-chip:hover {
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+.dashboard-board-running-chip:active {
+    cursor: grabbing;
+}
+
+.dashboard-board-running-chip-port {
+    font-family: ui-monospace, SFMono-Regular, monospace;
+    font-size: 11px;
+    color: var(--ink-muted);
+}
+
+.dashboard-board-running-chip-label {
+    font-weight: 500;
+}
+
+.dashboard-board-running-chip-activity {
+    color: var(--ink-secondary);
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dashboard-board-running-chip-state {
+    font-size: 10px;
+    text-transform: uppercase;
+    padding: 1px 6px;
+    border-radius: 4px;
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.dashboard-board-running-chip-state[data-state="busy"] {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.dashboard-board-running-chip-state[data-state="error"] {
+    background: rgba(220, 38, 38, 0.12);
+    color: rgb(220, 38, 38);
+}
+
+.dashboard-board-running-chip-state[data-state="online"] {
+    background: rgba(16, 185, 129, 0.12);
+    color: rgb(16, 185, 129);
+}
+
+.dashboard-board-sidebar-running .dashboard-board-running-chip {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    width: 100%;
+    gap: 4px 6px;
+    border-radius: 7px;
+    padding: 6px 8px;
+}
+
+.dashboard-board-sidebar-running .dashboard-board-running-chip-label {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.dashboard-board-sidebar-running .dashboard-board-running-chip-activity {
+    grid-column: 1 / -1;
+    max-width: none;
+}
+
+/* ---------- Drag targets ---------- */
+.dashboard-board-lane.is-drop-target {
+    outline: 2px dashed var(--accent);
+    outline-offset: -2px;
+    background: var(--accent-soft);
+}
+
+.dashboard-board-card.is-instance-drop-target {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.dashboard-board-card.is-instance-drop-target .dashboard-board-card-instance-slot {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+}
+
+/* ---------- Card dialog ---------- */
+.dashboard-board-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 70;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(12, 18, 28, 0.38);
+}
+
+.dashboard-board-dialog {
+    width: min(720px, 100%);
+    max-height: min(760px, calc(100dvh - 48px));
+    display: grid;
+    grid-template-rows: auto minmax(0, auto) minmax(0, auto) minmax(0, 1fr) auto;
+    gap: 12px;
+    padding: 18px;
+    overflow: auto;
+    background: var(--surface-overlay);
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    box-shadow: 0 22px 80px rgba(0, 0, 0, 0.28);
+    color: var(--ink-primary);
+}
+
+.dashboard-board-dialog-header,
+.dashboard-board-dialog-footer,
+.dashboard-board-dialog-actions {
+    display: flex;
+    align-items: center;
+}
+
+.dashboard-board-dialog-header {
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.dashboard-board-dialog-kicker {
+    margin: 0 0 4px;
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.dashboard-board-dialog h3 {
+    margin: 0;
+    font-size: 18px;
+}
+
+.dashboard-board-dialog-icon-button {
+    width: 32px;
+    height: 32px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    font-size: 18px;
+}
+
+.dashboard-board-dialog-field {
+    display: grid;
+    gap: 6px;
+    color: var(--ink-secondary);
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.dashboard-board-dialog-field input,
+.dashboard-board-dialog-field textarea {
+    width: 100%;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    background: var(--surface-raised);
+    color: var(--ink-primary);
+    font: inherit;
+    font-weight: 400;
+    padding: 9px 10px;
+    outline: none;
+}
+
+.dashboard-board-dialog-field textarea {
+    min-height: 220px;
+    resize: vertical;
+    line-height: 1.5;
+}
+
+.dashboard-board-dialog-field input:focus,
+.dashboard-board-dialog-field textarea:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-soft);
+}
+
+.dashboard-board-dialog-footer {
+    justify-content: space-between;
+    gap: 12px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.dashboard-board-dialog-storage {
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.dashboard-board-dialog-actions {
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.dashboard-board-dialog-actions button {
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--ink-secondary);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 7px 12px;
+}
+
+.dashboard-board-dialog-actions button[type="submit"] {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--surface-base);
+}
+
+.dashboard-board-dialog-actions button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
