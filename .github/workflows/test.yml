@@ -60,12 +60,8 @@ jobs:
         run: npx tsc
 
       - name: Run tests
-        run: npx tsx --import ./tests/setup/test-home.ts --test tests/*.test.ts $(find tests/unit -name '*.test.ts' ! -name 'tool-ui.test.ts' ! -name 'streaming-render.test.ts' | sort)
+        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test-force-exit --test tests/*.test.ts tests/unit/*.test.ts
         timeout-minutes: 3
-
-      - name: Run mock.module tests
-        run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/tool-ui.test.ts tests/unit/streaming-render.test.ts
-        timeout-minutes: 2
 
       - name: Build frontend
         run: npm run build:frontend
