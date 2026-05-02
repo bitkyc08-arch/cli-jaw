@@ -2,13 +2,14 @@
 
 # CLI-JAW
 
-### すでに契約している AI サブスクを、ひとつのアシスタントへ。
+### 契約中の AI サブスクを、ひとつのアシスタントに。
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
 [![Docker](https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white)](#-docker)
+[![v2.0.0](https://img.shields.io/badge/v2.0.0-GA-green)](#200-の新機能)
 
 [English](README.md) / [한국어](README.ko.md) / [中文](README.zh-CN.md) / **日本語**
 
@@ -16,56 +17,119 @@
 
 </div>
 
+---
+
+## CLI-JAW とは
+
+CLI-JAW は、複数の AI サブスクリプションをひとつの統一インターフェースにまとめるローカルファーストな AI アシスタントです。
+
+Claude Max、ChatGPT Pro、GitHub Copilot、Gemini Advanced -- すでに契約しているサービスを OAuth でつなぎ、Web UI・ターミナル・Telegram・Discord から同じアシスタントにアクセスできます。トークン課金は発生しません。月額サブスクリプションをそのまま使います。
+
+3 層メモリでコンテキストを保持し、100 以上のスキルでオフィス文書・ブラウザ操作・コード生成をカバー。PABCD オーケストレーションで複雑なタスクも段階的に実行します。
+
 <table>
-<tr><td><b>既存のサブスクを統合</b></td><td>Claude Max、ChatGPT Pro、Copilot、Gemini Advanced を OAuth 経由でルーティングします。OpenCode から任意のモデルも追加できます。token 単位の課金はありません。</td></tr>
-<tr><td><b>Manager dashboard</b></td><td>ローカルの JAW インスタンスをすべて追跡し、リアルタイム Web UI をプレビューし、ライト/ダークテーマを切り替え、ランタイム設定を確認し、管理対象セッションをひとつのブラウザワークスペースから開始または停止できます。</td></tr>
-<tr><td><b>Notes workspace</b></td><td>ダッシュボードのホーム配下にある Markdown vault です。フォルダ、名前変更/移動、未保存状態の表示、raw/split/preview モード、KaTeX、Mermaid、コードハイライトをサポートします。</td></tr>
-<tr><td><b>いつもの場所で使える</b></td><td>Manager dashboard、Web PWA、Mac WebView app、ターミナル TUI、音声対応 Telegram、Discord。どの入口でも同じアシスタントと同じメモリを使います。</td></tr>
-<tr><td><b>3-layer memory</b></td><td>History Block（直近のセッション）+ Memory Flush（episodes、daily logs）+ Soul and Task Snapshot（identity、semantic recall）。SQLite FTS5 の全文検索を使います。</td></tr>
-<tr><td><b>Multi-agent orchestration</b></td><td>PABCD は DB に永続化される 5 段階 FSM です。worker registry 付き Employee system、file-overlap detection 付き parallel subtasks に対応し、すべての phase をユーザーが承認します。</td></tr>
-<tr><td><b>Browser and desktop automation</b></td><td>Chrome CDP、vision-click、ChatGPT/Grok/Gemini 向け DOM reference、Codex App 経由の Computer Use 統合、SVG と interactive visualization 用の diagram skill を備えています。</td></tr>
-<tr><td><b>MCP install once, 5 engines</b></td><td><code>jaw mcp install</code> で Claude、Codex、Gemini、OpenCode、Copilot へ同時に同期します。設定ファイルはひとつだけです。</td></tr>
-<tr><td><b>多言語対応</b></td><td>English、Korean、Chinese、Japanese README。i18n Web UI。OfficeCLI による HWP/HWPX 韓国語オフィス文書サポート。</td></tr>
+<tr><td><b>サブスクを統合</b></td><td>Claude Max、ChatGPT Pro、Copilot、Gemini Advanced を OAuth 経由でルーティング。OpenCode で任意のモデルも追加可能。トークン単位の課金なし。</td></tr>
+<tr><td><b>Manager ダッシュボード</b></td><td>ローカルの全 JAW インスタンスを一覧・プレビュー・起動/停止。ライト/ダークテーマ切り替え、ランタイム設定の確認まで、ブラウザひとつで完結します。</td></tr>
+<tr><td><b>Notes ワークスペース</b></td><td>ダッシュボード内蔵の Markdown vault。フォルダ管理、KaTeX 数式、Mermaid 図、コードハイライト対応。</td></tr>
+<tr><td><b>どこからでもアクセス</b></td><td>Web PWA、Mac アプリ、ターミナル TUI、Telegram（音声対応）、Discord。どの入口でも同じアシスタント・同じメモリ。</td></tr>
+<tr><td><b>3 層メモリ</b></td><td>History Block + Memory Flush + Soul & Task Snapshot。SQLite FTS5 で全文検索。</td></tr>
+<tr><td><b>マルチエージェント</b></td><td>PABCD は DB 永続化の 5 段階 FSM。Employee システムで複数 CLI を連携。全フェーズがユーザー承認制。</td></tr>
+<tr><td><b>ブラウザ & デスクトップ自動化</b></td><td>Chrome CDP、vision-click、Computer Use 統合。SVG ダイアグラムの生成もチャット内で。</td></tr>
+<tr><td><b>MCP 一括管理</b></td><td><code>jaw mcp install</code> で 5 エンジンの設定を同時同期。JSON を 5 つ編集する必要なし。</td></tr>
 </table>
 
 ---
 
-## クイックリンク
+## 2.0.0 の新機能
 
-- [インストール](#-インストール--実行) · [認証](#-認証) · [利用できる場所](#-利用できる場所)
-- [エンジンルーティング](#-エンジンルーティング) · [メモリ](#-メモリ) · [PABCD](#-オーケストレーション--pabcd) · [スキル](#-スキル)
-- [ブラウザ自動化](#-ブラウザ--デスクトップ自動化) · [MCP](#-mcp) · [メッセージング](#-メッセージング)
-- [CLI コマンド](#%EF%B8%8F-cli-コマンド) · [Docker](#-docker) · [ドキュメント](#-ドキュメント) · [比較](#%EF%B8%8F-比較)
+v2.0.0 GA では、ダッシュボードを中心にアーキテクチャを大幅に刷新しました。
+
+### Manager ダッシュボード
+
+マルチインスタンスを一画面で管理するコントロールプレーンです。
+
+| 領域 | できること |
+|---|---|
+| **Navigator** | アクティブ/実行中/オフラインのインスタンスをグループ化。CLI・モデルラベル、カスタム名、ポート番号を表示し、プレビュー/起動/停止/再起動をワンクリックで実行 |
+| **ライブプレビュー** | 選択したインスタンスの Web UI をプロキシ経由で埋め込み表示。リアルタイムで状態を確認しながら操作できます |
+| **ランタイム設定** | 現在の CLI、モデル、推論レベル、権限モード、作業ディレクトリ、Employee、スキルなどを一覧表示 |
+
+### Notes ワークスペース
+
+ダッシュボードのホーム配下に組み込まれた Markdown vault です。
+
+- フォルダツリーによるファイル管理
+- 名前変更・ドラッグ&ドロップ移動
+- 未保存状態の表示（dirty-state markers）
+- Raw / Split / Preview の 3 モード切り替え
+- KaTeX 数式レンダリング
+- Mermaid 図表レンダリング
+- シンタックスハイライト付きコードブロック
+
+### Kanban ボード
+
+実行中のインスタンスをドラッグしてカード化し、タスクの進捗を視覚的に管理できます。インスタンスの状態がリアルタイムでカードに反映されます。
+
+### Employee システム
+
+メインの CLI（Boss）が他の AI CLI を「従業員（Employee）」として呼び出す、マルチエージェント連携の仕組みです。詳細は [Employee システム](#employee-システム) セクションをご覧ください。
+
+### レスポンシブモバイルレイアウト
+
+ダッシュボードはモバイルとタブレットに最適化されたレスポンシブデザインを備えています。ナビゲーション、プレビュー、設定パネルが画面サイズに合わせて自動的に再配置されます。
 
 ---
 
-## Manager dashboard
+## 2 行でインストール
 
-Dashboard は、CLI-JAW をローカルで動かすためのメインコントロールプレーンです。インスタンス検出、プレビュー、設定、従業員、Notes を一か所にまとめつつ、各インスタンスはそれぞれのホーム、データベース、メモリ、ライフサイクルメタデータ、作業ディレクトリを保持します。
+```bash
+npm install -g cli-jaw
+jaw serve
+```
 
-| 領域 | 機能 |
-|---|---|
-| **Navigator** | アクティブ/実行中/オフラインのインスタンスをグループ化し、CLI とモデルのラベル、カスタム名、ポート、プレビュー/開く/起動/停止/再起動の直接操作を表示します |
-| **Live preview** | 選択したインスタンスの Web UI を Manager のプレビュープロキシ経由で埋め込みます。更新/開く操作とプレビュー切り替え付きです |
-| **Runtime settings** | 選択したインスタンスの現在の CLI、モデル、推論深度、権限モード、作業ディレクトリ、従業員、スキル、設定を表示します |
-| **Notes** | ダッシュボードローカルの markdown vault です。フォルダツリー、手動保存、フォルダへのドラッグ移動、名前変更、分割プレビュー、KaTeX、Mermaid、コードハイライトに対応します |
+**http://localhost:3457** を開いてください。Node.js 22+ と、以下の AI CLI のうち少なくともひとつの認証が必要です。
 
-リリース仕上げのために、まだ追加が必要なスクリーンショット:
+> `jaw service install` で OS 起動時の自動スタートを設定できます（systemd / launchd / Docker を自動検出）。
 
-1. 同じ 3 ペインレイアウトのダークテーマ dashboard。
-2. フォルダツリー、分割エディタ/プレビュー、レンダリング済み KaTeX/Mermaid/コードブロックを表示した Notes モード。
-3. レスポンシブナビゲーションが分かる mobile または narrow viewport dashboard。
+---
+
+## プラットフォーム別セットアップ
+
+### macOS
 
 <details>
-<summary>Windows を使っていますか？— WSL one-click setup</summary>
+<summary>ターミナルが初めての方 -- ワンクリックインストール</summary>
 
-**Step 1: WSL をインストール**（管理者 PowerShell）
+1. **Terminal** を開きます（`Cmd + Space` → `Terminal` と入力）
+2. 以下を貼り付けて Enter:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
+```
+
+3. 認証して起動:
+
+```bash
+copilot login
+jaw serve        # → http://localhost:3457
+```
+
+</details>
+
+Claude Code を使う場合の注意: Anthropic computer-use MCP が必要なら、ネイティブ Claude インストーラーを推奨します（`curl -fsSL https://claude.ai/install.sh | bash`）。npm/bun 経由の `claude` は `jaw doctor` が警告を出します。
+
+### Windows / WSL
+
+<details>
+<summary>WSL ワンクリックセットアップ</summary>
+
+**Step 1: WSL をインストール**（管理者権限の PowerShell）
 
 ```powershell
 wsl --install
 ```
 
-再起動したら、Start Menu から **Ubuntu** を開きます。
+再起動後、スタートメニューから **Ubuntu** を開きます。
 
 **Step 2: CLI-JAW をインストール**
 
@@ -73,7 +137,7 @@ wsl --install
 curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
 ```
 
-**Step 3: shell を再読み込みして起動**
+**Step 3: シェルを再読み込みして起動**
 
 ```bash
 source ~/.bashrc
@@ -84,73 +148,48 @@ jaw serve        # → http://localhost:3457
 <details>
 <summary>WSL トラブルシューティング</summary>
 
-| 問題 | 対処 |
+| 症状 | 対処 |
 |---|---|
-| `unzip: command not found` | installer を再実行します |
+| `unzip: command not found` | インストーラーを再実行 |
 | `jaw: command not found` | `source ~/.bashrc` |
 | Permission errors | `sudo chown -R $USER $(npm config get prefix)` |
 
 </details>
 </details>
 
-<details>
-<summary>ターミナルが初めてですか？— One-click install (macOS)</summary>
-
-1. **Terminal** を開きます（`Cmd + Space` → `Terminal` と入力）
-2. 次のコマンドを貼り付けて Enter を押します:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
-```
-
-3. 認証して起動します:
-
-```bash
-copilot login
-jaw serve        # → http://localhost:3457
-```
-
-</details>
-
----
-
-## 🚀 インストール & 実行
+### Linux
 
 ```bash
 npm install -g cli-jaw
 jaw serve
 ```
 
-**http://localhost:3457** を開きます。Node.js 22+ と、下記 AI CLI のうち少なくともひとつの認証が必要です。
-
-> `jaw service install` — 起動時の自動開始を設定します（systemd、launchd、Docker を自動検出）。
->
-> Claude Code note: Anthropic computer-use MCP が必要な場合は、native Claude installer を推奨します（`curl -fsSL https://claude.ai/install.sh | bash` または `claude install`）。`claude` が npm/bun 管理に見える場合、`jaw doctor` は警告を出します。
+systemd 環境なら `jaw service install` でサービス登録まで完了します。
 
 ---
 
-## 🔑 認証
+## 認証
 
-必要なのはひとつだけです。すでに契約している subscription を選んでください:
+ひとつあれば十分です。すでに契約しているサービスを選んでください。
 
 ```bash
-# Free
+# 無料
 copilot login        # GitHub Copilot
-opencode             # OpenCode — free models available
+opencode             # OpenCode -- 無料モデルあり
 
-# Paid (monthly subscription)
-claude auth          # Anthropic Claude Max (computer-use MCP users: native Claude install recommended)
-codex login          # OpenAI ChatGPT Pro (npm/bun installs are fine)
+# 有料（月額サブスクリプション）
+claude auth          # Anthropic Claude Max
+codex login          # OpenAI ChatGPT Pro
 gemini               # Google Gemini Advanced
 ```
 
-状態確認: `jaw doctor`
+認証状態の確認は `jaw doctor` で行えます。
 
 <details>
-<summary>jaw doctor output の例</summary>
+<summary>jaw doctor の出力例</summary>
 
 ```
-🦈 CLI-JAW Doctor — 12 checks
+🦈 CLI-JAW Doctor -- 12 checks
 
  ✅ Node.js        v22.15.0
  ✅ Claude CLI      installed
@@ -169,128 +208,162 @@ gemini               # Google Gemini Advanced
 
 ---
 
-## 🖥️ 利用できる場所
+## ダッシュボード
 
-CLI-JAW は 5 つの surface から使えます。どれを使っても、同じアシスタント、同じメモリ、同じ skills です。
+ダッシュボードは CLI-JAW のメインコントロールプレーンです。インスタンスの検出・プレビュー・設定・Employee・Notes をひとつの画面にまとめつつ、各インスタンスは独自のホームディレクトリ・DB・メモリ・作業ディレクトリを保持します。
 
-| Surface | できること |
-|---|---|
-| **Web PWA** | markdown/KaTeX/Mermaid rendering、virtual scroll、WS streaming、drag-and-drop file upload、voice recording、PABCD roadmap bar、i18n（English, Korean, Chinese, Japanese）、dark/light theme、IndexedDB による offline message cache を備えたフル UI |
-| **Mac WebView app** | `jaw serve` を native macOS app shell で包みます。ブラウザを開かず Dock からアクセスできます |
-| **Terminal TUI** | 複数行編集、slash-command autocomplete、overlay selectors、セッション永続化、resume classification |
-| **Telegram** | 音声メッセージ（multi-provider STT）、写真、ファイル。Scheduled task results を自動配信します。model/CLI switching 用 slash commands 付きです |
-| **Discord** | テキストとファイルのメッセージング、command sync、チャンネルとスレッドのルーティング、Agent 実行結果用 forwarder |
+### Navigator
 
----
+アクティブ/実行中/オフラインのインスタンスをグループ化して表示します。CLI とモデルのラベル、カスタム名、ポート番号が一目で分かり、プレビュー・起動・停止・再起動を直接操作できます。
 
-## 🔀 エンジンルーティング
+### ライブプレビュー
 
-5 つの CLI backend を、すでに支払っている OAuth subscription 経由でルーティングします。トークン単位の API 課金はありません。
+選択したインスタンスの Web UI を Manager のプレビュープロキシ経由で埋め込み表示します。更新・別ウィンドウで開く・プレビューの ON/OFF 切り替えが可能です。
 
-| CLI | Default model | Auth | Cost model |
-|---|---|---|---|
-| **Claude** | `opus-4-6` | `claude auth` | Claude Max subscription |
-| **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription |
-| **Gemini** | `gemini-3.1-pro-preview` | `gemini` | Gemini Advanced subscription |
-| **OpenCode** | `minimax-m2.7` | `opencode` | Free models available |
-| **Copilot** | `gpt-5-mini` | `copilot login` | Free tier available |
+### ランタイム設定
 
-**Fallback chain**: ある engine が rate limit にかかったり停止したりした場合、次の engine が自動で引き継ぎます。`/fallback [cli1 cli2...]` で設定します。
+選択中のインスタンスについて、現在のアクティブ CLI、モデル、推論レベル、権限モード、作業ディレクトリ、Employee、スキル、設定を確認できます。
 
-**OpenCode wildcard**: OpenRouter、local LLMs、任意の OpenAI-compatible API など、好きな model endpoint を接続できます。
+### Notes
 
-> エンジン切り替え: `/cli codex`。モデル切り替え: `/model gpt-5.5`。Web、Terminal、Telegram、Discord すべてで使えます。
+ダッシュボードに組み込まれた Markdown vault です。フォルダツリー、手動保存、ドラッグ&ドロップでのフォルダ移動、名前変更、Split プレビュー、KaTeX・Mermaid・コードハイライトに対応しています。
 
 ---
 
-## 🧠 メモリ
+## Employee システム
 
-3 つのレイヤーが、それぞれ異なるリコール範囲を担当します。
+Employee システムは、メインの CLI（Boss）が他の AI CLI を「従業員」として呼び出すマルチエージェント連携の仕組みです。
 
-| Layer | 保存するもの | 動作 |
+### 仕組み
+
+```
+ユーザー → jaw サーバー → Boss エージェント（メイン CLI）
+                           ├── 直接応答（単純なタスク）
+                           └── cli-jaw dispatch で Employee を呼び出し
+                                ├── Frontend（UI/CSS の修正）
+                                ├── Backend（API/DB の実装）
+                                └── 結果を Boss が統合して返答
+```
+
+### ディスパッチ
+
+```bash
+cli-jaw dispatch --agent "Backend" --task "API エンドポイントを検証してください"
+```
+
+各 Employee は独自の CLI セッションで動作し、結果は標準出力で Boss に返されます。Boss が結果を統合してユーザーに報告します。
+
+### 登録済み Employee の例
+
+| Employee | CLI | 担当領域 |
 |---|---|---|
-| **History Block** | 直近のセッションコンテキスト | `buildHistoryBlock()` — 直近 10 セッション、最大 8000 文字、working directory ごとにスコープ。プロンプト先頭へ注入します |
-| **Memory Flush** | 会話から抽出した構造化ナレッジ | しきい値後に実行されます（デフォルト 10 ターン）。抽出プロンプトがエピソード、日次ログ（`YYYY-MM-DD.md`）、ライブノートに要約し、markdown ファイルとして保存します |
-| **Soul + Task Snapshot** | アイデンティティとセマンティック検索 | `soul.md` がコアバリュー、トーン、境界を定義します。Task Snapshot は各プロンプトごとに FTS5 index から意味的に関連するヒットを最大 4 件（各 700 文字）探します |
+| Frontend | opencode | UI/UX、CSS、コンポーネント |
+| Backend | codex | API、DB、サーバーロジック |
+| Research | codex | リサーチ、調査 |
+| Docs | claude | ドキュメント、README、API ドキュメント |
 
-3 つのレイヤーはすべてシステムプロンプトに自動で入ります。検索は `jaw memory search <query>`、または任意の interface から `/memory <query>` で行えます。
-
-Advanced memory にはプロフィールサマリ、初期化/マイグレーション、再インデックスフローがあり、Web UI 設定からアクセスできます。
+Employee の構成は `settings.json` でカスタマイズできます。
 
 ---
 
-## 🎭 オーケストレーション — PABCD
+## 5 つの AI エンジン
 
-複雑なタスクでは、CLI-JAW は 5 段階のステートマシンを使います。すべての遷移はユーザー承認制です。
+すでに契約している OAuth サブスクリプションで 5 つの CLI バックエンドをルーティングします。トークン単位の API 課金はありません。
+
+| CLI | デフォルトモデル | 認証コマンド | コストモデル |
+|---|---|---|---|
+| **Claude** | `opus-4-6` | `claude auth` | Claude Max サブスクリプション |
+| **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション |
+| **Gemini** | `gemini-3.1-pro-preview` | `gemini` | Gemini Advanced サブスクリプション |
+| **OpenCode** | `minimax-m2.7` | `opencode` | 無料モデルあり |
+| **Copilot** | `gpt-5-mini` | `copilot login` | 無料枠あり |
+
+**フォールバックチェーン**: あるエンジンがレートリミットや障害で使えなくなった場合、次のエンジンが自動で引き継ぎます。`/fallback [cli1 cli2...]` で優先順位を設定できます。
+
+**OpenCode ワイルドカード**: OpenRouter、ローカル LLM、OpenAI 互換 API など、任意のモデルエンドポイントを接続できます。
+
+> エンジン切り替え: `/cli codex`。モデル切り替え: `/model gpt-5.5`。Web・Terminal・Telegram・Discord のどこからでも可能です。
+
+---
+
+## PABCD オーケストレーション
+
+複雑なタスクに対して、CLI-JAW は 5 段階のステートマシンで段階的に進行します。すべてのフェーズ遷移はユーザーの承認が必要です。
 
 ```
 P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
    ⛔         ⛔          ⛔         auto        auto
 ```
 
-| Phase | 内容 |
+| フェーズ | 内容 |
 |---|---|
-| **P** | Boss AI が diff-level plan を書きます。あなたの review のために停止します |
-| **A** | Read-only worker が plan の実行可能性を検証します |
-| **B** | Boss が実装します。Read-only worker が結果を検証します |
-| **C** | Type-check、docs update、consistency check を実行します |
-| **D** | すべての変更を要約し、idle に戻ります |
+| **P** (Plan) | Boss AI が diff レベルの実行計画を作成。ユーザーのレビューを待ちます |
+| **A** (Audit) | 読み取り専用の Worker がプランの実行可能性を検証 |
+| **B** (Build) | Boss が実装。Worker が結果を検証 |
+| **C** (Check) | 型チェック、ドキュメント更新、整合性チェック |
+| **D** (Done) | 全変更のサマリーを作成し、IDLE に戻ります |
 
-State は DB-persisted で、server restart 後も残ります。Workers はファイルを変更できません。`jaw orchestrate` または `/pabcd` で有効化します。
+状態は DB に永続化されるため、サーバー再起動後も維持されます。Worker はファイルを変更できません。
+
+起動方法: `jaw orchestrate` または `/pabcd`
 
 ---
 
-## 📦 スキル
+## メモリ
 
-100+ skills が用途別に整理されています。
+3 つの層がそれぞれ異なるリコール範囲を担当します。
 
-| Category | Skills | 対応範囲 |
+| 層 | 保存する内容 | 仕組み |
 |---|---|---|
-| **Office** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | 文書の読み取り、作成、編集。OfficeCLI による Korean HWP/HWPX |
-| **Automation** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome CDP、AI-powered coordinate click、macOS screenshot/camera、Computer Use |
-| **Media** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion video rendering、OpenAI image generation、lecture transcription、text-to-speech |
-| **Integration** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI、Notion pages、Telegram media delivery、persistent memory |
-| **Visualization** | `diagram` | Chat 内でレンダリングされる SVG diagrams、charts、interactive visualizations |
-| **Dev guides** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd`, `dev-code-reviewer` | sub-agent prompts に注入される engineering guidelines |
+| **History Block** | 直近のセッションコンテキスト | `buildHistoryBlock()` -- 直近 10 セッション、最大 8,000 文字、作業ディレクトリごとにスコープ。プロンプト先頭に注入 |
+| **Memory Flush** | 会話から抽出した構造化ナレッジ | 一定のターン数（デフォルト 10）を超えると実行。エピソード、日次ログ（`YYYY-MM-DD.md`）、ライブノートとして Markdown 保存 |
+| **Soul + Task Snapshot** | アイデンティティとセマンティック検索 | `soul.md` でトーン・価値観・境界を定義。FTS5 インデックスから各プロンプトごとに最大 4 件（各 700 文字）の関連ヒットを取得 |
 
-22 active skills は常に注入されます。94+ reference skills は必要に応じて読み込まれます。
+3 層すべてがシステムプロンプトに自動注入されます。
 
 ```bash
-jaw skill install <name>    # activate a reference skill
+jaw memory search <query>     # CLI から検索
+/memory <query>               # Web / Telegram / Discord から検索
+```
+
+Advanced memory として、プロフィールサマリ、ブートストラップ/マイグレーション、再インデックスフローも用意されており、Web UI の設定から操作できます。
+
+---
+
+## スキル
+
+100 以上のスキルが用途別に整理されています。
+
+| カテゴリ | スキル | 対応範囲 |
+|---|---|---|
+| **Office** | `pdf`, `docx`, `xlsx`, `pptx`, `hwp` | 文書の読み取り・作成・編集。OfficeCLI による韓国語 HWP/HWPX 対応 |
+| **Automation** | `browser`, `vision-click`, `screen-capture`, `desktop-control` | Chrome CDP、AI 座標クリック、macOS スクリーンショット/カメラ、Computer Use |
+| **Media** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion 動画レンダリング、OpenAI 画像生成、講義文字起こし、音声合成 |
+| **Integration** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI、Notion ページ、Telegram メディア配信、永続メモリ |
+| **Visualization** | `diagram` | チャット内に SVG ダイアグラム・チャート・インタラクティブ図をレンダリング |
+| **Dev guides** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd`, `dev-code-reviewer` | サブエージェントに注入されるエンジニアリングガイドライン |
+
+22 個のアクティブスキルは常時注入されます。94 以上のリファレンススキルはオンデマンドで読み込まれます。
+
+```bash
+jaw skill install <name>    # リファレンススキルをアクティブ化
 ```
 
 ---
 
-## 🌐 ブラウザ & デスクトップ自動化
+## ブラウザ & デスクトップ自動化
 
-| Capability | 動作 |
+| 機能 | 概要 |
 |---|---|
-| **Chrome CDP** | DevTools Protocol で移動、クリック、入力、スクリーンショット、JS 実行、スクロール、フォーカス、キー入力など 10 個のアクションを実行します |
-| **Vision-click** | 画面をスクリーンショットし、AI が対象座標を抽出してクリックします。コマンドはひとつです: `jaw browser vision-click "Login button"` |
-| **DOM reference** | ChatGPT、Grok、Gemini Web UI のセレクタマップです。モデル選択、停止ボタン、ツールドロワーを扱います |
-| **Computer Use** | Codex App Computer Use MCP によるデスクトップアプリ自動化です。DOM ターゲットは CDP へ、デスクトップアプリは Computer Use へルーティングします |
-| **Diagram skill** | SVG diagrams とインタラクティブな HTML ビジュアライゼーションを生成し、コピー/保存コントロール付きの sandbox 化された iframe にレンダリングします |
+| **Chrome CDP** | DevTools Protocol でページ遷移、クリック、入力、スクリーンショット、JS 実行、スクロール、フォーカス、キー入力の 10 アクションを実行 |
+| **Vision-click** | 画面をスクリーンショットし、AI がターゲット座標を抽出してクリック。`jaw browser vision-click "Login button"` の 1 コマンドで完結 |
+| **DOM reference** | ChatGPT、Grok、Gemini Web UI のセレクタマップ。モデル選択・停止ボタン・ツールドロワーを操作 |
+| **Computer Use** | Codex App Computer Use MCP によるデスクトップアプリ自動化。DOM ターゲットは CDP へ、デスクトップアプリは Computer Use へ自動ルーティング |
+| **Diagram スキル** | SVG ダイアグラムとインタラクティブな HTML ビジュアライゼーションを生成し、コピー/保存コントロール付きのサンドボックス iframe にレンダリング |
 
 ---
 
-## 🔌 MCP
-
-[Model Context Protocol](https://modelcontextprotocol.io) により、AI agents は外部 tools を使えます。CLI-JAW は 5 つの engines の MCP config をひとつのファイルで管理します。
-
-```bash
-jaw mcp install @anthropic/context7
-# → syncs to Claude, Codex, Gemini, OpenCode, Copilot config files
-```
-
-5 つの JSON files を別々に編集する必要はありません。一度インストールすれば、すべての engines に適用されます。
-
-```bash
-jaw mcp sync       # re-sync after manual edits
-```
-
----
-
-## 💬 メッセージング
+## メッセージング
 
 ### Telegram
 
@@ -299,186 +372,179 @@ jaw mcp sync       # re-sync after manual edits
 ```
 
 <details>
-<summary>Setup（3 steps）</summary>
+<summary>セットアップ（3 ステップ）</summary>
 
-1. bot を作成 — [@BotFather](https://t.me/BotFather) にメッセージ → `/newbot` → token をコピー
-2. 設定 — `jaw init --telegram-token YOUR_TOKEN` または Web UI settings を使用
-3. bot に任意のメッセージを送信します。Chat ID は初回メッセージで自動保存されます
+1. Bot を作成 -- [@BotFather](https://t.me/BotFather) にメッセージ → `/newbot` → トークンをコピー
+2. 設定 -- `jaw init --telegram-token YOUR_TOKEN` または Web UI の設定から
+3. Bot に何かメッセージを送信。Chat ID は初回メッセージ時に自動保存されます
 
 </details>
 
-Telegram で使えるもの: テキストチャット、音声メッセージ（multi-provider STT による自動文字起こし）、file/photo upload、slash commands（`/cli`、`/model`、`/status`）、scheduled task result delivery。
+Telegram でできること: テキストチャット、音声メッセージ（マルチプロバイダ STT で自動文字起こし）、ファイル/写真アップロード、スラッシュコマンド（`/cli`、`/model`、`/status`）、スケジュールタスク結果の自動配信。
 
 ### Discord
 
-Telegram と同じ機能です — テキスト、ファイル、コマンド。チャンネルとスレッドのルーティングと、Agent 実行結果のブロードキャスト用 forwarder をサポートします。設定は Web UI settings から行います。
+Telegram と同等の機能をサポートしています -- テキスト、ファイル、コマンド。チャンネル/スレッドルーティングと、エージェント結果のブロードキャスト用フォワーダーを備えています。設定は Web UI から行います。
 
-### Voice & STT
+### 音声 & STT
 
-音声入力は Web（mic button）、Telegram（voice messages）、Discord で動作します。Providers は OpenAI-compatible、Google Vertex AI、任意の custom endpoint です。Web UI settings で設定します。
-
----
-
-## ⏰ Scheduling & heartbeat
-
-| Feature | 内容 |
-|---|---|
-| **Heartbeat jobs** | Cron-scheduled tasks を unattended で実行します。結果は Telegram/Discord に配信されます |
-| **Service auto-start** | `jaw service install` — systemd（Linux）、launchd（macOS）、Docker を自動検出します |
-| **Memory auto-reflect** | structured knowledge extraction のための optional post-flush reflection |
+音声入力は Web（マイクボタン）、Telegram（音声メッセージ）、Discord で動作します。プロバイダは OpenAI 互換、Google Vertex AI、任意のカスタムエンドポイントに対応。Web UI の設定で構成します。
 
 ---
 
-## ⌨️ CLI コマンド
+## MCP
+
+[Model Context Protocol](https://modelcontextprotocol.io) は、AI エージェントが外部ツールを利用するためのプロトコルです。CLI-JAW では 5 エンジンの MCP 設定を 1 ファイルで管理します。
 
 ```bash
-jaw serve                         # start server → http://localhost:3457
-jaw chat                          # terminal TUI
-jaw doctor                        # 12-point diagnostics
-jaw service install               # auto-start on boot
-jaw skill install <name>          # activate a skill
-jaw mcp install <package>         # install MCP → syncs to 5 engines
-jaw memory search <query>         # search memory
-jaw browser start                 # launch Chrome (CDP)
-jaw browser vision-click "Login"  # AI-powered click
-jaw clone ~/project               # clone instance
-jaw --home ~/project serve --port 3458  # run second instance
-jaw orchestrate                   # enter PABCD
-jaw dispatch --agent Backend --task "..." # dispatch employee
-jaw reset                         # full reset
+jaw mcp install @anthropic/context7
+# → Claude, Codex, Gemini, OpenCode, Copilot の設定ファイルに同期
+```
+
+5 つの JSON ファイルを別々に編集する必要はありません。一度インストールすれば全エンジンに反映されます。
+
+```bash
+jaw mcp sync       # 手動編集後の再同期
 ```
 
 ---
 
-## 🏗️ マルチインスタンス
+## CLI コマンド
 
-settings、memory、database が分離されたインスタンスを実行します。
+```bash
+jaw serve                         # サーバー起動 → http://localhost:3457
+jaw chat                          # ターミナル TUI
+jaw doctor                        # 12 項目の診断
+jaw service install               # OS 起動時の自動スタート
+jaw skill install <name>          # スキルをアクティブ化
+jaw mcp install <package>         # MCP をインストール → 5 エンジンに同期
+jaw memory search <query>         # メモリを検索
+jaw browser start                 # Chrome を起動（CDP）
+jaw browser vision-click "Login"  # AI による座標クリック
+jaw clone ~/project               # インスタンスを複製
+jaw --home ~/project serve --port 3458  # 2 つ目のインスタンスを起動
+jaw orchestrate                   # PABCD を開始
+jaw dispatch --agent Backend --task "..." # Employee をディスパッチ
+jaw reset                         # フルリセット
+```
+
+---
+
+## マルチインスタンス & Docker
+
+### マルチインスタンス
+
+設定・メモリ・データベースが完全に分離されたインスタンスを同時に実行できます。
 
 ```bash
 jaw clone ~/my-project
 jaw --home ~/my-project serve --port 3458
 ```
 
-各インスタンスは完全に独立しています — working directory、memory、MCP config はそれぞれ別です。
+各インスタンスは独自の作業ディレクトリ、メモリ、MCP 設定を持ちます。
 
----
-
-## 🔗 リモートアクセス（Tailscale）
-
-```bash
-jaw serve --lan                       # bind 0.0.0.0 + allow tailnet peers
-# settings.json: network.bindHost=0.0.0.0, lanBypass=true
-```
-
-`lanBypass=true` のときに対応する peer addresses:
-
-- `100.64.0.0/10` — Tailscale CGNAT (RFC 6598)
-- `fd7a:115c:a1e0::/48` — Tailscale ULA
-- `*.ts.net` — MagicDNS hostnames（Host + Origin both pass）
-
-注意点:
-
-- Tailnet peers は WireGuard + IdP authenticated です — public ではなく LAN として扱います。
-- Shared tailnets: Tailscale ACL（`acl.tailnet`）と組み合わせ、node に到達できるユーザーを制限します。
-- Subnet router / exit node: SNAT により peer IPs が router の 100.x に畳まれ、trust boundary が曖昧になります。direct tailnet membership を推奨します。
-- Production: 可能なら `bindHost` は `0.0.0.0` ではなく `tailscale0` interface address に絞ります。
-- `lanBypass=true` では、tailnet peers は Bearer token をスキップします（RFC 1918 と同じ LAN 扱い）。loopback 以外のすべての peer に `JAW_AUTH_TOKEN` を要求するには `lanBypass=false` を設定します。
-
----
-
-## 🐳 Docker
+### Docker
 
 ```bash
 docker compose up -d       # → http://localhost:3457
 ```
 
-Non-root `jaw` user と Chromium sandbox を使います。Dockerfiles は 2 つです: `Dockerfile`（npm install）と `Dockerfile.dev`（local source）。Data は `jaw-data` named volume に保持されます。
+非 root の `jaw` ユーザーで動作し、Chromium サンドボックスを有効化しています。Dockerfile は 2 種類: `Dockerfile`（npm install）と `Dockerfile.dev`（ローカルソース）。データは `jaw-data` Named Volume に永続化されます。
 
 <details>
-<summary>Docker details</summary>
+<summary>Docker の詳細</summary>
 
 ```bash
-# Dev build
+# 開発ビルド
 docker build -f Dockerfile.dev -t cli-jaw:dev .
 docker run -d -p 3457:3457 --env-file .env cli-jaw:dev
 
-# Pin version
-docker build --build-arg CLI_JAW_VERSION=1.0.1 -t cli-jaw:1.0.1 .
+# バージョン固定
+docker build --build-arg CLI_JAW_VERSION=2.0.0 -t cli-jaw:2.0.0 .
 
-# If Chromium sandbox fails
+# Chromium サンドボックスが失敗する場合
 docker run -e CHROME_NO_SANDBOX=1 -p 3457:3457 cli-jaw
 ```
 
 </details>
 
----
+### リモートアクセス（Tailscale）
 
-## 📖 ドキュメント
+```bash
+jaw serve --lan                       # 0.0.0.0 にバインド + tailnet ピアを許可
+# settings.json: network.bindHost=0.0.0.0, lanBypass=true
+```
 
-| Document | 内容 |
-|---|---|
-| [CHANGELOG.md](CHANGELOG.md) | v1.2.0 から v1.5.1 までを含む v1.6.0 catch-up release log |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design、module graph、94 endpoints にまたがる 95 API handlers |
-| [TESTS.md](TESTS.md) | Test coverage、counts、test plan |
-| [memory-architecture.md](docs/memory-architecture.md) | 3-layer memory model、indexing、runtime behavior |
-| [env-vars.md](docs/env-vars.md) | Environment variable reference |
-| [skill-router-plan.md](docs/skill-router-plan.md) | Skill routing architecture |
-| [officecli-integration.md](docs/officecli-integration.md) | HWP/HWPX と Office documents のための OfficeCLI setup |
-| [devlog/structure/](devlog/structure/) | Internal architecture reference — prompt pipeline、agent spawn、frontend、server API、commands、Telegram、memory |
+`lanBypass=true` 時に許可されるピアアドレス:
 
----
+- `100.64.0.0/10` -- Tailscale CGNAT (RFC 6598)
+- `fd7a:115c:a1e0::/48` -- Tailscale ULA
+- `*.ts.net` -- MagicDNS ホスト名
 
-## ⚖️ 比較
-
-| | CLI-JAW | Hermes Agent | Claude Code |
-|---|---|---|---|
-| **Model access** | OAuth subscriptions（Claude Max、ChatGPT Pro、Copilot、Gemini）+ OpenCode wildcard | API keys（OpenRouter 200+、Nous Portal） | Anthropic only |
-| **Cost model** | すでに支払っている monthly subscriptions | Per-token API billing | Anthropic subscription |
-| **Primary UI** | Web PWA + Mac app + TUI | TUI only | CLI + IDE plugins |
-| **Messaging** | Telegram（voice）+ Discord | Telegram/Discord/Slack/WhatsApp/Signal | None |
-| **Memory** | 3-layer（History/Flush/Soul）+ FTS5 | Self-improving learning loop + Honcho | File-based auto-memory |
-| **Browser automation** | Chrome CDP + vision-click + DOM ref | Limited | Via MCP |
-| **Orchestration** | PABCD 5-phase FSM | Subagent spawn | Task tool |
-| **Execution** | Local + Docker | Local/Docker/SSH/Daytona/Modal/Singularity | Local |
-| **Skills** | 100+ bundled | Self-creating + agentskills.io | User-configured |
-| **i18n** | English, Korean, Chinese, Japanese | English | English |
-
-CLI-JAW は OpenClaw harness architecture（hybrid search manager、fallback patterns、session indexing）を受け継いでいます。OpenClaw から移行する場合、slash-command surface と memory model はなじみやすいはずです。
+> Tailnet ピアは WireGuard + IdP 認証済みのため LAN として扱われます。`lanBypass=false` にすると全ピアに `JAW_AUTH_TOKEN` を要求します。
 
 ---
 
-## 🛠️ 開発
+## 開発
 
 ```bash
 npm run build          # tsc → dist/
-npm run dev            # tsx server.ts (hot-reload)
-npm test               # native Node.js test runner
+npm run dev            # tsx server.ts（ホットリロード）
+npm test               # Node.js ネイティブテストランナー
 ```
 
-Architecture と test details は [ARCHITECTURE.md](docs/ARCHITECTURE.md)、[TESTS.md](TESTS.md)、[devlog/structure/](devlog/structure/) にあります。
+アーキテクチャとテストの詳細:
 
----
-
-## ❓ トラブルシューティング
-
-| 問題 | 解決策 |
+| ドキュメント | 内容 |
 |---|---|
-| `cli-jaw: command not found` | `npm install -g cli-jaw` を再実行します。`npm bin -g` が `$PATH` に入っているか確認してください |
-| `Error: node version` | Node.js 22+ に上げます: `nvm install 22` |
-| `NODE_MODULE_VERSION` mismatch | `npm run ensure:native`（auto-rebuild） |
-| `EADDRINUSE: port 3457` | 別の instance が実行中です。`--port 3458` を使ってください |
-| Telegram or agent auth fails | `jaw doctor` を実行し、その後 `jaw serve` を再起動してください |
-| Browser commands fail | Chrome をインストールしてください。先に `jaw browser start` を実行します |
+| [CHANGELOG.md](CHANGELOG.md) | リリースログ |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | システム設計、モジュールグラフ、95 個の API ハンドラ |
+| [TESTS.md](TESTS.md) | テストカバレッジとテスト計画 |
+| [memory-architecture.md](docs/memory-architecture.md) | 3 層メモリモデルの詳細 |
+| [env-vars.md](docs/env-vars.md) | 環境変数リファレンス |
+| [devlog/structure/](devlog/structure/) | 内部アーキテクチャ（プロンプトパイプライン、フロントエンド、サーバー API、メモリ） |
 
 ---
 
-## 🤝 コントリビューション
+## トラブルシューティング
 
-1. `master` から fork して branch を作成します
-2. `npm run build && npm test`
-3. PR を提出します
+| 症状 | 対処 |
+|---|---|
+| `cli-jaw: command not found` | `npm install -g cli-jaw` を再実行。`npm bin -g` が `$PATH` に含まれているか確認 |
+| `Error: node version` | Node.js 22+ にアップグレード: `nvm install 22` |
+| `NODE_MODULE_VERSION` mismatch | `npm run ensure:native`（ネイティブモジュールの自動リビルド） |
+| `EADDRINUSE: port 3457` | 別のインスタンスが起動中。`--port 3458` で回避 |
+| Telegram / エージェント認証の失敗 | `jaw doctor` を実行してから `jaw serve` を再起動 |
+| ブラウザコマンドが動かない | Chrome をインストールし、`jaw browser start` を先に実行 |
 
-バグを見つけた、またはアイデアがありますか？ [Issue を開いてください](https://github.com/lidge-jun/cli-jaw/issues)
+---
+
+## コントリビュート
+
+1. `master` から fork してブランチを作成
+2. `npm run build && npm test` で動作確認
+3. Pull Request を送信
+
+バグ報告やアイデアは [Issue](https://github.com/lidge-jun/cli-jaw/issues) からお気軽にどうぞ。
+
+---
+
+## 他ツールとの比較
+
+| | CLI-JAW | Hermes Agent | Claude Code |
+|---|---|---|---|
+| **モデルアクセス** | OAuth サブスク（Claude Max / ChatGPT Pro / Copilot / Gemini）+ OpenCode ワイルドカード | API キー（OpenRouter 200+ / Nous Portal） | Anthropic のみ |
+| **コストモデル** | 契約済みの月額サブスクリプション | トークン単位の API 課金 | Anthropic サブスクリプション |
+| **メイン UI** | Web PWA + Mac アプリ + TUI | TUI のみ | CLI + IDE プラグイン |
+| **メッセージング** | Telegram（音声）+ Discord | Telegram / Discord / Slack / WhatsApp / Signal | なし |
+| **メモリ** | 3 層（History / Flush / Soul）+ FTS5 | Self-improving loop + Honcho | ファイルベース自動メモリ |
+| **ブラウザ自動化** | Chrome CDP + vision-click + DOM ref | 限定的 | MCP 経由 |
+| **オーケストレーション** | PABCD 5 段階 FSM | Subagent spawn | Task tool |
+| **実行環境** | ローカル + Docker | Local / Docker / SSH / Daytona / Modal / Singularity | ローカル |
+| **スキル** | 100+ 同梱 | 自己生成 + agentskills.io | ユーザー設定 |
+| **多言語** | English / Korean / Chinese / Japanese | English | English |
+
+CLI-JAW は OpenClaw harness architecture（ハイブリッド検索マネージャー、フォールバックパターン、セッションインデックス）の系譜にあります。OpenClaw から移行する場合、スラッシュコマンドとメモリモデルは馴染みやすいはずです。
 
 ---
 

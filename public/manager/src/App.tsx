@@ -480,6 +480,8 @@ export function App() {
                         sidebarCollapsed={view.sidebarCollapsed}
                         inspectorCollapsed={view.activityDockCollapsed}
                         inspectorHeight={view.activityDockCollapsed ? 48 : view.activityDockHeight}
+                        drawerOpen={view.drawerOpen}
+                        onCloseDrawer={() => view.setDrawerOpen(false)}
                         navigator={(
                             <>
                                 <SidebarRail onlineCount={summary.online || 0} collapsed={view.sidebarCollapsed} mode={view.sidebarMode} scheduleWorkspaceEnabled={SCHEDULE_WORKSPACE_ENABLED} onModeChange={handleSidebarModeChange} onToggleSidebar={handleSidebarToggle} helpOpen={helpOpen} onToggleHelp={() => setHelpOpen(open => !open)} />

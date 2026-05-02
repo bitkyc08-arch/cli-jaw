@@ -4,9 +4,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLI-JAW — All Your AI Subscriptions. One Assistant.</title>
+    <title>CLI-JAW 2.0 — All Your AI Subscriptions. One Assistant.</title>
     <meta name="description"
-        content="All your AI subscriptions. One assistant. CLI-JAW routes Claude Max, ChatGPT Pro, Copilot, and Gemini through OAuth, with a manager dashboard, Notes workspace, Web PWA, Terminal, Telegram, and Discord.">
+        content="All your AI subscriptions. One assistant. CLI-JAW 2.0 routes Claude, ChatGPT, Copilot, and Gemini through OAuth — manager dashboard, Kanban board, Notes workspace, Employee system, 230+ skills, and 6 surfaces.">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -987,7 +987,7 @@
         <div class="hero-install">
             <div class="code-block" style="display:inline-block; text-align:left; padding:16px 32px;">
                 <span class="dim">$</span> npm install -g cli-jaw<br>
-                <span class="dim">$</span> jaw serve
+                <span class="dim">$</span> jaw dashboard
             </div>
         </div>
         <div class="hero-cta" style="margin-top:20px; max-width:440px;">
@@ -1030,12 +1030,14 @@
             <div class="dashboard-copy">
                 <span class="section-label">// manager</span>
                 <h2>One control plane for every local AI session.</h2>
-                <p>The manager dashboard tracks running JAW homes, previews selected Web UIs, exposes runtime settings, and keeps employees visible without leaving the browser.</p>
+                <p>The manager dashboard tracks running JAW homes, previews Web UIs, manages employees, and gives you Kanban boards and Notes — all without leaving the browser.</p>
                 <ul class="dashboard-points">
                     <li>Instance navigator with active, running, and offline groups.</li>
                     <li>Live preview proxy with Preview-on, Refresh, and Open controls.</li>
-                    <li>Settings workspace for active CLI, model, effort, permissions, employees, and skills.</li>
-                    <li>Notes workspace for markdown folders, split preview, KaTeX, Mermaid, and highlighted code.</li>
+                    <li>Kanban board — drag-and-drop task tracking per home.</li>
+                    <li>Settings workspace for CLI, model, effort, permissions, employees, and skills.</li>
+                    <li>Notes workspace — markdown folders, split preview, KaTeX, Mermaid, and code blocks.</li>
+                    <li>Employee dispatch panel — send tasks to specialist agents in one click.</li>
                 </ul>
             </div>
         </div>
@@ -1131,7 +1133,17 @@
                 </div>
                 <div class="feature-card">
                     <span class="feature-icon"></span>
-                    <div class="feature-title">100+ skills</div>
+                    <div class="feature-title">Kanban board</div>
+                    <p class="feature-desc">Drag-and-drop task tracking built into the dashboard. Columns, card creation, and reordering — per home, zero setup.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon"></span>
+                    <div class="feature-title">Employee system</div>
+                    <p class="feature-desc">Dispatch specialist agents — Frontend, Backend, Research, Docs — each with its own CLI and model. Boss orchestrates, workers verify.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon"></span>
+                    <div class="feature-title">230+ skills</div>
                     <p class="feature-desc">Office docs (PDF, DOCX, XLSX, PPTX, HWP), GitHub, Notion, image generation, video rendering, Telegram media — ready out of the box.</p>
                 </div>
                 <div class="feature-card">
@@ -1148,6 +1160,11 @@
                     <span class="feature-icon"></span>
                     <div class="feature-title">6 surfaces</div>
                     <p class="feature-desc">Manager dashboard, Web PWA, Mac WebView app, terminal TUI, Telegram, Discord. Same memory across all of them.</p>
+                </div>
+                <div class="feature-card">
+                    <span class="feature-icon"></span>
+                    <div class="feature-title">Heartbeat system</div>
+                    <p class="feature-desc">Cron and interval jobs that run while you sleep. Morning check-ins, recurring reports, scheduled tasks — results forwarded to your channel.</p>
                 </div>
             </div>
         </div>
@@ -1267,10 +1284,11 @@
     <section class="section" id="screenshots">
         <div class="container reveal">
             <span class="section-label">// interfaces</span>
-            <h2 class="section-title">Five ways to connect</h2>
+            <h2 class="section-title">Six ways to connect</h2>
             <p class="section-desc">Manager dashboard, Web PWA, Mac app, Terminal TUI, Telegram, or Discord. Same assistant, same memory, same skills.</p>
             <div class="screenshots-tabs">
                 <button class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
+                <button class="tab-btn" onclick="showTab('notes')">Notes</button>
                 <button class="tab-btn" onclick="showTab('web')">Chat</button>
                 <button class="tab-btn" onclick="showTab('terminal')">Terminal</button>
                 <button class="tab-btn" onclick="showTab('telegram')">Telegram</button>
@@ -1278,6 +1296,9 @@
             </div>
             <div class="screenshot-panel active" id="tab-dashboard">
                 <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard">
+            </div>
+            <div class="screenshot-panel" id="tab-notes">
+                <img src="screenshots/notes-workspace.png" alt="CLI-JAW Notes workspace with markdown split preview">
             </div>
             <div class="screenshot-panel" id="tab-web">
                 <img src="screenshots/web-ui.png" alt="CLI-JAW Web UI">
@@ -1323,7 +1344,7 @@
                     <div class="step-num">3</div>
                     <div class="step-title">Launch</div>
                     <div class="code-block">
-                        jaw serve<br>
+                        jaw dashboard<br>
                         <span class="dim"># → http://localhost:3457</span>
                     </div>
                 </div>
@@ -1388,7 +1409,7 @@
                         claude auth<br>
                         codex login<br>
                         gemini login<br><br>
-                        jaw serve
+                        jaw dashboard
                     </div>
                     <p style="color:var(--text-dim); font-size:13px; margin-top:8px;">
                         Open <strong style="color:var(--accent);">http://localhost:3457</strong> in your browser. That's

@@ -82,11 +82,29 @@
     .dashboard-shell.manager-shell .manager-workspace,
     .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: minmax(0, 1fr) var(--activity-dock-height, 150px);
-        grid-template-areas: "detail" "activity";
+        grid-template-rows: minmax(0, 1fr) 48px;
+        grid-template-areas: "detail" "mobile-nav";
     }
-    .manager-sidebar { display: none; }
+    .dashboard-shell.manager-shell .manager-workspace:not(.is-inspector-collapsed),
+    .dashboard-shell.manager-shell:not(.is-sidebar-collapsed) .manager-workspace:not(.is-inspector-collapsed) {
+        grid-template-rows: minmax(0, 1fr) var(--activity-dock-height, 150px) 48px;
+        grid-template-areas: "detail" "activity" "mobile-nav";
+    }
+    .manager-activity { display: none; }
+    .manager-workspace:not(.is-inspector-collapsed) .manager-activity { display: block; }
+    .manager-sidebar {
+        display: flex; flex-direction: column;
+        position: fixed; inset-block: 0; left: 0; z-index: 21;
+        width: min(88vw, 340px);
+        transform: translateX(-100%);
+        transition: transform .2s ease;
+        border-right: 1px solid var(--border-strong);
+        box-shadow: var(--shadow-panel);
+    }
+    .manager-workspace.is-drawer-open .manager-sidebar { transform: translateX(0); }
+    .manager-workspace > .drawer-backdrop { position: fixed; inset: 0; z-index: 20; background: var(--scrim-overlay); }
     .drawer-trigger { display: inline-flex; grid-area: drawer; }
+    .manager-mobile-nav { display: block; border-top: 1px solid var(--border-subtle); }
     .command-primary {
         grid-template-columns: auto minmax(0, 1fr) auto;
         grid-template-areas: "drawer title actions" "search search search";
@@ -110,9 +128,9 @@
         grid-template-rows: minmax(0, 1fr) minmax(120px, var(--activity-dock-height, 150px)) 60px;
         grid-template-areas: "detail" "activity" "mobile-nav";
     }
-    .manager-sidebar, .manager-activity { display: none; }
+    .manager-sidebar { width: min(85vw, 300px); }
+    .manager-activity { display: none; }
     .manager-workspace:not(.is-inspector-collapsed) .manager-activity { display: block; }
-    .manager-mobile-nav { display: block; border-top: 1px solid var(--border-subtle); }
     .command-bar {
         gap: 8px;
         padding: 9px 10px;

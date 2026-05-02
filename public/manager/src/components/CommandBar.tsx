@@ -18,8 +18,8 @@ export function CommandBar(props: CommandBarProps) {
     return (
         <CommandCenter
             mobileMenuButton={(
-                <button className="drawer-trigger" type="button" onClick={props.onOpenDrawer}>
-                    Instances
+                <button className="drawer-trigger" type="button" onClick={props.onOpenDrawer} aria-label="Open sidebar">
+                    ☰
                 </button>
             )}
             title={(
