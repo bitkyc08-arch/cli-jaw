@@ -97,6 +97,10 @@ export function readSessionStore(): SessionStore {
     }
 }
 
+function readSessionStoreLocked(): SessionStore {
+    return withStoreLock(() => readSessionStore());
+}
+
 export function writeSessionStore(store: SessionStore): void {
     const path = storePath();
     mkdirSync(dirname(path), { recursive: true });
@@ -182,7 +186,7 @@ export function patchSession(sessionId: string, patch: Partial<StoredSession>): 
 }
 
 export function listStoredSessions(filter: SessionFilter = {}): StoredSession[] {
-    const store = readSessionStore();
+    const store = readSessionStoreLocked();
     const active = new Set(['sent', 'polling']);
     let rows = store.sessions;
     if (filter.sessionId) rows = rows.filter(s => s.sessionId === filter.sessionId);
@@ -192,6 +196,49 @@ export function listStoredSessions(filter: SessionFilter = {}): StoredSession[] 
     rows = rows.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
     if (typeof filter.limit === 'number' && filter.limit > 0) rows = rows.slice(-filter.limit);
     return rows;
+}
+
+function sessionCommandLockPath(sessionId: string): string {
+    return `${storePath()}.cmd.${String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_')}.lock`;
+}
+
+export async function withSessionCommandLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
+    const path = sessionCommandLockPath(sessionId);
+    mkdirSync(dirname(path), { recursive: true });
+    let fd: number | null = null;
+    let attempts = 0;
+    while (attempts < LOCK_RETRY_LIMIT) {
+        try {
+            fd = openSync(path, 'wx');
+            try {
+                writeFileSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), sessionId }));
+            } catch { /* best-effort metadata write */ }
+            break;
+        } catch (err: any) {
+            if (err?.code !== 'EEXIST') throw err;
+            attempts += 1;
+            const stale = isStaleLock(path);
+            if (stale) {
+                try { unlinkSync(path); } catch { /* races resolve naturally */ }
+                continue;
+            }
+            sleepBlockingMs(LOCK_RETRY_MS);
+        }
+    }
+    if (fd === null) {
+        throw new WebAiError({
+            errorCode: 'internal.unhandled',
+            stage: 'session-command-lock',
+            retryHint: 'retry',
+            message: `web-ai session command: failed to acquire lock for ${sessionId} after ${LOCK_RETRY_LIMIT} attempts`,
+        });
+    }
+    try {
+        return await fn();
+    } finally {
+        try { closeSync(fd); } catch { /* already closed */ }
+        try { unlinkSync(path); } catch { /* already gone */ }
+    }
 }
 
 export function pruneSessions(options: PruneOptions = {}): PruneResult {

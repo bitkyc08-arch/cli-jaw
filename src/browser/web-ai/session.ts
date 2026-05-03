@@ -9,6 +9,7 @@ import type {
     WebAiNotificationStatus,
     WebAiSessionRecord,
     WebAiSessionStatus,
+    WebAiSessionTabState,
     WebAiVendor,
 } from './types.js';
 
@@ -177,6 +178,8 @@ export function updateSessionResult(input: {
     answerText?: string;
     error?: string;
     capabilityMode?: string;
+    tabId?: string;
+    tabState?: WebAiSessionTabState;
 }): WebAiSessionRecord | null {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
@@ -188,6 +191,8 @@ export function updateSessionResult(input: {
     if (input.conversationUrl) record.conversationUrl = input.conversationUrl;
     if (input.capabilityMode) record.capabilityMode = input.capabilityMode;
     if (input.error) record.lastError = input.error;
+    if (input.tabId) record.tabId = input.tabId;
+    if (input.tabState) record.tabState = input.tabState;
     if (input.answerText !== undefined) {
         record.answerText = input.answerText;
         record.lastSeenTextHash = createHash('sha256').update(input.answerText).digest('hex');
@@ -276,6 +281,39 @@ export function assertSameTarget(record: WebAiSessionRecord, actualTargetId: str
     if (record.targetId !== actualTargetId) {
         throw new WrongTargetError(record.targetId, actualTargetId);
     }
+}
+
+export function bindSessionToTab(sessionId: string, targetId: string, tabId?: string): WebAiSessionRecord | null {
+    const now = new Date().toISOString();
+    return updateSessionResult({
+        sessionId,
+        status: 'sent',
+        tabId: tabId || targetId,
+        tabState: {
+            createdAt: now,
+            lastActiveAt: now,
+            recoveryCount: 0,
+            closeCount: 0,
+        },
+    });
+}
+
+export function updateSessionTabState(sessionId: string, updates: Partial<WebAiSessionTabState>): WebAiSessionRecord | null {
+    const session = getSession(sessionId);
+    if (!session) return null;
+    const current = session.tabState || { createdAt: session.createdAt, lastActiveAt: session.createdAt, recoveryCount: 0, closeCount: 0 };
+    return updateSessionResult({
+        sessionId,
+        status: session.status,
+        tabState: { ...current, ...updates, lastActiveAt: new Date().toISOString() },
+    });
+}
+
+export function incrementRecoveryCount(sessionId: string): WebAiSessionRecord | null {
+    const session = getSession(sessionId);
+    if (!session) return null;
+    const current = session.tabState?.recoveryCount || 0;
+    return updateSessionTabState(sessionId, { recoveryCount: current + 1 });
 }
 
 export function listNotifications(input: {

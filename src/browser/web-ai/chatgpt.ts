@@ -1,5 +1,6 @@
-import { getActivePage, getCdpSession } from '../connection.js';
+import { getActivePage, getCdpSession, createTab, waitForPageByTargetId, getPageByTargetId } from '../connection.js';
 import { getActiveTab, type ActiveTabResult, type BrowserTabInfo } from '../connection.js';
+import { withSessionCommandLock } from './session-store.js';
 import { basename } from 'node:path';
 import { statSync } from 'node:fs';
 import { countConversationTurns } from './chatgpt-composer.js';
@@ -11,15 +12,18 @@ import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
 import { normalizeEnvelope, renderQuestionEnvelope, renderQuestionEnvelopeWithContext } from './question.js';
 import {
     assertSameTarget,
+    bindSessionToTab,
     createSession,
     findSessionByTarget,
     getBaseline,
     getSession,
+    incrementRecoveryCount,
     listSessions,
     pruneSessions,
     saveBaseline,
     updateSessionResult,
     updateSessionStatus,
+    updateSessionTabState,
 } from './session.js';
 import { captureAssistantResponse } from './chatgpt-response.js';
 import { selectChatGptModel } from './chatgpt-model.js';
@@ -108,6 +112,63 @@ export async function status(port: number, input: { vendor?: string; probe?: str
     } as WebAiOutput;
 }
 
+async function ensureProviderTab(port: number, input: QuestionEnvelopeInput): Promise<{ page: any; targetId: string }> {
+    const reuseTab = input.reuseTab === true || process.env.JAW_REUSE_TAB === '1';
+    if (reuseTab) {
+        const active = await requireVerifiedChatGptTab(port, input.vendor);
+        const page = await requireActivePage(port);
+        return { page, targetId: active.targetId };
+    }
+    const vendorUrl = input.url || 'https://chatgpt.com';
+    const tab = await createTab(port, vendorUrl, { activate: false });
+    const page = await waitForPageByTargetId(port, tab.targetId);
+    return { page, targetId: tab.targetId };
+}
+
+async function withSessionPage(port: number, sessionId: string, fn: (ctx: { page: any; targetId: string; session: any }) => Promise<any>): Promise<any> {
+    const session = getSession(sessionId);
+    if (!session) throw new Error(`Session not found: ${sessionId}`);
+    async function resolvePage(forceRecover = false) {
+        const current = getSession(sessionId);
+        if (!current) throw new Error(`Session not found: ${sessionId}`);
+        const alive = current.targetId ? !!(await getPageByTargetId(port, current.targetId).catch(() => null)) : false;
+        if (!alive || forceRecover) {
+            const tab = await createTab(port, current.conversationUrl || current.url || 'https://chatgpt.com', { activate: false });
+            const page = await waitForPageByTargetId(port, tab.targetId);
+            updateSessionResult({ sessionId, status: current.status, tabState: { createdAt: current.tabState?.createdAt || new Date().toISOString(), lastActiveAt: new Date().toISOString(), recoveryCount: (current.tabState?.recoveryCount || 0) + 1, closeCount: current.tabState?.closeCount || 0 } });
+            const recovered = getSession(sessionId);
+            return { page, targetId: tab.targetId, session: recovered || current };
+        }
+        const page = await getPageByTargetId(port, current.targetId);
+        if (!page) throw new Error(`Session ${sessionId} page not found for targetId ${current.targetId}`);
+        return { page, targetId: current.targetId, session: current };
+    }
+    const first = await resolvePage();
+    try {
+        return await fn(first);
+    } catch (err: any) {
+        const msg = String(err?.message || err || '').toLowerCase();
+        const isPageDeath = msg.includes('target closed') || msg.includes('page closed') || msg.includes('browser has been closed') || msg.includes('crash');
+        if (!isPageDeath) throw err;
+        const recovered = await resolvePage(true);
+        return fn(recovered);
+    }
+}
+
+async function runBoundCommand(port: number, command: string, input: any, pollFn: any, stopFn: any): Promise<any> {
+    if (['poll', 'stop'].includes(command) && input.session) {
+        return withSessionCommandLock(input.session, async () => {
+            return withSessionPage(port, input.session, async ({ page, targetId, session }) => {
+                if (command === 'poll') return pollFn(port, { ...input, vendor: session.vendor, session: session.sessionId });
+                if (command === 'stop') return stopFn(port, { ...input, vendor: session.vendor, session: session.sessionId });
+            });
+        });
+    }
+    if (command === 'poll') return pollFn(port, input);
+    if (command === 'stop') return stopFn(port, input);
+    throw new Error(`runBoundCommand: unsupported command ${command}`);
+}
+
 export async function send(port: number, input: QuestionEnvelopeInput = {}): Promise<WebAiOutput> {
     const requestedVendor = parseVendor(input.vendor);
     if (requestedVendor === 'gemini') {
@@ -124,10 +185,8 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             throw stageError(e, 'send-click');
         }
     }
-    await navigateRequestedConversation(port, input.url, 'chatgpt');
     const envelope = normalizeEnvelope(input);
-    const active = await requireVerifiedChatGptTab(port, envelope.vendor);
-    const page = await requireActivePage(port);
+    const { page, targetId } = await ensureProviderTab(port, input);
     const contextPack = await prepareContextForBrowser(input);
     const rendered = contextPack
         ? contextPack.transport === 'inline'
@@ -139,21 +198,22 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     const assistantCount = await countAssistantMessages(page);
     const baseline = saveBaseline({
         vendor: envelope.vendor,
-        targetId: active.targetId,
-        url: active.url,
+        targetId,
+        url: page.url(),
         envelope,
         assistantCount,
         textHash: String((await page.innerText('body').catch(() => '')).length),
     });
     const session = createSession({
         vendor: envelope.vendor,
-        targetId: active.targetId,
-        url: active.url,
-        conversationUrl: active.url,
+        targetId,
+        url: page.url(),
+        conversationUrl: page.url(),
         envelope,
         assistantCount,
         timeoutMs: 600_000,
     });
+    bindSessionToTab(session.sessionId, targetId);
 
     const adapter = createChatGptEditorAdapter(page, {
         insertText: async (text: string) => {
@@ -194,7 +254,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         ok: true,
         vendor: envelope.vendor,
         status: 'sent',
-        url: active.url,
+        url: page.url(),
         baseline,
         sessionId: session.sessionId,
         ...(contextPack ? { contextPack: summarizeContextPack(contextPack) } : {}),
@@ -238,9 +298,23 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
             throw stageError(e, 'poll-timeout');
         }
     }
-    const active = await requireVerifiedChatGptTab(port, vendor);
-    let session = input.session ? getSession(input.session) : findSessionByTarget(vendor, active.targetId);
-    const baseline = getBaseline(vendor, active.targetId);
+
+    let page: any;
+    let targetId: string;
+    let session = input.session ? getSession(input.session) : null;
+
+    if (session) {
+        const ctx = await withSessionPage(port, session.sessionId, async (c) => c);
+        page = ctx.page;
+        targetId = ctx.targetId;
+    } else {
+        const active = await requireVerifiedChatGptTab(port, vendor);
+        targetId = active.targetId;
+        page = await requireActivePage(port);
+        session = findSessionByTarget(vendor, targetId);
+    }
+
+    const baseline = getBaseline(vendor, targetId);
     if (!baseline) throw new WebAiError({
         errorCode: 'provider.poll-timeout',
         stage: 'poll-timeout',
@@ -248,9 +322,8 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
         retryHint: 'poll-or-resume',
         message: 'baseline required. Run web-ai send or query first.',
     });
-    if (session) assertSameTarget(session, active.targetId);
-
-    const page = await requireActivePage(port);
+    if (session) assertSameTarget(session, targetId);
+    const currentUrl = page.url?.() || session?.url || 'https://chatgpt.com';
     const timeoutMs = Math.max(1, Number(input.timeout || 1200)) * 1000;
     const result = await captureAssistantResponse(page, {
         minTurnIndex: baseline.assistantCount,
@@ -261,12 +334,12 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
     if (session && result.ok) updateSessionStatus(session.sessionId, 'complete');
     if (session && !result.ok) updateSessionStatus(session.sessionId, 'timeout');
     if (result.canvas) {
-        if (session) updateSessionResult({ sessionId: session.sessionId, status: 'complete', url: active.url, conversationUrl: active.url, answerText: result.answerText });
+        if (session) updateSessionResult({ sessionId: session.sessionId, status: 'complete', url: currentUrl, conversationUrl: currentUrl, answerText: result.answerText });
         return {
             ok: true,
             vendor,
             status: 'complete',
-            url: active.url,
+            url: currentUrl,
             answerText: result.answerText,
             canvas: result.canvas,
             baseline,
@@ -276,12 +349,12 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
         };
     }
     if (result.ok) {
-        if (session) updateSessionResult({ sessionId: session.sessionId, status: 'complete', url: active.url, conversationUrl: active.url, answerText: result.answerText });
+        if (session) updateSessionResult({ sessionId: session.sessionId, status: 'complete', url: currentUrl, conversationUrl: currentUrl, answerText: result.answerText });
         return {
             ok: true,
             vendor,
             status: 'complete',
-            url: active.url,
+            url: currentUrl,
             answerText: result.answerText,
             baseline,
             ...(session ? { sessionId: session.sessionId } : {}),
@@ -293,7 +366,7 @@ export async function poll(port: number, input: { vendor?: string; timeout?: num
         ok: false,
         vendor,
         status: 'timeout',
-        url: active.url,
+        url: currentUrl,
         baseline,
         ...(session ? { sessionId: session.sessionId, next: 'poll' } : {}),
         usedFallbacks: result.usedFallbacks,
@@ -397,7 +470,7 @@ export async function sessionsPrune(input: { olderThanMs?: number | string; befo
     } as WebAiOutput;
 }
 
-export async function stop(port: number, input: { vendor?: string } = {}): Promise<WebAiOutput> {
+export async function stop(port: number, input: { vendor?: string; session?: string } = {}): Promise<WebAiOutput> {
     const vendor = parseVendor(input.vendor);
     if (vendor === 'gemini') {
         try { return await geminiStop(port); } catch (e) { throw stageError(e, 'send-click'); }
@@ -405,13 +478,27 @@ export async function stop(port: number, input: { vendor?: string } = {}): Promi
     if (vendor === 'grok') {
         try { return await grokStop(port); } catch (e) { throw stageError(e, 'send-click'); }
     }
-    const active = await requireVerifiedChatGptTab(port, vendor);
-    const page = await requireActivePage(port);
-    const session = findSessionByTarget(vendor, active.targetId);
-    if (session) assertSameTarget(session, active.targetId);
+
+    let page: any;
+    let targetId: string;
+    let session = input.session ? getSession(input.session) : null;
+
+    if (session) {
+        const ctx = await withSessionPage(port, session.sessionId, async (c) => c);
+        page = ctx.page;
+        targetId = ctx.targetId;
+    } else {
+        const active = await requireVerifiedChatGptTab(port, vendor);
+        targetId = active.targetId;
+        page = await requireActivePage(port);
+        session = findSessionByTarget(vendor, targetId);
+    }
+
+    if (session) assertSameTarget(session, targetId);
     await page.keyboard.press('Escape');
     if (session) updateSessionStatus(session.sessionId, 'complete');
-    return { ok: true, vendor: 'chatgpt', status: 'blocked', url: active.url, warnings: ['sent Escape to stop generation'] };
+    const currentUrl = page.url?.() || session?.url || 'https://chatgpt.com';
+    return { ok: true, vendor: 'chatgpt', status: 'blocked', url: currentUrl, warnings: ['sent Escape to stop generation'] };
 }
 
 export async function diagnose(port: number, input: { vendor?: string; stage?: string } = {}): Promise<{ ok: boolean; diagnostics?: ReturnType<typeof toJsonDiagnostics> }> {

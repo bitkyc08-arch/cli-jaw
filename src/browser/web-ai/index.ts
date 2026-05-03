@@ -1,6 +1,7 @@
 export * from './types.js';
 export * from './question.js';
 export * from './session.js';
+export { withSessionCommandLock } from './session-store.js';
 export * from './chatgpt.js';
 export * from './capability-registry.js';
 export * from './capability-types.js';

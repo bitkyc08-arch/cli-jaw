@@ -485,6 +485,61 @@ export async function getCdpSession(port = getActivePort()) {
     return page.context().newCDPSession(page);
 }
 
+export async function createTab(port = getActivePort(), url = 'about:blank', opts: { activate?: boolean } = {}): Promise<{ targetId: string; url: string; title: string; activated: boolean }> {
+    const cdp = await getCdpSession(port);
+    if (!cdp) throw new Error('No CDP session available for tab creation');
+    try {
+        const { targetId } = await cdp.send('Target.createTarget', { url, newWindow: false, background: !opts.activate });
+        await new Promise(r => setTimeout(r, 100));
+        const tabs = await readCdpPageTargets(port);
+        const tab = tabs.find(t => t.id === targetId);
+        return { targetId, url: tab?.url || url, title: tab?.title || 'New Tab', activated: opts.activate !== false };
+    } finally {
+        await cdp.detach().catch(() => undefined);
+    }
+}
+
+export async function closeTab(port = getActivePort(), targetId: string): Promise<{ closed: boolean; targetId: string; alreadyClosed?: boolean }> {
+    const cdp = await getCdpSession(port);
+    if (!cdp) throw new Error('No CDP session available for tab close');
+    try {
+        await cdp.send('Target.closeTarget', { targetId });
+        return { closed: true, targetId };
+    } catch (error: any) {
+        if (error.message?.includes('No target')) return { closed: true, targetId, alreadyClosed: true };
+        throw error;
+    } finally {
+        await cdp.detach().catch(() => undefined);
+    }
+}
+
+export async function getPageByTargetId(port = getActivePort(), targetId: string): Promise<any | null> {
+    const { browser } = await connectCdp(port);
+    const contexts = browser.contexts();
+    for (const context of contexts) {
+        for (const page of context.pages()) {
+            const session = await context.newCDPSession(page);
+            try {
+                const { targetInfo } = await session.send('Target.getTargetInfo');
+                if (targetInfo.targetId === targetId) return page;
+            } finally {
+                await session.detach().catch(() => undefined);
+            }
+        }
+    }
+    return null;
+}
+
+export async function waitForPageByTargetId(port = getActivePort(), targetId: string, timeoutMs = 10_000): Promise<any> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+        const page = await getPageByTargetId(port, targetId);
+        if (page && !page.isClosed?.()) return page;
+        await new Promise(r => setTimeout(r, 100));
+    }
+    throw new Error(`new tab page not found for targetId ${targetId}`);
+}
+
 export async function closeBrowser() {
     if (runtimeOwner?.ownership === 'external') {
         disconnectLocalBrowserCache();

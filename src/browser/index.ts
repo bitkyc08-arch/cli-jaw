@@ -4,6 +4,7 @@ export {
     getBrowserRuntimeStatus, beginBrowserActivity, withBrowserActivity,
     resetBrowserRuntimeForTests,
     getCdpSession, getActiveTab, switchTab,
+    createTab, closeTab, getPageByTargetId, waitForPageByTargetId,
     markBrowserStateChanged, getBrowserStateVersion,
 } from './connection.js';
 export type { BrowserTabInfo, ActiveTabResult } from './connection.js';

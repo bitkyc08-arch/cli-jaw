@@ -46,6 +46,8 @@ export interface QuestionEnvelopeInput {
     inlineOnly?: boolean;
     allowCopyMarkdownFallback?: boolean;
     allowGrokContextPack?: boolean;
+    reuseTab?: boolean;
+    newTab?: boolean;
 }
 
 export interface RenderedQuestionBundle {
@@ -68,10 +70,18 @@ export interface CommittedTurnBaseline {
 
 export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error';
 
+export interface WebAiSessionTabState {
+    createdAt: string;
+    lastActiveAt: string;
+    recoveryCount: number;
+    closeCount: number;
+}
+
 export interface WebAiSessionRecord {
     vendor: WebAiVendor;
     sessionId: string;
     targetId: string;
+    tabId?: string;
     url: string;
     conversationUrl?: string;
     promptHash: string;
@@ -83,6 +93,7 @@ export interface WebAiSessionRecord {
     capabilityMode?: string;
     answerText?: string;
     lastSeenTextHash?: string;
+    tabState?: WebAiSessionTabState;
     completedAt?: string;
     failedAt?: string;
     staleAt?: string;
