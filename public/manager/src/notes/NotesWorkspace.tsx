@@ -93,6 +93,10 @@ export function NotesWorkspace(props: NotesWorkspaceProps) {
         const parts = props.selectedPath.split('/');
         parts[parts.length - 1] = newTitle.endsWith('.md') ? newTitle : `${newTitle}.md`;
         const newPath = parts.join('/');
+        if (newPath === props.selectedPath) {
+            event.currentTarget.value = currentTitle;
+            return;
+        }
         renamingRef.current = true;
         try {
             await renameNotePath(props.selectedPath, newPath);
