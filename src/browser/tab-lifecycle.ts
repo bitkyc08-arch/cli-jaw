@@ -8,7 +8,7 @@ const DEFAULT_IDLE_TIMEOUT_MS = 30 * 60 * 1000;
 const pinnedTabs = new Set<string>();
 
 export interface TabCleanupCandidate extends BrowserTabInfo {
-    cleanupReason: 'idle-timeout' | 'max-tabs' | 'untracked';
+    cleanupReason: 'idle-timeout' | 'max-tabs' | 'untracked' | 'provider-overflow';
 }
 
 export interface TabCleanupOptions {
@@ -16,6 +16,8 @@ export interface TabCleanupOptions {
     idleTimeoutMs?: number;
     maxTabs?: number;
     includeUntracked?: boolean;
+    provider?: string;
+    keepProviderTabs?: number;
 }
 
 type LeaseOwnership = Pick<TabLease, 'owner' | 'state'>;
@@ -25,7 +27,14 @@ export interface TabCleanupSummary {
     idleClosed: number;
     limitClosed: number;
     untrackedClosed: number;
+    providerClosed: number;
 }
+
+const PROVIDER_ORIGINS: Record<string, string> = {
+    chatgpt: 'https://chatgpt.com',
+    gemini: 'https://gemini.google.com',
+    grok: 'https://grok.com',
+};
 
 export function parseTabDuration(value: string | number | null | undefined): number {
     const raw = String(value || '').trim();
@@ -122,6 +131,37 @@ export function selectTabsForCleanup({
     return Array.from(selected.values());
 }
 
+export function selectProviderTabsForCleanup({
+    tabs,
+    provider,
+    keep = 1,
+    activeSessionTargetIds = new Set<string>(),
+    pinnedTargetIds = new Set<string>(),
+}: {
+    tabs: BrowserTabInfo[];
+    provider: string;
+    keep?: number;
+    activeSessionTargetIds?: Set<string>;
+    pinnedTargetIds?: Set<string>;
+}): TabCleanupCandidate[] {
+    const origin = PROVIDER_ORIGINS[String(provider || '').toLowerCase()];
+    if (!origin) return [];
+    const keepCount = Math.max(0, Number.isFinite(keep) ? Math.trunc(keep) : 1);
+    const candidates = tabs
+        .filter(tab => tab.targetId && tab.type === 'page')
+        .filter(tab => !activeSessionTargetIds.has(tab.targetId))
+        .filter(tab => !pinnedTargetIds.has(tab.targetId))
+        .filter(tab => {
+            try {
+                return new URL(tab.url || '').origin === origin;
+            } catch {
+                return false;
+            }
+        })
+        .sort((a, b) => (Number(b.lastActiveAt) || 0) - (Number(a.lastActiveAt) || 0));
+    return candidates.slice(keepCount).map(tab => ({ ...tab, cleanupReason: 'provider-overflow' }));
+}
+
 export async function cleanupIdleTabs(port: number, opts: TabCleanupOptions = {}): Promise<TabCleanupSummary> {
     const tabs = await listTabs(port);
     const leases = await listLeases();
@@ -141,8 +181,21 @@ export async function cleanupIdleTabs(port: number, opts: TabCleanupOptions = {}
         includeUntracked: opts.includeUntracked === true,
         leaseByTargetId,
     });
+    if (opts.provider) {
+        for (const tab of selectProviderTabsForCleanup({
+            tabs,
+            provider: opts.provider,
+            keep: opts.keepProviderTabs ?? 1,
+            activeSessionTargetIds,
+            pinnedTargetIds: pinnedTabs,
+        })) {
+            if (!candidates.some(candidate => candidate.targetId === tab.targetId)) {
+                candidates.push(tab);
+            }
+        }
+    }
 
-    const summary: TabCleanupSummary = { closed: 0, idleClosed: 0, limitClosed: 0, untrackedClosed: 0 };
+    const summary: TabCleanupSummary = { closed: 0, idleClosed: 0, limitClosed: 0, untrackedClosed: 0, providerClosed: 0 };
     for (const tab of candidates) {
         try {
             await closeTab(port, tab.targetId);
@@ -150,6 +203,7 @@ export async function cleanupIdleTabs(port: number, opts: TabCleanupOptions = {}
             if (tab.cleanupReason === 'idle-timeout') summary.idleClosed += 1;
             else if (tab.cleanupReason === 'max-tabs') summary.limitClosed += 1;
             else if (tab.cleanupReason === 'untracked') summary.untrackedClosed += 1;
+            else if (tab.cleanupReason === 'provider-overflow') summary.providerClosed += 1;
         } catch {
             // Tab may already be closed by the user or Chrome.
         }

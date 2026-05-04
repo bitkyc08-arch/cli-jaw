@@ -54,7 +54,7 @@ Sessions:
   --session <id>      Resume/poll a saved session
   --deadline <iso>    Override session deadline
   --navigate          Allow resume to switch tabs if needed
-  --new-tab           Create a new tab
+  --new-tab           Force a fresh provider tab; default reuses pooled or inactive tabs first
   --reuse-tab         Reuse active tab
 
 Output:

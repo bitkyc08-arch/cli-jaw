@@ -1,4 +1,4 @@
-import { getActivePage, getCdpSession, createTab, waitForPageByTargetId, getPageByTargetId } from '../connection.js';
+import { getActivePage, getCdpSession, createTab, waitForPageByTargetId, getPageByTargetId, listTabs } from '../connection.js';
 import { getActiveTab, type ActiveTabResult, type BrowserTabInfo } from '../connection.js';
 import { cleanupIdleTabs } from '../tab-lifecycle.js';
 import { cleanupPoolTabs, getPooledTab } from './tab-pool.js';
@@ -139,9 +139,32 @@ async function ensureProviderTab(port: number, input: QuestionEnvelopeInput): Pr
         }
         return { page, targetId: pooled.targetId };
     }
+    if (input.newTab !== true) {
+        const reusable = await findReusableChatGptTab(port);
+        if (reusable?.targetId) {
+            const page = await waitForPageByTargetId(port, reusable.targetId);
+            if (page.url?.() !== vendorUrl) {
+                await page.goto(vendorUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+            }
+            return { page, targetId: reusable.targetId };
+        }
+    }
     const tab = await createTab(port, vendorUrl, { activate: false });
     const page = await waitForPageByTargetId(port, tab.targetId);
     return { page, targetId: tab.targetId };
+}
+
+async function findReusableChatGptTab(port: number): Promise<BrowserTabInfo | null> {
+    const activeSessions = new Set<string>();
+    for (const session of [...listSessions({ status: 'sent' }), ...listSessions({ status: 'streaming' })]) {
+        if (session.targetId) activeSessions.add(session.targetId);
+    }
+    const tabs = await listTabs(port);
+    return tabs
+        .filter(tab => tab.targetId && tab.type === 'page')
+        .filter(tab => !activeSessions.has(tab.targetId))
+        .filter(tab => isChatGptUrl(tab.url || ''))
+        .sort((a, b) => (Number(b.lastActiveAt) || 0) - (Number(a.lastActiveAt) || 0))[0] || null;
 }
 
 async function withSessionPage(port: number, sessionId: string, fn: (ctx: { page: any; targetId: string; session: any }) => Promise<any>): Promise<any> {

@@ -293,6 +293,8 @@ try {
                     'idle-after': { type: 'string' },
                     'max-tabs': { type: 'string' },
                     'include-untracked': { type: 'boolean', default: false },
+                    provider: { type: 'string' },
+                    'keep-provider-tabs': { type: 'string' },
                     force: { type: 'boolean', default: false },
                 },
                 strict: false,
@@ -305,12 +307,15 @@ try {
                 idleAfter: values['idle-after'],
                 maxTabs: values['max-tabs'],
                 includeUntracked: values['include-untracked'],
+                provider: values.provider,
+                keepProviderTabs: values['keep-provider-tabs'],
                 force: values.force,
             }) as Record<string, any>;
             if (values.json) console.log(JSON.stringify(r, null, 2));
             else {
                 console.log(`closed tabs: ${r.closed}`);
                 console.log(`  lease pool: ${r.leaseClosed || 0}`);
+                console.log(`  provider overflow: ${r.providerClosed || 0}`);
                 console.log(`  idle timeout: ${r.idleClosed}`);
                 console.log(`  max-tabs: ${r.limitClosed}`);
                 console.log(`  untracked: ${r.untrackedClosed}`);
@@ -545,8 +550,9 @@ try {
       Create a browser tab.
     tab-close <targetId>
       Close a browser tab by CDP target id.
-    tab-cleanup [--idle-after <30m>] [--max-tabs <n>] [--include-untracked --force] [--json]
+    tab-cleanup [--idle-after <30m>] [--max-tabs <n>] [--provider chatgpt] [--keep-provider-tabs 1] [--include-untracked --force] [--json]
       Close idle or overflow tabs. Active web-ai session tabs are preserved.
+      --provider closes extra inactive provider tabs by origin; default keep is 1.
       JSON includes leaseClosed and leaseClosedTabs for pooled-tab close diagnostics.
     active-tab --json
       Show active tab target-id contract.
@@ -608,7 +614,7 @@ try {
       --context-from-files <glob|path>
       --context-transport <upload|inline>
       --allow-copy-markdown-fallback
-      --new-tab
+      --new-tab                        Force a fresh provider tab; default reuses pooled or inactive provider tabs first.
       --reuse-tab
       --json
 

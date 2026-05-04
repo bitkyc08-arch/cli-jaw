@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseTabDuration, selectTabsForCleanup } from '../../src/browser/tab-lifecycle.ts';
+import { parseTabDuration, selectProviderTabsForCleanup, selectTabsForCleanup } from '../../src/browser/tab-lifecycle.ts';
 import { cleanupLeasedTabs, listLeases } from '../../src/browser/web-ai/tab-lease-store.ts';
 import { JAW_HOME } from '../../src/core/config.ts';
 
@@ -83,6 +83,25 @@ test('browser tab lifecycle does not close untracked tabs for max-tabs unless ex
     assert.deepEqual(selectTabsForCleanup({ ...input, includeUntracked: true }).map(tab => tab.targetId), ['untracked']);
 });
 
+test('browser tab lifecycle selects inactive provider overflow tabs only', () => {
+    const selected = selectProviderTabsForCleanup({
+        provider: 'chatgpt',
+        keep: 1,
+        activeSessionTargetIds: new Set(['active-session']),
+        pinnedTargetIds: new Set(['pinned']),
+        tabs: [
+            { tabId: 'newest', targetId: 'newest', index: 1, title: '', url: 'https://chatgpt.com/c/newest', type: 'page', active: false, attached: true, lastActiveAt: 300 },
+            { tabId: 'old', targetId: 'old', index: 2, title: '', url: 'https://chatgpt.com/c/old', type: 'page', active: false, attached: true, lastActiveAt: 100 },
+            { tabId: 'active-session', targetId: 'active-session', index: 3, title: '', url: 'https://chatgpt.com/c/active', type: 'page', active: false, attached: true, lastActiveAt: 50 },
+            { tabId: 'pinned', targetId: 'pinned', index: 4, title: '', url: 'https://chatgpt.com/c/pinned', type: 'page', active: false, attached: true, lastActiveAt: 25 },
+            { tabId: 'other', targetId: 'other', index: 5, title: '', url: 'https://example.com', type: 'page', active: false, attached: true, lastActiveAt: 1 },
+        ],
+    });
+
+    assert.deepEqual(selected.map(tab => tab.targetId), ['old']);
+    assert.equal(selected[0]?.cleanupReason, 'provider-overflow');
+});
+
 test('browser createTab reuses startup about:blank tabs before creating provider tabs', () => {
     const source = readFileSync(new URL('../../src/browser/connection.ts', import.meta.url), 'utf8');
     assert.ok(source.includes('function isReusableBlankTab'));
@@ -135,6 +154,15 @@ test('browser web-ai tab pool persists leases, locks checkout, and closes evicte
     assert.ok(chatgptSource.includes('await finalizeProviderTab'));
 });
 
+test('browser web-ai reuses inactive ChatGPT tabs before creating another tab', () => {
+    const chatgptSource = readFileSync(new URL('../../src/browser/web-ai/chatgpt.ts', import.meta.url), 'utf8');
+    assert.ok(chatgptSource.includes('listTabs'));
+    assert.ok(chatgptSource.includes('findReusableChatGptTab'));
+    assert.ok(chatgptSource.includes('input.newTab !== true'));
+    assert.ok(chatgptSource.includes('const reusable = await findReusableChatGptTab(port)'));
+    assert.ok(chatgptSource.includes('await page.goto(vendorUrl'));
+});
+
 test('browser tab cleanup API rejects includeUntracked without force', () => {
     const routeSource = readFileSync(new URL('../../src/routes/browser.ts', import.meta.url), 'utf8');
     const cliSource = readFileSync(new URL('../../bin/commands/browser.ts', import.meta.url), 'utf8');
@@ -143,6 +171,19 @@ test('browser tab cleanup API rejects includeUntracked without force', () => {
     assert.ok(cliSource.includes("values['include-untracked'] === true && values.force !== true"));
     assert.ok(cliSource.includes('tab-cleanup --include-untracked requires --force'));
     assert.ok(cliSource.includes('force: values.force'));
+});
+
+test('browser tab cleanup exposes provider overflow UX', () => {
+    const lifecycleSource = readFileSync(new URL('../../src/browser/tab-lifecycle.ts', import.meta.url), 'utf8');
+    const routeSource = readFileSync(new URL('../../src/routes/browser.ts', import.meta.url), 'utf8');
+    const cliSource = readFileSync(new URL('../../bin/commands/browser.ts', import.meta.url), 'utf8');
+    assert.ok(lifecycleSource.includes('selectProviderTabsForCleanup'));
+    assert.ok(lifecycleSource.includes("cleanupReason: 'provider-overflow'"));
+    assert.ok(lifecycleSource.includes('providerClosed'));
+    assert.ok(routeSource.includes('provider: req.body.provider'));
+    assert.ok(routeSource.includes('keepProviderTabs: req.body.keepProviderTabs'));
+    assert.ok(cliSource.includes('provider overflow'));
+    assert.ok(cliSource.includes('--keep-provider-tabs 1'));
 });
 
 test('browser tab cleanup API runs durable lease pool cleanup', () => {

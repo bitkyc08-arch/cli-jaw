@@ -194,6 +194,8 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
                 idleTimeoutMs: req.body.idleAfter ? browser.parseTabDuration(String(req.body.idleAfter)) : undefined,
                 maxTabs: req.body.maxTabs ? Number(req.body.maxTabs) : undefined,
                 includeUntracked: req.body.includeUntracked === true,
+                provider: req.body.provider ? String(req.body.provider) : undefined,
+                keepProviderTabs: req.body.keepProviderTabs ? Number(req.body.keepProviderTabs) : undefined,
             });
             res.json({
                 ...idleResult,
