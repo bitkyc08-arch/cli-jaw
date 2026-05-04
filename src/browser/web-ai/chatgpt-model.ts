@@ -29,6 +29,7 @@ const CHATGPT_COMPOSER_MODEL_PILL_SELECTORS = [
 
 const CHATGPT_MODEL_MENU_ITEM_SELECTOR = '[data-testid^="model-switcher-gpt-"]';
 const CHATGPT_MODEL_TEXT_BUTTON_PATTERN = /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b)/i;
+const CHATGPT_OBSERVED_PRO_PILL_LABELS = ['Standard Pro', 'Extended Pro'] as const;
 const CHATGPT_EFFORT_TRIGGER_SELECTORS = [
     '[data-testid*="thinking-effort"]',
     '[data-testid*="reasoning-effort"]',
@@ -121,7 +122,7 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
 
     const usedFallbacks: string[] = [];
     await openModelMenu(page, usedFallbacks);
-    let currentModel = await readCheckedModel(page);
+    let currentModel = await readCheckedModel(page, requested || null);
     const targetModel = requested || currentModel;
     let modelChanged = false;
     if (!targetModel) {
@@ -134,7 +135,7 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
         await option.click({ timeout: 5_000 });
         await page.waitForTimeout(750).catch(() => undefined);
         await openModelMenu(page, usedFallbacks);
-        currentModel = await readCheckedModel(page);
+        currentModel = await readCheckedModel(page, requested);
         modelChanged = true;
     }
 
@@ -143,7 +144,7 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
         selectedEffort = await selectChatGptEffort(page, targetModel, requestedEffort, usedFallbacks);
         await openModelMenu(page, usedFallbacks);
     }
-    const after = await readCheckedModel(page);
+    const after = await readCheckedModel(page, targetModel);
     await closeModelMenu(page);
     if (after !== targetModel) throw new Error(`ChatGPT model verification failed: expected ${targetModel}, got ${after || 'none'}`);
     return {
@@ -185,8 +186,8 @@ async function openModelMenu(page: Page, usedFallbacks: string[]): Promise<void>
         await page.waitForTimeout(250).catch(() => undefined);
     }
     usedFallbacks.push('model-menu-text-button');
-    const textButton = page.locator('button').filter({ hasText: /^ChatGPT$|^GPT-|^Instant$|^Fast$|^Thinking$|^Pro$|^Heavy$|^Extended Pro$|^Standard Pro$/i }).first();
-    if (await textButton.isVisible().catch(() => false)) {
+    const textButton = await findModelTextButton(page);
+    if (textButton && await textButton.isVisible().catch(() => false)) {
         await textButton.click({ timeout: 5_000 });
         await page.waitForTimeout(400).catch(() => undefined);
         if (await isModelMenuOpen(page)) return;
@@ -195,31 +196,68 @@ async function openModelMenu(page: Page, usedFallbacks: string[]): Promise<void>
 }
 
 async function findComposerModelPill(page: Page): Promise<ReturnType<Page['locator']> | null> {
+    let standaloneHeavy: ReturnType<Page['locator']> | null = null;
     for (const selector of CHATGPT_COMPOSER_MODEL_PILL_SELECTORS) {
         const candidates = await page.locator(selector).count().catch(() => 0);
         for (let index = candidates - 1; index >= 0; index -= 1) {
             const loc = page.locator(selector).nth(index);
             if (!(await loc.isVisible().catch(() => false))) continue;
             const text = await loc.innerText({ timeout: 1_000 }).catch(() => '');
-            if (CHATGPT_MODEL_TEXT_BUTTON_PATTERN.test(text.trim())) return loc;
+            const trimmed = text.trim();
+            if (!isModelPillText(trimmed)) continue;
+            if (isStandaloneEffortLabel(trimmed)) {
+                if (/^Heavy$/i.test(trimmed) && !standaloneHeavy) standaloneHeavy = loc;
+                continue;
+            }
+            return loc;
         }
     }
-    const textButton = page.locator('button').filter({ hasText: CHATGPT_MODEL_TEXT_BUTTON_PATTERN }).last();
-    if (await textButton.isVisible().catch(() => false)) return textButton;
-    return null;
+    return standaloneHeavy || findModelTextButton(page);
+}
+
+async function findModelTextButton(page: Page): Promise<ReturnType<Page['locator']> | null> {
+    let standaloneHeavy: ReturnType<Page['locator']> | null = null;
+    const candidates = await page.locator('button').count().catch(() => 0);
+    for (let index = candidates - 1; index >= 0; index -= 1) {
+        const loc = page.locator('button').nth(index);
+        if (!(await loc.isVisible().catch(() => false))) continue;
+        const text = (await loc.innerText({ timeout: 500 }).catch(() => '')).trim();
+        if (!isModelPillText(text)) continue;
+        if (isStandaloneEffortLabel(text)) {
+            if (/^Heavy$/i.test(text) && !standaloneHeavy) standaloneHeavy = loc;
+            continue;
+        }
+        return loc;
+    }
+    return standaloneHeavy;
 }
 
 async function findModelOption(page: Page, choice: ChatGptModelChoice): Promise<ReturnType<Page['locator']> | null> {
     const option = CHATGPT_MODEL_OPTIONS[choice];
     for (const testId of option.testIds) {
         const loc = page.locator(`[role="menuitemradio"][data-testid="${testId}"], [data-testid="${testId}"]`).first();
-        if (await loc.isVisible().catch(() => false)) return loc;
+        if (!(await loc.isVisible().catch(() => false))) continue;
+        if (!(await isModelOptionCandidate(loc, choice))) continue;
+        return loc;
     }
     for (const label of option.labels) {
-        const loc = page.locator('[role="menuitemradio"], [role="menuitem"]').filter({ hasText: modelLabelPattern(choice, label) }).first();
-        if (await loc.isVisible().catch(() => false)) return loc;
+        const candidates = page.locator('[role="menuitemradio"], [role="menuitem"]').filter({ hasText: modelLabelPattern(choice, label) });
+        const count = await candidates.count().catch(() => 0);
+        for (let index = 0; index < count; index += 1) {
+            const loc = candidates.nth(index);
+            if (!(await loc.isVisible().catch(() => false))) continue;
+            if (!(await isModelOptionCandidate(loc, choice))) continue;
+            return loc;
+        }
     }
     return null;
+}
+
+async function isModelOptionCandidate(loc: ReturnType<Page['locator']>, choice: ChatGptModelChoice): Promise<boolean> {
+    const text = (await loc.innerText({ timeout: 500 }).catch(() => '')).trim();
+    if (!text) return false;
+    if (isStandaloneEffortLabel(text) || (CHATGPT_OBSERVED_PRO_PILL_LABELS as readonly string[]).includes(text)) return false;
+    return modelChoiceFromText(text) === choice;
 }
 
 async function selectChatGptEffort(page: Page, model: ChatGptModelChoice, effort: ChatGptEffortChoice, usedFallbacks: string[]): Promise<{ selected: ChatGptEffortChoice; changed: boolean }> {
@@ -241,7 +279,7 @@ async function selectChatGptEffort(page: Page, model: ChatGptModelChoice, effort
 async function findEffortOption(page: Page, model: ChatGptModelChoice, effort: ChatGptEffortChoice): Promise<ReturnType<Page['locator']> | null> {
     const label = CHATGPT_MODEL_EFFORT_OPTIONS[model as 'thinking' | 'pro']?.efforts?.[effort];
     if (!label) return null;
-    const candidates = page.locator('[role="menuitemradio"]').filter({ hasText: effortLabelPattern(label) });
+    const candidates = page.locator('[role="menuitemradio"], [role="menuitem"]').filter({ hasText: effortLabelPattern(label) });
     const modelSpecific = candidates.filter({ hasText: modelLabelPattern(model, CHATGPT_MODEL_OPTIONS[model]?.labels?.[0] || '') }).last();
     if (await modelSpecific.isVisible().catch(() => false)) return modelSpecific;
     const option = candidates.last();
@@ -250,6 +288,7 @@ async function findEffortOption(page: Page, model: ChatGptModelChoice, effort: C
 
 async function openEffortMenu(page: Page, model: ChatGptModelChoice, effort: ChatGptEffortChoice, usedFallbacks: string[]): Promise<void> {
     if (await isEffortMenuOpen(page, model, { effort })) return;
+    if (!(await isModelMenuOpen(page))) await openModelMenu(page, usedFallbacks);
     const config = CHATGPT_MODEL_EFFORT_OPTIONS[model as 'thinking' | 'pro'];
     if (!config) throw new Error(`ChatGPT reasoning effort is not available for ${model}`);
     const row = await findModelOption(page, model);
@@ -263,17 +302,12 @@ async function openEffortMenu(page: Page, model: ChatGptModelChoice, effort: Cha
     for (const testId of config.triggerTestIds) {
         const trigger = page.locator(`[data-testid="${testId}"]`).first();
         if (!(await trigger.count().then(count => count > 0).catch(() => false))) continue;
-        const box = await elementRectByTestId(page, testId);
-        if (box) {
-            await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2).catch(() => undefined);
-            await page.waitForTimeout(100).catch(() => undefined);
-            await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2).catch(() => undefined);
+        if (await trigger.isVisible().catch(() => false)) {
+            await trigger.click({ timeout: 2_000 }).catch(() => undefined);
             await page.waitForTimeout(300).catch(() => undefined);
             if (await isEffortMenuOpen(page, model, { effort })) return;
+            await dismissEffortMenuAndReopenModel(page, usedFallbacks);
         }
-        await trigger.click({ timeout: 5_000 });
-        await page.waitForTimeout(300).catch(() => undefined);
-        if (await isEffortMenuOpen(page, model, { effort })) return;
     }
     for (const selector of CHATGPT_EFFORT_TRIGGER_SELECTORS) {
         const trigger = page.locator(selector).last();
@@ -357,16 +391,6 @@ async function findEffortTriggerBoxNearModelRow(page: Page, model: ChatGptModelC
     }, { expectedLabels: labels, modelChoice: model, triggerSelectors: CHATGPT_EFFORT_TRIGGER_SELECTORS }).catch(() => null);
 }
 
-async function elementRectByTestId(page: Page, testId: string): Promise<{ x: number; y: number; width: number; height: number } | null> {
-    return page.evaluate((id: string) => {
-        const el = document.querySelector(`[data-testid="${id}"]`);
-        if (!el) return null;
-        const rect = el.getBoundingClientRect();
-        if (!rect.width || !rect.height) return null;
-        return { x: rect.x, y: rect.y, width: rect.width, height: rect.height };
-    }, testId).catch(() => null);
-}
-
 async function readCheckedEffort(page: Page, model: ChatGptModelChoice): Promise<ChatGptEffortChoice | null> {
     const config = CHATGPT_MODEL_EFFORT_OPTIONS[model as 'thinking' | 'pro'];
     for (const [effort, label] of Object.entries(config?.efforts || {}) as Array<[ChatGptEffortChoice, string]>) {
@@ -377,7 +401,7 @@ async function readCheckedEffort(page: Page, model: ChatGptModelChoice): Promise
             .catch(() => false);
         if (checked) return effort;
     }
-    const active = await readActiveModelPill(page);
+    const active = await readActiveEffortPill(page);
     for (const [effort, label] of Object.entries(config?.efforts || {}) as Array<[ChatGptEffortChoice, string]>) {
         if (effortLabelPattern(label).test(active)) return effort;
     }
@@ -432,7 +456,7 @@ function requiredEffortMenuLabels(model: ChatGptModelChoice, effort: ChatGptEffo
     return Object.values(efforts).filter(Boolean) as string[];
 }
 
-async function readCheckedModel(page: Page): Promise<ChatGptModelChoice | null> {
+async function readCheckedModel(page: Page, expectedModel: ChatGptModelChoice | null = null): Promise<ChatGptModelChoice | null> {
     for (const [choice, option] of Object.entries(CHATGPT_MODEL_OPTIONS) as Array<[ChatGptModelChoice, typeof CHATGPT_MODEL_OPTIONS[ChatGptModelChoice]]>) {
         for (const testId of option.testIds) {
             const checked = await page.locator(`[role="menuitemradio"][data-testid="${testId}"][aria-checked="true"], [data-testid="${testId}"][aria-checked="true"]`).first().isVisible().catch(() => false);
@@ -446,18 +470,25 @@ async function readCheckedModel(page: Page): Promise<ChatGptModelChoice | null> 
         const choice = modelChoiceFromText(text);
         if (choice) return choice;
     }
-    const active = await readActiveModelPill(page);
+    const active = await readActiveModelPill(page, { allowStandaloneHeavy: expectedModel === 'pro' });
     return modelChoiceFromText(active);
 }
 
-async function readActiveModelPill(page: Page): Promise<string> {
+async function readActiveModelPill(page: Page, options: { allowStandaloneHeavy?: boolean } = {}): Promise<string> {
+    const allowStandaloneHeavy = options.allowStandaloneHeavy === true;
+    let standaloneHeavy = '';
     for (const selector of CHATGPT_COMPOSER_MODEL_PILL_SELECTORS) {
         const candidates = await page.locator(selector).count().catch(() => 0);
         for (let index = candidates - 1; index >= 0; index -= 1) {
             const loc = page.locator(selector).nth(index);
             if (!(await loc.isVisible().catch(() => false))) continue;
             const text = (await loc.innerText({ timeout: 500 }).catch(() => '')).trim();
-            if (CHATGPT_MODEL_TEXT_BUTTON_PATTERN.test(text)) return text;
+            if (!isModelPillText(text)) continue;
+            if (isStandaloneEffortLabel(text)) {
+                if (allowStandaloneHeavy && /^Heavy$/i.test(text) && !standaloneHeavy) standaloneHeavy = text;
+                continue;
+            }
+            return text;
         }
     }
     const candidates = await page.locator('button').count().catch(() => 0);
@@ -465,7 +496,33 @@ async function readActiveModelPill(page: Page): Promise<string> {
         const loc = page.locator('button').nth(index);
         if (!(await loc.isVisible().catch(() => false))) continue;
         const text = (await loc.innerText({ timeout: 500 }).catch(() => '')).trim();
-        if (CHATGPT_MODEL_TEXT_BUTTON_PATTERN.test(text)) return text;
+        if (!isModelPillText(text)) continue;
+        if (isStandaloneEffortLabel(text)) {
+            if (allowStandaloneHeavy && /^Heavy$/i.test(text) && !standaloneHeavy) standaloneHeavy = text;
+            continue;
+        }
+        return text;
+    }
+    return standaloneHeavy;
+}
+
+async function readActiveEffortPill(page: Page): Promise<string> {
+    const labels = [...new Set(Object.values(CHATGPT_MODEL_EFFORT_OPTIONS).flatMap(option => Object.values(option.efforts)).filter(Boolean))] as string[];
+    for (const selector of CHATGPT_COMPOSER_MODEL_PILL_SELECTORS) {
+        const candidates = await page.locator(selector).count().catch(() => 0);
+        for (let index = candidates - 1; index >= 0; index -= 1) {
+            const loc = page.locator(selector).nth(index);
+            if (!(await loc.isVisible().catch(() => false))) continue;
+            const text = (await loc.innerText({ timeout: 500 }).catch(() => '')).trim();
+            if (labels.some(label => effortLabelPattern(label).test(text))) return text;
+        }
+    }
+    const candidates = await page.locator('button').count().catch(() => 0);
+    for (let index = candidates - 1; index >= 0; index -= 1) {
+        const loc = page.locator('button').nth(index);
+        if (!(await loc.isVisible().catch(() => false))) continue;
+        const text = (await loc.innerText({ timeout: 500 }).catch(() => '')).trim();
+        if (labels.some(label => effortLabelPattern(label).test(text))) return text;
     }
     return '';
 }
@@ -473,8 +530,13 @@ async function readActiveModelPill(page: Page): Promise<string> {
 async function isModelMenuOpen(page: Page): Promise<boolean> {
     return page.locator(CHATGPT_MODEL_MENU_ITEM_SELECTOR)
         .filter({ hasText: CHATGPT_MODEL_TEXT_BUTTON_PATTERN })
-        .first()
-        .isVisible()
+        .evaluateAll((items: any[]) => items.some((item: any) => {
+            const text = (item.innerText || item.textContent || '').trim();
+            const testId = item.getAttribute?.('data-testid') || '';
+            if (!text) return false;
+            if (testId.includes('effort') && /^(Light|Standard|Extended|Heavy|Standard Pro|Extended Pro)$/i.test(text)) return false;
+            return /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b)/i.test(text);
+        }))
         .catch(() => false);
 }
 
@@ -494,6 +556,10 @@ function modelChoiceFromText(text: string): ChatGptModelChoice | null {
     if (/\b(Thinking|Think)\b/i.test(text)) return 'thinking';
     if (/\b(Pro|Heavy)\b/i.test(text)) return 'pro';
     return null;
+}
+
+function isModelPillText(text: string): boolean {
+    return CHATGPT_MODEL_TEXT_BUTTON_PATTERN.test(text) || (CHATGPT_OBSERVED_PRO_PILL_LABELS as readonly string[]).includes(text);
 }
 
 function isStandaloneEffortLabel(text: string): boolean {
