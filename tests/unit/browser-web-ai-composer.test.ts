@@ -161,6 +161,38 @@ test('BWCOMP-007d: ChatGPT selector ignores a reasoning menu for the wrong model
     }
 });
 
+test('BWCOMP-007e: ChatGPT selector rejects labels-only effort menus with unsupported labels for the requested model', async () => {
+    const { selectChatGptModel } = await import('../../src/browser/web-ai/chatgpt-model.js');
+    const page = createFakeModelPage({
+        model: 'pro',
+        exactEffortTrigger: false,
+        genericEffortTrigger: true,
+        effortTexts: labelsOnlyProEffortTexts(),
+        genericEffortTexts: labelsOnlyThinkingEffortTexts(),
+    });
+
+    const result = await selectChatGptModel(page, 'pro', { effort: 'extended' });
+
+    assert.equal(result?.selected, 'pro');
+    assert.equal(result?.effort, 'extended');
+    assert.ok(result?.usedFallbacks.includes('pro-effort-keyboard-open'));
+    assert.equal(result?.usedFallbacks.includes('pro-effort-generic-trigger'), false);
+});
+
+test('BWCOMP-007f: ChatGPT selector verifies effort from active pill when checked effort rows disappear', async () => {
+    const { selectChatGptModel } = await import('../../src/browser/web-ai/chatgpt-model.js');
+    const page = createFakeModelPage({
+        model: 'thinking',
+        effortTexts: thinkingEffortTexts(),
+        checkedEffortRows: false,
+    });
+
+    const result = await selectChatGptModel(page, 'thinking', { effort: 'heavy' });
+
+    assert.equal(result?.selected, 'thinking');
+    assert.equal(result?.effort, 'heavy');
+});
+
 test('BWCOMP-008: ChatGPT reasoning effort is exposed through CLI and typed input', () => {
     const cliSrc = fs.readFileSync(join(root, 'bin/commands/browser-web-ai.ts'), 'utf8');
     const typesSrc = fs.readFileSync(join(root, 'src/browser/web-ai/types.ts'), 'utf8');
@@ -188,15 +220,33 @@ function proEffortTexts(): Record<string, string> {
     };
 }
 
+function labelsOnlyThinkingEffortTexts(): Record<string, string> {
+    return {
+        light: 'Light',
+        standard: 'Standard',
+        extended: 'Extended',
+        heavy: 'Heavy',
+    };
+}
+
+function labelsOnlyProEffortTexts(): Record<string, string> {
+    return {
+        standard: 'Standard',
+        extended: 'Extended',
+    };
+}
+
 function createFakeModelPage(input: {
     model?: string;
     effortTexts?: Record<string, string>;
     genericEffortTexts?: Record<string, string>;
+    checkedEffortRows?: boolean;
     exactEffortTrigger?: boolean;
     genericEffortTrigger?: boolean;
 } = {}): any {
     const effortTexts = input.effortTexts || {};
     const genericEffortTexts = input.genericEffortTexts || null;
+    const checkedEffortRows = input.checkedEffortRows ?? true;
     const state: any = {
         modelMenuOpen: true,
         effortMenuOpen: false,
@@ -236,7 +286,9 @@ function createFakeModelPage(input: {
         onClick: () => openEffortRows('generic'),
     });
     const modelPill = createElement({
-        text: state.currentModel,
+        text: () => state.selectedEffort
+            ? `${effortTexts[state.selectedEffort] || currentEffortTexts()[state.selectedEffort] || state.currentModel}`
+            : state.currentModel,
     });
 
     return {
@@ -272,7 +324,7 @@ function createFakeModelPage(input: {
     function currentEffortRows(): any[] {
         return Object.entries(currentEffortTexts()).map(([effort, text]) => createElement({
             text,
-            checked: () => state.selectedEffort === effort,
+            checked: () => checkedEffortRows && state.selectedEffort === effort,
             onClick: () => {
                 state.selectedEffort = effort;
                 state.effortMenuOpen = false;
@@ -306,7 +358,7 @@ function createFakeModelPage(input: {
 }
 
 function createElement(input: {
-    text?: string;
+    text?: string | (() => string);
     testId?: string;
     checked?: () => boolean;
     onClick?: () => void;
@@ -314,7 +366,7 @@ function createElement(input: {
     rect?: { x: number; y: number; width: number; height: number };
 } = {}): any {
     return {
-        text: input.text || '',
+        get text() { return typeof input.text === 'function' ? input.text() : input.text || ''; },
         testId: input.testId || null,
         get checked() { return input.checked?.() ?? false; },
         onClick: input.onClick || (() => undefined),
