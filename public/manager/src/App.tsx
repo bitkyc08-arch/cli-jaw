@@ -293,6 +293,10 @@ export function App() {
     function handleTabChange(tab: DashboardDetailTab): void {
         if (tab !== 'settings' && !canLeaveDirtySettings()) return;
         if (tab !== 'settings') setSettingsDirty(false);
+        if (view.activeDetailTab === 'preview' && tab !== 'preview') {
+            const port = view.selectedPort;
+            if (port != null) activityUnread.markPortSeen(port);
+        }
         view.setActiveDetailTab(tab);
         if (tab === 'preview') {
             const port = view.selectedPort;
@@ -324,6 +328,10 @@ export function App() {
     }
 
     function handleSidebarModeChange(mode: DashboardSidebarMode): void {
+        if (view.sidebarMode === 'instances' && mode !== 'instances' && view.activeDetailTab === 'preview') {
+            const port = view.selectedPort;
+            if (port != null) activityUnread.markPortSeen(port);
+        }
         const sidebarMode = normalizeSidebarModeForBuild(mode);
         view.setSidebarMode(sidebarMode); void saveUi({ sidebarMode });
     }

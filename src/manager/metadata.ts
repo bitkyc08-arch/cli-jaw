@@ -37,7 +37,16 @@ export function normalizeSettingsMetadata(settingsBody: unknown): DashboardSetti
     const workingDir = readString(source, ['workingDir', 'cwd']);
     const homeDisplay = readString(source, ['jawHome', 'JAW_HOME', 'home', 'homePath']) || workingDir;
     const currentCli = readString(source, ['cli', 'currentCli']);
-    const currentModel = readString(source, ['model', 'currentModel']);
+    let currentModel = readString(source, ['model', 'currentModel']);
+
+    if (!currentModel && currentCli && source) {
+        const overrides = asRecord(source.activeOverrides);
+        const cliOverride = overrides ? asRecord(overrides[currentCli]) : null;
+        const perCli = asRecord(source.perCli);
+        const cliSettings = perCli ? asRecord(perCli[currentCli]) : null;
+        currentModel = readString(cliOverride, ['model'])
+            || readString(cliSettings, ['model']);
+    }
 
     return { homeDisplay, workingDir, currentCli, currentModel };
 }

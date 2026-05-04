@@ -147,6 +147,12 @@ export async function fetchNotesInfo(): Promise<{ root: string }> {
     return await parseNotesResponse<{ root: string }>(response, `notes info fetch failed: ${response.status}`);
 }
 
+export async function fetchNotesVersion(): Promise<number> {
+    const response = await fetch('/api/dashboard/notes/version');
+    const body = await parseNotesResponse<{ version: number }>(response, `notes version fetch failed: ${response.status}`);
+    return body.version;
+}
+
 export async function fetchNotesTree(): Promise<DashboardNoteTreeEntry[]> {
     const response = await fetch('/api/dashboard/notes/tree');
     return await parseNotesResponse<DashboardNoteTreeEntry[]>(response, `notes tree fetch failed: ${response.status}`);

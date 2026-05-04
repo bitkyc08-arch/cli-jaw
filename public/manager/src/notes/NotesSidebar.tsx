@@ -3,6 +3,7 @@ import { createNoteFile, createNoteFolder, fetchNotesInfo, fetchNotesTree, renam
 import { NotesFileTree } from './NotesFileTree';
 import { publishInvalidation } from '../sync/invalidation-bus';
 import { useInvalidationSubscription } from '../sync/useInvalidationSubscription';
+import { useNotesExternalSync } from './useNotesExternalSync';
 import type { NotesTreeEntry } from './notes-types';
 
 type NotesSidebarProps = {
@@ -95,6 +96,8 @@ export function NotesSidebar(props: NotesSidebarProps) {
     const [status, setStatus] = useState<string | null>(null);
     const [selectedFolderPath, setSelectedFolderPath] = useState<string | null>(null);
     const [notesRoot, setNotesRoot] = useState<string | null>(null);
+
+    useNotesExternalSync(true);
 
     useEffect(() => {
         void fetchNotesInfo().then(info => setNotesRoot(info.root)).catch(() => {});

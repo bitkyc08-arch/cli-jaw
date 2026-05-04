@@ -16,12 +16,14 @@ import { saveRemoteNoteAsset } from './remote-assets.js';
 import { NotesStore } from './store.js';
 import { NotesTrash } from './trash.js';
 import type { DashboardTrashNoteKind } from '../types.js';
+import { createNotesWatcher, type NotesWatcher } from './watcher.js';
 
 export type DashboardNotesRouterOptions = {
     managerPort: number;
     store?: NotesStore;
     assetStore?: NotesAssetStore;
     trash?: NotesTrash;
+    watcher?: NotesWatcher;
 };
 
 type RouteBody = Record<string, unknown>;
@@ -139,8 +141,13 @@ export function createDashboardNotesRouter(options: DashboardNotesRouterOptions)
     const store = options.store || new NotesStore();
     const assetStore = options.assetStore || new NotesAssetStore({ notesRoot: store.rootPath() });
     const trash = options.trash || new NotesTrash();
+    const watcher = options.watcher || createNotesWatcher(store.rootPath());
 
     router.use(requireManagerOrigin(options.managerPort));
+
+    router.get('/version', (_req, res) => {
+        res.json({ version: watcher.version() });
+    });
 
     router.post('/asset', express.json({ limit: NOTE_ASSET_JSON_LIMIT }), asyncRoute(async (req, res) => {
         const body = bodyObject(req);

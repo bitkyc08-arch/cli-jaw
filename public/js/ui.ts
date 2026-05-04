@@ -1,6 +1,6 @@
 // ── UI Utilities ──
 import { state } from './state.js';
-import { renderMarkdown, escapeHtml, stripOrchestration, linkifyFilePaths } from './render.js';
+import { renderMarkdown, escapeHtml, sanitizeHtml, stripOrchestration, linkifyFilePaths } from './render.js';
 import { renderMermaidBlocks } from './render.js';
 import { generateId } from './uuid.js';
 import { getAppName } from './features/appname.js';
@@ -240,7 +240,7 @@ export function addSystemMsg(text: string, extraClass?: string, type?: string): 
     const div = document.createElement('div');
     const typeClass = type ? ` msg-type-${type}` : '';
     div.className = 'msg msg-system' + typeClass + (extraClass ? ' ' + extraClass : '');
-    div.innerHTML = text;
+    div.innerHTML = sanitizeHtml(text);
     if (vs.active) {
         vs.appendLiveItem(div);
     } else {
