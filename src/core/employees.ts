@@ -50,6 +50,32 @@ export interface StaticEmployee {
     };
 }
 
+/**
+ * Shape of a row returned by `getEmployees.all()` (see ./db.ts).
+ * Derived from the schema in db.ts; keep in sync if the schema changes.
+ */
+export interface EmployeeRow {
+    id: string;
+    name: string;
+    cli: string;          // not narrowed to CliEngine yet — DB may carry legacy values
+    model: string | null;
+    role: string | null;
+    [k: string]: unknown; // allow forward-compatible columns
+}
+
+/**
+ * Synthetic row produced when a request resolves to a STATIC_EMPLOYEES entry
+ * (no real DB id). Shape mirrors the columns the dispatch path actually reads.
+ */
+export interface SyntheticEmployeeRow {
+    id: string;
+    name: string;
+    cli: string;
+    model: string;
+    role: string;
+    status: 'idle';
+}
+
 export const STATIC_EMPLOYEES: StaticEmployee[] = [
     {
         name: 'Control',
@@ -142,11 +168,11 @@ export function checkModelSupport(
  */
 export function resolveDispatchableEmployee(
     name: string,
-    dbRows: Array<Record<string, any>> = getEmployees.all() as any[],
-): { row: Record<string, any>; source: 'db' | 'static'; spec: StaticEmployee | null } | null {
+    dbRows: readonly EmployeeRow[] = getEmployees.all() as EmployeeRow[],
+): { row: EmployeeRow | SyntheticEmployeeRow; source: 'db' | 'static'; spec: StaticEmployee | null } | null {
     const needle = name.trim().toLowerCase();
     for (const r of dbRows) {
-        if ((r.name || '').toLowerCase() === needle) {
+        if ((r.name ?? '').toLowerCase() === needle) {
             return { row: r, source: 'db', spec: findStaticEmployee(r.name) };
         }
     }
@@ -220,9 +246,9 @@ export function listEmployees(): EmployeeListing[] {
 
 export function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     if (!db.open) return { seeded: 0, cli: settings.cli, skipped: true };
-    const existing = getEmployees.all();
+    const existing = getEmployees.all() as EmployeeRow[];
     if (reset) {
-        for (const emp of existing) deleteEmployee.run((emp as any).id);
+        for (const emp of existing) deleteEmployee.run(emp.id);
     } else if (existing.length > 0) {
         return { seeded: 0, cli: settings.cli, skipped: true };
     }

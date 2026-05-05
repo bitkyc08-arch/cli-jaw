@@ -14,6 +14,7 @@ import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
 import { verifyBossToken } from '../core/boss-auth.js';
 import { resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
+import type { EmployeeRow } from '../core/employees.js';
 import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
 
 function getRuntimeSnapshot() {
@@ -179,7 +180,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             ].join('\n\n');
         }
 
-        const emps = getEmployees.all() as Record<string, any>[];
+        const emps = getEmployees.all() as EmployeeRow[];
         // Try DB first (preserves existing id-based matching), then fall
         // through to static employees for entries like Control.
         let emp = findEmployee(emps, { agent: agentName });

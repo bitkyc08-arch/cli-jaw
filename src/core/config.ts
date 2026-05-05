@@ -200,7 +200,7 @@ function createDefaultSettings() {
 
 export const DEFAULT_SETTINGS = createDefaultSettings();
 
-export function normalizeModelForCli(cli: string, model: any) {
+export function normalizeModelForCli(cli: string, model: unknown): unknown {
     if (typeof model !== 'string') return model;
     if (cli === 'claude') return migrateLegacyClaudeValue(model);
     if (cli === 'copilot' && model === 'claude-opus-4.6-fast') return 'claude-opus-4.6';

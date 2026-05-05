@@ -335,10 +335,18 @@ export async function autoCompactRefresh(opts: {
     // Preserve unconsumed heartbeat anchor context across compact
     try {
         const { getUnconsumedAnchors } = await import('./db.js');
-        const unconsumed = getUnconsumedAnchors.all() as any[];
+        type HeartbeatAnchor = {
+            job_name: string;
+            created_at: number;
+            output: string;
+            [k: string]: unknown;
+        };
+        const unconsumed = getUnconsumedAnchors.all() as HeartbeatAnchor[];
         if (unconsumed.length > 0) {
             const latest = unconsumed[0];
-            bootstrap += `\n\n<pending_heartbeat_anchor job="${latest.job_name}" age_min="${Math.round((Date.now() - latest.created_at) / 60000)}">\n${String(latest.output).slice(0, 2000)}\n</pending_heartbeat_anchor>`;
+            if (latest) {
+                bootstrap += `\n\n<pending_heartbeat_anchor job="${latest.job_name}" age_min="${Math.round((Date.now() - latest.created_at) / 60000)}">\n${String(latest.output).slice(0, 2000)}\n</pending_heartbeat_anchor>`;
+            }
         }
     } catch { /* heartbeat_events table may not exist in older DBs */ }
 
