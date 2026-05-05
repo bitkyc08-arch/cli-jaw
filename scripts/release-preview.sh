@@ -138,6 +138,9 @@ npm run build:frontend
 
 run_electron_release_checks
 
+echo "🛡️  Running release gates (gate:all)..."
+npm run gate:all
+
 echo "🧪 Verifying npm package contents..."
 npm pack --dry-run >/dev/null
 

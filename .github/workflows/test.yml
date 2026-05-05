@@ -63,6 +63,9 @@ jobs:
         run: npx tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test-force-exit --test tests/*.test.ts tests/unit/*.test.ts
         timeout-minutes: 3
 
+      - name: Release gates (gate:all)
+        run: npm run gate:all
+
       - name: Build frontend
         run: npm run build:frontend
 

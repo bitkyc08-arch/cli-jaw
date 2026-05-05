@@ -120,6 +120,10 @@ git tag "v$VERSION"
 git push origin master
 git push origin "v$VERSION"
 
+# ─── Release gates ────────────────────────────────────
+echo "🛡️  Running release gates (gate:all)..."
+npm run gate:all
+
 # ─── npm publish ───────────────────────────────────────
 echo "🚀 Publishing to npm..."
 npm publish --access public
