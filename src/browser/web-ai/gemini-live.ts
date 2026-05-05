@@ -28,12 +28,20 @@ import {
     assertSameTarget,
 } from './session.js';
 import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
+import type { WebAiFailureStage } from './diagnostics.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import { captureCopiedResponseText, GEMINI_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { selectGeminiModel } from './gemini-model.js';
 import { preflightAttachment } from './chatgpt-attachments.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
+type StagedGeminiError = Error & { stage?: WebAiFailureStage };
+
+function stagedGeminiError(message: string, stage: WebAiFailureStage): StagedGeminiError {
+    const error = new Error(message) as StagedGeminiError;
+    error.stage = stage;
+    return error;
+}
 
 export function isGeminiUrl(url: string): boolean {
     try {
@@ -237,9 +245,7 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
         throw new Error('context package upload and --file upload cannot be combined yet');
     }
     if (envelope.attachmentPolicy !== 'inline-only' && !input.filePath && !contextPack?.attachments?.[0]) {
-        const err = new Error('gemini upload requested without a file or context package attachment');
-        (err as any).stage = 'attachment-preflight';
-        throw err;
+        throw stagedGeminiError('gemini upload requested without a file or context package attachment', 'attachment-preflight');
     }
     const rendered = contextPack
         ? contextPack.transport === 'inline'
@@ -260,9 +266,7 @@ export async function geminiSend(port: number, input: QuestionEnvelopeInput = {}
     } else {
         const deepActivated = await ensureDeepThinkMode(page, usedFallbacks, warnings);
         if (!deepActivated) {
-            const err = new Error('gemini Deep Think requested but active Deep Think chip was not verified; fail closed before prompt submit');
-            (err as any).stage = 'provider-select-mode';
-            throw err;
+            throw stagedGeminiError('gemini Deep Think requested but active Deep Think chip was not verified; fail closed before prompt submit', 'provider-select-mode');
         }
         warnings.push('deep-think activated');
     }
