@@ -45,7 +45,7 @@ export function computeUnitPath(unitName: string): string {
 function execSystemctl(args: string[], timeoutMs: number): Promise<{ stdout: string; stderr: string; code: number }> {
     return new Promise((resolve) => {
         const child = execFile(SYSTEMCTL, ['--user', ...args], { timeout: timeoutMs, encoding: 'utf8' }, (err, stdout, stderr) => {
-            const code = err && 'code' in err ? (err as any).code ?? 1 : err ? 1 : 0;
+            const code = err && 'code' in err ? (err as NodeJS.ErrnoException).code ?? 1 : err ? 1 : 0;
             resolve({ stdout: stdout || '', stderr: stderr || '', code: typeof code === 'number' ? code : 1 });
         });
         child.unref?.();
