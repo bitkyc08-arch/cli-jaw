@@ -85,24 +85,13 @@ function leadingMarkerOnLine(src, pos) {
     return null;
 }
 
-function scanFile(file) {
-    const src = readFileSync(file, 'utf8');
-    const sf = ts.createSourceFile(file, src, ts.ScriptTarget.Latest, /*setParentNodes*/ true, file.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
+function scanText(src, filename = 'inline.ts') {
+    const sf = ts.createSourceFile(filename, src, ts.ScriptTarget.Latest, /*setParentNodes*/ true, filename.endsWith('.tsx') ? ts.ScriptKind.TSX : ts.ScriptKind.TS);
     let any = 0;
     let debt = 0;
     let allow = 0;
-
     function visit(node) {
-        let isAny = false;
-        if (isAnyKeyword(node)) isAny = true;
-        else if (typeArgsContainAny(node)) {
-            // type argument scan handled by visiting the children; here we
-            // do nothing extra — each `any` token will be hit by isAnyKeyword
-            // through the child visit. But we still want to make sure we
-            // count the keyword once even within a TypeReference.
-            isAny = false;
-        }
-        if (isAny) {
+        if (isAnyKeyword(node)) {
             const marker = leadingMarkerOnLine(src, node.getStart(sf));
             if (marker === 'debt') debt++;
             else if (marker === 'allow') allow++;
@@ -112,6 +101,11 @@ function scanFile(file) {
     }
     visit(sf);
     return { any, debt, allow };
+}
+
+function scanFile(file) {
+    const src = readFileSync(file, 'utf8');
+    return scanText(src, file);
 }
 
 function countDir(absDir) {
@@ -197,4 +191,10 @@ function main() {
     console.log('✅ strict-baseline OK (no regressions in tracked directories).');
 }
 
-main();
+// Run as CLI when executed directly, not when imported by tests.
+if (import.meta.url === `file://${process.argv[1]}`) {
+    main();
+}
+
+// Exported for unit tests (R2.2.2). Not part of CLI surface.
+export { scanFile, scanText, parseBaseline, countDir, TRACKED_DIRS };
