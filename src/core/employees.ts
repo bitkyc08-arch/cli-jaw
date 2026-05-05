@@ -7,6 +7,7 @@ import { settings } from './config.js';
 import { broadcast } from './bus.js';
 import { getDefaultClaudeModel } from '../cli/claude-models.js';
 import { regenerateB } from '../prompt/builder.js';
+import type { CliEngine } from '../types/cli-engine.js';
 
 export const DEFAULT_EMPLOYEES = [
     { name: 'Frontend', role: 'UI/UX, CSS, components' },
@@ -19,7 +20,12 @@ export const DEFAULT_EMPLOYEES = [
 // employees that have fixed CLIs or baked system prompts (e.g. Control
 // needs Codex + darwin).
 
-export type EmployeeCli = 'codex' | 'gemini' | 'claude' | 'opencode' | 'copilot';
+/**
+ * @deprecated Prefer `CliEngine` from `src/types/cli-engine.ts`. This alias
+ * is retained to avoid a renaming churn across employees.ts call sites; it
+ * will be removed in P19/P20 cleanup once consumers have migrated.
+ */
+export type EmployeeCli = CliEngine;
 
 export interface StaticEmployeeRuntimeHints {
     requiresDarwin?: boolean;

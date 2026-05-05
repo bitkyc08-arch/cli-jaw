@@ -2,6 +2,7 @@ import { detectAllCli } from '../core/config.js';
 import { readClaudeCreds, readCodexTokens, readGeminiAccount } from '../routes/quota.js';
 import { hasCopilotAuthSync } from '../../lib/quota-copilot.js';
 import { CLI_KEYS, DEFAULT_CLI } from './registry.js';
+import type { CliEngine } from '../types/cli-engine.js';
 
 export interface CliReadiness {
     cli: string;
@@ -63,9 +64,9 @@ export function getCliReadiness(): CliReadiness[] {
     return results;
 }
 
-const DEFAULT_ORDER = ['claude', 'codex', 'copilot', 'gemini', 'opencode'];
+const DEFAULT_ORDER: readonly CliEngine[] = ['claude', 'codex', 'copilot', 'gemini', 'opencode'];
 
-export function pickFirstReadyCli(order: string[] = DEFAULT_ORDER): string {
+export function pickFirstReadyCli(order: readonly CliEngine[] = DEFAULT_ORDER): CliEngine {
     const readiness = getCliReadiness();
     // Tier 1: installed + authenticated
     for (const cli of order) {

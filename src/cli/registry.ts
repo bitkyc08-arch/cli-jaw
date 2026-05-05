@@ -1,6 +1,7 @@
 // ─── CLI Registry (single source of truth) ──────────
 
 import { getDefaultClaudeChoices, getDefaultClaudeModel } from './claude-models.js';
+import type { CliEngine } from '../types/cli-engine.js';
 
 export const CLI_REGISTRY = {
     claude: {
@@ -68,8 +69,8 @@ export const CLI_REGISTRY = {
     },
 };
 
-export const CLI_KEYS = Object.keys(CLI_REGISTRY);
-export const DEFAULT_CLI = CLI_KEYS.includes('claude') ? 'claude' : CLI_KEYS[0];
+export const CLI_KEYS = Object.keys(CLI_REGISTRY) as CliEngine[];
+export const DEFAULT_CLI: CliEngine = CLI_KEYS.includes('claude') ? 'claude' : (CLI_KEYS[0] ?? 'claude');
 
 export function buildDefaultPerCli() {
     const out: Record<string, any> = {};
