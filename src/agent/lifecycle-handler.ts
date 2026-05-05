@@ -11,6 +11,7 @@ import { buildContinuationPrompt } from './smoke-detector.js';
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
 import { classifyExitError } from './error-classifier.js';
 import { clearLiveRun, getLiveRun } from './live-run-state.js';
+import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../shared/tool-log-sanitize.js';
 import {
     incrementMemoryFlush,
     resetMemoryFlushCounter,
@@ -270,12 +271,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         if (mainManaged && !opts.internal) {
             const liveRun = getLiveRun(liveScope);
             const mergedToolLog = liveRun.toolLog.length > ctx.toolLog.length ? liveRun.toolLog : ctx.toolLog;
-            const toolLogJson = mergedToolLog.length ? JSON.stringify(mergedToolLog) : null;
+            const sanitizedToolLog = sanitizeToolLogForDurableStorage(mergedToolLog);
+            const toolLogJson = serializeSanitizedToolLog(sanitizedToolLog);
             insertMessageWithTrace.run(
                 'assistant', finalContent, cli, model,
                 traceText || null, toolLogJson, settings["workingDir"] || null,
             );
-            broadcast('agent_done', { text: finalContent, toolLog: mergedToolLog, origin, ...empTag });
+            broadcast('agent_done', { text: finalContent, toolLog: sanitizedToolLog, origin, ...empTag });
 
             if (opts._heartbeatAnchorId) {
                 try {

@@ -11,6 +11,13 @@ function read(path: string): string {
     return readFileSync(join(projectRoot, path), 'utf8');
 }
 
+function routeBlock(source: string, route: string): string {
+    const start = source.indexOf(route);
+    assert.ok(start >= 0, `${route} must exist`);
+    const next = source.indexOf('\napp.', start + route.length);
+    return next >= 0 ? source.slice(start, next) : source.slice(start);
+}
+
 test('latest message endpoint returns dashboard summary without full history polling', () => {
     const server = read('server.ts');
     const db = read('src/core/db.ts');
@@ -21,7 +28,8 @@ test('latest message endpoint returns dashboard summary without full history pol
     assert.ok(server.includes('activity:'), 'latest endpoint must include activity summary');
     assert.ok(server.includes('dashboardActivityTitleFromExcerpt'), 'latest endpoint must clean activity excerpts before returning them');
     assert.ok(db.includes('substr(content, 1, 240) AS excerpt'), 'activity query must only fetch a bounded excerpt');
-    assert.equal(server.includes('tool_log'), false, 'latest endpoint must not expose tool logs');
+    assert.equal(routeBlock(server, "app.get('/api/messages/latest'").includes('tool_log'), false,
+        'latest endpoint must not expose tool logs');
     assert.ok(hook.includes('/i/${port}/api/messages/latest'), 'manager hook must poll the proxied latest endpoint');
     assert.equal(hook.includes('/api/messages`'), false, 'manager hook must not poll full message history');
 });

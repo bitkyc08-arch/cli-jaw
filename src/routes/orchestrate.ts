@@ -17,12 +17,21 @@ import { verifyBossToken } from '../core/boss-auth.js';
 import { resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
 import type { EmployeeRow, SyntheticEmployeeRow } from '../core/employees.js';
 import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
+import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 
 function getRuntimeSnapshot() {
     return {
         uptimeSec: Math.floor(process.uptime()),
         activeAgent: isAgentBusy(),
         queuePending: messageQueue.length,
+    };
+}
+
+function getSafeLiveRun(scope: string) {
+    const liveRun = getLiveRun(scope);
+    return {
+        ...liveRun,
+        toolLog: sanitizeToolLogForDurableStorage(liveRun.toolLog),
     };
 }
 
@@ -91,7 +100,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             workers: getActiveWorkers(),
             heartbeat: getHeartbeatRuntimeState(),
             queued: getQueuedMessageSnapshotForScope(scope),
-            activeRun: getLiveRun(scope),
+            activeRun: getSafeLiveRun(scope),
         });
     });
 

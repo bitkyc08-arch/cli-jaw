@@ -61,14 +61,16 @@ test('virtual-scroll releases Mermaid observer targets before unmount and deacti
         'virtual-scroll must import releaseMermaidNodes');
 
     const deactivateBlock = functionBlock(virtualScrollSrc, 'private deactivate');
-    assert.ok(deactivateBlock.includes('for (const el of this.mounted.values()) releaseMermaidNodes(el);'),
+    assert.ok(deactivateBlock.includes('for (const el of this.mounted.values())')
+        && deactivateBlock.includes('releaseMermaidNodes(el);'),
         'deactivate must release mounted Mermaid nodes before clearing mounted map');
     assert.ok(deactivateBlock.indexOf('releaseMermaidNodes(el)')
         < deactivateBlock.indexOf('this.mounted.clear()'),
         'deactivate release must happen before mounted.clear()');
 
     const renderBlock = functionBlock(virtualScrollSrc, 'private renderItems');
-    assert.ok(renderBlock.includes('releaseMermaidNodes(el);\n                el.remove();'),
+    assert.ok(renderBlock.includes('releaseMermaidNodes(el);')
+        && renderBlock.indexOf('releaseMermaidNodes(el);') < renderBlock.indexOf('el.remove();'),
         'renderItems unmount path must release Mermaid nodes before removing DOM');
 });
 

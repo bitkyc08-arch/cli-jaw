@@ -17,6 +17,12 @@ import { ICONS, emojiToIcon, emojiToStatus, isCompletionEmoji } from './icons.js
 import { providerIcon } from './provider-icons.js';
 import { findRunningProcessStepMatch } from './features/process-step-match.js';
 import {
+    parseToolLogBounded,
+    sanitizeToolLogForDurableStorage,
+    serializeSanitizedToolLog,
+    type SanitizedToolLogEntry,
+} from '../../src/shared/tool-log-sanitize.js';
+import {
     createProcessBlock,
     addStep,
     replaceStep,
@@ -25,6 +31,10 @@ import {
     stopBlockTicker,
     buildProcessBlockHtml,
     bindProcessBlockInteractions,
+    getStoredProcessStepDetail,
+    mergeStoredProcessStepDetail,
+    processStepMetaFromStore,
+    releaseProcessBlockDetails,
     type ProcessStep,
     type ProcessBlockState,
 } from './features/process-block.js';
@@ -49,13 +59,16 @@ function fallbackToolLabel(tool: ToolLogEntry): string {
 }
 
 function parseToolLog(toolLog?: string | null): ToolLogEntry[] {
-    if (!toolLog) return [];
-    try {
-        const parsed = JSON.parse(toolLog);
-        return Array.isArray(parsed) ? parsed : [];
-    } catch {
-        return [];
-    }
+    return parseToolLogBounded(toolLog) as ToolLogEntry[];
+}
+
+function sanitizedToolLogJson(toolLog?: string | null): string | null {
+    return serializeSanitizedToolLog(parseToolLog(toolLog));
+}
+
+function normalizeMessageToolLog<T extends MessageItem>(message: T): T {
+    if (message.role !== 'assistant' || !message.tool_log) return { ...message, tool_log: null };
+    return { ...message, tool_log: sanitizedToolLogJson(message.tool_log) };
 }
 
 function getAgentIcon(_cli?: string | null): string {
@@ -113,7 +126,10 @@ function normalizeAgentToolBlocks(agentMsg: HTMLElement): void {
     }
 
     for (const block of blocks) {
-        if (block !== keep) block.remove();
+        if (block !== keep) {
+            releaseProcessBlockDetails(block);
+            block.remove();
+        }
     }
 }
 
@@ -134,19 +150,27 @@ function processStepStatusFromDom(status?: string): ProcessStep['status'] {
 function processStepFromDom(row: HTMLElement): ProcessStep | null {
     const id = row.dataset['stepId'] || '';
     if (!id) return null;
+    const storedMeta = processStepMetaFromStore(id);
     const label = row.querySelector('.process-step-label')?.textContent?.trim() || '';
-    const detail = row.querySelector('.process-step-full')?.textContent || '';
+    const pre = row.querySelector('.process-step-full') as HTMLElement | null;
+    const detail = pre?.dataset['detailLazy'] === 'true'
+        ? getStoredProcessStepDetail(id) || storedMeta?.preview || ''
+        : pre?.textContent || getStoredProcessStepDetail(id) || storedMeta?.preview || '';
     const iconEl = row.querySelector('.process-step-icon') as HTMLElement | null;
     const icon = iconEl?.innerHTML || ICONS.tool;
     const startTime = Number(row.dataset['startTime'] || '');
     return {
         id,
-        type: processStepTypeFromDom(row.dataset['type']),
-        icon,
-        label,
+        type: storedMeta?.type || processStepTypeFromDom(row.dataset['type']),
+        icon: storedMeta?.icon || icon,
+        rawIcon: storedMeta?.rawIcon,
+        label: storedMeta?.label || label,
         detail,
-        stepRef: row.dataset['stepRef'] || '',
-        status: processStepStatusFromDom(row.dataset['status']),
+        detailPreview: storedMeta?.preview,
+        detailLength: storedMeta?.detailLength,
+        detailTruncated: storedMeta?.detailTruncated,
+        stepRef: storedMeta?.stepRef || row.dataset['stepRef'] || '',
+        status: storedMeta?.status || processStepStatusFromDom(row.dataset['status']),
         startTime: Number.isFinite(startTime) && startTime > 0 ? startTime : Date.now(),
     };
 }
@@ -164,9 +188,108 @@ function currentProcessBlockFromDom(agentMsg: HTMLElement): ProcessBlockState | 
     };
 }
 
+function processStepToToolLog(step: ProcessStep, finalize = false): ToolLogEntry {
+    const detail = getStoredProcessStepDetail(step.id) || step.detail || step.detailPreview || '';
+    const status = finalize && step.status === 'running' ? 'done' : step.status;
+    return {
+        icon: step.rawIcon || step.icon || ICONS.tool,
+        rawIcon: step.rawIcon || step.icon || '',
+        label: step.label || 'tool',
+        detail,
+        toolType: step.type,
+        stepRef: step.stepRef || '',
+        status,
+    };
+}
+
+function processStepFromMeta(stepId: string, finalize = false): ToolLogEntry | null {
+    const meta = processStepMetaFromStore(stepId);
+    if (!meta) return null;
+    const status = finalize && meta.status === 'running' ? 'done' : meta.status;
+    return {
+        icon: meta.rawIcon || meta.icon || ICONS.tool,
+        rawIcon: meta.rawIcon || meta.icon || '',
+        label: meta.label || 'tool',
+        detail: getStoredProcessStepDetail(stepId) || meta.preview || '',
+        toolType: meta.type,
+        stepRef: meta.stepRef || '',
+        status,
+    };
+}
+
+function serializeProcessStepsForToolLog(source: ProcessBlockState | HTMLElement | null, finalize = false): ToolLogEntry[] {
+    if (!source) return [];
+    if ('steps' in source) return source.steps.map(step => processStepToToolLog(step, finalize));
+
+    const ids = new Set<string>();
+    source.querySelectorAll<HTMLElement>('.process-block[data-process-step-ids]').forEach(block => {
+        (block.dataset['processStepIds'] || '').split(/\s+/).filter(Boolean).forEach(id => ids.add(id));
+    });
+    source.querySelectorAll<HTMLElement>('.process-step[data-step-id]').forEach(row => {
+        const id = row.dataset['stepId'];
+        if (id) ids.add(id);
+    });
+    const entries: ToolLogEntry[] = [];
+    ids.forEach(id => {
+        const fromMeta = processStepFromMeta(id, finalize);
+        if (fromMeta) {
+            entries.push(fromMeta);
+            return;
+        }
+        const row = source.querySelector<HTMLElement>(`.process-step[data-step-id="${CSS.escape(id)}"]`);
+        const step = row ? processStepFromDom(row) : null;
+        if (step) entries.push(processStepToToolLog(step, finalize));
+    });
+    return entries;
+}
+
+function identityKey(entry: ToolLogEntry, ordinal: number): string {
+    const stepRef = String(entry.stepRef || '').trim();
+    if (stepRef) return `ref:${stepRef}`;
+    return `ord:${entry.toolType || 'tool'}:${entry.label || 'tool'}:${ordinal}`;
+}
+
+function mergeExplicitAndLiveToolLogs(explicit: ToolLogEntry[], live: ToolLogEntry[]): ToolLogEntry[] {
+    if (explicit.length === 0) return live;
+    const merged = new Map<string, ToolLogEntry>();
+    const ordinalCounts = new Map<string, number>();
+    const keyFor = (entry: ToolLogEntry): string => {
+        const base = `${entry.toolType || 'tool'}:${entry.label || 'tool'}`;
+        const next = (ordinalCounts.get(base) || 0) + 1;
+        ordinalCounts.set(base, next);
+        return identityKey(entry, next);
+    };
+    live.forEach(entry => merged.set(keyFor(entry), entry));
+    ordinalCounts.clear();
+    explicit.forEach(entry => {
+        const key = keyFor(entry);
+        const liveEntry = merged.get(key);
+        const liveDetail = liveEntry?.detail || '';
+        const explicitDetail = entry.detail || '';
+        merged.set(key, {
+            ...(liveEntry || {}),
+            ...entry,
+            detail: explicitDetail.length >= liveDetail.length ? explicitDetail : liveDetail,
+            status: entry.status || liveEntry?.status || 'done',
+        });
+    });
+    return Array.from(merged.values());
+}
+
+function sanitizedToolLogEntries(entries: ToolLogEntry[]): ToolLogEntry[] {
+    return sanitizeToolLogForDurableStorage(entries) as ToolLogEntry[];
+}
+
+function sanitizedToolLogJsonFromEntries(entries: ToolLogEntry[]): string | null {
+    return serializeSanitizedToolLog(entries);
+}
+
 
 function removeAgentToolBlocks(agentMsg: HTMLElement): void {
-    for (const block of agentToolBlocks(agentMsg)) block.remove();
+    for (const block of agentToolBlocks(agentMsg)) {
+        releaseProcessBlockDetails(block);
+        block.remove();
+    }
 }
 
 export function setStatus(s: string): void {
@@ -245,6 +368,8 @@ export function addSystemMsg(text: string, extraClass?: string, type?: string): 
 }
 
 export function cleanupToolActivity(): void {
+    if (state.currentProcessBlock) releaseProcessBlockDetails(state.currentProcessBlock);
+    if (state.currentAgentDiv instanceof HTMLElement) releaseProcessBlockDetails(state.currentAgentDiv);
     cleanupToolElements();
     stopBlockTicker();
     state.currentAgentDiv = null;
@@ -290,15 +415,14 @@ export function showProcessStep(step: ProcessStep): void {
             const match = findRunningProcessStepMatch(state.currentProcessBlock.steps, step);
             if (match) {
                 step.icon = emojiToIcon(step.icon);
-                const mergedDetail = step.detail
-                    ? (match.detail ? `${match.detail}\n${step.detail}` : step.detail)
-                    : match.detail;
+                const mergedPreview = mergeStoredProcessStepDetail(match.id, step.detail);
                 replaceStep(state.currentProcessBlock, match.id, {
                     ...match,
                     ...step,
                     id: match.id,
                     rawIcon,
-                    detail: mergedDetail ?? '',
+                    detail: mergedPreview,
+                    detailPreview: mergedPreview,
                     label: step.label || match.label,
                     status: resolvedStatus,
                 });
@@ -316,7 +440,7 @@ export function showProcessStep(step: ProcessStep): void {
                         id: existingDone.id,
                         rawIcon,
                         status: resolvedStatus,
-                        detail: step.detail ?? '',
+                        detail: mergeStoredProcessStepDetail(existingDone.id, step.detail),
                     });
                     scrollToBottom();
                     return;
@@ -386,11 +510,12 @@ export function hydrateActiveRun(snapshot?: ActiveRunSnapshot | null): void {
     state.currentAgentDiv = ensureActiveRunMessage(snapshot.cli || null);
     state.currentProcessBlock = null;
     const body = state.currentAgentDiv.querySelector('.agent-body') as HTMLElement | null;
-    if (body && snapshot.toolLog?.length) {
+    const snapshotToolLog = sanitizedToolLogEntries(snapshot.toolLog || []);
+    if (body && snapshotToolLog.length) {
         normalizeAgentToolBlocks(state.currentAgentDiv);
         removeAgentToolBlocks(state.currentAgentDiv);
         const pb = createProcessBlock(body);
-        for (const tool of toProcessSteps(snapshot.toolLog, snapshot.startedAt)) addStep(pb, tool);
+        for (const tool of toProcessSteps(snapshotToolLog, snapshot.startedAt)) addStep(pb, tool);
         state.currentProcessBlock = pb;
     } else {
         normalizeAgentToolBlocks(state.currentAgentDiv);
@@ -434,6 +559,15 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
     cleanupToolElements();
     removeSkeleton();
     if (state.currentAgentDiv) normalizeAgentToolBlocks(state.currentAgentDiv);
+    const liveToolLog = serializeProcessStepsForToolLog(
+        state.currentProcessBlock ?? state.currentAgentDiv,
+        true,
+    );
+    const explicitToolLog = Array.isArray(toolLog) ? toolLog : [];
+    const durableToolLog = sanitizedToolLogEntries(
+        mergeExplicitAndLiveToolLogs(explicitToolLog, liveToolLog),
+    );
+    const durableToolLogJson = sanitizedToolLogJsonFromEntries(durableToolLog);
     const hadProcessBlock =
         Boolean(state.currentProcessBlock) ||
         Boolean(state.currentAgentDiv && hasAgentToolBlock(state.currentAgentDiv));
@@ -441,7 +575,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         collapseBlock(state.currentProcessBlock);
         state.currentProcessBlock = null;
     }
-    const hasTools = toolLog && toolLog.length > 0;
+    const hasTools = durableToolLog.length > 0;
     if (text || hasTools) {
         if (!state.currentAgentDiv || !state.currentAgentDiv.isConnected) {
             state.currentAgentDiv = addMessage('agent', '');
@@ -458,7 +592,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
             if (contentEl) {
                 contentEl.insertAdjacentHTML(
                     'beforebegin',
-                    buildProcessBlockHtml(toProcessSteps(toolLog!), true),
+                    buildProcessBlockHtml(toProcessSteps(durableToolLog), true),
                 );
             }
         }
@@ -492,7 +626,17 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
                 pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
-            vs.appendLiveItem(div);
+            if (durableToolLogJson) {
+                vs.appendItem(buildLazyVirtualMessageItem({
+                    role: 'assistant',
+                    content: finalText,
+                    cli: null,
+                    tool_log: durableToolLogJson,
+                }));
+                releaseProcessBlockDetails(div);
+            } else {
+                vs.appendLiveItem(div);
+            }
             div.remove();
         }
 
@@ -500,7 +644,7 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
         if (finalText) upsertMessage({
             role: 'assistant',
             content: finalText,
-            tool_log: toolLog ? JSON.stringify(toolLog) : null,
+            tool_log: durableToolLogJson,
             timestamp: Date.now(),
         }).catch(() => {});
     }
@@ -763,21 +907,26 @@ export async function loadStats(): Promise<void> {
 
 // ── Virtual scroll bootstrap helpers ──
 
-function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
-    return msgs.map((m) => {
+function buildLazyVirtualMessageItem(m: MessageItem): VirtualItem {
         const role = m.role === 'assistant' ? 'agent' : m.role;
         const rawContent = stripOrchestration(
             role === 'user' ? formatUserPrompt(m.content) : m.content,
         );
         const label = escapeHtml(role === 'user' ? t('msg.you') : getAppName());
-        const rawToolLog = m.role === 'assistant' && m.tool_log ? escapeHtml(m.tool_log) : '';
+        const sanitizedToolLog = m.role === 'assistant' && m.tool_log
+            ? sanitizedToolLogJson(m.tool_log)
+            : null;
+        const rawToolLog = sanitizedToolLog ? escapeHtml(sanitizedToolLog) : '';
         const toolAttr = rawToolLog ? ` data-tool-log="${rawToolLog}"` : '';
         const contentHtml = `<div class="msg-content lazy-pending" data-raw="${escapeHtml(rawContent)}"></div>`;
         const html = role === 'agent'
             ? `<div class="msg msg-agent"><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}<button class="msg-copy" title="Copy" aria-label="Copy message"></button></div></div>`
             : `<div class="msg msg-${role}"><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}<button class="msg-copy" title="Copy" aria-label="Copy message"></button></div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
-        return { id: generateId(), html, height: 80 };
-    });
+        return { id: generateId(), html, height: 80, rehydratesProcessDetails: Boolean(rawToolLog) };
+}
+
+function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
+    return msgs.map((m) => buildLazyVirtualMessageItem(normalizeMessageToolLog(m)));
 }
 
 function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualScroll>): void {
@@ -840,15 +989,16 @@ export async function loadMessages(): Promise<void> {
     const msgs = await api<MessageItem[]>('/api/messages');
 
     if (msgs !== null) {
+        const safeMsgs = msgs.map(normalizeMessageToolLog);
         // Successful fetch — clear DOM and render (even if empty array after /clear)
         vs.clear();
         if (chatEl) chatEl.innerHTML = '';
 
-        if (msgs.length >= VS_THRESHOLD) {
-            const vsItems = buildVirtualHistoryItems(msgs);
+        if (safeMsgs.length >= VS_THRESHOLD) {
+            const vsItems = buildVirtualHistoryItems(safeMsgs);
             bootstrapVirtualHistory(vsItems, makeBootstrapDeps(vs));
         } else {
-            msgs.forEach(m => {
+            safeMsgs.forEach(m => {
                 const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content, m.cli);
                 if (m.role === 'assistant') {
                     const tools = parseToolLog(m.tool_log);
@@ -864,10 +1014,10 @@ export async function loadMessages(): Promise<void> {
             });
         }
         // Sync to IndexedDB (full replace — server is source of truth)
-        cacheMessages(msgs.map(m => ({
+        cacheMessages(safeMsgs.map(m => ({
             role: m.role, content: m.content, cli: m.cli ?? null, tool_log: m.tool_log ?? null, timestamp: Date.now(),
         }))).catch(() => {});
-        updateStatMsgs(msgs.length);
+        updateStatMsgs(safeMsgs.length);
         showEmptyState();
         return;
     }
@@ -880,11 +1030,12 @@ export async function loadMessages(): Promise<void> {
     // DOM empty + server down — try IndexedDB cache
     const cached = await getScopedMessages();
     if (cached.length > 0) {
-        if (cached.length >= VS_THRESHOLD) {
-            const vsItems = buildVirtualHistoryItems(cached as MessageItem[]);
+        const safeCached = (cached as MessageItem[]).map(normalizeMessageToolLog);
+        if (safeCached.length >= VS_THRESHOLD) {
+            const vsItems = buildVirtualHistoryItems(safeCached);
             bootstrapVirtualHistory(vsItems, makeBootstrapDeps(vs));
         } else {
-            cached.forEach(m => {
+            safeCached.forEach(m => {
                 const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content, m.cli);
                 if (m.role === 'assistant' && m.tool_log) {
                     const tools = parseToolLog(m.tool_log);
@@ -900,7 +1051,7 @@ export async function loadMessages(): Promise<void> {
             });
         }
         addSystemMsg(`${ICONS.warning} ${t('ui.offline.banner')}`);
-        updateStatMsgs(cached.length);
+        updateStatMsgs(safeCached.length);
     }
     showEmptyState();
 }

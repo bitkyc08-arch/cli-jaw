@@ -31,7 +31,11 @@ test('F9: VS promotion clears transient mermaid queue state before snapshot', ()
     assert.ok(idx >= 0, 'finalizeAgent must exist');
     const block = uiSrc.slice(idx, idx + 4200);
     const clearIdx = block.indexOf('clearMermaidTransientState(div)');
-    const appendIdx = block.indexOf('vs.appendLiveItem(div)');
+    const appendLiveIdx = block.indexOf('vs.appendLiveItem(div)');
+    const appendLazyIdx = block.indexOf('vs.appendItem(buildLazyVirtualMessageItem');
+    const appendIdx = appendLiveIdx >= 0 && appendLazyIdx >= 0
+        ? Math.min(appendLiveIdx, appendLazyIdx)
+        : Math.max(appendLiveIdx, appendLazyIdx);
     assert.ok(clearIdx >= 0, 'finalizeAgent must clear Mermaid transient state');
     assert.ok(appendIdx >= 0, 'finalizeAgent must append to Virtual Scroll');
     assert.ok(clearIdx < appendIdx,

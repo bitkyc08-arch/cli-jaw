@@ -47,5 +47,5 @@ test('OSR-004: orchestrate snapshot returns queued overlay detail and active run
     const routePath = join(__dirname, '../../src/routes/orchestrate.ts');
     const routeSrc = readFileSync(routePath, 'utf8');
     assert.ok(routeSrc.includes('queued: getQueuedMessageSnapshotForScope(scope)'), 'snapshot route should include queued overlay detail');
-    assert.ok(routeSrc.includes('activeRun: getLiveRun(scope)'), 'snapshot route should include active run payload');
+    assert.ok(routeSrc.includes('activeRun: getSafeLiveRun(scope)'), 'snapshot route should include bounded active run payload');
 });

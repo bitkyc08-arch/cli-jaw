@@ -23,23 +23,28 @@ function functionBlock(source: string, signature: string): string {
 
 test('buildVirtualHistoryItems stores lazy shells instead of rendered markdown HTML', () => {
     const block = functionBlock(uiSrc, 'function buildVirtualHistoryItems');
+    const helper = functionBlock(uiSrc, 'function buildLazyVirtualMessageItem');
 
-    assert.ok(block.includes('lazy-pending'), 'history rows must use lazy-pending shells');
-    assert.ok(block.includes('data-raw="${escapeHtml(rawContent)}"'),
+    assert.ok(helper.includes('lazy-pending'), 'history rows must use lazy-pending shells');
+    assert.ok(helper.includes('data-raw="${escapeHtml(rawContent)}"'),
         'history rows must retain raw markdown in data-raw');
-    assert.ok(!block.includes('renderMarkdown(rawContent)'),
+    assert.ok(!helper.includes('renderMarkdown(rawContent)'),
         'history item construction must not eagerly render markdown');
+    assert.ok(block.includes('buildLazyVirtualMessageItem'),
+        'history item construction must delegate to the lazy shell helper');
 });
 
 test('buildVirtualHistoryItems stores raw escaped tool_log without eager ProcessBlock detail HTML', () => {
     const block = functionBlock(uiSrc, 'function buildVirtualHistoryItems');
 
-    assert.ok(block.includes('data-tool-log="${rawToolLog}"'),
+    const helper = functionBlock(uiSrc, 'function buildLazyVirtualMessageItem');
+
+    assert.ok(helper.includes('data-tool-log="${rawToolLog}"'),
         'assistant history rows must carry raw tool_log in a lazy dataset');
-    assert.ok(block.includes('? escapeHtml(m.tool_log)'),
-        'tool_log is already JSON text and must only be HTML-escaped');
-    assert.ok(!block.includes('JSON.stringify(m.tool_log)'),
-        'tool_log must not be double-stringified');
+    assert.ok(helper.includes('sanitizedToolLogJson(m.tool_log)'),
+        'tool_log must be sanitized before it is embedded in a lazy dataset');
+    assert.ok(!helper.includes('JSON.stringify(m.tool_log)'),
+        'tool_log must not be raw-stringified');
     assert.ok(!block.includes('buildProcessBlockHtml(toProcessSteps(tools), true)'),
         'history item construction must not eagerly render ProcessBlock details');
 });

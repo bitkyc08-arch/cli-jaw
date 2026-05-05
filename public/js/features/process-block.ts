@@ -8,10 +8,13 @@ export interface ProcessStep {
     id: string;
     type: 'tool' | 'thinking' | 'search' | 'subagent';
     icon: string;
-    rawIcon?: string;
+    rawIcon?: string | undefined;
     label: string;
     detail?: string;
-    stepRef?: string;
+    detailPreview?: string | undefined;
+    detailLength?: number | undefined;
+    detailTruncated?: boolean | undefined;
+    stepRef?: string | undefined;
     status: 'running' | 'done' | 'error';
     startTime: number;
 }
@@ -28,6 +31,29 @@ export interface ProcessBlockState {
 // 3s cadence — one textContent write per tick, no DOM queries beyond cached ref.
 let _tickerHandle: ReturnType<typeof setInterval> | null = null;
 let _tickerBlock: ProcessBlockState | null = null;
+const PROCESS_DETAIL_PREVIEW_CHARS = 160;
+const PROCESS_DETAIL_RETAIN_CHARS = 3000;
+const PROCESS_DETAIL_COLLAPSE_CLEAR_CHARS = 1000;
+const PROCESS_BLOCK_MAX_RENDERED_STEPS = 80;
+const PROCESS_BLOCK_HEAD_STEPS = 24;
+const PROCESS_BLOCK_TAIL_STEPS = 24;
+
+export interface StoredProcessStepMeta {
+    id: string;
+    type: ProcessStep['type'];
+    icon: string;
+    rawIcon?: string | undefined;
+    label: string;
+    stepRef?: string | undefined;
+    status: ProcessStep['status'];
+    startTime: number;
+    preview: string;
+    detailLength: number;
+    detailTruncated: boolean;
+}
+
+const processDetailStore = new Map<string, { detail: string; originalLength: number; truncated: boolean }>();
+const processStepMetaStore = new Map<string, StoredProcessStepMeta>();
 
 function tickDuration(): void {
     const pb = _tickerBlock;
@@ -70,6 +96,110 @@ function previewText(text: string, max = 120): string {
     return singleLine.length > max ? `${singleLine.slice(0, max - 1)}…` : singleLine;
 }
 
+function retainedDetail(text: string): { detail: string; truncated: boolean } {
+    if (text.length <= PROCESS_DETAIL_RETAIN_CHARS) return { detail: text, truncated: false };
+    const notice = `\n[detail truncated: kept ${PROCESS_DETAIL_RETAIN_CHARS} of ${text.length} chars]`;
+    return {
+        detail: `${text.slice(0, Math.max(0, PROCESS_DETAIL_RETAIN_CHARS - notice.length))}${notice}`,
+        truncated: true,
+    };
+}
+
+export function getStoredProcessStepDetail(stepId: string): string {
+    return processDetailStore.get(stepId)?.detail || '';
+}
+
+export function compactProcessStepForStorage(step: ProcessStep): ProcessStep {
+    const storedDetail = getStoredProcessStepDetail(step.id);
+    const fullDetail = storedDetail || step.detail || '';
+    const retained = retainedDetail(fullDetail);
+    const preview = step.detailPreview || previewText(fullDetail, PROCESS_DETAIL_PREVIEW_CHARS);
+    if (fullDetail) {
+        processDetailStore.set(step.id, {
+            detail: retained.detail,
+            originalLength: fullDetail.length,
+            truncated: retained.truncated,
+        });
+    }
+    processStepMetaStore.set(step.id, {
+        id: step.id,
+        type: step.type,
+        icon: step.icon,
+        rawIcon: step.rawIcon,
+        label: step.label,
+        stepRef: step.stepRef,
+        status: step.status,
+        startTime: step.startTime,
+        preview,
+        detailLength: fullDetail.length,
+        detailTruncated: retained.truncated,
+    });
+    return {
+        ...step,
+        detail: preview,
+        detailPreview: preview,
+        detailLength: fullDetail.length,
+        detailTruncated: retained.truncated,
+    };
+}
+
+export function mergeStoredProcessStepDetail(stepId: string, incomingDetail?: string): string {
+    const incoming = incomingDetail || '';
+    const existing = getStoredProcessStepDetail(stepId);
+    const merged = existing && incoming ? `${existing}\n${incoming}` : incoming || existing;
+    const retained = retainedDetail(merged);
+    if (merged) {
+        processDetailStore.set(stepId, {
+            detail: retained.detail,
+            originalLength: merged.length,
+            truncated: retained.truncated,
+        });
+    }
+    const meta = processStepMetaStore.get(stepId);
+    if (meta) {
+        meta.preview = previewText(merged, PROCESS_DETAIL_PREVIEW_CHARS);
+        meta.detailLength = merged.length;
+        meta.detailTruncated = retained.truncated;
+    }
+    return meta?.preview || previewText(merged, PROCESS_DETAIL_PREVIEW_CHARS);
+}
+
+function updateStoredStepMeta(step: ProcessStep): void {
+    const compact = compactProcessStepForStorage(step);
+    processStepMetaStore.set(step.id, {
+        id: compact.id,
+        type: compact.type,
+        icon: compact.icon,
+        rawIcon: compact.rawIcon,
+        label: compact.label,
+        stepRef: compact.stepRef,
+        status: compact.status,
+        startTime: compact.startTime,
+        preview: compact.detailPreview || compact.detail || '',
+        detailLength: compact.detailLength || 0,
+        detailTruncated: Boolean(compact.detailTruncated),
+    });
+}
+
+function updateProcessBlockDetailIndex(pb: ProcessBlockState): void {
+    pb.element.dataset['processStepIds'] = pb.steps.map(step => step.id).join(' ');
+}
+
+function visibleStepIndexes(steps: ProcessStep[]): Set<number> {
+    const indexes = new Set<number>();
+    if (steps.length <= PROCESS_BLOCK_MAX_RENDERED_STEPS) {
+        steps.forEach((_step, idx) => indexes.add(idx));
+        return indexes;
+    }
+    steps.forEach((step, idx) => {
+        if (idx < PROCESS_BLOCK_HEAD_STEPS || idx >= steps.length - PROCESS_BLOCK_TAIL_STEPS
+            || step.status === 'running' || step.status === 'error') {
+            indexes.add(idx);
+        }
+    });
+    return indexes;
+}
+
 function renderTrustedIcon(icon: string | undefined): string {
     const value = icon || ICONS.tool;
     return value.trim().startsWith('<svg') ? value : escapeHtml(value);
@@ -81,7 +211,7 @@ function renderStep(step: ProcessStep): string {
     const badgeText = step.type.toUpperCase();
     const label = escapeHtml(step.label || step.icon || '');
     const icon = renderTrustedIcon(step.icon);
-    const detail = step.detail || '';
+    const detail = step.detailPreview || step.detail || '';
     const detailId = `process-detail-${step.id}`;
 
     // Always render expandable — VS (THRESHOLD=1) keeps DOM count low
@@ -107,9 +237,36 @@ function renderStep(step: ProcessStep): string {
             <span class="process-step-chevron">${ICONS.chevronRight}</span>
         </button>
         <div class="process-step-details collapsed" id="${detailId}">
-            <pre class="process-step-full">${escapeHtml(detail)}</pre>
+            <pre class="process-step-full" data-detail-lazy="true"></pre>
         </div>
     </div>`;
+}
+
+function renderOmittedStepSummary(count: number): string {
+    return `<div class="process-step process-step-omitted" aria-hidden="true">
+        <span class="process-step-snippet">${count} completed tool step${count === 1 ? '' : 's'} hidden for memory safety</span>
+    </div>`;
+}
+
+function renderSteps(steps: ProcessStep[]): string {
+    const indexes = visibleStepIndexes(steps);
+    let omitted = 0;
+    const parts: string[] = [];
+    for (let idx = 0; idx < steps.length; idx++) {
+        const step = steps[idx];
+        if (!step) continue;
+        if (indexes.has(idx)) {
+            if (omitted > 0) {
+                parts.push(renderOmittedStepSummary(omitted));
+                omitted = 0;
+            }
+            parts.push(renderStep(step));
+        } else {
+            omitted++;
+        }
+    }
+    if (omitted > 0) parts.push(renderOmittedStepSummary(omitted));
+    return parts.join('');
 }
 
 function blockShell(summaryText = '', collapsed = false): string {
@@ -129,9 +286,18 @@ function blockShell(summaryText = '', collapsed = false): string {
 function toggleStepDetails(toggle: HTMLElement): void {
     const wrapper = toggle.closest('.process-step');
     const details = wrapper?.querySelector('.process-step-details') as HTMLElement | null;
+    const pre = details?.querySelector('.process-step-full') as HTMLElement | null;
     const chevron = toggle.querySelector('.process-step-chevron');
     if (!wrapper || !details) return;
     const expanding = details.classList.contains('collapsed');
+    if (expanding && pre?.dataset['detailLazy'] === 'true') {
+        const detail = getStoredProcessStepDetail((wrapper as HTMLElement).dataset['stepId'] || '');
+        pre.textContent = detail || processStepMetaStore.get((wrapper as HTMLElement).dataset['stepId'] || '')?.preview || '';
+        delete pre.dataset['detailLazy'];
+    } else if (!expanding && pre && pre.textContent && pre.textContent.length > PROCESS_DETAIL_COLLAPSE_CLEAR_CHARS) {
+        pre.textContent = '';
+        pre.dataset['detailLazy'] = 'true';
+    }
     details.classList.toggle('collapsed', !expanding);
     wrapper.classList.toggle('expanded', expanding);
     toggle.setAttribute('aria-expanded', expanding ? 'true' : 'false');
@@ -165,15 +331,18 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
 }
 
 export function buildProcessBlockHtml(steps: ProcessStep[], collapsed = true): string {
-    const summaryText = buildSummaryText(steps);
+    const compactSteps = steps.map(compactProcessStepForStorage);
+    const summaryText = buildSummaryText(compactSteps);
     const html = blockShell(summaryText, collapsed);
     const wrapper = document.createElement('div');
     wrapper.innerHTML = html;
+    const block = wrapper.querySelector('.process-block') as HTMLElement | null;
+    if (block) block.dataset['processStepIds'] = compactSteps.map(step => step.id).join(' ');
     const inner = wrapper.querySelector('.process-steps-inner');
-    if (inner) inner.innerHTML = steps.map(renderStep).join('');
+    if (inner) inner.innerHTML = renderSteps(compactSteps);
     const dot = wrapper.querySelector('.process-dot');
     if (dot) {
-        const anyRunning = steps.some(step => step.status === 'running');
+        const anyRunning = compactSteps.some(step => step.status === 'running');
         dot.classList.toggle('running', anyRunning && !collapsed);
         dot.classList.toggle('done', !anyRunning || collapsed);
     }
@@ -214,23 +383,37 @@ export function createProcessBlock(parentEl: HTMLElement): ProcessBlockState {
 }
 
 export function addStep(pb: ProcessBlockState, step: ProcessStep): void {
-    pb.steps.push(step);
+    const compactStep = compactProcessStepForStorage(step);
+    pb.steps.push(compactStep);
     const inner = pb.element.querySelector('.process-steps-inner');
-    if (inner) inner.insertAdjacentHTML('beforeend', renderStep(step));
+    if (inner) {
+        if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS) inner.innerHTML = renderSteps(pb.steps);
+        else inner.insertAdjacentHTML('beforeend', renderStep(compactStep));
+    }
+    updateProcessBlockDetailIndex(pb);
     updateSummary(pb);
 }
 
 export function replaceStep(pb: ProcessBlockState, oldStepId: string, newStep: ProcessStep): void {
     const idx = pb.steps.findIndex(s => s.id === oldStepId);
     if (idx === -1) return;
-    pb.steps[idx] = newStep;
+    if (oldStepId !== newStep.id) {
+        processDetailStore.delete(oldStepId);
+        processStepMetaStore.delete(oldStepId);
+    }
+    const compactStep = compactProcessStepForStorage(newStep);
+    pb.steps[idx] = compactStep;
     const oldEl = pb.element.querySelector(`[data-step-id="${oldStepId}"]`);
     if (oldEl) {
         const temp = document.createElement('div');
-        temp.innerHTML = renderStep(newStep);
+        temp.innerHTML = renderStep(compactStep);
         const newEl = temp.firstElementChild;
         if (newEl) oldEl.replaceWith(newEl);
+    } else if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS) {
+        const inner = pb.element.querySelector('.process-steps-inner');
+        if (inner) inner.innerHTML = renderSteps(pb.steps);
     }
+    updateProcessBlockDetailIndex(pb);
     updateSummary(pb);
 }
 
@@ -238,6 +421,7 @@ export function updateStepStatus(pb: ProcessBlockState, stepId: string, status: 
     const step = pb.steps.find(s => s.id === stepId);
     if (!step) return;
     step.status = status;
+    updateStoredStepMeta(step);
     const stepEl = pb.element.querySelector(`[data-step-id="${stepId}"]`);
     if (stepEl) {
         (stepEl as HTMLElement).dataset['status'] = status;
@@ -246,7 +430,11 @@ export function updateStepStatus(pb: ProcessBlockState, stepId: string, status: 
             dot.classList.remove('running', 'done', 'error');
             dot.classList.add(status);
         }
+    } else if (status === 'running' || status === 'error') {
+        const inner = pb.element.querySelector('.process-steps-inner');
+        if (inner) inner.innerHTML = renderSteps(pb.steps);
     }
+    updateProcessBlockDetailIndex(pb);
     updateSummary(pb);
 }
 
@@ -260,7 +448,10 @@ export function collapseBlock(pb: ProcessBlockState): void {
     if (chevron) chevron.innerHTML = ICONS.chevronRight;
 
     for (const step of pb.steps) {
-        if (step.status === 'running') step.status = 'done';
+        if (step.status === 'running') {
+            step.status = 'done';
+            updateStoredStepMeta(step);
+        }
     }
     pb.element.querySelectorAll('.process-step-dot.running').forEach(dot => {
         dot.classList.remove('running');
@@ -269,4 +460,35 @@ export function collapseBlock(pb: ProcessBlockState): void {
         if (row) row.dataset['status'] = 'done';
     });
     updateSummary(pb);
+}
+
+export function releaseProcessBlockDetails(rootOrState: HTMLElement | ProcessBlockState | null | undefined): void {
+    if (!rootOrState) return;
+    const ids = new Set<string>();
+    if ('steps' in rootOrState) {
+        rootOrState.steps.forEach(step => ids.add(step.id));
+    } else {
+        if (rootOrState.classList.contains('process-block')) {
+            (rootOrState.dataset['processStepIds'] || '').split(/\s+/).filter(Boolean).forEach(id => ids.add(id));
+        }
+        rootOrState.querySelectorAll<HTMLElement>('.process-block[data-process-step-ids]').forEach(block => {
+            (block.dataset['processStepIds'] || '').split(/\s+/).filter(Boolean).forEach(id => ids.add(id));
+        });
+        if (rootOrState.classList.contains('process-step')) {
+            const id = rootOrState.dataset['stepId'];
+            if (id) ids.add(id);
+        }
+        rootOrState.querySelectorAll<HTMLElement>('.process-step[data-step-id]').forEach(row => {
+            const id = row.dataset['stepId'];
+            if (id) ids.add(id);
+        });
+    }
+    ids.forEach(id => {
+        processDetailStore.delete(id);
+        processStepMetaStore.delete(id);
+    });
+}
+
+export function processStepMetaFromStore(stepId: string): StoredProcessStepMeta | null {
+    return processStepMetaStore.get(stepId) || null;
 }

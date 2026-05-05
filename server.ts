@@ -55,6 +55,7 @@ import {
     clearAllEmployeeSessions,
 } from './src/core/db.js';
 import { dashboardActivityTitleFromExcerpt } from './src/core/message-summary.js';
+import { sanitizeSerializedToolLog } from './src/shared/tool-log-sanitize.js';
 import {
     initPromptFiles, regenerateB,
 } from './src/prompt/builder.js';
@@ -417,7 +418,11 @@ app.get('/api/session', (_, res) => ok(res, getSession(), getSession() as Record
 app.get('/api/messages', (req, res) => {
     const includeTrace = ['1', 'true', 'yes'].includes(String(req.query["includeTrace"] || '').toLowerCase());
     const rows = includeTrace ? getMessagesWithTrace.all() : getMessages.all();
-    ok(res, rows);
+    const safeRows = (rows as Record<string, unknown>[]).map(row => ({
+        ...row,
+        tool_log: sanitizeSerializedToolLog(row["tool_log"] as string | null | undefined),
+    }));
+    ok(res, safeRows);
 });
 app.get('/api/messages/latest', (_req, res) => {
     const latestAssistant = getLatestAssistantMessage.get() || null;

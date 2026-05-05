@@ -7,10 +7,9 @@ import {
 } from '@tanstack/virtual-core';
 import { generateId } from './uuid.js';
 import { releaseMermaidNodes } from './render.js';
+import { releaseProcessBlockDetails } from './features/process-block.js';
 
-// Activates at THRESHOLD messages to prevent DOM bloat
-// Activate immediately — tanstack virtualizes DOM so only visible
-// items are rendered, preventing DOM bloat at any message count
+// Activate immediately: tanstack keeps only visible items mounted.
 const THRESHOLD = 1;
 const EST_HEIGHT = 80;
 const OVERSCAN = 5;
@@ -31,6 +30,7 @@ export interface VirtualItem {
     id: string;
     html: string;
     height: number; // used as estimateSize hint; tanstack measures real heights
+    rehydratesProcessDetails?: boolean;
 }
 
 export type LazyRenderCallback = (targets: HTMLElement[]) => void;
@@ -86,8 +86,6 @@ export class VirtualScroll {
     get active(): boolean { return this._active; }
     get count(): number { return this.items.length; }
 
-    // ── Measure gap from CSS ──
-
     private measureGap(): number {
         if (this.itemGap > 0) return this.itemGap;
         const probe = document.createElement('div');
@@ -114,8 +112,6 @@ export class VirtualScroll {
         this.renderItems();
     }
 
-    // ── Public API (preserved for callers) ──
-
     /** Bulk-load items. Call AFTER registering onLazyRender/onPostRender. */
     setItems(
         items: VirtualItem[],
@@ -128,9 +124,7 @@ export class VirtualScroll {
         }
     }
 
-    /** Seed heights into items so estimateSize returns accurate values.
-     *  tanstack will re-measure via ResizeObserver on mount, but seeding
-     *  gives accurate initial getTotalSize() for scrollToIndex precision. */
+    /** Seed heights so estimateSize is accurate before ResizeObserver runs. */
     seedMeasuredHeights(startIndex: number, heights: number[]): void {
         for (let offset = 0; offset < heights.length; offset++) {
             const idx = startIndex + offset;
@@ -148,7 +142,10 @@ export class VirtualScroll {
     }
 
     addItem(id: string, html: string): void {
-        const item: VirtualItem = { id, html, height: EST_HEIGHT };
+        this.appendItem({ id, html, height: EST_HEIGHT });
+    }
+
+    appendItem(item: VirtualItem): void {
         this.items.push(item);
         if (!this._active && this.items.length >= THRESHOLD) {
             this.activate(true);
@@ -409,13 +406,14 @@ export class VirtualScroll {
         }
         this.virtualizer = null;
         this._active = false;
-        for (const el of this.mounted.values()) releaseMermaidNodes(el);
+        for (const el of this.mounted.values()) {
+            releaseMermaidNodes(el);
+            releaseProcessBlockDetails(el);
+        }
         this.mounted.clear();
         this.container.classList.remove('vs-active');
         this.container.innerHTML = '';
     }
-
-    // ── Render loop (called by tanstack onChange) ──
 
     private renderItems(): void {
         if (!this.virtualizer) return;
@@ -424,28 +422,25 @@ export class VirtualScroll {
         const virtualItems = this.virtualizer.getVirtualItems();
         const totalSize = this.virtualizer.getTotalSize();
 
-        // Update inner container height (provides scrollbar range)
         this.innerEl.style.height = `${totalSize}px`;
 
-        // Determine which indices tanstack wants rendered
         const wantedSet = new Set(virtualItems.map(vi => vi.index));
 
-        // Remove items no longer in range
         for (const [idx, el] of this.mounted) {
             if (!wantedSet.has(idx)) {
                 releaseMermaidNodes(el);
+                const item = this.items[idx];
+                if (item?.rehydratesProcessDetails) releaseProcessBlockDetails(el);
                 el.remove();
                 this.mounted.delete(idx);
             }
         }
 
-        // Mount / reposition items
         const newlyMounted: HTMLElement[] = [];
         for (const vItem of virtualItems) {
             let el = this.mounted.get(vItem.index);
 
             if (!el) {
-                // Create new element from stored HTML
                 const item = this.items[vItem.index];
                 if (!item) continue;
                 const wrapper = document.createElement('div');
@@ -458,16 +453,11 @@ export class VirtualScroll {
                 newlyMounted.push(el);
             }
 
-            // Position via transform only — left/right/width handled by CSS
-            // so .msg-user align-self / left:auto works correctly
+            // CSS owns left/right/width, including .msg-user alignment.
             el.style.transform = `translateY(${vItem.start}px)`;
         }
 
-        // Lazy render BEFORE measuring — onLazyRender processes markdown,
-        // code blocks, math which dramatically changes element heights.
-        // Measuring first would record pre-render heights (e.g. 50px),
-        // then lazy render expands to 300px+, causing overlap until the
-        // deferred ResizeObserver catches up (1+ frames later).
+        // Lazy render before measuring; markdown/code/math change heights.
         if (this.onLazyRender) {
             const lazyTargets = this.innerEl.querySelectorAll<HTMLElement>('.lazy-pending');
             if (lazyTargets.length > 0) {
@@ -475,13 +465,11 @@ export class VirtualScroll {
             }
         }
 
-        // Post render: activate widgets, linkify paths
         if (this.onPostRender) {
             this.onPostRender(this.innerEl);
         }
 
-        // Now measure real heights — elements have their final rendered content.
-        // Only for newly mounted elements (already-observed ones are tracked).
+        // Newly mounted elements now have their final rendered content.
         for (const el of newlyMounted) {
             const index = Number(el.dataset['vsIdx'] || '-1');
             syncMeasuredItemHeight(this.items, index, el);
@@ -489,8 +477,6 @@ export class VirtualScroll {
         }
     }
 }
-
-// ── Singleton ──
 
 let instance: VirtualScroll | null = null;
 

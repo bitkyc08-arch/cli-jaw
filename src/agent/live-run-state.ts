@@ -1,3 +1,5 @@
+import { sanitizeToolLogEntry, sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
+
 export type LiveRunEntry = {
     running: boolean;
     cli?: string;
@@ -17,7 +19,7 @@ const liveRuns = new Map<string, LiveRunEntry>();
 function cloneEntry(entry: LiveRunEntry): LiveRunEntry {
     return {
         ...entry,
-        toolLog: [...entry.toolLog],
+        toolLog: sanitizeToolLogForDurableStorage(entry.toolLog),
     };
 }
 
@@ -41,13 +43,16 @@ export function appendLiveRunText(scope: string, text: string): void {
 export function replaceLiveRunTools(scope: string, toolLog: any[]): void {
     const current = liveRuns.get(scope);
     if (!current?.running) return;
-    current.toolLog = [...toolLog];
+    const sanitized = sanitizeToolLogForDurableStorage(toolLog);
+    toolLog.splice(0, toolLog.length, ...sanitized);
+    current.toolLog = sanitized;
 }
 
 export function appendLiveRunTool(scope: string, tool: any): void {
     const current = liveRuns.get(scope);
     if (!current?.running) return;
-    current.toolLog.push(tool);
+    current.toolLog.push(sanitizeToolLogEntry(tool));
+    current.toolLog = sanitizeToolLogForDurableStorage(current.toolLog);
 }
 
 export function clearLiveRun(scope: string): void {
