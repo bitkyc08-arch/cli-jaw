@@ -12,13 +12,22 @@ import { maybePromptGithubStar } from './star-prompt.js';
 import { resolveHomePath } from '../src/core/path-expand.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-let pkg: any;
+interface PackageJson {
+    version?: string;
+}
+
+function readPackageJson(pkgPath: string): PackageJson {
+    const parsed = JSON.parse(readFileSync(pkgPath, 'utf8')) as unknown;
+    return typeof parsed === 'object' && parsed !== null ? parsed as PackageJson : {};
+}
+
+let pkg: PackageJson;
 try {
     const pkgPath = join(__dirname, '..', 'package.json');
-    pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    pkg = readPackageJson(pkgPath);
 } catch {
     const pkgPath = join(__dirname, '..', '..', 'package.json');
-    pkg = JSON.parse(readFileSync(pkgPath, 'utf8'));
+    pkg = readPackageJson(pkgPath);
 }
 
 // ─── --home flag: must run BEFORE command parsing (ESM hoisting safe) ───
