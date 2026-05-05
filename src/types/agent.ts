@@ -34,7 +34,7 @@ export interface SpawnContext {
   _parentSyncedCount?: number;
   // Phase 3: model/metadata storage
   model?: string;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, unknown>;
   finishReason?: string;
   pendingOutputChunk?: string;
   geminiDeltaActive?: boolean;

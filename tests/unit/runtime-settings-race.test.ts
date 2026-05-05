@@ -29,7 +29,7 @@ test('RSR-002: applyRuntimeSettingsPatch wraps mutations in a finally-cleared ga
 
 test('RSR-003: spawn waits before reading session bucket state', () => {
     const waitIdx = spawnSrc.indexOf('waitForRuntimeSettingsIdle()');
-    const sessionIdx = spawnSrc.indexOf('const session: any = getSession()');
+    const sessionIdx = spawnSrc.indexOf('const session = (getSession() as SessionRow | undefined) ?? {}');
     const bucketIdx = spawnSrc.indexOf('getSessionBucket.get(currentBucket)');
     assert.ok(waitIdx > -1, 'spawn must wait on runtime settings gate');
     assert.ok(sessionIdx > waitIdx, 'session read must happen after wait path');
