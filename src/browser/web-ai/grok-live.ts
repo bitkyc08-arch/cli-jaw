@@ -18,11 +18,40 @@ import { hasContextPackaging, prepareContextForBrowser, summarizeContextPack } f
 
 export const GROK_CONTEXT_PACK_WARNING = 'grok-context-pack-not-recommended: prefer inline prompts plus optional --file uploads for Grok; ChatGPT or Gemini handle context packages more reliably.';
 import type { QuestionEnvelopeInput, WebAiOutput } from './types.js';
+import type { WebAiFailureStage } from './diagnostics.js';
 import { attachLocalFileLive } from './chatgpt-attachments.js';
 import { captureCopiedResponseText, GROK_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { selectGrokModel } from './grok-model.js';
 
 const GROK_HOSTS = new Set(['grok.com']);
+type StagedGrokError = Error & { stage?: WebAiFailureStage };
+type GrokComposerElement = {
+    focus(): void;
+    dispatchEvent(event: Event): boolean;
+};
+type GrokBrowserDocument = {
+    querySelector(selector: string): GrokComposerElement | null;
+    execCommand(commandId: string, showUI?: boolean, value?: string): boolean;
+};
+type GrokInputEventConstructor = new (
+    type: string,
+    eventInitDict?: { data?: string; inputType?: string; bubbles?: boolean }
+) => Event;
+type GrokBrowserGlobal = typeof globalThis & {
+    document: GrokBrowserDocument;
+    InputEvent: GrokInputEventConstructor;
+};
+type GrokTextElement = {
+    innerText?: string;
+    textContent?: string | null;
+};
+
+function stagedGrokError(message: string, stage: WebAiFailureStage): StagedGrokError {
+    const error = new Error(message) as StagedGrokError;
+    error.stage = stage;
+    return error;
+}
+
 const GROK_SELECTORS = {
     composer: ['.ProseMirror[contenteditable="true"]', '[contenteditable="true"].ProseMirror'],
     newChat: ['[data-testid="new-chat"]'],
@@ -91,9 +120,7 @@ export async function grokSend(port: number, input: QuestionEnvelopeInput = {}):
         throw new Error('context package upload and --file upload cannot be combined yet');
     }
     if (envelope.attachmentPolicy !== 'inline-only' && !input.filePath && !contextPack?.attachments?.[0]) {
-        const err = new Error('grok upload requested without a file or context package attachment');
-        (err as any).stage = 'attachment-preflight';
-        throw err;
+        throw stagedGrokError('grok upload requested without a file or context package attachment', 'attachment-preflight');
     }
     const rendered = contextPack
         ? contextPack.transport === 'inline'
@@ -269,8 +296,9 @@ async function insertGrokPrompt(page: Page, composerSel: string, text: string): 
     const composer = page.locator(composerSel).first();
     await composer.click({ timeout: 5_000 }).catch(() => composer.click({ timeout: 2_000, force: true }));
     await page.evaluate(({ selector, value }) => {
-        const doc = (globalThis as any).document;
-        const InputEventCtor = (globalThis as any).InputEvent;
+        const browserGlobal = globalThis as GrokBrowserGlobal;
+        const doc = browserGlobal.document;
+        const InputEventCtor = browserGlobal.InputEvent;
         const el = doc.querySelector(selector);
         if (!el) throw new Error(`selector not found: ${selector}`);
         el.focus();
@@ -367,10 +395,10 @@ async function readGrokAssistantMessages(page: Page): Promise<string[]> {
     return await page.locator(GROK_SELECTORS.assistantTurn).evaluateAll((turns, textSelector) => {
         return turns
             .map((turn) => {
-                const textNodes = Array.from(turn.querySelectorAll(String(textSelector)));
-                const candidates = textNodes.length ? textNodes : [turn];
+                const textNodes = Array.from(turn.querySelectorAll(String(textSelector))) as GrokTextElement[];
+                const candidates = textNodes.length ? textNodes : [turn as GrokTextElement];
                 return candidates
-                    .map((el) => String((el as any).innerText || el.textContent || '').trim())
+                    .map((el) => String(el.innerText || el.textContent || '').trim())
                     .find(Boolean) || '';
             })
             .filter(Boolean);
