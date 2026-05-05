@@ -1,6 +1,7 @@
 import { wrapError } from './errors.js';
 import type { TraceContext } from './action-trace.js';
 import type { ResolvedActionTarget } from './action-cache.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 
 export interface PostActionAssertionOptions {
     expectedValue?: string;
@@ -111,7 +112,7 @@ export async function clickWithPostAssert(
     try {
         await locator.click();
     } catch (err) {
-        traceCtx?.record({ action: 'click', target: scrubTargetForTrace(resolvedTarget), status: 'error', errorCode: (err as { name?: string }).name });
+        traceCtx?.record(stripUndefined({ action: 'click', target: scrubTargetForTrace(resolvedTarget), status: 'error', errorCode: (err as { name?: string }).name }));
         throw wrapError(err, { stage: 'post-action-click', retryHint: 're-snapshot' });
     }
 
@@ -152,7 +153,7 @@ export async function fillWithPostAssert(
         const role = resolvedTarget.role || '';
         const isContentEditable = role === 'textbox' || resolvedTarget["contentEditable"] === true;
         if (!isContentEditable) {
-            traceCtx?.record({ action: 'fill', target: scrubTargetForTrace(resolvedTarget), status: 'error', errorCode: (fillErr as { name?: string }).name });
+            traceCtx?.record(stripUndefined({ action: 'fill', target: scrubTargetForTrace(resolvedTarget), status: 'error', errorCode: (fillErr as { name?: string }).name }));
             throw wrapError(fillErr, { stage: 'post-action-fill', retryHint: 're-snapshot' });
         }
         try {
@@ -170,7 +171,7 @@ export async function fillWithPostAssert(
             await page.keyboard.press(`${mod}+a`);
             await page.keyboard.insertText(value);
         } catch (kbErr) {
-            traceCtx?.record({ action: 'fill', target: scrubTargetForTrace(resolvedTarget), status: 'error', errorCode: (kbErr as { name?: string }).name });
+                traceCtx?.record(stripUndefined({ action: 'fill', target: scrubTargetForTrace(resolvedTarget), status: 'error', errorCode: (kbErr as { name?: string }).name }));
             throw wrapError(kbErr, { stage: 'post-action-fill-keyboard', retryHint: 're-snapshot' });
         }
     }

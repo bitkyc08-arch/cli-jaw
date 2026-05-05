@@ -1,4 +1,5 @@
 import { JAW_HOME, deriveCdpPort, settings } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'path';
 import fs from 'node:fs';
@@ -393,10 +394,10 @@ export async function launchChrome(
         if (!reset) return;
     }
 
-    const launchPolicy = resolveLaunchPolicy({
+    const launchPolicy = resolveLaunchPolicy(stripUndefined({
         mode: opts.mode,
         headless: opts.headless,
-    });
+    }));
     if (!launchPolicy.allowLaunch) {
         throw new Error(launchPolicy.denyReason || 'Browser launch denied by policy');
     }
@@ -532,7 +533,9 @@ export async function getActiveTab(port = getActivePort()): Promise<ActiveTabRes
     const active = tabs.filter((t) => t.active);
     if (active.length === 0) return { ok: false, reason: 'none' };
     if (active.length > 1) return { ok: false, reason: 'ambiguous' };
-    return { ok: true, tab: active[0] };
+    const tab = active[0];
+    if (!tab) return { ok: false, reason: 'none' };
+    return { ok: true, tab };
 }
 
 export async function switchTab(port = getActivePort(), target: string): Promise<ActiveTabResult> {

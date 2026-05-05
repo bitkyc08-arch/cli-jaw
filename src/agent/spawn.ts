@@ -7,6 +7,7 @@ import { join } from 'path';
 import { spawn, execFileSync, type ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, UPLOADS_DIR, detectCli, normalizeModelForCli } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import {
     clearEmployeeSession, getSession, updateSession, insertMessage, insertMessageWithTrace, getRecentMessages, getEmployees,
     listQueuedMessages, insertQueuedMessage, deleteQueuedMessage,
@@ -165,7 +166,7 @@ function normalizeQueueItem(row: { id: string; payload: string }): QueueItem[] {
         if (typeof parsed?.id !== 'string' || typeof parsed?.prompt !== 'string' || typeof parsed?.source !== 'string') {
             return [];
         }
-        return [{
+        return [stripUndefined({
             id: parsed.id,
             prompt: parsed.prompt,
             source: parsed.source,
@@ -174,7 +175,7 @@ function normalizeQueueItem(row: { id: string; payload: string }): QueueItem[] {
             chatId: parsed.chatId,
             requestId: parsed.requestId,
             ts: typeof parsed.ts === 'number' ? parsed.ts : Date.now(),
-        }];
+        })];
     } catch {
         return [];
     }
@@ -426,7 +427,7 @@ export function removeQueuedMessage(id: string): { removed: QueueItem | null; pe
 }
 
 export function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string }): string {
-    const item: QueueItem = {
+    const item: QueueItem = stripUndefined({
         id: crypto.randomUUID(),
         prompt,
         source,
@@ -435,7 +436,7 @@ export function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { t
         chatId: meta?.chatId,
         requestId: meta?.requestId,
         ts: Date.now(),
-    };
+    });
     insertQueuedMessage.run(item.id, JSON.stringify(item));
     messageQueue.push(item);
     console.log(`[queue] +1 (${messageQueue.length} pending)`);
@@ -753,7 +754,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Skip for employee spawns — distribute.ts manages AGENTS.md isolation
     if (!opts.internal && !opts._isFallback && !opts.agentId) regenerateB();
 
-    const liveScope = resolveOrcScope({ origin, chatId: opts.chatId, workingDir: settings["workingDir"] || null });
+    const liveScope = resolveOrcScope(stripUndefined({ origin, chatId: opts.chatId, workingDir: settings["workingDir"] || null }));
     // Employee must not pollute boss's liveRun (see devlog 260423_employee_liverun_contamination)
     const effectiveLiveScope = mainManaged ? liveScope : null;
 
@@ -767,13 +768,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Capture Boss main session channel so disconnected worker results can be
     // replayed to the correct origin/chatId later. Cleared in lifecycle-handler.
     if (mainManaged) {
-        setCurrentMainMeta({
+        setCurrentMainMeta(stripUndefined({
             origin,
             target: opts.target,
             chatId: opts.chatId,
             requestId: opts.requestId,
             scopeId: liveScope,
-        });
+        }));
     }
 
     let resolve: (value: SpawnPromiseResult) => void;
@@ -813,7 +814,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     const sysPrompt = customSysPrompt !== undefined
         ? customSysPrompt
-        : getSystemPrompt({ currentPrompt: prompt, forDisk: false, memorySnapshot, activeCli: cli });
+        : getSystemPrompt(stripUndefined({ currentPrompt: prompt, forDisk: false, memorySnapshot, activeCli: cli }));
 
     // Bucket-aware resume: codex-spark is kept in its own session bucket so
     // cross-model resume (gpt-5.4 ↔ gpt-5.3-codex-spark) doesn't send a
@@ -1171,7 +1172,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 // Save session BEFORE shutdown — acp.shutdown() causes SIGTERM (code=null),
                 // which skips the exit handler's code===0 gate, losing session continuity.
                 const persistedAcpSessionId = ctx.sessionId;
-                if (persistedAcpSessionId && persistMainSession({
+                if (persistedAcpSessionId && persistMainSession(stripUndefined({
                     ownerGeneration,
                     forceNew,
                     employeeSessionId: empSid,
@@ -1181,7 +1182,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     model,
                     resumeKey,
                     effort: cfg.effort || '',
-                })) {
+                }))) {
                     console.log(`[jaw:session] saved ${cli} session=${persistedAcpSessionId.slice(0, 12)}... (pre-shutdown)`);
                 }
 
@@ -1334,7 +1335,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         liveScope: effectiveLiveScope,
         parentLiveScope: isEmployee ? liveScope : null,
         geminiResultSeen: false,
-        opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> | undefined,
+        ...(opencodeSpawnAudit ? { opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> } : {}),
     };
     let geminiWatchdog: ReturnType<typeof setTimeout> | null = null;
     let buffer = '';

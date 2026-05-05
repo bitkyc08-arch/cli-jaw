@@ -16,6 +16,7 @@ import { decodeFilenameSafe } from '../security/decode.js';
 import { sendChannelOutput, normalizeChannelSendRequest } from '../messaging/send.js';
 import { settings } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 
 function getLatestTelegramChatId() {
     const ids = Array.from(telegramActiveChatIds);
@@ -199,7 +200,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             validateFileSize(safePath, type);
 
             const caption = req.body?.caption ? String(req.body.caption) : undefined;
-            const result = await sendTelegramFile(telegramBot, chatId, safePath, type, { caption });
+            const result = await sendTelegramFile(telegramBot, chatId, safePath, type, stripUndefined({ caption }));
 
             if (!result.ok) {
                 const sc = result.statusCode || 502;

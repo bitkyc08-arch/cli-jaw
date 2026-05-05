@@ -4,6 +4,7 @@ import fs from 'fs';
 import os from 'os';
 import { join } from 'path';
 import { resolveHomePath } from '../core/path-expand.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 
 export interface GeminiQuotaBucket {
     remainingFraction?: number;
@@ -256,12 +257,12 @@ export function readGeminiAccount() {
         const idTokenPayload = typeof creds.id_token === 'string' ? creds.id_token.split('.')[1] : undefined;
         if (token && idTokenPayload) {
             const payload = JSON.parse(Buffer.from(idTokenPayload, 'base64url').toString());
-            return {
+            return stripUndefined({
                 token,
                 refreshToken: typeof creds.refresh_token === 'string' ? creds.refresh_token : undefined,
                 expiresAt: typeof creds.expiry_date === 'number' ? creds.expiry_date : undefined,
                 account: { email: payload.email ?? null },
-            };
+            });
         }
     } catch { /* expected: gemini creds may not exist */ }
     return null;

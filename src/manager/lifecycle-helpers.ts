@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { stripUndefined } from '../core/strip-undefined.js';
 import type {
     DashboardInstance,
     DashboardServiceState,
@@ -131,7 +132,7 @@ export function buildCapability(args: {
             pid: null,
         };
     }
-    return {
+    return stripUndefined({
         owner: 'external',
         canStart: false,
         canStop: false,
@@ -142,7 +143,7 @@ export function buildCapability(args: {
         defaultHome,
         commandPreview,
         pid: null,
-    };
+    });
 }
 
 export function rejectResult(
@@ -152,7 +153,7 @@ export function rejectResult(
     command: string[],
     message: string,
 ): DashboardLifecycleResult {
-    return {
+    return stripUndefined({
         ok: false,
         action,
         port,
@@ -161,7 +162,7 @@ export function rejectResult(
         home,
         pid: null,
         command,
-    };
+    });
 }
 
 export function errorResultBuilder(
@@ -172,7 +173,7 @@ export function errorResultBuilder(
     error: unknown,
     entry?: { pid?: number; stdout?: string; stderr?: string },
 ): DashboardLifecycleResult {
-    return {
+    return stripUndefined({
         ok: false,
         action,
         port,
@@ -183,5 +184,5 @@ export function errorResultBuilder(
         command,
         stdout: entry?.stdout,
         stderr: entry?.stderr,
-    };
+    });
 }

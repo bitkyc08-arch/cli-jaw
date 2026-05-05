@@ -1,4 +1,5 @@
 import { clickWithPostAssert, fillWithPostAssert } from './post-action-assert.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import type { TraceContext } from './action-trace.js';
 import type { ResolvedActionTarget } from './action-cache.js';
 import type { LocatorLike as PostActionLocatorLike, PageLike as PostActionPageLike } from './post-action-assert.js';
@@ -175,7 +176,7 @@ export async function waitForStableTextAfterBaseline(
         await page.waitForTimeout?.(pollIntervalMs);
     }
     warnings.push('stable-text-timeout');
-    return { ok: false, baseline, latestText: stableText, warnings };
+    return stripUndefined({ ok: false, baseline, latestText: stableText, warnings });
 }
 
 export async function isLocatorVisible(locator: LocatorLike): Promise<boolean> {

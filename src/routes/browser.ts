@@ -4,6 +4,7 @@ import type { WebAiVendorScope, CapabilityFamily, FrontendObservationStatus } fr
 import type { Express, Request, Response, NextFunction } from 'express';
 import * as browser from '../browser/index.js';
 import { cleanupPoolTabs } from '../browser/web-ai/tab-pool.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { ok } from '../http/response.js';
 import { DEBUG_CONSOLE_ONLY_MESSAGE, normalizeBrowserStartMode, type BrowserStartMode } from '../browser/launch-policy.js';
 
@@ -217,13 +218,13 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
                 return;
             }
             const leaseResult = await cleanupPoolTabs(cdpPort(req));
-            const idleResult = await browser.cleanupIdleTabs(cdpPort(req), {
+            const idleResult = await browser.cleanupIdleTabs(cdpPort(req), stripUndefined({
                 idleTimeoutMs: req.body.idleAfter ? browser.parseTabDuration(String(req.body.idleAfter)) : undefined,
                 maxTabs: req.body.maxTabs ? Number(req.body.maxTabs) : undefined,
                 includeUntracked: req.body.includeUntracked === true,
                 provider: req.body.provider ? String(req.body.provider) : undefined,
                 keepProviderTabs: req.body.keepProviderTabs ? Number(req.body.keepProviderTabs) : undefined,
-            });
+            }));
             res.json({
                 ...idleResult,
                 closed: idleResult.closed + (leaseResult.closed || 0),
@@ -410,7 +411,7 @@ function toWebAiHttpError(e: unknown): { ok: false; error: string; stage: string
     if (isWebAiErrorLike(e)) {
         const json = (e as { toJSON?: () => unknown }).toJSON?.() as Record<string, unknown> | undefined;
         if (json && typeof json === 'object') {
-            return {
+            return stripUndefined({
                 ok: false,
                 error: String(json["message"] ?? ''),
                 stage: String(json["stage"] ?? 'unknown'),
@@ -420,7 +421,7 @@ function toWebAiHttpError(e: unknown): { ok: false; error: string; stage: string
                 mutationAllowed: json["mutationAllowed"] as boolean | undefined,
                 selectorsTried: json["selectorsTried"] as string[] | undefined,
                 evidence: json["evidence"],
-            };
+            });
         }
     }
     const err = e as { message?: string; stage?: string };

@@ -3,10 +3,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readSource } from './source-normalize.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 const composerSrc = fs.readFileSync(join(root, 'src/browser/web-ai/chatgpt-composer.ts'), 'utf8');
-const chatgptSrc = fs.readFileSync(join(root, 'src/browser/web-ai/chatgpt.ts'), 'utf8');
+const chatgptSrc = readSource(join(root, 'src/browser/web-ai/chatgpt.ts'), 'utf8');
 const modelSrc = fs.readFileSync(join(root, 'src/browser/web-ai/chatgpt-model.ts'), 'utf8');
 
 test('BWCOMP-001: ChatGPT composer uses user-input insertion path', () => {

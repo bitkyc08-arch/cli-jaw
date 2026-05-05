@@ -3,6 +3,7 @@
 
 import { REST, Routes, SlashCommandBuilder, type Client, type ChatInputCommandInteraction } from 'discord.js';
 import { settings } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { parseCommand, executeCommand } from '../cli/commands.js';
 import { makeCommandCtx } from '../cli/command-context.js';
 import { normalizeLocale } from '../core/i18n.js';
@@ -86,13 +87,13 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
             const { orchestrateAndCollect } = await import('../orchestrator/collect.js');
             const { setLastActiveTarget } = await import('../messaging/runtime.js');
             const peerKind = interaction.guildId ? 'channel' as const : 'direct' as const;
-            const target = {
+            const target = stripUndefined({
                 channel: 'discord' as const,
                 targetKind: 'channel' as const,
                 peerKind,
                 targetId: interaction.channelId,
                 guildId: interaction.guildId ?? undefined,
-            };
+            });
             setLastActiveTarget('discord', target);
             try {
                 const { chunkDiscordMessage } = await import('./forwarder.js');

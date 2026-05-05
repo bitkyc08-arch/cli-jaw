@@ -2,6 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JAW_HOME } from '../../core/config.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import type {
     CommittedTurnBaseline,
     QuestionEnvelope,
@@ -227,7 +228,7 @@ export function enqueueWebAiSessionNotification(input: {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
     if (!record) return null;
-    const event = enqueueSessionNotification({
+    const event = enqueueSessionNotification(stripUndefined({
         record,
         type: input.type,
         answerText: input.answerText,
@@ -235,7 +236,7 @@ export function enqueueWebAiSessionNotification(input: {
         error: input.error,
         capabilityMode: input.capabilityMode,
         elapsedMs: input.elapsedMs,
-    });
+    }));
     savePersistentStore();
     return event;
 }

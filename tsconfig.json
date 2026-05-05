@@ -19,6 +19,7 @@
     "noPropertyAccessFromIndexSignature": true,
     "noFallthroughCasesInSwitch": true,
     "noImplicitReturns": true,
+    "exactOptionalPropertyTypes": true,
     "noUncheckedIndexedAccess": true
   },
   "include": [

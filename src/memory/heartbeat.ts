@@ -3,6 +3,7 @@
 import fs from 'fs';
 import crypto from 'crypto';
 import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { broadcast } from '../core/bus.js';
 import { sendChannelOutput } from '../messaging/send.js';
@@ -47,7 +48,7 @@ function queueHeartbeatJob(
     policy?: HeartbeatPendingPolicy,
 ): boolean {
     if (pendingJobs.some(item => item.job["id"] === job["id"])) return false;
-    pendingJobs.push({ job, reason, policy });
+    pendingJobs.push(stripUndefined({ job, reason, policy }));
     broadcast('heartbeat_pending', {
         ...pendingSnapshot(reason, policy),
         jobId: job["id"],

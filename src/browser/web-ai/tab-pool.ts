@@ -6,6 +6,7 @@ import {
     poolStats,
     type LeaseScopeInput,
 } from './tab-lease-store.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import type { WebAiVendor } from './types.js';
 
 export interface PoolTabOptions extends Partial<LeaseScopeInput> {
@@ -18,7 +19,7 @@ export async function poolTab(
     url?: string,
     options: PoolTabOptions = {},
 ): Promise<void> {
-    await releaseCompletedLease({
+    await releaseCompletedLease(stripUndefined({
         owner: options.owner || 'cli-jaw',
         vendor,
         sessionType: options.sessionType || 'jaw',
@@ -28,7 +29,7 @@ export async function poolTab(
         targetId,
         sessionId: options.sessionId,
         url,
-    });
+    }));
 }
 
 export async function getPooledTab(
@@ -36,7 +37,7 @@ export async function getPooledTab(
     vendor: WebAiVendor,
     options: Partial<LeaseScopeInput> = {},
 ): Promise<{ targetId: string; url?: string | null } | null> {
-    return checkoutPooledLease({
+    return checkoutPooledLease(stripUndefined({
         owner: options.owner || 'cli-jaw',
         vendor,
         sessionType: options.sessionType || 'jaw',
@@ -44,11 +45,11 @@ export async function getPooledTab(
         origin: options.origin,
         url: options.url,
         port,
-    });
+    }));
 }
 
 export async function unpoolTab(vendor: WebAiVendor, targetId: string | null | undefined, options: Partial<LeaseScopeInput> = {}): Promise<void> {
-    await removeLease(targetId, {
+    await removeLease(targetId, stripUndefined({
         owner: options.owner || 'cli-jaw',
         vendor,
         sessionType: options.sessionType || 'jaw',
@@ -56,7 +57,7 @@ export async function unpoolTab(vendor: WebAiVendor, targetId: string | null | u
         origin: options.origin,
         url: options.url,
         port: options.port,
-    });
+    }));
 }
 
 export async function cleanupPoolTabs(port: number): Promise<{ closed: number; closedTabs: string[] }> {

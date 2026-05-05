@@ -32,7 +32,7 @@ test('claude stream_event tool labels are deduped', () => {
     const first = extractToolLabelsForTest('claude', evt, ctx);
     const second = extractToolLabelsForTest('claude', evt, ctx);
 
-    assert.deepEqual(first, [{ icon: '🔧', label: 'Bash', toolType: 'tool', stepRef: undefined }]);
+    assert.deepEqual(first, [{ icon: '🔧', label: 'Bash', toolType: 'tool' }]);
     assert.equal(second.length, 0);
     assert.equal(ctx.hasClaudeStreamEvents, true);
 });
@@ -42,7 +42,7 @@ test('claude assistant fallback works when stream was not seen', () => {
     const evt = readFixture('claude-assistant-tool.json');
 
     const labels = extractToolLabelsForTest('claude', evt, ctx);
-    assert.deepEqual(labels, [{ icon: '🔧', label: 'Read', toolType: 'tool', stepRef: undefined }]);
+    assert.deepEqual(labels, [{ icon: '🔧', label: 'Read', toolType: 'tool' }]);
 });
 
 test('claude assistant blocks are ignored after stream event', () => {
@@ -252,7 +252,7 @@ test('extractFromEvent updates context for each CLI path', () => {
         session_id: 'claude-session',
     }, claudeCtx, 'claude-agent');
     assert.equal(claudeCtx.fullText, 'hello ');
-    assert.deepEqual(claudeCtx.toolLog, [{ icon: '🔧', label: 'Read', toolType: 'tool', stepRef: undefined }]);
+    assert.deepEqual(claudeCtx.toolLog, [{ icon: '🔧', label: 'Read', toolType: 'tool' }]);
     assert.equal(claudeCtx.cost, 0.12);
     assert.equal(claudeCtx.turns, 3);
     assert.equal(claudeCtx.duration, 777);

@@ -5,6 +5,7 @@
  */
 import { parseArgs } from 'node:util';
 import { getServerUrl } from '../../src/core/config.js';
+import { stripUndefined } from '../../src/core/strip-undefined.js';
 import { getCliAuthToken } from '../../src/cli/api-auth.js';
 import { asRecord, fieldString, type JsonRecord } from '../_http-client.js';
 
@@ -46,7 +47,7 @@ async function apiJson<T = JsonRecord>(baseUrl: string, path: string, init: Empl
     const { body: _body, headers: _headers, ...rest } = init;
     const { authHeaders } = await import('../../src/cli/api-auth.js');
     const mergedHeaders = { ...authHeaders(), ...headers };
-    const res = await fetch(baseUrl + path, { ...rest, headers: mergedHeaders, body, signal: AbortSignal.timeout(10000) });
+    const res = await fetch(baseUrl + path, stripUndefined({ ...rest, headers: mergedHeaders, body, signal: AbortSignal.timeout(10000) }));
     const text = await res.text();
     let data: JsonRecord = {};
     try { data = text ? asRecord(JSON.parse(text)) : {}; } catch { data = { raw: text }; }

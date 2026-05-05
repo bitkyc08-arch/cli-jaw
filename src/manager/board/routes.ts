@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { BoardStore, type DashboardTaskInput, type DashboardTaskPatch } from './store.js';
 
 export type DashboardBoardRouterOptions = { store?: BoardStore };
@@ -12,7 +13,7 @@ function sendErr(res: Response, status: number, code: string, error: unknown) {
 }
 
 function pickInput(body: Record<string, unknown>): DashboardTaskInput {
-    return {
+    return stripUndefined({
         title: typeof body["title"] === 'string' ? body["title"] : '',
         summary: typeof body["summary"] === 'string' ? body["summary"] : null,
         detail: typeof body["detail"] === 'string' ? body["detail"] : null,
@@ -21,7 +22,7 @@ function pickInput(body: Record<string, unknown>): DashboardTaskInput {
         threadKey: typeof body["threadKey"] === 'string' ? body["threadKey"] : null,
         notePath: typeof body["notePath"] === 'string' ? body["notePath"] : null,
         source: typeof body["source"] === 'string' ? body["source"] : undefined,
-    };
+    });
 }
 
 function pickPatch(body: Record<string, unknown>): DashboardTaskPatch {
@@ -29,7 +30,7 @@ function pickPatch(body: Record<string, unknown>): DashboardTaskPatch {
     if (typeof body["title"] === 'string') patch.title = body["title"];
     if ('summary' in body) patch.summary = typeof body["summary"] === 'string' ? body["summary"] : null;
     if ('detail' in body) patch.detail = typeof body["detail"] === 'string' ? body["detail"] : null;
-    if (typeof body["lane"] === 'string') patch.lane = body["lane"] as DashboardTaskPatch['lane'];
+    if (typeof body["lane"] === 'string') patch.lane = body["lane"] as NonNullable<DashboardTaskPatch['lane']>;
     if ('port' in body) patch.port = typeof body["port"] === 'number' ? body["port"] : null;
     if ('threadKey' in body) patch.threadKey = typeof body["threadKey"] === 'string' ? body["threadKey"] : null;
     if ('notePath' in body) patch.notePath = typeof body["notePath"] === 'string' ? body["notePath"] : null;
@@ -83,13 +84,13 @@ export function createDashboardBoardRouter(options: DashboardBoardRouterOptions 
             const titleRaw = typeof body["title"] === 'string' ? body["title"].trim() : '';
             const title = titleRaw || (threadKey ? `Thread @ :${port}` : `Instance :${port}`);
             const lane = typeof body["lane"] === 'string' ? body["lane"] as DashboardTaskInput['lane'] : 'backlog';
-            const task = store.create({
+            const task = store.create(stripUndefined({
                 title,
                 lane,
                 port,
                 threadKey,
                 source: 'message',
-            });
+            }));
             res.status(201).json({ ok: true, task });
         } catch (e) { sendErr(res, 400, 'board_from_message_failed', e); }
     });

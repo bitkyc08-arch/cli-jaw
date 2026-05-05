@@ -1,3 +1,5 @@
+import { stripUndefined } from '../../core/strip-undefined.js';
+
 // Typed error taxonomy for cli-jaw web-ai. Mirrors agbrowse web-ai/errors.mjs
 // (https://github.com/lidge-jun/agbrowse/blob/main/web-ai/errors.mjs) with the
 // extensions GPT Pro flagged in the 2026-05-01 plan close-out:
@@ -57,7 +59,7 @@ export class WebAiError extends Error {
         this.errorCode = init.errorCode || 'internal.unhandled';
         this.stage = init.stage || 'internal';
         this.retryHint = init.retryHint || 'report';
-        this.vendor = init.vendor;
+        if (init.vendor !== undefined) this.vendor = init.vendor;
         this.mutationAllowed = init.mutationAllowed === true;
         this.selectorsTried = Array.isArray(init.selectorsTried) ? init.selectorsTried : [];
         this.evidence = init.evidence ?? null;
@@ -135,14 +137,14 @@ export function fromCliJawStructuredError(err: unknown, fallbackStage = 'interna
     }
     if (name === 'ProviderRuntimeDisabledError') {
         const e = err as { vendor?: string; stage?: string; message?: string };
-        return new WebAiError({
+        return new WebAiError(stripUndefined({
             errorCode: 'provider.runtime-disabled',
             stage: e.stage || 'provider-runtime-gate',
             vendor: e.vendor,
             retryHint: 'enable-or-skip',
             message: e.message || 'provider runtime disabled',
             cause: err,
-        });
+        }));
     }
     return null;
 }

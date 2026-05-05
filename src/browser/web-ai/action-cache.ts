@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { CACHE_SCHEMA_VERSION } from './constants.js';
 import { WebAiError, wrapError } from './errors.js';
 
@@ -142,14 +143,14 @@ export function getCachedTarget(
     },
 ): CachedTargetLookup | null {
     if (!cache?.entries) return null;
-    const key = cacheKey({
+    const key = cacheKey(stripUndefined({
         provider: input.provider,
         urlHost: input.urlHost,
         intent: input.intent,
         actionKind: input.actionKind,
         domHashPrefix: input.fingerprint?.domHashPrefix || null,
         axHashPrefix: input.fingerprint?.axHashPrefix || null,
-    });
+    }));
     const entry = cache.entries[key];
     if (!entry) return null;
     return {
@@ -174,16 +175,16 @@ export function updateCacheEntry(
 ): void {
     if (!cache || !resolvedTarget?.selector) return;
     const { provider, intent, actionKind, urlHost } = ctx;
-    const key = cacheKey({
+    const key = cacheKey(stripUndefined({
         provider,
         urlHost,
         intent,
         actionKind,
         domHashPrefix: fingerprint?.domHashPrefix || null,
         axHashPrefix: fingerprint?.axHashPrefix || null,
-    });
+    }));
     const existing = cache.entries[key];
-    cache.entries[key] = {
+    cache.entries[key] = stripUndefined({
         schemaVersion: CACHE_SCHEMA_VERSION,
         provider,
         intent,
@@ -198,13 +199,13 @@ export function updateCacheEntry(
             role: resolvedTarget.role || null,
             nameHash: resolvedTarget.name ? hashField(resolvedTarget.name) : null,
             nameChars: resolvedTarget.name ? String(resolvedTarget.name).length : 0,
-            signatureHash: signatureHash({ provider, intent, actionKind, role: resolvedTarget.role, selector: resolvedTarget.selector }),
+            signatureHash: signatureHash(stripUndefined({ provider, intent, actionKind, role: resolvedTarget.role, selector: resolvedTarget.selector })),
         },
         stats: {
             hitCount: (existing?.stats?.hitCount || 0) + 1,
             lastValidatedAt: new Date().toISOString(),
         },
-    };
+    });
 }
 
 export function createActionCacheHandle(homeDir = DEFAULT_HOME): ActionCacheHandle {

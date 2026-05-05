@@ -12,6 +12,7 @@ import { getActiveWorkers, claimWorker, finishWorker, failWorker, markWorkerRepl
 import { findEmployee, runSingleAgent } from '../orchestrator/distribute.js';
 import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { verifyBossToken } from '../core/boss-auth.js';
 import { resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
 import type { EmployeeRow, SyntheticEmployeeRow } from '../core/employees.js';
@@ -221,13 +222,13 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         // worker results later drain back to the correct origin/chatId,
         // not a generic 'system' scope.
         const bossMeta = getCurrentMainMeta();
-        const replayMeta = bossMeta ? {
+        const replayMeta = bossMeta ? stripUndefined({
             origin: bossMeta.origin,
             target: bossMeta.target,
             chatId: bossMeta.chatId,
             requestId: bossMeta.requestId,
             scopeId: bossMeta.scopeId,
-        } : undefined;
+        }) : undefined;
         let slot;
         try {
             slot = claimWorker(emp, task, replayMeta);

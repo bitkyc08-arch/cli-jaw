@@ -454,7 +454,7 @@ export function listFrontendObservedCapabilities(vendor?: WebAiVendorScope): Cap
     return REGISTRY
         .filter((entry) => !vendor || entry.vendor === vendor || entry.vendor === 'shared')
         .filter((entry) => Boolean(entry.observation))
-        .map((entry) => ({ ...entry, observation: entry.observation ? { ...entry.observation } : undefined }));
+        .map((entry) => entry.observation ? { ...entry, observation: { ...entry.observation } } : { ...entry });
 }
 
 export function lookupCapability(id: string): CapabilityEntry {

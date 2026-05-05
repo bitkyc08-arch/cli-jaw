@@ -1,3 +1,5 @@
+import { stripUndefined } from '../core/strip-undefined.js';
+
 type BoxLike = { width: number; height: number };
 type StyleLike = { display?: string; visibility?: string; opacity?: string };
 type VisibleNodeLike = { getBoundingClientRect?: () => BoxLike };
@@ -200,7 +202,7 @@ export async function waitForStableTextAfterBaseline(
         await page.waitForTimeout?.(pollIntervalMs);
     }
     warnings.push('stable-text-timeout');
-    return { ok: false, baseline, latestText: stableText, warnings };
+    return stripUndefined({ ok: false, baseline, latestText: stableText, warnings });
 }
 
 export async function captureBrowserDiagnostics(input: BrowserDiagnosticsCaptureInput = {}): Promise<BrowserDiagnosticsSnapshot> {

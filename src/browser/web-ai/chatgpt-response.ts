@@ -9,6 +9,7 @@
 
 import type { ResponseCaptureResult } from './provider-adapter.js';
 import { ActionTranscript, captureTextBaseline } from '../primitives.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { resolveActionTarget } from './self-heal.js';
 import { createTraceContext, getSessionTrace, recordTraceStep } from './action-trace.js';
@@ -94,12 +95,12 @@ export async function readAssistantSnapshot(page: Page, minTurnIndex: number, pr
     const canvasOpened = await isCanvasOpened(page);
     const newTexts = allTexts.slice(minTurnIndex);
     const latestNewText = pickLatestRealAnswer(newTexts, promptText);
-    return {
+    return stripUndefined({
         assistantCount: allTexts.length,
         latestNewText,
         streaming,
         canvasOpened,
-    };
+    });
 }
 
 async function readAssistantTexts(page: Page): Promise<string[]> {
@@ -131,13 +132,13 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
     while (Date.now() < deadline) {
         const snap = await readAssistantSnapshot(page, options.minTurnIndex, options.promptText);
         if (snap.canvasOpened) {
-            return withResolverTrace({
+            return withResolverTrace(stripUndefined({
                 ok: true,
                 canvas: { kind: 'opened', reason: 'ChatGPT routed answer into Canvas' },
                 answerText: snap.latestNewText,
                 usedFallbacks: transcript.usedFallbacks,
                 warnings: transcript.warnings,
-            }, resolverTrace);
+            }), resolverTrace);
         }
         if (!snap.streaming && snap.latestNewText) {
             if (snap.latestNewText === stableText) {
@@ -175,7 +176,7 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
         }
         transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
     }
-    return withResolverTrace({ ok: false, answerText: stableText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+    return withResolverTrace(stripUndefined({ ok: false, answerText: stableText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }), resolverTrace);
 }
 
 async function resolveOptionalChatGptCopyTarget(page: Page, traceCtx: TraceContext): Promise<{ selector?: string | null } | null> {
@@ -207,7 +208,7 @@ function withResolverTrace<T extends ResponseCaptureResult>(result: T, traceCtx:
 }
 
 function recordResolverTrace(traceCtx: TraceContext, result: ResolveActionTargetResult, fallbackIntentId: string): void {
-    recordTraceStep(traceCtx, {
+    recordTraceStep(traceCtx, stripUndefined({
         action: 'target-resolve',
         provider: result.provider || 'chatgpt',
         intentId: result.intent || fallbackIntentId,
@@ -218,7 +219,7 @@ function recordResolverTrace(traceCtx: TraceContext, result: ResolveActionTarget
         resolutionSource: result.target?.["resolution"] || null,
         errorCode: result.errorCode || undefined,
         attempts: summarizeResolverAttempts(result.attempts),
-    });
+    }));
 }
 
 function summarizeResolverAttempts(attempts: ResolveActionTargetResult['attempts'] = []): TraceStep[] {

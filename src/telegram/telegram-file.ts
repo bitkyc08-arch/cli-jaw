@@ -1,5 +1,6 @@
 import { InputFile, type Bot } from 'grammy';
 import fs from 'node:fs';
+import { stripUndefined } from '../core/strip-undefined.js';
 
 interface TelegramApiErrorLike {
     error_code?: number;
@@ -89,13 +90,13 @@ export async function sendTelegramFile(
             const file = new InputFile(filePath);
             switch (type) {
                 case 'voice':
-                    await bot.api.sendVoice(chatId, file, { caption });
+                    await bot.api.sendVoice(chatId, file, stripUndefined({ caption }));
                     break;
                 case 'photo':
-                    await bot.api.sendPhoto(chatId, file, { caption });
+                    await bot.api.sendPhoto(chatId, file, stripUndefined({ caption }));
                     break;
                 case 'document':
-                    await bot.api.sendDocument(chatId, file, { caption });
+                    await bot.api.sendDocument(chatId, file, stripUndefined({ caption }));
                     break;
                 default:
                     return { ok: false, attempts: attempt, error: `unsupported type: ${type}`, statusCode: 400 };
@@ -107,24 +108,24 @@ export async function sendTelegramFile(
             if (!transient || attempt === MAX_RETRIES) {
                 const sc = transient ? classifyUpstreamError(err) : (e.error_code || e.statusCode || 500);
                 console.error(`[telegram:file] failed after ${attempt} attempt(s):`, e.message);
-                return {
+                return stripUndefined({
                     ok: false, attempts: attempt,
                     error: e.message || 'unknown error',
                     retryAfter: e.error_code === 429 ? e.parameters?.retry_after : undefined,
                     statusCode: sc,
-                };
+                });
             }
 
             const retryAfterMs = getRetryAfterMs(err);
             // If upstream demands more than MAX_DELAY_MS, bail immediately
             if (retryAfterMs > MAX_DELAY_MS) {
                 console.error(`[telegram:file] retry_after ${retryAfterMs}ms exceeds cap, giving up`);
-                return {
+                return stripUndefined({
                     ok: false, attempts: attempt,
                     error: `retry_after too large: ${retryAfterMs}ms`,
                     retryAfter: e.parameters?.retry_after,
                     statusCode: 429,
-                };
+                });
             }
 
             const delay = Math.max(retryAfterMs, BASE_DELAY_MS * Math.pow(2, attempt - 1));

@@ -1,4 +1,5 @@
 import { drainPendingWebAiNotifications } from './notifications.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import {
     enqueueWebAiSessionNotification,
     getSession,
@@ -77,18 +78,18 @@ export function stopWebAiWatchers(): void {
 
 export function resumeStoredWebAiWatchers(input: ResumeStoredWebAiWatchersInput): WebAiWatcherState[] {
     const now = Date.now();
-    const resumable = listSessions({ vendor: input.vendor })
+    const resumable = listSessions(stripUndefined({ vendor: input.vendor }))
         .filter((session) => session.notifyOnComplete)
         .filter((session) => session.status === 'sent' || session.status === 'streaming')
         .filter((session) => now < Date.parse(session.createdAt) + session.timeoutMs);
-    return resumable.map((session) => startWebAiWatcher({
+    return resumable.map((session) => startWebAiWatcher(stripUndefined({
         port: input.port,
         vendor: session.vendor,
-            sessionId: session.sessionId,
-            timeoutMs: Math.max(1, Date.parse(session.createdAt) + session.timeoutMs - now),
-            pollIntervalSeconds: input.pollIntervalSeconds,
-            pollOnce: input.pollOnce,
-        }));
+        sessionId: session.sessionId,
+        timeoutMs: Math.max(1, Date.parse(session.createdAt) + session.timeoutMs - now),
+        pollIntervalSeconds: input.pollIntervalSeconds,
+        pollOnce: input.pollOnce,
+    })));
 }
 
 function scheduleTick(input: StartWebAiWatcherInput, state: WebAiWatcherState & { timer?: ReturnType<typeof setTimeout> }, delayMs: number): void {
@@ -107,12 +108,12 @@ async function runTick(input: StartWebAiWatcherInput, state: WebAiWatcherState &
         return;
     }
     try {
-        const result = await runSerializedPoll(() => input.pollOnce({
+        const result = await runSerializedPoll(() => input.pollOnce(stripUndefined({
             vendor: input.vendor,
             session: input.sessionId,
             timeout: POLL_TICK_SECONDS,
             allowCopyMarkdownFallback: input.allowCopyMarkdownFallback,
-        }));
+        })));
         if (result.ok && result.status === 'complete') {
             updateSessionResult({
                 sessionId: input.sessionId,
@@ -129,12 +130,12 @@ async function runTick(input: StartWebAiWatcherInput, state: WebAiWatcherState &
         if (terminal) {
             state.status = 'error';
             updateSessionResult({ sessionId: input.sessionId, status: 'error', error: terminal.reason });
-            enqueueWebAiSessionNotification({
+            enqueueWebAiSessionNotification(stripUndefined({
                 sessionId: input.sessionId,
                 type: terminal.type,
                 reason: terminal.reason,
                 error: result.error,
-            });
+            }));
             activeWatchers.delete(input.sessionId);
             await drainPendingWebAiNotifications();
             return;

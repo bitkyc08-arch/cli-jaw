@@ -4,6 +4,7 @@ import { createHash } from 'crypto';
 import { join } from 'path';
 import { settings, JAW_HOME, PROMPTS_DIR, SKILLS_DIR, SKILLS_REF_DIR, loadHeartbeatFile, deriveCdpPort } from '../core/config.js';
 import { expandHomePath } from '../core/path-expand.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { getEmployees } from '../core/db.js';
 import { memoryFlushCounter, flushCycleCount } from '../agent/spawn.js';
 import { describeHeartbeatSchedule, normalizeHeartbeatSchedule } from '../memory/heartbeat-schedule.js';
@@ -356,11 +357,11 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
     // No dynamic injection needed — Bot-First policy with curl examples included
 
     if (!forDisk) {
-        const injected = buildMemoryInjection({
+        const injected = buildMemoryInjection(stripUndefined({
             role: 'boss',
             currentPrompt,
             providedSnapshot: opts.memorySnapshot,
-        });
+        }));
         if (injected.mode === 'advanced') {
             prompt += '\n\n' + injected.text;
         } else {

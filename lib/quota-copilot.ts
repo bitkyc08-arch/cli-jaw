@@ -12,6 +12,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { resolveHomePath } from '../src/core/path-expand.js';
+import { stripUndefined } from '../src/core/strip-undefined.js';
 
 const JAW_HOME = process.env["CLI_JAW_HOME"]
     ? resolveHomePath(process.env["CLI_JAW_HOME"])
@@ -298,7 +299,7 @@ export async function refreshCopilotFromKeychain(): Promise<{
                 steps.push({ source: 'Keychain', status: 'miss' });
             }
         } catch (e: unknown) {
-            steps.push({ source: 'Keychain', status: 'error', detail: (e as Error).message?.split('\n')[0] });
+            steps.push(stripUndefined({ source: 'Keychain', status: 'error' as const, detail: (e as Error).message?.split('\n')[0] }));
         }
     } else {
         steps.push({ source: 'Keychain', status: 'miss', detail: 'non-macOS' });
@@ -310,5 +311,5 @@ export async function refreshCopilotFromKeychain(): Promise<{
     writeTokenCache(expectedLogin || 'refresh', foundToken);
 
     const result = await fetchCopilotQuota();
-    return { ok: true, account: result?.account ?? undefined, steps };
+    return stripUndefined({ ok: true, account: result?.account, steps });
 }

@@ -44,7 +44,8 @@ function parseArgs(argv: string[]): Args {
     } else if (arg === '--json') {
       parsed.json = true;
     } else if (arg === '--port') {
-      parsed.port = argv[++i];
+      const port = argv[++i];
+      if (port !== undefined) parsed.port = port;
     } else if (arg?.startsWith('--port=')) {
       parsed.port = arg.slice('--port='.length);
     } else if (arg?.startsWith('--')) {

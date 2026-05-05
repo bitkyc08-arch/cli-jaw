@@ -2,6 +2,7 @@
 // Unified outbound message routing for all channels.
 
 import { settings } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
@@ -36,7 +37,7 @@ export function normalizeChannelSendRequest(body: Record<string, any>): ChannelS
     if (rawPath) {
         filePath = assertSendFilePath(String(rawPath), settings["workingDir"] || undefined);
     }
-    return {
+    return stripUndefined({
         channel: body["channel"] || 'active',
         type: (body["type"] || 'text') as OutboundType,
         text: body["text"],
@@ -44,7 +45,7 @@ export function normalizeChannelSendRequest(body: Record<string, any>): ChannelS
         caption: body["caption"],
         target: body["target"],
         chatId: body["chat_id"] || body["chatId"],
-    };
+    });
 }
 
 // ─── Resolve Target ─────────────────────────────────

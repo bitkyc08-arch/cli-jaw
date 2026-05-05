@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, openSync, readFileSync, closeSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JAW_HOME } from '../../core/config.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { closeTab, listTabs } from '../connection.js';
 import type { WebAiVendor } from './types.js';
 
@@ -398,7 +399,7 @@ export async function checkoutPooledLease(input: CheckoutLeaseInput): Promise<{ 
     });
     await closePlanned(input.port, closePlan);
     const checkedOut = selected as TabLease | null;
-    return checkedOut ? { targetId: checkedOut.targetId, url: checkedOut.url } : null;
+    return checkedOut ? stripUndefined({ targetId: checkedOut.targetId, url: checkedOut.url }) : null;
 }
 
 export async function cleanupLeasedTabs(port: number): Promise<{ closed: number; closedTabs: string[] }> {
@@ -421,7 +422,7 @@ export async function removeLease(targetId: string | null | undefined, scope: Pa
     if (!targetId) return;
     await withLeaseLock(() => {
         const store = readStoreUnlocked();
-        const scoped = normalizeLease({ ...scope, origin: scope.origin || undefined, vendor: scope.vendor || 'chatgpt', targetId });
+        const scoped = normalizeLease(stripUndefined({ ...scope, origin: scope.origin || undefined, vendor: scope.vendor || 'chatgpt', targetId }));
         if (!scoped) return;
         store.leases = store.leases.filter(lease => !sameTargetScope(lease, scoped));
         writeStoreUnlocked(store);

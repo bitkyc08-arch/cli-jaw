@@ -18,17 +18,24 @@ export function normalizeEnvelope(input: QuestionEnvelopeInput = {}): QuestionEn
         throw new Error(`unsupported attachment policy: ${attachmentPolicy}`);
     }
 
+    const system = cleanOptional(input.system);
+    const project = cleanOptional(input.project);
+    const goal = cleanOptional(input.goal);
+    const context = cleanOptional(input.context);
+    const question = cleanOptional(input.question);
+    const output = cleanOptional(input.output);
+    const constraints = cleanOptional(input.constraints);
     return {
         vendor,
         prompt,
         attachmentPolicy,
-        ...(cleanOptional(input.system) ? { system: cleanOptional(input.system) } : {}),
-        ...(cleanOptional(input.project) ? { project: cleanOptional(input.project) } : {}),
-        ...(cleanOptional(input.goal) ? { goal: cleanOptional(input.goal) } : {}),
-        ...(cleanOptional(input.context) ? { context: cleanOptional(input.context) } : {}),
-        ...(cleanOptional(input.question) ? { question: cleanOptional(input.question) } : {}),
-        ...(cleanOptional(input.output) ? { output: cleanOptional(input.output) } : {}),
-        ...(cleanOptional(input.constraints) ? { constraints: cleanOptional(input.constraints) } : {}),
+        ...(system ? { system } : {}),
+        ...(project ? { project } : {}),
+        ...(goal ? { goal } : {}),
+        ...(context ? { context } : {}),
+        ...(question ? { question } : {}),
+        ...(output ? { output } : {}),
+        ...(constraints ? { constraints } : {}),
     };
 }
 

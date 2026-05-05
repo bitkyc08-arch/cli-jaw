@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { resolveHomePath } from '../core/path-expand.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import {
     MANAGED_INSTANCE_PORT_COUNT,
     MANAGED_INSTANCE_PORT_FROM,
@@ -208,7 +209,7 @@ function normalizeProfile(key: string, value: unknown): Partial<DashboardProfile
     if (!profileId) return null;
     const homePath = readString(input["homePath"]);
     if (!homePath && Object.keys(input).length > 0) return null;
-    return {
+    return stripUndefined({
         profileId,
         label: readString(input["label"]) || undefined,
         homePath: homePath || undefined,
@@ -221,7 +222,7 @@ function normalizeProfile(key: string, value: unknown): Partial<DashboardProfile
         lastSeenAt: typeof input["lastSeenAt"] === 'string' && !Number.isNaN(Date.parse(input["lastSeenAt"])) ? input["lastSeenAt"] : undefined,
         pinned: typeof input["pinned"] === 'boolean' ? input["pinned"] : undefined,
         color: readString(input["color"]) || undefined,
-    };
+    });
 }
 
 export function normalizeDashboardRegistry(value: unknown, options: RegistryOptions = {}): DashboardRegistry {
@@ -255,14 +256,14 @@ export function normalizeDashboardRegistry(value: unknown, options: RegistryOpti
 }
 
 function statusFor(path: string, loaded: boolean, error: string | null, registry: DashboardRegistry, options: StatusOptions = {}): DashboardRegistryStatus {
-    return {
+    return stripUndefined({
         path,
         loaded,
         error,
         ui: registry.ui,
         dashboardHome: options.dashboardHome,
         migratedFrom: options.migratedFrom ?? null,
-    };
+    });
 }
 
 function readRegistryFile(path: string, options: RegistryOptions, statusOptions: StatusOptions = {}): DashboardRegistryLoadResult {

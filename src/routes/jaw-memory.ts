@@ -8,6 +8,7 @@ import { ensureAdvancedMemoryStructure, scanSystemProfile } from '../memory/boot
 import { reindexSingleFile } from '../memory/indexing.js';
 import { getMemory } from '../core/db.js';
 import { settings, getServerUrl, JAW_HOME } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { broadcast } from '../core/bus.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import { buildSoulBootstrapPrompt } from '../prompt/soul-bootstrap-prompt.js';
@@ -77,8 +78,8 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
             const file = assertMemoryRelPath(String(req.query["file"] || ''), { allowExt: ['.md', '.txt', '.json'] });
             const mem = getMemoryStatus();
             const content = mem.routing.searchRead === 'advanced'
-                ? readIndexedMemorySnippet(normalizeAdvancedReadPath(file), { lines: req.query["lines"] as string | undefined })
-                : memory.read(file, { lines: req.query["lines"] as string | undefined });
+                ? readIndexedMemorySnippet(normalizeAdvancedReadPath(file), stripUndefined({ lines: req.query["lines"] as string | undefined }))
+                : memory.read(file, stripUndefined({ lines: req.query["lines"] as string | undefined }));
             res.json({ content });
         } catch (e: unknown) { res.status(httpStatus(e, 500)).json({ error: (e as Error).message }); }
     });

@@ -4,6 +4,7 @@
 import crypto from 'node:crypto';
 import { getEmployees, deleteEmployee, insertEmployee, db } from './db.js';
 import { settings } from './config.js';
+import { stripUndefined } from './strip-undefined.js';
 import { broadcast } from './bus.js';
 import { getDefaultClaudeModel } from '../cli/claude-models.js';
 import { regenerateB } from '../prompt/builder.js';
@@ -208,7 +209,7 @@ export function listEmployees(): EmployeeListing[] {
     // Static employees first (rendered at top of UI list, CLI-locked, model editable).
     for (const s of STATIC_EMPLOYEES) {
         const override = overrides[s.name];
-        staticOut.push({
+        staticOut.push(stripUndefined({
             // Use synthetic id matching resolveDispatchableEmployee so the frontend
             // can round-trip PUT /api/employees/:id to the override storage.
             id: `static:${s.name.toLowerCase()}`,
@@ -222,7 +223,7 @@ export function listEmployees(): EmployeeListing[] {
             systemPromptPatchFile: s.systemPromptPatchFile,
             delegation: s.delegation,
             defer: s.defer,
-        });
+        }));
         seen.add(s.name.toLowerCase());
     }
 

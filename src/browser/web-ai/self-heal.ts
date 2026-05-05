@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { CACHE_SCHEMA_VERSION, RESOLUTION_SOURCES, VALIDATION_REASONS, VALIDATION_THRESHOLD } from './constants.js';
 import { CHATGPT_COPY_SELECTORS, GEMINI_COPY_SELECTORS, GROK_COPY_SELECTORS } from './copy-markdown.js';
 import { WebAiError, wrapError } from './errors.js';
@@ -198,14 +199,14 @@ export async function resolveActionTarget(page: PageLike, ctx: ResolveActionTarg
 
         const cached = cache?.get({ provider, intent, actionKind, urlHost, fingerprint });
         if (cached) {
-            const validation = await validateResolvedTarget(page, cached.target, {
+            const validation = await validateResolvedTarget(page, cached.target, stripUndefined({
                 semanticTarget,
                 actionKind,
                 registry,
                 contractVersion: ctx.contractVersion,
                 framePath: ctx.framePath,
                 browserConfigHash: ctx.browserConfigHash,
-            });
+            }));
             attempts.push({ source: RESOLUTION_SOURCES.CACHE, validation });
             if (validation.ok) return { ok: true, target: { ...cached.target, resolution: RESOLUTION_SOURCES.CACHE }, attempts };
         }
@@ -217,7 +218,7 @@ export async function resolveActionTarget(page: PageLike, ctx: ResolveActionTarg
         });
         for (const candidate of ranked) {
             const validation = await validateResolvedTarget(page, candidate, { semanticTarget, actionKind, registry });
-            attempts.push({ source: candidate.source, ref: candidate.ref || null, selector: candidate.selector || null, validation });
+            attempts.push(stripUndefined({ source: candidate.source, ref: candidate.ref || null, selector: candidate.selector || null, validation }));
             if (validation.ok) return { ok: true, target: { ...candidate, resolution: candidate.source }, attempts };
         }
         return {
@@ -291,8 +292,8 @@ export async function validateResolvedTarget(
         if (actionKind === 'fill' && !await el.isEditable?.().catch(() => false)) return { ok: false, reason: VALIDATION_REASONS.NOT_EDITABLE };
         if (semanticTarget?.roles?.length || semanticTarget?.names?.length || target?.role || target?.name || target?.["nameHash"]) {
             const validation = await runValidationContract(el, { target: target || {}, semanticTarget, actionKind });
-            if (!validation.ok) return { ok: false, reason: validation.reason, confidence: validation.confidence };
-            return { ok: true, confidence: validation.confidence };
+            if (!validation.ok) return stripUndefined({ ok: false, reason: validation.reason, confidence: validation.confidence });
+            return stripUndefined({ ok: true, confidence: validation.confidence });
         }
         return { ok: true, confidence: 1.0 };
     } catch (err) {
@@ -340,11 +341,11 @@ function observeProviderTargets(snapshot: TargetSnapshot, featureMap: Record<str
             .filter((ref) => targetMatchesRef(target, ref))
             .map((ref) => ({
                 source: RESOLUTION_SOURCES.SNAPSHOT_SEMANTIC,
-                ref: ref.ref,
+                ref: ref.ref || null,
                 selector: ref.selector || null,
                 role: ref.role || null,
                 name: ref.name || '',
-                confidence: scoreCandidate({ role: ref.role, name: ref.name || '' }, target),
+                confidence: scoreCandidate(stripUndefined({ role: ref.role, name: ref.name || '' }), target),
             }));
         results[feature] = rankTargetCandidates(candidates, { expectedRole: target.roles?.[0] || null, expectedNames: target.names || [] });
     }

@@ -1,4 +1,5 @@
 import { Router, type Request, type Response } from 'express';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { ScheduleStore, type DashboardScheduledWorkInput, type DashboardScheduledWorkPatch } from './store.js';
 import { dispatchScheduledWork } from './dispatcher.js';
 
@@ -13,7 +14,7 @@ function sendErr(res: Response, status: number, code: string, error: unknown) {
 }
 
 function pickInput(body: Record<string, unknown>): DashboardScheduledWorkInput {
-    return {
+    return stripUndefined({
         title: typeof body["title"] === 'string' ? body["title"] : '',
         group: typeof body["group"] === 'string' ? body["group"] as DashboardScheduledWorkInput['group'] : undefined,
         cron: typeof body["cron"] === 'string' ? body["cron"] : null,
@@ -21,13 +22,13 @@ function pickInput(body: Record<string, unknown>): DashboardScheduledWorkInput {
         targetPort: typeof body["targetPort"] === 'number' ? body["targetPort"] : null,
         payload: typeof body["payload"] === 'string' ? body["payload"] : null,
         enabled: typeof body["enabled"] === 'boolean' ? body["enabled"] : true,
-    };
+    });
 }
 
 function pickPatch(body: Record<string, unknown>): DashboardScheduledWorkPatch {
     const p: DashboardScheduledWorkPatch = {};
     if (typeof body["title"] === 'string') p.title = body["title"];
-    if (typeof body["group"] === 'string') p.group = body["group"] as DashboardScheduledWorkPatch['group'];
+    if (typeof body["group"] === 'string') p.group = body["group"] as NonNullable<DashboardScheduledWorkPatch['group']>;
     if ('cron' in body) p.cron = typeof body["cron"] === 'string' ? body["cron"] : null;
     if ('runAt' in body) p.runAt = typeof body["runAt"] === 'string' ? body["runAt"] : null;
     if ('targetPort' in body) p.targetPort = typeof body["targetPort"] === 'number' ? body["targetPort"] : null;

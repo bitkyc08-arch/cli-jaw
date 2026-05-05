@@ -1,3 +1,5 @@
+import { stripUndefined } from '../../core/strip-undefined.js';
+
 const CAPTURE_METHODS = new Set(['copy-button', 'dom-fallback', 'clipboard', 'manual', 'unknown']);
 
 export interface AnswerArtifact {
@@ -56,7 +58,7 @@ export function artifactFromPollResult(result: object = {}, context: object = {}
     const contextWarnings = readProp(context, 'warnings');
     const resultWarnings = readProp(result, 'warnings');
 
-    return createAnswerArtifact({
+    return createAnswerArtifact(stripUndefined({
         provider: stringValue(readProp(result, 'vendor')) || stringValue(readProp(context, 'provider')),
         sessionId: stringValue(readProp(result, 'sessionId')) || stringValue(readProp(context, 'sessionId')),
         conversationUrl: stringValue(readProp(result, 'conversationUrl')) || stringValue(readProp(result, 'url')) || stringValue(readProp(context, 'conversationUrl')),
@@ -65,7 +67,7 @@ export function artifactFromPollResult(result: object = {}, context: object = {}
         text: stringValue(readProp(result, 'text')) || stringValue(readProp(result, 'answerText')) || stringValue(readProp(result, 'markdown')) || stringValue(readProp(result, 'answerMarkdown')),
         responseStableMs: readProp(result, 'responseStableMs') as number | string | null | undefined,
         warnings: [...arrayValue(contextWarnings), ...arrayValue(resultWarnings)],
-    });
+    }));
 }
 
 export function withAnswerArtifact<T extends object>(result: T, context: object = {}): T & { answerArtifact?: AnswerArtifact } {

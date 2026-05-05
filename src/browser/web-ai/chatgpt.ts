@@ -1,6 +1,7 @@
 import { getActivePage, getCdpSession, createTab, waitForPageByTargetId, getPageByTargetId, listTabs } from '../connection.js';
 import { getActiveTab, type ActiveTabResult, type BrowserTabInfo } from '../connection.js';
 import { cleanupIdleTabs, isPinned } from '../tab-lifecycle.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import { cleanupPoolTabs, getPooledTab } from './tab-pool.js';
 import { finalizeProviderTab } from './tab-finalizer.js';
 import { listLeases, recordActiveLease } from './tab-lease-store.js';
@@ -263,7 +264,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             ? renderQuestionEnvelopeWithContext(envelope, contextPack.composerText)
             : renderQuestionEnvelope(envelope)
         : renderQuestionEnvelope(envelope);
-    const selectedModel = await selectChatGptModel(page, input.model, { effort: input.reasoningEffort });
+    const selectedModel = await selectChatGptModel(page, input.model, stripUndefined({ effort: input.reasoningEffort }));
     await waitForStableAssistantCount(page);
     const assistantCount = await countAssistantMessages(page);
     const baseline = saveBaseline({
@@ -348,7 +349,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         updateSessionStatus(session.sessionId, 'error');
         throw stageError(e, 'send-click');
     }
-    return {
+    return stripUndefined({
         ok: true,
         vendor: envelope.vendor,
         status: 'sent',
@@ -364,7 +365,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             ...(selectedModel ? [`model selected: ${selectedModel.selected}${selectedModel.alreadySelected ? ' (already selected)' : ''}`] : []),
             ...(selectedModel?.effort ? [`reasoning effort selected: ${selectedModel.effort}`] : []),
         ],
-    };
+    });
 }
 
 function localFileInfo(filePath: string): { path: string; basename: string; sizeBytes: number } {
@@ -386,22 +387,22 @@ export async function poll(port: number, input: {
     const vendor = parseVendor(input.vendor);
     if (vendor === 'gemini') {
         try {
-            return decorateCompletedOutput(await geminiPoll(port, {
+            return decorateCompletedOutput(await geminiPoll(port, stripUndefined({
                 timeout: input.timeout,
                 session: input.session,
                 allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
-            }), input, 'poll');
+            })), input, 'poll');
         } catch (e) {
             throw stageError(e, 'poll-timeout');
         }
     }
     if (vendor === 'grok') {
         try {
-            return decorateCompletedOutput(await grokPoll(port, {
+            return decorateCompletedOutput(await grokPoll(port, stripUndefined({
                 timeout: input.timeout,
                 session: input.session,
                 allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
-            }), input, 'poll');
+            })), input, 'poll');
         } catch (e) {
             throw stageError(e, 'poll-timeout');
         }
@@ -448,7 +449,7 @@ export async function poll(port: number, input: {
         if (session) {
             await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
         }
-        const output = decorateCompletedOutput({
+        const output = decorateCompletedOutput(stripUndefined({
             ok: true,
             vendor,
             status: 'complete',
@@ -460,21 +461,21 @@ export async function poll(port: number, input: {
             ...(traceSummary ? { traceSummary } : {}),
             usedFallbacks: result.usedFallbacks,
             warnings: result.warnings,
-        }, input, 'poll');
-        if (session) updateSessionResult({
+        }), input, 'poll');
+        if (session) updateSessionResult(stripUndefined({
             sessionId: session.sessionId,
             status: 'complete',
             answerText: output.answerText,
             answerArtifact: output.answerArtifact,
             sourceAudit: output.sourceAudit,
-        });
+        }));
         return output;
     }
     if (result.ok) {
         if (session) {
             await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
         }
-        const output = decorateCompletedOutput({
+        const output = decorateCompletedOutput(stripUndefined({
             ok: true,
             vendor,
             status: 'complete',
@@ -485,14 +486,14 @@ export async function poll(port: number, input: {
             ...(traceSummary ? { traceSummary } : {}),
             usedFallbacks: result.usedFallbacks,
             warnings: result.warnings,
-        }, input, 'poll');
-        if (session) updateSessionResult({
+        }), input, 'poll');
+        if (session) updateSessionResult(stripUndefined({
             sessionId: session.sessionId,
             status: 'complete',
             answerText: output.answerText,
             answerArtifact: output.answerArtifact,
             sourceAudit: output.sourceAudit,
-        });
+        }));
         return output;
     }
     return {
@@ -583,7 +584,7 @@ function parseSourceAuditRatio(value: unknown): number {
 
 export async function query(port: number, input: QuestionEnvelopeInput & { timeout?: number | string; allowCopyMarkdownFallback?: boolean } = {}): Promise<WebAiOutput> {
     const sent = await send(port, input);
-    const result = await poll(port, {
+    const result = await poll(port, stripUndefined({
         vendor: sent.vendor,
         timeout: input.timeout,
         session: sent.sessionId,
@@ -592,7 +593,7 @@ export async function query(port: number, input: QuestionEnvelopeInput & { timeo
         sourceAuditRatio: input.sourceAuditRatio,
         sourceAuditScope: input.sourceAuditScope,
         sourceAuditDate: input.sourceAuditDate,
-    });
+    }));
     return {
         ...result,
         usedFallbacks: [...(sent.usedFallbacks || []), ...(result.usedFallbacks || [])],
@@ -610,7 +611,7 @@ export async function watch(port: number, input: { vendor?: string; timeout?: nu
             sessionId: input.session,
             timeoutMs: Math.max(1, Number(input.timeout || 1200)) * 1000,
             pollIntervalSeconds: Number(input.pollIntervalSeconds || 30),
-            allowCopyMarkdownFallback: input.allowCopyMarkdownFallback,
+            ...(input.allowCopyMarkdownFallback !== undefined ? { allowCopyMarkdownFallback: input.allowCopyMarkdownFallback } : {}),
             pollOnce: (pollInput) => poll(port, pollInput),
         });
         return {
@@ -639,7 +640,7 @@ export function resumeStoredWatchers(port: number, input: { vendor?: string; pol
     const vendor = input.vendor ? parseVendor(input.vendor) : undefined;
     const resumed = resumeStoredWebAiWatchers({
         port,
-        vendor,
+        ...(vendor ? { vendor } : {}),
         pollIntervalSeconds: Number(input.pollIntervalSeconds || 30),
         pollOnce: (pollInput) => poll(port, pollInput),
     });
@@ -659,18 +660,18 @@ export async function sessions(input: { vendor?: string; status?: string } = {})
         ok: true,
         vendor: vendor || 'chatgpt',
         status: 'ready',
-        sessions: listSessions({ vendor, status }),
+        sessions: listSessions(stripUndefined({ vendor, status })),
         warnings: [],
     };
 }
 
 export async function sessionsPrune(input: { olderThanMs?: number | string; before?: string; status?: string } = {}): Promise<WebAiOutput> {
     const ms = typeof input.olderThanMs === 'string' ? Number(input.olderThanMs) : input.olderThanMs;
-    const result = pruneSessions({
+    const result = pruneSessions(stripUndefined({
         ...(typeof ms === 'number' && Number.isFinite(ms) ? { olderThanMs: ms } : {}),
         ...(input.before ? { before: input.before } : {}),
         ...(parseSessionStatus(input.status) ? { status: parseSessionStatus(input.status) } : {}),
-    });
+    }));
     return {
         ok: true,
         vendor: 'chatgpt',

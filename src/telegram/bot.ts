@@ -5,6 +5,7 @@ import { Bot, type Context } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { broadcast, addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
 import { settings, detectAllCli, APP_VERSION } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { insertMessage } from '../core/db.js';
 import { orchestrate, orchestrateReset, isResetIntent } from '../orchestrator/pipeline.js';
@@ -136,13 +137,13 @@ export async function sendTelegramText(chatId: string, text: string) {
 function buildTelegramTarget(ctx: Context): RemoteTarget {
     const chatType = ctx.chat?.type;
     const isGroup = chatType === 'group' || chatType === 'supergroup';
-    return {
+    return stripUndefined({
         channel: 'telegram',
         targetKind: 'channel',
         peerKind: isGroup ? 'group' : 'direct',
         targetId: String(ctx.chat?.id ?? ''),
         threadId: ctx.message?.message_thread_id ? String(ctx.message.message_thread_id) : undefined,
-    };
+    });
 }
 
 async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
@@ -172,7 +173,7 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     if (!filePath) return { ok: false, error: 'file_path required for non-text types' };
     const { validateFileSize, sendTelegramFile } = await import('./telegram-file.js');
     validateFileSize(filePath, req.type);
-    const result = await sendTelegramFile(telegramBot, chatId, filePath, req.type, { caption: req.caption });
+    const result = await sendTelegramFile(telegramBot, chatId, filePath, req.type, stripUndefined({ caption: req.caption }));
     return result;
 }
 
@@ -347,7 +348,7 @@ async function _initTelegramInner() {
         const chatId = ctx.chat?.id;
         if (!ctx.chat) return;
         const chat = ctx.chat;
-        const result = submitMessage(prompt, { origin: 'telegram', displayText: displayMsg, skipOrchestrate: true, chatId });
+        const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, chatId }));
 
         if (result.action === 'queued') {
             console.log(`[tg:queue] agent busy, queued (${result.pending} pending)`);
@@ -558,11 +559,11 @@ async function _initTelegramInner() {
         const caption = ctx.message.caption || '';
         console.log(`[tg:photo] ${ctx.chat?.id}: fileId=${largest.file_id.slice(0, 20)}... caption=${caption.slice(0, 40)}`);
         try {
-            const dlResult = await downloadTelegramFile(largest.file_id, settings["telegram"].token, {
+            const dlResult = await downloadTelegramFile(largest.file_id, settings["telegram"].token, stripUndefined({
                 kind: 'photo',
                 maxBytes: TELEGRAM_DOWNLOAD_LIMITS.photo,
                 fileSize: largest.file_size,
-            }) as Record<string, unknown>;
+            })) as Record<string, unknown>;
             const filePath = saveUpload(dlResult["buffer"] as Buffer, `photo${dlResult["ext"]}`);
             const prompt = buildMediaPrompt(filePath, caption);
             tgOrchestrate(ctx, prompt, `${t('tg.imageCaption', { caption }, currentLocale())}`);
@@ -577,11 +578,11 @@ async function _initTelegramInner() {
         const caption = ctx.message.caption || '';
         console.log(`[tg:doc] ${ctx.chat?.id}: ${doc.file_name} (${doc.file_size} bytes)`);
         try {
-            const dlResult = await downloadTelegramFile(doc.file_id, settings["telegram"].token, {
+            const dlResult = await downloadTelegramFile(doc.file_id, settings["telegram"].token, stripUndefined({
                 kind: 'document',
                 maxBytes: TELEGRAM_DOWNLOAD_LIMITS.document,
                 fileSize: doc.file_size,
-            }) as Record<string, any>;
+            })) as Record<string, any>;
             const filePath = saveUpload(dlResult["buffer"], doc.file_name || 'document');
             const prompt = buildMediaPrompt(filePath, caption);
             tgOrchestrate(ctx, prompt, `[📎 ${doc.file_name || 'file'}] ${caption}`);

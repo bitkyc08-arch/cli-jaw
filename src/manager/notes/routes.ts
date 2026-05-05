@@ -9,6 +9,7 @@ import {
     isAllowedOriginHeader,
     isExpectedHostHeader,
 } from '../security.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import type { DashboardPutNoteRequest } from '../types.js';
 import { NOTE_ASSET_JSON_LIMIT, NotesAssetStore } from './assets.js';
 import { type NotePathError, notePathError } from './path-guards.js';
@@ -216,11 +217,11 @@ export function createDashboardNotesRouter(options: DashboardNotesRouterOptions)
 
     router.put('/file', asyncRoute(async (req, res) => {
         const body = bodyObject(req);
-        const request: DashboardPutNoteRequest = {
+        const request: DashboardPutNoteRequest = stripUndefined({
             path: requireString(body["path"], 'invalid_note_path', 'path is required'),
             content: requireString(body["content"], 'invalid_note_content', 'content is required'),
             baseRevision: optionalString(body["baseRevision"]),
-        };
+        });
         res.json(await store.writeFile(request));
     }));
 

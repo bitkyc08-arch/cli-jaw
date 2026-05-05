@@ -7,6 +7,7 @@
  */
 
 import { captureBrowserDiagnostics } from '../primitives.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 
 export type WebAiFailureStage =
     | 'status'
@@ -171,15 +172,15 @@ export async function captureWebAiDiagnostics(
         out.promptLengthOnly = Math.max(0, Math.floor(options.promptLength));
     }
     const page = options.page;
-    const browserDiagnostics = await captureBrowserDiagnostics({
+    const browserDiagnostics = await captureBrowserDiagnostics(stripUndefined({
         page,
         selectors: [...COMPOSER_SELECTORS, ...SEND_BUTTON_SELECTORS, ...STOP_BUTTON_SELECTORS, ASSISTANT_SELECTORS.join(','), 'article[data-testid^="conversation-turn"]'],
         visibleSelectors: [...COMPOSER_SELECTORS, ...STOP_BUTTON_SELECTORS],
         redactText: redactDiagnosticText,
-    });
+    }));
     out.warnings.push(...browserDiagnostics.warnings);
-    out.url = browserDiagnostics.url;
-    out.title = browserDiagnostics.title;
+    if (browserDiagnostics.url !== undefined) out.url = browserDiagnostics.url;
+    if (browserDiagnostics.title !== undefined) out.title = browserDiagnostics.title;
     if (!page) return out;
     for (const selector of COMPOSER_SELECTORS) {
         out.selectorCounts[selector] = browserDiagnostics.selectorCounts[selector] ?? 0;

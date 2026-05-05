@@ -1,6 +1,7 @@
 // ─── Event Extraction (NDJSON parser) ────────────────
 
 import { broadcast } from '../core/bus.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import {
     asCliEventArray,
@@ -537,14 +538,14 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
                     // least one toolLog step. Dedup is handled by seenToolKeys via stepRef.
                     if (segment.trim()) {
                         const itemId = event.item.id || '';
-                        const tool = {
+                        const tool = stripUndefined({
                             icon: '💬',
                             label: buildPreview(segment, 80) || 'message',
                             toolType: 'tool' as const,
                             detail: segment,
                             stepRef: itemId ? `codex:item:${itemId}` : undefined,
                             status: 'done' as const,
-                        };
+                        });
                         const key = tool.stepRef || `codex:msg:${ctx.toolLog.length}:${segment.slice(0, 30)}`;
                         if (!ctx.seenToolKeys || !ctx.seenToolKeys.has(key)) {
                             if (ctx.seenToolKeys) ctx.seenToolKeys.add(key);
@@ -582,13 +583,13 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
                 if (event.item?.type === 'command_execution') {
                     const cmd = (event.item.command || '').slice(0, 120);
                     const itemId = event.item.id || '';
-                    const tool = {
+                    const tool = stripUndefined({
                         icon: '⚡',
                         label: buildPreview(cmd, 80) || 'command',
                         toolType: 'tool' as const,
                         detail: cmd,
                         stepRef: itemId ? `codex:cmd:${itemId}` : undefined,
-                    };
+                    });
                     const key = `${tool.icon}:${tool.label}:${tool.stepRef || ''}:`;
                     if (!ctx.seenToolKeys?.has(key)) {
                         ctx.seenToolKeys?.add(key);
@@ -1086,12 +1087,12 @@ function extractToolLabels(cli: string, event: CliEventRecord, ctx: SpawnContext
             const cb = event.event.content_block;
             if (cb?.type === 'tool_use') {
                 const isAgent = cb.name === 'Agent';
-                pushToolLabel(labels, {
+                pushToolLabel(labels, stripUndefined({
                     icon: isAgent ? '🤖' : '🔧',
                     label: isAgent ? 'subagent' : (cb.name || 'tool'),
                     toolType: isAgent ? 'subagent' : 'tool',
                     stepRef: cb.id ? `claude:tooluse:${cb.id}` : undefined,
-                }, cli, event, ctx);
+                }), cli, event, ctx);
             }
             // thinking: don't emit placeholder — buffer in extractFromEvent will emit with real content
         }
@@ -1100,13 +1101,13 @@ function extractToolLabels(cli: string, event: CliEventRecord, ctx: SpawnContext
                 if (block.type === 'tool_use') {
                     const isAgent = block.name === 'Agent';
                     const description = block.input?.description || block.input?.["subagent_type"] || 'subagent';
-                    pushToolLabel(labels, {
+                    pushToolLabel(labels, stripUndefined({
                         icon: isAgent ? '🤖' : '🔧',
                         label: isAgent ? `subagent: ${buildPreview(description, 60)}` : (block.name || 'tool'),
                         toolType: isAgent ? 'subagent' : 'tool',
                         stepRef: block.id ? `claude:tooluse:${block.id}` : undefined,
                         ...(isAgent && block.input?.prompt ? { detail: `prompt: ${clipText(String(block.input.prompt), 300)}` } : {}),
-                    }, cli, event, ctx);
+                    }), cli, event, ctx);
                 }
                 if (block.type === 'thinking') {
                     const text = (block.thinking || '').trim();
@@ -1190,7 +1191,7 @@ function extractToolLabels(cli: string, event: CliEventRecord, ctx: SpawnContext
             const exitCode = fieldNumber(event.part.state?.metadata?.["exit"]);
             const isFailed = isOpencodeToolFailure(event.part);
             const displayLabel = fieldString(event.part.state?.title || event.part.tool, 'tool');
-            labels.push({
+            labels.push(stripUndefined({
                 icon: isFailed ? '❌' : (isDone ? '✅' : '🔧'),
                 label: displayLabel,
                 toolType: 'tool',
@@ -1198,7 +1199,7 @@ function extractToolLabels(cli: string, event: CliEventRecord, ctx: SpawnContext
                 detail,
                 status: isFailed ? 'error' : (isDone ? 'done' : undefined),
                 ...(exitCode != null ? { exitCode } : {}),
-            });
+            }));
         }
         if (event.type === 'tool_result' && event.part) {
             const ref = event.part.callID

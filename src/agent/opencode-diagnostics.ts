@@ -2,6 +2,7 @@ import fs from 'fs';
 import os from 'os';
 import { spawnSync } from 'child_process';
 import { join } from 'path';
+import { stripUndefined } from '../core/strip-undefined.js';
 
 const DEFAULT_RAW_EVENT_LIMIT = 100;
 const PERMISSION_KEYS = [
@@ -143,7 +144,7 @@ export function buildOpencodeRuntimeSnapshot(ctx: {
     opencodeLastEventType?: string;
     opencodeLastEventAt?: number;
 }): OpencodeRuntimeSnapshot {
-    return {
+    return stripUndefined({
         lastEventType: ctx.opencodeLastEventType,
         lastEventAt: ctx.opencodeLastEventAt,
         finishReason: ctx.finishReason,
@@ -151,5 +152,5 @@ export function buildOpencodeRuntimeSnapshot(ctx: {
         pendingPostToolTextChars: (ctx.opencodePostToolText || '').length,
         pendingToolRefs: ctx.opencodePendingToolRefs?.length || 0,
         rawEventCount: ctx.opencodeRawEvents?.length || 0,
-    };
+    });
 }

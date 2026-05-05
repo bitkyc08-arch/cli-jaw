@@ -17,6 +17,7 @@ import {
     movePathToBackup,
 } from './skills-symlinks.js';
 import { copyDefaultSkills } from './skills-distribution.js';
+import { stripUndefined } from '../../src/core/strip-undefined.js';
 
 // ─── Types ─────────────────────────────────────────
 
@@ -213,13 +214,13 @@ export function repairManagedSkillLinksAfterReset(
         _jawHome: jawHome,
     });
 
-    const symlinks = ensureWorkingDirSkillsLinks(repairTargetDir, {
+    const symlinks = ensureWorkingDirSkillsLinks(repairTargetDir, stripUndefined({
         onConflict: 'skip',
         includeClaude: opts.includeClaude ?? true,
         allowReplaceManaged: true,
         _homedir: opts._homedir,
         _jawHome: jawHome,
-    });
+    }));
 
     return { symlinks, repairedPaths };
 }
@@ -242,13 +243,12 @@ export function runSkillReset(options: {
         return { mode, ...resetResult };
     }
 
-    const repair = repairManagedSkillLinksAfterReset(options.repairTargetDir, {
+    const repair = repairManagedSkillLinksAfterReset(options.repairTargetDir, stripUndefined({
         includeClaude: options.includeClaude ?? true,
         _homedir: options._homedir,
         _jawHome: options._jawHome,
-    });
+    }));
 
     return { mode, ...resetResult, ...repair };
 }
-
 

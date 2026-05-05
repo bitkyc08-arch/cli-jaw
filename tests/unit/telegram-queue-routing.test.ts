@@ -106,8 +106,9 @@ test('TQ-007: tgOrchestrate passes chatId to submitMessage', () => {
         fnBlock.includes('const chatId = ctx.chat?.id'),
         'tgOrchestrate should capture current chatId',
     );
-    assert.ok(
-        fnBlock.includes('submitMessage(prompt, { origin: \'telegram\', displayText: displayMsg, skipOrchestrate: true, chatId })'),
+    assert.match(
+        fnBlock,
+        /submitMessage\(prompt,\s*\{\s*origin:\s*'telegram'(?:\s+as\s+const)?,\s*displayText:\s*displayMsg,\s*skipOrchestrate:\s*true,\s*chatId\s*\}\)/,
         'tgOrchestrate should pass chatId into submitMessage',
     );
 });

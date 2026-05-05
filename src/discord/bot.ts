@@ -3,6 +3,7 @@
 
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { settings } from '../core/config.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
@@ -33,7 +34,7 @@ type FailedDiscordAttachment = { name: string; reason: string };
 
 function buildDiscordTarget(msg: Message): RemoteTarget {
     const isGroup = msg.guild !== null;
-    return {
+    return stripUndefined({
         channel: 'discord',
         targetKind: isGroup ? 'channel' : 'user',
         peerKind: isGroup ? 'channel' : 'direct',
@@ -41,7 +42,7 @@ function buildDiscordTarget(msg: Message): RemoteTarget {
         threadId: msg.channel?.isThread?.() ? msg.channelId : undefined,
         guildId: msg.guildId ?? undefined,
         parentTargetId: msg.channel?.isThread?.() ? ((msg.channel as DiscordThreadLikeChannel).parentId ?? undefined) : undefined,
-    };
+    });
 }
 
 function markChannelActive(channelId: string) {
@@ -376,7 +377,7 @@ async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok: boolea
         targetId: String(channelId),
     };
 
-    const fileResult = await sendDiscordFile(discordClient, target, filePath, { caption: req.caption });
+    const fileResult = await sendDiscordFile(discordClient, target, filePath, stripUndefined({ caption: req.caption }));
     if (!fileResult.ok) return fileResult;
     return { ok: true, channel_id: channelId, type: req.type };
 }

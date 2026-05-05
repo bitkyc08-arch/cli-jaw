@@ -34,7 +34,8 @@ function checkCommand(command: string, args: string[]): Promise<NotesCapability>
             settled = true;
             clearTimeout(timer);
             if (code === 0) {
-                resolve({ available: true, command, ...(versionLine(output) ? { version: versionLine(output) } : {}) });
+                const version = versionLine(output);
+                resolve(version ? { available: true, command, version } : { available: true, command });
                 return;
             }
             resolve({ available: false, command, reason: versionLine(output) || `exit ${code}` });

@@ -1,4 +1,5 @@
 import { parseDocument } from 'yaml';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import type { NoteIndexWarning } from '../types.js';
 
 export type ParsedNoteFrontmatter = {
@@ -154,5 +155,5 @@ export function normalizeFrontmatter(
         pushWarning(warnings, path, 'created', 'value must be a string or timestamp');
     }
 
-    return { title, aliases, tags, created, warnings };
+    return stripUndefined({ title, aliases, tags, created, warnings });
 }

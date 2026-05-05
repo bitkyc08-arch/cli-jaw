@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { homedir } from 'node:os';
 import { getJawPath } from '../core/instance.js';
+import { stripUndefined } from '../core/strip-undefined.js';
 import type {
     DashboardInstance,
     DashboardServiceState,
@@ -89,12 +90,12 @@ export class DashboardLifecycleManager {
         this.homeRoot = options.homeRoot || homedir();
         this.spawnImpl = options.spawnImpl || spawn;
         this.verify = { ...defaultProcessVerify, ...(options.processVerify || {}) };
-        this.store = new LifecycleStore({
+        this.store = new LifecycleStore(stripUndefined({
             managerPort: options.managerPort,
             dashboardHome: options.dashboardHome,
             storageRoot: options.storageRoot,
             legacyStorageRoot: options.legacyStorageRoot,
-        });
+        }));
     }
 
     defaultHome(port: number): string {
@@ -412,7 +413,7 @@ export class DashboardLifecycleManager {
         const stopResult = await this.stopLocked(port);
         if (!stopResult.ok) return { ...stopResult, action };
         const startResult = await this.startLocked(port, home);
-        return {
+        return stripUndefined({
             ...startResult,
             action,
             status: startResult.ok ? 'restarted' : startResult.status,
@@ -420,7 +421,7 @@ export class DashboardLifecycleManager {
                 ? `Restarted dashboard-owned Jaw on port ${port}.`
                 : startResult.message,
             expectedStateAfter: startResult.ok ? 'restart-detected' : startResult.expectedStateAfter,
-        };
+        });
     }
 
     private withLock<T>(port: number, fn: () => Promise<T>): Promise<T> {
@@ -485,13 +486,13 @@ export class DashboardLifecycleManager {
         managed: ManagedProcess | null,
         serviceState?: DashboardServiceState | null,
     ): DashboardLifecycleCapability {
-        return buildCapability({
+        return buildCapability(stripUndefined({
             instance,
             managed: managed ? { mode: managed.mode, pid: managed.pid } : null,
             serviceState,
             defaultHome: this.defaultHome(instance.port),
             commandPreview: this.buildStartCommand(instance.port, this.defaultHome(instance.port)),
-        });
+        }));
     }
 
     private async persistRegistry(): Promise<void> {

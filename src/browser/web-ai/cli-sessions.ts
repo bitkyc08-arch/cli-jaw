@@ -3,6 +3,7 @@ import { geminiPoll } from './gemini-live.js';
 import { grokPoll } from './grok-live.js';
 import { WebAiError } from './errors.js';
 import { getSession, listSessions, pruneSessions } from './session.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
 import type { WebAiVendor, WebAiSessionStatus } from './types.js';
 
 const SESSIONS_SUBCOMMANDS = new Set(['list', 'show', 'resume', 'reattach', 'prune']);
@@ -145,11 +146,11 @@ export async function runSessionsCommand(
         const olderThanMs = values['older-than']
             ? parseDurationToMs(values['older-than'])
             : 30 * 86_400_000;
-        const result = pruneSessions({
+        const result = pruneSessions(stripUndefined({
             olderThanMs: olderThanMs ?? undefined,
             ...(values["status"] ? { status: String(values["status"]) as WebAiSessionStatus } : {}),
-        });
-        return { ok: true, status: 'pruned', ...result, vendor: 'chatgpt', warnings: [], olderThanMs: olderThanMs ?? undefined };
+        }));
+        return stripUndefined({ ok: true, status: 'pruned', ...result, vendor: 'chatgpt', warnings: [], olderThanMs: olderThanMs ?? undefined });
     }
     return { ok: false, status: 'error', vendor: 'chatgpt', warnings: [], error: 'unreachable' };
 }
