@@ -34,13 +34,14 @@ export function createSettingsClient(port: number): SettingsClient {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
         try {
-            const response = await fetch(`${base}${path}`, {
+            const fetchInit: RequestInit = {
                 method,
                 headers,
-                body: body === undefined ? undefined : JSON.stringify(body),
                 signal: init?.signal || controller.signal,
                 ...init,
-            });
+            };
+            if (body !== undefined) fetchInit.body = JSON.stringify(body);
+            const response = await fetch(`${base}${path}`, fetchInit);
             if (!response.ok) {
                 const detail = await response.text().catch(() => '');
                 throw new SettingsRequestError(method, path, response.status, detail);

@@ -78,7 +78,7 @@ export function buildToolGroupHtml(toolLog: ToolLogEntry[]): string {
 
 /** Bind expand/collapse click handlers for tool items within a container */
 export function bindToolItemInteractions(root: HTMLElement): void {
-    if (root.dataset.toolItemBound === '1') return;
+    if (root.dataset['toolItemBound'] === '1') return;
     root.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null;
         if (!target) return;
@@ -94,7 +94,7 @@ export function bindToolItemInteractions(root: HTMLElement): void {
         toggle.setAttribute('aria-expanded', expanding ? 'true' : 'false');
         if (chevron) chevron.innerHTML = expanding ? ICONS.chevronDown : ICONS.chevronRight;
     });
-    root.dataset.toolItemBound = '1';
+    root.dataset['toolItemBound'] = '1';
 }
 
 /** Show live tool activity indicator inside the current agent message */

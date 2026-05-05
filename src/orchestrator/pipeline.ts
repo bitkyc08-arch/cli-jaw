@@ -126,9 +126,9 @@ async function executePreparedWorkerTask(
         );
 
         if (result["status"] === 'done') {
-            finishWorker(emp["id"], result["text"] || '');
+            finishWorker(emp["id"], String(result["text"] || ''));
         } else {
-            failWorker(emp["id"], result["text"] || `[worker error] ${emp["id"]}`);
+            failWorker(emp["id"], String(result["text"] || `[worker error] ${emp["id"]}`));
         }
 
         return { emp, result, dispatched: true, ran: true };
@@ -273,7 +273,6 @@ export async function orchestrate(
     // Inject heartbeat anchor for non-heartbeat user turns
     if (origin !== 'heartbeat' && !meta["_workerResult"] && !meta["_isSmokeContinuation"]) {
         type HeartbeatAnchorRow = { id?: number; created_at: number; delivered_at?: number | string | null; job_name: string; output: string };
-        // @strict-debt(P06): getLatestUnconsumedAnchor row is typed locally until core DB statements expose row generics
         const anchor = getLatestUnconsumedAnchor.get(settings["workingDir"] || null) as HeartbeatAnchorRow | undefined;
         if (anchor) {
             const ageMs = Date.now() - anchor.created_at;

@@ -60,7 +60,7 @@ export function InstanceListContent(props: InstanceListContentProps) {
                     transitionAction={props.transitionAction}
                     activityUnreadByPort={props.activityUnreadByPort}
                     latestTitleByPort={props.latestTitleByPort}
-                    busyPorts={props.busyPorts}
+                    {...(props.busyPorts !== undefined ? { busyPorts: props.busyPorts } : {})}
                     showLatestActivityTitles={props.showLatestActivityTitles}
                     showInlineLabelEditor={props.showInlineLabelEditor}
                     showSidebarRuntimeLine={props.showSidebarRuntimeLine}

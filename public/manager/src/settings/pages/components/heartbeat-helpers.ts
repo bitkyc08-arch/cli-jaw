@@ -55,31 +55,31 @@ function safeJob(raw: unknown, index: number): HbJob | null {
     if (!raw || typeof raw !== 'object') return null;
     const r = raw as Record<string, unknown>;
     const id =
-        typeof r.id === 'string' && r.id.trim()
-            ? r.id.trim()
+        typeof r['id'] === 'string' && r['id'].trim()
+            ? r['id'].trim()
             : `hb_unknown_${index}`;
-    const name = typeof r.name === 'string' ? r.name : '';
-    const enabled = r.enabled !== false;
-    const prompt = typeof r.prompt === 'string' ? r.prompt : '';
-    const sched = r.schedule;
+    const name = typeof r['name'] === 'string' ? r['name'] : '';
+    const enabled = r['enabled'] !== false;
+    const prompt = typeof r['prompt'] === 'string' ? r['prompt'] : '';
+    const sched = r['schedule'];
     let schedule: HbSchedule;
     if (sched && typeof sched === 'object') {
         const s = sched as Record<string, unknown>;
-        if (s.kind === 'cron' && typeof s.cron === 'string') {
+        if (s['kind'] === 'cron' && typeof s['cron'] === 'string') {
             schedule = {
                 kind: 'cron',
-                cron: s.cron,
-                ...(typeof s.timeZone === 'string' && s.timeZone
-                    ? { timeZone: s.timeZone }
+                cron: s['cron'],
+                ...(typeof s['timeZone'] === 'string' && s['timeZone']
+                    ? { timeZone: s['timeZone'] }
                     : {}),
             };
         } else {
-            const minutes = typeof s.minutes === 'number' ? s.minutes : 30;
+            const minutes = typeof s['minutes'] === 'number' ? s['minutes'] : 30;
             schedule = {
                 kind: 'every',
                 minutes,
-                ...(typeof s.timeZone === 'string' && s.timeZone
-                    ? { timeZone: s.timeZone }
+                ...(typeof s['timeZone'] === 'string' && s['timeZone']
+                    ? { timeZone: s['timeZone'] }
                     : {}),
             };
         }

@@ -79,17 +79,17 @@ function renderInstanceRow(
         <InstanceRow
             key={instance.port}
             instance={instance}
-            profile={profile}
+            {...(profile !== undefined ? { profile } : {})}
             selected={props.selectedPort === instance.port}
             busy={props.lifecycleBusyPort === instance.port}
             transitioning={props.transitioningPort === instance.port ? props.transitionAction || null : null}
             activityUnreadCount={props.activityUnreadByPort?.[instance.port] || 0}
             latestActivityTitle={props.latestTitleByPort?.[instance.port] || null}
             agentBusy={props.busyPorts?.has(instance.port) || false}
-            showLatestActivityTitle={props.showLatestActivityTitles}
-            showInlineLabelEditor={props.showInlineLabelEditor}
-            showRuntimeLine={props.showSidebarRuntimeLine}
-            showSelectedActions={props.showSelectedRowActions}
+            {...(props.showLatestActivityTitles !== undefined ? { showLatestActivityTitle: props.showLatestActivityTitles } : {})}
+            {...(props.showInlineLabelEditor !== undefined ? { showInlineLabelEditor: props.showInlineLabelEditor } : {})}
+            {...(props.showSidebarRuntimeLine !== undefined ? { showRuntimeLine: props.showSidebarRuntimeLine } : {})}
+            {...(props.showSelectedRowActions !== undefined ? { showSelectedActions: props.showSelectedRowActions } : {})}
             label={props.getLabel(instance)}
             uptime={props.formatUptime(instance.uptime)}
             onSelect={props.onSelect}

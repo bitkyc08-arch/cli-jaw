@@ -174,16 +174,16 @@ export async function downloadTelegramFile(fileId: string, token: string, option
 
     const getFileUrl = `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`;
     const metadataBuffer = await telegramGet(getFileUrl, 'getFile', timeoutMs, TELEGRAM_METADATA_MAX_BYTES);
-    let info: Record<string, any>;
+    let info: { ok?: boolean; result?: { file_path?: string; file_size?: number } };
     try {
-        info = JSON.parse(metadataBuffer.toString('utf8')) as Record<string, any>;
+        info = JSON.parse(metadataBuffer.toString('utf8')) as { ok?: boolean; result?: { file_path?: string; file_size?: number } };
     } catch {
         throw new Error('Telegram getFile failed: invalid JSON');
     }
 
-    const filePath = info["result"]?.file_path;
+    const filePath = info.result?.file_path;
     if (info["ok"] === false || !filePath) throw new Error('Telegram getFile failed: missing file_path');
-    assertTelegramDownloadSize(Number(info["result"]?.file_size), maxBytes, options.kind || 'file');
+    assertTelegramDownloadSize(Number(info.result?.file_size), maxBytes, options.kind || 'file');
 
     const fileUrl = `https://api.telegram.org/file/bot${token}/${filePath}`;
     const buffer = await telegramGet(fileUrl, 'file download', timeoutMs, maxBytes);

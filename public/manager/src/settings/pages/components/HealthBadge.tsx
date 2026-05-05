@@ -112,11 +112,11 @@ export function interpretTelegramProbe(payload: unknown): HealthState {
         return { kind: 'unknown', reason: 'Empty probe response.' };
     }
     const p = payload as Record<string, unknown>;
-    if (p.ok === true) {
-        const username = typeof p.username === 'string' ? p.username : undefined;
-        return { kind: 'ok', detail: username ? `@${username}` : undefined };
+    if (p['ok'] === true) {
+        const username = typeof p['username'] === 'string' ? p['username'] : undefined;
+        return username ? { kind: 'ok', detail: `@${username}` } : { kind: 'ok' };
     }
-    const reason = typeof p.error === 'string' ? p.error : 'Probe failed.';
+    const reason = typeof p['error'] === 'string' ? p['error'] : 'Probe failed.';
     return { kind: 'error', reason };
 }
 
@@ -125,23 +125,23 @@ export function interpretDiscordHealth(payload: unknown): HealthState {
         return { kind: 'unknown', reason: 'Empty health response.' };
     }
     const p = payload as Record<string, unknown>;
-    const discord = (p.discord && typeof p.discord === 'object')
-        ? p.discord as Record<string, unknown>
+    const discord = (p['discord'] && typeof p['discord'] === 'object')
+        ? p['discord'] as Record<string, unknown>
         : null;
     if (!discord) {
         return { kind: 'unknown', reason: 'No discord block in /api/health.' };
     }
-    if (discord.ready === true && discord.degraded !== true) {
+    if (discord['ready'] === true && discord['degraded'] !== true) {
         return { kind: 'ok' };
     }
-    if (discord.degraded === true) {
-        const why = typeof discord.degradedReason === 'string'
-            ? discord.degradedReason
+    if (discord['degraded'] === true) {
+        const why = typeof discord['degradedReason'] === 'string'
+            ? discord['degradedReason']
             : 'MESSAGE_CONTENT intent missing — slash commands only.';
         return { kind: 'degraded', detail: why };
     }
-    if (discord.ready === false) {
-        const why = typeof discord.error === 'string' ? discord.error : 'Bot not connected.';
+    if (discord['ready'] === false) {
+        const why = typeof discord['error'] === 'string' ? discord['error'] : 'Bot not connected.';
         return { kind: 'error', reason: why };
     }
     return { kind: 'unknown', reason: 'Discord status indeterminate.' };

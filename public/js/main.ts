@@ -112,7 +112,7 @@ initPendingQueue();
 document.getElementById('filePreviewClear')?.addEventListener('click', clearAttachedFiles);
 document.getElementById('filePreviewList')?.addEventListener('click', (e) => {
     const btn = (e.target as HTMLElement)?.closest('[data-file-idx]') as HTMLElement | null;
-    if (btn) removeAttachedFile(+(btn.dataset.fileIdx || '0'));
+    if (btn) removeAttachedFile(+(btn.dataset['fileIdx'] || '0'));
 });
 document.querySelector('.btn-attach')?.addEventListener('click', () => {
     (document.getElementById('fileInput') as HTMLInputElement | null)?.click();
@@ -158,14 +158,14 @@ document.querySelector('[data-action="addEmployee"]')?.addEventListener('click',
 // ── Employees (Event Delegation) ──
 document.getElementById('employeesList')?.addEventListener('click', (e) => {
     const del = (e.target as HTMLElement)?.closest('[data-emp-delete]') as HTMLElement | null;
-    if (del) { deleteEmployee(del.dataset.empDelete || ''); return; }
+    if (del) { deleteEmployee(del.dataset['empDelete'] || ''); return; }
 });
 document.getElementById('employeesList')?.addEventListener('change', (e) => {
     const tgt = e.target as HTMLSelectElement;
     const name = tgt.closest('[data-emp-name]') as HTMLElement | null;
-    if (name) { updateEmployee(name.dataset.empName || '', { name: tgt.value }); return; }
+    if (name) { updateEmployee(name.dataset['empName'] || '', { name: tgt.value }); return; }
     const cli = tgt.closest('[data-emp-cli]') as HTMLElement | null;
-    if (cli) { onEmpCliChange(cli.dataset.empCli || '', tgt.value); return; }
+    if (cli) { onEmpCliChange(cli.dataset['empCli'] || '', tgt.value); return; }
     const model = tgt.closest('[data-emp-model]') as HTMLElement | null;
     if (model) {
         if (tgt.value === '__custom__') {
@@ -176,29 +176,29 @@ document.getElementById('employeesList')?.addEventListener('change', (e) => {
                 const customOpt = tgt.querySelector('option[value="__custom__"]');
                 if (customOpt) tgt.insertBefore(opt, customOpt);
                 tgt.value = val.trim();
-                updateEmployee(model.dataset.empModel || '', { model: val.trim() });
+                updateEmployee(model.dataset['empModel'] || '', { model: val.trim() });
             } else { tgt.value = 'default'; }
-        } else { updateEmployee(model.dataset.empModel || '', { model: tgt.value }); }
+        } else { updateEmployee(model.dataset['empModel'] || '', { model: tgt.value }); }
         return;
     }
     const role = tgt.closest('[data-emp-role]') as HTMLElement | null;
-    if (role) { onEmpRoleChange(role.dataset.empRole || '', tgt.value); return; }
+    if (role) { onEmpRoleChange(role.dataset['empRole'] || '', tgt.value); return; }
     const custom = tgt.closest('[data-emp-custom]') as HTMLElement | null;
-    if (custom) { updateEmployee(custom.dataset.empCustom || '', { role: tgt.value }); return; }
+    if (custom) { updateEmployee(custom.dataset['empCustom'] || '', { role: tgt.value }); return; }
 });
 
 // ── Skills Tab (Event Delegation) ──
 document.getElementById('skillsList')?.addEventListener('click', (e) => {
     const toggle = (e.target as HTMLElement)?.closest('[data-skill-id]') as HTMLElement | null;
     if (toggle) {
-        toggleSkill(toggle.dataset.skillId || '', toggle.dataset.skillEnabled === 'true');
+        toggleSkill(toggle.dataset['skillId'] || '', toggle.dataset['skillEnabled'] === 'true');
     }
 });
 // Skill filter buttons (event delegation)
 document.querySelector('#tabSkills')?.addEventListener('click', (e) => {
     const filterBtn = (e.target as HTMLElement)?.closest('.skill-filter') as HTMLElement | null;
     if (filterBtn) {
-        const cat = filterBtn.dataset.filter || 'all';
+        const cat = filterBtn.dataset['filter'] || 'all';
         filterSkills(cat, filterBtn);
     }
 });
@@ -344,32 +344,32 @@ document.querySelector('[data-action="addHeartbeat"]')?.addEventListener('click'
 // Heartbeat jobs (event delegation)
 document.getElementById('hbJobsList')?.addEventListener('click', (e) => {
     const toggle = (e.target as HTMLElement)?.closest('[data-hb-toggle]') as HTMLElement | null;
-    if (toggle) { toggleHeartbeatJob(+(toggle.dataset.hbToggle || '0')); return; }
+    if (toggle) { toggleHeartbeatJob(+(toggle.dataset['hbToggle'] || '0')); return; }
     const remove = (e.target as HTMLElement)?.closest('[data-hb-remove]') as HTMLElement | null;
-    if (remove) { removeHeartbeatJob(+(remove.dataset.hbRemove || '0')); return; }
+    if (remove) { removeHeartbeatJob(+(remove.dataset['hbRemove'] || '0')); return; }
 });
 document.getElementById('hbJobsList')?.addEventListener('change', (e) => {
     const tgt = e.target as HTMLInputElement | HTMLSelectElement;
     const name = tgt.closest('[data-hb-name]') as HTMLElement | null;
-    if (name) { state.heartbeatJobs[+(name.dataset.hbName || '0')].name = tgt.value; saveHeartbeatJobs(); return; }
+    if (name) { state.heartbeatJobs[+(name.dataset['hbName'] || '0')].name = tgt.value; saveHeartbeatJobs(); return; }
     const kind = tgt.closest('[data-hb-kind]') as HTMLElement | null;
     if (kind) {
-        const i = +(kind.dataset.hbKind || '0');
+        const i = +(kind.dataset['hbKind'] || '0');
         const current = state.heartbeatJobs[i]?.schedule as Record<string, unknown> | undefined;
-        const timeZone = typeof current?.timeZone === 'string' ? current.timeZone : undefined;
+        const timeZone = typeof current?.['timeZone'] === 'string' ? current['timeZone'] : undefined;
         state.heartbeatJobs[i].schedule = tgt.value === 'cron'
-            ? { kind: 'cron', cron: typeof current?.cron === 'string' && current.cron.trim() ? current.cron : '0 9 * * *', ...(timeZone ? { timeZone } : {}) }
-            : { kind: 'every', minutes: typeof current?.minutes === 'number' && current.minutes > 0 ? Math.floor(current.minutes) : 5, ...(timeZone ? { timeZone } : {}) };
+            ? { kind: 'cron', cron: typeof current?.['cron'] === 'string' && current['cron'].trim() ? current['cron'] : '0 9 * * *', ...(timeZone ? { timeZone } : {}) }
+            : { kind: 'every', minutes: typeof current?.['minutes'] === 'number' && current['minutes'] > 0 ? Math.floor(current['minutes']) : 5, ...(timeZone ? { timeZone } : {}) };
         renderHeartbeatJobs();
         saveHeartbeatJobs();
         return;
     }
     const min = tgt.closest('[data-hb-minutes]') as HTMLElement | null;
     if (min) {
-        const i = +(min.dataset.hbMinutes || '0');
+        const i = +(min.dataset['hbMinutes'] || '0');
         const current = state.heartbeatJobs[i]?.schedule as Record<string, unknown> | undefined;
         const minutes = Math.max(1, Math.floor(Number(tgt.value) || 5));
-        const timeZone = typeof current?.timeZone === 'string' ? current.timeZone : undefined;
+        const timeZone = typeof current?.['timeZone'] === 'string' ? current['timeZone'] : undefined;
         state.heartbeatJobs[i].schedule = { kind: 'every', minutes, ...(timeZone ? { timeZone } : {}) };
         renderHeartbeatJobs();
         saveHeartbeatJobs();
@@ -377,9 +377,9 @@ document.getElementById('hbJobsList')?.addEventListener('change', (e) => {
     }
     const cron = tgt.closest('[data-hb-cron]') as HTMLElement | null;
     if (cron) {
-        const i = +(cron.dataset.hbCron || '0');
+        const i = +(cron.dataset['hbCron'] || '0');
         const current = state.heartbeatJobs[i]?.schedule as Record<string, unknown> | undefined;
-        const timeZone = typeof current?.timeZone === 'string' ? current.timeZone : undefined;
+        const timeZone = typeof current?.['timeZone'] === 'string' ? current['timeZone'] : undefined;
         const cronExpr = tgt.value.trim().replace(/\s+/g, ' ');
         state.heartbeatJobs[i].schedule = { kind: 'cron', cron: cronExpr, ...(timeZone ? { timeZone } : {}) };
         renderHeartbeatJobs();
@@ -388,18 +388,18 @@ document.getElementById('hbJobsList')?.addEventListener('change', (e) => {
     }
     const timeZone = tgt.closest('[data-hb-timezone]') as HTMLElement | null;
     if (timeZone) {
-        const i = +(timeZone.dataset.hbTimezone || '0');
+        const i = +(timeZone.dataset['hbTimezone'] || '0');
         const current = state.heartbeatJobs[i]?.schedule as Record<string, unknown> | undefined;
-        if (current?.kind === 'cron') {
+        if (current?.['kind'] === 'cron') {
             state.heartbeatJobs[i].schedule = {
                 kind: 'cron',
-                cron: typeof current.cron === 'string' && current.cron.trim() ? current.cron : '0 9 * * *',
+                cron: typeof current['cron'] === 'string' && current['cron'].trim() ? current['cron'] : '0 9 * * *',
                 ...(tgt.value.trim() ? { timeZone: tgt.value.trim() } : {}),
             };
         } else {
             state.heartbeatJobs[i].schedule = {
                 kind: 'every',
-                minutes: typeof current?.minutes === 'number' && current.minutes > 0 ? Math.floor(current.minutes) : 5,
+                minutes: typeof current?.['minutes'] === 'number' && current['minutes'] > 0 ? Math.floor(current['minutes']) : 5,
                 ...(tgt.value.trim() ? { timeZone: tgt.value.trim() } : {}),
             };
         }
@@ -408,7 +408,7 @@ document.getElementById('hbJobsList')?.addEventListener('change', (e) => {
         return;
     }
     const prompt = tgt.closest('[data-hb-prompt]') as HTMLElement | null;
-    if (prompt) { state.heartbeatJobs[+(prompt.dataset.hbPrompt || '0')].prompt = tgt.value; saveHeartbeatJobs(); return; }
+    if (prompt) { state.heartbeatJobs[+(prompt.dataset['hbPrompt'] || '0')].prompt = tgt.value; saveHeartbeatJobs(); return; }
 });
 
 // ── Memory Modal ──
@@ -437,9 +437,9 @@ bindAdvancedProviderUi();
 // Memory files (event delegation)
 document.getElementById('basicMemoryFiles')?.addEventListener('click', (e) => {
     const del = (e.target as HTMLElement)?.closest('[data-mem-delete]') as HTMLElement | null;
-    if (del) { e.stopPropagation(); deleteMemFile(del.dataset.memDelete || ''); return; }
+    if (del) { e.stopPropagation(); deleteMemFile(del.dataset['memDelete'] || ''); return; }
     const view = (e.target as HTMLElement)?.closest('[data-mem-view]') as HTMLElement | null;
-    if (view) { viewMemFile(view.dataset.memView || ''); return; }
+    if (view) { viewMemFile(view.dataset['memView'] || ''); return; }
     const back = (e.target as HTMLElement)?.closest('[data-mem-back]');
     if (back) { openMemoryModal(); return; }
 });

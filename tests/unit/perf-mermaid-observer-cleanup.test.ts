@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { normalizeStrictPropertyAccess } from './source-normalize';
 
-const renderSrc = readFileSync(join(import.meta.dirname, '../../public/js/render.ts'), 'utf8');
-const virtualScrollSrc = readFileSync(join(import.meta.dirname, '../../public/js/virtual-scroll.ts'), 'utf8');
+const renderSrc = normalizeStrictPropertyAccess(readFileSync(join(import.meta.dirname, '../../public/js/render.ts'), 'utf8'));
+const virtualScrollSrc = normalizeStrictPropertyAccess(readFileSync(join(import.meta.dirname, '../../public/js/virtual-scroll.ts'), 'utf8'));
 
 function functionBlock(source: string, signature: string): string {
     const start = source.indexOf(signature);

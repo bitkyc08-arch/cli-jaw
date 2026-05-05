@@ -55,6 +55,7 @@ interface WsMessage {
     subtasks?: { agent?: string; name?: string }[];
     action?: string;
     icon?: string;
+    rawIcon?: string;
     label?: string;
     toolType?: string;
     detail?: string;
@@ -263,8 +264,8 @@ function applyOrcState(orcState: string, title?: string) {
     const brand = document.getElementById('pabcBrand');
 
     if (roadmap && shark) {
-        if (!roadmap.dataset.resizeObserved) {
-            roadmap.dataset.resizeObserved = '1';
+        if (!roadmap.dataset['resizeObserved']) {
+            roadmap.dataset['resizeObserved'] = '1';
             new ResizeObserver(() => {
                 if (currentSharkPhase && shark.classList.contains('running')) {
                     positionShark(roadmap, shark, currentSharkPhase);
@@ -379,7 +380,7 @@ export function connect(): void {
                 id: `step-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
                 type: stepType,
                 icon: msg.icon || ICONS.tool,
-                rawIcon: (msg as any).rawIcon || msg.icon || '',
+                rawIcon: msg.rawIcon || msg.icon || '',
                 label: empPrefix + (msg.label || ''),
                 detail: msg.detail || '',
                 stepRef: msg.stepRef || '',
@@ -413,14 +414,15 @@ export function connect(): void {
         } else if (msg.type === 'agent_added' || msg.type === 'agent_updated' || msg.type === 'agent_deleted') {
             import('./features/employees.js').then(m => m.loadEmployees());
         } else if (msg.type === 'heartbeat_pending') {
-            applyHeartbeatRuntime({
+            const heartbeatRuntimePatch: Partial<HeartbeatRuntimeState> = {
                 pending: msg.pending || 0,
                 deferredPending: msg.deferredPending || 0,
-                reason: msg.reason,
-                policy: msg.policy,
-                jobId: msg.jobId,
-                jobName: msg.jobName,
-            });
+            };
+            if (msg.reason !== undefined) heartbeatRuntimePatch.reason = msg.reason;
+            if (msg.policy !== undefined) heartbeatRuntimePatch.policy = msg.policy;
+            if (msg.jobId !== undefined) heartbeatRuntimePatch.jobId = msg.jobId;
+            if (msg.jobName !== undefined) heartbeatRuntimePatch.jobName = msg.jobName;
+            applyHeartbeatRuntime(heartbeatRuntimePatch);
         } else if (msg.type === 'orc_state') {
             if (!shouldApplyOrcStateEvent(msg.scope, currentOrcScope)) return;
             applyOrcState(typeof msg.state === 'string' ? msg.state : 'IDLE', msg.title);

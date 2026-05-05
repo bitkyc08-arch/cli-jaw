@@ -30,7 +30,7 @@ test('normalizeBrowserStatus: running:true with cdpUrl + tabs', () => {
 test('normalizeBrowserStatus: stopped shape (running:false, no cdpUrl)', () => {
     assert.deepEqual(
         normalizeBrowserStatus({ running: false, tabs: 0 }),
-        { running: false, tabs: 0, cdpUrl: undefined },
+        { running: false, tabs: 0 },
     );
 });
 
@@ -38,17 +38,14 @@ test('normalizeBrowserStatus: garbage payload → defaults', () => {
     assert.deepEqual(normalizeBrowserStatus(null), {
         running: false,
         tabs: 0,
-        cdpUrl: undefined,
     });
     assert.deepEqual(normalizeBrowserStatus('nope'), {
         running: false,
         tabs: 0,
-        cdpUrl: undefined,
     });
     assert.deepEqual(normalizeBrowserStatus({ running: 'yes', tabs: '3' }), {
         running: false,
         tabs: 0,
-        cdpUrl: undefined,
     });
 });
 
@@ -69,7 +66,6 @@ test('normalizeActiveTab: ok payload with tab', () => {
         }),
         {
             ok: true,
-            reason: undefined,
             tab: { url: 'https://x.com/', title: 'X', targetId: 'abc' },
         },
     );
@@ -93,7 +89,7 @@ test('normalizeActiveTab: filters non-string fields on tab', () => {
         ok: true,
         tab: { url: 42, title: null, targetId: 'ok' },
     });
-    assert.deepEqual(r?.tab, { url: undefined, title: undefined, targetId: 'ok' });
+    assert.deepEqual(r?.tab, { targetId: 'ok' });
 });
 
 // ─── describeStatus ─────────────────────────────────────────────────

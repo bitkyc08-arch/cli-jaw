@@ -33,7 +33,7 @@ export function isValidServerName(name: string): boolean {
 export function normalizeMcpConfig(raw: unknown): McpConfig {
     if (!raw || typeof raw !== 'object') return { servers: {} };
     const obj = raw as Record<string, unknown>;
-    const serversRaw = obj.servers;
+    const serversRaw = obj['servers'];
     const servers: Record<string, McpServer> = {};
     if (serversRaw && typeof serversRaw === 'object' && !Array.isArray(serversRaw)) {
         for (const [name, value] of Object.entries(serversRaw as Record<string, unknown>)) {
@@ -46,20 +46,20 @@ export function normalizeMcpConfig(raw: unknown): McpConfig {
 export function normalizeServer(raw: unknown): McpServer {
     if (!raw || typeof raw !== 'object') return { command: '' };
     const r = raw as Record<string, unknown>;
-    const command = typeof r.command === 'string' ? r.command : '';
-    const args = Array.isArray(r.args)
-        ? r.args.filter((v): v is string => typeof v === 'string')
+    const command = typeof r['command'] === 'string' ? r['command'] : '';
+    const args = Array.isArray(r['args'])
+        ? r['args'].filter((v): v is string => typeof v === 'string')
         : undefined;
     const env =
-        r.env && typeof r.env === 'object' && !Array.isArray(r.env)
+        r['env'] && typeof r['env'] === 'object' && !Array.isArray(r['env'])
             ? Object.fromEntries(
-                Object.entries(r.env as Record<string, unknown>).filter(
+                Object.entries(r['env'] as Record<string, unknown>).filter(
                     (entry): entry is [string, string] =>
                         typeof entry[1] === 'string',
                 ),
             )
             : undefined;
-    const autostart = typeof r.autostart === 'boolean' ? r.autostart : undefined;
+    const autostart = typeof r['autostart'] === 'boolean' ? r['autostart'] : undefined;
     const out: McpServer = { command };
     if (args && args.length > 0) out.args = args;
     if (env && Object.keys(env).length > 0) out.env = env;

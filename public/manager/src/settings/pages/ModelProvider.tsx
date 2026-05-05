@@ -50,13 +50,15 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
         if (state.kind !== 'ready') return;
         setPerCliDraft({ ...(state.data.perCli || {}) });
         setFallback([...(state.data.fallbackOrder || [])]);
-        const codex = state.data.perCli?.codex || {};
-        setCodexCtx({
-            contextWindowSize: typeof codex.contextWindowSize === 'number'
-                ? codex.contextWindowSize : undefined,
-            contextWindowCompactLimit: typeof codex.contextWindowCompactLimit === 'number'
-                ? codex.contextWindowCompactLimit : undefined,
-        });
+        const codex = state.data.perCli?.['codex'] || {};
+        const nextCodexCtx: typeof codexCtx = {};
+        if (typeof codex.contextWindowSize === 'number') {
+            nextCodexCtx.contextWindowSize = codex.contextWindowSize;
+        }
+        if (typeof codex.contextWindowCompactLimit === 'number') {
+            nextCodexCtx.contextWindowCompactLimit = codex.contextWindowCompactLimit;
+        }
+        setCodexCtx(nextCodexCtx);
     }, [state]);
 
     useEffect(() => {
@@ -120,7 +122,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
     const data = state.data;
     const perCliOriginal = data.perCli || {};
     const cliKeys = Object.keys(perCliOriginal);
-    const codexOriginal = perCliOriginal.codex || {};
+    const codexOriginal = perCliOriginal['codex'] || {};
     const overrides = data.activeOverrides || {};
     const overrideRows = Object.entries(overrides);
 
@@ -153,7 +155,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                 )}
             </SettingsSection>
 
-            {perCliOriginal.codex ? (
+            {perCliOriginal['codex'] ? (
                 <SettingsSection
                     title="Codex context window"
                     hint="Codex-only sliders. Other CLIs ignore these values."

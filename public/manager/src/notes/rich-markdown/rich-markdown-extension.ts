@@ -30,14 +30,14 @@ class TaskLineWidget extends WidgetType {
         super();
     }
 
-    eq(other: WidgetType): boolean {
+    override eq(other: WidgetType): boolean {
         return other instanceof TaskLineWidget
             && other.range.markerFrom === this.range.markerFrom
             && other.range.checked === this.range.checked
             && other.range.text === this.range.text;
     }
 
-    toDOM(view: EditorView): HTMLElement {
+    override toDOM(view: EditorView): HTMLElement {
         const label = document.createElement('label');
         label.className = 'cm-rich-task-widget';
         const checkbox = document.createElement('input');
@@ -48,18 +48,18 @@ class TaskLineWidget extends WidgetType {
         return label;
     }
 
-    updateDOM(dom: HTMLElement, view: EditorView): boolean {
+    override updateDOM(dom: HTMLElement, view: EditorView): boolean {
         if (!dom.classList.contains('cm-rich-task-widget')) return false;
         this.syncDOM(dom, view);
         return true;
     }
 
-    destroy(dom: HTMLElement): void {
+    override destroy(dom: HTMLElement): void {
         const checkbox = dom.querySelector<HTMLInputElement>('input[type="checkbox"]');
         if (checkbox) checkbox.onchange = null;
     }
 
-    ignoreEvent(event: Event): boolean {
+    override ignoreEvent(event: Event): boolean {
         return event.type === 'mousedown'
             || event.type === 'click'
             || event.type === 'change'

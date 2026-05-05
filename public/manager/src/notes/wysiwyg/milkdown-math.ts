@@ -115,7 +115,7 @@ function commitAndExitMathNode(
                 return;
             }
         }
-        const paragraph = view.state.schema.nodes.paragraph?.create();
+        const paragraph = view.state.schema.nodes['paragraph']?.create();
         if (!paragraph) return;
         tr.insert(pos, paragraph);
         tr.setSelection(TextSelection.create(tr.doc, pos + 1));
@@ -136,7 +136,7 @@ function commitAndExitMathNode(
             }
         }
         if (!landed) {
-            const paragraph = view.state.schema.nodes.paragraph?.create();
+            const paragraph = view.state.schema.nodes['paragraph']?.create();
             if (!paragraph) return;
             tr.insert(after, paragraph);
             tr.setSelection(TextSelection.create(tr.doc, after + 1));
@@ -191,13 +191,13 @@ function createMathView(options: {
         dom.append(rendered, raw);
 
         function value(): string {
-            return String(currentNode.attrs.value ?? '');
+            return String(currentNode.attrs['value'] ?? '');
         }
 
         function setEditing(editing: boolean): void {
-            if (dom.dataset.editing === 'true' && editing) return;
-            if (!editing && dom.dataset.editing !== 'true') return;
-            dom.dataset.editing = editing ? 'true' : 'false';
+            if (dom.dataset['editing'] === 'true' && editing) return;
+            if (!editing && dom.dataset['editing'] !== 'true') return;
+            dom.dataset['editing'] = editing ? 'true' : 'false';
             if (editing) {
                 raw.value = options.block ? blockMathSource(value()) : inlineMathSource(value());
                 raw.focus();
@@ -216,8 +216,8 @@ function createMathView(options: {
 
         function sync(): void {
             const code = value();
-            dom.dataset.value = code;
-            if (dom.dataset.editing !== 'true') {
+            dom.dataset['value'] = code;
+            if (dom.dataset['editing'] !== 'true') {
                 raw.value = options.block ? blockMathSource(code) : inlineMathSource(code);
             }
             options.render(rendered, code);
@@ -227,14 +227,14 @@ function createMathView(options: {
             if (!(targetDom instanceof HTMLElement)) return;
             const targetRaw = targetDom.querySelector('.notes-math-raw');
             if (!(targetRaw instanceof HTMLInputElement || targetRaw instanceof HTMLTextAreaElement)) return;
-            targetDom.dataset.editing = 'true';
+            targetDom.dataset['editing'] = 'true';
             targetRaw.focus();
             targetRaw.select();
         }
 
         function openFromRenderedEvent(event: Event): void {
             if (raw.contains(event.target as Node)) return;
-            if (dom.dataset.editing === 'true') return;
+            if (dom.dataset['editing'] === 'true') return;
             event.preventDefault();
             event.stopPropagation();
             const pointer = event instanceof PointerEvent || event instanceof MouseEvent
@@ -258,7 +258,7 @@ function createMathView(options: {
         dom.addEventListener('keydown', event => {
             const keyEvent = event as KeyboardEvent;
             if (keyEvent.target !== dom) return;
-            if (dom.dataset.editing === 'true') return;
+            if (dom.dataset['editing'] === 'true') return;
             if (keyEvent.key === 'Enter' || keyEvent.key === ' ') {
                 keyEvent.preventDefault();
                 setEditing(true);
@@ -346,10 +346,10 @@ function createMathView(options: {
                 return true;
             },
             selectNode: () => {
-                dom.dataset.selected = 'true';
+                dom.dataset['selected'] = 'true';
             },
             deselectNode: () => {
-                dom.dataset.selected = 'false';
+                dom.dataset['selected'] = 'false';
             },
             stopEvent: event =>
                 event.target === raw
@@ -377,28 +377,28 @@ export const notesMathInlineSchema = $nodeSchema(mathInlineId, ctx => ({
         {
             tag: `span[data-type="${mathInlineId}"]`,
             getAttrs: dom => ({
-                value: dom instanceof HTMLElement ? dom.dataset.value ?? '' : '',
+                value: dom instanceof HTMLElement ? dom.dataset['value'] ?? '' : '',
             }),
         },
     ],
     toDOM: node => {
-        const code = node.attrs.value as string;
+        const code = node.attrs['value'] as string;
         const dom = document.createElement('span');
-        dom.dataset.type = mathInlineId;
-        dom.dataset.value = code;
+        dom.dataset['type'] = mathInlineId;
+        dom.dataset['value'] = code;
         renderKatex(dom, code, ctx.get(notesMilkdownKatexOptionsCtx.key));
         return dom;
     },
     parseMarkdown: {
         match: node => node.type === 'inlineMath',
         runner: (state, node, type) => {
-            state.addNode(type, { value: node.value as string });
+            state.addNode(type, { value: node['value'] as string });
         },
     },
     toMarkdown: {
         match: node => node.type.name === mathInlineId,
         runner: (state, node) => {
-            state.addNode('inlineMath', undefined, node.attrs.value as string);
+            state.addNode('inlineMath', undefined, node.attrs['value'] as string);
         },
     },
 }));
@@ -418,28 +418,28 @@ export const notesMathBlockSchema = $nodeSchema(mathBlockId, ctx => ({
             tag: `div[data-type="${mathBlockId}"]`,
             preserveWhitespace: 'full',
             getAttrs: dom => ({
-                value: dom instanceof HTMLElement ? dom.dataset.value ?? '' : '',
+                value: dom instanceof HTMLElement ? dom.dataset['value'] ?? '' : '',
             }),
         },
     ],
     toDOM: node => {
-        const code = node.attrs.value as string;
+        const code = node.attrs['value'] as string;
         const dom = document.createElement('div');
-        dom.dataset.type = mathBlockId;
-        dom.dataset.value = code;
+        dom.dataset['type'] = mathBlockId;
+        dom.dataset['value'] = code;
         renderKatex(dom, code, ctx.get(notesMilkdownKatexOptionsCtx.key));
         return dom;
     },
     parseMarkdown: {
         match: node => node.type === 'math',
         runner: (state, node, type) => {
-            state.addNode(type, { value: node.value as string });
+            state.addNode(type, { value: node['value'] as string });
         },
     },
     toMarkdown: {
         match: node => node.type.name === mathBlockId,
         runner: (state, node) => {
-            state.addNode('math', undefined, node.attrs.value as string);
+            state.addNode('math', undefined, node.attrs['value'] as string);
         },
     },
 }));

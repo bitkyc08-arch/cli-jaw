@@ -42,7 +42,7 @@ export const markdownSanitizeSchema: RehypeSanitizeSchema = {
     attributes: {
         ...defaultSchema.attributes,
         code: [
-            ...(defaultSchema.attributes?.code ?? []),
+            ...(defaultSchema.attributes?.['code'] ?? []),
             ['className', /^language-./, 'math-inline', 'math-display'],
         ],
     },

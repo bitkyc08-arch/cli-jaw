@@ -37,3 +37,6 @@ build-local/netstandard.dll
 
 # reference repos (cloned for analysis, not tracked)
 devlog/_plan/*/_ref_*/
+
+# local/private planning workspace; devlog is a tracked submodule pointer
+devlog/

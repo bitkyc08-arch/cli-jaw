@@ -269,7 +269,7 @@ export function emojiToStatus(emoji: string): 'done' | 'error' | null {
 export function hydrateIcons(root: Element = document.body): void {
     const els = root.querySelectorAll<HTMLElement>('[data-icon]');
     for (const el of els) {
-        const name = el.dataset.icon as IconName;
+        const name = el.dataset['icon'] as IconName;
         if (name && ICONS[name]) {
             el.innerHTML = ICONS[name];
             el.classList.add('icon-hydrated');

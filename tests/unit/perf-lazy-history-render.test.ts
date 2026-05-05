@@ -2,8 +2,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { normalizeStrictPropertyAccess } from './source-normalize';
 
-const uiSrc = readFileSync(join(import.meta.dirname, '../../public/js/ui.ts'), 'utf8');
+const uiSrc = normalizeStrictPropertyAccess(readFileSync(join(import.meta.dirname, '../../public/js/ui.ts'), 'utf8'));
 
 function functionBlock(source: string, signature: string): string {
     const start = source.indexOf(signature);

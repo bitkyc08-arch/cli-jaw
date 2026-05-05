@@ -112,7 +112,6 @@ export async function statusHandler(_args: string[], ctx: CliCommandContext): Pr
         safeCall(ctx.getRuntime, null),
         safeCall(ctx.getSkills, null),
     ]) as [
-        // @strict-debt(P10a): settings/session shapes still loose; tightened by P02 follow-up
         Record<string, unknown> | null,
         Record<string, unknown> | null,
         Record<string, unknown> | null,

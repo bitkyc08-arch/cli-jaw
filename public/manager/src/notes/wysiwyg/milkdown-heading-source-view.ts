@@ -10,7 +10,7 @@ const MAX_HEADING_LEVEL = 6;
 const HEADING_SOURCE_UPDATED_EVENT = 'notes-heading-source-updated';
 
 function headingLevel(node: ProseMirrorNode): number {
-    const raw = Number(node.attrs.level);
+    const raw = Number(node.attrs['level']);
     if (!Number.isFinite(raw)) return MIN_HEADING_LEVEL;
     return Math.min(MAX_HEADING_LEVEL, Math.max(MIN_HEADING_LEVEL, Math.trunc(raw)));
 }
@@ -41,7 +41,7 @@ function updateHeadingLevel(
     const current = view.state.doc.nodeAt(pos);
     if (!current || current.type.name !== 'heading') return;
 
-    const paragraph = view.state.schema.nodes.paragraph;
+    const paragraph = view.state.schema.nodes['paragraph'];
     const tr = level === 0 && paragraph
         ? view.state.tr.setNodeMarkup(pos, paragraph as NodeType)
         : view.state.tr.setNodeMarkup(pos, undefined, { ...node.attrs, level });
@@ -70,7 +70,7 @@ function createHeadingSourceView(): NodeViewConstructor {
 
         function sync(): void {
             const level = headingLevel(currentNode);
-            dom.dataset.level = String(level);
+            dom.dataset['level'] = String(level);
             dom.setAttribute('role', 'heading');
             dom.setAttribute('aria-level', String(level));
             dom.setAttribute('aria-label', currentNode.textContent);
@@ -102,7 +102,7 @@ function createHeadingSourceView(): NodeViewConstructor {
         }
 
         function handleFocus(): void {
-            dom.dataset.editing = 'true';
+            dom.dataset['editing'] = 'true';
             marker.select();
         }
 
@@ -114,7 +114,7 @@ function createHeadingSourceView(): NodeViewConstructor {
         }
 
         function handleBlur(): void {
-            dom.dataset.editing = 'false';
+            dom.dataset['editing'] = 'false';
             commitMarker();
         }
 
@@ -127,7 +127,7 @@ function createHeadingSourceView(): NodeViewConstructor {
             if (event.key === 'Escape') {
                 event.preventDefault();
                 marker.value = markerForLevel(headingLevel(currentNode));
-                dom.dataset.editing = 'false';
+                dom.dataset['editing'] = 'false';
                 marker.blur();
                 view.focus();
             }
@@ -153,10 +153,10 @@ function createHeadingSourceView(): NodeViewConstructor {
                 return true;
             },
             selectNode(): void {
-                dom.dataset.selected = 'true';
+                dom.dataset['selected'] = 'true';
             },
             deselectNode(): void {
-                delete dom.dataset.selected;
+                delete dom.dataset['selected'];
             },
             stopEvent(event: Event): boolean {
                 return marker.contains(event.target as Node)

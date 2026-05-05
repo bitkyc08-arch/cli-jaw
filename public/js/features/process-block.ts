@@ -139,7 +139,7 @@ function toggleStepDetails(toggle: HTMLElement): void {
 }
 
 export function bindProcessBlockInteractions(root: HTMLElement): void {
-    if (root.dataset.processBlockBound === '1') return;
+    if (root.dataset['processBlockBound'] === '1') return;
     root.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null;
         if (!target) return;
@@ -161,7 +161,7 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
             if (chevron) chevron.innerHTML = expanding ? ICONS.chevronDown : ICONS.chevronRight;
         }
     });
-    root.dataset.processBlockBound = '1';
+    root.dataset['processBlockBound'] = '1';
 }
 
 export function buildProcessBlockHtml(steps: ProcessStep[], collapsed = true): string {
@@ -240,7 +240,7 @@ export function updateStepStatus(pb: ProcessBlockState, stepId: string, status: 
     step.status = status;
     const stepEl = pb.element.querySelector(`[data-step-id="${stepId}"]`);
     if (stepEl) {
-        (stepEl as HTMLElement).dataset.status = status;
+        (stepEl as HTMLElement).dataset['status'] = status;
         const dot = stepEl.querySelector('.process-step-dot');
         if (dot) {
             dot.classList.remove('running', 'done', 'error');
@@ -266,7 +266,7 @@ export function collapseBlock(pb: ProcessBlockState): void {
         dot.classList.remove('running');
         dot.classList.add('done');
         const row = dot.closest('.process-step') as HTMLElement | null;
-        if (row) row.dataset.status = 'done';
+        if (row) row.dataset['status'] = 'done';
     });
     updateSummary(pb);
 }

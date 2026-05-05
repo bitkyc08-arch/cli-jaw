@@ -63,6 +63,14 @@ const REMOTE_ACCESS_OPTIONS = [
     { value: 'full', label: 'full — HTTP + WebSocket from remote' },
 ];
 
+function normalizeNetworkBlock(block: NetworkBlock): NetworkBlock {
+    const next: NetworkBlock = {};
+    if (block.bindHost !== undefined) next.bindHost = block.bindHost;
+    if (block.lanBypass !== undefined) next.lanBypass = block.lanBypass;
+    next.remoteAccess = { ...(block.remoteAccess ?? {}) };
+    return next;
+}
+
 // ─── Pure helpers (exported for tests) ───────────────────────────────
 
 export type PublicOriginValidation =
@@ -123,11 +131,7 @@ export default function Network({ port, client, dirty, registerSave }: SettingsP
     useEffect(() => {
         if (state.kind === 'ready') {
             const block = state.data.network ?? {};
-            setDraft({
-                bindHost: block.bindHost,
-                lanBypass: block.lanBypass,
-                remoteAccess: { ...(block.remoteAccess ?? {}) },
-            });
+            setDraft(normalizeNetworkBlock(block));
         }
     }, [state]);
 
@@ -192,11 +196,7 @@ export default function Network({ port, client, dirty, registerSave }: SettingsP
             : updated) as NetworkSnapshot;
         dirty.clear();
         const block = fresh.network ?? {};
-        setDraft({
-            bindHost: block.bindHost,
-            lanBypass: block.lanBypass,
-            remoteAccess: { ...(block.remoteAccess ?? {}) },
-        });
+        setDraft(normalizeNetworkBlock(block));
         setData(fresh);
         await refresh();
     }, [client, dirty, lockoutRisk, refresh, setData]);

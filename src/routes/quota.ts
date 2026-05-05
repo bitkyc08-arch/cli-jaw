@@ -234,14 +234,21 @@ export async function fetchCodexUsage(tokens: CodexTokensLike | null | undefined
             if (resp.status === 401 || resp.status === 403) return { authenticated: false };
             return { error: true };
         }
-        const data = await resp.json() as Record<string, any>;
-        const account = { email: data["email"] ?? null, plan: data["plan_type"] ?? null };
+        const data = await resp.json() as {
+            email?: string | null;
+            plan_type?: string | null;
+            rate_limit?: {
+                primary_window?: { used_percent?: number; reset_at?: number };
+                secondary_window?: { used_percent?: number; reset_at?: number };
+            };
+        };
+        const account = { email: data.email ?? null, plan: data.plan_type ?? null };
         const windows = [];
-        if (data["rate_limit"]?.primary_window) {
-            windows.push({ label: '5-hour', percent: data["rate_limit"].primary_window.used_percent ?? 0, resetsAt: data["rate_limit"].primary_window.reset_at ? new Date(data["rate_limit"].primary_window.reset_at * 1000).toISOString() : null });
+        if (data.rate_limit?.primary_window) {
+            windows.push({ label: '5-hour', percent: data.rate_limit.primary_window.used_percent ?? 0, resetsAt: data.rate_limit.primary_window.reset_at ? new Date(data.rate_limit.primary_window.reset_at * 1000).toISOString() : null });
         }
-        if (data["rate_limit"]?.secondary_window) {
-            windows.push({ label: '7-day', percent: data["rate_limit"].secondary_window.used_percent ?? 0, resetsAt: data["rate_limit"].secondary_window.reset_at ? new Date(data["rate_limit"].secondary_window.reset_at * 1000).toISOString() : null });
+        if (data.rate_limit?.secondary_window) {
+            windows.push({ label: '7-day', percent: data.rate_limit.secondary_window.used_percent ?? 0, resetsAt: data.rate_limit.secondary_window.reset_at ? new Date(data.rate_limit.secondary_window.reset_at * 1000).toISOString() : null });
         }
         return { account, windows, raw: data };
     } catch { return { error: true }; }

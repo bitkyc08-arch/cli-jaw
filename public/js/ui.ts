@@ -38,6 +38,16 @@ function processStepType(toolType?: string): ProcessStep['type'] {
         : 'tool';
 }
 
+function processStepStatus(status?: string): ProcessStep['status'] {
+    return status === 'running' || status === 'done' || status === 'error' ? status : 'done';
+}
+
+function fallbackToolLabel(tool: ToolLogEntry): string {
+    if (tool.label) return tool.label;
+    const named = tool as ToolLogEntry & { name?: unknown };
+    return typeof named.name === 'string' && named.name ? named.name : 'tool';
+}
+
 function parseToolLog(toolLog?: string | null): ToolLogEntry[] {
     if (!toolLog) return [];
     try {
@@ -54,15 +64,15 @@ function getAgentIcon(_cli?: string | null): string {
 
 function toProcessSteps(tools: ToolLogEntry[], runStartedAt?: number): ProcessStep[] {
     const baseTime = runStartedAt && runStartedAt > 0 ? runStartedAt : Date.now();
-    return tools.map((tool: any) => ({
+    return tools.map((tool) => ({
         id: generateId(),
         icon: tool.icon ? emojiToIcon(tool.icon) : ICONS.tool,
         rawIcon: tool.rawIcon || tool.icon || '',
-        label: tool.label || tool.name || 'tool',
+        label: fallbackToolLabel(tool),
         type: processStepType(tool.toolType),
         detail: tool.detail || '',
         stepRef: tool.stepRef || '',
-        status: tool.status || 'done',
+        status: processStepStatus(tool.status),
         startTime: baseTime,
     }));
 }
@@ -122,21 +132,21 @@ function processStepStatusFromDom(status?: string): ProcessStep['status'] {
 }
 
 function processStepFromDom(row: HTMLElement): ProcessStep | null {
-    const id = row.dataset.stepId || '';
+    const id = row.dataset['stepId'] || '';
     if (!id) return null;
     const label = row.querySelector('.process-step-label')?.textContent?.trim() || '';
     const detail = row.querySelector('.process-step-full')?.textContent || '';
     const iconEl = row.querySelector('.process-step-icon') as HTMLElement | null;
     const icon = iconEl?.innerHTML || ICONS.tool;
-    const startTime = Number(row.dataset.startTime || '');
+    const startTime = Number(row.dataset['startTime'] || '');
     return {
         id,
-        type: processStepTypeFromDom(row.dataset.type),
+        type: processStepTypeFromDom(row.dataset['type']),
         icon,
         label,
         detail,
-        stepRef: row.dataset.stepRef || '',
-        status: processStepStatusFromDom(row.dataset.status),
+        stepRef: row.dataset['stepRef'] || '',
+        status: processStepStatusFromDom(row.dataset['status']),
         startTime: Number.isFinite(startTime) && startTime > 0 ? startTime : Date.now(),
     };
 }
@@ -288,7 +298,7 @@ export function showProcessStep(step: ProcessStep): void {
                     ...step,
                     id: match.id,
                     rawIcon,
-                    detail: mergedDetail,
+                    detail: mergedDetail ?? '',
                     label: step.label || match.label,
                     status: resolvedStatus,
                 });
@@ -306,7 +316,7 @@ export function showProcessStep(step: ProcessStep): void {
                         id: existingDone.id,
                         rawIcon,
                         status: resolvedStatus,
-                        detail: step.detail,
+                        detail: step.detail ?? '',
                     });
                     scrollToBottom();
                     return;
@@ -411,8 +421,8 @@ let lastFinalizeTs = 0;
 
 function clearMermaidTransientState(root: HTMLElement): void {
     root.querySelectorAll<HTMLElement>('.mermaid-pending').forEach(el => {
-        delete el.dataset.mermaidQueued;
-        delete el.dataset.mermaidQueuedAt;
+        delete el.dataset['mermaidQueued'];
+        delete el.dataset['mermaidQueuedAt'];
     });
 }
 
@@ -475,11 +485,11 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
             const div = state.currentAgentDiv;
             clearMermaidTransientState(div);
             div.querySelectorAll('.diagram-widget').forEach(widget => {
-                const encoded = (widget as HTMLElement).dataset.widgetHtml;
+                const encoded = (widget as HTMLElement).dataset['widgetHtml'];
                 if (!encoded) return;
                 const pending = document.createElement('div');
                 pending.className = 'diagram-widget-pending';
-                pending.dataset.diagramHtml = encoded;
+                pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
             vs.appendLiveItem(div);
@@ -648,7 +658,7 @@ export function showChatRestoreIndicator(reason: string): void {
         indicator.innerHTML = '<span class="chat-restore-dot"></span><span class="chat-restore-text">Restoring</span>';
         host.appendChild(indicator);
     }
-    indicator.dataset.restoreReason = reason;
+    indicator.dataset['restoreReason'] = reason;
 }
 
 export function hideChatRestoreIndicator(): void {
@@ -777,7 +787,7 @@ function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualScroll>)
             const raw = el.getAttribute('data-raw') || '';
             const msgEl = el.closest('.msg-agent') as HTMLElement | null;
             const body = msgEl?.querySelector('.agent-body') as HTMLElement | null;
-            const rawToolLog = body?.dataset.toolLog || '';
+            const rawToolLog = body?.dataset['toolLog'] || '';
             if (msgEl && body && rawToolLog && !hasAgentToolBlock(msgEl)) {
                 const tools = parseToolLog(rawToolLog);
                 if (tools.length > 0) {
@@ -786,7 +796,7 @@ function registerVirtualScrollCallbacks(vs: ReturnType<typeof getVirtualScroll>)
                         buildProcessBlockHtml(toProcessSteps(tools), true),
                     );
                 }
-                delete body.dataset.toolLog;
+                delete body.dataset['toolLog'];
                 normalizeAgentToolBlocks(msgEl);
             }
             el.innerHTML = raw ? renderMarkdown(raw) : '';

@@ -43,31 +43,35 @@ const POLL_INTERVAL_MS = 3000;
 
 export function normalizeBrowserStatus(raw: unknown): BrowserStatus {
     if (!raw || typeof raw !== 'object') {
-        return { running: false, tabs: 0, cdpUrl: undefined };
+        return { running: false, tabs: 0 };
     }
     const r = raw as Record<string, unknown>;
-    return {
-        running: r.running === true,
-        tabs: typeof r.tabs === 'number' && Number.isFinite(r.tabs) ? r.tabs : 0,
-        cdpUrl: typeof r.cdpUrl === 'string' ? r.cdpUrl : undefined,
+    const status: BrowserStatus = {
+        running: r['running'] === true,
+        tabs: typeof r['tabs'] === 'number' && Number.isFinite(r['tabs']) ? r['tabs'] : 0,
     };
+    if (typeof r['cdpUrl'] === 'string') status.cdpUrl = r['cdpUrl'];
+    return status;
 }
 
 export function normalizeActiveTab(raw: unknown): ActiveTab | null {
     if (!raw || typeof raw !== 'object') return null;
     const r = raw as Record<string, unknown>;
-    const tab = r.tab && typeof r.tab === 'object' ? (r.tab as Record<string, unknown>) : null;
-    return {
-        ok: r.ok === true,
-        reason: typeof r.reason === 'string' ? r.reason : undefined,
-        tab: tab
-            ? {
-                url: typeof tab.url === 'string' ? tab.url : undefined,
-                title: typeof tab.title === 'string' ? tab.title : undefined,
-                targetId: typeof tab.targetId === 'string' ? tab.targetId : undefined,
-            }
-            : null,
+    const tab = r['tab'] && typeof r['tab'] === 'object' ? (r['tab'] as Record<string, unknown>) : null;
+    const active: ActiveTab = {
+        ok: r['ok'] === true,
     };
+    if (typeof r['reason'] === 'string') active.reason = r['reason'];
+    if (tab) {
+        const normalizedTab: NonNullable<ActiveTab['tab']> = {};
+        if (typeof tab['url'] === 'string') normalizedTab.url = tab['url'];
+        if (typeof tab['title'] === 'string') normalizedTab.title = tab['title'];
+        if (typeof tab['targetId'] === 'string') normalizedTab.targetId = tab['targetId'];
+        active.tab = normalizedTab;
+    } else {
+        active.tab = null;
+    }
+    return active;
 }
 
 export function describeStatus(status: BrowserStatus | null): string {

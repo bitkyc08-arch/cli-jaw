@@ -70,7 +70,7 @@ function renderTree(tree: TreeNode[]): void {
 function openTemplateEditor(tmpl: TemplateInfo): void {
     const editor = document.getElementById('templateEditor') as HTMLTextAreaElement;
     editor.value = tmpl.content;
-    editor.dataset.templateId = tmpl.id;
+    editor.dataset['templateId'] = tmpl.id;
     editor.readOnly = true;
     _devMode = false;
     const label = document.getElementById('templateEditorLabel');
@@ -106,7 +106,7 @@ export function toggleDevMode(): void {
 
 export async function saveTemplateFromModal(): Promise<void> {
     const editor = document.getElementById('templateEditor') as HTMLTextAreaElement;
-    const id = editor.dataset.templateId;
+    const id = editor.dataset['templateId'];
     if (!id) return;
     await apiJson(`/api/prompt-templates/${id}`, 'PUT', { content: editor.value });
     const label = document.getElementById('templateEditorLabel');

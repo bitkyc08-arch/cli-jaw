@@ -13,20 +13,20 @@ export class RichMarkdownWidget extends WidgetType {
         super();
     }
 
-    eq(other: WidgetType): boolean {
+    override eq(other: WidgetType): boolean {
         if (!(other instanceof RichMarkdownWidget)) return false;
         return this.options.id === other.options.id
             && this.options.kind === other.options.kind
             && this.options.markdown === other.options.markdown;
     }
 
-    toDOM(): HTMLElement {
+    override toDOM(): HTMLElement {
         const shell = document.createElement(this.options.block ? 'div' : 'span');
         shell.className = this.options.block
             ? 'cm-rich-widget cm-rich-block'
             : 'cm-rich-widget cm-rich-inline';
-        shell.dataset.richWidgetId = this.options.id;
-        shell.dataset.richWidgetKind = this.options.kind;
+        shell.dataset['richWidgetId'] = this.options.id;
+        shell.dataset['richWidgetKind'] = this.options.kind;
         this.options.registerWidget({
             id: this.options.id,
             kind: this.options.kind,
@@ -37,7 +37,7 @@ export class RichMarkdownWidget extends WidgetType {
         return shell;
     }
 
-    updateDOM(shell: HTMLElement): boolean {
+    override updateDOM(shell: HTMLElement): boolean {
         this.options.registerWidget({
             id: this.options.id,
             kind: this.options.kind,
@@ -48,15 +48,15 @@ export class RichMarkdownWidget extends WidgetType {
         return true;
     }
 
-    destroy(): void {
+    override destroy(): void {
         this.options.unregisterWidget(this.options.id);
     }
 
-    get estimatedHeight(): number {
+    override get estimatedHeight(): number {
         return this.options.block ? 96 : 20;
     }
 
-    ignoreEvent(): boolean {
+    override ignoreEvent(): boolean {
         return false;
     }
 }

@@ -207,7 +207,7 @@ export function handleClick(e: Event): void {
     const target = e.target as HTMLElement;
     const item = target.closest('.cmd-item') as HTMLElement | null;
     if (!item) return;
-    const idx = parseInt(item.dataset.index || '-1', 10);
+    const idx = parseInt(item.dataset['index'] || '-1', 10);
     if (Number.isNaN(idx) || idx < 0) return;
     selectedIdx = Math.min(idx, filtered.length - 1);
     applySelection(true);

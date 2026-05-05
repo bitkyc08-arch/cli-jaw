@@ -57,11 +57,11 @@ function normalizeCodeLanguage(language: string): string {
 function refreshMilkdownAssetImages(root: HTMLDivElement | null): void {
     if (!root) return;
     root.querySelectorAll<HTMLImageElement>('img[src]').forEach(image => {
-        const originalSrc = image.dataset.notesOriginalSrc || image.getAttribute('src') || '';
+        const originalSrc = image.dataset['notesOriginalSrc'] || image.getAttribute('src') || '';
         if (!originalSrc) return;
         const resolvedSrc = notesImageSrc(originalSrc);
         if (!resolvedSrc) return;
-        image.dataset.notesOriginalSrc = originalSrc;
+        image.dataset['notesOriginalSrc'] = originalSrc;
         if (image.getAttribute('src') !== resolvedSrc) image.setAttribute('src', resolvedSrc);
     });
 }
@@ -212,7 +212,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
         run(editor => editor.action(ctx => {
             const view = ctx.get(editorViewCtx);
             const schema = ctx.get(schemaCtx);
-            const node = schema.nodes.math_inline?.create({ value: expression.trim() });
+            const node = schema.nodes['math_inline']?.create({ value: expression.trim() });
             if (!node) return;
             view.dispatch(view.state.tr.replaceSelectionWith(node, true).scrollIntoView());
         }));
@@ -224,7 +224,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
         run(editor => editor.action(ctx => {
             const view = ctx.get(editorViewCtx);
             const schema = ctx.get(schemaCtx);
-            const node = schema.nodes.math_block?.create({ value: expression.trim() });
+            const node = schema.nodes['math_block']?.create({ value: expression.trim() });
             if (!node) return;
             view.dispatch(view.state.tr.replaceSelectionWith(node, false).scrollIntoView());
         }));
@@ -254,7 +254,7 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
 
         function syncTaskListAccessibility(): void {
             root!.querySelectorAll<HTMLElement>('li[data-item-type="task"][data-checked]').forEach(item => {
-                const checked = item.dataset.checked === 'true';
+                const checked = item.dataset['checked'] === 'true';
                 item.setAttribute('role', 'checkbox');
                 item.setAttribute('aria-checked', checked ? 'true' : 'false');
                 item.setAttribute('tabindex', '0');
@@ -269,11 +269,11 @@ export function MilkdownWysiwygEditor(props: MilkdownWysiwygEditorProps) {
                 const resolved = view.state.doc.resolve(pos);
                 for (let depth = resolved.depth; depth > 0; depth -= 1) {
                     const node = resolved.node(depth);
-                    if (node.type.name !== 'list_item' || node.attrs.checked == null) continue;
+                    if (node.type.name !== 'list_item' || node.attrs['checked'] == null) continue;
                     const listItemPos = resolved.before(depth);
                     view.dispatch(view.state.tr.setNodeMarkup(listItemPos, undefined, {
                         ...node.attrs,
-                        checked: !node.attrs.checked,
+                        checked: !node.attrs['checked'],
                     }).scrollIntoView());
                     const markdown = normalizeEscapedTaskMarkers(getMarkdown()(ctx));
                     latestMarkdownRef.current = markdown;

@@ -9,6 +9,16 @@ import { JAW_HOME } from './skills-utils.js';
 
 const MCP_PATH = join(JAW_HOME, 'mcp.json');
 
+type McpServerConfig = {
+    command: string;
+    args?: string[];
+    env?: Record<string, unknown>;
+};
+
+type UnifiedMcpConfig = {
+    servers: Record<string, McpServerConfig>;
+};
+
 // ─── Default MCP servers ───────────────────────────
 const DEFAULT_MCP_SERVERS = {
     context7: {
@@ -27,7 +37,7 @@ export function loadUnifiedMcp() {
     }
 }
 
-export function saveUnifiedMcp(config: Record<string, any>) {
+export function saveUnifiedMcp(config: UnifiedMcpConfig) {
     fs.mkdirSync(JAW_HOME, { recursive: true });
     fs.writeFileSync(MCP_PATH, JSON.stringify(config, null, 4) + '\n');
 }
@@ -38,10 +48,11 @@ export function saveUnifiedMcp(config: Record<string, any>) {
 export function importFromClaudeMcp(filePath: string) {
     try {
         const raw = JSON.parse(fs.readFileSync(filePath, 'utf8'));
-        const servers: Record<string, any> = {};
-        for (const [name, srv] of Object.entries(raw.mcpServers || {}) as [string, any][]) {
+        const input = raw as { mcpServers?: Record<string, Partial<McpServerConfig>> };
+        const servers: Record<string, McpServerConfig> = {};
+        for (const [name, srv] of Object.entries(input.mcpServers || {})) {
             servers[name] = {
-                command: srv.command,
+                command: typeof srv.command === 'string' ? srv.command : '',
                 args: srv.args || [],
                 ...(srv.env && Object.keys(srv.env).length ? { env: srv.env } : {}),
             };

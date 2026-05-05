@@ -15,6 +15,10 @@ import {
     semverGt, loadRegistry, getSkillVersion,
 } from './skills-utils.js';
 
+type SkillRegistry = {
+    skills?: Record<string, { category?: string }>;
+};
+
 /**
  * Phase 6 — 2×3 Skill Classification at Install
  *
@@ -183,8 +187,8 @@ export function copyDefaultSkills() {
     try {
         const registryPath = join(refDir, 'registry.json');
         if (fs.existsSync(registryPath)) {
-            const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-            for (const [id, meta] of Object.entries(registry.skills || {}) as [string, any][]) {
+            const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8')) as SkillRegistry;
+            for (const [id, meta] of Object.entries(registry.skills || {})) {
                 if (meta.category === 'orchestration') OPENCLAW_ACTIVE.add(id);
             }
         }
@@ -248,8 +252,8 @@ export function propagateSkillsToInstances() {
     try {
         const registryPath = join(baseRef, 'registry.json');
         if (fs.existsSync(registryPath)) {
-            const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
-            for (const [id, meta] of Object.entries(registry.skills || {}) as [string, any][]) {
+            const registry = JSON.parse(fs.readFileSync(registryPath, 'utf8')) as SkillRegistry;
+            for (const [id, meta] of Object.entries(registry.skills || {})) {
                 if (meta.category === 'orchestration') autoActivate.add(id);
             }
         }

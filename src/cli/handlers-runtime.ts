@@ -215,7 +215,6 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
 
     // Web/CLI: fire orchestration directly via submitMessage
     const { submitMessage } = await import('../orchestrator/gateway.js');
-    // @strict-debt(P10a): SubmitOrigin not exported by message bus
     submitMessage(prompt, { origin: iface as 'cli' | 'web' | 'telegram' | 'discord' });
     return { ok: true, type: 'success', text: t('cmd.steer.started', {}, L) };
 }

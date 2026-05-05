@@ -160,9 +160,9 @@ export function initPendingQueue(): void {
         const btn = (e.target as HTMLElement)?.closest('[data-pending-action]') as HTMLElement | null;
         if (!btn) return;
         const row = btn.closest('.pending-row') as HTMLElement | null;
-        const id = row?.dataset.pendingId;
+        const id = row?.dataset['pendingId'];
         if (!id) return;
-        const action: Action = btn.dataset.pendingAction === 'steer' ? 'steer' : 'delete';
+        const action: Action = btn.dataset['pendingAction'] === 'steer' ? 'steer' : 'delete';
         handleClick(id, action);
     });
 }

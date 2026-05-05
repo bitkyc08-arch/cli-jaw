@@ -13,12 +13,12 @@ const DB = path.join(ROOT, 'src/core/db.ts');
 test('P100-001: pipeline uses employeeSessionId-based resume and global clear', () => {
     const src = readSource(PIPELINE, 'utf8') + '\n' + readSource(DISTRIBUTE, 'utf8');
     const dbSrc = readSource(DB, 'utf8');
-    assert.match(src, /employeeSessionId:\s*canResume\s*\?\s*empSession!?\.session_id\s*:\s*undefined/);
+    assert.match(src, /\.\.\.\(canResume\s*\?\s*\{\s*employeeSessionId:\s*empSessionId\s*\}\s*:\s*\{\}\)/);
     assert.match(src, /clearAllEmployeeSessions\.run\(\)/);
     assert.match(src, /emp\.cli\s*!==\s*'claude'/);
     assert.match(src, /empSession\?\.cli\s*===\s*emp\.cli/);
     assert.match(src, /empSession\?\.model/);
-    assert.match(src, /upsertEmployeeSession\.run\(emp\.id,\s*r\.sessionId,\s*emp\.cli,\s*employeeModel\)/);
+    assert.match(src, /upsertEmployeeSession\.run\((?:emp\.id|empId),\s*r\.sessionId,\s*emp\.cli,\s*employeeModel\)/);
     assert.match(dbSrc, /model\s+TEXT DEFAULT ''/);
 });
 

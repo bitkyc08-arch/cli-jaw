@@ -58,19 +58,20 @@ export function unwrapRuntimeEmployees(response: RuntimeEmployeesResponse | Runt
 export function normalizeRuntimeEmployee(value: unknown): RuntimeEmployeeRecord | null {
     if (!value || typeof value !== 'object') return null;
     const row = value as Record<string, unknown>;
-    const id = typeof row.id === 'string' ? row.id : '';
-    const name = typeof row.name === 'string' ? row.name : '';
+    const id = typeof row['id'] === 'string' ? row['id'] : '';
+    const name = typeof row['name'] === 'string' ? row['name'] : '';
     if (!id || !name) return null;
-    const source = row.source === 'static' || id.startsWith('static:') ? 'static' : 'db';
-    return {
+    const source = row['source'] === 'static' || id.startsWith('static:') ? 'static' : 'db';
+    const employee: RuntimeEmployeeRecord = {
         id,
         name,
-        cli: typeof row.cli === 'string' && row.cli ? row.cli : 'claude',
-        model: typeof row.model === 'string' && row.model ? row.model : 'default',
-        role: typeof row.role === 'string' ? row.role : '',
-        status: typeof row.status === 'string' ? row.status : undefined,
+        cli: typeof row['cli'] === 'string' && row['cli'] ? row['cli'] : 'claude',
+        model: typeof row['model'] === 'string' && row['model'] ? row['model'] : 'default',
+        role: typeof row['role'] === 'string' ? row['role'] : '',
         source,
     };
+    if (typeof row['status'] === 'string') employee.status = row['status'];
+    return employee;
 }
 
 export function runtimeEmployeeError(row: RuntimeEmployeeRecord): string | null {
@@ -174,13 +175,14 @@ function toDbCreatePayload(row: RuntimeEmployeeRecord): Record<string, string> {
 }
 
 function stableRuntimeEmployee(row: RuntimeEmployeeRecord): RuntimeEmployeeRecord {
-    return {
+    const stable: RuntimeEmployeeRecord = {
         id: row.id,
         name: row.name,
         cli: row.cli,
         model: row.model,
         role: row.role,
-        status: row.status,
         source: row.source,
     };
+    if (row.status !== undefined) stable.status = row.status;
+    return stable;
 }

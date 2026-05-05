@@ -2,10 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { normalizeStrictPropertyAccess } from './source-normalize';
 
 const projectRoot = join(import.meta.dirname, '../..');
-const stateSrc = readFileSync(join(projectRoot, 'public/js/state.ts'), 'utf8');
-const wsSrc = readFileSync(join(projectRoot, 'public/js/ws.ts'), 'utf8');
+const stateSrc = normalizeStrictPropertyAccess(readFileSync(join(projectRoot, 'public/js/state.ts'), 'utf8'));
+const wsSrc = normalizeStrictPropertyAccess(readFileSync(join(projectRoot, 'public/js/ws.ts'), 'utf8'));
 const htmlSrc = readFileSync(join(projectRoot, 'public/index.html'), 'utf8');
 const cssSrc = readFileSync(join(projectRoot, 'public/css/orc-state.css'), 'utf8');
 
@@ -26,7 +27,7 @@ test('ws snapshot restores heartbeat and task anchor status', () => {
 test('ws handles heartbeat_pending without rendering a chat message', () => {
     const branchIdx = wsSrc.indexOf("msg.type === 'heartbeat_pending'");
     assert.ok(branchIdx > -1, 'heartbeat_pending branch must exist');
-    const branch = wsSrc.slice(branchIdx, branchIdx + 500);
+    const branch = wsSrc.slice(branchIdx, branchIdx + 900);
     assert.ok(branch.includes('applyHeartbeatRuntime'));
     assert.ok(!branch.includes('addSystemMsg('), 'deferred heartbeat status must not become system chat');
     assert.ok(!branch.includes('addMessage('), 'deferred heartbeat status must not become chat message');

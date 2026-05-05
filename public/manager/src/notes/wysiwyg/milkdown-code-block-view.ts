@@ -11,7 +11,7 @@ function codeText(node: ProseMirrorNode): string {
 }
 
 function codeLanguage(node: ProseMirrorNode): string {
-    return String(node.attrs.language ?? '');
+    return String(node.attrs['language'] ?? '');
 }
 
 function fencedCodeSource(node: ProseMirrorNode): string {
@@ -92,7 +92,7 @@ function commitAndExitCodeBlock(
                 return;
             }
         }
-        const paragraph = view.state.schema.nodes.paragraph?.create();
+        const paragraph = view.state.schema.nodes['paragraph']?.create();
         if (!paragraph) return;
         tr.insert(codeAfter, paragraph);
         tr.setSelection(TextSelection.create(tr.doc, codeAfter + 1));
@@ -112,7 +112,7 @@ function commitAndExitCodeBlock(
         }
     }
 
-    const paragraph = view.state.schema.nodes.paragraph?.create();
+    const paragraph = view.state.schema.nodes['paragraph']?.create();
     if (!paragraph) return;
     tr.insert(pos, paragraph);
     tr.setSelection(TextSelection.create(tr.doc, pos + 1));
@@ -173,27 +173,27 @@ function createCodeBlockView(): NodeViewConstructor {
         function sync(): void {
             const language = codeLanguage(currentNode);
             const source = codeText(currentNode);
-            dom.dataset.language = language;
-            pre.dataset.language = language;
+            dom.dataset['language'] = language;
+            pre.dataset['language'] = language;
             copyBtn.textContent = copyButtonLabel();
             const highlighted = highlightCode(source, language);
             code.className = `hljs language-${highlighted.language}`;
-            code.dataset.highlighted = highlighted.highlighted ? 'yes' : 'no';
+            code.dataset['highlighted'] = highlighted['highlighted'] ? 'yes' : 'no';
             code.innerHTML = highlighted.html;
-            if (dom.dataset.editing !== 'true') raw.value = fencedCodeSource(currentNode);
+            if (dom.dataset['editing'] !== 'true') raw.value = fencedCodeSource(currentNode);
         }
 
         function setEditing(editing: boolean, options: { commit?: boolean } = {}): void {
-            if (dom.dataset.editing === 'true' && editing) return;
-            if (!editing && dom.dataset.editing !== 'true') return;
+            if (dom.dataset['editing'] === 'true' && editing) return;
+            if (!editing && dom.dataset['editing'] !== 'true') return;
             if (!editing && options.commit !== false) {
                 const source = raw.value;
-                dom.dataset.editing = 'false';
+                dom.dataset['editing'] = 'false';
                 raw.blur();
                 updateCodeBlockNode(view, getPos, source);
                 return;
             }
-            dom.dataset.editing = editing ? 'true' : 'false';
+            dom.dataset['editing'] = editing ? 'true' : 'false';
             if (editing) {
                 raw.value = fencedCodeSource(currentNode);
                 raw.focus();
@@ -204,10 +204,10 @@ function createCodeBlockView(): NodeViewConstructor {
         }
 
         function closeAfterOutsidePointer(event: Event): void {
-            if (dom.dataset.editing !== 'true') return;
+            if (dom.dataset['editing'] !== 'true') return;
             if (dom.contains(event.target as Node)) return;
             setTimeout(() => {
-                if (dom.dataset.editing === 'true') setEditing(false, { commit: false });
+                if (dom.dataset['editing'] === 'true') setEditing(false, { commit: false });
             }, 0);
         }
 
@@ -222,7 +222,7 @@ function createCodeBlockView(): NodeViewConstructor {
             if (!(targetDom instanceof HTMLElement)) return;
             const targetRaw = targetDom.querySelector('textarea.notes-code-raw');
             if (!(targetRaw instanceof HTMLTextAreaElement)) return;
-            targetDom.dataset.editing = 'true';
+            targetDom.dataset['editing'] = 'true';
             targetRaw.focus();
             targetRaw.select();
         }
@@ -230,7 +230,7 @@ function createCodeBlockView(): NodeViewConstructor {
         function openFromRenderedEvent(event: Event): void {
             if (raw.contains(event.target as Node)) return;
             if (copyBtn.contains(event.target as Node)) return;
-            if (dom.dataset.editing === 'true') return;
+            if (dom.dataset['editing'] === 'true') return;
             event.preventDefault();
             event.stopPropagation();
             const pointer = event instanceof PointerEvent || event instanceof MouseEvent
@@ -253,7 +253,7 @@ function createCodeBlockView(): NodeViewConstructor {
         dom.addEventListener('click', openFromRenderedEvent);
         dom.addEventListener('keydown', event => {
             if (event.target !== dom) return;
-            if (dom.dataset.editing === 'true') return;
+            if (dom.dataset['editing'] === 'true') return;
             if (event.key === 'Enter' || event.key === ' ') {
                 event.preventDefault();
                 setEditing(true);
@@ -311,7 +311,7 @@ function createCodeBlockView(): NodeViewConstructor {
         });
         raw.addEventListener('blur', () => {
             setTimeout(() => {
-                if (dom.dataset.editing === 'true' && document.activeElement !== raw) {
+                if (dom.dataset['editing'] === 'true' && document.activeElement !== raw) {
                     setEditing(false, { commit: false });
                 }
             }, 0);
@@ -353,11 +353,11 @@ function createCodeBlockView(): NodeViewConstructor {
                 return true;
             },
             selectNode: () => {
-                dom.dataset.selected = 'true';
+                dom.dataset['selected'] = 'true';
             },
             deselectNode: () => {
-                dom.dataset.selected = 'false';
-                if (dom.dataset.editing === 'true') {
+                dom.dataset['selected'] = 'false';
+                if (dom.dataset['editing'] === 'true') {
                     setEditing(false, { commit: false });
                 }
             },

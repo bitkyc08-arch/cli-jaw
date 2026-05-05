@@ -91,12 +91,12 @@ function normalizeRegistry(input: Record<string, unknown>): CliRegistry {
         if (!value || typeof value !== 'object') continue;
         const v = value as Record<string, unknown>;
         const normalized: CliEntry = {
-            label: (v.label as string) || key,
-            efforts: Array.isArray(v.efforts) ? [...v.efforts] as string[] : [],
-            models: Array.isArray(v.models) ? [...v.models] as string[] : [],
+            label: (v['label'] as string) || key,
+            efforts: Array.isArray(v['efforts']) ? [...v['efforts']] as string[] : [],
+            models: Array.isArray(v['models']) ? [...v['models']] as string[] : [],
         };
-        if (typeof v.effortNote === 'string' && v.effortNote.trim()) {
-            normalized.effortNote = v.effortNote;
+        if (typeof v['effortNote'] === 'string' && v['effortNote'].trim()) {
+            normalized['effortNote'] = v['effortNote'];
         }
         out[key] = normalized;
     }

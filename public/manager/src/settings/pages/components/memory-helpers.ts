@@ -62,17 +62,17 @@ function unwrapOkData(payload: unknown): unknown {
     if (!payload || typeof payload !== 'object') return payload;
     const obj = payload as Record<string, unknown>;
     if (Array.isArray(obj)) return obj;
-    if ('data' in obj) return obj.data;
+    if ('data' in obj) return obj['data'];
     return payload;
 }
 
 function safeMemoryEntry(raw: unknown): MemoryEntry | null {
     if (!raw || typeof raw !== 'object') return null;
     const r = raw as Record<string, unknown>;
-    const key = typeof r.key === 'string' ? r.key : null;
+    const key = typeof r['key'] === 'string' ? r['key'] : null;
     if (!key) return null;
-    const value = typeof r.value === 'string' ? r.value : '';
-    const source = typeof r.source === 'string' ? r.source : 'manual';
+    const value = typeof r['value'] === 'string' ? r['value'] : '';
+    const source = typeof r['source'] === 'string' ? r['source'] : 'manual';
     return { key, value, source };
 }
 

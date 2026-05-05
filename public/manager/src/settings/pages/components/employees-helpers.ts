@@ -73,18 +73,18 @@ export function normalizeEmployees(payload: unknown): EmployeeRecord[] {
         }
         if (!raw || typeof raw !== 'object') continue;
         const r = raw as Record<string, unknown>;
-        const name = typeof r.name === 'string' ? r.name : '';
-        if (!name && !r.id) continue;
+        const name = typeof r['name'] === 'string' ? r['name'] : '';
+        if (!name && !r['id']) continue;
         fallback += 1;
         const id =
-            typeof r.id === 'string' && r.id.trim()
-                ? r.id.trim()
+            typeof r['id'] === 'string' && r['id'].trim()
+                ? r['id'].trim()
                 : `emp_unknown_${fallback}`;
         const cli =
-            typeof r.cli === 'string' && r.cli.trim() ? r.cli.trim() : 'claude';
-        const role = typeof r.role === 'string' ? r.role : '';
-        const prompt = typeof r.prompt === 'string' ? r.prompt : '';
-        const active = r.active !== false;
+            typeof r['cli'] === 'string' && r['cli'].trim() ? r['cli'].trim() : 'claude';
+        const role = typeof r['role'] === 'string' ? r['role'] : '';
+        const prompt = typeof r['prompt'] === 'string' ? r['prompt'] : '';
+        const active = r['active'] !== false;
         out.push({ id, name, cli, role, prompt, active });
     }
     return out;
@@ -136,7 +136,7 @@ export function toPersistShape(rows: ReadonlyArray<EmployeeRecord>): unknown[] {
             role: row.role.trim(),
             active: row.active,
         };
-        if (row.prompt.trim()) out.prompt = row.prompt;
+        if (row['prompt'].trim()) out['prompt'] = row['prompt'];
         return out;
     });
 }

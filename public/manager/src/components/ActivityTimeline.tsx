@@ -58,7 +58,7 @@ const FIVE_MINUTES_MS = 5 * 60 * 1000;
 
 function normalize(entry: ActivityEntry | ManagerEvent | string, fallbackAt: string): ActivityEntry {
     if (typeof entry === 'string') {
-        return { at: fallbackAt, source: undefined, message: entry };
+        return { at: fallbackAt, message: entry };
     }
     if ('kind' in entry) {
         return eventToEntry(entry);

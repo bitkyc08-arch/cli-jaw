@@ -24,13 +24,13 @@ export type CommandContextInterface = 'web' | 'cli' | RemoteInterface;
 
 export type CommandContextDeps = {
     /** Apply settings patch (server.ts provides full logic, TG provides restricted subset) */
-    applySettings: (patch: Record<string, any>) => any;
+    applySettings: (patch: Record<string, unknown>) => unknown;
     /** Clear session state callback (deletes messages + clears UI) */
     clearSession: () => void;
     /** Reset session without clearing messages (preserves chat history) */
     resetSession?: () => void;
     /** Seed default employees callback */
-    resetEmployees?: () => any;
+    resetEmployees?: () => unknown;
 };
 
 // Remote interface에서 허용하는 settings patch 키
@@ -57,7 +57,7 @@ export function makeCommandCtx(
         version: APP_VERSION,
         getSession,
         getSettings: () => settings,
-        updateSettings: async (patch: Record<string, any>) => {
+        updateSettings: async (patch: Record<string, unknown>) => {
             // Remote interfaces: allow curated subset of runtime-setting keys
             if (iface === 'telegram' || iface === 'discord') {
                 const keys = Object.keys(patch);
@@ -103,11 +103,11 @@ export function makeCommandCtx(
         }),
         getMemoryStatus: () => getMemoryStatus(),
         initMemoryRuntime: () => ensureMemoryStructure(),
-        bootstrapMemory: (options?: Record<string, any>) => bootstrapMemory(options || {}),
+        bootstrapMemory: (options?: Record<string, unknown>) => bootstrapMemory(options || {}),
         reindexMemory: () => reindexMemory(),
         getAdvancedMemoryStatus: () => getMemoryStatus(),
         initAdvancedMemory: () => ensureMemoryStructure(),
-        bootstrapAdvancedMemory: (options?: Record<string, any>) => bootstrapMemory(options || {}),
+        bootstrapAdvancedMemory: (options?: Record<string, unknown>) => bootstrapMemory(options || {}),
         reindexAdvancedMemory: () => reindexMemory(),
         validateAdvancedMemoryConfig: async () => ({ ok: true, provider: 'integrated', error: '' }),
 

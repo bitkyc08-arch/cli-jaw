@@ -11,6 +11,10 @@ import {
     CODEX_ACTIVE, OPENCLAW_ACTIVE,
     copyDirRecursive, findPackageRoot,
 } from './skills-utils.js';
+
+type SkillRegistry = {
+    skills?: Record<string, { category?: string }>;
+};
 import {
     ensureWorkingDirSkillsLinks,
     createBackupContext,
@@ -120,8 +124,8 @@ export function softResetSkills() {
     try {
         const regPath = join(refDir, 'registry.json');
         if (fs.existsSync(regPath)) {
-            const reg = JSON.parse(fs.readFileSync(regPath, 'utf8'));
-            for (const [id, meta] of Object.entries(reg.skills || {}) as [string, any][]) {
+            const reg = JSON.parse(fs.readFileSync(regPath, 'utf8')) as SkillRegistry;
+            for (const [id, meta] of Object.entries(reg.skills || {})) {
                 if (meta.category === 'orchestration') autoActivate.add(id);
             }
         }
@@ -251,4 +255,3 @@ export function runSkillReset(options: {
 
     return { mode, ...resetResult, ...repair };
 }
-

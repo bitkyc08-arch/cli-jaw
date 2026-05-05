@@ -72,7 +72,7 @@ export function normalizeQuotaWindowLabel(cliName: string, label: string): strin
 export async function loadCliStatus(force = false): Promise<void> {
     const interval = readCliStatusInterval();
     if (!force && state.cliStatusCache && interval > 0 && (Date.now() - state.cliStatusTs) < interval * 1000) {
-        renderCliStatus({ cliStatus: (state.cliStatusCache as Record<string, unknown>)?.cliStatus as Record<string, { available: boolean }> | null, quota: (state.cliStatusCache as Record<string, unknown>)?.quota as Record<string, QuotaEntry> | null });
+        renderCliStatus({ cliStatus: (state.cliStatusCache as Record<string, unknown>)?.['cliStatus'] as Record<string, { available: boolean }> | null, quota: (state.cliStatusCache as Record<string, unknown>)?.['quota'] as Record<string, QuotaEntry> | null });
         return;
     }
 

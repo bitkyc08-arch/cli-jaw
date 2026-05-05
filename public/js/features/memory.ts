@@ -233,15 +233,15 @@ function renderSimpleFileList(id: string, files: string[]) {
 
 function renderAdvancedFiles(data: AdvancedMemoryFiles | null) {
     renderSimpleFileList('advancedMemoryFiles', [
-        ...(data?.sections?.profile || []),
-        ...(data?.sections?.shared || []),
-        ...(data?.sections?.episodes || []),
-        ...(data?.sections?.semantic || []),
-        ...(data?.sections?.procedures || []),
-        ...(data?.sections?.sessions || []),
+        ...(data?.sections?.['profile'] || []),
+        ...(data?.sections?.['shared'] || []),
+        ...(data?.sections?.['episodes'] || []),
+        ...(data?.sections?.['semantic'] || []),
+        ...(data?.sections?.['procedures'] || []),
+        ...(data?.sections?.['sessions'] || []),
     ]);
-    renderSimpleFileList('corruptedMemoryFiles', data?.sections?.corrupted || []);
-    renderSimpleFileList('legacyUnmappedFiles', data?.sections?.legacyUnmapped || []);
+    renderSimpleFileList('corruptedMemoryFiles', data?.sections?.['corrupted'] || []);
+    renderSimpleFileList('legacyUnmappedFiles', data?.sections?.['legacyUnmapped'] || []);
 }
 
 function getBootstrapOptions() {
@@ -350,7 +350,7 @@ export async function upgradeSoulMemory(): Promise<void> {
     }
     await openMemoryModal();
     switchMemTab('status');
-    const freshStatus = await api<any>('/api/memory/status');
+    const freshStatus = await api<AdvancedMemoryStatus>('/api/memory/status');
     syncSidebarBadge(freshStatus, 0);
     renderStatusBanner(freshStatus);
 }
@@ -376,7 +376,7 @@ export async function synthesizeSoul(): Promise<void> {
     setAdvBanner(i18n('memory.banner.soulPromptSent'));
     await openMemoryModal();
     switchMemTab('status');
-    const freshStatus = await api<any>('/api/memory/status');
+    const freshStatus = await api<AdvancedMemoryStatus>('/api/memory/status');
     syncSidebarBadge(freshStatus, 0);
     renderStatusBanner(freshStatus);
 }

@@ -48,7 +48,7 @@ export const notesBlockBoundaryKeymap = $prose(() => keymap({
 
         const parent = $cursor.parent;
         if (parent.type.name === 'heading') {
-            const paragraph = state.schema.nodes.paragraph;
+            const paragraph = state.schema.nodes['paragraph'];
             if (!paragraph || !dispatch) return true;
             const depth = $cursor.depth;
             const pos = $cursor.before(depth);
@@ -90,7 +90,7 @@ export const notesBlockBoundaryKeymap = $prose(() => keymap({
         if (!dispatch) return true;
 
         const after = state.selection.from + node.nodeSize;
-        const paragraph = state.schema.nodes.paragraph?.create();
+        const paragraph = state.schema.nodes['paragraph']?.create();
         if (!paragraph) return false;
 
         const tr = state.tr.insert(after, paragraph);

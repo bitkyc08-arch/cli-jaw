@@ -2,14 +2,15 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { normalizeStrictPropertyAccess } from './source-normalize';
 
 // Phase 127 (#127) mermaid render latency — source-string contract.
 // Avoids importing render.ts directly (it depends on browser globals/libs).
 
-const renderSrc = readFileSync(
+const renderSrc = normalizeStrictPropertyAccess(readFileSync(
     join(import.meta.dirname, '../../public/js/render.ts'),
     'utf8',
-);
+));
 
 test('F1: mermaid fence emits skeleton + URI-encoded source attribute', () => {
     assert.ok(renderSrc.includes('mermaid-skeleton'),

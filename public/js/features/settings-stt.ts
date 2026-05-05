@@ -2,7 +2,33 @@
 import { apiJson } from '../api.js';
 import { t } from './i18n.js';
 
-export function initSttSettings(sttConfig: Record<string, any>): void {
+type SttSettingsConfig = {
+    engine?: string;
+    geminiKeySet?: boolean;
+    geminiKeyLast4?: string;
+    geminiModel?: string;
+    whisperModel?: string;
+    openaiBaseUrl?: string;
+    openaiKeySet?: boolean;
+    openaiKeyLast4?: string;
+    openaiModel?: string;
+    vertexConfig?: string;
+};
+
+type SttSettingsPatch = {
+    stt: {
+        engine: string;
+        geminiModel: string;
+        whisperModel: string;
+        openaiBaseUrl: string;
+        openaiModel: string;
+        vertexConfig: string;
+        geminiApiKey?: string;
+        openaiApiKey?: string;
+    };
+};
+
+export function initSttSettings(sttConfig: SttSettingsConfig): void {
     const engine = document.getElementById('sttEngine') as HTMLSelectElement | null;
     const geminiKey = document.getElementById('sttGeminiKey') as HTMLInputElement | null;
     const geminiModel = document.getElementById('sttGeminiModel') as HTMLSelectElement | null;
@@ -13,19 +39,19 @@ export function initSttSettings(sttConfig: Record<string, any>): void {
     const openaiModel = document.getElementById('sttOpenaiModel') as HTMLInputElement | null;
     const vertexJson = document.getElementById('sttVertexJson') as HTMLTextAreaElement | null;
 
-    if (engine) engine.value = sttConfig.engine || 'auto';
-    if (geminiKey) geminiKey.placeholder = sttConfig.geminiKeySet ? savedKeyPlaceholder(sttConfig.geminiKeyLast4) : 'AIza...';
+    if (engine) engine.value = sttConfig['engine'] || 'auto';
+    if (geminiKey) geminiKey.placeholder = sttConfig['geminiKeySet'] ? savedKeyPlaceholder(sttConfig['geminiKeyLast4']) : 'AIza...';
     if (geminiModel) {
-        const saved = sttConfig.geminiModel || 'gemini-2.5-flash-lite';
+        const saved = sttConfig['geminiModel'] || 'gemini-2.5-flash-lite';
         const hasOption = Array.from(geminiModel.options).some(o => o.value === saved);
         if (hasOption) { geminiModel.value = saved; }
         else { geminiModel.value = '__custom__'; if (geminiModelCustom) { geminiModelCustom.value = saved; geminiModelCustom.style.display = ''; } }
     }
-    if (whisperModel) whisperModel.value = sttConfig.whisperModel || 'mlx-community/whisper-large-v3-turbo';
-    if (openaiBaseUrl) openaiBaseUrl.value = sttConfig.openaiBaseUrl || '';
-    if (openaiKey) openaiKey.placeholder = sttConfig.openaiKeySet ? savedKeyPlaceholder(sttConfig.openaiKeyLast4) : 'sk-...';
-    if (openaiModel) openaiModel.value = sttConfig.openaiModel || '';
-    if (vertexJson) vertexJson.value = sttConfig.vertexConfig || '';
+    if (whisperModel) whisperModel.value = sttConfig['whisperModel'] || 'mlx-community/whisper-large-v3-turbo';
+    if (openaiBaseUrl) openaiBaseUrl.value = sttConfig['openaiBaseUrl'] || '';
+    if (openaiKey) openaiKey.placeholder = sttConfig['openaiKeySet'] ? savedKeyPlaceholder(sttConfig['openaiKeyLast4']) : 'sk-...';
+    if (openaiModel) openaiModel.value = sttConfig['openaiModel'] || '';
+    if (vertexJson) vertexJson.value = sttConfig['vertexConfig'] || '';
 
     function toggleProviderFields() {
         const v = engine?.value || 'auto';
@@ -41,7 +67,7 @@ export function initSttSettings(sttConfig: Record<string, any>): void {
     toggleProviderFields();
 
     async function saveStt() {
-        const patch: Record<string, any> = {
+        const patch: SttSettingsPatch = {
             stt: {
                 engine: engine?.value || 'auto',
                 geminiModel: (geminiModel?.value === '__custom__' ? geminiModelCustom?.value : geminiModel?.value) || 'gemini-2.5-flash-lite',
@@ -53,7 +79,7 @@ export function initSttSettings(sttConfig: Record<string, any>): void {
         };
         if (geminiKey?.value) patch.stt.geminiApiKey = geminiKey.value;
         if (openaiKey?.value) patch.stt.openaiApiKey = openaiKey.value;
-        console.log('[stt] saving:', { engine: patch.stt.engine, hasGeminiKey: !!patch.stt.geminiApiKey, hasOpenaiKey: !!patch.stt.openaiApiKey });
+        console.log('[stt] saving:', { engine: patch['stt'].engine, hasGeminiKey: !!patch['stt'].geminiApiKey, hasOpenaiKey: !!patch['stt'].openaiApiKey });
         try {
             await apiJson('/api/settings', 'PUT', patch);
             if (geminiKey?.value) { const l4 = geminiKey.value.slice(-4); geminiKey.value = ''; geminiKey.placeholder = savedKeyPlaceholder(l4); }

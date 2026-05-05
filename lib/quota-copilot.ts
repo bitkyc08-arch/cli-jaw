@@ -186,9 +186,22 @@ export async function fetchCopilotQuota() {
             }
             return null;
         }
-        const data = await res.json() as Record<string, any>;
+        const data = await res.json() as {
+            quota_snapshots?: {
+                premium_interactions?: {
+                    unlimited?: boolean;
+                    entitlement?: number;
+                    remaining?: number;
+                    percent_remaining?: number;
+                };
+            };
+            quota_reset_date?: string;
+            login?: string;
+            access_type_sku?: string;
+            copilot_plan?: string;
+        };
 
-        const snap = data["quota_snapshots"] || {};
+        const snap = data.quota_snapshots || {};
         const pi = snap.premium_interactions || {};
         const windows = [];
 
@@ -205,11 +218,11 @@ export async function fetchCopilotQuota() {
 
         return {
             account: {
-                email: data["login"] || null,
-                plan: data["access_type_sku"]?.replace(/_/g, ' ') || data["copilot_plan"] || null,
+                email: data.login || null,
+                plan: data.access_type_sku?.replace(/_/g, ' ') || data.copilot_plan || null,
             },
             windows,
-            resetDate: data["quota_reset_date"] || null,
+            resetDate: data.quota_reset_date || null,
         };
     } catch (e: unknown) {
         console.error('[quota-copilot]', (e as Error).message);

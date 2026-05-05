@@ -452,7 +452,7 @@ export class VirtualScroll {
                 wrapper.innerHTML = item.html;
                 el = wrapper.firstElementChild as HTMLElement;
                 if (!el) continue;
-                el.dataset.vsIdx = String(vItem.index);
+                el.dataset['vsIdx'] = String(vItem.index);
                 this.innerEl.appendChild(el);
                 this.mounted.set(vItem.index, el);
                 newlyMounted.push(el);
@@ -483,7 +483,7 @@ export class VirtualScroll {
         // Now measure real heights — elements have their final rendered content.
         // Only for newly mounted elements (already-observed ones are tracked).
         for (const el of newlyMounted) {
-            const index = Number(el.dataset.vsIdx || '-1');
+            const index = Number(el.dataset['vsIdx'] || '-1');
             syncMeasuredItemHeight(this.items, index, el);
             this.virtualizer!.measureElement(el);
         }

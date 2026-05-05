@@ -4,6 +4,7 @@
 [submodule "devlog"]
 	path = devlog
 	url = https://github.com/lidge-jun/cli-jaw-internal.git
+	ignore = dirty
 [submodule "officecli"]
 	path = officecli
 	url = https://github.com/lidge-jun/OfficeCLI.git

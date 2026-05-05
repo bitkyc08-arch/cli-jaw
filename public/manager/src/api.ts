@@ -93,7 +93,9 @@ export async function stopManagedProcesses(): Promise<DashboardProcessControlSta
 }
 
 export async function fetchInstanceStatus(port: number, options: { signal?: AbortSignal } = {}): Promise<DashboardInstance | null> {
-    const response = await fetch(`/api/dashboard/instances/${port}`, { signal: options.signal });
+    const init: RequestInit = {};
+    if (options.signal !== undefined) init.signal = options.signal;
+    const response = await fetch(`/api/dashboard/instances/${port}`, init);
     if (!response.ok) throw new Error(`status fetch failed: ${response.status}`);
     const body = await response.json() as { ok: boolean; instance: DashboardInstance | null };
     return body.instance;

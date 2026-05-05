@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { normalizeStrictPropertyAccess } from './source-normalize';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
 
 function read(path: string): string {
-    return readFileSync(join(projectRoot, path), 'utf8');
+    return normalizeStrictPropertyAccess(readFileSync(join(projectRoot, path), 'utf8'));
 }
 
 test('vite config includes manager entry and react plugin', () => {
@@ -416,7 +417,7 @@ test('manager profile rows keep Active/Running grouping while merging profile la
     assert.ok(groups.includes("label: 'Running'"), 'profile merged sidebar must preserve the Running group header');
     assert.equal(groups.includes('selected.forEach(instance => used.add(instance.port))'), false, 'selected active/running rows must remain in their original Running group');
     assert.ok(groups.includes('profileMap.get(instance.profileId)'), 'profile context must be resolved per grouped instance row');
-    assert.ok(groups.includes('profile={profile}'), 'profile context must be forwarded into the row');
+    assert.ok(groups.includes('{ profile }'), 'profile context must be forwarded into the row');
     assert.equal(groups.includes('No online instances for this profile.'), false, 'sidebar must not replace instance groups with profile-empty cards');
     assert.ok(row.includes('props.profile?.label'), 'instance row must use the profile label as the primary merged label');
     assert.equal(row.includes('instanceSecondaryLine'), false, 'instance row must not add path metadata under compact sidebar labels');

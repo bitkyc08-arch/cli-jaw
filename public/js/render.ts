@@ -286,7 +286,7 @@ export async function rerenderMermaidDiagrams(): Promise<void> {
         const mm = await ensureMermaidLoaded();
         for (const el of rendered) {
             const htmlEl = el as HTMLElement;
-            const code = htmlEl.dataset.mermaidCode;
+            const code = htmlEl.dataset['mermaidCode'];
             if (!code || !htmlEl.isConnected) continue;
             const id = `mermaid-${++mermaidId}`;
             try {
@@ -363,17 +363,17 @@ function renderMermaidError(el: HTMLElement, code: string, errMsg: string): void
 
 async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
     if (!el.isConnected) {
-        delete el.dataset.mermaidQueued;
-        delete el.dataset.mermaidInflight;
+        delete el.dataset['mermaidQueued'];
+        delete el.dataset['mermaidInflight'];
         return;
     }
     el.classList.remove('mermaid-pending');
     // Phase 127-F1: raw source lives in data attribute (skeleton DOM has no source text).
-    const encoded = el.dataset.mermaidCodeRaw || '';
+    const encoded = el.dataset['mermaidCodeRaw'] || '';
     const code = encoded ? decodeURIComponent(encoded) : (el.textContent || '');
-    el.dataset.mermaidCode = code;
+    el.dataset['mermaidCode'] = code;
     const id = `mermaid-${++mermaidId}`;
-    el.dataset.mermaidInflight = '1';
+    el.dataset['mermaidInflight'] = '1';
     try {
         const mm = await ensureMermaidLoaded();
         // Apply theme immediately before render — no intermediate parse()
@@ -385,7 +385,7 @@ async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
         }
         el.innerHTML = sanitizeMermaidSvg(svg);
         el.classList.add('mermaid-rendered');
-        delete el.dataset.mermaidCodeRaw;
+        delete el.dataset['mermaidCodeRaw'];
         appendMermaidActionBtns(el);
         bindDiagramZoom(el);
     } catch (err: unknown) {
@@ -393,8 +393,8 @@ async function renderSingleMermaidImpl(el: HTMLElement): Promise<void> {
             || (err as { str?: string })?.str || 'Unknown error';
         renderMermaidError(el, code, errMsg);
     } finally {
-        delete el.dataset.mermaidQueued;
-        delete el.dataset.mermaidInflight;
+        delete el.dataset['mermaidQueued'];
+        delete el.dataset['mermaidInflight'];
     }
 }
 
@@ -404,8 +404,8 @@ function renderSingleMermaid(el: HTMLElement): void {
     // Phase 127-N2: synchronous queued guard prevents duplicate enqueueing when
     // renderMermaidBlocks immediate mode fires repeatedly (e.g. VS onPostRender
     // on every scroll). Class/dataset is set right away so the next pass skips.
-    if (el.dataset.mermaidQueued === '1') return;
-    el.dataset.mermaidQueued = '1';
+    if (el.dataset['mermaidQueued'] === '1') return;
+    el.dataset['mermaidQueued'] = '1';
     // Phase 127-F6: .catch tail keeps the queue alive after any rejection so
     // one bad render cannot permanently block subsequent diagrams.
     mermaidQueue = mermaidQueue
@@ -432,7 +432,7 @@ export async function renderMermaidBlocks(
     if (!pending.length) return;
     ensureMermaidObserver();
     for (const el of pending) {
-        if (el.dataset.mermaidQueued === '1') continue;   // N2 guard
+        if (el.dataset['mermaidQueued'] === '1') continue;   // N2 guard
         if (opts.immediate) {
             const rect = el.getBoundingClientRect();
             const vh = window.innerHeight || document.documentElement.clientHeight;
@@ -459,11 +459,11 @@ export function releaseMermaidNodes(scope: HTMLElement): void {
     scope.querySelectorAll<HTMLElement>(selector).forEach((el) => nodes.push(el));
     for (const el of nodes) {
         mermaidObserver.unobserve(el);
-        delete el.dataset.mermaidQueued;
-        delete el.dataset.mermaidQueuedAt;
-        delete el.dataset.mermaidInflight;
+        delete el.dataset['mermaidQueued'];
+        delete el.dataset['mermaidQueuedAt'];
+        delete el.dataset['mermaidInflight'];
         if (!el.classList.contains('mermaid-rendered')
-            && (el.dataset.mermaidCodeRaw || el.dataset.mermaidCode)) {
+            && (el.dataset['mermaidCodeRaw'] || el.dataset['mermaidCode'])) {
             el.classList.add('mermaid-pending');
         }
     }
@@ -542,7 +542,7 @@ function ensureMarked(): boolean {
 export function rehighlightAll(scope?: HTMLElement | Document): void {
     const root = scope || document;
     root.querySelectorAll('.code-block pre code, .code-block-wrapper pre code').forEach(el => {
-        if ((el as HTMLElement).dataset.highlighted === 'yes') return;
+        if ((el as HTMLElement).dataset['highlighted'] === 'yes') return;
         const lang = [...el.classList].find(c => c.startsWith('language-'))?.replace('language-', '');
         const raw = el.textContent || '';
         try {
@@ -551,7 +551,7 @@ export function rehighlightAll(scope?: HTMLElement | Document): void {
             } else {
                 el.innerHTML = hljs.highlightAuto(raw).value;
             }
-            (el as HTMLElement).dataset.highlighted = 'yes';
+            (el as HTMLElement).dataset['highlighted'] = 'yes';
         } catch { /* ignore */ }
     });
 }
@@ -765,8 +765,8 @@ function ensureDiagramActionDelegation(): void {
             const container = diagCopyBtn.closest('.diagram-container') as HTMLElement | null;
             if (!container) return;
             let text = '';
-            if (container.dataset.widgetHtml) {
-                try { text = decodeURIComponent(escape(atob(container.dataset.widgetHtml))); }
+            if (container.dataset['widgetHtml']) {
+                try { text = decodeURIComponent(escape(atob(container.dataset['widgetHtml']))); }
                 catch { return; }
             } else {
                 const svgEl = container.querySelector('svg');
@@ -780,7 +780,7 @@ function ensureDiagramActionDelegation(): void {
         if (mermaidCopyBtn) {
             const container = mermaidCopyBtn.closest('.mermaid-container') as HTMLElement | null;
             if (!container) return;
-            const code = container.dataset.mermaidCode || '';
+            const code = container.dataset['mermaidCode'] || '';
             if (code) btnFeedback(mermaidCopyBtn, code, 'copy');
             return;
         }
@@ -791,7 +791,7 @@ function ensureDiagramActionDelegation(): void {
             const container = diagSaveBtn.closest('.diagram-container') as HTMLElement | null;
             if (!container) return;
             // Widget: request screenshot via bridge
-            if (container.dataset.widgetHtml) {
+            if (container.dataset['widgetHtml']) {
                 const iframe = container.querySelector('iframe') as HTMLIFrameElement | null;
                 if (iframe?.contentWindow) {
                     iframe.contentWindow.postMessage({ type: 'jaw-request-screenshot' }, '*');
@@ -931,8 +931,8 @@ function unshieldSvgBlocks(html: string, blocks: SvgBlock[]): string {
 export function bindDiagramZoom(scope?: HTMLElement | Document): void {
     const root = scope || document;
     root.querySelectorAll('.diagram-zoom-btn, .mermaid-zoom-btn').forEach(btn => {
-        if ((btn as HTMLElement).dataset.bound) return;
-        (btn as HTMLElement).dataset.bound = '1';
+        if ((btn as HTMLElement).dataset['bound']) return;
+        (btn as HTMLElement).dataset['bound'] = '1';
         btn.addEventListener('click', () => {
             if (btn.closest('.diagram-widget')) return;
             const container = btn.closest('.diagram-container, .mermaid-container');

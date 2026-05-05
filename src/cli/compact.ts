@@ -12,7 +12,6 @@ import {
 import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
 
-// @strict-debt(P10a): settings/session shapes still loose; tighten when AppSettings/SessionSnapshot land
 interface CompactSettings {
     cli?: string;
     workingDir?: string | null;

@@ -240,7 +240,7 @@ export function App() {
     }, []);
 
     async function saveUi(ui: Parameters<typeof registry.save>[0]['ui']): Promise<void> {
-        if (!hydrated) return;
+        if (!hydrated || ui === undefined) return;
         await registry.save({ ui });
     }
 
@@ -252,7 +252,7 @@ export function App() {
     }, [instances]);
     const summary = useMemo(() => {
         return instances.reduce((acc, instance) => {
-            acc.total += 1;
+            acc['total'] += 1;
             acc[instance.status] = (acc[instance.status] || 0) + 1;
             return acc;
         }, { total: 0 } as Record<string, number>);
@@ -512,7 +512,7 @@ export function App() {
                         onCloseDrawer={() => view.setDrawerOpen(false)}
                         navigator={(
                             <>
-                                <SidebarRail onlineCount={summary.online || 0} collapsed={view.sidebarCollapsed} mode={view.sidebarMode} scheduleWorkspaceEnabled={SCHEDULE_WORKSPACE_ENABLED} onModeChange={handleSidebarModeChange} onToggleSidebar={handleSidebarToggle} helpOpen={helpOpen} onToggleHelp={() => setHelpOpen(open => !open)} />
+                                <SidebarRail onlineCount={summary['online'] || 0} collapsed={view.sidebarCollapsed} mode={view.sidebarMode} scheduleWorkspaceEnabled={SCHEDULE_WORKSPACE_ENABLED} onModeChange={handleSidebarModeChange} onToggleSidebar={handleSidebarToggle} helpOpen={helpOpen} onToggleHelp={() => setHelpOpen(open => !open)} />
                                 <div id="manager-sidebar-list" className="manager-sidebar-list">
                                     {view.sidebarMode === 'settings' ? (
                                         <DashboardSettingsSidebar activeSection={dashboardSettingsSection} locale={view.locale} onSectionChange={setDashboardSettingsSection} />

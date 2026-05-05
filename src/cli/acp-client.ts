@@ -23,7 +23,6 @@ interface PendingEntry {
     timer: ReturnType<typeof setTimeout> | undefined;
 }
 
-// @strict-debt(P10a): inline AcpAgentCapabilities; align with upstream when SDK pins
 interface PermissionOption {
     name?: string;
     value?: string;
@@ -280,7 +279,6 @@ export class AcpClient extends EventEmitter {
                 // Auto-approve all permissions (yolo/auto mode)
                 const params = (msg.params || {}) as { options?: PermissionOption[] };
                 const options: PermissionOption[] = params.options || [];
-                // @strict-debt(P10a): typed permission-options shape pending ACP spec freeze
                 const allowOption = options.find((o: PermissionOption) =>
                     o.name?.toLowerCase().includes('allow') ||
                     o.name?.toLowerCase().includes('approve') ||

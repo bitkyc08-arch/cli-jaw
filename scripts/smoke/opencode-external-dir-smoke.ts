@@ -4,6 +4,8 @@ import { dirname, join } from 'path';
 import { spawn } from 'child_process';
 import { buildArgs } from '../../src/agent/args.js';
 import { extractFromEvent, extractOutputChunk } from '../../src/agent/events.js';
+import type { SpawnContext } from '../../src/types/agent.js';
+import type { CliEventRecord } from '../../src/types/cli-events.js';
 import {
     applyCliEnvDefaults,
     ensureOpencodeAlwaysAllowPermissions,
@@ -169,14 +171,14 @@ function classify(result: Omit<RunResult, 'classification' | 'pass'>): RunResult
     return 'PASS';
 }
 
-function parseEvents(stdout: string): { events: any[]; parseErrors: string[]; eventTypes: Record<string, number> } {
-    const events: any[] = [];
+function parseEvents(stdout: string): { events: CliEventRecord[]; parseErrors: string[]; eventTypes: Record<string, number> } {
+    const events: CliEventRecord[] = [];
     const parseErrors: string[] = [];
     const eventTypes: Record<string, number> = {};
     for (const line of stdout.split(/\r?\n/)) {
         if (!line.trim()) continue;
         try {
-            const parsed = JSON.parse(line);
+            const parsed = JSON.parse(line) as CliEventRecord;
             events.push(parsed);
             const type = typeof parsed.type === 'string' ? parsed.type : 'unknown';
             eventTypes[type] = (eventTypes[type] || 0) + 1;
@@ -187,12 +189,19 @@ function parseEvents(stdout: string): { events: any[]; parseErrors: string[]; ev
     return { events, parseErrors, eventTypes };
 }
 
-function replayParser(events: any[]): { fullTextLength: number; liveTextLength: number } {
-    const ctx: any = {
+function replayParser(events: CliEventRecord[]): { fullTextLength: number; liveTextLength: number } {
+    const ctx: SpawnContext = {
         fullText: '',
         traceLog: [],
         toolLog: [],
         seenToolKeys: new Set<string>(),
+        hasClaudeStreamEvents: false,
+        sessionId: null,
+        cost: null,
+        turns: null,
+        duration: null,
+        tokens: null,
+        stderrBuf: '',
         pendingOutputChunk: '',
         opencodePreToolText: '',
         opencodePostToolText: '',

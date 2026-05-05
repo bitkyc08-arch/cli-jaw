@@ -18,6 +18,38 @@ interface SkillsLinkOpts {
     _jawHome?: string;   // test DI — default JAW_HOME
 }
 
+type BackupContext = {
+    root: string;
+};
+
+type SkillsLinkAction =
+    | 'noop'
+    | 'replace_symlink'
+    | 'conflict_skip'
+    | 'backup_replace'
+    | 'error'
+    | 'create';
+
+type SkillsLinkStatus = 'ok' | 'skip' | 'error';
+
+type SkillsLinkResult = {
+    name: string;
+    linkPath: string;
+    target: string;
+    status: SkillsLinkStatus;
+    action: SkillsLinkAction;
+    previousTarget?: string;
+    managed?: boolean;
+    backupPath?: string;
+    message?: string;
+};
+
+type EnsureSymlinkSafeOpts = SkillsLinkOpts & {
+    name?: string;
+    jawHome?: string;
+    backupContext?: BackupContext;
+};
+
 export interface SharedPathHealthReport {
     status: 'clean' | 'resolved' | 'contaminated' | 'unknown';
     paths: {
@@ -57,19 +89,19 @@ function isCliJawManaged(linkPath: string, jawHome?: string): boolean {
     return false;
 }
 
-function buildLinkReport(links: any[], extra?: Record<string, any>) {
+function buildLinkReport(links: SkillsLinkResult[], extra?: Record<string, unknown>) {
     const summary = links.reduce((acc, item) => {
         const key = item.action || 'unknown';
         acc[key] = (acc[key] || 0) + 1;
         return acc;
-    }, {} as Record<string, any>);
+    }, {} as Record<string, number>);
     return { links, summary, ...extra };
 }
 
-export function ensureSymlinkSafe(target: string, linkPath: string, opts: Record<string, any> = {}) {
+export function ensureSymlinkSafe(target: string, linkPath: string, opts: EnsureSymlinkSafeOpts = {}): SkillsLinkResult {
     const onConflict = opts["onConflict"] === 'skip' ? 'skip' : 'backup';
     const allowReplaceManaged = opts["allowReplaceManaged"] === true;
-    const jawHome = opts["jawHome"] as string | undefined;
+    const jawHome = opts["jawHome"];
     const backupContext = opts["backupContext"] || createBackupContext();
     const absTarget = resolve(target);
     const baseResult = {
@@ -156,7 +188,7 @@ export function ensureSymlinkSafe(target: string, linkPath: string, opts: Record
     }
 }
 
-export function movePathToBackup(pathToMove: string, context: Record<string, any>) {
+export function movePathToBackup(pathToMove: string, context: BackupContext) {
     fs.mkdirSync(context["root"], { recursive: true });
     const normalized = pathToMove
         .replace(/^[a-zA-Z]:/, '')
@@ -332,7 +364,7 @@ export function detectSharedPathContamination(opts?: {
  * @deprecated Use ensureWorkingDirSkillsLinks or ensureSharedHomeSkillsLinks instead.
  * Kept only for backward compatibility during transition — delegates to new helpers.
  */
-export function ensureSkillsSymlinks(workingDir: string, opts: Record<string, any> = {}) {
+export function ensureSkillsSymlinks(workingDir: string, opts: SkillsLinkOpts = {}) {
     // Delegate to working-dir-only helper (isolated-by-default)
     return ensureWorkingDirSkillsLinks(workingDir, {
         onConflict: opts["onConflict"] === 'skip' ? 'skip' : 'backup',

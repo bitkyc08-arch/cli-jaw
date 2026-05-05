@@ -1,7 +1,7 @@
 // ─── cli-jaw Server (glue + routes) ─────────────────
 // All business logic lives in src/ modules.
 
-import express from 'express';
+import express, { type Request } from 'express';
 import helmet from 'helmet';
 import { log } from './src/core/logger.js';
 import { createServer } from 'http';
@@ -182,9 +182,15 @@ resetAllStaleStates();
 
 // ─── Express + WebSocket ─────────────────────────────
 
-const remoteAccess = settings["network"]?.remoteAccess || {} as Record<string, any>;
+type RemoteAccessSettings = {
+    mode?: string;
+    trustProxies?: boolean;
+    trustForwardedFor?: boolean;
+};
+
+const remoteAccess = (settings["network"]?.remoteAccess || {}) as RemoteAccessSettings;
 const app = express();
-if ((remoteAccess as any).mode === 'reverse-proxy' && (remoteAccess as any).trustProxies && (remoteAccess as any).trustForwardedFor) {
+if (remoteAccess.mode === 'reverse-proxy' && remoteAccess.trustProxies && remoteAccess.trustForwardedFor) {
     app.set('trust proxy', 'loopback');
 }
 const server = createServer(app);
@@ -368,7 +374,7 @@ function resetSessionOnly() {
     resetSessionPreservingHistory();
 }
 
-function resolveRequestLocale(req: any, preferred: string | null = null) {
+function resolveRequestLocale(req: Request | null, preferred: string | null = null) {
     const fallback = settings["locale"] || 'ko';
     const direct = typeof preferred === 'string' ? preferred.trim() : '';
     if (direct) return normalizeLocale(direct, fallback);
@@ -376,7 +382,7 @@ function resolveRequestLocale(req: any, preferred: string | null = null) {
     const bodyLocale = typeof req?.body?.locale === 'string' ? req.body.locale.trim() : '';
     if (bodyLocale) return normalizeLocale(bodyLocale, fallback);
 
-    const queryLocale = typeof req?.query?.locale === 'string' ? req.query.locale.trim() : '';
+    const queryLocale = typeof req?.query?.["locale"] === 'string' ? req.query["locale"].trim() : '';
     if (queryLocale) return normalizeLocale(queryLocale, fallback);
 
     const acceptLanguage = typeof req?.headers?.['accept-language'] === 'string'
@@ -390,14 +396,14 @@ function resolveRequestLocale(req: any, preferred: string | null = null) {
     return normalizeLocale(fallback, 'ko');
 }
 
-async function applySettingsPatch(rawPatch: Record<string, any> = {}) {
+async function applySettingsPatch(rawPatch: Record<string, unknown> = {}) {
     bumpSessionOwnershipGeneration();
     return applyRuntimeSettingsPatch(rawPatch, {
         resetFallbackState,
     });
 }
 
-function makeWebCommandCtx(req: any, localeOverride: string | null = null) {
+function makeWebCommandCtx(req: Request, localeOverride: string | null = null) {
     return makeCommandCtx('web', resolveRequestLocale(req, localeOverride), {
         applySettings: (patch) => applySettingsPatch(patch),
         clearSession: () => clearSessionState(),
@@ -545,7 +551,7 @@ registerBrowserRoutes(app, requireAuth);
 registerI18nRoutes(app, requireAuth, projectRoot);
 
 // ─── Error Handler (must be last middleware) ─────────
-app.use(errorHandler as any);
+app.use(errorHandler);
 
 // ─── Start ───────────────────────────────────────────
 
@@ -595,7 +601,7 @@ process.once('SIGINT', () => shutdown('SIGINT'));
 
 const cfgBind = settings["network"]?.bindHost || '127.0.0.1';
 const isLoopbackBind = cfgBind === '127.0.0.1' || cfgBind === '::1' || cfgBind === 'localhost';
-const remoteMode = (remoteAccess as any).mode && (remoteAccess as any).mode !== 'off';
+const remoteMode = remoteAccess.mode && remoteAccess.mode !== 'off';
 const bindHost: string = lanMode ? '0.0.0.0'
     : (remoteMode && isLoopbackBind) ? '0.0.0.0'
     : cfgBind;
@@ -712,12 +718,12 @@ server.listen(PORT, bindHost, async () => {
     }
 
     // ─── Migrate Korean agent names → English ────────
-    const NAME_MAP = { '프런트': 'Frontend', '프론트': 'Frontend', '백엔드': 'Backend', '데이터': 'Data', '문서': 'Docs', '독스': 'Docs' };
-    const allEmps = db.prepare('SELECT id, name FROM employees').all();
+    const NAME_MAP: Record<string, string> = { '프런트': 'Frontend', '프론트': 'Frontend', '백엔드': 'Backend', '데이터': 'Data', '문서': 'Docs', '독스': 'Docs' };
+    const allEmps = db.prepare('SELECT id, name FROM employees').all() as Array<{ id: string; name: string }>;
     let migrated = 0;
     for (const emp of allEmps) {
-        const en = (NAME_MAP as Record<string, string>)[(emp as any).name];
-        if (en) { db.prepare('UPDATE employees SET name = ? WHERE id = ?').run(en, (emp as any).id); migrated++; }
+        const en = NAME_MAP[emp.name];
+        if (en) { db.prepare('UPDATE employees SET name = ? WHERE id = ?').run(en, emp.id); migrated++; }
     }
     if (migrated > 0) console.log(`  Agents: migrated ${migrated} Korean names → English`);
 

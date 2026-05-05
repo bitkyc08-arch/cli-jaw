@@ -47,8 +47,8 @@ export function InstanceDetailPanel(props: InstanceDetailPanelProps) {
                         key={instance.port}
                         port={instance.port}
                         instanceUrl={`http://localhost:${instance.port}`}
-                        onDirtyChange={props.onSettingsDirtyChange}
-                        onSaved={props.onSettingsSaved}
+                        {...(props.onSettingsDirtyChange !== undefined ? { onDirtyChange: props.onSettingsDirtyChange } : {})}
+                        {...(props.onSettingsSaved !== undefined ? { onSaved: props.onSettingsSaved } : {})}
                     />
                 )}
 

@@ -86,8 +86,8 @@ function attachWidgetIframeLifecycle(input: {
   cleanupWidgetOwner(input.owner);
   let initialLoadFired = false;
   let readyReceived = false;
-  const gen = Number(input.owner.dataset.gen || '0');
-  input.owner.dataset.gen = String(gen);
+  const gen = Number(input.owner.dataset['gen'] || '0');
+  input.owner.dataset['gen'] = String(gen);
 
   const requestResize = () => {
     input.iframe.contentWindow?.postMessage({ type: 'jaw-request-resize' }, '*');
@@ -118,7 +118,7 @@ function attachWidgetIframeLifecycle(input: {
 
   const timeout = window.setTimeout(() => {
     window.removeEventListener('message', readyHandler);
-    if (Number(input.owner.dataset.gen || '0') !== gen) return;
+    if (Number(input.owner.dataset['gen'] || '0') !== gen) return;
     if (readyReceived || !input.owner.isConnected) return;
     revokeIframeTrust(input.iframe);
     input.onTimeout?.();
@@ -392,7 +392,7 @@ export function createWidgetIframe(htmlCode: string): { iframe: HTMLIFrameElemen
 export function activateWidgets(container?: HTMLElement): void {
   const root = container || document;
   root.querySelectorAll('.diagram-widget-pending').forEach(el => {
-    const encoded = (el as HTMLElement).dataset.diagramHtml;
+    const encoded = (el as HTMLElement).dataset['diagramHtml'];
     if (!encoded) return;
     let htmlCode: string;
     try {
@@ -423,7 +423,7 @@ export function activateWidgets(container?: HTMLElement): void {
     const wrapper = document.createElement('div');
     wrapper.className = 'diagram-container diagram-widget';
     // Preserve source for theme-change reload
-    wrapper.dataset.widgetHtml = encoded;
+    wrapper.dataset['widgetHtml'] = encoded;
 
     wrapper.appendChild(createDiagramZoomBtn());
     wrapper.appendChild(createDiagramSaveBtn());
@@ -450,10 +450,10 @@ export function activateWidgets(container?: HTMLElement): void {
 
 function bindWidgetZoom(container: HTMLElement): void {
   const btn = container.querySelector('.diagram-zoom-btn') as HTMLButtonElement | null;
-  if (!btn || btn.dataset.bound) return;
-  btn.dataset.bound = '1';
+  if (!btn || btn.dataset['bound']) return;
+  btn.dataset['bound'] = '1';
   btn.addEventListener('click', () => {
-    const encoded = container.dataset.widgetHtml;
+    const encoded = container.dataset['widgetHtml'];
     if (!encoded) return;
     openWidgetOverlay(encoded);
   });
@@ -515,7 +515,7 @@ function openWidgetOverlay(encoded: string): void {
   } else {
     const widget = document.createElement('div');
     widget.className = 'diagram-container diagram-widget diagram-widget-expanded';
-    widget.dataset.widgetHtml = encoded;
+    widget.dataset['widgetHtml'] = encoded;
     const sizeBtn = createDiagramSizeToggleBtn();
     sizeBtn.addEventListener('click', () => {
       const maximized = overlay.classList.toggle('maximized');
@@ -580,7 +580,7 @@ function throttledResize(source: Window, height: number): void {
 // Also recreates iframes so baked-in chart colors update with new theme.
 export function broadcastThemeToIframes(): void {
   document.querySelectorAll('.diagram-widget').forEach(container => {
-    const encoded = (container as HTMLElement).dataset.widgetHtml;
+    const encoded = (container as HTMLElement).dataset['widgetHtml'];
     if (!encoded) return;
     let htmlCode: string;
     try {
@@ -596,7 +596,7 @@ export function broadcastThemeToIframes(): void {
 
     // Bump generation to invalidate pending timeouts from activateWidgets
     const cEl = container as HTMLElement;
-    cEl.dataset.gen = String((Number(cEl.dataset.gen || '0') || 0) + 1);
+    cEl.dataset['gen'] = String((Number(cEl.dataset['gen'] || '0') || 0) + 1);
 
     // Recreate with fresh theme tokens
     const { iframe, nonce } = createWidgetIframe(htmlCode);

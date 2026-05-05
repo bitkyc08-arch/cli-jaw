@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import { normalizeStrictPropertyAccess } from './source-normalize';
 import {
     normalizeEscapedTaskMarkers,
     protectUnsupportedGfmForMilkdown,
@@ -12,7 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
 
 function read(path: string): string {
-    return readFileSync(join(projectRoot, path), 'utf8');
+    return normalizeStrictPropertyAccess(readFileSync(join(projectRoot, path), 'utf8'));
 }
 
 test('Markdown editor uses CodeMirror markdown with language data', () => {

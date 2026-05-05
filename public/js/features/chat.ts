@@ -164,7 +164,7 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
             });
             const data: MessageResult = await res.json().catch(() => ({}));
             // Server-side 5s dedup returns 409 with reason='duplicate'.
-            if (res.status === 409 && (data as any)?.error === 'duplicate') {
+            if (res.status === 409 && data.error === 'duplicate') {
                 return;
             }
             if (!res.ok) {

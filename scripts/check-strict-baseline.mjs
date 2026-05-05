@@ -15,6 +15,7 @@
 // Reads docs/migration/strict-baseline.md for frozen counts and exits 1 if
 // any tracked directory's live count exceeds the baseline.
 
+import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,10 +24,15 @@ import ts from 'typescript';
 const REPO_ROOT = process.env.STRICT_BASELINE_ROOT || fileURLToPath(new URL('..', import.meta.url));
 const BASELINE_PATH = join(REPO_ROOT, 'docs/migration/strict-baseline.md');
 
-const TRACKED_DIRS = ['src', 'bin', 'lib', 'public/manager/src', 'types'];
+const TRACKED_DIRS = ['src', 'bin', 'lib', 'public/js', 'public/manager/src', 'scripts', 'server.ts', 'types'];
+const STRICT_DEBT_SCAN_PATHS = ['src', 'bin', 'lib', 'scripts', 'server.ts', 'public', 'types'];
 const EXCLUDE_DIR_NAMES = new Set([
     'node_modules', 'dist', 'build', '.git', 'coverage', '__snapshots__',
 ]);
+
+function isTypeScriptFile(file) {
+    return file.endsWith('.ts') || file.endsWith('.tsx');
+}
 
 function* walk(dir) {
     let entries;
@@ -36,8 +42,18 @@ function* walk(dir) {
         if (EXCLUDE_DIR_NAMES.has(e.name)) continue;
         const full = join(dir, e.name);
         if (e.isDirectory()) yield* walk(full);
-        else if (e.isFile() && (full.endsWith('.ts') || full.endsWith('.tsx'))) yield full;
+        else if (e.isFile() && isTypeScriptFile(full)) yield full;
     }
+}
+
+function* filesForPath(absPath) {
+    let stat;
+    try { stat = statSync(absPath); } catch { return; }
+    if (stat.isDirectory()) {
+        yield* walk(absPath);
+        return;
+    }
+    if (stat.isFile() && isTypeScriptFile(absPath)) yield absPath;
 }
 
 const ANY_TYPE_REF_NAMES = new Set([
@@ -110,16 +126,39 @@ function scanFile(file) {
 
 function countDir(absDir) {
     const result = { any: 0, debt: 0, allow: 0 };
-    let exists = true;
-    try { statSync(absDir); } catch { exists = false; }
-    if (!exists) return result;
-    for (const file of walk(absDir)) {
+    for (const file of filesForPath(absDir)) {
         const r = scanFile(file);
         result.any += r.any;
         result.debt += r.debt;
         result.allow += r.allow;
     }
     return result;
+}
+
+function findStrictDebtMarkers(absDir) {
+    const hits = [];
+    for (const file of filesForPath(absDir)) {
+        const src = readFileSync(file, 'utf8');
+        const lines = src.split(/\r?\n/);
+        lines.forEach((line, idx) => {
+            if (line.includes('@strict-debt')) hits.push(`${file}:${idx + 1}`);
+        });
+    }
+    return hits;
+}
+
+function runTypecheck(args) {
+    const npx = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const result = spawnSync(npx, args, {
+        cwd: REPO_ROOT,
+        encoding: 'utf8',
+        stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return {
+        ok: result.status === 0,
+        status: result.status,
+        output: `${result.stdout || ''}${result.stderr || ''}`.trim(),
+    };
 }
 
 function parseBaseline(text) {
@@ -154,6 +193,7 @@ function main() {
     for (const dir of TRACKED_DIRS) live[dir] = countDir(join(REPO_ROOT, dir));
 
     const regressions = [];
+    const debtMarkerHits = [];
     for (const dir of TRACKED_DIRS) {
         const b = baseline[dir];
         const l = live[dir];
@@ -161,6 +201,12 @@ function main() {
         if (l.any > b.any) regressions.push(`${dir}.any: live=${l.any} > baseline=${b.any} (+${l.any - b.any})`);
         if (l.debt > b.debt) regressions.push(`${dir}.debt: live=${l.debt} > baseline=${b.debt} (+${l.debt - b.debt})`);
         // allow can grow — permanent contracts; only flag if doc forbids
+    }
+    for (const path of STRICT_DEBT_SCAN_PATHS) {
+        debtMarkerHits.push(...findStrictDebtMarkers(join(REPO_ROOT, path)));
+    }
+    if (debtMarkerHits.length > 0) {
+        regressions.push(`@strict-debt markers are forbidden post-P20: ${debtMarkerHits.join(', ')}`);
     }
 
     const header = '| dir | any | debt | allow |';
@@ -175,6 +221,15 @@ function main() {
         const b = baseline[dir] ?? { any: '—', debt: '—', allow: '—' };
         console.log(fmt(dir, b));
     }
+    console.log('');
+
+    console.log('## strict-baseline typecheck gates');
+    const rootTypecheck = runTypecheck(['tsc', '--noEmit']);
+    console.log(`root: ${rootTypecheck.ok ? 'ok' : `fail (${rootTypecheck.status ?? 'unknown'})`}`);
+    if (!rootTypecheck.ok) regressions.push(`root typecheck failed:\n${rootTypecheck.output}`);
+    const frontendTypecheck = runTypecheck(['tsc', '--noEmit', '-p', 'tsconfig.frontend.json']);
+    console.log(`frontend: ${frontendTypecheck.ok ? 'ok' : `fail (${frontendTypecheck.status ?? 'unknown'})`}`);
+    if (!frontendTypecheck.ok) regressions.push(`frontend typecheck failed:\n${frontendTypecheck.output}`);
     console.log('');
 
     if (regressions.length > 0) {

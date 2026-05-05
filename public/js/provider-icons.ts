@@ -62,7 +62,7 @@ export function providerIcon(slug: string, variant: 'color' | 'mono' = 'color'):
 export function hydrateProviderIcons(root: Element = document.body): void {
     const els = root.querySelectorAll<HTMLElement>('[data-provider]');
     for (const el of els) {
-        const slug = el.dataset.provider || '';
+        const slug = el.dataset['provider'] || '';
         const svg = providerIcon(slug);
         if (svg) {
             el.innerHTML = svg;

@@ -305,7 +305,6 @@ async function _initTelegramInner() {
     };
 
     const bot = new Bot(settings["telegram"].token, {
-        // @strict-debt(P04): grammY's expected fetch signature differs from this IPv4 shim's partial Response shape.
         client: { fetch: ipv4Fetch as never },
     });
     bot.catch((err) => console.error('[tg:error]', err.message || err));

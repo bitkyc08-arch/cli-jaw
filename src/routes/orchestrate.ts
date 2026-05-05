@@ -272,11 +272,11 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             // Phase 57: Pass worklog path so the worker can append progress entries.
             const worklog = dispatchCtx?.worklogPath ? { path: dispatchCtx.worklogPath } : {};
             const result = await runSingleAgent(ap, emp, worklog, 1, { origin: 'api' }, []);
-            finishWorker(slot.agentId, result["text"] || '');
+            finishWorker(slot.agentId, String(result["text"] || ''));
 
             // Phase 58: Auto-update audit/verification status from worker verdict.
             // 'A' phase verdicts → auditStatus; 'B' phase verdicts → verificationStatus.
-            const verdict = parseWorkerVerdict(result["text"] || '');
+            const verdict = parseWorkerVerdict(String(result["text"] || ''));
             let statusPersisted = false;
             let statusPersistReason: 'persisted' | 'state_changed' | 'not_applicable' | null = null;
             let persistedField: 'auditStatus' | 'verificationStatus' | null = null;

@@ -6,11 +6,28 @@
 // Phase 12.1.3: npx package → global binary mapping
 const NPX_TO_GLOBAL = {
     '@upstash/context7-mcp': { pkg: '@upstash/context7-mcp', bin: 'context7-mcp' },
+} satisfies Record<string, { pkg: string; bin: string }>;
+
+type McpInstallServer = {
+    command?: string;
+    args?: string[];
+};
+
+type McpInstallConfig = {
+    servers?: Record<string, McpInstallServer>;
+};
+
+type McpInstallResult = {
+    status: 'skip' | 'installed' | 'error';
+    reason?: string;
+    bin?: string;
+    eco?: 'npm' | 'pypi';
+    message?: string;
 };
 
 function resolveNpxPackage(args: readonly string[] | undefined) {
     const pkg = (args ?? []).find((a) => !a.startsWith('-'));
-    return pkg ? (NPX_TO_GLOBAL as Record<string, any>)[pkg] : null;
+    return pkg ? NPX_TO_GLOBAL[pkg as keyof typeof NPX_TO_GLOBAL] ?? null : null;
 }
 
 /**
@@ -18,9 +35,9 @@ function resolveNpxPackage(args: readonly string[] | undefined) {
  * npx-based → npm i -g, uv-based → uv tool install.
  * Returns per-server results.
  */
-export async function installMcpServers(config: Record<string, any>) {
+export async function installMcpServers(config: McpInstallConfig) {
     const { execSync, execFileSync } = await import('child_process');
-    const results: Record<string, any> = {};
+    const results: Record<string, McpInstallResult> = {};
     const pathLookupCmd = process.platform === 'win32' ? 'where' : 'which';
     const findBinary = (name: string) => {
         try {
@@ -31,10 +48,10 @@ export async function installMcpServers(config: Record<string, any>) {
         }
     };
 
-    for (const [name, srv] of Object.entries(config["servers"] || {}) as [string, any][]) {
+    for (const [name, srv] of Object.entries(config.servers || {})) {
         // Skip already-global servers
         if (srv.command !== 'npx' && srv.command !== 'uv' && srv.command !== 'uvx') {
-            (results as Record<string, any>)[name] = { status: 'skip', reason: 'already global' };
+            results[name] = { status: 'skip', reason: 'already global' };
             continue;
         }
 
@@ -56,7 +73,7 @@ export async function installMcpServers(config: Record<string, any>) {
 
             } else {
                 // uv/uvx ecosystem (pypi)
-                const pkg = (srv.args || []).find((a: string) => !a.startsWith('-') && !a.startsWith('/'));
+                const pkg = (srv.args || []).find((a) => !a.startsWith('-') && !a.startsWith('/'));
                 if (!pkg) { results[name] = { status: 'skip', reason: 'no pypi pkg found' }; continue; }
 
                 console.log(`[mcp:install] uv tool install ${pkg} ...`);
