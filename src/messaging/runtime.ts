@@ -76,8 +76,11 @@ function persistTargetsNow() {
 }
 
 /** Check if a target has the minimum required shape */
-function isValidTarget(t: any): t is RemoteTarget {
-    return t && typeof t === 'object' && typeof t.channel === 'string' && typeof t.targetId === 'string' && t.targetId.length > 0;
+function isValidTarget(t: unknown): t is RemoteTarget {
+    return !!t && typeof t === 'object'
+        && typeof (t as { channel?: unknown }).channel === 'string'
+        && typeof (t as { targetId?: unknown }).targetId === 'string'
+        && (t as { targetId: string }).targetId.length > 0;
 }
 
 /** Hydrate target state from persisted settings.messaging (skip malformed) */

@@ -7,6 +7,7 @@ import type { Client } from 'discord.js';
 import { stat } from 'node:fs/promises';
 import { basename } from 'node:path';
 import type { RemoteTarget } from '../messaging/types.js';
+import type { DiscordSendableChannel } from './channel-types.js';
 
 export const DISCORD_LIMITS = {
     document: 10 * 1024 * 1024,
@@ -45,7 +46,7 @@ export async function sendDiscordFile(
     }
 
     try {
-        await (channel as any).send({
+        await (channel as unknown as DiscordSendableChannel).send({
             content: options?.caption || '',
             files: [{ attachment: filePath, name: basename(filePath) }],
         });

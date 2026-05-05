@@ -11,6 +11,7 @@ import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { getVisibleCommands } from '../command-contract/policy.js';
+import type { DiscordSendableChannel } from './channel-types.js';
 import { seedDefaultEmployees } from '../core/employees.js';
 
 export async function registerDiscordSlashCommands(client: Client) {
@@ -27,7 +28,7 @@ export async function registerDiscordSlashCommands(client: Client) {
     const commands = discordCommands.map(c =>
         new SlashCommandBuilder()
             .setName(c.name)
-            .setDescription((c as any).desc || `/${c.name}`)
+            .setDescription((c as { desc?: string }).desc || `/${c.name}`)
             .addStringOption(opt =>
                 opt.setName('args').setDescription('Arguments').setRequired(false)
             )
@@ -100,10 +101,10 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
                 }));
                 const chunks = chunkDiscordMessage(text);
                 for (const chunk of chunks) {
-                    await (channel as any).send(chunk);
+                    await (channel as unknown as DiscordSendableChannel).send(chunk);
                 }
             } catch (err: unknown) {
-                await (channel as any).send(`❌ ${(err as Error).message}`).catch(() => { });
+                await (channel as unknown as DiscordSendableChannel).send(`❌ ${(err as Error).message}`).catch(() => { });
             }
         }
         return;

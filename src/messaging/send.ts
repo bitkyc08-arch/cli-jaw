@@ -20,7 +20,7 @@ export type ChannelSendRequest = {
 
 // ─── Transport Send Registry ────────────────────────
 
-type TransportSendFn = (req: ChannelSendRequest) => Promise<{ ok: boolean; error?: string; [k: string]: any }>;
+type TransportSendFn = (req: ChannelSendRequest) => Promise<{ ok: boolean; error?: string; [k: string]: unknown }>;
 
 const sendFns = new Map<MessengerChannel, TransportSendFn>();
 
@@ -107,7 +107,7 @@ export function validateTarget(target: RemoteTarget, channel: MessengerChannel):
     return true;
 }
 
-export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: any }> {
+export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
     const channel = resolveChannel(req);
 
     // Validate explicit target (shape + allowlist)

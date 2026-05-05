@@ -17,6 +17,7 @@ import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './comma
 import { createDiscordForwarder, chunkDiscordMessage } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
 import type { Attachment, Message } from 'discord.js';
+import type { DiscordSendableChannel, DiscordTypingChannel, DiscordThreadLikeChannel } from './channel-types.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -30,7 +31,7 @@ type FailedDiscordAttachment = { name: string; reason: string };
 
 // ─── Helpers ────────────────────────────────────────
 
-function buildDiscordTarget(msg: any): RemoteTarget {
+function buildDiscordTarget(msg: Message): RemoteTarget {
     const isGroup = msg.guild !== null;
     return {
         channel: 'discord',
@@ -39,7 +40,7 @@ function buildDiscordTarget(msg: any): RemoteTarget {
         targetId: msg.channelId,
         threadId: msg.channel?.isThread?.() ? msg.channelId : undefined,
         guildId: msg.guildId ?? undefined,
-        parentTargetId: msg.channel?.isThread?.() ? (msg.channel.parentId ?? undefined) : undefined,
+        parentTargetId: msg.channel?.isThread?.() ? ((msg.channel as DiscordThreadLikeChannel).parentId ?? undefined) : undefined,
     };
 }
 
@@ -126,7 +127,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 removeBroadcastListener(queueHandler);
                 const chunks = chunkDiscordMessage(data.text);
                 for (const chunk of chunks) {
-                    await (msg.channel as any).send(chunk).catch((e: Error) => {
+                    await (msg.channel as unknown as DiscordSendableChannel).send(chunk).catch((e: Error) => {
                         console.error('[discord:queue-send]', e.message);
                     });
                 }
@@ -146,7 +147,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     markChannelActive(msg.channelId);
 
     // Typing indicator: start + periodic refresh (8s, Discord expires at 10s)
-    const typingChannel = msg.channel as any;
+    const typingChannel = msg.channel as unknown as DiscordTypingChannel;
     typingChannel.sendTyping?.()
         ?.then(() => console.log('[discord:typing] ✅ sent'))
         ?.catch((e: Error) => console.log('[discord:typing] ❌', e.message));
@@ -162,7 +163,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         }));
         const chunks = chunkDiscordMessage(text);
         for (const chunk of chunks) {
-            await (msg.channel as any).send(chunk);
+            await (msg.channel as unknown as DiscordSendableChannel).send(chunk);
         }
         console.log(`[discord:out] ${msg.channelId}: ${text.slice(0, 80)}`);
     } catch (err: unknown) {
@@ -210,7 +211,7 @@ export async function initDiscord() {
         if (msg.author.id === client.user?.id) return; // never process own messages
         if (msg.author.bot && !settings.discord.allowBots) return;
         if (settings.discord.channelIds?.length) {
-            const parentId = (msg.channel as any)?.parentId;
+            const parentId = (msg.channel as unknown as DiscordThreadLikeChannel)?.parentId;
             if (!settings.discord.channelIds.includes(msg.channelId)
                 && !(parentId && settings.discord.channelIds.includes(parentId))) return;
         }
@@ -339,7 +340,7 @@ export async function shutdownDiscord() {
 
 // ─── Send Handler ───────────────────────────────────
 
-async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: any }> {
+async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
     if (!discordClient) return { ok: false, error: 'Discord not connected' };
 
     // Thread-aware: prefer threadId over targetId when present
@@ -356,7 +357,7 @@ async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok: boolea
             if (!channel || !('send' in channel)) return { ok: false, error: 'Channel not text-based' };
             const chunks = chunkDiscordMessage(text);
             for (const chunk of chunks) {
-                await (channel as any).send(chunk);
+                await (channel as unknown as DiscordSendableChannel).send(chunk);
             }
             return { ok: true, channel_id: channelId, type: 'text' };
         } catch (e) {
