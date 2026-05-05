@@ -387,10 +387,11 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
     try {
         const emps = getEmployees.all();
         if (emps.length > 0) {
-            const list = emps.map(e =>
-                `- "${(e as any).name}" (CLI: ${(e as any).cli}) — ${(e as any).role || 'general developer'}`
-            ).join('\n');
-            const example = (emps[0] as any).name;
+            const list = emps.map(e => {
+                const r = e as { name: string; cli: string; role?: string };
+                return `- "${r.name}" (CLI: ${r.cli}) — ${r.role || 'general developer'}`;
+            }).join('\n');
+            const example = (emps[0] as { name: string }).name;
             const vars = getTemplateVars();
             vars.EMPLOYEE_LIST = list;
             vars.EXAMPLE_AGENT = example;
@@ -408,8 +409,8 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
     try {
         const hbData = loadHeartbeatFile();
         if (hbData.jobs.length > 0) {
-            const activeJobs = hbData.jobs.filter((j: any) => j.enabled);
-            const jobList = hbData.jobs.map((job: any) => {
+            const activeJobs = hbData.jobs.filter((j) => j.enabled);
+            const jobList = hbData.jobs.map((job) => {
                 const status = job.enabled ? '✅' : '⏸️';
                 const schedule = normalizeHeartbeatSchedule(job.schedule);
                 return `- ${status} "${job.name}" — ${describeHeartbeatSchedule(schedule)}: ${(job.prompt || '').slice(0, 50)}`;
@@ -486,7 +487,7 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
 
 // ─── Employee Prompt (orchestration-free) ────────────
 
-export function getEmployeePrompt(emp: any) {
+export function getEmployeePrompt(emp: { name: string; role?: string; id?: string | number }) {
     const vars: Record<string, string> = {
         EMP_NAME: emp.name,
         EMP_ROLE: emp.role || 'general developer',
@@ -511,7 +512,7 @@ export function getEmployeePrompt(emp: any) {
 
 // ─── Employee Prompt v2 (orchestration phase-aware) ──
 
-export function getEmployeePromptV2(emp: any, role: any, currentPhase: number | string) {
+export function getEmployeePromptV2(emp: { name: string; role?: string; id?: string | number; cli?: string }, role: string, currentPhase: number | string) {
     const phase = Number(currentPhase);
     const cacheKey = `${emp.id || emp.name}:${role}:${phase}:${settings.workingDir || '~'}`;
     if (promptCache.has(cacheKey)) return promptCache.get(cacheKey);

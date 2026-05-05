@@ -122,8 +122,8 @@ async function expandViaGemini(query: string, override: Partial<AdvancedConfig> 
         body: JSON.stringify(body),
     });
     if (!res.ok) return [];
-    const json: any = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('\n') || '';
+    const json = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const text = json?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('\n') || '';
     return extractJsonArray(text);
 }
 
@@ -156,7 +156,7 @@ async function expandViaOpenAiCompatible(query: string, override: Partial<Advanc
         }),
     });
     if (!res.ok) return [];
-    const json: any = await res.json();
+    const json = await res.json() as { choices?: Array<{ message?: { content?: string } }> };
     const text = json?.choices?.[0]?.message?.content || '';
     try {
         const parsed = JSON.parse(text);
@@ -177,7 +177,13 @@ function loadServiceAccount(config: VertexConfig) {
     }
 }
 
-async function getGoogleAccessToken(sa: any) {
+interface ServiceAccountKey {
+    client_email: string;
+    private_key: string;
+    token_uri: string;
+}
+
+async function getGoogleAccessToken(sa: ServiceAccountKey) {
     const iat = Math.floor(Date.now() / 1000);
     const exp = iat + 3600;
     const header = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
@@ -205,7 +211,7 @@ async function getGoogleAccessToken(sa: any) {
         body,
     });
     if (!res.ok) return '';
-    const json: any = await res.json();
+    const json = await res.json() as { access_token?: string };
     return json?.access_token || '';
 }
 
@@ -248,8 +254,8 @@ async function expandViaVertex(query: string, override: Partial<AdvancedConfig> 
         body: JSON.stringify(body),
     });
     if (!res.ok) return [];
-    const json: any = await res.json();
-    const text = json?.candidates?.[0]?.content?.parts?.map((p: any) => p?.text || '').join('\n') || '';
+    const json = await res.json() as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+    const text = json?.candidates?.[0]?.content?.parts?.map((p) => p?.text || '').join('\n') || '';
     return extractJsonArray(text);
 }
 

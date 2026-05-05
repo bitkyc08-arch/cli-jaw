@@ -64,7 +64,7 @@ export function startHeartbeat() {
     stopHeartbeat();
     const { jobs } = loadHeartbeatFile();
     for (const job of jobs) {
-        if (!job?.enabled) continue;
+        if (!job?.enabled || !job.id) continue;
         const schedule = normalizeHeartbeatSchedule(job.schedule);
         if (schedule.kind === 'cron') {
             const cronError = validateHeartbeatCron(schedule.cron);

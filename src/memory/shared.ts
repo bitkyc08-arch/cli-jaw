@@ -205,8 +205,8 @@ function isProcessAlive(pid: number): boolean {
     try {
         process.kill(pid, 0);
         return true;
-    } catch (err: any) {
-        return err?.code === 'EPERM';
+    } catch (err: unknown) {
+        return (err as NodeJS.ErrnoException)?.code === 'EPERM';
     }
 }
 
@@ -220,8 +220,9 @@ export function withMigrationLock<T>(fn: () => T) {
             fd = fs.openSync(lockPath, 'wx');
             fs.writeSync(fd, `${process.pid}\n`);
             break;
-        } catch (err: any) {
-            if (err?.code !== 'EEXIST') {
+        } catch (err: unknown) {
+            const e = err as NodeJS.ErrnoException;
+            if (e?.code !== 'EEXIST') {
                 try { fs.unlinkSync(lockPath); } catch { /* ignore */ }
                 throw err;
             }
@@ -236,8 +237,8 @@ export function withMigrationLock<T>(fn: () => T) {
             try {
                 fs.unlinkSync(lockPath);
                 console.warn(`[jaw:migration-lock] removed stale lock${Number.isFinite(ownerPid) ? ` (PID ${ownerPid})` : ''}`);
-            } catch (unlinkErr: any) {
-                if (unlinkErr?.code !== 'ENOENT') throw unlinkErr;
+            } catch (unlinkErr: unknown) {
+                if ((unlinkErr as NodeJS.ErrnoException)?.code !== 'ENOENT') throw unlinkErr;
             }
         }
     }

@@ -390,15 +390,24 @@ export function replaceSettings(s: Record<string, any>) {
 // ─── Heartbeat File I/O ──────────────────────────────
 // Separated from heartbeat timers so prompt.js can import without circular dep
 
-export function loadHeartbeatFile() {
+export interface HeartbeatJob {
+    id?: string;
+    name?: string;
+    enabled?: boolean;
+    prompt?: string;
+    schedule?: unknown;
+}
+export interface HeartbeatFile { jobs: HeartbeatJob[] }
+
+export function loadHeartbeatFile(): HeartbeatFile {
     try {
-        return JSON.parse(fs.readFileSync(HEARTBEAT_JOBS_PATH, 'utf8'));
+        return JSON.parse(fs.readFileSync(HEARTBEAT_JOBS_PATH, 'utf8')) as HeartbeatFile;
     } catch { /* expected: heartbeat.json may not exist yet */
         return { jobs: [] };
     }
 }
 
-export function saveHeartbeatFile(data: Record<string, any>) {
+export function saveHeartbeatFile(data: HeartbeatFile | Record<string, unknown>) {
     fs.writeFileSync(HEARTBEAT_JOBS_PATH, JSON.stringify(data, null, 2));
 }
 

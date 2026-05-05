@@ -301,7 +301,7 @@ export async function runSingleAgent(
 ): Promise<Record<string, any>> {
     const instruction = PHASE_INSTRUCTIONS[ap.currentPhase];
     const phaseLabel = PHASES[ap.currentPhase];
-    const sysPrompt = getEmployeePromptV2(emp, ap.role, ap.currentPhase);
+    const sysPrompt = getEmployeePromptV2(emp as { name: string; role?: string; id?: string | number; cli?: string }, ap.role, ap.currentPhase);
 
     const executionContext = ap.parallel
         ? buildParallelContext(ap, parallelPeers)

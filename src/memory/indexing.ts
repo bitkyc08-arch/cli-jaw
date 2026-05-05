@@ -150,7 +150,17 @@ export function getIndexDb() {
     return db;
 }
 
-function clearIndex(db: any) {
+interface ChunkRow {
+    path: string;
+    relpath: string;
+    kind: string;
+    source_start_line: number;
+    source_end_line: number;
+    content: string;
+    score?: number;
+}
+
+function clearIndex(db: Database.Database) {
     db.exec('DELETE FROM chunks;');
     db.exec(`DELETE FROM chunks_fts;`);
 }
@@ -365,7 +375,7 @@ export function searchIndex(query: string, expanded?: string[]) {
     for (const term of searchTerms) {
         const ftsQuery = term.split(/\s+/).map(t => `"${t.replace(/"/g, '')}"`).join(' OR ');
         try {
-            const rows = ftsStmt.all(ftsQuery) as any[];
+            const rows = ftsStmt.all(ftsQuery) as ChunkRow[];
             for (const row of rows) {
                 const key = `${row.relpath}:${row.source_start_line}:${row.source_end_line}`;
                 if (!byPathLine.has(key)) {
@@ -383,7 +393,7 @@ export function searchIndex(query: string, expanded?: string[]) {
         } catch {
             // ignore FTS parse issues, fallback to LIKE below
         }
-        const likeRows = likeStmt.all(buildLikeTerm(term)) as any[];
+        const likeRows = likeStmt.all(buildLikeTerm(term)) as ChunkRow[];
         for (const row of likeRows) {
             const key = `${row.relpath}:${row.source_start_line}:${row.source_end_line}`;
             if (!byPathLine.has(key)) {
@@ -410,8 +420,8 @@ export function searchIndex(query: string, expanded?: string[]) {
 
 export function reindexIndexCounts(dbPath: string) {
     const db = new Database(dbPath, { readonly: true });
-    const totalChunks = Number((db.prepare('SELECT COUNT(*) AS c FROM chunks').get() as any)?.c || 0);
-    const totalFiles = Number((db.prepare('SELECT COUNT(DISTINCT relpath) AS c FROM chunks').get() as any)?.c || 0);
+    const totalChunks = Number((db.prepare('SELECT COUNT(*) AS c FROM chunks').get() as { c?: number } | undefined)?.c || 0);
+    const totalFiles = Number((db.prepare('SELECT COUNT(DISTINCT relpath) AS c FROM chunks').get() as { c?: number } | undefined)?.c || 0);
     db.close();
     return { totalFiles, totalChunks };
 }
