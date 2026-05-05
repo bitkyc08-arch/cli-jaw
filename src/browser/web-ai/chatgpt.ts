@@ -284,6 +284,7 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
     const adapter = createChatGptEditorAdapter(page, {
         insertText: async (text: string) => {
             const cdp = await getCdpSession(port);
+            if (!cdp) throw new Error('No CDP session available for text insertion');
             try {
                 await cdp.send('Input.insertText', { text });
             } finally {

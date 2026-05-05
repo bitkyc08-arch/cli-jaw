@@ -1,7 +1,31 @@
+type BoxLike = { width: number; height: number };
+type StyleLike = { display?: string; visibility?: string; opacity?: string };
+type VisibleNodeLike = { getBoundingClientRect?: () => BoxLike };
+type TextNodeLike = { innerText?: string; textContent?: string };
+
+export interface BrowserLocatorLike {
+    waitFor?(options: { state: 'visible'; timeout: number }): Promise<unknown>;
+    boundingBox?(): Promise<BoxLike | null>;
+    evaluate?(fn: (node: VisibleNodeLike) => boolean): Promise<boolean>;
+    innerText?(): Promise<string>;
+    count?(): Promise<number>;
+    all?(): Promise<BrowserLocatorLike[]>;
+    nth?(index: number): BrowserLocatorLike;
+    first?(): BrowserLocatorLike;
+}
+
+export interface BrowserPageLike {
+    locator(selector: string): BrowserLocatorLike;
+    waitForTimeout?(timeoutMs: number): Promise<unknown>;
+    evaluate?(fn: (innerSelectors: readonly string[]) => string[], arg: readonly string[]): Promise<unknown>;
+    url?: string | (() => string | Promise<string>);
+    title?: () => string | Promise<string>;
+}
+
 export interface BrowserElementCandidate {
     selector: string;
     index: number;
-    locator: any; // Minimal Playwright Locator shape; kept generic for browser-core reuse.
+    locator: BrowserLocatorLike;
     visible: boolean;
 }
 
@@ -34,7 +58,7 @@ export interface StableTextResult {
 }
 
 export interface BrowserDiagnosticsCaptureInput {
-    page?: any;
+    page?: BrowserPageLike;
     selectors?: readonly string[];
     visibleSelectors?: readonly string[];
     maxTitleChars?: number;
@@ -49,8 +73,8 @@ export interface BrowserDiagnosticsSnapshot {
     warnings: string[];
 }
 
-declare const document: any;
-declare const getComputedStyle: any;
+declare const document: { querySelectorAll(selector: string): Iterable<TextNodeLike> };
+declare function getComputedStyle(node: VisibleNodeLike): StyleLike | null;
 
 export class BrowserCapabilityError extends Error {
     readonly capabilityId: string;
@@ -87,7 +111,7 @@ export class ActionTranscript {
 }
 
 export async function findVisibleCandidate(
-    page: any,
+    page: BrowserPageLike,
     selectors: readonly string[],
     options: FindVisibleCandidateOptions = {},
 ): Promise<BrowserElementCandidate | null> {
@@ -99,9 +123,11 @@ export async function findVisibleCandidate(
     do {
         for (const selector of selectors) {
             const baseLocator = page.locator(selector);
-            const count = await baseLocator.count().catch(() => 0);
+            const count = await baseLocator.count?.().catch(() => 0) ?? 0;
             for (let index = 0; index < count; index += 1) {
-                const locator = typeof baseLocator.nth === 'function' ? baseLocator.nth(index) : baseLocator.first();
+                const locator = typeof baseLocator.nth === 'function'
+                    ? baseLocator.nth(index)
+                    : baseLocator.first?.() ?? baseLocator;
                 const visible = await isLocatorVisible(locator);
                 const candidate = { selector, index, locator, visible };
                 firstCandidate ??= candidate;
@@ -115,12 +141,12 @@ export async function findVisibleCandidate(
     return options.allowFirstCandidateFallback ? firstCandidate : null;
 }
 
-export async function isLocatorVisible(locator: any): Promise<boolean> {
+export async function isLocatorVisible(locator: BrowserLocatorLike): Promise<boolean> {
     const waited = await locator.waitFor?.({ state: 'visible', timeout: 500 }).then(() => true).catch(() => false);
     if (waited) return true;
     const box = await locator.boundingBox?.().catch(() => null);
     if (box && box.width > 0 && box.height > 0) return true;
-    return Boolean(await locator.evaluate?.((node: any) => {
+    return Boolean(await locator.evaluate?.((node: VisibleNodeLike) => {
         if (!node || typeof node.getBoundingClientRect !== 'function') return false;
         const rect = node.getBoundingClientRect();
         if (rect.width <= 0 || rect.height <= 0) return false;
@@ -129,7 +155,7 @@ export async function isLocatorVisible(locator: any): Promise<boolean> {
     }).catch(() => false));
 }
 
-export async function captureTextBaseline(page: any, selectors: readonly string[]): Promise<TextBaseline> {
+export async function captureTextBaseline(page: BrowserPageLike, selectors: readonly string[]): Promise<TextBaseline> {
     const texts = await readTexts(page, selectors);
     return {
         selectors: [...selectors],
@@ -141,7 +167,7 @@ export async function captureTextBaseline(page: any, selectors: readonly string[
 }
 
 export async function waitForStableTextAfterBaseline(
-    page: any,
+    page: BrowserPageLike,
     selectors: readonly string[],
     baseline: TextBaseline,
     options: StableTextOptions,
@@ -190,7 +216,8 @@ export async function captureBrowserDiagnostics(input: BrowserDiagnosticsCapture
         return out;
     }
     try {
-        out.url = String(await page.url?.() ?? page.url ?? '');
+        const urlValue = typeof page.url === 'function' ? await page.url() : page.url;
+        out.url = String(urlValue ?? '');
     } catch (e) {
         out.warnings.push(`url:${(e as Error).message}`);
     }
@@ -208,11 +235,11 @@ export async function captureBrowserDiagnostics(input: BrowserDiagnosticsCapture
     return out;
 }
 
-async function readTexts(page: any, selectors: readonly string[]): Promise<string[]> {
+async function readTexts(page: BrowserPageLike, selectors: readonly string[]): Promise<string[]> {
     const evaluated = await page.evaluate?.((innerSelectors: readonly string[]) => {
         for (const selector of innerSelectors) {
             const texts = Array.from(document.querySelectorAll(selector))
-                .map((el: any) => String(el.innerText || el.textContent || '').trim())
+                .map((el: TextNodeLike) => String(el.innerText || el.textContent || '').trim())
                 .filter(Boolean);
             if (texts.length) return texts;
         }
@@ -221,7 +248,7 @@ async function readTexts(page: any, selectors: readonly string[]): Promise<strin
     if (Array.isArray(evaluated) && evaluated.length > 0) return evaluated.map(String);
 
     for (const selector of selectors) {
-        const locators = await page.locator(selector).all().catch(() => []);
+        const locators = await page.locator(selector).all?.().catch(() => []) ?? [];
         const texts: string[] = [];
         for (const locator of locators) {
             const text = String(await locator.innerText?.().catch(() => '') || '').trim();
@@ -232,17 +259,17 @@ async function readTexts(page: any, selectors: readonly string[]): Promise<strin
     return [];
 }
 
-async function countSelector(page: any, selector: string): Promise<number> {
+async function countSelector(page: BrowserPageLike, selector: string): Promise<number> {
     try {
-        return await page.locator(selector).count();
+        return await page.locator(selector).count?.() ?? 0;
     } catch {
         return 0;
     }
 }
 
-async function countVisibleSelector(page: any, selector: string): Promise<number> {
+async function countVisibleSelector(page: BrowserPageLike, selector: string): Promise<number> {
     try {
-        const locators = await page.locator(selector).all();
+        const locators = await page.locator(selector).all?.() ?? [];
         let total = 0;
         for (const locator of locators) {
             if (await isLocatorVisible(locator)) total += 1;

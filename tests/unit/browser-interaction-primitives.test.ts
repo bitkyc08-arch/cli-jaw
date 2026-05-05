@@ -31,6 +31,6 @@ test('BIP-003: move-mouse naming matches 30_browser command surface', () => {
 test('BIP-004: right click maps through click button option', () => {
     assert.match(cliSrc, /--right/);
     assert.match(cliSrc, /opts\.button = 'right'/);
-    assert.match(actionsSrc, /button: opts\.button \|\| 'left'/);
+    assert.match(actionsSrc, /function optionMouseButton/);
+    assert.match(actionsSrc, /button: optionMouseButton\(opts\)/);
 });
-

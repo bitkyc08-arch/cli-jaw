@@ -3,7 +3,7 @@ import { execFile, spawn, type ChildProcess } from 'node:child_process';
 import { join } from 'path';
 import fs from 'node:fs';
 import net from 'node:net';
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type CDPSession, type Page } from 'playwright-core';
 import { resolveLaunchPolicy, type BrowserStartMode } from './launch-policy.js';
 import os from 'node:os';
 import {
@@ -21,6 +21,12 @@ import { clearDurableBrowserRuntimeOwner, writeDurableBrowserRuntimeOwner } from
 const PROFILE_DIR = join(JAW_HOME, 'browser-profile');
 const TAB_ACTIVITY_FILE = join(JAW_HOME, 'browser-tab-activity.json');
 type BrowserConnectionCache = { browser: Browser; cdpUrl: string };
+type JsonRecord = Record<string, unknown>;
+type BrowserCdpSession = Pick<CDPSession, 'send' | 'detach'> | RawBrowserCdpSession;
+type RawBrowserCdpSession = {
+    send(method: string, params?: Record<string, unknown>): Promise<unknown>;
+    detach(): Promise<void>;
+};
 
 let cached: BrowserConnectionCache | null = null;
 let chromeProc: ChildProcess | null = null;
@@ -57,6 +63,24 @@ type RawCdpTab = {
     url?: string;
     type?: string;
 };
+
+function isRecord(value: unknown): value is JsonRecord {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error ?? '');
+}
+
+function requireTargetId(value: unknown): { targetId: string } {
+    if (isRecord(value) && typeof value.targetId === 'string') return { targetId: value.targetId };
+    throw new Error('CDP response missing targetId');
+}
+
+function targetInfoMatches(value: unknown, targetId: string): boolean {
+    if (!isRecord(value) || !isRecord(value.targetInfo)) return false;
+    return value.targetInfo.targetId === targetId;
+}
 
 export function markBrowserStateChanged() {
     browserStateVersion++;
@@ -456,7 +480,7 @@ export async function connectCdp(port = getActivePort(), retries = 3) {
 
 export async function getActivePage(port = getActivePort()) {
     const { browser } = await connectCdp(port);
-    const pages = browser.contexts().flatMap((c: any) => c.pages());
+    const pages = browser.contexts().flatMap((context) => context.pages());
     if (verifiedActiveTargetId) {
         const tabs = await readCdpPageTargets(port).catch(() => []);
         const tab = tabs.find((t) => t.id === verifiedActiveTargetId);
@@ -552,7 +576,7 @@ export function getBrowserRuntimeStatus(): BrowserRuntimeStatus {
         : createEmptyBrowserRuntime(activeCommandCount);
 }
 
-export async function getCdpSession(port = getActivePort()) {
+export async function getCdpSession(port = getActivePort()): Promise<BrowserCdpSession | null> {
     try {
         const page = await getActivePage(port);
         if (page) return page.context().newCDPSession(page);
@@ -560,27 +584,28 @@ export async function getCdpSession(port = getActivePort()) {
         if (typeof browser.newBrowserCDPSession === 'function') {
             return browser.newBrowserCDPSession();
         }
-    } catch (error: any) {
-        if (!String(error?.message || '').includes('Browser.setDownloadBehavior')) throw error;
+    } catch (error: unknown) {
+        if (!errorMessage(error).includes('Browser.setDownloadBehavior')) throw error;
     }
     return createRawBrowserCdpSession(port);
 }
 
-async function createRawBrowserCdpSession(port: number): Promise<{ send(method: string, params?: Record<string, unknown>): Promise<any>; detach(): Promise<void> } | null> {
+async function createRawBrowserCdpSession(port: number): Promise<RawBrowserCdpSession | null> {
     const response = await fetch(`http://127.0.0.1:${port}/json/version`);
     const version = await response.json() as { webSocketDebuggerUrl?: string };
     const endpoint = version.webSocketDebuggerUrl;
     if (!endpoint || typeof WebSocket !== 'function') return null;
     const ws = new WebSocket(endpoint);
     let nextId = 1;
-    const pending = new Map<number, { resolve: (value: any) => void; reject: (error: Error) => void }>();
+    const pending = new Map<number, { resolve: (value: unknown) => void; reject: (error: Error) => void }>();
     ws.addEventListener('message', event => {
-        let payload: any = null;
+        let payload: unknown = null;
         try { payload = JSON.parse(String(event.data)); } catch { return; }
-        if (!payload?.id || !pending.has(payload.id)) return;
+        if (!isRecord(payload) || typeof payload.id !== 'number' || !pending.has(payload.id)) return;
         const callbacks = pending.get(payload.id)!;
         pending.delete(payload.id);
-        if (payload.error) callbacks.reject(new Error(payload.error.message || JSON.stringify(payload.error)));
+        const error = payload.error;
+        if (isRecord(error)) callbacks.reject(new Error(typeof error.message === 'string' ? error.message : JSON.stringify(error)));
         else callbacks.resolve(payload.result || {});
     });
     await new Promise<void>((resolve, reject) => {
@@ -590,7 +615,7 @@ async function createRawBrowserCdpSession(port: number): Promise<{ send(method: 
     return {
         send(method: string, params: Record<string, unknown> = {}) {
             const id = nextId++;
-            const promise = new Promise<any>((resolve, reject) => pending.set(id, { resolve, reject }));
+            const promise = new Promise<unknown>((resolve, reject) => pending.set(id, { resolve, reject }));
             ws.send(JSON.stringify({ id, method, params }));
             return promise;
         },
@@ -640,12 +665,12 @@ export async function createTab(port = getActivePort(), url = 'about:blank', opt
     }
 }
 
-async function createTargetWithWindowFallback(cdp: { send(method: string, params?: Record<string, unknown>): Promise<any> }, url: string, opts: { activate?: boolean }): Promise<{ targetId: string }> {
+async function createTargetWithWindowFallback(cdp: BrowserCdpSession, url: string, opts: { activate?: boolean }): Promise<{ targetId: string }> {
     try {
-        return await cdp.send('Target.createTarget', { url, newWindow: false, background: !opts.activate }) as { targetId: string };
-    } catch (error: any) {
-        if (!String(error?.message || '').includes('no browser is open')) throw error;
-        return await cdp.send('Target.createTarget', { url, newWindow: true, background: false }) as { targetId: string };
+        return requireTargetId(await cdp.send('Target.createTarget', { url, newWindow: false, background: !opts.activate }));
+    } catch (error: unknown) {
+        if (!errorMessage(error).includes('no browser is open')) throw error;
+        return requireTargetId(await cdp.send('Target.createTarget', { url, newWindow: true, background: false }));
     }
 }
 
@@ -656,8 +681,8 @@ export async function closeTab(port = getActivePort(), targetId: string): Promis
         await cdp.send('Target.closeTarget', { targetId });
         forgetTabActivity(targetId);
         return { closed: true, targetId };
-    } catch (error: any) {
-        if (error.message?.includes('No target')) {
+    } catch (error: unknown) {
+        if (errorMessage(error).includes('No target')) {
             forgetTabActivity(targetId);
             return { closed: true, targetId, alreadyClosed: true };
         }
@@ -667,15 +692,15 @@ export async function closeTab(port = getActivePort(), targetId: string): Promis
     }
 }
 
-export async function getPageByTargetId(port = getActivePort(), targetId: string): Promise<any | null> {
+export async function getPageByTargetId(port = getActivePort(), targetId: string): Promise<Page | null> {
     const { browser } = await connectCdp(port);
     const contexts = browser.contexts();
     for (const context of contexts) {
         for (const page of context.pages()) {
             const session = await context.newCDPSession(page);
             try {
-                const { targetInfo } = await session.send('Target.getTargetInfo');
-                if (targetInfo.targetId === targetId) {
+                const targetInfo = await session.send('Target.getTargetInfo');
+                if (targetInfoMatches(targetInfo, targetId)) {
                     markTabActive(targetId);
                     return page;
                 }
@@ -687,7 +712,7 @@ export async function getPageByTargetId(port = getActivePort(), targetId: string
     return null;
 }
 
-export async function waitForPageByTargetId(port = getActivePort(), targetId: string, timeoutMs = 10_000): Promise<any> {
+export async function waitForPageByTargetId(port = getActivePort(), targetId: string, timeoutMs = 10_000): Promise<Page> {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const page = await getPageByTargetId(port, targetId);

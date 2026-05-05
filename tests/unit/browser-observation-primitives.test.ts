@@ -10,11 +10,12 @@ const routesSrc = fs.readFileSync(join(root, 'src/routes/browser.ts'), 'utf8');
 const cliSrc = fs.readFileSync(join(root, 'bin/commands/browser.ts'), 'utf8');
 
 test('BOP-001: snapshot supports maxNodes/json and occurrence-safe refs', () => {
-    assert.match(actionsSrc, /opts\.maxNodes|opts\['max-nodes'\]/);
+    assert.match(actionsSrc, /optionNumber\(opts, 'maxNodes'/);
+    assert.match(actionsSrc, /optionNumber\(opts, 'max-nodes'/);
     assert.match(actionsSrc, /annotateOccurrences/);
     assert.match(actionsSrc, /occurrence/);
     assert.match(actionsSrc, /latestSnapshot/);
-    assert.match(actionsSrc, /targetId: activeTab\.ok/);
+    assert.match(actionsSrc, /targetId: normalizeActiveTargetId\(activeTab\)/);
     assert.match(actionsSrc, /activeTargetId === latestSnapshot\.targetId/);
 });
 

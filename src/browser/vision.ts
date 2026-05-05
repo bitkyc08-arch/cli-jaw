@@ -14,6 +14,45 @@ export interface VisionClickOptions {
     verifyBeforeClick?: boolean;
 }
 
+type JsonRecord = Record<string, unknown>;
+type VisionCoordinates = {
+    found: boolean;
+    x: number;
+    y: number;
+    description?: string;
+    provider: 'codex';
+};
+
+function isRecord(value: unknown): value is JsonRecord {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value));
+}
+
+function recordText(record: JsonRecord, key: string): string | null {
+    const value = record[key];
+    return typeof value === 'string' ? value : null;
+}
+
+function parseVisionCoordinates(value: unknown): VisionCoordinates | null {
+    if (!isRecord(value)) return null;
+    if (typeof value.found !== 'boolean') return null;
+    if (typeof value.x !== 'number' || typeof value.y !== 'number') return null;
+    return {
+        found: value.found,
+        x: value.x,
+        y: value.y,
+        provider: 'codex',
+        ...(typeof value.description === 'string' ? { description: value.description } : {}),
+    };
+}
+
+function collectEventTexts(value: unknown): string[] {
+    if (!isRecord(value) || !isRecord(value.item)) return [];
+    return [
+        recordText(value.item, 'text'),
+        recordText(value.item, 'aggregated_output'),
+    ].filter((text): text is string => Boolean(text));
+}
+
 /**
  * Extract click coordinates from screenshot using vision AI.
  * @param {string} screenshotPath - Path to screenshot image
@@ -21,7 +60,7 @@ export interface VisionClickOptions {
  * @param {object} opts - { provider: 'codex' }
  * @returns {Promise<{ found: boolean, x: number, y: number, description?: string, provider: string }>}
  */
-export async function extractCoordinates(screenshotPath: string, target: string, opts: Record<string, any> = {}) {
+export async function extractCoordinates(screenshotPath: string, target: string, opts: VisionClickOptions = {}): Promise<VisionCoordinates> {
     const provider = opts.provider || 'codex';
     switch (provider) {
         case 'codex': return codexVision(screenshotPath, target);
@@ -33,7 +72,7 @@ export async function extractCoordinates(screenshotPath: string, target: string,
  * Codex CLI vision provider.
  * Spawns `codex exec -i <image> --json` and parses NDJSON response.
  */
-function codexVision(screenshotPath: string, target: string) {
+function codexVision(screenshotPath: string, target: string): Promise<VisionCoordinates> {
     const prompt = [
         `Look at this screenshot image carefully.`,
         `Find the UI element "${target}" and return its center pixel coordinate.`,
@@ -73,21 +112,15 @@ function codexVision(screenshotPath: string, target: string) {
                 // Codex is agentic — JSON may appear in any event type
                 for (const line of lines.reverse()) { // Reverse: last message most likely has the answer
                     try {
-                        const event = JSON.parse(line);
-                        const textsToSearch = [];
-
-                        // Collect text from all event types
-                        if (event.item?.text) textsToSearch.push(event.item.text);
-                        if (event.item?.aggregated_output) textsToSearch.push(event.item.aggregated_output);
+                        const event: unknown = JSON.parse(line);
+                        const textsToSearch = collectEventTexts(event);
 
                         for (const text of textsToSearch) {
                             // Try to extract {"found":...,"x":...,"y":...} from text
                             const jsonMatch = text.match(/\{[^{}]*"found"\s*:\s*(true|false)[^{}]*"x"\s*:\s*\d+[^{}]*"y"\s*:\s*\d+[^{}]*\}/);
                             if (jsonMatch) {
-                                const coords = JSON.parse(jsonMatch[0]);
-                                if (typeof coords.x === 'number' && typeof coords.y === 'number') {
-                                    return resolve({ ...coords, provider: 'codex' });
-                                }
+                                const coords = parseVisionCoordinates(JSON.parse(jsonMatch[0]));
+                                if (coords) return resolve(coords);
                             }
                         }
                     } catch { /* skip non-JSON lines */ }
@@ -130,12 +163,12 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     const viewportProbe = await screenshot(port, { json: true });
     const clip = opts.clip || resolveRegionClip(opts.region, viewportProbe.viewport);
     const ss = clip ? await screenshot(port, { clip, json: true }) : viewportProbe;
-    const dpr = ss.dpr || 1;
+    const dpr = typeof ss.dpr === 'number' && Number.isFinite(ss.dpr) ? ss.dpr : 1;
 
     // 2. Vision → coordinates (image pixel space)
     const result = await extractCoordinates(ss.path, target, {
         provider: opts.provider || 'codex',
-    }) as Record<string, any>;
+    });
 
     if (!result.found) {
         return { success: false, reason: 'target not found', provider: result.provider };
@@ -147,7 +180,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
     const css = toCssPoint({ x: result.x, y: result.y }, dpr, clip);
 
     if (opts.verifyBeforeClick) {
-        const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' }) as Record<string, any>;
+        const verify = await extractCoordinates(ss.path, target, { provider: opts.provider || 'codex' });
         if (!verify.found) return { success: false, reason: 'verification failed', provider: result.provider };
     }
 
