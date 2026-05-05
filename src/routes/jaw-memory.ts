@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
+import { httpStatus, httpCode } from './_http-error.js';
 import { assertMemoryRelPath } from '../security/path-guards.js';
 import * as memory from '../memory/memory.js';
 import { getMemoryStatus, searchIndexedMemory, readIndexedMemorySnippet, reflectMemory, hasSoulFile, loadSoulSummary, getAdvancedMemoryDir, safeReadFile, readMeta, writeMeta, listMemoryFiles, writeText } from '../memory/runtime.js';
@@ -76,10 +77,10 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
             const file = assertMemoryRelPath(String(req.query.file || ''), { allowExt: ['.md', '.txt', '.json'] });
             const mem = getMemoryStatus();
             const content = mem.routing.searchRead === 'advanced'
-                ? readIndexedMemorySnippet(normalizeAdvancedReadPath(file), { lines: req.query.lines as any })
-                : memory.read(file, { lines: req.query.lines as any });
+                ? readIndexedMemorySnippet(normalizeAdvancedReadPath(file), { lines: req.query.lines as string | undefined })
+                : memory.read(file, { lines: req.query.lines as string | undefined });
             res.json({ content });
-        } catch (e: unknown) { res.status((e as any).statusCode || 500).json({ error: (e as Error).message }); }
+        } catch (e: unknown) { res.status(httpStatus(e, 500)).json({ error: (e as Error).message }); }
     });
 
     app.post('/api/jaw-memory/save', requireAuth, (req, res) => {
@@ -92,7 +93,7 @@ export function registerJawMemoryRoutes(app: Express, requireAuth: AuthMiddlewar
             const payload = buildMemorySyncPayload('save');
             broadcastMemorySync('save');
             res.json({ ok: true, path: p, ...payload });
-        } catch (e: unknown) { res.status((e as any).statusCode || 500).json({ error: (e as Error).message }); }
+        } catch (e: unknown) { res.status(httpStatus(e, 500)).json({ error: (e as Error).message }); }
     });
 
     app.get('/api/jaw-memory/list', (_, res) => {

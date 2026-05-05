@@ -14,7 +14,7 @@ import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
 import { verifyBossToken } from '../core/boss-auth.js';
 import { resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
-import type { EmployeeRow } from '../core/employees.js';
+import type { EmployeeRow, SyntheticEmployeeRow } from '../core/employees.js';
 import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
 
 function getRuntimeSnapshot() {
@@ -183,7 +183,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const emps = getEmployees.all() as EmployeeRow[];
         // Try DB first (preserves existing id-based matching), then fall
         // through to static employees for entries like Control.
-        let emp = findEmployee(emps, { agent: agentName });
+        let emp = findEmployee(emps, { agent: agentName }) as EmployeeRow | SyntheticEmployeeRow | null;
         let staticSpec: ReturnType<typeof resolveDispatchableEmployee> = null;
         if (!emp) {
             staticSpec = resolveDispatchableEmployee(agentName, emps);
@@ -228,7 +228,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         } : undefined;
         let slot;
         try {
-            slot = claimWorker(emp as { id: string; name?: string }, task, replayMeta);
+            slot = claimWorker(emp, task, replayMeta);
         } catch (err) {
             if (err instanceof WorkerBusyError) {
                 return res.status(409).json({
@@ -325,9 +325,10 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             // Only clear replay flag after response is actually flushed to client.
             res.on('finish', () => markWorkerReplayed(slot.agentId));
             res.json({ ok: true, result, orchestration });
-        } catch (err: any) {
-            failWorker(slot.agentId, err.message);
-            if (!res.writableEnded) res.status(500).json({ ok: false, error: err.message });
+        } catch (err: unknown) {
+            const msg = (err as Error)?.message || String(err);
+            failWorker(slot.agentId, msg);
+            if (!res.writableEnded) res.status(500).json({ ok: false, error: msg });
         }
     });
 

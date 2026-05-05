@@ -1,4 +1,6 @@
 // ─── Browser API Routes (Phase 7) ─────────────────────
+import type { WebAiVendor, WebAiNotificationStatus } from '../browser/web-ai/types.js';
+import type { WebAiVendorScope, CapabilityFamily, FrontendObservationStatus } from '../browser/web-ai/capability-registry.js';
 import type { Express, Request, Response, NextFunction } from 'express';
 import * as browser from '../browser/index.js';
 import { cleanupPoolTabs } from '../browser/web-ai/tab-pool.js';
@@ -353,8 +355,8 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
                 vendor: String(req.query.vendor || 'chatgpt'),
                 status: 'ready',
                 notifications: browser.webAi.listNotifications({
-                    ...(req.query.vendor ? { vendor: String(req.query.vendor) as any } : {}),
-                    ...(req.query.status ? { status: String(req.query.status) as any } : {}),
+                    ...(req.query.vendor ? { vendor: String(req.query.vendor) as WebAiVendor } : {}),
+                    ...(req.query.status ? { status: String(req.query.status) as WebAiNotificationStatus } : {}),
                     ...(req.query.session ? { sessionId: String(req.query.session) } : {}),
                 }),
                 warnings: [],
@@ -369,9 +371,9 @@ export function registerBrowserRoutes(app: Express, requireAuth: (req: Request, 
                 vendor: String(req.query.vendor || 'chatgpt'),
                 status: 'ready',
                 capabilities: browser.webAi.listCapabilitySchemas({
-                    ...(req.query.vendor ? { vendor: String(req.query.vendor) as any } : {}),
-                    ...(req.query.family ? { family: String(req.query.family) as any } : {}),
-                    ...(req.query.frontendStatus ? { frontendStatus: String(req.query.frontendStatus) as any } : {}),
+                    ...(req.query.vendor ? { vendor: String(req.query.vendor) as WebAiVendorScope } : {}),
+                    ...(req.query.family ? { family: String(req.query.family) as CapabilityFamily } : {}),
+                    ...(req.query.frontendStatus ? { frontendStatus: String(req.query.frontendStatus) as FrontendObservationStatus } : {}),
                 }),
                 warnings: [],
             });

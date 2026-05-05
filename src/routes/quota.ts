@@ -179,7 +179,10 @@ export function readCodexTokens() {
 let _claudeUsageCache: { data: Record<string, unknown>; ts: number } | null = null;
 const CLAUDE_CACHE_TTL = 5 * 60 * 1000; // 5 min
 
-export async function fetchClaudeUsage(creds: any) {
+interface ClaudeCredsLike { quotaCapable?: boolean; account?: unknown; source?: string; token?: string }
+interface CodexTokensLike { access_token?: string; account_id?: string }
+
+export async function fetchClaudeUsage(creds: ClaudeCredsLike | null | undefined) {
     if (!creds) return null;
     if (creds.quotaCapable === false) {
         return { authenticated: true, account: creds.account, windows: [], source: creds.source };
@@ -204,12 +207,13 @@ export async function fetchClaudeUsage(creds: any) {
             }
             return { error: true };
         }
-        const data = await resp.json() as Record<string, any>;
+        const data = await resp.json() as Record<string, { utilization?: number; resets_at?: string | null } | undefined>;
         const windows = [];
         const labelMap = { five_hour: '5-hour', seven_day: '7-day', seven_day_sonnet: '7-day Sonnet', seven_day_opus: '7-day Opus' };
         for (const [key, label] of Object.entries(labelMap)) {
-            if (data[key]?.utilization != null) {
-                windows.push({ label, percent: Math.round(data[key].utilization), resetsAt: data[key].resets_at ?? null });
+            const w = data[key];
+            if (w?.utilization != null) {
+                windows.push({ label, percent: Math.round(w.utilization), resetsAt: w.resets_at ?? null });
             }
         }
         const result = { account: creds.account, windows, raw: data };
@@ -218,7 +222,7 @@ export async function fetchClaudeUsage(creds: any) {
     } catch { return { error: true }; }
 }
 
-export async function fetchCodexUsage(tokens: any) {
+export async function fetchCodexUsage(tokens: CodexTokensLike | null | undefined) {
     if (!tokens) return null;
     try {
         const resp = await fetch('https://chatgpt.com/backend-api/wham/usage', {

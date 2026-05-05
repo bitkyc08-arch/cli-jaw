@@ -15,7 +15,7 @@
 
 | dir | any | debt | allow |
 |-----|----:|-----:|------:|
-| src | 554 | 0 | 0 |
+| src | 524 | 0 | 0 |
 | bin | 124 | 0 | 0 |
 | lib | 42 | 0 | 0 |
 | public/manager/src | 0 | 0 | 0 |

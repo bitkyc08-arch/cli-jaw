@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
+import { httpStatus, httpCode } from './_http-error.js';
 import fs from 'fs';
 import { join } from 'path';
 import { ok, fail } from '../http/response.js';
@@ -133,7 +134,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
             if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
             res.json({ name, content: fs.readFileSync(fp, 'utf8') });
         } catch (e: unknown) {
-            res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
+            res.status(httpStatus(e, 400)).json({ error: (e as Error).message });
         }
     });
 
@@ -144,7 +145,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
             if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
             res.json({ name, content: fs.readFileSync(fp, 'utf8') });
         } catch (e: unknown) {
-            res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
+            res.status(httpStatus(e, 400)).json({ error: (e as Error).message });
         }
     });
 
@@ -155,7 +156,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
             if (fs.existsSync(fp)) fs.unlinkSync(fp);
             res.json({ ok: true });
         } catch (e: unknown) {
-            res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
+            res.status(httpStatus(e, 400)).json({ error: (e as Error).message });
         }
     });
 
@@ -166,7 +167,7 @@ export function registerMemoryRoutes(app: Express, requireAuth: AuthMiddleware):
             if (fs.existsSync(fp)) fs.unlinkSync(fp);
             res.json({ ok: true });
         } catch (e: unknown) {
-            res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
+            res.status(httpStatus(e, 400)).json({ error: (e as Error).message });
         }
     });
 

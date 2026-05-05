@@ -1,5 +1,6 @@
 import type { Express } from 'express';
 import type { AuthMiddleware } from './types.js';
+import { httpStatus, httpCode } from './_http-error.js';
 import fs from 'fs';
 import os from 'os';
 import { execFileSync } from 'node:child_process';
@@ -80,7 +81,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             const filePath = saveUpload(req.body, filename);
             res.json({ path: filePath, filename: basename(filePath) });
         } catch (e: unknown) {
-            res.status((e as any).statusCode || 400).json({ error: (e as Error).message });
+            res.status(httpStatus(e, 400)).json({ error: (e as Error).message });
         }
     });
 
@@ -192,8 +193,8 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             return res.json({ ok: true, chat_id: chatId, type, attempts: result.attempts });
         } catch (e: unknown) {
             console.error('[telegram:send]', e);
-            const statusCode = (e as any).statusCode || 500;
-            return res.status(statusCode).json({ error: (e as Error).message, code: (e as any).code });
+            const statusCode = httpStatus(e, 500);
+            return res.status(statusCode).json({ error: (e as Error).message, code: httpCode(e) });
         }
     });
 

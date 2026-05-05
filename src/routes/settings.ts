@@ -19,7 +19,7 @@ import { migrateLegacyClaudeValue } from '../cli/claude-models.js';
 export function registerSettingsRoutes(
     app: Express,
     requireAuth: AuthMiddleware,
-    applySettings: (patch: Record<string, any>) => Promise<any>,
+    applySettings: (patch: Record<string, unknown>) => Promise<unknown>,
     projectRoot: string,
 ): void {
     app.get('/api/settings', (_, res) => {
@@ -33,11 +33,11 @@ export function registerSettingsRoutes(
     });
 
     app.put('/api/settings', requireAuth, asyncHandler(async (req, res) => {
-        const result = await applySettings(req.body);
-        const safe = { ...result };
+        const result = await applySettings(req.body) as { stt?: Record<string, unknown> };
+        const safe: { stt?: Record<string, unknown> } = { ...result };
         if (safe.stt) {
-            const gKey2 = safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '';
-            const oKey2 = safe.stt.openaiApiKey || '';
+            const gKey2 = String(safe.stt.geminiApiKey || process.env.GEMINI_API_KEY || '');
+            const oKey2 = String(safe.stt.openaiApiKey || '');
             safe.stt = { ...safe.stt, geminiApiKey: undefined, geminiKeySet: !!gKey2, geminiKeyLast4: gKey2.slice(-4) || '', openaiApiKey: undefined, openaiKeySet: !!oKey2, openaiKeyLast4: oKey2.slice(-4) || '' };
         }
         ok(res, safe);
@@ -168,7 +168,7 @@ export function registerSettingsRoutes(
             fetchCopilotQuota(),
         ]);
 
-        const classify = (result: any, hasCreds: boolean) =>
+        const classify = (result: unknown, hasCreds: boolean) =>
             result ?? (hasCreds ? { error: true } : { authenticated: false });
 
         res.json({
