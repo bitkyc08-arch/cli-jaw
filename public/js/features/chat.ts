@@ -12,6 +12,7 @@ import { ICONS } from '../icons.js';
 import { clearUnreadResponses } from './attention-badge.js';
 import { syncOrchestrateSnapshot } from '../ws.js';
 import { waitForSettingsSaveIdle } from './settings-core.js';
+import { isChatNearBottom, markFollowingBottom, reconcileChatBottomAfterLayout } from './chat-scroll.js';
 
 let activeObjectURLs: string[] = [];
 
@@ -182,14 +183,17 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
                 // user-facing no-pending response through orchestrate_done.
                 addMessage('user', text);
                 upsertMessage({ role: 'user', content: text, timestamp: Date.now() });
+                reconcileChatBottomAfterLayout(true);
             } else if (data.continued) {
                 addMessage('user', text);
                 upsertMessage({ role: 'user', content: text, timestamp: Date.now() });
                 addSystemMsg(t('chat.continue'));
+                reconcileChatBottomAfterLayout(true);
             } else {
                 // started: backend already inserted the row; render now.
                 addMessage('user', text);
                 upsertMessage({ role: 'user', content: text, timestamp: Date.now() });
+                reconcileChatBottomAfterLayout(true);
             }
         }
     } finally {
@@ -283,10 +287,15 @@ export async function clearChat(): Promise<void> {
 let resizeRaf = 0;
 function autoResize(el: HTMLTextAreaElement): void {
     if (resizeRaf) return;
+    const shouldFollowBottom = isChatNearBottom();
     resizeRaf = requestAnimationFrame(() => {
         resizeRaf = 0;
         el.style.height = 'auto';
         el.style.height = el.scrollHeight + 'px';
+        if (shouldFollowBottom) {
+            const c = document.getElementById('chatMessages');
+            if (c) { c.scrollTop = c.scrollHeight; markFollowingBottom(); }
+        }
     });
 }
 
@@ -297,7 +306,12 @@ export function initAutoResize(): void {
 
 export function resetInputHeight(): void {
     const el = document.getElementById('chatInput') as HTMLTextAreaElement | null;
+    const shouldFollowBottom = isChatNearBottom();
     if (el) el.style.height = 'auto';
+    if (shouldFollowBottom) {
+        const c = document.getElementById('chatMessages');
+        if (c) { c.scrollTop = c.scrollHeight; markFollowingBottom(); }
+    }
 }
 
 export function initDragDrop(): void {
