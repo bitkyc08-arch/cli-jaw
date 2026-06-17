@@ -471,6 +471,7 @@ test('SAF-004i: install risk gate covers fresh-machine installer regressions', (
     const gateSrc = fs.readFileSync(join(__dirname, '../../scripts/install-risk-gate.mjs'), 'utf8');
     assert.equal(packageJson.scripts?.['test:install-risk'], 'node scripts/install-risk-gate.mjs');
     assert.ok(gateSrc.includes('tests/unit/install-sh-exec.test.ts'), 'gate should run executable macOS installer harness');
+    assert.ok(gateSrc.includes('tests/unit/install-path-contract.test.ts'), 'gate should run install path contract tests');
     assert.ok(gateSrc.includes('tests/unit/fresh-evidence-audit.test.ts'), 'gate should run the evidence auditor fixture tests');
     assert.ok(gateSrc.includes('tests/unit/wsl-installer-exec.test.ts'), 'gate should run WSL installer harness');
     assert.ok(gateSrc.includes('scripts/verify-fresh-install.sh'), 'gate should syntax-check macOS/Linux fresh verifier');
@@ -481,6 +482,9 @@ test('SAF-004i: install risk gate covers fresh-machine installer regressions', (
     assert.equal(gateSrc.includes('scripts/verify-fresh-install.ps1'), false, 'gate must not require a native PowerShell fresh-install verifier');
     assert.ok(gateSrc.includes("npm, ['pack', '--dry-run', '--json']"), 'gate should verify npm package contents');
     assert.ok(gateSrc.includes('scripts/postinstall-guard.cjs'), 'gate should ensure postinstall guard is packed');
+    assert.ok(gateSrc.includes('scripts/check-cli-bin-links.cjs'), 'gate should syntax-check the CLI bin link verifier');
+    assert.ok(gateSrc.includes('check:electron-sidecar-jwc'), 'gate should run the staged Electron JWC checker when sidecar artifacts exist');
+    assert.ok(gateSrc.includes('check:app-icons'), 'gate should run packaged app icon asset checks');
     assert.ok(gateSrc.includes('scripts/require-release-evidence.mjs'), 'gate should ensure publish-time release evidence guard is packed');
     assert.ok(gateSrc.includes("'public/public/'"), 'gate should reject nested Vite publicDir artifacts');
     assert.ok(gateSrc.includes("'public/dist/dist/'"), 'gate should reject nested frontend build output');
@@ -496,11 +500,22 @@ test('SAF-004j: packaged fresh-install verifiers check new-shell readiness', () 
     assert.ok(shellVerifier.includes('should_check_zsh'), 'fresh verifier should only enforce zsh when it is a supported shell surface');
     assert.ok(shellVerifier.includes('zsh -ic'), 'macOS verifier should check interactive zsh resolution');
     assert.ok(shellVerifier.includes('zsh -lc'), 'macOS verifier should check login zsh resolution');
+    assert.ok(shellVerifier.includes('run_version cli-jaw'), 'fresh verifier should check the cli-jaw alias directly');
+    assert.ok(shellVerifier.includes('command -v cli-jaw'), 'new-shell probes should resolve cli-jaw as well as jaw');
+    assert.ok(shellVerifier.includes('not executable'), 'fresh verifier should diagnose non-executable bin targets explicitly');
     assert.ok(shellVerifier.includes('jaw doctor'), 'macOS verifier should run jaw doctor');
     assert.ok(shellVerifier.includes('--skip-doctor'), 'macOS verifier should support CI smoke without doctor');
     assert.ok(readmeSrc.includes('verify-fresh-install.sh'), 'README should document macOS/WSL verifier');
     assert.ok(readmeSrc.includes('source "${ZDOTDIR:-$HOME}/.zshrc"'), 'README should refresh zsh/nvm PATH before running npm-root verifier after curl|bash');
     assert.ok(localizedReadmeSrc.includes('source "${ZDOTDIR:-$HOME}/.zshrc"'), 'localized READMEs should refresh zsh/nvm PATH before verifier');
+});
+
+test('SAF-004j1: postinstall guard repairs package bin permissions before safe-mode exit', () => {
+    const guardSrc = fs.readFileSync(join(__dirname, '../../scripts/postinstall-guard.cjs'), 'utf8');
+    assert.ok(guardSrc.includes('function ensurePackageBinExecutable'), 'postinstall guard should define package-bin repair helper');
+    assert.ok(guardSrc.includes("path.join(rootDir, 'dist', 'bin', 'cli-jaw.js')"), 'postinstall guard should repair dist/bin/cli-jaw.js');
+    assert.ok(guardSrc.indexOf('ensurePackageBinExecutable(root);') < guardSrc.indexOf('if (safeMode)'), 'package-bin repair should run before safe-mode early exit');
+    assert.ok(guardSrc.indexOf('const root =') < guardSrc.indexOf('if (safeMode)'), 'root should be available before safe-mode branch');
 });
 
 test('SAF-004j2: fresh-machine evidence collector documents supported release evidence only', () => {

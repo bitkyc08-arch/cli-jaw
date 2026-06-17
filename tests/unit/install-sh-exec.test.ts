@@ -125,17 +125,14 @@ exit 0
 });
 
 test('macOS installer scans PATH for a runnable jaw when an earlier shim is broken', () => {
-    const originalPath = process.env.PATH;
-    const result = runInstallerSnippet('get_installed_jaw_binary', (home) => {
+    const result = runInstallerSnippet('export PATH="$HOME/broken:$HOME/working:$PATH"\nget_installed_jaw_binary', (home) => {
         const broken = join(home, 'broken');
         const working = join(home, 'working');
         mkdirSync(broken, { recursive: true });
         mkdirSync(working, { recursive: true });
         writeExecutable(join(broken, 'jaw'), '#!/usr/bin/env bash\nexit 7\n');
         writeExecutable(join(working, 'jaw'), '#!/usr/bin/env bash\nif [ "$1" = "--version" ]; then echo "cli-jaw 9.9.9"; exit 0; fi\n');
-        process.env.PATH = `${broken}:${working}:${process.env.PATH || ''}`;
     });
-    process.env.PATH = originalPath;
     assert.equal(result.status, 0, result.output);
     assert.match(result.output, /working\/jaw/);
     rmSync(result.home, { recursive: true, force: true });
