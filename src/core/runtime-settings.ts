@@ -11,6 +11,42 @@ import { regenerateB } from '../prompt/builder.js';
 import { restartMessagingRuntime, initActiveMessagingRuntime } from '../messaging/runtime.js';
 import { beginRuntimeSettingsMutation } from './runtime-settings-gate.js';
 import { resolveAiEProvider } from '../agent/args.js';
+import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { homedir } from 'node:os';
+
+function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
+    try {
+        const cli = currentSettings["cli"];
+        if (cli !== 'jwc') return;
+        const ao = currentSettings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
+        const pc = currentSettings["perCli"]?.['jwc'] as Record<string, string> | undefined;
+        const model = ao?.['model'] || pc?.['model'] || 'claude-sonnet-4-6';
+        const provider = ao?.['provider'] || pc?.['provider'] || 'anthropic';
+        const modelRole = provider !== 'anthropic' ? `${provider}/${model}` : `${provider}/${model}`;
+        const agentDir = process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent');
+        const configPath = join(agentDir, 'config.yml');
+        let content: string;
+        try {
+            content = readFileSync(configPath, 'utf8');
+        } catch {
+            mkdirSync(agentDir, { recursive: true });
+            content = '';
+        }
+        const defaultLine = `  default: ${modelRole}`;
+        if (content.includes('modelRoles:')) {
+            content = content.replace(
+                /modelRoles:\s*\n\s*default:\s*.+/,
+                `modelRoles:\n${defaultLine}`,
+            );
+        } else {
+            content = `modelRoles:\n${defaultLine}\n${content}`;
+        }
+        writeFileSync(configPath, content, 'utf8');
+    } catch (e: unknown) {
+        console.error('[jaw:jwc-config]', (e as Error).message);
+    }
+}
 
 type ApplyRuntimeSettingsOptions = {
     resetFallbackState?: () => void;
@@ -138,6 +174,8 @@ export async function applyRuntimeSettingsPatch(
         } else {
             syncMainSessionToSettings(prevCli);
         }
+
+        syncJwcConfigDefault(settings);
 
         if (settings["workingDir"] !== prevWorkingDir) {
             try {
