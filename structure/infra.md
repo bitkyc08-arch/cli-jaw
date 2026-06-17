@@ -58,12 +58,13 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `audit:fresh-install-evidence` | `node scripts/audit-fresh-install-evidence.mjs` |
 | `verify:release-evidence` | `node scripts/verify-release-evidence.mjs` |
 | `test:fresh-install` | `tsx scripts/fresh-install-smoke.ts` |
+| `check:cli-bin-links` | `node scripts/check-cli-bin-links.cjs` |
 | `test:claude-exec` | `cargo test --manifest-path native/jaw-claude-i/Cargo.toml` |
 | `test:claude-e` | compatibility alias for `test:claude-exec` |
-| `build` | `bash scripts/atomic-build.sh` |
+| `build` | `bash scripts/atomic-build.sh` — staged `dist/bin/cli-jaw.js` 실행권한을 보장한 뒤 atomic swap |
 | `build:claude-exec` | `cargo build --release --manifest-path native/jaw-claude-i/Cargo.toml` |
 | `build:claude-e` | compatibility alias for `build:claude-exec` |
-| `postbuild` | `node scripts/link-current-nvm-bin.cjs` |
+| `postbuild` | `node scripts/link-current-nvm-bin.cjs` — non-NVM Node에서는 링크를 skip하되 `dist/bin/cli-jaw.js` chmod repair는 먼저 수행 |
 | `build:frontend` | `vite build --config vite.config.ts` |
 | `qa:manager-frontend` | `npm run build:frontend && npm run typecheck:frontend` |
 | `dev:frontend` | `vite --config vite.config.ts` |
@@ -142,7 +143,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `bundle-sidecar.sh`, `check-app-icon-assets.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-jwc.cjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `collect-fresh-install-evidence.sh`, `audit-fresh-install-evidence.mjs`, `verify-release-evidence.mjs`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-wsl.sh`, `install.sh`, `link-current-nvm-bin.cjs`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-gates.mjs`, `release-preview.sh`, `release.sh`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`.
+`atomic-build.sh`, `bundle-sidecar.sh`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-jwc.cjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `collect-fresh-install-evidence.sh`, `audit-fresh-install-evidence.mjs`, `verify-release-evidence.mjs`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-wsl.sh`, `install.sh`, `link-current-nvm-bin.cjs`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-gates.mjs`, `release-preview.sh`, `release.sh`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`.
 
 ---
 

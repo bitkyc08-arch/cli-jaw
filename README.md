@@ -610,6 +610,7 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Internal struct
 | Problem | Solution |
 |---|---|
 | `cli-jaw: command not found` | `npm install -g cli-jaw` again. macOS/Linux/WSL: check `~/.local/bin` or `npm prefix -g` + `/bin` is in `$PATH`. From Windows PowerShell, invoke WSL through a login shell: `wsl.exe -d Ubuntu -- bash -lc "jaw dashboard"`. |
+| `cli-jaw: permission denied` | The global shim can see CLI-JAW, but its `dist/bin/cli-jaw.js` target is not executable. Re-run `npm install -g cli-jaw` or, in a checkout, run `npm run build && npm run check:cli-bin-links`. |
 | `Error: node version` | Upgrade to Node.js 22.4+: `nvm install 22` |
 | `NODE_MODULE_VERSION` mismatch | `npm run ensure:native` (auto-rebuilds native modules) |
 | `EADDRINUSE: port 3457` | Another instance running. Use `--port 3458` or stop it first |
