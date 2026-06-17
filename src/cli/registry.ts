@@ -144,7 +144,7 @@ export const CLI_REGISTRY = {
         models: ['grok-build', 'grok-composer-2.5-fast'],
     },
     jwc: {
-        label: 'jwc',
+        label: 'JWC',
         // In-process / resident ACP engine — no external binary spawned in the
         // main-managed path (see JawRuntime). `binary` is used only by the dev
         // fallback that shells out to `jwc --mode acp`.

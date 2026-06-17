@@ -25,7 +25,7 @@ export type ActiveOverride = {
     effort?: string;
 };
 
-export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
+export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'jwc', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
 
 export const CLI_META: Record<string, CliMeta> = {
     agy: {
@@ -102,6 +102,11 @@ export const CLI_META: Record<string, CliMeta> = {
         ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
+    jwc: {
+        label: 'JWC',
+        models: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+        efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
+    },
     codex: {
         label: 'Codex',
         models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
@@ -177,6 +182,12 @@ export const CLI_META: Record<string, CliMeta> = {
 
 export function metaFor(cli: string): CliMeta {
     return CLI_META[cli] || { label: cli, models: [], efforts: [] };
+}
+
+export function orderRuntimeCliOptions(cliOptions: ReadonlyArray<string>): string[] {
+    const primary = PRIMARY_CLIS.filter((value) => cliOptions.includes(value));
+    const secondary = cliOptions.filter((value) => !PRIMARY_CLIS.includes(value));
+    return [...primary, ...secondary];
 }
 
 export function runtimeModelFor(

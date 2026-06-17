@@ -7,13 +7,19 @@
 
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
+import { CLI_REGISTRY } from '../../src/cli/registry.ts';
 import { createDirtyStore } from '../../public/manager/src/settings/dirty-store';
 import { expandPatch } from '../../public/manager/src/settings/pages/path-utils';
 import { buildResetOverridesPatch, orderModelCliKeys } from '../../public/manager/src/settings/pages/ModelProvider';
-import { metaFor, PRIMARY_CLIS, runtimeModelFor } from '../../public/manager/src/settings/pages/components/agent/agent-meta';
+import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS, runtimeModelFor } from '../../public/manager/src/settings/pages/components/agent/agent-meta';
 import { piModelOptions } from '../../public/manager/src/settings/pages/components/pi-profile';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 // ─── ChipListField / fallback order ──────────────────────────────────
 
@@ -126,6 +132,24 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     assert.equal(metaFor('kiro-code').label, 'Kiro');
     assert.equal(metaFor('kiro-code').models.includes('auto'), true);
     assert.equal(PRIMARY_CLIS.includes('kiro-code'), true);
+    const jwcMeta = metaFor('jwc');
+    assert.equal(PRIMARY_CLIS.includes('jwc'), true);
+    assert.equal(jwcMeta.label, 'JWC');
+    assert.deepEqual(jwcMeta.models, CLI_REGISTRY.jwc.models);
+    assert.deepEqual(jwcMeta.efforts, CLI_REGISTRY.jwc.efforts);
+    assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('jwc'), true);
+    assert.equal(PRIMARY_CLIS.indexOf('jwc') < PRIMARY_CLIS.indexOf('agy'), true);
+    assert.deepEqual(
+        orderRuntimeCliOptions(['gemini', 'jwc', 'claude-e', 'agy', 'custom-cli']),
+        ['claude-e', 'jwc', 'agy', 'gemini', 'custom-cli'],
+    );
+    const runtimeHeaderSource = readFileSync(
+        join(__dirname, '../../public/manager/src/settings/pages/components/agent/RuntimeHeader.tsx'),
+        'utf8',
+    );
+    assert.ok(runtimeHeaderSource.includes('orderRuntimeCliOptions(cliOptions)'));
+    assert.ok(runtimeHeaderSource.includes('orderedCliOptions.map'));
+    assert.ok(runtimeHeaderSource.includes('collapsedAfter={orderedPrimaryCliCount}'));
     assert.equal(metaFor('pi').label, 'Pi');
     assert.equal(PRIMARY_CLIS[0], 'pi');
 });

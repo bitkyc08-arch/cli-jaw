@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
     CLI_REGISTRY,
@@ -16,8 +16,8 @@ const __dirname = dirname(__filename);
 
 // ─── Structure validation ────────────────────────────
 
-test('CLI_KEYS contains exactly 13 known entries', () => {
-    assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'gemini', 'grok', 'kiro-code', 'opencode', 'pi']);
+test('CLI_KEYS contains exactly 14 known entries', () => {
+    assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'gemini', 'grok', 'jwc', 'kiro-code', 'opencode', 'pi']);
 });
 
 test('DEFAULT_CLI is claude', () => {
@@ -51,6 +51,34 @@ test('every CLI defaultModel is included in its models list', () => {
 test('registry defaults for gemini and opencode are updated', () => {
     assert.equal(CLI_REGISTRY.gemini.defaultModel, 'gemini-3-flash-preview');
     assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode-go/kimi-k2.6');
+});
+
+test('JWC registry exposes package-backed runtime metadata', () => {
+    assert.equal(CLI_REGISTRY.jwc.label, 'JWC');
+    assert.equal(CLI_REGISTRY.jwc.binary, 'jwc');
+    assert.equal(CLI_REGISTRY.jwc.experimental, true);
+    assert.equal(CLI_REGISTRY.jwc.defaultModel, 'claude-fable-5');
+    assert.equal(CLI_REGISTRY.jwc.defaultEffort, 'high');
+    assert.ok(CLI_REGISTRY.jwc.models.includes('claude-fable-5'));
+    assert.ok(CLI_REGISTRY.jwc.efforts.includes('high'));
+});
+
+test('live CLI registry preserves JWC runtime metadata', async () => {
+    const kiroModelsPath = resolve(__dirname, '../../src/agent/kiro-models.js');
+    mock.module(kiroModelsPath, {
+        namedExports: {
+            fetchKiroModelInventory: async () => null,
+        },
+    });
+
+    const { buildLiveCliRegistry } = await import('../../src/cli/registry-live.ts');
+    const registry = await buildLiveCliRegistry();
+
+    assert.equal(registry.jwc.label, 'JWC');
+    assert.equal(registry.jwc.binary, 'jwc');
+    assert.equal(registry.jwc.experimental, true);
+    assert.equal(registry.jwc.defaultModel, 'claude-fable-5');
+    assert.equal(registry.jwc.defaultEffort, 'high');
 });
 
 test('Antigravity registry exposes AGY as a top-level runtime, not an ai-e provider', () => {
@@ -211,10 +239,16 @@ test('doctor CLI checks are driven by canonical registry keys', () => {
     assert.doesNotMatch(doctorSrc, /for \(const cli of \['claude', 'codex', 'gemini', 'opencode', 'copilot'\]\)/);
 });
 
-test('readiness default order covers every canonical CLI', () => {
+test('readiness default order covers existing non-JWC canonical CLIs and keeps JWC out for slice 270', () => {
     const readinessSrc = fs.readFileSync(join(__dirname, '../../src/cli/readiness.ts'), 'utf8');
     const order = readinessSrc.split('\n').find(line => line.includes('const DEFAULT_ORDER')) || '';
-    for (const key of CLI_KEYS) assert.match(order, new RegExp(`'${key}'`), `DEFAULT_ORDER must include ${key}`);
+    for (const key of CLI_KEYS) {
+        if (key === 'jwc') {
+            assert.doesNotMatch(order, /'jwc'/, 'jwc remains out of DEFAULT_ORDER until slice 280 explicitly switches defaults');
+            continue;
+        }
+        assert.match(order, new RegExp(`'${key}'`), `DEFAULT_ORDER must include ${key}`);
+    }
 });
 
 test('AGY readiness is installed-only and does not run a prompt', () => {

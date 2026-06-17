@@ -1,6 +1,6 @@
 import { SelectField, TextField } from '../../../fields';
 import { SettingsSection } from '../../page-shell';
-import { metaFor, PRIMARY_CLIS } from './agent-meta';
+import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS } from './agent-meta';
 
 type RuntimeHeaderProps = {
     cli: string;
@@ -37,6 +37,9 @@ export function RuntimeHeader({
     onEffortChange,
     onWorkingDirChange,
 }: RuntimeHeaderProps) {
+    const orderedCliOptions = orderRuntimeCliOptions(cliOptions);
+    const orderedPrimaryCliCount = orderedCliOptions.filter((value) => PRIMARY_CLIS.includes(value)).length;
+
     return (
         <SettingsSection
             title="Agent runtime"
@@ -47,13 +50,8 @@ export function RuntimeHeader({
                     id="agent-cli"
                     label="Active CLI"
                     value={cli}
-                    options={[
-                        ...cliOptions.filter((v) => PRIMARY_CLIS.includes(v))
-                            .map((v) => ({ value: v, label: metaFor(v).label || v })),
-                        ...cliOptions.filter((v) => !PRIMARY_CLIS.includes(v))
-                            .map((v) => ({ value: v, label: metaFor(v).label || v })),
-                    ]}
-                    collapsedAfter={cliOptions.filter((v) => PRIMARY_CLIS.includes(v)).length}
+                    options={orderedCliOptions.map((value) => ({ value, label: metaFor(value).label || value }))}
+                    collapsedAfter={orderedPrimaryCliCount}
                     onChange={onCliChange}
                 />
                 {cli === 'ai-e' && providerOptions.length > 0 ? (
