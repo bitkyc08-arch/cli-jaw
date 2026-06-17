@@ -22,6 +22,7 @@ import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-c
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { pickFolderNative } from '../core/folder-picker.js';
+import { getProjectGitSummary } from '../project-git-summary.js';
 import {
     listPiModels,
     normalizePiProfile,
@@ -160,6 +161,10 @@ export function registerSettingsRoutes(
             getSecurityAuditLog().append('settings_change', String(req.ip || 'local'), { keys: ['projectDirs'] });
         } catch { /* non-fatal */ }
         ok(res, { projectDirs: applied["projectDirs"] ?? null });
+    }));
+
+    app.get('/api/project/git-summary', requireAuth, asyncHandler(async (_req, res) => {
+        res.json(await getProjectGitSummary(settings["projectDirs"]));
     }));
 
     app.get('/api/codex-context', (_, res) => {

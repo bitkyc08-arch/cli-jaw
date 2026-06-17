@@ -49,7 +49,7 @@ public/
 | `public/js/` root | 19 | TypeScript ES modules |
 | `public/js/diagram/` | 3 | SVG/iframe diagram pipeline |
 | `public/js/render/` | 18 | markdown/KaTeX/Mermaid/SVG/file-link/post-render/structured card renderer 책임 분리 |
-| `public/js/features/` | 51 | settings 분해 + help/attention/orchestrate scope + process-step-match + preview shortcut/invalidate bridge + MCP registry + chat-search + workflow-event-adapter + media-lightbox + elicitation-state + Pi settings 포함 |
+| `public/js/features/` | 52 | settings 분해 + help/attention/orchestrate scope + process-step-match + preview shortcut/invalidate bridge + MCP registry + chat-search + workflow-event-adapter + media-lightbox + elicitation-state + Pi settings + project git header status 포함 |
 | `public/manager/src/` | 300 | React 19 manager dashboard |
 | `public/css/` | 12 | theme/layout/chat/markdown/tool UI/diagram/trace drawer/workflow cockpit/chat-search |
 | `public/locales/` | 4 | `ko.json`, `en.json`, `ja.json`, `zh.json` |
@@ -151,11 +151,12 @@ public/
 | `features/process-block-dom.ts` | 175L | ProcessBlock DOM ownership, normalization, row replacement helpers |
 | `features/process-log-adapter.ts` | — | persisted tool log to ProcessStep adapter |
 | `features/process-step-match.ts` | — | ProcessStep matching helper |
+| `features/project-git-status.ts` | 73L | legacy Web UI header의 project git summary badge. `/api/project/git-summary`를 읽어 `/ ⑂ branch *tracked ?untracked` compact label로 표시하고 narrow viewport에서는 숨김 |
 | `features/settings.ts` | — | barrel re-export |
 | `features/settings-channel.ts` | — | active channel + fallback order |
 | `features/settings-cli-status.ts` | 482L | CLI availability/quota/status, kiro-code quota, generic auth/status badge |
 | `features/settings-cli-status-render.ts` | 161L | CLI status row rendering helpers |
-| `features/settings-core.ts` | 586L | settings load/update, per-CLI model/effort, locale sync, `postPreviewInvalidate` on active CLI change |
+| `features/settings-core.ts` | 644L | settings load/update, per-CLI model/effort, locale sync, `postPreviewInvalidate` on active CLI change, projectDirs 변경 시 header git summary refresh |
 | `features/settings-discord.ts` | — | Discord settings save/load/toggles |
 | `features/settings-mcp.ts` | 561L | MCP server list/sync/install + registry browse/install (`/api/mcp/registry`) |
 | `features/settings-stt.ts` | — | STT engine/provider fields |

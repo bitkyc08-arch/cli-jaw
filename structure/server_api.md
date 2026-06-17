@@ -28,7 +28,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/chat-sessions.ts` | 30L | 3 | session list/create/switch |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
-| `src/routes/settings.ts` | 425L | 22 | settings/prompt/project pick/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
+| `src/routes/settings.ts` | 430L | 23 | settings/prompt/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 488L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
@@ -110,7 +110,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Events | `GET /api/events` |
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` |
 | Instance Lock | `GET /api/instance/lock` `POST /api/instance/lock` `DELETE /api/instance/lock` |
-| Settings/Prompt | `GET/PUT /api/settings` `POST /api/project/pick` `GET /api/codex-context` `GET/PUT /api/prompt` `GET /api/prompt-templates` `PUT /api/prompt-templates/:id` `GET/PUT /api/heartbeat-md` |
+| Settings/Prompt | `GET/PUT /api/settings` `POST /api/project/pick` `GET /api/project/git-summary` `GET /api/codex-context` `GET/PUT /api/prompt` `GET /api/prompt-templates` `PUT /api/prompt-templates/:id` `GET/PUT /api/heartbeat-md` |
 | MCP/CLI/Quota | `GET/PUT /api/mcp` `POST /api/mcp/sync` `POST /api/mcp/install` `POST /api/mcp/reset` `GET /api/mcp/registry` `GET /api/cli-registry` `GET /api/cli-status` `GET /api/quota` `POST /api/copilot/refresh` `POST /api/pi/profiles/register` `GET /api/pi/models` |
 | Runtime Context | `GET /api/runtime-context` `POST /api/runtime-context` `DELETE /api/runtime-context/:id` `DELETE /api/runtime-context` |
 | Security Audit | `GET /api/security-audit/entries` `GET /api/security-audit/verify` |
@@ -212,6 +212,13 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 degraded fallback으로 `0 -> 100% used`, `1 -> 0% used`만 표시한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
 - `cursor`는 `src/routes/quota-cursor-dashboard.ts`의 `fetchCursorUsage()`를 통해 dashboard session/usage를 읽는다.
 - `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
+
+### `/api/project/git-summary`
+
+- `GET /api/project/git-summary`는 Settings의 `projectDirs[0]`만 읽는 read-only header helper다.
+- 응답은 legacy Web UI header의 compact git status 전용이다: branch/hash, tracked modified count, untracked count.
+- project root가 없거나, home 밖 경로거나, git repository가 아니거나, git 호출이 실패하면 mutation 없이 `{ available:false, reason }` 형태로 조용히 숨길 수 있는 payload를 반환한다.
+- status count는 `git status --porcelain=v1 -z --branch` 기반이며 ignored entry는 표시하지 않는다.
 
 ### `/api/pi/*`
 

@@ -160,6 +160,42 @@
     pointer-events: none;
 }
 
+.header-git-status {
+    display: inline-flex;
+    align-items: center;
+    min-width: 0;
+    max-width: 220px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    flex-shrink: 0;
+    color: var(--text-muted, #888);
+    font-family: var(--font-mono);
+    font-size: 0.78em;
+    font-weight: 500;
+    letter-spacing: 0;
+    border-radius: 6px;
+    padding: 2px 7px;
+    border: 1px solid var(--border, #444);
+    background: rgba(128, 128, 128, 0.06);
+}
+
+.header-git-status[hidden] {
+    display: none;
+}
+
+@media (max-width: 860px) {
+    .header-git-status {
+        display: none;
+    }
+}
+
+@media (max-width: 680px) {
+    .header-project {
+        display: none;
+    }
+}
+
 .chat-messages {
     flex: 1;
     overflow-y: auto;

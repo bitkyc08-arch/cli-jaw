@@ -13,8 +13,10 @@ const htmlSrc = readFileSync(join(root, 'public/index.html'), 'utf8');
 
 test('WHP-001: header markup has the project segment next to headerCli', () => {
     assert.ok(htmlSrc.includes('id="headerProject"'), 'headerProject span must exist');
+    assert.ok(htmlSrc.includes('id="headerGitStatus"'), 'headerGitStatus span must exist');
     const headerLine = htmlSrc.split('\n').find(l => l.includes('id="headerCli"'));
     assert.ok(headerLine && headerLine.includes('id="headerProject"'), 'project segment must sit in the same header span');
+    assert.ok(headerLine && headerLine.includes('id="headerGitStatus"'), 'git segment must sit in the same header span');
 });
 
 test('WHP-002: settings_change updates the header without reloading settings', () => {
@@ -48,6 +50,8 @@ test('WHP-005: scope-affecting settings_change reloads history before snapshot',
 test('WHP-003: settings-core renders the project label on load and on change', () => {
     assert.ok(coreSrc.includes('export function refreshHeaderFromSettingsChange'), 'header refresh entry must be exported');
     assert.ok(coreSrc.includes('setHeaderProject(s.projectDirs)'), 'loadSettings must render the project label');
+    assert.ok(coreSrc.includes('loadHeaderGitStatus'), 'loadSettings must hydrate the project git header status');
+    assert.ok(coreSrc.includes('refreshHeaderGitStatusFromSettingsChange'), 'settings_change must route to git header refresh');
     assert.ok(coreSrc.includes('formatProjectLabel'), 'must use the shared label formatter');
     const fnIdx = coreSrc.indexOf('function setHeaderProject');
     const block = coreSrc.slice(fnIdx, fnIdx + 700);
@@ -64,4 +68,14 @@ test('WHP-004: header label is a keyboard-accessible picker button', () => {
     assert.ok(block.includes("setAttribute('tabindex', '0')"), 'must be focusable');
     assert.ok(block.includes("'/api/project/pick'"), 'click must call the pick endpoint');
     assert.ok(block.includes("addEventListener('keydown'"), 'Enter/Space must work');
+});
+
+test('WHP-006: git header refresh is gated by changedKeys, not projectDirs presence', () => {
+    const projectGitSrc = readFileSync(join(root, 'public/js/features/project-git-status.ts'), 'utf8');
+    const fnIdx = projectGitSrc.indexOf('export function refreshHeaderGitStatusFromSettingsChange');
+    assert.ok(fnIdx > 0, 'git status refresh entry must exist');
+    const block = projectGitSrc.slice(fnIdx, fnIdx + 500);
+    assert.ok(block.includes('changedKeys.includes'), 'git status refresh must inspect changedKeys');
+    assert.ok(block.includes("'projectDirs'"), 'projectDirs is the only settings key that triggers git status reload');
+    assert.ok(!block.includes("'projectDirs' in msg"), 'must not refresh on projectDirs payload presence alone');
 });

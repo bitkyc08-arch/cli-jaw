@@ -224,6 +224,7 @@ cli-jaw/
 │   │   └── web-ai/           ← Web AI 브라우저 자동화 (68 TS files, 12561L; ChatGPT/Gemini/Grok 멀티벤더 + resolver/source-audit/observation helpers + context-pack + tab lifecycle/pool)
 │   ├── ide/                   ← IDE 연동 (jaw chat TUI 전용)
 │   │   └── diff.ts            ← git diff 감지 + IDE diff 뷰 + 서브모듈 재귀 + fingerprint 비교 (238L)
+│   ├── project-git-summary.ts ← Web UI header용 read-only primary project git summary helper (`projectDirs[0]`, branch/hash, modified/untracked counts, home path guard, 115L) ✨
 │   ├── routes/               ← Express 라우트 추출 (32 TS files: registrar + helper modules + extracted base-route modules, 195 route handlers incl. `/`)
 │   │   ├── _http-error.ts    ← route-level HTTP error helper (16L)
 │   │   ├── types.ts          ← `AuthMiddleware` shared type (3L)
@@ -235,7 +236,7 @@ cli-jaw/
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
 │   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/worker result/state PUT 라우트 (841L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
-│   │   ├── settings.ts       ← settings/prompt/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (425L)
+│   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (430L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (259L)
 │   │   ├── avatar.ts         ← Agent/User 아바타 이미지 업로드/서빙/삭제 + settings.json 메타 저장 + safeResolveUnder 경로 보호 (146L)
 │   │   ├── quota.ts          ← Copilot/Claude/Codex/Gemini/OpenCode quota helper readers + Claude 429 cache (528L)
@@ -325,12 +326,12 @@ cli-jaw/
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
 ├── public/                   ← Web UI (Vite 8 + ES Modules, 446 files source/assets, ~74087L; generated `public/dist` and `public/public/dist` excluded)
-│   ├── index.html            ← 뼈대 (1136L)
+│   ├── index.html            ← 뼈대 + header project/git status anchor (1137L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
 │   ├── css/                  ← 12 files (variables/layout/markdown/chat/diagram/orc-state/sidebar/modals/tool-ui/trace-drawer/workflow-cockpit/chat-search)
 │   ├── locales/              ← i18n (ko/en/ja/zh .json)
-│   └── js/                   ← 86 .ts files (root 19 + features/ 50 + diagram/ 3 + render/ 14, 전 파일 TypeScript)
+│   └── js/                   ← 87 .ts files (root 19 + features/ 51 + diagram/ 3 + render/ 14, 전 파일 TypeScript; `features/project-git-status.ts` 73L)
 ├── electron/                 ← Electron tray background app (27 TS/TSX files, 3096L) ✨
 │   ├── package.json / electron-builder.yml / electron.vite.config.ts
 │   └── src/

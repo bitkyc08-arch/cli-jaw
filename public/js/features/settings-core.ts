@@ -14,6 +14,7 @@ import { loadMcpServers } from './settings-mcp.js';
 import { providerIcon, providerLabel } from '../provider-icons.js';
 import { postPreviewInvalidate } from '../preview-parent-origin.js';
 import { formatProjectLabel } from './project-label.js';
+import { loadHeaderGitStatus, refreshHeaderGitStatusFromSettingsChange } from './project-git-status.js';
 
 let activeSettingsSave: Promise<void> | null = null;
 
@@ -76,6 +77,7 @@ function ensureHeaderProjectPicker(el: HTMLElement): void {
 export function refreshHeaderFromSettingsChange(msg: { cli?: string; projectDirs?: string[] | null }): void {
     if (typeof msg.cli === 'string' && msg.cli) setHeaderCli(msg.cli);
     if ('projectDirs' in msg) setHeaderProject(msg.projectDirs);
+    refreshHeaderGitStatusFromSettingsChange(msg);
 }
 
 function cliDisplayLabel(cli: string): string {
@@ -326,6 +328,7 @@ export async function loadSettings(): Promise<void> {
         headerEl.innerHTML = icon ? `${icon} ${escapeHtml(label)}` : escapeHtml(label);
     }
     setHeaderProject(s.projectDirs);
+    await loadHeaderGitStatus();
     setPerm(s.permissions, false);
 
     if (s.perCli) {
