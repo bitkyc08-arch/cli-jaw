@@ -1,4 +1,5 @@
 import { broadcast } from './bus.js';
+import { DEFAULT_CLI } from '../cli/registry.js';
 import { settings } from './config.js';
 import { db, clearMessages, clearMessagesScoped, getSession, updateSession } from './db.js';
 import { getActiveChatSession } from './chat-sessions.js';
@@ -41,7 +42,7 @@ export function resolveMainCli(
     return requestedCli
         || currentSettings["cli"]
         || session?.active_cli
-        || 'claude';
+        || DEFAULT_CLI;
 }
 
 export function buildSelectedSessionRow(

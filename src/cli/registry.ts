@@ -239,7 +239,10 @@ export const CLI_REGISTRY = {
 };
 
 export const CLI_KEYS = Object.keys(CLI_REGISTRY) as CliEngine[];
-export const DEFAULT_CLI: CliEngine = CLI_KEYS.includes('claude') ? 'claude' : (CLI_KEYS[0] ?? 'claude');
+const envDefaultCli = process.env['CLI_JAW_DEFAULT_CLI'];
+export const DEFAULT_CLI: CliEngine = (envDefaultCli && CLI_KEYS.includes(envDefaultCli as CliEngine))
+    ? envDefaultCli as CliEngine
+    : CLI_KEYS.includes('claude') ? 'claude' : (CLI_KEYS[0] ?? 'claude');
 
 export function buildDefaultPerCli() {
     const out: Record<string, { model: string; effort: string }> = {};
