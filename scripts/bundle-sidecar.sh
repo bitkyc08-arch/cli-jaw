@@ -56,6 +56,15 @@ if [ -z "$JAWCODE_SRC" ] || [ ! -f "$JAWCODE_SRC/package.json" ]; then
   exit 1
 fi
 
+BUN_BIN="${BUN_BIN:-bun}"
+if ! command -v "$BUN_BIN" >/dev/null 2>&1; then
+  echo "ERROR: bun is required to build jawcode dist-node before sidecar bundling" >&2
+  exit 1
+fi
+
+echo "Building jawcode Node SDK..."
+(cd "$JAWCODE_SRC" && "$BUN_BIN" run build:node)
+
 echo "Copying jawcode local dependency..."
 rm -rf "$PROJECT_ROOT/electron/sidecar/jawcode"
 mkdir -p "$SIDECAR_LOCAL_DEPS"
@@ -67,7 +76,10 @@ rsync -a --delete \
 
 echo "Installing production dependencies..."
 cd "$SIDECAR_DIR"
-npm install --omit=dev --ignore-scripts 2>/dev/null
+# file: dependencies are linked by default; linked packages do not get their own
+# runtime dependency tree under npm --omit=dev. Pack/install the local jawcode
+# dependency so externalized jawcode/sdk imports are present in the sidecar.
+npm install --omit=dev --ignore-scripts --install-links 2>/dev/null
 
 rm -rf "$SIDECAR_DIR/node_modules/jawcode"
 mkdir -p "$SIDECAR_DIR/node_modules/jawcode"
@@ -123,6 +135,20 @@ echo "Verifying better-sqlite3 opens with bundled Node..."
   echo "ERROR: better-sqlite3 failed to open with bundled Node"
   exit 1
 }
+
+echo "Verifying jawcode SDK import with bundled Node..."
+if "$NODE_BIN" --input-type=module <<'NODE'
+const sdk = await import("jawcode/sdk");
+if (typeof sdk.createAgentSession !== "function") {
+  throw new Error("missing createAgentSession");
+}
+NODE
+then
+  echo "  jawcode SDK OK"
+else
+  echo "ERROR: jawcode SDK failed to import with bundled Node"
+  exit 1
+fi
 
 echo "Cleaning up Node extract..."
 rm -rf "/tmp/${NODE_PKG}" /tmp/node-sidecar.zip 2>/dev/null || true
