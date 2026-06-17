@@ -192,7 +192,7 @@ function normalizeModelForDisplay(_cli: string, model: string): string {
 function syncPerCliModelAndEffortControls(settings: SettingsData | null = null): void {
     for (const cli of getCliKeys()) {
         const meta = getCliMeta(cli);
-        const aiEProvider = cli === 'ai-e' ? getSelectedAiEProvider() : '';
+        const cliProvider = (cli !== 'pi' && meta?.providers?.length) ? getSelectedCliProvider(cli) : '';
         const modelSel = getModelSelect(cli);
         if (modelSel) {
             if (meta?.modelNote) {
@@ -206,8 +206,8 @@ function syncPerCliModelAndEffortControls(settings: SettingsData | null = null):
                 const piModels = cli === 'pi' && piProvider ? piDiscoveredModels(settings?.pi, piProvider) : [];
                 const models = cli === 'pi' && piModels.length
                     ? piModels
-                    : cli === 'ai-e'
-                    ? (meta?.modelsByProvider?.[aiEProvider] || MODEL_MAP[cli] || [])
+                    : cliProvider
+                    ? (meta?.modelsByProvider?.[cliProvider] || MODEL_MAP[cli] || [])
                     : (MODEL_MAP[cli] || []);
                 setSelectOptions(modelSel, models, { includeCustom: true, selected });
                 if (selected && !Array.from(modelSel.options).some(o => o.value === selected)) {
@@ -220,8 +220,8 @@ function syncPerCliModelAndEffortControls(settings: SettingsData | null = null):
 
         const effortSel = getEffortSelect(cli);
         if (effortSel) {
-            const providerEfforts = cli === 'ai-e' && aiEProvider
-                ? (meta?.effortsByProvider?.[aiEProvider] || [])
+            const providerEfforts = cliProvider
+                ? (meta?.effortsByProvider?.[cliProvider] || [])
                 : null;
             const options = [''].concat(providerEfforts || meta?.efforts || []);
             const selected = settings?.perCli?.[cli]?.effort ?? effortSel.value ?? '';
@@ -242,9 +242,9 @@ function syncActiveEffortOptions(cli: string, selected = ''): void {
     const selEffort = document.getElementById('selEffort') as HTMLSelectElement | null;
     if (!selEffort) return;
     const meta = getCliMeta(cli);
-    const aiEProvider = getSelectedAiEProvider();
-    const providerEfforts = cli === 'ai-e' && aiEProvider
-        ? (meta?.effortsByProvider?.[aiEProvider] || [])
+    const cliProvider = (cli !== 'pi' && meta?.providers?.length) ? getSelectedCliProvider(cli) : '';
+    const providerEfforts = cliProvider
+        ? (meta?.effortsByProvider?.[cliProvider] || [])
         : null;
     const effortsList = providerEfforts || meta?.efforts || [];
     if (meta?.effortNote && effortsList.length === 0) {
@@ -274,31 +274,30 @@ function syncAiEProviderOptions(select: HTMLSelectElement | null, current: strin
     return select.value || current;
 }
 
-function getSelectedAiEProvider(): string {
-    const select = document.getElementById('selAiEProvider') as HTMLSelectElement | null;
-    const perCliSelect = document.getElementById('providerAiE') as HTMLSelectElement | null;
-    return select?.value || perCliSelect?.value || getCliMeta('ai-e')?.defaultProvider || 'claude';
+function getSelectedCliProvider(cli: string): string {
+    const select = document.getElementById('selCliProvider') as HTMLSelectElement | null;
+    const perCliSelect = document.getElementById(`provider${cli.charAt(0).toUpperCase() + cli.slice(1).replace(/-./g, m => m[1]!.toUpperCase())}`) as HTMLSelectElement | null;
+    const meta = getCliMeta(cli);
+    return select?.value || perCliSelect?.value || meta?.defaultProvider || '';
 }
 
-function getPerCliAiEProvider(): string {
-    const perCliSelect = document.getElementById('providerAiE') as HTMLSelectElement | null;
-    return perCliSelect?.value || getSelectedAiEProvider();
-}
-
-function syncAiEProviderControl(settings: SettingsData | null, cli: string): string {
-    const wrap = document.getElementById('aiEProviderWrap') as HTMLElement | null;
-    const select = document.getElementById('selAiEProvider') as HTMLSelectElement | null;
-    const perCliSelect = document.getElementById('providerAiE') as HTMLSelectElement | null;
-    const meta = getCliMeta('ai-e');
-    if (!meta?.providers?.length) return 'claude';
-    const current = settings?.perCli?.['ai-e']?.provider
-        || perCliSelect?.value
+function syncCliProviderControl(settings: SettingsData | null, cli: string): string {
+    const wrap = document.getElementById('cliProviderWrap') as HTMLElement | null;
+    const select = document.getElementById('selCliProvider') as HTMLSelectElement | null;
+    const label = document.getElementById('cliProviderLabel') as HTMLElement | null;
+    const meta = getCliMeta(cli);
+    const hasProviders = cli !== 'pi' && (meta?.providers?.length ?? 0) > 0;
+    if (!hasProviders) {
+        if (wrap) wrap.style.display = 'none';
+        return meta?.defaultProvider || '';
+    }
+    if (label) label.textContent = 'Provider';
+    const current = settings?.perCli?.[cli]?.provider
         || select?.value
-        || meta.defaultProvider
-        || 'claude';
-    const selected = syncAiEProviderOptions(select, current, meta.providers);
-    syncAiEProviderOptions(perCliSelect, selected, meta.providers);
-    if (wrap) wrap.style.display = cli === 'ai-e' ? '' : 'none';
+        || meta?.defaultProvider
+        || '';
+    const selected = syncAiEProviderOptions(select, current, meta!.providers!);
+    if (wrap) wrap.style.display = '';
     return selected;
 }
 
@@ -311,7 +310,7 @@ export async function loadSettings(): Promise<void> {
     setCachedPi(s.pi);
     syncPiProviderDropdown(s.pi, s.perCli?.['pi']?.provider);
     if (s.perCli?.['pi']?.provider) syncPiModelDropdown(s.perCli['pi'].provider, s.pi);
-    syncAiEProviderControl(s, s.cli || '');
+    syncCliProviderControl(s, s.cli || '');
     syncPerCliModelAndEffortControls(s);
 
     const selCli = document.getElementById('selCli') as HTMLSelectElement | null;
@@ -390,7 +389,8 @@ export async function loadSettings(): Promise<void> {
 export async function updateSettings(): Promise<void> {
     const cli = (document.getElementById('selCli') as HTMLSelectElement)?.value || 'claude';
     const s: Record<string, unknown> = { cli };
-    if (cli === 'ai-e') s['perCli'] = { 'ai-e': { provider: getSelectedAiEProvider() } };
+    const activeMeta = getCliMeta(cli);
+    if (cli !== 'pi' && activeMeta?.providers?.length) s['perCli'] = { [cli]: { provider: getSelectedCliProvider(cli) } };
     return trackSettingsSave((async () => {
         const result = await apiJson<SettingsData>('/api/settings', 'PUT', s);
         if (!result) {
@@ -454,15 +454,16 @@ export function applyCustomModel(cli: string, inputEl: HTMLInputElement): void {
     savePerCli();
 }
 
-export function onPerCliAiEProviderChange(): void {
-    const provider = getPerCliAiEProvider();
-    const activeProvider = document.getElementById('selAiEProvider') as HTMLSelectElement | null;
+export function onPerCliProviderChange(): void {
+    const activeCli = (document.getElementById('selCli') as HTMLSelectElement | null)?.value || '';
+    const provider = getSelectedCliProvider(activeCli);
+    const activeProvider = document.getElementById('selCliProvider') as HTMLSelectElement | null;
     if (activeProvider && Array.from(activeProvider.options).some(o => o.value === provider)) {
         activeProvider.value = provider;
     }
     syncPerCliModelAndEffortControls(null);
-    const activeCli = (document.getElementById('selCli') as HTMLSelectElement | null)?.value || '';
-    if (activeCli === 'ai-e') onCliChange(false);
+    const meta = getCliMeta(activeCli);
+    if (meta?.providers?.length) onCliChange(false);
     savePerCli();
 }
 
@@ -476,7 +477,8 @@ export async function savePerCli(): Promise<void> {
             model: getModelValue(cli),
             effort: effortEl ? effortEl.value : '',
         };
-        if (cli === 'ai-e') entry.provider = getPerCliAiEProvider();
+        const cliMeta = getCliMeta(cli);
+        if (cli !== 'pi' && cliMeta?.providers?.length) entry.provider = getSelectedCliProvider(cli);
         if (cli === 'pi') {
             const piProviderSel = document.getElementById('providerPi') as HTMLSelectElement | null;
             if (piProviderSel?.value) entry.provider = piProviderSel.value;
@@ -509,10 +511,10 @@ export function onCliChange(save = true): void {
     }
     selCli.dataset['prev'] = selCli.value;
     const cli = selCli.value || 'claude';
-    const aiEProvider = syncAiEProviderControl(null, cli);
+    const cliProvider = syncCliProviderControl(null, cli);
     const meta = getCliMeta(cli);
-    const models = cli === 'ai-e'
-        ? (meta?.modelsByProvider?.[aiEProvider] || MODEL_MAP[cli] || [])
+    const models = cliProvider && meta?.modelsByProvider?.[cliProvider]
+        ? meta.modelsByProvider[cliProvider]
         : (MODEL_MAP[cli] || []);
     const modelSel = document.getElementById('selModel') as HTMLSelectElement | null;
     if (meta?.modelNote && modelSel) {
@@ -560,9 +562,10 @@ export function onCliChange(save = true): void {
         const model = ao.model || pc.model;
         const effort = ao.effort ?? pc.effort ?? '';
         if (model && modelSel) {
-            if (cli === 'ai-e') {
-                const savedProvider = s.perCli?.['ai-e']?.provider || 'claude';
-                const currentProvider = getSelectedAiEProvider();
+            const cliMetaCheck = getCliMeta(cli);
+            if (cli !== 'pi' && cliMetaCheck?.providers?.length) {
+                const savedProvider = s.perCli?.[cli]?.provider || cliMetaCheck.defaultProvider || '';
+                const currentProvider = getSelectedCliProvider(cli);
                 if (savedProvider !== currentProvider) {
                     syncActiveEffortOptions(cli, effort);
                     return;
@@ -590,7 +593,8 @@ export async function saveActiveCliSettings(): Promise<void> {
     overrides[cli] = { model };
     if (effortEl && !effortEl.disabled) overrides[cli].effort = effortEl.value || '';
     const patch: Record<string, unknown> = { activeOverrides: overrides };
-    if (cli === 'ai-e') patch['perCli'] = { 'ai-e': { provider: getSelectedAiEProvider() } };
+    const patchMeta = getCliMeta(cli);
+    if (cli !== 'pi' && patchMeta?.providers?.length) patch['perCli'] = { [cli]: { provider: getSelectedCliProvider(cli) } };
     if (await apiJson('/api/settings', 'PUT', patch)) {
         postPreviewInvalidate(['instances'], 'active-cli-changed');
     }

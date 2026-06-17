@@ -48,7 +48,7 @@ import {
 import { toggleSkill, filterSkills, searchSkills } from './features/skills.js';
 import {
     loadSettings, handleModelSelect, applyCustomModel, onCliChange,
-    onPerCliAiEProviderChange, saveActiveCliSettings, savePerCli, openPromptModal,
+    onPerCliProviderChange, saveActiveCliSettings, savePerCli, openPromptModal,
     onFlushCliChange, loadFlushAgentSidebar,
     closePromptModal, savePromptFromModal, syncMcpServers, installMcpGlobal,
     openMcpModal, initMcpModal,
@@ -186,7 +186,7 @@ document.querySelector('.sidebar-save-bar .btn-save')?.addEventListener('click',
 function syncAiEProviderSelectsFromActiveProvider(eventTarget: EventTarget | null): void {
     const activeProvider = eventTarget instanceof HTMLSelectElement
         ? eventTarget
-        : document.getElementById('selAiEProvider') as HTMLSelectElement | null;
+        : document.getElementById('selCliProvider') as HTMLSelectElement | null;
     const provider = activeProvider?.value || '';
     const perCliProvider = document.getElementById('providerAiE') as HTMLSelectElement | null;
     if (!provider || !perCliProvider) return;
@@ -196,7 +196,7 @@ function syncAiEProviderSelectsFromActiveProvider(eventTarget: EventTarget | nul
 }
 
 document.getElementById('selCli')?.addEventListener('change', () => onCliChange());
-document.getElementById('selAiEProvider')?.addEventListener('change', (event) => {
+document.getElementById('selCliProvider')?.addEventListener('change', (event) => {
     syncAiEProviderSelectsFromActiveProvider(event.target);
     onCliChange();
     saveActiveCliSettings();
@@ -368,7 +368,7 @@ function bindPerCliControlEvents(): void {
         const effort = document.getElementById('effort' + cap);
         if (effort) effort.addEventListener('change', savePerCli);
     }
-    document.getElementById('providerAiE')?.addEventListener('change', onPerCliAiEProviderChange);
+    document.getElementById('providerAiE')?.addEventListener('change', onPerCliProviderChange);
 }
 
 // MCP

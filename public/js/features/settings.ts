@@ -1,5 +1,5 @@
 // settings.ts — barrel re-export (preserves all import paths)
-export { loadSettings, updateSettings, setPerm, getModelValue, handleModelSelect, applyCustomModel, onPerCliAiEProviderChange, onCliChange, saveActiveCliSettings, savePerCli, onFlushCliChange, loadFlushAgentSidebar } from './settings-core.js';
+export { loadSettings, updateSettings, setPerm, getModelValue, handleModelSelect, applyCustomModel, onPerCliProviderChange, onCliChange, saveActiveCliSettings, savePerCli, onFlushCliChange, loadFlushAgentSidebar } from './settings-core.js';
 export { setTelegram, setForwardAll, setTelegramMentionOnly, saveTelegramSettings } from './settings-telegram.js';
 export { setDiscord, setDiscordForwardAll, setDiscordAllowBots, setDiscordMentionOnly, saveDiscordSettings } from './settings-discord.js';
 export { setActiveChannel, loadFallbackOrder, saveFallbackOrder } from './settings-channel.js';
