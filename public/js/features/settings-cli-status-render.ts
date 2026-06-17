@@ -11,14 +11,13 @@ type QuotaSetupHint = {
 };
 
 export const QUOTA_HIDDEN_CLIS = new Set(['ai-e', 'codex-app']);
-export const SIDEBAR_HIDDEN_CLIS = new Set(['claude-e', 'jwc']);
-export const QUOTA_CUSTOM_MSG: Record<string, string> = {
-    claude: 'Currently subscribed, by June with credit',
-};
+export const SIDEBAR_HIDDEN_CLIS = new Set(['ai-e', 'claude-e', 'jwc']);
+export const QUOTA_CUSTOM_MSG: Record<string, string> = {};
 
 export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {
     cursor: {
         title: 'Enable quota bars (dashboard session)',
+        description: 'Cursor does not expose quota via its CLI. To display usage bars, log in with cursor-agent or manually export your session token from cursor.com DevTools (Application → Cookies → WorkosCursorSessionToken).',
         commands: [
             'cursor-agent login',
             'export CURSOR_SESSION_TOKEN="<WorkosCursorSessionToken from cursor.com DevTools>"',
@@ -27,6 +26,7 @@ export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {
     },
     agy: {
         title: 'Enable Gem / Cla quota bars',
+        description: 'Antigravity wraps Google Gemini and Claude models. Log in with antigravity-usage to fetch your remaining Gem/Cla tier quotas.',
         commands: [
             'npx antigravity-usage login',
             'npx antigravity-usage --json',
@@ -34,12 +34,14 @@ export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {
     },
     grok: {
         title: 'Grok login',
+        description: 'Authenticate with Grok (X/Twitter AI) to enable quota tracking and model access through the progrok proxy.',
         commands: [
             'progrok login',
         ],
     },
     opencode: {
         title: 'OpenCode auth + optional plan quota plugin',
+        description: 'OpenCode tracks per-session token usage and cost but does not expose subscription-level quota. Install the opencode-quota plugin to pull plan limits from your provider account.',
         commands: [
             'opencode auth login',
             'opencode plugin add @slkiser/opencode-quota',
