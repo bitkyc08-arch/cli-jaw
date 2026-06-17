@@ -138,3 +138,38 @@
     display: flex; align-items: center; justify-content: center;
 }
 .code-composer-send:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Tool cards */
+.code-tool-card {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    background: var(--accent-bg, #1e3a5f);
+    font-size: 12px; color: var(--accent, #93c5fd);
+}
+.code-tool-icon { font-size: 14px; }
+.code-tool-icon.spinning { animation: spin 1s linear infinite; }
+.code-tool-name { font-weight: 500; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Composer footer */
+.code-composer-footer {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 4px 16px 8px;
+    background: var(--sidebar-bg, #1e293b);
+    font-size: 11px;
+}
+.code-composer-footer-left { color: var(--text-muted, #64748b); }
+.code-composer-footer-right { display: flex; gap: 6px; align-items: center; }
+.code-footer-select {
+    padding: 2px 4px;
+    border: 1px solid var(--border, #334155);
+    border-radius: 4px;
+    background: var(--surface, #0f172a);
+    color: var(--text, #e2e8f0);
+    font-size: 11px; font-family: inherit;
+    cursor: pointer;
+}
+.code-footer-select:focus { outline: none; border-color: var(--accent, #3b82f6); }
+.code-footer-select:disabled { opacity: 0.5; cursor: not-allowed; }
+.code-footer-label { color: var(--text-muted, #64748b); }
