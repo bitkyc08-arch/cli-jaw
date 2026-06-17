@@ -470,12 +470,12 @@ function showCliHelpPopup(text: string, description?: string): void {
     inner.className = 'mcp-help-inner';
     const lines = text.split('\n').filter(Boolean);
     const descHtml = description
-        ? `<p style="color:var(--text-dim);font-size:12px;margin:4px 0 8px">${description.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`
+        ? `<p style="color:var(--text-dim);font-size:12px;margin:4px 0 8px">${escapeHtml(description)}</p>`
         : '';
     inner.innerHTML = `
         <h4>CLI Setup</h4>
         ${descHtml}
-        ${lines.map(l => `<p><code>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</code></p>`).join('')}
+        ${lines.map(l => `<p><code>${escapeHtml(l)}</code></p>`).join('')}
         <div style="text-align:right;margin-top:12px">
             <button type="button" class="btn-save" id="cliHelpClose">OK</button>
         </div>
