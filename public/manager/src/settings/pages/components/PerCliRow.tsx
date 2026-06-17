@@ -63,7 +63,7 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                         id={`percli-${cli}-provider`}
                         label="Provider"
                         value={provider}
-                        options={meta.providers.map((p) => ({ value: p, label: p }))}
+                        options={(meta.providers ?? []).map((p) => ({ value: p, label: p }))}
                         onChange={(next) => {
                             const nextModels = meta.modelsByProvider?.[next] ?? [];
                             const nextEfforts = meta.effortsByProvider?.[next] ?? [];
