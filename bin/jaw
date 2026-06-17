@@ -1,1 +1,14 @@
-../lib/node_modules/cli-jaw/dist/bin/cli-jaw.js
+#!/bin/sh
+# jaw CLI launcher — auto-rebuilds native modules when Node version changes.
+DIR="$(cd "$(dirname "$0")/.." && pwd)"
+NODE="$(command -v node)"
+if [ -z "$NODE" ]; then echo "node not found in PATH" >&2; exit 1; fi
+
+# Quick ABI check: try loading better-sqlite3; rebuild if it fails.
+"$NODE" -e "require('$DIR/node_modules/better-sqlite3')" 2>/dev/null
+if [ $? -ne 0 ]; then
+    echo "[jaw] Rebuilding native modules for Node $($NODE --version)..." >&2
+    cd "$DIR" && npm rebuild --silent 2>/dev/null
+fi
+
+exec "$NODE" "$DIR/dist/bin/cli-jaw.js" "$@"
