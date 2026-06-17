@@ -33,7 +33,12 @@ export async function installCli(): Promise<{ ok: boolean; message: string }> {
 
   const bins = CLI_BINS.map(name => ({ name, src: getSidecarBinPath(name) }));
   const missing = bins.filter(b => !b.src);
-  if (missing.length === bins.length) return { ok: false, message: 'Sidecar not found in app bundle' };
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      message: `Incomplete sidecar bundle:\n${missing.map(b => `${b.name}: not found in sidecar`).join('\n')}`,
+    };
+  }
 
   const escaped = (s: string) => s.replace(/"/g, '\\"');
   const installed: string[] = [];
@@ -71,18 +76,20 @@ export async function installCli(): Promise<{ ok: boolean; message: string }> {
   if (installed.length === 0) {
     return { ok: false, message: `Installation failed:\n${failed.join('\n')}` };
   }
+  if (failed.length > 0) {
+    return { ok: false, message: `Failed to install CLI links:\n${failed.join('\n')}` };
+  }
 
   const msg = [`Installed: ${installed.join(', ')}`];
   if (plat === 'linux') msg.push('Make sure ~/.local/bin is in your PATH.');
   msg.push('You can now run "jaw" and "jwc" in any terminal.');
-  if (failed.length) msg.push(`\nPartial failures:\n${failed.join('\n')}`);
   return { ok: true, message: msg.join('\n') };
 }
 
 export async function promptInstallCli(): Promise<void> {
   if (!app.isPackaged) return;
   if (isCliInstalled()) return;
-  if (!getSidecarBinPath('jaw') && !getSidecarBinPath('jwc')) return;
+  if (!getSidecarBinPath('jaw') || !getSidecarBinPath('jwc')) return;
 
   const { response } = await dialog.showMessageBox({
     type: 'question',

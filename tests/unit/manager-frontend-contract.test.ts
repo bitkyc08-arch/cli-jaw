@@ -28,6 +28,24 @@ test('frontend tsconfig typechecks manager TSX', () => {
     assert.ok(tsconfig.includes('public/manager/src/**/*.ts'), 'frontend tsconfig must include manager TS');
 });
 
+test('app icon validation stays scoped to packaged app assets', () => {
+    const manifest = read('public/manifest.json');
+    const pkg = read('package.json');
+    const iconChecker = read('scripts/check-app-icon-assets.cjs');
+    const managerCss = read('public/manager/src/manager-components.css');
+
+    assert.ok(pkg.includes('"check:app-icons": "node scripts/check-app-icon-assets.cjs"'), 'package scripts must expose app icon validation');
+    assert.ok(manifest.includes('"src": "/icons/icon-192.png"'), 'manifest must keep the normal 192 app icon');
+    assert.ok(manifest.includes('"src": "/icons/icon-512.png"'), 'manifest must keep the normal 512 app icon');
+    assert.ok(manifest.includes('"src": "/icons/icon-512-maskable.png"'), 'manifest must keep the maskable 512 app icon');
+    assert.ok(manifest.includes('"purpose": "maskable"'), 'manifest must preserve a dedicated maskable icon entry');
+    assert.ok(iconChecker.includes('electron/build/icon.png'), 'app icon checker must validate the Electron packaged app PNG');
+    assert.ok(iconChecker.includes('electron/build/icon.icns'), 'app icon checker must validate the macOS packaged app ICNS');
+    assert.ok(iconChecker.includes('public/icons/icon-192.png'), 'app icon checker must validate public app icon inputs');
+    assert.equal(iconChecker.includes('manager-components.css'), false, 'app icon checker must not validate manager-internal provider/avatar CSS');
+    assert.equal(managerCss.includes('platform-specific icon'), false, 'manager CSS must not gain platform-specific icon shape rules for this goal');
+});
+
 test('manager frontend has API entry and Open action', () => {
     assert.equal(existsSync(join(projectRoot, 'public/manager/index.html')), true);
     const api = read('public/manager/src/api.ts');

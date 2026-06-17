@@ -68,6 +68,10 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('ubuntu-latest'), 'desktop workflow must build Linux artifacts');
     assert.ok(workflow.includes('npm --prefix electron run typecheck'), 'desktop workflow must typecheck Electron shell');
     assert.ok(workflow.includes('npm --prefix electron run build'), 'desktop workflow must build Electron shell');
+    assert.ok(workflow.includes('Verify macOS packaged app JWC and app icons'), 'desktop workflow must verify the packaged macOS app before upload');
+    assert.ok(workflow.includes("if: matrix.platform == 'macos'"), 'macOS final app verification must not run on Windows/Linux matrix legs');
+    assert.ok(workflow.includes('npm run check:electron-dist-mac-jwc'), 'desktop workflow must validate bundled JWC in the final macOS app');
+    assert.ok(workflow.includes('npm run check:app-icons'), 'desktop workflow must validate app icon assets before uploading macOS artifacts');
     assert.ok(workflow.includes('CSC_IDENTITY_AUTO_DISCOVERY: false'), 'desktop workflow must keep unsigned mac builds explicit');
     assert.ok(workflow.includes('gh release upload'), 'desktop workflow must upload artifacts to the existing release');
     assert.ok(workflow.includes('--clobber'), 'desktop workflow reruns must replace stale release assets');

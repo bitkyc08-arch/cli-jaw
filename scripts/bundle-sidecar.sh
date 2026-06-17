@@ -7,13 +7,11 @@ NODE_VERSION="22.16.0"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIDECAR_DIR="$PROJECT_ROOT/electron/sidecar/server"
-SIDECAR_LOCAL_DEPS="$PROJECT_ROOT/electron/sidecar/jawcode/packages"
 JAWCODE_SRC_CANDIDATE="$PROJECT_ROOT/../jawcode/packages/jwc"
 JAWCODE_SRC=""
 if [ -d "$JAWCODE_SRC_CANDIDATE" ]; then
   JAWCODE_SRC="$(cd "$JAWCODE_SRC_CANDIDATE" && pwd)"
 fi
-JAWCODE_DEST="$SIDECAR_LOCAL_DEPS/jwc"
 
 echo "=== Bundling sidecar: $PLATFORM-$ARCH ==="
 
@@ -65,29 +63,17 @@ fi
 echo "Building jawcode Node SDK..."
 (cd "$JAWCODE_SRC" && "$BUN_BIN" run build:node)
 
-echo "Copying jawcode local dependency..."
-rm -rf "$PROJECT_ROOT/electron/sidecar/jawcode"
-mkdir -p "$SIDECAR_LOCAL_DEPS"
-rsync -a --delete \
-  --exclude node_modules \
-  --exclude .git \
-  "$JAWCODE_SRC/" \
-  "$JAWCODE_DEST/"
+echo "Packing jawcode local dependency..."
+JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC" --pack-destination "$SIDECAR_DIR" --silent)")"
 
 echo "Installing production dependencies..."
 cd "$SIDECAR_DIR"
-# file: dependencies are linked by default; linked packages do not get their own
-# runtime dependency tree under npm --omit=dev. Pack/install the local jawcode
-# dependency so externalized jawcode/sdk imports are present in the sidecar.
-npm install --omit=dev --ignore-scripts --install-links 2>/dev/null
-
-rm -rf "$SIDECAR_DIR/node_modules/jawcode"
-mkdir -p "$SIDECAR_DIR/node_modules/jawcode"
-rsync -a --delete \
-  --exclude node_modules \
-  --exclude .git \
-  "$JAWCODE_SRC/" \
-  "$SIDECAR_DIR/node_modules/jawcode/"
+node "$PROJECT_ROOT/scripts/prepare-sidecar-package-json.cjs" \
+  --package-json "$SIDECAR_DIR/package.json" \
+  --remove-dependency jawcode
+npm install --omit=dev --ignore-scripts
+npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"
+rm -f "$SIDECAR_DIR/$JAWCODE_TARBALL"
 
 if [ ! -f "$SIDECAR_DIR/node_modules/jawcode/package.json" ]; then
   echo "ERROR: jawcode local dependency did not resolve inside sidecar" >&2
@@ -188,6 +174,8 @@ exec "$DIR/node" "$DIR/node_modules/jawcode/bin/jwc.js" "$@"
 SHIM
   chmod +x "$SIDECAR_DIR/bin/jwc"
 fi
+
+node "$PROJECT_ROOT/scripts/check-electron-sidecar-jwc.cjs" --server-root "$SIDECAR_DIR"
 
 echo "=== Sidecar ready ==="
 du -sh "$SIDECAR_DIR"

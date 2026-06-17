@@ -65,9 +65,16 @@ npm run sidecar:bundle
 - copies `dist/`, `public/`, `package.json`, and lockfile into
   `electron/sidecar/server`,
 - installs production dependencies with scripts disabled,
+- packs the sibling `jawcode/packages/jwc` package and installs that tarball as
+  a real runtime dependency instead of linking or copying it into
+  `node_modules`,
 - prunes frontend-only packages,
 - rebuilds `better-sqlite3`,
 - creates `bin/jaw` or `bin/jaw.cmd` to launch `dist/bin/cli-jaw.js`,
+- creates `bin/jwc` or `bin/jwc.cmd` to launch the bundled
+  `jawcode/bin/jwc.js`,
+- verifies the staging sidecar can import `jawcode/sdk` and contains the
+  `json5`, `strip-ansi`, and `markit-ai` runtime dependencies,
 - optionally copies the native `jaw-claude-i` helper when available.
 
 `electron/src/main/lib/jaw-spawn.ts` searches the bundled sidecar first in
@@ -86,7 +93,13 @@ npm run build:frontend
 npm run sidecar:bundle
 npm --prefix electron run build
 CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac
+npm run check:electron-dist-mac-jwc
+npm run check:app-icons
 ```
+
+The dist checks validate the packaged `.app` under `electron/dist/mac-arm64`.
+They do not replace `/Applications/cli-jaw.app`; app replacement remains a
+manual step after build verification.
 
 Current `electron-builder.yml` targets:
 
@@ -113,7 +126,8 @@ For each platform matrix entry it:
 5. installs Electron dependencies,
 6. typechecks and builds Electron,
 7. packages the app with signing disabled,
-8. uploads artifacts to the release or 7-day manual-run artifact storage.
+8. verifies the final macOS `.app` sidecar and packaged app icon inputs,
+9. uploads artifacts to the release or 7-day manual-run artifact storage.
 
 ## Desktop Behavior
 

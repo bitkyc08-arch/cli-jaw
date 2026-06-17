@@ -29,13 +29,45 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
     const pkg = read('package.json');
 
     assert.ok(
-        pkg.includes('"electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac"'),
-        'electron:dist:mac must rebuild the manager frontend and bundle the sidecar before packaging the desktop shell',
+        pkg.includes('"electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run check:electron-dist-mac-jwc && npm run check:app-icons"'),
+        'electron:dist:mac must rebuild assets, bundle the sidecar, package the shell, and verify the final app before success',
     );
     assert.ok(
         pkg.includes('"sidecar:bundle": "bash scripts/bundle-sidecar.sh darwin arm64"'),
         'sidecar:bundle must assemble the Node.js sidecar for local mac packaging',
     );
+    assert.ok(
+        pkg.includes('"check:electron-sidecar-jwc": "node scripts/check-electron-sidecar-jwc.cjs"'),
+        'package scripts must expose a staging sidecar JWC validator',
+    );
+    assert.ok(
+        pkg.includes('"check:electron-dist-mac-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server"'),
+        'package scripts must expose a final macOS app JWC validator',
+    );
+    assert.ok(pkg.includes('"check:app-icons": "node scripts/check-app-icon-assets.cjs"'), 'package scripts must expose app icon validation');
+});
+
+test('Electron sidecar bundle installs jawcode as a real package and verifies jwc', () => {
+    const script = read('scripts/bundle-sidecar.sh');
+
+    assert.ok(script.includes('"$BUN_BIN" run build:node'), 'sidecar bundle must build jawcode dist-node before packing');
+    assert.ok(script.includes('JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC"'), 'sidecar bundle must npm-pack jawcode before installation');
+    assert.ok(script.includes('prepare-sidecar-package-json.cjs'), 'sidecar bundle must remove local jawcode file dependency before npm install');
+    assert.ok(script.includes('npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"'), 'sidecar bundle must install jawcode from the packed tarball');
+    assert.equal(script.includes('npm install --omit=dev --ignore-scripts --install-links'), false, 'sidecar bundle must not rely on linked local file dependencies');
+    assert.equal(script.includes('"$SIDECAR_DIR/node_modules/jawcode/"'), false, 'sidecar bundle must not rsync jawcode directly into runtime node_modules');
+    assert.ok(script.includes('scripts/check-electron-sidecar-jwc.cjs'), 'sidecar bundle must run the JWC validator after creating shims');
+});
+
+test('Electron CLI installer rejects incomplete or partially installed sidecar commands', () => {
+    const installCli = read('electron/src/main/lib/install-cli.ts');
+
+    assert.ok(installCli.includes('if (missing.length > 0)'), 'installCli must fail when any sidecar command is missing');
+    assert.ok(installCli.includes('Incomplete sidecar bundle'), 'installCli must report incomplete sidecar bundles explicitly');
+    assert.ok(installCli.includes('if (failed.length > 0)'), 'installCli must fail when any symlink attempt fails after installation starts');
+    assert.ok(installCli.includes('Failed to install CLI links'), 'installCli must not present partial symlink failures as success');
+    assert.ok(installCli.includes("if (!getSidecarBinPath('jaw') || !getSidecarBinPath('jwc')) return"), 'install prompt must require both jaw and jwc before offering install');
+    assert.equal(installCli.includes('Partial failures:'), false, 'installCli must not append partial failures to an ok:true success message');
 });
 
 test('serve command honors persisted dashboard port when no explicit port is passed', () => {

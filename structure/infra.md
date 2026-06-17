@@ -76,8 +76,11 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `electron:dev` | `concurrently -k -n jaw,electron "node scripts/electron-dev-manager.mjs" "npm --prefix electron run dev"` |
 | `electron:build` | `npm --prefix electron run build` |
 | `sidecar:bundle` | `bash scripts/bundle-sidecar.sh darwin arm64` |
-| `electron:dist:mac` | `npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac` |
+| `electron:dist:mac` | `npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run check:electron-dist-mac-jwc && npm run check:app-icons` |
 | `electron:start` | `npm --prefix electron run start` |
+| `check:electron-sidecar-jwc` | `node scripts/check-electron-sidecar-jwc.cjs` |
+| `check:electron-dist-mac-jwc` | `node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server` |
+| `check:app-icons` | `node scripts/check-app-icon-assets.cjs` |
 | `check:electron-no-native` | `node scripts/check-electron-no-native.cjs` |
 
 > 현재 `package.json`에는 `lint` script가 없다.
@@ -139,7 +142,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `bundle-sidecar.sh`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `collect-fresh-install-evidence.sh`, `audit-fresh-install-evidence.mjs`, `verify-release-evidence.mjs`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-wsl.sh`, `install.sh`, `link-current-nvm-bin.cjs`, `postinstall-guard.cjs`, `release-gates.mjs`, `release-preview.sh`, `release.sh`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`.
+`atomic-build.sh`, `bundle-sidecar.sh`, `check-app-icon-assets.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-jwc.cjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `collect-fresh-install-evidence.sh`, `audit-fresh-install-evidence.mjs`, `verify-release-evidence.mjs`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-wsl.sh`, `install.sh`, `link-current-nvm-bin.cjs`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-gates.mjs`, `release-preview.sh`, `release.sh`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`.
 
 ---
 
