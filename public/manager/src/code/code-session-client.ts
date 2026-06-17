@@ -18,11 +18,12 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
     const base = `http://localhost:${port}`;
 
     async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-        const res = await fetch(`${base}${path}`, {
-            method,
-            headers: body ? { 'Content-Type': 'application/json' } : undefined,
-            body: body ? JSON.stringify(body) : undefined,
-        });
+        const opts: RequestInit = { method };
+        if (body) {
+            opts.headers = { 'Content-Type': 'application/json' };
+            opts.body = JSON.stringify(body);
+        }
+        const res = await fetch(`${base}${path}`, opts);
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || `${method} ${path} failed`);
         return data as T;

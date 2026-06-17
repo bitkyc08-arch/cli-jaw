@@ -26,7 +26,8 @@ export function useCodeEvents({ port, sessionId, onEvent }: UseCodeEventsOptions
             try {
                 const data = JSON.parse(msg.data) as CodeEvent;
                 if (data.topic !== 'jwc') return;
-                if (sessionId && data.sessionId && data.sessionId !== sessionId) return;
+                if (!sessionId) return;
+                if (data.sessionId && data.sessionId !== sessionId) return;
                 onEventRef.current(data);
             } catch { /* ignore parse errors */ }
         };

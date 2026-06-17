@@ -137,7 +137,9 @@ export function AppChrome(props: AppChromeProps) {
                         error={props.error} registryMessage={props.registryMessage} managerEvents={props.activityEvents}
                         onToggleActivity={props.handleActivityToggle} onActivityHeightChange={props.handleActivityHeight} onOpenDrawer={() => props.view.setDrawerOpen(true)}
                         onSelectTab={props.handleTabChange} onToggleActivityFromMobile={props.activityUnreadOpenAndMarkSeen} drawerProfileFilters={props.drawerProfileFilters}
-                        dashboardSettingsUi={props.dashboardSettingsUi} titleSupport={props.titleSupport} onDashboardSettingsPatch={props.handleDashboardSettingsPatch} />
+                        dashboardSettingsUi={props.dashboardSettingsUi} titleSupport={props.titleSupport} onDashboardSettingsPatch={props.handleDashboardSettingsPatch}
+                        viewMode={props.view.viewMode} onViewModeChange={props.view.setViewMode}
+                        port={props.selectedInstance?.port ?? 0} workingDir={props.view.rightFolderRootPath ?? ''} />
                 )}
                 activityHeight={props.view.activityDockCollapsed ? 48 : props.view.activityDockHeight}
             />
