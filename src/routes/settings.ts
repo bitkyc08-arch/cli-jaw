@@ -17,6 +17,7 @@ import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, re
 import { fetchCursorUsage } from './quota-cursor-dashboard.js';
 import { fetchAgyUsage } from './quota-agy-reverse.js';
 import { fetchKiroUsage } from './quota-kiro-reverse.js';
+import { fetchOpenCodeUsage } from './quota-opencode-go-api.js';
 import { buildLiveCliRegistry } from '../cli/registry-live.js';
 import { fetchCopilotQuota, refreshCopilotFromKeychain } from '../../lib/quota-copilot.js';
 import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/openai-key.js';
@@ -354,7 +355,7 @@ export function registerSettingsRoutes(
         const claudeCreds = readClaudeCreds();
         const codexTokens = readCodexTokens();
         const geminiAccount = readGeminiAccount();
-        const [claudeResult, codexResult, geminiResult, copilotResult, cursorQuota, agyQuota, kiroQuota] = await Promise.all([
+        const [claudeResult, codexResult, geminiResult, copilotResult, cursorQuota, agyQuota, kiroQuota, opencodeQuota] = await Promise.all([
             fetchClaudeUsage(claudeCreds),
             fetchCodexUsage(codexTokens),
             fetchGeminiUsage(geminiAccount),
@@ -362,6 +363,7 @@ export function registerSettingsRoutes(
             fetchCursorUsage(),
             fetchAgyUsage(),
             fetchKiroUsage(),
+            fetchOpenCodeUsage(),
         ]);
 
         const classify = (result: unknown, hasCreds: boolean) =>
@@ -372,7 +374,7 @@ export function registerSettingsRoutes(
         const geminiQuota = classify(geminiResult, !!geminiAccount);
         const grokQuota = await fetchGrokStatus();
         const copilotQuota = copilotResult ?? { authenticated: false };
-        const opencodeQuota = buildStatusOnlyQuota({
+        const opencodeQuotaResolved = opencodeQuota ?? buildStatusOnlyQuota({
             quotaSource: 'not-exposed-by-opencode-cli',
             displayTier: 'OpenCode',
             account: { type: 'opencode', tier: 'auth/status only' },
@@ -413,7 +415,7 @@ export function registerSettingsRoutes(
             'kiro-code': kiroQuota,
             gemini: geminiQuota,
             grok: grokQuota,
-            opencode: opencodeQuota,
+            opencode: opencodeQuotaResolved,
             copilot: copilotQuota,
         };
         res.json(Object.fromEntries(CLI_KEYS.map((key) => [key, quotaByCli[key] ?? { authenticated: false }])));

@@ -166,8 +166,12 @@ test('QS-005: /api/quota classify separates no-creds from API failure', () => {
         'should distinguish creds-present from creds-absent',
     );
     assert.ok(
+        settingsRouteSrc.includes('fetchOpenCodeUsage()'),
+        'opencode should use fetchOpenCodeUsage adapter',
+    );
+    assert.ok(
         settingsRouteSrc.includes("quotaSource: 'not-exposed-by-opencode-cli'"),
-        'opencode should be explicit auth/status-only metadata',
+        'opencode fallback should keep auth/status-only metadata',
     );
     assert.ok(
         settingsRouteSrc.includes('const grokQuota = await fetchGrokStatus()') && settingsRouteSrc.includes('grok: grokQuota'),
@@ -221,6 +225,28 @@ test('QS-005c4: Kiro quota uses reverse-engineered CodeWhisperer adapter', () =>
     assert.ok(
         settingsRouteSrc.includes('buildLiveCliRegistry'),
         '/api/cli-registry should merge live Kiro models',
+    );
+});
+
+test('QS-005c5: OpenCode Go quota uses Bearer usage API adapter', () => {
+    const settingsRouteSrc = readSource(
+        path.join(import.meta.dirname, '../../src/routes/settings.ts'), 'utf8'
+    );
+    const opencodeQuotaSrc = readSource(
+        path.join(import.meta.dirname, '../../src/routes/quota-opencode-go-api.ts'), 'utf8'
+    );
+    assert.ok(settingsRouteSrc.includes('fetchOpenCodeUsage()'), 'OpenCode quota should use fetchOpenCodeUsage');
+    assert.ok(
+        opencodeQuotaSrc.includes("quotaSource: 'opencode-go:usage-api'"),
+        'OpenCode reverse quota should expose usage-api source tag',
+    );
+    assert.ok(
+        opencodeQuotaSrc.includes('OPENCODE_GO_API_KEY'),
+        'OpenCode reverse quota should read OPENCODE_GO_API_KEY env',
+    );
+    assert.ok(
+        opencodeQuotaSrc.includes('/zen/go/v1/usage'),
+        'OpenCode reverse quota should call zen/go/v1/usage',
     );
 });
 

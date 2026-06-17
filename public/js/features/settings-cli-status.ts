@@ -451,13 +451,22 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
                 e.stopPropagation();
                 const text = btn.getAttribute('data-cli-help') || '';
                 const desc = btn.getAttribute('data-cli-help-desc') || undefined;
-                showCliHelpPopup(text, desc);
+                const linksRaw = btn.getAttribute('data-cli-help-links');
+                let links: Array<{ label: string; url: string }> | undefined;
+                if (linksRaw) {
+                    try {
+                        links = JSON.parse(linksRaw) as Array<{ label: string; url: string }>;
+                    } catch {
+                        links = undefined;
+                    }
+                }
+                showCliHelpPopup(text, desc, links);
             });
         });
     }
 }
 
-function showCliHelpPopup(text: string, description?: string): void {
+function showCliHelpPopup(text: string, description?: string, links?: Array<{ label: string; url: string }>): void {
     const existing = document.getElementById('cliHelpOverlay');
     if (existing) existing.remove();
 
@@ -472,9 +481,15 @@ function showCliHelpPopup(text: string, description?: string): void {
     const descHtml = description
         ? `<p style="color:var(--text-dim);font-size:12px;margin:4px 0 8px">${escapeHtml(description)}</p>`
         : '';
+    const linksHtml = links?.length
+        ? `<ul style="margin:0 0 10px 18px;padding:0;font-size:12px">${links.map(link =>
+            `<li style="margin:4px 0"><a href="${escapeHtml(link.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(link.label)}</a></li>`
+        ).join('')}</ul>`
+        : '';
     inner.innerHTML = `
         <h4>CLI Setup</h4>
         ${descHtml}
+        ${linksHtml}
         ${lines.map(l => `<p><code>${escapeHtml(l)}</code></p>`).join('')}
         <div style="text-align:right;margin-top:12px">
             <button type="button" class="btn-save" id="cliHelpClose">OK</button>

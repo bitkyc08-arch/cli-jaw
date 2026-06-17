@@ -126,7 +126,10 @@ test('GROK-FE-003: quota renderer shows setup commands for status-only CLIs', ()
     assert.match(status, /QUOTA_SETUP_HINTS/);
     assert.match(status, /renderQuotaSetupBox/);
     assert.match(status, /grok login --oauth/);
-    assert.match(status, /opencode plugin add @slkiser\/opencode-quota/);
+    assert.match(status, /OPENCODE_GO_API_KEY/);
+    assert.match(status, /data-cli-help-links/);
+    assert.match(status, /github\.com\/anomalyco\/opencode\/issues\/16017/);
+    assert.match(status, /zen\/go\/v1\/usage/);
     assert.match(status, /https:\/\/x\.ai\/cli\/install\.sh/, 'Grok install hint should point to xAI native installer');
     const forbiddenClaims = [
         ['Grok ', 'unlimited'].join(''),
