@@ -52,7 +52,7 @@ export function DesktopPanelControls() {
                 }}
                 aria-label="Toggle terminal panel"
                 aria-pressed={bottomOpen}
-                title={terminalCapability.reason ?? 'Terminal (Ctrl+Shift+`)'}
+                title={terminalCapability.reason ?? 'Terminal (Ctrl+`)'}
             >
                 <TerminalIcon />
             </button>

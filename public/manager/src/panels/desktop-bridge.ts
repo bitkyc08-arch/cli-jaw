@@ -4,12 +4,22 @@ import type { GitWorktreeEntry } from '../folder-panel/folder-worktree-types';
 import type { GitWorktreeOperation, GitWorktreeOperationPreview } from '../folder-panel/folder-worktree-types';
 
 export type TerminalBridgeApi = {
+    list: () => Promise<{ ok: boolean; sessions?: TerminalSessionSnapshot[]; error?: string }>;
     create: (opts?: { cwd?: string; cols?: number; rows?: number }) => Promise<{ ok: boolean; id?: string; shell?: string; cwd?: string; error?: string }>;
     write: (id: string, data: string) => Promise<void>;
     resize: (id: string, cols: number, rows: number) => Promise<void>;
     kill: (id: string) => Promise<void>;
     onData: (cb: (id: string, data: string) => void) => () => void;
     onExit: (cb: (id: string, code: number | null) => void) => () => void;
+};
+
+export type TerminalSessionSnapshot = {
+    id: string;
+    shell: string;
+    cwd: string;
+    cols: number;
+    rows: number;
+    buffer: string;
 };
 
 export type DiffMode = 'unstaged' | 'staged' | 'head' | 'base';

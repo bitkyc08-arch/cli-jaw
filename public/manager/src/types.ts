@@ -21,6 +21,7 @@ export type DashboardShortcutAction =
     | 'toggleBottomPanel'
     | 'toggleRightPanel'
     | 'focusTerminal'
+    | 'newTerminalSession'
     | 'openDiff'
     | 'openFolderTree'
     | 'closeFocusedTab'

@@ -6,6 +6,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import '@xterm/xterm/css/xterm.css';
 import { hasFolderPanelDragPayload, readFolderPanelDragPayload, shellEscapePath } from '../folder-panel/folder-drag-payload';
 import { getTerminalBridge } from './terminal-bridge';
+import type { TerminalSessionSnapshot } from '../panels/desktop-bridge';
 import './terminal.css';
 
 type TermTab = {
@@ -27,6 +28,12 @@ type TerminalPanelProps = {
 };
 
 const ACCESSIBILITY_INPUT_FLUSH_MS = 120;
+
+type PendingTerminalAction = 'focusTerminal' | 'newTerminalSession';
+
+type TerminalShortcutQueueWindow = Window & {
+    __cliJawPendingTerminalActions?: PendingTerminalAction[];
+};
 
 function normalizeTerminalInputValue(value: string): string {
     return value.replace(/\r?\n/g, '\r');
@@ -131,6 +138,8 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
     const tabsRef = useRef<TermTab[]>(tabs);
     const activeIdRef = useRef<string | null>(activeId);
     const autoCreatedRef = useRef(false);
+    const hydrationCompleteRef = useRef(false);
+    const queuedNewSessionCountRef = useRef(0);
     const onEmptySessionsRef = useRef(props.onEmptySessions);
 
     tabsRef.current = tabs;
@@ -214,6 +223,48 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         }
     }, [bridge, createRuntime, fitTerminal]);
 
+    const flushQueuedNewSessions = useCallback(() => {
+        if (!hydrationCompleteRef.current) return;
+        const count = queuedNewSessionCountRef.current;
+        queuedNewSessionCountRef.current = 0;
+        for (let i = 0; i < count; i += 1) {
+            void createSession();
+        }
+    }, [createSession]);
+
+    const requestNewSession = useCallback(() => {
+        if (!hydrationCompleteRef.current) {
+            queuedNewSessionCountRef.current += 1;
+            return;
+        }
+        void createSession();
+    }, [createSession]);
+
+    const focusActiveTerminal = useCallback(() => {
+        if (!activeIdRef.current) return;
+        runtimesRef.current.get(activeIdRef.current)?.term.focus();
+    }, []);
+
+    const drainPendingTerminalActions = useCallback(() => {
+        const win = window as TerminalShortcutQueueWindow;
+        const actions = win.__cliJawPendingTerminalActions ?? [];
+        win.__cliJawPendingTerminalActions = [];
+        for (const action of actions) {
+            if (action === 'focusTerminal') focusActiveTerminal();
+            else if (action === 'newTerminalSession') requestNewSession();
+        }
+    }, [focusActiveTerminal, requestNewSession]);
+
+    const restoreSession = useCallback((snapshot: TerminalSessionSnapshot): TermTab => {
+        if (snapshot.buffer) pendingOutputRef.current.set(snapshot.id, snapshot.buffer);
+        createRuntime(snapshot.id);
+        return {
+            id: snapshot.id,
+            shell: snapshot.shell || 'sh',
+            cwd: snapshot.cwd || '~',
+        };
+    }, [createRuntime]);
+
     const closeSession = useCallback((id: string) => {
         if (!bridge) return;
         void bridge.kill(id);
@@ -264,11 +315,49 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
 
     useEffect(() => {
         if (!bridge) return;
-        if (tabs.length === 0 && !autoCreatedRef.current) {
-            autoCreatedRef.current = true;
-            void createSession();
+        const terminalBridge = bridge;
+        let cancelled = false;
+        hydrationCompleteRef.current = false;
+        autoCreatedRef.current = false;
+
+        async function hydrateSessions() {
+            try {
+                const result = await terminalBridge.list();
+                if (cancelled) return;
+                if (!result.ok) {
+                    setError(result.error ?? 'Failed to restore terminal sessions');
+                    hydrationCompleteRef.current = true;
+                    flushQueuedNewSessions();
+                    return;
+                }
+
+                const restoredTabs = (result.sessions ?? []).map(restoreSession);
+                setTabs(restoredTabs);
+                setActiveId(current => {
+                    if (current && restoredTabs.some(tab => tab.id === current)) return current;
+                    return restoredTabs[restoredTabs.length - 1]?.id ?? null;
+                });
+                hydrationCompleteRef.current = true;
+
+                if (restoredTabs.length === 0 && queuedNewSessionCountRef.current === 0 && !autoCreatedRef.current) {
+                    autoCreatedRef.current = true;
+                    void createSession();
+                    return;
+                }
+                flushQueuedNewSessions();
+            } catch (err) {
+                if (cancelled) return;
+                setError((err as Error).message);
+                hydrationCompleteRef.current = true;
+                flushQueuedNewSessions();
+            }
         }
-    }, [bridge, tabs.length, createSession]);
+
+        void hydrateSessions();
+        return () => {
+            cancelled = true;
+        };
+    }, [bridge, createSession, flushQueuedNewSessions, restoreSession]);
 
     useEffect(() => {
         if (!bridge) return;
@@ -294,9 +383,6 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         return () => {
             offData();
             offExit();
-            for (const tab of tabsRef.current) {
-                void bridge.kill(tab.id);
-            }
             for (const id of Array.from(runtimesRef.current.keys())) {
                 disposeRuntime(id);
             }
@@ -319,13 +405,18 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
             } else if (detail === 'terminalClear' && activeIdRef.current) {
                 const runtime = runtimesRef.current.get(activeIdRef.current);
                 if (runtime) runtime.term.clear();
-            } else if (detail === 'terminalNewTab') {
-                void createSession();
+            } else if (detail === 'focusTerminal' && activeIdRef.current) {
+                focusActiveTerminal();
+            } else if (detail === 'terminalNewTab' || detail === 'newTerminalSession') {
+                requestNewSession();
+            } else if (detail === 'flushTerminalShortcutQueue') {
+                drainPendingTerminalActions();
             }
         }
         document.addEventListener('jaw:shortcut-action', handleShortcutAction);
+        drainPendingTerminalActions();
         return () => document.removeEventListener('jaw:shortcut-action', handleShortcutAction);
-    }, [closeSession, createSession]);
+    }, [closeSession, drainPendingTerminalActions, focusActiveTerminal, requestNewSession]);
 
     useEffect(() => {
         if (!panelRef.current || typeof ResizeObserver === 'undefined') return;

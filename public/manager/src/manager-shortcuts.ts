@@ -9,6 +9,7 @@ export const MANAGER_SHORTCUT_ACTIONS: DashboardShortcutAction[] = [
     'toggleBottomPanel',
     'toggleRightPanel',
     'focusTerminal',
+    'newTerminalSession',
     'openDiff',
     'openFolderTree',
     'closeFocusedTab',
@@ -36,7 +37,8 @@ export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
     nextInstance: 'Alt+J',
     toggleBottomPanel: 'Meta+J',
     toggleRightPanel: 'Meta+B',
-    focusTerminal: 'Ctrl+Shift+`',
+    focusTerminal: 'Ctrl+`',
+    newTerminalSession: 'Ctrl+Shift+`',
     openDiff: 'Meta+Shift+D',
     openFolderTree: 'Meta+Shift+E',
     closeFocusedTab: 'Meta+W',
@@ -58,7 +60,8 @@ export const DEFAULT_MANAGER_SHORTCUT_KEYMAP: DashboardShortcutKeymap = {
 
 const MANAGER_SHORTCUT_ALIASES: Partial<Record<DashboardShortcutAction, string[]>> = {
     toggleRightPanel: ['Meta+B'],
-    focusTerminal: ['Ctrl+Shift+`', 'Meta+`'],
+    focusTerminal: ['Ctrl+`', 'Meta+`'],
+    newTerminalSession: ['Ctrl+Shift+`'],
 };
 
 type ParsedShortcut = {

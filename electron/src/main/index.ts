@@ -142,6 +142,7 @@ type ManagerShortcutAction =
   | 'toggleBottomPanel'
   | 'toggleRightPanel'
   | 'focusTerminal'
+  | 'newTerminalSession'
   | 'openDiff'
   | 'openFolderTree'
   | 'closeFocusedTab'
@@ -681,7 +682,8 @@ function managerShortcutActionFromInput(input: DesktopKeyboardInput): ManagerSho
   const shift = input.shift === true;
   const alt = input.alt === true;
 
-  if (ctrl && shift && !meta && !alt && isCode(input, 'Backquote', '`')) return 'focusTerminal';
+  if (ctrl && shift && !meta && !alt && isCode(input, 'Backquote', '`')) return 'newTerminalSession';
+  if (ctrl && !meta && !shift && !alt && isCode(input, 'Backquote', '`')) return 'focusTerminal';
   if (meta && !ctrl && !shift && !alt && isCode(input, 'Backquote', '`')) return 'focusTerminal';
   if (meta && !ctrl && !shift && !alt && isCode(input, 'KeyB', 'b')) return 'toggleRightPanel';
   if (meta && !ctrl && shift && !alt && isCode(input, 'KeyB', 'b')) return 'toggleLeftSidebar';
@@ -744,9 +746,14 @@ function installManagerApplicationMenu(): void {
           click: () => sendManagerShortcut('toggleRightPanel'),
         },
         {
-          label: 'Toggle Terminal',
-          accelerator: 'Ctrl+Shift+`',
+          label: 'Reveal Terminal',
+          accelerator: 'Ctrl+`',
           click: () => sendManagerShortcut('focusTerminal'),
+        },
+        {
+          label: 'New Terminal',
+          accelerator: 'Ctrl+Shift+`',
+          click: () => sendManagerShortcut('newTerminalSession'),
         },
         {
           label: 'Toggle Bottom Panel',

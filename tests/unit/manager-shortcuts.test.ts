@@ -43,10 +43,14 @@ test('manager shortcut action lookup uses the configured keymap', () => {
     );
     assert.equal(
         actionForShortcutEvent(keyEvent('~', { ctrlKey: true, shiftKey: true, code: 'Backquote' }), DEFAULT_MANAGER_SHORTCUT_KEYMAP),
+        'newTerminalSession',
+    );
+    assert.equal(
+        actionForShortcutEvent(keyEvent('`', { ctrlKey: true, code: 'Backquote' }), DEFAULT_MANAGER_SHORTCUT_KEYMAP),
         'focusTerminal',
     );
     assert.equal(
-        actionForShortcutEvent(keyEvent('`', { metaKey: true, code: 'Backquote' }), { focusTerminal: 'Meta+`' }),
+        actionForShortcutEvent(keyEvent('`', { metaKey: true, code: 'Backquote' }), DEFAULT_MANAGER_SHORTCUT_KEYMAP),
         'focusTerminal',
     );
     assert.equal(
@@ -74,7 +78,8 @@ test('manager shortcut keymap normalizes legacy registry values', () => {
     assert.equal(normalized.focusInstances, DEFAULT_MANAGER_SHORTCUT_KEYMAP.focusInstances);
     assert.equal(normalized.focusActiveSession, DEFAULT_MANAGER_SHORTCUT_KEYMAP.focusActiveSession);
     assert.equal(normalized.toggleRightPanel, 'Meta+B');
-    assert.equal(normalized.focusTerminal, 'Ctrl+Shift+`');
+    assert.equal(normalized.focusTerminal, 'Ctrl+`');
+    assert.equal(normalized.newTerminalSession, 'Ctrl+Shift+`');
     assert.equal(normalized.focusNotes, 'Ctrl+Shift+N');
     assert.equal(normalized.previousInstance, DEFAULT_MANAGER_SHORTCUT_KEYMAP.previousInstance);
     assert.equal(normalized.nextInstance, DEFAULT_MANAGER_SHORTCUT_KEYMAP.nextInstance);

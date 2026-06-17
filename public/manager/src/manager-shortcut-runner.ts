@@ -97,6 +97,8 @@ export function runManagerShortcut(action: DashboardShortcutAction, deps: Manage
         const el = document.activeElement;
         if (el?.closest('.terminal-panel, .xterm')) {
             document.dispatchEvent(new CustomEvent('jaw:shortcut-action', { detail: action }));
+        } else if (action === 'terminalNewTab') {
+            panelShortcutBus.dispatch('newTerminalSession');
         }
         return;
     }

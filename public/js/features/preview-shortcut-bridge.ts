@@ -12,7 +12,7 @@ function isForwardedManagerShortcut(e: KeyboardEvent): boolean {
         }
         return FORWARD_KEYS.has(key);
     }
-    if (e.ctrlKey && e.shiftKey && !e.metaKey && !e.altKey) {
+    if (e.ctrlKey && !e.metaKey && !e.altKey) {
         return e.code === 'Backquote';
     }
     if (e.metaKey && !e.ctrlKey && !e.altKey) {

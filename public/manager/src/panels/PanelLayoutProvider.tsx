@@ -185,6 +185,18 @@ type PanelLayoutContextValue = {
 
 const PanelLayoutContext = createContext<PanelLayoutContextValue | null>(null);
 
+type TerminalShortcutQueueWindow = Window & {
+    __cliJawPendingTerminalActions?: Array<'focusTerminal' | 'newTerminalSession'>;
+};
+
+function dispatchTerminalShortcutAfterMount(detail: 'focusTerminal' | 'newTerminalSession'): void {
+    const win = window as TerminalShortcutQueueWindow;
+    win.__cliJawPendingTerminalActions = [...(win.__cliJawPendingTerminalActions ?? []), detail];
+    window.setTimeout(() => {
+        document.dispatchEvent(new CustomEvent('jaw:shortcut-action', { detail: 'flushTerminalShortcutQueue' }));
+    }, 0);
+}
+
 export function PanelLayoutProvider(props: {
     children: ReactNode;
     initialPanelState?: Partial<PanelLayoutState> | undefined;
@@ -227,6 +239,11 @@ export function PanelLayoutProvider(props: {
                     return true;
                 case 'focusTerminal':
                     dispatch({ type: 'OPEN_BOTTOM_TAB', tab: 'terminal' });
+                    dispatchTerminalShortcutAfterMount('focusTerminal');
+                    return true;
+                case 'newTerminalSession':
+                    dispatch({ type: 'OPEN_BOTTOM_TAB', tab: 'terminal' });
+                    dispatchTerminalShortcutAfterMount('newTerminalSession');
                     return true;
                 case 'openDiff':
                     dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'diff' });

@@ -457,8 +457,10 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
     const bottomTabBar = read('public/manager/src/panels/BottomPanelTabBar.tsx');
     const panelCss = read('public/manager/src/panels/panels.css');
 
-    assert.ok(shortcuts.includes("focusTerminal: 'Ctrl+Shift+`'"), 'terminal focus must default to Ctrl+Shift+`');
-    assert.ok(shortcuts.includes("focusTerminal: ['Ctrl+Shift+`', 'Meta+`']"), 'terminal shortcut must keep common aliases for existing users');
+    assert.ok(shortcuts.includes("focusTerminal: 'Ctrl+`'"), 'terminal focus must default to Ctrl+`');
+    assert.ok(shortcuts.includes("newTerminalSession: 'Ctrl+Shift+`'"), 'new terminal session must default to Ctrl+Shift+`');
+    assert.ok(shortcuts.includes("focusTerminal: ['Ctrl+`', 'Meta+`']"), 'terminal focus shortcut must keep Meta+` as a legacy reveal alias');
+    assert.ok(shortcuts.includes("newTerminalSession: ['Ctrl+Shift+`']"), 'Ctrl+Shift+` must create a new terminal instead of revealing an existing one');
     assert.ok(shortcuts.includes("toggleRightPanel: 'Meta+B'"), 'right side panel must use the expected Cmd+B shortcut');
     assert.ok(shortcuts.includes("toggleRightPanel: ['Meta+B']"), 'right side panel alias list must not conflict with toggleLeftSidebar on Cmd+Shift+B');
     assert.ok(shortcuts.includes("event.code === 'Backquote'"), 'shortcut matching must handle shifted backquote key events');
@@ -468,7 +470,8 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
     assert.ok(main.includes("sendManagerShortcut(action)"), 'Electron before-input-event handler must forward desktop shortcuts to the manager renderer');
     assert.ok(main.includes('function installManagerApplicationMenu()'), 'Electron main must install application menu accelerators for shortcuts that macOS consumes before the page');
     assert.ok(main.includes("accelerator: 'CommandOrControl+B'"), 'right sidebar shortcut must be registered as a native app menu accelerator');
-    assert.ok(main.includes("accelerator: 'Ctrl+Shift+`'"), 'terminal shortcut must be registered as a native app menu accelerator');
+    assert.ok(main.includes("accelerator: 'Ctrl+`'"), 'terminal reveal shortcut must be registered as a native app menu accelerator');
+    assert.ok(main.includes("accelerator: 'Ctrl+Shift+`'"), 'new terminal shortcut must be registered as a native app menu accelerator');
     assert.ok(preload.includes("ipcRenderer.on('manager:shortcut', handler)"), 'preload must expose desktop shortcut events');
     assert.ok(desktopBridge.includes('shortcuts?: ShortcutBridgeApi'), 'frontend desktop bridge type must include shortcut events');
     assert.ok(app.includes("getDesktop()?.shortcuts?.onAction"), 'manager app must subscribe to Electron desktop shortcut events');
@@ -476,7 +479,7 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
         app.includes("document.activeElement?.tagName === 'IFRAME' && action !== 'browserReload' && action !== 'browserHardReload'"),
         'iframe focus must keep blocking manager chrome shortcuts while allowing Cmd+R/Cmd+Shift+R to refresh the preview',
     );
-    assert.ok(previewBridge.includes("e.code === 'Backquote'"), 'classic preview iframe bridge must forward Ctrl+Shift+Backquote');
+    assert.ok(previewBridge.includes('e.ctrlKey && !e.metaKey && !e.altKey'), 'classic preview iframe bridge must forward Ctrl+Backquote and Ctrl+Shift+Backquote');
     assert.ok(previewMessages.includes('ctrlKey: !!data.ctrlKey'), 'manager preview shortcut bridge must preserve Ctrl modifier');
     assert.ok(previewMessages.includes('metaKey: !!data.metaKey'), 'manager preview shortcut bridge must preserve Meta modifier');
     assert.ok(terminal.includes("import { Terminal } from '@xterm/xterm'"), 'TerminalPanel must use xterm.js for real terminal input/rendering');
@@ -569,6 +572,7 @@ test('Electron bottom terminal and browser panels avoid duplicate generic chrome
     assert.equal(bottomPanel.includes('if (!bp.open || bp.tabs.length === 0) return null'), false, 'collapse must not unmount terminal/browser panels and kill state');
     assert.ok(bottomPanel.includes('{!ownsChrome && ('), 'generic BottomPanelTabBar must be hidden for content-owned terminal/browser panels');
     assert.ok(router.includes('panelLayout.state.bottomPanel.tabs.length > 0 ? <BottomPanel'), 'SidebarRailRouter must keep BottomPanel mounted while collapsed if tabs still exist');
+    assert.equal(router.includes('bottomPanelOpen && panelLayout.state.bottomPanel.tabs.length > 0'), false, 'SidebarRailRouter must not gate BottomPanel mounting on bottomPanelOpen');
     assert.ok(router.includes('<TerminalPanel onCollapse={controls.onCollapse} onEmptySessions={controls.onCloseTab} />'), 'TerminalPanel must receive collapse and empty-session callbacks from BottomPanel');
     assert.ok(router.includes('<BrowserPanel onCollapse={controls.onCollapse} />'), 'BrowserPanel must receive collapse callback only in bottom-panel context');
     assert.ok(terminal.includes('onEmptySessions?: () => void'), 'TerminalPanel must expose an empty-session callback for closing the bottom tab after the last PTY exits');

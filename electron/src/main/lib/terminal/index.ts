@@ -16,6 +16,10 @@ type TermSession = {
     id: string;
     pty: IPty;
     buffer: string;
+    shell: string;
+    cwd: string;
+    cols: number;
+    rows: number;
 };
 
 const sessions = new Map<string, TermSession>();
@@ -37,6 +41,21 @@ function clampDimension(value: unknown, fallback: number, min: number, max: numb
 }
 
 export function registerTerminalIpc(getWindow: () => BrowserWindow | null): void {
+    ipcMain.handle('terminal:list', (event) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        return {
+            ok: true,
+            sessions: Array.from(sessions.values()).map(session => ({
+                id: session.id,
+                shell: session.shell,
+                cwd: session.cwd,
+                cols: session.cols,
+                rows: session.rows,
+                buffer: session.buffer,
+            })),
+        };
+    });
+
     ipcMain.handle('terminal:create', (event, opts?: { cwd?: string; cols?: number; rows?: number }) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         if (sessions.size >= MAX_SESSIONS) {
@@ -58,7 +77,7 @@ export function registerTerminalIpc(getWindow: () => BrowserWindow | null): void
             env,
         });
 
-        const session: TermSession = { id, pty, buffer: '' };
+        const session: TermSession = { id, pty, buffer: '', shell, cwd, cols, rows };
         sessions.set(id, session);
 
         pty.onData((text: string) => {
@@ -94,10 +113,9 @@ export function registerTerminalIpc(getWindow: () => BrowserWindow | null): void
         if (!isAllowedSender(event)) return;
         const session = sessions.get(id);
         if (!session) return;
-        session.pty.resize(
-            clampDimension(cols, 80, 20, 500),
-            clampDimension(rows, 24, 4, 200),
-        );
+        session.cols = clampDimension(cols, 80, 20, 500);
+        session.rows = clampDimension(rows, 24, 4, 200);
+        session.pty.resize(session.cols, session.rows);
     });
 
     ipcMain.handle('terminal:kill', (event, id: string) => {
