@@ -12,6 +12,7 @@ export type DashboardDetailTab = 'overview' | 'preview' | 'logs' | 'settings';
 export type DashboardUiTheme = 'auto' | 'dark' | 'light';
 export type DashboardLocale = 'ko' | 'en' | 'zh' | 'ja';
 export type DashboardSidebarMode = 'instances' | 'board' | 'schedule' | 'reminders' | 'notes' | 'settings';
+export type DashboardViewMode = 'jaw' | 'code';
 export type DashboardShortcutAction =
     | 'focusInstances'
     | 'focusActiveSession'

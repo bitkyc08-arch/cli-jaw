@@ -50,6 +50,7 @@ import type {
     DashboardNotesViewMode,
     DashboardScanResult,
     DashboardSidebarMode,
+    DashboardViewMode,
     NoteMetadata,
     DashboardLocale,
     ManagerEvent,
@@ -58,6 +59,9 @@ import type {
 import { JawCeoConsole } from './jaw-ceo/JawCeoConsole';
 import type { JawCeoController } from './jaw-ceo/useJawCeo';
 import type { JawCeoVoiceController } from './jaw-ceo/useJawCeoVoice';
+import { ModeSwitch } from './code/ModeSwitch';
+const CodeCanvas = lazy(() => import('./code/CodeCanvas').then(m => ({ default: m.CodeCanvas })));
+import './code/code.css';
 
 type WorkspaceSurfaceProps = {
     active: boolean;
@@ -150,6 +154,10 @@ type Props = {
     dashboardSettingsUi: Parameters<typeof DashboardSettingsWorkspace>[0]['ui'];
     titleSupport: Parameters<typeof DashboardSettingsWorkspace>[0]['titleSupport'];
     onDashboardSettingsPatch: Parameters<typeof DashboardSettingsWorkspace>[0]['onUiPatch'];
+    viewMode: DashboardViewMode;
+    onViewModeChange: (mode: DashboardViewMode) => void;
+    port: number;
+    workingDir: string;
 };
 
 function renderRightPanelContent(
@@ -312,6 +320,7 @@ export function SidebarRailRouter(props: Props) {
                         helpOpen={props.helpOpen}
                         onToggleHelp={props.onToggleHelp}
                     />
+                    <ModeSwitch codeMode={props.viewMode === 'code'} onChange={code => { props.onViewModeChange(code ? 'code' : 'jaw'); if (code && props.sidebarMode !== 'instances') props.onSidebarModeChange('instances'); }} />
                     <div id="manager-sidebar-list" className="manager-sidebar-list">
                         {props.sidebarMode === 'settings' ? (
                             <DashboardSettingsSidebar activeSection={props.settingsSection} locale={props.locale} onSectionChange={props.onSettingsSectionChange} />
@@ -347,10 +356,13 @@ export function SidebarRailRouter(props: Props) {
                         </section>
                     )}
                     <div className="workspace-surface-layer">
-                        <WorkspaceSurface active={props.sidebarMode === 'instances'}>
+                        <WorkspaceSurface active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'}>
                             <Workbench mode={props.activeDetailTab} onModeChange={props.onDetailTabChange} header={props.workbenchHeader} modeActions={props.jawCeoWorkbenchButton} overview={props.detailContent('overview')} preview={(
                                 <InstancePreview instance={props.selectedInstance} data={props.data} enabled={props.previewEnabled} active={props.sidebarMode === 'instances' && props.activeDetailTab === 'preview'} refreshKey={props.previewRefreshKey} theme={props.previewTheme} {...(props.onOpenNotesFromPreview ? { onOpenNotesFromPreview: props.onOpenNotesFromPreview } : {})} onOpenDocFromPreview={handleRightPreviewFile} onPreviewDroppedFiles={handlePreviewDroppedFiles} docPanelCapable={desktopPanelsAvailable} />
                             )} logs={props.detailContent('logs')} settings={props.detailContent('settings')} />
+                        </WorkspaceSurface>
+                        <WorkspaceSurface active={props.sidebarMode === 'instances' && props.viewMode === 'code'}>
+                            <Suspense fallback={fallback}><CodeCanvas port={props.port} workingDir={props.workingDir} /></Suspense>
                         </WorkspaceSurface>
                         <WorkspaceSurface active={props.sidebarMode === 'notes'}>
                             <NotesWorkspace active={props.sidebarMode === 'notes'} selectedPath={props.notesSelectedPath} selectedNote={props.notesSelectedNote} vaultIndex={props.notesModel.index} viewMode={props.notesViewMode} authoringMode={props.notesAuthoringMode} wordWrap={props.notesWordWrap} vimMode={props.notesVimMode} treeWidth={props.notesTreeWidth} notesGraphSettings={props.notesGraphSettings} tagFilter={props.notesModel.tagFilter} onOpenSidebarSearch={props.onOpenNotesSearch} onSelectedPathChange={props.onNotesSelectedPathChange} onDirtyPathChange={props.onNotesDirtyPathChange} onViewModeChange={props.onNotesViewModeChange} onAuthoringModeChange={props.onNotesAuthoringModeChange} onWordWrapChange={props.onNotesWordWrapChange} onVimModeChange={props.onNotesVimModeChange} onTreeWidthChange={props.onNotesTreeWidthChange} onNotesGraphSettingsChange={props.onNotesGraphSettingsChange} onTagSelect={props.notesModel.setTagFilter} onWikiLinkNavigate={props.onNotesSelectedPathChange} />

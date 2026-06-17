@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { DEFAULT_MANAGER_SHORTCUT_KEYMAP, normalizeManagerShortcutKeymap } from '../manager-shortcuts';
-import type { DashboardDetailTab, DashboardDiffMode, DashboardDiffRootPolicy, DashboardLocale, DashboardNotesAuthoringMode, DashboardNotesGraphSettings, DashboardNotesViewMode, DashboardShortcutKeymap, DashboardSidebarMode } from '../types';
+import type { DashboardDetailTab, DashboardDiffMode, DashboardDiffRootPolicy, DashboardLocale, DashboardNotesAuthoringMode, DashboardNotesGraphSettings, DashboardNotesViewMode, DashboardShortcutKeymap, DashboardSidebarMode, DashboardViewMode } from '../types';
 
 export function useDashboardView() {
     const [selectedPort, setSelectedPort] = useState<number | null>(null);
@@ -10,6 +10,7 @@ export function useDashboardView() {
     const [activityDockCollapsed, setActivityDockCollapsed] = useState(false);
     const [activityDockHeight, setActivityDockHeight] = useState(150);
     const [sidebarMode, setSidebarMode] = useState<DashboardSidebarMode>('instances');
+    const [viewMode, setViewMode] = useState<DashboardViewMode>('jaw');
     const [notesSelectedPath, setNotesSelectedPath] = useState<string | null>(null);
     const [notesViewMode, setNotesViewMode] = useState<DashboardNotesViewMode>('raw');
     const [notesAuthoringMode, setNotesAuthoringMode] = useState<DashboardNotesAuthoringMode>('plain');
@@ -51,6 +52,8 @@ export function useDashboardView() {
         setActivityDockHeight,
         sidebarMode,
         setSidebarMode,
+        viewMode,
+        setViewMode,
         notesSelectedPath,
         setNotesSelectedPath,
         notesViewMode,
