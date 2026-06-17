@@ -38,6 +38,8 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const [sending, setSending] = useState(false);
     const [messages, setMessages] = useState<TranscriptEntry[]>([]);
     const [permissions, setPermissions] = useState<PendingPermission[]>([]);
+    const [availableCommands, setAvailableCommands] = useState<Array<{ name: string; description?: string }>>([]);
+    const [showCommands, setShowCommands] = useState(false);
     const [provider, setProvider] = useState('anthropic');
     const [model, setModel] = useState('claude-fable-5');
     const [effort, setEffort] = useState('high');
@@ -93,6 +95,9 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             if (permissionId) {
                 setPermissions(prev => [...prev, { permissionId, toolCall, options }]);
             }
+        } else if (kind === 'code_available_commands_update') {
+            const cmds = (update['availableCommands'] ?? []) as Array<{ name?: string; description?: string }>;
+            setAvailableCommands(cmds.filter(c => c.name).map(c => ({ name: String(c.name), description: c.description ? String(c.description) : undefined })));
         } else if (kind === 'code_turn_done') {
             setSending(false);
         } else if (kind === 'code_session_error') {
@@ -125,12 +130,26 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         }
     }, [inputText, sending, activeSessionId, client, workingDir, model]);
 
+    const handleInputChange = useCallback((text: string) => {
+        setInputText(text);
+        setShowCommands(text === '/' || (text.startsWith('/') && !text.includes(' ')));
+    }, []);
+
+    const handleCommandSelect = useCallback((name: string) => {
+        setInputText(name + ' ');
+        setShowCommands(false);
+    }, []);
+
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Escape' && showCommands) {
+            setShowCommands(false);
+            return;
+        }
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             void handleSubmit();
         }
-    }, [handleSubmit]);
+    }, [handleSubmit, showCommands]);
 
     const handlePermissionAnswer = useCallback(async (permissionId: string, optionId: string | null) => {
         try {
@@ -233,10 +252,24 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                     </div>
                 )}
                 <div className="code-composer">
+                    {showCommands && availableCommands.length > 0 && (
+                        <div className="code-command-palette">
+                            {availableCommands
+                                .filter(c => !inputText || c.name.startsWith(inputText))
+                                .slice(0, 10)
+                                .map(c => (
+                                    <button key={c.name} type="button" className="code-command-item"
+                                        onClick={() => handleCommandSelect(c.name)}>
+                                        <span className="code-command-name">{c.name}</span>
+                                        {c.description && <span className="code-command-desc">{c.description}</span>}
+                                    </button>
+                                ))}
+                        </div>
+                    )}
                     <textarea
                         className="code-composer-input"
                         value={inputText}
-                        onChange={e => setInputText(e.target.value)}
+                        onChange={e => handleInputChange(e.target.value)}
                         onKeyDown={handleKeyDown}
                         placeholder="Describe a task or ask a question..."
                         rows={1}
