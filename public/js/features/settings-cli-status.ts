@@ -12,6 +12,7 @@ import {
     QUOTA_CUSTOM_MSG,
     QUOTA_HIDDEN_CLIS,
     QUOTA_SETUP_HINTS,
+    SIDEBAR_HIDDEN_CLIS,
     renderQuotaSetupBox,
     renderSetupHelpMark,
 } from './settings-cli-status-render.js';
@@ -304,6 +305,7 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
     }
 
     for (const [name, info] of Object.entries(cliStatus)) {
+        if (SIDEBAR_HIDDEN_CLIS.has(name)) continue;
         const q = quota?.[name];
         let dotClass: string;
         if (!info.available) {
@@ -448,13 +450,14 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const text = btn.getAttribute('data-cli-help') || '';
-                showCliHelpPopup(text);
+                const desc = btn.getAttribute('data-cli-help-desc') || undefined;
+                showCliHelpPopup(text, desc);
             });
         });
     }
 }
 
-function showCliHelpPopup(text: string): void {
+function showCliHelpPopup(text: string, description?: string): void {
     const existing = document.getElementById('cliHelpOverlay');
     if (existing) existing.remove();
 
@@ -466,8 +469,12 @@ function showCliHelpPopup(text: string): void {
     const inner = document.createElement('div');
     inner.className = 'mcp-help-inner';
     const lines = text.split('\n').filter(Boolean);
+    const descHtml = description
+        ? `<p style="color:var(--text-dim);font-size:12px;margin:4px 0 8px">${description.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</p>`
+        : '';
     inner.innerHTML = `
         <h4>CLI Setup</h4>
+        ${descHtml}
         ${lines.map(l => `<p><code>${l.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</code></p>`).join('')}
         <div style="text-align:right;margin-top:12px">
             <button type="button" class="btn-save" id="cliHelpClose">OK</button>

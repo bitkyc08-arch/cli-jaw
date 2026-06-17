@@ -5,11 +5,13 @@ import type { QuotaEntry } from './settings-types.js';
 
 type QuotaSetupHint = {
     title: string;
+    description?: string;
     commands: string[];
     note?: string;
 };
 
 export const QUOTA_HIDDEN_CLIS = new Set(['ai-e', 'codex-app']);
+export const SIDEBAR_HIDDEN_CLIS = new Set(['claude-e', 'jwc']);
 export const QUOTA_CUSTOM_MSG: Record<string, string> = {
     claude: 'Currently subscribed, by June with credit',
 };
@@ -124,7 +126,8 @@ export function renderSetupHelpMark(cliName: string, q: QuotaEntry, extraTooltip
     ].filter(Boolean);
     if (!tooltipParts.length) return '';
     const tooltip = escapeHtml(tooltipParts.join('\n'));
-    return `<button type="button" class="help-trigger" style="margin-left:4px" data-cli-help="${tooltip}" aria-label="Setup help">?</button>`;
+    const descAttr = hint?.description ? ` data-cli-help-desc="${escapeHtml(hint.description)}"` : '';
+    return `<button type="button" class="help-trigger" style="margin-left:4px" data-cli-help="${tooltip}"${descAttr} aria-label="Setup help">?</button>`;
 }
 
 export function renderQuotaSetupBox(cliName: string, q: QuotaEntry): string {
@@ -143,12 +146,16 @@ export function renderQuotaSetupBox(cliName: string, q: QuotaEntry): string {
         const commandLines = hint.commands.map(cmd => `
             <div style="margin-top:3px"><code style="font-size:10px;background:var(--border);padding:1px 4px;border-radius:2px;word-break:break-all">${escapeHtml(cmd)}</code></div>
         `).join('');
+        const descriptionHtml = hint.description
+            ? `<div style="margin-top:3px;color:var(--text-dim);font-size:10px">${escapeHtml(hint.description)}</div>`
+            : '';
         return `
-            <div style="font-size:10px;color:var(--text-dim);margin:4px 0 0 16px;padding:5px 7px;background:var(--surface);border:1px solid var(--border);border-radius:5px">
-                <div style="color:var(--text);font-weight:600">${escapeHtml(hint.title)}${helpMark}</div>
+            <details class="cli-setup-details" style="font-size:10px;color:var(--text-dim);margin:4px 0 0 16px;padding:5px 7px;background:var(--surface);border:1px solid var(--border);border-radius:5px">
+                <summary style="color:var(--text);font-weight:600;cursor:pointer;list-style:none">${escapeHtml(hint.title)}${helpMark}</summary>
+                ${descriptionHtml}
                 ${commandLines}
                 ${hint.note ? `<div style="margin-top:4px;opacity:0.75">${escapeHtml(hint.note)}</div>` : ''}
-            </div>
+            </details>
         `;
     }
 
