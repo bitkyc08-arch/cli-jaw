@@ -328,9 +328,18 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                         break;
                     case 'orc_state':
                     case 'orchestrate_done':
-                    case 'orchestrate_warning':
-                        if ((event.raw['state'] || event.raw['phase']) && !isFullscreen(ctx)) console.log(`\n  ${c.dim}📋 PABCD: ${event.raw['state'] || event.raw['phase']}${event.raw['status'] ? ` (${event.raw['status']})` : ''}${c.reset}`);
+                    case 'orchestrate_warning': {
+                        const phase = String(event.raw['phase'] || event.raw['state'] || '');
+                        if (phase) ctx.orchPhase = phase;
+                        if (event.raw['type'] === 'orchestrate_done' || event.raw['status'] === 'idle') delete ctx.orchPhase;
+                        rebuildFooter(ctx);
+                        if (isFullscreen(ctx)) {
+                            ctx.requestFrame?.();
+                        } else if (phase) {
+                            console.log(`\n  ${c.dim}📋 PABCD: ${phase}${event.raw['status'] ? ` (${event.raw['status']})` : ''}${c.reset}`);
+                        }
                         break;
+                    }
                     case 'goal_done':
                     case 'goal_continuation':
                     case 'goal_pause_detected':

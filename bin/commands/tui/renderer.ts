@@ -70,6 +70,7 @@ export function rebuildFooter(ctx: TuiContext): void {
         gitBranch: ctx.isGit ? (ctx.gitBranch || 'agent') : undefined,
         cwd: projectDisplay || ctx.info?.workingDir,
         port: ctx.serverPort,
+        orchPhase: ctx.orchPhase,
     });
     const theme = isInitialized() ? (() => { try { return getInteractive().theme; } catch { return null; } })() : null;
     ctx.promptPrefix = theme

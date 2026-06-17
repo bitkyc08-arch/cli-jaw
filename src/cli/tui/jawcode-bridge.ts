@@ -83,6 +83,42 @@ export function renderToolLine(_icon: string, label: string, detail: string, sta
     return `  ${treePre}${stateIcon} ${theme.bold(label)}${detail && state !== 'done' ? theme.fg('muted', `: ${detail}`) : collapsedHint}${elapsedStr}`;
 }
 
+/**
+ * Multi-line tool block for fullscreen transcript rendering.
+ * Returns an array of rows: header + optional detail preview.
+ */
+export function renderToolBlock(label: string, detail: string, state: 'pending' | 'done' | 'error', opts?: {
+    collapsed?: boolean | undefined;
+    width?: number | undefined;
+}): string[] {
+    const theme = getTheme();
+    const width = opts?.width ?? (process.stdout.columns || 80);
+    const detailLines = detail.split('\n').map(line => line.trim()).filter(Boolean);
+    const expanded = opts?.collapsed === false;
+
+    // Header line
+    const headerLine = renderToolLine('', label, expanded ? '' : detail, state);
+    const rows: string[] = [headerLine];
+
+    // Detail block — show when expanded (collapsed === false) and there are detail lines
+    if (expanded && detailLines.length > 0) {
+        const prefix = theme ? `  ${theme.fg('muted', '│')} ` : '  \x1b[2m│\x1b[0m ';
+        const detailWidth = Math.max(10, width - 6);
+        const maxRows = 14;
+        for (let i = 0; i < Math.min(detailLines.length, maxRows); i++) {
+            const line = detailLines[i]!;
+            const clipped = line.length > detailWidth ? line.slice(0, detailWidth - 1) + '…' : line;
+            rows.push(`${prefix}${theme ? theme.fg('muted', clipped) : `\x1b[2m${clipped}\x1b[0m`}`);
+        }
+        if (detailLines.length > maxRows) {
+            rows.push(`${prefix}${theme ? theme.fg('muted', `… +${detailLines.length - maxRows} lines`) : `\x1b[2m… +${detailLines.length - maxRows} lines\x1b[0m`}`);
+        }
+    }
+
+    return rows;
+}
+
+
 export function renderThinkingCollapse(text: string, lineCount: number, expanded: boolean): string {
     const theme = getTheme();
     if (!theme) return `  \x1b[3m\x1b[2m${expanded ? text : `Thinking … +${lineCount} lines`}\x1b[0m`;
@@ -173,7 +209,7 @@ function renderSegment(text: string): string {
     return `\x1b[46m\x1b[30m ${text} \x1b[0m`;
 }
 
-function renderSegmentedStatusLine(left: string, right: string, cols: number): string {
+function renderSegmentedStatusLine(left: string, right: string, cols: number, opts?: { railColor?: string }): string {
     const prefix = '  ';
     const safeCols = Math.max(20, cols);
     const rightBudget = Math.max(8, Math.min(Math.floor(safeCols * 0.35), safeCols - 10));
@@ -182,7 +218,8 @@ function renderSegmentedStatusLine(left: string, right: string, cols: number): s
     const leftBudget = Math.max(1, safeCols - widthOf(prefix) - widthOf(rightSeg) - 1);
     const leftSeg = renderSegment(clipAnsiSafe(left, leftBudget));
     const railWidth = Math.max(0, safeCols - widthOf(prefix) - widthOf(leftSeg) - widthOf(rightSeg));
-    const rail = `\x1b[36m${'─'.repeat(railWidth)}\x1b[0m`;
+    const railColor = opts?.railColor ?? '\x1b[36m';
+    const rail = `${railColor}${'─'.repeat(railWidth)}\x1b[0m`;
     return `${prefix}${leftSeg}${rail}${rightSeg}`;
 }
 
@@ -196,6 +233,7 @@ export function renderStatusBar(segments: {
     gitBranch?: string | undefined;
     cwd?: string | undefined;
     port?: number | undefined;
+    orchPhase?: string | undefined;
 }): string {
     const theme = getTheme();
     const icon = (() => { try { const { sharkIcon } = require('./icons.js'); return sharkIcon(); } catch { return '🦈'; } })();
@@ -212,11 +250,23 @@ export function renderStatusBar(segments: {
     parts.push(segments.state === 'idle' ? style.muted(segments.state) : style.accent(segments.state));
     if (segments.elapsed) parts.push(style.muted(segments.elapsed));
     if (segments.bgtask && segments.bgtask > 0) parts.push(style.warning(`⏳${segments.bgtask}`));
+    if (segments.orchPhase) parts.push(style.accent(`📋${segments.orchPhase.toUpperCase()}`));
     if (segments.gitBranch) parts.push(style.muted(`ⴲ ${segments.gitBranch}`));
     if (segments.cwd) parts.push(style.muted(`📁 ${segments.cwd}`));
     while (widthOf(parts.join(' · ')) > Math.max(10, cols - 24) && parts.length > 3) {
         parts.splice(-1, 1);
     }
     const right = [segments.port ? `:${segments.port}` : '', '/quit  /clear'].filter(Boolean).join(' ');
-    return renderSegmentedStatusLine(parts.join(' · '), right, cols);
+
+    // PABCD phase → rail color from jawcode interactive bundle
+    let railColor: string | undefined;
+    if (segments.orchPhase && isInitialized()) {
+        try {
+            const inter = getInteractive();
+            if (typeof inter.getPabcdBorderColor === 'function') {
+                railColor = inter.getPabcdBorderColor(segments.orchPhase);
+            }
+        } catch { /* fallback to default cyan */ }
+    }
+    return renderSegmentedStatusLine(parts.join(' · '), right, cols, railColor ? { railColor } : undefined);
 }

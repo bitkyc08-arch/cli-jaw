@@ -3,7 +3,7 @@ import {
 } from '../../../src/cli/tui/composer.js';
 import { renderMarkdown } from '../../../src/cli/tui/markdown.js';
 import { renderMarkdownJawcode, isInitialized, getInteractive } from '../../../src/cli/tui/jawcode-render.js';
-import { renderToolLine, renderThinkingCollapse } from '../../../src/cli/tui/jawcode-bridge.js';
+import { renderToolLine, renderToolBlock, renderThinkingCollapse } from '../../../src/cli/tui/jawcode-bridge.js';
 import { classifyKeyAction, splitKeyInput, type KeyAction } from '../../../src/cli/tui/keymap.js';
 import { getCompletionItems } from '../../../src/cli/commands.js';
 import { composeHelpOntoFrame, composePaletteOntoFrame, composeSelectorOntoFrame, composeBgtaskOntoFrame } from '../../../src/cli/tui/overlay.js';
@@ -126,24 +126,10 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
             const state = item.status === 'error'
                 ? 'error' as const
                 : item.status === 'done' ? 'done' as const : 'pending' as const;
-            const detailLines = toolDetail.split('\n').map(line => line.trim()).filter(Boolean);
-            const expandedDone = item.status === 'done' && item.collapsed === false && detailLines.length > 0;
-            if (!expandedDone) {
-                const safeDetail = detailLines.length > 1 ? `${detailLines[0]} … +${detailLines.length - 1} lines` : (detailLines[0] ?? '');
-                return [renderToolLine('', parsed.label, safeDetail, state)];
-            }
-            const rows = [renderToolLine('', parsed.label, '', 'done')];
-            const maxDetailRows = 14;
-            const detailPrefix = `${gutter}${c.dim}│ `;
-            const detailWidth = Math.max(10, width - visualWidth(detailPrefix) - visualWidth(c.reset));
-            const wrappedRows = detailLines.flatMap(line => wrapTextToCols(line, detailWidth));
-            for (const line of wrappedRows.slice(0, maxDetailRows)) {
-                rows.push(`${detailPrefix}${clipTextToCols(line, detailWidth)}${c.reset}`);
-            }
-            if (wrappedRows.length > maxDetailRows) {
-                rows.push(`${gutter}${c.dim}└ … +${wrappedRows.length - maxDetailRows} lines${c.reset}`);
-            }
-            return rows;
+            return renderToolBlock(parsed.label, toolDetail, state, {
+                collapsed: item.collapsed,
+                width: width,
+            });
         }
         case 'command': {
             const icon = item.ok === false ? '!' : '✓';
