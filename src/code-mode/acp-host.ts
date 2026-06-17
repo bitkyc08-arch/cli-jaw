@@ -167,7 +167,7 @@ class AcpHost implements CodeSessionTransport {
     }
 
     // ── CodeSessionTransport ──────────────────────────────────────────
-    async newSession(cwd: string): Promise<CodeSessionInfo> {
+    async newSession(cwd: string, opts?: { model?: string }): Promise<CodeSessionInfo> {
         const settings = loadSettings();
         const max = Number((settings['code'] as Record<string, unknown> | undefined)?.['maxConcurrentSessions'] ?? DEFAULT_CODE_SETTINGS.maxConcurrentSessions);
         const live = [...this.#sessions.values()].filter(s => s.status !== 'closed');
@@ -176,6 +176,9 @@ class AcpHost implements CodeSessionTransport {
         const res = await this.#request('session/new', { cwd, mcpServers: [] });
         const sessionId = String(res['sessionId'] ?? '');
         if (!sessionId) throw new Error('engine returned no sessionId');
+        if (opts?.model) {
+            await this.#request('unstable_setSessionModel', { sessionId, modelId: opts.model });
+        }
         const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
         this.#sessions.set(sessionId, info);
         publish('jwc', 'code_session_created', { sessionId, cwd });

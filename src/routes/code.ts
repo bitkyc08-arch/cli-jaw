@@ -41,9 +41,10 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         void (async () => {
             const body = req.body as Record<string, unknown> | undefined;
             const cwd = String(body?.['cwd'] || '');
+            const model = body?.['model'] ? String(body['model']) : undefined;
             if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
             try {
-                const session = await acpHost.newSession(cwd);
+                const session = await acpHost.newSession(cwd, model ? { model } : undefined);
                 res.status(201).json({ ok: true, session });
             } catch (err) {
                 res.status(503).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
