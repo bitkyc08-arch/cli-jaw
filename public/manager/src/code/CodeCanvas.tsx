@@ -25,12 +25,19 @@ const DEFAULT_MODELS: Record<string, string[]> = {
 };
 const DEFAULT_EFFORTS = ['off', 'min', 'low', 'medium', 'high', 'xhigh'];
 
+type PendingPermission = {
+    permissionId: string;
+    toolCall: Record<string, unknown>;
+    options: Array<Record<string, unknown>>;
+};
+
 export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
     const [messages, setMessages] = useState<TranscriptEntry[]>([]);
+    const [permissions, setPermissions] = useState<PendingPermission[]>([]);
     const [provider, setProvider] = useState('anthropic');
     const [model, setModel] = useState('claude-fable-5');
     const [effort, setEffort] = useState('high');
@@ -79,6 +86,13 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                     return updated;
                 });
             }
+        } else if (kind === 'code_permission_request') {
+            const permissionId = String(event['permissionId'] ?? '');
+            const toolCall = (event['toolCall'] ?? {}) as Record<string, unknown>;
+            const options = (event['options'] ?? []) as Array<Record<string, unknown>>;
+            if (permissionId) {
+                setPermissions(prev => [...prev, { permissionId, toolCall, options }]);
+            }
         } else if (kind === 'code_turn_done') {
             setSending(false);
         } else if (kind === 'code_session_error') {
@@ -117,6 +131,13 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             void handleSubmit();
         }
     }, [handleSubmit]);
+
+    const handlePermissionAnswer = useCallback(async (permissionId: string, optionId: string | null) => {
+        try {
+            await client.answerPermission(permissionId, optionId);
+        } catch { /* server may have already resolved it */ }
+        setPermissions(prev => prev.filter(p => p.permissionId !== permissionId));
+    }, [client]);
 
     const modelOptions = DEFAULT_MODELS[provider] ?? DEFAULT_MODELS['anthropic'] ?? [];
 
@@ -184,6 +205,33 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                         </div>
                     )}
                 </div>
+                {permissions.length > 0 && (
+                    <div className="code-permissions">
+                        {permissions.map(p => (
+                            <div key={p.permissionId} className="code-permission-card">
+                                <div className="code-permission-title">
+                                    Permission: {String(p.toolCall['toolName'] ?? p.toolCall['title'] ?? 'tool')}
+                                </div>
+                                <div className="code-permission-actions">
+                                    {p.options.length > 0 ? p.options.map((opt, i) => (
+                                        <button key={i} type="button" className="code-permission-btn"
+                                            onClick={() => void handlePermissionAnswer(p.permissionId, String(opt['optionId'] ?? opt['id'] ?? i))}
+                                        >{String(opt['name'] ?? opt['label'] ?? `Option ${i + 1}`)}</button>
+                                    )) : (
+                                        <>
+                                            <button type="button" className="code-permission-btn code-permission-allow"
+                                                onClick={() => void handlePermissionAnswer(p.permissionId, 'allow')}
+                                            >Allow</button>
+                                            <button type="button" className="code-permission-btn code-permission-deny"
+                                                onClick={() => void handlePermissionAnswer(p.permissionId, null)}
+                                            >Deny</button>
+                                        </>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
                 <div className="code-composer">
                     <textarea
                         className="code-composer-input"

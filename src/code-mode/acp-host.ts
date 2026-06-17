@@ -207,7 +207,7 @@ class AcpHost implements CodeSessionTransport {
     }
 
     async cancel(sessionId: string): Promise<void> {
-        this.#send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId } });
+        await this.#request('session/cancel', { sessionId }).catch(() => {});
         // Late permission requests after cancel must be answered as cancelled (ACP contract).
         for (const [id, p] of this.#permissions) {
             if (p.sessionId === sessionId) {

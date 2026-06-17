@@ -177,6 +177,44 @@
     overflow-y: auto;
 }
 
+/* Permission cards */
+.code-permissions {
+    padding: 8px 16px;
+    border-top: 1px solid var(--border-default);
+    background: var(--bg-raised);
+}
+.code-permission-card {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; margin-bottom: 4px;
+    border: 1px solid var(--accent-default);
+    border-radius: 6px;
+    background: var(--accent-subtle);
+}
+.code-permission-title {
+    font-size: 12px; font-weight: 500;
+    color: var(--text-primary);
+}
+.code-permission-actions { display: flex; gap: 6px; }
+.code-permission-btn {
+    padding: 4px 12px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    font-size: 11px; cursor: pointer;
+    min-height: auto;
+}
+.code-permission-allow {
+    background: var(--status-success);
+    color: white;
+    border-color: var(--status-success);
+}
+.code-permission-deny {
+    background: var(--status-error);
+    color: white;
+    border-color: var(--status-error);
+}
+
 /* Composer */
 .code-composer {
     display: flex; align-items: flex-end; gap: 8px;
