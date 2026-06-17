@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import os from 'node:os';
-import { delimiter, dirname, join } from 'node:path';
+import { basename, delimiter, dirname, join, resolve } from 'node:path';
 
 function uniquePaths(paths: Array<string | null | undefined>): string[] {
     const seen = new Set<string>();
@@ -32,6 +32,29 @@ function listManagedNodeBins(homeDir: string): string[] {
         } catch { /* optional runtime managers may be absent */ }
     }
     return out;
+}
+
+function nodeBinaryName(platform = process.platform): string {
+    return platform === 'win32' ? 'node.exe' : 'node';
+}
+
+export function resolveBundledNodePath(
+    anchorPath = process.argv[1] || '',
+    platform = process.platform,
+): string | null {
+    if (!anchorPath) return null;
+
+    let dir = dirname(resolve(anchorPath));
+    while (true) {
+        if (basename(dir) === 'dist') {
+            const candidate = join(dirname(dir), nodeBinaryName(platform));
+            if (fs.existsSync(candidate)) return candidate;
+        }
+
+        const parent = dirname(dir);
+        if (parent === dir) return null;
+        dir = parent;
+    }
 }
 
 export function buildServicePath(

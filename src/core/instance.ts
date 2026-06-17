@@ -6,7 +6,7 @@ import { execFileSync } from 'node:child_process';
 import { basename } from 'node:path';
 import { createHash } from 'node:crypto';
 import { JAW_HOME } from './config.js';
-import { buildServicePath } from './runtime-path.js';
+import { buildServicePath, resolveBundledNodePath } from './runtime-path.js';
 
 /**
  * Derive a human-readable instance ID from JAW_HOME.
@@ -35,6 +35,9 @@ function whichWithServicePath(binary: string): string {
 
 /** Resolve absolute path to node binary. */
 export function getNodePath(): string {
+    const bundledNode = resolveBundledNodePath();
+    if (bundledNode) return bundledNode;
+
     try { return whichWithServicePath('node'); }
     catch { return process.execPath || '/usr/local/bin/node'; }
 }

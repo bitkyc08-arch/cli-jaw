@@ -11,6 +11,7 @@ import { settings, loadSettings } from '../../src/core/config.js';
 import { shouldOpenBrowserByDefault } from '../../src/core/browser-open-default.js';
 import fs from 'node:fs';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
+import { resolveBundledNodePath } from '../../src/core/runtime-path.js';
 
 loadSettings();
 
@@ -62,10 +63,11 @@ console.log(`\n  🦈 cli-jaw serve — port ${values.port}${modeLabels.length ?
 
 let child;
 if (isDistMode) {
-    // dist mode: spawn node directly
+    // dist mode: prefer the sidecar Node next to dist/ when present.
     const nodeArgs = ['--dns-result-order=ipv4first'];
     if (fs.existsSync(envFile)) nodeArgs.unshift(`--env-file=${envFile}`);
-    child = spawn(process.execPath,
+    const nodePath = resolveBundledNodePath(serverPath) ?? process.execPath;
+    child = spawn(nodePath,
         [...nodeArgs, serverPath],
         {
             stdio: 'inherit',

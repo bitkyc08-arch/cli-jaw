@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { buildServicePath } from '../../src/core/runtime-path.ts';
+import { buildServicePath, resolveBundledNodePath } from '../../src/core/runtime-path.ts';
 import { readSource } from './source-normalize.js';
 
 const ROOT = process.cwd();
@@ -17,6 +17,8 @@ const LIFECYCLE = path.join(ROOT, 'src/agent/lifecycle-handler.ts');
 const DB = path.join(ROOT, 'src/core/db.ts');
 const LAUNCHD = path.join(ROOT, 'bin/commands/launchd.ts');
 const SERVICE = path.join(ROOT, 'bin/commands/service.ts');
+const SERVE = path.join(ROOT, 'bin/commands/serve.ts');
+const DASHBOARD = path.join(ROOT, 'bin/commands/dashboard.ts');
 
 test('SRH-001: buildServicePath augments minimal PATH with common service-safe directories', () => {
     const built = buildServicePath('/usr/bin:/bin', []);
@@ -40,6 +42,19 @@ test('SRH-002: buildServicePath discovers managed node bins from a custom home',
     );
 });
 
+test('SRH-002b: dist sidecars resolve sibling bundled Node before PATH Node', () => {
+    const tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-sidecar-node-'));
+    const distBin = path.join(tmpRoot, 'dist', 'bin');
+    fs.mkdirSync(distBin, { recursive: true });
+    const entry = path.join(distBin, 'cli-jaw.js');
+    const bundledNode = path.join(tmpRoot, process.platform === 'win32' ? 'node.exe' : 'node');
+    fs.writeFileSync(entry, '');
+    fs.writeFileSync(bundledNode, '');
+
+    assert.equal(resolveBundledNodePath(entry), bundledNode);
+});
+
+
 test('SRH-003: server clears stale employee sessions before heartbeat and seeds employees first', () => {
     const src = readSource(SERVER, 'utf8');
     const clearIdx = src.indexOf('clearAllEmployeeSessions.run()');
@@ -60,6 +75,19 @@ test('SRH-004: service installers use shared service PATH builder instead of raw
     assert.match(serviceSrc, /buildServicePath\(process\.env\.PATH \|\| ''/);
     assert.doesNotMatch(launchdSrc, /<string>\$\{xmlEsc\(process\.env\.PATH \|\| ''\)\}<\/string>/);
     assert.doesNotMatch(serviceSrc, /Environment="PATH=\$\{process\.env\.PATH \|\| '\/usr\/local\/bin:\/usr\/bin:\/bin'\}"/);
+});
+
+test('SRH-004b: dist-mode service commands prefer sidecar Node over process.execPath', () => {
+    const instanceSrc = readSource(path.join(ROOT, 'src/core/instance.ts'), 'utf8');
+    const serveSrc = readSource(SERVE, 'utf8');
+    const dashboardSrc = readSource(DASHBOARD, 'utf8');
+
+    assert.match(instanceSrc, /resolveBundledNodePath\(\)/,
+        'service installers must resolve sidecar Node before PATH node');
+    assert.match(serveSrc, /resolveBundledNodePath\(serverPath\) \?\? process\.execPath/,
+        'jaw serve must use sidecar Node for dist server startup');
+    assert.match(dashboardSrc, /resolveBundledNodePath\(serverJs\) \?\? process\.execPath/,
+        'jaw dashboard serve must use sidecar Node for dist manager startup');
 });
 
 test('SRH-005: spawn path and detectCli logic use service-safe PATH handling', () => {

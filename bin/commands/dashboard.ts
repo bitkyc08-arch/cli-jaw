@@ -10,6 +10,7 @@ import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord, fieldString, type JsonRecord } from '../_http-client.js';
 import { handleMemory } from './dashboard-memory.js';
 import { handleDashboardChat } from './dashboard-chat.js';
+import { resolveBundledNodePath } from '../../src/core/runtime-path.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const commandRoot = join(__dirname, '..', '..');
@@ -109,9 +110,11 @@ async function handleServe(): Promise<void> {
     const serverJs = join(projectRoot, 'dist', 'src', 'manager', 'server.js');
     const serverTs = join(projectRoot, 'src', 'manager', 'server.ts');
     const isDistMode = existsSync(serverJs);
-    const command = isDistMode ? process.execPath : (existsSync(join(projectRoot, 'node_modules', '.bin', 'tsx'))
-        ? join(projectRoot, 'node_modules', '.bin', 'tsx')
-        : 'tsx');
+    const command = isDistMode
+        ? (resolveBundledNodePath(serverJs) ?? process.execPath)
+        : (existsSync(join(projectRoot, 'node_modules', '.bin', 'tsx'))
+            ? join(projectRoot, 'node_modules', '.bin', 'tsx')
+            : 'tsx');
     const args = isDistMode ? [serverJs] : [serverTs];
 
     console.log(`\n  Jaw dashboard serve — port ${dashboardPort}`);
