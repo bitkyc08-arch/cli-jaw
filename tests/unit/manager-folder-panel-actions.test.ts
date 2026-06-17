@@ -23,12 +23,12 @@ test('FolderPanel wires native move, copy, reveal, and confirmation actions', ()
     assert.ok(moveConfirm.includes('className="folder-move-confirm"'), 'FolderPanel must render a move confirmation surface');
     assert.ok(panel.includes('source.movePath'), 'FolderPanel must call the source move path API');
     assert.ok(panel.includes('source.revealPath'), 'FolderPanel must call the source reveal path API');
-    assert.ok(panel.includes('props.onPreviewFile?.(entry.path)'), 'file clicks must keep preview behavior');
-    assert.ok(panel.includes('const selectEntry = useCallback'), 'single click must have a selection-only helper');
+    assert.ok(panel.includes("import { useFolderSelection"), 'FolderPanel must delegate selection ownership to the selection hook');
+    assert.ok(panel.includes('onPreviewFile: props.onPreviewFile'), 'file preview behavior must be wired into the selection hook');
     assert.ok(panel.includes('const toggleEntryExpansion = useCallback'), 'directory expansion must be a separate helper');
-    assert.ok(rows.includes('props.selectEntry(entry)'), 'row click must select without expanding');
+    assert.ok(rows.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event) })'), 'row click must pass multi-select modifiers without expanding');
     assert.ok(rows.includes('props.toggleEntryExpansion(entry)'), 'row disclosure/double-click must expand separately');
-    assert.ok(panel.includes('<FolderTreeRows'), 'FolderPanel must delegate row rendering to the extracted component');
+    assert.ok(panel.includes('<FolderPanelTree'), 'FolderPanel must delegate tree rendering to the extracted component');
 });
 
 test('FolderPanel uses arrow and double-click for directory expansion', () => {
@@ -47,12 +47,14 @@ test('FolderPanel separates preview selection from local action selection', () =
     const panel = read('public/manager/src/folder-panel/FolderPanel.tsx');
     const rows = read('public/manager/src/folder-panel/FolderTreeRows.tsx');
 
-    assert.ok(rows.includes('props.selectedPath === entry.path'), 'local action selection must use selectedPath');
+    const tree = read('public/manager/src/folder-panel/FolderPanelTree.tsx');
+    assert.ok(rows.includes('props.selectedPaths.has(entry.path)'), 'local action selection must use selectedPaths');
     assert.ok(
-        rows.includes("aria-selected={entry.kind === 'file' && entry.path === props.selectedFilePath}"),
-        'aria-selected must preserve the selected preview file meaning',
+        rows.includes('aria-selected={props.selectedPaths.has(entry.path)}'),
+        'aria-selected must expose local multi-selection state',
     );
     assert.ok(rows.includes("'is-selected'"), 'local selection must use a separate CSS class');
+    assert.ok(tree.includes('aria-multiselectable="true"'), 'tree must advertise multi-selection semantics');
 });
 
 test('FolderPanel starts from explicit initial root policy instead of project roots', () => {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
-import { folderShortcutAction } from '../../public/manager/src/folder-panel/folder-shortcuts.js';
+import { folderShortcutAction, isPlatformToggleClick } from '../../public/manager/src/folder-panel/folder-shortcuts.js';
 
 const folderPanelSource = readFileSync('public/manager/src/folder-panel/FolderPanel.tsx', 'utf8');
 const folderRowsSource = readFileSync('public/manager/src/folder-panel/FolderTreeRows.tsx', 'utf8');
@@ -36,7 +36,7 @@ test('FolderPanel row shortcuts copy paths and activate rows locally', () => {
     assert.ok(folderPanelSource.includes("event.key === 'Enter'"), 'Enter must activate focused row');
     assert.ok(folderPanelSource.includes("event.key === ' '"), 'Space must have explicit row behavior');
     assert.ok(folderPanelSource.includes('selectEntry(entry)'), 'file/space activation must use the selection helper');
-    assert.ok(folderRowsSource.includes('props.selectEntry(entry)'), 'row click must route through the selection helper');
+    assert.ok(folderRowsSource.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event) })'), 'row click must route through the selection helper with modifiers');
     assert.ok(folderRowsSource.includes('props.toggleEntryExpansion(entry)'), 'row expansion must stay separate from selection');
 });
 
@@ -57,6 +57,13 @@ test('FolderPanel shortcut helper preserves existing row copy aliases', () => {
     assert.equal(folderShortcutAction(keyEvent({ key: 'C', code: 'KeyC', ctrlKey: true, shiftKey: true }), { chordActive: false, platform: 'Linux x86_64' }), 'copy-path');
 });
 
+test('FolderPanel click toggle helper follows VS Code platform modifiers', () => {
+    assert.equal(isPlatformToggleClick({ metaKey: true, ctrlKey: false }, 'MacIntel'), true);
+    assert.equal(isPlatformToggleClick({ metaKey: false, ctrlKey: true }, 'MacIntel'), false);
+    assert.equal(isPlatformToggleClick({ metaKey: false, ctrlKey: true }, 'Win32'), true);
+    assert.equal(isPlatformToggleClick({ metaKey: true, ctrlKey: false }, 'Linux x86_64'), false);
+});
+
 test('FolderPanel shortcut helper guards browser globals for tests and SSR', () => {
     assert.ok(folderShortcutsSource.includes("typeof navigator === 'undefined'"), 'platform detection must not assume browser navigator exists');
     assert.ok(folderShortcutsSource.includes("typeof HTMLElement === 'undefined'"), 'editable target checks must not assume browser HTMLElement exists');
@@ -68,8 +75,8 @@ test('FolderPanel context menu exposes native path actions', () => {
     }
     assert.ok(folderContextMenuSource.includes('role="menu"'), 'context menu must expose menu role');
     assert.ok(folderContextMenuSource.includes('role="menuitem"'), 'context menu actions must expose menuitem role');
-    assert.ok(folderPanelSource.includes('setContextMenu(null); void copyEntryPath'), 'copy menu actions must close menu before running');
-    assert.ok(folderPanelSource.includes('setContextMenu(null); void revealEntryPath'), 'reveal menu action must close menu before running');
+    assert.ok(folderPanelSource.includes("setContextMenu(null); void copySelectedPath('absolute')"), 'copy menu actions must close menu before running selected-set copy');
+    assert.ok(folderPanelSource.includes('setContextMenu(null); void revealSelectedPath()'), 'reveal menu action must close menu before running selected-primary reveal');
     assert.ok(folderPanelSource.includes('setContextMenu(null); void refreshVisibleTree'), 'refresh menu action must close menu before running');
     assert.ok(folderPanelSource.includes("event.key === 'Escape'"), 'keyboard dismissal must be Escape-only');
     assert.ok(folderContextMenuSource.includes('onKeyDown={event => event.stopPropagation()}'), 'menu keyboard activation must not be swallowed by window dismissal');

@@ -1,23 +1,26 @@
 import type { FolderPanelEntry, FolderPanelRowDecoration } from './folder-panel-types';
 import { FOLDER_PANEL_DRAG_MIME, encodeFolderPanelDragPayload } from './folder-drag-payload';
 import { isDescendantPath } from './folder-panel-state';
+import { isPlatformToggleClick } from './folder-shortcuts';
+import type { FolderDragSelection } from './use-folder-selection';
 
 type FolderTreeRowsProps = {
     entries: FolderPanelEntry[];
     depth: number;
     expanded: Set<string>;
     childrenCache: Map<string, FolderPanelEntry[]>;
-    selectedPath: string | null;
-    selectedFilePath?: string | null | undefined;
+    selectedPaths: Set<string>;
+    focusedPath: string | null;
     decorationsByPath: Map<string, FolderPanelRowDecoration>;
     dropTargetPath: string | null;
-    draggedEntry: FolderPanelEntry | null;
+    dragSelection: FolderDragSelection | null;
     canUseNativeActions: boolean;
-    setDraggedEntry: (entry: FolderPanelEntry | null) => void;
+    setDragSelection: (selection: FolderDragSelection | null) => void;
     setDropTargetPath: (path: string | null) => void;
+    getDragSelectionFor: (entry: FolderPanelEntry) => FolderDragSelection;
     requestMove: (sourceEntry: FolderPanelEntry, targetEntry: FolderPanelEntry) => void;
     handleEntryKeyDown: (event: React.KeyboardEvent, entry: FolderPanelEntry) => void;
-    selectEntry: (entry: FolderPanelEntry) => void;
+    selectEntry: (entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean }) => void;
     toggleEntryExpansion: (entry: FolderPanelEntry) => void;
     openContextMenu: (entry: FolderPanelEntry, x: number, y: number) => void;
 };
@@ -39,30 +42,33 @@ export function FolderTreeRows(props: FolderTreeRowsProps) {
                             'folder-entry',
                             `folder-entry-${entry.kind}`,
                             decoration?.className ?? '',
-                            props.selectedPath === entry.path ? 'is-selected' : '',
+                            props.selectedPaths.has(entry.path) ? 'is-selected' : '',
+                            props.focusedPath === entry.path ? 'is-focused' : '',
                             props.dropTargetPath === entry.path ? 'is-drop-target' : '',
-                            props.draggedEntry?.path === entry.path ? 'is-dragging' : '',
+                            props.dragSelection?.primaryEntry.path === entry.path ? 'is-dragging' : '',
                         ].filter(Boolean).join(' ')}
                         role="treeitem"
-                        aria-selected={entry.kind === 'file' && entry.path === props.selectedFilePath}
+                        aria-selected={props.selectedPaths.has(entry.path)}
                         draggable={props.canUseNativeActions}
                         onDragStart={(event) => {
                             if (!props.canUseNativeActions) return;
-                            props.setDraggedEntry(entry);
+                            const dragSelection = props.getDragSelectionFor(entry);
+                            props.setDragSelection(dragSelection);
                             emitFolderPanelDrag(true);
                             event.dataTransfer.effectAllowed = 'copyMove';
-                            event.dataTransfer.setData(FOLDER_PANEL_DRAG_MIME, encodeFolderPanelDragPayload(entry));
-                            event.dataTransfer.setData('text/plain', entry.path);
+                            event.dataTransfer.setData(FOLDER_PANEL_DRAG_MIME, encodeFolderPanelDragPayload(dragSelection));
+                            event.dataTransfer.setData('text/plain', dragSelection.entries.map(item => item.path).join('\n'));
                         }}
                         onDragEnd={() => {
                             emitFolderPanelDrag(false);
-                            props.setDraggedEntry(null);
+                            props.setDragSelection(null);
                             props.setDropTargetPath(null);
                         }}
                         onDragOver={(event) => {
-                            if (!props.draggedEntry || entry.kind !== 'directory') return;
-                            if (props.draggedEntry.path === entry.path) return;
-                            if (props.draggedEntry.kind === 'directory' && isDescendantPath(props.draggedEntry.path, entry.path)) return;
+                            const draggedEntry = props.dragSelection?.primaryEntry;
+                            if (!draggedEntry || entry.kind !== 'directory') return;
+                            if (draggedEntry.path === entry.path) return;
+                            if (draggedEntry.kind === 'directory' && isDescendantPath(draggedEntry.path, entry.path)) return;
                             event.preventDefault();
                             event.dataTransfer.dropEffect = 'move';
                             props.setDropTargetPath(entry.path);
@@ -71,11 +77,11 @@ export function FolderTreeRows(props: FolderTreeRowsProps) {
                             if (props.dropTargetPath === entry.path) props.setDropTargetPath(null);
                         }}
                         onDrop={(event) => {
-                            if (!props.draggedEntry || entry.kind !== 'directory') return;
+                            if (!props.dragSelection || entry.kind !== 'directory') return;
                             event.preventDefault();
                             emitFolderPanelDrag(false);
                             props.setDropTargetPath(null);
-                            props.requestMove(props.draggedEntry, entry);
+                            props.requestMove(props.dragSelection.primaryEntry, entry);
                         }}
                     >
                         {props.depth > 0 && (
@@ -102,12 +108,13 @@ export function FolderTreeRows(props: FolderTreeRowsProps) {
                         <button
                             type="button"
                             className="folder-entry-btn"
+                            data-folder-path={entry.path}
                             onKeyDown={(event) => props.handleEntryKeyDown(event, entry)}
                             onContextMenu={(event) => {
                                 event.preventDefault();
                                 props.openContextMenu(entry, event.clientX, event.clientY);
                             }}
-                            onClick={() => props.selectEntry(entry)}
+                            onClick={(event) => props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event) })}
                             onDoubleClick={() => {
                                 if (entry.kind === 'directory') props.toggleEntryExpansion(entry);
                             }}

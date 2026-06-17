@@ -289,6 +289,10 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         if (!bridge) return;
         const payload = readFolderPanelDragPayload(event.dataTransfer);
         if (!payload) return;
+        const text = event.dataTransfer.getData('text/plain');
+        const droppedPaths = payload.entries?.length
+            ? payload.entries.map(entry => entry.path)
+            : [payload.path];
         const surface = findTerminalSurface(event.target);
         if (!surface) return;
         const targetId = terminalIdFromSurface(surface) ?? (surface.classList.contains('is-active') ? activeIdRef.current : null);
@@ -296,7 +300,8 @@ export function TerminalPanel(props: TerminalPanelProps = {}) {
         event.preventDefault();
         event.stopPropagation();
         setActiveId(targetId);
-        void bridge.write(targetId, `${shellEscapePath(payload.path)} `);
+        void text;
+        void bridge.write(targetId, `${droppedPaths.map(shellEscapePath).join(' ')} `);
         window.setTimeout(() => runtimesRef.current.get(targetId)?.term.focus(), 0);
     }, [bridge]);
 

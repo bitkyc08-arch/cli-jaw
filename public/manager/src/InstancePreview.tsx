@@ -249,14 +249,17 @@ export function InstancePreview(props: InstancePreviewProps) {
         event.stopPropagation();
         setFolderDragActive(false);
         const payload = readFolderPanelDragPayload(event.dataTransfer);
-        const path = payload?.path || event.dataTransfer.getData('text/plain');
-        if (!path || !state.src) return;
-        const inserted = await postPreviewInsertText(iframeRef.current, state.src, path);
+        const text = event.dataTransfer.getData('text/plain');
+        const insertedText = payload?.entries?.length
+            ? payload.entries.map(entry => entry.path).join('\n')
+            : payload?.path || text;
+        if (!insertedText || !state.src) return;
+        const inserted = await postPreviewInsertText(iframeRef.current, state.src, insertedText);
         if (inserted.ok) {
             setPathDropStatus('Inserted path into preview');
             return;
         }
-        const copied = await copyText(path);
+        const copied = await copyText(insertedText);
         setPathDropStatus(copied.ok ? 'Preview did not accept text. Copied path instead.' : copied.error ?? inserted.error);
     }, [state.src]);
 

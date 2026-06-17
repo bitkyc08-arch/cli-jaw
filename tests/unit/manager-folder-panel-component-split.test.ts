@@ -12,12 +12,14 @@ function read(path: string): string {
 test('FolderPanel delegates toolbar and recursive row rendering to focused components', () => {
     const panel = read('public/manager/src/folder-panel/FolderPanel.tsx');
     const toolbar = read('public/manager/src/folder-panel/FolderPanelToolbar.tsx');
+    const tree = read('public/manager/src/folder-panel/FolderPanelTree.tsx');
     const rows = read('public/manager/src/folder-panel/FolderTreeRows.tsx');
 
     assert.ok(panel.includes("import { FolderPanelToolbar } from './FolderPanelToolbar'"), 'FolderPanel must import FolderPanelToolbar');
-    assert.ok(panel.includes("import { FolderTreeRows } from './FolderTreeRows'"), 'FolderPanel must import FolderTreeRows');
+    assert.ok(panel.includes("import { FolderPanelTree } from './FolderPanelTree'"), 'FolderPanel must import FolderPanelTree');
     assert.ok(panel.includes('<FolderPanelToolbar'), 'FolderPanel must render the toolbar component');
-    assert.ok(panel.includes('<FolderTreeRows'), 'FolderPanel must render the row component');
+    assert.ok(panel.includes('<FolderPanelTree'), 'FolderPanel must render the tree component');
+    assert.ok(tree.includes('<FolderTreeRows'), 'FolderPanelTree must render the row component');
     assert.ok(toolbar.includes('Open Folder'), 'toolbar owns the empty-root open-folder action');
     assert.ok(rows.includes('export function FolderTreeRows'), 'recursive row rendering must live outside FolderPanel');
     assert.equal(panel.includes('function renderEntries'), false, 'FolderPanel must not keep recursive row rendering inline');

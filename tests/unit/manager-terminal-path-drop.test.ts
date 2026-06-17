@@ -69,13 +69,13 @@ test('terminal panel handles folder payload drops through target terminal ids', 
     assert.ok(terminalPanelSource.includes('readFolderPanelDragPayload(event.dataTransfer)'), 'drop must decode payload data');
     assert.ok(terminalPanelSource.includes('data-terminal-id={tab.id}'), 'terminal surfaces must expose stable tab ids');
     assert.ok(terminalPanelSource.includes('bridge.write(targetId'), 'drop must write to the resolved terminal tab');
-    assert.ok(terminalPanelSource.includes('shellEscapePath(payload.path)'), 'drop must shell-escape inserted paths');
+    assert.ok(terminalPanelSource.includes('droppedPaths.map(shellEscapePath).join'), 'drop must shell-escape inserted paths');
     assert.ok(terminalPanelSource.includes("event.dataTransfer.dropEffect = 'copy'"), 'terminal dragover must advertise copy semantics');
 });
 
 test('folder panel emits JSON drag payloads and plain text path fallback', () => {
-    assert.ok(folderPanelSource.includes('<FolderTreeRows'), 'FolderPanel must render the extracted folder row component');
-    assert.ok(folderRowsSource.includes('encodeFolderPanelDragPayload(entry)'), 'FolderPanel rows must serialize structured drag payloads');
+    assert.ok(folderPanelSource.includes('<FolderPanelTree'), 'FolderPanel must render the extracted folder tree component');
+    assert.ok(folderRowsSource.includes('encodeFolderPanelDragPayload(dragSelection)'), 'FolderPanel rows must serialize structured drag payloads');
     assert.ok(folderRowsSource.includes("event.dataTransfer.effectAllowed = 'copyMove'"), 'FolderPanel source must allow copy targets and move targets');
-    assert.ok(folderRowsSource.includes("event.dataTransfer.setData('text/plain', entry.path)"), 'FolderPanel must preserve plain text path fallback');
+    assert.ok(folderRowsSource.includes("event.dataTransfer.setData('text/plain', dragSelection.entries.map(item => item.path).join('\\n'))"), 'FolderPanel must preserve plain text path fallback');
 });

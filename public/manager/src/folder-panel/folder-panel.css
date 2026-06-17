@@ -336,6 +336,12 @@
 .folder-entry.is-selected {
     background: color-mix(in srgb, var(--accent-primary) 8%, transparent);
 }
+.folder-entry.is-focused {
+    box-shadow: inset 2px 0 0 color-mix(in srgb, var(--accent-primary) 64%, transparent);
+}
+.folder-entry.is-selected.is-focused {
+    background: color-mix(in srgb, var(--accent-primary) 13%, transparent);
+}
 .folder-entry.is-drop-target {
     background: color-mix(in srgb, var(--accent-primary) 16%, transparent);
     outline: 1px solid color-mix(in srgb, var(--accent-primary) 44%, transparent);

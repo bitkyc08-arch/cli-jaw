@@ -11,7 +11,8 @@ test('preview panel accepts FolderPanel path drops through postMessage with clip
     assert.ok(instancePreviewSource.includes('hasFolderPanelDragPayload(event.dataTransfer)'), 'preview dragover must detect FolderPanel payloads');
     assert.ok(instancePreviewSource.includes('readFolderPanelDragPayload(event.dataTransfer)'), 'preview drop must read FolderPanel payloads');
     assert.ok(instancePreviewSource.includes('postPreviewInsertText'), 'preview drop must attempt focused text insertion first');
-    assert.ok(instancePreviewSource.includes('copyText(path)'), 'preview drop must fall back to clipboard copy');
+    assert.ok(instancePreviewSource.includes('copyText(insertedText)'), 'preview drop must fall back to clipboard copy');
+    assert.ok(instancePreviewSource.includes("payload.entries.map(entry => entry.path).join('\\n')"), 'preview drop must insert multi-selection paths on separate lines');
     assert.ok(instancePreviewSource.includes('jaw-folder-panel-drag'), 'preview must listen for active FolderPanel drags');
     assert.ok(instancePreviewSource.includes('preview-path-drop-overlay'), 'preview must render a parent-owned drop overlay above the iframe during folder drags');
     assert.ok(instancePreviewSource.includes('jaw-preview-insert-text'), 'preview insert request message type must be explicit');

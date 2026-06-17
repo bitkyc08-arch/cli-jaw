@@ -15,6 +15,11 @@ type FolderShortcutOptions = {
     platform?: string | undefined;
 };
 
+export type FolderClickModifierLike = {
+    metaKey: boolean;
+    ctrlKey: boolean;
+};
+
 function platformLooksMac(platform: string): boolean {
     return /mac|iphone|ipad|ipod/i.test(platform);
 }
@@ -32,6 +37,10 @@ export function isEditableShortcutTarget(target: EventTarget | null): boolean {
     const tag = target.tagName.toLowerCase();
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return true;
     return Boolean(target.closest('[contenteditable="true"], .cm-editor, .ProseMirror, [data-milkdown-root], [role="textbox"]'));
+}
+
+export function isPlatformToggleClick(event: FolderClickModifierLike, platform = currentFolderShortcutPlatform()): boolean {
+    return platformLooksMac(platform) ? event.metaKey : event.ctrlKey;
 }
 
 export function folderShortcutAction(event: KeyboardLike, options: FolderShortcutOptions): FolderShortcutAction | null {
