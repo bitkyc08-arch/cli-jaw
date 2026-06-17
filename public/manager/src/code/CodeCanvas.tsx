@@ -1,8 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { createCodeSessionClient } from './code-session-client';
 import { CodeSessionList } from './CodeSessionList';
 import { ComposerFooter } from './ComposerFooter';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
+
+const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
 
 type TranscriptEntry = {
     role: 'user' | 'assistant' | 'tool';
@@ -140,7 +142,13 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                                 ) : (
                                     <>
                                         <span className="code-message-role">{msg.role === 'user' ? 'You' : 'JWC'}</span>
-                                        <div className="code-message-text">{msg.text}</div>
+                                        <div className="code-message-text">
+                                            {msg.role === 'assistant' ? (
+                                                <Suspense fallback={<span>{msg.text}</span>}>
+                                                    <MarkdownRenderer markdown={msg.text} />
+                                                </Suspense>
+                                            ) : msg.text}
+                                        </div>
                                     </>
                                 )}
                             </div>
