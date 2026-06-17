@@ -104,8 +104,23 @@ export const CLI_META: Record<string, CliMeta> = {
     },
     jwc: {
         label: 'JWC',
+        defaultProvider: 'anthropic',
+        providers: ['anthropic'],
         models: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
         efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
+        modelsByProvider: {
+            anthropic: [
+                'claude-fable-5',
+                'claude-opus-4-8',
+                'claude-opus-4-7',
+                'claude-opus-4-6',
+                'claude-sonnet-4-6',
+                'claude-haiku-4-5',
+            ],
+        },
+        effortsByProvider: {
+            anthropic: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
+        },
     },
     codex: {
         label: 'Codex',

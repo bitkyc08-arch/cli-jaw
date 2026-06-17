@@ -54,10 +54,10 @@ export function RuntimeHeader({
                     collapsedAfter={orderedPrimaryCliCount}
                     onChange={onCliChange}
                 />
-                {cli === 'ai-e' && providerOptions.length > 0 ? (
+                {providerOptions.length > 0 ? (
                     <SelectField
-                        id="agent-ai-e-provider"
-                        label="AI-E provider"
+                        id={`agent-${cli}-provider`}
+                        label="Provider"
                         value={provider}
                         options={providerOptions.map((value) => ({ value, label: value }))}
                         onChange={(next) => onProviderChange?.(next)}

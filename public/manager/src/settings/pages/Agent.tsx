@@ -169,10 +169,12 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     const cliOptions = useMemo(() => Object.keys(perCli), [perCli]);
     const activeMeta = metaFor(draft.cli);
     const activeProvider = draft.provider || activeMeta.defaultProvider || activeMeta.providers?.[0] || '';
-    const activeModelOptions = draft.cli === 'ai-e'
+    const isPiRuntime = draft.cli === 'pi';
+    const hasProviders = !isPiRuntime && (activeMeta.providers?.length ?? 0) > 0;
+    const activeModelOptions = hasProviders
         ? optionList(activeMeta.modelsByProvider?.[activeProvider] || activeMeta.models, draft.model)
         : optionList(activeMeta.models, draft.model);
-    const activeEffortOptions = draft.cli === 'ai-e'
+    const activeEffortOptions = hasProviders
         ? (activeMeta.effortsByProvider?.[activeProvider] || activeMeta.efforts)
         : activeMeta.efforts;
     const workingDirError = draft.workingDir.trim() ? null : 'Required';
@@ -203,7 +205,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                 cli={draft.cli}
                 cliOptions={cliOptions.length > 0 ? cliOptions : [draft.cli || 'claude']}
                 provider={activeProvider}
-                providerOptions={activeMeta.providers || []}
+                providerOptions={isPiRuntime ? [] : (activeMeta.providers || [])}
                 model={draft.model}
                 modelOptions={activeModelOptions}
                 effort={draft.effort}
@@ -228,19 +230,19 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                     const nextModel = models.includes(draft.model) ? draft.model : (models[0] || '');
                     const nextEffort = efforts.includes(draft.effort) ? draft.effort : '';
                     setRuntimeDraft({ ...draft, provider: next, model: nextModel, effort: nextEffort });
-                    setEntry('perCli.ai-e.provider', {
+                    setEntry(`perCli.${draft.cli}.provider`, {
                         value: next,
-                        original: perCli['ai-e']?.provider || activeMeta.defaultProvider || 'claude',
+                        original: perCli[draft.cli]?.provider || activeMeta.defaultProvider || '',
                         valid: true,
                     });
-                    setEntry('activeOverrides.ai-e.model', {
+                    setEntry(`activeOverrides.${draft.cli}.model`, {
                         value: nextModel,
-                        original: runtimeModelFor('ai-e', perCli, activeOverrides),
+                        original: runtimeModelFor(draft.cli, perCli, activeOverrides),
                         valid: nextModel.trim().length > 0,
                     });
-                    setEntry('activeOverrides.ai-e.effort', {
+                    setEntry(`activeOverrides.${draft.cli}.effort`, {
                         value: nextEffort,
-                        original: runtimeEffortFor('ai-e', perCli, activeOverrides),
+                        original: runtimeEffortFor(draft.cli, perCli, activeOverrides),
                         valid: true,
                     });
                 }}

@@ -26,17 +26,17 @@ function entryFor(value: unknown, original: unknown, valid = true): DirtyEntry {
 
 export function PerCliRow({ cli, meta, original, value, setValue, setEntry, client, pi, setPi }: Props) {
     const modelDatalistId = `percli-${cli}-models`;
-    const isAiE = cli === 'ai-e';
     const isPi = cli === 'pi';
     const [piDialogOpen, setPiDialogOpen] = useState(false);
     const provider = value.provider || meta.defaultProvider || meta.providers?.[0] || 'claude';
     const piModels = isPi ? piModelOptions(pi, provider, value.model || '') : [];
+    const hasProviders = !isPi && (meta.providers?.length ?? 0) > 0;
     const modelOptions = isPi
         ? piModels
-        : isAiE
+        : hasProviders
         ? (meta.modelsByProvider?.[provider] ?? meta.models)
         : meta.models;
-    const effortOptions = isAiE
+    const effortOptions = hasProviders
         ? (meta.effortsByProvider?.[provider] ?? meta.efforts)
         : meta.efforts;
 
@@ -58,7 +58,7 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                             setEntry(`perCli.${cli}.model`, entryFor(nextModel, original.model ?? ''));
                         }}
                     />
-                ) : isAiE && meta.providers?.length ? (
+                ) : hasProviders ? (
                     <SelectField
                         id={`percli-${cli}-provider`}
                         label="Provider"
