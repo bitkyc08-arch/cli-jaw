@@ -803,7 +803,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // so isAgentBusy()/queue/SSE behave identically. Employees fall through.
     if (cli === 'jwc' && mainManaged && !opts.internal) {
         const jwcLabel = 'main';
-        const jwcModel = settings["perCli"]?.['jwc']?.model || 'claude-fable-5';
+        const jwcOverrides = settings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
+        const jwcPerCli = settings["perCli"]?.['jwc'] as Record<string, string> | undefined;
+        const jwcModel = jwcOverrides?.['model'] || jwcPerCli?.['model'] || 'claude-fable-5';
+        const jwcProvider = jwcPerCli?.['provider'] || 'anthropic';
         const jwcCwd = settings["workingDir"] || process.cwd();
         if (!opts._skipInsert) {
             insertMessage.run('user', prompt, 'jwc', jwcModel, settings["workingDir"] || null, getActiveChatSession());
@@ -811,6 +814,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         mainSpawnStarting = true;
         beginLiveRun(liveScope, 'jwc');
         broadcast('agent_status', { running: true, agentId: jwcLabel, cli: 'jwc' });
+        jawRuntime.setModelPattern(jwcProvider !== 'anthropic' ? `${jwcProvider}/${jwcModel}` : jwcModel);
         jawRuntime.setLiveScope(liveScope);
         const settleJwcTurn = (result: { text: string; code: number }): void => {
             const live = getLiveRun(liveScope);

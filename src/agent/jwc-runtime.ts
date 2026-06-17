@@ -32,6 +32,7 @@ interface EngineSdk {
         agentDir?: string;
         hasUI?: boolean;
         sessionManager?: unknown;
+        modelPattern?: string;
     }): Promise<{ session: EngineSession }>;
     SessionManager: {
         create(cwd: string, dir: string): unknown;
@@ -87,6 +88,14 @@ class JawRuntime {
         return !!this.#inFlight || (this.#slot?.session.isStreaming ?? false);
     }
 
+    #modelPattern: string | undefined;
+
+    setModelPattern(pattern: string | undefined): void {
+        if (pattern === this.#modelPattern) return;
+        this.#modelPattern = pattern;
+        if (this.#slot) void this.#disposeSlot();
+    }
+
     async #ensureSlot(cwd: string): Promise<RuntimeSlot> {
         if (this.#slot && this.#slot.cwd === cwd) return this.#slot;
         if (this.#slot) await this.#disposeSlot();
@@ -94,14 +103,16 @@ class JawRuntime {
         const agentDir = jwcAgentDir();
         process.env['JWC_BRAND_NAME'] ??= 'jwc';
         const dir = sdk.SessionManager.getDefaultSessionDir(cwd, agentDir);
-        // 120.1 안 A: host owns lifecycle. continueRecent → resume; falls back to create.
         let sessionManager: unknown;
         try {
             sessionManager = await sdk.SessionManager.continueRecent(cwd, dir);
         } catch {
             sessionManager = sdk.SessionManager.create(cwd, dir);
         }
-        const { session } = await sdk.createAgentSession({ cwd, agentDir, hasUI: false, sessionManager });
+        const { session } = await sdk.createAgentSession({
+            cwd, agentDir, hasUI: false, sessionManager,
+            ...(this.#modelPattern ? { modelPattern: this.#modelPattern } : {}),
+        });
         const unsubscribe = session.subscribe(event =>
             mapAgentEventToBus(event, { cwd, sessionId: cwd, liveScope: this.#liveScope }),
         );
