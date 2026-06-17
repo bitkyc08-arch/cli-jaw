@@ -8,7 +8,7 @@
  * Must work with bare Node.js on all platforms (macOS/Linux/Windows).
  *
  * 1. Node version check (fail-fast before any build attempt)
- * 2. Safe mode? → exit 0 before build/install work
+ * 2. Repair package bin permissions, then safe mode exits before build/install work
  * 3. dist/bin/postinstall.js exists? → run it
  * 4. Dev clone fallback: local tsc → build → run dist/bin/postinstall.js
  *    - No local tsc → exit 1 with clear instruction
@@ -30,7 +30,25 @@ if (major < 22) {
     process.exit(1);
 }
 
-// ─── 2. Safe mode: no build/install work ────────────
+// ─── 2. dist/ target + package-bin permission repair ─
+const root = path.join(__dirname, '..');
+const target = path.join(root, 'dist', 'bin', 'postinstall.js');
+
+function ensurePackageBinExecutable(rootDir) {
+    if (process.platform === 'win32') return;
+    const binPath = path.join(rootDir, 'dist', 'bin', 'cli-jaw.js');
+    if (!fs.existsSync(binPath)) return;
+    try {
+        fs.chmodSync(binPath, 0o755);
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.warn(`[jaw:init] ⚠️  could not repair cli-jaw executable bit: ${message}`);
+    }
+}
+
+ensurePackageBinExecutable(root);
+
+// ─── 3. Safe mode: no build/install work ────────────
 const safeMode =
     process.env.JAW_SAFE === '1'
     || process.env.JAW_SAFE === 'true'
@@ -43,10 +61,6 @@ if (safeMode) {
     console.log('[jaw:init] safe mode — skipping postinstall build and installers');
     process.exit(0);
 }
-
-// ─── 3. dist/ target ────────────────────────────────
-const root = path.join(__dirname, '..');
-const target = path.join(root, 'dist', 'bin', 'postinstall.js');
 
 async function runCompiledPostinstall() {
     const mod = await import(pathToFileURL(target).href);
@@ -86,6 +100,7 @@ if (!fs.existsSync(target)) {
         console.error('[jaw:init] ❌ tsc completed but dist/bin/postinstall.js not found');
         process.exit(1);
     }
+    ensurePackageBinExecutable(root);
 }
 
 runCompiledPostinstall().catch((error) => {

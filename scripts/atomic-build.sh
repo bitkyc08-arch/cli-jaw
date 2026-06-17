@@ -7,6 +7,10 @@ OLD=".dist-old"
 
 rm -rf "$STAGING"
 npx tsc --outDir "$STAGING"
+case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *) [ -f "$STAGING/bin/cli-jaw.js" ] && chmod +x "$STAGING/bin/cli-jaw.js" ;;
+esac
 # cp -R instead of rsync: staging is always fresh (rm -rf above), and
 # Git Bash on Windows runners has no rsync.
 mkdir -p "$STAGING/src/prompt/templates" "$STAGING/prompts" "$STAGING/src/browser/adaptive-fetch/vendor"

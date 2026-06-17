@@ -7,6 +7,7 @@ import { execFileSync, spawn, type ChildProcess, type ExecFileSyncOptions } from
 const root: string = process.cwd();
 const npmCmd = 'npm';
 const jawCmd = 'jaw';
+const cliJawCmd = 'cli-jaw';
 
 interface Args {
     mode: 'safe' | 'postinstall';
@@ -142,6 +143,8 @@ async function main(): Promise<void> {
 
         const version = run(jawCmd, ['--version'], { env: jawEnv }).trim();
         if (!version.toLowerCase().includes('cli-jaw')) throw new Error(`unexpected version output: ${version}`);
+        const cliJawVersion = run(cliJawCmd, ['--version'], { env: jawEnv }).trim();
+        if (cliJawVersion !== version) throw new Error(`cli-jaw version mismatch: ${cliJawVersion} !== ${version}`);
 
         if (args.mode === 'postinstall') {
             const verifier = path.join(pkgDir, 'scripts', 'verify-fresh-install.sh');

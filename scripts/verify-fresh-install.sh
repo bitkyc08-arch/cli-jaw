@@ -22,8 +22,14 @@ ok() {
 run_version() {
   local name="$1"
   command -v "$name" >/dev/null 2>&1 || fail "$name is not on PATH"
+  local resolved
+  resolved="$(command -v "$name")"
+  case "$(uname -s 2>/dev/null || true)" in
+    MINGW*|MSYS*|CYGWIN*) ;;
+    *) [ -x "$resolved" ] || fail "$name is on PATH but not executable: $resolved" ;;
+  esac
   "$name" --version >/dev/null 2>&1 || fail "$name is on PATH but '$name --version' failed"
-  ok "$name works: $(command -v "$name")"
+  ok "$name works: $resolved"
 }
 
 run_optional_version() {
@@ -76,6 +82,7 @@ ok "node version is >=22: $(node --version)"
 
 run_version npm
 run_version jaw
+run_version cli-jaw
 run_optional_version ai-e
 run_optional_version claude-e
 
@@ -95,19 +102,19 @@ if [ -x "$HOME/.local/bin/claude" ]; then
 fi
 
 if should_check_zsh; then
-  zsh -ic 'command -v node >/dev/null && command -v npm >/dev/null && command -v jaw >/dev/null' >/dev/null 2>&1 \
-    || fail "interactive zsh cannot resolve node/npm/jaw"
-  ok "interactive zsh resolves node/npm/jaw"
+  zsh -ic 'command -v node >/dev/null && command -v npm >/dev/null && command -v jaw >/dev/null && command -v cli-jaw >/dev/null' >/dev/null 2>&1 \
+    || fail "interactive zsh cannot resolve node/npm/jaw/cli-jaw"
+  ok "interactive zsh resolves node/npm/jaw/cli-jaw"
 
-  zsh -lc 'command -v node >/dev/null && command -v npm >/dev/null && command -v jaw >/dev/null' >/dev/null 2>&1 \
-    || fail "login zsh cannot resolve node/npm/jaw"
-  ok "login zsh resolves node/npm/jaw"
+  zsh -lc 'command -v node >/dev/null && command -v npm >/dev/null && command -v jaw >/dev/null && command -v cli-jaw >/dev/null' >/dev/null 2>&1 \
+    || fail "login zsh cannot resolve node/npm/jaw/cli-jaw"
+  ok "login zsh resolves node/npm/jaw/cli-jaw"
 fi
 
 if is_wsl; then
-  bash -lc 'command -v node >/dev/null && node --version >/dev/null && command -v npm >/dev/null && npm --version >/dev/null && command -v jaw >/dev/null && jaw --version >/dev/null' >/dev/null 2>&1 \
-    || fail "WSL bash login shell cannot resolve node/npm/jaw"
-  ok "WSL bash login shell resolves node/npm/jaw"
+  bash -lc 'command -v node >/dev/null && node --version >/dev/null && command -v npm >/dev/null && npm --version >/dev/null && command -v jaw >/dev/null && jaw --version >/dev/null && command -v cli-jaw >/dev/null && cli-jaw --version >/dev/null' >/dev/null 2>&1 \
+    || fail "WSL bash login shell cannot resolve node/npm/jaw/cli-jaw"
+  ok "WSL bash login shell resolves node/npm/jaw/cli-jaw"
 fi
 
 if [ "$SKIP_DOCTOR" != "1" ]; then

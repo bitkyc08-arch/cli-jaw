@@ -123,6 +123,7 @@ checks.push(() => run('bash syntax: scripts/collect-fresh-install-evidence.sh', 
 checks.push(() => run('node syntax: scripts/audit-fresh-install-evidence.mjs', process.execPath, ['--check', 'scripts/audit-fresh-install-evidence.mjs']));
 checks.push(() => run('node syntax: scripts/verify-release-evidence.mjs', process.execPath, ['--check', 'scripts/verify-release-evidence.mjs']));
 checks.push(() => run('node syntax: scripts/require-release-evidence.mjs', process.execPath, ['--check', 'scripts/require-release-evidence.mjs']));
+checks.push(() => run('node syntax: scripts/check-cli-bin-links.cjs', process.execPath, ['--check', 'scripts/check-cli-bin-links.cjs']));
 
 checks.push(() => run('installer risk tests', npx, [
   'tsx',
@@ -130,6 +131,7 @@ checks.push(() => run('installer risk tests', npx, [
   './tests/setup/test-home.ts',
   '--experimental-test-module-mocks',
   '--test',
+  'tests/unit/install-path-contract.test.ts',
   'tests/unit/install-sh-exec.test.ts',
   'tests/unit/fresh-evidence-audit.test.ts',
   'tests/unit/service.test.ts',
@@ -140,6 +142,13 @@ checks.push(() => run('installer risk tests', npx, [
 ]));
 
 checks.push(runPackageContentsCheck);
+checks.push(() => run('cli bin link contract', process.execPath, ['scripts/check-cli-bin-links.cjs'], {
+  skip: existsSync('dist/bin/cli-jaw.js') ? '' : 'dist build output not available',
+}));
+checks.push(() => run('electron staged sidecar JWC contract', npm, ['run', 'check:electron-sidecar-jwc'], {
+  skip: existsSync('electron/sidecar/server/node_modules/jawcode/package.json') ? '' : 'staged sidecar not bundled',
+}));
+checks.push(() => run('app icon asset contract', npm, ['run', 'check:app-icons']));
 
 checks.push(() => run('structure line-count sync', 'bash', ['structure/verify-counts.sh'], {
   skip: structureVerifierSkipReason(),

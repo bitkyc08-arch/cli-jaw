@@ -40,18 +40,24 @@ function ensureSymlink(linkPath, targetPath, type) {
     return true;
 }
 
-function main() {
-    if (!isNvmNode()) {
-        console.log(`[jaw:link] skip: node is not from nvm (${process.execPath})`);
-        return;
-    }
+function ensureRepoBinExecutable() {
     if (!fs.existsSync(repoBin)) {
         throw new Error(`build output missing: ${repoBin}`);
+    }
+    if (process.platform !== 'win32') {
+        fs.chmodSync(repoBin, 0o755);
+    }
+}
+
+function main() {
+    ensureRepoBinExecutable();
+    if (!isNvmNode()) {
+        console.log(`[jaw:link] chmod ok; skip linking because node is not from nvm (${process.execPath})`);
+        return;
     }
 
     fs.mkdirSync(path.dirname(globalPackageDir), { recursive: true });
     fs.mkdirSync(nodeBinDir, { recursive: true });
-    fs.chmodSync(repoBin, 0o755);
 
     const packageChanged = ensureSymlink(globalPackageDir, repoRoot, 'dir');
     const binChanges = BIN_NAMES.map(name => {

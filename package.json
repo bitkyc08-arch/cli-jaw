@@ -110,6 +110,7 @@
     "sidecar:bundle": "bash scripts/bundle-sidecar.sh darwin arm64",
     "electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run check:electron-dist-mac-jwc && npm run check:app-icons",
     "electron:start": "npm --prefix electron run start",
+    "check:cli-bin-links": "node scripts/check-cli-bin-links.cjs",
     "check:electron-sidecar-jwc": "node scripts/check-electron-sidecar-jwc.cjs",
     "check:electron-dist-mac-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server",
     "check:app-icons": "node scripts/check-app-icon-assets.cjs",
