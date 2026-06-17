@@ -516,6 +516,7 @@ test('SAF-004j1: postinstall guard repairs package bin permissions before safe-m
     assert.ok(guardSrc.includes("path.join(rootDir, 'dist', 'bin', 'cli-jaw.js')"), 'postinstall guard should repair dist/bin/cli-jaw.js');
     assert.ok(guardSrc.indexOf('ensurePackageBinExecutable(root);') < guardSrc.indexOf('if (safeMode)'), 'package-bin repair should run before safe-mode early exit');
     assert.ok(guardSrc.indexOf('const root =') < guardSrc.indexOf('if (safeMode)'), 'root should be available before safe-mode branch');
+    assert.ok(guardSrc.lastIndexOf('ensurePackageBinExecutable(root);') > guardSrc.indexOf('tsc completed but dist/bin/postinstall.js not found'), 'package-bin repair should run again after dev fallback build');
 });
 
 test('SAF-004j2: fresh-machine evidence collector documents supported release evidence only', () => {
@@ -652,6 +653,8 @@ test('SAF-004l: fresh install smoke exercises packed global install without safe
     assert.ok(freshInstallSmokeSrc.includes('fresh-install-smoke targets macOS/Linux/WSL'), 'fresh install smoke should reject native Windows execution');
     assert.ok(freshInstallSmokeSrc.includes('npm_config_prefix'), 'fresh install smoke should isolate npm global prefix');
     assert.ok(freshInstallSmokeSrc.includes('jawCmd'), 'fresh install smoke should execute the installed global jaw shim');
+    assert.ok(freshInstallSmokeSrc.includes('cliJawCmd'), 'fresh install smoke should execute the installed global cli-jaw shim');
+    assert.ok(freshInstallSmokeSrc.includes('cli-jaw version mismatch'), 'fresh install smoke should compare jaw and cli-jaw versions');
 });
 
 test('SAF-004m: postinstall has opt-out gates for network-heavy optional installers', () => {

@@ -58,6 +58,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `audit:fresh-install-evidence` | `node scripts/audit-fresh-install-evidence.mjs` |
 | `verify:release-evidence` | `node scripts/verify-release-evidence.mjs` |
 | `test:fresh-install` | `tsx scripts/fresh-install-smoke.ts` |
+| `test:install-risk` | `node scripts/install-risk-gate.mjs` |
 | `check:cli-bin-links` | `node scripts/check-cli-bin-links.cjs` |
 | `test:claude-exec` | `cargo test --manifest-path native/jaw-claude-i/Cargo.toml` |
 | `test:claude-e` | compatibility alias for `test:claude-exec` |
