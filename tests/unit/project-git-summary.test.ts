@@ -37,6 +37,14 @@ test('project git summary quietly hides missing project dirs', async () => {
     assert.deepEqual(summary, { ok: true, available: false, reason: 'no-project' });
 });
 
+test('project git summary rejects repo roots outside the home guard', async () => {
+    const summary = await getProjectGitSummary([process.cwd()], async (_cwd, args) => {
+        if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') return '/tmp/outside-repo';
+        return '';
+    });
+    assert.deepEqual(summary, { ok: true, available: false, reason: 'not-repo' });
+});
+
 test('project git header formatter locks compact display contract', () => {
     const summary: ProjectGitSummary = {
         ok: true,

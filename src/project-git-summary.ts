@@ -86,7 +86,7 @@ export async function getProjectGitSummary(projectDirs: unknown, runner: Project
 
     let repoRoot: string;
     try {
-        repoRoot = await runner(root, ['rev-parse', '--show-toplevel']);
+        repoRoot = assertExistingHomePath(resolve(await runner(root, ['rev-parse', '--show-toplevel'])), 'repo root');
     } catch {
         return { ok: true, available: false, reason: 'not-repo' };
     }

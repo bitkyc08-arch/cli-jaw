@@ -218,7 +218,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - `GET /api/project/git-summary`는 Settings의 `projectDirs[0]`만 읽는 read-only header helper다.
 - 응답은 legacy Web UI header의 compact git status 전용이다: branch/hash, tracked modified count, untracked count.
 - project root가 없거나, home 밖 경로거나, git repository가 아니거나, git 호출이 실패하면 mutation 없이 `{ available:false, reason }` 형태로 조용히 숨길 수 있는 payload를 반환한다.
-- status count는 `git status --porcelain=v1 -z --branch` 기반이며 ignored entry는 표시하지 않는다.
+- status count는 `git status --porcelain=v1 -z --untracked-files=all` 기반이며 ignored entry는 표시하지 않는다.
 
 ### `/api/pi/*`
 
