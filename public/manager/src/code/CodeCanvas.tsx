@@ -7,10 +7,11 @@ import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
 
 type TranscriptEntry = {
-    role: 'user' | 'assistant' | 'tool';
+    role: 'user' | 'assistant' | 'tool' | 'thinking';
     text: string;
     toolName?: string;
     toolStatus?: string;
+    toolCallId?: string;
 };
 
 type CodeCanvasProps = {
@@ -39,8 +40,9 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         const update = event.update ?? {};
         const kind = event.event;
 
-        if (kind === 'code_text') {
-            const text = String(update['text'] ?? '');
+        if (kind === 'code_agent_message_chunk') {
+            const content = update['content'] as { type?: string; text?: string } | undefined;
+            const text = String(content?.text ?? update['text'] ?? '');
             if (!text) return;
             setMessages(prev => {
                 const last = prev[prev.length - 1];
@@ -49,18 +51,34 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                 }
                 return [...prev, { role: 'assistant', text }];
             });
-        } else if (kind === 'code_tool_use_begin' || kind === 'code_tool_use') {
-            const toolName = String(update['toolName'] ?? update['name'] ?? 'tool');
-            setMessages(prev => [...prev, { role: 'tool', text: toolName, toolName, toolStatus: 'running' }]);
-        } else if (kind === 'code_tool_use_end' || kind === 'code_tool_result') {
+        } else if (kind === 'code_agent_thought_chunk') {
+            const content = update['content'] as { type?: string; text?: string } | undefined;
+            const text = String(content?.text ?? update['text'] ?? '');
+            if (!text) return;
             setMessages(prev => {
-                const idx = [...prev].reverse().findIndex(m => m.role === 'tool' && m.toolStatus === 'running');
-                if (idx < 0) return prev;
-                const realIdx = prev.length - 1 - idx;
-                const updated = [...prev];
-                updated[realIdx] = { ...updated[realIdx], toolStatus: 'done' };
-                return updated;
+                const last = prev[prev.length - 1];
+                if (last?.role === 'thinking') {
+                    return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                }
+                return [...prev, { role: 'thinking', text }];
             });
+        } else if (kind === 'code_tool_call') {
+            const title = String(update['title'] ?? update['toolName'] ?? 'tool');
+            const toolCallId = String(update['toolCallId'] ?? '');
+            const status = String(update['status'] ?? 'pending');
+            setMessages(prev => [...prev, { role: 'tool', text: title, toolName: title, toolCallId, toolStatus: status === 'completed' || status === 'failed' ? 'done' : 'running' }]);
+        } else if (kind === 'code_tool_call_update') {
+            const toolCallId = String(update['toolCallId'] ?? '');
+            const status = String(update['status'] ?? '');
+            if (status === 'completed' || status === 'failed') {
+                setMessages(prev => {
+                    const idx = prev.findLastIndex(m => m.role === 'tool' && m.toolCallId === toolCallId);
+                    if (idx < 0) return prev;
+                    const updated = [...prev];
+                    updated[idx] = { ...updated[idx], toolStatus: 'done' };
+                    return updated;
+                });
+            }
         } else if (kind === 'code_turn_done') {
             setSending(false);
         } else if (kind === 'code_session_error') {
@@ -139,6 +157,11 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                                         </span>
                                         <span className="code-tool-name">{msg.toolName}</span>
                                     </div>
+                                ) : msg.role === 'thinking' ? (
+                                    <details className="code-thinking">
+                                        <summary className="code-thinking-summary">Thinking...</summary>
+                                        <div className="code-thinking-text">{msg.text}</div>
+                                    </details>
                                 ) : (
                                     <>
                                         <span className="code-message-role">{msg.role === 'user' ? 'You' : 'JWC'}</span>

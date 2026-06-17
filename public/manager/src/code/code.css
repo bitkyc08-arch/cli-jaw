@@ -150,6 +150,33 @@
 }
 .code-streaming { opacity: 0.6; }
 
+/* Thinking block */
+.code-thinking {
+    margin-bottom: 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    overflow: hidden;
+}
+.code-thinking-summary {
+    padding: 6px 10px;
+    background: var(--bg-raised);
+    color: var(--text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+    user-select: none;
+}
+.code-thinking-summary:hover { background: var(--surface-raised); }
+.code-thinking-text {
+    padding: 8px 12px;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--text-secondary);
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
 /* Composer */
 .code-composer {
     display: flex; align-items: flex-end; gap: 8px;
