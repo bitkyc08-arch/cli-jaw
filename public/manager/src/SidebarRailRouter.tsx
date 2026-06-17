@@ -361,11 +361,13 @@ export function SidebarRailRouter(props: Props) {
                                 <InstancePreview instance={props.selectedInstance} data={props.data} enabled={props.previewEnabled} active={props.sidebarMode === 'instances' && props.activeDetailTab === 'preview'} refreshKey={props.previewRefreshKey} theme={props.previewTheme} {...(props.onOpenNotesFromPreview ? { onOpenNotesFromPreview: props.onOpenNotesFromPreview } : {})} onOpenDocFromPreview={handleRightPreviewFile} onPreviewDroppedFiles={handlePreviewDroppedFiles} docPanelCapable={desktopPanelsAvailable} />
                             )} logs={props.detailContent('logs')} settings={props.detailContent('settings')} />
                         </WorkspaceSurface>
-                        <WorkspaceSurface active={props.viewMode === 'code' && props.sidebarMode === 'instances'}>
-                            <Suspense fallback={<div style={{ padding: '24px', color: 'var(--text-dim)', fontSize: '13px' }}>Loading Code workspace...</div>}>
-                                <CodeCanvas port={props.port} workingDir={props.workingDir} />
-                            </Suspense>
-                        </WorkspaceSurface>
+                        {props.viewMode === 'code' && props.sidebarMode === 'instances' ? (
+                            <WorkspaceSurface active>
+                                <Suspense fallback={<div style={{ padding: '24px', color: 'var(--text-dim)', fontSize: '13px' }}>Loading Code workspace...</div>}>
+                                    <CodeCanvas port={props.port} workingDir={props.workingDir} />
+                                </Suspense>
+                            </WorkspaceSurface>
+                        ) : null}
                         <WorkspaceSurface active={props.sidebarMode === 'notes'}>
                             <NotesWorkspace active={props.sidebarMode === 'notes'} selectedPath={props.notesSelectedPath} selectedNote={props.notesSelectedNote} vaultIndex={props.notesModel.index} viewMode={props.notesViewMode} authoringMode={props.notesAuthoringMode} wordWrap={props.notesWordWrap} vimMode={props.notesVimMode} treeWidth={props.notesTreeWidth} notesGraphSettings={props.notesGraphSettings} tagFilter={props.notesModel.tagFilter} onOpenSidebarSearch={props.onOpenNotesSearch} onSelectedPathChange={props.onNotesSelectedPathChange} onDirtyPathChange={props.onNotesDirtyPathChange} onViewModeChange={props.onNotesViewModeChange} onAuthoringModeChange={props.onNotesAuthoringModeChange} onWordWrapChange={props.onNotesWordWrapChange} onVimModeChange={props.onNotesVimModeChange} onTreeWidthChange={props.onNotesTreeWidthChange} onNotesGraphSettingsChange={props.onNotesGraphSettingsChange} onTagSelect={props.notesModel.setTagFilter} onWikiLinkNavigate={props.onNotesSelectedPathChange} />
                         </WorkspaceSurface>

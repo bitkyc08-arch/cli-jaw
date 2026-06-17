@@ -806,7 +806,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const jwcOverrides = settings["activeOverrides"]?.['jwc'] as Record<string, string> | undefined;
         const jwcPerCli = settings["perCli"]?.['jwc'] as Record<string, string> | undefined;
         const jwcModel = jwcOverrides?.['model'] || jwcPerCli?.['model'] || 'claude-fable-5';
-        const jwcProvider = jwcPerCli?.['provider'] || 'anthropic';
+        const jwcProvider = jwcOverrides?.['provider'] || jwcPerCli?.['provider'] || 'anthropic';
         const jwcCwd = settings["workingDir"] || process.cwd();
         if (!opts._skipInsert) {
             insertMessage.run('user', prompt, 'jwc', jwcModel, settings["workingDir"] || null, getActiveChatSession());

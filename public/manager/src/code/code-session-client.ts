@@ -1,7 +1,7 @@
 export interface CodeSession {
     sessionId: string;
     cwd: string;
-    status: 'idle' | 'streaming' | 'closed';
+    status: 'starting' | 'idle' | 'streaming' | 'closed';
     createdAt: number;
     lastUsedAt: number;
 }

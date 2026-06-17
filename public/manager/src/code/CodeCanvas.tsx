@@ -100,13 +100,23 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
 
     const modelOptions = DEFAULT_MODELS[provider] ?? DEFAULT_MODELS['anthropic'] ?? [];
 
+    if (!port || !workingDir) {
+        return (
+            <div className="code-canvas">
+                <div className="code-transcript-empty">
+                    <p>Select an instance to start Code mode.</p>
+                </div>
+            </div>
+        );
+    }
+
     return (
         <div className="code-canvas">
             <div className="code-canvas-sidebar">
                 <CodeSessionList
                     client={client}
                     activeSessionId={activeSessionId}
-                    onSelectSession={setActiveSessionId}
+                    onSelectSession={id => { setActiveSessionId(id); setMessages([]); }}
                     onNewSession={() => { setActiveSessionId(null); setMessages([]); }}
                 />
             </div>

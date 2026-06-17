@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 
 export type CodeEvent = {
     topic: string;
@@ -19,23 +19,26 @@ type UseCodeEventsOptions = {
 export function useCodeEvents({ port, sessionId, onEvent }: UseCodeEventsOptions): void {
     const onEventRef = useRef(onEvent);
     onEventRef.current = onEvent;
+    const sessionIdRef = useRef(sessionId);
+    sessionIdRef.current = sessionId;
 
-    const connect = useCallback(() => {
+    useEffect(() => {
+        if (!port) return;
         const es = new EventSource(`http://localhost:${port}/api/events`);
         es.onmessage = (msg) => {
             try {
                 const data = JSON.parse(msg.data) as CodeEvent;
                 if (data.topic !== 'jwc') return;
-                if (!sessionId) return;
-                if (data.sessionId && data.sessionId !== sessionId) return;
+                const sid = sessionIdRef.current;
+                if (!sid) return;
+                if (data.sessionId && data.sessionId !== sid) return;
                 onEventRef.current(data);
             } catch { /* ignore parse errors */ }
         };
-        return es;
-    }, [port, sessionId]);
-
-    useEffect(() => {
-        const es = connect();
+        es.onerror = () => {
+            // Native EventSource auto-reconnects on network errors.
+            // Explicit handler prevents unhandled error noise in console.
+        };
         return () => es.close();
-    }, [connect]);
+    }, [port]);
 }
