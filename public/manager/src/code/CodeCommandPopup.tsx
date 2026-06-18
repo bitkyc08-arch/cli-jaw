@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CodeModelAssignment, CodeModelAssignments, CodeModelOptions } from './code-session-client';
+import type { CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import type { CodeCommand, CodeCommandPopupKind } from './code-types';
 
 type CodeCommandPopupProps = {
@@ -9,6 +9,7 @@ type CodeCommandPopupProps = {
     provider: string;
     model: string;
     modelAssignments: CodeModelAssignments | null;
+    modelPresets: CodeModelPresetInfo | null;
     permissionMode: string;
     disabled?: boolean;
     activeSessionId?: string | null;
@@ -43,6 +44,7 @@ export function CodeCommandPopup({
     provider,
     model,
     modelAssignments,
+    modelPresets,
     permissionMode,
     disabled,
     activeSessionId,
@@ -352,7 +354,42 @@ export function CodeCommandPopup({
                             </div>
                             {!modelAssignments && <p className="code-popup-note">Loading role assignments.</p>}
                         </div>
-                        <p className="code-popup-note">Presets and MRU are scheduled for later model popup slices.</p>
+                        <div className="code-model-preset-panel" aria-label="Model profiles and presets">
+                            <div className="code-role-assignment-head">
+                                <strong>Profiles and presets</strong>
+                                <span>{modelPresets?.applyReason ?? 'Loading JWC profile state.'}</span>
+                            </div>
+                            <div className="code-model-preset-summary">
+                                <span>Startup profile</span>
+                                <strong>{modelPresets?.defaultProfile ?? 'Unset'}</strong>
+                                <span>Task presets</span>
+                                <strong>{modelPresets ? modelPresets.taskPresets.length : '-'}</strong>
+                                <span>Built-in profiles</span>
+                                <strong>{modelPresets ? modelPresets.builtinProfiles.length : '-'}</strong>
+                            </div>
+                            {modelPresets && modelPresets.taskPresets.length > 0 && (
+                                <div className="code-model-preset-list" role="list" aria-label="Task model presets">
+                                    {modelPresets.taskPresets.slice(0, 4).map(preset => (
+                                        <div className="code-model-preset-row" role="listitem" key={preset.name}>
+                                            <strong>{preset.name}</strong>
+                                            <span>{preset.best ? `best ${preset.best}` : 'best unset'}</span>
+                                            <span>{preset.cheap ? `cheap ${preset.cheap}` : 'cheap unset'}</span>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                            {modelPresets && (
+                                <div className="code-model-profile-chips" aria-label="Built-in profile candidates">
+                                    {modelPresets.builtinProfiles.slice(0, 8).map(profile => (
+                                        <span key={profile.name}>{profile.name}</span>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="code-popup-placeholder-actions">
+                                <button type="button" disabled className="code-popup-secondary">Apply profile</button>
+                                <span>Profile activation is read-only here; JWC runtime owns credential checks and rollback.</span>
+                            </div>
+                        </div>
                     </div>
                 )}
             </section>

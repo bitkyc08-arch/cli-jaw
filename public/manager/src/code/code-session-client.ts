@@ -52,6 +52,25 @@ export interface CodeModelAssignments {
     };
 }
 
+export interface CodeModelPresetEntry {
+    name: string;
+    best?: string;
+    cheap?: string;
+}
+
+export interface CodeBuiltinModelProfile {
+    name: string;
+    source: 'builtin';
+}
+
+export interface CodeModelPresetInfo {
+    defaultProfile?: string;
+    taskPresets: CodeModelPresetEntry[];
+    builtinProfiles: CodeBuiltinModelProfile[];
+    applyAvailable: false;
+    applyReason: string;
+}
+
 export interface CodeGitInfo {
     isRepo: boolean;
     branch: string | null;
@@ -78,6 +97,7 @@ export interface CodeSessionClient {
     setModelAssignment(role: CodeModelAssignment['role'], modelId: string): Promise<CodeModelAssignments>;
     setModelAssignment(role: CodeModelAssignment['role'], input: CodeModelAssignmentInput): Promise<CodeModelAssignments>;
     clearModelAssignment(role: CodeModelAssignment['role']): Promise<CodeModelAssignments>;
+    listModelPresets(): Promise<CodeModelPresetInfo>;
     getGitInfo(cwd: string): Promise<CodeGitInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
     createSession(cwd: string, model?: string): Promise<CodeSession>;
@@ -133,6 +153,9 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async clearModelAssignment(role: CodeModelAssignment['role']) {
             return request<CodeModelAssignments>('DELETE', `/api/code/model-assignments/${encodeURIComponent(role)}`);
+        },
+        async listModelPresets() {
+            return request<CodeModelPresetInfo>('GET', '/api/code/model-presets');
         },
         async getGitInfo(cwd: string) {
             const data = await request<CodeGitInfo>('GET', `/api/code/git-info?cwd=${encodeURIComponent(cwd)}`);

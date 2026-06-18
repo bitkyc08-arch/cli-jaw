@@ -40,6 +40,25 @@ export type JwcModelAssignment = {
     thinkingLevel?: string;
 };
 
+export type JwcModelPresetEntry = {
+    name: string;
+    best?: string;
+    cheap?: string;
+};
+
+export type JwcBuiltinModelProfile = {
+    name: string;
+    source: 'builtin';
+};
+
+export type JwcModelProfilePresetInfo = {
+    defaultProfile?: string;
+    taskPresets: JwcModelPresetEntry[];
+    builtinProfiles: JwcBuiltinModelProfile[];
+    applyAvailable: false;
+    applyReason: string;
+};
+
 export const JWC_THINKING_LEVELS: JwcThinkingLevel[] = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 const JWC_THINKING_SUFFIXES = new Set(['off', 'min', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
@@ -85,6 +104,29 @@ export const JWC_PROVIDER_EFFORT_DEFAULTS: Record<string, string[]> = {
     cursor: ['low', 'medium', 'high', 'xhigh'],
     'opencode-go': ['minimal', 'low', 'high', 'max'],
 };
+
+export const JWC_BUILTIN_MODEL_PROFILE_NAMES = [
+    'custom-1',
+    'custom-2',
+    'custom-3',
+    'custom-4',
+    'opencode-go-eco',
+    'opencode-go-standard',
+    'opencode-go-pro',
+    'codex-eco',
+    'codex-standard',
+    'codex-pro',
+    'minimax-standard',
+    'minimax-cn-standard',
+    'kimi-standard',
+    'glm-standard',
+    'opencode-go-codex-eco',
+    'opencode-go-codex-standard',
+    'opencode-go-codex-pro',
+] as const;
+
+export const JWC_MODEL_PROFILE_APPLY_DEFERRED_REASON =
+    'Profile activation is delegated to JWC runtime because it validates credentials and supports rollback.';
 
 export function resolveJwcAgentDir(): string {
     return process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent');
@@ -263,6 +305,53 @@ export async function resolveJwcModelAssignments(agentDir = resolveJwcAgentDir()
             scope: 'session',
             note: 'Role assignments do not mutate the active Code session model.',
         },
+    };
+}
+
+function taskPresetEntries(raw: unknown): JwcModelPresetEntry[] {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return [];
+    return Object.entries(raw as Record<string, unknown>)
+        .map(([name, value]) => {
+            if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+            const record = value as Record<string, unknown>;
+            const best = typeof record['best'] === 'string' && record['best'].trim() ? record['best'].trim() : undefined;
+            const cheap = typeof record['cheap'] === 'string' && record['cheap'].trim() ? record['cheap'].trim() : undefined;
+            return {
+                name,
+                ...(best ? { best } : {}),
+                ...(cheap ? { cheap } : {}),
+            };
+        })
+        .filter((entry): entry is JwcModelPresetEntry => entry !== null)
+        .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+export async function readJwcModelProfilePresetInfo(agentDir = resolveJwcAgentDir()): Promise<JwcModelProfilePresetInfo> {
+    let defaultProfile: string | undefined;
+    let taskPresets: JwcModelPresetEntry[] = [];
+    try {
+        const content = await readFile(join(agentDir, 'config.yml'), 'utf8');
+        const doc = parseDocument(content || '{}\n', { prettyErrors: false });
+        const json = doc.toJSON() as Record<string, unknown> | null;
+        const modelProfile = json?.['modelProfile'];
+        if (modelProfile && typeof modelProfile === 'object' && !Array.isArray(modelProfile)) {
+            const rawDefault = (modelProfile as Record<string, unknown>)['default'];
+            if (typeof rawDefault === 'string' && rawDefault.trim()) defaultProfile = rawDefault.trim();
+        }
+        const task = json?.['task'];
+        if (task && typeof task === 'object' && !Array.isArray(task)) {
+            taskPresets = taskPresetEntries((task as Record<string, unknown>)['modelPresets']);
+        }
+    } catch {
+        defaultProfile = undefined;
+        taskPresets = [];
+    }
+    return {
+        ...(defaultProfile ? { defaultProfile } : {}),
+        taskPresets,
+        builtinProfiles: JWC_BUILTIN_MODEL_PROFILE_NAMES.map(name => ({ name, source: 'builtin' })),
+        applyAvailable: false,
+        applyReason: JWC_MODEL_PROFILE_APPLY_DEFERRED_REASON,
     };
 }
 

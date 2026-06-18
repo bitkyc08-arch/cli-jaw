@@ -9,6 +9,7 @@ import {
     buildJwcModelRole,
     clearJwcModelAssignment,
     isJwcModelAssignmentRole,
+    readJwcModelProfilePresetInfo,
     resolveJwcModelAssignments,
     resolveJwcModelOptions,
     writeJwcDefaultModelRole,
@@ -118,6 +119,13 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
             } catch (err: unknown) {
                 res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
             }
+        })();
+    });
+
+    app.get('/api/code/model-presets', requireAuth, (_req, res) => {
+        void (async () => {
+            const presets = await readJwcModelProfilePresetInfo();
+            res.json({ ok: true, ...presets });
         })();
     });
 

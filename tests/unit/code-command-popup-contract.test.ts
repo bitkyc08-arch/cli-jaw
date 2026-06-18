@@ -71,13 +71,30 @@ test('code command popup exposes all JWC model role assignments', () => {
     }
 
     assert.ok(canvas.includes('const [modelAssignments, setModelAssignments]'), 'CodeCanvas must own assignment readback state');
+    assert.ok(canvas.includes('const [modelPresets, setModelPresets]'), 'CodeCanvas must own preset readback state');
     assert.ok(canvas.includes('client.listModelAssignments()'), 'CodeCanvas must load role assignments');
+    assert.ok(canvas.includes('client.listModelPresets()'), 'CodeCanvas must load model presets');
     assert.ok(canvas.includes('client.setModelAssignment(role, {'), 'CodeCanvas must persist structured role assignment');
     assert.ok(canvas.includes('thinkingLevel !== undefined'), 'CodeCanvas must pass role thinking into structured assignment when selected');
     assert.ok(canvas.includes('client.clearModelAssignment(role)'), 'CodeCanvas must clear role assignment');
     assert.ok(css.includes('.code-role-assignment-grid'), 'role assignment panel must have dedicated layout styles');
     assert.ok(css.includes('.code-role-card'), 'role assignment cards must be styled');
     assert.ok(css.includes('.code-role-thinking'), 'role assignment thinking selector must be styled');
+});
+
+test('code command popup exposes read-only model profile preset state', () => {
+    const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
+    const css = read('public/manager/src/code/code-command-popup.css');
+
+    assert.ok(popup.includes('modelPresets'), 'popup must accept model preset readback');
+    assert.ok(popup.includes('Profiles and presets'), 'model popup must label profile/preset section');
+    assert.ok(popup.includes('Startup profile'), 'profile section must show startup profile');
+    assert.ok(popup.includes('Task presets'), 'profile section must show task preset count');
+    assert.ok(popup.includes('Apply profile'), 'profile section must expose disabled apply affordance');
+    assert.ok(popup.includes('JWC runtime owns credential checks and rollback'), 'profile section must explain why apply is deferred');
+    assert.equal(popup.includes('Presets and MRU are scheduled for later model popup slices.'), false, 'preset section must not be stale future-work copy');
+    assert.ok(css.includes('.code-model-preset-panel'), 'preset panel must have dedicated styles');
+    assert.ok(css.includes('.code-model-profile-chips'), 'profile chips must have dedicated styles');
 });
 
 test('code command popup stays instance-independent', () => {

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
-import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions } from './code-session-client';
+import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import { CodeCommandPopup } from './CodeCommandPopup';
 import { CodeComposer } from './CodeComposer';
 import { CodePermissionQueue } from './CodePermissionQueue';
@@ -48,6 +48,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [permissionMode, setPermissionMode] = useState('ask');
     const [modelOptions, setModelOptions] = useState<CodeModelOptions>(FALLBACK_MODEL_OPTIONS);
     const [modelAssignments, setModelAssignments] = useState<CodeModelAssignments | null>(null);
+    const [modelPresets, setModelPresets] = useState<CodeModelPresetInfo | null>(null);
     const [gitInfo, setGitInfo] = useState<CodeGitInfo | null>(null);
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
@@ -91,17 +92,20 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         let cancelled = false;
         void (async () => {
             try {
-                const [options, assignments] = await Promise.all([
+                const [options, assignments, presets] = await Promise.all([
                     client.listModelOptions(),
                     client.listModelAssignments(),
+                    client.listModelPresets(),
                 ]);
                 if (cancelled) return;
                 applyModelOptions(options);
                 setModelAssignments(assignments);
+                setModelPresets(presets);
             } catch (err) {
                 if (!cancelled) {
                     setModelOptions({ ...FALLBACK_MODEL_OPTIONS, error: err instanceof Error ? err.message : String(err) });
                     setModelAssignments(null);
+                    setModelPresets(null);
                 }
             }
         })();
@@ -399,6 +403,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         provider={provider}
                         model={model}
                         modelAssignments={modelAssignments}
+                        modelPresets={modelPresets}
                         permissionMode={permissionMode}
                         disabled={sending}
                         activeSessionId={activeSessionId}

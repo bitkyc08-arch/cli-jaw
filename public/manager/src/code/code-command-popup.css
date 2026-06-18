@@ -409,6 +409,85 @@
     flex-wrap: wrap;
 }
 
+.code-model-preset-panel {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+.code-model-preset-summary {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 5px 10px;
+    padding: 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    font-size: 11px;
+}
+
+.code-model-preset-summary span {
+    color: var(--text-secondary);
+}
+
+.code-model-preset-summary strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-model-preset-list {
+    display: grid;
+    gap: 6px;
+}
+
+.code-model-preset-row {
+    display: grid;
+    grid-template-columns: minmax(80px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    font-size: 11px;
+}
+
+.code-model-preset-row strong,
+.code-model-preset-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-model-preset-row strong {
+    color: var(--text-primary);
+}
+
+.code-model-preset-row span {
+    color: var(--text-secondary);
+}
+
+.code-model-profile-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.code-model-profile-chips span {
+    padding: 3px 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
 @media (max-width: 720px) {
     .code-popup-backdrop {
         align-items: flex-end;
@@ -429,5 +508,8 @@
     }
     .code-role-assignment-head span {
         text-align: left;
+    }
+    .code-model-preset-row {
+        grid-template-columns: 1fr;
     }
 }
