@@ -11,6 +11,7 @@ import {
 } from '../../../../../src/manager/git/diff-service.js';
 import { resolveFolderGitRoot } from '../../../../../src/manager/git/folder-root-validation.js';
 import { getGitStatusMap, readGitStatusMapOptions } from '../../../../../src/manager/git/status-service.js';
+import { readSourceControlOperation, runSourceControlOperation } from '../../../../../src/manager/git/source-control-operations.js';
 import { getSourceControlSnapshot, readSourceControlSnapshotOptions } from '../../../../../src/manager/git/source-control-service.js';
 import { getGitWorktrees } from '../../../../../src/manager/git/worktree-service.js';
 import {
@@ -55,6 +56,17 @@ export function registerDiffIpc(): void {
         try {
             const snapshot = await getSourceControlSnapshot(repoRoot, readSourceControlSnapshotOptions(rawOptions));
             return { ok: true, snapshot };
+        } catch (err) {
+            return { ok: false, error: (err as Error).message };
+        }
+    });
+
+    ipcMain.handle('diff:runScmOperation', async (event, repoRoot: string, rawOperation?: unknown) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        try {
+            const operation = readSourceControlOperation(rawOperation);
+            const result = await runSourceControlOperation(repoRoot, operation);
+            return { ok: true, result };
         } catch (err) {
             return { ok: false, error: (err as Error).message };
         }

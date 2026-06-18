@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { getDesktop, type DiffBridgeApi, type DiffOptions, type DiffResolvedRoot, type DiffRootCandidate, type SourceControlSnapshot } from '../panels/desktop-bridge';
+import { getDesktop, type DiffBridgeApi, type DiffOptions, type DiffResolvedRoot, type DiffRootCandidate, type SourceControlOperation, type SourceControlSnapshot } from '../panels/desktop-bridge';
 import type { DashboardDiffMode, DashboardInstance, DashboardRegistryUi } from '../types';
 import { createDashboardGitDiffClient } from './diff-client';
 import { buildDiffRootCandidates } from './diff-root-candidates';
@@ -22,6 +22,7 @@ type DiffFileListGroup = {
     id: string;
     label: string;
     files: DiffFileListItem[];
+    action?: SourceControlOperation['kind'];
 };
 
 type DiffSettings = Pick<DashboardRegistryUi,
@@ -122,6 +123,11 @@ function groupedDiffFiles(snapshot: SourceControlSnapshot | null, files: DiffFil
         .map(group => ({
             id: group.id,
             label: `${group.label} (${group.files.length})`,
+            ...(group.id === 'staged'
+                ? { action: 'unstage' as const }
+                : group.id === 'changes' || group.id === 'untracked'
+                    ? { action: 'stage' as const }
+                    : {}),
             files: group.files.map(file => {
                 const summary = summaryByPath.get(file.repoRelativePath);
                 return {
@@ -154,6 +160,7 @@ export function DiffPanel(props: DiffPanelProps) {
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [diffContent, setDiffContent] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
+    const [gitActionStatus, setGitActionStatus] = useState<string | null>(null);
     const [pickingRepo, setPickingRepo] = useState(false);
     const selectedInstanceKey = `${props.selectedInstance?.port ?? 'none'}:${props.selectedInstance?.workingDir ?? ''}:${props.selectedInstance?.projectDirs?.join('\0') ?? ''}`;
     const options = useMemo(() => diffOptions(props.settings), [
@@ -285,6 +292,23 @@ export function DiffPanel(props: DiffPanelProps) {
 
     const fileGroups = useMemo(() => groupedDiffFiles(scmSnapshot, files), [files, scmSnapshot]);
 
+    async function runScmOperation(operation: SourceControlOperation): Promise<void> {
+        if (!bridge || !repoRoot) return;
+        setGitActionStatus(operation.kind === 'stage' ? 'Staging...' : 'Unstaging...');
+        const result = await bridge.runScmOperation(repoRoot, operation);
+        if (!result.ok) {
+            setGitActionStatus(result.error ?? 'Git operation failed');
+            return;
+        }
+        if (result.result?.snapshot) setScmSnapshot(result.result.snapshot);
+        setGitActionStatus(operation.kind === 'stage' ? 'Staged' : 'Unstaged');
+        await loadSummary();
+    }
+
+    function actionLabel(action: SourceControlOperation['kind']): string {
+        return action === 'stage' ? 'Stage' : 'Unstage';
+    }
+
     async function handleChooseRepository(): Promise<void> {
         const folderBridge = getDesktop()?.folder;
         if (!folderBridge?.pickFolder) {
@@ -375,22 +399,54 @@ export function DiffPanel(props: DiffPanelProps) {
                 </label>
             </div>
             {error && <div className="diff-error">{error}</div>}
+            {gitActionStatus && <div className="diff-action-status">{gitActionStatus}</div>}
             <div className="diff-body">
                 <div className="diff-file-list">
                     {fileGroups.map(group => (
                         <div key={group.id} className="diff-file-group">
-                            <div className="diff-file-group-heading">{group.label}</div>
+                            <div className="diff-file-group-heading">
+                                <span>{group.label}</span>
+                                {group.action && (
+                                    <button
+                                        type="button"
+                                        className="diff-scm-action"
+                                        onClick={() => void runScmOperation({ kind: group.action!, paths: group.files.map(file => file.path) })}
+                                    >
+                                        {actionLabel(group.action)} All
+                                    </button>
+                                )}
+                            </div>
                             {group.files.map(f => (
-                                <button key={`${group.id}:${f.path}`} type="button"
+                                <div key={`${group.id}:${f.path}`}
+                                    role="button"
+                                    tabIndex={0}
                                     className={`diff-file-item ${f.path === selectedFile ? 'is-selected' : ''} diff-status-${f.status}${f.conflict ? ' is-conflict' : ''}`}
-                                    onClick={() => handleFileSelect(f.path)}>
+                                    onClick={() => handleFileSelect(f.path)}
+                                    onKeyDown={(event) => {
+                                        if (event.key !== 'Enter' && event.key !== ' ') return;
+                                        event.preventDefault();
+                                        handleFileSelect(f.path);
+                                    }}>
                                     <span className="diff-file-name">{f.path}</span>
                                     <span className="diff-file-stats">
                                         {f.insertions > 0 && <span className="diff-ins">+{f.insertions}</span>}
                                         {f.deletions > 0 && <span className="diff-del">-{f.deletions}</span>}
                                         {f.status === 'untracked' && <span className="diff-ins">new</span>}
+                                        {group.action && (
+                                            <button
+                                                type="button"
+                                                className="diff-scm-inline-action"
+                                                onClick={(event) => {
+                                                    event.stopPropagation();
+                                                    void runScmOperation({ kind: group.action!, paths: [f.path] });
+                                                }}
+                                                aria-label={`${actionLabel(group.action)} ${f.path}`}
+                                            >
+                                                {group.action === 'stage' ? '+' : '-'}
+                                            </button>
+                                        )}
                                     </span>
-                                </button>
+                                </div>
                             ))}
                         </div>
                     ))}

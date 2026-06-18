@@ -11,6 +11,7 @@ import {
 } from '../git/diff-service.js';
 import { resolveFolderGitRoot } from '../git/folder-root-validation.js';
 import { getGitStatusMap, readGitStatusMapOptions } from '../git/status-service.js';
+import { readSourceControlOperation, runSourceControlOperation } from '../git/source-control-operations.js';
 import { getSourceControlSnapshot, readSourceControlSnapshotOptions } from '../git/source-control-service.js';
 import { getGitWorktrees } from '../git/worktree-service.js';
 import {
@@ -121,6 +122,23 @@ export function createDashboardGitRouter(options: DashboardGitRouterOptions): ex
             res.json({ ok: true, snapshot });
         } catch (error) {
             res.status(500).json({ ok: false, error: (error as Error).message });
+        }
+    });
+
+    router.post('/scm-operation', async (req, res) => {
+        try {
+            const input = isRecord(req.body) ? req.body : {};
+            const repoRoot = typeof input['repoRoot'] === 'string' ? input['repoRoot'] : '';
+            const root = await validateRepoRoot(req.body, options, repoRoot);
+            if (!root.ok) {
+                res.status(root.status).json({ ok: false, error: root.error });
+                return;
+            }
+            const operation = readSourceControlOperation(input['operation']);
+            const result = await runSourceControlOperation(root.root.root, operation);
+            res.json({ ok: true, result });
+        } catch (error) {
+            res.status(400).json({ ok: false, error: (error as Error).message });
         }
     });
 

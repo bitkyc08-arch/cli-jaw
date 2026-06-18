@@ -55,6 +55,17 @@ export type SourceControlSnapshot = {
     groups: SourceControlGroup[];
 };
 
+export type SourceControlOperation = {
+    kind: 'stage' | 'unstage';
+    paths: string[];
+};
+
+export type SourceControlOperationResult = {
+    operation: SourceControlOperation['kind'];
+    paths: string[];
+    snapshot: SourceControlSnapshot;
+};
+
 export type DiffRootCandidate = {
     path: string;
     label: string;
@@ -72,6 +83,7 @@ export type DiffBridgeApi = {
     getRepoRoot: (cwd: string) => Promise<{ ok: boolean; root?: string; error?: string }>;
     getRepoCandidates: (candidates: DiffRootCandidate[]) => Promise<{ ok: boolean; candidates?: DiffResolvedRoot[]; error?: string }>;
     getScmSnapshot: (repoRoot: string, options?: { includeUntracked?: boolean }) => Promise<{ ok: boolean; snapshot?: SourceControlSnapshot; error?: string }>;
+    runScmOperation: (repoRoot: string, operation: SourceControlOperation) => Promise<{ ok: boolean; result?: SourceControlOperationResult; error?: string }>;
     getDiffSummary: (repoRoot: string, options: DiffOptions) => Promise<{ ok: boolean; files?: Array<{ path: string; status: string; insertions: number; deletions: number }>; error?: string }>;
     getFileDiff: (repoRoot: string, filePath: string, options: DiffOptions) => Promise<{ ok: boolean; diff?: string; error?: string }>;
 };

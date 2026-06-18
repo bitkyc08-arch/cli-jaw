@@ -109,6 +109,12 @@
     color: var(--status-error);
     background: var(--bg-error-subtle, rgba(255,0,0,0.05));
 }
+.diff-action-status {
+    padding: 5px 10px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 11px;
+}
 .diff-body {
     flex: 1;
     display: flex;
@@ -129,6 +135,10 @@
     position: sticky;
     top: 0;
     z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
     padding: 5px 8px 3px;
     color: var(--text-dim);
     background: var(--bg-panel);
@@ -136,6 +146,30 @@
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
+}
+.diff-scm-action,
+.diff-scm-inline-action {
+    all: unset;
+    cursor: pointer;
+    border-radius: 3px;
+    color: var(--text-dim);
+    text-transform: none;
+}
+.diff-scm-action {
+    padding: 1px 4px;
+    font-size: 10px;
+    font-weight: 500;
+}
+.diff-scm-inline-action {
+    min-width: 14px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
+}
+.diff-scm-action:hover,
+.diff-scm-inline-action:hover {
+    background: var(--bg-hover);
+    color: var(--text-base);
 }
 .diff-file-item {
     all: unset;
@@ -151,6 +185,7 @@
     box-sizing: border-box;
 }
 .diff-file-item:hover { background: var(--bg-hover); }
+.diff-file-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
 .diff-file-item.is-selected { background: var(--bg-active); }
 .diff-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .diff-file-stats { display: flex; gap: 4px; flex-shrink: 0; font-size: 10px; }

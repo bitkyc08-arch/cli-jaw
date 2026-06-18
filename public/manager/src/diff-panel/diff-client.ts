@@ -39,6 +39,10 @@ export function createDashboardGitDiffClient(
             '/api/dashboard/git/scm-snapshot',
             { ...baseBody(instance, settings), repoRoot, options },
         ),
+        runScmOperation: async (repoRoot, operation) => postJson(
+            '/api/dashboard/git/scm-operation',
+            { ...baseBody(instance, settings), repoRoot, operation },
+        ),
         getDiffSummary: async (repoRoot: string, options: DiffOptions) => postJson(
             '/api/dashboard/git/diff-summary',
             { ...baseBody(instance, settings), repoRoot, options },
