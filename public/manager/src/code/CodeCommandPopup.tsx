@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CodeModelOptions } from './code-session-client';
 import type { CodeCommand, CodeCommandPopupKind } from './code-types';
 
@@ -10,10 +10,12 @@ type CodeCommandPopupProps = {
     model: string;
     permissionMode: string;
     disabled?: boolean;
+    activeSessionId?: string | null;
+    error?: string;
     onClose: () => void;
     onRefreshProviders: () => void;
     onProviderChange: (value: string) => void;
-    onModelChange: (value: string) => void;
+    onUseModel: (provider: string, model: string) => void | Promise<void>;
     onPermissionModeChange: (value: string) => void;
 };
 
@@ -33,24 +35,55 @@ export function CodeCommandPopup({
     model,
     permissionMode,
     disabled,
+    activeSessionId,
+    error,
     onClose,
     onRefreshProviders,
     onProviderChange,
-    onModelChange,
+    onUseModel,
     onPermissionModeChange,
 }: CodeCommandPopupProps) {
     const closeRef = useRef<HTMLButtonElement>(null);
     const currentProvider = modelOptions.providers.find(entry => entry.id === provider) ?? modelOptions.providers[0];
-    const providerModels = currentProvider?.models ?? [];
+    const [modelQuery, setModelQuery] = useState('');
+    const [draftProvider, setDraftProvider] = useState(provider);
+    const [draftModel, setDraftModel] = useState(model);
+    const draftProviderRecord = modelOptions.providers.find(entry => entry.id === draftProvider) ?? currentProvider;
+    const query = modelQuery.trim().toLowerCase();
+    const filteredProviders = useMemo(() => modelOptions.providers.filter(entry => {
+        if (!query) return true;
+        return entry.id.toLowerCase().includes(query) || entry.models.some(modelId => modelId.toLowerCase().includes(query));
+    }), [modelOptions.providers, query]);
+    const visibleModels = useMemo(() => {
+        const models = draftProviderRecord?.models ?? [];
+        if (!query) return models;
+        return models.filter(modelId => modelId.toLowerCase().includes(query));
+    }, [draftProviderRecord?.models, query]);
     const title = titleForPopup(popupKind);
     const providerCountLabel = useMemo(() => {
         const count = modelOptions.providers.length;
         return `${count} authenticated provider${count === 1 ? '' : 's'}`;
     }, [modelOptions.providers.length]);
+    const canUseNow = Boolean(activeSessionId && draftProvider && draftModel && !disabled);
 
     useEffect(() => {
         closeRef.current?.focus();
     }, [popupKind, command.name]);
+
+    useEffect(() => {
+        if (popupKind !== 'model') return;
+        setModelQuery('');
+        setDraftProvider(provider);
+        setDraftModel(model);
+    }, [model, popupKind, provider]);
+
+    useEffect(() => {
+        if (popupKind !== 'model') return;
+        const models = draftProviderRecord?.models ?? [];
+        if (models.length > 0 && !models.includes(draftModel)) {
+            setDraftModel(models[0] ?? '');
+        }
+    }, [draftModel, draftProviderRecord?.models, popupKind]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -90,6 +123,7 @@ export function CodeCommandPopup({
                         {modelOptions.degraded && (
                             <p className="code-popup-warning">{modelOptions.error ?? 'Provider discovery is degraded.'}</p>
                         )}
+                        {error && <p className="code-popup-error">{error}</p>}
                         <div className="code-provider-list" role="list">
                             {modelOptions.providers.map(entry => (
                                 <button
@@ -132,13 +166,79 @@ export function CodeCommandPopup({
 
                 {popupKind === 'model' && (
                     <div className="code-popup-section">
+                        {error && <p className="code-popup-error">{error}</p>}
                         <label className="code-popup-field">
-                            <span>Model</span>
-                            <select value={model} onChange={event => onModelChange(event.target.value)} disabled={disabled || providerModels.length === 0}>
-                                {providerModels.map(entry => <option key={entry} value={entry}>{entry}</option>)}
-                            </select>
+                            <span>Search models</span>
+                            <input
+                                type="search"
+                                className="code-model-search"
+                                placeholder="Search provider or model"
+                                value={modelQuery}
+                                onChange={event => setModelQuery(event.target.value)}
+                                disabled={disabled}
+                            />
                         </label>
-                        <p className="code-popup-note">Subagent assignment and default/live model controls are scheduled for the model popup slice.</p>
+                        <div className="code-model-layout">
+                            <div className="code-model-providers" role="list" aria-label="Providers">
+                                {filteredProviders.map(entry => (
+                                    <button
+                                        key={entry.id}
+                                        type="button"
+                                        className={`code-model-provider${entry.id === draftProvider ? ' is-selected' : ''}`}
+                                        onClick={() => {
+                                            setDraftProvider(entry.id);
+                                            setDraftModel(entry.models[0] ?? '');
+                                        }}
+                                        disabled={disabled}
+                                    >
+                                        <span>{entry.id}</span>
+                                        <small>{entry.models.length}</small>
+                                    </button>
+                                ))}
+                            </div>
+                            <div className="code-model-list" role="list" aria-label="Models">
+                                <div className="code-model-list-head">
+                                    <strong>{draftProviderRecord?.id ?? 'No provider'}</strong>
+                                    <span>{visibleModels.length} models</span>
+                                </div>
+                                {visibleModels.length === 0 ? (
+                                    <p className="code-popup-note">No models match this search.</p>
+                                ) : visibleModels.map(entry => {
+                                    const isActive = draftProvider === provider && entry === model;
+                                    const isDraft = entry === draftModel;
+                                    return (
+                                        <button
+                                            key={entry}
+                                            type="button"
+                                            className={`code-model-row${isActive ? ' is-active' : ''}${isDraft ? ' is-draft' : ''}`}
+                                            onClick={() => setDraftModel(entry)}
+                                            disabled={disabled}
+                                        >
+                                            <span>{entry}</span>
+                                            <small>{isActive ? 'Active' : isDraft ? 'Selected' : 'Available'}</small>
+                                        </button>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                        <div className="code-popup-action-row">
+                            <div className="code-popup-summary code-popup-summary-compact">
+                                <span>Active</span><strong>{provider || '-'} / {model || '-'}</strong>
+                                <span>Selected</span><strong>{draftProvider || '-'} / {draftModel || '-'}</strong>
+                            </div>
+                            <button
+                                type="button"
+                                className="code-popup-primary"
+                                disabled={!canUseNow}
+                                onClick={() => {
+                                    void onUseModel(draftProvider, draftModel);
+                                }}
+                            >
+                                Use now
+                            </button>
+                        </div>
+                        {!activeSessionId && <p className="code-popup-note">Start or load a Code session to apply a live model.</p>}
+                        <p className="code-popup-note">Set default, subagent assignment, presets, and MRU are scheduled for later model popup slices.</p>
                     </div>
                 )}
             </section>

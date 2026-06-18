@@ -38,6 +38,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [availableCommands, setAvailableCommands] = useState<CodeCommand[]>([]);
     const [showCommands, setShowCommands] = useState(false);
     const [activePopup, setActivePopup] = useState<{ kind: CodeCommandPopupKind; command: CodeCommand } | null>(null);
+    const [popupError, setPopupError] = useState('');
     const [sessionTitle, setSessionTitle] = useState('');
     const [usage, setUsage] = useState<{ contextTokens?: number; contextLimit?: number; cost?: number }>({});
     const [planEntries, setPlanEntries] = useState<Array<{ title: string; status: string }>>([]);
@@ -242,6 +243,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const handleCommandSelect = useCallback((command: CodeCommand) => {
         if (command.disabledReason) return;
         if (command.actionType === 'popup' && command.popupKind) {
+            setPopupError('');
             setActivePopup({ kind: command.popupKind, command });
             setShowCommands(false);
             return;
@@ -256,6 +258,28 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         } catch { /* server may have already resolved it */ }
         setPermissions(prev => prev.filter(p => p.permissionId !== permissionId));
     }, [client]);
+
+    const handleUseModel = useCallback(async (
+        nextProvider: string,
+        nextModel: string,
+        options?: { closePopup?: boolean; requireActiveSession?: boolean },
+    ) => {
+        setPopupError('');
+        setProvider(nextProvider);
+        setModel(nextModel);
+        const closePopup = options?.closePopup ?? true;
+        const requireActiveSession = options?.requireActiveSession ?? true;
+        if (!activeSessionId) {
+            if (requireActiveSession) setPopupError('Start or load a Code session before applying a live model.');
+            return;
+        }
+        try {
+            await client.setSessionModel(activeSessionId, toModelId(nextProvider, nextModel));
+            if (closePopup) setActivePopup(null);
+        } catch (err) {
+            setPopupError(err instanceof Error ? err.message : String(err));
+        }
+    }, [activeSessionId, client]);
 
     const providerRecord = modelOptions.providers.find(p => p.id === provider) ?? modelOptions.providers[0];
     const providerOptions = modelOptions.providers.map(p => p.id);
@@ -327,7 +351,9 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         model={model}
                         permissionMode={permissionMode}
                         disabled={sending}
-                        onClose={() => setActivePopup(null)}
+                        activeSessionId={activeSessionId}
+                        error={popupError}
+                        onClose={() => { setPopupError(''); setActivePopup(null); }}
                         onRefreshProviders={() => {
                             void refreshModelOptions();
                         }}
@@ -336,16 +362,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                             const nextProvider = modelOptions.providers.find(entry => entry.id === p);
                             const firstModel = nextProvider?.models[0] ?? '';
                             setModel(firstModel);
-                            if (activeSessionId && firstModel) {
-                                void client.setSessionModel(activeSessionId, toModelId(p, firstModel));
-                            }
                         }}
-                        onModelChange={m => {
-                            setModel(m);
-                            if (activeSessionId) {
-                                void client.setSessionModel(activeSessionId, toModelId(provider, m));
-                            }
-                        }}
+                        onUseModel={handleUseModel}
                         onPermissionModeChange={setPermissionMode}
                     />
                 )}
@@ -365,15 +383,12 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         setModel(firstModel);
                         const firstEffort = nextProvider?.efforts.includes('high') ? 'high' : nextProvider?.efforts[0] ?? '';
                         setEffort(firstEffort);
-                        if (activeSessionId && firstModel) {
-                            void client.setSessionModel(activeSessionId, toModelId(p, firstModel));
+                        if (firstModel) {
+                            void handleUseModel(p, firstModel, { closePopup: false, requireActiveSession: false });
                         }
                     }}
                     onModelChange={m => {
-                        setModel(m);
-                        if (activeSessionId) {
-                            void client.setSessionModel(activeSessionId, toModelId(provider, m));
-                        }
+                        void handleUseModel(provider, m, { closePopup: false, requireActiveSession: false });
                     }}
                     onEffortChange={e => {
                         setEffort(e);
