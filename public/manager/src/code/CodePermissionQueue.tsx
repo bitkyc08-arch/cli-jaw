@@ -1,8 +1,15 @@
-import type { PendingPermission } from './code-types';
+import {
+    getPermissionToolName,
+    PERMISSION_ACTION_LABELS,
+    PERMISSION_ACTION_ORDER,
+    resolvePermissionOption,
+    type PendingPermission,
+    type PermissionOptionKind,
+} from './code-types';
 
 type CodePermissionQueueProps = {
     permissions: PendingPermission[];
-    onAnswer: (permissionId: string, optionId: string | null) => void;
+    onAnswer: (permission: PendingPermission, action: PermissionOptionKind) => void;
 };
 
 export function CodePermissionQueue({ permissions, onAnswer }: CodePermissionQueueProps) {
@@ -13,23 +20,26 @@ export function CodePermissionQueue({ permissions, onAnswer }: CodePermissionQue
                 <div key={p.permissionId} className="code-permission-card">
                     <div className="code-permission-title">
                         <span>Permission request</span>
-                        <strong>{String(p.toolCall['toolName'] ?? p.toolCall['title'] ?? 'tool')}</strong>
+                        <strong>{getPermissionToolName(p.toolCall)}</strong>
+                        <small>{p.options.length} JWC options</small>
                     </div>
                     <div className="code-permission-actions">
-                        {p.options.length > 0 ? p.options.map((opt, i) => (
-                            <button key={i} type="button" className="code-permission-btn"
-                                onClick={() => onAnswer(p.permissionId, String(opt['optionId'] ?? opt['id'] ?? i))}
-                            >{String(opt['name'] ?? opt['label'] ?? `Option ${i + 1}`)}</button>
-                        )) : (
-                            <div className="code-permission-default-actions">
-                                <button type="button" className="code-permission-btn code-permission-allow"
-                                    onClick={() => onAnswer(p.permissionId, 'allow')}
-                                >Allow</button>
-                                <button type="button" className="code-permission-btn code-permission-deny"
-                                    onClick={() => onAnswer(p.permissionId, null)}
-                                >Deny</button>
-                            </div>
-                        )}
+                        {PERMISSION_ACTION_ORDER.map(action => {
+                            const option = resolvePermissionOption(p.options, action);
+                            const isAllow = action.startsWith('allow');
+                            return (
+                                <button
+                                    key={action}
+                                    type="button"
+                                    className={`code-permission-btn ${isAllow ? 'code-permission-allow' : 'code-permission-deny'}`}
+                                    disabled={!option}
+                                    title={option ? option.optionId : `${PERMISSION_ACTION_LABELS[action]} option was not provided by JWC`}
+                                    onClick={() => onAnswer(p, action)}
+                                >
+                                    {option?.label ?? PERMISSION_ACTION_LABELS[action]}
+                                </button>
+                            );
+                        })}
                     </div>
                 </div>
             ))}

@@ -1,3 +1,5 @@
+import type { PermissionMode } from './code-types';
+
 type ComposerFooterProps = {
     provider: string;
     providerOptions: string[];
@@ -5,19 +7,18 @@ type ComposerFooterProps = {
     modelOptions: string[];
     effort: string;
     effortOptions: string[];
-    permissionMode: string;
+    permissionMode: PermissionMode;
     disabled: boolean;
     onProviderChange: (value: string) => void;
     onModelChange: (value: string) => void;
     onEffortChange: (value: string) => void;
-    onPermissionModeChange: (value: string) => void;
+    onPermissionModeChange: (value: PermissionMode) => void;
 };
 
-const permissionDescriptions: Record<string, string> = {
-    ask: 'Prompt before tools',
-    auto: 'Allow standard requests',
-    'always-allow': 'Allow every request',
-    'always-deny': 'Deny every request',
+const permissionDescriptions: Record<PermissionMode, string> = {
+    ask: 'Prompt before gated tools',
+    'always-allow': 'Select JWC allow_always',
+    'always-deny': 'Select JWC reject_always',
 };
 
 export function ComposerFooter({
@@ -36,16 +37,15 @@ export function ComposerFooter({
                     <select
                         className="code-footer-select"
                         value={permissionMode}
-                        onChange={e => onPermissionModeChange(e.target.value)}
+                        onChange={e => onPermissionModeChange(e.target.value as PermissionMode)}
                         disabled={disabled}
                         aria-label="Permission mode"
                     >
                         <option value="ask">Ask</option>
-                        <option value="auto">Auto</option>
                         <option value="always-allow">Always allow</option>
                         <option value="always-deny">Always deny</option>
                     </select>
-                    <span className="code-footer-description">{permissionDescriptions[permissionMode] ?? ''}</span>
+                    <span className="code-footer-description">{permissionDescriptions[permissionMode]}</span>
                 </label>
             </div>
             <div className="code-composer-footer-right">

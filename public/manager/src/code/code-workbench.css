@@ -32,7 +32,10 @@
     background: var(--bg-raised);
 }
 .code-permission-card {
-    display: flex; align-items: center; justify-content: space-between;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+    align-items: center;
     padding: 8px 12px; margin-bottom: 4px;
     border: 1px solid var(--accent-default);
     border-radius: 6px;
@@ -55,8 +58,16 @@
     font-size: 12px;
     color: var(--text-primary);
 }
+.code-permission-title small {
+    color: var(--text-tertiary);
+    font-size: 10px;
+}
 .code-permission-actions,
-.code-permission-default-actions { display: flex; gap: 6px; }
+.code-permission-default-actions {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(84px, 1fr));
+    gap: 6px;
+}
 .code-permission-btn {
     padding: 4px 12px;
     border: 1px solid var(--border-strong);
@@ -65,6 +76,11 @@
     color: var(--text-primary);
     font-size: 11px; cursor: pointer;
     min-height: auto;
+    white-space: nowrap;
+}
+.code-permission-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 .code-permission-allow {
     background: var(--status-success);
@@ -75,6 +91,54 @@
     background: var(--status-error);
     color: white;
     border-color: var(--status-error);
+}
+.code-permission-audit {
+    margin-bottom: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    font-size: 12px;
+}
+.code-permission-audit-head {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    align-items: center;
+}
+.code-permission-audit-head span,
+.code-permission-audit-meta {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.code-permission-audit-head strong {
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.code-permission-audit-head em {
+    color: var(--accent-default);
+    font-style: normal;
+    font-weight: 700;
+}
+.code-permission-audit-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
+}
+.code-permission-audit-error {
+    margin-top: 6px;
+    color: var(--status-error);
+    font-size: 11px;
+}
+.code-permission-audit.is-answer_error,
+.code-permission-audit.is-missing_option {
+    border-color: color-mix(in srgb, var(--status-error) 32%, var(--border-default));
 }
 
 .code-composer {

@@ -47,6 +47,17 @@ function toolErrorSnippet(msg: TranscriptEntry): string {
     return snippet.replace(/\s+/g, ' ').trim().slice(0, 240);
 }
 
+function permissionDecisionLabel(decision: string): string {
+    if (decision === 'pending') return 'Pending';
+    if (decision === 'allow_once') return 'Allow once';
+    if (decision === 'allow_always') return 'Always allow';
+    if (decision === 'reject_once') return 'Deny once';
+    if (decision === 'reject_always') return 'Always deny';
+    if (decision === 'missing_option') return 'Missing JWC option';
+    if (decision === 'answer_error') return 'Answer failed';
+    return 'Cancelled';
+}
+
 export function CodeTranscript({ messages, sending, workingDir, transcriptRef }: CodeTranscriptProps) {
     function handleTranscriptKeyDown(event: KeyboardEvent<HTMLDivElement>) {
         if (isEditableTarget(event.target)) return;
@@ -109,6 +120,23 @@ export function CodeTranscript({ messages, sending, workingDir, transcriptRef }:
                                     <pre className="code-tool-output">{msg.toolOutput.slice(0, 2000)}{msg.toolOutput.length > 2000 ? '...' : ''}</pre>
                                 )}
                             </details>
+                            );
+                        })() : msg.role === 'permission' && msg.permissionAudit ? (() => {
+                            const audit = msg.permissionAudit;
+                            return (
+                                <div className={`code-permission-audit is-${audit.decision}`}>
+                                    <div className="code-permission-audit-head">
+                                        <span>Permission</span>
+                                        <strong>{audit.toolName}</strong>
+                                        <em>{permissionDecisionLabel(audit.decision)}</em>
+                                    </div>
+                                    <div className="code-permission-audit-meta">
+                                        <span>mode {audit.mode}</span>
+                                        <span>{audit.decisionMode}</span>
+                                        {audit.optionId && <span>{audit.optionId}</span>}
+                                    </div>
+                                    {audit.error && <div className="code-permission-audit-error">{audit.error}</div>}
+                                </div>
                             );
                         })() : msg.role === 'thinking' ? (
                             <details className="code-thinking">

@@ -8,19 +8,44 @@ export type ToolContent = {
 };
 
 export type TranscriptEntry = {
-    role: 'user' | 'assistant' | 'tool' | 'thinking';
+    role: 'user' | 'assistant' | 'tool' | 'thinking' | 'permission';
     text: string;
     toolName?: string;
     toolStatus?: string;
     toolCallId?: string;
     toolContent?: ToolContent[];
     toolOutput?: string;
+    permissionAudit?: PermissionAudit;
 };
 
 export type PendingPermission = {
     permissionId: string;
     toolCall: Record<string, unknown>;
     options: Array<Record<string, unknown>>;
+};
+
+export type PermissionMode = 'ask' | 'always-allow' | 'always-deny';
+
+export type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
+
+export type PermissionDecisionKind = PermissionOptionKind | 'pending' | 'cancelled' | 'missing_option' | 'answer_error';
+
+export type ResolvedPermissionOption = {
+    kind: PermissionOptionKind;
+    optionId: string;
+    label: string;
+    raw: Record<string, unknown>;
+};
+
+export type PermissionAudit = {
+    permissionId: string;
+    toolName: string;
+    mode: PermissionMode;
+    decision: PermissionDecisionKind;
+    decisionMode: 'pending' | 'manual' | 'automatic' | 'system';
+    optionId?: string;
+    optionLabel?: string;
+    error?: string;
 };
 
 export type CodeCommandCategory =
@@ -64,6 +89,78 @@ export function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId
 
 export function toModelId(provider: string, model: string): string {
     return provider ? `${provider}/${model}` : model;
+}
+
+export const PERMISSION_ACTION_ORDER: PermissionOptionKind[] = ['allow_once', 'allow_always', 'reject_once', 'reject_always'];
+
+export const PERMISSION_ACTION_LABELS: Record<PermissionOptionKind, string> = {
+    allow_once: 'Allow once',
+    allow_always: 'Always allow',
+    reject_once: 'Deny once',
+    reject_always: 'Always deny',
+};
+
+const PERMISSION_KIND_PATTERNS: Record<PermissionOptionKind, RegExp> = {
+    allow_once: /^(allow[_\s-]?once|allow once)$/i,
+    allow_always: /^(allow[_\s-]?always|always allow|always approve)$/i,
+    reject_once: /^(reject[_\s-]?once|deny[_\s-]?once|reject|deny)$/i,
+    reject_always: /^(reject[_\s-]?always|deny[_\s-]?always|always reject|always deny)$/i,
+};
+
+function permissionOptionText(option: Record<string, unknown>): string {
+    return [
+        option['kind'],
+        option['optionId'],
+        option['id'],
+        option['name'],
+        option['label'],
+    ].map(value => String(value ?? '')).join(' ').trim();
+}
+
+function permissionOptionId(option: Record<string, unknown>): string | null {
+    const value = option['optionId'] ?? option['id'];
+    return value === undefined || value === null || value === '' ? null : String(value);
+}
+
+function permissionOptionLabel(option: Record<string, unknown>, kind: PermissionOptionKind): string {
+    const label = option['name'] ?? option['label'];
+    return label === undefined || label === null || label === '' ? PERMISSION_ACTION_LABELS[kind] : String(label);
+}
+
+export function resolvePermissionOption(options: Array<Record<string, unknown>>, kind: PermissionOptionKind): ResolvedPermissionOption | null {
+    const exactKind = options.find(option => option['kind'] === kind);
+    const exactId = options.find(option => option['optionId'] === kind || option['id'] === kind);
+    const labelMatch = options.find(option => PERMISSION_KIND_PATTERNS[kind].test(permissionOptionText(option)));
+    const selected = exactKind ?? exactId ?? labelMatch;
+    if (!selected) return null;
+    const optionId = permissionOptionId(selected);
+    if (!optionId) return null;
+    return {
+        kind,
+        optionId,
+        label: permissionOptionLabel(selected, kind),
+        raw: selected,
+    };
+}
+
+export function getPermissionToolName(toolCall: Record<string, unknown>): string {
+    return String(toolCall['toolName'] ?? toolCall['title'] ?? toolCall['name'] ?? 'tool');
+}
+
+export function permissionAuditEntry(
+    permission: PendingPermission,
+    audit: Omit<PermissionAudit, 'permissionId' | 'toolName'>,
+): TranscriptEntry {
+    const permissionAudit: PermissionAudit = {
+        permissionId: permission.permissionId,
+        toolName: getPermissionToolName(permission.toolCall),
+        ...audit,
+    };
+    return {
+        role: 'permission',
+        text: permissionAudit.error ?? permissionAudit.optionLabel ?? permissionAudit.decision,
+        permissionAudit,
+    };
 }
 
 function stringifyToolValue(value: unknown): string {

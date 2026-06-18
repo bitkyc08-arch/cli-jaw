@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
-import type { CodeCommand, CodeCommandPopupKind } from './code-types';
+import type { CodeCommand, CodeCommandPopupKind, PermissionMode } from './code-types';
 
 type CodeCommandPopupProps = {
     popupKind: CodeCommandPopupKind;
@@ -10,7 +10,7 @@ type CodeCommandPopupProps = {
     model: string;
     modelAssignments: CodeModelAssignments | null;
     modelPresets: CodeModelPresetInfo | null;
-    permissionMode: string;
+    permissionMode: PermissionMode;
     disabled?: boolean;
     activeSessionId?: string | null;
     error?: string;
@@ -26,7 +26,7 @@ type CodeCommandPopupProps = {
         thinkingLevel?: string | null,
     ) => void | Promise<void>;
     onClearModelAssignment: (role: CodeModelAssignment['role']) => void | Promise<void>;
-    onPermissionModeChange: (value: string) => void;
+    onPermissionModeChange: (value: PermissionMode) => void;
 };
 
 function titleForPopup(kind: CodeCommandPopupKind): string {
@@ -190,12 +190,12 @@ export function CodeCommandPopup({
                     <div className="code-popup-section">
                         <label className="code-popup-field">
                             <span>Permission mode</span>
-                            <select value={permissionMode} onChange={event => onPermissionModeChange(event.target.value)} disabled={disabled}>
+                            <select value={permissionMode} onChange={event => onPermissionModeChange(event.target.value as PermissionMode)} disabled={disabled}>
                                 <option value="ask">Ask</option>
-                                <option value="auto">Auto</option>
                                 <option value="always-allow">Always allow</option>
                                 <option value="always-deny">Always deny</option>
                             </select>
+                            <small>Automatic modes answer the next JWC permission request with allow_always or reject_always.</small>
                         </label>
                         <div className="code-popup-summary">
                             <span>Provider</span><strong>{provider || '-'}</strong>

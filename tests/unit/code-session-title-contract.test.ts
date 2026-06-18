@@ -81,6 +81,7 @@ test('code session list defaults to global JWC catalog and exposes explicit cwd 
 
 test('code canvas accepts replay user chunks and loads stored sessions without dropping replayed transcript', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const replay = read('public/manager/src/code/code-transcript-replay.ts');
     const types = read('src/code-mode/types.ts');
     const host = read('src/code-mode/acp-host.ts');
     const client = read('public/manager/src/code/code-session-client.ts');
@@ -98,14 +99,14 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.ok(host.includes('captures.delete(replayCapture)'), 'loadSession must remove replay capture in cleanup');
     assert.ok(host.includes('if (captures.size === 0) this.#replayCaptures.delete(sessionId)'), 'loadSession must delete empty capture sets');
     assert.ok(host.includes('if (replayCapture.length > 0) info.replayEvents = replayCapture'), 'loadSession must return captured replay fallback events');
-    assert.ok(canvas.includes('function replayEventsToTranscriptEntries'), 'CodeCanvas must convert response replay fallback events into transcript entries');
+    assert.ok(replay.includes('function replayEventsToTranscriptEntries'), 'Code mode must convert response replay fallback events into transcript entries');
     assert.ok(canvas.includes("kind === 'code_user_message_chunk'"), 'CodeCanvas must handle replayed user message chunks');
-    assert.ok(canvas.includes("event.event === 'code_user_message_chunk'"), 'replay fallback must handle replayed user chunks');
-    assert.ok(canvas.includes("event.event === 'code_agent_message_chunk'"), 'replay fallback must handle assistant chunks');
-    assert.ok(canvas.includes("event.event === 'code_agent_thought_chunk'"), 'replay fallback must handle thought chunks');
-    assert.ok(canvas.includes("event.event === 'code_tool_call'"), 'replay fallback must handle tool calls');
-    assert.ok(canvas.includes("event.event === 'code_tool_call_update'"), 'replay fallback must handle tool call updates');
-    assert.ok(canvas.includes("role: 'user', text"), 'replayed user chunks must render as user transcript entries');
+    assert.ok(replay.includes("event.event === 'code_user_message_chunk'"), 'replay fallback must handle replayed user chunks');
+    assert.ok(replay.includes("event.event === 'code_agent_message_chunk'"), 'replay fallback must handle assistant chunks');
+    assert.ok(replay.includes("event.event === 'code_agent_thought_chunk'"), 'replay fallback must handle thought chunks');
+    assert.ok(replay.includes("event.event === 'code_tool_call'"), 'replay fallback must handle tool calls');
+    assert.ok(replay.includes("event.event === 'code_tool_call_update'"), 'replay fallback must handle tool call updates');
+    assert.ok(replay.includes("role: 'user', text"), 'replayed user chunks must render as user transcript entries');
 
     const loadBlockStart = canvas.indexOf('onLoadSession={(id, cwd) => {');
     const loadBlockEnd = canvas.indexOf('onNewSession=', loadBlockStart);
@@ -144,6 +145,7 @@ test('code canvas owns code cwd override independent from manager instance selec
 
 test('code cwd picker is editable only before a Code session starts', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
     const header = read('public/manager/src/code/CodeWorkspaceHeader.tsx');
     const css = read('public/manager/src/code/code.css');
 
@@ -170,7 +172,7 @@ test('code cwd picker is editable only before a Code session starts', () => {
     const handlerBlock = canvas.slice(handlerStart, handlerEnd);
     assert.ok(handlerBlock.includes('if (activeSessionIdRef.current || activeSessionId) return'), 'manual cwd changes must be ignored while a session is active');
     assert.ok(handlerBlock.includes('setCodeWorkingDir(next)'), 'manual cwd changes must still update cwd before a session starts');
-    assert.ok(canvas.includes('cwdLocked={Boolean(activeSessionId)}'), 'CodeCanvas must pass active session lock state to the header');
+    assert.ok(workbench.includes('cwdLocked={Boolean(props.activeSessionId)}'), 'CodeWorkbench must pass active session lock state to the header');
 
     for (const selector of ['.code-workspace-cwd-pick', '.code-workspace-cwd-lock', '.code-workspace-cwd-error', '.code-workspace-cwd-input:disabled']) {
         assert.ok(css.includes(selector), `code.css must include ${selector}`);
@@ -200,27 +202,29 @@ test('code workspace header exposes repo root and current worktree context', () 
 test('code transcript preserves failed tool state and remains scrollable after replay', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
     const transcript = read('public/manager/src/code/CodeTranscript.tsx');
+    const replay = read('public/manager/src/code/code-transcript-replay.ts');
+    const scroll = read('public/manager/src/code/use-code-transcript-scroll.ts');
     const css = read('public/manager/src/code/code.css');
 
-    assert.ok(canvas.includes('function normalizeToolStatus'), 'CodeCanvas must centralize tool status normalization');
-    assert.ok(canvas.includes("if (value === 'failed' || value === 'error' || value === 'errored') return 'failed'"), 'failed/error tool statuses must normalize to failed');
-    assert.ok(canvas.includes("toolStatus: normalizeToolStatus(status)"), 'tool call creation must preserve failed status instead of mapping it to done');
-    assert.ok(canvas.includes('if (status) entry.toolStatus = normalizeToolStatus(status)'), 'tool call updates must preserve failed status instead of mapping it to done');
+    assert.ok(replay.includes('function normalizeToolStatus'), 'Code mode must centralize tool status normalization');
+    assert.ok(replay.includes("if (value === 'failed' || value === 'error' || value === 'errored') return 'failed'"), 'failed/error tool statuses must normalize to failed');
+    assert.ok(replay.includes("toolStatus: normalizeToolStatus(status)"), 'tool call creation must preserve failed status instead of mapping it to done');
+    assert.ok(replay.includes('if (status) entry.toolStatus = normalizeToolStatus(status)'), 'tool call updates must preserve failed status instead of mapping it to done');
     assert.equal(canvas.includes("status === 'completed' || status === 'failed' ? 'done'"), false, 'failed tool statuses must not be coerced to done');
     assert.equal(canvas.includes("status === 'completed' || status === 'failed') entry.toolStatus = 'done'"), false, 'failed tool updates must not be coerced to done');
 
-    assert.ok(canvas.includes('const scrollTranscriptToBottom = useCallback'), 'CodeCanvas must centralize transcript bottom scrolling');
-    assert.ok(canvas.includes('const latestTranscriptFootprint = useMemo'), 'CodeCanvas must track rendered transcript changes for replay/load scroll');
-    assert.ok(canvas.includes('}, [latestTranscriptFootprint, sending, scrollTranscriptToBottom])'), 'auto-scroll must run from rendered message state, not only event delivery');
+    assert.ok(scroll.includes('const scrollTranscriptToBottom = useCallback'), 'Code mode must centralize transcript bottom scrolling');
+    assert.ok(scroll.includes('const latestTranscriptFootprint = useMemo'), 'Code mode must track rendered transcript changes for replay/load scroll');
+    assert.ok(scroll.includes('latestTranscriptFootprint'), 'auto-scroll must run from rendered message state, not only event delivery');
 
     assert.ok(transcript.includes('role="log"'), 'transcript must expose log semantics');
     assert.ok(transcript.includes('aria-live="polite"'), 'transcript must announce appended output politely');
     assert.ok(transcript.includes('tabIndex={0}'), 'transcript must be keyboard focusable for scroll keys');
     assert.ok(transcript.includes('function handleTranscriptKeyDown'), 'transcript must own keyboard scroll handling');
-    assert.ok(canvas.includes('window.addEventListener(\'keydown\', onWorkbenchKeyDown)'), 'CodeCanvas must provide workbench-level scroll keys when transcript is not focused');
-    assert.ok(canvas.includes('isEditableKeyboardTarget(event.target)'), 'workbench scroll keys must not steal composer input');
-    assert.ok(canvas.includes("key === 'd' || key === 'j' || event.key === 'PageDown'"), 'workbench scroll keys must include d/j/PageDown');
-    assert.ok(canvas.includes("event.key === 'Home'"), 'workbench scroll keys must include Home');
+    assert.ok(scroll.includes('window.addEventListener(\'keydown\', onWorkbenchKeyDown)'), 'Code mode must provide workbench-level scroll keys when transcript is not focused');
+    assert.ok(scroll.includes('isEditableKeyboardTarget(event.target)'), 'workbench scroll keys must not steal composer input');
+    assert.ok(scroll.includes("key === 'd' || key === 'j' || event.key === 'PageDown'"), 'workbench scroll keys must include d/j/PageDown');
+    assert.ok(scroll.includes("event.key === 'Home'"), 'workbench scroll keys must include Home');
     for (const token of ["key === 'd'", "key === 'j'", "event.key === 'PageDown'", "event.key === 'End'"]) {
         assert.ok(transcript.includes(token), `transcript keyboard handler must include ${token}`);
     }
@@ -256,6 +260,48 @@ test('code tool cards normalize args output error diff and json schema', () => {
     for (const selector of ['.code-tool-args', '.code-tool-output', '.code-tool-error', '.code-tool-json', '.code-tool-diff']) {
         assert.ok(css.includes(selector), `tool card CSS must include ${selector}`);
     }
+});
+
+test('code permission mode uses JWC ACP option ids and records transcript audit', () => {
+    const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const queue = read('public/manager/src/code/CodePermissionQueue.tsx');
+    const footer = read('public/manager/src/code/ComposerFooter.tsx');
+    const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
+    const transcript = read('public/manager/src/code/CodeTranscript.tsx');
+    const flow = read('public/manager/src/code/code-permission-flow.ts');
+    const types = read('public/manager/src/code/code-types.ts');
+    const css = read('public/manager/src/code/code-workbench.css');
+
+    assert.ok(types.includes("export type PermissionMode = 'ask' | 'always-allow' | 'always-deny'"), 'permission modes must be explicit and no local auto mode');
+    assert.ok(types.includes("export type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'"), 'permission option kinds must match JWC ACP ids');
+    assert.ok(types.includes('export function resolvePermissionOption'), 'JWC option resolution must be centralized');
+    assert.ok(types.includes("PERMISSION_ACTION_ORDER: PermissionOptionKind[] = ['allow_once', 'allow_always', 'reject_once', 'reject_always']"), 'manual queue must prefer the four JWC actions in order');
+    assert.ok(types.includes('permissionAuditEntry'), 'permission decisions must create transcript audit entries');
+    assert.ok(types.includes("role: 'permission'"), 'transcript entries must support permission audit role');
+
+    assert.ok(flow.includes("permissionMode === 'always-allow' ? 'allow_always' : 'reject_always'"), 'automatic modes must resolve JWC always option ids');
+    assert.ok(flow.includes('resolvePermissionOption(permission.options, targetKind)'), 'automatic permission answers must use resolver output');
+    assert.ok(flow.includes('client.answerPermission(permission.permissionId, option.optionId)'), 'automatic permission answers must pass JWC option id through');
+    assert.ok(flow.includes("decision: 'missing_option'"), 'missing JWC options must be audit-visible');
+    assert.ok(flow.includes("decision: 'answer_error'"), 'answer errors must be audit-visible');
+    assert.equal(canvas.includes(": 'allow'"), false, 'CodeCanvas must not synthesize fake allow option ids');
+
+    assert.ok(queue.includes('PERMISSION_ACTION_ORDER.map'), 'permission request card must render the four canonical actions');
+    for (const label of ['Allow once', 'Always allow', 'Deny once', 'Always deny']) {
+        assert.ok(types.includes(label), `permission labels must include ${label}`);
+    }
+    assert.ok(queue.includes('disabled={!option}'), 'missing JWC options must disable the corresponding action');
+    assert.equal(queue.includes("onAnswer(p.permissionId, 'allow')"), false, 'permission queue must not send fake allow option ids');
+
+    assert.equal(footer.includes('<option value="auto">Auto</option>'), false, 'footer must remove decorative auto mode');
+    assert.equal(popup.includes('<option value="auto">Auto</option>'), false, 'settings popup must remove decorative auto mode');
+    assert.ok(footer.includes('Select JWC allow_always'), 'footer must describe real JWC allow_always behavior');
+    assert.ok(footer.includes('Select JWC reject_always'), 'footer must describe real JWC reject_always behavior');
+    assert.ok(popup.includes('allow_always or reject_always'), 'settings popup must explain automatic mode semantics');
+
+    assert.ok(transcript.includes('code-permission-audit'), 'transcript must render permission audit cards');
+    assert.ok(transcript.includes('permissionDecisionLabel'), 'transcript must label permission decisions');
+    assert.ok(css.includes('.code-permission-audit'), 'permission audit cards must have styles');
 });
 
 test('code backend normalizes JWC session title metadata and returns title on load', () => {

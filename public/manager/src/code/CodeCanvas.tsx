@@ -1,16 +1,25 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
-import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo, CodeSessionReplayEvent } from './code-session-client';
-import { CodeCommandPopup } from './CodeCommandPopup';
-import { CodeComposer } from './CodeComposer';
-import { CodePermissionQueue } from './CodePermissionQueue';
+import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import { CodeSessionList } from './CodeSessionList';
-import { CodeTranscript } from './CodeTranscript';
-import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
-import { ComposerFooter } from './ComposerFooter';
+import { CodeWorkbench } from './CodeWorkbench';
 import { FALLBACK_CODE_COMMANDS, FALLBACK_MODEL_OPTIONS, mergeCodeCommands } from './code-session-defaults';
-import { findLastToolMessageIndex, normalizeCodeCommands, normalizeToolContentFromUpdate, toModelId, type CodeCommand, type CodeCommandPopupKind, type PendingPermission, type TranscriptEntry } from './code-types';
+import {
+    findLastToolMessageIndex,
+    normalizeCodeCommands,
+    normalizeToolContentFromUpdate,
+    toModelId,
+    type CodeCommand,
+    type CodeCommandPopupKind,
+    type PendingPermission,
+    type PermissionMode,
+    type PermissionOptionKind,
+    type TranscriptEntry,
+} from './code-types';
+import { answerQueuedPermission, handleIncomingPermissionRequest } from './code-permission-flow';
+import { normalizeToolStatus, replayEventsToTranscriptEntries } from './code-transcript-replay';
+import { useCodeTranscriptScroll } from './use-code-transcript-scroll';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
 type CodeCanvasProps = {
@@ -18,64 +27,6 @@ type CodeCanvasProps = {
     workingDir: string;
     onWorkingDirChange?: (path: string | null) => void;
 };
-
-function normalizeToolStatus(status: string): 'running' | 'done' | 'failed' {
-    const value = status.toLowerCase();
-    if (value === 'failed' || value === 'error' || value === 'errored') return 'failed';
-    if (value === 'completed' || value === 'done' || value === 'success') return 'done';
-    return 'running';
-}
-
-function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): TranscriptEntry[] {
-    const entries: TranscriptEntry[] = [];
-    for (const event of events) {
-        const update = event.update ?? {};
-        if (event.event === 'code_user_message_chunk') {
-            const content = update['content'] as { type?: string; text?: string } | undefined;
-            const text = String(content?.text ?? update['text'] ?? '');
-            if (text) entries.push({ role: 'user', text });
-        } else if (event.event === 'code_agent_message_chunk') {
-            const content = update['content'] as { type?: string; text?: string } | undefined;
-            const text = String(content?.text ?? update['text'] ?? '');
-            if (!text) continue;
-            const last = entries[entries.length - 1];
-            if (last?.role === 'assistant') last.text += text;
-            else entries.push({ role: 'assistant', text });
-        } else if (event.event === 'code_agent_thought_chunk') {
-            const content = update['content'] as { type?: string; text?: string } | undefined;
-            const text = String(content?.text ?? update['text'] ?? '');
-            if (!text) continue;
-            const last = entries[entries.length - 1];
-            if (last?.role === 'thinking') last.text += text;
-            else entries.push({ role: 'thinking', text });
-        } else if (event.event === 'code_tool_call') {
-            const title = String(update['title'] ?? update['toolName'] ?? 'tool');
-            const toolCallId = String(update['toolCallId'] ?? '');
-            const status = String(update['status'] ?? 'pending');
-            const content = normalizeToolContentFromUpdate(update);
-            entries.push({ role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: normalizeToolStatus(status) });
-        } else if (event.event === 'code_tool_call_update') {
-            const toolCallId = String(update['toolCallId'] ?? '');
-            const status = String(update['status'] ?? '');
-            const content = normalizeToolContentFromUpdate(update);
-            const rawOutput = update['rawOutput'];
-            const idx = findLastToolMessageIndex(entries, toolCallId);
-            if (idx < 0) continue;
-            const entry = { ...entries[idx] };
-            if (status) entry.toolStatus = normalizeToolStatus(status);
-            if (content.length > 0) entry.toolContent = content;
-            if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
-            entries[idx] = entry;
-        }
-    }
-    return entries;
-}
-
-function isEditableKeyboardTarget(target: EventTarget | null): boolean {
-    if (!(target instanceof HTMLElement)) return false;
-    const tagName = target.tagName.toLowerCase();
-    return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
-}
 
 export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
@@ -95,75 +46,15 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [provider, setProvider] = useState('anthropic');
     const [model, setModel] = useState('claude-sonnet-4-6');
     const [effort, setEffort] = useState('high');
-    const [permissionMode, setPermissionMode] = useState('ask');
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>('ask');
     const [modelOptions, setModelOptions] = useState<CodeModelOptions>(FALLBACK_MODEL_OPTIONS);
     const [modelAssignments, setModelAssignments] = useState<CodeModelAssignments | null>(null);
     const [modelPresets, setModelPresets] = useState<CodeModelPresetInfo | null>(null);
     const [gitInfo, setGitInfo] = useState<CodeGitInfo | null>(null);
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
-    const transcriptRef = useRef<HTMLDivElement>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
-    const latestTranscriptFootprint = useMemo(() => {
-        const last = messages[messages.length - 1];
-        if (!last) return 'empty';
-        const toolContentSize = last.toolContent?.reduce((total, content) => total + JSON.stringify(content).length, 0) ?? 0;
-        return `${messages.length}:${last.role}:${last.text.length}:${last.toolOutput?.length ?? 0}:${toolContentSize}:${last.toolStatus ?? ''}`;
-    }, [messages]);
-
-    const scrollTranscriptToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
-        window.requestAnimationFrame(() => {
-            const node = transcriptRef.current;
-            if (!node) return;
-            node.scrollTo({ top: node.scrollHeight, behavior });
-        });
-    }, []);
-
-    const scrollTranscriptBy = useCallback((top: number, behavior: ScrollBehavior = 'smooth') => {
-        window.requestAnimationFrame(() => {
-            const node = transcriptRef.current;
-            if (!node) return;
-            node.scrollBy({ top, behavior });
-        });
-    }, []);
-
-    const scrollTranscriptToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
-        window.requestAnimationFrame(() => {
-            const node = transcriptRef.current;
-            if (!node) return;
-            node.scrollTo({ top: 0, behavior });
-        });
-    }, []);
-
-    useEffect(() => {
-        scrollTranscriptToBottom(messages.length > 1 ? 'smooth' : 'auto');
-    }, [latestTranscriptFootprint, sending, scrollTranscriptToBottom]);
-
-    useEffect(() => {
-        const onWorkbenchKeyDown = (event: KeyboardEvent) => {
-            if (event.defaultPrevented || activePopup || event.metaKey || event.ctrlKey || event.altKey) return;
-            if (isEditableKeyboardTarget(event.target)) return;
-            const node = transcriptRef.current;
-            if (!node) return;
-            const key = event.key.toLowerCase();
-            const page = Math.max(160, Math.floor(node.clientHeight * 0.78));
-            if (key === 'd' || key === 'j' || event.key === 'PageDown') {
-                event.preventDefault();
-                scrollTranscriptBy(page);
-            } else if (key === 'u' || key === 'k' || event.key === 'PageUp') {
-                event.preventDefault();
-                scrollTranscriptBy(-page);
-            } else if (event.key === 'End') {
-                event.preventDefault();
-                scrollTranscriptToBottom('smooth');
-            } else if (event.key === 'Home') {
-                event.preventDefault();
-                scrollTranscriptToTop('smooth');
-            }
-        };
-        window.addEventListener('keydown', onWorkbenchKeyDown);
-        return () => window.removeEventListener('keydown', onWorkbenchKeyDown);
-    }, [activePopup, scrollTranscriptBy, scrollTranscriptToBottom, scrollTranscriptToTop]);
+    const { transcriptRef, scrollTranscriptToBottom } = useCodeTranscriptScroll(messages, sending, Boolean(activePopup));
 
     useEffect(() => {
         if (activeSessionIdRef.current || activeSessionId) return;
@@ -316,16 +207,11 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             const toolCall = (event['toolCall'] ?? {}) as Record<string, unknown>;
             const options = (event['options'] ?? []) as Array<Record<string, unknown>>;
             if (permissionId) {
-                if (permissionMode === 'always-deny') {
-                    void client.answerPermission(permissionId, null);
-                    return;
-                }
-                if (permissionMode !== 'ask') {
-                    const allowOption = options.find(opt => /allow|approve|yes/i.test(String(opt['name'] ?? opt['label'] ?? opt['optionId'] ?? opt['id'] ?? ''))) ?? options[0];
-                    void client.answerPermission(permissionId, allowOption ? String(allowOption['optionId'] ?? allowOption['id'] ?? 0) : 'allow');
-                    return;
-                }
-                setPermissions(prev => [...prev, { permissionId, toolCall, options }]);
+                const pending: PendingPermission = { permissionId, toolCall, options };
+                handleIncomingPermissionRequest(client, permissionMode, pending, {
+                    appendMessage: entry => setMessages(prev => [...prev, entry]),
+                    enqueuePermission: permission => setPermissions(prev => [...prev, permission]),
+                });
             }
         } else if (kind === 'code_session_info_update') {
             const title = update['title'];
@@ -392,12 +278,16 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setShowCommands(false);
     }, []);
 
-    const handlePermissionAnswer = useCallback(async (permissionId: string, optionId: string | null) => {
-        try {
-            await client.answerPermission(permissionId, optionId);
-        } catch { /* server may have already resolved it */ }
-        setPermissions(prev => prev.filter(p => p.permissionId !== permissionId));
-    }, [client]);
+    const handlePermissionAnswer = useCallback(async (permission: PendingPermission, action: PermissionOptionKind) => {
+        const answered = await answerQueuedPermission(
+            client,
+            permissionMode,
+            permission,
+            action,
+            entry => setMessages(prev => [...prev, entry]),
+        );
+        if (answered) setPermissions(prev => prev.filter(p => p.permissionId !== permission.permissionId));
+    }, [client, permissionMode]);
 
     const handleUseModel = useCallback(async (
         nextProvider: string,
@@ -509,92 +399,69 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         />
     );
 
+    const handleProviderChange = (p: string) => {
+        setProvider(p);
+        const nextProvider = modelOptions.providers.find(entry => entry.id === p);
+        const firstModel = nextProvider?.models[0] ?? '';
+        setModel(firstModel);
+    };
+    const handleFooterProviderChange = (p: string) => {
+        handleProviderChange(p);
+        const nextProvider = modelOptions.providers.find(entry => entry.id === p);
+        const firstModel = nextProvider?.models[0] ?? '';
+        const firstEffort = nextProvider?.efforts.includes('high') ? 'high' : nextProvider?.efforts[0] ?? '';
+        setEffort(firstEffort);
+        if (firstModel) void handleUseModel(p, firstModel, { closePopup: false, requireActiveSession: false });
+    };
     const workbench = (
-        <div className="code-canvas-main">
-                <CodeWorkspaceHeader
-                    gitInfo={gitInfo}
-                    modelOptions={modelOptions}
-                    sessionTitle={sessionTitle}
-                    usage={usage}
-                    planEntries={planEntries}
-                    workingDir={codeWorkingDir}
-                    cwdLocked={Boolean(activeSessionId)}
-                    onWorkingDirChange={handleWorkingDirChange}
-                />
-                <CodeTranscript messages={messages} sending={sending} workingDir={codeWorkingDir} transcriptRef={transcriptRef} />
-                <CodePermissionQueue permissions={permissions} onAnswer={(permissionId, optionId) => void handlePermissionAnswer(permissionId, optionId)} />
-                <CodeComposer
-                    inputText={inputText}
-                    sending={sending}
-                    showCommands={showCommands}
-                    availableCommands={availableCommands}
-                    onInputChange={handleInputChange}
-                    onCommandSelect={handleCommandSelect}
-                    onSubmit={() => void handleSubmit()}
-                    onShowCommandsChange={setShowCommands}
-                />
-                {activePopup && (
-                    <CodeCommandPopup
-                        popupKind={activePopup.kind}
-                        command={activePopup.command}
-                        modelOptions={modelOptions}
-                        provider={provider}
-                        model={model}
-                        modelAssignments={modelAssignments}
-                        modelPresets={modelPresets}
-                        permissionMode={permissionMode}
-                        disabled={sending}
-                        activeSessionId={activeSessionId}
-                        error={popupError}
-                        onClose={() => { setPopupError(''); setActivePopup(null); }}
-                        onRefreshProviders={() => {
-                            void refreshModelOptions();
-                        }}
-                        onProviderChange={p => {
-                            setProvider(p);
-                            const nextProvider = modelOptions.providers.find(entry => entry.id === p);
-                            const firstModel = nextProvider?.models[0] ?? '';
-                            setModel(firstModel);
-                        }}
-                        onUseModel={handleUseModel}
-                        onSetDefaultModel={handleSetDefaultModel}
-                        onSetModelAssignment={handleSetModelAssignment}
-                        onClearModelAssignment={handleClearModelAssignment}
-                        onPermissionModeChange={setPermissionMode}
-                    />
-                )}
-                <ComposerFooter
-                    provider={provider}
-                    providerOptions={providerOptions}
-                    model={model}
-                    modelOptions={currentModelOptions}
-                    effort={effort}
-                    effortOptions={currentEffortOptions}
-                    permissionMode={permissionMode}
-                    disabled={sending}
-                    onProviderChange={p => {
-                        setProvider(p);
-                        const nextProvider = modelOptions.providers.find(entry => entry.id === p);
-                        const firstModel = nextProvider?.models[0] ?? '';
-                        setModel(firstModel);
-                        const firstEffort = nextProvider?.efforts.includes('high') ? 'high' : nextProvider?.efforts[0] ?? '';
-                        setEffort(firstEffort);
-                        if (firstModel) {
-                            void handleUseModel(p, firstModel, { closePopup: false, requireActiveSession: false });
-                        }
-                    }}
-                    onModelChange={m => {
-                        void handleUseModel(provider, m, { closePopup: false, requireActiveSession: false });
-                    }}
-                    onEffortChange={e => {
-                        setEffort(e);
-                        if (activeSessionId) {
-                            void client.setSessionConfig(activeSessionId, 'thinking', e);
-                        }
-                    }}
-                    onPermissionModeChange={setPermissionMode}
-                />
-        </div>
+        <CodeWorkbench
+            activePopup={activePopup}
+            activeSessionId={activeSessionId}
+            availableCommands={availableCommands}
+            codeWorkingDir={codeWorkingDir}
+            currentEffortOptions={currentEffortOptions}
+            currentModelOptions={currentModelOptions}
+            disabled={sending}
+            effort={effort}
+            gitInfo={gitInfo}
+            inputText={inputText}
+            messages={messages}
+            model={model}
+            modelAssignments={modelAssignments}
+            modelOptions={modelOptions}
+            modelPresets={modelPresets}
+            permissionMode={permissionMode}
+            permissions={permissions}
+            planEntries={planEntries}
+            popupError={popupError}
+            provider={provider}
+            providerOptions={providerOptions}
+            sending={sending}
+            sessionTitle={sessionTitle}
+            showCommands={showCommands}
+            transcriptRef={transcriptRef}
+            usage={usage}
+            onClearModelAssignment={handleClearModelAssignment}
+            onClosePopup={() => { setPopupError(''); setActivePopup(null); }}
+            onCommandSelect={handleCommandSelect}
+            onEffortChange={e => {
+                setEffort(e);
+                if (activeSessionId) void client.setSessionConfig(activeSessionId, 'thinking', e);
+            }}
+            onFooterProviderChange={handleFooterProviderChange}
+            onInputChange={handleInputChange}
+            onModelChange={m => { void handleUseModel(provider, m, { closePopup: false, requireActiveSession: false }); }}
+            onPermissionAnswer={handlePermissionAnswer}
+            onPermissionModeChange={setPermissionMode}
+            onProviderChange={handleProviderChange}
+            onRefreshProviders={() => { void refreshModelOptions(); }}
+            onSetDefaultModel={handleSetDefaultModel}
+            onSetModelAssignment={handleSetModelAssignment}
+            onShowCommandsChange={setShowCommands}
+            onSubmit={() => { void handleSubmit(); }}
+            onUseModel={handleUseModel}
+            onWorkingDirChange={handleWorkingDirChange}
+        />
     );
 
     if (sidebarHost) {
