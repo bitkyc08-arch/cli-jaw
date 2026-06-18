@@ -191,8 +191,22 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                 <CodeSessionList
                     client={client}
                     activeSessionId={activeSessionId}
-                    onSelectSession={id => { setActiveSessionId(id); setMessages([]); }}
-                    onNewSession={() => { setActiveSessionId(null); setMessages([]); }}
+                    workingDir={workingDir}
+                    onSelectSession={id => { setActiveSessionId(id); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
+                    onLoadSession={(id, cwd) => {
+                        void (async () => {
+                            try {
+                                await client.loadSession(id, cwd);
+                                setActiveSessionId(id);
+                                setMessages([]);
+                                setPlanEntries([]);
+                                setSessionTitle('');
+                            } catch (err) {
+                                setMessages(prev => [...prev, { role: 'assistant', text: `Failed to load session: ${err instanceof Error ? err.message : String(err)}` }]);
+                            }
+                        })();
+                    }}
+                    onNewSession={() => { setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
                 />
             </div>
             <div className="code-canvas-main">
@@ -327,8 +341,20 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                     effort={effort}
                     effortOptions={DEFAULT_EFFORTS}
                     disabled={sending}
-                    onProviderChange={p => { setProvider(p); setModel((DEFAULT_MODELS[p] ?? [])[0] ?? ''); }}
-                    onModelChange={setModel}
+                    onProviderChange={p => {
+                        setProvider(p);
+                        const firstModel = (DEFAULT_MODELS[p] ?? [])[0] ?? '';
+                        setModel(firstModel);
+                        if (activeSessionId && firstModel) {
+                            void client.setSessionModel(activeSessionId, `${p}/${firstModel}`);
+                        }
+                    }}
+                    onModelChange={m => {
+                        setModel(m);
+                        if (activeSessionId) {
+                            void client.setSessionModel(activeSessionId, `${provider}/${m}`);
+                        }
+                    }}
                     onEffortChange={e => {
                         setEffort(e);
                         if (activeSessionId) {

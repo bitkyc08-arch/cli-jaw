@@ -37,6 +37,43 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         res.json({ ok: true, sessions: acpHost.listSessions() });
     });
 
+    app.get('/api/code/sessions/stored', requireAuth, (req, res) => {
+        void (async () => {
+            const cwd = typeof req.query['cwd'] === 'string' ? req.query['cwd'] : undefined;
+            try {
+                const sessions = await acpHost.listStoredSessions(cwd);
+                res.json({ ok: true, sessions });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
+    app.post('/api/code/sessions/load', requireAuth, (req, res) => {
+        void (async () => {
+            const body = req.body as Record<string, unknown> | undefined;
+            const sessionId = String(body?.['sessionId'] || '');
+            const cwd = String(body?.['cwd'] || '');
+            if (!sessionId || !cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'sessionId and absolute cwd required' }); return; }
+            try {
+                const session = await acpHost.loadSession(sessionId, cwd);
+                res.json({ ok: true, session });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
+    app.post('/api/code/sessions/:id/model', requireAuth, (req, res) => {
+        const body = req.body as Record<string, unknown> | undefined;
+        const modelId = String(body?.['modelId'] || '');
+        if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
+        acpHost.setSessionModel(String(req.params['id']), modelId).then(
+            () => res.json({ ok: true }),
+            (err: unknown) => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+        );
+    });
+
     app.post('/api/code/sessions', requireAuth, (req, res) => {
         void (async () => {
             const body = req.body as Record<string, unknown> | undefined;

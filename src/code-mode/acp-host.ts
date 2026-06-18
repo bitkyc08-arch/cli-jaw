@@ -185,6 +185,34 @@ class AcpHost implements CodeSessionTransport {
         return info;
     }
 
+    async loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo> {
+        await this.#ensureChild();
+        await this.#request('session/load', { sessionId, cwd, mcpServers: [] });
+        const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
+        this.#sessions.set(sessionId, info);
+        publish('jwc', 'code_session_loaded', { sessionId, cwd });
+        return info;
+    }
+
+    async listStoredSessions(cwd?: string): Promise<Array<{ sessionId: string; cwd: string; title?: string; lastModified?: number }>> {
+        await this.#ensureChild();
+        const res = await this.#request('session/list', { cwd: cwd ?? null });
+        const sessions = (res['sessions'] ?? []) as Array<Record<string, unknown>>;
+        return sessions.map(s => {
+            const entry: { sessionId: string; cwd: string; title?: string; lastModified?: number } = {
+                sessionId: String(s['sessionId'] ?? s['id'] ?? ''),
+                cwd: String(s['cwd'] ?? ''),
+            };
+            if (typeof s['title'] === 'string') entry.title = s['title'];
+            if (typeof s['lastModified'] === 'number') entry.lastModified = s['lastModified'];
+            return entry;
+        });
+    }
+
+    async setSessionModel(sessionId: string, modelId: string): Promise<void> {
+        await this.#request('unstable_setSessionModel', { sessionId, modelId });
+    }
+
     async prompt(sessionId: string, text: string): Promise<PromptAccepted> {
         const session = this.#sessions.get(sessionId);
         if (!session || session.status === 'closed') throw new Error(`unknown session: ${sessionId}`);

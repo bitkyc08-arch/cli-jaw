@@ -6,14 +6,24 @@ export interface CodeSession {
     lastUsedAt: number;
 }
 
+export interface StoredSession {
+    sessionId: string;
+    cwd: string;
+    title?: string;
+    lastModified?: number;
+}
+
 export interface CodeSessionClient {
     listSessions(): Promise<CodeSession[]>;
+    listStoredSessions(cwd?: string): Promise<StoredSession[]>;
+    loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
     createSession(cwd: string, model?: string): Promise<CodeSession>;
     sendPrompt(sessionId: string, text: string): Promise<{ accepted: boolean; sessionId: string }>;
     cancelPrompt(sessionId: string): Promise<void>;
     closeSession(sessionId: string): Promise<void>;
     answerPermission(permissionId: string, optionId: string | null): Promise<void>;
     setSessionConfig(sessionId: string, configId: string, valueId: string): Promise<void>;
+    setSessionModel(sessionId: string, modelId: string): Promise<void>;
 }
 
 export function createCodeSessionClient(port: number): CodeSessionClient {
@@ -36,6 +46,15 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
             const data = await request<{ sessions: CodeSession[] }>('GET', '/api/code/sessions');
             return data.sessions;
         },
+        async listStoredSessions(cwd?: string) {
+            const qs = cwd ? `?cwd=${encodeURIComponent(cwd)}` : '';
+            const data = await request<{ sessions: StoredSession[] }>('GET', `/api/code/sessions/stored${qs}`);
+            return data.sessions;
+        },
+        async loadSession(sessionId: string, cwd: string) {
+            const data = await request<{ session: CodeSession }>('POST', '/api/code/sessions/load', { sessionId, cwd });
+            return data.session;
+        },
         async createSession(cwd: string, model?: string) {
             const data = await request<{ session: CodeSession }>('POST', '/api/code/sessions', {
                 cwd,
@@ -57,6 +76,9 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async setSessionConfig(sessionId: string, configId: string, valueId: string) {
             await request<unknown>('POST', `/api/code/sessions/${sessionId}/config`, { configId, valueId });
+        },
+        async setSessionModel(sessionId: string, modelId: string) {
+            await request<unknown>('POST', `/api/code/sessions/${sessionId}/model`, { modelId });
         },
     };
 }

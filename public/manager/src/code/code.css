@@ -66,6 +66,15 @@
 .code-session-cwd { font-weight: 500; }
 .code-session-status { font-size: 10px; color: var(--text-tertiary); }
 .code-session-status-streaming { color: var(--status-success); }
+.code-session-list-divider {
+    font-size: 10px; font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 8px 0 4px;
+    border-top: 1px solid var(--border-default);
+    margin-top: 4px;
+}
 .code-session-list-empty, .code-session-list-loading {
     font-size: 11px; color: var(--text-tertiary); padding: 12px 4px;
 }

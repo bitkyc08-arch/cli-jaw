@@ -42,6 +42,9 @@ export interface PromptAccepted {
 export interface CodeSessionTransport {
     /** Spawn/ensure the engine and create a session rooted at an absolute cwd. */
     newSession(cwd: string, opts?: { model?: string }): Promise<CodeSessionInfo>;
+    loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
+    listStoredSessions(cwd?: string): Promise<Array<{ sessionId: string; cwd: string; title?: string; lastModified?: number }>>;
+    setSessionModel(sessionId: string, modelId: string): Promise<void>;
     /** Fire a prompt turn. Resolves on acceptance; streaming arrives via the 'jwc' bus topic (202+poll contract, 113.2 §4). */
     prompt(sessionId: string, text: string): Promise<PromptAccepted>;
     cancel(sessionId: string): Promise<void>;
