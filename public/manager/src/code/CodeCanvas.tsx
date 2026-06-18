@@ -40,6 +40,9 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const [permissions, setPermissions] = useState<PendingPermission[]>([]);
     const [availableCommands, setAvailableCommands] = useState<Array<{ name: string; description?: string }>>([]);
     const [showCommands, setShowCommands] = useState(false);
+    const [sessionTitle, setSessionTitle] = useState('');
+    const [usage, setUsage] = useState<{ contextTokens?: number; contextLimit?: number; cost?: number }>({});
+    const [planEntries, setPlanEntries] = useState<Array<{ title: string; status: string }>>([]);
     const [provider, setProvider] = useState('anthropic');
     const [model, setModel] = useState('claude-fable-5');
     const [effort, setEffort] = useState('high');
@@ -95,6 +98,18 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             if (permissionId) {
                 setPermissions(prev => [...prev, { permissionId, toolCall, options }]);
             }
+        } else if (kind === 'code_session_info_update') {
+            const title = update['title'];
+            if (typeof title === 'string') setSessionTitle(title);
+        } else if (kind === 'code_usage_update') {
+            setUsage({
+                contextTokens: typeof update['contextTokens'] === 'number' ? update['contextTokens'] : undefined,
+                contextLimit: typeof update['contextLimit'] === 'number' ? update['contextLimit'] : undefined,
+                cost: typeof update['totalCost'] === 'number' ? update['totalCost'] : undefined,
+            });
+        } else if (kind === 'code_plan') {
+            const entries = (update['entries'] ?? []) as Array<{ title?: string; status?: string }>;
+            setPlanEntries(entries.filter(e => e.title).map(e => ({ title: String(e.title), status: String(e.status ?? 'pending') })));
         } else if (kind === 'code_available_commands_update') {
             const cmds = (update['availableCommands'] ?? []) as Array<{ name?: string; description?: string }>;
             setAvailableCommands(cmds.filter(c => c.name).map(c => ({ name: String(c.name), description: c.description ? String(c.description) : undefined })));
@@ -181,6 +196,25 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                 />
             </div>
             <div className="code-canvas-main">
+                {(sessionTitle || usage.contextTokens !== undefined || planEntries.length > 0) && (
+                    <div className="code-session-header">
+                        {sessionTitle && <span className="code-session-title">{sessionTitle}</span>}
+                        {usage.contextTokens !== undefined && usage.contextLimit ? (
+                            <span className="code-context-meter" title={`${usage.contextTokens.toLocaleString()} / ${usage.contextLimit.toLocaleString()} tokens${usage.cost !== undefined ? ` · $${usage.cost.toFixed(4)}` : ''}`}>
+                                <span className="code-context-bar" style={{ width: `${Math.min(100, (usage.contextTokens / usage.contextLimit) * 100)}%` }} />
+                            </span>
+                        ) : null}
+                        {planEntries.length > 0 && (
+                            <div className="code-plan-entries">
+                                {planEntries.map((e, i) => (
+                                    <span key={i} className={`code-plan-entry code-plan-${e.status}`}>
+                                        {e.status === 'completed' ? '✓' : e.status === 'in_progress' ? '⚡' : '○'} {e.title}
+                                    </span>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                )}
                 <div className="code-transcript" ref={transcriptRef}>
                     {messages.length === 0 ? (
                         <div className="code-transcript-empty">
