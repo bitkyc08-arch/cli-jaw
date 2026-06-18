@@ -97,6 +97,19 @@ test('code command popup exposes read-only model profile preset state', () => {
     assert.ok(css.includes('.code-model-profile-chips'), 'profile chips must have dedicated styles');
 });
 
+test('code command popup exposes JWC model usage MRU without fake history', () => {
+    const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
+    const client = read('public/manager/src/code/code-session-client.ts');
+    const css = read('public/manager/src/code/code-command-popup.css');
+
+    assert.ok(client.includes('usageOrder?: string[]'), 'model options contract must carry optional JWC usage order');
+    assert.ok(popup.includes('modelOptions.usageOrder'), 'model popup must read usage order from model options');
+    assert.ok(popup.includes('Recently used'), 'model popup must label MRU models');
+    assert.ok(popup.includes('modelOptions.usageOrder.slice(0, 3)'), 'model popup must cap MRU display');
+    assert.equal(popup.includes('MRU are scheduled for later model popup slices.'), false, 'MRU must not be stale future-work copy');
+    assert.ok(css.includes('.code-model-mru-strip'), 'MRU strip must have compact styles');
+});
+
 test('code command popup stays instance-independent', () => {
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');

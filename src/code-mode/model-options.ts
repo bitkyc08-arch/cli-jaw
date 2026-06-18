@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import Database from 'better-sqlite3';
 import { isMap, parseDocument } from 'yaml';
 
 export type JwcModelProvider = {
@@ -13,6 +14,7 @@ export type JwcModelOptions = {
     providers: JwcModelProvider[];
     defaultProvider: string;
     defaultModel: string;
+    usageOrder?: string[];
     degraded?: boolean;
     error?: string;
 };
@@ -57,6 +59,10 @@ export type JwcModelProfilePresetInfo = {
     builtinProfiles: JwcBuiltinModelProfile[];
     applyAvailable: false;
     applyReason: string;
+};
+
+export type JwcModelUsageInfo = {
+    usageOrder: string[];
 };
 
 export const JWC_THINKING_LEVELS: JwcThinkingLevel[] = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
@@ -355,11 +361,49 @@ export async function readJwcModelProfilePresetInfo(agentDir = resolveJwcAgentDi
     };
 }
 
-export function buildJwcModelOptions(authenticated: string[], error?: string, defaultModelRole?: string): JwcModelOptions {
+export function readJwcModelUsageOrder(agentDir = resolveJwcAgentDir()): string[] {
+    let db: Database.Database | null = null;
+    try {
+        db = new Database(join(agentDir, 'agent.db'), { readonly: true, fileMustExist: true });
+        const rows = db.prepare('SELECT model_key FROM model_usage ORDER BY last_used_at DESC')
+            .all() as Array<{ model_key?: unknown }>;
+        return rows
+            .map(row => row.model_key)
+            .filter((modelKey): modelKey is string => typeof modelKey === 'string' && modelKey.length > 0);
+    } catch {
+        return [];
+    } finally {
+        db?.close();
+    }
+}
+
+function sortModelsForProvider(provider: string, models: string[], defaultModelRole: string | undefined, usageOrder: string[]): string[] {
+    const parsedDefault = parseJwcModelRole(defaultModelRole);
+    const usageRank = new Map<string, number>();
+    usageOrder.forEach((modelKey, index) => {
+        if (!usageRank.has(modelKey)) usageRank.set(modelKey, index);
+    });
+    const staticRank = new Map<string, number>();
+    models.forEach((model, index) => staticRank.set(model, index));
+
+    return [...models].sort((a, b) => {
+        const aIsDefault = parsedDefault?.provider === provider && parsedDefault.model === a;
+        const bIsDefault = parsedDefault?.provider === provider && parsedDefault.model === b;
+        if (aIsDefault !== bIsDefault) return aIsDefault ? -1 : 1;
+
+        const aUsage = usageRank.get(`${provider}/${a}`) ?? Number.MAX_SAFE_INTEGER;
+        const bUsage = usageRank.get(`${provider}/${b}`) ?? Number.MAX_SAFE_INTEGER;
+        if (aUsage !== bUsage) return aUsage - bUsage;
+
+        return (staticRank.get(a) ?? Number.MAX_SAFE_INTEGER) - (staticRank.get(b) ?? Number.MAX_SAFE_INTEGER);
+    });
+}
+
+export function buildJwcModelOptions(authenticated: string[], error?: string, defaultModelRole?: string, usageOrder: string[] = []): JwcModelOptions {
     const providerIds = authenticated.length > 0 ? authenticated : ['anthropic'];
     const providers = providerIds.map(id => ({
         id,
-        models: JWC_PROVIDER_MODEL_DEFAULTS[id] ?? [],
+        models: sortModelsForProvider(id, JWC_PROVIDER_MODEL_DEFAULTS[id] ?? [], defaultModelRole, usageOrder),
         efforts: JWC_PROVIDER_EFFORT_DEFAULTS[id] ?? [],
     }));
     const parsedDefault = parseJwcModelRole(defaultModelRole);
@@ -375,6 +419,7 @@ export function buildJwcModelOptions(authenticated: string[], error?: string, de
         providers,
         defaultProvider,
         defaultModel,
+        ...(usageOrder.length > 0 ? { usageOrder } : {}),
         ...(authenticated.length === 0 ? { degraded: true, error: error ?? 'No authenticated JWC providers found; using Anthropic defaults.' } : {}),
     };
 }
@@ -397,7 +442,8 @@ export async function resolveJwcModelOptions(): Promise<JwcModelOptions> {
             discoverJwcAuthenticatedProviders(),
             readJwcDefaultModelRole(),
         ]);
-        return buildJwcModelOptions(authenticated, undefined, defaultModelRole);
+        const usageOrder = readJwcModelUsageOrder();
+        return buildJwcModelOptions(authenticated, undefined, defaultModelRole, usageOrder);
     } catch (err) {
         return buildJwcModelOptions([], err instanceof Error ? err.message : String(err));
     }

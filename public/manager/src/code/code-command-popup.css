@@ -212,6 +212,34 @@
     font-size: 12px;
 }
 
+.code-model-mru-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.code-model-mru-strip strong {
+    min-width: 0;
+    max-width: 190px;
+    overflow: hidden;
+    padding: 2px 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .code-model-layout {
     display: grid;
     grid-template-columns: minmax(130px, 0.42fr) minmax(0, 1fr);

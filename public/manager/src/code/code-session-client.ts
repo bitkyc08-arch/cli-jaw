@@ -23,6 +23,7 @@ export interface CodeModelOptions {
     providers: CodeModelProvider[];
     defaultProvider: string;
     defaultModel: string;
+    usageOrder?: string[];
     degraded?: boolean;
     error?: string;
 }

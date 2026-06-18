@@ -214,6 +214,14 @@ export function CodeCommandPopup({
                                 disabled={disabled}
                             />
                         </label>
+                        {modelOptions.usageOrder && modelOptions.usageOrder.length > 0 && (
+                            <div className="code-model-mru-strip" aria-label="Recently used models">
+                                <span>Recently used</span>
+                                {modelOptions.usageOrder.slice(0, 3).map(modelKey => (
+                                    <strong key={modelKey}>{modelKey}</strong>
+                                ))}
+                            </div>
+                        )}
                         <div className="code-model-layout">
                             <div className="code-model-providers" role="list" aria-label="Providers">
                                 {filteredProviders.map(entry => (
