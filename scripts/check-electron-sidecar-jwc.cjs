@@ -64,15 +64,25 @@ function checkPackageLock(serverRoot) {
 
 function runSdkImport(nodeBin, serverRoot) {
   const code = `
-    const sdk = await import('jawcode/sdk');
-    if (typeof sdk.createAgentSession !== 'function') {
-      throw new Error('missing createAgentSession');
+    try {
+      const sdk = await import('jawcode/sdk');
+      if (typeof sdk.createAgentSession !== 'function') {
+        throw new Error('missing createAgentSession');
+      }
+      process.exit(0);
+    } catch (error) {
+      console.error(error instanceof Error ? error.stack || error.message : String(error));
+      process.exit(1);
     }
   `;
   const result = spawnSync(nodeBin, ['--input-type=module', '-e', code], {
     cwd: serverRoot,
     encoding: 'utf8',
+    timeout: 30000,
   });
+  if (result.error) {
+    fail(`jawcode/sdk import failed with bundled Node: ${result.error.message}`);
+  }
   if (result.status !== 0) {
     fail(`jawcode/sdk import failed with bundled Node\nstdout:\n${result.stdout || ''}\nstderr:\n${result.stderr || ''}`);
   }
