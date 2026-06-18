@@ -71,7 +71,7 @@ export function JawCeoConsole(props: {
     const target = props.selectedPort == null ? 'Dashboard' : `Worker :${props.selectedPort}`;
     const voiceLabel = voiceFooterLabel(props.voice.status);
     return (
-        <div className="jaw-ceo-console" role="region" aria-label="Jaw CEO console">
+        <div className="jaw-ceo-console" role="region" aria-label="Jaw CEO console" data-surface-owner="ceo-orchestration-control">
             <header className="jaw-ceo-console-header">
                 <div className="jaw-ceo-console-titlebar">
                     <span className={`jaw-ceo-console-mark status-${props.voice.status}`} aria-hidden="true">CEO</span>

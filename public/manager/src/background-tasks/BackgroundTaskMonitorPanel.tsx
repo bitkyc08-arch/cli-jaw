@@ -140,7 +140,7 @@ export function BackgroundTaskMonitorPanel() {
     }
 
     return (
-        <section className="code-bg-task-panel" aria-label="Background task monitor">
+        <section className="code-bg-task-panel" aria-label="Background task monitor" data-monitor-owner="code-runtime-observability">
             <div className="code-bg-task-header">
                 <div>
                     <span className="code-bg-task-kicker">Monitor</span>

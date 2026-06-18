@@ -51,7 +51,7 @@ export function GoalPabcdStatusPanel() {
     const evidenceFreshness = snapshot?.goal?.evidenceFreshness ?? 'missing';
 
     return (
-        <section className="code-goal-status-panel" aria-label="Goal and PABCD status">
+        <section className="code-goal-status-panel" aria-label="Goal and PABCD status" data-monitor-owner="code-runtime-observability">
             <div className="code-goal-status-header">
                 <button type="button" className="code-goal-status-main" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>
                     <span className="code-goal-status-kicker">Monitor</span>

@@ -119,7 +119,7 @@ export function WorkerProgressMonitorPanel() {
     const visibleWorkers = workers.slice(0, 8);
 
     return (
-        <section className="code-worker-panel" aria-label="Worker progress monitor">
+        <section className="code-worker-panel" aria-label="Worker progress monitor" data-monitor-owner="code-runtime-observability">
             <div className="code-worker-header">
                 <div>
                     <span className="code-worker-kicker">Monitor</span>
