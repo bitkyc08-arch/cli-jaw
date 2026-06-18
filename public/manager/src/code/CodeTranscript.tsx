@@ -11,13 +11,28 @@ type CodeTranscriptProps = {
 };
 
 function renderToolContent(content: ToolContent, index: number) {
+    const label = content.label ?? (content.type === 'args' ? 'Args' : content.type === 'output' ? 'Output' : content.type === 'error' ? 'Error' : '');
+    const className = `code-tool-${content.type}`;
+    const body = content.type === 'diff' && content.diff
+        ? content.diff
+        : content.type === 'json' || content.type === 'args'
+            ? JSON.stringify(content.json ?? content, null, 2)
+            : content.text ?? JSON.stringify(content, null, 2);
+    if (label) {
+        return (
+            <div key={index} className="code-tool-section">
+                <span className="code-tool-section-label">{label}</span>
+                <pre className={className}>{body}</pre>
+            </div>
+        );
+    }
     if (content.type === 'diff' && content.diff) {
         return <pre key={index} className="code-tool-diff">{content.diff}</pre>;
     }
     if (content.text) {
         return <pre key={index} className="code-tool-text">{content.text}</pre>;
     }
-    return <pre key={index} className="code-tool-json">{JSON.stringify(content, null, 2)}</pre>;
+    return <pre key={index} className={className}>{body}</pre>;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {

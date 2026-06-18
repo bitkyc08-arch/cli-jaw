@@ -1,4 +1,11 @@
-export type ToolContent = { type: string; text?: string; diff?: string; [key: string]: unknown };
+export type ToolContent = {
+    type: 'args' | 'output' | 'error' | 'diff' | 'json' | 'text';
+    label?: string;
+    text?: string;
+    diff?: string;
+    json?: unknown;
+    [key: string]: unknown;
+};
 
 export type TranscriptEntry = {
     role: 'user' | 'assistant' | 'tool' | 'thinking';
@@ -57,6 +64,55 @@ export function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId
 
 export function toModelId(provider: string, model: string): string {
     return provider ? `${provider}/${model}` : model;
+}
+
+function stringifyToolValue(value: unknown): string {
+    if (typeof value === 'string') return value;
+    try {
+        return JSON.stringify(value, null, 2);
+    } catch {
+        return String(value);
+    }
+}
+
+function normalizeToolContentItem(raw: unknown): ToolContent | null {
+    if (typeof raw === 'string') return { type: 'text', text: raw };
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+    const record = raw as Record<string, unknown>;
+    const rawType = typeof record['type'] === 'string' ? record['type'].toLowerCase() : '';
+    const label = typeof record['label'] === 'string' ? record['label'] : undefined;
+    if (rawType === 'diff' && typeof record['diff'] === 'string') return { type: 'diff', diff: record['diff'], ...(label ? { label } : {}) };
+    if (rawType === 'error') return { type: 'error', text: stringifyToolValue(record['text'] ?? record['error'] ?? record['message'] ?? record), ...(label ? { label } : {}) };
+    if (rawType === 'args' || rawType === 'arguments' || rawType === 'input') return { type: 'args', json: record['json'] ?? record['args'] ?? record['arguments'] ?? record['input'] ?? record, ...(label ? { label } : {}) };
+    if (rawType === 'output') return { type: 'output', text: stringifyToolValue(record['text'] ?? record['output'] ?? record), ...(label ? { label } : {}) };
+    if (rawType === 'json') return { type: 'json', json: record['json'] ?? record['value'] ?? record, ...(label ? { label } : {}) };
+    if (typeof record['diff'] === 'string') return { type: 'diff', diff: record['diff'], ...(label ? { label } : {}) };
+    if (typeof record['text'] === 'string') return { type: 'text', text: record['text'], ...(label ? { label } : {}) };
+    return { type: 'json', json: record, ...(label ? { label } : {}) };
+}
+
+function pushToolFieldContent(content: ToolContent[], type: ToolContent['type'], label: string, value: unknown): void {
+    if (value === undefined || value === null || value === '') return;
+    if (type === 'args' || type === 'json') content.push({ type, label, json: value });
+    else content.push({ type, label, text: stringifyToolValue(value) });
+}
+
+export function normalizeToolContentFromUpdate(update: Record<string, unknown>): ToolContent[] {
+    const normalized: ToolContent[] = [];
+    const rawContent = update['content'];
+    if (Array.isArray(rawContent)) {
+        for (const item of rawContent) {
+            const content = normalizeToolContentItem(item);
+            if (content) normalized.push(content);
+        }
+    } else {
+        const content = normalizeToolContentItem(rawContent);
+        if (content) normalized.push(content);
+    }
+    pushToolFieldContent(normalized, 'args', 'Args', update['args'] ?? update['arguments'] ?? update['input'] ?? update['rawInput']);
+    pushToolFieldContent(normalized, 'output', 'Output', update['rawOutput'] ?? update['output']);
+    pushToolFieldContent(normalized, 'error', 'Error', update['error'] ?? update['errorMessage'] ?? update['reason']);
+    return normalized;
 }
 
 const POPUP_COMMANDS: Record<string, { category: CodeCommandCategory; popupKind: CodeCommandPopupKind }> = {

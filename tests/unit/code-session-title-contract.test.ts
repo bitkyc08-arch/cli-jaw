@@ -238,6 +238,26 @@ test('code transcript preserves failed tool state and remains scrollable after r
     assert.ok(css.includes('.code-tool-error-snippet'), 'failed tool error snippet must be styled');
 });
 
+test('code tool cards normalize args output error diff and json schema', () => {
+    const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const transcript = read('public/manager/src/code/CodeTranscript.tsx');
+    const types = read('public/manager/src/code/code-types.ts');
+    const css = read('public/manager/src/code/code-workbench.css');
+
+    assert.ok(types.includes("type: 'args' | 'output' | 'error' | 'diff' | 'json' | 'text'"), 'ToolContent must enumerate the card schema variants');
+    assert.ok(types.includes('export function normalizeToolContentFromUpdate'), 'tool update normalization must be centralized');
+    for (const token of ["update['args']", "update['arguments']", "update['input']", "update['rawOutput']", "update['output']", "update['error']", "update['errorMessage']"]) {
+        assert.ok(types.includes(token), `tool normalization must read ${token}`);
+    }
+    assert.ok(canvas.includes('normalizeToolContentFromUpdate(update)'), 'live and replay tool events must use normalized tool content');
+    assert.equal(canvas.includes("const content = (update['content'] ?? []) as ToolContent[]"), false, 'CodeCanvas must not cast raw tool content directly into transcript cards');
+
+    assert.ok(transcript.includes('code-tool-section-label'), 'tool transcript must render labels for normalized sections');
+    for (const selector of ['.code-tool-args', '.code-tool-output', '.code-tool-error', '.code-tool-json', '.code-tool-diff']) {
+        assert.ok(css.includes(selector), `tool card CSS must include ${selector}`);
+    }
+});
+
 test('code backend normalizes JWC session title metadata and returns title on load', () => {
     const types = read('src/code-mode/types.ts');
     const host = read('src/code-mode/acp-host.ts');

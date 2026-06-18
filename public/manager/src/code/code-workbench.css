@@ -219,7 +219,7 @@
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 .code-tool-content { padding: 0 10px 8px; }
-.code-tool-text, .code-tool-output, .code-tool-json {
+.code-tool-text, .code-tool-output, .code-tool-json, .code-tool-args, .code-tool-error {
     font-family: 'Berkeley Mono', 'JetBrains Mono', monospace;
     font-size: 11px; line-height: 1.4;
     color: var(--text-secondary);
@@ -232,6 +232,32 @@
     overflow-y: auto;
     white-space: pre-wrap;
     margin: 4px 0;
+}
+.code-tool-section {
+    margin: 8px 10px 0;
+}
+.code-tool-section .code-tool-text,
+.code-tool-section .code-tool-output,
+.code-tool-section .code-tool-json,
+.code-tool-section .code-tool-args,
+.code-tool-section .code-tool-error,
+.code-tool-section .code-tool-diff {
+    margin: 4px 0 0;
+}
+.code-tool-section-label {
+    display: block;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.code-tool-args {
+    color: var(--text-secondary);
+}
+.code-tool-error {
+    border-color: color-mix(in srgb, var(--status-error) 36%, var(--border-default));
+    color: var(--status-error);
 }
 .code-tool-diff {
     font-family: 'Berkeley Mono', 'JetBrains Mono', monospace;

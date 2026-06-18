@@ -10,7 +10,7 @@ import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
 import { FALLBACK_CODE_COMMANDS, FALLBACK_MODEL_OPTIONS, mergeCodeCommands } from './code-session-defaults';
-import { findLastToolMessageIndex, normalizeCodeCommands, toModelId, type CodeCommand, type CodeCommandPopupKind, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
+import { findLastToolMessageIndex, normalizeCodeCommands, normalizeToolContentFromUpdate, toModelId, type CodeCommand, type CodeCommandPopupKind, type PendingPermission, type TranscriptEntry } from './code-types';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
 type CodeCanvasProps = {
@@ -52,12 +52,12 @@ function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): Tran
             const title = String(update['title'] ?? update['toolName'] ?? 'tool');
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? 'pending');
-            const content = (update['content'] ?? []) as ToolContent[];
+            const content = normalizeToolContentFromUpdate(update);
             entries.push({ role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: normalizeToolStatus(status) });
         } else if (event.event === 'code_tool_call_update') {
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
-            const content = (update['content'] ?? []) as ToolContent[];
+            const content = normalizeToolContentFromUpdate(update);
             const rawOutput = update['rawOutput'];
             const idx = findLastToolMessageIndex(entries, toolCallId);
             if (idx < 0) continue;
@@ -293,12 +293,12 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             const title = String(update['title'] ?? update['toolName'] ?? 'tool');
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? 'pending');
-            const content = (update['content'] ?? []) as ToolContent[];
+            const content = normalizeToolContentFromUpdate(update);
             setMessages(prev => [...prev, { role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: normalizeToolStatus(status) }]);
         } else if (kind === 'code_tool_call_update') {
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
-            const content = (update['content'] ?? []) as ToolContent[];
+            const content = normalizeToolContentFromUpdate(update);
             const rawOutput = update['rawOutput'];
             setMessages(prev => {
                 const idx = findLastToolMessageIndex(prev, toolCallId);
