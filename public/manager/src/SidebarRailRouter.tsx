@@ -296,6 +296,7 @@ export function SidebarRailRouter(props: Props) {
         <NotesCommandProvider>
         {props.jawCeoVoiceOverlay}
         <WorkspaceLayout
+            navigatorLabel={props.viewMode === 'code' && props.sidebarMode === 'instances' ? 'Code sessions' : undefined}
             sidebarCollapsed={props.sidebarCollapsed}
             inspectorCollapsed={props.activityDockCollapsed}
             inspectorHeight={props.activityDockCollapsed ? 48 : props.activityDockHeight}
@@ -332,6 +333,10 @@ export function SidebarRailRouter(props: Props) {
                             <DashboardScheduleSidebar activeGroup={props.scheduleGroup} onGroupChange={props.onScheduleGroupChange} />
                         ) : props.remindersWorkspaceEnabled && props.sidebarMode === 'reminders' ? (
                             <DashboardRemindersSidebar view={remindersView} onViewChange={setRemindersView} items={remindersFeed.items} loading={remindersFeed.loading} onRefresh={() => void remindersFeed.refresh()} onUpdate={(id, patch) => void remindersFeed.update(id, patch)} />
+                        ) : props.viewMode === 'code' ? (
+                            <section className="code-manager-session-navigator" aria-label="Code sessions">
+                                <div id="code-session-sidebar-host" className="code-session-sidebar-host" />
+                            </section>
                         ) : (
                             <InstanceNavigator active={props.selectedInstance} hiddenCount={props.instances.filter(instance => instance.hidden).length} collapsed={props.sidebarCollapsed}>
                                 {props.instanceListContent}

@@ -2,6 +2,7 @@ import { useEffect, useState, type CSSProperties, type ReactNode } from 'react';
 
 type WorkspaceLayoutProps = {
     navigator: ReactNode;
+    navigatorLabel?: string | undefined;
     workbench: ReactNode;
     inspector: ReactNode;
     sidePanel?: ReactNode;
@@ -96,7 +97,7 @@ export function WorkspaceLayout(props: WorkspaceLayoutProps) {
     return (
         <div className={cls} style={style}>
             {props.drawerOpen && <div className="drawer-backdrop" onClick={props.onCloseDrawer} />}
-            <aside className="manager-sidebar" aria-label="Jaw instances">{props.navigator}</aside>
+            <aside className="manager-sidebar" aria-label={props.navigatorLabel ?? 'Jaw instances'}>{props.navigator}</aside>
             <section className="manager-detail" aria-label="Manager workbench">{props.workbench}</section>
             <section className="manager-activity" aria-label="Manager inspector">{props.inspector}</section>
             {props.sidePanel && <aside className="manager-ceo-panel" aria-label="Jaw CEO console">{props.sidePanel}</aside>}

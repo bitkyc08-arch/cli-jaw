@@ -30,6 +30,24 @@
 
 /* Code session list */
 .code-session-list { padding: 8px; }
+.code-manager-session-navigator,
+.code-session-sidebar-host,
+.code-manager-session-navigator-content {
+    height: 100%;
+    min-height: 0;
+}
+.code-manager-session-navigator {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-panel);
+}
+.code-session-sidebar-host {
+    flex: 1 1 auto;
+    overflow: hidden;
+}
+.code-manager-session-navigator-content {
+    overflow-y: auto;
+}
 .code-session-list-header {
     display: flex;
     align-items: center;

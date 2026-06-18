@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type MutableRefObject } from 'react';
 
 export type CodeEvent = {
     topic: string;
@@ -13,6 +13,7 @@ export type CodeEvent = {
 type UseCodeEventsOptions = {
     port: number;
     sessionId: string | null;
+    sessionIdRef?: MutableRefObject<string | null>;
     onEvent: (event: CodeEvent) => void;
 };
 
@@ -23,7 +24,7 @@ function createEventsUrl(port: number): string {
     return `http://127.0.0.1:${port}/api/events`;
 }
 
-export function useCodeEvents({ port, sessionId, onEvent }: UseCodeEventsOptions): void {
+export function useCodeEvents({ port, sessionId, sessionIdRef: externalSessionIdRef, onEvent }: UseCodeEventsOptions): void {
     const onEventRef = useRef(onEvent);
     onEventRef.current = onEvent;
     const sessionIdRef = useRef(sessionId);
@@ -36,7 +37,7 @@ export function useCodeEvents({ port, sessionId, onEvent }: UseCodeEventsOptions
             try {
                 const data = JSON.parse(msg.data) as CodeEvent;
                 if (data.topic !== 'jwc') return;
-                const sid = sessionIdRef.current;
+                const sid = externalSessionIdRef?.current ?? sessionIdRef.current;
                 if (!sid) return;
                 if (data.sessionId && data.sessionId !== sid) return;
                 onEventRef.current(data);

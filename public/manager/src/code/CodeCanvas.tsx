@@ -1,4 +1,5 @@
-import { useCallback, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
 import { CodeSessionList } from './CodeSessionList';
 import { ComposerFooter } from './ComposerFooter';
@@ -21,11 +22,17 @@ type TranscriptEntry = {
 type CodeCanvasProps = {
     port: number;
     workingDir: string;
+    renderLayout?: (parts: CodeCanvasLayoutParts) => ReactNode;
+};
+
+export type CodeCanvasLayoutParts = {
+    navigator: ReactNode;
+    workbench: ReactNode;
 };
 
 const DEFAULT_PROVIDERS = ['anthropic'];
 const DEFAULT_MODELS: Record<string, string[]> = {
-    anthropic: ['claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+    anthropic: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
 };
 const DEFAULT_EFFORTS = ['off', 'min', 'low', 'medium', 'high', 'xhigh'];
 
@@ -47,7 +54,7 @@ function toModelId(provider: string, model: string): string {
     return model.includes('/') ? model : `${provider}/${model}`;
 }
 
-export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
+export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [inputText, setInputText] = useState('');
@@ -60,10 +67,25 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const [usage, setUsage] = useState<{ contextTokens?: number; contextLimit?: number; cost?: number }>({});
     const [planEntries, setPlanEntries] = useState<Array<{ title: string; status: string }>>([]);
     const [provider, setProvider] = useState('anthropic');
-    const [model, setModel] = useState('claude-fable-5');
+    const [model, setModel] = useState('claude-sonnet-4-6');
     const [effort, setEffort] = useState('high');
+    const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
+    const activeSessionIdRef = useRef<string | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
     const selectedModelId = useMemo(() => toModelId(provider, model), [provider, model]);
+
+    useEffect(() => {
+        activeSessionIdRef.current = activeSessionId;
+    }, [activeSessionId]);
+
+    useEffect(() => {
+        if (renderLayout || typeof document === 'undefined') {
+            setSidebarHost(null);
+            return;
+        }
+        setSidebarHost(document.getElementById('code-session-sidebar-host'));
+        return () => setSidebarHost(null);
+    }, [renderLayout]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
         const update = event.update ?? {};
@@ -149,7 +171,7 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         setTimeout(() => transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }), 50);
     }, []);
 
-    useCodeEvents({ port, sessionId: activeSessionId, onEvent: handleCodeEvent });
+    useCodeEvents({ port, sessionId: activeSessionId, sessionIdRef: activeSessionIdRef, onEvent: handleCodeEvent });
 
     const handleSubmit = useCallback(async () => {
         const text = inputText.trim();
@@ -163,6 +185,7 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                 const cwd = workingDir || '/tmp';
                 const session = await client.createSession(cwd, selectedModelId);
                 sessionId = session.sessionId;
+                activeSessionIdRef.current = sessionId;
                 setActiveSessionId(sessionId);
             }
             await client.sendPrompt(sessionId, text);
@@ -212,31 +235,31 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         );
     }
 
-    return (
-        <div className="code-canvas">
-            <div className="code-canvas-sidebar">
-                <CodeSessionList
-                    client={client}
-                    activeSessionId={activeSessionId}
-                    workingDir={workingDir}
-                    onSelectSession={id => { setActiveSessionId(id); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
-                    onLoadSession={(id, cwd) => {
-                        void (async () => {
-                            try {
-                                await client.loadSession(id, cwd);
-                                setActiveSessionId(id);
-                                setMessages([]);
-                                setPlanEntries([]);
-                                setSessionTitle('');
-                            } catch (err) {
-                                setMessages(prev => [...prev, { role: 'assistant', text: `Failed to load session: ${err instanceof Error ? err.message : String(err)}` }]);
-                            }
-                        })();
-                    }}
-                    onNewSession={() => { setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
-                />
-            </div>
-            <div className="code-canvas-main">
+    const sessionNavigator = (
+        <CodeSessionList
+            client={client}
+            activeSessionId={activeSessionId}
+            workingDir={workingDir}
+            onSelectSession={id => { setActiveSessionId(id); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
+            onLoadSession={(id, cwd) => {
+                void (async () => {
+                    try {
+                        await client.loadSession(id, cwd);
+                        setActiveSessionId(id);
+                        setMessages([]);
+                        setPlanEntries([]);
+                        setSessionTitle('');
+                    } catch (err) {
+                        setMessages(prev => [...prev, { role: 'assistant', text: `Failed to load session: ${err instanceof Error ? err.message : String(err)}` }]);
+                    }
+                })();
+            }}
+            onNewSession={() => { setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
+        />
+    );
+
+    const workbench = (
+        <div className="code-canvas-main">
                 {(sessionTitle || usage.contextTokens !== undefined || planEntries.length > 0) && (
                     <div className="code-session-header">
                         {sessionTitle && <span className="code-session-title">{sessionTitle}</span>}
@@ -407,7 +430,50 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                         }
                     }}
                 />
+        </div>
+    );
+
+    if (renderLayout) {
+        return (
+            <>
+                {renderLayout({
+                    navigator: (
+                        <section className="code-manager-session-navigator" aria-label="Code sessions">
+                            {sessionNavigator}
+                        </section>
+                    ),
+                    workbench: (
+                        <div className="code-canvas code-canvas-workbench">
+                            {workbench}
+                        </div>
+                    ),
+                })}
+            </>
+        );
+    }
+
+    if (sidebarHost) {
+        return (
+            <>
+                {createPortal(
+                    <div className="code-manager-session-navigator-content">
+                        {sessionNavigator}
+                    </div>,
+                    sidebarHost,
+                )}
+                <div className="code-canvas code-canvas-workbench">
+                    {workbench}
+                </div>
+            </>
+        );
+    }
+
+    return (
+        <div className="code-canvas">
+            <div className="code-canvas-sidebar">
+                {sessionNavigator}
             </div>
+            {workbench}
         </div>
     );
 }
