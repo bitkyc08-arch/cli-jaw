@@ -17,6 +17,7 @@ import { useFolderGitStatus } from './use-folder-git-status';
 import { useGitWorktrees } from './use-git-worktrees';
 import { useFolderChord } from './use-folder-chord';
 import { useFolderSelection, type FolderDragSelection } from './use-folder-selection';
+import { useFolderVisibleRefresh } from './use-folder-visible-refresh';
 import './folder-panel.css';
 
 function getFolderBridge(): FolderBridgeApi | null {
@@ -164,6 +165,9 @@ export function FolderPanel(props: FolderPanelProps) {
             setError((err as Error).message);
         }
     }, [childrenCache, source]);
+    const bumpGitRefresh = useCallback(() => {
+        setGitRefreshToken(token => token + 1);
+    }, []);
 
     const toggleExpand = useCallback((entryPath: string) => {
         setExpanded(prev => {
@@ -228,33 +232,21 @@ export function FolderPanel(props: FolderPanelProps) {
         enabled: source.kind === 'electron-folder' && gitStatus.available,
         refreshToken: gitRefreshToken + gitRefreshVersion,
     });
+    const visibleRefresh = useFolderVisibleRefresh({
+        rootPath,
+        expanded,
+        source,
+        loadDir,
+        loadChildren,
+        bumpGitRefresh,
+        onGitRefresh,
+        refreshWorktrees: worktreeState.refresh,
+    });
+    const refreshVisibleTree = visibleRefresh.refreshVisibleTree;
 
     useEffect(() => {
         if (gitStatus.repoRoot && gitStatus.repoRoot !== repoRootPath) onRepoRootChange?.(gitStatus.repoRoot);
     }, [gitStatus.repoRoot, onRepoRootChange, repoRootPath]);
-
-    const refreshVisibleTree = useCallback(async () => {
-        if (rootPath === null) return;
-        const expandedPaths = Array.from(expanded);
-        await loadDir(rootPath);
-        for (const path of expandedPaths) await loadChildren(path, { force: true });
-        setGitRefreshToken(token => token + 1);
-        onGitRefresh?.();
-        worktreeState.refresh();
-    }, [expanded, loadChildren, loadDir, onGitRefresh, rootPath, worktreeState]);
-
-    useEffect(() => {
-        if (!source.watchDir || !source.onDirChange || rootPath === null) return;
-        void (async () => {
-            const result = await source.watchDir?.(rootPath);
-            if (result && !result.ok) setActionStatus(`Watch disabled: ${result.error ?? 'failed to watch directory'}`);
-        })();
-        const unsub = source.onDirChange(() => { void refreshVisibleTree(); });
-        return () => {
-            unsub();
-            void source.unwatchDir?.(rootPath);
-        };
-    }, [refreshVisibleTree, rootPath, source]);
 
     const canUseNativeActions = source.kind === 'electron-folder';
     const canMutateEntries = Boolean(source.createFile && source.createFolder && source.renamePath);
@@ -263,21 +255,15 @@ export function FolderPanel(props: FolderPanelProps) {
         if (!rootPath) return;
         const sourceParent = parentPath(sourcePath);
         setChildrenCache(prev => dropCachedBranches(prev, [sourceParent, targetPath]));
-        await loadDir(rootPath);
-        if (expanded.has(sourceParent)) await loadChildren(sourceParent, { force: true });
-        if (expanded.has(targetPath)) await loadChildren(targetPath, { force: true });
-        setGitRefreshToken(token => token + 1);
-    }, [expanded, loadChildren, loadDir, rootPath]);
+        await refreshVisibleTree('move', { extraPaths: [sourceParent, targetPath] });
+    }, [refreshVisibleTree, rootPath]);
 
     const refreshAfterMutation = useCallback(async (parentDirectory: string, focusPath: string | null, extraDroppedPaths: string[] = []) => {
         if (!rootPath) return;
         setChildrenCache(prev => dropCachedBranches(prev, [parentDirectory, ...extraDroppedPaths]));
-        await loadDir(rootPath);
-        if (expanded.has(parentDirectory)) await loadChildren(parentDirectory, { force: true });
-        setGitRefreshToken(token => token + 1);
-        onGitRefresh?.();
+        await refreshVisibleTree('mutation', { extraPaths: [parentDirectory] });
         if (focusPath) folderSelection.selectOnlyPath(focusPath);
-    }, [expanded, folderSelection, loadChildren, loadDir, onGitRefresh, rootPath]);
+    }, [folderSelection, refreshVisibleTree, rootPath]);
 
     const executeMove = useCallback(async (move: { source: FolderPanelEntry; target: FolderPanelEntry }) => {
         if (!source.movePath) return;
@@ -494,7 +480,7 @@ export function FolderPanel(props: FolderPanelProps) {
             setWorktreeOpsOpen(false);
             worktreeState.refresh();
             setGitRefreshToken(token => token + 1);
-            if (rootPath !== null) await refreshVisibleTree();
+            if (rootPath !== null) await refreshVisibleTree('git-operation');
         } catch (err) {
             setError((err as Error).message);
         } finally {
@@ -562,7 +548,7 @@ export function FolderPanel(props: FolderPanelProps) {
                 label={source.label}
                 rootPath={rootPath}
                 onPickFolder={() => void pickFolder()}
-                onRefresh={() => { if (rootPath !== null) void refreshVisibleTree(); }}
+                onRefresh={() => { if (rootPath !== null) void refreshVisibleTree('manual'); }}
                 gitSummary={source.kind === 'electron-folder' ? gitStatus : undefined}
                 worktreeSummary={source.kind === 'electron-folder' ? worktreeState : undefined}
                 onOpenWorktree={path => void openWorktreeRoot(path)}
@@ -584,7 +570,9 @@ export function FolderPanel(props: FolderPanelProps) {
                 />
             )}
             {error && <div className="folder-error">{error}</div>}
-            {actionStatus && !error && <div className="folder-status">{actionStatus}</div>}
+            {visibleRefresh.watchStatus && !error && <div className="folder-status">{visibleRefresh.watchStatus}</div>}
+            {visibleRefresh.refreshStatus && !error && !visibleRefresh.watchStatus && <div className="folder-status">{visibleRefresh.refreshStatus}</div>}
+            {actionStatus && !error && !visibleRefresh.refreshStatus && !visibleRefresh.watchStatus && <div className="folder-status">{actionStatus}</div>}
             {folderChordActive && <div className="folder-shortcut-hint">Folder shortcut: press P to copy path or R to reveal</div>}
             {worktreeOpsOpen && rootPath !== null && (
                 <FolderWorktreeOpsDialog
@@ -643,7 +631,7 @@ export function FolderPanel(props: FolderPanelProps) {
                 onCopyContextPath={() => { setContextMenu(null); void copySelectedPath('absolute'); }}
                 onCopyContextRelativePath={() => { setContextMenu(null); void copySelectedPath('relative'); }}
                 onRevealContextPath={() => { setContextMenu(null); void revealSelectedPath(); }}
-                onRefreshContext={() => { setContextMenu(null); void refreshVisibleTree(); }}
+                onRefreshContext={() => { setContextMenu(null); void refreshVisibleTree('manual'); }}
                 onCreateContextFile={() => requestCreateEntry('file')}
                 onCreateContextFolder={() => requestCreateEntry('directory')}
                 onRenameContextPath={() => requestRenameSelectedEntry()}
