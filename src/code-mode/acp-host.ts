@@ -45,6 +45,11 @@ function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
         join(MODULE_DIR, '..', '..', '..', 'bin', 'jwc'),
         // Source/tsx mode: .../src/code-mode/acp-host.ts -> repo/bin/jwc
         join(MODULE_DIR, '..', '..', 'bin', 'jwc'),
+        // Repo/npm package runtime: prefer the embedded jawcode dependency over
+        // any stale global jwc shim.
+        join(MODULE_DIR, '..', '..', '..', 'node_modules', '.bin', 'jwc'),
+        join(MODULE_DIR, '..', '..', 'node_modules', '.bin', 'jwc'),
+        join(process.cwd(), 'node_modules', '.bin', 'jwc'),
         // CLI/server launched from repo root.
         join(process.cwd(), 'bin', 'jwc'),
     ];
