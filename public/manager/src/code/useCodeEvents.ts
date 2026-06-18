@@ -16,6 +16,13 @@ type UseCodeEventsOptions = {
     onEvent: (event: CodeEvent) => void;
 };
 
+function createEventsUrl(port: number): string {
+    if (typeof window !== 'undefined' && window.location.port === String(port)) {
+        return `${window.location.origin}/api/events`;
+    }
+    return `http://127.0.0.1:${port}/api/events`;
+}
+
 export function useCodeEvents({ port, sessionId, onEvent }: UseCodeEventsOptions): void {
     const onEventRef = useRef(onEvent);
     onEventRef.current = onEvent;
@@ -24,7 +31,7 @@ export function useCodeEvents({ port, sessionId, onEvent }: UseCodeEventsOptions
 
     useEffect(() => {
         if (!port) return;
-        const es = new EventSource(`http://localhost:${port}/api/events`);
+        const es = new EventSource(createEventsUrl(port));
         es.onmessage = (msg) => {
             try {
                 const data = JSON.parse(msg.data) as CodeEvent;

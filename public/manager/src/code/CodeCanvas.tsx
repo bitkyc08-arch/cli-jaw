@@ -43,6 +43,10 @@ function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId: strin
     return -1;
 }
 
+function toModelId(provider: string, model: string): string {
+    return model.includes('/') ? model : `${provider}/${model}`;
+}
+
 export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -59,6 +63,7 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const [model, setModel] = useState('claude-fable-5');
     const [effort, setEffort] = useState('high');
     const transcriptRef = useRef<HTMLDivElement>(null);
+    const selectedModelId = useMemo(() => toModelId(provider, model), [provider, model]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
         const update = event.update ?? {};
@@ -156,7 +161,7 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             let sessionId = activeSessionId;
             if (!sessionId) {
                 const cwd = workingDir || '/tmp';
-                const session = await client.createSession(cwd, model);
+                const session = await client.createSession(cwd, selectedModelId);
                 sessionId = session.sessionId;
                 setActiveSessionId(sessionId);
             }
@@ -165,7 +170,7 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${err instanceof Error ? err.message : String(err)}` }]);
             setSending(false);
         }
-    }, [inputText, sending, activeSessionId, client, workingDir, model]);
+    }, [inputText, sending, activeSessionId, client, workingDir, selectedModelId]);
 
     const handleInputChange = useCallback((text: string) => {
         setInputText(text);
@@ -386,13 +391,13 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                         const firstModel = (DEFAULT_MODELS[p] ?? [])[0] ?? '';
                         setModel(firstModel);
                         if (activeSessionId && firstModel) {
-                            void client.setSessionModel(activeSessionId, `${p}/${firstModel}`);
+                            void client.setSessionModel(activeSessionId, toModelId(p, firstModel));
                         }
                     }}
                     onModelChange={m => {
                         setModel(m);
                         if (activeSessionId) {
-                            void client.setSessionModel(activeSessionId, `${provider}/${m}`);
+                            void client.setSessionModel(activeSessionId, toModelId(provider, m));
                         }
                     }}
                     onEffortChange={e => {

@@ -29,7 +29,9 @@ export interface CodeSessionClient {
 }
 
 export function createCodeSessionClient(port: number): CodeSessionClient {
-    const base = `http://localhost:${port}`;
+    const origin = typeof window !== 'undefined' ? window.location.origin : '';
+    const currentPort = typeof window !== 'undefined' ? window.location.port : '';
+    const base = origin && currentPort === String(port) ? origin : `http://127.0.0.1:${port}`;
 
     async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
         const opts: RequestInit = { method };

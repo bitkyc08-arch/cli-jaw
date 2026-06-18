@@ -24,7 +24,7 @@ interface JsonRpcMessage {
     method?: string;
     params?: Record<string, unknown>;
     result?: Record<string, unknown>;
-    error?: { code: number; message: string };
+    error?: { code: number; message: string; data?: Record<string, unknown> };
 }
 
 interface Deferred {
@@ -147,7 +147,10 @@ class AcpHost implements CodeSessionTransport {
             const d = this.#pendingRpc.get(msg.id);
             if (!d) return;
             this.#pendingRpc.delete(msg.id);
-            if (msg.error) d.reject(new Error(msg.error.message));
+            if (msg.error) {
+                const details = typeof msg.error.data?.['details'] === 'string' ? msg.error.data['details'] : '';
+                d.reject(new Error(details ? `${msg.error.message}: ${details}` : msg.error.message));
+            }
             else d.resolve(msg.result ?? {});
             return;
         }
