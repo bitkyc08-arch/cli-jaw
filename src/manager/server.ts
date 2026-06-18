@@ -46,6 +46,7 @@ import { startRemindersScheduler } from './reminders/scheduler.js';
 import { createDashboardConnectorRouter } from './connector/routes.js';
 import { createDashboardMemoryRouter } from './routes/dashboard-memory.js';
 import { createDashboardGitRouter } from './routes/dashboard-git.js';
+import { registerManagerRuntimeMonitorRoutes } from './routes/runtime-monitor.js';
 import { VecStore, getVecDbPath, createProvider, syncAllInstances } from './memory/embedding/index.js';
 import type { EmbeddingConfig } from './memory/embedding/index.js';
 import { addBroadcastListener } from '../core/bus.js';
@@ -438,6 +439,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
 // routes never resolve to index.html.
 registerCodeRoutes(app, (_req, _res, next) => next());
 registerEventsRoutes(app, (_req, _res, next) => next());
+registerManagerRuntimeMonitorRoutes(app, (_req, _res, next) => next());
 
 app.get('/api/dashboard/health', (_req, res) => {
     res.json({

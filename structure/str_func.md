@@ -124,8 +124,8 @@ cli-jaw/
 │   │   ├── collect.ts        ← orchestrateAndCollect (bot.ts에서 분리) (66L)
 │   │   ├── scope.ts          ← 현재 단일 'default' scope를 반환하는 stub (17L)
 │   │   ├── worker-monitor.ts ← Worker stall detection — activity timestamps + stall/disconnect/timeout callbacks (58L)
-│   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + current/previous snapshot types (74L)
-│   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + progress current/previous memory retention (327L)
+│   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + current/previous snapshot types (76L)
+│   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + progress current/previous memory retention (329L)
 │   │   ├── workspace-context.ts ← Project root/path hint resolver for employee dispatch context (136L)
 │   │   ├── friction.ts       ← Interview friction/stagnation detector (76L)
 │   │   ├── seed.ts           ← Interview seed/ontology builder (107L)
@@ -325,7 +325,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 511 files source/assets, ~84920L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 515 files source/assets, ~85673L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1137L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
@@ -363,7 +363,7 @@ cli-jaw/
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)
 │       ├── skill.ts          ← 스킬 관리 (install/remove/info/list/reset soft·hard) (245L)
 │       ├── employee.ts       ← 직원 관리 (list/reset, REST API 호출, JSON/table 출력, 82L)
-│       ├── worker.ts         ← 직원 progress status/watch CLI + employee name/id resolver + safe-summary printer (210L)
+│       ├── worker.ts         ← 직원 progress status/watch CLI + employee name/id resolver + safe-summary printer (213L)
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션) (104L)
 │       ├── clone.ts          ← 인스턴스 복제 (--from, --with-memory, regenerateB) (180L)
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init, --chat 통합검색) (195L)

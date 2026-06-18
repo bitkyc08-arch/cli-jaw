@@ -112,6 +112,8 @@ function toProgressRun(slot: WorkerSlot): WorkerProgressRun {
         employeeName: slot.employeeName,
         state: slot.state,
         taskPreview: previewText(slot.task, 200) || '',
+        ...(slot.phase ? { phase: slot.phase } : {}),
+        ...(slot.phaseLabel ? { phaseLabel: slot.phaseLabel } : {}),
         startedAt: slot.startedAt,
         completedAt: slot.completedAt,
         progressUpdatedAt: slot.progressUpdatedAt,

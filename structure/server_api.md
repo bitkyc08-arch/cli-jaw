@@ -276,12 +276,13 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 ## Manager Dashboard Server Surface
 
-`jaw dashboard serve`가 띄우는 별도 manager 서버(`src/manager/server.ts`, 909L)는 core `server.ts` route count에 포함하지 않는다. Manager instance state는 `src/manager/instance-registry.ts`(120L)가 cached scan + diff event source로 제공한다. Manager React UI는 `/api/manager/events`, `/api/dashboard/instances`, `/i/:port/api/messages/latest` 계열 HTTP polling으로 상태를 읽고, manager server는 `src/manager/worker-events.ts` + `src/manager/worker-sse-client.ts`를 통해 각 worker instance의 `GET /api/events`를 server-side로 구독해 latest-message cache를 갱신한다. #233부터 worker의 `settings:settings_change`(cli/model/projectDirs 변경)는 `worker_settings_change`로 재발행되어 `GET /api/manager/events/stream`(SSE)으로 manager UI에 live 전달되고, UI(`useManagerEventStream`)는 해당 instance row를 즉시 재조회한다.
+`jaw dashboard serve`가 띄우는 별도 manager 서버(`src/manager/server.ts`, 919L)는 core `server.ts` route count에 포함하지 않는다. Manager instance state는 `src/manager/instance-registry.ts`(120L)가 cached scan + diff event source로 제공한다. Manager React UI는 `/api/manager/events`, `/api/dashboard/instances`, `/i/:port/api/messages/latest` 계열 HTTP polling으로 상태를 읽고, manager server는 `src/manager/worker-events.ts` + `src/manager/worker-sse-client.ts`를 통해 각 worker instance의 `GET /api/events`를 server-side로 구독해 latest-message cache를 갱신한다. #233부터 worker의 `settings:settings_change`(cli/model/projectDirs 변경)는 `worker_settings_change`로 재발행되어 `GET /api/manager/events/stream`(SSE)으로 manager UI에 live 전달되고, UI(`useManagerEventStream`)는 해당 instance row를 즉시 재조회한다. Code mode의 background/worker monitor는 child Jaw instance가 아니라 manager-local `src/manager/routes/runtime-monitor.ts`를 통해 `/api/bgtask`와 `/api/orchestrate/worker-progress` JSON API를 직접 읽는다.
 
 | Surface | Endpoints |
 | --- | --- |
 | Manager health/scan | `GET /api/dashboard/health` `GET /api/dashboard/instances` `GET /api/dashboard/instances/:port` `POST /api/dashboard/instances/:port/message` |
 | Manager events/logs | `GET /api/manager/events` `GET /api/manager/events/stream` (SSE) `GET /api/manager/health-history/:port` `GET /api/manager/instance-logs/:port` |
+| Runtime monitors | `GET/POST /api/bgtask` `GET/DELETE /api/bgtask/:id` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` |
 | Registry | `GET /api/dashboard/registry` `PATCH /api/dashboard/registry` |
 | Lifecycle | `POST /api/dashboard/lifecycle/:action` (start/stop/restart/perm/unperm) |
 | Process control | `GET /api/dashboard/process-control` `POST /api/dashboard/process-control/adopt` `POST /api/dashboard/process-control/stop-managed` `POST /api/dashboard/process-control/force-release` |

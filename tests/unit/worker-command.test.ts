@@ -23,6 +23,8 @@ test('worker command queries status and watch progress endpoints', () => {
 });
 
 test('worker command prints lifecycle attention from progress snapshots', () => {
+    assert.match(workerSrc, /phase\?: string \| null/);
+    assert.match(workerSrc, /console\.log\(`phase:/);
     assert.match(workerSrc, /attention\?:/);
     assert.match(workerSrc, /run\.attention\?\.message/);
     assert.match(workerSrc, /console\.log\(`attention:/);

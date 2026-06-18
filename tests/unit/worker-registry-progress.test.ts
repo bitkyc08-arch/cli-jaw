@@ -38,6 +38,19 @@ test('worker registry stores readable employee tool progress while running', () 
     assert.equal(progress?.previous, null);
 });
 
+test('worker registry progress exposes phase context', () => {
+    claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
+    const slot = getWorkerSlot('backend');
+    if (slot) {
+        slot.phase = '3';
+        slot.phaseLabel = 'Development';
+    }
+
+    const progress = getWorkerProgressSnapshot('backend');
+    assert.equal(progress?.current?.phase, '3');
+    assert.equal(progress?.current?.phaseLabel, 'Development');
+});
+
 test('pending worker replay includes final employee tool process', () => {
     claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
     finishWorker('backend', 'done', [{

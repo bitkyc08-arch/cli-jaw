@@ -52,6 +52,8 @@ interface WorkerRun {
     employeeName?: string;
     state?: string;
     taskPreview?: string;
+    phase?: string | null;
+    phaseLabel?: string | null;
     startedAt?: number;
     completedAt?: number | null;
     resultPreview?: string;
@@ -121,6 +123,7 @@ function printRun(snapshot: WorkerProgressSnapshot): void {
     const name = snapshot.employeeName || run.employeeName || snapshot.agentId || run.agentId || 'worker';
     console.log(`${name}: ${run.state || 'unknown'}`);
     if (run.taskPreview) console.log(`task: ${run.taskPreview}`);
+    if (run.phase || run.phaseLabel) console.log(`phase: ${run.phaseLabel || run.phase}`);
     if (run.attention?.message) {
         const detail = [
             run.attention.kind,

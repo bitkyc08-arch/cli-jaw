@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { BackgroundTaskMonitorPanel } from '../background-tasks/BackgroundTaskMonitorPanel';
+import { WorkerProgressMonitorPanel } from '../workers/WorkerProgressMonitorPanel';
 import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import { CodeCommandPopup } from './CodeCommandPopup';
 import { CodeComposer } from './CodeComposer';
@@ -74,6 +75,7 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                 onWorkingDirChange={props.onWorkingDirChange}
             />
             <BackgroundTaskMonitorPanel />
+            <WorkerProgressMonitorPanel />
             <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} />
             <CodePermissionQueue permissions={props.permissions} onAnswer={props.onPermissionAnswer} />
             <div className="code-composer-dock">

@@ -29,6 +29,8 @@ export interface WorkerProgressRun {
     employeeName: string;
     state: WorkerRunState;
     taskPreview: string;
+    phase?: string | null;
+    phaseLabel?: string | null;
     startedAt: number;
     completedAt: number | null;
     progressUpdatedAt: number | null;
