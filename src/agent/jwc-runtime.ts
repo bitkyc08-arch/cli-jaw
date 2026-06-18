@@ -34,6 +34,7 @@ interface EngineSdk {
         hasUI?: boolean;
         sessionManager?: unknown;
         modelPattern?: string;
+        thinkingLevel?: string;
     }): Promise<{ session: EngineSession }>;
     SessionManager: {
         create(cwd: string, dir: string): unknown;
@@ -96,10 +97,17 @@ class JawRuntime {
     }
 
     #modelPattern: string | undefined;
+    #thinkingLevel: string | undefined;
 
     setModelPattern(pattern: string | undefined): void {
         if (pattern === this.#modelPattern) return;
         this.#modelPattern = pattern;
+        if (this.#slot) void this.#disposeSlot();
+    }
+
+    setThinkingLevel(level: string | undefined): void {
+        if (level === this.#thinkingLevel) return;
+        this.#thinkingLevel = level;
         if (this.#slot) void this.#disposeSlot();
     }
 
@@ -119,6 +127,7 @@ class JawRuntime {
         const { session } = await sdk.createAgentSession({
             cwd, agentDir, hasUI: false, sessionManager,
             ...(this.#modelPattern ? { modelPattern: this.#modelPattern } : {}),
+            ...(this.#thinkingLevel ? { thinkingLevel: this.#thinkingLevel } : {}),
         });
         const unsubscribe = session.subscribe(event =>
             mapAgentEventToBus(event, { cwd, sessionId: cwd, liveScope: this.#liveScope }),

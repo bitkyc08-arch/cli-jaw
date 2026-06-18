@@ -814,7 +814,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         mainSpawnStarting = true;
         beginLiveRun(liveScope, 'jwc');
         broadcast('agent_status', { running: true, agentId: jwcLabel, cli: 'jwc' });
+        const jwcEffort = jwcOverrides?.['effort'] || jwcPerCli?.['effort'] || '';
         jawRuntime.setModelPattern(`${jwcProvider}/${jwcModel}`);
+        jawRuntime.setThinkingLevel(jwcEffort || undefined);
         jawRuntime.setLiveScope(liveScope);
         const settleJwcTurn = (result: { text: string; code: number }): void => {
             const live = getLiveRun(liveScope);
