@@ -8,7 +8,7 @@ import { CodeSessionList } from './CodeSessionList';
 import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
-import { findLastToolMessageIndex, toModelId, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
+import { findLastToolMessageIndex, normalizeCodeCommands, toModelId, type CodeCommand, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
 type CodeCanvasProps = {
@@ -34,7 +34,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [sending, setSending] = useState(false);
     const [messages, setMessages] = useState<TranscriptEntry[]>([]);
     const [permissions, setPermissions] = useState<PendingPermission[]>([]);
-    const [availableCommands, setAvailableCommands] = useState<Array<{ name: string; description?: string }>>([]);
+    const [availableCommands, setAvailableCommands] = useState<CodeCommand[]>([]);
     const [showCommands, setShowCommands] = useState(false);
     const [sessionTitle, setSessionTitle] = useState('');
     const [usage, setUsage] = useState<{ contextTokens?: number; contextLimit?: number; cost?: number }>({});
@@ -186,12 +186,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             const entries = (update['entries'] ?? []) as Array<{ title?: string; status?: string }>;
             setPlanEntries(entries.filter(e => e.title).map(e => ({ title: String(e.title), status: String(e.status ?? 'pending') })));
         } else if (kind === 'code_available_commands_update') {
-            const cmds = (update['availableCommands'] ?? []) as Array<{ name?: string; description?: string }>;
-            setAvailableCommands(cmds.filter(c => c.name).map(c => {
-                const command: { name: string; description?: string } = { name: String(c.name) };
-                if (c.description) command.description = String(c.description);
-                return command;
-            }));
+            setAvailableCommands(normalizeCodeCommands(update['availableCommands']));
         } else if (kind === 'code_turn_done') {
             setSending(false);
         } else if (kind === 'code_session_error') {
@@ -231,8 +226,9 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setShowCommands(text === '/' || (text.startsWith('/') && !text.includes(' ')));
     }, []);
 
-    const handleCommandSelect = useCallback((name: string) => {
-        setInputText(name + ' ');
+    const handleCommandSelect = useCallback((command: CodeCommand) => {
+        if (command.disabledReason) return;
+        setInputText(`${command.displayName} `);
         setShowCommands(false);
     }, []);
 
