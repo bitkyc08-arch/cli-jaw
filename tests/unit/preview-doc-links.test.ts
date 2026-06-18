@@ -62,3 +62,20 @@ test('DocPanel surfaces truncated reads instead of silent empty', () => {
     assert.ok(docPanel.includes('File too large to preview'), 'truncated state must render a message');
     assert.ok(docPanel.includes("'readFile' | 'getDefaultRoot'"), 'bridge type must include getDefaultRoot for cold-start retry');
 });
+
+test('DocPanel preserves same-file scroll across async Markdown layout changes', () => {
+    const docPanel = read('public/manager/src/doc-panel/DocPanel.tsx');
+    const css = read('public/manager/src/doc-panel/doc-panel.css');
+    const notesCss = read('public/manager/src/manager-notes.css');
+
+    assert.ok(docPanel.includes('useLayoutEffect'), 'DocPanel must restore scroll before paint after same-file content updates');
+    assert.ok(docPanel.includes('scrollRef = useRef<HTMLDivElement | null>(null)'), 'DocPanel must own the scroll container ref');
+    assert.ok(docPanel.includes('contentBodyRef = useRef<HTMLDivElement | null>(null)'), 'DocPanel must own an inner content body ref');
+    assert.ok(docPanel.includes('className="doc-content-body"'), 'DocPanel must render an observable inner content body');
+    assert.ok(docPanel.includes('new ResizeObserver'), 'DocPanel must observe async child layout changes');
+    assert.ok(docPanel.includes('observer.observe(body)'), 'ResizeObserver must watch the content body, not only the fixed scroll container');
+    assert.ok(docPanel.includes('activeFilePathRef.current !== filePath'), 'file changes must intentionally reset scroll');
+    assert.ok(docPanel.includes('scrollSnapshotRef.current = {'), 'scroll events must keep a same-file scroll snapshot');
+    assert.ok(css.includes('.doc-content-body'), 'DocPanel CSS must acknowledge the inner content body');
+    assert.ok(notesCss.includes('min-height: 96px'), 'Mermaid loading blocks must reserve stable height');
+});

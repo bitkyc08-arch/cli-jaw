@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getDesktop, type FolderBridgeApi } from '../panels/desktop-bridge';
 import { MarkdownRenderer } from '../notes/rendering/MarkdownRenderer';
 import { CodeBlock } from '../notes/rendering/CodeBlock';
@@ -46,10 +46,30 @@ function DocContent(props: { filePath: string; content: string }) {
 
 export function DocPanel(props: { filePath?: string | undefined }) {
     const bridge = getFileBridge();
+    const scrollRef = useRef<HTMLDivElement | null>(null);
+    const contentBodyRef = useRef<HTMLDivElement | null>(null);
+    const activeFilePathRef = useRef<string | undefined>(undefined);
+    const scrollSnapshotRef = useRef({ filePath: '', scrollTop: 0 });
+    const resizeRestoreRef = useRef<number | null>(null);
     const [content, setContent] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
     const [binary, setBinary] = useState(false);
     const [truncated, setTruncated] = useState(false);
+
+    const scheduleScrollRestore = useCallback((filePath: string) => {
+        if (resizeRestoreRef.current !== null) {
+            cancelAnimationFrame(resizeRestoreRef.current);
+        }
+        const top = scrollSnapshotRef.current.filePath === filePath
+            ? scrollSnapshotRef.current.scrollTop
+            : 0;
+        resizeRestoreRef.current = requestAnimationFrame(() => {
+            resizeRestoreRef.current = null;
+            const node = scrollRef.current;
+            if (!node || scrollSnapshotRef.current.filePath !== filePath) return;
+            node.scrollTop = top;
+        });
+    }, []);
 
     useEffect(() => {
         if (!props.filePath) {
@@ -99,6 +119,41 @@ export function DocPanel(props: { filePath?: string | undefined }) {
         return () => { cancelled = true; };
     }, [bridge, props.filePath]);
 
+    useLayoutEffect(() => {
+        const node = scrollRef.current;
+        const filePath = props.filePath;
+        if (!node || !filePath) return;
+        if (activeFilePathRef.current !== filePath) {
+            activeFilePathRef.current = filePath;
+            node.scrollTop = 0;
+            scrollSnapshotRef.current = { filePath, scrollTop: 0 };
+            return;
+        }
+        scheduleScrollRestore(filePath);
+    }, [content, props.filePath, scheduleScrollRestore]);
+
+    useEffect(() => {
+        const body = contentBodyRef.current;
+        const filePath = props.filePath;
+        if (!body || !filePath) return undefined;
+
+        const observer = new ResizeObserver(() => {
+            if (scrollSnapshotRef.current.filePath !== filePath) return;
+            scheduleScrollRestore(filePath);
+        });
+        observer.observe(body);
+        return () => {
+            observer.disconnect();
+        };
+    }, [content, props.filePath, scheduleScrollRestore]);
+
+    useEffect(() => () => {
+        if (resizeRestoreRef.current !== null) {
+            cancelAnimationFrame(resizeRestoreRef.current);
+            resizeRestoreRef.current = null;
+        }
+    }, []);
+
     if (!props.filePath) {
         return <div className="doc-panel doc-empty">Open Folders and select a file to preview it here.</div>;
     }
@@ -133,8 +188,20 @@ export function DocPanel(props: { filePath?: string | undefined }) {
                     Path
                 </button>
             </div>
-            <div className="doc-content">
-                <DocContent filePath={props.filePath} content={content} />
+            <div
+                className="doc-content"
+                ref={scrollRef}
+                onScroll={(event) => {
+                    if (!props.filePath) return;
+                    scrollSnapshotRef.current = {
+                        filePath: props.filePath,
+                        scrollTop: event.currentTarget.scrollTop,
+                    };
+                }}
+            >
+                <div className="doc-content-body" ref={contentBodyRef}>
+                    <DocContent filePath={props.filePath} content={content} />
+                </div>
             </div>
         </div>
     );

@@ -52,6 +52,9 @@
     min-height: 0;
     overflow: auto;
 }
+.doc-content-body {
+    min-width: 0;
+}
 .doc-pre {
     margin: 0;
     padding: 8px 10px;

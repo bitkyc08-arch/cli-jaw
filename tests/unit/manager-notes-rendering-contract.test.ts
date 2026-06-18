@@ -236,6 +236,29 @@ test('MermaidBlock uses component-owned strict Mermaid rendering without iframe'
     assert.ok(mermaid.includes("status: 'error'"), 'Mermaid render failures must stay local to the block');
 });
 
+test('MermaidBlock caches ready SVG output without flashing same-source renders back to loading', () => {
+    const mermaid = read('public/manager/src/notes/rendering/MermaidBlock.tsx');
+
+    assert.ok(mermaid.includes('renderedMermaidCache = new Map<string, MermaidReadyState>()'),
+        'MermaidBlock must cache sanitized ready output');
+    assert.ok(mermaid.includes("Extract<MermaidState, { status: 'ready' }>"),
+        'cached ready values must share the final ready-state shape');
+    assert.ok(mermaid.includes('sourceKey: string'),
+        'Mermaid render state must track the source key used for cache safety');
+    assert.ok(mermaid.includes('getMermaidCacheThemeKey()'),
+        'cache key must include the active theme signature, not source text only');
+    assert.ok(mermaid.includes('const themeKey = getMermaidCacheThemeKey();'),
+        'theme key must be read during render so theme-only rerenders can invalidate Mermaid SVG cache keys');
+    assert.ok(mermaid.includes('useMemo(() => `${themeKey}\\n${code}`, [code, themeKey])'),
+        'Mermaid cache key must update when either source or active theme changes');
+    assert.ok(mermaid.includes('useMemo(() => preprocessMermaid(props.code), [props.code])'),
+        'preprocessed Mermaid source must be memoized before caching/rendering');
+    assert.ok(mermaid.includes('current.status === \'ready\' && current.sourceKey === sourceKey'),
+        'same-source ready state must not be forced back to loading');
+    assert.ok(mermaid.includes('rememberRenderedMermaid(sourceKey, ready)'),
+        'successful renders must populate the output cache');
+});
+
 test('CodeBlock uses highlight.js core with curated language aliases and safe fallback', () => {
     const codeBlock = read('public/manager/src/notes/rendering/CodeBlock.tsx');
     const highlight = read('public/manager/src/notes/rendering/highlight-languages.ts');
