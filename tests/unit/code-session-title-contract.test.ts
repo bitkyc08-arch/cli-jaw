@@ -69,6 +69,19 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.ok(loadBlock.includes('if (activeSessionIdRef.current === id)'), 'load failure must only restore state when failed id is still active');
 });
 
+test('code canvas owns code cwd override independent from manager instance selection', () => {
+    const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+
+    assert.ok(canvas.includes('const [codeWorkingDir, setCodeWorkingDir] = useState(workingDir)'), 'CodeCanvas must keep an internal Code cwd override');
+    assert.ok(canvas.includes('const handleWorkingDirChange = useCallback'), 'CodeCanvas must own the cwd apply handler');
+    assert.ok(canvas.includes('setCodeWorkingDir(next)'), 'cwd apply must update Code mode immediately before parent persistence');
+    assert.ok(canvas.includes('onWorkingDirChange?.(path)'), 'cwd apply should still persist through the manager settings bridge');
+    assert.ok(canvas.includes('client.getGitInfo(codeWorkingDir)'), 'git/worktree context must use the Code cwd override');
+    assert.ok(canvas.includes('const cwd = codeWorkingDir ||'), 'new sessions must be created in the Code cwd override');
+    assert.ok(canvas.includes('workingDir={codeWorkingDir}'), 'session list, header, and transcript must render the Code cwd override');
+    assert.equal(canvas.includes('const cwd = workingDir ||'), false, 'new sessions must not fall back to the manager instance workingDir prop');
+});
+
 test('code backend normalizes JWC session title metadata and returns title on load', () => {
     const types = read('src/code-mode/types.ts');
     const host = read('src/code-mode/acp-host.ts');

@@ -21,6 +21,7 @@ type CodeCanvasProps = {
 
 export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
+    const [codeWorkingDir, setCodeWorkingDir] = useState(workingDir);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
@@ -45,6 +46,16 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const activeSessionIdRef = useRef<string | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
+
+    useEffect(() => {
+        setCodeWorkingDir(workingDir);
+    }, [workingDir]);
+
+    const handleWorkingDirChange = useCallback((path: string | null) => {
+        const next = path ?? '';
+        setCodeWorkingDir(next);
+        onWorkingDirChange?.(path);
+    }, [onWorkingDirChange]);
 
     const applyModelOptions = useCallback((options: CodeModelOptions) => {
         setModelOptions(options);
@@ -104,17 +115,17 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     }, [applyModelOptions, client]);
 
     useEffect(() => {
-        if (!workingDir) {
+        if (!codeWorkingDir) {
             setGitInfo(null);
             return;
         }
         let cancelled = false;
-        void client.getGitInfo(workingDir).then(
+        void client.getGitInfo(codeWorkingDir).then(
             info => { if (!cancelled) setGitInfo(info); },
             () => { if (!cancelled) setGitInfo(null); },
         );
         return () => { cancelled = true; };
-    }, [client, workingDir]);
+    }, [client, codeWorkingDir]);
 
     useEffect(() => {
         setActiveSessionId(null);
@@ -125,7 +136,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setSessionTitle('');
         setUsage({});
         setSending(false);
-    }, [workingDir]);
+    }, [codeWorkingDir]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
         const update = event.update ?? {};
@@ -231,7 +242,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         try {
             let sessionId = activeSessionId;
             if (!sessionId) {
-                const cwd = workingDir || '/tmp';
+                const cwd = codeWorkingDir || '/tmp';
                 const session = await client.createSession(cwd, selectedModelId || undefined);
                 sessionId = session.sessionId;
                 activeSessionIdRef.current = sessionId;
@@ -242,7 +253,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${err instanceof Error ? err.message : String(err)}` }]);
             setSending(false);
         }
-    }, [inputText, sending, activeSessionId, client, workingDir, selectedModelId]);
+    }, [inputText, sending, activeSessionId, client, codeWorkingDir, selectedModelId]);
 
     const handleInputChange = useCallback((text: string) => {
         setInputText(text);
@@ -349,7 +360,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         <CodeSessionList
             client={client}
             activeSessionId={activeSessionId}
-            workingDir={workingDir}
+            workingDir={codeWorkingDir}
             onSelectSession={id => { setActiveSessionId(id); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
             onLoadSession={(id, cwd) => {
                 void (async () => {
@@ -377,15 +388,15 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const workbench = (
         <div className="code-canvas-main">
                 <CodeWorkspaceHeader
-                    workingDir={workingDir}
                     gitInfo={gitInfo}
                     modelOptions={modelOptions}
                     sessionTitle={sessionTitle}
                     usage={usage}
                     planEntries={planEntries}
-                    onWorkingDirChange={onWorkingDirChange}
+                    workingDir={codeWorkingDir}
+                    onWorkingDirChange={handleWorkingDirChange}
                 />
-                <CodeTranscript messages={messages} sending={sending} workingDir={workingDir} transcriptRef={transcriptRef} />
+                <CodeTranscript messages={messages} sending={sending} workingDir={codeWorkingDir} transcriptRef={transcriptRef} />
                 <CodePermissionQueue permissions={permissions} onAnswer={(permissionId, optionId) => void handlePermissionAnswer(permissionId, optionId)} />
                 <CodeComposer
                     inputText={inputText}
