@@ -11,6 +11,7 @@ import {
 } from '../git/diff-service.js';
 import { resolveFolderGitRoot } from '../git/folder-root-validation.js';
 import { getGitStatusMap, readGitStatusMapOptions } from '../git/status-service.js';
+import { getSourceControlSnapshot, readSourceControlSnapshotOptions } from '../git/source-control-service.js';
 import { getGitWorktrees } from '../git/worktree-service.js';
 import {
     readGitWorktreeOperation,
@@ -102,6 +103,22 @@ export function createDashboardGitRouter(options: DashboardGitRouterOptions): ex
             }
             const files = await getDiffSummary(root.root.root, parsed.options);
             res.json({ ok: true, files });
+        } catch (error) {
+            res.status(500).json({ ok: false, error: (error as Error).message });
+        }
+    });
+
+    router.post('/scm-snapshot', async (req, res) => {
+        try {
+            const input = isRecord(req.body) ? req.body : {};
+            const repoRoot = typeof input['repoRoot'] === 'string' ? input['repoRoot'] : '';
+            const root = await validateRepoRoot(req.body, options, repoRoot);
+            if (!root.ok) {
+                res.status(root.status).json({ ok: false, error: root.error });
+                return;
+            }
+            const snapshot = await getSourceControlSnapshot(root.root.root, readSourceControlSnapshotOptions(input['options']));
+            res.json({ ok: true, snapshot });
         } catch (error) {
             res.status(500).json({ ok: false, error: (error as Error).message });
         }

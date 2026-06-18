@@ -11,6 +11,7 @@ import {
 } from '../../../../../src/manager/git/diff-service.js';
 import { resolveFolderGitRoot } from '../../../../../src/manager/git/folder-root-validation.js';
 import { getGitStatusMap, readGitStatusMapOptions } from '../../../../../src/manager/git/status-service.js';
+import { getSourceControlSnapshot, readSourceControlSnapshotOptions } from '../../../../../src/manager/git/source-control-service.js';
 import { getGitWorktrees } from '../../../../../src/manager/git/worktree-service.js';
 import {
     readGitWorktreeOperation,
@@ -44,6 +45,16 @@ export function registerDiffIpc(): void {
         try {
             const files = await getDiffSummary(repoRoot, parsed.options);
             return { ok: true, files };
+        } catch (err) {
+            return { ok: false, error: (err as Error).message };
+        }
+    });
+
+    ipcMain.handle('diff:getScmSnapshot', async (event, repoRoot: string, rawOptions?: unknown) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        try {
+            const snapshot = await getSourceControlSnapshot(repoRoot, readSourceControlSnapshotOptions(rawOptions));
+            return { ok: true, snapshot };
         } catch (err) {
             return { ok: false, error: (err as Error).message };
         }

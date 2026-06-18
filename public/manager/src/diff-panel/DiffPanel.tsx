@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
-import { getDesktop, type DiffBridgeApi, type DiffOptions, type DiffResolvedRoot, type DiffRootCandidate } from '../panels/desktop-bridge';
+import { getDesktop, type DiffBridgeApi, type DiffOptions, type DiffResolvedRoot, type DiffRootCandidate, type SourceControlSnapshot } from '../panels/desktop-bridge';
 import type { DashboardDiffMode, DashboardInstance, DashboardRegistryUi } from '../types';
 import { createDashboardGitDiffClient } from './diff-client';
 import { buildDiffRootCandidates } from './diff-root-candidates';
@@ -10,6 +10,18 @@ type DiffFileSummary = {
     status: string;
     insertions: number;
     deletions: number;
+};
+
+type DiffFileListItem = DiffFileSummary & {
+    conflict?: boolean;
+    staged?: boolean;
+    unstaged?: boolean;
+};
+
+type DiffFileListGroup = {
+    id: string;
+    label: string;
+    files: DiffFileListItem[];
 };
 
 type DiffSettings = Pick<DashboardRegistryUi,
@@ -103,6 +115,29 @@ function relativeDiffPath(repoRoot: string | null, filePath: string | null): str
     return normalizedFile.slice(normalizedRoot.length + 1);
 }
 
+function groupedDiffFiles(snapshot: SourceControlSnapshot | null, files: DiffFileSummary[]): DiffFileListGroup[] {
+    if (!snapshot) return files.length > 0 ? [{ id: 'changes', label: 'Changes', files }] : [];
+    const summaryByPath = new Map(files.map(file => [file.path, file]));
+    return snapshot.groups
+        .map(group => ({
+            id: group.id,
+            label: `${group.label} (${group.files.length})`,
+            files: group.files.map(file => {
+                const summary = summaryByPath.get(file.repoRelativePath);
+                return {
+                    path: file.repoRelativePath,
+                    status: file.kind,
+                    insertions: summary?.insertions ?? 0,
+                    deletions: summary?.deletions ?? 0,
+                    conflict: file.conflict,
+                    staged: file.staged,
+                    unstaged: file.unstaged,
+                };
+            }),
+        }))
+        .filter(group => group.files.length > 0);
+}
+
 export function DiffPanel(props: DiffPanelProps) {
     const repoRootPath = props.repoRootPath ?? null;
     const folderRootPath = props.folderRootPath ?? null;
@@ -115,6 +150,7 @@ export function DiffPanel(props: DiffPanelProps) {
     const [repoCandidates, setRepoCandidates] = useState<DiffResolvedRoot[]>([]);
     const [repoRoot, setRepoRoot] = useState<string | null>(null);
     const [files, setFiles] = useState<DiffFileSummary[]>([]);
+    const [scmSnapshot, setScmSnapshot] = useState<SourceControlSnapshot | null>(null);
     const [selectedFile, setSelectedFile] = useState<string | null>(null);
     const [diffContent, setDiffContent] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
@@ -183,17 +219,22 @@ export function DiffPanel(props: DiffPanelProps) {
 
     const loadSummary = useCallback(async () => {
         if (!bridge || !repoRoot) return;
-        const result = await bridge.getDiffSummary(repoRoot, options);
+        const [result, snapshotResult] = await Promise.all([
+            bridge.getDiffSummary(repoRoot, options),
+            bridge.getScmSnapshot(repoRoot, { includeUntracked: props.settings.diffIncludeUntracked }),
+        ]);
         if (result.ok && result.files) {
             setFiles(result.files);
             setSelectedFile(current => current && result.files?.some(file => file.path === current) ? current : result.files?.[0]?.path ?? null);
+            setScmSnapshot(snapshotResult.ok ? snapshotResult.snapshot ?? null : null);
             setError(null);
         } else {
             setFiles([]);
+            setScmSnapshot(null);
             setSelectedFile(null);
             setError(result.error ?? 'Failed to get diff summary');
         }
-    }, [bridge, options, repoRoot]);
+    }, [bridge, options, props.settings.diffIncludeUntracked, repoRoot]);
 
     useEffect(() => { void loadRepoCandidates(); }, [loadRepoCandidates]);
     useEffect(() => { void loadSummary(); }, [loadSummary]);
@@ -241,6 +282,8 @@ export function DiffPanel(props: DiffPanelProps) {
     function handleModeChange(mode: DashboardDiffMode): void {
         props.onSettingsPatch?.({ diffDefaultMode: mode });
     }
+
+    const fileGroups = useMemo(() => groupedDiffFiles(scmSnapshot, files), [files, scmSnapshot]);
 
     async function handleChooseRepository(): Promise<void> {
         const folderBridge = getDesktop()?.folder;
@@ -334,19 +377,24 @@ export function DiffPanel(props: DiffPanelProps) {
             {error && <div className="diff-error">{error}</div>}
             <div className="diff-body">
                 <div className="diff-file-list">
-                    {files.map(f => (
-                        <button key={f.path} type="button"
-                            className={`diff-file-item ${f.path === selectedFile ? 'is-selected' : ''} diff-status-${f.status}`}
-                            onClick={() => handleFileSelect(f.path)}>
-                            <span className="diff-file-name">{f.path}</span>
-                            <span className="diff-file-stats">
-                                {f.insertions > 0 && <span className="diff-ins">+{f.insertions}</span>}
-                                {f.deletions > 0 && <span className="diff-del">-{f.deletions}</span>}
-                                {f.status === 'untracked' && <span className="diff-ins">new</span>}
-                            </span>
-                        </button>
+                    {fileGroups.map(group => (
+                        <div key={group.id} className="diff-file-group">
+                            <div className="diff-file-group-heading">{group.label}</div>
+                            {group.files.map(f => (
+                                <button key={`${group.id}:${f.path}`} type="button"
+                                    className={`diff-file-item ${f.path === selectedFile ? 'is-selected' : ''} diff-status-${f.status}${f.conflict ? ' is-conflict' : ''}`}
+                                    onClick={() => handleFileSelect(f.path)}>
+                                    <span className="diff-file-name">{f.path}</span>
+                                    <span className="diff-file-stats">
+                                        {f.insertions > 0 && <span className="diff-ins">+{f.insertions}</span>}
+                                        {f.deletions > 0 && <span className="diff-del">-{f.deletions}</span>}
+                                        {f.status === 'untracked' && <span className="diff-ins">new</span>}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
                     ))}
-                    {files.length === 0 && !error && <div className="diff-empty">No changes</div>}
+                    {fileGroups.length === 0 && !error && <div className="diff-empty">No changes</div>}
                 </div>
                 <div className="diff-content">
                     <pre className="diff-pre">{renderDiffLines(diffContent)}</pre>

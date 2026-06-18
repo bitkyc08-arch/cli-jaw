@@ -68,6 +68,7 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
   diff: {
     getRepoRoot: (cwd: string) => ipcRenderer.invoke('diff:getRepoRoot', cwd),
     getRepoCandidates: (candidates: Array<{ path: string; label: string; source: string }>) => ipcRenderer.invoke('diff:getRepoCandidates', candidates),
+    getScmSnapshot: (repoRoot: string, options?: { includeUntracked?: boolean }) => ipcRenderer.invoke('diff:getScmSnapshot', repoRoot, options),
     getDiffSummary: (repoRoot: string, options: { mode: string; ref?: string; includeUntracked?: boolean }) => ipcRenderer.invoke('diff:getDiffSummary', repoRoot, options),
     getFileDiff: (repoRoot: string, filePath: string, options: { mode: string; ref?: string; includeUntracked?: boolean }) => ipcRenderer.invoke('diff:getFileDiff', repoRoot, filePath, options),
   },

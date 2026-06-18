@@ -30,6 +30,31 @@ export type DiffOptions = {
     includeUntracked?: boolean;
 };
 
+export type SourceControlGroupId = 'conflicts' | 'staged' | 'changes' | 'untracked';
+
+export type SourceControlFile = {
+    path: string;
+    repoRelativePath: string;
+    kind: string;
+    staged: boolean;
+    unstaged: boolean;
+    conflict: boolean;
+};
+
+export type SourceControlGroup = {
+    id: SourceControlGroupId;
+    label: string;
+    files: SourceControlFile[];
+};
+
+export type SourceControlSnapshot = {
+    repoRoot: string;
+    branch: string | null;
+    head: string | null;
+    dirty: boolean;
+    groups: SourceControlGroup[];
+};
+
 export type DiffRootCandidate = {
     path: string;
     label: string;
@@ -46,6 +71,7 @@ export type DiffResolvedRoot = DiffRootCandidate & {
 export type DiffBridgeApi = {
     getRepoRoot: (cwd: string) => Promise<{ ok: boolean; root?: string; error?: string }>;
     getRepoCandidates: (candidates: DiffRootCandidate[]) => Promise<{ ok: boolean; candidates?: DiffResolvedRoot[]; error?: string }>;
+    getScmSnapshot: (repoRoot: string, options?: { includeUntracked?: boolean }) => Promise<{ ok: boolean; snapshot?: SourceControlSnapshot; error?: string }>;
     getDiffSummary: (repoRoot: string, options: DiffOptions) => Promise<{ ok: boolean; files?: Array<{ path: string; status: string; insertions: number; deletions: number }>; error?: string }>;
     getFileDiff: (repoRoot: string, filePath: string, options: DiffOptions) => Promise<{ ok: boolean; diff?: string; error?: string }>;
 };

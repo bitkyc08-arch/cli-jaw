@@ -122,6 +122,21 @@
     overflow-y: auto;
     flex-shrink: 0;
 }
+.diff-file-group {
+    padding-bottom: 4px;
+}
+.diff-file-group-heading {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    padding: 5px 8px 3px;
+    color: var(--text-dim);
+    background: var(--bg-panel);
+    border-bottom: 1px solid var(--border-subtle);
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
 .diff-file-item {
     all: unset;
     cursor: pointer;
@@ -143,6 +158,7 @@
 .diff-del { color: var(--status-error); }
 .diff-status-added .diff-file-name { color: var(--status-success); }
 .diff-status-deleted .diff-file-name { color: var(--status-error); }
+.diff-file-item.is-conflict .diff-file-name { color: var(--status-warning, var(--status-error)); }
 .diff-empty {
     padding: 12px;
     color: var(--text-dim);

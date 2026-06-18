@@ -35,6 +35,10 @@ export function createDashboardGitDiffClient(
             '/api/dashboard/git/repo-candidates',
             baseBody(instance, settings),
         ),
+        getScmSnapshot: async (repoRoot: string, options?: { includeUntracked?: boolean }) => postJson(
+            '/api/dashboard/git/scm-snapshot',
+            { ...baseBody(instance, settings), repoRoot, options },
+        ),
         getDiffSummary: async (repoRoot: string, options: DiffOptions) => postJson(
             '/api/dashboard/git/diff-summary',
             { ...baseBody(instance, settings), repoRoot, options },
