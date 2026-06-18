@@ -5,23 +5,40 @@ type ComposerFooterProps = {
     modelOptions: string[];
     effort: string;
     effortOptions: string[];
+    permissionMode: string;
     disabled: boolean;
     onProviderChange: (value: string) => void;
     onModelChange: (value: string) => void;
     onEffortChange: (value: string) => void;
+    onPermissionModeChange: (value: string) => void;
 };
 
 export function ComposerFooter({
     provider, providerOptions,
     model, modelOptions,
     effort, effortOptions,
+    permissionMode,
     disabled,
-    onProviderChange, onModelChange, onEffortChange,
+    onProviderChange, onModelChange, onEffortChange, onPermissionModeChange,
 }: ComposerFooterProps) {
     return (
         <div className="code-composer-footer">
             <div className="code-composer-footer-left">
-                <span className="code-footer-label">Permissions: auto</span>
+                <label className="code-footer-field">
+                    <span className="code-footer-label">Permissions</span>
+                    <select
+                        className="code-footer-select"
+                        value={permissionMode}
+                        onChange={e => onPermissionModeChange(e.target.value)}
+                        disabled={disabled}
+                        aria-label="Permission mode"
+                    >
+                        <option value="ask">Ask</option>
+                        <option value="auto">Auto</option>
+                        <option value="always-allow">Always allow</option>
+                        <option value="always-deny">Always deny</option>
+                    </select>
+                </label>
             </div>
             <div className="code-composer-footer-right">
                 {providerOptions.length > 0 && (

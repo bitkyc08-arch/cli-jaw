@@ -152,18 +152,18 @@ export const CLI_REGISTRY = {
         experimental: true,
         defaultProvider: 'anthropic',
         providers: ['anthropic'],
-        defaultModel: 'claude-fable-5',
+        defaultModel: 'claude-sonnet-4-6',
         defaultEffort: 'high',
         efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-        models: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+        models: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
         modelsByProvider: {
             anthropic: [
-                'claude-fable-5',
+                'claude-sonnet-4-6',
                 'claude-opus-4-8',
                 'claude-opus-4-7',
                 'claude-opus-4-6',
-                'claude-sonnet-4-6',
                 'claude-haiku-4-5',
+                'claude-fable-5',
             ],
         },
         effortsByProvider: {

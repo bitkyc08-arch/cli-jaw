@@ -5,6 +5,7 @@ import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { Router, type RequestHandler } from 'express';
 import { acpHost } from '../code-mode/acp-host.js';
+import { resolveJwcModelOptions } from '../code-mode/model-options.js';
 
 function git(cwd: string, args: string[]): Promise<string> {
     return new Promise(resolve => {
@@ -22,14 +23,30 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
             if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
             const branch = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
             if (!branch) { res.json({ ok: true, isRepo: false, branch: null, worktrees: [] }); return; }
+            const head = await git(cwd, ['rev-parse', '--short', 'HEAD']);
+            const statusOutput = await git(cwd, ['status', '--short']);
+            const statusLines = statusOutput ? statusOutput.split('\n').filter(Boolean) : [];
+            const status = {
+                dirty: statusLines.length > 0,
+                changed: statusLines.filter(line => !line.startsWith('??')).length,
+                untracked: statusLines.filter(line => line.startsWith('??')).length,
+            };
             const porcelain = await git(cwd, ['worktree', 'list', '--porcelain']);
             const worktrees = porcelain.split('\n\n').filter(Boolean).map(block => {
                 const lines = block.split('\n');
                 const path = lines.find(l => l.startsWith('worktree '))?.slice(9) ?? '';
                 const wtBranch = lines.find(l => l.startsWith('branch '))?.slice(7).replace('refs/heads/', '') ?? null;
-                return { path, branch: wtBranch };
+                const wtHead = lines.find(l => l.startsWith('HEAD '))?.slice(5) ?? null;
+                return { path, branch: wtBranch, head: wtHead, current: path === cwd };
             });
-            res.json({ ok: true, isRepo: true, branch, worktrees });
+            res.json({ ok: true, isRepo: true, branch, head, status, worktrees });
+        })();
+    });
+
+    app.get('/api/code/models', requireAuth, (_req, res) => {
+        void (async () => {
+            const options = await resolveJwcModelOptions();
+            res.json({ ok: true, ...options });
         })();
     });
 

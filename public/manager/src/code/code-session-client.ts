@@ -13,9 +13,42 @@ export interface StoredSession {
     lastModified?: number;
 }
 
+export interface CodeModelProvider {
+    id: string;
+    models: string[];
+    efforts: string[];
+}
+
+export interface CodeModelOptions {
+    providers: CodeModelProvider[];
+    defaultProvider: string;
+    defaultModel: string;
+    degraded?: boolean;
+    error?: string;
+}
+
+export interface CodeGitInfo {
+    isRepo: boolean;
+    branch: string | null;
+    head?: string | null;
+    status?: {
+        dirty: boolean;
+        changed: number;
+        untracked: number;
+    };
+    worktrees: Array<{
+        path: string;
+        branch: string | null;
+        head?: string | null;
+        current?: boolean;
+    }>;
+}
+
 export interface CodeSessionClient {
     listSessions(): Promise<CodeSession[]>;
     listStoredSessions(cwd?: string): Promise<StoredSession[]>;
+    listModelOptions(): Promise<CodeModelOptions>;
+    getGitInfo(cwd: string): Promise<CodeGitInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
     createSession(cwd: string, model?: string): Promise<CodeSession>;
     sendPrompt(sessionId: string, text: string): Promise<{ accepted: boolean; sessionId: string }>;
@@ -54,6 +87,13 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
             const qs = cwd ? `?cwd=${encodeURIComponent(cwd)}` : '';
             const data = await request<{ sessions: StoredSession[] }>('GET', `/api/code/sessions/stored${qs}`);
             return data.sessions;
+        },
+        async listModelOptions() {
+            return request<CodeModelOptions>('GET', '/api/code/models');
+        },
+        async getGitInfo(cwd: string) {
+            const data = await request<CodeGitInfo>('GET', `/api/code/git-info?cwd=${encodeURIComponent(cwd)}`);
+            return data;
         },
         async loadSession(sessionId: string, cwd: string) {
             const data = await request<{ session: CodeSession }>('POST', '/api/code/sessions/load', { sessionId, cwd });

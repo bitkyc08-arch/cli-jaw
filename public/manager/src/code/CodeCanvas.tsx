@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
+import type { CodeGitInfo, CodeModelOptions } from './code-session-client';
 import { CodeSessionList } from './CodeSessionList';
+import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
@@ -22,26 +24,22 @@ type TranscriptEntry = {
 type CodeCanvasProps = {
     port: number;
     workingDir: string;
-    renderLayout?: (parts: CodeCanvasLayoutParts) => ReactNode;
 };
-
-export type CodeCanvasLayoutParts = {
-    navigator: ReactNode;
-    workbench: ReactNode;
+const FALLBACK_MODEL_OPTIONS: CodeModelOptions = {
+    providers: [{
+        id: 'anthropic',
+        models: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
+        efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
+    }],
+    defaultProvider: 'anthropic',
+    defaultModel: 'claude-sonnet-4-6',
+    degraded: true,
 };
-
-const DEFAULT_PROVIDERS = ['anthropic'];
-const DEFAULT_MODELS: Record<string, string[]> = {
-    anthropic: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
-};
-const DEFAULT_EFFORTS = ['off', 'min', 'low', 'medium', 'high', 'xhigh'];
-
 type PendingPermission = {
     permissionId: string;
     toolCall: Record<string, unknown>;
     options: Array<Record<string, unknown>>;
 };
-
 function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId: string): number {
     for (let i = messages.length - 1; i >= 0; i--) {
         const message = messages[i];
@@ -49,12 +47,11 @@ function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId: strin
     }
     return -1;
 }
-
 function toModelId(provider: string, model: string): string {
     return model.includes('/') ? model : `${provider}/${model}`;
 }
 
-export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) {
+export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [inputText, setInputText] = useState('');
@@ -69,23 +66,59 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
     const [provider, setProvider] = useState('anthropic');
     const [model, setModel] = useState('claude-sonnet-4-6');
     const [effort, setEffort] = useState('high');
+    const [permissionMode, setPermissionMode] = useState('ask');
+    const [modelOptions, setModelOptions] = useState<CodeModelOptions>(FALLBACK_MODEL_OPTIONS);
+    const [gitInfo, setGitInfo] = useState<CodeGitInfo | null>(null);
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
-    const selectedModelId = useMemo(() => toModelId(provider, model), [provider, model]);
+    const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
 
     useEffect(() => {
         activeSessionIdRef.current = activeSessionId;
     }, [activeSessionId]);
 
     useEffect(() => {
-        if (renderLayout || typeof document === 'undefined') {
+        if (typeof document === 'undefined') {
             setSidebarHost(null);
             return;
         }
         setSidebarHost(document.getElementById('code-session-sidebar-host'));
         return () => setSidebarHost(null);
-    }, [renderLayout]);
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        void (async () => {
+            try {
+                const options = await client.listModelOptions();
+                if (cancelled) return;
+                setModelOptions(options);
+                setProvider(options.defaultProvider || options.providers[0]?.id || 'anthropic');
+                setModel(options.defaultModel || options.providers[0]?.models[0] || '');
+                const nextEfforts = options.providers.find(p => p.id === options.defaultProvider)?.efforts ?? [];
+                if (nextEfforts.length > 0) setEffort(nextEfforts.includes('high') ? 'high' : nextEfforts[0] ?? '');
+            } catch (err) {
+                if (!cancelled) {
+                    setModelOptions({ ...FALLBACK_MODEL_OPTIONS, error: err instanceof Error ? err.message : String(err) });
+                }
+            }
+        })();
+        return () => { cancelled = true; };
+    }, [client]);
+
+    useEffect(() => {
+        if (!workingDir) {
+            setGitInfo(null);
+            return;
+        }
+        let cancelled = false;
+        void client.getGitInfo(workingDir).then(
+            info => { if (!cancelled) setGitInfo(info); },
+            () => { if (!cancelled) setGitInfo(null); },
+        );
+        return () => { cancelled = true; };
+    }, [client, workingDir]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
         const update = event.update ?? {};
@@ -140,6 +173,15 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
             const toolCall = (event['toolCall'] ?? {}) as Record<string, unknown>;
             const options = (event['options'] ?? []) as Array<Record<string, unknown>>;
             if (permissionId) {
+                if (permissionMode === 'always-deny') {
+                    void client.answerPermission(permissionId, null);
+                    return;
+                }
+                if (permissionMode === 'always-allow' && options.length > 0) {
+                    const allowOption = options.find(opt => /allow|approve|yes/i.test(String(opt['name'] ?? opt['label'] ?? opt['optionId'] ?? opt['id'] ?? ''))) ?? options[0];
+                    void client.answerPermission(permissionId, String(allowOption?.['optionId'] ?? allowOption?.['id'] ?? 0));
+                    return;
+                }
                 setPermissions(prev => [...prev, { permissionId, toolCall, options }]);
             }
         } else if (kind === 'code_session_info_update') {
@@ -169,7 +211,7 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
         }
 
         setTimeout(() => transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }), 50);
-    }, []);
+    }, [client, permissionMode]);
 
     useCodeEvents({ port, sessionId: activeSessionId, sessionIdRef: activeSessionIdRef, onEvent: handleCodeEvent });
 
@@ -183,7 +225,7 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
             let sessionId = activeSessionId;
             if (!sessionId) {
                 const cwd = workingDir || '/tmp';
-                const session = await client.createSession(cwd, selectedModelId);
+                const session = await client.createSession(cwd, selectedModelId || undefined);
                 sessionId = session.sessionId;
                 activeSessionIdRef.current = sessionId;
                 setActiveSessionId(sessionId);
@@ -223,7 +265,10 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
         setPermissions(prev => prev.filter(p => p.permissionId !== permissionId));
     }, [client]);
 
-    const modelOptions = DEFAULT_MODELS[provider] ?? DEFAULT_MODELS['anthropic'] ?? [];
+    const providerRecord = modelOptions.providers.find(p => p.id === provider) ?? modelOptions.providers[0];
+    const providerOptions = modelOptions.providers.map(p => p.id);
+    const currentModelOptions = providerRecord?.models ?? [];
+    const currentEffortOptions = providerRecord?.efforts ?? [];
 
     if (!port) {
         return (
@@ -260,25 +305,14 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
 
     const workbench = (
         <div className="code-canvas-main">
-                {(sessionTitle || usage.contextTokens !== undefined || planEntries.length > 0) && (
-                    <div className="code-session-header">
-                        {sessionTitle && <span className="code-session-title">{sessionTitle}</span>}
-                        {usage.contextTokens !== undefined && usage.contextLimit ? (
-                            <span className="code-context-meter" title={`${usage.contextTokens.toLocaleString()} / ${usage.contextLimit.toLocaleString()} tokens${usage.cost !== undefined ? ` · $${usage.cost.toFixed(4)}` : ''}`}>
-                                <span className="code-context-bar" style={{ width: `${Math.min(100, (usage.contextTokens / usage.contextLimit) * 100)}%` }} />
-                            </span>
-                        ) : null}
-                        {planEntries.length > 0 && (
-                            <div className="code-plan-entries">
-                                {planEntries.map((e, i) => (
-                                    <span key={i} className={`code-plan-entry code-plan-${e.status}`}>
-                                        {e.status === 'completed' ? '✓' : e.status === 'in_progress' ? '⚡' : '○'} {e.title}
-                                    </span>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                )}
+                <CodeWorkspaceHeader
+                    workingDir={workingDir}
+                    gitInfo={gitInfo}
+                    modelOptions={modelOptions}
+                    sessionTitle={sessionTitle}
+                    usage={usage}
+                    planEntries={planEntries}
+                />
                 <div className="code-transcript" ref={transcriptRef}>
                     {messages.length === 0 ? (
                         <div className="code-transcript-empty">
@@ -403,16 +437,20 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
                 </div>
                 <ComposerFooter
                     provider={provider}
-                    providerOptions={DEFAULT_PROVIDERS}
+                    providerOptions={providerOptions}
                     model={model}
-                    modelOptions={modelOptions}
+                    modelOptions={currentModelOptions}
                     effort={effort}
-                    effortOptions={DEFAULT_EFFORTS}
+                    effortOptions={currentEffortOptions}
+                    permissionMode={permissionMode}
                     disabled={sending}
                     onProviderChange={p => {
                         setProvider(p);
-                        const firstModel = (DEFAULT_MODELS[p] ?? [])[0] ?? '';
+                        const nextProvider = modelOptions.providers.find(entry => entry.id === p);
+                        const firstModel = nextProvider?.models[0] ?? '';
                         setModel(firstModel);
+                        const firstEffort = nextProvider?.efforts.includes('high') ? 'high' : nextProvider?.efforts[0] ?? '';
+                        setEffort(firstEffort);
                         if (activeSessionId && firstModel) {
                             void client.setSessionModel(activeSessionId, toModelId(p, firstModel));
                         }
@@ -429,28 +467,10 @@ export function CodeCanvas({ port, workingDir, renderLayout }: CodeCanvasProps) 
                             void client.setSessionConfig(activeSessionId, 'thinking', e);
                         }
                     }}
+                    onPermissionModeChange={setPermissionMode}
                 />
         </div>
     );
-
-    if (renderLayout) {
-        return (
-            <>
-                {renderLayout({
-                    navigator: (
-                        <section className="code-manager-session-navigator" aria-label="Code sessions">
-                            {sessionNavigator}
-                        </section>
-                    ),
-                    workbench: (
-                        <div className="code-canvas code-canvas-workbench">
-                            {workbench}
-                        </div>
-                    ),
-                })}
-            </>
-        );
-    }
 
     if (sidebarHost) {
         return (
