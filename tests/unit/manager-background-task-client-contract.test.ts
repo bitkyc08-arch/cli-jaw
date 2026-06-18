@@ -66,14 +66,28 @@ test('background task client uses Manager-local bgtask routes', async () => {
             promptTemplate: 'done {{result}}',
         },
     })).task.id, 'bg_1');
+    assert.equal((await client.createTask({
+        preset: 'web-ai',
+        sessionId: 'web_ai_session_1',
+        prompt: 'deliver {{result}}',
+        originMeta: { origin: 'web' },
+    })).task.id, 'bg_1');
     assert.equal((await client.cancelTask('bg_1')).cancelled, true);
 
     assert.deepEqual(calls.map(call => [call.url, call.init?.method ?? 'GET']), [
         ['http://127.0.0.1:24576/api/bgtask?status=running&limit=25', 'GET'],
         ['http://127.0.0.1:24576/api/bgtask/bg_1', 'GET'],
         ['http://127.0.0.1:24576/api/bgtask', 'POST'],
+        ['http://127.0.0.1:24576/api/bgtask', 'POST'],
         ['http://127.0.0.1:24576/api/bgtask/bg_1', 'DELETE'],
     ]);
+    const webAiCall = calls[3]!;
+    assert.deepEqual(JSON.parse(String(webAiCall.init?.body)), {
+        preset: 'web-ai',
+        sessionId: 'web_ai_session_1',
+        prompt: 'deliver {{result}}',
+        originMeta: { origin: 'web' },
+    });
 });
 
 test('background task update normalizer accepts only bgtask_update frames', () => {

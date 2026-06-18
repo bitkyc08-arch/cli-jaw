@@ -76,7 +76,9 @@ test('background task monitor panel exposes state, detail, cancel, retry, and re
     assert.ok(panel.includes('onCancel(task.id)'), 'panel must expose cancel action');
     assert.ok(panel.includes('navigator.clipboard.writeText(task.result)'), 'panel must expose result copy action');
     assert.ok(panel.includes('task.spec.command?.length'), 'detail must show command-like context');
+    assert.ok(panel.includes('web-ai session'), 'detail must label web-ai session-status probes distinctly');
     assert.ok(panel.includes('task.spec.completion.type'), 'detail must show completion mode');
+    assert.ok(panel.includes('BrowserPanel state and Code transcript stay separate.'), 'web-ai bridge note must preserve surface boundaries');
     assert.ok(css.includes('.code-bg-task-list'), 'monitor must have bounded list styles');
     assert.ok(css.includes('max-height: min(30vh, 300px);'), 'monitor list must not push composer off screen');
     assert.ok(workbench.includes('<BackgroundTaskMonitorPanel />'), 'Code workbench must mount the monitor');
@@ -94,4 +96,16 @@ test('background task monitor remains Manager-local and session-independent', ()
     assert.equal(combined.includes('CodeSession'), false, 'monitor must not model background tasks as Code sessions');
     assert.equal(combined.includes('/api/code'), false, 'monitor must not call Code session APIs');
     assert.equal(combined.includes('3465'), false, 'monitor must not hardcode child Jaw ports');
+});
+
+test('background task retry preserves web-ai preset semantics instead of raw probe specs', () => {
+    const hook = read('public/manager/src/background-tasks/useBackgroundTasks.ts');
+    const panel = read('public/manager/src/background-tasks/BackgroundTaskMonitorPanel.tsx');
+
+    assert.ok(hook.includes("task.kind === 'web-ai' && task.spec.completion.type === 'session-status'"), 'retry must detect web-ai probe rows');
+    assert.ok(hook.includes("preset: 'web-ai'"), 'retry must recreate web-ai tasks through the preset');
+    assert.ok(hook.includes('sessionId: task.spec.completion.sessionId'), 'retry must keep the native web-ai session id');
+    assert.ok(hook.includes('prompt: task.spec.promptTemplate'), 'retry must keep the existing completion prompt');
+    assert.ok(hook.includes('client.createTask({ kind: task.kind, spec: task.spec, originMeta: task.originMeta })'), 'non-web-ai retry must still reuse the raw spec');
+    assert.ok(panel.includes('no Manager probe runner is attached'), 'running web-ai rows without runner ownership must explain recovery');
 });

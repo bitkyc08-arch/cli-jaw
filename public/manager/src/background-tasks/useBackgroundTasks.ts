@@ -106,7 +106,17 @@ export function useBackgroundTasks(clientOverride?: BackgroundTaskClient): Backg
 
     const retryTask = useCallback(async (task: BackgroundTaskRow) => {
         try {
-            await client.createTask({ kind: task.kind, spec: task.spec, originMeta: task.originMeta });
+            if (task.kind === 'web-ai' && task.spec.completion.type === 'session-status') {
+                await client.createTask({
+                    preset: 'web-ai',
+                    sessionId: task.spec.completion.sessionId,
+                    prompt: task.spec.promptTemplate,
+                    ...(task.deadlineAt ? { deadlineAt: task.deadlineAt } : {}),
+                    originMeta: task.originMeta,
+                });
+            } else {
+                await client.createTask({ kind: task.kind, spec: task.spec, originMeta: task.originMeta });
+            }
             await refresh();
         } catch (err) {
             setError(errorText(err));

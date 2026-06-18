@@ -39,11 +39,20 @@ function taskSubtitle(task: BackgroundTaskRow): string {
 
 function taskCommand(task: BackgroundTaskRow): string {
     if (task.spec.command?.length) return task.spec.command.join(' ');
+    if (task.kind === 'web-ai' && task.spec.completion.type === 'session-status') {
+        return `web-ai session ${task.spec.completion.sessionId}`;
+    }
     if (task.spec.completion.type === 'session-status') return `session ${task.spec.completion.sessionId}`;
     return task.spec.completion.type;
 }
 
 function recoveryNote(task: BackgroundTaskRow): string {
+    if (task.kind === 'web-ai' && task.status === 'running' && task.spec.completion.type === 'session-status' && !task.runnerActive) {
+        return 'Web-ai bridge is registered, but no Manager probe runner is attached. Refresh or restart Manager to recover the observer.';
+    }
+    if (task.kind === 'web-ai' && task.status === 'running' && task.spec.completion.type === 'session-status') {
+        return 'Web-ai bridge is observing a native browser session; BrowserPanel state and Code transcript stay separate.';
+    }
     if (task.status === 'orphaned') return 'Previous child process is still alive but no Manager runner owns it.';
     if (task.status === 'failed' && task.result?.includes('lost during server restart')) return 'Task was marked failed during restart recovery.';
     if ((task.status === 'complete' || task.status === 'failed') && !task.notifiedAt) return 'Completion notification is pending recovery delivery.';
