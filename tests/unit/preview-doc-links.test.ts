@@ -66,7 +66,6 @@ test('DocPanel surfaces truncated reads instead of silent empty', () => {
 test('DocPanel preserves same-file scroll across async Markdown layout changes', () => {
     const docPanel = read('public/manager/src/doc-panel/DocPanel.tsx');
     const css = read('public/manager/src/doc-panel/doc-panel.css');
-    const notesCss = read('public/manager/src/manager-notes.css');
 
     assert.ok(docPanel.includes('useLayoutEffect'), 'DocPanel must restore scroll before paint after same-file content updates');
     assert.ok(docPanel.includes('scrollRef = useRef<HTMLDivElement | null>(null)'), 'DocPanel must own the scroll container ref');
@@ -77,5 +76,6 @@ test('DocPanel preserves same-file scroll across async Markdown layout changes',
     assert.ok(docPanel.includes('activeFilePathRef.current !== filePath'), 'file changes must intentionally reset scroll');
     assert.ok(docPanel.includes('scrollSnapshotRef.current = {'), 'scroll events must keep a same-file scroll snapshot');
     assert.ok(css.includes('.doc-content-body'), 'DocPanel CSS must acknowledge the inner content body');
-    assert.ok(notesCss.includes('min-height: 96px'), 'Mermaid loading blocks must reserve stable height');
+    assert.ok(css.includes('.doc-content .notes-mermaid-block.is-loading'), 'DocPanel CSS must scope stable Mermaid loading layout to file preview');
+    assert.ok(css.includes('min-height: 96px'), 'Mermaid loading blocks must reserve stable height in DocPanel preview');
 });

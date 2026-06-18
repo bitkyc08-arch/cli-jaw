@@ -1226,9 +1226,6 @@
 }
 
 .notes-mermaid-block.is-loading {
-    min-height: 96px;
-    display: flex;
-    align-items: center;
     color: var(--text-secondary);
 }
 

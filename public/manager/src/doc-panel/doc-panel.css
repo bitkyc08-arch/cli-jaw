@@ -55,6 +55,11 @@
 .doc-content-body {
     min-width: 0;
 }
+.doc-content .notes-mermaid-block.is-loading {
+    min-height: 96px;
+    display: flex;
+    align-items: center;
+}
 .doc-pre {
     margin: 0;
     padding: 8px 10px;
