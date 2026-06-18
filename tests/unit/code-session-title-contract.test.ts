@@ -177,6 +177,26 @@ test('code cwd picker is editable only before a Code session starts', () => {
     }
 });
 
+test('code workspace header exposes repo root and current worktree context', () => {
+    const header = read('public/manager/src/code/CodeWorkspaceHeader.tsx');
+    const client = read('public/manager/src/code/code-session-client.ts');
+    const routes = read('src/routes/code.ts');
+
+    for (const token of ['repoRoot?: string', 'relativePath?: string', 'currentWorktree?:']) {
+        assert.ok(client.includes(token), `CodeGitInfo must include ${token}`);
+    }
+    assert.ok(routes.includes("['rev-parse', '--show-toplevel']"), 'git-info route must resolve the repo root');
+    assert.ok(routes.includes('relative(repoRoot, realOrOriginal(cwd))'), 'git-info route must expose realpath-normalized cwd relative to repo root');
+    assert.ok(routes.includes('const currentWorktree = worktrees.find(worktree => worktree.current)'), 'git-info route must identify the current worktree');
+    assert.ok(routes.includes('current: path === repoRoot'), 'git-info worktree current flag must compare against repo root, not nested cwd');
+
+    assert.ok(header.includes('repoRootLabel'), 'header must derive a compact repo root label');
+    assert.ok(header.includes('relativePath'), 'header must render cwd relative path when present');
+    assert.ok(header.includes('currentWorktree'), 'header must render current worktree metadata');
+    assert.ok(header.includes('code-workspace-repo'), 'header must expose a repo root pill');
+    assert.ok(header.includes('code-workspace-path'), 'header must expose a cwd-relative path pill');
+});
+
 test('code transcript preserves failed tool state and remains scrollable after replay', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
     const transcript = read('public/manager/src/code/CodeTranscript.tsx');

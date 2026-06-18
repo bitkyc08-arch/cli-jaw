@@ -1,7 +1,8 @@
 import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, realpathSync, rmSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import path, { resolve } from 'node:path';
 
@@ -110,5 +111,38 @@ test('code git-info rejects missing cwd and reports non-repo absolute cwd', asyn
 		});
 	} finally {
 		rmSync(cwd, { recursive: true, force: true });
+	}
+});
+
+test('code git-info reports repo root and current worktree context for nested cwd', async () => {
+	const repo = mkdtempSync(path.join(tmpdir(), 'cli-jaw-code-routes-repo-'));
+	const nested = path.join(repo, 'packages', 'app');
+	try {
+		execFileSync('mkdir', ['-p', nested]);
+		execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
+		execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
+		execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: repo });
+		execFileSync('sh', ['-lc', 'echo ok > README.md && git add README.md && git commit -m init >/dev/null'], { cwd: repo });
+		const realRepo = realpathSync(repo);
+		await withServer(async baseUrl => {
+			const response = await fetch(`${baseUrl}/api/code/git-info?cwd=${encodeURIComponent(nested)}`);
+			assert.equal(response.status, 200);
+			const json = await response.json() as {
+				ok: boolean;
+				isRepo: boolean;
+				repoRoot?: string;
+				relativePath?: string;
+				currentWorktree?: { path: string; branch: string | null };
+				worktrees: Array<{ path: string; current?: boolean }>;
+			};
+			assert.equal(json.ok, true);
+			assert.equal(json.isRepo, true);
+			assert.equal(json.repoRoot, realRepo);
+			assert.equal(json.relativePath, 'packages/app');
+			assert.equal(json.currentWorktree?.path, realRepo);
+			assert.equal(json.worktrees.some(worktree => worktree.path === realRepo && worktree.current), true);
+		});
+	} finally {
+		rmSync(repo, { recursive: true, force: true });
 	}
 });

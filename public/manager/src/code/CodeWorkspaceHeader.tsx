@@ -24,6 +24,10 @@ export function CodeWorkspaceHeader({ workingDir, gitInfo, modelOptions, session
     const [cwdPickError, setCwdPickError] = useState('');
     const dirty = gitInfo?.status?.dirty;
     const worktreeCount = gitInfo?.worktrees.length ?? 0;
+    const repoRootLabel = gitInfo?.repoRoot ? shortPath(gitInfo.repoRoot) : '';
+    const relativePath = gitInfo?.relativePath || '';
+    const currentWorktree = gitInfo?.currentWorktree;
+    const worktreeLabel = currentWorktree?.path ? shortPath(currentWorktree.path) : '';
     const trimmedDraft = useMemo(() => draftCwd.trim(), [draftCwd]);
     const cwdError = trimmedDraft && !trimmedDraft.startsWith('/') ? 'Use an absolute path.' : '';
     const desktop = getDesktop();
@@ -100,11 +104,15 @@ export function CodeWorkspaceHeader({ workingDir, gitInfo, modelOptions, session
                 ) : null}
                 {gitInfo?.isRepo && (
                     <>
+                        {repoRootLabel && <span className="code-workspace-pill code-workspace-repo" title={gitInfo.repoRoot}>repo {repoRootLabel}</span>}
+                        {relativePath && <span className="code-workspace-pill code-workspace-path" title={workingDir}>path {relativePath}</span>}
                         <span className="code-workspace-pill">{gitInfo.branch ?? 'detached'}{gitInfo.head ? ` · ${gitInfo.head}` : ''}</span>
                         <span className={`code-workspace-pill ${dirty ? 'is-dirty' : ''}`}>
                             {dirty ? `${gitInfo.status?.changed ?? 0} changed · ${gitInfo.status?.untracked ?? 0} untracked` : 'clean'}
                         </span>
-                        <span className="code-workspace-pill">worktrees {worktreeCount}</span>
+                        <span className="code-workspace-pill" title={currentWorktree?.path ?? undefined}>
+                            worktrees {worktreeCount}{worktreeLabel ? ` · ${worktreeLabel}` : ''}
+                        </span>
                     </>
                 )}
                 {modelOptions?.degraded && <span className="code-workspace-pill is-warning" title={modelOptions.error}>provider fallback</span>}

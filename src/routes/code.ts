@@ -2,7 +2,8 @@
 // the 'jwc' SSE topic; prompt is accept-then-stream — never a blocking response
 // (jawcode 113.2 §4). Design SoT: jawcode devlog 112.3 §S1.
 import { execFile } from 'node:child_process';
-import { isAbsolute } from 'node:path';
+import { realpathSync } from 'node:fs';
+import { isAbsolute, relative } from 'node:path';
 import { Router, type RequestHandler } from 'express';
 import { acpHost } from '../code-mode/acp-host.js';
 import {
@@ -24,6 +25,14 @@ function git(cwd: string, args: string[]): Promise<string> {
     });
 }
 
+function realOrOriginal(path: string): string {
+    try {
+        return realpathSync(path);
+    } catch {
+        return path;
+    }
+}
+
 export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): void {
     // Workspace metadata for the picker (112.1 G1/G2).
     app.get('/api/code/git-info', requireAuth, (req, res) => {
@@ -32,6 +41,7 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
             if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
             const branch = await git(cwd, ['rev-parse', '--abbrev-ref', 'HEAD']);
             if (!branch) { res.json({ ok: true, isRepo: false, branch: null, worktrees: [] }); return; }
+            const repoRoot = await git(cwd, ['rev-parse', '--show-toplevel']);
             const head = await git(cwd, ['rev-parse', '--short', 'HEAD']);
             const statusOutput = await git(cwd, ['status', '--short']);
             const statusLines = statusOutput ? statusOutput.split('\n').filter(Boolean) : [];
@@ -46,9 +56,21 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
                 const path = lines.find(l => l.startsWith('worktree '))?.slice(9) ?? '';
                 const wtBranch = lines.find(l => l.startsWith('branch '))?.slice(7).replace('refs/heads/', '') ?? null;
                 const wtHead = lines.find(l => l.startsWith('HEAD '))?.slice(5) ?? null;
-                return { path, branch: wtBranch, head: wtHead, current: path === cwd };
+                return { path, branch: wtBranch, head: wtHead, current: path === repoRoot };
             });
-            res.json({ ok: true, isRepo: true, branch, head, status, worktrees });
+            const currentWorktree = worktrees.find(worktree => worktree.current);
+            const relativePath = repoRoot ? relative(repoRoot, realOrOriginal(cwd)) : '';
+            res.json({
+                ok: true,
+                isRepo: true,
+                repoRoot,
+                relativePath,
+                branch,
+                head,
+                status,
+                worktrees,
+                ...(currentWorktree ? { currentWorktree } : {}),
+            });
         })();
     });
 

@@ -87,6 +87,8 @@ export interface CodeModelPresetInfo {
 
 export interface CodeGitInfo {
     isRepo: boolean;
+    repoRoot?: string;
+    relativePath?: string;
     branch: string | null;
     head?: string | null;
     status?: {
@@ -100,6 +102,11 @@ export interface CodeGitInfo {
         head?: string | null;
         current?: boolean;
     }>;
+    currentWorktree?: {
+        path: string;
+        branch: string | null;
+        head?: string | null;
+    };
 }
 
 export interface CodeSessionClient {
