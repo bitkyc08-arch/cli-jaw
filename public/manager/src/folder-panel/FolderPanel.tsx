@@ -79,6 +79,21 @@ export function FolderPanel(props: FolderPanelProps) {
     const selectedEntries = folderSelection.selectedEntries;
 
     useEffect(() => {
+        const selectedPath = props.selectedFilePath;
+        if (!selectedPath || !rootPath) return;
+        if (!isDescendantPath(rootPath, selectedPath)) return;
+        if (selectedPath === folderSelection.selectedPath) return;
+        if (!folderSelection.visiblePaths.includes(selectedPath)) return;
+        folderSelection.selectOnlyPath(selectedPath);
+    }, [
+        folderSelection.selectedPath,
+        folderSelection.selectOnlyPath,
+        folderSelection.visiblePaths,
+        props.selectedFilePath,
+        rootPath,
+    ]);
+
+    useEffect(() => {
         props.onSessionStateChange?.(folderPanelSessionFromState({
             rootPath,
             entries,

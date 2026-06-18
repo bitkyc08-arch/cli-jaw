@@ -138,6 +138,7 @@ export type FolderMutationResult = {
     ok: boolean;
     entry?: FolderMutationEntry;
     error?: string;
+    code?: string;
 };
 
 export type FolderMoveResult = {

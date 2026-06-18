@@ -230,6 +230,12 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
             const target = join(dirname(source), name);
             if (target === source) return { ok: true, entry: { name, path: source, kind: ls.isDirectory() ? 'directory' as const : 'file' as const, size: ls.size } };
             if (!isAllowedNewPathByRoot(target)) return { ok: false, error: 'path not allowed' };
+            try {
+                await lstat(target);
+                return { ok: false, error: 'target already exists', code: 'target_exists' };
+            } catch {
+                // Target does not exist; proceed with the rename.
+            }
             await rename(source, target);
             return { ok: true, entry: { name, path: target, kind: ls.isDirectory() ? 'directory' as const : 'file' as const, size: ls.size } };
         } catch (err) {

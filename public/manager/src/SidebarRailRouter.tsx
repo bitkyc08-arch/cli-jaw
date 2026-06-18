@@ -190,6 +190,7 @@ function renderRightPanelContent(
             selectedFilePath={previewFilePath}
             onRepoRootChange={onRepoRootChange}
             onPreviewFile={onPreviewFile}
+            onGitRefresh={onGitRefresh}
             onSettingsPatch={onDashboardSettingsPatch}
         /></Suspense>;
         case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} repoRootPath={repoRootPath} gitRefreshVersion={gitRefreshVersion} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onRepoRootChange={onRepoRootChange} onGitRefresh={onGitRefresh} onPreviewFile={onPreviewFile} sessionState={folderPanelSession} onSessionStateChange={onFolderPanelSessionChange} /></Suspense>;

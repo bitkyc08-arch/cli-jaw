@@ -37,6 +37,7 @@ type DiffPanelProps = {
     selectedFilePath?: string | null;
     onRepoRootChange?: (path: string | null) => void;
     onPreviewFile?: (path: string) => void;
+    onGitRefresh?: () => void;
     onSettingsPatch?: (patch: Partial<DashboardRegistryUi>) => void;
 };
 
@@ -303,6 +304,7 @@ export function DiffPanel(props: DiffPanelProps) {
         if (result.result?.snapshot) setScmSnapshot(result.result.snapshot);
         setGitActionStatus(operation.kind === 'stage' ? 'Staged' : 'Unstaged');
         await loadSummary();
+        props.onGitRefresh?.();
     }
 
     function actionLabel(action: SourceControlOperation['kind']): string {
@@ -399,7 +401,7 @@ export function DiffPanel(props: DiffPanelProps) {
                 </label>
             </div>
             {error && <div className="diff-error">{error}</div>}
-            {gitActionStatus && <div className="diff-action-status">{gitActionStatus}</div>}
+            {gitActionStatus && <div className="diff-action-status" role="status" aria-live="polite">{gitActionStatus}</div>}
             <div className="diff-body">
                 <div className="diff-file-list">
                     {fileGroups.map(group => (
@@ -417,35 +419,34 @@ export function DiffPanel(props: DiffPanelProps) {
                                 )}
                             </div>
                             {group.files.map(f => (
-                                <div key={`${group.id}:${f.path}`}
-                                    role="button"
-                                    tabIndex={0}
+                                <div
+                                    key={`${group.id}:${f.path}`}
                                     className={`diff-file-item ${f.path === selectedFile ? 'is-selected' : ''} diff-status-${f.status}${f.conflict ? ' is-conflict' : ''}`}
-                                    onClick={() => handleFileSelect(f.path)}
-                                    onKeyDown={(event) => {
-                                        if (event.key !== 'Enter' && event.key !== ' ') return;
-                                        event.preventDefault();
-                                        handleFileSelect(f.path);
-                                    }}>
-                                    <span className="diff-file-name">{f.path}</span>
-                                    <span className="diff-file-stats">
-                                        {f.insertions > 0 && <span className="diff-ins">+{f.insertions}</span>}
-                                        {f.deletions > 0 && <span className="diff-del">-{f.deletions}</span>}
-                                        {f.status === 'untracked' && <span className="diff-ins">new</span>}
-                                        {group.action && (
-                                            <button
-                                                type="button"
-                                                className="diff-scm-inline-action"
-                                                onClick={(event) => {
-                                                    event.stopPropagation();
-                                                    void runScmOperation({ kind: group.action!, paths: [f.path] });
-                                                }}
-                                                aria-label={`${actionLabel(group.action)} ${f.path}`}
-                                            >
-                                                {group.action === 'stage' ? '+' : '-'}
-                                            </button>
-                                        )}
-                                    </span>
+                                >
+                                    <button
+                                        type="button"
+                                        className="diff-file-select"
+                                        onClick={() => handleFileSelect(f.path)}
+                                    >
+                                        <span className="diff-file-name">{f.path}</span>
+                                        <span className="diff-file-stats">
+                                            {f.insertions > 0 && <span className="diff-ins">+{f.insertions}</span>}
+                                            {f.deletions > 0 && <span className="diff-del">-{f.deletions}</span>}
+                                            {f.status === 'untracked' && <span className="diff-ins">new</span>}
+                                        </span>
+                                    </button>
+                                    {group.action && (
+                                        <button
+                                            type="button"
+                                            className="diff-scm-inline-action"
+                                            onClick={() => {
+                                                void runScmOperation({ kind: group.action!, paths: [f.path] });
+                                            }}
+                                            aria-label={`${actionLabel(group.action)} ${f.path}`}
+                                        >
+                                            {group.action === 'stage' ? '+' : '-'}
+                                        </button>
+                                    )}
                                 </div>
                             ))}
                         </div>

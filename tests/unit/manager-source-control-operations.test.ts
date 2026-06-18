@@ -35,6 +35,9 @@ test('safe stage and unstage operations are exposed without discard or commit ro
     assert.ok(panelSource.includes("action: 'unstage'"), 'DiffPanel must map staged group to unstage action');
     assert.ok(panelSource.includes("group.id === 'changes' || group.id === 'untracked'"), 'DiffPanel must inspect changes and untracked groups for stage actions');
     assert.ok(panelSource.includes("action: 'stage'"), 'DiffPanel must map changes and untracked groups to stage action');
+    assert.ok(panelSource.includes('role="status"'), 'DiffPanel must expose SCM operation status as a live status region');
+    assert.ok(panelSource.includes('aria-live="polite"'), 'DiffPanel must announce SCM operation status politely');
+    assert.ok(panelSource.includes('className="diff-file-select"'), 'DiffPanel must use a native button for file row selection');
     assert.ok(!routeSource.includes("router.post('/commit'"), 'Cycle 3 must not expose commit operation');
     assert.ok(!routeSource.includes("router.post('/discard'"), 'Cycle 3 must not expose discard operation');
 });

@@ -162,9 +162,11 @@
 }
 .diff-scm-inline-action {
     min-width: 14px;
+    align-self: stretch;
     text-align: center;
     font-size: 11px;
     font-weight: 700;
+    padding: 0 4px;
 }
 .diff-scm-action:hover,
 .diff-scm-inline-action:hover {
@@ -172,6 +174,13 @@
     color: var(--text-base);
 }
 .diff-file-item {
+    display: flex;
+    align-items: stretch;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
+}
+.diff-file-select {
     all: unset;
     cursor: pointer;
     display: flex;
@@ -181,12 +190,13 @@
     padding: 4px 8px;
     font-size: 11px;
     color: var(--text-base);
-    width: 100%;
+    flex: 1;
+    min-width: 0;
     box-sizing: border-box;
 }
-.diff-file-item:hover { background: var(--bg-hover); }
-.diff-file-item:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
-.diff-file-item.is-selected { background: var(--bg-active); }
+.diff-file-select:hover { background: var(--bg-hover); }
+.diff-file-select:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.diff-file-item.is-selected .diff-file-select { background: var(--bg-active); }
 .diff-file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
 .diff-file-stats { display: flex; gap: 4px; flex-shrink: 0; font-size: 10px; }
 .diff-ins { color: var(--status-success); }
