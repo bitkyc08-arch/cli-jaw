@@ -107,6 +107,77 @@ test('code canvas owns code cwd override independent from manager instance selec
     assert.equal(canvas.includes('const cwd = workingDir ||'), false, 'new sessions must not fall back to the manager instance workingDir prop');
 });
 
+test('code cwd picker is editable only before a Code session starts', () => {
+    const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const header = read('public/manager/src/code/CodeWorkspaceHeader.tsx');
+    const css = read('public/manager/src/code/code.css');
+
+    assert.ok(header.includes("import { getDesktop } from '../panels/desktop-bridge'"), 'CodeWorkspaceHeader must use the existing Electron desktop bridge');
+    assert.ok(header.includes('cwdLocked?: boolean'), 'CodeWorkspaceHeader props must include cwdLocked');
+    assert.ok(header.includes('cwdLocked = false'), 'CodeWorkspaceHeader must default cwdLocked to false for web/pre-session use');
+    assert.ok(header.includes('const canApplyCwd = Boolean(!cwdLocked'), 'Apply must be disabled while a Code session is active');
+    assert.ok(header.includes('const canPickCwd = Boolean(!cwdLocked'), 'native folder picker must be disabled while a Code session is active');
+    assert.ok(header.includes('desktop?.folder?.pickFolder'), 'header must call the existing Electron folder picker bridge');
+    assert.ok(header.includes('const result = await desktop.folder.pickFolder()'), 'Browse must await the native folder picker');
+    assert.ok(header.includes('disabled={cwdLocked}'), 'cwd input must be disabled while locked');
+    assert.ok(header.includes('aria-readonly={cwdLocked}'), 'cwd input must expose readonly state to assistive tech');
+    assert.ok(header.includes('code-workspace-cwd-lock'), 'header must render a compact locked cwd hint');
+    assert.ok(header.includes('code-workspace-cwd-error'), 'header must render picker errors without blocking the app');
+
+    const syncStart = canvas.indexOf('useEffect(() => {');
+    const syncEnd = canvas.indexOf('const handleWorkingDirChange', syncStart);
+    const syncBlock = canvas.slice(syncStart, syncEnd);
+    assert.ok(syncBlock.includes('if (activeSessionIdRef.current || activeSessionId) return'), 'workingDir prop sync must not overwrite cwd while a session is active');
+    assert.ok(syncBlock.includes('setCodeWorkingDir(workingDir)'), 'workingDir prop sync must still update cwd before a session starts');
+
+    const handlerStart = canvas.indexOf('const handleWorkingDirChange = useCallback');
+    const handlerEnd = canvas.indexOf('}, [activeSessionId, onWorkingDirChange])', handlerStart);
+    const handlerBlock = canvas.slice(handlerStart, handlerEnd);
+    assert.ok(handlerBlock.includes('if (activeSessionIdRef.current || activeSessionId) return'), 'manual cwd changes must be ignored while a session is active');
+    assert.ok(handlerBlock.includes('setCodeWorkingDir(next)'), 'manual cwd changes must still update cwd before a session starts');
+    assert.ok(canvas.includes('cwdLocked={Boolean(activeSessionId)}'), 'CodeCanvas must pass active session lock state to the header');
+
+    for (const selector of ['.code-workspace-cwd-pick', '.code-workspace-cwd-lock', '.code-workspace-cwd-error', '.code-workspace-cwd-input:disabled']) {
+        assert.ok(css.includes(selector), `code.css must include ${selector}`);
+    }
+});
+
+test('code transcript preserves failed tool state and remains scrollable after replay', () => {
+    const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const transcript = read('public/manager/src/code/CodeTranscript.tsx');
+    const css = read('public/manager/src/code/code.css');
+
+    assert.ok(canvas.includes('function normalizeToolStatus'), 'CodeCanvas must centralize tool status normalization');
+    assert.ok(canvas.includes("if (value === 'failed' || value === 'error' || value === 'errored') return 'failed'"), 'failed/error tool statuses must normalize to failed');
+    assert.ok(canvas.includes("toolStatus: normalizeToolStatus(status)"), 'tool call creation must preserve failed status instead of mapping it to done');
+    assert.ok(canvas.includes('if (status) entry.toolStatus = normalizeToolStatus(status)'), 'tool call updates must preserve failed status instead of mapping it to done');
+    assert.equal(canvas.includes("status === 'completed' || status === 'failed' ? 'done'"), false, 'failed tool statuses must not be coerced to done');
+    assert.equal(canvas.includes("status === 'completed' || status === 'failed') entry.toolStatus = 'done'"), false, 'failed tool updates must not be coerced to done');
+
+    assert.ok(canvas.includes('const scrollTranscriptToBottom = useCallback'), 'CodeCanvas must centralize transcript bottom scrolling');
+    assert.ok(canvas.includes('const latestTranscriptFootprint = useMemo'), 'CodeCanvas must track rendered transcript changes for replay/load scroll');
+    assert.ok(canvas.includes('}, [latestTranscriptFootprint, sending, scrollTranscriptToBottom])'), 'auto-scroll must run from rendered message state, not only event delivery');
+
+    assert.ok(transcript.includes('role="log"'), 'transcript must expose log semantics');
+    assert.ok(transcript.includes('aria-live="polite"'), 'transcript must announce appended output politely');
+    assert.ok(transcript.includes('tabIndex={0}'), 'transcript must be keyboard focusable for scroll keys');
+    assert.ok(transcript.includes('function handleTranscriptKeyDown'), 'transcript must own keyboard scroll handling');
+    for (const token of ["key === 'd'", "key === 'j'", "event.key === 'PageDown'", "event.key === 'End'"]) {
+        assert.ok(transcript.includes(token), `transcript keyboard handler must include ${token}`);
+    }
+    assert.ok(transcript.includes('isEditableTarget(event.target)'), 'transcript must not steal keys from composer inputs');
+    assert.ok(transcript.includes("open={status === 'running' || failed}"), 'failed tools must open by default so error details are visible');
+    assert.ok(transcript.includes("failed ? 'fail' : 'done'"), 'failed tools must not show the done icon label');
+    assert.ok(transcript.includes('code-tool-error-snippet'), 'failed tools must show a visible error snippet');
+
+    assert.ok(css.includes('.code-canvas-main'), 'code.css must style the Code main pane');
+    assert.ok(css.includes('min-height: 0;'), 'code.css must include flex min-height containment');
+    assert.ok(css.includes('scroll-padding-bottom: 160px'), 'transcript must reserve bottom scroll space near composer/footer');
+    assert.ok(css.includes('.code-transcript:focus-visible'), 'keyboard-focused transcript must show focus affordance');
+    assert.ok(css.includes('.code-tool-failed'), 'failed tool rows must have distinct styling');
+    assert.ok(css.includes('.code-tool-error-snippet'), 'failed tool error snippet must be styled');
+});
+
 test('code backend normalizes JWC session title metadata and returns title on load', () => {
     const types = read('src/code-mode/types.ts');
     const host = read('src/code-mode/acp-host.ts');

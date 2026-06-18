@@ -170,7 +170,12 @@
 .code-workspace-cwd-input.is-invalid {
     border-color: var(--status-error);
 }
-.code-workspace-cwd-apply {
+.code-workspace-cwd-input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+.code-workspace-cwd-apply,
+.code-workspace-cwd-pick {
     height: 26px;
     min-height: auto;
     padding: 0 9px;
@@ -183,9 +188,20 @@
     font-weight: 600;
     cursor: pointer;
 }
-.code-workspace-cwd-apply:disabled {
+.code-workspace-cwd-apply:disabled,
+.code-workspace-cwd-pick:disabled {
     opacity: 0.45;
     cursor: not-allowed;
+}
+.code-workspace-cwd-lock,
+.code-workspace-cwd-error {
+    flex: 0 0 auto;
+    color: var(--text-tertiary);
+    font-size: 11px;
+    white-space: nowrap;
+}
+.code-workspace-cwd-error {
+    color: var(--status-error);
 }
 .code-workspace-pill {
     flex: 0 0 auto;
@@ -224,6 +240,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
+    min-height: 0;
 }
 
 /* Session header (title + context meter + plan) */
@@ -256,8 +273,14 @@
 /* Transcript */
 .code-transcript {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 16px;
+    scroll-padding-bottom: 160px;
+}
+.code-transcript:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-default) 48%, transparent);
+    outline-offset: -3px;
 }
 .code-transcript-empty {
     display: flex; flex-direction: column;
@@ -312,3 +335,26 @@
     color: var(--text-secondary);
 }
 .code-streaming { opacity: 0.6; }
+
+.code-tool-failed {
+    border-color: color-mix(in srgb, var(--status-error) 52%, var(--border-default));
+    background: color-mix(in srgb, var(--status-error) 7%, var(--bg-raised));
+}
+.code-tool-failed .code-tool-summary {
+    color: var(--status-error);
+}
+.code-tool-failed .code-tool-status {
+    color: var(--status-error);
+    background: color-mix(in srgb, var(--status-error) 10%, var(--bg-base));
+}
+.code-tool-error-snippet {
+    margin: 0 10px 8px;
+    padding: 7px 9px;
+    border: 1px solid color-mix(in srgb, var(--status-error) 32%, var(--border-default));
+    border-radius: 6px;
+    background: var(--bg-base);
+    color: var(--status-error);
+    font-size: 11px;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}

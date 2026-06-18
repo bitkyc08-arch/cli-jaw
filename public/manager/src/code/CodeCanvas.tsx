@@ -19,6 +19,13 @@ type CodeCanvasProps = {
     onWorkingDirChange?: (path: string | null) => void;
 };
 
+function normalizeToolStatus(status: string): 'running' | 'done' | 'failed' {
+    const value = status.toLowerCase();
+    if (value === 'failed' || value === 'error' || value === 'errored') return 'failed';
+    if (value === 'completed' || value === 'done' || value === 'success') return 'done';
+    return 'running';
+}
+
 function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): TranscriptEntry[] {
     const entries: TranscriptEntry[] = [];
     for (const event of events) {
@@ -46,7 +53,7 @@ function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): Tran
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? 'pending');
             const content = (update['content'] ?? []) as ToolContent[];
-            entries.push({ role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: status === 'completed' || status === 'failed' ? 'done' : 'running' });
+            entries.push({ role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: normalizeToolStatus(status) });
         } else if (event.event === 'code_tool_call_update') {
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
@@ -55,7 +62,7 @@ function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): Tran
             const idx = findLastToolMessageIndex(entries, toolCallId);
             if (idx < 0) continue;
             const entry = { ...entries[idx] };
-            if (status === 'completed' || status === 'failed') entry.toolStatus = 'done';
+            if (status) entry.toolStatus = normalizeToolStatus(status);
             if (content.length > 0) entry.toolContent = content;
             if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
             entries[idx] = entry;
@@ -91,16 +98,36 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const activeSessionIdRef = useRef<string | null>(null);
     const transcriptRef = useRef<HTMLDivElement>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
+    const latestTranscriptFootprint = useMemo(() => {
+        const last = messages[messages.length - 1];
+        if (!last) return 'empty';
+        const toolContentSize = last.toolContent?.reduce((total, content) => total + JSON.stringify(content).length, 0) ?? 0;
+        return `${messages.length}:${last.role}:${last.text.length}:${last.toolOutput?.length ?? 0}:${toolContentSize}:${last.toolStatus ?? ''}`;
+    }, [messages]);
+
+    const scrollTranscriptToBottom = useCallback((behavior: ScrollBehavior = 'smooth') => {
+        window.requestAnimationFrame(() => {
+            const node = transcriptRef.current;
+            if (!node) return;
+            node.scrollTo({ top: node.scrollHeight, behavior });
+        });
+    }, []);
 
     useEffect(() => {
+        scrollTranscriptToBottom(messages.length > 1 ? 'smooth' : 'auto');
+    }, [latestTranscriptFootprint, sending, scrollTranscriptToBottom]);
+
+    useEffect(() => {
+        if (activeSessionIdRef.current || activeSessionId) return;
         setCodeWorkingDir(workingDir);
-    }, [workingDir]);
+    }, [activeSessionId, workingDir]);
 
     const handleWorkingDirChange = useCallback((path: string | null) => {
+        if (activeSessionIdRef.current || activeSessionId) return;
         const next = path ?? '';
         setCodeWorkingDir(next);
         onWorkingDirChange?.(path);
-    }, [onWorkingDirChange]);
+    }, [activeSessionId, onWorkingDirChange]);
 
     const applyModelOptions = useCallback((options: CodeModelOptions) => {
         setModelOptions(options);
@@ -219,7 +246,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? 'pending');
             const content = (update['content'] ?? []) as ToolContent[];
-            setMessages(prev => [...prev, { role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: status === 'completed' || status === 'failed' ? 'done' : 'running' }]);
+            setMessages(prev => [...prev, { role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: normalizeToolStatus(status) }]);
         } else if (kind === 'code_tool_call_update') {
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
@@ -230,7 +257,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 if (idx < 0) return prev;
                 const updated = [...prev];
                 const entry = { ...updated[idx] };
-                if (status === 'completed' || status === 'failed') entry.toolStatus = 'done';
+                if (status) entry.toolStatus = normalizeToolStatus(status);
                 if (content.length > 0) entry.toolContent = content;
                 if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
                 updated[idx] = entry;
@@ -273,8 +300,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             setSending(false);
         }
 
-        setTimeout(() => transcriptRef.current?.scrollTo({ top: transcriptRef.current.scrollHeight, behavior: 'smooth' }), 50);
-    }, [client, permissionMode]);
+        setTimeout(() => scrollTranscriptToBottom('smooth'), 50);
+    }, [client, permissionMode, scrollTranscriptToBottom]);
 
     useCodeEvents({ port, sessionId: activeSessionId, sessionIdRef: activeSessionIdRef, onEvent: handleCodeEvent });
 
@@ -443,6 +470,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     usage={usage}
                     planEntries={planEntries}
                     workingDir={codeWorkingDir}
+                    cwdLocked={Boolean(activeSessionId)}
                     onWorkingDirChange={handleWorkingDirChange}
                 />
                 <CodeTranscript messages={messages} sending={sending} workingDir={codeWorkingDir} transcriptRef={transcriptRef} />
