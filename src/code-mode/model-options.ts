@@ -23,6 +23,8 @@ export type JwcModelRole = {
     thinkingLevel?: string;
 };
 
+export type JwcThinkingLevel = 'inherit' | 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max';
+
 export type JwcModelAssignmentRole = 'default' | 'executor_ext' | 'executor' | 'architect' | 'planner' | 'critic';
 
 export type JwcModelAssignmentSettingsPath = 'modelRoles' | 'task.agentModelOverrides';
@@ -37,6 +39,8 @@ export type JwcModelAssignment = {
     model?: string;
     thinkingLevel?: string;
 };
+
+export const JWC_THINKING_LEVELS: JwcThinkingLevel[] = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 const JWC_THINKING_SUFFIXES = new Set(['off', 'min', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -108,6 +112,26 @@ export function parseJwcModelRole(value: string | undefined): JwcModelRole | nul
     }
     if (!provider || !model) return null;
     return { provider, model, ...(thinkingLevel ? { thinkingLevel } : {}) };
+}
+
+export function normalizeJwcThinkingLevel(value: unknown): JwcThinkingLevel | undefined {
+    if (value === null || value === undefined) return undefined;
+    const normalized = String(value).trim().toLowerCase();
+    if (!normalized || normalized === 'inherit') return undefined;
+    if (normalized === 'min') return 'minimal';
+    return JWC_THINKING_LEVELS.includes(normalized as JwcThinkingLevel)
+        ? normalized as JwcThinkingLevel
+        : undefined;
+}
+
+export function buildJwcModelRole(provider: string, model: string, thinkingLevel?: unknown): string {
+    const cleanProvider = provider.trim();
+    const cleanModel = model.trim();
+    if (!cleanProvider || !cleanModel) throw new Error('provider and model required');
+    const normalizedThinking = normalizeJwcThinkingLevel(thinkingLevel);
+    return normalizedThinking
+        ? `${cleanProvider}/${cleanModel}:${normalizedThinking}`
+        : `${cleanProvider}/${cleanModel}`;
 }
 
 export async function readJwcDefaultModelRole(agentDir = resolveJwcAgentDir()): Promise<string | undefined> {

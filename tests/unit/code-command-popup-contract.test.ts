@@ -59,8 +59,11 @@ test('code command popup exposes all JWC model role assignments', () => {
     assert.ok(popup.includes('modelAssignments?.roles'), 'popup must render role assignment readback');
     assert.ok(popup.includes('Role assignments'), 'popup must label the assignment section');
     assert.ok(popup.includes('Assign selected'), 'popup must expose assignment action');
-    assert.ok(popup.includes('onSetModelAssignment(role.role, draftProvider, draftModel)'), 'assignment action must use lowercase role id');
+    assert.ok(popup.includes("roleThinking === 'inherit' ? null : roleThinking"), 'assignment action must map inherit to no thinking suffix');
+    assert.ok(popup.includes("value === 'min' ? 'minimal' : value"), 'popup must normalize display min to canonical minimal');
+    assert.ok(popup.includes('onSetModelAssignment('), 'assignment action must call assignment handler');
     assert.ok(popup.includes('onClearModelAssignment(role.role)'), 'popup must expose clear action');
+    assert.ok(popup.includes('Thinking'), 'role cards must expose a thinking selector');
     assert.equal(popup.includes('Subagent assignment, presets, and MRU are scheduled for later model popup slices.'), false, 'subagent assignment must not be described as future work');
 
     for (const role of ['DEFAULT', 'EXECUTOR_EXT', 'EXECUTOR', 'ARCHITECT', 'PLANNER', 'CRITIC']) {
@@ -69,10 +72,12 @@ test('code command popup exposes all JWC model role assignments', () => {
 
     assert.ok(canvas.includes('const [modelAssignments, setModelAssignments]'), 'CodeCanvas must own assignment readback state');
     assert.ok(canvas.includes('client.listModelAssignments()'), 'CodeCanvas must load role assignments');
-    assert.ok(canvas.includes('client.setModelAssignment(role, toModelId(nextProvider, nextModel))'), 'CodeCanvas must persist role assignment');
+    assert.ok(canvas.includes('client.setModelAssignment(role, {'), 'CodeCanvas must persist structured role assignment');
+    assert.ok(canvas.includes('thinkingLevel !== undefined'), 'CodeCanvas must pass role thinking into structured assignment when selected');
     assert.ok(canvas.includes('client.clearModelAssignment(role)'), 'CodeCanvas must clear role assignment');
     assert.ok(css.includes('.code-role-assignment-grid'), 'role assignment panel must have dedicated layout styles');
     assert.ok(css.includes('.code-role-card'), 'role assignment cards must be styled');
+    assert.ok(css.includes('.code-role-thinking'), 'role assignment thinking selector must be styled');
 });
 
 test('code command popup stays instance-independent', () => {

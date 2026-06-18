@@ -38,6 +38,12 @@ export interface CodeModelAssignment {
     thinkingLevel?: string;
 }
 
+export interface CodeModelAssignmentInput {
+    provider: string;
+    model: string;
+    thinkingLevel?: string | null;
+}
+
 export interface CodeModelAssignments {
     roles: CodeModelAssignment[];
     activeModel: {
@@ -70,6 +76,7 @@ export interface CodeSessionClient {
     setDefaultModel(modelId: string): Promise<CodeModelOptions>;
     listModelAssignments(): Promise<CodeModelAssignments>;
     setModelAssignment(role: CodeModelAssignment['role'], modelId: string): Promise<CodeModelAssignments>;
+    setModelAssignment(role: CodeModelAssignment['role'], input: CodeModelAssignmentInput): Promise<CodeModelAssignments>;
     clearModelAssignment(role: CodeModelAssignment['role']): Promise<CodeModelAssignments>;
     getGitInfo(cwd: string): Promise<CodeGitInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
@@ -120,8 +127,9 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         async listModelAssignments() {
             return request<CodeModelAssignments>('GET', '/api/code/model-assignments');
         },
-        async setModelAssignment(role: CodeModelAssignment['role'], modelId: string) {
-            return request<CodeModelAssignments>('PUT', `/api/code/model-assignments/${encodeURIComponent(role)}`, { modelId });
+        async setModelAssignment(role: CodeModelAssignment['role'], input: string | CodeModelAssignmentInput) {
+            const body = typeof input === 'string' ? { modelId: input } : input;
+            return request<CodeModelAssignments>('PUT', `/api/code/model-assignments/${encodeURIComponent(role)}`, body);
         },
         async clearModelAssignment(role: CodeModelAssignment['role']) {
             return request<CodeModelAssignments>('DELETE', `/api/code/model-assignments/${encodeURIComponent(role)}`);

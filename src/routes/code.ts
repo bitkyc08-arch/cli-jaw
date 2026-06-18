@@ -6,6 +6,7 @@ import { isAbsolute } from 'node:path';
 import { Router, type RequestHandler } from 'express';
 import { acpHost } from '../code-mode/acp-host.js';
 import {
+    buildJwcModelRole,
     clearJwcModelAssignment,
     isJwcModelAssignmentRole,
     resolveJwcModelAssignments,
@@ -84,7 +85,17 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
             const role = String(req.params['role'] || '');
             if (!isJwcModelAssignmentRole(role)) { res.status(400).json({ ok: false, error: 'unknown model assignment role' }); return; }
             const body = req.body as Record<string, unknown> | undefined;
-            const modelId = String(body?.['modelId'] || '');
+            let modelId = String(body?.['modelId'] || '');
+            if (!modelId) {
+                const provider = String(body?.['provider'] || '');
+                const model = String(body?.['model'] || '');
+                try {
+                    modelId = buildJwcModelRole(provider, model, body?.['thinkingLevel']);
+                } catch (err: unknown) {
+                    res.status(400).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+                    return;
+                }
+            }
             if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
             try {
                 await writeJwcModelAssignment(role, modelId);

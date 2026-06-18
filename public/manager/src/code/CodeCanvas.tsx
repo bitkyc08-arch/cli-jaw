@@ -305,10 +305,15 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         role: CodeModelAssignment['role'],
         nextProvider: string,
         nextModel: string,
+        thinkingLevel?: string | null,
     ) => {
         setPopupError('');
         try {
-            const assignments = await client.setModelAssignment(role, toModelId(nextProvider, nextModel));
+            const assignments = await client.setModelAssignment(role, {
+                provider: nextProvider,
+                model: nextModel,
+                ...(thinkingLevel !== undefined ? { thinkingLevel } : {}),
+            });
             setModelAssignments(assignments);
         } catch (err) {
             setPopupError(err instanceof Error ? err.message : String(err));

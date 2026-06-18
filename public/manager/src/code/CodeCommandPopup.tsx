@@ -18,7 +18,12 @@ type CodeCommandPopupProps = {
     onProviderChange: (value: string) => void;
     onUseModel: (provider: string, model: string) => void | Promise<void>;
     onSetDefaultModel: (provider: string, model: string) => void | Promise<void>;
-    onSetModelAssignment: (role: CodeModelAssignment['role'], provider: string, model: string) => void | Promise<void>;
+    onSetModelAssignment: (
+        role: CodeModelAssignment['role'],
+        provider: string,
+        model: string,
+        thinkingLevel?: string | null,
+    ) => void | Promise<void>;
     onClearModelAssignment: (role: CodeModelAssignment['role']) => void | Promise<void>;
     onPermissionModeChange: (value: string) => void;
 };
@@ -56,6 +61,7 @@ export function CodeCommandPopup({
     const [modelQuery, setModelQuery] = useState('');
     const [draftProvider, setDraftProvider] = useState(provider);
     const [draftModel, setDraftModel] = useState(model);
+    const [roleThinkingDrafts, setRoleThinkingDrafts] = useState<Record<string, string>>({});
     const draftProviderRecord = modelOptions.providers.find(entry => entry.id === draftProvider) ?? currentProvider;
     const query = modelQuery.trim().toLowerCase();
     const filteredProviders = useMemo(() => modelOptions.providers.filter(entry => {
@@ -74,6 +80,15 @@ export function CodeCommandPopup({
     }, [modelOptions.providers.length]);
     const canUseNow = Boolean(activeSessionId && draftProvider && draftModel && !disabled);
     const canSetDefault = Boolean(draftProvider && draftModel && !disabled);
+    const thinkingOptions = useMemo(() => {
+        const values = ['inherit', ...(draftProviderRecord?.efforts ?? [])]
+            .map(value => value === 'min' ? 'minimal' : value)
+            .filter((value, index, list) => value && list.indexOf(value) === index);
+        return values.map(value => ({
+            value,
+            label: value === 'inherit' ? 'inherit' : value === 'minimal' ? 'min' : value,
+        }));
+    }, [draftProviderRecord?.efforts]);
 
     useEffect(() => {
         closeRef.current?.focus();
@@ -93,6 +108,16 @@ export function CodeCommandPopup({
             setDraftModel(models[0] ?? '');
         }
     }, [draftModel, draftProviderRecord?.models, popupKind]);
+
+    useEffect(() => {
+        if (popupKind !== 'model' || !modelAssignments) return;
+        const nextDrafts: Record<string, string> = {};
+        for (const role of modelAssignments.roles) {
+            const thinking = role.thinkingLevel === 'min' ? 'minimal' : role.thinkingLevel;
+            nextDrafts[role.role] = thinking || 'inherit';
+        }
+        setRoleThinkingDrafts(nextDrafts);
+    }, [modelAssignments, popupKind]);
 
     useEffect(() => {
         const onKeyDown = (event: KeyboardEvent) => {
@@ -268,6 +293,7 @@ export function CodeCommandPopup({
                             <div className="code-role-assignment-grid" role="list">
                                 {(modelAssignments?.roles ?? []).map(role => {
                                     const assigned = role.modelId ? role.modelId : 'Unset';
+                                    const roleThinking = roleThinkingDrafts[role.role] ?? (role.thinkingLevel === 'min' ? 'minimal' : role.thinkingLevel) ?? 'inherit';
                                     const canAssign = Boolean(draftProvider && draftModel && !disabled);
                                     const canClear = Boolean(role.modelId && !disabled);
                                     return (
@@ -278,13 +304,33 @@ export function CodeCommandPopup({
                                             </div>
                                             <p className="code-role-path">{role.settingsPath}</p>
                                             <p className="code-role-model" title={assigned}>{assigned}</p>
+                                            <label className="code-role-thinking">
+                                                <span>Thinking</span>
+                                                <select
+                                                    value={roleThinking}
+                                                    disabled={disabled}
+                                                    onChange={event => {
+                                                        const value = event.target.value;
+                                                        setRoleThinkingDrafts(prev => ({ ...prev, [role.role]: value }));
+                                                    }}
+                                                >
+                                                    {thinkingOptions.map(option => (
+                                                        <option key={option.value} value={option.value}>{option.label}</option>
+                                                    ))}
+                                                </select>
+                                            </label>
                                             <div className="code-role-actions">
                                                 <button
                                                     type="button"
                                                     className="code-popup-secondary"
                                                     disabled={!canAssign}
                                                     onClick={() => {
-                                                        void onSetModelAssignment(role.role, draftProvider, draftModel);
+                                                        void onSetModelAssignment(
+                                                            role.role,
+                                                            draftProvider,
+                                                            draftModel,
+                                                            roleThinking === 'inherit' ? null : roleThinking,
+                                                        );
                                                     }}
                                                 >
                                                     Assign selected
