@@ -12,6 +12,7 @@ import {
 
 type UseFolderGitStatusInput = {
     rootPath: string | null;
+    repoRoot?: string | null;
     enabled: boolean;
     refreshToken: number;
 };
@@ -65,7 +66,7 @@ function stateFromStatus(status: GitStatusMapResult): FolderPanelGitState {
 }
 
 export function useFolderGitStatus(input: UseFolderGitStatusInput): FolderPanelGitState {
-    const { rootPath, enabled, refreshToken } = input;
+    const { rootPath, repoRoot, enabled, refreshToken } = input;
     const [state, setState] = useState<FolderPanelGitState>(EMPTY_FOLDER_GIT_STATE);
 
     useEffect(() => {
@@ -77,7 +78,11 @@ export function useFolderGitStatus(input: UseFolderGitStatusInput): FolderPanelG
         const timer = window.setTimeout(() => {
             setState(prev => ({ ...prev, loading: true, error: null }));
             void (async () => {
-                const result = await loadFolderGitStatus(rootPath, { includeIgnored: true, includeUntracked: true });
+                const result = await loadFolderGitStatus(rootPath, {
+                    ...(repoRoot ? { repoRoot } : {}),
+                    includeIgnored: true,
+                    includeUntracked: true,
+                });
                 if (cancelled) return;
                 if (result.ok) {
                     setState(stateFromStatus(result.status));
@@ -92,7 +97,7 @@ export function useFolderGitStatus(input: UseFolderGitStatusInput): FolderPanelG
             cancelled = true;
             window.clearTimeout(timer);
         };
-    }, [enabled, refreshToken, rootPath]);
+    }, [enabled, refreshToken, repoRoot, rootPath]);
 
     return state;
 }

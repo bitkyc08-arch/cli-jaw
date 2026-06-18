@@ -213,11 +213,11 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     });
 
     ipcMain.handle('folder:watchDir', async (event, dirPath: string) => {
-        if (!isAllowedSender(event)) return;
-        if (!isAllowedByRoot(dirPath)) return;
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (!isAllowedByRoot(dirPath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(dirPath);
-        if (watchers.has(resolved)) return;
-        if (watchers.size >= MAX_WATCHERS) return;
+        if (watchers.has(resolved)) return { ok: true };
+        if (watchers.size >= MAX_WATCHERS) return { ok: false, error: 'watcher limit reached' };
         try {
             const w = watch(resolved, { recursive: false }, () => {
                 const existing = debounceTimers.get(resolved);
@@ -231,19 +231,21 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
                 }, 500));
             });
             watchers.set(resolved, w);
+            return { ok: true };
         } catch {
-            // ignore watch failures
+            return { ok: false, error: 'failed to watch directory' };
         }
     });
 
     ipcMain.handle('folder:unwatchDir', async (event, dirPath: string) => {
-        if (!isAllowedSender(event)) return;
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         const resolved = resolve(dirPath);
         const w = watchers.get(resolved);
         if (w) {
             w.close();
             watchers.delete(resolved);
         }
+        return { ok: true };
     });
 }
 

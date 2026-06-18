@@ -81,8 +81,8 @@ export type FolderBridgeApi = {
     readFile: (filePath: string) => Promise<{ ok: boolean; content?: string; truncated?: boolean; binary?: boolean; error?: string }>;
     movePath: (sourcePath: string, targetDirectory: string) => Promise<FolderMoveResult>;
     revealPath: (path: string) => Promise<{ ok: boolean; error?: string }>;
-    watchDir: (dirPath: string) => Promise<void>;
-    unwatchDir: (dirPath: string) => Promise<void>;
+    watchDir: (dirPath: string) => Promise<FolderWatchResult>;
+    unwatchDir: (dirPath: string) => Promise<FolderWatchResult>;
     onDirChange: (cb: (dirPath: string) => void) => () => void;
 };
 
@@ -91,6 +91,11 @@ export type FolderMoveResult = {
     moved?: { from: string; to: string; name: string; kind: 'file' | 'directory' };
     error?: string;
     code?: string;
+};
+
+export type FolderWatchResult = {
+    ok: boolean;
+    error?: string;
 };
 
 export type DroppedPathEntry = {

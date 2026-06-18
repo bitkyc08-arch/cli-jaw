@@ -20,8 +20,9 @@ type DiffPanelProps = {
     selectedInstance: DashboardInstance | null;
     settings: DiffSettings;
     folderRootPath?: string | null;
+    repoRootPath?: string | null;
     selectedFilePath?: string | null;
-    onFolderRootChange?: (path: string | null) => void;
+    onRepoRootChange?: (path: string | null) => void;
     onPreviewFile?: (path: string) => void;
     onSettingsPatch?: (patch: Partial<DashboardRegistryUi>) => void;
 };
@@ -103,6 +104,9 @@ function relativeDiffPath(repoRoot: string | null, filePath: string | null): str
 }
 
 export function DiffPanel(props: DiffPanelProps) {
+    const repoRootPath = props.repoRootPath ?? null;
+    const folderRootPath = props.folderRootPath ?? null;
+    const onRepoRootChange = props.onRepoRootChange;
     const desktopBridge = getDiffBridge();
     const bridge = useMemo(
         () => desktopBridge ?? createDashboardGitDiffClient(props.selectedInstance, props.settings),
@@ -132,7 +136,7 @@ export function DiffPanel(props: DiffPanelProps) {
             diffPinnedRootByPort: props.settings.diffPinnedRootByPort,
             diffRecentRepoRoots: props.settings.diffRecentRepoRoots,
         });
-        if (props.folderRootPath) candidates.unshift(folderRepoCandidate(props.folderRootPath));
+        if (folderRootPath) candidates.unshift(folderRepoCandidate(folderRootPath));
         const result = await bridge.getRepoCandidates(candidates);
         if (!result.ok) {
             setError(result.error ?? 'Failed to resolve git repositories');
@@ -141,16 +145,41 @@ export function DiffPanel(props: DiffPanelProps) {
         const roots = result.candidates ?? [];
         setRepoCandidates(roots);
         setRepoRoot(current => {
-            const folderRoot = props.folderRootPath
-                ? roots.find(root => isPathInsideRoot(props.folderRootPath ?? '', root.root))?.root ?? null
+            const requestedRoot = repoRootPath && roots.some(root => root.root === repoRootPath)
+                ? repoRootPath
                 : null;
-            if (folderRoot) return folderRoot;
-            if (current && roots.some(root => root.root === current)) return current;
-            return folderRoot ?? roots[0]?.root ?? null;
+            const folderRoot = folderRootPath
+                ? roots.find(root => isPathInsideRoot(folderRootPath, root.root))?.root ?? null
+                : null;
+            const nextRoot = folderRoot ?? requestedRoot ?? (current && roots.some(root => root.root === current) ? current : null) ?? roots[0]?.root ?? null;
+            if (nextRoot !== repoRootPath) onRepoRootChange?.(nextRoot);
+            return nextRoot;
         });
-        if (roots.length === 0) setError('No git repository found from the selected instance roots.');
+        if (roots.length === 0) {
+            onRepoRootChange?.(null);
+            setError('No git repository found from the selected instance roots.');
+        }
         else setError(null);
-    }, [bridge, selectedInstanceKey, props.folderRootPath, props.settings.diffRootPolicy, props.settings.diffPinnedRootByPort, props.settings.diffRecentRepoRoots]);
+    }, [
+        bridge,
+        selectedInstanceKey,
+        folderRootPath,
+        onRepoRootChange,
+        props.selectedInstance,
+        props.settings.diffRootPolicy,
+        props.settings.diffPinnedRootByPort,
+        props.settings.diffRecentRepoRoots,
+        repoRootPath,
+    ]);
+
+    useEffect(() => {
+        if (repoRootPath === repoRoot) return;
+        if (repoRootPath && repoCandidates.some(root => root.root === repoRootPath)) {
+            setRepoRoot(repoRootPath);
+            return;
+        }
+        if (repoRootPath === null) setRepoRoot(null);
+    }, [repoRootPath, repoCandidates, repoRoot]);
 
     const loadSummary = useCallback(async () => {
         if (!bridge || !repoRoot) return;
@@ -190,7 +219,7 @@ export function DiffPanel(props: DiffPanelProps) {
     function handleRootChange(root: string, nextRecentRepoRoots?: string[]): void {
         setRepoRoot(root);
         setSelectedFile(null);
-        props.onFolderRootChange?.(root);
+        onRepoRootChange?.(root);
         const port = props.selectedInstance?.port;
         const patch: Partial<DashboardRegistryUi> = {};
         if (port != null) {

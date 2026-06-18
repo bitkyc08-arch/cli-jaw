@@ -131,8 +131,8 @@ function mockFolderBridge(pickFolder: FolderBridgeApi['pickFolder']): FolderBrid
         readFile: async () => ({ ok: true, content: '' }),
         movePath: async () => ({ ok: true }),
         revealPath: async () => ({ ok: true }),
-        watchDir: async () => undefined,
-        unwatchDir: async () => undefined,
+        watchDir: async () => ({ ok: true }),
+        unwatchDir: async () => ({ ok: true }),
         onDirChange: () => () => undefined,
     };
 }

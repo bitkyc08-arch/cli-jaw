@@ -63,6 +63,7 @@ import type { JawCeoVoiceController } from './jaw-ceo/useJawCeoVoice';
 import { ModeSwitch } from './code/ModeSwitch';
 const CodeCanvas = lazy(() => import('./code/CodeCanvas').then(m => ({ default: m.CodeCanvas })));
 import './code/code.css';
+import { useWorkbenchResourceState } from './workbench/useWorkbenchResourceState';
 
 type WorkspaceSurfaceProps = {
     active: boolean;
@@ -165,8 +166,12 @@ function renderRightPanelContent(
     mode: RightPanelMode,
     previewFilePath: string | null,
     folderRootPath: string | null,
+    repoRootPath: string | null,
+    gitRefreshVersion: number,
     onPreviewFile: (path: string) => void,
     onFolderRootChange: (path: string | null) => void,
+    onRepoRootChange: (path: string | null) => void,
+    onGitRefresh: () => void,
     selectedInstance: DashboardInstance | null,
     dashboardSettingsUi: DashboardRegistryUi,
     onDashboardSettingsPatch: (patch: Partial<DashboardRegistryUi>) => void,
@@ -181,12 +186,13 @@ function renderRightPanelContent(
             selectedInstance={selectedInstance}
             settings={dashboardSettingsUi}
             folderRootPath={folderRootPath}
+            repoRootPath={repoRootPath}
             selectedFilePath={previewFilePath}
-            onFolderRootChange={onFolderRootChange}
+            onRepoRootChange={onRepoRootChange}
             onPreviewFile={onPreviewFile}
             onSettingsPatch={onDashboardSettingsPatch}
         /></Suspense>;
-        case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onPreviewFile={onPreviewFile} sessionState={folderPanelSession} onSessionStateChange={onFolderPanelSessionChange} /></Suspense>;
+        case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} repoRootPath={repoRootPath} gitRefreshVersion={gitRefreshVersion} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onRepoRootChange={onRepoRootChange} onGitRefresh={onGitRefresh} onPreviewFile={onPreviewFile} sessionState={folderPanelSession} onSessionStateChange={onFolderPanelSessionChange} /></Suspense>;
         case 'doc': return <Suspense fallback={fallback}><DocPanel filePath={previewFilePath ?? undefined} /></Suspense>;
         case 'browser': return <Suspense fallback={fallback}><BrowserPanel /></Suspense>;
         case 'ceo': return jawCeoPanel;
@@ -205,8 +211,17 @@ function renderBottomTabContent(tab: BottomPanelTab, controls: BottomPanelRender
 
 export function SidebarRailRouter(props: Props) {
     const panelLayout = usePanelLayout();
-    const [rightPreviewFilePath, setRightPreviewFilePath] = useState<string | null>(null);
-    const [rightFolderRootPath, setRightFolderRootPath] = useState<string | null>(props.dashboardSettingsUi.rightFolderRootPath);
+    const workbenchResource = useWorkbenchResourceState({ initialFolderRootPath: props.dashboardSettingsUi.rightFolderRootPath });
+    const {
+        activeResourcePath: rightPreviewFilePath,
+        folderRootPath: rightFolderRootPath,
+        repoRootPath,
+        gitRefreshVersion,
+        setActiveResource,
+        setFolderRootPath,
+        setRepoRootPath,
+        bumpGitRefresh,
+    } = workbenchResource;
     const [folderPanelSession, setFolderPanelSession] = useState<FolderPanelSessionState | null>(null);
     const [, setRecentDroppedPaths] = useState<ElectronDroppedPathsEvent | null>(null);
     const [dropNotice, setDropNotice] = useState<string | null>(null);
@@ -260,30 +275,30 @@ export function SidebarRailRouter(props: Props) {
         && !props.notesSelectedNote.tags?.includes(props.notesModel.tagFilter),
     );
     function handleRightPreviewFile(path: string): void {
-        setRightPreviewFilePath(path);
+        setActiveResource(path, 'doc');
         panelLayout.dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'doc', slot: 'bottom' });
     }
 
     useEffect(() => {
-        setRightFolderRootPath(current => (
-            current === props.dashboardSettingsUi.rightFolderRootPath
-                ? current
-                : props.dashboardSettingsUi.rightFolderRootPath
-        ));
+        if (rightFolderRootPath !== props.dashboardSettingsUi.rightFolderRootPath) {
+            setFolderRootPath(props.dashboardSettingsUi.rightFolderRootPath);
+        }
         setFolderPanelSession(current => (
             current?.rootPath === props.dashboardSettingsUi.rightFolderRootPath
                 ? current
                 : null
         ));
-    }, [props.dashboardSettingsUi.rightFolderRootPath]);
+    }, [props.dashboardSettingsUi.rightFolderRootPath, rightFolderRootPath, setFolderRootPath]);
 
     const updateRightFolderRoot = useCallback((path: string | null): void => {
-        setRightFolderRootPath(current => {
-            if (current !== path) setFolderPanelSession(null);
-            return path;
-        });
+        if (rightFolderRootPath !== path) setFolderPanelSession(null);
+        setFolderRootPath(path);
         props.onDashboardSettingsPatch({ rightFolderRootPath: path });
-    }, [props.onDashboardSettingsPatch]);
+    }, [props.onDashboardSettingsPatch, rightFolderRootPath, setFolderRootPath]);
+
+    const updateRepoRoot = useCallback((path: string | null): void => {
+        setRepoRootPath(path);
+    }, [setRepoRootPath]);
 
     const handleDroppedPaths = useCallback((event: ElectronDroppedPathsEvent): void => {
         setRecentDroppedPaths(event);
@@ -317,7 +332,7 @@ export function SidebarRailRouter(props: Props) {
             onCloseDrawer={props.onCloseDrawer}
             rightPanelOpen={rightPanelOpen}
             rightPanelWidth={panelLayout.state.rightPanel.width}
-            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, handleRightPreviewFile, updateRightFolderRoot, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} /> : undefined}
+            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, repoRootPath, gitRefreshVersion, handleRightPreviewFile, updateRightFolderRoot, updateRepoRoot, bumpGitRefresh, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} /> : undefined}
             bottomPanelOpen={bottomPanelOpen}
             bottomPanelHeight={panelLayout.state.bottomPanel.height}
             bottomPanelContent={panelLayout.state.bottomPanel.tabs.length > 0 ? <BottomPanel renderTab={renderBottomTabContent} /> : undefined}

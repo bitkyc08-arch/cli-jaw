@@ -26,9 +26,13 @@ function getFolderBridge(): FolderBridgeApi | null {
 type FolderPanelProps = {
     selectedFilePath?: string | null | undefined;
     externalRootPath?: string | null | undefined;
+    repoRootPath?: string | null | undefined;
+    gitRefreshVersion?: number | undefined;
     notesTree?: NotesTreeEntry[] | undefined;
     notesRoot?: string | null | undefined;
     onRootChange?: ((path: string | null) => void) | undefined;
+    onRepoRootChange?: ((path: string | null) => void) | undefined;
+    onGitRefresh?: (() => void) | undefined;
     onPreviewFile?: ((path: string) => void) | undefined;
     sessionState?: FolderPanelSessionState | null | undefined;
     onSessionStateChange?: ((state: FolderPanelSessionState) => void) | undefined;
@@ -36,6 +40,10 @@ type FolderPanelProps = {
 
 export function FolderPanel(props: FolderPanelProps) {
     const bridge = getFolderBridge();
+    const repoRootPath = props.repoRootPath ?? null;
+    const gitRefreshVersion = props.gitRefreshVersion ?? 0;
+    const onGitRefresh = props.onGitRefresh;
+    const onRepoRootChange = props.onRepoRootChange;
     const initialRootResolvedRef = useRef(false);
     const source = useMemo(() => bridge ? createElectronFolderSource(bridge) : createNotesVaultFolderSource(props.notesTree ?? [], props.notesRoot ?? null), [bridge, props.notesRoot, props.notesTree]);
     const initialSession = useMemo(() => compatibleFolderPanelSession(props.sessionState ?? null, props.externalRootPath ?? null), [props.externalRootPath, props.sessionState]);
@@ -183,15 +191,20 @@ export function FolderPanel(props: FolderPanelProps) {
 
     const gitStatus = useFolderGitStatus({
         rootPath,
+        repoRoot: repoRootPath,
         enabled: source.kind === 'electron-folder',
-        refreshToken: gitRefreshToken,
+        refreshToken: gitRefreshToken + gitRefreshVersion,
     });
     const worktreeState = useGitWorktrees({
         folderPanelRoot: rootPath,
-        repoRoot: gitStatus.repoRoot,
+        repoRoot: repoRootPath ?? gitStatus.repoRoot,
         enabled: source.kind === 'electron-folder' && gitStatus.available,
-        refreshToken: gitRefreshToken,
+        refreshToken: gitRefreshToken + gitRefreshVersion,
     });
+
+    useEffect(() => {
+        if (gitStatus.repoRoot && gitStatus.repoRoot !== repoRootPath) onRepoRootChange?.(gitStatus.repoRoot);
+    }, [gitStatus.repoRoot, onRepoRootChange, repoRootPath]);
 
     const refreshVisibleTree = useCallback(async () => {
         if (rootPath === null) return;
@@ -199,12 +212,16 @@ export function FolderPanel(props: FolderPanelProps) {
         await loadDir(rootPath);
         for (const path of expandedPaths) await loadChildren(path, { force: true });
         setGitRefreshToken(token => token + 1);
+        onGitRefresh?.();
         worktreeState.refresh();
-    }, [expanded, loadChildren, loadDir, rootPath, worktreeState]);
+    }, [expanded, loadChildren, loadDir, onGitRefresh, rootPath, worktreeState]);
 
     useEffect(() => {
         if (!source.watchDir || !source.onDirChange || rootPath === null) return;
-        void source.watchDir(rootPath);
+        void (async () => {
+            const result = await source.watchDir?.(rootPath);
+            if (result && !result.ok) setActionStatus(`Watch disabled: ${result.error ?? 'failed to watch directory'}`);
+        })();
         const unsub = source.onDirChange(() => { void refreshVisibleTree(); });
         return () => {
             unsub();
