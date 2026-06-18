@@ -200,7 +200,7 @@
 }
 
 .code-worker-detail-row code,
-.code-worker-steps code {
+.code-worker-timeline code {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -243,35 +243,60 @@
     background: color-mix(in srgb, var(--status-error) 9%, var(--bg-base));
 }
 
-.code-worker-steps {
+.code-worker-timeline {
     display: grid;
     gap: 5px;
     color: var(--text-tertiary);
     font-size: 10px;
 }
 
-.code-worker-steps > span,
+.code-worker-timeline > span,
 .code-worker-result > span {
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
 }
 
-.code-worker-steps ol {
+.code-worker-timeline ol {
     display: grid;
     gap: 4px;
     margin: 0;
-    padding-left: 16px;
+    padding: 0;
+    list-style: none;
 }
 
-.code-worker-steps li {
+.code-worker-timeline li {
+    display: grid;
+    grid-template-columns: 78px minmax(0, 0.55fr) minmax(0, 1fr);
+    gap: 6px;
+    align-items: baseline;
+    padding-left: 10px;
+    border-left: 2px solid var(--border-default);
     color: var(--text-secondary);
 }
 
-.code-worker-steps b {
-    margin-right: 6px;
+.code-worker-timeline li.is-subagent {
+    border-left-color: var(--accent-default);
+}
+
+.code-worker-timeline li.is-attention {
+    border-left-color: var(--status-warning, #b7791f);
+}
+
+.code-worker-timeline li.is-result {
+    border-left-color: var(--status-success);
+}
+
+.code-worker-timeline b {
     color: var(--text-tertiary);
     font-weight: 700;
+    white-space: nowrap;
+}
+
+.code-worker-timeline span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .code-worker-result {

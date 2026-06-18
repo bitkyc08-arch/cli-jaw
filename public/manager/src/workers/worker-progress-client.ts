@@ -23,6 +23,7 @@ export interface WorkerProgressTool {
     status?: string;
     stepRef?: string;
     toolType?: string;
+    isEmployee?: boolean;
 }
 
 export interface WorkerProgressRun {

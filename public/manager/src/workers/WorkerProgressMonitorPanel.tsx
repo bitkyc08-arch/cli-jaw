@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { WorkerProgressRun, WorkerProgressSnapshot } from './worker-progress-client';
+import { buildWorkerActivityTimeline } from './worker-activity-timeline';
 import { countWorkerProgress, useWorkerProgress } from './useWorkerProgress';
 
 function runOf(snapshot: WorkerProgressSnapshot): WorkerProgressRun | null {
@@ -55,7 +56,7 @@ function WorkerProgressItem({ snapshot, expanded, onToggle }: WorkerProgressItem
     if (!run) return null;
     const preview = resultPreview(run);
     const attention = run.attention;
-    const visibleTools = run.tools.slice(-5);
+    const timeline = buildWorkerActivityTimeline(run).slice(-8);
     return (
         <li className={`code-worker-item ${snapshot.current ? 'is-current' : 'is-previous'}`}>
             <button type="button" className="code-worker-main" onClick={() => onToggle(snapshot.agentId)} aria-expanded={expanded}>
@@ -87,20 +88,18 @@ function WorkerProgressItem({ snapshot, expanded, onToggle }: WorkerProgressItem
                             </small>
                         </div>
                     )}
-                    {visibleTools.length > 0 && (
-                        <div className="code-worker-steps">
-                            <span>Recent steps</span>
-                            <ol>
-                                {visibleTools.map((tool, index) => (
-                                    <li key={tool.stepRef || `${tool.label}-${index}`}>
-                                        <b>{tool.status || 'step'}</b>
-                                        <span>{tool.label || tool.toolType || 'tool'}</span>
-                                        {tool.detail && <code>{tool.detail}</code>}
-                                    </li>
-                                ))}
-                            </ol>
-                        </div>
-                    )}
+                    <div className="code-worker-timeline">
+                        <span>Activity timeline</span>
+                        <ol>
+                            {timeline.map(item => (
+                                <li key={item.id} className={`is-${item.kind}`}>
+                                    <b>{item.status}</b>
+                                    <span>{item.label}</span>
+                                    {item.detail && <code>{item.detail}</code>}
+                                </li>
+                            ))}
+                        </ol>
+                    </div>
                     {preview && (
                         <div className="code-worker-result">
                             <span>Result</span>

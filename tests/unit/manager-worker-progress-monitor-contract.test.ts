@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { countWorkerProgress, sortWorkerProgress } from '../../public/manager/src/workers/useWorkerProgress.ts';
+import { buildWorkerActivityTimeline } from '../../public/manager/src/workers/worker-activity-timeline.ts';
 import type { WorkerProgressSnapshot } from '../../public/manager/src/workers/worker-progress-client.ts';
 
 const root = join(import.meta.dirname, '..', '..');
@@ -57,6 +58,29 @@ test('worker progress helpers sort current workers before previous runs and coun
     assert.deepEqual(countWorkerProgress(rows), { running: 1, previous: 1, attention: 1 });
 });
 
+test('worker activity timeline separates dispatch, subagent, tool, attention, and result entities', () => {
+    const timeline = buildWorkerActivityTimeline({
+        agentId: 'runner',
+        employeeName: 'Runner',
+        state: 'running',
+        taskPreview: 'audit worker flow',
+        startedAt: 1,
+        completedAt: null,
+        progressUpdatedAt: 3,
+        resultPreview: 'partial result',
+        attention: { kind: 'stalled', message: 'No activity', occurredAt: 4 },
+        tools: [
+            { label: 'Verify', toolType: 'subagent', isEmployee: true, status: 'running', detail: 'checking qa' },
+            { label: 'git status', toolType: 'shell', status: 'done', detail: 'clean' },
+        ],
+    });
+
+    assert.deepEqual(timeline.map(item => item.kind), ['dispatch', 'subagent', 'tool', 'attention', 'result']);
+    assert.equal(timeline[0]?.label, 'Runner dispatched');
+    assert.equal(timeline[1]?.label, 'Verify');
+    assert.equal(timeline[3]?.status, 'attention');
+});
+
 test('worker progress client uses Manager orchestrate progress routes and SSE refresh triggers', () => {
     const client = read('public/manager/src/workers/worker-progress-client.ts');
     const hook = read('public/manager/src/workers/useWorkerProgress.ts');
@@ -83,7 +107,9 @@ test('worker progress monitor panel exposes current, previous, attention, and de
     assert.ok(panel.includes('counts.attention'), 'panel must show attention count');
     assert.ok(panel.includes('run.phaseLabel || run.phase'), 'panel must show phase context');
     assert.ok(panel.includes('attention.kind.replaceAll'), 'panel must show lifecycle attention kind');
-    assert.ok(panel.includes('run.tools.slice(-5)'), 'panel must show bounded recent steps');
+    assert.ok(panel.includes('buildWorkerActivityTimeline(run).slice(-8)'), 'panel must show bounded activity timeline');
+    assert.ok(panel.includes('Activity timeline'), 'panel must label the worker activity timeline');
+    assert.ok(css.includes('.code-worker-timeline'), 'monitor must style the worker activity timeline');
     assert.ok(panel.includes('resultPreview'), 'panel must show result preview');
     assert.ok(css.includes('.code-worker-list'), 'monitor must have bounded list styles');
     assert.ok(css.includes('max-height: min(30vh, 300px);'), 'monitor list must not push composer off screen');
