@@ -35,6 +35,14 @@ type PendingPermission = {
     options: Array<Record<string, unknown>>;
 };
 
+function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId: string): number {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const message = messages[i];
+        if (message?.role === 'tool' && message.toolCallId === toolCallId) return i;
+    }
+    return -1;
+}
+
 export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -90,7 +98,7 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             const content = (update['content'] ?? []) as ToolContent[];
             const rawOutput = update['rawOutput'];
             setMessages(prev => {
-                const idx = prev.findLastIndex(m => m.role === 'tool' && m.toolCallId === toolCallId);
+                const idx = findLastToolMessageIndex(prev, toolCallId);
                 if (idx < 0) return prev;
                 const updated = [...prev];
                 const entry = { ...updated[idx] };
@@ -111,17 +119,21 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             const title = update['title'];
             if (typeof title === 'string') setSessionTitle(title);
         } else if (kind === 'code_usage_update') {
-            setUsage({
-                contextTokens: typeof update['contextTokens'] === 'number' ? update['contextTokens'] : undefined,
-                contextLimit: typeof update['contextLimit'] === 'number' ? update['contextLimit'] : undefined,
-                cost: typeof update['totalCost'] === 'number' ? update['totalCost'] : undefined,
-            });
+            const nextUsage: { contextTokens?: number; contextLimit?: number; cost?: number } = {};
+            if (typeof update['contextTokens'] === 'number') nextUsage.contextTokens = update['contextTokens'];
+            if (typeof update['contextLimit'] === 'number') nextUsage.contextLimit = update['contextLimit'];
+            if (typeof update['totalCost'] === 'number') nextUsage.cost = update['totalCost'];
+            setUsage(nextUsage);
         } else if (kind === 'code_plan') {
             const entries = (update['entries'] ?? []) as Array<{ title?: string; status?: string }>;
             setPlanEntries(entries.filter(e => e.title).map(e => ({ title: String(e.title), status: String(e.status ?? 'pending') })));
         } else if (kind === 'code_available_commands_update') {
             const cmds = (update['availableCommands'] ?? []) as Array<{ name?: string; description?: string }>;
-            setAvailableCommands(cmds.filter(c => c.name).map(c => ({ name: String(c.name), description: c.description ? String(c.description) : undefined })));
+            setAvailableCommands(cmds.filter(c => c.name).map(c => {
+                const command: { name: string; description?: string } = { name: String(c.name) };
+                if (c.description) command.description = String(c.description);
+                return command;
+            }));
         } else if (kind === 'code_turn_done') {
             setSending(false);
         } else if (kind === 'code_session_error') {

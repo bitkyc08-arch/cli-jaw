@@ -74,7 +74,7 @@ function ensureHeaderProjectPicker(el: HTMLElement): void {
 
 /** SSE settings_change payload → header-only refresh (#233). Never re-runs
  *  loadSettings(): the event may fire on every settings save. */
-export function refreshHeaderFromSettingsChange(msg: { cli?: string; projectDirs?: string[] | null }): void {
+export function refreshHeaderFromSettingsChange(msg: { cli?: string; projectDirs?: string[] | null; changedKeys?: string[] }): void {
     if (typeof msg.cli === 'string' && msg.cli) setHeaderCli(msg.cli);
     if ('projectDirs' in msg) setHeaderProject(msg.projectDirs);
     refreshHeaderGitStatusFromSettingsChange(msg);
