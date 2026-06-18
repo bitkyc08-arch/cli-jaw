@@ -1,5 +1,7 @@
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { isMap, parseDocument } from 'yaml';
 
 export type JwcModelProvider = {
     id: string;
@@ -14,6 +16,14 @@ export type JwcModelOptions = {
     degraded?: boolean;
     error?: string;
 };
+
+export type JwcModelRole = {
+    provider: string;
+    model: string;
+    thinkingLevel?: string;
+};
+
+const JWC_THINKING_SUFFIXES = new Set(['off', 'min', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
 export const JWC_PROVIDER_MODEL_DEFAULTS: Record<string, string[]> = {
     anthropic: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
@@ -35,15 +45,76 @@ export const JWC_PROVIDER_EFFORT_DEFAULTS: Record<string, string[]> = {
     'opencode-go': ['minimal', 'low', 'high', 'max'],
 };
 
-export function buildJwcModelOptions(authenticated: string[], error?: string): JwcModelOptions {
+export function resolveJwcAgentDir(): string {
+    return process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent');
+}
+
+export function parseJwcModelRole(value: string | undefined): JwcModelRole | null {
+    if (!value) return null;
+    const trimmed = value.trim();
+    const slashIdx = trimmed.indexOf('/');
+    if (slashIdx <= 0) return null;
+    const provider = trimmed.slice(0, slashIdx);
+    let model = trimmed.slice(slashIdx + 1);
+    let thinkingLevel: string | undefined;
+    const colonIdx = model.lastIndexOf(':');
+    if (colonIdx !== -1) {
+        const suffix = model.slice(colonIdx + 1);
+        if (JWC_THINKING_SUFFIXES.has(suffix)) {
+            thinkingLevel = suffix;
+            model = model.slice(0, colonIdx);
+        }
+    }
+    if (!provider || !model) return null;
+    return { provider, model, ...(thinkingLevel ? { thinkingLevel } : {}) };
+}
+
+export async function readJwcDefaultModelRole(agentDir = resolveJwcAgentDir()): Promise<string | undefined> {
+    try {
+        const content = await readFile(join(agentDir, 'config.yml'), 'utf8');
+        const doc = parseDocument(content, { prettyErrors: false });
+        const modelRoles = doc.get('modelRoles');
+        if (!modelRoles || typeof modelRoles !== 'object' || !('get' in modelRoles)) return undefined;
+        const value = (modelRoles as { get(key: string): unknown }).get('default');
+        return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+    } catch {
+        return undefined;
+    }
+}
+
+export async function writeJwcDefaultModelRole(modelRole: string, agentDir = resolveJwcAgentDir()): Promise<void> {
+    await mkdir(agentDir, { recursive: true });
+    const configPath = join(agentDir, 'config.yml');
+    let content = '';
+    try {
+        content = await readFile(configPath, 'utf8');
+    } catch {
+        content = '';
+    }
+    const doc = parseDocument(content || '{}\n', { prettyErrors: false });
+    doc.setIn(['modelRoles', 'default'], modelRole);
+    if (isMap(doc.contents)) doc.contents.flow = false;
+    const modelRoles = doc.get('modelRoles', true);
+    if (isMap(modelRoles)) modelRoles.flow = false;
+    await writeFile(configPath, doc.toString(), 'utf8');
+}
+
+export function buildJwcModelOptions(authenticated: string[], error?: string, defaultModelRole?: string): JwcModelOptions {
     const providerIds = authenticated.length > 0 ? authenticated : ['anthropic'];
     const providers = providerIds.map(id => ({
         id,
         models: JWC_PROVIDER_MODEL_DEFAULTS[id] ?? [],
         efforts: JWC_PROVIDER_EFFORT_DEFAULTS[id] ?? [],
     }));
-    const defaultProvider = providerIds.includes('anthropic') ? 'anthropic' : providerIds[0] ?? 'anthropic';
-    const defaultModel = JWC_PROVIDER_MODEL_DEFAULTS[defaultProvider]?.[0] ?? '';
+    const parsedDefault = parseJwcModelRole(defaultModelRole);
+    const configuredProvider = providers.find(entry => entry.id === parsedDefault?.provider);
+    const configuredModel = configuredProvider?.models.includes(parsedDefault?.model ?? '') ? parsedDefault?.model : undefined;
+    const defaultProvider = configuredProvider && configuredModel
+        ? configuredProvider.id
+        : providerIds.includes('anthropic') ? 'anthropic' : providerIds[0] ?? 'anthropic';
+    const defaultModel = configuredProvider && configuredModel
+        ? configuredModel
+        : JWC_PROVIDER_MODEL_DEFAULTS[defaultProvider]?.[0] ?? '';
     return {
         providers,
         defaultProvider,
@@ -56,7 +127,7 @@ export async function discoverJwcAuthenticatedProviders(): Promise<string[]> {
     const sdk: { discoverAuthStorage(dir: string): Promise<{ list(): Promise<string[]> }> } =
         await (Function('return import("jawcode/sdk")')() as Promise<typeof sdk>);
     const auth = await sdk.discoverAuthStorage(
-        process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent'),
+        resolveJwcAgentDir(),
     );
     const providers = await auth.list();
     return Array.isArray(providers)
@@ -66,8 +137,11 @@ export async function discoverJwcAuthenticatedProviders(): Promise<string[]> {
 
 export async function resolveJwcModelOptions(): Promise<JwcModelOptions> {
     try {
-        const authenticated = await discoverJwcAuthenticatedProviders();
-        return buildJwcModelOptions(authenticated);
+        const [authenticated, defaultModelRole] = await Promise.all([
+            discoverJwcAuthenticatedProviders(),
+            readJwcDefaultModelRole(),
+        ]);
+        return buildJwcModelOptions(authenticated, undefined, defaultModelRole);
     } catch (err) {
         return buildJwcModelOptions([], err instanceof Error ? err.message : String(err));
     }

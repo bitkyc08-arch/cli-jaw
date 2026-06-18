@@ -48,6 +48,7 @@ export interface CodeSessionClient {
     listSessions(): Promise<CodeSession[]>;
     listStoredSessions(cwd?: string): Promise<StoredSession[]>;
     listModelOptions(): Promise<CodeModelOptions>;
+    setDefaultModel(modelId: string): Promise<CodeModelOptions>;
     getGitInfo(cwd: string): Promise<CodeGitInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
     createSession(cwd: string, model?: string): Promise<CodeSession>;
@@ -90,6 +91,9 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async listModelOptions() {
             return request<CodeModelOptions>('GET', '/api/code/models');
+        },
+        async setDefaultModel(modelId: string) {
+            return request<CodeModelOptions>('POST', '/api/code/model-default', { modelId });
         },
         async getGitInfo(cwd: string) {
             const data = await request<CodeGitInfo>('GET', `/api/code/git-info?cwd=${encodeURIComponent(cwd)}`);

@@ -16,6 +16,7 @@ type CodeCommandPopupProps = {
     onRefreshProviders: () => void;
     onProviderChange: (value: string) => void;
     onUseModel: (provider: string, model: string) => void | Promise<void>;
+    onSetDefaultModel: (provider: string, model: string) => void | Promise<void>;
     onPermissionModeChange: (value: string) => void;
 };
 
@@ -41,6 +42,7 @@ export function CodeCommandPopup({
     onRefreshProviders,
     onProviderChange,
     onUseModel,
+    onSetDefaultModel,
     onPermissionModeChange,
 }: CodeCommandPopupProps) {
     const closeRef = useRef<HTMLButtonElement>(null);
@@ -65,6 +67,7 @@ export function CodeCommandPopup({
         return `${count} authenticated provider${count === 1 ? '' : 's'}`;
     }, [modelOptions.providers.length]);
     const canUseNow = Boolean(activeSessionId && draftProvider && draftModel && !disabled);
+    const canSetDefault = Boolean(draftProvider && draftModel && !disabled);
 
     useEffect(() => {
         closeRef.current?.focus();
@@ -225,20 +228,33 @@ export function CodeCommandPopup({
                             <div className="code-popup-summary code-popup-summary-compact">
                                 <span>Active</span><strong>{provider || '-'} / {model || '-'}</strong>
                                 <span>Selected</span><strong>{draftProvider || '-'} / {draftModel || '-'}</strong>
+                                <span>Default</span><strong>{modelOptions.defaultProvider || '-'} / {modelOptions.defaultModel || '-'}</strong>
                             </div>
-                            <button
-                                type="button"
-                                className="code-popup-primary"
-                                disabled={!canUseNow}
-                                onClick={() => {
-                                    void onUseModel(draftProvider, draftModel);
-                                }}
-                            >
-                                Use now
-                            </button>
+                            <div className="code-popup-action-stack">
+                                <button
+                                    type="button"
+                                    className="code-popup-primary"
+                                    disabled={!canUseNow}
+                                    onClick={() => {
+                                        void onUseModel(draftProvider, draftModel);
+                                    }}
+                                >
+                                    Use now
+                                </button>
+                                <button
+                                    type="button"
+                                    className="code-popup-secondary"
+                                    disabled={!canSetDefault}
+                                    onClick={() => {
+                                        void onSetDefaultModel(draftProvider, draftModel);
+                                    }}
+                                >
+                                    Set default
+                                </button>
+                            </div>
                         </div>
                         {!activeSessionId && <p className="code-popup-note">Start or load a Code session to apply a live model.</p>}
-                        <p className="code-popup-note">Set default, subagent assignment, presets, and MRU are scheduled for later model popup slices.</p>
+                        <p className="code-popup-note">Subagent assignment, presets, and MRU are scheduled for later model popup slices.</p>
                     </div>
                 )}
             </section>

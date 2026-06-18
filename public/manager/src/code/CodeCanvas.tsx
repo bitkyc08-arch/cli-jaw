@@ -53,6 +53,16 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const transcriptRef = useRef<HTMLDivElement>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
 
+    const applyModelOptions = useCallback((options: CodeModelOptions) => {
+        setModelOptions(options);
+        const defaultProvider = options.providers.find(p => p.id === options.defaultProvider) ?? options.providers[0];
+        const defaultModel = defaultProvider?.models.includes(options.defaultModel) ? options.defaultModel : defaultProvider?.models[0] ?? '';
+        setProvider(defaultProvider?.id ?? 'anthropic');
+        setModel(defaultModel);
+        const nextEfforts = defaultProvider?.efforts ?? [];
+        if (nextEfforts.length > 0) setEffort(nextEfforts.includes('high') ? 'high' : nextEfforts[0] ?? '');
+    }, []);
+
     useEffect(() => {
         activeSessionIdRef.current = activeSessionId;
     }, [activeSessionId]);
@@ -68,14 +78,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
 
     const refreshModelOptions = useCallback(async () => {
         const options = await client.listModelOptions();
-        setModelOptions(options);
-        const defaultProvider = options.providers.find(p => p.id === options.defaultProvider) ?? options.providers[0];
-        const defaultModel = defaultProvider?.models.includes(options.defaultModel) ? options.defaultModel : defaultProvider?.models[0] ?? '';
-        setProvider(defaultProvider?.id ?? 'anthropic');
-        setModel(defaultModel);
-        const nextEfforts = defaultProvider?.efforts ?? [];
-        if (nextEfforts.length > 0) setEffort(nextEfforts.includes('high') ? 'high' : nextEfforts[0] ?? '');
-    }, [client]);
+        applyModelOptions(options);
+    }, [applyModelOptions, client]);
 
     useEffect(() => {
         let cancelled = false;
@@ -83,13 +87,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             try {
                 const options = await client.listModelOptions();
                 if (cancelled) return;
-                setModelOptions(options);
-                const defaultProvider = options.providers.find(p => p.id === options.defaultProvider) ?? options.providers[0];
-                const defaultModel = defaultProvider?.models.includes(options.defaultModel) ? options.defaultModel : defaultProvider?.models[0] ?? '';
-                setProvider(defaultProvider?.id ?? 'anthropic');
-                setModel(defaultModel);
-                const nextEfforts = defaultProvider?.efforts ?? [];
-                if (nextEfforts.length > 0) setEffort(nextEfforts.includes('high') ? 'high' : nextEfforts[0] ?? '');
+                applyModelOptions(options);
             } catch (err) {
                 if (!cancelled) {
                     setModelOptions({ ...FALLBACK_MODEL_OPTIONS, error: err instanceof Error ? err.message : String(err) });
@@ -97,7 +95,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             }
         })();
         return () => { cancelled = true; };
-    }, [client]);
+    }, [applyModelOptions, client]);
 
     useEffect(() => {
         if (!workingDir) {
@@ -281,6 +279,16 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         }
     }, [activeSessionId, client]);
 
+    const handleSetDefaultModel = useCallback(async (nextProvider: string, nextModel: string) => {
+        setPopupError('');
+        try {
+            const options = await client.setDefaultModel(toModelId(nextProvider, nextModel));
+            applyModelOptions(options);
+        } catch (err) {
+            setPopupError(err instanceof Error ? err.message : String(err));
+        }
+    }, [applyModelOptions, client]);
+
     const providerRecord = modelOptions.providers.find(p => p.id === provider) ?? modelOptions.providers[0];
     const providerOptions = modelOptions.providers.map(p => p.id);
     const currentModelOptions = providerRecord?.models ?? [];
@@ -364,6 +372,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                             setModel(firstModel);
                         }}
                         onUseModel={handleUseModel}
+                        onSetDefaultModel={handleSetDefaultModel}
                         onPermissionModeChange={setPermissionMode}
                     />
                 )}

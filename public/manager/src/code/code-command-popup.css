@@ -287,6 +287,17 @@
     gap: 8px;
 }
 
+.code-popup-action-stack {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 120px;
+}
+
+.code-popup-action-stack .code-popup-secondary {
+    min-height: 32px;
+}
+
 @media (max-width: 720px) {
     .code-popup-backdrop {
         align-items: flex-end;

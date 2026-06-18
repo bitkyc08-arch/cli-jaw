@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { Router, type RequestHandler } from 'express';
 import { acpHost } from '../code-mode/acp-host.js';
-import { resolveJwcModelOptions } from '../code-mode/model-options.js';
+import { resolveJwcModelOptions, writeJwcDefaultModelRole } from '../code-mode/model-options.js';
 
 function git(cwd: string, args: string[]): Promise<string> {
     return new Promise(resolve => {
@@ -47,6 +47,21 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         void (async () => {
             const options = await resolveJwcModelOptions();
             res.json({ ok: true, ...options });
+        })();
+    });
+
+    app.post('/api/code/model-default', requireAuth, (req, res) => {
+        void (async () => {
+            const body = req.body as Record<string, unknown> | undefined;
+            const modelId = String(body?.['modelId'] || '');
+            if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
+            try {
+                await writeJwcDefaultModelRole(modelId);
+                const options = await resolveJwcModelOptions();
+                res.json({ ok: true, ...options });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
         })();
     });
 

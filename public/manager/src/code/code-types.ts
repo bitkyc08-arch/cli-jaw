@@ -56,7 +56,7 @@ export function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId
 }
 
 export function toModelId(provider: string, model: string): string {
-    return model.includes('/') ? model : `${provider}/${model}`;
+    return provider ? `${provider}/${model}` : model;
 }
 
 const POPUP_COMMANDS: Record<string, { category: CodeCommandCategory; popupKind: CodeCommandPopupKind }> = {
