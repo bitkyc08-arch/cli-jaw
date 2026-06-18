@@ -37,6 +37,20 @@ test('code command popup exposes dialog and provider inventory states', () => {
     assert.ok(cssEntry.includes("@import './code-command-popup.css';"), 'Code mode CSS entry must import popup CSS');
 });
 
+test('code command popup stages model selection before explicit Use now', () => {
+    const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
+    const css = read('public/manager/src/code/code-command-popup.css');
+
+    assert.ok(popup.includes('modelQuery'), 'model popup must own search query state');
+    assert.ok(popup.includes('draftProvider'), 'model popup must stage provider selection');
+    assert.ok(popup.includes('draftModel'), 'model popup must stage model selection');
+    assert.ok(popup.includes('Search models'), 'model popup must expose search UI');
+    assert.ok(popup.includes('Use now'), 'model popup must expose explicit live switch action');
+    assert.ok(popup.includes('onUseModel(draftProvider, draftModel)'), 'model popup must apply only through explicit Use now callback');
+    assert.equal(popup.includes('onModelChange(event.target.value)'), false, 'model popup must not mutate session on select-only changes');
+    assert.ok(css.includes('.code-model-layout'), 'model popup must have a dedicated model browser layout');
+});
+
 test('code command popup stays instance-independent', () => {
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
