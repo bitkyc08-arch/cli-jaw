@@ -11,6 +11,8 @@ if [ -z "$NODE" ]; then echo "node not found in PATH" >&2; exit 1; fi
 NPM="$(dirname "$NODE")/npm"
 if [ ! -x "$NPM" ]; then NPM="$(command -v npm)"; fi
 if [ -z "$NPM" ]; then echo "npm not found in PATH" >&2; exit 1; fi
+NODE_BIN="$(dirname "$NODE")"
+export PATH="$NODE_BIN:$PATH"
 
 "$NODE" -e "require('$DIR/node_modules/better-sqlite3')" 2>/dev/null
 if [ $? -ne 0 ]; then
