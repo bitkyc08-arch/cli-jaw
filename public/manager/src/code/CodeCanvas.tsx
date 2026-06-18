@@ -1,28 +1,20 @@
-import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
 import type { CodeGitInfo, CodeModelOptions } from './code-session-client';
+import { CodeComposer } from './CodeComposer';
+import { CodePermissionQueue } from './CodePermissionQueue';
 import { CodeSessionList } from './CodeSessionList';
+import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
+import { findLastToolMessageIndex, toModelId, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
-const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
-
-type ToolContent = { type: string; text?: string; diff?: string; [key: string]: unknown };
-
-type TranscriptEntry = {
-    role: 'user' | 'assistant' | 'tool' | 'thinking';
-    text: string;
-    toolName?: string;
-    toolStatus?: string;
-    toolCallId?: string;
-    toolContent?: ToolContent[];
-    toolOutput?: string;
-};
 type CodeCanvasProps = {
     port: number;
     workingDir: string;
+    onWorkingDirChange?: (path: string | null) => void;
 };
 const FALLBACK_MODEL_OPTIONS: CodeModelOptions = {
     providers: [{
@@ -34,23 +26,8 @@ const FALLBACK_MODEL_OPTIONS: CodeModelOptions = {
     defaultModel: 'claude-sonnet-4-6',
     degraded: true,
 };
-type PendingPermission = {
-    permissionId: string;
-    toolCall: Record<string, unknown>;
-    options: Array<Record<string, unknown>>;
-};
-function findLastToolMessageIndex(messages: TranscriptEntry[], toolCallId: string): number {
-    for (let i = messages.length - 1; i >= 0; i--) {
-        const message = messages[i];
-        if (message?.role === 'tool' && message.toolCallId === toolCallId) return i;
-    }
-    return -1;
-}
-function toModelId(provider: string, model: string): string {
-    return model.includes('/') ? model : `${provider}/${model}`;
-}
 
-export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
+export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
     const [inputText, setInputText] = useState('');
@@ -120,6 +97,17 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         );
         return () => { cancelled = true; };
     }, [client, workingDir]);
+
+    useEffect(() => {
+        setActiveSessionId(null);
+        activeSessionIdRef.current = null;
+        setMessages([]);
+        setPermissions([]);
+        setPlanEntries([]);
+        setSessionTitle('');
+        setUsage({});
+        setSending(false);
+    }, [workingDir]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
         const update = event.update ?? {};
@@ -248,17 +236,6 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         setShowCommands(false);
     }, []);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-        if (e.key === 'Escape' && showCommands) {
-            setShowCommands(false);
-            return;
-        }
-        if (e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            void handleSubmit();
-        }
-    }, [handleSubmit, showCommands]);
-
     const handlePermissionAnswer = useCallback(async (permissionId: string, optionId: string | null) => {
         try {
             await client.answerPermission(permissionId, optionId);
@@ -313,129 +290,20 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                     sessionTitle={sessionTitle}
                     usage={usage}
                     planEntries={planEntries}
+                    onWorkingDirChange={onWorkingDirChange}
                 />
-                <div className="code-transcript" ref={transcriptRef}>
-                    {messages.length === 0 ? (
-                        <div className="code-transcript-empty">
-                            <p>Start a Code session by typing a prompt below.</p>
-                            <p className="code-transcript-cwd">cwd: {workingDir}</p>
-                        </div>
-                    ) : (
-                        messages.map((msg, i) => (
-                            <div key={i} className={`code-message code-message-${msg.role}`}>
-                                {msg.role === 'tool' ? (
-                                    <details className="code-tool-card" open={msg.toolStatus === 'running'}>
-                                        <summary className="code-tool-summary">
-                                            <span className={`code-tool-icon ${msg.toolStatus === 'running' ? 'spinning' : ''}`}>
-                                                {msg.toolStatus === 'running' ? '⚡' : '✓'}
-                                            </span>
-                                            <span className="code-tool-name">{msg.toolName}</span>
-                                        </summary>
-                                        {(msg.toolContent?.length ?? 0) > 0 && (
-                                            <div className="code-tool-content">
-                                                {msg.toolContent!.map((c, ci) => (
-                                                    <div key={ci} className="code-tool-content-item">
-                                                        {c.type === 'diff' && c.diff ? (
-                                                            <pre className="code-tool-diff">{c.diff}</pre>
-                                                        ) : c.text ? (
-                                                            <pre className="code-tool-text">{c.text}</pre>
-                                                        ) : null}
-                                                    </div>
-                                                ))}
-                                            </div>
-                                        )}
-                                        {msg.toolOutput && (
-                                            <pre className="code-tool-output">{msg.toolOutput.slice(0, 2000)}{msg.toolOutput.length > 2000 ? '...' : ''}</pre>
-                                        )}
-                                    </details>
-                                ) : msg.role === 'thinking' ? (
-                                    <details className="code-thinking">
-                                        <summary className="code-thinking-summary">Thinking...</summary>
-                                        <div className="code-thinking-text">{msg.text}</div>
-                                    </details>
-                                ) : (
-                                    <>
-                                        <span className="code-message-role">{msg.role === 'user' ? 'You' : 'JWC'}</span>
-                                        <div className="code-message-text">
-                                            {msg.role === 'assistant' ? (
-                                                <Suspense fallback={<span>{msg.text}</span>}>
-                                                    <MarkdownRenderer markdown={msg.text} />
-                                                </Suspense>
-                                            ) : msg.text}
-                                        </div>
-                                    </>
-                                )}
-                            </div>
-                        ))
-                    )}
-                    {sending && messages[messages.length - 1]?.role !== 'assistant' && (
-                        <div className="code-message code-message-assistant">
-                            <span className="code-message-role">JWC</span>
-                            <div className="code-message-text code-streaming">Thinking...</div>
-                        </div>
-                    )}
-                </div>
-                {permissions.length > 0 && (
-                    <div className="code-permissions">
-                        {permissions.map(p => (
-                            <div key={p.permissionId} className="code-permission-card">
-                                <div className="code-permission-title">
-                                    Permission: {String(p.toolCall['toolName'] ?? p.toolCall['title'] ?? 'tool')}
-                                </div>
-                                <div className="code-permission-actions">
-                                    {p.options.length > 0 ? p.options.map((opt, i) => (
-                                        <button key={i} type="button" className="code-permission-btn"
-                                            onClick={() => void handlePermissionAnswer(p.permissionId, String(opt['optionId'] ?? opt['id'] ?? i))}
-                                        >{String(opt['name'] ?? opt['label'] ?? `Option ${i + 1}`)}</button>
-                                    )) : (
-                                        <>
-                                            <button type="button" className="code-permission-btn code-permission-allow"
-                                                onClick={() => void handlePermissionAnswer(p.permissionId, 'allow')}
-                                            >Allow</button>
-                                            <button type="button" className="code-permission-btn code-permission-deny"
-                                                onClick={() => void handlePermissionAnswer(p.permissionId, null)}
-                                            >Deny</button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                )}
-                <div className="code-composer">
-                    {showCommands && availableCommands.length > 0 && (
-                        <div className="code-command-palette">
-                            {availableCommands
-                                .filter(c => !inputText || c.name.startsWith(inputText))
-                                .slice(0, 10)
-                                .map(c => (
-                                    <button key={c.name} type="button" className="code-command-item"
-                                        onClick={() => handleCommandSelect(c.name)}>
-                                        <span className="code-command-name">{c.name}</span>
-                                        {c.description && <span className="code-command-desc">{c.description}</span>}
-                                    </button>
-                                ))}
-                        </div>
-                    )}
-                    <textarea
-                        className="code-composer-input"
-                        value={inputText}
-                        onChange={e => handleInputChange(e.target.value)}
-                        onKeyDown={handleKeyDown}
-                        placeholder="Describe a task or ask a question..."
-                        rows={1}
-                        disabled={sending}
-                    />
-                    <button
-                        type="button"
-                        className="code-composer-send"
-                        onClick={() => void handleSubmit()}
-                        disabled={!inputText.trim() || sending}
-                        aria-label="Send prompt"
-                    >
-                        ↑
-                    </button>
-                </div>
+                <CodeTranscript messages={messages} sending={sending} workingDir={workingDir} transcriptRef={transcriptRef} />
+                <CodePermissionQueue permissions={permissions} onAnswer={(permissionId, optionId) => void handlePermissionAnswer(permissionId, optionId)} />
+                <CodeComposer
+                    inputText={inputText}
+                    sending={sending}
+                    showCommands={showCommands}
+                    availableCommands={availableCommands}
+                    onInputChange={handleInputChange}
+                    onCommandSelect={handleCommandSelect}
+                    onSubmit={() => void handleSubmit()}
+                    onShowCommandsChange={setShowCommands}
+                />
                 <ComposerFooter
                     provider={provider}
                     providerOptions={providerOptions}

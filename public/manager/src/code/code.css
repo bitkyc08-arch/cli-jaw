@@ -124,13 +124,57 @@
 }
 .code-workspace-cwd {
     min-width: 0;
-    max-width: 260px;
+    max-width: 180px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
     color: var(--text-primary);
     font-size: 13px;
     font-weight: 650;
+}
+.code-workspace-cwd-control {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 220px;
+    max-width: min(42vw, 520px);
+    flex: 1 1 320px;
+}
+.code-workspace-cwd-input {
+    width: 100%;
+    min-width: 0;
+    height: 26px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    padding: 0 8px;
+}
+.code-workspace-cwd-input:focus {
+    outline: none;
+    border-color: var(--accent-default);
+}
+.code-workspace-cwd-input.is-invalid {
+    border-color: var(--status-error);
+}
+.code-workspace-cwd-apply {
+    height: 26px;
+    min-height: auto;
+    padding: 0 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+}
+.code-workspace-cwd-apply:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 .code-workspace-pill {
     flex: 0 0 auto;
@@ -345,10 +389,12 @@
 .code-composer-input:focus { outline: none; border-color: var(--accent-default); }
 .code-composer-input::placeholder { color: var(--text-tertiary); }
 .code-composer-send {
-    width: 32px; height: 32px;
+    height: 32px;
+    padding: 0 13px;
     border: none; border-radius: 8px;
     background: var(--accent-default);
-    color: white; font-size: 16px;
+    color: white; font-size: 12px;
+    font-weight: 700;
     cursor: pointer; flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
     min-height: auto;
@@ -417,7 +463,7 @@
 }
 .code-tool-summary::-webkit-details-marker { display: none; }
 .code-tool-summary:hover { background: var(--accent-subtle); }
-.code-tool-icon { font-size: 14px; flex-shrink: 0; }
+.code-tool-icon { font-size: 10px; font-weight: 700; text-transform: uppercase; flex-shrink: 0; }
 .code-tool-icon.spinning { animation: spin 1s linear infinite; }
 .code-tool-name { font-weight: 500; }
 @keyframes spin { to { transform: rotate(360deg); } }

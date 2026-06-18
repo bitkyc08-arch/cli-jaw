@@ -213,6 +213,7 @@ export function SidebarRailRouter(props: Props) {
     const rightPanelOpen = desktopPanelsAvailable && panelLayout.effectiveRightOpen;
     const rightPanelCeoActive = panelLayout.state.rightPanel.topMode === 'ceo'
         || panelLayout.state.rightPanel.bottomMode === 'ceo';
+    const codeWorkingDir = rightFolderRootPath || props.workingDir || '';
 
     useEffect(() => {
         if (rightPanelCeoActive && props.jawCeoOpen) {
@@ -369,7 +370,7 @@ export function SidebarRailRouter(props: Props) {
                         {props.viewMode === 'code' && props.sidebarMode === 'instances' ? (
                             <WorkspaceSurface active>
                                 <Suspense fallback={<div style={{ padding: '24px', color: 'var(--text-dim)', fontSize: '13px' }}>Loading Code workspace...</div>}>
-                                    <CodeCanvas port={props.port} workingDir={props.workingDir} />
+                                    <CodeCanvas port={props.port} workingDir={codeWorkingDir} onWorkingDirChange={updateRightFolderRoot} />
                                 </Suspense>
                             </WorkspaceSurface>
                         ) : null}

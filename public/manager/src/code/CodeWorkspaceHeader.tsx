@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react';
 import type { CodeGitInfo, CodeModelOptions } from './code-session-client';
 
 type CodeWorkspaceHeaderProps = {
@@ -7,6 +8,7 @@ type CodeWorkspaceHeaderProps = {
     sessionTitle: string;
     usage: { contextTokens?: number; contextLimit?: number; cost?: number };
     planEntries: Array<{ title: string; status: string }>;
+    onWorkingDirChange?: ((path: string | null) => void) | undefined;
 };
 
 function shortPath(path: string): string {
@@ -14,13 +16,44 @@ function shortPath(path: string): string {
     return parts.slice(-2).join('/') || path;
 }
 
-export function CodeWorkspaceHeader({ workingDir, gitInfo, modelOptions, sessionTitle, usage, planEntries }: CodeWorkspaceHeaderProps) {
+export function CodeWorkspaceHeader({ workingDir, gitInfo, modelOptions, sessionTitle, usage, planEntries, onWorkingDirChange }: CodeWorkspaceHeaderProps) {
+    const [draftCwd, setDraftCwd] = useState(workingDir);
     const dirty = gitInfo?.status?.dirty;
     const worktreeCount = gitInfo?.worktrees.length ?? 0;
+    const trimmedDraft = useMemo(() => draftCwd.trim(), [draftCwd]);
+    const cwdError = trimmedDraft && !trimmedDraft.startsWith('/') ? 'Use an absolute path.' : '';
+    const canApplyCwd = Boolean(onWorkingDirChange && trimmedDraft && trimmedDraft !== workingDir && !cwdError);
+
+    useEffect(() => {
+        setDraftCwd(workingDir);
+    }, [workingDir]);
+
     return (
         <div className="code-workspace-header">
             <div className="code-workspace-primary">
                 <span className="code-workspace-cwd" title={workingDir}>{shortPath(workingDir || '/tmp')}</span>
+                <div className="code-workspace-cwd-control">
+                    <input
+                        className={`code-workspace-cwd-input${cwdError ? ' is-invalid' : ''}`}
+                        type="text"
+                        value={draftCwd}
+                        onChange={event => setDraftCwd(event.target.value)}
+                        placeholder="/absolute/path/to/project"
+                        aria-label="Code working directory"
+                    />
+                    <button
+                        type="button"
+                        className="code-workspace-cwd-apply"
+                        disabled={!canApplyCwd}
+                        title={cwdError || 'Apply Code working directory'}
+                        onClick={() => {
+                            if (!canApplyCwd) return;
+                            onWorkingDirChange?.(trimmedDraft);
+                        }}
+                    >
+                        Apply
+                    </button>
+                </div>
                 {gitInfo?.isRepo && (
                     <>
                         <span className="code-workspace-pill">{gitInfo.branch ?? 'detached'}{gitInfo.head ? ` · ${gitInfo.head}` : ''}</span>
