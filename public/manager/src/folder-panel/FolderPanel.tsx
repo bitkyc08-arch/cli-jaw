@@ -23,6 +23,11 @@ function getFolderBridge(): FolderBridgeApi | null {
     return getDesktop()?.folder ?? null;
 }
 
+function renamedPreviewPath(currentPath: string | null | undefined, oldPath: string, newPath: string): string | null {
+    if (!currentPath || !isDescendantPath(oldPath, currentPath)) return null;
+    return currentPath === oldPath ? newPath : `${newPath}${currentPath.slice(oldPath.length)}`;
+}
+
 type FolderPanelProps = {
     selectedFilePath?: string | null | undefined;
     externalRootPath?: string | null | undefined;
@@ -70,12 +75,14 @@ export function FolderPanel(props: FolderPanelProps) {
     const [worktreeOperationBusy, setWorktreeOperationBusy] = useState(false);
     const treeRef = useRef<HTMLDivElement | null>(null);
     const { folderChordActive, startFolderChord, cancelFolderChord } = useFolderChord();
+    const onPreviewFile = props.onPreviewFile;
+    const selectedFilePath = props.selectedFilePath;
     const folderSelection = useFolderSelection({
         entries,
         childrenCache,
         expanded,
         initialSelection: initialSession?.selection,
-        onPreviewFile: props.onPreviewFile,
+        onPreviewFile,
     });
     const selectedEntry = folderSelection.selectedEntry;
     const selectedEntries = folderSelection.selectedEntries;
@@ -371,16 +378,19 @@ export function FolderPanel(props: FolderPanelProps) {
         try {
             const result = await source.renamePath(selectedEntry.path, nextName);
             const parentDirectory = parentPath(selectedEntry.path);
+            const nextPath = result.entry?.path ?? null;
+            const nextPreviewPath = nextPath ? renamedPreviewPath(selectedFilePath, selectedEntry.path, nextPath) : null;
             setActionStatus('Renamed');
             setError(null);
             setMutationDialog(null);
-            await refreshAfterMutation(parentDirectory, result.entry?.path ?? null, [selectedEntry.path]);
+            await refreshAfterMutation(parentDirectory, nextPath, [selectedEntry.path]);
+            if (nextPreviewPath) onPreviewFile?.(nextPreviewPath);
         } catch (err) {
             setError((err as Error).message);
         } finally {
             setIsMutating(false);
         }
-    }, [refreshAfterMutation, selectedEntry, source]);
+    }, [onPreviewFile, refreshAfterMutation, selectedEntry, selectedFilePath, source]);
 
     const submitMutation = useCallback((name: string) => {
         if (!mutationDialog) return;

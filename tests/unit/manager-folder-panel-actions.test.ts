@@ -24,7 +24,7 @@ test('FolderPanel wires native move, copy, reveal, and confirmation actions', ()
     assert.ok(panel.includes('source.movePath'), 'FolderPanel must call the source move path API');
     assert.ok(panel.includes('source.revealPath'), 'FolderPanel must call the source reveal path API');
     assert.ok(panel.includes("import { useFolderSelection"), 'FolderPanel must delegate selection ownership to the selection hook');
-    assert.ok(panel.includes('onPreviewFile: props.onPreviewFile'), 'file preview behavior must be wired into the selection hook');
+    assert.ok(panel.includes('onPreviewFile,'), 'file preview behavior must be wired into the selection hook');
     assert.ok(panel.includes('const toggleEntryExpansion = useCallback'), 'directory expansion must be a separate helper');
     assert.ok(rows.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event) })'), 'row click must pass multi-select modifiers without expanding');
     assert.ok(rows.includes('props.toggleEntryExpansion(entry)'), 'row disclosure/double-click must expand separately');
@@ -83,6 +83,8 @@ test('FolderPanel uses an in-panel mutation dialog instead of browser prompts', 
     assert.ok(panel.includes('requestCreateEntry'), 'FolderPanel must open the mutation dialog for create actions');
     assert.ok(panel.includes('requestRenameSelectedEntry'), 'FolderPanel must open the mutation dialog for rename actions');
     assert.ok(panel.includes('submitMutation'), 'FolderPanel must submit create and rename actions through one visible dialog path');
+    assert.ok(panel.includes('renamedPreviewPath'), 'FolderPanel must translate the open document preview when a selected file or parent directory is renamed');
+    assert.ok(panel.includes('onPreviewFile?.(nextPreviewPath)'), 'FolderPanel rename must move the DocPanel preview to the new file path');
     assert.ok(overlays.includes('FolderMutationDialog'), 'FolderPanel overlays must render the mutation dialog');
     assert.ok(dialog.includes('role="dialog"'), 'mutation dialog must expose native dialog semantics');
     assert.ok(dialog.includes('autoFocus'), 'mutation dialog must focus the entry name input');
