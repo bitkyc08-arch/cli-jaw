@@ -17,9 +17,9 @@ export type JwcModelOptions = {
 
 export const JWC_PROVIDER_MODEL_DEFAULTS: Record<string, string[]> = {
     anthropic: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
-    'openai-codex': ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
+    'openai-codex': ['gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
     xai: ['grok-build', 'grok-composer-2.5-fast', 'grok-4.3'],
-    cursor: ['composer-2.5', 'claude-sonnet-4-6', 'gpt-5.5'],
+    cursor: ['composer-2.5', 'claude-sonnet-4-6', 'gpt-5.4'],
     'opencode-go': ['opencode-go/kimi-k2.6', 'opencode-go/glm-5.1'],
     google: ['gemini-3-flash-preview', 'gemini-2.5-pro'],
     deepseek: ['deepseek-v4-pro', 'deepseek-v4-flash'],

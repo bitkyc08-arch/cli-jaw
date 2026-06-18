@@ -20,7 +20,6 @@ type TranscriptEntry = {
     toolContent?: ToolContent[];
     toolOutput?: string;
 };
-
 type CodeCanvasProps = {
     port: number;
     workingDir: string;
@@ -94,9 +93,11 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                 const options = await client.listModelOptions();
                 if (cancelled) return;
                 setModelOptions(options);
-                setProvider(options.defaultProvider || options.providers[0]?.id || 'anthropic');
-                setModel(options.defaultModel || options.providers[0]?.models[0] || '');
-                const nextEfforts = options.providers.find(p => p.id === options.defaultProvider)?.efforts ?? [];
+                const defaultProvider = options.providers.find(p => p.id === options.defaultProvider) ?? options.providers[0];
+                const defaultModel = defaultProvider?.models.includes(options.defaultModel) ? options.defaultModel : defaultProvider?.models[0] ?? '';
+                setProvider(defaultProvider?.id ?? 'anthropic');
+                setModel(defaultModel);
+                const nextEfforts = defaultProvider?.efforts ?? [];
                 if (nextEfforts.length > 0) setEffort(nextEfforts.includes('high') ? 'high' : nextEfforts[0] ?? '');
             } catch (err) {
                 if (!cancelled) {
@@ -177,9 +178,9 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                     void client.answerPermission(permissionId, null);
                     return;
                 }
-                if (permissionMode === 'always-allow' && options.length > 0) {
+                if (permissionMode !== 'ask') {
                     const allowOption = options.find(opt => /allow|approve|yes/i.test(String(opt['name'] ?? opt['label'] ?? opt['optionId'] ?? opt['id'] ?? ''))) ?? options[0];
-                    void client.answerPermission(permissionId, String(allowOption?.['optionId'] ?? allowOption?.['id'] ?? 0));
+                    void client.answerPermission(permissionId, allowOption ? String(allowOption['optionId'] ?? allowOption['id'] ?? 0) : 'allow');
                     return;
                 }
                 setPermissions(prev => [...prev, { permissionId, toolCall, options }]);
