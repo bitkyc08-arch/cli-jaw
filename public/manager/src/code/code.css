@@ -2,6 +2,7 @@
 @import './code-composer.css';
 @import './code-command-popup.css';
 @import './code-command-popup-model.css';
+@import '../background-tasks/background-task-monitor.css';
 
 /* Code mode — uses Manager token system (manager-tokens.css) for dark/light parity */
 
