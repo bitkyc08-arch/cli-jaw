@@ -1966,7 +1966,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     if (cli === 'claude') {
-        child.stdin.write(withHistoryPrompt(prompt, historyBlock));
+        child.stdin.write(isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
     } else if (cli === 'claude-e' || (cli === 'ai-e' && effectiveProvider === 'claude')) {
         child.stdin.write(isResume ? prompt : withHistoryPrompt(prompt, historyBlock));
     } else if (cli === 'codex' && !isResume) {
