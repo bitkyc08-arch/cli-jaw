@@ -10,11 +10,15 @@ import {
     type BackgroundTaskEventSourceCtor,
     type BackgroundTaskRow,
 } from '../../public/manager/src/background-tasks/background-task-client.ts';
+import {
+    backgroundTaskFixture,
+    backgroundTaskUpdateFixture,
+} from '../fixtures/manager-runtime-monitors.ts';
 
 const root = join(import.meta.dirname, '..', '..');
 
 function sampleTask(id = 'bg_test'): BackgroundTaskRow {
-    return {
+    return backgroundTaskFixture({
         id,
         kind: 'shell',
         spec: {
@@ -24,15 +28,10 @@ function sampleTask(id = 'bg_test'): BackgroundTaskRow {
         },
         status: 'running',
         pid: 123,
-        originMeta: {},
-        result: null,
         createdAt: '2026-06-19T00:00:00.000Z',
         startedAt: '2026-06-19T00:00:01.000Z',
-        deadlineAt: null,
-        completedAt: null,
-        notifiedAt: null,
         runnerActive: true,
-    };
+    });
 }
 
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
@@ -95,8 +94,7 @@ test('background task update normalizer accepts only bgtask_update frames', () =
     assert.equal(normalizeBackgroundTaskUpdate({ topic: 'bgtask', event: 'ping' }), null);
 
     const update = normalizeBackgroundTaskUpdate({
-        topic: 'bgtask',
-        event: 'bgtask_update',
+        ...backgroundTaskUpdateFixture(),
         running: [
             { id: 'bg_1', kind: 'shell', startedAt: '2026-06-19T00:00:01.000Z' },
             { id: 2, kind: 'bad' },

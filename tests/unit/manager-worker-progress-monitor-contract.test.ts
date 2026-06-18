@@ -5,7 +5,12 @@ import { join } from 'node:path';
 
 import { countWorkerProgress, sortWorkerProgress } from '../../public/manager/src/workers/useWorkerProgress.ts';
 import { buildWorkerActivityTimeline } from '../../public/manager/src/workers/worker-activity-timeline.ts';
-import type { WorkerProgressSnapshot } from '../../public/manager/src/workers/worker-progress-client.ts';
+import {
+    workerMonitorRowsFixture,
+    workerProgressEventFrameFixture,
+    workerProgressSnapshotFixture,
+    workerRunFixture,
+} from '../fixtures/manager-runtime-monitors.ts';
 
 const root = join(import.meta.dirname, '..', '..');
 
@@ -13,21 +18,11 @@ function read(path: string): string {
     return readFileSync(join(root, path), 'utf8');
 }
 
-function snapshot(input: Partial<WorkerProgressSnapshot> & Pick<WorkerProgressSnapshot, 'agentId'>): WorkerProgressSnapshot {
-    return {
-        agentId: input.agentId,
-        employeeName: input.employeeName ?? input.agentId,
-        current: input.current ?? null,
-        previous: input.previous ?? null,
-        generatedAt: input.generatedAt ?? 0,
-    };
-}
-
 test('worker progress helpers sort current workers before previous runs and count attention', () => {
     const rows = [
-        snapshot({
+        workerProgressSnapshotFixture({
             agentId: 'previous',
-            previous: {
+            previous: workerRunFixture({
                 agentId: 'previous',
                 employeeName: 'Previous',
                 state: 'done',
@@ -36,11 +31,11 @@ test('worker progress helpers sort current workers before previous runs and coun
                 completedAt: 5,
                 progressUpdatedAt: 4,
                 tools: [],
-            },
+            }),
         }),
-        snapshot({
+        workerProgressSnapshotFixture({
             agentId: 'running',
-            current: {
+            current: workerRunFixture({
                 agentId: 'running',
                 employeeName: 'Running',
                 state: 'running',
@@ -50,12 +45,30 @@ test('worker progress helpers sort current workers before previous runs and coun
                 progressUpdatedAt: 20,
                 attention: { kind: 'stalled', message: 'stalled', occurredAt: 20 },
                 tools: [],
-            },
+            }),
         }),
     ];
 
     assert.deepEqual(sortWorkerProgress(rows).map(row => row.agentId), ['running', 'previous']);
     assert.deepEqual(countWorkerProgress(rows), { running: 1, previous: 1, attention: 1 });
+});
+
+test('worker monitor fixtures cover lifecycle attention and replay states deterministically', () => {
+    const rows = workerMonitorRowsFixture();
+    const attentionKinds = rows.flatMap(row => {
+        const run = row.current ?? row.previous;
+        return run?.attention ? [run.attention.kind] : [];
+    });
+
+    assert.deepEqual(attentionKinds, ['stalled', 'disconnected', 'timeout', 'pending_replay', 'replay_failed']);
+    assert.deepEqual(countWorkerProgress(rows), { running: 4, previous: 3, attention: 5 });
+    assert.deepEqual(workerProgressEventFrameFixture('timeout'), {
+        topic: 'worker',
+        event: 'worker_timeout',
+        agentId: 'worker_timeout',
+        employeeName: 'Worker timeout',
+        occurredAt: Date.parse('2026-06-19T00:00:00.000Z') + 2000,
+    });
 });
 
 test('worker activity timeline separates dispatch, subagent, tool, attention, and result entities', () => {

@@ -1,10 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { countBackgroundTasksByStatus, sortBackgroundTasks } from '../../public/manager/src/background-tasks/useBackgroundTasks.ts';
-import type { BackgroundTaskRow } from '../../public/manager/src/background-tasks/background-task-client.ts';
+import {
+    backgroundMonitorRowsFixture,
+    backgroundTaskFixture,
+} from '../fixtures/manager-runtime-monitors.ts';
 
 const root = join(import.meta.dirname, '..', '..');
 
@@ -12,33 +15,20 @@ function read(path: string): string {
     return readFileSync(join(root, path), 'utf8');
 }
 
-function task(input: Partial<BackgroundTaskRow> & Pick<BackgroundTaskRow, 'id' | 'status'>): BackgroundTaskRow {
-    return {
-        id: input.id,
-        kind: input.kind ?? 'shell',
-        spec: input.spec ?? {
-            command: ['node', '-e', 'console.log("done")'],
-            completion: { type: 'exit' },
-            promptTemplate: 'done {{result}}',
-        },
-        status: input.status,
-        pid: input.pid ?? null,
-        originMeta: input.originMeta ?? {},
-        result: input.result ?? null,
-        createdAt: input.createdAt ?? null,
-        startedAt: input.startedAt ?? null,
-        deadlineAt: input.deadlineAt ?? null,
-        completedAt: input.completedAt ?? null,
-        notifiedAt: input.notifiedAt ?? null,
-        runnerActive: input.runnerActive ?? false,
-    };
+function sourceFiles(dir: string): string[] {
+    return readdirSync(join(root, dir)).flatMap((entry) => {
+        const path = join(dir, entry);
+        const absolute = join(root, path);
+        if (lstatSync(absolute).isDirectory()) return sourceFiles(path);
+        return /\.(?:ts|tsx|js|jsx)$/.test(entry) ? [path] : [];
+    });
 }
 
 test('background task view helpers sort and count all server statuses', () => {
     const rows = [
-        task({ id: 'bg_old', status: 'complete', createdAt: '2026-06-19T00:00:00.000Z' }),
-        task({ id: 'bg_new', status: 'running', createdAt: '2026-06-19T00:02:00.000Z' }),
-        task({ id: 'bg_orphan', status: 'orphaned', createdAt: '2026-06-19T00:01:00.000Z' }),
+        backgroundTaskFixture({ id: 'bg_old', status: 'complete', createdAt: '2026-06-19T00:00:00.000Z' }),
+        backgroundTaskFixture({ id: 'bg_new', status: 'running', createdAt: '2026-06-19T00:02:00.000Z' }),
+        backgroundTaskFixture({ id: 'bg_orphan', status: 'orphaned', createdAt: '2026-06-19T00:01:00.000Z' }),
     ];
 
     assert.deepEqual(sortBackgroundTasks(rows).map(row => row.id), ['bg_new', 'bg_orphan', 'bg_old']);
@@ -49,6 +39,20 @@ test('background task view helpers sort and count all server statuses', () => {
         cancelled: 0,
         orphaned: 1,
     });
+});
+
+test('background monitor fixtures cover deterministic task states without production imports', () => {
+    const rows = backgroundMonitorRowsFixture();
+
+    assert.deepEqual(
+        rows.map(row => row.status),
+        ['running', 'complete', 'failed', 'cancelled', 'orphaned', 'running'],
+    );
+    assert.equal(rows.some(row => row.kind === 'web-ai' && row.spec.completion.type === 'session-status'), true);
+
+    const importedByProduction = [...sourceFiles('public/manager/src'), ...sourceFiles('src')]
+        .filter(path => read(path).includes('manager-runtime-monitors'));
+    assert.deepEqual(importedByProduction, [], 'runtime monitor fixtures must stay test-only');
 });
 
 test('background task hook hydrates from API and listens for SSE replay gaps', () => {
