@@ -37,9 +37,10 @@ export function useCodeEvents({ port, sessionId, sessionIdRef: externalSessionId
             try {
                 const data = JSON.parse(msg.data) as CodeEvent;
                 if (data.topic !== 'jwc') return;
+                const isGlobalCodeEvent = data.event === 'code_child_exit';
                 const sid = externalSessionIdRef?.current ?? sessionIdRef.current;
-                if (!sid) return;
-                if (data.sessionId && data.sessionId !== sid) return;
+                if (!sid && !isGlobalCodeEvent) return;
+                if (!isGlobalCodeEvent && data.sessionId && data.sessionId !== sid) return;
                 onEventRef.current(data);
             } catch { /* ignore parse errors */ }
         };

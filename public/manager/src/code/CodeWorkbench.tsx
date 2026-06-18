@@ -21,6 +21,7 @@ type CodeWorkbenchProps = {
     disabled: boolean;
     effort: string;
     gitInfo: CodeGitInfo | null;
+    childRecovery: { code: string; message: string } | null;
     inputText: string;
     messages: TranscriptEntry[];
     model: string;
@@ -78,6 +79,15 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
             <GoalPabcdStatusPanel />
             <BackgroundTaskMonitorPanel />
             <WorkerProgressMonitorPanel />
+            {props.childRecovery && (
+                <section className="code-child-recovery" role="status" aria-live="polite">
+                    <div>
+                        <span>JWC child recovery</span>
+                        <strong>ACP child exited: {props.childRecovery.code}</strong>
+                    </div>
+                    <p>{props.childRecovery.message}</p>
+                </section>
+            )}
             <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} />
             <CodePermissionQueue permissions={props.permissions} onAnswer={props.onPermissionAnswer} />
             <div className="code-composer-dock">

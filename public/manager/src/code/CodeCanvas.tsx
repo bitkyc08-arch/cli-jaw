@@ -51,6 +51,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [modelAssignments, setModelAssignments] = useState<CodeModelAssignments | null>(null);
     const [modelPresets, setModelPresets] = useState<CodeModelPresetInfo | null>(null);
     const [gitInfo, setGitInfo] = useState<CodeGitInfo | null>(null);
+    const [childRecovery, setChildRecovery] = useState<{ code: string; message: string } | null>(null);
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
@@ -147,6 +148,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setSessionTitle('');
         setUsage({});
         setSending(false);
+        setChildRecovery(null);
     }, [codeWorkingDir]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
@@ -227,6 +229,15 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             setPlanEntries(entries.filter(e => e.title).map(e => ({ title: String(e.title), status: String(e.status ?? 'pending') })));
         } else if (kind === 'code_available_commands_update') {
             setAvailableCommands(mergeCodeCommands(normalizeCodeCommands(update['availableCommands'])));
+        } else if (kind === 'code_child_exit') {
+            const code = event['code'] === null || event['code'] === undefined ? 'unknown' : String(event['code']);
+            const message = `JWC ACP child exited (code ${code}). Active Code sessions were closed. Send the prompt again to start a fresh session, or load a stored session from the sidebar.`;
+            activeSessionIdRef.current = null;
+            setActiveSessionId(null);
+            setSending(false);
+            setPermissions([]);
+            setChildRecovery({ code, message });
+            setMessages(prev => [...prev, { role: 'assistant', text: message }]);
         } else if (kind === 'code_turn_done') {
             setSending(false);
         } else if (kind === 'code_session_error') {
@@ -243,6 +254,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         const text = inputText.trim();
         if (!text || sending) return;
         setSending(true);
+        setChildRecovery(null);
         setMessages(prev => [...prev, { role: 'user', text }]);
         setInputText('');
         try {
@@ -424,6 +436,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             disabled={sending}
             effort={effort}
             gitInfo={gitInfo}
+            childRecovery={childRecovery}
             inputText={inputText}
             messages={messages}
             model={model}

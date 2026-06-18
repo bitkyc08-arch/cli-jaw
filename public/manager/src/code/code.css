@@ -340,6 +340,38 @@
 .code-plan-completed { color: var(--status-success); }
 .code-plan-in_progress { color: var(--accent-default); font-weight: 600; }
 
+.code-child-recovery {
+    margin: 8px 16px 0;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--status-warn) 42%, var(--border-default));
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--status-warn) 9%, var(--bg-panel));
+    color: var(--text-primary);
+}
+.code-child-recovery div {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.code-child-recovery span {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+.code-child-recovery strong {
+    font-size: 12px;
+    color: var(--status-warn);
+}
+.code-child-recovery p {
+    margin: 5px 0 0;
+    color: var(--text-secondary);
+    font-size: 12px;
+    line-height: 1.45;
+}
+
 /* Transcript */
 .code-transcript {
     flex: 1;
