@@ -1,0 +1,342 @@
+/* Code model popup: provider/model browser, role assignment, presets, and narrow-width access */
+
+.code-model-mru-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.code-model-mru-strip strong {
+    min-width: 0;
+    max-width: 190px;
+    overflow: hidden;
+    padding: 2px 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-model-layout {
+    display: grid;
+    grid-template-columns: minmax(130px, 0.42fr) minmax(0, 1fr);
+    gap: 10px;
+    min-height: 260px;
+}
+
+.code-model-providers,
+.code-model-list {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+}
+
+.code-model-provider,
+.code-model-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    width: 100%;
+    min-height: 34px;
+    padding: 7px 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    cursor: pointer;
+}
+
+.code-model-provider.is-selected,
+.code-model-row.is-draft {
+    border-color: var(--accent-default);
+    background: color-mix(in srgb, var(--accent-default) 10%, var(--bg-base));
+}
+
+.code-model-row.is-active {
+    border-color: color-mix(in srgb, var(--success-default, #33a06f) 70%, var(--border-default));
+}
+
+.code-model-provider span,
+.code-model-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 650;
+}
+
+.code-model-provider small,
+.code-model-row small,
+.code-model-list-head span {
+    flex: 0 0 auto;
+    color: var(--text-secondary);
+    font-size: 11px;
+}
+
+.code-model-list-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 30px;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.code-popup-action-row {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.code-popup-action-stack {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 120px;
+}
+
+.code-popup-action-stack .code-popup-secondary {
+    min-height: 32px;
+}
+
+.code-role-assignment-panel {
+    display: grid;
+    gap: 8px;
+    padding-top: 2px;
+}
+
+.code-role-assignment-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.code-role-assignment-head span {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-align: right;
+}
+
+.code-role-assignment-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.code-role-card {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+}
+
+.code-role-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.code-role-card-head strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-role-tag {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    border: 1px solid color-mix(in srgb, var(--accent-default) 35%, var(--border-default));
+    border-radius: 4px;
+    color: var(--accent-default);
+    font-size: 10px;
+    line-height: 1.1;
+}
+
+.code-role-path,
+.code-role-model {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-role-path {
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.code-role-model {
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.code-role-thinking {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.code-role-thinking select {
+    min-width: 0;
+    min-height: 28px;
+    padding: 4px 7px;
+    border: 1px solid var(--border-default);
+    border-radius: 5px;
+    background: var(--bg-elevated);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+}
+
+.code-role-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
+.code-model-preset-panel {
+    display: grid;
+    gap: 8px;
+    min-width: 0;
+    padding-top: 2px;
+}
+
+.code-model-preset-summary {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 5px 10px;
+    padding: 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    font-size: 11px;
+}
+
+.code-model-preset-summary span {
+    color: var(--text-secondary);
+}
+
+.code-model-preset-summary strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-model-preset-list {
+    display: grid;
+    gap: 6px;
+}
+
+.code-model-preset-row {
+    display: grid;
+    grid-template-columns: minmax(80px, 0.8fr) minmax(0, 1fr) minmax(0, 1fr);
+    gap: 8px;
+    min-width: 0;
+    padding: 7px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    font-size: 11px;
+}
+
+.code-model-preset-row strong,
+.code-model-preset-row span {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-model-preset-row strong {
+    color: var(--text-primary);
+}
+
+.code-model-preset-row span {
+    color: var(--text-secondary);
+}
+
+.code-model-profile-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.code-model-profile-chips span {
+    padding: 3px 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: var(--bg-elevated);
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+@media (max-width: 720px) {
+    .code-popup-backdrop {
+        align-items: flex-end;
+        padding: 8px;
+    }
+    .code-popup {
+        width: 100%;
+        max-height: min(82vh, 720px);
+    }
+    .code-model-layout {
+        grid-template-columns: 1fr;
+        min-height: 0;
+    }
+    .code-model-providers,
+    .code-model-list,
+    .code-role-assignment-grid,
+    .code-model-preset-list {
+        max-height: min(34vh, 260px);
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+    .code-role-assignment-grid {
+        grid-template-columns: 1fr;
+    }
+    .code-role-assignment-head {
+        display: grid;
+        gap: 4px;
+    }
+    .code-role-assignment-head span {
+        text-align: left;
+    }
+    .code-model-preset-summary,
+    .code-model-preset-row {
+        grid-template-columns: 1fr;
+    }
+}

@@ -42,11 +42,12 @@ test('code command popup exposes dialog and provider inventory states', () => {
     assert.ok(popup.includes('onRefreshProviders'), 'provider popup must expose refresh action');
     assert.ok(popup.includes('Provider add/login execution is next slice.'), 'provider popup must not overclaim add/login execution');
     assert.ok(cssEntry.includes("@import './code-command-popup.css';"), 'Code mode CSS entry must import popup CSS');
+    assert.ok(cssEntry.includes("@import './code-command-popup-model.css';"), 'Code mode CSS entry must import model popup CSS');
 });
 
 test('code command popup stages model selection before explicit Use now', () => {
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
-    const css = read('public/manager/src/code/code-command-popup.css');
+    const css = read('public/manager/src/code/code-command-popup-model.css');
 
     assert.ok(popup.includes('modelQuery'), 'model popup must own search query state');
     assert.ok(popup.includes('draftProvider'), 'model popup must stage provider selection');
@@ -62,7 +63,7 @@ test('code command popup stages model selection before explicit Use now', () => 
 test('code command popup exposes all JWC model role assignments', () => {
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
-    const css = read('public/manager/src/code/code-command-popup.css');
+    const css = read('public/manager/src/code/code-command-popup-model.css');
 
     assert.ok(popup.includes('modelAssignments?.roles'), 'popup must render role assignment readback');
     assert.ok(popup.includes('Role assignments'), 'popup must label the assignment section');
@@ -92,7 +93,7 @@ test('code command popup exposes all JWC model role assignments', () => {
 
 test('code command popup exposes read-only model profile preset state', () => {
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
-    const css = read('public/manager/src/code/code-command-popup.css');
+    const css = read('public/manager/src/code/code-command-popup-model.css');
 
     assert.ok(popup.includes('modelPresets'), 'popup must accept model preset readback');
     assert.ok(popup.includes('Profiles and presets'), 'model popup must label profile/preset section');
@@ -108,7 +109,7 @@ test('code command popup exposes read-only model profile preset state', () => {
 test('code command popup exposes JWC model usage MRU without fake history', () => {
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
     const client = read('public/manager/src/code/code-session-client.ts');
-    const css = read('public/manager/src/code/code-command-popup.css');
+    const css = read('public/manager/src/code/code-command-popup-model.css');
 
     assert.ok(client.includes('usageOrder?: string[]'), 'model options contract must carry optional JWC usage order');
     assert.ok(popup.includes('modelOptions.usageOrder'), 'model popup must read usage order from model options');
@@ -116,6 +117,27 @@ test('code command popup exposes JWC model usage MRU without fake history', () =
     assert.ok(popup.includes('modelOptions.usageOrder.slice(0, 3)'), 'model popup must cap MRU display');
     assert.equal(popup.includes('MRU are scheduled for later model popup slices.'), false, 'MRU must not be stale future-work copy');
     assert.ok(css.includes('.code-model-mru-strip'), 'MRU strip must have compact styles');
+});
+
+test('code command popup keeps model provider and role panels reachable at narrow widths', () => {
+    const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
+    const baseCss = read('public/manager/src/code/code-command-popup.css');
+    const modelCss = read('public/manager/src/code/code-command-popup-model.css');
+
+    assert.ok(popup.includes('role="list" aria-label="Providers"'), 'model popup provider column must expose list semantics');
+    assert.ok(popup.includes('role="list" aria-label="Models"'), 'model popup model column must expose list semantics');
+    assert.ok(popup.includes('code-role-assignment-panel'), 'model popup must keep role assignment inside the scrollable dialog');
+    assert.ok(baseCss.includes('max-height: min(680px, 88vh);'), 'base popup must cap height before inner panel scrolling');
+    assert.ok(baseCss.includes('overflow: auto;'), 'base popup must remain scrollable as a fallback');
+    assert.ok(modelCss.includes('@media (max-width: 720px)'), 'model popup must define a narrow-width branch');
+    assert.ok(modelCss.includes('.code-model-layout'), 'narrow-width branch must include model layout');
+    assert.ok(modelCss.includes('grid-template-columns: 1fr;'), 'narrow-width branch must collapse model and preset grids to one column');
+    assert.ok(modelCss.includes('.code-model-providers,'), 'narrow-width branch must include provider list');
+    assert.ok(modelCss.includes('.code-model-list,'), 'narrow-width branch must include model list');
+    assert.ok(modelCss.includes('.code-role-assignment-grid,'), 'narrow-width branch must include role assignments');
+    assert.ok(modelCss.includes('max-height: min(34vh, 260px);'), 'narrow panels must cap height so later controls remain reachable');
+    assert.ok(modelCss.includes('overflow-y: auto;'), 'narrow panels must provide internal vertical scrolling');
+    assert.ok(modelCss.includes('overscroll-behavior: contain;'), 'inner popup scrollers must not trap the page unexpectedly');
 });
 
 test('code command popup stays instance-independent', () => {

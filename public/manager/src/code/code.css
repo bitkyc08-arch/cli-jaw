@@ -1,6 +1,7 @@
 @import './code-workbench.css';
 @import './code-composer.css';
 @import './code-command-popup.css';
+@import './code-command-popup-model.css';
 
 /* Code mode — uses Manager token system (manager-tokens.css) for dark/light parity */
 
