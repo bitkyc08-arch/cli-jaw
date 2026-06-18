@@ -136,8 +136,17 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
     app.get('/api/code/sessions/stored', requireAuth, (req, res) => {
         void (async () => {
             const cwd = typeof req.query['cwd'] === 'string' ? req.query['cwd'] : undefined;
+            const rawScope = typeof req.query['scope'] === 'string' ? req.query['scope'] : undefined;
+            const scope: 'all' | 'cwd' = rawScope === 'cwd' ? 'cwd' : 'all';
+            if (scope === 'cwd' && (!cwd || !isAbsolute(cwd))) {
+                res.status(400).json({ ok: false, error: 'absolute cwd required for cwd scope' });
+                return;
+            }
             try {
-                const sessions = await acpHost.listStoredSessions(cwd);
+                const options = scope === 'cwd'
+                    ? { scope, cwd: cwd as string }
+                    : { scope };
+                const sessions = await acpHost.listStoredSessions(options);
                 res.json({ ok: true, sessions });
             } catch (err: unknown) {
                 res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });

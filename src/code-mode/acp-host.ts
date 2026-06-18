@@ -273,16 +273,19 @@ class AcpHost implements CodeSessionTransport {
         return info;
     }
 
-    async listStoredSessions(cwd?: string): Promise<StoredCodeSessionInfo[]> {
+    async listStoredSessions(options: { cwd?: string; scope?: 'all' | 'cwd' } = {}): Promise<StoredCodeSessionInfo[]> {
         await this.#ensureChild();
-        const res = await this.#request('session/list', { ...(cwd ? { cwd } : {}) });
+        const scope = options.scope ?? (options.cwd ? 'cwd' : 'all');
+        const res = await this.#request('session/list', { ...(scope === 'cwd' && options.cwd ? { cwd: options.cwd } : {}) });
         const sessions = (res['sessions'] ?? []) as Array<Record<string, unknown>>;
-        return sessions.map(normalizeStoredSession);
+        return sessions
+            .map(normalizeStoredSession)
+            .sort((left, right) => (right.lastModified ?? 0) - (left.lastModified ?? 0));
     }
 
     async #findStoredSession(sessionId: string, cwd: string): Promise<StoredCodeSessionInfo | undefined> {
         try {
-            const sessions = await this.listStoredSessions(cwd);
+            const sessions = await this.listStoredSessions({ scope: 'cwd', cwd });
             return sessions.find(session => session.sessionId === sessionId);
         } catch {
             return undefined;

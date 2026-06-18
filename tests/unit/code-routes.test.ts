@@ -1,10 +1,41 @@
-import test from 'node:test';
+import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { registerCodeRoutes } from '../../src/routes/code.ts';
+import path, { resolve } from 'node:path';
+
+const acpHostCalls: Array<{ scope?: string; cwd?: string }> = [];
+const acpHostPath = resolve(import.meta.dirname, '../../src/code-mode/acp-host.js');
+
+mock.module(acpHostPath, {
+	namedExports: {
+		acpHost: {
+			listSessions: () => [],
+			listPendingPermissions: () => [],
+			listStoredSessions: async (options: { scope?: 'all' | 'cwd'; cwd?: string } = {}) => {
+				acpHostCalls.push(options);
+				return [{
+					sessionId: `stored-${options.scope ?? 'all'}`,
+					cwd: options.cwd ?? '/global',
+					title: 'Stored route fixture',
+				}];
+			},
+			loadSession: async () => { throw new Error('not used'); },
+			extMethod: async () => ({}),
+			forkSession: async () => { throw new Error('not used'); },
+			newSession: async () => { throw new Error('not used'); },
+			setSessionModel: async () => {},
+			prompt: async () => ({ accepted: true, sessionId: 'unused' }),
+			cancel: async () => {},
+			setSessionConfig: async () => {},
+			closeSession: async () => {},
+			answerPermission: () => false,
+		},
+	},
+});
+
+const { registerCodeRoutes } = await import('../../src/routes/code.ts');
 
 const noAuth = (_req: Request, _res: Response, next: NextFunction) => next();
 
@@ -32,6 +63,37 @@ test('code routes expose read-only session and permission surfaces without start
 		assert.equal(permissions.status, 200);
 		assert.deepEqual(await permissions.json(), { ok: true, permissions: [] });
 	});
+});
+
+test('code stored sessions route defaults to global catalog and validates cwd scope', async () => {
+	const cwd = mkdtempSync(path.join(tmpdir(), 'cli-jaw-code-routes-cwd-'));
+	try {
+		await withServer(async baseUrl => {
+			acpHostCalls.length = 0;
+			const missingScope = await fetch(`${baseUrl}/api/code/sessions/stored`);
+			assert.equal(missingScope.status, 200);
+			assert.deepEqual(acpHostCalls.at(-1), { scope: 'all' });
+			assert.equal(((await missingScope.json()) as { sessions: unknown[] }).sessions.length, 1);
+
+			const allScope = await fetch(`${baseUrl}/api/code/sessions/stored?scope=all`);
+			assert.equal(allScope.status, 200);
+			assert.deepEqual(acpHostCalls.at(-1), { scope: 'all' });
+
+			const missingCwd = await fetch(`${baseUrl}/api/code/sessions/stored?scope=cwd`);
+			assert.equal(missingCwd.status, 400);
+			assert.deepEqual(await missingCwd.json(), { ok: false, error: 'absolute cwd required for cwd scope' });
+
+			const relativeCwd = await fetch(`${baseUrl}/api/code/sessions/stored?scope=cwd&cwd=relative`);
+			assert.equal(relativeCwd.status, 400);
+			assert.deepEqual(await relativeCwd.json(), { ok: false, error: 'absolute cwd required for cwd scope' });
+
+			const absoluteCwd = await fetch(`${baseUrl}/api/code/sessions/stored?scope=cwd&cwd=${encodeURIComponent(cwd)}`);
+			assert.equal(absoluteCwd.status, 200);
+			assert.deepEqual(acpHostCalls.at(-1), { scope: 'cwd', cwd });
+		});
+	} finally {
+		rmSync(cwd, { recursive: true, force: true });
+	}
 });
 
 test('code git-info rejects missing cwd and reports non-repo absolute cwd', async () => {

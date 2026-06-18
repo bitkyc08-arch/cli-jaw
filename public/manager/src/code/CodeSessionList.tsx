@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { CodeSession, CodeSessionClient, StoredSession } from './code-session-client';
 
+type SessionViewMode = 'all' | 'cwd' | 'grouped';
+
 type CodeSessionListProps = {
     client: CodeSessionClient;
     activeSessionId: string | null;
@@ -15,13 +17,17 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
     const [storedSessions, setStoredSessions] = useState<StoredSession[]>([]);
     const [loading, setLoading] = useState(true);
     const [search, setSearch] = useState('');
+    const [viewMode, setViewMode] = useState<SessionViewMode>('all');
 
     const refresh = useCallback(async () => {
         setLoading(true);
         try {
+            const storedOptions = viewMode === 'cwd'
+                ? { scope: 'cwd' as const, cwd: workingDir }
+                : { scope: 'all' as const };
             const [live, stored] = await Promise.all([
                 client.listSessions(),
-                client.listStoredSessions(workingDir || undefined).catch(() => []),
+                client.listStoredSessions(storedOptions).catch(() => []),
             ]);
             setSessions(live.filter(s => s.status !== 'closed'));
             const liveIds = new Set(live.map(s => s.sessionId));
@@ -32,7 +38,7 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
         } finally {
             setLoading(false);
         }
-    }, [client, workingDir]);
+    }, [client, viewMode, workingDir]);
 
     useEffect(() => { void refresh(); }, [refresh]);
 
@@ -73,6 +79,15 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
         .filter(s => !search || storedSessionSearchText(s).includes(search.toLowerCase()))
         .sort((left, right) => storedSessionTime(right) - storedSessionTime(left))
         .slice(0, 20);
+    const groupedStoredSessions = visibleStoredSessions.reduce<Array<{ cwd: string; sessions: StoredSession[] }>>((groups, session) => {
+        const existing = groups.find(group => group.cwd === session.cwd);
+        if (existing) existing.sessions.push(session);
+        else groups.push({ cwd: session.cwd, sessions: [session] });
+        return groups;
+    }, []);
+    const emptyText = viewMode === 'cwd'
+        ? 'No sessions for this cwd. Switch to All to browse global history.'
+        : 'No JWC sessions found.';
 
     return (
         <div className="code-session-list">
@@ -80,6 +95,12 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                 <span className="code-session-list-title">Sessions</span>
                 <button type="button" className="code-session-new-btn" onClick={onNewSession} aria-label="New code session">+</button>
             </div>
+            <div className="code-session-view-toggle" aria-label="Session view">
+                <button type="button" className={`code-session-view-btn${viewMode === 'all' ? ' active' : ''}`} onClick={() => setViewMode('all')}>All</button>
+                <button type="button" className={`code-session-view-btn${viewMode === 'cwd' ? ' active' : ''}`} onClick={() => setViewMode('cwd')}>This cwd</button>
+                <button type="button" className={`code-session-view-btn${viewMode === 'grouped' ? ' active' : ''}`} onClick={() => setViewMode('grouped')}>Group</button>
+            </div>
+            {viewMode === 'cwd' && <div className="code-session-view-hint">{cwdLabel(workingDir)}</div>}
             {(sessions.length + storedSessions.length) > 3 && (
                 <input
                     className="code-session-search"
@@ -108,7 +129,7 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                             ))}
                         </ul>
                     )}
-                    {visibleStoredSessions.length > 0 && (
+                    {visibleStoredSessions.length > 0 && viewMode !== 'grouped' && (
                         <>
                             <div className="code-session-list-divider">History</div>
                             <ul className="code-session-list-items">
@@ -125,8 +146,30 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                             </ul>
                         </>
                     )}
+                    {visibleStoredSessions.length > 0 && viewMode === 'grouped' && (
+                        <>
+                            <div className="code-session-list-divider">History by cwd</div>
+                            {groupedStoredSessions.map(group => (
+                                <section className="code-session-group" key={group.cwd}>
+                                    <div className="code-session-group-title" title={group.cwd}>{cwdLabel(group.cwd)} <span>{group.sessions.length}</span></div>
+                                    <ul className="code-session-list-items">
+                                        {group.sessions.map(s => (
+                                            <li key={s.sessionId}>
+                                                <button type="button" className="code-session-item"
+                                                    onClick={() => onLoadSession(s.sessionId, s.cwd)}>
+                                                    <span className="code-session-cwd">{storedSessionTitle(s)}</span>
+                                                    <span className="code-session-meta">{storedSessionMeta(s)}</span>
+                                                    <span className="code-session-status">stored</span>
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                </section>
+                            ))}
+                        </>
+                    )}
                     {sessions.length === 0 && visibleStoredSessions.length === 0 && (
-                        <div className="code-session-list-empty">No sessions. Type a prompt to start.</div>
+                        <div className="code-session-list-empty">{emptyText}</div>
                     )}
                 </>
             )}

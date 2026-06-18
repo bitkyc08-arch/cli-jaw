@@ -44,6 +44,37 @@ test('code session list searches title firstMessage cwd and session id, then sor
     assert.ok(list.includes('Date.parse(session.updatedAt)'), 'stored timestamp must parse ACP updatedAt');
 });
 
+test('code session list defaults to global JWC catalog and exposes explicit cwd grouping controls', () => {
+    const list = read('public/manager/src/code/CodeSessionList.tsx');
+    const client = read('public/manager/src/code/code-session-client.ts');
+    const host = read('src/code-mode/acp-host.ts');
+    const types = read('src/code-mode/types.ts');
+    const routes = read('src/routes/code.ts');
+
+    assert.ok(list.includes("type SessionViewMode = 'all' | 'cwd' | 'grouped'"), 'session list must model all/cwd/grouped modes');
+    assert.ok(list.includes("useState<SessionViewMode>('all')"), 'session list must default to all JWC sessions');
+    assert.ok(list.includes("client.listStoredSessions(storedOptions)"), 'session list must use explicit stored session options');
+    assert.ok(list.includes("scope: 'cwd' as const, cwd: workingDir"), 'cwd mode must request cwd-scoped sessions explicitly');
+    assert.ok(list.includes("scope: 'all' as const"), 'all/grouped modes must request the global JWC catalog');
+    for (const label of ['All', 'This cwd', 'Group']) {
+        assert.ok(list.includes(`>${label}</button>`), `session list must expose ${label} control`);
+    }
+    assert.ok(list.includes('groupedStoredSessions'), 'session list must group global history by cwd locally');
+    assert.ok(list.includes('No sessions for this cwd. Switch to All to browse global history.'), 'cwd empty state must explain the filter');
+    assert.ok(list.includes('No JWC sessions found.'), 'global empty state must not imply current cwd filtering');
+
+    assert.ok(client.includes("listStoredSessions(options?: { cwd?: string; scope?: 'all' | 'cwd' })"), 'client interface must expose explicit list options');
+    assert.ok(client.includes("const scope = options.scope ?? 'all'"), 'client must default stored session requests to all');
+    assert.ok(client.includes("new URLSearchParams({ scope })"), 'client must serialize scope query');
+
+    assert.ok(types.includes("listStoredSessions(options?: { cwd?: string; scope?: 'all' | 'cwd' })"), 'transport type must expose explicit stored session options');
+    assert.ok(host.includes("async listStoredSessions(options: { cwd?: string; scope?: 'all' | 'cwd' } = {})"), 'ACP host must implement explicit stored session options');
+    assert.ok(host.includes("const scope = options.scope ?? (options.cwd ? 'cwd' : 'all')"), 'ACP host must preserve cwd fallback while supporting global scope');
+    assert.ok(host.includes("const sessions = await this.listStoredSessions({ scope: 'cwd', cwd })"), 'stored metadata lookup must call the new object signature');
+    assert.ok(routes.includes("const scope: 'all' | 'cwd' = rawScope === 'cwd' ? 'cwd' : 'all'"), 'route must default missing or unknown scope to all');
+    assert.ok(routes.includes("absolute cwd required for cwd scope"), 'route must validate cwd scope before ACP work');
+});
+
 test('code canvas accepts replay user chunks and loads stored sessions without dropping replayed transcript', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
     const types = read('src/code-mode/types.ts');

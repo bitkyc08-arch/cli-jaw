@@ -62,7 +62,7 @@ export interface CodeSessionTransport {
     /** Spawn/ensure the engine and create a session rooted at an absolute cwd. */
     newSession(cwd: string, opts?: { model?: string }): Promise<CodeSessionInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
-    listStoredSessions(cwd?: string): Promise<StoredCodeSessionInfo[]>;
+    listStoredSessions(options?: { cwd?: string; scope?: 'all' | 'cwd' }): Promise<StoredCodeSessionInfo[]>;
     extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
     setSessionModel(sessionId: string, modelId: string): Promise<void>;

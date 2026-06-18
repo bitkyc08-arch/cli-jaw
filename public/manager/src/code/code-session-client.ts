@@ -103,7 +103,7 @@ export interface CodeGitInfo {
 
 export interface CodeSessionClient {
     listSessions(): Promise<CodeSession[]>;
-    listStoredSessions(cwd?: string): Promise<StoredSession[]>;
+    listStoredSessions(options?: { cwd?: string; scope?: 'all' | 'cwd' }): Promise<StoredSession[]>;
     listModelOptions(): Promise<CodeModelOptions>;
     setDefaultModel(modelId: string): Promise<CodeModelOptions>;
     listModelAssignments(): Promise<CodeModelAssignments>;
@@ -146,8 +146,11 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
             const data = await request<{ sessions: CodeSession[] }>('GET', '/api/code/sessions');
             return data.sessions;
         },
-        async listStoredSessions(cwd?: string) {
-            const qs = cwd ? `?cwd=${encodeURIComponent(cwd)}` : '';
+        async listStoredSessions(options: { cwd?: string; scope?: 'all' | 'cwd' } = {}) {
+            const scope = options.scope ?? 'all';
+            const params = new URLSearchParams({ scope });
+            if (scope === 'cwd' && options.cwd) params.set('cwd', options.cwd);
+            const qs = `?${params.toString()}`;
             const data = await request<{ sessions: StoredSession[] }>('GET', `/api/code/sessions/stored${qs}`);
             return data.sessions;
         },
