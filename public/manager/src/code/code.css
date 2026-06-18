@@ -2,6 +2,7 @@
 @import './code-composer.css';
 @import './code-command-popup.css';
 @import './code-command-popup-model.css';
+@import '../goal-status/goal-pabcd-status.css';
 @import '../background-tasks/background-task-monitor.css';
 @import '../workers/worker-progress-monitor.css';
 

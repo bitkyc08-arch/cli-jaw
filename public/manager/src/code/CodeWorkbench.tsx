@@ -1,5 +1,6 @@
 import type { RefObject } from 'react';
 import { BackgroundTaskMonitorPanel } from '../background-tasks/BackgroundTaskMonitorPanel';
+import { GoalPabcdStatusPanel } from '../goal-status/GoalPabcdStatusPanel';
 import { WorkerProgressMonitorPanel } from '../workers/WorkerProgressMonitorPanel';
 import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import { CodeCommandPopup } from './CodeCommandPopup';
@@ -74,6 +75,7 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                 cwdLocked={Boolean(props.activeSessionId)}
                 onWorkingDirChange={props.onWorkingDirChange}
             />
+            <GoalPabcdStatusPanel />
             <BackgroundTaskMonitorPanel />
             <WorkerProgressMonitorPanel />
             <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} />

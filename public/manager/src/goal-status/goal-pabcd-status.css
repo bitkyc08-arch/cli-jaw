@@ -1,0 +1,200 @@
+.code-goal-status-panel {
+    margin: 8px 12px 0;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-panel) 94%, var(--bg-base));
+    color: var(--text-primary);
+    overflow: hidden;
+}
+
+.code-goal-status-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 10px;
+    align-items: center;
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-default);
+}
+
+.code-goal-status-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 1px 8px;
+    min-width: 0;
+    min-height: auto;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.code-goal-status-kicker {
+    grid-column: 1 / 2;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.code-goal-status-main strong {
+    grid-column: 2 / 3;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.code-goal-status-title,
+.code-goal-status-meta {
+    grid-column: 1 / -1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-goal-status-title {
+    color: var(--text-primary);
+    font-size: 11px;
+    font-weight: 650;
+}
+
+.code-goal-status-meta {
+    color: var(--text-tertiary);
+    font-size: 10px;
+}
+
+.code-goal-status-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    justify-content: flex-end;
+}
+
+.code-goal-status-pills span {
+    padding: 2px 7px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 750;
+    white-space: nowrap;
+}
+
+.code-goal-status-pills .is-pass {
+    border-color: color-mix(in srgb, var(--status-success) 42%, var(--border-default));
+    background: color-mix(in srgb, var(--status-success) 11%, var(--bg-base));
+    color: var(--status-success);
+}
+
+.code-goal-status-pills .is-pending {
+    border-color: color-mix(in srgb, var(--accent-default) 42%, var(--border-default));
+    background: var(--accent-subtle);
+    color: var(--accent-default);
+}
+
+.code-goal-status-pills .is-fail {
+    border-color: color-mix(in srgb, var(--status-error) 42%, var(--border-default));
+    background: color-mix(in srgb, var(--status-error) 10%, var(--bg-base));
+    color: var(--status-error);
+}
+
+.code-goal-status-pills .is-muted {
+    background: var(--bg-base);
+    color: var(--text-tertiary);
+}
+
+.code-goal-status-refresh {
+    min-height: 24px;
+    padding: 0 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.code-goal-status-refresh:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.code-goal-status-error,
+.code-goal-status-empty,
+.code-goal-status-strip {
+    padding: 8px 10px;
+    color: var(--text-tertiary);
+    font-size: 11px;
+}
+
+.code-goal-status-error {
+    border-bottom: 1px solid color-mix(in srgb, var(--status-error) 28%, var(--border-default));
+    color: var(--status-error);
+    background: color-mix(in srgb, var(--status-error) 9%, var(--bg-panel));
+}
+
+.code-goal-status-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    border-bottom: 1px solid color-mix(in srgb, var(--border-default) 70%, transparent);
+}
+
+.code-goal-status-detail {
+    display: grid;
+    gap: 7px;
+    padding: 8px 10px 10px;
+    background: color-mix(in srgb, var(--bg-base) 72%, var(--bg-panel));
+}
+
+.code-goal-status-detail-row {
+    display: grid;
+    grid-template-columns: 92px minmax(0, 1fr);
+    gap: 8px;
+    align-items: start;
+}
+
+.code-goal-status-detail-row > span {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.code-goal-status-detail-row code {
+    min-width: 0;
+    border: 1px solid var(--border-default);
+    border-radius: 5px;
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-family: 'Berkeley Mono', 'JetBrains Mono', monospace;
+    font-size: 10.5px;
+    line-height: 1.4;
+    padding: 5px 7px;
+    overflow-wrap: anywhere;
+}
+
+.code-goal-status-evidence-list {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+@media (max-width: 760px) {
+    .code-goal-status-header {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .code-goal-status-pills {
+        justify-content: flex-start;
+    }
+
+    .code-goal-status-detail-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
