@@ -1,5 +1,5 @@
 import { lazy, Suspense, type RefObject } from 'react';
-import type { TranscriptEntry } from './code-types';
+import type { ToolContent, TranscriptEntry } from './code-types';
 
 const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
 
@@ -9,6 +9,16 @@ type CodeTranscriptProps = {
     workingDir: string;
     transcriptRef: RefObject<HTMLDivElement | null>;
 };
+
+function renderToolContent(content: ToolContent, index: number) {
+    if (content.type === 'diff' && content.diff) {
+        return <pre key={index} className="code-tool-diff">{content.diff}</pre>;
+    }
+    if (content.text) {
+        return <pre key={index} className="code-tool-text">{content.text}</pre>;
+    }
+    return <pre key={index} className="code-tool-json">{JSON.stringify(content, null, 2)}</pre>;
+}
 
 export function CodeTranscript({ messages, sending, workingDir, transcriptRef }: CodeTranscriptProps) {
     return (
@@ -22,24 +32,17 @@ export function CodeTranscript({ messages, sending, workingDir, transcriptRef }:
                 messages.map((msg, i) => (
                     <div key={i} className={`code-message code-message-${msg.role}`}>
                         {msg.role === 'tool' ? (
-                            <details className="code-tool-card" open={msg.toolStatus === 'running'}>
+                            <details className={`code-tool-card code-tool-${msg.toolStatus ?? 'done'}`} open={msg.toolStatus === 'running'}>
                                 <summary className="code-tool-summary">
                                     <span className={`code-tool-icon ${msg.toolStatus === 'running' ? 'spinning' : ''}`}>
-                                        {msg.toolStatus === 'running' ? 'run' : 'ok'}
+                                        {msg.toolStatus === 'running' ? 'run' : 'done'}
                                     </span>
                                     <span className="code-tool-name">{msg.toolName}</span>
+                                    <span className="code-tool-status">{msg.toolStatus ?? 'done'}</span>
                                 </summary>
                                 {(msg.toolContent?.length ?? 0) > 0 && (
                                     <div className="code-tool-content">
-                                        {msg.toolContent!.map((c, ci) => (
-                                            <div key={ci} className="code-tool-content-item">
-                                                {c.type === 'diff' && c.diff ? (
-                                                    <pre className="code-tool-diff">{c.diff}</pre>
-                                                ) : c.text ? (
-                                                    <pre className="code-tool-text">{c.text}</pre>
-                                                ) : null}
-                                            </div>
-                                        ))}
+                                        {msg.toolContent!.map(renderToolContent)}
                                     </div>
                                 )}
                                 {msg.toolOutput && (

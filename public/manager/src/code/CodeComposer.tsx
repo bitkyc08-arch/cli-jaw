@@ -39,15 +39,18 @@ export function CodeComposer(props: CodeComposerProps) {
                         ))}
                 </div>
             )}
-            <textarea
-                className="code-composer-input"
-                value={props.inputText}
-                onChange={e => props.onInputChange(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Describe a task or ask a question..."
-                rows={1}
-                disabled={props.sending}
-            />
+            <div className="code-composer-input-shell">
+                <textarea
+                    className="code-composer-input"
+                    value={props.inputText}
+                    onChange={e => props.onInputChange(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder="Describe a task or ask a question..."
+                    rows={1}
+                    disabled={props.sending}
+                />
+                <span className="code-composer-hint">Enter to send · / for commands</span>
+            </div>
             <button
                 type="button"
                 className="code-composer-send"
