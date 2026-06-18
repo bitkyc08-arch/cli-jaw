@@ -1,6 +1,6 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
-import { readdir, stat, lstat, readFile, realpath } from 'node:fs/promises';
-import { resolve, join } from 'node:path';
+import { mkdir, readdir, rename, stat, lstat, readFile, realpath, writeFile } from 'node:fs/promises';
+import { basename, dirname, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { statSync, watch, type FSWatcher } from 'node:fs';
 import { isWithinHome, assertContained, assertContainedLexical } from '../path-security.js';
@@ -40,6 +40,15 @@ function isBinary(buf: Buffer): boolean {
         if (buf[i] === 0) return true;
     }
     return false;
+}
+
+function readSafeEntryName(rawName: unknown): string {
+    if (typeof rawName !== 'string') throw new Error('name required');
+    const name = rawName.trim();
+    if (!name || name === '.' || name === '..') throw new Error('invalid name');
+    if (name.includes('/') || name.includes('\\') || name.includes('\0')) throw new Error('invalid name');
+    if (basename(name) !== name) throw new Error('invalid name');
+    return name;
 }
 
 function resolveDefaultRoot(): string {
@@ -174,6 +183,58 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
             allowPath: isAllowedByRoot,
             allowDestinationPath: isAllowedNewPathByRoot,
         });
+    });
+
+    ipcMain.handle('folder:createFile', async (event, parentDirectory: string, rawName: unknown) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        try {
+            if (!isAllowedByRoot(parentDirectory)) return { ok: false, error: 'path not allowed — pick a folder first' };
+            const parent = resolve(parentDirectory);
+            const ls = await lstat(parent);
+            if (ls.isSymbolicLink() || !ls.isDirectory()) return { ok: false, error: 'parent must be a directory' };
+            const name = readSafeEntryName(rawName);
+            const target = join(parent, name);
+            if (!isAllowedNewPathByRoot(target)) return { ok: false, error: 'path not allowed' };
+            await writeFile(target, '', { flag: 'wx' });
+            return { ok: true, entry: { name, path: target, kind: 'file' as const, size: 0 } };
+        } catch (err) {
+            return { ok: false, error: (err as Error).message };
+        }
+    });
+
+    ipcMain.handle('folder:createFolder', async (event, parentDirectory: string, rawName: unknown) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        try {
+            if (!isAllowedByRoot(parentDirectory)) return { ok: false, error: 'path not allowed — pick a folder first' };
+            const parent = resolve(parentDirectory);
+            const ls = await lstat(parent);
+            if (ls.isSymbolicLink() || !ls.isDirectory()) return { ok: false, error: 'parent must be a directory' };
+            const name = readSafeEntryName(rawName);
+            const target = join(parent, name);
+            if (!isAllowedNewPathByRoot(target)) return { ok: false, error: 'path not allowed' };
+            await mkdir(target);
+            return { ok: true, entry: { name, path: target, kind: 'directory' as const, size: 0 } };
+        } catch (err) {
+            return { ok: false, error: (err as Error).message };
+        }
+    });
+
+    ipcMain.handle('folder:renamePath', async (event, sourcePath: string, rawName: unknown) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        try {
+            if (!isAllowedByRoot(sourcePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
+            const source = resolve(sourcePath);
+            const ls = await lstat(source);
+            if (ls.isSymbolicLink()) return { ok: false, error: 'symlinks not allowed' };
+            const name = readSafeEntryName(rawName);
+            const target = join(dirname(source), name);
+            if (target === source) return { ok: true, entry: { name, path: source, kind: ls.isDirectory() ? 'directory' as const : 'file' as const, size: ls.size } };
+            if (!isAllowedNewPathByRoot(target)) return { ok: false, error: 'path not allowed' };
+            await rename(source, target);
+            return { ok: true, entry: { name, path: target, kind: ls.isDirectory() ? 'directory' as const : 'file' as const, size: ls.size } };
+        } catch (err) {
+            return { ok: false, error: (err as Error).message };
+        }
     });
 
     ipcMain.handle('folder:revealPath', async (event, filePath: string) => {

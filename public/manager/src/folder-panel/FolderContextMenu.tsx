@@ -6,10 +6,14 @@ type FolderContextMenuProps = {
     y: number;
     canReveal: boolean;
     canRefresh: boolean;
+    canMutate: boolean;
     onCopyPath: () => void;
     onCopyRelativePath: () => void;
     onReveal: () => void;
     onRefresh: () => void;
+    onCreateFile: () => void;
+    onCreateFolder: () => void;
+    onRename: () => void;
 };
 
 export function FolderContextMenu(props: FolderContextMenuProps) {
@@ -26,6 +30,9 @@ export function FolderContextMenu(props: FolderContextMenuProps) {
             <button type="button" role="menuitem" disabled={!props.canReveal} onClick={props.onReveal}>
                 {props.entry.kind === 'directory' ? 'Open Folder' : 'Reveal in Finder'}
             </button>
+            <button type="button" role="menuitem" disabled={!props.canMutate} onClick={props.onCreateFile}>New File</button>
+            <button type="button" role="menuitem" disabled={!props.canMutate} onClick={props.onCreateFolder}>New Folder</button>
+            <button type="button" role="menuitem" disabled={!props.canMutate} onClick={props.onRename}>Rename</button>
             {props.canRefresh && <button type="button" role="menuitem" onClick={props.onRefresh}>Refresh</button>}
         </div>
     );

@@ -120,6 +120,9 @@ test('notes-vault folder source remains read-only for native filesystem actions'
     assert.equal(source.kind, 'notes-vault');
     assert.equal(source.canPickRoot, false);
     assert.equal(source.movePath, undefined);
+    assert.equal(source.createFile, undefined);
+    assert.equal(source.createFolder, undefined);
+    assert.equal(source.renamePath, undefined);
     assert.equal(source.revealPath, undefined);
 });
 
@@ -130,6 +133,9 @@ function mockFolderBridge(pickFolder: FolderBridgeApi['pickFolder']): FolderBrid
         listDir: async () => ({ ok: true, entries: [] }),
         readFile: async () => ({ ok: true, content: '' }),
         movePath: async () => ({ ok: true }),
+        createFile: async (_parentDirectory, name) => ({ ok: true, entry: { name, path: `/tmp/${name}`, kind: 'file', size: 0 } }),
+        createFolder: async (_parentDirectory, name) => ({ ok: true, entry: { name, path: `/tmp/${name}`, kind: 'directory', size: 0 } }),
+        renamePath: async (_sourcePath, name) => ({ ok: true, entry: { name, path: `/tmp/${name}`, kind: 'file', size: 0 } }),
         revealPath: async () => ({ ok: true }),
         watchDir: async () => ({ ok: true }),
         unwatchDir: async () => ({ ok: true }),

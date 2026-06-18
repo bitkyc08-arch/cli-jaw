@@ -60,6 +60,21 @@ export function createElectronFolderSource(bridge: FolderBridgeApi): FolderPanel
             if (!result.ok) throw new Error(result.error ?? 'Failed to move path');
             return result;
         },
+        createFile: async (parentDirectory: string, name: string) => {
+            const result = await bridge.createFile(parentDirectory, name);
+            if (!result.ok) throw new Error(result.error ?? 'Failed to create file');
+            return result;
+        },
+        createFolder: async (parentDirectory: string, name: string) => {
+            const result = await bridge.createFolder(parentDirectory, name);
+            if (!result.ok) throw new Error(result.error ?? 'Failed to create folder');
+            return result;
+        },
+        renamePath: async (sourcePath: string, name: string) => {
+            const result = await bridge.renamePath(sourcePath, name);
+            if (!result.ok) throw new Error(result.error ?? 'Failed to rename path');
+            return result;
+        },
         revealPath: async (path: string) => {
             const result = await bridge.revealPath(path);
             if (!result.ok) throw new Error(result.error ?? 'Failed to reveal path');

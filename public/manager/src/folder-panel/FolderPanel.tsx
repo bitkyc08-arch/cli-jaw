@@ -230,6 +230,7 @@ export function FolderPanel(props: FolderPanelProps) {
     }, [refreshVisibleTree, rootPath, source]);
 
     const canUseNativeActions = source.kind === 'electron-folder';
+    const canMutateEntries = Boolean(source.createFile && source.createFolder && source.renamePath);
 
     const refreshAfterMove = useCallback(async (sourcePath: string, targetPath: string) => {
         if (!rootPath) return;
@@ -240,6 +241,16 @@ export function FolderPanel(props: FolderPanelProps) {
         if (expanded.has(targetPath)) await loadChildren(targetPath, { force: true });
         setGitRefreshToken(token => token + 1);
     }, [expanded, loadChildren, loadDir, rootPath]);
+
+    const refreshAfterMutation = useCallback(async (parentDirectory: string, focusPath: string | null, extraDroppedPaths: string[] = []) => {
+        if (!rootPath) return;
+        setChildrenCache(prev => dropCachedBranches(prev, [parentDirectory, ...extraDroppedPaths]));
+        await loadDir(rootPath);
+        if (expanded.has(parentDirectory)) await loadChildren(parentDirectory, { force: true });
+        setGitRefreshToken(token => token + 1);
+        onGitRefresh?.();
+        if (focusPath) folderSelection.selectOnlyPath(focusPath);
+    }, [expanded, folderSelection, loadChildren, loadDir, onGitRefresh, rootPath]);
 
     const executeMove = useCallback(async (move: { source: FolderPanelEntry; target: FolderPanelEntry }) => {
         if (!source.movePath) return;
@@ -269,6 +280,49 @@ export function FolderPanel(props: FolderPanelProps) {
         setSkipMoveConfirmChecked(false);
         setPendingMove(move);
     }, [executeMove, skipInternalMoveConfirm, source.movePath]);
+
+    const mutationParentDirectory = useCallback((): string | null => {
+        if (!rootPath) return null;
+        if (!selectedEntry) return rootPath;
+        return selectedEntry.kind === 'directory' ? selectedEntry.path : parentPath(selectedEntry.path);
+    }, [rootPath, selectedEntry]);
+
+    const createEntry = useCallback(async (kind: 'file' | 'directory') => {
+        const parentDirectory = mutationParentDirectory();
+        if (!parentDirectory) return;
+        const create = kind === 'file' ? source.createFile : source.createFolder;
+        if (!create) return;
+        const label = kind === 'file' ? 'New file name' : 'New folder name';
+        const name = window.prompt(label);
+        if (!name) return;
+        try {
+            const result = await create(parentDirectory, name);
+            const entry = result.entry;
+            if (kind === 'directory' && selectedEntry?.path === parentDirectory) {
+                setExpanded(prev => new Set(prev).add(parentDirectory));
+            }
+            setActionStatus(kind === 'file' ? 'Created file' : 'Created folder');
+            setError(null);
+            await refreshAfterMutation(parentDirectory, entry?.path ?? null);
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    }, [mutationParentDirectory, refreshAfterMutation, selectedEntry?.path, source]);
+
+    const renameSelectedEntry = useCallback(async () => {
+        if (!selectedEntry || !source.renamePath) return;
+        const name = window.prompt('Rename to', selectedEntry.name);
+        if (!name || name === selectedEntry.name) return;
+        try {
+            const result = await source.renamePath(selectedEntry.path, name);
+            const parentDirectory = parentPath(selectedEntry.path);
+            setActionStatus('Renamed');
+            setError(null);
+            await refreshAfterMutation(parentDirectory, result.entry?.path ?? null, [selectedEntry.path]);
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    }, [refreshAfterMutation, selectedEntry, source]);
 
     const selectEntry = useCallback((entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean }) => {
         folderSelection.selectEntry(entry, options);
@@ -449,6 +503,10 @@ export function FolderPanel(props: FolderPanelProps) {
                     onCopyPath={() => void copySelectedPath('absolute')}
                     onCopyRelativePath={() => void copySelectedPath('relative')}
                     onReveal={() => void revealSelectedPath()}
+                    canMutate={canMutateEntries}
+                    onCreateFile={() => void createEntry('file')}
+                    onCreateFolder={() => void createEntry('directory')}
+                    onRename={() => void renameSelectedEntry()}
                 />
             )}
             {error && <div className="folder-error">{error}</div>}
@@ -498,6 +556,7 @@ export function FolderPanel(props: FolderPanelProps) {
                 skipMoveConfirmChecked={skipMoveConfirmChecked}
                 canReveal={Boolean(source.revealPath)}
                 canRefresh={Boolean(rootPath)}
+                canMutate={canMutateEntries}
                 onSkipMoveConfirmCheckedChange={setSkipMoveConfirmChecked}
                 onCancelMove={() => setPendingMove(null)}
                 onConfirmMove={() => {
@@ -509,6 +568,9 @@ export function FolderPanel(props: FolderPanelProps) {
                 onCopyContextRelativePath={() => { setContextMenu(null); void copySelectedPath('relative'); }}
                 onRevealContextPath={() => { setContextMenu(null); void revealSelectedPath(); }}
                 onRefreshContext={() => { setContextMenu(null); void refreshVisibleTree(); }}
+                onCreateContextFile={() => { setContextMenu(null); void createEntry('file'); }}
+                onCreateContextFolder={() => { setContextMenu(null); void createEntry('directory'); }}
+                onRenameContextPath={() => { setContextMenu(null); void renameSelectedEntry(); }}
             />
         </div>
     );

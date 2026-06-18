@@ -1,4 +1,4 @@
-import type { FolderMoveResult, FolderWatchResult } from '../panels/desktop-bridge';
+import type { FolderMoveResult, FolderMutationResult, FolderWatchResult } from '../panels/desktop-bridge';
 
 export type FolderPanelSourceKind = 'electron-folder' | 'notes-vault';
 
@@ -21,6 +21,9 @@ export type FolderPanelSource = {
     listDir: (path: string) => Promise<FolderPanelEntry[]>;
     readFile?: (path: string) => Promise<{ content: string; binary?: boolean }>;
     movePath?: (sourcePath: string, targetDirectory: string) => Promise<FolderPanelMoveResult>;
+    createFile?: (parentDirectory: string, name: string) => Promise<FolderMutationResult>;
+    createFolder?: (parentDirectory: string, name: string) => Promise<FolderMutationResult>;
+    renamePath?: (sourcePath: string, name: string) => Promise<FolderMutationResult>;
     revealPath?: (path: string) => Promise<void>;
     copyBasePath?: string | null;
     watchDir?: (path: string) => Promise<FolderWatchResult>;

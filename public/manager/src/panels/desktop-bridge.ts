@@ -118,10 +118,26 @@ export type FolderBridgeApi = {
     listDir: (dirPath: string, depth?: number) => Promise<{ ok: boolean; entries?: Array<{ name: string; path: string; kind: 'file' | 'directory'; size: number }>; error?: string }>;
     readFile: (filePath: string) => Promise<{ ok: boolean; content?: string; truncated?: boolean; binary?: boolean; error?: string }>;
     movePath: (sourcePath: string, targetDirectory: string) => Promise<FolderMoveResult>;
+    createFile: (parentDirectory: string, name: string) => Promise<FolderMutationResult>;
+    createFolder: (parentDirectory: string, name: string) => Promise<FolderMutationResult>;
+    renamePath: (sourcePath: string, name: string) => Promise<FolderMutationResult>;
     revealPath: (path: string) => Promise<{ ok: boolean; error?: string }>;
     watchDir: (dirPath: string) => Promise<FolderWatchResult>;
     unwatchDir: (dirPath: string) => Promise<FolderWatchResult>;
     onDirChange: (cb: (dirPath: string) => void) => () => void;
+};
+
+export type FolderMutationEntry = {
+    name: string;
+    path: string;
+    kind: 'file' | 'directory';
+    size: number;
+};
+
+export type FolderMutationResult = {
+    ok: boolean;
+    entry?: FolderMutationEntry;
+    error?: string;
 };
 
 export type FolderMoveResult = {
