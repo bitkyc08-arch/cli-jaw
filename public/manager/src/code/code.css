@@ -66,6 +66,19 @@
 .code-session-cwd { font-weight: 500; }
 .code-session-status { font-size: 10px; color: var(--text-tertiary); }
 .code-session-status-streaming { color: var(--status-success); }
+.code-session-search {
+    width: calc(100% - 16px);
+    margin: 0 8px 6px;
+    padding: 4px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 4px;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    font-size: 11px;
+    font-family: inherit;
+}
+.code-session-search:focus { outline: none; border-color: var(--accent-default); }
+.code-session-search::placeholder { color: var(--text-tertiary); }
 .code-session-list-divider {
     font-size: 10px; font-weight: 600;
     color: var(--text-tertiary);

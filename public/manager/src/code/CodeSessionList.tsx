@@ -14,6 +14,7 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
     const [sessions, setSessions] = useState<CodeSession[]>([]);
     const [storedSessions, setStoredSessions] = useState<StoredSession[]>([]);
     const [loading, setLoading] = useState(true);
+    const [search, setSearch] = useState('');
 
     const refresh = useCallback(async () => {
         setLoading(true);
@@ -43,13 +44,22 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                 <span className="code-session-list-title">Sessions</span>
                 <button type="button" className="code-session-new-btn" onClick={onNewSession} aria-label="New code session">+</button>
             </div>
+            {(sessions.length + storedSessions.length) > 3 && (
+                <input
+                    className="code-session-search"
+                    type="text"
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    placeholder="Search sessions..."
+                />
+            )}
             {loading ? (
                 <div className="code-session-list-loading">Loading...</div>
             ) : (
                 <>
                     {sessions.length > 0 && (
                         <ul className="code-session-list-items">
-                            {sessions.map(s => (
+                            {sessions.filter(s => !search || cwdLabel(s.cwd).toLowerCase().includes(search.toLowerCase())).map(s => (
                                 <li key={s.sessionId}>
                                     <button type="button"
                                         className={`code-session-item ${s.sessionId === activeSessionId ? 'active' : ''}`}
@@ -65,7 +75,7 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                         <>
                             <div className="code-session-list-divider">History</div>
                             <ul className="code-session-list-items">
-                                {storedSessions.slice(0, 20).map(s => (
+                                {storedSessions.filter(s => !search || (s.title || cwdLabel(s.cwd)).toLowerCase().includes(search.toLowerCase())).slice(0, 20).map(s => (
                                     <li key={s.sessionId}>
                                         <button type="button" className="code-session-item"
                                             onClick={() => onLoadSession(s.sessionId, s.cwd)}>
