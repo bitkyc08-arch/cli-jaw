@@ -6,13 +6,17 @@
 // Design SoT: jawcode devlog 112.3 §S1 (C2) / handshake facts from acp-agent.ts 실사.
 
 import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
 import { createInterface } from 'node:readline';
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { publish } from '../core/event-bus.js';
 import { loadSettings } from '../core/config.js';
 import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionTransport, type PendingPermission, type PromptAccepted } from './types.js';
 
 const PROTOCOL_VERSION = 1;
+const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
 
 interface JsonRpcMessage {
     jsonrpc: '2.0';
@@ -28,13 +32,24 @@ interface Deferred {
     reject: (err: Error) => void;
 }
 
-function resolveAcpCommand(): { cmd: string; args: string[] } {
+function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
     // Override for dev checkouts, e.g. JWC_ACP_CMD="bun /path/jawcode/packages/jwc/bin/jwc.js --mode acp"
     const override = process.env['JWC_ACP_CMD'];
     if (override && override.trim()) {
         const parts = override.trim().split(/\s+/);
         const cmd = parts[0];
         if (cmd) return { cmd, args: parts.slice(1) };
+    }
+    const candidates = [
+        // Electron packaged sidecar: .../server/dist/src/code-mode/acp-host.js -> .../server/bin/jwc
+        join(MODULE_DIR, '..', '..', '..', 'bin', 'jwc'),
+        // Source/tsx mode: .../src/code-mode/acp-host.ts -> repo/bin/jwc
+        join(MODULE_DIR, '..', '..', 'bin', 'jwc'),
+        // CLI/server launched from repo root.
+        join(process.cwd(), 'bin', 'jwc'),
+    ];
+    for (const candidate of candidates) {
+        if (existsSync(candidate)) return { cmd: candidate, args: ['--mode', 'acp'], binDir: dirname(candidate) };
     }
     return { cmd: 'jwc', args: ['--mode', 'acp'] };
 }
@@ -51,10 +66,14 @@ class AcpHost implements CodeSessionTransport {
     // ── child lifecycle ───────────────────────────────────────────────
     async #ensureChild(): Promise<void> {
         if (this.#child && this.#child.exitCode === null && this.#initialized) return this.#initialized;
-        const { cmd, args } = resolveAcpCommand();
+        const { cmd, args, binDir } = resolveAcpCommand();
         const child = spawn(cmd, args, {
             stdio: ['pipe', 'pipe', 'inherit'],
-            env: { ...process.env, JWC_BRAND_NAME: 'jwc' },
+            env: {
+                ...process.env,
+                JWC_BRAND_NAME: 'jwc',
+                PATH: binDir ? `${binDir}:${process.env['PATH'] ?? ''}` : process.env['PATH'],
+            },
         });
         this.#child = child;
         const rl = createInterface({ input: child.stdout! });
@@ -177,7 +196,7 @@ class AcpHost implements CodeSessionTransport {
         const sessionId = String(res['sessionId'] ?? '');
         if (!sessionId) throw new Error('engine returned no sessionId');
         if (opts?.model) {
-            await this.#request('unstable_setSessionModel', { sessionId, modelId: opts.model });
+            await this.#request('session/set_model', { sessionId, modelId: opts.model });
         }
         const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
         this.#sessions.set(sessionId, info);
@@ -196,7 +215,7 @@ class AcpHost implements CodeSessionTransport {
 
     async listStoredSessions(cwd?: string): Promise<Array<{ sessionId: string; cwd: string; title?: string; lastModified?: number }>> {
         await this.#ensureChild();
-        const res = await this.#request('session/list', { cwd: cwd ?? null });
+        const res = await this.#request('session/list', { ...(cwd ? { cwd } : {}) });
         const sessions = (res['sessions'] ?? []) as Array<Record<string, unknown>>;
         return sessions.map(s => {
             const entry: { sessionId: string; cwd: string; title?: string; lastModified?: number } = {
@@ -216,7 +235,7 @@ class AcpHost implements CodeSessionTransport {
 
     async forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo> {
         await this.#ensureChild();
-        const res = await this.#request('unstable_forkSession', { sessionId, cwd, mcpServers: [] });
+        const res = await this.#request('session/fork', { sessionId, cwd, mcpServers: [] });
         const newSessionId = String(res['sessionId'] ?? '');
         if (!newSessionId) throw new Error('fork returned no sessionId');
         const info: CodeSessionInfo = { sessionId: newSessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
@@ -226,7 +245,7 @@ class AcpHost implements CodeSessionTransport {
     }
 
     async setSessionModel(sessionId: string, modelId: string): Promise<void> {
-        await this.#request('unstable_setSessionModel', { sessionId, modelId });
+        await this.#request('session/set_model', { sessionId, modelId });
     }
 
     async prompt(sessionId: string, text: string): Promise<PromptAccepted> {
@@ -251,7 +270,8 @@ class AcpHost implements CodeSessionTransport {
     }
 
     async cancel(sessionId: string): Promise<void> {
-        await this.#request('session/cancel', { sessionId }).catch(() => {});
+        await this.#ensureChild();
+        this.#send({ jsonrpc: '2.0', method: 'session/cancel', params: { sessionId } });
         // Late permission requests after cancel must be answered as cancelled (ACP contract).
         for (const [id, p] of this.#permissions) {
             if (p.sessionId === sessionId) {
@@ -262,7 +282,7 @@ class AcpHost implements CodeSessionTransport {
     }
 
     async setSessionConfig(sessionId: string, configId: string, valueId: string): Promise<void> {
-        await this.#request('session/setConfigOption', { sessionId, configId, valueId });
+        await this.#request('session/set_config_option', { sessionId, configId, value: valueId });
     }
 
     async closeSession(sessionId: string): Promise<void> {

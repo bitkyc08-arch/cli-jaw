@@ -59,6 +59,7 @@ import {
 import { openUrlInBrowser } from '../core/browser-open.js';
 import { ensureDirs, loadSettings } from '../core/config.js';
 import { createJawCeoRouter } from '../routes/jaw-ceo.js';
+import { registerCodeRoutes } from '../routes/code.js';
 import type {
     DashboardInstance,
     DashboardServiceState,
@@ -430,6 +431,11 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         }
     },
 }));
+
+// Electron Code mode is a manager-local workbench. Register the Code REST API
+// on the manager server before the SPA fallback so /api/code/* never resolves
+// to index.html.
+registerCodeRoutes(app, (_req, _res, next) => next());
 
 app.get('/api/dashboard/health', (_req, res) => {
     res.json({
