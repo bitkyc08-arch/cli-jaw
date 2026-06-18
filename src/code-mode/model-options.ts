@@ -23,7 +23,44 @@ export type JwcModelRole = {
     thinkingLevel?: string;
 };
 
+export type JwcModelAssignmentRole = 'default' | 'executor_ext' | 'executor' | 'architect' | 'planner' | 'critic';
+
+export type JwcModelAssignmentSettingsPath = 'modelRoles' | 'task.agentModelOverrides';
+
+export type JwcModelAssignment = {
+    role: JwcModelAssignmentRole;
+    tag: string;
+    name: string;
+    settingsPath: JwcModelAssignmentSettingsPath;
+    modelId?: string;
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+};
+
 const JWC_THINKING_SUFFIXES = new Set(['off', 'min', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
+
+export const JWC_MODEL_ASSIGNMENT_TARGET_IDS: JwcModelAssignmentRole[] = [
+    'default',
+    'executor_ext',
+    'executor',
+    'architect',
+    'planner',
+    'critic',
+];
+
+export const JWC_MODEL_ASSIGNMENT_TARGETS: Record<JwcModelAssignmentRole, {
+    tag: string;
+    name: string;
+    settingsPath: JwcModelAssignmentSettingsPath;
+}> = {
+    default: { tag: 'DEFAULT', name: 'Default', settingsPath: 'modelRoles' },
+    executor_ext: { tag: 'EXECUTOR_EXT', name: 'External Executor', settingsPath: 'task.agentModelOverrides' },
+    executor: { tag: 'EXECUTOR', name: 'Executor', settingsPath: 'task.agentModelOverrides' },
+    architect: { tag: 'ARCHITECT', name: 'Architect', settingsPath: 'task.agentModelOverrides' },
+    planner: { tag: 'PLANNER', name: 'Planner', settingsPath: 'task.agentModelOverrides' },
+    critic: { tag: 'CRITIC', name: 'Critic', settingsPath: 'task.agentModelOverrides' },
+};
 
 export const JWC_PROVIDER_MODEL_DEFAULTS: Record<string, string[]> = {
     anthropic: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
@@ -47,6 +84,10 @@ export const JWC_PROVIDER_EFFORT_DEFAULTS: Record<string, string[]> = {
 
 export function resolveJwcAgentDir(): string {
     return process.env['CLI_JAW_JWC_AGENT_DIR'] || join(homedir(), '.jwc', 'agent');
+}
+
+export function isJwcModelAssignmentRole(value: string): value is JwcModelAssignmentRole {
+    return JWC_MODEL_ASSIGNMENT_TARGET_IDS.includes(value as JwcModelAssignmentRole);
 }
 
 export function parseJwcModelRole(value: string | undefined): JwcModelRole | null {
@@ -97,6 +138,108 @@ export async function writeJwcDefaultModelRole(modelRole: string, agentDir = res
     const modelRoles = doc.get('modelRoles', true);
     if (isMap(modelRoles)) modelRoles.flow = false;
     await writeFile(configPath, doc.toString(), 'utf8');
+}
+
+async function readJwcConfigDocument(agentDir: string) {
+    const configPath = join(agentDir, 'config.yml');
+    let content = '';
+    try {
+        content = await readFile(configPath, 'utf8');
+    } catch {
+        content = '';
+    }
+    return {
+        configPath,
+        doc: parseDocument(content || '{}\n', { prettyErrors: false }),
+    };
+}
+
+function setBlockStyleMaps(doc: ReturnType<typeof parseDocument>): void {
+    if (isMap(doc.contents)) doc.contents.flow = false;
+    const modelRoles = doc.get('modelRoles', true);
+    if (isMap(modelRoles)) modelRoles.flow = false;
+    const task = doc.get('task', true);
+    if (isMap(task)) task.flow = false;
+    const agentModelOverrides = doc.getIn(['task', 'agentModelOverrides'], true);
+    if (isMap(agentModelOverrides)) agentModelOverrides.flow = false;
+}
+
+function modelRolePath(role: JwcModelAssignmentRole): Array<string> {
+    const target = JWC_MODEL_ASSIGNMENT_TARGETS[role];
+    return target.settingsPath === 'modelRoles'
+        ? ['modelRoles', role]
+        : ['task', 'agentModelOverrides', role];
+}
+
+function readStringAt(doc: ReturnType<typeof parseDocument>, path: Array<string>): string | undefined {
+    const value = doc.getIn(path);
+    return typeof value === 'string' && value.trim() ? value.trim() : undefined;
+}
+
+export async function readJwcModelAssignments(agentDir = resolveJwcAgentDir()): Promise<JwcModelAssignment[]> {
+    try {
+        const content = await readFile(join(agentDir, 'config.yml'), 'utf8');
+        const doc = parseDocument(content, { prettyErrors: false });
+        return JWC_MODEL_ASSIGNMENT_TARGET_IDS.map(role => {
+            const target = JWC_MODEL_ASSIGNMENT_TARGETS[role];
+            const modelId = readStringAt(doc, modelRolePath(role));
+            const parsed = parseJwcModelRole(modelId);
+            return {
+                role,
+                tag: target.tag,
+                name: target.name,
+                settingsPath: target.settingsPath,
+                ...(modelId ? { modelId } : {}),
+                ...(parsed ? {
+                    provider: parsed.provider,
+                    model: parsed.model,
+                    ...(parsed.thinkingLevel ? { thinkingLevel: parsed.thinkingLevel } : {}),
+                } : {}),
+            };
+        });
+    } catch {
+        return JWC_MODEL_ASSIGNMENT_TARGET_IDS.map(role => {
+            const target = JWC_MODEL_ASSIGNMENT_TARGETS[role];
+            return { role, tag: target.tag, name: target.name, settingsPath: target.settingsPath };
+        });
+    }
+}
+
+export async function writeJwcModelAssignment(
+    role: JwcModelAssignmentRole,
+    modelRole: string,
+    agentDir = resolveJwcAgentDir(),
+): Promise<void> {
+    await mkdir(agentDir, { recursive: true });
+    const { configPath, doc } = await readJwcConfigDocument(agentDir);
+    doc.setIn(modelRolePath(role), modelRole);
+    setBlockStyleMaps(doc);
+    await writeFile(configPath, doc.toString(), 'utf8');
+}
+
+export async function clearJwcModelAssignment(
+    role: JwcModelAssignmentRole,
+    agentDir = resolveJwcAgentDir(),
+): Promise<void> {
+    await mkdir(agentDir, { recursive: true });
+    const { configPath, doc } = await readJwcConfigDocument(agentDir);
+    doc.deleteIn(modelRolePath(role));
+    setBlockStyleMaps(doc);
+    await writeFile(configPath, doc.toString(), 'utf8');
+}
+
+export async function resolveJwcModelAssignments(agentDir = resolveJwcAgentDir()): Promise<{
+    roles: JwcModelAssignment[];
+    activeModel: { scope: 'session'; note: string };
+}> {
+    const roles = await readJwcModelAssignments(agentDir);
+    return {
+        roles,
+        activeModel: {
+            scope: 'session',
+            note: 'Role assignments do not mutate the active Code session model.',
+        },
+    };
 }
 
 export function buildJwcModelOptions(authenticated: string[], error?: string, defaultModelRole?: string): JwcModelOptions {

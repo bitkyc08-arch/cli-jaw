@@ -27,6 +27,25 @@ export interface CodeModelOptions {
     error?: string;
 }
 
+export interface CodeModelAssignment {
+    role: 'default' | 'executor_ext' | 'executor' | 'architect' | 'planner' | 'critic';
+    tag: string;
+    name: string;
+    settingsPath: 'modelRoles' | 'task.agentModelOverrides';
+    modelId?: string;
+    provider?: string;
+    model?: string;
+    thinkingLevel?: string;
+}
+
+export interface CodeModelAssignments {
+    roles: CodeModelAssignment[];
+    activeModel: {
+        scope: 'session';
+        note: string;
+    };
+}
+
 export interface CodeGitInfo {
     isRepo: boolean;
     branch: string | null;
@@ -49,6 +68,9 @@ export interface CodeSessionClient {
     listStoredSessions(cwd?: string): Promise<StoredSession[]>;
     listModelOptions(): Promise<CodeModelOptions>;
     setDefaultModel(modelId: string): Promise<CodeModelOptions>;
+    listModelAssignments(): Promise<CodeModelAssignments>;
+    setModelAssignment(role: CodeModelAssignment['role'], modelId: string): Promise<CodeModelAssignments>;
+    clearModelAssignment(role: CodeModelAssignment['role']): Promise<CodeModelAssignments>;
     getGitInfo(cwd: string): Promise<CodeGitInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSession>;
     createSession(cwd: string, model?: string): Promise<CodeSession>;
@@ -94,6 +116,15 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async setDefaultModel(modelId: string) {
             return request<CodeModelOptions>('POST', '/api/code/model-default', { modelId });
+        },
+        async listModelAssignments() {
+            return request<CodeModelAssignments>('GET', '/api/code/model-assignments');
+        },
+        async setModelAssignment(role: CodeModelAssignment['role'], modelId: string) {
+            return request<CodeModelAssignments>('PUT', `/api/code/model-assignments/${encodeURIComponent(role)}`, { modelId });
+        },
+        async clearModelAssignment(role: CodeModelAssignment['role']) {
+            return request<CodeModelAssignments>('DELETE', `/api/code/model-assignments/${encodeURIComponent(role)}`);
         },
         async getGitInfo(cwd: string) {
             const data = await request<CodeGitInfo>('GET', `/api/code/git-info?cwd=${encodeURIComponent(cwd)}`);

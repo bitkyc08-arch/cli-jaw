@@ -5,7 +5,14 @@ import { execFile } from 'node:child_process';
 import { isAbsolute } from 'node:path';
 import { Router, type RequestHandler } from 'express';
 import { acpHost } from '../code-mode/acp-host.js';
-import { resolveJwcModelOptions, writeJwcDefaultModelRole } from '../code-mode/model-options.js';
+import {
+    clearJwcModelAssignment,
+    isJwcModelAssignmentRole,
+    resolveJwcModelAssignments,
+    resolveJwcModelOptions,
+    writeJwcDefaultModelRole,
+    writeJwcModelAssignment,
+} from '../code-mode/model-options.js';
 
 function git(cwd: string, args: string[]): Promise<string> {
     return new Promise(resolve => {
@@ -59,6 +66,44 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
                 await writeJwcDefaultModelRole(modelId);
                 const options = await resolveJwcModelOptions();
                 res.json({ ok: true, ...options });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
+    app.get('/api/code/model-assignments', requireAuth, (_req, res) => {
+        void (async () => {
+            const assignments = await resolveJwcModelAssignments();
+            res.json({ ok: true, ...assignments });
+        })();
+    });
+
+    app.put('/api/code/model-assignments/:role', requireAuth, (req, res) => {
+        void (async () => {
+            const role = String(req.params['role'] || '');
+            if (!isJwcModelAssignmentRole(role)) { res.status(400).json({ ok: false, error: 'unknown model assignment role' }); return; }
+            const body = req.body as Record<string, unknown> | undefined;
+            const modelId = String(body?.['modelId'] || '');
+            if (!modelId) { res.status(400).json({ ok: false, error: 'modelId required' }); return; }
+            try {
+                await writeJwcModelAssignment(role, modelId);
+                const assignments = await resolveJwcModelAssignments();
+                res.json({ ok: true, ...assignments });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
+    app.delete('/api/code/model-assignments/:role', requireAuth, (req, res) => {
+        void (async () => {
+            const role = String(req.params['role'] || '');
+            if (!isJwcModelAssignmentRole(role)) { res.status(400).json({ ok: false, error: 'unknown model assignment role' }); return; }
+            try {
+                await clearJwcModelAssignment(role);
+                const assignments = await resolveJwcModelAssignments();
+                res.json({ ok: true, ...assignments });
             } catch (err: unknown) {
                 res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
             }
