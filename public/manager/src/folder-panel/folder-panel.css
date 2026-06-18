@@ -309,6 +309,102 @@
     color: var(--text-dim);
     font-size: 10px;
 }
+.folder-worktree-history {
+    display: grid;
+    gap: 6px;
+    max-height: 220px;
+    overflow: auto;
+    padding-top: 2px;
+}
+.folder-worktree-history__title {
+    color: var(--text-dim);
+    font-size: 10px;
+    font-weight: 600;
+}
+.folder-worktree-history__item {
+    display: grid;
+    gap: 4px;
+    padding: 6px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    background: var(--bg-elevated);
+}
+.folder-worktree-history__main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+.folder-worktree-history__label,
+.folder-worktree-history__command {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.folder-worktree-history__label {
+    color: var(--text-base);
+    font-size: 11px;
+    font-weight: 600;
+}
+.folder-worktree-history__status {
+    flex: 0 0 auto;
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.folder-worktree-history__item.is-succeeded .folder-worktree-history__status {
+    color: #15803d;
+}
+.folder-worktree-history__item.is-failed .folder-worktree-history__status,
+.folder-worktree-history__item.is-blocked .folder-worktree-history__status {
+    color: var(--status-error);
+}
+.folder-worktree-history__command,
+.folder-worktree-history__output {
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+    font-size: 10px;
+}
+.folder-worktree-history__command {
+    color: var(--text-dim);
+}
+.folder-worktree-history__output {
+    max-height: 84px;
+    overflow: auto;
+    margin: 0;
+    padding: 5px;
+    border-radius: 4px;
+    color: var(--text-base);
+    background: var(--bg-hover);
+    white-space: pre-wrap;
+}
+.folder-worktree-history__output.is-error,
+.folder-worktree-history__error {
+    color: var(--status-error);
+}
+.folder-worktree-history__error {
+    font-size: 10px;
+}
+.folder-worktree-history__retry {
+    all: unset;
+    box-sizing: border-box;
+    cursor: pointer;
+    justify-self: start;
+    padding: 2px 6px;
+    border-radius: 3px;
+    color: var(--text-dim);
+    background: var(--bg-hover);
+    font-size: 10px;
+}
+.folder-worktree-history__retry:hover:not(:disabled),
+.folder-worktree-history__retry:focus-visible {
+    color: var(--text-base);
+    background: var(--bg-active);
+}
+.folder-worktree-history__retry:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
 .folder-mutation-dialog {
     position: absolute;
     inset: 0;

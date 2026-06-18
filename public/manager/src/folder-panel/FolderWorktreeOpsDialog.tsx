@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { FolderGitOperationHistoryItem } from './folder-git-operation-history';
 import { previewWorktreeOperation } from './folder-worktree-ops-client';
+import { FolderWorktreeOperationHistory } from './FolderWorktreeOperationHistory';
 import type {
     GitWorktreeEntry,
     GitWorktreeOperation,
@@ -11,7 +13,8 @@ type FolderWorktreeOpsDialogProps = {
     repoRoot: string | null;
     worktrees: GitWorktreeEntry[];
     busy: boolean;
-    onRun: (operation: GitWorktreeOperation) => void;
+    history: FolderGitOperationHistoryItem[];
+    onRun: (operation: GitWorktreeOperation, preview: GitWorktreeOperationPreview | null) => void;
     onClose: () => void;
 };
 
@@ -36,6 +39,20 @@ export function FolderWorktreeOpsDialog(props: FolderWorktreeOpsDialogProps) {
     const [previewLoading, setPreviewLoading] = useState(false);
     const [previewError, setPreviewError] = useState<string | null>(null);
     const [previewResult, setPreviewResult] = useState<GitWorktreeOperationPreview | null>(null);
+
+    const applyOperation = useCallback((nextOperation: GitWorktreeOperation) => {
+        setMode(nextOperation.type);
+        setConfirmed(false);
+        if (nextOperation.type === 'worktree-add') {
+            setTargetPath(nextOperation.path);
+            setBranch(nextOperation.branch);
+            setCreateBranch(nextOperation.createBranch);
+        }
+        if (nextOperation.type === 'worktree-remove') {
+            setRemovePath(nextOperation.path);
+            setForceRemove(nextOperation.force);
+        }
+    }, []);
 
     const operation = useMemo<GitWorktreeOperation>(() => {
         if (mode === 'worktree-add') {
@@ -141,10 +158,15 @@ export function FolderWorktreeOpsDialog(props: FolderWorktreeOpsDialogProps) {
                 </label>
                 <div className="folder-worktree-ops__actions">
                     <button type="button" className="folder-action-btn" onClick={props.onClose} disabled={props.busy}>Cancel</button>
-                    <button type="button" className="folder-action-btn is-primary" disabled={!canRun} onClick={() => props.onRun(operation)}>
+                    <button type="button" className="folder-action-btn is-primary" disabled={!canRun} onClick={() => props.onRun(operation, previewResult)}>
                         {props.busy ? 'Running...' : 'Run'}
                     </button>
                 </div>
+                <FolderWorktreeOperationHistory
+                    history={props.history}
+                    busy={props.busy}
+                    onRetry={applyOperation}
+                />
             </div>
         </div>
     );

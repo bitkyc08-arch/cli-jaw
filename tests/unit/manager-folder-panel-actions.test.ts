@@ -75,16 +75,18 @@ test('FolderPanel starts from explicit initial root policy instead of project ro
 
 test('FolderPanel uses an in-panel mutation dialog instead of browser prompts', () => {
     const panel = read('public/manager/src/folder-panel/FolderPanel.tsx');
+    const mutations = read('public/manager/src/folder-panel/use-folder-mutations.ts');
     const overlays = read('public/manager/src/folder-panel/FolderPanelOverlays.tsx');
     const dialog = read('public/manager/src/folder-panel/FolderMutationDialog.tsx');
 
     assert.equal(panel.includes('window.prompt'), false, 'FolderPanel must not rely on browser prompt dialogs for Electron file mutations');
-    assert.ok(panel.includes('const [mutationDialog'), 'FolderPanel must own file mutation dialog state');
-    assert.ok(panel.includes('requestCreateEntry'), 'FolderPanel must open the mutation dialog for create actions');
-    assert.ok(panel.includes('requestRenameSelectedEntry'), 'FolderPanel must open the mutation dialog for rename actions');
-    assert.ok(panel.includes('submitMutation'), 'FolderPanel must submit create and rename actions through one visible dialog path');
-    assert.ok(panel.includes('renamedPreviewPath'), 'FolderPanel must translate the open document preview when a selected file or parent directory is renamed');
-    assert.ok(panel.includes('onPreviewFile?.(nextPreviewPath)'), 'FolderPanel rename must move the DocPanel preview to the new file path');
+    assert.ok(panel.includes("import { useFolderMutations } from './use-folder-mutations'"), 'FolderPanel must delegate mutation state to the mutation hook');
+    assert.ok(mutations.includes('const [mutationDialog'), 'mutation hook must own file mutation dialog state');
+    assert.ok(mutations.includes('requestCreateEntry'), 'mutation hook must open the mutation dialog for create actions');
+    assert.ok(mutations.includes('requestRenameSelectedEntry'), 'mutation hook must open the mutation dialog for rename actions');
+    assert.ok(mutations.includes('submitMutation'), 'mutation hook must submit create and rename actions through one visible dialog path');
+    assert.ok(mutations.includes('renamedPreviewPath'), 'mutation hook must translate the open document preview when a selected file or parent directory is renamed');
+    assert.ok(mutations.includes('onPreviewFile?.(nextPreviewPath)'), 'rename must move the DocPanel preview to the new file path');
     assert.ok(overlays.includes('FolderMutationDialog'), 'FolderPanel overlays must render the mutation dialog');
     assert.ok(dialog.includes('role="dialog"'), 'mutation dialog must expose native dialog semantics');
     assert.ok(dialog.includes('autoFocus'), 'mutation dialog must focus the entry name input');
