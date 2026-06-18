@@ -7,7 +7,11 @@ import {
     getWorkerSlot,
     getWorkerProgressSnapshot,
     listPendingWorkerResults,
+    markWorkerActive,
+    markWorkerDisconnected,
     markWorkerReplayed,
+    markWorkerStalled,
+    markWorkerTimedOut,
     updateWorkerTools,
 } from '../../src/orchestrator/worker-registry.ts';
 
@@ -86,4 +90,32 @@ test('worker registry progress omits thinking rows', () => {
     const progress = getWorkerProgressSnapshot('backend');
     assert.equal(progress?.current?.tools.length, 1);
     assert.equal(progress?.current?.tools[0]?.label, 'Read path');
+});
+
+test('worker registry exposes lifecycle attention in progress snapshots', () => {
+    claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
+    markWorkerStalled('backend');
+    assert.equal(getWorkerProgressSnapshot('backend')?.current?.attention?.kind, 'stalled');
+
+    markWorkerActive('backend');
+    assert.equal(getWorkerProgressSnapshot('backend')?.current?.attention, undefined);
+
+    markWorkerDisconnected('backend', 1);
+    const disconnected = getWorkerProgressSnapshot('backend')?.current?.attention;
+    assert.equal(disconnected?.kind, 'disconnected');
+    assert.equal(disconnected?.exitCode, 1);
+});
+
+test('worker registry exposes timeout and pending replay attention', () => {
+    claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
+    markWorkerTimedOut('backend');
+    assert.equal(getWorkerProgressSnapshot('backend')?.current?.attention?.kind, 'timeout');
+});
+
+test('worker registry exposes pending replay attention', () => {
+    claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
+    finishWorker('backend', 'done');
+    const progress = getWorkerProgressSnapshot('backend');
+    assert.equal(progress?.previous?.attention?.kind, 'pending_replay');
+    assert.equal(progress?.previous?.attention?.attempts, 0);
 });

@@ -118,14 +118,14 @@ cli-jaw/
 │   ├── orchestrator/         ← 직원 오케스트레이션 + 인터페이스 통합 (14 files)
 │   │   ├── state-machine.ts ← IPABCD 상태 머신 (I=Interview pre-plan) + broadcast(state,title) + worklog 타이틀 파싱 + employee terminology + OrcContext.workingDir + OrcContext.interview + Project root dispatch contract (616L)
 │   │   ├── pipeline.ts       ← IPABCD orchestration (explicit entry only) + interview first-turn detection + plan context persistence + memorySnapshot injection + reset clears boss session + OrcContext workingDir init + Approved Plan Project root guard + remote-channel elicitation guard (623L)
-│   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers + tiered findEmployee + employee resume diagnostics + virtual employee session-skip (599L)
+│   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers + tiered findEmployee + employee resume diagnostics + virtual employee session-skip (615L)
 │   │   ├── parser.ts         ← triage + subtask JSON + verdict 파싱 + isResetIntent (176L)
 │   │   ├── gateway.ts        ← submitMessage 통합 진입점 (WebUI+CLI+TG+Discord 공통) + working_dir scoped insertMessage (155L)
 │   │   ├── collect.ts        ← orchestrateAndCollect (bot.ts에서 분리) (66L)
 │   │   ├── scope.ts          ← 현재 단일 'default' scope를 반환하는 stub (17L)
 │   │   ├── worker-monitor.ts ← Worker stall detection — activity timestamps + stall/disconnect/timeout callbacks (58L)
-│   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + current/previous snapshot types (58L)
-│   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + progress current/previous memory retention (262L)
+│   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + current/previous snapshot types (74L)
+│   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + progress current/previous memory retention (327L)
 │   │   ├── workspace-context.ts ← Project root/path hint resolver for employee dispatch context (136L)
 │   │   ├── friction.ts       ← Interview friction/stagnation detector (76L)
 │   │   ├── seed.ts           ← Interview seed/ontology builder (107L)
@@ -325,7 +325,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 501 files source/assets, ~83558L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 511 files source/assets, ~84920L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1137L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
@@ -363,7 +363,7 @@ cli-jaw/
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)
 │       ├── skill.ts          ← 스킬 관리 (install/remove/info/list/reset soft·hard) (245L)
 │       ├── employee.ts       ← 직원 관리 (list/reset, REST API 호출, JSON/table 출력, 82L)
-│       ├── worker.ts         ← 직원 progress status/watch CLI + employee name/id resolver + safe-summary printer (196L)
+│       ├── worker.ts         ← 직원 progress status/watch CLI + employee name/id resolver + safe-summary printer (210L)
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션) (104L)
 │       ├── clone.ts          ← 인스턴스 복제 (--from, --with-memory, regenerateB) (180L)
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init, --chat 통합검색) (195L)

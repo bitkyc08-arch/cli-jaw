@@ -8,6 +8,21 @@ import {
 } from '../shared/shell-command-display.js';
 
 export type WorkerRunState = 'running' | 'done' | 'failed' | 'cancelled';
+export type WorkerProgressAttentionKind =
+    | 'stalled'
+    | 'disconnected'
+    | 'timeout'
+    | 'pending_replay'
+    | 'replay_claimed'
+    | 'replay_failed';
+
+export interface WorkerProgressAttention {
+    kind: WorkerProgressAttentionKind;
+    message: string;
+    occurredAt: number;
+    exitCode?: number | null;
+    attempts?: number;
+}
 
 export interface WorkerProgressRun {
     agentId: string;
@@ -18,6 +33,7 @@ export interface WorkerProgressRun {
     completedAt: number | null;
     progressUpdatedAt: number | null;
     resultPreview?: string;
+    attention?: WorkerProgressAttention;
     tools: SanitizedToolLogEntry[];
 }
 

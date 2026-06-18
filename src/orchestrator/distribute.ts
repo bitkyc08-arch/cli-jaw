@@ -11,7 +11,13 @@ import { appendToWorklog } from '../memory/worklog.js';
 import { startWorkerMonitor } from './worker-monitor.js';
 import { isSessionPersistingCli } from '../agent/cli-helpers.js';
 import { buildWorkspaceContextBlock } from './workspace-context.js';
-import { updateWorkerPhase } from './worker-registry.js';
+import {
+    markWorkerActive,
+    markWorkerDisconnected,
+    markWorkerStalled,
+    markWorkerTimedOut,
+    updateWorkerPhase,
+} from './worker-registry.js';
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
 
 // ─── Phase Constants (shared with pipeline.ts) ───────
@@ -488,9 +494,16 @@ ${worklogBlock}`.trim();
         agentId: empId,
         stallThresholdMs: 120_000,
         maxDurationMs: Number(process.env["JAW_WORKER_MAX_DURATION_MS"]) || 600_000,
-        onStall: (id) => broadcast('worker_stalled', { agentId: id, employeeName: emp["name"], isEmployee: true }),
-        onDisconnect: (id, code) => broadcast('worker_disconnected', { agentId: id, exitCode: code, isEmployee: true }),
+        onStall: (id) => {
+            markWorkerStalled(id);
+            broadcast('worker_stalled', { agentId: id, employeeName: emp["name"], isEmployee: true });
+        },
+        onDisconnect: (id, code) => {
+            markWorkerDisconnected(id, code);
+            broadcast('worker_disconnected', { agentId: id, exitCode: code, isEmployee: true });
+        },
         onTimeout: (id) => {
+            markWorkerTimedOut(id);
             broadcast('worker_timeout', { agentId: id, employeeName: emp["name"], isEmployee: true });
             killAgentById(id);
         },
@@ -522,7 +535,10 @@ ${worklogBlock}`.trim();
             PORT: String(process.env["PORT"] || ''),
         },
         lifecycle: {
-            onActivity: (source) => monitor.touch(source as 'stdout' | 'stderr' | 'acp' | 'heartbeat'),
+            onActivity: (source) => {
+                monitor.touch(source as 'stdout' | 'stderr' | 'acp' | 'heartbeat');
+                markWorkerActive(empId);
+            },
             onExit: (code) => monitor.exit(code),
         },
     });

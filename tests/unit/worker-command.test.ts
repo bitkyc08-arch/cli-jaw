@@ -22,6 +22,12 @@ test('worker command queries status and watch progress endpoints', () => {
     assert.match(workerSrc, /setTimeout|sleep\(2_000\)/);
 });
 
+test('worker command prints lifecycle attention from progress snapshots', () => {
+    assert.match(workerSrc, /attention\?:/);
+    assert.match(workerSrc, /run\.attention\?\.message/);
+    assert.match(workerSrc, /console\.log\(`attention:/);
+});
+
 test('worker command resolves display names through employees API', () => {
     assert.match(workerSrc, /unwrapEmployeeSummaries/);
     assert.match(workerSrc, /\/api\/employees/);

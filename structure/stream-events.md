@@ -115,9 +115,9 @@ SSE behavior:
 | `goal_continuation_limit` | `{ ... }` | bounded continuation limit |
 | `schedule_wakeup` | `{ ... }` | ScheduleWakeup accepted |
 | `schedule_wakeup_failed` | `{ ... }` | ScheduleWakeup failed |
-| `worker_stalled` | `{ agentId, employeeName, isEmployee: true }` | `orchestrator/distribute.ts`; worker stall |
-| `worker_disconnected` | `{ agentId, exitCode, isEmployee: true }` | `orchestrator/distribute.ts`; worker disconnect |
-| `worker_timeout` | `{ agentId, employeeName, isEmployee: true }` | `orchestrator/distribute.ts`; worker timeout |
+| `worker_stalled` | `{ agentId, employeeName, isEmployee: true }` | `orchestrator/distribute.ts`; worker stall; progress snapshot `attention.kind=stalled` |
+| `worker_disconnected` | `{ agentId, exitCode, isEmployee: true }` | `orchestrator/distribute.ts`; worker disconnect; progress snapshot `attention.kind=disconnected` |
+| `worker_timeout` | `{ agentId, employeeName, isEmployee: true }` | `orchestrator/distribute.ts`; worker timeout; progress snapshot `attention.kind=timeout` |
 
 ### Web client handling
 
@@ -127,7 +127,7 @@ SSE behavior:
 
 | Type | 현재 처리 경로 |
 | --- | --- |
-| `worker_stalled` / `worker_disconnected` / `worker_timeout` | `public/js/ws.ts`에서 disconnected/timeout/stalled handler로 처리하고, manager server는 worker-SSE bridge/cache로 별도 추적 |
+| `worker_stalled` / `worker_disconnected` / `worker_timeout` | `public/js/ws.ts`에서 disconnected/timeout/stalled handler로 처리하고, manager server는 worker-SSE bridge/cache로 별도 추적한다. 현재/이전 worker progress API는 UI hydration용 safe `attention` metadata도 제공한다 |
 | `system_notice` | SSE public emit은 되지만 `public/js/ws.ts` 직접 분기는 없다 |
 | `agent:claude-e:*` | native helper lifecycle/status telemetry. 현재 Web UI 직접 분기는 없고, trace/internal listener와 외부 observer용이다 |
 

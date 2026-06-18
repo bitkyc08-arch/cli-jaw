@@ -55,6 +55,12 @@ interface WorkerRun {
     startedAt?: number;
     completedAt?: number | null;
     resultPreview?: string;
+    attention?: {
+        kind?: string;
+        message?: string;
+        exitCode?: number | null;
+        attempts?: number;
+    };
     tools?: WorkerToolEntry[];
 }
 
@@ -115,6 +121,14 @@ function printRun(snapshot: WorkerProgressSnapshot): void {
     const name = snapshot.employeeName || run.employeeName || snapshot.agentId || run.agentId || 'worker';
     console.log(`${name}: ${run.state || 'unknown'}`);
     if (run.taskPreview) console.log(`task: ${run.taskPreview}`);
+    if (run.attention?.message) {
+        const detail = [
+            run.attention.kind,
+            run.attention.exitCode !== undefined ? `exit=${run.attention.exitCode}` : '',
+            run.attention.attempts !== undefined ? `attempts=${run.attention.attempts}` : '',
+        ].filter(Boolean).join(' ');
+        console.log(`attention: ${run.attention.message}${detail ? ` (${detail})` : ''}`);
+    }
     if (run.resultPreview) console.log(`result: ${run.resultPreview}`);
     const tools = run.tools || [];
     if (tools.length > 0) {

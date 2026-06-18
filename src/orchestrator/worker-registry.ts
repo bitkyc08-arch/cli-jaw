@@ -6,6 +6,7 @@ import type { SanitizedToolLogEntry } from '../shared/tool-log-sanitize.js';
 import {
     previewText,
     sanitizeWorkerProgressTools,
+    type WorkerProgressAttention,
     type WorkerProgressRun,
     type WorkerProgressSnapshot,
 } from './worker-progress.js';
@@ -41,6 +42,7 @@ export interface WorkerSlot {
     result: string | null;
     tools: SanitizedToolLogEntry[];
     progressUpdatedAt: number | null;
+    attention: WorkerProgressAttention | null;
     /** Origin/target/chatId of the Boss session that dispatched this worker. */
     replayMeta?: WorkerReplayMeta;
     /** Verdict/persistence block computed at completion. Stored BEFORE the
@@ -84,6 +86,7 @@ export function claimWorker(emp: WorkerEmployeeRef, task: string, replayMeta?: W
         result: null,
         tools: [],
         progressUpdatedAt: null,
+        attention: null,
         replayMeta: replayMeta && Object.keys(replayMeta).length ? { ...replayMeta } : undefined,
     });
     workers.set(emp.id, slot);
@@ -103,6 +106,7 @@ export function updateWorkerPhase(agentId: string, phase: string, phaseLabel: st
 
 function toProgressRun(slot: WorkerSlot): WorkerProgressRun {
     const resultPreview = previewText(slot.result, 240);
+    const attention = progressAttention(slot);
     return {
         agentId: slot.agentId,
         employeeName: slot.employeeName,
@@ -112,8 +116,62 @@ function toProgressRun(slot: WorkerSlot): WorkerProgressRun {
         completedAt: slot.completedAt,
         progressUpdatedAt: slot.progressUpdatedAt,
         ...(resultPreview ? { resultPreview } : {}),
+        ...(attention ? { attention } : {}),
         tools: slot.tools,
     };
+}
+
+function progressAttention(slot: WorkerSlot): WorkerProgressAttention | null {
+    if (slot.attention) return slot.attention;
+    if (slot.state === 'done' && slot.pendingReplay) {
+        return {
+            kind: slot.replayClaimed ? 'replay_claimed' : 'pending_replay',
+            message: slot.replayClaimed
+                ? 'Worker result delivery is in progress.'
+                : 'Worker result is waiting for replay delivery.',
+            occurredAt: slot.completedAt ?? Date.now(),
+            attempts: slot.replayAttempts,
+        };
+    }
+    return null;
+}
+
+function setWorkerAttention(agentId: string, attention: WorkerProgressAttention | null): void {
+    const slot = workers.get(agentId);
+    if (!slot) return;
+    slot.attention = attention;
+    slot.progressUpdatedAt = Date.now();
+}
+
+export function markWorkerStalled(agentId: string): void {
+    setWorkerAttention(agentId, {
+        kind: 'stalled',
+        message: 'Worker has not reported activity after the stall threshold.',
+        occurredAt: Date.now(),
+    });
+}
+
+export function markWorkerActive(agentId: string): void {
+    const slot = workers.get(agentId);
+    if (!slot || slot.attention?.kind !== 'stalled') return;
+    setWorkerAttention(agentId, null);
+}
+
+export function markWorkerDisconnected(agentId: string, exitCode: number | null): void {
+    setWorkerAttention(agentId, {
+        kind: 'disconnected',
+        message: 'Worker process disconnected before a clean completion.',
+        occurredAt: Date.now(),
+        exitCode,
+    });
+}
+
+export function markWorkerTimedOut(agentId: string): void {
+    setWorkerAttention(agentId, {
+        kind: 'timeout',
+        message: 'Worker exceeded the maximum allowed runtime and was stopped.',
+        occurredAt: Date.now(),
+    });
 }
 
 // Completed-run history is memory-only; failed/cancelled slots were never
@@ -140,6 +198,7 @@ export function setWorkerOrchestration(agentId: string, orchestration: Record<st
 export function updateWorkerTools(agentId: string, tools: unknown[]): void {
     const slot = workers.get(agentId);
     if (!slot) return;
+    if (slot.attention?.kind === 'stalled') slot.attention = null;
     slot.tools = sanitizeWorkerProgressTools(tools);
     slot.progressUpdatedAt = Date.now();
 }
@@ -252,6 +311,12 @@ export function releaseWorkerReplay(agentId: string): void {
         console.error(`[worker-registry] ${agentId} replay failed 3 times — marking as failed`);
         slot.state = 'failed';
         slot.pendingReplay = false;
+        slot.attention = {
+            kind: 'replay_failed',
+            message: 'Worker result replay failed after 3 attempts.',
+            occurredAt: Date.now(),
+            attempts: slot.replayAttempts,
+        };
         rememberCompletedRun(slot);
     }
 }
