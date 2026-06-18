@@ -17,6 +17,9 @@ test('code command popup routes popup commands through CodeCanvas state', () => 
     const composer = read('public/manager/src/code/CodeComposer.tsx');
 
     assert.ok(canvas.includes('activePopup'), 'CodeCanvas must own popup state');
+    assert.ok(canvas.includes('FALLBACK_CODE_COMMANDS'), 'CodeCanvas must expose builtin popup commands before ACP updates');
+    assert.ok(canvas.includes("name: '/model'"), 'CodeCanvas must include /model fallback command');
+    assert.ok(canvas.includes('mergeCodeCommands(normalizeCodeCommands'), 'ACP command updates must preserve fallback popup commands');
     assert.ok(canvas.includes("command.actionType === 'popup' && command.popupKind"), 'popup commands must branch before text insertion');
     assert.ok(canvas.includes('setActivePopup({ kind: command.popupKind, command })'), 'popup branch must open popup state');
     assert.ok(canvas.includes('<CodeCommandPopup'), 'CodeCanvas must render the popup host');
