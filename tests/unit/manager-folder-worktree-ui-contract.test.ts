@@ -11,12 +11,14 @@ function read(path: string): string {
 
 test('FolderPanel consumes worktree hook unconditionally and keeps project surfaces separate', () => {
     const panel = read('public/manager/src/folder-panel/FolderPanel.tsx');
+    const operations = read('public/manager/src/folder-panel/use-folder-worktree-operations.ts');
 
     assert.ok(panel.includes("import { useGitWorktrees } from './use-git-worktrees'"), 'FolderPanel must consume the worktree hook');
     assert.ok(panel.includes('const worktreeState = useGitWorktrees({'), 'FolderPanel must call the worktree hook unconditionally');
     assert.ok(panel.includes("enabled: source.kind === 'electron-folder' && gitStatus.available"), 'worktree hook must be gated by an enabled flag');
-    assert.ok(panel.includes('openFolderRoot(path, { registerGitWorktree: true'), 'worktree opening must use the shared root opener');
-    assert.ok(panel.includes('repoRoot: worktreeState.repoRoot'), 'worktree opening must pass repoRoot through the normalized opener path');
+    assert.ok(panel.includes('worktreeOps.openWorktreeRoot(path)'), 'FolderPanel must route worktree opening through the operation hook');
+    assert.ok(operations.includes('openFolderRoot(path, { registerGitWorktree: true'), 'worktree opening must use the shared root opener');
+    assert.ok(operations.includes('repoRoot: worktreeState.repoRoot'), 'worktree opening must pass repoRoot through the normalized opener path');
     assert.equal(panel.includes('projectDirs'), false, 'FolderPanel must not mutate projectDirs');
     assert.equal(panel.includes('terminal'), false, 'FolderPanel worktree switching must not touch terminal cwd');
     assert.equal(panel.includes('iframe'), false, 'FolderPanel worktree switching must not touch preview iframe state');
