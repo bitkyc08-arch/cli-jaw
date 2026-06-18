@@ -56,7 +56,7 @@ function recoveryNote(task: BackgroundTaskRow): string {
     if (task.status === 'orphaned') return 'Previous child process is still alive but no Manager runner owns it.';
     if (task.status === 'failed' && task.result?.includes('lost during server restart')) return 'Task was marked failed during restart recovery.';
     if ((task.status === 'complete' || task.status === 'failed') && !task.notifiedAt) return 'Completion notification is pending recovery delivery.';
-    if (task.notifiedAt) return `Completion notification sent ${formatTime(task.notifiedAt)}.`;
+    if (task.notifiedAt) return `Completion notification handed to boss queue ${formatTime(task.notifiedAt)}.`;
     return '';
 }
 

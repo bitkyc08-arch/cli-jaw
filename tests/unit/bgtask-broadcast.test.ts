@@ -61,7 +61,7 @@ test('markTerminal emits once with terminal status; repeated transition emits no
     assert.equal(captured.length, 0, 'no-op transition must not emit');
 });
 
-test('markCancelled and markOrphaned emit; markNotified does not', () => {
+test('markCancelled, markOrphaned, and markNotified emit monitor updates', () => {
     const a = createTask({ kind: 'shell', spec: spec() });
     captured = [];
     markCancelled(a.id);
@@ -78,5 +78,6 @@ test('markCancelled and markOrphaned emit; markNotified does not', () => {
     markTerminal(c.id, 'complete', null);
     captured = [];
     markNotified(c.id);
-    assert.equal(captured.length, 0, 'markNotified is UI-irrelevant');
+    assert.equal(captured.length, 1, 'markNotified must refresh notifiedAt in monitors');
+    assert.equal((captured[0]!.data['changed'] as { status: string }).status, 'complete');
 });

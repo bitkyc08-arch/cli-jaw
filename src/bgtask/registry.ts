@@ -176,7 +176,8 @@ export function markOrphaned(id: string): boolean {
 }
 
 export function markNotified(id: string): void {
-    notifiedStmt.run(id);
+    const changed = notifiedStmt.run(id).changes > 0;
+    if (changed) emitBgtaskUpdate(id);
 }
 
 /** Boot recovery set: still-running tasks + terminal tasks never notified. */

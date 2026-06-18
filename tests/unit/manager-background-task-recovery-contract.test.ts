@@ -53,7 +53,7 @@ test('background task monitor surfaces recovery and notification state', () => {
     assert.ok(panel.includes("task.status === 'orphaned'"), 'panel must explain orphaned tasks');
     assert.ok(panel.includes('lost during server restart'), 'panel must surface restart-loss failures');
     assert.ok(panel.includes('Completion notification is pending recovery delivery.'), 'panel must show pending notification delivery');
-    assert.ok(panel.includes('Completion notification sent'), 'panel must show notified terminal tasks');
+    assert.ok(panel.includes('Completion notification handed to boss queue'), 'panel must show notified terminal tasks without overclaiming read state');
     assert.ok(panel.includes('code-bg-task-recovery-note'), 'panel must render recovery note UI');
     assert.ok(css.includes('.code-bg-task-recovery-note'), 'recovery note must be styled');
     assert.ok(css.includes('.code-bg-task-recovery-note.is-orphaned'), 'orphaned note must be visually distinct');
