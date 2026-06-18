@@ -7,8 +7,24 @@
  * rebuild it in-place before build/test steps continue.
  */
 const { execFileSync } = require('child_process');
+const { existsSync } = require('fs');
+const { join } = require('path');
 
 const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+
+function rebuildBetterSqlite3() {
+    if (existsSync(join(process.cwd(), 'pnpm-lock.yaml'))) {
+        execFileSync('corepack', ['pnpm', 'rebuild', 'better-sqlite3'], {
+            stdio: 'inherit',
+            cwd: process.cwd(),
+        });
+        return;
+    }
+    execFileSync(npmBin, ['rebuild', 'better-sqlite3'], {
+        stdio: 'inherit',
+        cwd: process.cwd(),
+    });
+}
 
 function loadBetterSqlite3() {
     try {
@@ -39,10 +55,7 @@ if (!isRecoverableNativeMismatch(firstError)) {
 }
 
 console.warn('[jaw:native] better-sqlite3 load failed — rebuilding native module for current Node runtime...');
-execFileSync(npmBin, ['rebuild', 'better-sqlite3'], {
-    stdio: 'inherit',
-    cwd: process.cwd(),
-});
+rebuildBetterSqlite3();
 
 const secondError = loadBetterSqlite3();
 if (secondError) {
