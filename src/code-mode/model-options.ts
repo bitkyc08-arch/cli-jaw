@@ -66,6 +66,7 @@ export type JwcModelUsageInfo = {
 };
 
 export const JWC_THINKING_LEVELS: JwcThinkingLevel[] = ['inherit', 'off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
+export const JWC_MODEL_CACHE_SCHEMA_VERSION = 3;
 
 const JWC_THINKING_SUFFIXES = new Set(['off', 'min', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
 
@@ -377,6 +378,74 @@ export function readJwcModelUsageOrder(agentDir = resolveJwcAgentDir()): string[
     }
 }
 
+function modelIdsFromCacheJson(rawModels: unknown): string[] {
+    let parsed: unknown;
+    try {
+        parsed = typeof rawModels === 'string' ? JSON.parse(rawModels) : rawModels;
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(parsed)) return [];
+    const seen = new Set<string>();
+    const modelIds: string[] = [];
+    for (const entry of parsed) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
+        const id = (entry as Record<string, unknown>)['id'];
+        if (typeof id !== 'string') continue;
+        const trimmed = id.trim();
+        if (!trimmed || seen.has(trimmed)) continue;
+        seen.add(trimmed);
+        modelIds.push(trimmed);
+    }
+    return modelIds;
+}
+
+export function readJwcModelCache(agentDir = resolveJwcAgentDir()): Map<string, string[]> {
+    let db: Database.Database | null = null;
+    const catalog = new Map<string, string[]>();
+    try {
+        db = new Database(join(agentDir, 'models.db'), { readonly: true, fileMustExist: true });
+        const rows = db.prepare('SELECT provider_id, version, models FROM model_cache')
+            .all() as Array<{ provider_id?: unknown; version?: unknown; models?: unknown }>;
+        for (const row of rows) {
+            if (typeof row.provider_id !== 'string' || row.provider_id.length === 0) continue;
+            if (row.version !== JWC_MODEL_CACHE_SCHEMA_VERSION) continue;
+            const modelIds = modelIdsFromCacheJson(row.models);
+            if (modelIds.length > 0) catalog.set(row.provider_id, modelIds);
+        }
+    } catch {
+        return new Map();
+    } finally {
+        db?.close();
+    }
+    return catalog;
+}
+
+function providerCatalogModels(provider: string, modelCatalog: Map<string, string[]>): string[] {
+    const cached = modelCatalog.get(provider);
+    return cached && cached.length > 0
+        ? cached
+        : JWC_PROVIDER_MODEL_DEFAULTS[provider] ?? [];
+}
+
+export function filterJwcModelUsageOrder(
+    usageOrder: string[],
+    providers: Pick<JwcModelProvider, 'id' | 'models'>[],
+): string[] {
+    const available = new Set<string>();
+    for (const provider of providers) {
+        for (const model of provider.models) {
+            available.add(`${provider.id}/${model}`);
+        }
+    }
+    const seen = new Set<string>();
+    return usageOrder.filter(modelKey => {
+        if (!available.has(modelKey) || seen.has(modelKey)) return false;
+        seen.add(modelKey);
+        return true;
+    });
+}
+
 function sortModelsForProvider(provider: string, models: string[], defaultModelRole: string | undefined, usageOrder: string[]): string[] {
     const parsedDefault = parseJwcModelRole(defaultModelRole);
     const usageRank = new Map<string, number>();
@@ -399,12 +468,23 @@ function sortModelsForProvider(provider: string, models: string[], defaultModelR
     });
 }
 
-export function buildJwcModelOptions(authenticated: string[], error?: string, defaultModelRole?: string, usageOrder: string[] = []): JwcModelOptions {
+export function buildJwcModelOptions(
+    authenticated: string[],
+    error?: string,
+    defaultModelRole?: string,
+    usageOrder: string[] = [],
+    modelCatalog: Map<string, string[]> = new Map(),
+): JwcModelOptions {
     const providerIds = authenticated.length > 0 ? authenticated : ['anthropic'];
-    const providers = providerIds.map(id => ({
+    const rawProviders = providerIds.map(id => ({
         id,
-        models: sortModelsForProvider(id, JWC_PROVIDER_MODEL_DEFAULTS[id] ?? [], defaultModelRole, usageOrder),
+        models: providerCatalogModels(id, modelCatalog),
         efforts: JWC_PROVIDER_EFFORT_DEFAULTS[id] ?? [],
+    }));
+    const filteredUsageOrder = filterJwcModelUsageOrder(usageOrder, rawProviders);
+    const providers = rawProviders.map(provider => ({
+        ...provider,
+        models: sortModelsForProvider(provider.id, provider.models, defaultModelRole, filteredUsageOrder),
     }));
     const parsedDefault = parseJwcModelRole(defaultModelRole);
     const configuredProvider = providers.find(entry => entry.id === parsedDefault?.provider);
@@ -419,7 +499,7 @@ export function buildJwcModelOptions(authenticated: string[], error?: string, de
         providers,
         defaultProvider,
         defaultModel,
-        ...(usageOrder.length > 0 ? { usageOrder } : {}),
+        ...(filteredUsageOrder.length > 0 ? { usageOrder: filteredUsageOrder } : {}),
         ...(authenticated.length === 0 ? { degraded: true, error: error ?? 'No authenticated JWC providers found; using Anthropic defaults.' } : {}),
     };
 }
@@ -443,7 +523,8 @@ export async function resolveJwcModelOptions(): Promise<JwcModelOptions> {
             readJwcDefaultModelRole(),
         ]);
         const usageOrder = readJwcModelUsageOrder();
-        return buildJwcModelOptions(authenticated, undefined, defaultModelRole, usageOrder);
+        const modelCatalog = readJwcModelCache();
+        return buildJwcModelOptions(authenticated, undefined, defaultModelRole, usageOrder, modelCatalog);
     } catch (err) {
         return buildJwcModelOptions([], err instanceof Error ? err.message : String(err));
     }
