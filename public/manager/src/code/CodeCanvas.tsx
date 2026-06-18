@@ -6,12 +6,16 @@ import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
 const MarkdownRenderer = lazy(() => import('../notes/rendering/MarkdownRenderer').then(m => ({ default: m.MarkdownRenderer })));
 
+type ToolContent = { type: string; text?: string; diff?: string; [key: string]: unknown };
+
 type TranscriptEntry = {
     role: 'user' | 'assistant' | 'tool' | 'thinking';
     text: string;
     toolName?: string;
     toolStatus?: string;
     toolCallId?: string;
+    toolContent?: ToolContent[];
+    toolOutput?: string;
 };
 
 type CodeCanvasProps = {
@@ -78,19 +82,24 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
             const title = String(update['title'] ?? update['toolName'] ?? 'tool');
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? 'pending');
-            setMessages(prev => [...prev, { role: 'tool', text: title, toolName: title, toolCallId, toolStatus: status === 'completed' || status === 'failed' ? 'done' : 'running' }]);
+            const content = (update['content'] ?? []) as ToolContent[];
+            setMessages(prev => [...prev, { role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: status === 'completed' || status === 'failed' ? 'done' : 'running' }]);
         } else if (kind === 'code_tool_call_update') {
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
-            if (status === 'completed' || status === 'failed') {
-                setMessages(prev => {
-                    const idx = prev.findLastIndex(m => m.role === 'tool' && m.toolCallId === toolCallId);
-                    if (idx < 0) return prev;
-                    const updated = [...prev];
-                    updated[idx] = { ...updated[idx], toolStatus: 'done' };
-                    return updated;
-                });
-            }
+            const content = (update['content'] ?? []) as ToolContent[];
+            const rawOutput = update['rawOutput'];
+            setMessages(prev => {
+                const idx = prev.findLastIndex(m => m.role === 'tool' && m.toolCallId === toolCallId);
+                if (idx < 0) return prev;
+                const updated = [...prev];
+                const entry = { ...updated[idx] };
+                if (status === 'completed' || status === 'failed') entry.toolStatus = 'done';
+                if (content.length > 0) entry.toolContent = content;
+                if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
+                updated[idx] = entry;
+                return updated;
+            });
         } else if (kind === 'code_permission_request') {
             const permissionId = String(event['permissionId'] ?? '');
             const toolCall = (event['toolCall'] ?? {}) as Record<string, unknown>;
@@ -240,12 +249,30 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                         messages.map((msg, i) => (
                             <div key={i} className={`code-message code-message-${msg.role}`}>
                                 {msg.role === 'tool' ? (
-                                    <div className="code-tool-card">
-                                        <span className={`code-tool-icon ${msg.toolStatus === 'running' ? 'spinning' : ''}`}>
-                                            {msg.toolStatus === 'running' ? '⚡' : '✓'}
-                                        </span>
-                                        <span className="code-tool-name">{msg.toolName}</span>
-                                    </div>
+                                    <details className="code-tool-card" open={msg.toolStatus === 'running'}>
+                                        <summary className="code-tool-summary">
+                                            <span className={`code-tool-icon ${msg.toolStatus === 'running' ? 'spinning' : ''}`}>
+                                                {msg.toolStatus === 'running' ? '⚡' : '✓'}
+                                            </span>
+                                            <span className="code-tool-name">{msg.toolName}</span>
+                                        </summary>
+                                        {(msg.toolContent?.length ?? 0) > 0 && (
+                                            <div className="code-tool-content">
+                                                {msg.toolContent!.map((c, ci) => (
+                                                    <div key={ci} className="code-tool-content-item">
+                                                        {c.type === 'diff' && c.diff ? (
+                                                            <pre className="code-tool-diff">{c.diff}</pre>
+                                                        ) : c.text ? (
+                                                            <pre className="code-tool-text">{c.text}</pre>
+                                                        ) : null}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        )}
+                                        {msg.toolOutput && (
+                                            <pre className="code-tool-output">{msg.toolOutput.slice(0, 2000)}{msg.toolOutput.length > 2000 ? '...' : ''}</pre>
+                                        )}
+                                    </details>
                                 ) : msg.role === 'thinking' ? (
                                     <details className="code-thinking">
                                         <summary className="code-thinking-summary">Thinking...</summary>
