@@ -209,6 +209,17 @@ class AcpHost implements CodeSessionTransport {
         });
     }
 
+    async forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo> {
+        await this.#ensureChild();
+        const res = await this.#request('unstable_forkSession', { sessionId, cwd, mcpServers: [] });
+        const newSessionId = String(res['sessionId'] ?? '');
+        if (!newSessionId) throw new Error('fork returned no sessionId');
+        const info: CodeSessionInfo = { sessionId: newSessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
+        this.#sessions.set(newSessionId, info);
+        publish('jwc', 'code_session_forked', { sessionId: newSessionId, sourceSessionId: sessionId, cwd });
+        return info;
+    }
+
     async setSessionModel(sessionId: string, modelId: string): Promise<void> {
         await this.#request('unstable_setSessionModel', { sessionId, modelId });
     }

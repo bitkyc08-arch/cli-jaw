@@ -24,6 +24,7 @@ interface EngineSession {
     prompt(text: string, opts?: { streamingBehavior?: 'steer' | 'followUp' }): Promise<void>;
     subscribe(listener: (event: JwcAgentEvent) => void): () => void;
     readonly isStreaming: boolean;
+    abort?(): Promise<void>;
     dispose(): Promise<void>;
 }
 interface EngineSdk {
@@ -81,6 +82,12 @@ class JawRuntime {
     /** Bind the live-run scope of the next turn (set by the spawn branch). */
     setLiveScope(scope: string | undefined): void {
         this.#liveScope = scope;
+    }
+
+    async abort(): Promise<void> {
+        if (this.#slot?.session.abort) {
+            await this.#slot.session.abort();
+        }
     }
 
     /** True while a turn is streaming or settling — feeds isAgentBusy(). */

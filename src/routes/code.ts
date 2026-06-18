@@ -64,6 +64,20 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         })();
     });
 
+    app.post('/api/code/sessions/:id/fork', requireAuth, (req, res) => {
+        void (async () => {
+            const body = req.body as Record<string, unknown> | undefined;
+            const cwd = String(body?.['cwd'] || '');
+            if (!cwd || !isAbsolute(cwd)) { res.status(400).json({ ok: false, error: 'absolute cwd required' }); return; }
+            try {
+                const session = await acpHost.forkSession(String(req.params['id']), cwd);
+                res.status(201).json({ ok: true, session });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
     app.post('/api/code/sessions/:id/model', requireAuth, (req, res) => {
         const body = req.body as Record<string, unknown> | undefined;
         const modelId = String(body?.['modelId'] || '');
