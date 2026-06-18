@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { publish } from '../core/event-bus.js';
 import { loadSettings } from '../core/config.js';
-import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionTransport, type PendingPermission, type PromptAccepted } from './types.js';
+import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionTransport, type PendingPermission, type PromptAccepted, type StoredCodeSessionInfo } from './types.js';
 
 const PROTOCOL_VERSION = 1;
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +52,40 @@ function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
         if (existsSync(candidate)) return { cmd: candidate, args: ['--mode', 'acp'], binDir: dirname(candidate) };
     }
     return { cmd: 'jwc', args: ['--mode', 'acp'] };
+}
+
+function stringField(value: unknown): string | undefined {
+    return typeof value === 'string' && value.trim() ? value : undefined;
+}
+
+function numberField(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function objectField(value: unknown): Record<string, unknown> {
+    return value && typeof value === 'object' ? value as Record<string, unknown> : {};
+}
+
+function normalizeStoredSession(raw: Record<string, unknown>): StoredCodeSessionInfo {
+    const meta = objectField(raw['_meta']);
+    const updatedAt = stringField(raw['updatedAt']);
+    const parsedUpdatedAt = updatedAt ? Date.parse(updatedAt) : NaN;
+    const lastModified = numberField(raw['lastModified']) ?? (Number.isFinite(parsedUpdatedAt) ? parsedUpdatedAt : undefined);
+    const entry: StoredCodeSessionInfo = {
+        sessionId: String(raw['sessionId'] ?? raw['id'] ?? ''),
+        cwd: String(raw['cwd'] ?? ''),
+    };
+    const title = stringField(raw['title']);
+    const firstMessage = stringField(raw['firstMessage']);
+    const messageCount = numberField(meta['messageCount']);
+    const size = numberField(meta['size']);
+    if (title) entry.title = title;
+    if (firstMessage) entry.firstMessage = firstMessage;
+    if (updatedAt) entry.updatedAt = updatedAt;
+    if (lastModified !== undefined) entry.lastModified = lastModified;
+    if (messageCount !== undefined) entry.messageCount = messageCount;
+    if (size !== undefined) entry.size = size;
+    return entry;
 }
 
 class AcpHost implements CodeSessionTransport {
@@ -209,26 +243,29 @@ class AcpHost implements CodeSessionTransport {
 
     async loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo> {
         await this.#ensureChild();
+        const stored = await this.#findStoredSession(sessionId, cwd);
         await this.#request('session/load', { sessionId, cwd, mcpServers: [] });
         const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
+        if (stored?.title) info.title = stored.title;
         this.#sessions.set(sessionId, info);
         publish('jwc', 'code_session_loaded', { sessionId, cwd });
         return info;
     }
 
-    async listStoredSessions(cwd?: string): Promise<Array<{ sessionId: string; cwd: string; title?: string; lastModified?: number }>> {
+    async listStoredSessions(cwd?: string): Promise<StoredCodeSessionInfo[]> {
         await this.#ensureChild();
         const res = await this.#request('session/list', { ...(cwd ? { cwd } : {}) });
         const sessions = (res['sessions'] ?? []) as Array<Record<string, unknown>>;
-        return sessions.map(s => {
-            const entry: { sessionId: string; cwd: string; title?: string; lastModified?: number } = {
-                sessionId: String(s['sessionId'] ?? s['id'] ?? ''),
-                cwd: String(s['cwd'] ?? ''),
-            };
-            if (typeof s['title'] === 'string') entry.title = s['title'];
-            if (typeof s['lastModified'] === 'number') entry.lastModified = s['lastModified'];
-            return entry;
-        });
+        return sessions.map(normalizeStoredSession);
+    }
+
+    async #findStoredSession(sessionId: string, cwd: string): Promise<StoredCodeSessionInfo | undefined> {
+        try {
+            const sessions = await this.listStoredSessions(cwd);
+            return sessions.find(session => session.sessionId === sessionId);
+        } catch {
+            return undefined;
+        }
     }
 
     async extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {

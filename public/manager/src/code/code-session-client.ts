@@ -4,13 +4,18 @@ export interface CodeSession {
     status: 'starting' | 'idle' | 'streaming' | 'closed';
     createdAt: number;
     lastUsedAt: number;
+    title?: string;
 }
 
 export interface StoredSession {
     sessionId: string;
     cwd: string;
     title?: string;
+    firstMessage?: string;
+    updatedAt?: string;
     lastModified?: number;
+    messageCount?: number;
+    size?: number;
 }
 
 export interface CodeModelProvider {

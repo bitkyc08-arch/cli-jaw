@@ -9,6 +9,7 @@ import { CodeSessionList } from './CodeSessionList';
 import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
+import { FALLBACK_CODE_COMMANDS, FALLBACK_MODEL_OPTIONS, mergeCodeCommands } from './code-session-defaults';
 import { findLastToolMessageIndex, normalizeCodeCommands, toModelId, type CodeCommand, type CodeCommandPopupKind, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
@@ -17,33 +18,6 @@ type CodeCanvasProps = {
     workingDir: string;
     onWorkingDirChange?: (path: string | null) => void;
 };
-const FALLBACK_MODEL_OPTIONS: CodeModelOptions = {
-    providers: [{
-        id: 'anthropic',
-        models: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
-        efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-    }],
-    defaultProvider: 'anthropic',
-    defaultModel: 'claude-sonnet-4-6',
-    degraded: true,
-};
-
-const FALLBACK_CODE_COMMANDS = normalizeCodeCommands([
-    { name: '/model', description: 'Choose provider, model, roles, thinking, profiles, and MRU state.', source: 'cli-jaw' },
-    { name: '/provider', description: 'Review authenticated JWC providers.', source: 'cli-jaw' },
-    { name: '/settings', description: 'Adjust Code mode session controls.', source: 'cli-jaw' },
-]);
-
-function mergeCodeCommands(primary: CodeCommand[]): CodeCommand[] {
-    const seen = new Set<string>();
-    const merged: CodeCommand[] = [];
-    for (const command of [...primary, ...FALLBACK_CODE_COMMANDS]) {
-        if (seen.has(command.name)) continue;
-        seen.add(command.name);
-        merged.push(command);
-    }
-    return merged;
-}
 
 export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
@@ -168,6 +142,11 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 }
                 return [...prev, { role: 'assistant', text }];
             });
+        } else if (kind === 'code_user_message_chunk') {
+            const content = update['content'] as { type?: string; text?: string } | undefined;
+            const text = String(content?.text ?? update['text'] ?? '');
+            if (!text) return;
+            setMessages(prev => [...prev, { role: 'user', text }]);
         } else if (kind === 'code_agent_thought_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
@@ -374,13 +353,19 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             onSelectSession={id => { setActiveSessionId(id); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
             onLoadSession={(id, cwd) => {
                 void (async () => {
+                    activeSessionIdRef.current = id;
+                    setActiveSessionId(id);
+                    setMessages([]);
+                    setPlanEntries([]);
+                    setSessionTitle('');
                     try {
-                        await client.loadSession(id, cwd);
-                        setActiveSessionId(id);
-                        setMessages([]);
-                        setPlanEntries([]);
-                        setSessionTitle('');
+                        const session = await client.loadSession(id, cwd);
+                        if (session.title) setSessionTitle(session.title);
                     } catch (err) {
+                        if (activeSessionIdRef.current === id) {
+                            activeSessionIdRef.current = null;
+                            setActiveSessionId(null);
+                        }
                         setMessages(prev => [...prev, { role: 'assistant', text: `Failed to load session: ${err instanceof Error ? err.message : String(err)}` }]);
                     }
                 })();

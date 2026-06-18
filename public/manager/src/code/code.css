@@ -75,7 +75,7 @@
 }
 .code-session-list-items { list-style: none; padding: 0; margin: 0; }
 .code-session-item {
-    display: flex; align-items: center; justify-content: space-between;
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; column-gap: 8px; align-items: center;
     width: 100%; padding: 6px 8px; margin-bottom: 2px;
     border: none; border-radius: 6px;
     background: transparent; color: var(--text-primary);
@@ -84,8 +84,16 @@
 }
 .code-session-item.active { background: var(--accent-subtle); }
 .code-session-item:hover:not(.active) { background: var(--bg-raised); }
-.code-session-cwd { font-weight: 500; }
-.code-session-status { font-size: 10px; color: var(--text-tertiary); }
+.code-session-cwd { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.code-session-meta {
+    grid-column: 1 / 2;
+    font-size: 10px;
+    color: var(--text-tertiary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.code-session-status { grid-column: 2 / 3; grid-row: 1 / 3; font-size: 10px; color: var(--text-tertiary); }
 .code-session-status-streaming { color: var(--status-success); }
 .code-session-search {
     width: calc(100% - 16px);

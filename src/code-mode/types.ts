@@ -21,6 +21,18 @@ export interface CodeSessionInfo {
     status: CodeSessionStatus;
     createdAt: number;
     lastUsedAt: number;
+    title?: string;
+}
+
+export interface StoredCodeSessionInfo {
+    sessionId: string;
+    cwd: string;
+    title?: string;
+    firstMessage?: string;
+    updatedAt?: string;
+    lastModified?: number;
+    messageCount?: number;
+    size?: number;
 }
 
 /** Permission request relayed from the engine; answered via REST. */
@@ -43,7 +55,7 @@ export interface CodeSessionTransport {
     /** Spawn/ensure the engine and create a session rooted at an absolute cwd. */
     newSession(cwd: string, opts?: { model?: string }): Promise<CodeSessionInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
-    listStoredSessions(cwd?: string): Promise<Array<{ sessionId: string; cwd: string; title?: string; lastModified?: number }>>;
+    listStoredSessions(cwd?: string): Promise<StoredCodeSessionInfo[]>;
     extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
     setSessionModel(sessionId: string, modelId: string): Promise<void>;
