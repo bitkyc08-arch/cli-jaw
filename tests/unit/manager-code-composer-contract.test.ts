@@ -45,3 +45,35 @@ test('code composer command palette consumes normalized CodeCommand metadata', (
     assert.ok(canvas.includes('setInputText(`${command.displayName} `)'), 'insert/pass-through command selection must still insert slash command text');
     assert.ok(types.includes("'anthropic'") === false, 'command registry types must not hardcode provider-only defaults');
 });
+
+test('code composer renders as one dense workbench dock with responsive controls', () => {
+    const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
+    const footer = read('public/manager/src/code/ComposerFooter.tsx');
+    const cssEntry = read('public/manager/src/code/code.css');
+    const css = read('public/manager/src/code/code-composer.css');
+    const legacyCss = read('public/manager/src/code/code-workbench.css');
+
+    assert.ok(cssEntry.includes("@import './code-composer.css';"), 'Code mode CSS entry must import the composer dock stylesheet');
+    assert.ok(workbench.includes('className="code-composer-dock"'), 'workbench must wrap composer controls in a bottom dock');
+    assert.ok(workbench.includes('className="code-composer-surface" aria-label="Code composer controls"'), 'dock must expose a single composer surface');
+    assert.ok(workbench.indexOf('<CodeComposer') < workbench.indexOf('<ComposerFooter'), 'prompt input must sit above its setting controls inside the same surface');
+
+    for (const token of ['title={provider}', 'title={model}', 'title={effort}', 'title={permissionDescriptions[permissionMode]}']) {
+        assert.ok(footer.includes(token), `footer select must preserve hover/readback title ${token}`);
+    }
+
+    for (const selector of [
+        '.code-composer-dock',
+        '.code-composer-surface',
+        '.code-footer-field-model { max-width: min(42vw, 420px); }',
+        'text-overflow: ellipsis;',
+        '@media (max-width: 720px)',
+        '.code-composer-footer {',
+    ]) {
+        assert.ok(css.includes(selector), `composer stylesheet must include ${selector}`);
+    }
+
+    assert.equal(legacyCss.includes('.code-composer {'), false, 'composer layout styles must live in code-composer.css, not the workbench transient stylesheet');
+    assert.ok(css.includes('grid-template-columns: minmax(0, 1fr) auto'), 'composer input and send button must have stable grid columns');
+    assert.ok(css.includes('grid-template-columns: 1fr'), 'narrow view must collapse footer controls to one column');
+});

@@ -40,6 +40,7 @@ export function ComposerFooter({
                         onChange={e => onPermissionModeChange(e.target.value as PermissionMode)}
                         disabled={disabled}
                         aria-label="Permission mode"
+                        title={permissionDescriptions[permissionMode]}
                     >
                         <option value="ask">Ask</option>
                         <option value="always-allow">Always allow</option>
@@ -58,6 +59,7 @@ export function ComposerFooter({
                             onChange={e => onProviderChange(e.target.value)}
                             disabled={disabled}
                             aria-label="Provider"
+                            title={provider}
                         >
                             {providerOptions.map(p => <option key={p} value={p}>{p}</option>)}
                         </select>
@@ -71,6 +73,7 @@ export function ComposerFooter({
                         onChange={e => onModelChange(e.target.value)}
                         disabled={disabled}
                         aria-label="Model"
+                        title={model}
                     >
                         {modelOptions.map(m => <option key={m} value={m}>{m}</option>)}
                     </select>
@@ -84,6 +87,7 @@ export function ComposerFooter({
                             onChange={e => onEffortChange(e.target.value)}
                             disabled={disabled}
                             aria-label="Effort"
+                            title={effort}
                         >
                             {effortOptions.map(e => <option key={e} value={e}>{e}</option>)}
                         </select>

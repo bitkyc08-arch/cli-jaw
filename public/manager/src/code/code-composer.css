@@ -1,0 +1,258 @@
+/* Code composer dock: dense Claude-style input surface and command palette */
+
+.code-composer-dock {
+    padding: 10px 14px 12px;
+    border-top: 1px solid var(--border-default);
+    background:
+        linear-gradient(180deg, color-mix(in srgb, var(--bg-base) 8%, transparent), transparent 34%),
+        var(--bg-panel);
+}
+.code-composer-surface {
+    display: grid;
+    gap: 7px;
+    width: min(100%, 980px);
+    margin: 0 auto;
+    padding: 8px;
+    border: 1px solid color-mix(in srgb, var(--border-default) 86%, var(--accent-default));
+    border-radius: 12px;
+    background: var(--bg-base);
+    box-shadow: 0 12px 34px color-mix(in srgb, var(--bg-base) 68%, transparent);
+}
+.code-composer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: end;
+    gap: 8px;
+    position: relative;
+}
+.code-composer-input-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+    padding: 4px 6px 3px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+}
+.code-composer-input-shell:focus-within {
+    border-color: color-mix(in srgb, var(--accent-default) 48%, transparent);
+    background: color-mix(in srgb, var(--bg-raised) 72%, transparent);
+}
+.code-composer-input {
+    resize: none;
+    width: 100%;
+    min-height: 44px;
+    max-height: 144px;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 14px;
+    line-height: 1.45;
+}
+.code-composer-input:focus { outline: none; }
+.code-composer-input::placeholder { color: var(--text-tertiary); }
+.code-composer-hint {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    line-height: 1.2;
+}
+.code-composer-send {
+    min-width: 46px;
+    height: 38px;
+    min-height: 38px;
+    padding: 0 11px;
+    border: 1px solid color-mix(in srgb, var(--accent-default) 72%, var(--border-default));
+    border-radius: 10px;
+    background: var(--accent-default);
+    color: white;
+    font-size: 12px;
+    font-weight: 700;
+    cursor: pointer;
+}
+.code-composer-send:disabled {
+    border-color: var(--border-default);
+    background: var(--bg-raised);
+    color: var(--text-tertiary);
+    cursor: not-allowed;
+}
+.code-composer-footer {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
+    gap: 8px;
+    align-items: center;
+    min-width: 0;
+    padding-top: 7px;
+    border-top: 1px solid var(--border-default);
+}
+.code-composer-footer-left,
+.code-composer-footer-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.code-composer-footer-right {
+    justify-content: flex-end;
+    flex-wrap: wrap;
+}
+.code-footer-field {
+    display: inline-grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+    height: 30px;
+    padding: 0 7px;
+    border: 1px solid var(--border-default);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-panel) 62%, var(--bg-base));
+}
+.code-footer-field-model { max-width: min(42vw, 420px); }
+.code-footer-label {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 750;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.code-footer-description {
+    grid-column: 1 / -1;
+    max-width: 240px;
+    margin-top: -3px;
+    color: var(--text-tertiary);
+    font-size: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.code-footer-select {
+    min-width: 0;
+    max-width: 100%;
+    height: 26px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    font-size: 12px;
+    padding: 0 18px 0 2px;
+    text-overflow: ellipsis;
+}
+.code-footer-select:focus {
+    outline: none;
+    color: var(--accent-default);
+}
+.code-command-palette {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 0;
+    right: 46px;
+    max-height: min(300px, 48vh);
+    overflow-y: auto;
+    padding: 5px;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: var(--bg-panel);
+    box-shadow: 0 -16px 38px rgba(0,0,0,0.24);
+    z-index: 10;
+}
+.code-command-item {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 42px;
+    padding: 7px 8px;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--text-primary);
+    font-size: 12px;
+    text-align: left;
+    cursor: pointer;
+}
+.code-command-item:hover,
+.code-command-item.is-active {
+    background: var(--bg-raised);
+    border-color: color-mix(in srgb, var(--accent-default) 36%, var(--border-default));
+}
+.code-command-item.is-disabled {
+    opacity: 0.58;
+    cursor: not-allowed;
+}
+.code-command-row-main,
+.code-command-row-meta {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+.code-command-row-main { gap: 8px; }
+.code-command-row-meta {
+    justify-content: flex-end;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.code-command-name {
+    flex: 0 0 auto;
+    font-weight: 700;
+    color: var(--accent-default);
+    white-space: nowrap;
+}
+.code-command-desc {
+    color: var(--text-secondary);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.code-command-chip {
+    max-width: 110px;
+    padding: 2px 5px;
+    border: 1px solid var(--border-default);
+    border-radius: 999px;
+    background: var(--bg-base);
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+@media (max-width: 720px) {
+    .code-composer-dock {
+        padding: 8px;
+    }
+    .code-composer-surface {
+        border-radius: 10px;
+    }
+    .code-composer {
+        grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .code-composer-footer {
+        grid-template-columns: 1fr;
+    }
+    .code-composer-footer-left,
+    .code-composer-footer-right {
+        flex-wrap: wrap;
+        justify-content: flex-start;
+    }
+    .code-footer-field,
+    .code-footer-field-model {
+        max-width: 100%;
+    }
+    .code-command-palette {
+        right: 0;
+    }
+    .code-command-item {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+    }
+    .code-command-row-meta {
+        justify-content: flex-start;
+    }
+}

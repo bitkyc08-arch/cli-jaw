@@ -74,16 +74,34 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
             />
             <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} />
             <CodePermissionQueue permissions={props.permissions} onAnswer={props.onPermissionAnswer} />
-            <CodeComposer
-                inputText={props.inputText}
-                sending={props.sending}
-                showCommands={props.showCommands}
-                availableCommands={props.availableCommands}
-                onInputChange={props.onInputChange}
-                onCommandSelect={props.onCommandSelect}
-                onSubmit={props.onSubmit}
-                onShowCommandsChange={props.onShowCommandsChange}
-            />
+            <div className="code-composer-dock">
+                <div className="code-composer-surface" aria-label="Code composer controls">
+                    <CodeComposer
+                        inputText={props.inputText}
+                        sending={props.sending}
+                        showCommands={props.showCommands}
+                        availableCommands={props.availableCommands}
+                        onInputChange={props.onInputChange}
+                        onCommandSelect={props.onCommandSelect}
+                        onSubmit={props.onSubmit}
+                        onShowCommandsChange={props.onShowCommandsChange}
+                    />
+                    <ComposerFooter
+                        provider={props.provider}
+                        providerOptions={props.providerOptions}
+                        model={props.model}
+                        modelOptions={props.currentModelOptions}
+                        effort={props.effort}
+                        effortOptions={props.currentEffortOptions}
+                        permissionMode={props.permissionMode}
+                        disabled={props.disabled}
+                        onProviderChange={props.onFooterProviderChange}
+                        onModelChange={props.onModelChange}
+                        onEffortChange={props.onEffortChange}
+                        onPermissionModeChange={props.onPermissionModeChange}
+                    />
+                </div>
+            </div>
             {props.activePopup && (
                 <CodeCommandPopup
                     popupKind={props.activePopup.kind}
@@ -107,20 +125,6 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                     onPermissionModeChange={props.onPermissionModeChange}
                 />
             )}
-            <ComposerFooter
-                provider={props.provider}
-                providerOptions={props.providerOptions}
-                model={props.model}
-                modelOptions={props.currentModelOptions}
-                effort={props.effort}
-                effortOptions={props.currentEffortOptions}
-                permissionMode={props.permissionMode}
-                disabled={props.disabled}
-                onProviderChange={props.onFooterProviderChange}
-                onModelChange={props.onModelChange}
-                onEffortChange={props.onEffortChange}
-                onPermissionModeChange={props.onPermissionModeChange}
-            />
         </div>
     );
 }
