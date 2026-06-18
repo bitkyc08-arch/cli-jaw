@@ -40,7 +40,8 @@ test('code composer command palette consumes normalized CodeCommand metadata', (
     assert.ok(composer.includes('command.source'), 'palette must render source metadata');
     assert.ok(composer.includes('commandActionLabel(command)'), 'palette must render action metadata');
     assert.ok(canvas.includes('normalizeCodeCommands(update.availableCommands)'), 'CodeCanvas must normalize ACP command updates');
-    assert.ok(canvas.includes('setInputText(`${command.displayName} `)'), 'command selection must insert slash command text');
+    assert.ok(canvas.includes("command.actionType === 'popup' && command.popupKind"), 'CodeCanvas must route popup commands before text insertion');
+    assert.ok(canvas.includes('setActivePopup({ kind: command.popupKind, command })'), 'popup command selection must open Code popup state');
+    assert.ok(canvas.includes('setInputText(`${command.displayName} `)'), 'insert/pass-through command selection must still insert slash command text');
     assert.ok(types.includes("'anthropic'") === false, 'command registry types must not hardcode provider-only defaults');
 });
-
