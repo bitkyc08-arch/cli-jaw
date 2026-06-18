@@ -4,9 +4,10 @@ import express from 'express';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createDashboardGitRouter } from '../../src/manager/routes/dashboard-git.js';
+import { makeDashboardTempDir } from './test-dashboard-temp.js';
+import type { TestContext } from 'node:test';
 
 async function withGitServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
     const app = express();
@@ -29,15 +30,15 @@ async function withGitServer(fn: (baseUrl: string) => Promise<void>): Promise<vo
     }
 }
 
-function makeRepo(): string {
-    const repo = mkdtempSync(join(homedir(), 'dashboard-worktree-ops-'));
+function makeRepo(t: TestContext): string {
+    const repo = mkdtempSync(join(makeDashboardTempDir(t, 'dashboard-worktree-ops-parent-'), 'repo-'));
     execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
     return repo;
 }
 
-test('dashboard git worktree operation preview validates FolderPanel context', async () => {
-    const repo = makeRepo();
-    const target = join(homedir(), `dashboard-worktree-ops-target-${Date.now()}`);
+test('dashboard git worktree operation preview validates FolderPanel context', async (t) => {
+    const repo = makeRepo(t);
+    const target = join(makeDashboardTempDir(t, 'dashboard-worktree-ops-target-parent-'), `target-${Date.now()}`);
 
     await withGitServer(async (baseUrl) => {
         const response = await fetch(`${baseUrl}/api/dashboard/git/worktree-operation-preview`, {
@@ -55,8 +56,8 @@ test('dashboard git worktree operation preview validates FolderPanel context', a
     });
 });
 
-test('dashboard git worktree operation execution requires explicit confirmation', async () => {
-    const repo = makeRepo();
+test('dashboard git worktree operation execution requires explicit confirmation', async (t) => {
+    const repo = makeRepo(t);
 
     await withGitServer(async (baseUrl) => {
         const response = await fetch(`${baseUrl}/api/dashboard/git/worktree-operation`, {

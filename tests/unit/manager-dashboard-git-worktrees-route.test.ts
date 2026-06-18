@@ -4,9 +4,10 @@ import express from 'express';
 import http from 'node:http';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { createDashboardGitRouter } from '../../src/manager/routes/dashboard-git.js';
+import { makeDashboardTempDir } from './test-dashboard-temp.js';
+import type { TestContext } from 'node:test';
 
 async function withGitServer(fn: (baseUrl: string) => Promise<void>): Promise<void> {
     const app = express();
@@ -29,14 +30,14 @@ async function withGitServer(fn: (baseUrl: string) => Promise<void>): Promise<vo
     }
 }
 
-function makeRepo(): string {
-    const repo = mkdtempSync(join(homedir(), 'dashboard-worktrees-'));
+function makeRepo(t: TestContext): string {
+    const repo = mkdtempSync(join(makeDashboardTempDir(t, 'dashboard-worktrees-parent-'), 'repo-'));
     execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
     return repo;
 }
 
-test('dashboard git worktrees route resolves from FolderPanel root without selected instance candidates', async () => {
-    const repo = makeRepo();
+test('dashboard git worktrees route resolves from FolderPanel root without selected instance candidates', async (t) => {
+    const repo = makeRepo(t);
 
     await withGitServer(async (baseUrl) => {
         const response = await fetch(`${baseUrl}/api/dashboard/git/worktrees`, {
@@ -52,9 +53,9 @@ test('dashboard git worktrees route resolves from FolderPanel root without selec
     });
 });
 
-test('dashboard git worktrees route rejects repoRoot mismatches', async () => {
-    const repo = makeRepo();
-    const other = makeRepo();
+test('dashboard git worktrees route rejects repoRoot mismatches', async (t) => {
+    const repo = makeRepo(t);
+    const other = makeRepo(t);
 
     await withGitServer(async (baseUrl) => {
         const response = await fetch(`${baseUrl}/api/dashboard/git/worktrees`, {

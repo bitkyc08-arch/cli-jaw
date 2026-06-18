@@ -4,15 +4,17 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, symlinkSync } from 'node:fs';
 import { homedir, tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { TestContext } from 'node:test';
 import {
     previewGitWorktreeOperation,
     readGitWorktreeOperation,
     runGitWorktreeOperation,
     validateNewWorktreePathInsideHome,
 } from '../../src/manager/git/worktree-operations.js';
+import { makeDashboardTempDir } from './test-dashboard-temp.js';
 
-function makeRepo(prefix = 'worktree-ops-'): string {
-    const repo = mkdtempSync(join(homedir(), prefix));
+function makeRepo(t: TestContext, prefix = 'worktree-ops-parent-'): string {
+    const repo = mkdtempSync(join(makeDashboardTempDir(t, prefix), 'repo-'));
     execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
     execFileSync('git', ['config', 'user.email', 'test@example.com'], { cwd: repo });
     execFileSync('git', ['config', 'user.name', 'Test User'], { cwd: repo });
@@ -45,8 +47,8 @@ test('worktree operation reader rejects invalid raw shapes and branch tokens', (
     assert.deepEqual(readGitWorktreeOperation({ type: 'worktree-prune' }), { type: 'worktree-prune' });
 });
 
-test('new worktree path validation rejects symlink-parent escape targets', async () => {
-    const link = join(homedir(), `worktree-ops-link-${Date.now()}`);
+test('new worktree path validation rejects symlink-parent escape targets', async (t) => {
+    const link = join(makeDashboardTempDir(t, 'worktree-ops-link-parent-'), `link-${Date.now()}`);
     const outside = mkdtempSync(join(tmpdir(), 'worktree-ops-outside-'));
     symlinkSync(outside, link);
 
@@ -56,9 +58,9 @@ test('new worktree path validation rejects symlink-parent escape targets', async
     );
 });
 
-test('dirty worktree remove is blocked without explicit force', async () => {
-    const repo = makeRepo();
-    const worktree = mkdtempSync(join(homedir(), 'worktree-ops-linked-'));
+test('dirty worktree remove is blocked without explicit force', async (t) => {
+    const repo = makeRepo(t);
+    const worktree = mkdtempSync(join(makeDashboardTempDir(t, 'worktree-ops-linked-parent-'), 'worktree-'));
     execFileSync('git', ['worktree', 'add', '-b', 'feature-dirty', worktree], { cwd: repo, stdio: 'ignore' });
     writeFileSync(join(worktree, 'dirty.txt'), 'dirty\n');
 

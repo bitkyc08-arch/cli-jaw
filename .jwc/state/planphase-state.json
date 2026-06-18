@@ -1,10 +1,10 @@
 {
-  "run_id": "2026-06-15-0219-ddb4",
+  "run_id": "260608-dev-skills-cli",
   "skill": "plan",
   "active": true,
   "current_phase": "planner",
   "version": 2,
-  "updated_at": "2026-06-15T02:19:04.427Z",
+  "updated_at": "2026-06-15T19:54:03.148Z",
   "receipt": {
     "version": 1,
     "skill": "plan",
@@ -12,15 +12,15 @@
     "command": "jwc planphase persist-run-id",
     "state_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/skill-active-state.json",
     "storage_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/plan-state.json",
-    "mutated_at": "2026-06-15T02:19:04.427Z",
-    "fresh_until": "2026-06-15T02:49:04.427Z",
+    "mutated_at": "2026-06-15T19:54:03.148Z",
+    "fresh_until": "2026-06-15T20:24:03.148Z",
     "status": "fresh",
-    "mutation_id": "plan:2026-06-15T02:19:04.427Z",
+    "mutation_id": "plan:2026-06-15T19:54:03.148Z",
     "content_sha256": {
       "algorithm": "sha256",
-      "value": "1ea599dae4c93fcd72ba9d6be28e7822bf06ea7ef334307a8affa26cbc6e4b0f",
+      "value": "0e7a4eb897313d257a9e6d1237134fa1e56757a908e2b165f56a30a9668fdb01",
       "covered_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/planphase-state.json",
-      "computed_at": "2026-06-15T02:19:04.427Z"
+      "computed_at": "2026-06-15T19:54:03.148Z"
     }
   }
 }

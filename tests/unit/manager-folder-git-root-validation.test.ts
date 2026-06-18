@@ -2,18 +2,19 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdirSync, mkdtempSync } from 'node:fs';
-import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { resolveFolderGitRoot } from '../../src/manager/git/folder-root-validation.js';
+import { makeDashboardTempDir } from './test-dashboard-temp.js';
+import type { TestContext } from 'node:test';
 
-function makeRepo(): string {
-    const repo = mkdtempSync(join(homedir(), 'folder-git-root-'));
+function makeRepo(t: TestContext): string {
+    const repo = mkdtempSync(join(makeDashboardTempDir(t, 'folder-git-root-parent-'), 'repo-'));
     execFileSync('git', ['init'], { cwd: repo, stdio: 'ignore' });
     return repo;
 }
 
-test('folder git root validation resolves a home-contained repo root', async () => {
-    const repo = makeRepo();
+test('folder git root validation resolves a home-contained repo root', async (t) => {
+    const repo = makeRepo(t);
     mkdirSync(join(repo, 'nested'));
 
     const resolved = await resolveFolderGitRoot(join(repo, 'nested'), repo);
@@ -22,8 +23,8 @@ test('folder git root validation resolves a home-contained repo root', async () 
     assert.equal(resolved.folderPanelRoot, join(repo, 'nested'));
 });
 
-test('folder git root validation rejects non-git folders quietly', async () => {
-    const folder = mkdtempSync(join(homedir(), 'folder-non-git-'));
+test('folder git root validation rejects non-git folders quietly', async (t) => {
+    const folder = mkdtempSync(join(makeDashboardTempDir(t, 'folder-non-git-parent-'), 'folder-'));
 
     await assert.rejects(
         async () => resolveFolderGitRoot(folder),
@@ -31,9 +32,9 @@ test('folder git root validation rejects non-git folders quietly', async () => {
     );
 });
 
-test('folder git root validation rejects outside-home roots and mismatched repo roots', async () => {
-    const repo = makeRepo();
-    const otherRepo = makeRepo();
+test('folder git root validation rejects outside-home roots and mismatched repo roots', async (t) => {
+    const repo = makeRepo(t);
+    const otherRepo = makeRepo(t);
 
     await assert.rejects(
         async () => resolveFolderGitRoot('/'),

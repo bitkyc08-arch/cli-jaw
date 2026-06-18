@@ -4,6 +4,7 @@ import { mkdtempSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { parseGitWorktreePorcelain } from '../../src/manager/git/worktree-service.js';
+import { makeDashboardTempDir } from './test-dashboard-temp.js';
 
 const repoRoot = join(homedir(), 'repo');
 
@@ -66,8 +67,8 @@ test('git worktree service uses porcelain worktree list through runGit arguments
     assert.ok(source.includes('!isWithinHome(entry.path)'), 'worktree service must filter outside-home worktree entries');
 });
 
-test('git worktree parser tolerates empty porcelain output', () => {
-    const homeRepo = mkdtempSync(join(homedir(), 'empty-worktree-'));
+test('git worktree parser tolerates empty porcelain output', (t) => {
+    const homeRepo = mkdtempSync(join(makeDashboardTempDir(t, 'empty-worktree-parent-'), 'repo-'));
 
     assert.deepEqual(parseGitWorktreePorcelain(homeRepo, ''), []);
 });

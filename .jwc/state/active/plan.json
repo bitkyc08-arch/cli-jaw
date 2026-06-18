@@ -1,24 +1,24 @@
 {
   "skill": "plan",
-  "phase": "architect",
+  "phase": "critic",
   "active": true,
-  "activated_at": "2026-06-15T05:46:43.124Z",
-  "updated_at": "2026-06-15T05:46:43.124Z",
+  "activated_at": "2026-06-15T20:04:22.849Z",
+  "updated_at": "2026-06-15T20:04:22.849Z",
   "hud": {
     "version": 1,
-    "summary": "persisted architect stage 1",
+    "summary": "persisted critic stage 3",
     "chips": [
       {
         "label": "stage",
-        "value": "architect",
+        "value": "critic",
         "priority": 10
       },
       {
         "label": "iter",
-        "value": "1",
+        "value": "3",
         "priority": 30
       }
     ],
-    "updated_at": "2026-06-15T05:46:43.123Z"
+    "updated_at": "2026-06-15T20:04:22.848Z"
   }
 }

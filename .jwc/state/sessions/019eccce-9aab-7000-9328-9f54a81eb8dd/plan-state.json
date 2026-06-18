@@ -1,0 +1,30 @@
+{
+  "phase": "critic",
+  "active": true,
+  "plan_ref": "devlog/_fin/260608_dev_skills/140.1_p_critic_round1.md",
+  "skill": "plan",
+  "current_phase": "critic",
+  "version": 2,
+  "updated_at": "2026-06-15T20:02:18.445Z",
+  "receipt": {
+    "version": 1,
+    "skill": "plan",
+    "owner": "jwc-state-cli",
+    "command": "jwc state plan write",
+    "state_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/sessions/019eccce-9aab-7000-9328-9f54a81eb8dd/skill-active-state.json",
+    "storage_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/sessions/019eccce-9aab-7000-9328-9f54a81eb8dd/plan-state.json",
+    "mutated_at": "2026-06-15T20:02:18.445Z",
+    "fresh_until": "2026-06-15T20:32:18.445Z",
+    "status": "fresh",
+    "mutation_id": "plan:2026-06-15T20:02:18.445Z",
+    "content_sha256": {
+      "algorithm": "sha256",
+      "value": "6d4eff8ce0448181284e3be05571e400d1333032506d5299c3d52cb87d8016ed",
+      "covered_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/sessions/019eccce-9aab-7000-9328-9f54a81eb8dd/plan-state.json",
+      "computed_at": "2026-06-15T20:02:18.446Z"
+    }
+  },
+  "session_id": "019eccce-9aab-7000-9328-9f54a81eb8dd",
+  "artifact_path": "devlog/_fin/260608_dev_skills/140.3_p_critic_round2.md",
+  "artifact_source": ".jwc/plans/planphase/260608-dev-skills-cli/stage-03-critic.md"
+}

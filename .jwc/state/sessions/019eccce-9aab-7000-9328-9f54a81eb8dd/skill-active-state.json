@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "active": true,
+  "skill": "plan",
+  "phase": "critic",
+  "updated_at": "2026-06-15T20:02:18.449Z",
+  "session_id": "019eccce-9aab-7000-9328-9f54a81eb8dd",
+  "active_skills": [
+    {
+      "skill": "plan",
+      "phase": "critic",
+      "active": true,
+      "activated_at": "2026-06-15T20:02:18.449Z",
+      "updated_at": "2026-06-15T20:02:18.449Z",
+      "session_id": "019eccce-9aab-7000-9328-9f54a81eb8dd",
+      "hud": {
+        "version": 1,
+        "chips": [
+          {
+            "label": "stage",
+            "value": "critic",
+            "priority": 10
+          }
+        ],
+        "updated_at": "2026-06-15T20:02:18.448Z"
+      },
+      "receipt": {
+        "version": 1,
+        "skill": "plan",
+        "owner": "jwc-state-cli",
+        "command": "jwc state plan write",
+        "state_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/sessions/019eccce-9aab-7000-9328-9f54a81eb8dd/skill-active-state.json",
+        "storage_path": "/Users/jun/Developer/new/700_projects/cli-jaw/.jwc/state/sessions/019eccce-9aab-7000-9328-9f54a81eb8dd/plan-state.json",
+        "mutated_at": "2026-06-15T20:02:18.445Z",
+        "fresh_until": "2026-06-15T20:32:18.445Z",
+        "status": "fresh",
+        "mutation_id": "plan:2026-06-15T20:02:18.445Z"
+      }
+    }
+  ],
+  "active_subskills": []
+}
