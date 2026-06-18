@@ -209,6 +209,22 @@
     font-size: 10px;
 }
 
+.code-bg-task-recovery-note {
+    padding: 6px 8px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg-panel) 72%, var(--bg-base));
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.code-bg-task-recovery-note.is-failed,
+.code-bg-task-recovery-note.is-orphaned {
+    border-color: color-mix(in srgb, var(--status-error) 34%, var(--border-default));
+    background: color-mix(in srgb, var(--status-error) 9%, var(--bg-base));
+}
+
 .code-bg-task-result {
     display: grid;
     gap: 5px;

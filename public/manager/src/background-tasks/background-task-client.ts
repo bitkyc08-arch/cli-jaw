@@ -92,12 +92,14 @@ export interface BackgroundTaskClient {
 export class BackgroundTaskApiError extends Error {
     status: number;
     code: string | null;
+    existingId: string | null;
 
-    constructor(message: string, status: number, code: string | null = null) {
+    constructor(message: string, status: number, code: string | null = null, existingId: string | null = null) {
         super(message);
         this.name = 'BackgroundTaskApiError';
         this.status = status;
         this.code = code;
+        this.existingId = existingId;
     }
 }
 
@@ -144,7 +146,10 @@ async function parseResponse<T>(response: Response, fallback: string): Promise<T
         const message = typeof body === 'object' && body && 'error' in body
             ? String((body as { error?: unknown }).error)
             : fallback;
-        throw new BackgroundTaskApiError(message || fallback, response.status);
+        const existingId = typeof body === 'object' && body && 'existingId' in body && typeof (body as { existingId?: unknown }).existingId === 'string'
+            ? (body as { existingId: string }).existingId
+            : null;
+        throw new BackgroundTaskApiError(message || fallback, response.status, null, existingId);
     }
     return body as T;
 }

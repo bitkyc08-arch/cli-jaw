@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+    BackgroundTaskApiError,
     createBackgroundTaskClient,
     subscribeToBackgroundTaskUpdates,
     type BackgroundTaskClient,
@@ -34,6 +35,9 @@ export function countBackgroundTasksByStatus(tasks: BackgroundTaskRow[]): Record
 }
 
 function errorText(err: unknown): string {
+    if (err instanceof BackgroundTaskApiError && err.status === 409 && err.existingId) {
+        return `Already running as ${err.existingId}.`;
+    }
     return err instanceof Error ? err.message : String(err);
 }
 

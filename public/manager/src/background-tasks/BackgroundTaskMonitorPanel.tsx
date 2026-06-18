@@ -43,6 +43,14 @@ function taskCommand(task: BackgroundTaskRow): string {
     return task.spec.completion.type;
 }
 
+function recoveryNote(task: BackgroundTaskRow): string {
+    if (task.status === 'orphaned') return 'Previous child process is still alive but no Manager runner owns it.';
+    if (task.status === 'failed' && task.result?.includes('lost during server restart')) return 'Task was marked failed during restart recovery.';
+    if ((task.status === 'complete' || task.status === 'failed') && !task.notifiedAt) return 'Completion notification is pending recovery delivery.';
+    if (task.notifiedAt) return `Completion notification sent ${formatTime(task.notifiedAt)}.`;
+    return '';
+}
+
 type BackgroundTaskRowProps = {
     task: BackgroundTaskRow;
     expanded: boolean;
@@ -57,6 +65,7 @@ function BackgroundTaskItem({ task, expanded, busy, onCancel, onCopy, onRetry, o
     const preview = resultPreview(task);
     const isRunning = task.status === 'running';
     const canRetry = task.status !== 'running';
+    const note = recoveryNote(task);
     return (
         <li className={`code-bg-task-item is-${task.status}`}>
             <button type="button" className="code-bg-task-main" onClick={() => onToggle(task.id)} aria-expanded={expanded}>
@@ -86,6 +95,11 @@ function BackgroundTaskItem({ task, expanded, busy, onCancel, onCopy, onRetry, o
                         <div className="code-bg-task-detail-row">
                             <span>Deadline</span>
                             <code>{task.deadlineAt}</code>
+                        </div>
+                    )}
+                    {note && (
+                        <div className={`code-bg-task-recovery-note is-${task.status}`}>
+                            {note}
                         </div>
                     )}
                     {preview ? (
