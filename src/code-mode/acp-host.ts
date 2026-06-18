@@ -209,6 +209,11 @@ class AcpHost implements CodeSessionTransport {
         });
     }
 
+    async extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>> {
+        await this.#ensureChild();
+        return await this.#request(method, { sessionId, ...params }) as Record<string, unknown>;
+    }
+
     async forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo> {
         await this.#ensureChild();
         const res = await this.#request('unstable_forkSession', { sessionId, cwd, mcpServers: [] });

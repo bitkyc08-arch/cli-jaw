@@ -64,6 +64,20 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         })();
     });
 
+    app.post('/api/code/sessions/:id/ext', requireAuth, (req, res) => {
+        void (async () => {
+            const body = req.body as Record<string, unknown> | undefined;
+            const method = String(body?.['method'] || '');
+            if (!method) { res.status(400).json({ ok: false, error: 'method required' }); return; }
+            try {
+                const result = await acpHost.extMethod(String(req.params['id']), method, (body?.['params'] ?? {}) as Record<string, unknown>);
+                res.json({ ok: true, result });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
     app.post('/api/code/sessions/:id/fork', requireAuth, (req, res) => {
         void (async () => {
             const body = req.body as Record<string, unknown> | undefined;

@@ -23,6 +23,7 @@ export interface CodeSessionClient {
     closeSession(sessionId: string): Promise<void>;
     answerPermission(permissionId: string, optionId: string | null): Promise<void>;
     setSessionConfig(sessionId: string, configId: string, valueId: string): Promise<void>;
+    extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     forkSession(sessionId: string, cwd: string): Promise<CodeSession>;
     setSessionModel(sessionId: string, modelId: string): Promise<void>;
 }
@@ -77,6 +78,10 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async setSessionConfig(sessionId: string, configId: string, valueId: string) {
             await request<unknown>('POST', `/api/code/sessions/${sessionId}/config`, { configId, valueId });
+        },
+        async extMethod(sessionId: string, method: string, params?: Record<string, unknown>) {
+            const data = await request<{ result: Record<string, unknown> }>('POST', `/api/code/sessions/${sessionId}/ext`, { method, params });
+            return data.result;
         },
         async forkSession(sessionId: string, cwd: string) {
             const data = await request<{ session: CodeSession }>('POST', `/api/code/sessions/${sessionId}/fork`, { cwd });

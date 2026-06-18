@@ -44,6 +44,7 @@ export interface CodeSessionTransport {
     newSession(cwd: string, opts?: { model?: string }): Promise<CodeSessionInfo>;
     loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
     listStoredSessions(cwd?: string): Promise<Array<{ sessionId: string; cwd: string; title?: string; lastModified?: number }>>;
+    extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     forkSession(sessionId: string, cwd: string): Promise<CodeSessionInfo>;
     setSessionModel(sessionId: string, modelId: string): Promise<void>;
     /** Fire a prompt turn. Resolves on acceptance; streaming arrives via the 'jwc' bus topic (202+poll contract, 113.2 §4). */
