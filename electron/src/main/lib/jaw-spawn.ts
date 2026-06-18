@@ -1,5 +1,5 @@
 import { spawn, type ChildProcess, execFileSync } from 'node:child_process';
-import { existsSync, statSync, readdirSync, accessSync, constants } from 'node:fs';
+import { existsSync, statSync, readdirSync, accessSync, constants, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { RingBuffer } from './ring-buffer.js';
@@ -26,6 +26,23 @@ function isExecutable(p: string): boolean {
   } catch {
     return false;
   }
+}
+
+function shellScriptInvocation(binary: string, args: string[]): { command: string; args: string[]; shell?: boolean } {
+  if (process.platform === 'win32' && binary.endsWith('.cmd')) {
+    return { command: binary, args, shell: true };
+  }
+  if (process.platform !== 'win32') {
+    try {
+      const head = readFileSync(binary, 'utf8').slice(0, 80);
+      if (head.startsWith('#!') && /\/(?:ba|z|k)?sh\b/.test(head.split(/\r?\n/, 1)[0] ?? '')) {
+        return { command: '/bin/sh', args: [binary, ...args] };
+      }
+    } catch {
+      // Fall through to direct execution; executability was checked separately.
+    }
+  }
+  return { command: binary, args };
 }
 
 function whichJawCandidates(): string[] {
@@ -57,10 +74,12 @@ function commandOutputFromError(error: unknown): string {
 export function hasDashboardCommand(binary: string): boolean {
   if (!isExecutable(binary)) return false;
   try {
-    execFileSync(binary, ['dashboard', '__jaw_electron_probe__'], {
+    const invocation = shellScriptInvocation(binary, ['dashboard', '__jaw_electron_probe__']);
+    execFileSync(invocation.command, invocation.args, {
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
       timeout: 2000,
+      ...(invocation.shell ? { shell: true } : {}),
     });
     return true;
   } catch (error) {
@@ -163,12 +182,12 @@ export function spawnJawDashboard(
   binary: string,
   opts: SpawnOptions,
 ): ChildProcess {
-  const useShell = process.platform === 'win32' && binary.endsWith('.cmd');
-  const child = spawn(binary, ['dashboard', 'serve', '--port', String(opts.port)], {
+  const invocation = shellScriptInvocation(binary, ['dashboard', 'serve', '--port', String(opts.port)]);
+  const child = spawn(invocation.command, invocation.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...(opts.env ?? {}) },
     detached: false,
-    ...(useShell ? { shell: true } : {}),
+    ...(invocation.shell ? { shell: true } : {}),
   });
   child.stdout?.on('data', (d) => opts.ringBuffer.append(d));
   child.stderr?.on('data', (d) => opts.ringBuffer.append(d));
