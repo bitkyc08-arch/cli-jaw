@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import type { CodeModelOptions } from './code-session-client';
+import type { CodeModelAssignment, CodeModelAssignments, CodeModelOptions } from './code-session-client';
 import type { CodeCommand, CodeCommandPopupKind } from './code-types';
 
 type CodeCommandPopupProps = {
@@ -8,6 +8,7 @@ type CodeCommandPopupProps = {
     modelOptions: CodeModelOptions;
     provider: string;
     model: string;
+    modelAssignments: CodeModelAssignments | null;
     permissionMode: string;
     disabled?: boolean;
     activeSessionId?: string | null;
@@ -17,6 +18,8 @@ type CodeCommandPopupProps = {
     onProviderChange: (value: string) => void;
     onUseModel: (provider: string, model: string) => void | Promise<void>;
     onSetDefaultModel: (provider: string, model: string) => void | Promise<void>;
+    onSetModelAssignment: (role: CodeModelAssignment['role'], provider: string, model: string) => void | Promise<void>;
+    onClearModelAssignment: (role: CodeModelAssignment['role']) => void | Promise<void>;
     onPermissionModeChange: (value: string) => void;
 };
 
@@ -34,6 +37,7 @@ export function CodeCommandPopup({
     modelOptions,
     provider,
     model,
+    modelAssignments,
     permissionMode,
     disabled,
     activeSessionId,
@@ -43,6 +47,8 @@ export function CodeCommandPopup({
     onProviderChange,
     onUseModel,
     onSetDefaultModel,
+    onSetModelAssignment,
+    onClearModelAssignment,
     onPermissionModeChange,
 }: CodeCommandPopupProps) {
     const closeRef = useRef<HTMLButtonElement>(null);
@@ -254,7 +260,53 @@ export function CodeCommandPopup({
                             </div>
                         </div>
                         {!activeSessionId && <p className="code-popup-note">Start or load a Code session to apply a live model.</p>}
-                        <p className="code-popup-note">Subagent assignment, presets, and MRU are scheduled for later model popup slices.</p>
+                        <div className="code-role-assignment-panel" aria-label="Model role assignments">
+                            <div className="code-role-assignment-head">
+                                <strong>Role assignments</strong>
+                                <span>{modelAssignments?.activeModel.note ?? 'Role assignments do not mutate the active Code session model.'}</span>
+                            </div>
+                            <div className="code-role-assignment-grid" role="list">
+                                {(modelAssignments?.roles ?? []).map(role => {
+                                    const assigned = role.modelId ? role.modelId : 'Unset';
+                                    const canAssign = Boolean(draftProvider && draftModel && !disabled);
+                                    const canClear = Boolean(role.modelId && !disabled);
+                                    return (
+                                        <article className="code-role-card" key={role.role} role="listitem">
+                                            <div className="code-role-card-head">
+                                                <span className="code-role-tag">{role.tag}</span>
+                                                <strong>{role.name}</strong>
+                                            </div>
+                                            <p className="code-role-path">{role.settingsPath}</p>
+                                            <p className="code-role-model" title={assigned}>{assigned}</p>
+                                            <div className="code-role-actions">
+                                                <button
+                                                    type="button"
+                                                    className="code-popup-secondary"
+                                                    disabled={!canAssign}
+                                                    onClick={() => {
+                                                        void onSetModelAssignment(role.role, draftProvider, draftModel);
+                                                    }}
+                                                >
+                                                    Assign selected
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="code-popup-secondary"
+                                                    disabled={!canClear}
+                                                    onClick={() => {
+                                                        void onClearModelAssignment(role.role);
+                                                    }}
+                                                >
+                                                    Clear
+                                                </button>
+                                            </div>
+                                        </article>
+                                    );
+                                })}
+                            </div>
+                            {!modelAssignments && <p className="code-popup-note">Loading role assignments.</p>}
+                        </div>
+                        <p className="code-popup-note">Presets and MRU are scheduled for later model popup slices.</p>
                     </div>
                 )}
             </section>

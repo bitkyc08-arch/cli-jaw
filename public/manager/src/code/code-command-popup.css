@@ -298,6 +298,97 @@
     min-height: 32px;
 }
 
+.code-role-assignment-panel {
+    display: grid;
+    gap: 8px;
+    padding-top: 2px;
+}
+
+.code-role-assignment-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.code-role-assignment-head span {
+    min-width: 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    text-align: right;
+}
+
+.code-role-assignment-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+}
+
+.code-role-card {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+    padding: 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 6px;
+    background: var(--bg-base);
+}
+
+.code-role-card-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+}
+
+.code-role-card-head strong {
+    min-width: 0;
+    overflow: hidden;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 650;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-role-tag {
+    flex: 0 0 auto;
+    padding: 2px 5px;
+    border: 1px solid color-mix(in srgb, var(--accent-default) 35%, var(--border-default));
+    border-radius: 4px;
+    color: var(--accent-default);
+    font-size: 10px;
+    line-height: 1.1;
+}
+
+.code-role-path,
+.code-role-model {
+    min-width: 0;
+    margin: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-role-path {
+    color: var(--text-secondary);
+    font-size: 10px;
+}
+
+.code-role-model {
+    color: var(--text-primary);
+    font-size: 12px;
+}
+
+.code-role-actions {
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+}
+
 @media (max-width: 720px) {
     .code-popup-backdrop {
         align-items: flex-end;
@@ -308,5 +399,15 @@
     }
     .code-model-layout {
         grid-template-columns: 1fr;
+    }
+    .code-role-assignment-grid {
+        grid-template-columns: 1fr;
+    }
+    .code-role-assignment-head {
+        display: grid;
+        gap: 4px;
+    }
+    .code-role-assignment-head span {
+        text-align: left;
     }
 }

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
-import type { CodeGitInfo, CodeModelOptions } from './code-session-client';
+import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions } from './code-session-client';
 import { CodeCommandPopup } from './CodeCommandPopup';
 import { CodeComposer } from './CodeComposer';
 import { CodePermissionQueue } from './CodePermissionQueue';
@@ -47,6 +47,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [effort, setEffort] = useState('high');
     const [permissionMode, setPermissionMode] = useState('ask');
     const [modelOptions, setModelOptions] = useState<CodeModelOptions>(FALLBACK_MODEL_OPTIONS);
+    const [modelAssignments, setModelAssignments] = useState<CodeModelAssignments | null>(null);
     const [gitInfo, setGitInfo] = useState<CodeGitInfo | null>(null);
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
@@ -81,16 +82,26 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         applyModelOptions(options);
     }, [applyModelOptions, client]);
 
+    const refreshModelAssignments = useCallback(async () => {
+        const assignments = await client.listModelAssignments();
+        setModelAssignments(assignments);
+    }, [client]);
+
     useEffect(() => {
         let cancelled = false;
         void (async () => {
             try {
-                const options = await client.listModelOptions();
+                const [options, assignments] = await Promise.all([
+                    client.listModelOptions(),
+                    client.listModelAssignments(),
+                ]);
                 if (cancelled) return;
                 applyModelOptions(options);
+                setModelAssignments(assignments);
             } catch (err) {
                 if (!cancelled) {
                     setModelOptions({ ...FALLBACK_MODEL_OPTIONS, error: err instanceof Error ? err.message : String(err) });
+                    setModelAssignments(null);
                 }
             }
         })();
@@ -284,10 +295,35 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         try {
             const options = await client.setDefaultModel(toModelId(nextProvider, nextModel));
             applyModelOptions(options);
+            void refreshModelAssignments();
         } catch (err) {
             setPopupError(err instanceof Error ? err.message : String(err));
         }
-    }, [applyModelOptions, client]);
+    }, [applyModelOptions, client, refreshModelAssignments]);
+
+    const handleSetModelAssignment = useCallback(async (
+        role: CodeModelAssignment['role'],
+        nextProvider: string,
+        nextModel: string,
+    ) => {
+        setPopupError('');
+        try {
+            const assignments = await client.setModelAssignment(role, toModelId(nextProvider, nextModel));
+            setModelAssignments(assignments);
+        } catch (err) {
+            setPopupError(err instanceof Error ? err.message : String(err));
+        }
+    }, [client]);
+
+    const handleClearModelAssignment = useCallback(async (role: CodeModelAssignment['role']) => {
+        setPopupError('');
+        try {
+            const assignments = await client.clearModelAssignment(role);
+            setModelAssignments(assignments);
+        } catch (err) {
+            setPopupError(err instanceof Error ? err.message : String(err));
+        }
+    }, [client]);
 
     const providerRecord = modelOptions.providers.find(p => p.id === provider) ?? modelOptions.providers[0];
     const providerOptions = modelOptions.providers.map(p => p.id);
@@ -357,6 +393,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         modelOptions={modelOptions}
                         provider={provider}
                         model={model}
+                        modelAssignments={modelAssignments}
                         permissionMode={permissionMode}
                         disabled={sending}
                         activeSessionId={activeSessionId}
@@ -373,6 +410,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         }}
                         onUseModel={handleUseModel}
                         onSetDefaultModel={handleSetDefaultModel}
+                        onSetModelAssignment={handleSetModelAssignment}
+                        onClearModelAssignment={handleClearModelAssignment}
                         onPermissionModeChange={setPermissionMode}
                     />
                 )}
