@@ -14,6 +14,7 @@ test('Electron folder bridge exposes safe move, create, rename, and reveal opera
     const desktopBridge = read('public/manager/src/panels/desktop-bridge.ts');
 
     assert.ok(preload.includes("ipcRenderer.invoke('folder:movePath'"), 'preload must expose folder move through IPC');
+    assert.ok(preload.includes("ipcRenderer.invoke('folder:authorizeRoot'"), 'preload must expose persisted root authorization through IPC');
     assert.ok(preload.includes("ipcRenderer.invoke('folder:createFile'"), 'preload must expose folder file creation through IPC');
     assert.ok(preload.includes("ipcRenderer.invoke('folder:createFolder'"), 'preload must expose folder creation through IPC');
     assert.ok(preload.includes("ipcRenderer.invoke('folder:renamePath'"), 'preload must expose folder rename through IPC');
@@ -24,6 +25,10 @@ test('Electron folder bridge exposes safe move, create, rename, and reveal opera
     assert.ok(
         desktopBridge.includes('movePath: (sourcePath: string, targetDirectory: string) => Promise<FolderMoveResult>'),
         'FolderBridgeApi must include movePath',
+    );
+    assert.ok(
+        desktopBridge.includes('authorizeRoot?: (rootPath: string) => Promise<{ ok: boolean; path?: string; error?: string }>'),
+        'FolderBridgeApi must include persisted root authorization',
     );
     assert.ok(
         desktopBridge.includes('revealPath: (path: string) => Promise<{ ok: boolean; error?: string }>'),
@@ -41,6 +46,21 @@ test('Electron folder bridge exposes safe move, create, rename, and reveal opera
         desktopBridge.includes('renamePath: (sourcePath: string, name: string) => Promise<FolderMutationResult>'),
         'FolderBridgeApi must include renamePath',
     );
+});
+
+test('Electron folder IPC can re-authorize persisted roots after app restart', () => {
+    const ipc = read('electron/src/main/lib/folder/ipc.ts');
+    const authorizeHandler = ipc.indexOf("ipcMain.handle('folder:authorizeRoot'");
+    const listHandler = ipc.indexOf("ipcMain.handle('folder:listDir'");
+
+    assert.ok(authorizeHandler > 0, 'folder IPC must expose an authorizeRoot handler');
+    assert.ok(listHandler > 0, 'folder IPC must still expose listDir');
+    assert.ok(authorizeHandler < listHandler, 'persisted roots must be authorizable before listDir rejects unpicked paths');
+    assert.ok(ipc.includes('async function authorizeFolderRoot'), 'folder IPC must validate persisted roots through a shared authorizer');
+    assert.ok(ipc.includes("if (!isWithinHome(target)) return { ok: false, error: 'path not allowed' }"), 'persisted roots must stay inside the user home');
+    assert.ok(ipc.includes("if (ls.isSymbolicLink()) return { ok: false, error: 'symlinks not allowed' }"), 'persisted roots must reject symlinks');
+    assert.ok(ipc.includes("if (!ls.isDirectory()) return { ok: false, error: 'root must be a directory' }"), 'persisted roots must be real directories');
+    assert.ok(ipc.includes('pickedRoots.add(targetReal)'), 'authorized persisted roots must repopulate the process-local allowlist');
 });
 
 test('Electron folder rename rejects existing targets before filesystem rename', () => {

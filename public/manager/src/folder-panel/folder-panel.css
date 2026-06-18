@@ -309,6 +309,54 @@
     color: var(--text-dim);
     font-size: 10px;
 }
+.folder-mutation-dialog {
+    position: absolute;
+    inset: 0;
+    z-index: 20;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 48px;
+    background: color-mix(in srgb, var(--bg-base) 38%, transparent);
+}
+.folder-mutation-dialog__panel {
+    display: grid;
+    gap: 8px;
+    width: min(260px, calc(100% - 24px));
+    padding: 10px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--bg-elevated);
+    box-shadow: 0 14px 40px rgb(0 0 0 / 32%);
+}
+.folder-mutation-dialog__title {
+    color: var(--text-base);
+    font-size: 12px;
+    font-weight: 600;
+}
+.folder-mutation-dialog__input {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 6px 7px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    color: var(--text-base);
+    background: var(--bg-base);
+    font-size: 12px;
+}
+.folder-mutation-dialog__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+.folder-mutation-dialog__actions button {
+    border: 1px solid var(--border-subtle);
+    border-radius: 4px;
+    padding: 4px 8px;
+    color: var(--text-base);
+    background: var(--bg-hover);
+    font-size: 11px;
+}
 .folder-tree {
     flex: 1;
     min-height: 0;

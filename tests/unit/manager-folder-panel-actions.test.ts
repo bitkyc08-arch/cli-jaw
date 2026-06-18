@@ -64,13 +64,28 @@ test('FolderPanel starts from explicit initial root policy instead of project ro
     assert.ok(panel.includes('source.getInitialRoot()'), 'FolderPanel must use the source initial-root policy');
     assert.equal(panel.includes('source.getDefaultRoot()'), false, 'FolderPanel must not call getDefaultRoot on mount');
     assert.equal(panel.includes('projectDirs'), false, 'FolderPanel must not import or mutate projectDirs');
-    assert.ok(panel.includes('props.onRootChange?.(nextRoot)'), 'manual Open Folder picks must sync the parent external root state through the shared opener');
+    assert.ok(panel.includes('props.onRootChange?.(authorizedRoot)'), 'manual and persisted roots must sync the authorized parent external root state through the shared opener');
     assert.ok(panel.includes('try {'), 'manual Open Folder must guard async picker failures');
     assert.ok(panel.includes('setError((err as Error).message)'), 'manual Open Folder must surface non-cancel picker failures in the panel');
     assert.ok(panel.includes('rootPath !== null &&'), 'empty root state must keep the action row hidden until a root exists');
     assert.ok(sources.includes("result.error === 'cancelled'"), 'Electron source must normalize picker cancellation into a null result');
     assert.ok(sources.includes('getInitialRoot: async () => null'), 'Electron source must start with an empty root');
     assert.ok(sources.includes("getInitialRoot: async () => ''"), 'notes-vault source must keep its virtual notes root');
+});
+
+test('FolderPanel uses an in-panel mutation dialog instead of browser prompts', () => {
+    const panel = read('public/manager/src/folder-panel/FolderPanel.tsx');
+    const overlays = read('public/manager/src/folder-panel/FolderPanelOverlays.tsx');
+    const dialog = read('public/manager/src/folder-panel/FolderMutationDialog.tsx');
+
+    assert.equal(panel.includes('window.prompt'), false, 'FolderPanel must not rely on browser prompt dialogs for Electron file mutations');
+    assert.ok(panel.includes('const [mutationDialog'), 'FolderPanel must own file mutation dialog state');
+    assert.ok(panel.includes('requestCreateEntry'), 'FolderPanel must open the mutation dialog for create actions');
+    assert.ok(panel.includes('requestRenameSelectedEntry'), 'FolderPanel must open the mutation dialog for rename actions');
+    assert.ok(panel.includes('submitMutation'), 'FolderPanel must submit create and rename actions through one visible dialog path');
+    assert.ok(overlays.includes('FolderMutationDialog'), 'FolderPanel overlays must render the mutation dialog');
+    assert.ok(dialog.includes('role="dialog"'), 'mutation dialog must expose native dialog semantics');
+    assert.ok(dialog.includes('autoFocus'), 'mutation dialog must focus the entry name input');
 });
 
 test('electron folder source treats picker cancellation as a non-error', async () => {
@@ -108,6 +123,7 @@ test('folder panel CSS exposes selected, drop target, drag, action, and confirm 
         '.folder-move-confirm',
         '.folder-move-confirm__actions',
         '.folder-status',
+        '.folder-mutation-dialog',
     ]) {
         assert.ok(css.includes(selector), `folder panel CSS must include ${selector}`);
     }

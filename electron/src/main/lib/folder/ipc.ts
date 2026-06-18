@@ -19,6 +19,21 @@ let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const pickedRoots = new Set<string>();
 
+async function authorizeFolderRoot(rawPath: string): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    const target = resolve(rawPath);
+    if (!isWithinHome(target)) return { ok: false, error: 'path not allowed' };
+    try {
+        const ls = await lstat(target);
+        if (ls.isSymbolicLink()) return { ok: false, error: 'symlinks not allowed' };
+        if (!ls.isDirectory()) return { ok: false, error: 'root must be a directory' };
+        const targetReal = await realOrResolved(target);
+        pickedRoots.add(targetReal);
+        return { ok: true, path: targetReal };
+    } catch {
+        return { ok: false, error: 'path not accessible' };
+    }
+}
+
 function isAllowedByRoot(p: string): boolean {
     if (pickedRoots.size === 0) return false;
     for (const root of pickedRoots) {
@@ -100,6 +115,12 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
         if (!isWithinHome(picked)) return { ok: false, error: 'path not allowed' };
         pickedRoots.add(resolve(picked));
         return { ok: true, path: picked };
+    });
+
+    ipcMain.handle('folder:authorizeRoot', async (event, rootPath: string) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        if (typeof rootPath !== 'string' || rootPath.trim().length === 0) return { ok: false, error: 'path required' };
+        return authorizeFolderRoot(rootPath);
     });
 
     ipcMain.handle('folder:registerGitWorktreeRoot', async (event, folderPanelRoot: string, repoRoot: string | undefined, worktreePath: string) => {

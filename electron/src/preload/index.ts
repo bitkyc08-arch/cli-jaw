@@ -86,6 +86,7 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
   folder: {
     getDefaultRoot: () => ipcRenderer.invoke('folder:getDefaultRoot'),
     pickFolder: () => ipcRenderer.invoke('folder:pick'),
+    authorizeRoot: (rootPath: string) => ipcRenderer.invoke('folder:authorizeRoot', rootPath),
     registerGitWorktreeRoot: (folderPanelRoot: string, repoRoot: string | undefined, worktreePath: string) =>
       ipcRenderer.invoke('folder:registerGitWorktreeRoot', folderPanelRoot, repoRoot, worktreePath),
     listDir: (dirPath: string, depth?: number) => ipcRenderer.invoke('folder:listDir', dirPath, depth),

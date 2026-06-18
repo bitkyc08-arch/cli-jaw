@@ -4,7 +4,7 @@ import type { NotesTreeEntry } from '../notes/notes-types';
 import { copyText } from '../clipboard/copy-text';
 import { createElectronFolderSource, createNotesVaultFolderSource, type FolderPanelEntry } from './folder-sources';
 import { FolderActionRow } from './FolderActionRow';
-import { FolderPanelOverlays } from './FolderPanelOverlays';
+import { FolderPanelOverlays, type FolderMutationDialogState } from './FolderPanelOverlays';
 import { FolderPanelToolbar } from './FolderPanelToolbar';
 import { FolderWorktreeOpsDialog } from './FolderWorktreeOpsDialog';
 import { FolderPanelTree } from './FolderPanelTree';
@@ -63,6 +63,8 @@ export function FolderPanel(props: FolderPanelProps) {
     const [skipMoveConfirmChecked, setSkipMoveConfirmChecked] = useState(false);
     const [actionStatus, setActionStatus] = useState<string | null>(null);
     const [contextMenu, setContextMenu] = useState<{ entry: FolderPanelEntry; x: number; y: number } | null>(null);
+    const [mutationDialog, setMutationDialog] = useState<FolderMutationDialogState | null>(null);
+    const [isMutating, setIsMutating] = useState(false);
     const [gitRefreshToken, setGitRefreshToken] = useState(0);
     const [worktreeOpsOpen, setWorktreeOpsOpen] = useState(false);
     const [worktreeOperationBusy, setWorktreeOperationBusy] = useState(false);
@@ -122,21 +124,24 @@ export function FolderPanel(props: FolderPanelProps) {
         options: { registerGitWorktree?: boolean; repoRoot?: string | null } = {},
     ) => {
         try {
+            let authorizedRoot = nextRoot;
             if (options.registerGitWorktree) {
                 if (!rootPath) throw new Error('Current folder root required');
                 await source.registerGitWorktreeRoot?.(rootPath, options.repoRoot ?? undefined, nextRoot);
+            } else if (source.authorizeRoot) {
+                authorizedRoot = await source.authorizeRoot(nextRoot);
             }
             if (rootPath && source.unwatchDir) void source.unwatchDir(rootPath);
-            props.onRootChange?.(nextRoot);
-            setRootPath(nextRoot);
+            props.onRootChange?.(authorizedRoot);
+            setRootPath(authorizedRoot);
             setExpanded(new Set());
             setChildrenCache(new Map());
             setEntries([]);
             folderSelection.resetSelection();
             setError(null);
             setUnavailableRoot(null);
-            const loaded = await loadDir(nextRoot);
-            if (!loaded.ok) setUnavailableRoot({ path: nextRoot, error: loaded.error });
+            const loaded = await loadDir(authorizedRoot);
+            if (!loaded.ok) setUnavailableRoot({ path: authorizedRoot, error: loaded.error });
             setGitRefreshToken(token => token + 1);
         } catch (err) {
             setError((err as Error).message);
@@ -302,42 +307,86 @@ export function FolderPanel(props: FolderPanelProps) {
         return selectedEntry.kind === 'directory' ? selectedEntry.path : parentPath(selectedEntry.path);
     }, [rootPath, selectedEntry]);
 
-    const createEntry = useCallback(async (kind: 'file' | 'directory') => {
+    const requestCreateEntry = useCallback((kind: 'file' | 'directory') => {
+        const parentDirectory = mutationParentDirectory();
+        if (!parentDirectory) return;
+        if (kind === 'file' && !source.createFile) return;
+        if (kind === 'directory' && !source.createFolder) return;
+        setMutationDialog({
+            kind,
+            title: kind === 'file' ? 'New File' : 'New Folder',
+            initialName: kind === 'file' ? 'untitled.txt' : 'untitled',
+            confirmLabel: 'Create',
+        });
+        setContextMenu(null);
+    }, [mutationParentDirectory, source.createFile, source.createFolder]);
+
+    const submitCreateEntry = useCallback(async (kind: 'file' | 'directory', name: string) => {
         const parentDirectory = mutationParentDirectory();
         if (!parentDirectory) return;
         const create = kind === 'file' ? source.createFile : source.createFolder;
         if (!create) return;
         const label = kind === 'file' ? 'New file name' : 'New folder name';
-        const name = window.prompt(label);
-        if (!name) return;
+        if (!name.trim()) {
+            setError(`${label} required`);
+            return;
+        }
+        setIsMutating(true);
         try {
-            const result = await create(parentDirectory, name);
+            const result = await create(parentDirectory, name.trim());
             const entry = result.entry;
             if (kind === 'directory' && selectedEntry?.path === parentDirectory) {
                 setExpanded(prev => new Set(prev).add(parentDirectory));
             }
             setActionStatus(kind === 'file' ? 'Created file' : 'Created folder');
             setError(null);
+            setMutationDialog(null);
             await refreshAfterMutation(parentDirectory, entry?.path ?? null);
         } catch (err) {
             setError((err as Error).message);
+        } finally {
+            setIsMutating(false);
         }
     }, [mutationParentDirectory, refreshAfterMutation, selectedEntry?.path, source]);
 
-    const renameSelectedEntry = useCallback(async () => {
+    const requestRenameSelectedEntry = useCallback(() => {
         if (!selectedEntry || !source.renamePath) return;
-        const name = window.prompt('Rename to', selectedEntry.name);
-        if (!name || name === selectedEntry.name) return;
+        setMutationDialog({
+            kind: 'rename',
+            title: 'Rename',
+            initialName: selectedEntry.name,
+            confirmLabel: 'Rename',
+        });
+        setContextMenu(null);
+    }, [selectedEntry, source.renamePath]);
+
+    const submitRenameSelectedEntry = useCallback(async (name: string) => {
+        if (!selectedEntry || !source.renamePath) return;
+        const nextName = name.trim();
+        if (!nextName || nextName === selectedEntry.name) {
+            setMutationDialog(null);
+            return;
+        }
+        setIsMutating(true);
         try {
-            const result = await source.renamePath(selectedEntry.path, name);
+            const result = await source.renamePath(selectedEntry.path, nextName);
             const parentDirectory = parentPath(selectedEntry.path);
             setActionStatus('Renamed');
             setError(null);
+            setMutationDialog(null);
             await refreshAfterMutation(parentDirectory, result.entry?.path ?? null, [selectedEntry.path]);
         } catch (err) {
             setError((err as Error).message);
+        } finally {
+            setIsMutating(false);
         }
     }, [refreshAfterMutation, selectedEntry, source]);
+
+    const submitMutation = useCallback((name: string) => {
+        if (!mutationDialog) return;
+        if (mutationDialog.kind === 'rename') void submitRenameSelectedEntry(name);
+        else void submitCreateEntry(mutationDialog.kind, name);
+    }, [mutationDialog, submitCreateEntry, submitRenameSelectedEntry]);
 
     const selectEntry = useCallback((entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean }) => {
         folderSelection.selectEntry(entry, options);
@@ -519,9 +568,9 @@ export function FolderPanel(props: FolderPanelProps) {
                     onCopyRelativePath={() => void copySelectedPath('relative')}
                     onReveal={() => void revealSelectedPath()}
                     canMutate={canMutateEntries}
-                    onCreateFile={() => void createEntry('file')}
-                    onCreateFolder={() => void createEntry('directory')}
-                    onRename={() => void renameSelectedEntry()}
+                    onCreateFile={() => requestCreateEntry('file')}
+                    onCreateFolder={() => requestCreateEntry('directory')}
+                    onRename={() => requestRenameSelectedEntry()}
                 />
             )}
             {error && <div className="folder-error">{error}</div>}
@@ -567,7 +616,9 @@ export function FolderPanel(props: FolderPanelProps) {
             <FolderPanelOverlays
                 pendingMove={pendingMove}
                 contextMenu={contextMenu}
+                mutationDialog={mutationDialog}
                 isMoving={isMoving}
+                isMutating={isMutating}
                 skipMoveConfirmChecked={skipMoveConfirmChecked}
                 canReveal={Boolean(source.revealPath)}
                 canRefresh={Boolean(rootPath)}
@@ -583,9 +634,11 @@ export function FolderPanel(props: FolderPanelProps) {
                 onCopyContextRelativePath={() => { setContextMenu(null); void copySelectedPath('relative'); }}
                 onRevealContextPath={() => { setContextMenu(null); void revealSelectedPath(); }}
                 onRefreshContext={() => { setContextMenu(null); void refreshVisibleTree(); }}
-                onCreateContextFile={() => { setContextMenu(null); void createEntry('file'); }}
-                onCreateContextFolder={() => { setContextMenu(null); void createEntry('directory'); }}
-                onRenameContextPath={() => { setContextMenu(null); void renameSelectedEntry(); }}
+                onCreateContextFile={() => requestCreateEntry('file')}
+                onCreateContextFolder={() => requestCreateEntry('directory')}
+                onRenameContextPath={() => requestRenameSelectedEntry()}
+                onCancelMutation={() => setMutationDialog(null)}
+                onSubmitMutation={submitMutation}
             />
         </div>
     );

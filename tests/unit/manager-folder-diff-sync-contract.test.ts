@@ -22,7 +22,7 @@ test('DiffPanel treats FolderPanel root as a first-class repo candidate', () => 
     assert.ok(diffPanelSource.includes('function folderRepoCandidate'), 'DiffPanel must label the FolderPanel root as a repo candidate');
     assert.ok(diffPanelSource.includes('candidates.unshift(folderRepoCandidate(folderRootPath))'), 'FolderPanel root must be preferred before instance/home candidates');
     assert.ok(diffPanelSource.includes('const folderRoot = folderRootPath'), 'repo selection must inspect the shared FolderPanel root');
-    assert.ok(diffPanelSource.includes('const nextRoot = folderRoot ?? requestedRoot'), 'FolderPanel root must override a stale valid DiffPanel root');
+    assert.ok(diffPanelSource.includes('const nextRoot = requestedRoot ?? folderRoot'), 'manual or pinned DiffPanel root must override the FolderPanel root after an explicit repo choice');
 });
 
 test('DiffPanel and FolderPanel synchronize files but keep root changes one-way', () => {

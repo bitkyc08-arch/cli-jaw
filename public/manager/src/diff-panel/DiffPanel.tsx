@@ -195,7 +195,7 @@ export function DiffPanel(props: DiffPanelProps) {
             const folderRoot = folderRootPath
                 ? roots.find(root => isPathInsideRoot(folderRootPath, root.root))?.root ?? null
                 : null;
-            const nextRoot = folderRoot ?? requestedRoot ?? (current && roots.some(root => root.root === current) ? current : null) ?? roots[0]?.root ?? null;
+            const nextRoot = requestedRoot ?? folderRoot ?? (current && roots.some(root => root.root === current) ? current : null) ?? roots[0]?.root ?? null;
             if (nextRoot !== repoRootPath) onRepoRootChange?.(nextRoot);
             return nextRoot;
         });

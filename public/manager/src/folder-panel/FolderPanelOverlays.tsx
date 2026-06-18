@@ -1,11 +1,21 @@
 import type { FolderPanelEntry } from './folder-panel-types';
 import { FolderContextMenu } from './FolderContextMenu';
 import { FolderMoveConfirmDialog } from './FolderMoveConfirmDialog';
+import { FolderMutationDialog } from './FolderMutationDialog';
+
+export type FolderMutationDialogState = {
+    kind: 'file' | 'directory' | 'rename';
+    title: string;
+    initialName: string;
+    confirmLabel: string;
+};
 
 type FolderPanelOverlaysProps = {
     pendingMove: { source: FolderPanelEntry; target: FolderPanelEntry } | null;
     contextMenu: { entry: FolderPanelEntry; x: number; y: number } | null;
+    mutationDialog: FolderMutationDialogState | null;
     isMoving: boolean;
+    isMutating: boolean;
     skipMoveConfirmChecked: boolean;
     canReveal: boolean;
     canRefresh: boolean;
@@ -20,6 +30,8 @@ type FolderPanelOverlaysProps = {
     onCreateContextFile: () => void;
     onCreateContextFolder: () => void;
     onRenameContextPath: () => void;
+    onCancelMutation: () => void;
+    onSubmitMutation: (name: string) => void;
 };
 
 export function FolderPanelOverlays(props: FolderPanelOverlaysProps) {
@@ -51,6 +63,16 @@ export function FolderPanelOverlays(props: FolderPanelOverlaysProps) {
                     onCreateFile={props.onCreateContextFile}
                     onCreateFolder={props.onCreateContextFolder}
                     onRename={props.onRenameContextPath}
+                />
+            )}
+            {props.mutationDialog && (
+                <FolderMutationDialog
+                    title={props.mutationDialog.title}
+                    initialName={props.mutationDialog.initialName}
+                    confirmLabel={props.mutationDialog.confirmLabel}
+                    busy={props.isMutating}
+                    onCancel={props.onCancelMutation}
+                    onSubmit={props.onSubmitMutation}
                 />
             )}
         </>

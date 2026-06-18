@@ -114,6 +114,7 @@ export type GitBridgeApi = {
 export type FolderBridgeApi = {
     getDefaultRoot: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     pickFolder: () => Promise<{ ok: boolean; path?: string; error?: string }>;
+    authorizeRoot?: (rootPath: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
     registerGitWorktreeRoot?: (folderPanelRoot: string, repoRoot: string | undefined, worktreePath: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
     listDir: (dirPath: string, depth?: number) => Promise<{ ok: boolean; entries?: Array<{ name: string; path: string; kind: 'file' | 'directory'; size: number }>; error?: string }>;
     readFile: (filePath: string) => Promise<{ ok: boolean; content?: string; truncated?: boolean; binary?: boolean; error?: string }>;
