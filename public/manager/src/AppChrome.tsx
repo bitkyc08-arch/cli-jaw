@@ -139,7 +139,7 @@ export function AppChrome(props: AppChromeProps) {
                         onSelectTab={props.handleTabChange} onToggleActivityFromMobile={props.activityUnreadOpenAndMarkSeen} drawerProfileFilters={props.drawerProfileFilters}
                         dashboardSettingsUi={props.dashboardSettingsUi} titleSupport={props.titleSupport} onDashboardSettingsPatch={props.handleDashboardSettingsPatch}
                         viewMode={props.view.viewMode} onViewModeChange={props.view.setViewMode}
-                        port={props.selectedInstance?.port ?? 0} workingDir={props.view.rightFolderRootPath ?? ''} />
+                        port={Number(window.location.port) || 3457} workingDir={props.view.rightFolderRootPath || (typeof props.selectedInstance?.workingDir === 'string' ? props.selectedInstance.workingDir : '') || ''} />
                 )}
                 activityHeight={props.view.activityDockCollapsed ? 48 : props.view.activityDockHeight}
             />

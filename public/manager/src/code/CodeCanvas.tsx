@@ -134,7 +134,8 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
         try {
             let sessionId = activeSessionId;
             if (!sessionId) {
-                const session = await client.createSession(workingDir, model);
+                const cwd = workingDir || '/tmp';
+                const session = await client.createSession(cwd, model);
                 sessionId = session.sessionId;
                 setActiveSessionId(sessionId);
             }
@@ -175,11 +176,11 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
 
     const modelOptions = DEFAULT_MODELS[provider] ?? DEFAULT_MODELS['anthropic'] ?? [];
 
-    if (!port || !workingDir) {
+    if (!port) {
         return (
             <div className="code-canvas">
                 <div className="code-transcript-empty">
-                    <p>Select an instance to start Code mode.</p>
+                    <p>Server not available.</p>
                 </div>
             </div>
         );
