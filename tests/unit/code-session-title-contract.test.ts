@@ -20,6 +20,16 @@ test('code session stored rows use JWC title and first-message fallback instead 
     assert.ok(list.includes('storedSessionMeta'), 'cwd should move to secondary metadata');
 });
 
+test('code session live rows do not use cwd basename as primary title', () => {
+    const list = read('public/manager/src/code/CodeSessionList.tsx');
+
+    assert.ok(list.includes('liveSessionTitle'), 'CodeSessionList must centralize live title fallback');
+    assert.ok(list.includes("session.title?.trim()"), 'live title must prefer returned JWC title when available');
+    assert.ok(list.includes("session.sessionId.slice(0, 12)"), 'live title must fall back to stable session id prefix, not cwd');
+    assert.ok(list.includes('liveSessionMeta'), 'live cwd should render as secondary metadata');
+    assert.equal(list.includes('<span className="code-session-cwd">{cwdLabel(s.cwd)}</span>'), false, 'live session primary title must not be cwd basename');
+});
+
 test('code session list searches title firstMessage cwd and session id, then sorts before limit', () => {
     const list = read('public/manager/src/code/CodeSessionList.tsx');
 

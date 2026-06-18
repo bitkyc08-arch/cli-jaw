@@ -37,6 +37,15 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
     useEffect(() => { void refresh(); }, [refresh]);
 
     const cwdLabel = (cwd: string) => cwd.split('/').pop() || cwd;
+    const liveSessionTitle = (session: CodeSession) => session.title?.trim()
+        || session.sessionId.slice(0, 12)
+        || 'Untitled session';
+    const liveSessionMeta = (session: CodeSession) => cwdLabel(session.cwd);
+    const liveSessionSearchText = (session: CodeSession) => [
+        session.sessionId,
+        session.title ?? '',
+        session.cwd,
+    ].join(' ').toLowerCase();
     const storedSessionTitle = (session: StoredSession) => session.title?.trim()
         || session.firstMessage?.replace(/\s+/g, ' ').trim()
         || session.sessionId.slice(0, 12)
@@ -86,12 +95,13 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                 <>
                     {sessions.length > 0 && (
                         <ul className="code-session-list-items">
-                            {sessions.filter(s => !search || cwdLabel(s.cwd).toLowerCase().includes(search.toLowerCase())).map(s => (
+                            {sessions.filter(s => !search || liveSessionSearchText(s).includes(search.toLowerCase())).map(s => (
                                 <li key={s.sessionId}>
                                     <button type="button"
                                         className={`code-session-item ${s.sessionId === activeSessionId ? 'active' : ''}`}
                                         onClick={() => onSelectSession(s.sessionId)}>
-                                        <span className="code-session-cwd">{cwdLabel(s.cwd)}</span>
+                                        <span className="code-session-cwd">{liveSessionTitle(s)}</span>
+                                        <span className="code-session-meta">{liveSessionMeta(s)}</span>
                                         <span className={`code-session-status code-session-status-${s.status}`}>{s.status}</span>
                                     </button>
                                 </li>
