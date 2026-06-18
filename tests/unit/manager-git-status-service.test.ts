@@ -13,8 +13,8 @@ test('git status parser maps staged, unstaged, untracked, ignored, conflict, and
         '?? new.ts',
         '!! ignored.log',
         'UU conflict.ts',
-        'R  renamed-new.ts',
-        'renamed-old.ts',
+        'R  renamed-old.ts',
+        'renamed-new.ts',
         '',
     ].join('\0'));
 

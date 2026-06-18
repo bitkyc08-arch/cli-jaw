@@ -112,6 +112,7 @@ export function parseGitStatusPorcelain(repoRoot: string, output: string): Pick<
         let repoRelativePath = firstPath;
         const kind = statusKind(status);
         if (kind === 'renamed' && index + 1 < parts.length) {
+            repoRelativePath = parts[index + 1] ?? firstPath;
             index += 1;
         }
         const absolutePath = resolve(repoRoot, repoRelativePath);
