@@ -67,6 +67,7 @@ export function FolderPanelOverlays(props: FolderPanelOverlaysProps) {
             )}
             {props.mutationDialog && (
                 <FolderMutationDialog
+                    key={`${props.mutationDialog.kind}:${props.mutationDialog.initialName}`}
                     title={props.mutationDialog.title}
                     initialName={props.mutationDialog.initialName}
                     confirmLabel={props.mutationDialog.confirmLabel}
