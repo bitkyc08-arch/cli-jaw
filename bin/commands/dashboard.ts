@@ -8,8 +8,6 @@ import { DASHBOARD_DEFAULT_PORT, MANAGED_INSTANCE_PORT_COUNT, MANAGED_INSTANCE_P
 import { shouldOpenBrowserByDefault } from '../../src/core/browser-open-default.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { asArray, asRecord, fieldString, type JsonRecord } from '../_http-client.js';
-import { handleMemory } from './dashboard-memory.js';
-import { handleDashboardChat } from './dashboard-chat.js';
 import { resolveBundledNodePath } from '../../src/core/runtime-path.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -94,12 +92,16 @@ switch (subcommand) {
     case 'service':
         await handleService();
         break;
-    case 'memory':
+    case 'memory': {
+        const { handleMemory } = await import('./dashboard-memory.js');
         await handleMemory(process.argv.slice(4));
         break;
-    case 'chat':
+    }
+    case 'chat': {
+        const { handleDashboardChat } = await import('./dashboard-chat.js');
         await handleDashboardChat(process.argv.slice(4));
         break;
+    }
     default:
         console.error(`  ❌ Unknown dashboard command: ${subcommand}`);
         console.error('  Run jaw dashboard --help for usage.');
