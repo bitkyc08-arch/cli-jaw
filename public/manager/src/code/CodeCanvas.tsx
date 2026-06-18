@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
-import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
+import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo, CodeSessionReplayEvent } from './code-session-client';
 import { CodeCommandPopup } from './CodeCommandPopup';
 import { CodeComposer } from './CodeComposer';
 import { CodePermissionQueue } from './CodePermissionQueue';
@@ -18,6 +18,51 @@ type CodeCanvasProps = {
     workingDir: string;
     onWorkingDirChange?: (path: string | null) => void;
 };
+
+function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): TranscriptEntry[] {
+    const entries: TranscriptEntry[] = [];
+    for (const event of events) {
+        const update = event.update ?? {};
+        if (event.event === 'code_user_message_chunk') {
+            const content = update['content'] as { type?: string; text?: string } | undefined;
+            const text = String(content?.text ?? update['text'] ?? '');
+            if (text) entries.push({ role: 'user', text });
+        } else if (event.event === 'code_agent_message_chunk') {
+            const content = update['content'] as { type?: string; text?: string } | undefined;
+            const text = String(content?.text ?? update['text'] ?? '');
+            if (!text) continue;
+            const last = entries[entries.length - 1];
+            if (last?.role === 'assistant') last.text += text;
+            else entries.push({ role: 'assistant', text });
+        } else if (event.event === 'code_agent_thought_chunk') {
+            const content = update['content'] as { type?: string; text?: string } | undefined;
+            const text = String(content?.text ?? update['text'] ?? '');
+            if (!text) continue;
+            const last = entries[entries.length - 1];
+            if (last?.role === 'thinking') last.text += text;
+            else entries.push({ role: 'thinking', text });
+        } else if (event.event === 'code_tool_call') {
+            const title = String(update['title'] ?? update['toolName'] ?? 'tool');
+            const toolCallId = String(update['toolCallId'] ?? '');
+            const status = String(update['status'] ?? 'pending');
+            const content = (update['content'] ?? []) as ToolContent[];
+            entries.push({ role: 'tool', text: title, toolName: title, toolCallId, toolContent: content, toolStatus: status === 'completed' || status === 'failed' ? 'done' : 'running' });
+        } else if (event.event === 'code_tool_call_update') {
+            const toolCallId = String(update['toolCallId'] ?? '');
+            const status = String(update['status'] ?? '');
+            const content = (update['content'] ?? []) as ToolContent[];
+            const rawOutput = update['rawOutput'];
+            const idx = findLastToolMessageIndex(entries, toolCallId);
+            if (idx < 0) continue;
+            const entry = { ...entries[idx] };
+            if (status === 'completed' || status === 'failed') entry.toolStatus = 'done';
+            if (content.length > 0) entry.toolContent = content;
+            if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
+            entries[idx] = entry;
+        }
+    }
+    return entries;
+}
 
 export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
@@ -372,6 +417,10 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     try {
                         const session = await client.loadSession(id, cwd);
                         if (session.title) setSessionTitle(session.title);
+                        const replayFallback = replayEventsToTranscriptEntries(session.replayEvents ?? []);
+                        if (replayFallback.length > 0) {
+                            setMessages(prev => prev.length > 0 ? prev : replayFallback);
+                        }
                     } catch (err) {
                         if (activeSessionIdRef.current === id) {
                             activeSessionIdRef.current = null;

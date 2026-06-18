@@ -22,6 +22,13 @@ export interface CodeSessionInfo {
     createdAt: number;
     lastUsedAt: number;
     title?: string;
+    replayEvents?: CodeSessionReplayEvent[];
+}
+
+export interface CodeSessionReplayEvent {
+    event: string;
+    sessionId: string;
+    update: Record<string, unknown>;
 }
 
 export interface StoredCodeSessionInfo {

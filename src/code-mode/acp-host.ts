@@ -13,7 +13,7 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { publish } from '../core/event-bus.js';
 import { loadSettings } from '../core/config.js';
-import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionTransport, type PendingPermission, type PromptAccepted, type StoredCodeSessionInfo } from './types.js';
+import { DEFAULT_CODE_SETTINGS, type CodeSessionInfo, type CodeSessionReplayEvent, type CodeSessionTransport, type PendingPermission, type PromptAccepted, type StoredCodeSessionInfo } from './types.js';
 
 const PROTOCOL_VERSION = 1;
 const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
@@ -94,6 +94,7 @@ class AcpHost implements CodeSessionTransport {
     #pendingRpc = new Map<number | string, Deferred>();
     #sessions = new Map<string, CodeSessionInfo>();
     #permissions = new Map<string, PendingPermission & { respond: (result: Record<string, unknown>) => void }>();
+    #replayCaptures = new Map<string, Set<CodeSessionReplayEvent[]>>();
     #initialized: Promise<void> | null = null;
     #idleReaper: ReturnType<typeof setInterval> | null = null;
 
@@ -199,10 +200,17 @@ class AcpHost implements CodeSessionTransport {
         const sessionId = String(params['sessionId'] ?? '');
         const update = (params['update'] ?? {}) as Record<string, unknown>;
         const kind = String(update['sessionUpdate'] ?? 'unknown');
+        const event = `code_${kind}`;
         const session = this.#sessions.get(sessionId);
         if (session) session.lastUsedAt = Date.now();
         // Sanitized public lane (113.2 §5); raw payload stays host-side.
-        publish('jwc', `code_${kind}`, { sessionId, update });
+        publish('jwc', event, { sessionId, update });
+        const captures = this.#replayCaptures.get(sessionId);
+        if (captures) {
+            for (const capture of captures) {
+                capture.push({ event, sessionId, update });
+            }
+        }
     }
 
     #onPermissionRequest(rpcId: number | string, params: Record<string, unknown>): void {
@@ -244,9 +252,22 @@ class AcpHost implements CodeSessionTransport {
     async loadSession(sessionId: string, cwd: string): Promise<CodeSessionInfo> {
         await this.#ensureChild();
         const stored = await this.#findStoredSession(sessionId, cwd);
-        await this.#request('session/load', { sessionId, cwd, mcpServers: [] });
+        const replayCapture: CodeSessionReplayEvent[] = [];
+        let captures = this.#replayCaptures.get(sessionId);
+        if (!captures) {
+            captures = new Set<CodeSessionReplayEvent[]>();
+            this.#replayCaptures.set(sessionId, captures);
+        }
+        captures.add(replayCapture);
+        try {
+            await this.#request('session/load', { sessionId, cwd, mcpServers: [] });
+        } finally {
+            captures.delete(replayCapture);
+            if (captures.size === 0) this.#replayCaptures.delete(sessionId);
+        }
         const info: CodeSessionInfo = { sessionId, cwd, status: 'idle', createdAt: Date.now(), lastUsedAt: Date.now() };
         if (stored?.title) info.title = stored.title;
+        if (replayCapture.length > 0) info.replayEvents = replayCapture;
         this.#sessions.set(sessionId, info);
         publish('jwc', 'code_session_loaded', { sessionId, cwd });
         return info;

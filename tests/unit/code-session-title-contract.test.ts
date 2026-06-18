@@ -46,8 +46,30 @@ test('code session list searches title firstMessage cwd and session id, then sor
 
 test('code canvas accepts replay user chunks and loads stored sessions without dropping replayed transcript', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const types = read('src/code-mode/types.ts');
+    const host = read('src/code-mode/acp-host.ts');
+    const client = read('public/manager/src/code/code-session-client.ts');
 
+    assert.ok(types.includes('export interface CodeSessionReplayEvent'), 'backend session type must expose replay event fallback');
+    assert.ok(types.includes('replayEvents?: CodeSessionReplayEvent[]'), 'backend session info must return replay events when captured');
+    assert.ok(client.includes('export interface CodeSessionReplayEvent'), 'frontend client type must expose replay event fallback');
+    assert.ok(client.includes('replayEvents?: CodeSessionReplayEvent[]'), 'frontend session type must carry replay events');
+    assert.ok(host.includes('#replayCaptures = new Map<string, Set<CodeSessionReplayEvent[]>>()'), 'ACP host must support concurrent same-session replay captures');
+    assert.ok(host.includes('const event = `code_${kind}`'), 'ACP host must reuse the same event name for publish and replay capture');
+    assert.ok(host.includes('for (const capture of captures)'), 'ACP host must append replay events to all active load captures');
+    assert.ok(host.includes('capture.push({ event, sessionId, update })'), 'ACP host must capture replay update payloads');
+    assert.ok(host.includes('const replayCapture: CodeSessionReplayEvent[] = []'), 'loadSession must create a per-call replay capture');
+    assert.ok(host.includes('captures.add(replayCapture)'), 'loadSession must register replay capture before session/load');
+    assert.ok(host.includes('captures.delete(replayCapture)'), 'loadSession must remove replay capture in cleanup');
+    assert.ok(host.includes('if (captures.size === 0) this.#replayCaptures.delete(sessionId)'), 'loadSession must delete empty capture sets');
+    assert.ok(host.includes('if (replayCapture.length > 0) info.replayEvents = replayCapture'), 'loadSession must return captured replay fallback events');
+    assert.ok(canvas.includes('function replayEventsToTranscriptEntries'), 'CodeCanvas must convert response replay fallback events into transcript entries');
     assert.ok(canvas.includes("kind === 'code_user_message_chunk'"), 'CodeCanvas must handle replayed user message chunks');
+    assert.ok(canvas.includes("event.event === 'code_user_message_chunk'"), 'replay fallback must handle replayed user chunks');
+    assert.ok(canvas.includes("event.event === 'code_agent_message_chunk'"), 'replay fallback must handle assistant chunks');
+    assert.ok(canvas.includes("event.event === 'code_agent_thought_chunk'"), 'replay fallback must handle thought chunks');
+    assert.ok(canvas.includes("event.event === 'code_tool_call'"), 'replay fallback must handle tool calls');
+    assert.ok(canvas.includes("event.event === 'code_tool_call_update'"), 'replay fallback must handle tool call updates');
     assert.ok(canvas.includes("role: 'user', text"), 'replayed user chunks must render as user transcript entries');
 
     const loadBlockStart = canvas.indexOf('onLoadSession={(id, cwd) => {');
@@ -66,6 +88,9 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.equal(loadBlock.indexOf("setSessionTitle('')", loadIndex), -1, 'success path must not clear loaded title after load');
     assert.ok(loadBlock.includes('const session = await client.loadSession(id, cwd)'), 'load handler must read returned session metadata');
     assert.ok(loadBlock.includes('if (session.title) setSessionTitle(session.title)'), 'load handler must preserve returned JWC title in header');
+    assert.ok(loadBlock.includes('const replayFallback = replayEventsToTranscriptEntries(session.replayEvents ?? [])'), 'load handler must convert returned replay fallback events');
+    assert.ok(loadBlock.includes('setMessages(prev => prev.length > 0 ? prev : replayFallback)'), 'replay fallback must only apply when SSE did not already populate transcript');
+    assert.equal(loadBlock.includes('messages.length'), false, 'load handler must not read stale messages.length after await');
     assert.ok(loadBlock.includes('if (activeSessionIdRef.current === id)'), 'load failure must only restore state when failed id is still active');
 });
 
