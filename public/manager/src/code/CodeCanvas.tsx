@@ -71,6 +71,12 @@ function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]): Tran
     return entries;
 }
 
+function isEditableKeyboardTarget(target: EventTarget | null): boolean {
+    if (!(target instanceof HTMLElement)) return false;
+    const tagName = target.tagName.toLowerCase();
+    return tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable;
+}
+
 export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [codeWorkingDir, setCodeWorkingDir] = useState(workingDir);
@@ -113,9 +119,51 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         });
     }, []);
 
+    const scrollTranscriptBy = useCallback((top: number, behavior: ScrollBehavior = 'smooth') => {
+        window.requestAnimationFrame(() => {
+            const node = transcriptRef.current;
+            if (!node) return;
+            node.scrollBy({ top, behavior });
+        });
+    }, []);
+
+    const scrollTranscriptToTop = useCallback((behavior: ScrollBehavior = 'smooth') => {
+        window.requestAnimationFrame(() => {
+            const node = transcriptRef.current;
+            if (!node) return;
+            node.scrollTo({ top: 0, behavior });
+        });
+    }, []);
+
     useEffect(() => {
         scrollTranscriptToBottom(messages.length > 1 ? 'smooth' : 'auto');
     }, [latestTranscriptFootprint, sending, scrollTranscriptToBottom]);
+
+    useEffect(() => {
+        const onWorkbenchKeyDown = (event: KeyboardEvent) => {
+            if (event.defaultPrevented || activePopup || event.metaKey || event.ctrlKey || event.altKey) return;
+            if (isEditableKeyboardTarget(event.target)) return;
+            const node = transcriptRef.current;
+            if (!node) return;
+            const key = event.key.toLowerCase();
+            const page = Math.max(160, Math.floor(node.clientHeight * 0.78));
+            if (key === 'd' || key === 'j' || event.key === 'PageDown') {
+                event.preventDefault();
+                scrollTranscriptBy(page);
+            } else if (key === 'u' || key === 'k' || event.key === 'PageUp') {
+                event.preventDefault();
+                scrollTranscriptBy(-page);
+            } else if (event.key === 'End') {
+                event.preventDefault();
+                scrollTranscriptToBottom('smooth');
+            } else if (event.key === 'Home') {
+                event.preventDefault();
+                scrollTranscriptToTop('smooth');
+            }
+        };
+        window.addEventListener('keydown', onWorkbenchKeyDown);
+        return () => window.removeEventListener('keydown', onWorkbenchKeyDown);
+    }, [activePopup, scrollTranscriptBy, scrollTranscriptToBottom, scrollTranscriptToTop]);
 
     useEffect(() => {
         if (activeSessionIdRef.current || activeSessionId) return;

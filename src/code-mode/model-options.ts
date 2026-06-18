@@ -8,6 +8,7 @@ export type JwcModelProvider = {
     id: string;
     models: string[];
     efforts: string[];
+    modelSource?: 'jwc-cache' | 'static-fallback';
 };
 
 export type JwcModelOptions = {
@@ -428,6 +429,11 @@ function providerCatalogModels(provider: string, modelCatalog: Map<string, strin
         : JWC_PROVIDER_MODEL_DEFAULTS[provider] ?? [];
 }
 
+function providerCatalogSource(provider: string, modelCatalog: Map<string, string[]>): NonNullable<JwcModelProvider['modelSource']> {
+    const cached = modelCatalog.get(provider);
+    return cached && cached.length > 0 ? 'jwc-cache' : 'static-fallback';
+}
+
 export function filterJwcModelUsageOrder(
     usageOrder: string[],
     providers: Pick<JwcModelProvider, 'id' | 'models'>[],
@@ -480,6 +486,7 @@ export function buildJwcModelOptions(
         id,
         models: providerCatalogModels(id, modelCatalog),
         efforts: JWC_PROVIDER_EFFORT_DEFAULTS[id] ?? [],
+        modelSource: providerCatalogSource(id, modelCatalog),
     }));
     const filteredUsageOrder = filterJwcModelUsageOrder(usageOrder, rawProviders);
     const providers = rawProviders.map(provider => ({

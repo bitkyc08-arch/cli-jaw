@@ -35,6 +35,7 @@ test('code command popup exposes dialog and provider inventory states', () => {
     assert.ok(popup.includes('aria-modal="true"'), 'popup must be modal to assistive tech');
     assert.ok(popup.includes("event.key === 'Escape'"), 'popup must close on Escape');
     assert.ok(popup.includes('modelOptions.providers.map'), 'provider popup must render returned provider inventory');
+    assert.ok(popup.includes('modelSourceLabel(entry.modelSource)'), 'provider popup must label whether models came from JWC cache or static fallback');
     assert.ok(popup.includes('modelOptions.degraded'), 'provider popup must explain degraded fallback');
     assert.ok(popup.includes('onRefreshProviders'), 'provider popup must expose refresh action');
     assert.ok(popup.includes('Provider add/login execution is next slice.'), 'provider popup must not overclaim add/login execution');
@@ -49,6 +50,7 @@ test('code command popup stages model selection before explicit Use now', () => 
     assert.ok(popup.includes('draftProvider'), 'model popup must stage provider selection');
     assert.ok(popup.includes('draftModel'), 'model popup must stage model selection');
     assert.ok(popup.includes('Search models'), 'model popup must expose search UI');
+    assert.ok(popup.includes('modelSourceLabel(draftProviderRecord?.modelSource)'), 'model popup must show selected provider model source');
     assert.ok(popup.includes('Use now'), 'model popup must expose explicit live switch action');
     assert.ok(popup.includes('onUseModel(draftProvider, draftModel)'), 'model popup must apply only through explicit Use now callback');
     assert.equal(popup.includes('onModelChange(event.target.value)'), false, 'model popup must not mutate session on select-only changes');
@@ -120,4 +122,17 @@ test('code command popup stays instance-independent', () => {
 
     assert.equal(popup.includes('selectedInstance'), false, 'popup must not depend on manager instance selection');
     assert.equal(canvas.includes('selectedInstance'), false, 'CodeCanvas popup routing must remain instance-independent');
+});
+
+test('code mode surfaces do not ship hardcoded foreign identity labels', () => {
+    const sources = [
+        read('public/manager/src/code/CodeCanvas.tsx'),
+        read('public/manager/src/code/CodeCommandPopup.tsx'),
+        read('public/manager/src/code/CodeWorkspaceHeader.tsx'),
+        read('public/manager/src/code/CodeSessionList.tsx'),
+    ].join('\n');
+
+    for (const forbidden of ['seounghyunlee', 'seunghyunlee', 'Seounghyunlee']) {
+        assert.equal(sources.includes(forbidden), false, `Code mode must not hardcode foreign identity ${forbidden}`);
+    }
 });

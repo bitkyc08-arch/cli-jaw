@@ -50,7 +50,9 @@ test('code model options prefer JWC model cache over static provider defaults', 
     );
 
     assert.deepEqual(options.providers.find(provider => provider.id === 'cursor')?.models, ['cursor-cache-b', 'cursor-cache-a']);
+    assert.equal(options.providers.find(provider => provider.id === 'cursor')?.modelSource, 'jwc-cache');
     assert.deepEqual(options.providers.find(provider => provider.id === 'xai')?.models, ['grok-cache-a']);
+    assert.equal(options.providers.find(provider => provider.id === 'xai')?.modelSource, 'jwc-cache');
     assert.deepEqual(options.usageOrder, ['cursor/cursor-cache-b', 'xai/grok-cache-a']);
     assert.equal(options.defaultProvider, 'cursor');
     assert.equal(options.defaultModel, 'cursor-cache-b');
@@ -66,6 +68,7 @@ test('code model options keep static fallback for missing or empty cache rows', 
     );
 
     assert.deepEqual(options.providers[0]?.models.slice(0, 3), ['composer-2.5', 'claude-sonnet-4-6', 'gpt-5.4']);
+    assert.equal(options.providers[0]?.modelSource, 'static-fallback');
     assert.equal(options.defaultProvider, 'cursor');
     assert.equal(options.defaultModel, 'composer-2.5');
 });

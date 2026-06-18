@@ -175,6 +175,16 @@
 .code-session-list-empty, .code-session-list-loading {
     font-size: 11px; color: var(--text-tertiary); padding: 12px 4px;
 }
+.code-session-list-error {
+    margin: 0 0 6px;
+    padding: 7px 8px;
+    border: 1px solid color-mix(in srgb, var(--status-error) 38%, var(--border-default));
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--status-error) 10%, var(--bg-panel));
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.35;
+}
 
 .code-workspace-header {
     border-bottom: 1px solid var(--border-default);

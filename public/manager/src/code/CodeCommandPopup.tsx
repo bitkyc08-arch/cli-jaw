@@ -37,6 +37,10 @@ function titleForPopup(kind: CodeCommandPopupKind): string {
     return 'Settings';
 }
 
+function modelSourceLabel(source: string | undefined): string {
+    return source === 'jwc-cache' ? 'JWC cache' : 'static fallback';
+}
+
 export function CodeCommandPopup({
     popupKind,
     command,
@@ -170,7 +174,7 @@ export function CodeCommandPopup({
                                     disabled={disabled}
                                 >
                                     <span className="code-provider-name">{entry.id}</span>
-                                    <span className="code-provider-meta">{entry.models.length} models</span>
+                                    <span className="code-provider-meta">{entry.models.length} models · {modelSourceLabel(entry.modelSource)}</span>
                                 </button>
                             ))}
                         </div>
@@ -243,7 +247,7 @@ export function CodeCommandPopup({
                             <div className="code-model-list" role="list" aria-label="Models">
                                 <div className="code-model-list-head">
                                     <strong>{draftProviderRecord?.id ?? 'No provider'}</strong>
-                                    <span>{visibleModels.length} models</span>
+                                    <span>{visibleModels.length} models · {modelSourceLabel(draftProviderRecord?.modelSource)}</span>
                                 </div>
                                 {visibleModels.length === 0 ? (
                                     <p className="code-popup-note">No models match this search.</p>

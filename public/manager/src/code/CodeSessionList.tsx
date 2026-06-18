@@ -16,28 +16,44 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
     const [sessions, setSessions] = useState<CodeSession[]>([]);
     const [storedSessions, setStoredSessions] = useState<StoredSession[]>([]);
     const [loading, setLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
     const [search, setSearch] = useState('');
     const [viewMode, setViewMode] = useState<SessionViewMode>('all');
 
     const refresh = useCallback(async () => {
         setLoading(true);
-        try {
-            const storedOptions = viewMode === 'cwd'
-                ? { scope: 'cwd' as const, cwd: workingDir }
-                : { scope: 'all' as const };
-            const [live, stored] = await Promise.all([
-                client.listSessions(),
-                client.listStoredSessions(storedOptions).catch(() => []),
-            ]);
+        setLoadError('');
+        const errorText = (err: unknown) => err instanceof Error ? err.message : String(err);
+        const storedOptions = viewMode === 'cwd'
+            ? { scope: 'cwd' as const, cwd: workingDir }
+            : { scope: 'all' as const };
+        const [liveResult, storedResult] = await Promise.allSettled([
+            client.listSessions(),
+            client.listStoredSessions(storedOptions),
+        ]);
+        const errors: string[] = [];
+        if (liveResult.status === 'fulfilled') {
+            const live = liveResult.value;
             setSessions(live.filter(s => s.status !== 'closed'));
             const liveIds = new Set(live.map(s => s.sessionId));
-            setStoredSessions(stored.filter(s => !liveIds.has(s.sessionId)));
-        } catch {
+            if (storedResult.status === 'fulfilled') {
+                setStoredSessions(storedResult.value.filter(s => !liveIds.has(s.sessionId)));
+            } else {
+                setStoredSessions([]);
+                errors.push(`History: ${errorText(storedResult.reason)}`);
+            }
+        } else {
             setSessions([]);
-            setStoredSessions([]);
-        } finally {
-            setLoading(false);
+            errors.push(`Live: ${errorText(liveResult.reason)}`);
+            if (storedResult.status === 'fulfilled') {
+                setStoredSessions(storedResult.value);
+            } else {
+                setStoredSessions([]);
+                errors.push(`History: ${errorText(storedResult.reason)}`);
+            }
         }
+        if (errors.length > 0) setLoadError(errors.join(' · '));
+        setLoading(false);
     }, [client, viewMode, workingDir]);
 
     useEffect(() => { void refresh(); }, [refresh]);
@@ -85,9 +101,11 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
         else groups.push({ cwd: session.cwd, sessions: [session] });
         return groups;
     }, []);
-    const emptyText = viewMode === 'cwd'
-        ? 'No sessions for this cwd. Switch to All to browse global history.'
-        : 'No JWC sessions found.';
+    const emptyText = loadError
+        ? 'Session data could not fully load.'
+        : viewMode === 'cwd'
+            ? 'No sessions for this cwd. Switch to All to browse global history.'
+            : 'No JWC sessions found.';
 
     return (
         <div className="code-session-list">
@@ -101,6 +119,7 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                 <button type="button" className={`code-session-view-btn${viewMode === 'grouped' ? ' active' : ''}`} onClick={() => setViewMode('grouped')}>Group</button>
             </div>
             {viewMode === 'cwd' && <div className="code-session-view-hint">{cwdLabel(workingDir)}</div>}
+            {loadError && <div className="code-session-list-error" role="status">{loadError}</div>}
             {(sessions.length + storedSessions.length) > 3 && (
                 <input
                     className="code-session-search"

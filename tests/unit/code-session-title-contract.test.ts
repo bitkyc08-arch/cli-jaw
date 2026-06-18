@@ -56,6 +56,10 @@ test('code session list defaults to global JWC catalog and exposes explicit cwd 
     assert.ok(list.includes("client.listStoredSessions(storedOptions)"), 'session list must use explicit stored session options');
     assert.ok(list.includes("scope: 'cwd' as const, cwd: workingDir"), 'cwd mode must request cwd-scoped sessions explicitly');
     assert.ok(list.includes("scope: 'all' as const"), 'all/grouped modes must request the global JWC catalog');
+    assert.ok(list.includes('Promise.allSettled'), 'session list must not collapse partial live/history load failures into a fake empty state');
+    assert.ok(list.includes('const [loadError, setLoadError]'), 'session list must keep visible load error state');
+    assert.ok(list.includes('code-session-list-error'), 'session list must render load errors in the sidebar');
+    assert.ok(list.includes('Session data could not fully load.'), 'empty state must distinguish load failure from real empty history');
     for (const label of ['All', 'This cwd', 'Group']) {
         assert.ok(list.includes(`>${label}</button>`), `session list must expose ${label} control`);
     }
@@ -193,6 +197,10 @@ test('code transcript preserves failed tool state and remains scrollable after r
     assert.ok(transcript.includes('aria-live="polite"'), 'transcript must announce appended output politely');
     assert.ok(transcript.includes('tabIndex={0}'), 'transcript must be keyboard focusable for scroll keys');
     assert.ok(transcript.includes('function handleTranscriptKeyDown'), 'transcript must own keyboard scroll handling');
+    assert.ok(canvas.includes('window.addEventListener(\'keydown\', onWorkbenchKeyDown)'), 'CodeCanvas must provide workbench-level scroll keys when transcript is not focused');
+    assert.ok(canvas.includes('isEditableKeyboardTarget(event.target)'), 'workbench scroll keys must not steal composer input');
+    assert.ok(canvas.includes("key === 'd' || key === 'j' || event.key === 'PageDown'"), 'workbench scroll keys must include d/j/PageDown');
+    assert.ok(canvas.includes("event.key === 'Home'"), 'workbench scroll keys must include Home');
     for (const token of ["key === 'd'", "key === 'j'", "event.key === 'PageDown'", "event.key === 'End'"]) {
         assert.ok(transcript.includes(token), `transcript keyboard handler must include ${token}`);
     }
@@ -205,6 +213,7 @@ test('code transcript preserves failed tool state and remains scrollable after r
     assert.ok(css.includes('min-height: 0;'), 'code.css must include flex min-height containment');
     assert.ok(css.includes('scroll-padding-bottom: 160px'), 'transcript must reserve bottom scroll space near composer/footer');
     assert.ok(css.includes('.code-transcript:focus-visible'), 'keyboard-focused transcript must show focus affordance');
+    assert.ok(css.includes('.code-session-list-error'), 'session list load errors must be styled');
     assert.ok(css.includes('.code-tool-failed'), 'failed tool rows must have distinct styling');
     assert.ok(css.includes('.code-tool-error-snippet'), 'failed tool error snippet must be styled');
 });

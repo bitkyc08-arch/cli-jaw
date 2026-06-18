@@ -29,6 +29,7 @@ export interface CodeModelProvider {
     id: string;
     models: string[];
     efforts: string[];
+    modelSource?: 'jwc-cache' | 'static-fallback';
 }
 
 export interface CodeModelOptions {
