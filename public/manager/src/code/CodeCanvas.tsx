@@ -295,7 +295,12 @@ export function CodeCanvas({ port, workingDir }: CodeCanvasProps) {
                     disabled={sending}
                     onProviderChange={p => { setProvider(p); setModel((DEFAULT_MODELS[p] ?? [])[0] ?? ''); }}
                     onModelChange={setModel}
-                    onEffortChange={setEffort}
+                    onEffortChange={e => {
+                        setEffort(e);
+                        if (activeSessionId) {
+                            void client.setSessionConfig(activeSessionId, 'thinking', e);
+                        }
+                    }}
                 />
             </div>
         </div>

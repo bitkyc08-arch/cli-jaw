@@ -13,6 +13,7 @@ export interface CodeSessionClient {
     cancelPrompt(sessionId: string): Promise<void>;
     closeSession(sessionId: string): Promise<void>;
     answerPermission(permissionId: string, optionId: string | null): Promise<void>;
+    setSessionConfig(sessionId: string, configId: string, valueId: string): Promise<void>;
 }
 
 export function createCodeSessionClient(port: number): CodeSessionClient {
@@ -53,6 +54,9 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async answerPermission(permissionId: string, optionId: string | null) {
             await request<unknown>('POST', `/api/code/permissions/${permissionId}`, { optionId });
+        },
+        async setSessionConfig(sessionId: string, configId: string, valueId: string) {
+            await request<unknown>('POST', `/api/code/sessions/${sessionId}/config`, { configId, valueId });
         },
     };
 }

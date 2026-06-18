@@ -73,6 +73,17 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
         );
     });
 
+    app.post('/api/code/sessions/:id/config', requireAuth, (req, res) => {
+        const body = req.body as Record<string, unknown> | undefined;
+        const configId = String(body?.['configId'] || '');
+        const valueId = String(body?.['valueId'] || '');
+        if (!configId) { res.status(400).json({ ok: false, error: 'configId required' }); return; }
+        acpHost.setSessionConfig(String(req.params['id']), configId, valueId).then(
+            () => res.json({ ok: true }),
+            (err: unknown) => res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) }),
+        );
+    });
+
     app.delete('/api/code/sessions/:id', requireAuth, (req, res) => {
         acpHost.closeSession(String(req.params['id'])).then(
             () => res.json({ ok: true }),

@@ -217,6 +217,10 @@ class AcpHost implements CodeSessionTransport {
         }
     }
 
+    async setSessionConfig(sessionId: string, configId: string, valueId: string): Promise<void> {
+        await this.#request('session/setConfigOption', { sessionId, configId, valueId });
+    }
+
     async closeSession(sessionId: string): Promise<void> {
         const session = this.#sessions.get(sessionId);
         if (!session) return;
