@@ -12,6 +12,7 @@ import { BottomPanel, type BottomPanelRenderControls } from './panels/BottomPane
 import { usePanelLayout } from './panels/PanelLayoutProvider';
 import { currentManagerSurface } from './panels/panel-capabilities';
 import type { RightPanelMode, BottomPanelTab } from './panels/types';
+import type { FolderPanelSessionState } from './folder-panel/folder-panel-session';
 
 const TerminalPanel = lazy(() => import('./terminal/TerminalPanel').then(m => ({ default: m.TerminalPanel })));
 const DiffPanel = lazy(() => import('./diff-panel/DiffPanel').then(m => ({ default: m.DiffPanel })));
@@ -171,6 +172,8 @@ function renderRightPanelContent(
     onDashboardSettingsPatch: (patch: Partial<DashboardRegistryUi>) => void,
     notesModel: NotesModelState,
     jawCeoPanel: ReactNode,
+    folderPanelSession: FolderPanelSessionState | null,
+    onFolderPanelSessionChange: (state: FolderPanelSessionState) => void,
 ): ReactNode {
     const fallback = <div style={{ padding: '12px', color: 'var(--text-dim)', fontSize: '12px' }}>Loading...</div>;
     switch (mode) {
@@ -183,7 +186,7 @@ function renderRightPanelContent(
             onPreviewFile={onPreviewFile}
             onSettingsPatch={onDashboardSettingsPatch}
         /></Suspense>;
-        case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onPreviewFile={onPreviewFile} /></Suspense>;
+        case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onPreviewFile={onPreviewFile} sessionState={folderPanelSession} onSessionStateChange={onFolderPanelSessionChange} /></Suspense>;
         case 'doc': return <Suspense fallback={fallback}><DocPanel filePath={previewFilePath ?? undefined} /></Suspense>;
         case 'browser': return <Suspense fallback={fallback}><BrowserPanel /></Suspense>;
         case 'ceo': return jawCeoPanel;
@@ -204,6 +207,7 @@ export function SidebarRailRouter(props: Props) {
     const panelLayout = usePanelLayout();
     const [rightPreviewFilePath, setRightPreviewFilePath] = useState<string | null>(null);
     const [rightFolderRootPath, setRightFolderRootPath] = useState<string | null>(props.dashboardSettingsUi.rightFolderRootPath);
+    const [folderPanelSession, setFolderPanelSession] = useState<FolderPanelSessionState | null>(null);
     const [, setRecentDroppedPaths] = useState<ElectronDroppedPathsEvent | null>(null);
     const [dropNotice, setDropNotice] = useState<string | null>(null);
     const [remindersView, setRemindersView] = useState<RemindersView>('matrix');
@@ -266,10 +270,18 @@ export function SidebarRailRouter(props: Props) {
                 ? current
                 : props.dashboardSettingsUi.rightFolderRootPath
         ));
+        setFolderPanelSession(current => (
+            current?.rootPath === props.dashboardSettingsUi.rightFolderRootPath
+                ? current
+                : null
+        ));
     }, [props.dashboardSettingsUi.rightFolderRootPath]);
 
     const updateRightFolderRoot = useCallback((path: string | null): void => {
-        setRightFolderRootPath(path);
+        setRightFolderRootPath(current => {
+            if (current !== path) setFolderPanelSession(null);
+            return path;
+        });
         props.onDashboardSettingsPatch({ rightFolderRootPath: path });
     }, [props.onDashboardSettingsPatch]);
 
@@ -305,7 +317,7 @@ export function SidebarRailRouter(props: Props) {
             onCloseDrawer={props.onCloseDrawer}
             rightPanelOpen={rightPanelOpen}
             rightPanelWidth={panelLayout.state.rightPanel.width}
-            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, handleRightPreviewFile, updateRightFolderRoot, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel)} /> : undefined}
+            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, handleRightPreviewFile, updateRightFolderRoot, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} /> : undefined}
             bottomPanelOpen={bottomPanelOpen}
             bottomPanelHeight={panelLayout.state.bottomPanel.height}
             bottomPanelContent={panelLayout.state.bottomPanel.tabs.length > 0 ? <BottomPanel renderTab={renderBottomTabContent} /> : undefined}

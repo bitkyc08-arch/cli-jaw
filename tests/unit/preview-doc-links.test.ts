@@ -36,13 +36,16 @@ test('DOC_PANEL_CODE_RE extensions exactly mirror DocPanel EXT_LANG keys', () =>
     );
 });
 
-test('code-file routing is capability-gated; md branch and fallback unchanged', () => {
+test('DocPanel routing is capability-gated for markdown and code files; fallback remains', () => {
     const fileLinks = read('public/js/render/file-links.ts');
     assert.ok(
         /DOC_PANEL_CODE_RE\.test\(path\) && parentSupportsDocPanel\(\)/.test(fileLinks),
         'code branch must require parent docPanel capability (browser-manager keeps Finder open)',
     );
-    assert.ok(fileLinks.includes('/\\.(md|mdx)$/i.test(path) && previewParentOrigin()'), 'md|mdx branch must stay un-gated');
+    assert.ok(
+        fileLinks.includes('/\\.(md|mdx)$/i.test(path) && parentSupportsDocPanel()'),
+        'md|mdx branch must require parent docPanel capability (browser-manager keeps Finder open)',
+    );
     assert.ok(fileLinks.includes('openLocalPath(path, link)'), 'openLocalPath fallback must remain');
     assert.ok(fileLinks.includes('ensurePreviewCapabilityListener()'), 'capability listener must be installed with delegation');
 });

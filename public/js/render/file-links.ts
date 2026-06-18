@@ -23,6 +23,18 @@ function isLocalFileHref(href: string): boolean {
     return LOCAL_FILE_HREF_RE.test(href);
 }
 
+function localPathFromAnchorHref(href: string): string | null {
+    if (isLocalFileHref(href)) return href;
+    try {
+        const parsed = new URL(href, window.location.href);
+        if (parsed.origin !== window.location.origin || parsed.pathname !== '/api/file/open') return null;
+        const path = parsed.searchParams.get('path') ?? '';
+        return isLocalFileHref(path) ? path : null;
+    } catch {
+        return null;
+    }
+}
+
 function isExternalHttpHref(href: string): boolean {
     try {
         const parsed = new URL(href, window.location.href);
@@ -214,7 +226,7 @@ async function handleFilePathClick(path: string, link: HTMLElement): Promise<voi
         setTimeout(() => link.classList.remove('opened'), 1500);
         return;
     }
-    if (/\.(md|mdx)$/i.test(path) && previewParentOrigin() && postPreviewOpenDoc(path)) {
+    if (/\.(md|mdx)$/i.test(path) && parentSupportsDocPanel() && previewParentOrigin() && postPreviewOpenDoc(path)) {
         link.classList.add('opened');
         setTimeout(() => link.classList.remove('opened'), 1500);
         return;
@@ -245,10 +257,11 @@ export function ensureFilePathDelegation(): void {
             ensureExternalAnchorTarget(anchor);
             return;
         }
-        if (anchor && isLocalFileHref(href)) {
+        const localPath = anchor ? localPathFromAnchorHref(href) : null;
+        if (anchor && localPath) {
             e.preventDefault();
             anchor.classList.add('file-path-link');
-            void handleFilePathClick(href, anchor);
+            void handleFilePathClick(localPath, anchor);
             return;
         }
 

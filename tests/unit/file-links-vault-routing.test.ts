@@ -21,8 +21,17 @@ test('file-links routes vault clicks through preview postMessage', () => {
     assert.ok(previewOrigin.includes("type: 'jaw-preview-open-notes'"), 'preview bridge message type must exist');
 });
 
-test('file-links keeps non-vault paths on /api/file/open fallback', () => {
+test('file-links keeps non-capable non-vault paths on /api/file/open fallback', () => {
     const fileLinks = read('public/js/render/file-links.ts');
     assert.ok(fileLinks.includes("apiJson<{ ok?: boolean; error?: string }>('/api/file/open'"), 'non-vault paths must still open via Finder');
     assert.ok(fileLinks.includes('openLocalPath(path, link)'), 'fallback must preserve existing openLocalPath behavior');
+    assert.ok(fileLinks.includes('parentSupportsDocPanel()'), 'DocPanel routing must be gated by parent capability');
+});
+
+test('file-links can resolve same-origin local-open anchors before Finder fallback', () => {
+    const fileLinks = read('public/js/render/file-links.ts');
+    assert.ok(fileLinks.includes('function localPathFromAnchorHref'), 'local-open href resolver must exist');
+    assert.ok(fileLinks.includes("parsed.pathname !== '/api/file/open'"), 'resolver must recognize the local open endpoint');
+    assert.ok(fileLinks.includes("parsed.searchParams.get('path')"), 'resolver must extract the target file path from query params');
+    assert.ok(fileLinks.includes('void handleFilePathClick(localPath, anchor)'), 'local-open anchors must route through handleFilePathClick before fallback');
 });

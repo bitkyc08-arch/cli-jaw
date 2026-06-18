@@ -9,11 +9,13 @@ import { FolderPanelToolbar } from './FolderPanelToolbar';
 import { FolderWorktreeOpsDialog } from './FolderWorktreeOpsDialog';
 import { FolderPanelTree } from './FolderPanelTree';
 import { dropCachedBranches, isDescendantPath, parentPath, relativeFolderPath } from './folder-panel-state';
+import { compatibleFolderPanelSession, folderPanelSessionFromState, snapshotToChildrenCache, type FolderPanelSessionState } from './folder-panel-session';
 import { folderShortcutAction } from './folder-shortcuts';
 import { runWorktreeOperation as runWorktreeOperationClient } from './folder-worktree-ops-client';
 import type { GitWorktreeOperation } from './folder-worktree-types';
 import { useFolderGitStatus } from './use-folder-git-status';
 import { useGitWorktrees } from './use-git-worktrees';
+import { useFolderChord } from './use-folder-chord';
 import { useFolderSelection, type FolderDragSelection } from './use-folder-selection';
 import './folder-panel.css';
 
@@ -28,16 +30,21 @@ type FolderPanelProps = {
     notesRoot?: string | null | undefined;
     onRootChange?: ((path: string | null) => void) | undefined;
     onPreviewFile?: ((path: string) => void) | undefined;
+    sessionState?: FolderPanelSessionState | null | undefined;
+    onSessionStateChange?: ((state: FolderPanelSessionState) => void) | undefined;
 };
 
 export function FolderPanel(props: FolderPanelProps) {
     const bridge = getFolderBridge();
     const initialRootResolvedRef = useRef(false);
     const source = useMemo(() => bridge ? createElectronFolderSource(bridge) : createNotesVaultFolderSource(props.notesTree ?? [], props.notesRoot ?? null), [bridge, props.notesRoot, props.notesTree]);
-    const [rootPath, setRootPath] = useState<string | null>(null);
-    const [entries, setEntries] = useState<FolderPanelEntry[]>([]);
-    const [expanded, setExpanded] = useState<Set<string>>(new Set());
-    const [childrenCache, setChildrenCache] = useState<Map<string, FolderPanelEntry[]>>(new Map());
+    const initialSession = useMemo(() => compatibleFolderPanelSession(props.sessionState ?? null, props.externalRootPath ?? null), [props.externalRootPath, props.sessionState]);
+    const [rootPath, setRootPath] = useState<string | null>(() => initialSession?.rootPath ?? null);
+    const [entries, setEntries] = useState<FolderPanelEntry[]>(() => initialSession?.entries ?? []);
+    const [expanded, setExpanded] = useState<Set<string>>(() => new Set(initialSession?.expandedPaths ?? []));
+    const [childrenCache, setChildrenCache] = useState<Map<string, FolderPanelEntry[]>>(() => (
+        initialSession ? snapshotToChildrenCache(initialSession.childrenCache) : new Map()
+    ));
     const [error, setError] = useState<string | null>(null);
     const [unavailableRoot, setUnavailableRoot] = useState<{ path: string; error: string } | null>(null);
     const [dragSelection, setDragSelection] = useState<FolderDragSelection | null>(null);
@@ -51,17 +58,27 @@ export function FolderPanel(props: FolderPanelProps) {
     const [gitRefreshToken, setGitRefreshToken] = useState(0);
     const [worktreeOpsOpen, setWorktreeOpsOpen] = useState(false);
     const [worktreeOperationBusy, setWorktreeOperationBusy] = useState(false);
-    const [folderChordActive, setFolderChordActive] = useState(false);
     const treeRef = useRef<HTMLDivElement | null>(null);
-    const folderChordTimerRef = useRef<number | null>(null);
+    const { folderChordActive, startFolderChord, cancelFolderChord } = useFolderChord();
     const folderSelection = useFolderSelection({
         entries,
         childrenCache,
         expanded,
+        initialSelection: initialSession?.selection,
         onPreviewFile: props.onPreviewFile,
     });
     const selectedEntry = folderSelection.selectedEntry;
     const selectedEntries = folderSelection.selectedEntries;
+
+    useEffect(() => {
+        props.onSessionStateChange?.(folderPanelSessionFromState({
+            rootPath,
+            entries,
+            expanded,
+            childrenCache,
+            selection: folderSelection.selection,
+        }));
+    }, [childrenCache, entries, expanded, folderSelection.selection, props.onSessionStateChange, rootPath]);
 
     const loadDir = useCallback(async (dirPath: string): Promise<{ ok: true } | { ok: false; error: string }> => {
         try {
@@ -340,21 +357,6 @@ export function FolderPanel(props: FolderPanelProps) {
         }
     }, [refreshVisibleTree, rootPath, worktreeState]);
 
-    const cancelFolderChord = useCallback(() => {
-        if (folderChordTimerRef.current !== null) window.clearTimeout(folderChordTimerRef.current);
-        folderChordTimerRef.current = null;
-        setFolderChordActive(false);
-    }, []);
-
-    const startFolderChord = useCallback(() => {
-        if (folderChordTimerRef.current !== null) window.clearTimeout(folderChordTimerRef.current);
-        setFolderChordActive(true);
-        folderChordTimerRef.current = window.setTimeout(() => {
-            folderChordTimerRef.current = null;
-            setFolderChordActive(false);
-        }, 1600);
-    }, []);
-
     const handleEntryKeyDown = useCallback((event: React.KeyboardEvent, entry: FolderPanelEntry) => {
         if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
             event.preventDefault();
@@ -393,8 +395,6 @@ export function FolderPanel(props: FolderPanelProps) {
         const nextButton = Array.from(buttons ?? []).find(button => button.dataset['folderPath'] === focusedPath);
         nextButton?.focus();
     }, [folderSelection.selection.focusedPath]);
-
-    useEffect(() => () => cancelFolderChord(), [cancelFolderChord]);
 
     useEffect(() => {
         if (!contextMenu) return;

@@ -33,10 +33,11 @@ export function useFolderSelection(input: {
     entries: FolderPanelEntry[];
     childrenCache: Map<string, FolderPanelEntry[]>;
     expanded: Set<string>;
+    initialSelection?: FolderSelectionState | undefined;
     onPreviewFile?: ((path: string) => void) | undefined;
 }): FolderSelectionActions {
     const onPreviewFile = input.onPreviewFile;
-    const [selection, setSelection] = useState<FolderSelectionState>(emptyFolderSelection);
+    const [selection, setSelection] = useState<FolderSelectionState>(() => input.initialSelection ?? emptyFolderSelection);
     const visibleEntries = useMemo(
         () => flattenVisibleFolderEntries(input.entries, input.childrenCache, input.expanded),
         [input.childrenCache, input.entries, input.expanded],
