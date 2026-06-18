@@ -109,12 +109,32 @@ if [[ "$PLATFORM" == "win32" ]]; then
   NODE_BIN="$SIDECAR_DIR/node.exe"
 fi
 
+PYTHON_BIN="${PYTHON:-}"
+if [ -z "$PYTHON_BIN" ] && [ -x /usr/bin/python3 ]; then
+  PYTHON_BIN="/usr/bin/python3"
+fi
+if [ -z "$PYTHON_BIN" ] && command -v python3.11 >/dev/null 2>&1; then
+  PYTHON_BIN="$(command -v python3.11)"
+fi
+if [ -z "$PYTHON_BIN" ]; then
+  PYTHON_BIN="$(command -v python3)"
+fi
+
 echo "Rebuilding better-sqlite3 for bundled Node $NODE_VERSION..."
-npm_config_runtime=node \
-npm_config_target="$NODE_VERSION" \
-npm_config_disturl="https://nodejs.org/dist" \
-npm_config_build_from_source=true \
-  npm rebuild better-sqlite3
+while IFS= read -r pkg_json; do
+  pkg_dir="$(dirname "$pkg_json")"
+  echo "  rebuild: ${pkg_dir#$SIDECAR_DIR/}"
+  (
+    cd "$pkg_dir"
+    PYTHON="$PYTHON_BIN" \
+    npm_config_python="$PYTHON_BIN" \
+    npm_config_runtime=node \
+    npm_config_target="$NODE_VERSION" \
+    npm_config_disturl="https://nodejs.org/dist" \
+    npm_config_build_from_source=true \
+      npm run install --foreground-scripts
+  )
+done < <(find "$SIDECAR_DIR/node_modules" -path '*/better-sqlite3/package.json' -print | sort)
 
 echo "Verifying better-sqlite3 opens with bundled Node..."
 "$NODE_BIN" -e "const Database = require('better-sqlite3'); new Database(':memory:').close()" && echo "  better-sqlite3 OK" || {
