@@ -35,6 +35,23 @@ export const JWC_PROVIDER_EFFORT_DEFAULTS: Record<string, string[]> = {
     'opencode-go': ['minimal', 'low', 'high', 'max'],
 };
 
+export function buildJwcModelOptions(authenticated: string[], error?: string): JwcModelOptions {
+    const providerIds = authenticated.length > 0 ? authenticated : ['anthropic'];
+    const providers = providerIds.map(id => ({
+        id,
+        models: JWC_PROVIDER_MODEL_DEFAULTS[id] ?? [],
+        efforts: JWC_PROVIDER_EFFORT_DEFAULTS[id] ?? [],
+    }));
+    const defaultProvider = providerIds.includes('anthropic') ? 'anthropic' : providerIds[0] ?? 'anthropic';
+    const defaultModel = JWC_PROVIDER_MODEL_DEFAULTS[defaultProvider]?.[0] ?? '';
+    return {
+        providers,
+        defaultProvider,
+        defaultModel,
+        ...(authenticated.length === 0 ? { degraded: true, error: error ?? 'No authenticated JWC providers found; using Anthropic defaults.' } : {}),
+    };
+}
+
 export async function discoverJwcAuthenticatedProviders(): Promise<string[]> {
     const sdk: { discoverAuthStorage(dir: string): Promise<{ list(): Promise<string[]> }> } =
         await (Function('return import("jawcode/sdk")')() as Promise<typeof sdk>);
@@ -50,31 +67,8 @@ export async function discoverJwcAuthenticatedProviders(): Promise<string[]> {
 export async function resolveJwcModelOptions(): Promise<JwcModelOptions> {
     try {
         const authenticated = await discoverJwcAuthenticatedProviders();
-        const providerIds = authenticated.length > 0 ? authenticated : ['anthropic'];
-        const providers = providerIds.map(id => ({
-            id,
-            models: JWC_PROVIDER_MODEL_DEFAULTS[id] ?? [],
-            efforts: JWC_PROVIDER_EFFORT_DEFAULTS[id] ?? [],
-        }));
-        const defaultProvider = providerIds.includes('anthropic') ? 'anthropic' : providerIds[0] ?? 'anthropic';
-        const defaultModel = JWC_PROVIDER_MODEL_DEFAULTS[defaultProvider]?.[0] ?? '';
-        return {
-            providers,
-            defaultProvider,
-            defaultModel,
-            ...(authenticated.length === 0 ? { degraded: true, error: 'No authenticated JWC providers found; using Anthropic defaults.' } : {}),
-        };
+        return buildJwcModelOptions(authenticated);
     } catch (err) {
-        return {
-            providers: [{
-                id: 'anthropic',
-                models: JWC_PROVIDER_MODEL_DEFAULTS['anthropic'] ?? [],
-                efforts: JWC_PROVIDER_EFFORT_DEFAULTS['anthropic'] ?? [],
-            }],
-            defaultProvider: 'anthropic',
-            defaultModel: JWC_PROVIDER_MODEL_DEFAULTS['anthropic']?.[0] ?? '',
-            degraded: true,
-            error: err instanceof Error ? err.message : String(err),
-        };
+        return buildJwcModelOptions([], err instanceof Error ? err.message : String(err));
     }
 }

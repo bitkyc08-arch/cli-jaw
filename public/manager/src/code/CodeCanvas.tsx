@@ -2,13 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
 import type { CodeGitInfo, CodeModelOptions } from './code-session-client';
+import { CodeCommandPopup } from './CodeCommandPopup';
 import { CodeComposer } from './CodeComposer';
 import { CodePermissionQueue } from './CodePermissionQueue';
 import { CodeSessionList } from './CodeSessionList';
 import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
-import { findLastToolMessageIndex, normalizeCodeCommands, toModelId, type CodeCommand, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
+import { findLastToolMessageIndex, normalizeCodeCommands, toModelId, type CodeCommand, type CodeCommandPopupKind, type PendingPermission, type ToolContent, type TranscriptEntry } from './code-types';
 import { useCodeEvents, type CodeEvent } from './useCodeEvents';
 
 type CodeCanvasProps = {
@@ -36,6 +37,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [permissions, setPermissions] = useState<PendingPermission[]>([]);
     const [availableCommands, setAvailableCommands] = useState<CodeCommand[]>([]);
     const [showCommands, setShowCommands] = useState(false);
+    const [activePopup, setActivePopup] = useState<{ kind: CodeCommandPopupKind; command: CodeCommand } | null>(null);
     const [sessionTitle, setSessionTitle] = useState('');
     const [usage, setUsage] = useState<{ contextTokens?: number; contextLimit?: number; cost?: number }>({});
     const [planEntries, setPlanEntries] = useState<Array<{ title: string; status: string }>>([]);
@@ -62,6 +64,17 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setSidebarHost(document.getElementById('code-session-sidebar-host'));
         return () => setSidebarHost(null);
     }, []);
+
+    const refreshModelOptions = useCallback(async () => {
+        const options = await client.listModelOptions();
+        setModelOptions(options);
+        const defaultProvider = options.providers.find(p => p.id === options.defaultProvider) ?? options.providers[0];
+        const defaultModel = defaultProvider?.models.includes(options.defaultModel) ? options.defaultModel : defaultProvider?.models[0] ?? '';
+        setProvider(defaultProvider?.id ?? 'anthropic');
+        setModel(defaultModel);
+        const nextEfforts = defaultProvider?.efforts ?? [];
+        if (nextEfforts.length > 0) setEffort(nextEfforts.includes('high') ? 'high' : nextEfforts[0] ?? '');
+    }, [client]);
 
     useEffect(() => {
         let cancelled = false;
@@ -228,6 +241,11 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
 
     const handleCommandSelect = useCallback((command: CodeCommand) => {
         if (command.disabledReason) return;
+        if (command.actionType === 'popup' && command.popupKind) {
+            setActivePopup({ kind: command.popupKind, command });
+            setShowCommands(false);
+            return;
+        }
         setInputText(`${command.displayName} `);
         setShowCommands(false);
     }, []);
@@ -300,6 +318,37 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     onSubmit={() => void handleSubmit()}
                     onShowCommandsChange={setShowCommands}
                 />
+                {activePopup && (
+                    <CodeCommandPopup
+                        popupKind={activePopup.kind}
+                        command={activePopup.command}
+                        modelOptions={modelOptions}
+                        provider={provider}
+                        model={model}
+                        permissionMode={permissionMode}
+                        disabled={sending}
+                        onClose={() => setActivePopup(null)}
+                        onRefreshProviders={() => {
+                            void refreshModelOptions();
+                        }}
+                        onProviderChange={p => {
+                            setProvider(p);
+                            const nextProvider = modelOptions.providers.find(entry => entry.id === p);
+                            const firstModel = nextProvider?.models[0] ?? '';
+                            setModel(firstModel);
+                            if (activeSessionId && firstModel) {
+                                void client.setSessionModel(activeSessionId, toModelId(p, firstModel));
+                            }
+                        }}
+                        onModelChange={m => {
+                            setModel(m);
+                            if (activeSessionId) {
+                                void client.setSessionModel(activeSessionId, toModelId(provider, m));
+                            }
+                        }}
+                        onPermissionModeChange={setPermissionMode}
+                    />
+                )}
                 <ComposerFooter
                     provider={provider}
                     providerOptions={providerOptions}
