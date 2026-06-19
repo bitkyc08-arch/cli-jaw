@@ -24,6 +24,7 @@ import {
 
 const heartbeatTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const heartbeatCronSlots = new Map<string, string>();
+let heartbeatWatcher: fs.FSWatcher | null = null;
 let heartbeatBusy = false;
 type HeartbeatPendingReason = 'busy' | 'pabcd_active';
 type HeartbeatPendingPolicy = 'defer';
@@ -152,7 +153,7 @@ async function runHeartbeatJob(job: Record<string, any>) {
         console.error(`[heartbeat:${job["name"]}] error:`, (err as Error).message);
     } finally {
         heartbeatBusy = false;
-        drainPending();
+        await drainPending();
     }
 }
 
@@ -194,17 +195,12 @@ function msUntilNextMinute(): number {
 // ─── fs.watch — auto-reload on file change ───────────
 
 export function watchHeartbeatFile() {
+    closeHeartbeatWatcher();
     try {
         let watchDebounce: ReturnType<typeof setTimeout> | undefined;
-        // Watch the parent directory, not the file: editors/agents replace the
-        // file via atomic write+rename, which permanently detaches a single-file
-        // fs.watch on macOS (it keeps following the old inode and never fires
-        // again — observed 2026-06-12: enabled:false edits were ignored until a
-        // manual PUT /api/heartbeat). A null filename can occur on some
-        // platforms; treat it as a potential match.
         const dir = dirname(HEARTBEAT_JOBS_PATH);
         const name = basename(HEARTBEAT_JOBS_PATH);
-        fs.watch(dir, (_event, changed) => {
+        heartbeatWatcher = fs.watch(dir, (_event, changed) => {
             if (changed && changed !== name) return;
             clearTimeout(watchDebounce);
             watchDebounce = setTimeout(() => {
@@ -212,7 +208,15 @@ export function watchHeartbeatFile() {
                 startHeartbeat();
             }, 500);
         });
-    } catch { /* expected: home dir missing in tests — heartbeat file is created on first save */ }
+        heartbeatWatcher.on('error', () => {});
+    } catch { /* expected: home dir missing in tests */ }
+}
+
+export function closeHeartbeatWatcher() {
+    if (heartbeatWatcher) {
+        heartbeatWatcher.close();
+        heartbeatWatcher = null;
+    }
 }
 
 // Re-export for route handlers

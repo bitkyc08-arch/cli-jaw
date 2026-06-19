@@ -1916,7 +1916,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     if (mainManaged) activeProcess = child;
     // Phase 7-3: detect duplicate spawn for same agentLabel.
     if (activeProcesses.has(agentLabel)) {
-        console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
+        const prev = activeProcesses.get(agentLabel)!;
+        if (prev.exitCode !== null || prev.killed) {
+            activeProcesses.delete(agentLabel);
+        } else {
+            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
+        }
     }
     activeProcesses.set(agentLabel, child);
     if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...runtimeStatusMeta, ...empTag });

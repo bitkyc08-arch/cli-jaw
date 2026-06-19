@@ -87,7 +87,7 @@ import { makeWebCommandCtx } from './src/cli/web-command-ctx.js';
 import './src/discord/register.js'; // side-effect: registers discord transport (bot.js + discord.js load lazily on first use)
 import { initActiveMessagingRuntime, shutdownMessagingRuntime, hydrateTargetsFromSettings } from './src/messaging/runtime.js';
 
-import { startHeartbeat, stopHeartbeat, watchHeartbeatFile } from './src/memory/heartbeat.js';
+import { startHeartbeat, stopHeartbeat, watchHeartbeatFile, closeHeartbeatWatcher } from './src/memory/heartbeat.js';
 import { initAlertDelivery } from './src/agent/alert-escalation.js';
 
 import {
@@ -445,6 +445,7 @@ const shutdown = async (sig: string) => {
         getSecurityAuditLog().append('service_stop', 'server', { signal: sig, port: PORT });
     } catch { /* non-fatal */ }
     stopHeartbeat();
+    closeHeartbeatWatcher();
     try { stopAllBgTasks(); } catch { /* non-fatal */ }
     killAllAgents('shutdown');
 
@@ -484,6 +485,11 @@ process.once('SIGTERM', () => shutdown('SIGTERM'));
 process.once('SIGINT', () => shutdown('SIGINT'));
 process.on('unhandledRejection', (reason) => {
     console.error('[server] unhandledRejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+    console.error('[server] FATAL uncaughtException:', err);
+    try { closeDb(); } catch {}
+    process.exit(1);
 });
 
 const cfgBind = settings["network"]?.bindHost || '127.0.0.1';

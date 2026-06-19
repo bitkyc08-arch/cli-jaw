@@ -63,8 +63,10 @@ export function attachWatchdog(
         }
     }
 
-    child.stdout?.on('data', observe);
-    child.stderr?.on('data', observe);
+    const stdoutRef = child.stdout;
+    const stderrRef = child.stderr;
+    stdoutRef?.on('data', observe);
+    stderrRef?.on('data', observe);
 
     const timer = setInterval(() => {
         if (stopped) return;
@@ -104,6 +106,8 @@ export function attachWatchdog(
         stop() {
             stopped = true;
             clearInterval(timer);
+            stdoutRef?.off('data', observe);
+            stderrRef?.off('data', observe);
         },
     };
 }

@@ -607,15 +607,14 @@ app.get('/api/manager/events/stream', (req, res) => {
 
     const unsubscribe = subscribeManagerBus((entry) => {
         if (entry.topic !== 'worker' || entry.event !== 'worker_settings_change') return;
-        res.write(`data: ${JSON.stringify({ topic: entry.topic, event: entry.event, data: entry.data })}\n\n`);
+        try { res.write(`data: ${JSON.stringify({ topic: entry.topic, event: entry.event, data: entry.data })}\n\n`); } catch {}
     });
-    const ping = setInterval(() => { res.write(': ping\n\n'); }, 30_000);
+    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 30_000);
     ping.unref?.();
 
-    req.on('close', () => {
-        clearInterval(ping);
-        unsubscribe();
-    });
+    const cleanup = () => { clearInterval(ping); unsubscribe(); };
+    req.on('close', cleanup);
+    res.on('error', cleanup);
 });
 
 app.get('/api/manager/health-history/:port', (req, res) => {

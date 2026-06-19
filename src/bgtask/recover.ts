@@ -74,9 +74,21 @@ export async function recoverBgTasks(deps: Partial<NotifierDeps> = {}): Promise<
                 startTask(row, onTerminal);
                 summary.respawnedChildren += 1;
             } else if (alive) {
-                markOrphaned(row.id);
-                summary.orphaned += 1;
-                console.warn(`[bgtask:${row.id}] orphaned — previous child (pid ${row.pid}) still alive but unowned`);
+                const ageMs = row.createdAt ? Date.now() - new Date(row.createdAt).getTime() : Infinity;
+                if (ageMs > 30 * 60_000) {
+                    try { if (row.pid) process.kill(row.pid, 'SIGTERM'); } catch {}
+                    const capture = JSON.stringify({
+                        stdoutTail: [], stderrTail: [],
+                        reason: `orphaned child killed after ${Math.round(ageMs / 60_000)}min`,
+                    });
+                    if (markTerminal(row.id, 'failed', capture)) onTerminal(row.id);
+                    summary.failedLost += 1;
+                    console.warn(`[bgtask:${row.id}] killed orphan (pid ${row.pid}, age ${Math.round(ageMs / 60_000)}min)`);
+                } else {
+                    markOrphaned(row.id);
+                    summary.orphaned += 1;
+                    console.warn(`[bgtask:${row.id}] orphaned — pid ${row.pid} alive, will kill after 30min`);
+                }
             } else if (row.spec.respawn === true) {
                 startTask(row, onTerminal);
                 summary.respawnedChildren += 1;

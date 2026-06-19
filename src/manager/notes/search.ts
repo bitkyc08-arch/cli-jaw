@@ -284,6 +284,10 @@ export async function searchNotes(
                 finish(notePathError(400, 'invalid_note_search_regex', stderr.split(/\r?\n/u).find(Boolean) || 'invalid regex'));
                 return;
             }
+            if (code === 2) {
+                finish(undefined, results);
+                return;
+            }
             finish(notePathError(500, 'notes_search_failed', stderr.split(/\r?\n/u).find(Boolean) || `ripgrep exited with code ${code}`));
         });
     });
