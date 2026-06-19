@@ -127,7 +127,7 @@ test('worker progress monitor panel exposes current, previous, attention, and de
     assert.ok(css.includes('.code-worker-list'), 'monitor must have bounded list styles');
     assert.ok(css.includes('max-height: min(30vh, 300px);'), 'monitor list must not push composer off screen');
     assert.equal(workbench.includes('<WorkerProgressMonitorPanel />'), false, 'Code session transcript lane must not inline the worker monitor');
-    assert.ok(cssEntry.includes("@import '../workers/worker-progress-monitor.css';"), 'Code CSS entry must import monitor CSS');
+    assert.equal(cssEntry.includes("@import '../workers/worker-progress-monitor.css';"), false, 'Code CSS entry must NOT import monitor CSS (slice 211 boundary)');
 });
 
 test('worker progress monitor remains Manager-local and separate from sessions/background tasks', () => {

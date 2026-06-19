@@ -2,11 +2,10 @@
 @import './code-composer.css';
 @import './code-command-popup.css';
 @import './code-command-popup-model.css';
-@import '../goal-status/goal-pabcd-status.css';
-@import '../background-tasks/background-task-monitor.css';
-@import '../workers/worker-progress-monitor.css';
 
 /* Code mode — uses Manager token system (manager-tokens.css) for dark/light parity */
+/* Boundary (slice 211): monitor panel CSS (goal-status/background-tasks/workers) is
+   NOT imported here — those panels are Manager-local and not mounted in Code mode. */
 
 /* Jaw/Code mode switch */
 .mode-switch {

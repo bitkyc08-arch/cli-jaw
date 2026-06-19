@@ -38,7 +38,7 @@ test('goal PABCD status panel exposes goal, phase gate, runtime, and evidence su
     assert.ok(css.includes('.code-goal-status-panel'), 'panel CSS must be defined');
     assert.ok(css.includes('@media (max-width: 760px)'), 'panel CSS must include compact responsive behavior');
     assert.equal(read('public/manager/src/code/CodeWorkbench.tsx').includes('<GoalPabcdStatusPanel />'), false, 'Code session transcript lane must not inline the status panel');
-    assert.ok(cssEntry.includes("@import '../goal-status/goal-pabcd-status.css';"), 'Code CSS entry must import status panel CSS');
+    assert.equal(cssEntry.includes("@import '../goal-status/goal-pabcd-status.css';"), false, 'Code CSS entry must NOT import monitor panel CSS (slice 211 boundary)');
 });
 
 test('goal PABCD status surface stays independent of child Jaw instances', () => {

@@ -22,6 +22,17 @@ test('Code workbench transcript lane does not inline global runtime monitors', (
     assert.ok(workbench.includes('<ComposerFooter'), 'Code workbench must keep provider/model/permission controls near composer');
 });
 
+test('Code CSS entry does not import Manager monitor stylesheets (slice 211 boundary)', () => {
+    const css = read('public/manager/src/code/code.css');
+    for (const monitorCss of [
+        "@import '../goal-status/goal-pabcd-status.css';",
+        "@import '../background-tasks/background-task-monitor.css';",
+        "@import '../workers/worker-progress-monitor.css';",
+    ]) {
+        assert.equal(css.includes(monitorCss), false, `code.css must not import monitor CSS: ${monitorCss}`);
+    }
+});
+
 test('runtime monitor components remain Manager-local and independent of Code sessions', () => {
     const monitorSources = [
         read('public/manager/src/goal-status/GoalPabcdStatusPanel.tsx'),

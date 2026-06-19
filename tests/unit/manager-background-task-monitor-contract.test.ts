@@ -86,7 +86,7 @@ test('background task monitor panel exposes state, detail, cancel, retry, and re
     assert.ok(css.includes('.code-bg-task-list'), 'monitor must have bounded list styles');
     assert.ok(css.includes('max-height: min(30vh, 300px);'), 'monitor list must not push composer off screen');
     assert.equal(workbench.includes('<BackgroundTaskMonitorPanel />'), false, 'Code session transcript lane must not inline the background task monitor');
-    assert.ok(cssEntry.includes("@import '../background-tasks/background-task-monitor.css';"), 'Code CSS entry must import monitor CSS');
+    assert.equal(cssEntry.includes("@import '../background-tasks/background-task-monitor.css';"), false, 'Code CSS entry must NOT import monitor CSS (slice 211 boundary)');
 });
 
 test('background task monitor remains Manager-local and session-independent', () => {
