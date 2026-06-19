@@ -2084,6 +2084,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 scheduleAgyQuietCompletion();
             },
             onActivity: () => {
+                ctx.stallWatchdog?.markProgress();
                 scheduleAgyQuietCompletion();
             },
         });

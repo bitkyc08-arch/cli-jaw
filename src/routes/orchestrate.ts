@@ -729,7 +729,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         });
     });
 
-    app.put('/api/orchestrate/state', requireAuth, (req, res) => {
+    app.put('/api/orchestrate/state', requireAuth, async (req, res) => {
         const target = String(req.body?.state || '').toUpperCase();
         const valid: OrcStateName[] = ['I', 'P', 'A', 'B', 'C', 'D'];
         if (!valid.includes(target as OrcStateName)) {
@@ -764,6 +764,10 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         if (t === 'D') {
             setState(t, undefined, scope, 'Done');
             resetState(scope);
+            try {
+                const { drainPending } = await import('../memory/heartbeat.js');
+                await drainPending();
+            } catch {}
         } else {
             let initCtx;
             if (t === 'P') {

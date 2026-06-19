@@ -489,6 +489,10 @@ export async function orchestrateHandler(args: string[], ctx: CliCommandContext)
     if (t === 'D') {
         setState(t, undefined, scope, 'Done');
         resetState(scope);
+        try {
+            const { drainPending } = await import('../memory/heartbeat.js');
+            await drainPending();
+        } catch {}
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
 
