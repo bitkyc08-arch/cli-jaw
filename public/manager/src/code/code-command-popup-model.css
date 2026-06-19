@@ -52,11 +52,18 @@
     width: 100%;
     min-height: 34px;
     padding: 7px 9px;
-    border: 1px solid var(--border-default);
+    /* Slice 219: flatten the repeated bordered-card rows; emphasis comes from
+       hover + the is-selected/is-active states, not a heavy border on every row. */
+    border: 1px solid transparent;
     border-radius: 6px;
-    background: var(--bg-base);
+    background: transparent;
     color: var(--text-primary);
     cursor: pointer;
+}
+
+.code-model-provider:hover,
+.code-model-row:hover {
+    background: color-mix(in srgb, var(--text-primary) 6%, transparent);
 }
 
 .code-model-provider.is-selected,
