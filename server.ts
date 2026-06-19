@@ -71,6 +71,7 @@ import {
     db, getLatestAssistantMessage, closeDb,
     clearAllEmployeeSessions,
 } from './src/core/db.js';
+import { getActiveChatSession } from './src/core/chat-sessions.js';
 import { openUrlInBrowser } from './src/core/browser-open.js';
 import {
     initPromptFiles, regenerateB,
@@ -195,7 +196,7 @@ markStaleTraceRunsInterrupted();
 try {
     const { peekPendingBootstrapPrompt } = await import('./src/core/main-session.js');
     if (!peekPendingBootstrapPrompt()) {
-        const lastMsg = getLatestAssistantMessage.get() as { created_at?: string } | undefined;
+        const lastMsg = getLatestAssistantMessage.get(getActiveChatSession()) as { created_at?: string } | undefined;
         const lastAt = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
         if (lastAt > 0 && Date.now() - lastAt > 5 * 60_000) {
             const { autoCompactRefresh } = await import('./src/core/compact.js');
