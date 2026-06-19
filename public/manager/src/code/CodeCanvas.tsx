@@ -464,7 +464,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             permissionMode={permissionMode}
             permissions={permissions}
             planEntries={planEntries}
-            popupError={popupError}
+            error={popupError}
             provider={provider}
             providerOptions={providerOptions}
             sending={sending}
@@ -491,6 +491,13 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             onShowCommandsChange={setShowCommands}
             onSubmit={() => { void handleSubmit(); }}
             onUseModel={handleUseModel}
+            onUseForNewSessions={(p, m) => {
+                // slice 212: pre-session apply — updates provider/model -> selectedModelId
+                // for the next createSession. handleUseModel returns before its own close
+                // when there is no active session, so close the popup explicitly here.
+                void handleUseModel(p, m, { requireActiveSession: false, closePopup: false });
+                setActivePopup(null);
+            }}
             onWorkingDirChange={handleWorkingDirChange}
             workspaceFrozen={workspaceFrozen}
             onPickWorkingDir={handlePickWorkspace}

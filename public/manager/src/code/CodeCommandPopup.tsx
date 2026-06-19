@@ -18,6 +18,7 @@ type CodeCommandPopupProps = {
     onRefreshProviders: () => void;
     onProviderChange: (value: string) => void;
     onUseModel: (provider: string, model: string) => void | Promise<void>;
+    onUseForNewSessions: (provider: string, model: string) => void | Promise<void>;
     onSetDefaultModel: (provider: string, model: string) => void | Promise<void>;
     onSetModelAssignment: (
         role: CodeModelAssignment['role'],
@@ -57,6 +58,7 @@ export function CodeCommandPopup({
     onRefreshProviders,
     onProviderChange,
     onUseModel,
+    onUseForNewSessions,
     onSetDefaultModel,
     onSetModelAssignment,
     onClearModelAssignment,
@@ -291,6 +293,16 @@ export function CodeCommandPopup({
                                     className="code-popup-secondary"
                                     disabled={!canSetDefault}
                                     onClick={() => {
+                                        void onUseForNewSessions(draftProvider, draftModel);
+                                    }}
+                                >
+                                    Use for new sessions
+                                </button>
+                                <button
+                                    type="button"
+                                    className="code-popup-secondary"
+                                    disabled={!canSetDefault}
+                                    onClick={() => {
                                         void onSetDefaultModel(draftProvider, draftModel);
                                     }}
                                 >
@@ -298,7 +310,7 @@ export function CodeCommandPopup({
                                 </button>
                             </div>
                         </div>
-                        {!activeSessionId && <p className="code-popup-note">Start or load a Code session to apply a live model.</p>}
+                        {!activeSessionId && <p className="code-popup-note">Start or load a Code session to apply a live model. Use &ldquo;Use for new sessions&rdquo; to set the next session&rsquo;s model.</p>}
                         <div className="code-role-assignment-panel" aria-label="Model role assignments">
                             <div className="code-role-assignment-head">
                                 <strong>Role assignments</strong>

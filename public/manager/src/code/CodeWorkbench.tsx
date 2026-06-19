@@ -28,7 +28,7 @@ type CodeWorkbenchProps = {
     permissionMode: PermissionMode;
     permissions: PendingPermission[];
     planEntries: Array<{ title: string; status: string }>;
-    popupError: string;
+    error: string;
     provider: string;
     providerOptions: string[];
     sending: boolean;
@@ -57,6 +57,7 @@ type CodeWorkbenchProps = {
     onShowCommandsChange: (value: boolean) => void;
     onSubmit: () => void;
     onUseModel: (provider: string, model: string) => void | Promise<void>;
+    onUseForNewSessions: (provider: string, model: string) => void | Promise<void>;
     onWorkingDirChange: (path: string | null) => void;
     workspaceFrozen: boolean;
     onPickWorkingDir: () => Promise<string | null>;
@@ -128,11 +129,12 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                     permissionMode={props.permissionMode}
                     disabled={props.disabled}
                     activeSessionId={props.activeSessionId}
-                    error={props.popupError}
+                    error={props.error}
                     onClose={props.onClosePopup}
                     onRefreshProviders={props.onRefreshProviders}
                     onProviderChange={props.onProviderChange}
                     onUseModel={props.onUseModel}
+                    onUseForNewSessions={props.onUseForNewSessions}
                     onSetDefaultModel={props.onSetDefaultModel}
                     onSetModelAssignment={props.onSetModelAssignment}
                     onClearModelAssignment={props.onClearModelAssignment}
