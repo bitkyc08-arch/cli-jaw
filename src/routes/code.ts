@@ -16,6 +16,7 @@ import {
     writeJwcDefaultModelRole,
     writeJwcModelAssignment,
 } from '../code-mode/model-options.js';
+import { pickFolderNative } from '../core/folder-picker.js';
 
 function git(cwd: string, args: string[]): Promise<string> {
     return new Promise(resolve => {
@@ -90,6 +91,25 @@ export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): vo
                 await writeJwcDefaultModelRole(modelId);
                 const options = await resolveJwcModelOptions();
                 res.json({ ok: true, ...options });
+            } catch (err: unknown) {
+                res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
+            }
+        })();
+    });
+
+    // Slice 210: Code-specific OS folder picker for the Web Manager workspace button.
+    // Opens the native dialog on the Manager host and returns only the chosen path —
+    // it never mutates global project settings (no applySettings / projectDirs).
+    app.post('/api/code/workspace/pick', requireAuth, (_req, res) => {
+        void (async () => {
+            try {
+                const result = await pickFolderNative({ prompt: 'Select Code workspace folder' });
+                switch (result.status) {
+                    case 'picked': res.json({ ok: true, path: result.path }); return;
+                    case 'cancelled': res.json({ ok: true, cancelled: true }); return;
+                    case 'busy': res.status(409).json({ ok: false, error: 'folder picker busy' }); return;
+                    case 'unavailable': res.status(503).json({ ok: false, error: result.reason }); return;
+                }
             } catch (err: unknown) {
                 res.status(500).json({ ok: false, error: err instanceof Error ? err.message : String(err) });
             }
