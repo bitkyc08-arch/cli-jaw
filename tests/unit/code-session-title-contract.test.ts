@@ -143,24 +143,29 @@ test('code canvas owns code cwd override independent from manager instance selec
     assert.equal(canvas.includes('const cwd = workingDir ||'), false, 'new sessions must not fall back to the manager instance workingDir prop');
 });
 
-test('code cwd picker is editable only before a Code session starts', () => {
+test('code workspace is a picker button before first Send and a plain chip after (slice 210)', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
     const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
     const header = read('public/manager/src/code/CodeWorkspaceHeader.tsx');
     const css = read('public/manager/src/code/code.css');
 
-    assert.ok(header.includes("import { getDesktop } from '../panels/desktop-bridge'"), 'CodeWorkspaceHeader must use the existing Electron desktop bridge');
-    assert.ok(header.includes('cwdLocked?: boolean'), 'CodeWorkspaceHeader props must include cwdLocked');
-    assert.ok(header.includes('cwdLocked = false'), 'CodeWorkspaceHeader must default cwdLocked to false for web/pre-session use');
-    assert.ok(header.includes('const canApplyCwd = Boolean(!cwdLocked'), 'Apply must be disabled while a Code session is active');
-    assert.ok(header.includes('const canPickCwd = Boolean(!cwdLocked'), 'native folder picker must be disabled while a Code session is active');
-    assert.ok(header.includes('desktop?.folder?.pickFolder'), 'header must call the existing Electron folder picker bridge');
-    assert.ok(header.includes('const result = await desktop.folder.pickFolder()'), 'Browse must await the native folder picker');
-    assert.ok(header.includes('disabled={cwdLocked}'), 'cwd input must be disabled while locked');
-    assert.ok(header.includes('aria-readonly={cwdLocked}'), 'cwd input must expose readonly state to assistive tech');
-    assert.ok(header.includes('code-workspace-cwd-lock'), 'header must render a compact locked cwd hint');
-    assert.ok(header.includes('code-workspace-cwd-error'), 'header must render picker errors without blocking the app');
+    // New picker/chip contract: editable picker button before the workspace is frozen,
+    // plain chip once frozen (first Send) or a session is active (loaded session).
+    assert.ok(header.includes('workspaceFrozen?: boolean'), 'header props must include workspaceFrozen');
+    assert.ok(header.includes('onPickWorkingDir?: (() => Promise<string | null>)'), 'header must receive a parent pick callback');
+    assert.ok(header.includes('const frozen = workspaceFrozen || cwdLocked'), 'header must freeze on workspaceFrozen OR active/loaded session');
+    assert.ok(header.includes('const canPick = Boolean(!frozen'), 'picker is enabled only while not frozen');
+    assert.ok(header.includes('code-workspace-picker'), 'header must render a picker button before freeze');
+    assert.ok(header.includes('code-workspace-chip'), 'header must render a plain chip when frozen');
+    assert.ok(header.includes('aria-label={`Current Code workspace:'), 'frozen chip exposes the full path to assistive tech');
+    assert.ok(header.includes('code-workspace-cwd-error'), 'header must surface picker errors without blocking the app');
 
+    // Removed legacy header affordances (no text input / Apply / lock copy / path pills).
+    for (const gone of ['code-workspace-cwd-input', 'code-workspace-cwd-apply', 'fixed for this session', 'code-workspace-repo', 'code-workspace-path', "from '../panels/desktop-bridge'"]) {
+        assert.equal(header.includes(gone), false, `header must no longer contain legacy affordance: ${gone}`);
+    }
+
+    // The pre-session sync + manual-change guards are unchanged.
     const syncStart = canvas.indexOf('useEffect(() => {');
     const syncEnd = canvas.indexOf('const handleWorkingDirChange', syncStart);
     const syncBlock = canvas.slice(syncStart, syncEnd);
@@ -172,18 +177,27 @@ test('code cwd picker is editable only before a Code session starts', () => {
     const handlerBlock = canvas.slice(handlerStart, handlerEnd);
     assert.ok(handlerBlock.includes('if (activeSessionIdRef.current || activeSessionId) return'), 'manual cwd changes must be ignored while a session is active');
     assert.ok(handlerBlock.includes('setCodeWorkingDir(next)'), 'manual cwd changes must still update cwd before a session starts');
-    assert.ok(workbench.includes('cwdLocked={Boolean(props.activeSessionId)}'), 'CodeWorkbench must pass active session lock state to the header');
 
-    for (const selector of ['.code-workspace-cwd-pick', '.code-workspace-cwd-lock', '.code-workspace-cwd-error', '.code-workspace-cwd-input:disabled']) {
+    // Parent owns pick (Electron bridge -> web /api/code/workspace/pick fallback) and freeze lifecycle.
+    assert.ok(canvas.includes('const handlePickWorkspace = useCallback'), 'CodeCanvas owns the pick handler');
+    assert.ok(canvas.includes('desktop?.folder?.pickFolder') && canvas.includes('client.pickWorkspace()'), 'pick tries the Electron bridge then the web route');
+    assert.ok(canvas.includes('setWorkspaceFrozen(true)'), 'first Send freezes the workspace');
+    assert.ok(canvas.includes('setWorkspaceFrozen(false)'), 'new session unfreezes the workspace');
+    assert.ok(workbench.includes('workspaceFrozen={props.workspaceFrozen}') && workbench.includes('onPickWorkingDir={props.onPickWorkingDir}'), 'CodeWorkbench threads picker props to the header');
+    assert.ok(workbench.includes('cwdLocked={Boolean(props.activeSessionId)}'), 'CodeWorkbench still passes active session lock state to the header');
+
+    for (const selector of ['.code-workspace-picker', '.code-workspace-chip', '.code-workspace-cwd-error']) {
         assert.ok(css.includes(selector), `code.css must include ${selector}`);
     }
+    assert.equal(css.includes('.code-workspace-cwd-input'), false, 'legacy cwd input style must be removed');
 });
 
-test('code workspace header exposes repo root and current worktree context', () => {
+test('git-info route still exposes repo root / worktree data; header shows a compact worktree pill (slice 210)', () => {
     const header = read('public/manager/src/code/CodeWorkspaceHeader.tsx');
     const client = read('public/manager/src/code/code-session-client.ts');
     const routes = read('src/routes/code.ts');
 
+    // The git-info contract (route + client type) is unchanged by slice 210.
     for (const token of ['repoRoot?: string', 'relativePath?: string', 'currentWorktree?:']) {
         assert.ok(client.includes(token), `CodeGitInfo must include ${token}`);
     }
@@ -192,11 +206,12 @@ test('code workspace header exposes repo root and current worktree context', () 
     assert.ok(routes.includes('const currentWorktree = worktrees.find(worktree => worktree.current)'), 'git-info route must identify the current worktree');
     assert.ok(routes.includes('current: path === repoRoot'), 'git-info worktree current flag must compare against repo root, not nested cwd');
 
-    assert.ok(header.includes('repoRootLabel'), 'header must derive a compact repo root label');
-    assert.ok(header.includes('relativePath'), 'header must render cwd relative path when present');
-    assert.ok(header.includes('currentWorktree'), 'header must render current worktree metadata');
-    assert.ok(header.includes('code-workspace-repo'), 'header must expose a repo root pill');
-    assert.ok(header.includes('code-workspace-path'), 'header must expose a cwd-relative path pill');
+    // Slice 210 removed the path-repeating repo/path pills; the header keeps a compact
+    // worktree pill (count only) and the picker/chip already carries the full path via title.
+    assert.ok(header.includes('worktree {worktreeCount}'), 'header must render a compact worktree count pill');
+    assert.ok(header.includes('currentWorktree?.path'), 'header may still title the worktree pill with the current worktree path');
+    assert.equal(header.includes('code-workspace-repo'), false, 'slice 210 removes the repo root pill');
+    assert.equal(header.includes('code-workspace-path'), false, 'slice 210 removes the cwd-relative path pill');
 });
 
 test('code transcript preserves failed tool state and remains scrollable after replay', () => {

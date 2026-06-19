@@ -4,6 +4,7 @@ import { createCodeSessionClient } from './code-session-client';
 import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import { CodeSessionList } from './CodeSessionList';
 import { CodeWorkbench } from './CodeWorkbench';
+import { getDesktop } from '../panels/desktop-bridge';
 import { FALLBACK_CODE_COMMANDS, FALLBACK_MODEL_OPTIONS, mergeCodeCommands } from './code-session-defaults';
 import {
     findLastToolMessageIndex,
@@ -32,6 +33,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [codeWorkingDir, setCodeWorkingDir] = useState(workingDir);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+    const [workspaceFrozen, setWorkspaceFrozen] = useState(false);
     const [inputText, setInputText] = useState('');
     const [sending, setSending] = useState(false);
     const [messages, setMessages] = useState<TranscriptEntry[]>([]);
@@ -68,6 +70,21 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setCodeWorkingDir(next);
         onWorkingDirChange?.(path);
     }, [activeSessionId, onWorkingDirChange]);
+
+    // Slice 210: pick a Code workspace folder. Electron uses the native bridge;
+    // the Web Manager falls back to the /api/code/workspace/pick OS dialog.
+    // Returns the chosen absolute path, or null if cancelled/unavailable.
+    const handlePickWorkspace = useCallback(async (): Promise<string | null> => {
+        const desktop = getDesktop();
+        if (desktop?.folder?.pickFolder) {
+            const result = await desktop.folder.pickFolder();
+            if (result.ok && result.path) return result.path;
+            if (result.error && result.error !== 'cancelled') throw new Error(result.error);
+            return null;
+        }
+        const result = await client.pickWorkspace();
+        return result.ok && result.path ? result.path : null;
+    }, [client]);
 
     const applyModelOptions = useCallback((options: CodeModelOptions) => {
         setModelOptions(options);
@@ -254,6 +271,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         const text = inputText.trim();
         if (!text || sending) return;
         setSending(true);
+        setWorkspaceFrozen(true); // slice 210: freeze cwd on first Send, before createSession; stays frozen on failure
         setChildRecovery(null);
         setMessages(prev => [...prev, { role: 'user', text }]);
         setInputText('');
@@ -407,7 +425,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     }
                 })();
             }}
-            onNewSession={() => { setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
+            onNewSession={() => { setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setWorkspaceFrozen(false); }}
         />
     );
 
@@ -474,6 +492,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             onSubmit={() => { void handleSubmit(); }}
             onUseModel={handleUseModel}
             onWorkingDirChange={handleWorkingDirChange}
+            workspaceFrozen={workspaceFrozen}
+            onPickWorkingDir={handlePickWorkspace}
         />
     );
 

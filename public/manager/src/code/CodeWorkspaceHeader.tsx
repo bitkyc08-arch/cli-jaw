@@ -1,6 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useState } from 'react';
 import type { CodeGitInfo, CodeModelOptions } from './code-session-client';
-import { getDesktop } from '../panels/desktop-bridge';
 
 type CodeWorkspaceHeaderProps = {
     workingDir: string;
@@ -11,6 +10,8 @@ type CodeWorkspaceHeaderProps = {
     planEntries: Array<{ title: string; status: string }>;
     onWorkingDirChange?: ((path: string | null) => void) | undefined;
     cwdLocked?: boolean | undefined;
+    workspaceFrozen?: boolean | undefined;
+    onPickWorkingDir?: (() => Promise<string | null>) | undefined;
 };
 
 function shortPath(path: string): string {
@@ -18,100 +19,59 @@ function shortPath(path: string): string {
     return parts.slice(-2).join('/') || path;
 }
 
-export function CodeWorkspaceHeader({ workingDir, gitInfo, modelOptions, sessionTitle, usage, planEntries, onWorkingDirChange, cwdLocked = false }: CodeWorkspaceHeaderProps) {
-    const [draftCwd, setDraftCwd] = useState(workingDir);
-    const [pickingCwd, setPickingCwd] = useState(false);
-    const [cwdPickError, setCwdPickError] = useState('');
+export function CodeWorkspaceHeader({ workingDir, gitInfo, modelOptions, sessionTitle, usage, planEntries, onWorkingDirChange, cwdLocked = false, workspaceFrozen = false, onPickWorkingDir }: CodeWorkspaceHeaderProps) {
+    const [picking, setPicking] = useState(false);
+    const [pickError, setPickError] = useState('');
     const dirty = gitInfo?.status?.dirty;
     const worktreeCount = gitInfo?.worktrees.length ?? 0;
-    const repoRootLabel = gitInfo?.repoRoot ? shortPath(gitInfo.repoRoot) : '';
-    const relativePath = gitInfo?.relativePath || '';
-    const currentWorktree = gitInfo?.currentWorktree;
-    const worktreeLabel = currentWorktree?.path ? shortPath(currentWorktree.path) : '';
-    const trimmedDraft = useMemo(() => draftCwd.trim(), [draftCwd]);
-    const cwdError = trimmedDraft && !trimmedDraft.startsWith('/') ? 'Use an absolute path.' : '';
-    const desktop = getDesktop();
-    const canApplyCwd = Boolean(!cwdLocked && onWorkingDirChange && trimmedDraft && trimmedDraft !== workingDir && !cwdError);
-    const canPickCwd = Boolean(!cwdLocked && onWorkingDirChange && desktop?.folder?.pickFolder);
-
-    useEffect(() => {
-        setDraftCwd(workingDir);
-    }, [workingDir]);
+    // Slice 210: the workspace is editable only before first Send (workspaceFrozen)
+    // and before an active session exists (cwdLocked covers a loaded stored session).
+    const frozen = workspaceFrozen || cwdLocked;
+    const canPick = Boolean(!frozen && onPickWorkingDir && onWorkingDirChange);
 
     async function pickWorkingDir(): Promise<void> {
-        if (!canPickCwd || !desktop?.folder?.pickFolder) return;
-        setPickingCwd(true);
-        setCwdPickError('');
+        if (!canPick || !onPickWorkingDir) return;
+        setPicking(true);
+        setPickError('');
         try {
-            const result = await desktop.folder.pickFolder();
-            if (!result.ok || !result.path) {
-                if (result.error && result.error !== 'cancelled') setCwdPickError(result.error);
-                return;
-            }
-            setDraftCwd(result.path);
-            onWorkingDirChange?.(result.path);
+            const next = await onPickWorkingDir();
+            if (next) onWorkingDirChange?.(next);
         } catch (err) {
-            setCwdPickError(err instanceof Error ? err.message : String(err));
+            setPickError(err instanceof Error ? err.message : String(err));
         } finally {
-            setPickingCwd(false);
+            setPicking(false);
         }
     }
 
     return (
         <div className="code-workspace-header">
             <div className="code-workspace-primary">
-                <span className="code-workspace-cwd" title={workingDir}>{shortPath(workingDir || '/tmp')}</span>
-                <div className="code-workspace-cwd-control">
-                    <input
-                        className={`code-workspace-cwd-input${cwdError ? ' is-invalid' : ''}`}
-                        type="text"
-                        value={draftCwd}
-                        onChange={event => setDraftCwd(event.target.value)}
-                        placeholder="/absolute/path/to/project"
-                        aria-label="Code working directory"
-                        aria-readonly={cwdLocked}
-                        disabled={cwdLocked}
-                        title={cwdLocked ? 'CWD is fixed for the active Code session.' : undefined}
-                    />
+                {frozen ? (
+                    <span className="code-workspace-chip" title={workingDir} aria-label={`Current Code workspace: ${workingDir}`}>
+                        {shortPath(workingDir || '/tmp')}
+                    </span>
+                ) : (
                     <button
                         type="button"
-                        className="code-workspace-cwd-apply"
-                        disabled={!canApplyCwd}
-                        title={cwdLocked ? 'CWD is fixed for the active Code session.' : cwdError || 'Apply Code working directory'}
-                        onClick={() => {
-                            if (!canApplyCwd) return;
-                            onWorkingDirChange?.(trimmedDraft);
-                        }}
+                        className="code-workspace-picker"
+                        disabled={!canPick || picking}
+                        title={workingDir || 'Select Code workspace folder'}
+                        aria-label={`Code workspace: ${workingDir || 'not set'}. Choose a folder.`}
+                        onClick={() => void pickWorkingDir()}
                     >
-                        Apply
+                        <span className="code-workspace-picker-label">{shortPath(workingDir || '/tmp')}</span>
+                        <span className="code-workspace-picker-caret" aria-hidden="true">▾</span>
                     </button>
-                    {canPickCwd && (
-                        <button
-                            type="button"
-                            className="code-workspace-cwd-pick"
-                            disabled={pickingCwd}
-                            title="Choose Code working directory"
-                            onClick={() => void pickWorkingDir()}
-                        >
-                            Browse
-                        </button>
-                    )}
-                </div>
-                {cwdLocked ? (
-                    <span className="code-workspace-cwd-lock">fixed for this session</span>
-                ) : cwdPickError ? (
-                    <span className="code-workspace-cwd-error">{cwdPickError}</span>
-                ) : null}
+                )}
+                {!frozen && pickError && <span className="code-workspace-cwd-error">{pickError}</span>}
                 {gitInfo?.isRepo && (
                     <>
-                        {repoRootLabel && <span className="code-workspace-pill code-workspace-repo" title={gitInfo.repoRoot}>repo {repoRootLabel}</span>}
-                        {relativePath && <span className="code-workspace-pill code-workspace-path" title={workingDir}>path {relativePath}</span>}
                         <span className="code-workspace-pill">{gitInfo.branch ?? 'detached'}{gitInfo.head ? ` · ${gitInfo.head}` : ''}</span>
                         <span className={`code-workspace-pill ${dirty ? 'is-dirty' : ''}`}>
                             {dirty ? `${gitInfo.status?.changed ?? 0} changed · ${gitInfo.status?.untracked ?? 0} untracked` : 'clean'}
                         </span>
-                        <span className="code-workspace-pill" title={currentWorktree?.path ?? undefined}>
-                            worktrees {worktreeCount}{worktreeLabel ? ` · ${worktreeLabel}` : ''}
+                        <span className="code-workspace-pill" title={gitInfo.currentWorktree?.path ?? undefined}>
+                            worktree {worktreeCount}
                         </span>
                     </>
                 )}

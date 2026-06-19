@@ -130,6 +130,7 @@ export interface CodeSessionClient {
     extMethod(sessionId: string, method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
     forkSession(sessionId: string, cwd: string): Promise<CodeSession>;
     setSessionModel(sessionId: string, modelId: string): Promise<void>;
+    pickWorkspace(): Promise<{ ok: boolean; path?: string; cancelled?: boolean }>;
 }
 
 export function createCodeSessionClient(port: number): CodeSessionClient {
@@ -221,6 +222,9 @@ export function createCodeSessionClient(port: number): CodeSessionClient {
         },
         async setSessionModel(sessionId: string, modelId: string) {
             await request<unknown>('POST', `/api/code/sessions/${sessionId}/model`, { modelId });
+        },
+        pickWorkspace() {
+            return request<{ ok: boolean; path?: string; cancelled?: boolean }>('POST', '/api/code/workspace/pick');
         },
     };
 }

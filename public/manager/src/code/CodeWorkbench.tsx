@@ -58,6 +58,8 @@ type CodeWorkbenchProps = {
     onSubmit: () => void;
     onUseModel: (provider: string, model: string) => void | Promise<void>;
     onWorkingDirChange: (path: string | null) => void;
+    workspaceFrozen: boolean;
+    onPickWorkingDir: () => Promise<string | null>;
 };
 
 export function CodeWorkbench(props: CodeWorkbenchProps) {
@@ -72,6 +74,8 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                 workingDir={props.codeWorkingDir}
                 cwdLocked={Boolean(props.activeSessionId)}
                 onWorkingDirChange={props.onWorkingDirChange}
+                workspaceFrozen={props.workspaceFrozen}
+                onPickWorkingDir={props.onPickWorkingDir}
             />
             {props.childRecovery && (
                 <section className="code-child-recovery" role="status" aria-live="polite">
