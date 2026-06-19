@@ -340,3 +340,40 @@
         grid-template-columns: 1fr;
     }
 }
+
+/* Slice 214: /model popup tabs (Models / Roles / Profiles). */
+.code-model-tablist {
+    display: flex;
+    gap: 4px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-default);
+}
+.code-model-tab {
+    appearance: none;
+    border: none;
+    background: transparent;
+    color: var(--text-tertiary);
+    font: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+}
+.code-model-tab:hover {
+    color: var(--text-primary);
+}
+.code-model-tab.is-active {
+    color: var(--text-primary);
+    border-bottom-color: var(--accent-default);
+}
+.code-model-tab:focus-visible {
+    outline: 2px solid var(--accent-default);
+    outline-offset: 1px;
+}
+.code-popup-tabpanel {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}

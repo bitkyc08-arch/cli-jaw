@@ -67,6 +67,7 @@ export function CodeCommandPopup({
     const closeRef = useRef<HTMLButtonElement>(null);
     const currentProvider = modelOptions.providers.find(entry => entry.id === provider) ?? modelOptions.providers[0];
     const [modelQuery, setModelQuery] = useState('');
+    const [modelTab, setModelTab] = useState<'models' | 'roles' | 'profiles'>('models');
     const [draftProvider, setDraftProvider] = useState(provider);
     const [draftModel, setDraftModel] = useState(model);
     const [roleThinkingDrafts, setRoleThinkingDrafts] = useState<Record<string, string>>({});
@@ -211,6 +212,33 @@ export function CodeCommandPopup({
                 {popupKind === 'model' && (
                     <div className="code-popup-section">
                         {error && <p className="code-popup-error">{error}</p>}
+                        <div className="code-model-tablist" role="tablist" aria-label="Model settings tabs">
+                            {(['models', 'roles', 'profiles'] as const).map(tab => (
+                                <button
+                                    key={tab}
+                                    type="button"
+                                    role="tab"
+                                    id={`code-model-tab-${tab}`}
+                                    aria-selected={modelTab === tab}
+                                    aria-controls={`code-model-panel-${tab}`}
+                                    tabIndex={modelTab === tab ? 0 : -1}
+                                    className={`code-model-tab${modelTab === tab ? ' is-active' : ''}`}
+                                    onClick={() => setModelTab(tab)}
+                                    onKeyDown={event => {
+                                        if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
+                                        event.preventDefault();
+                                        const order: Array<'models' | 'roles' | 'profiles'> = ['models', 'roles', 'profiles'];
+                                        const delta = event.key === 'ArrowRight' ? 1 : order.length - 1;
+                                        const nextTab = order[(order.indexOf(modelTab) + delta) % order.length] ?? 'models';
+                                        setModelTab(nextTab);
+                                    }}
+                                >
+                                    {tab === 'models' ? 'Models' : tab === 'roles' ? 'Roles' : 'Profiles'}
+                                </button>
+                            ))}
+                        </div>
+                        {modelTab === 'models' && (
+                        <div className="code-popup-tabpanel" role="tabpanel" id="code-model-panel-models" aria-labelledby="code-model-tab-models">
                         <label className="code-popup-field">
                             <span>Search models</span>
                             <input
@@ -313,6 +341,10 @@ export function CodeCommandPopup({
                             </div>
                         </div>
                         {!activeSessionId && <p className="code-popup-note">Start or load a Code session to apply a live model. Use &ldquo;Use for new sessions&rdquo; to set the next session&rsquo;s model.</p>}
+                        </div>
+                        )}
+                        {modelTab === 'roles' && (
+                        <div className="code-popup-tabpanel" role="tabpanel" id="code-model-panel-roles" aria-labelledby="code-model-tab-roles">
                         <div className="code-role-assignment-panel" aria-label="Model role assignments">
                             <div className="code-role-assignment-head">
                                 <strong>Role assignments</strong>
@@ -380,6 +412,10 @@ export function CodeCommandPopup({
                             </div>
                             {!modelAssignments && <p className="code-popup-note">Loading role assignments.</p>}
                         </div>
+                        </div>
+                        )}
+                        {modelTab === 'profiles' && (
+                        <div className="code-popup-tabpanel" role="tabpanel" id="code-model-panel-profiles" aria-labelledby="code-model-tab-profiles">
                         <div className="code-model-preset-panel" aria-label="Model profiles and presets">
                             <div className="code-role-assignment-head">
                                 <strong>Profiles and presets</strong>
@@ -416,6 +452,8 @@ export function CodeCommandPopup({
                                 <span>Profile activation is read-only here; JWC runtime owns credential checks and rollback.</span>
                             </div>
                         </div>
+                        </div>
+                        )}
                     </div>
                 )}
             </section>
