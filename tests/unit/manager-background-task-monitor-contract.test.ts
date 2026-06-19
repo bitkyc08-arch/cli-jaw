@@ -85,7 +85,7 @@ test('background task monitor panel exposes state, detail, cancel, retry, and re
     assert.ok(panel.includes('BrowserPanel state and Code transcript stay separate.'), 'web-ai bridge note must preserve surface boundaries');
     assert.ok(css.includes('.code-bg-task-list'), 'monitor must have bounded list styles');
     assert.ok(css.includes('max-height: min(30vh, 300px);'), 'monitor list must not push composer off screen');
-    assert.ok(workbench.includes('<BackgroundTaskMonitorPanel />'), 'Code workbench must mount the monitor');
+    assert.equal(workbench.includes('<BackgroundTaskMonitorPanel />'), false, 'Code session transcript lane must not inline the background task monitor');
     assert.ok(cssEntry.includes("@import '../background-tasks/background-task-monitor.css';"), 'Code CSS entry must import monitor CSS');
 });
 

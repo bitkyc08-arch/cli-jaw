@@ -25,7 +25,6 @@ test('goal PABCD status client reads only the Manager-local status route', () =>
 test('goal PABCD status panel exposes goal, phase gate, runtime, and evidence surfaces', () => {
     const panel = read('public/manager/src/goal-status/GoalPabcdStatusPanel.tsx');
     const css = read('public/manager/src/goal-status/goal-pabcd-status.css');
-    const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
     const cssEntry = read('public/manager/src/code/code.css');
 
     assert.ok(panel.includes('aria-label="Goal and PABCD status"'), 'panel must expose monitor semantics');
@@ -38,7 +37,7 @@ test('goal PABCD status panel exposes goal, phase gate, runtime, and evidence su
     assert.ok(panel.includes('Goal evidence'), 'panel must show goal checkpoint evidence detail');
     assert.ok(css.includes('.code-goal-status-panel'), 'panel CSS must be defined');
     assert.ok(css.includes('@media (max-width: 760px)'), 'panel CSS must include compact responsive behavior');
-    assert.ok(workbench.includes('<GoalPabcdStatusPanel />'), 'Code workbench must mount the status panel');
+    assert.equal(read('public/manager/src/code/CodeWorkbench.tsx').includes('<GoalPabcdStatusPanel />'), false, 'Code session transcript lane must not inline the status panel');
     assert.ok(cssEntry.includes("@import '../goal-status/goal-pabcd-status.css';"), 'Code CSS entry must import status panel CSS');
 });
 

@@ -29,7 +29,7 @@ test('Jaw CEO console owns orchestration control, not Code runtime monitor panel
     assert.equal(combined.includes('/api/orchestrate/worker-progress'), false, 'CEO must not own worker progress monitor APIs');
 });
 
-test('Code workbench owns runtime observability monitors, not Jaw CEO control', () => {
+test('runtime observability monitors stay Manager-local and out of the Code session transcript lane', () => {
     const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
     const goalPanel = read('public/manager/src/goal-status/GoalPabcdStatusPanel.tsx');
     const backgroundPanel = read('public/manager/src/background-tasks/BackgroundTaskMonitorPanel.tsx');
@@ -39,9 +39,9 @@ test('Code workbench owns runtime observability monitors, not Jaw CEO control', 
     const workerClient = read('public/manager/src/workers/worker-progress-client.ts');
     const combined = [workbench, goalPanel, backgroundPanel, workerPanel, statusClient, backgroundClient, workerClient].join('\n');
 
-    assert.ok(workbench.includes('<GoalPabcdStatusPanel />'), 'Code workbench must mount the goal/PABCD runtime monitor');
-    assert.ok(workbench.includes('<BackgroundTaskMonitorPanel />'), 'Code workbench must mount the background task runtime monitor');
-    assert.ok(workbench.includes('<WorkerProgressMonitorPanel />'), 'Code workbench must mount the worker runtime monitor');
+    assert.equal(workbench.includes('<GoalPabcdStatusPanel />'), false, 'Code session transcript lane must not inline the goal/PABCD runtime monitor');
+    assert.equal(workbench.includes('<BackgroundTaskMonitorPanel />'), false, 'Code session transcript lane must not inline the background task runtime monitor');
+    assert.equal(workbench.includes('<WorkerProgressMonitorPanel />'), false, 'Code session transcript lane must not inline the worker runtime monitor');
     assert.ok(goalPanel.includes('data-monitor-owner="code-runtime-observability"'), 'goal monitor must mark Code runtime observability ownership');
     assert.ok(backgroundPanel.includes('data-monitor-owner="code-runtime-observability"'), 'background monitor must mark Code runtime observability ownership');
     assert.ok(workerPanel.includes('data-monitor-owner="code-runtime-observability"'), 'worker monitor must mark Code runtime observability ownership');

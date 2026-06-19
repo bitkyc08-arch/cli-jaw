@@ -126,7 +126,7 @@ test('worker progress monitor panel exposes current, previous, attention, and de
     assert.ok(panel.includes('resultPreview'), 'panel must show result preview');
     assert.ok(css.includes('.code-worker-list'), 'monitor must have bounded list styles');
     assert.ok(css.includes('max-height: min(30vh, 300px);'), 'monitor list must not push composer off screen');
-    assert.ok(workbench.includes('<WorkerProgressMonitorPanel />'), 'Code workbench must mount the worker monitor');
+    assert.equal(workbench.includes('<WorkerProgressMonitorPanel />'), false, 'Code session transcript lane must not inline the worker monitor');
     assert.ok(cssEntry.includes("@import '../workers/worker-progress-monitor.css';"), 'Code CSS entry must import monitor CSS');
 });
 
