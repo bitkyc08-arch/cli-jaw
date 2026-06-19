@@ -188,7 +188,7 @@ export function CodeCommandPopup({
                     </div>
                 )}
 
-                {popupKind === 'settings' && (
+                {(popupKind === 'settings' || popupKind === 'permission') && (
                     <div className="code-popup-section">
                         <label className="code-popup-field">
                             <span>Permission mode</span>
@@ -197,12 +197,14 @@ export function CodeCommandPopup({
                                 <option value="always-allow">Always allow</option>
                                 <option value="always-deny">Always deny</option>
                             </select>
-                            <small>Automatic modes answer the next JWC permission request with allow_always or reject_always.</small>
+                            <small>Automatic modes answer the next JWC permission request with allow_always or reject_always. Default is Ask.</small>
                         </label>
-                        <div className="code-popup-summary">
-                            <span>Provider</span><strong>{provider || '-'}</strong>
-                            <span>Model</span><strong>{model || '-'}</strong>
-                        </div>
+                        {popupKind === 'settings' && (
+                            <div className="code-popup-summary">
+                                <span>Provider</span><strong>{provider || '-'}</strong>
+                                <span>Model</span><strong>{model || '-'}</strong>
+                            </div>
+                        )}
                     </div>
                 )}
 
