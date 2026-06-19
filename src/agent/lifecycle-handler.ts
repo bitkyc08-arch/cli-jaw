@@ -444,6 +444,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             try { clearSessionBucket.run(bucket); } catch { /* ignore */ }
         }
         console.log('[jaw:kiro] stale resume detected on success exit — retrying fresh with history');
+        try {
+            const { peekPendingBootstrapPrompt } = await import('../core/main-session.js');
+            if (!peekPendingBootstrapPrompt()) {
+                const { autoCompactRefresh } = await import('../core/compact.js');
+                await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+            }
+        } catch {}
         broadcast('agent_retry', {
             cli,
             delay: 0,
@@ -591,6 +598,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
 
         // ─── Stall kills: do NOT retry — escalate immediately ───
         if (isStall) {
+            if (mainManaged && !opts.internal) {
+                try {
+                    const { autoCompactRefresh } = await import('../core/compact.js');
+                    await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+                } catch {}
+                insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, getActiveChatSession());
+            }
             broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
             resolve({ text: '', code: 1 });
@@ -711,6 +725,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 }
                 broadcast('agent_fallback', { from: cli, to: fallbackCli, reason: errMsg, ...empTag }, isEmployee ? 'internal' : 'public');
                 finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+                try {
+                    const { peekPendingBootstrapPrompt } = await import('../core/main-session.js');
+                    if (!peekPendingBootstrapPrompt()) {
+                        const { autoCompactRefresh } = await import('../core/compact.js');
+                        await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+                    }
+                } catch {}
                 const { promise: retryP } = _spawnAgent(prompt, {
                     ...opts, cli: fallbackCli, _isFallback: true, _skipInsert: true,
                 });

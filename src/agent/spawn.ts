@@ -23,7 +23,7 @@ import { getSystemPrompt, regenerateB } from '../prompt/builder.js';
 import { extractSessionId, extractFromEvent, extractFromAcpUpdate, extractOutputChunk, logEventSummary, flushClaudeBuffers, flushOpenCodeBuffers } from './events.js';
 import { detectSmokeResponse } from './smoke-detector.js';
 import { saveUpload as _saveUpload, buildMediaPrompt, buildMediaPromptMany, type SaveUploadOptions } from '../../lib/upload.js';
-import { resolveMainCli, consumePendingBootstrapPrompt } from '../core/main-session.js';
+import { resolveMainCli, consumePendingBootstrapPrompt, peekPendingBootstrapPrompt } from '../core/main-session.js';
 import {
     getSessionOwnershipGeneration,
     persistMainSession,
@@ -652,7 +652,7 @@ import { createQueueController, FALLBACK_MAX_RETRIES } from './spawn/queue.js';
 export type { QueueController } from './spawn/queue.js';
 
 const GEMINI_HISTORY_MAX_SESSIONS = 4;
-const GEMINI_HISTORY_MAX_CHARS = 3000;
+const GEMINI_HISTORY_MAX_CHARS = 8000;
 
 export interface SpawnLifecycle {
     onActivity?: (source: string) => void;
@@ -931,7 +931,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Inject only on fresh main spawns (not employee/fallback/internal/resume).
     // Using `isResume` (bucket-aware) instead of legacy `isResumeGuess` so cross-model
     // toggles (e.g. gpt-5.4 ↔ gpt-5.3-codex-spark) get the bootstrap they need.
-    if (!opts.agentId && !opts._isFallback && !opts.internal && !isResume) {
+    if (!opts.agentId && !opts.internal && !isResume) {
         const pending = consumePendingBootstrapPrompt();
         if (pending) {
             console.log(`[jaw:compact] injecting bootstrap (${pending.length} chars)`);
@@ -940,6 +940,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     }
 
     if (!empSid && !forceNew && bucketSessionId && !canResumeBucketSession) {
+        if (!peekPendingBootstrapPrompt()) {
+            import('../core/compact.js')
+                .then(({ autoCompactRefresh }) => autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model }))
+                .catch(() => {});
+        }
         try {
             if (currentBucket) clearSessionBucket.run(currentBucket);
         } catch (e) {

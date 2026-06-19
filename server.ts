@@ -190,6 +190,26 @@ regenerateB();
 resetAllStaleStates();
 markStaleTraceRunsInterrupted();
 
+// Crash-recovery compact: if a session exists but no bootstrap is pending,
+// and the last message is >5 min old, generate a bootstrap for context continuity.
+try {
+    const { peekPendingBootstrapPrompt } = await import('./src/core/main-session.js');
+    if (!peekPendingBootstrapPrompt()) {
+        const lastMsg = getLatestAssistantMessage.get() as { created_at?: string } | undefined;
+        const lastAt = lastMsg?.created_at ? new Date(lastMsg.created_at).getTime() : 0;
+        if (lastAt > 0 && Date.now() - lastAt > 5 * 60_000) {
+            const { autoCompactRefresh } = await import('./src/core/compact.js');
+            await autoCompactRefresh({
+                workDir: settings["workingDir"] || null,
+                instructions: '',
+                cli: settings["cli"] || 'claude',
+                model: settings["model"] || '',
+            });
+            console.log('[server] crash-recovery compact generated');
+        }
+    }
+} catch {}
+
 // Trace retention: prune on boot + every 6h to keep jaw.db from growing unbounded.
 const traceRetentionDays = settings["trace"]?.retentionDays ?? 7;
 const traceMaxRows = settings["trace"]?.maxRows ?? 50000;

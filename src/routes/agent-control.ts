@@ -20,8 +20,8 @@ export function registerAgentControlRoutes(app: Router, requireAuth: RequestHand
     });
 
     // Explicit session reset — deletes messages (used by /reset confirm, cli-jaw reset)
-    app.post('/api/session/reset', requireAuth, (_, res) => {
-        clearSessionState();
+    app.post('/api/session/reset', requireAuth, async (_, res) => {
+        await clearSessionState();
         ok(res, null);
     });
 }

@@ -7,9 +7,19 @@ import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js'
 import { resetFallbackState } from '../agent/spawn.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from './main-session.js';
 import { applyRuntimeSettingsPatch } from './runtime-settings.js';
+import { settings } from './config.js';
 
-/** Full reset: deletes message history (used by /reset confirm, /api/session/reset). */
-export function clearSessionState(): void {
+/** Full reset: compact first, then delete message history. */
+export async function clearSessionState(): Promise<void> {
+    try {
+        const { autoCompactRefresh } = await import('./compact.js');
+        await autoCompactRefresh({
+            workDir: settings["workingDir"] || null,
+            instructions: '',
+            cli: settings["cli"] || 'claude',
+            model: settings["model"] || '',
+        });
+    } catch {}
     bumpSessionOwnershipGeneration();
     clearMainSessionState();
 }
