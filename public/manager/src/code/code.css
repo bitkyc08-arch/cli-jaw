@@ -332,6 +332,20 @@
     background: color-mix(in srgb, var(--status-warn) 9%, var(--bg-panel));
     color: var(--text-primary);
 }
+/* Slice 216: thin non-intrusive SSE transport status strip. */
+.code-transport-status {
+    margin: 8px 16px 0;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 12px;
+    color: var(--text-primary);
+    border: 1px solid color-mix(in srgb, var(--status-warn) 42%, var(--border-default));
+    background: color-mix(in srgb, var(--status-warn) 9%, var(--bg-panel));
+}
+.code-transport-status.is-disconnected {
+    border-color: color-mix(in srgb, var(--status-error) 42%, var(--border-default));
+    background: color-mix(in srgb, var(--status-error) 9%, var(--bg-panel));
+}
 .code-child-recovery div {
     display: flex;
     align-items: center;

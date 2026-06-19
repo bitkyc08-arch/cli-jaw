@@ -7,6 +7,7 @@ import { CodeTranscript } from './CodeTranscript';
 import { CodeWorkspaceHeader } from './CodeWorkspaceHeader';
 import { ComposerFooter } from './ComposerFooter';
 import type { CodeCommand, CodeCommandPopupKind, PendingPermission, PermissionMode, PermissionOptionKind, TranscriptEntry } from './code-types';
+import type { CodeTransportState } from './useCodeEvents';
 
 type CodeWorkbenchProps = {
     activePopup: { kind: CodeCommandPopupKind; command: CodeCommand } | null;
@@ -19,6 +20,7 @@ type CodeWorkbenchProps = {
     effort: string;
     gitInfo: CodeGitInfo | null;
     childRecovery: { code: string; message: string } | null;
+    transportState: CodeTransportState;
     inputText: string;
     messages: TranscriptEntry[];
     model: string;
@@ -85,6 +87,11 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                         <strong>ACP child exited: {props.childRecovery.code}</strong>
                     </div>
                     <p>{props.childRecovery.message}</p>
+                </section>
+            )}
+            {props.transportState !== 'connected' && (
+                <section className={`code-transport-status is-${props.transportState}`} role="status" aria-live="polite">
+                    {props.transportState === 'reconnecting' ? 'Live updates reconnecting…' : 'Live updates disconnected — retrying.'}
                 </section>
             )}
             <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} />

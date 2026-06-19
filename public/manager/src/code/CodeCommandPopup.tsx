@@ -65,6 +65,7 @@ export function CodeCommandPopup({
     onPermissionModeChange,
 }: CodeCommandPopupProps) {
     const closeRef = useRef<HTMLButtonElement>(null);
+    const dialogRef = useRef<HTMLElement>(null);
     const currentProvider = modelOptions.providers.find(entry => entry.id === provider) ?? modelOptions.providers[0];
     const [modelQuery, setModelQuery] = useState('');
     const [modelTab, setModelTab] = useState<'models' | 'roles' | 'profiles'>('models');
@@ -103,6 +104,12 @@ export function CodeCommandPopup({
         closeRef.current?.focus();
     }, [popupKind, command.name]);
 
+    // Slice 216: restore focus to the element that opened the popup when it closes.
+    useEffect(() => {
+        const previouslyFocused = document.activeElement as HTMLElement | null;
+        return () => { previouslyFocused?.focus?.(); };
+    }, []);
+
     useEffect(() => {
         if (popupKind !== 'model') return;
         setModelQuery('');
@@ -133,6 +140,25 @@ export function CodeCommandPopup({
             if (event.key === 'Escape') {
                 event.preventDefault();
                 onClose();
+                return;
+            }
+            // Slice 216: trap Tab focus inside the dialog so keyboard users cannot
+            // tab out to the page behind the modal.
+            if (event.key === 'Tab' && dialogRef.current) {
+                const focusable = dialogRef.current.querySelectorAll<HTMLElement>(
+                    'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+                );
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (!first || !last) return;
+                const active = document.activeElement;
+                if (event.shiftKey && active === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && active === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
             }
         };
         window.addEventListener('keydown', onKeyDown);
@@ -144,6 +170,7 @@ export function CodeCommandPopup({
             if (event.target === event.currentTarget) onClose();
         }}>
             <section
+                ref={dialogRef}
                 className="code-popup"
                 role="dialog"
                 aria-modal="true"

@@ -21,7 +21,7 @@ import {
 import { answerQueuedPermission, handleIncomingPermissionRequest } from './code-permission-flow';
 import { normalizeToolStatus, replayEventsToTranscriptEntries } from './code-transcript-replay';
 import { useCodeTranscriptScroll } from './use-code-transcript-scroll';
-import { useCodeEvents, type CodeEvent } from './useCodeEvents';
+import { useCodeEvents, type CodeEvent, type CodeTransportState } from './useCodeEvents';
 
 type CodeCanvasProps = {
     port: number;
@@ -54,6 +54,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [modelPresets, setModelPresets] = useState<CodeModelPresetInfo | null>(null);
     const [gitInfo, setGitInfo] = useState<CodeGitInfo | null>(null);
     const [childRecovery, setChildRecovery] = useState<{ code: string; message: string } | null>(null);
+    const [transportState, setTransportState] = useState<CodeTransportState>('connected');
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
@@ -267,7 +268,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setTimeout(() => scrollTranscriptToBottom('smooth'), 50);
     }, [client, permissionMode, scrollTranscriptToBottom]);
 
-    useCodeEvents({ port, sessionId: activeSessionId, sessionIdRef: activeSessionIdRef, onEvent: handleCodeEvent });
+    useCodeEvents({ port, sessionId: activeSessionId, sessionIdRef: activeSessionIdRef, onEvent: handleCodeEvent, onTransport: setTransportState });
 
     const handleSubmit = useCallback(async () => {
         const text = inputText.trim();
@@ -457,6 +458,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             effort={effort}
             gitInfo={gitInfo}
             childRecovery={childRecovery}
+            transportState={transportState}
             inputText={inputText}
             messages={messages}
             model={model}
