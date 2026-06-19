@@ -65,11 +65,13 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     }, [activeSessionId, workingDir]);
 
     const handleWorkingDirChange = useCallback((path: string | null) => {
-        if (activeSessionIdRef.current || activeSessionId) return;
+        // slice 213: cwd is locked once a session is active OR the workspace is frozen
+        // (first Send sent, createSession not yet resolved — the FrozenStarting window).
+        if (activeSessionIdRef.current || activeSessionId || workspaceFrozen) return;
         const next = path ?? '';
         setCodeWorkingDir(next);
         onWorkingDirChange?.(path);
-    }, [activeSessionId, onWorkingDirChange]);
+    }, [activeSessionId, onWorkingDirChange, workspaceFrozen]);
 
     // Slice 210: pick a Code workspace folder. Electron uses the native bridge;
     // the Web Manager falls back to the /api/code/workspace/pick OS dialog.

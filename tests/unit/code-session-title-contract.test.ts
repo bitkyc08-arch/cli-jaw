@@ -173,9 +173,10 @@ test('code workspace is a picker button before first Send and a plain chip after
     assert.ok(syncBlock.includes('setCodeWorkingDir(workingDir)'), 'workingDir prop sync must still update cwd before a session starts');
 
     const handlerStart = canvas.indexOf('const handleWorkingDirChange = useCallback');
-    const handlerEnd = canvas.indexOf('}, [activeSessionId, onWorkingDirChange])', handlerStart);
+    const handlerEnd = canvas.indexOf('}, [activeSessionId, onWorkingDirChange, workspaceFrozen])', handlerStart);
     const handlerBlock = canvas.slice(handlerStart, handlerEnd);
-    assert.ok(handlerBlock.includes('if (activeSessionIdRef.current || activeSessionId) return'), 'manual cwd changes must be ignored while a session is active');
+    assert.ok(handlerEnd > handlerStart, 'handleWorkingDirChange dep array must include workspaceFrozen (slice 213)');
+    assert.ok(handlerBlock.includes('activeSessionId || workspaceFrozen) return'), 'manual cwd changes must be ignored while a session is active OR the workspace is frozen (slice 213)');
     assert.ok(handlerBlock.includes('setCodeWorkingDir(next)'), 'manual cwd changes must still update cwd before a session starts');
 
     // Parent owns pick (Electron bridge -> web /api/code/workspace/pick fallback) and freeze lifecycle.
