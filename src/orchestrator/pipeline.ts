@@ -595,15 +595,6 @@ export async function orchestrateReset(
     const scope = 'default';
     resetState(scope);
     try {
-        const { autoCompactRefresh } = await import('../core/compact.js');
-        await autoCompactRefresh({
-            workDir: settings["workingDir"] || null,
-            instructions: '',
-            cli: settings["cli"] || 'claude',
-            model: settings["model"] || '',
-        });
-    } catch {}
-    try {
         const { drainPending } = await import('../memory/heartbeat.js');
         await drainPending();
     } catch (err) {
