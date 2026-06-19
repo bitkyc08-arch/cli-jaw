@@ -599,10 +599,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         // ─── Stall kills: do NOT retry — escalate immediately ───
         if (isStall) {
             if (mainManaged && !opts.internal) {
-                try {
-                    const { autoCompactRefresh } = await import('../core/compact.js');
-                    await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
-                } catch {}
+                const canNativeResume = cli === 'claude' || cli === 'claude-e';
+                if (!canNativeResume) {
+                    try {
+                        const { autoCompactRefresh } = await import('../core/compact.js');
+                        await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
+                    } catch {}
+                }
                 insertMessage.run('assistant', `⏱️ ${errMsg}`, cli, model, settings["workingDir"] || null, getActiveChatSession());
             }
             broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag, ...(wasSteer ? { steered: true } : {}) }, isEmployee ? 'internal' : 'public');
