@@ -458,3 +458,23 @@
     line-height: 1.45;
     overflow-wrap: anywhere;
 }
+
+/* Slice 217: narrow-width responsive parity (Web 24576 + Electron 24577).
+   Matches the 720px breakpoint used by the model popup bottom-sheet. */
+@media (max-width: 720px) {
+    /* Header chips wrap instead of clipping under the overflow:hidden row. */
+    .code-workspace-primary {
+        flex-wrap: wrap;
+        overflow: visible;
+    }
+    /* Stack the inline session sidebar above the workbench at narrow widths. */
+    .code-canvas {
+        flex-direction: column;
+    }
+    .code-canvas-sidebar {
+        width: 100%;
+        max-height: 180px;
+        border-right: none;
+        border-bottom: 1px solid var(--border-default);
+    }
+}
