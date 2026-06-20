@@ -418,7 +418,7 @@ export function SidebarRailRouter(props: Props) {
                         ) : null}
                         {props.remindersWorkspaceEnabled ? (
                             <WorkspaceSurface active={props.sidebarMode === 'reminders'}>
-                                <DashboardRemindersWorkspace active={props.sidebarMode === 'reminders'} view={remindersView} feed={remindersFeed} onRefresh={() => void remindersFeed.refresh()} onCreate={(input) => void remindersFeed.create(input)} onUpdate={(id, patch) => void remindersFeed.update(id, patch)} onOpenHelpTopic={props.onOpenHelpTopic} />
+                                <DashboardRemindersWorkspace active={props.sidebarMode === 'reminders'} view={remindersView} feed={remindersFeed} onRefresh={() => void remindersFeed.refresh()} onCreate={(input) => void remindersFeed.create(input).catch(() => {})} onUpdate={(id, patch) => void remindersFeed.update(id, patch)} onOpenHelpTopic={props.onOpenHelpTopic} />
                             </WorkspaceSurface>
                         ) : null}
                     </div>

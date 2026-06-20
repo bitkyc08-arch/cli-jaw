@@ -3,7 +3,7 @@
     height: 100dvh;
     min-width: 0;
     display: grid;
-    grid-template-rows: auto auto 1fr auto;
+    grid-template-rows: auto auto minmax(0, 1fr) auto auto;
     overflow: hidden;
     background: var(--surface-base);
     color: var(--ink-primary);
@@ -186,6 +186,91 @@
 .tray-reminders-empty-row {
     padding: 8px;
     background: color-mix(in srgb, var(--surface-panel) 72%, transparent);
+}
+
+.tray-reminders-composer {
+    min-width: 0;
+    display: grid;
+    gap: 7px;
+    padding: 9px 10px;
+    border-top: 1px solid var(--border-subtle);
+    background: color-mix(in srgb, var(--surface-panel) 88%, var(--surface-base));
+}
+
+.tray-reminders-composer-modes {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+}
+
+.tray-reminders-composer-modes button {
+    min-width: 0;
+    min-height: 26px;
+    padding: 3px 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-color: var(--border-subtle);
+    color: var(--ink-muted);
+    font-size: 11px;
+}
+
+.tray-reminders-composer-modes button[aria-pressed="true"] {
+    border-color: color-mix(in srgb, var(--accent-primary) 58%, var(--border-subtle));
+    background: color-mix(in srgb, var(--accent-primary) 14%, transparent);
+    color: var(--ink-primary);
+}
+
+.tray-reminders-composer-form {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px;
+}
+
+.tray-reminders-composer-form input,
+.tray-reminders-composer-date-row input {
+    min-width: 0;
+    min-height: 28px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 7px;
+    padding: 4px 7px;
+    background: var(--surface-base);
+    color: var(--ink-primary);
+    font: inherit;
+    font-size: 12px;
+}
+
+.tray-reminders-composer-form button {
+    min-height: 28px;
+    padding: 4px 10px;
+    font-size: 12px;
+}
+
+.tray-reminders-composer-date-row {
+    min-height: 28px;
+    display: grid;
+    align-items: center;
+}
+
+.tray-reminders-composer-date-row label {
+    min-width: 0;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 7px;
+}
+
+.tray-reminders-composer-date-row label span {
+    color: var(--ink-muted);
+    font-size: 11px;
+    font-weight: 700;
+}
+
+.tray-reminders-composer-error {
+    margin: 0;
+    color: var(--status-error);
+    font-size: 11px;
 }
 
 .tray-reminders-footer button {

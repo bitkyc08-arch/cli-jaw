@@ -27,6 +27,7 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     const workspace = read('public/manager/src/dashboard-reminders/DashboardRemindersWorkspace.tsx');
     const remindersApi = read('public/manager/src/dashboard-reminders/reminders-api.ts');
     const remindersFeed = read('public/manager/src/dashboard-reminders/useRemindersFeed.ts');
+    const trayQuickAdd = read('public/manager/src/dashboard-reminders/tray-quick-add.ts');
 
     assert.ok(types.includes("'reminders'"), 'DashboardSidebarMode must include reminders');
     assert.ok(serverTypes.includes("'reminders'"), 'server DashboardSidebarMode must include reminders');
@@ -51,9 +52,13 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(main.includes('./manager-tray-reminders.css'), 'Tray reminders CSS must be loaded by the manager entry');
     assert.ok(sidebar.includes('countRemindersView'), 'Reminders sidebar counts must use the shared view model');
     assert.ok(trayApp.includes('buildTrayTriageSections'), 'Tray reminders app must use the shared triage helper');
+    assert.ok(trayApp.includes('TrayReminderQuickAddComposer'), 'Tray reminders app must include the quick-add composer');
+    assert.ok(trayApp.includes('buildTrayQuickAddInput'), 'Tray quick-add composer must share pure date validation logic');
+    assert.ok(trayApp.includes('feed.create(input).then(() => feed.refresh())'), 'Tray quick-add submit must create through the feed and refresh');
     assert.ok(trayApp.includes('getDesktop()?.trayReminders?.popUpMenu()'), 'Tray reminders app must use the typed desktop bridge for menu access');
     assert.ok(trayApp.includes('bridge.openDashboard()'), 'Tray reminders Open Dashboard must delegate to the desktop shell');
     assert.equal(trayApp.includes('window.open'), false, 'Tray reminders must not open the dashboard inside the popover window');
+    assert.ok(trayApp.includes("id: 'inbox'") && trayApp.includes("id: 'today'") && trayApp.includes("id: 'tomorrow'") && trayApp.includes("id: 'pick-date'"), 'Tray quick-add must expose the four approved modes');
     assert.ok(trayApp.includes('aria-label="Mark done"'), 'Tray reminders rows must expose an accessible done action');
     assert.ok(trayApp.includes('aria-label="Snooze reminder"'), 'Tray reminders rows must expose a snooze menu');
     assert.ok(trayApp.includes('feed.markDone(id)'), 'Tray reminders done action must call the feed helper');
@@ -67,10 +72,14 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(remindersApi.includes('return await updateReminder(id, { remindAt: nextRemindAt })'), 'snooze helper must PATCH remindAt only');
     assert.ok(remindersFeed.includes('markDone: (id: string) => Promise<void>'), 'feed must expose markDone');
     assert.ok(remindersFeed.includes('snooze: (id: string, nextRemindAt: string) => Promise<void>'), 'feed must expose snooze');
+    assert.ok(remindersFeed.includes('throw err;'), 'feed create must reject after setting error so tray drafts clear only on success');
     assert.ok(remindersFeed.includes('pollWhileActiveMs?: number'), 'feed must keep active polling opt-in');
     assert.ok(remindersFeed.includes("window.addEventListener('focus', refreshIfVisible)"), 'feed must refresh on focus when active polling is enabled');
     assert.ok(remindersFeed.includes("document.addEventListener('visibilitychange', refreshIfVisible)"), 'feed must refresh on visibility gain when active polling is enabled');
+    assert.ok(router.includes('onCreate={(input) => void remindersFeed.create(input).catch(() => {})}'), 'Dashboard create call site must absorb create rejection after the feed sets error');
     assert.ok(router.includes('onUpdate={(id, patch) => void remindersFeed.update(id, patch)}'), 'Reminders sidebar must receive update wiring');
+    assert.ok(trayQuickAdd.includes("export type TrayQuickAddMode = 'inbox' | 'today' | 'tomorrow' | 'pick-date'"), 'quick-add helper must define the four supported modes only');
+    assert.ok(trayQuickAdd.includes('toISOString()'), 'quick-add date output must normalize datetime-local values to ISO');
     assert.ok(workspace.includes('InlineReminderTitle'), 'Reminders rows must support double-click inline title editing');
     assert.ok(workspace.includes('data-reminder-drop-before-id'), 'Reminders row drop targets must expose before/after order metadata');
     assert.ok(workspace.includes('isAfterRowDrop'), 'Reminders row drops must distinguish upper/lower row halves for same-bucket reorder');
@@ -91,6 +100,7 @@ test('manager reminders frontend files and App line budget stay in bounds', () =
         'public/manager/src/dashboard-reminders/reminder-order.ts',
         'public/manager/src/dashboard-reminders/reminders-view-model.ts',
         'public/manager/src/dashboard-reminders/TrayRemindersApp.tsx',
+        'public/manager/src/dashboard-reminders/tray-quick-add.ts',
         'public/manager/src/dashboard-reminders/ReminderDetailPopover.tsx',
         'public/manager/src/dashboard-reminders/useDashboardReminderDrag.ts',
         'public/manager/src/manager-dashboard-reminders.css',

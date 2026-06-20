@@ -55,6 +55,7 @@ export function useRemindersFeed(options: UseRemindersFeedOptions): RemindersFee
             setItems(current => [item, ...current.filter(existing => existing.id !== item.id)]);
         } catch (err) {
             setError((err as Error).message);
+            throw err;
         }
     }, []);
 
