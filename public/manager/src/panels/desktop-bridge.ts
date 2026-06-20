@@ -170,6 +170,7 @@ export type ShortcutBridgeApi = {
 
 export type TrayRemindersBridgeApi = {
     popUpMenu: () => void;
+    openDashboard?: (() => void) | undefined;
 };
 
 export type BrowserBridgeApi = {

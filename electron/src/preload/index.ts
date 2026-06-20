@@ -133,6 +133,7 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
   },
   trayReminders: {
     popUpMenu: () => ipcRenderer.send('tray:popup-menu'),
+    openDashboard: () => ipcRenderer.send('tray:open-dashboard'),
   },
   browser: {
     onOpenUrl: (cb: (payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => void) => {

@@ -52,6 +52,8 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(sidebar.includes('countRemindersView'), 'Reminders sidebar counts must use the shared view model');
     assert.ok(trayApp.includes('buildTrayTriageSections'), 'Tray reminders app must use the shared triage helper');
     assert.ok(trayApp.includes('getDesktop()?.trayReminders?.popUpMenu()'), 'Tray reminders app must use the typed desktop bridge for menu access');
+    assert.ok(trayApp.includes('bridge.openDashboard()'), 'Tray reminders Open Dashboard must delegate to the desktop shell');
+    assert.equal(trayApp.includes('window.open'), false, 'Tray reminders must not open the dashboard inside the popover window');
     assert.ok(trayApp.includes('aria-label="Mark done"'), 'Tray reminders rows must expose an accessible done action');
     assert.ok(trayApp.includes('aria-label="Snooze reminder"'), 'Tray reminders rows must expose a snooze menu');
     assert.ok(trayApp.includes('feed.markDone(id)'), 'Tray reminders done action must call the feed helper');

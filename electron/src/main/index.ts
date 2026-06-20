@@ -401,6 +401,10 @@ function installTrayReminders(): void {
       if (!isAllowedSender(event)) return;
       popUpTrayMenu();
     });
+    ipcMain.on('tray:open-dashboard', (event) => {
+      if (!isAllowedSender(event)) return;
+      void openTrayRemindersDashboard();
+    });
   }
 }
 
@@ -440,6 +444,22 @@ function setTrayBadgeFromReminderPoller(count: number): void {
 
 function refreshTrayReminderBadge(): void {
   void reminderBadgePoller?.refreshNow();
+}
+
+function trayRemindersDashboardUrl(): string {
+  return new URL('/?sidebar=reminders', MANAGER_URL).toString();
+}
+
+async function openTrayRemindersDashboard(): Promise<void> {
+  await createManagerWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  try {
+    await mainWindow.loadURL(trayRemindersDashboardUrl());
+    focusWindow(mainWindow);
+    reminderPopover?.hide();
+  } catch (err) {
+    ringBuffer.append(`[tray-reminders] open dashboard failed: ${(err as Error)?.message ?? err}\n`);
+  }
 }
 
 function startTrayReminderBadgePolling(): void {

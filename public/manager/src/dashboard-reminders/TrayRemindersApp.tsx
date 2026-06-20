@@ -30,7 +30,12 @@ function reminderMeta(item: DashboardReminder): string {
 }
 
 function openDashboard(): void {
-    window.open('/?sidebar=reminders', 'cli-jaw-dashboard', 'noopener,noreferrer');
+    const bridge = getDesktop()?.trayReminders;
+    if (bridge?.openDashboard) {
+        bridge.openDashboard();
+        return;
+    }
+    window.location.assign('/?sidebar=reminders');
 }
 
 function snoozeTime(option: string): string | null {

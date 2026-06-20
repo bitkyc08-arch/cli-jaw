@@ -36,13 +36,18 @@ test('main process wires reminder popover, typed IPC bridge, and origin guard', 
     assert.ok(index.includes('popUpTrayMenu'));
     assert.ok(index.includes('getTrayBoundsSafe'));
     assert.ok(index.includes("ipcMain.on('tray:popup-menu'"));
+    assert.ok(index.includes("ipcMain.on('tray:open-dashboard'"));
     assert.ok(index.includes('if (!isAllowedSender(event)) return;'));
+    assert.ok(index.includes("new URL('/?sidebar=reminders', MANAGER_URL)"));
+    assert.ok(index.includes('reminderPopover?.hide()'));
     assert.ok(index.includes('installTrayReminders();'));
     assert.ok(index.includes('destroyTrayReminders();'));
 
     assert.ok(preload.includes('trayReminders'));
     assert.ok(preload.includes("popUpMenu: () => ipcRenderer.send('tray:popup-menu')"));
+    assert.ok(preload.includes("openDashboard: () => ipcRenderer.send('tray:open-dashboard')"));
     assert.ok(desktopBridge.includes('export type TrayRemindersBridgeApi'));
+    assert.ok(desktopBridge.includes('openDashboard?: (() => void) | undefined'));
     assert.ok(desktopBridge.includes('trayReminders?: TrayRemindersBridgeApi | undefined'));
 });
 
