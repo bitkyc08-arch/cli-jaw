@@ -52,6 +52,14 @@ const listEventsStmt = db.prepare(`
 const countEventsStmt = db.prepare('SELECT COUNT(*) AS count FROM trace_events WHERE run_id = ?');
 const getEventStmt = db.prepare('SELECT * FROM trace_events WHERE run_id = ? AND seq = ?');
 const maxSeqStmt = db.prepare('SELECT MAX(seq) AS seq FROM trace_events WHERE run_id = ?');
+// Option D hydration (devlog 260620 Phase 3): a finished message's tool cards rebuilt
+// from the durable, uncapped trace_events instead of the lossy messages.tool_log blob.
+const listRunsForMessageStmt = db.prepare(
+    'SELECT id, audience, started_at FROM trace_runs WHERE message_id = ? ORDER BY started_at ASC, id ASC');
+const listToolEventsForRunStmt = db.prepare(`
+    SELECT seq, event_type, raw_json, raw_path
+    FROM trace_events WHERE run_id = ? AND source = 'tool' ORDER BY seq ASC LIMIT ?
+`);
 const interruptStaleStmt = db.prepare(`
     UPDATE trace_runs SET status = 'interrupted', finished_at = ?, error = COALESCE(error, 'process exited before finalization')
     WHERE status = 'running'
@@ -187,6 +195,54 @@ export function listTraceEvents(runId: string, offset = 0, limit = 80): { total:
     const totalRow = countEventsStmt.get(runId) as { count?: number } | undefined;
     return { total: Number(totalRow?.count || 0), events: listEventsStmt.all(runId, safeLimit, safeOffset) as TraceEventRow[] };
 }
+// ── Option D hydration (Phase 3, devlog 260620) ──────────────────────
+// Reconstruct a finished assistant message's tool cards from trace_events.
+// stampTraceTool stored the full ToolEntry as the event raw (source='tool'),
+// so each row round-trips back to a card — durable and uncapped, unlike the
+// messages.tool_log blob. raw_path spill is read lazily so huge turns still hydrate.
+function traceToolEventToEntry(ev: { raw_json: string | null; raw_path: string | null }): ToolEntry | null {
+    let raw = ev.raw_json || '';
+    if (!raw && ev.raw_path) {
+        const path = safeRawPath(ev.raw_path);
+        if (path && fs.existsSync(path)) {
+            try { raw = fs.readFileSync(path, 'utf8'); } catch { raw = ''; }
+        }
+    }
+    if (!raw) return null;
+    try {
+        const parsed = JSON.parse(raw) as unknown;
+        if (parsed && typeof parsed === 'object') {
+            const obj = parsed as Record<string, unknown>;
+            if (obj['label'] || obj['icon']) return obj as unknown as ToolEntry;
+        }
+    } catch { /* malformed payload — skip, never throw on hydrate */ }
+    return null;
+}
+
+// Public hydration excludes internal (worker) runs; those fold in via parent_run_id
+// once Phase 2's cross-process linkage write lands (devlog 260620 doc 20/30).
+export function listToolEntriesForMessage(
+    messageId: number,
+    opts: { audience?: TraceAudience; limit?: number } = {},
+): ToolEntry[] {
+    if (!Number.isInteger(messageId) || messageId <= 0) return [];
+    const wantAudience: TraceAudience = opts.audience || 'public';
+    const perRunLimit = Math.max(1, Math.min(5000, opts.limit ?? 5000));
+    const runs = listRunsForMessageStmt.all(messageId) as
+        { id: string; audience: TraceAudience; started_at: number }[];
+    const out: ToolEntry[] = [];
+    for (const run of runs) {
+        if (wantAudience === 'public' && run.audience === 'internal') continue;
+        const events = listToolEventsForRunStmt.all(run.id, perRunLimit) as
+            { seq: number; event_type: string; raw_json: string | null; raw_path: string | null }[];
+        for (const ev of events) {
+            const tool = traceToolEventToEntry(ev);
+            if (tool) out.push(tool);
+        }
+    }
+    return out;
+}
+
 export function getTraceEvent(runId: string, seq: number): (TraceEventRow & { raw: string }) | null {
     if (!TRACE_ID_RE.test(runId) || !Number.isInteger(seq) || seq < 1) return null;
     const row = getEventStmt.get(runId, seq) as TraceEventRow | undefined;
