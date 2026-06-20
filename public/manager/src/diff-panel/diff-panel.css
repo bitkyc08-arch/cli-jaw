@@ -51,6 +51,7 @@
     font-family: 'SF Mono', 'Menlo', monospace;
 }
 .diff-pick-repo,
+.diff-follow-instance,
 .diff-refresh {
     all: unset;
     cursor: pointer;
@@ -60,8 +61,10 @@
     white-space: nowrap;
 }
 .diff-pick-repo:hover,
+.diff-follow-instance:hover,
 .diff-refresh:hover { background: var(--bg-hover); color: var(--text-base); }
-.diff-pick-repo:disabled {
+.diff-pick-repo:disabled,
+.diff-follow-instance:disabled {
     cursor: default;
     opacity: 0.55;
 }

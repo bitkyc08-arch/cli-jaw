@@ -13,6 +13,7 @@ import { usePanelLayout } from './panels/PanelLayoutProvider';
 import { currentManagerSurface } from './panels/panel-capabilities';
 import type { RightPanelMode, BottomPanelTab } from './panels/types';
 import type { FolderPanelSessionState } from './folder-panel/folder-panel-session';
+import type { WorkbenchRepoRootMode } from './workbench/workbench-resource-types';
 
 const TerminalPanel = lazy(() => import('./terminal/TerminalPanel').then(m => ({ default: m.TerminalPanel })));
 const DiffPanel = lazy(() => import('./diff-panel/DiffPanel').then(m => ({ default: m.DiffPanel })));
@@ -167,10 +168,12 @@ function renderRightPanelContent(
     previewFilePath: string | null,
     folderRootPath: string | null,
     repoRootPath: string | null,
+    repoRootMode: WorkbenchRepoRootMode,
     gitRefreshVersion: number,
     onPreviewFile: (path: string) => void,
     onFolderRootChange: (path: string | null) => void,
-    onRepoRootChange: (path: string | null) => void,
+    onRepoRootChange: (path: string | null, mode?: WorkbenchRepoRootMode) => void,
+    onFollowInstanceRepoRoot: (path: string | null) => void,
     onGitRefresh: () => void,
     selectedInstance: DashboardInstance | null,
     dashboardSettingsUi: DashboardRegistryUi,
@@ -187,8 +190,10 @@ function renderRightPanelContent(
             settings={dashboardSettingsUi}
             folderRootPath={folderRootPath}
             repoRootPath={repoRootPath}
+            repoRootMode={repoRootMode}
             selectedFilePath={previewFilePath}
             onRepoRootChange={onRepoRootChange}
+            onFollowInstanceRepoRoot={onFollowInstanceRepoRoot}
             onPreviewFile={onPreviewFile}
             onGitRefresh={onGitRefresh}
             onSettingsPatch={onDashboardSettingsPatch}
@@ -217,10 +222,12 @@ export function SidebarRailRouter(props: Props) {
         activeResourcePath: rightPreviewFilePath,
         folderRootPath: rightFolderRootPath,
         repoRootPath,
+        repoRootMode,
         gitRefreshVersion,
         setActiveResource,
         setFolderRootPath,
         setRepoRootPath,
+        followInstanceRepoRoot,
         bumpGitRefresh,
     } = workbenchResource;
     const [folderPanelSession, setFolderPanelSession] = useState<FolderPanelSessionState | null>(null);
@@ -297,8 +304,8 @@ export function SidebarRailRouter(props: Props) {
         props.onDashboardSettingsPatch({ rightFolderRootPath: path });
     }, [props.onDashboardSettingsPatch, rightFolderRootPath, setFolderRootPath]);
 
-    const updateRepoRoot = useCallback((path: string | null): void => {
-        setRepoRootPath(path);
+    const updateRepoRoot = useCallback((path: string | null, mode: WorkbenchRepoRootMode = 'instance'): void => {
+        setRepoRootPath(path, mode);
     }, [setRepoRootPath]);
 
     const handleDroppedPaths = useCallback((event: ElectronDroppedPathsEvent): void => {
@@ -333,7 +340,7 @@ export function SidebarRailRouter(props: Props) {
             onCloseDrawer={props.onCloseDrawer}
             rightPanelOpen={rightPanelOpen}
             rightPanelWidth={panelLayout.state.rightPanel.width}
-            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, repoRootPath, gitRefreshVersion, handleRightPreviewFile, updateRightFolderRoot, updateRepoRoot, bumpGitRefresh, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} /> : undefined}
+            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, repoRootPath, repoRootMode, gitRefreshVersion, handleRightPreviewFile, updateRightFolderRoot, updateRepoRoot, followInstanceRepoRoot, bumpGitRefresh, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} /> : undefined}
             bottomPanelOpen={bottomPanelOpen}
             bottomPanelHeight={panelLayout.state.bottomPanel.height}
             bottomPanelContent={panelLayout.state.bottomPanel.tabs.length > 0 ? <BottomPanel renderTab={renderBottomTabContent} /> : undefined}

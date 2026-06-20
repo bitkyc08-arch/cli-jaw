@@ -481,6 +481,8 @@ test('Electron diff panel resolves selected instance roots and exposes configura
     assert.ok(diffPanel.includes('bridge.getRepoCandidates(candidates)'), 'DiffPanel must resolve repo candidates instead of probing only Electron home');
     assert.ok(diffPanel.includes('diffPinnedRootByPort'), 'DiffPanel must persist the selected repo root by instance port');
     assert.ok(diffPanel.includes('Choose Repository'), 'DiffPanel must expose a native repository picker button');
+    assert.ok(diffPanel.includes('Follow Instance'), 'DiffPanel must expose a manual-root reset button');
+    assert.ok(diffPanel.includes("repoRootMode === 'manual'"), 'DiffPanel must preserve manual repository override mode');
     assert.ok(diffPanel.includes('folderBridge.pickFolder()'), 'DiffPanel must use the existing Electron folder picker bridge');
     assert.ok(diffPanel.includes('diffRecentRepoRoots'), 'DiffPanel must persist recent picked repositories');
     assert.ok(diffPanel.includes("const DIFF_MODES: DashboardDiffMode[] = ['unstaged', 'staged', 'head', 'base']"), 'DiffPanel must expose the expected diff modes');
@@ -496,6 +498,7 @@ test('Electron diff panel resolves selected instance roots and exposes configura
     assert.ok(diffService.includes("ls-files', '--others', '--exclude-standard"), 'git diff service must support untracked file summaries');
     assert.ok(diffService.includes("diff', '--no-color', '--no-index'"), 'git diff service must provide content for untracked file diffs');
     assert.ok(diffCss.includes('.diff-root-select'), 'DiffPanel root selector must be styled');
+    assert.ok(diffCss.includes('.diff-follow-instance'), 'DiffPanel Follow Instance reset action must be styled');
     assert.ok(diffCss.includes('.diff-mode-button.is-active'), 'DiffPanel active mode must be visibly styled');
 });
 

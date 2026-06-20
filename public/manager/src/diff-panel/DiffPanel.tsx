@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { getDesktop, type DiffBridgeApi, type DiffOptions, type DiffResolvedRoot, type DiffRootCandidate, type SourceControlOperation, type SourceControlSnapshot } from '../panels/desktop-bridge';
 import type { DashboardDiffMode, DashboardInstance, DashboardRegistryUi } from '../types';
+import type { WorkbenchRepoRootMode } from '../workbench/workbench-resource-types';
 import { createDashboardGitDiffClient } from './diff-client';
 import { buildDiffRootCandidates } from './diff-root-candidates';
 import './diff-panel.css';
@@ -34,8 +35,10 @@ type DiffPanelProps = {
     settings: DiffSettings;
     folderRootPath?: string | null;
     repoRootPath?: string | null;
+    repoRootMode?: WorkbenchRepoRootMode | undefined;
     selectedFilePath?: string | null;
-    onRepoRootChange?: (path: string | null) => void;
+    onRepoRootChange?: (path: string | null, mode?: WorkbenchRepoRootMode) => void;
+    onFollowInstanceRepoRoot?: (path: string | null) => void;
     onPreviewFile?: (path: string) => void;
     onGitRefresh?: () => void;
     onSettingsPatch?: (patch: Partial<DashboardRegistryUi>) => void;
@@ -117,6 +120,14 @@ function relativeDiffPath(repoRoot: string | null, filePath: string | null): str
     return normalizedFile.slice(normalizedRoot.length + 1);
 }
 
+function instanceFollowRoot(roots: DiffResolvedRoot[], folderRootPath: string | null): string | null {
+    if (folderRootPath) {
+        const folderRoot = roots.find(root => isPathInsideRoot(folderRootPath, root.root))?.root ?? null;
+        if (folderRoot) return folderRoot;
+    }
+    return roots[0]?.root ?? null;
+}
+
 function groupedDiffFiles(snapshot: SourceControlSnapshot | null, files: DiffFileSummary[]): DiffFileListGroup[] {
     if (!snapshot) return files.length > 0 ? [{ id: 'changes', label: 'Changes', files }] : [];
     const summaryByPath = new Map(files.map(file => [file.path, file]));
@@ -147,6 +158,7 @@ function groupedDiffFiles(snapshot: SourceControlSnapshot | null, files: DiffFil
 
 export function DiffPanel(props: DiffPanelProps) {
     const repoRootPath = props.repoRootPath ?? null;
+    const repoRootMode = props.repoRootMode ?? 'instance';
     const folderRootPath = props.folderRootPath ?? null;
     const onRepoRootChange = props.onRepoRootChange;
     const desktopBridge = getDiffBridge();
@@ -192,15 +204,15 @@ export function DiffPanel(props: DiffPanelProps) {
             const requestedRoot = repoRootPath && roots.some(root => root.root === repoRootPath)
                 ? repoRootPath
                 : null;
-            const folderRoot = folderRootPath
-                ? roots.find(root => isPathInsideRoot(folderRootPath, root.root))?.root ?? null
-                : null;
-            const nextRoot = requestedRoot ?? folderRoot ?? (current && roots.some(root => root.root === current) ? current : null) ?? roots[0]?.root ?? null;
-            if (nextRoot !== repoRootPath) onRepoRootChange?.(nextRoot);
+            const currentRoot = current && roots.some(root => root.root === current) ? current : null;
+            const nextRoot = repoRootMode === 'manual'
+                ? requestedRoot ?? currentRoot ?? roots[0]?.root ?? null
+                : requestedRoot ?? instanceFollowRoot(roots, folderRootPath);
+            if (repoRootMode !== 'manual' && nextRoot !== repoRootPath) onRepoRootChange?.(nextRoot, 'instance');
             return nextRoot;
         });
         if (roots.length === 0) {
-            onRepoRootChange?.(null);
+            if (repoRootMode !== 'manual') onRepoRootChange?.(null, 'instance');
             setError('No git repository found from the selected instance roots.');
         }
         else setError(null);
@@ -214,6 +226,7 @@ export function DiffPanel(props: DiffPanelProps) {
         props.settings.diffPinnedRootByPort,
         props.settings.diffRecentRepoRoots,
         repoRootPath,
+        repoRootMode,
     ]);
 
     useEffect(() => {
@@ -265,10 +278,10 @@ export function DiffPanel(props: DiffPanelProps) {
         })();
     }, [bridge, options, repoRoot, selectedFile]);
 
-    function handleRootChange(root: string, nextRecentRepoRoots?: string[]): void {
+    function handleRootChange(root: string, nextRecentRepoRoots?: string[], mode: WorkbenchRepoRootMode = 'manual'): void {
         setRepoRoot(root);
         setSelectedFile(null);
-        onRepoRootChange?.(root);
+        onRepoRootChange?.(root, mode);
         const port = props.selectedInstance?.port;
         const patch: Partial<DashboardRegistryUi> = {};
         if (port != null) {
@@ -279,6 +292,18 @@ export function DiffPanel(props: DiffPanelProps) {
         }
         if (nextRecentRepoRoots) patch.diffRecentRepoRoots = nextRecentRepoRoots;
         if (Object.keys(patch).length > 0) props.onSettingsPatch?.(patch);
+    }
+
+    function handleFollowInstance(): void {
+        const nextRoot = instanceFollowRoot(repoCandidates, folderRootPath);
+        setRepoRoot(nextRoot);
+        setSelectedFile(null);
+        props.onFollowInstanceRepoRoot?.(nextRoot);
+        const port = props.selectedInstance?.port;
+        if (port == null) return;
+        const nextPinned = { ...props.settings.diffPinnedRootByPort };
+        delete nextPinned[String(port)];
+        props.onSettingsPatch?.({ diffPinnedRootByPort: nextPinned });
     }
 
     function handleFileSelect(path: string): void {
@@ -343,7 +368,7 @@ export function DiffPanel(props: DiffPanelProps) {
                 ? current.map(candidate => candidate.root === resolved.root ? resolved : candidate)
                 : [resolved, ...current]);
             setError(null);
-            handleRootChange(resolved.root, nextRecentRepoRoots);
+            handleRootChange(resolved.root, nextRecentRepoRoots, 'manual');
         } finally {
             setPickingRepo(false);
         }
@@ -356,7 +381,7 @@ export function DiffPanel(props: DiffPanelProps) {
                     className="diff-root-select"
                     value={repoRoot ?? ''}
                     aria-label="Git repository root"
-                    onChange={(event) => handleRootChange(event.currentTarget.value)}
+                    onChange={(event) => handleRootChange(event.currentTarget.value, undefined, 'manual')}
                 >
                     {repoCandidates.map(candidate => (
                         <option key={candidate.root} value={candidate.root}>{rootTitle(candidate)}</option>
@@ -366,6 +391,9 @@ export function DiffPanel(props: DiffPanelProps) {
                 <span className="diff-head-chip">{selectedRoot?.branch ?? selectedRoot?.head ?? 'no repo'}</span>
                 <button type="button" className="diff-pick-repo" onClick={() => void handleChooseRepository()} disabled={pickingRepo}>
                     {pickingRepo ? 'Choosing...' : 'Choose Repository'}
+                </button>
+                <button type="button" className="diff-follow-instance" onClick={handleFollowInstance} disabled={repoRootMode !== 'manual'}>
+                    Follow Instance
                 </button>
                 <button type="button" className="diff-refresh" onClick={() => void loadRepoCandidates()}>Refresh</button>
             </div>
