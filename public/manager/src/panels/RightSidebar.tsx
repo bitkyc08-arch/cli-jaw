@@ -5,6 +5,7 @@ import type { RightPanelMode } from './types';
 
 type RightSidebarProps = {
     renderPanel: (mode: RightPanelMode) => ReactNode;
+    renderHeaderAction?: ((mode: RightPanelMode, slot: 'top' | 'bottom') => ReactNode) | undefined;
 };
 
 const MODE_LABELS: Record<RightPanelMode, string> = {
@@ -141,6 +142,7 @@ export function RightSidebar(props: RightSidebarProps) {
                     <div className="right-sub-header">
                         <span className="right-sub-title">{label}</span>
                         <div className="right-sub-actions">
+                            {props.renderHeaderAction?.(mode, slot)}
                             {isSplit ? (
                                 <button
                                     type="button"

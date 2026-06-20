@@ -379,6 +379,14 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(sidebar.includes('{!slotOwnsChrome && ('), 'right-side Browser panels must hide the duplicate Browser sub-header in single-panel mode');
     assert.ok(sidebar.includes('right-sub-title'), 'split panels must show visible slot labels instead of screen-reader-only labels');
     assert.ok(sidebar.includes('right-sub-actions'), 'split panels must expose visible slot actions');
+    assert.ok(sidebar.includes('renderHeaderAction'), 'right sidebar must allow mode-specific header actions in the title row');
+    assert.ok(sidebar.includes('{props.renderHeaderAction?.(mode, slot)}'), 'mode header actions must render between title and close controls');
+    assert.ok(router.includes('primaryProjectDir = props.selectedInstance?.projectDirs?.[0]?.trim() || null'), 'folder load shortcut must deterministically use the first selected instance project dir');
+    assert.ok(router.includes('right-sub-load-folder'), 'folder load shortcut must render in the right sidebar Folders header actions');
+    assert.ok(router.includes('불러오기'), 'folder load shortcut must use the approved Korean label');
+    assert.ok(router.includes('disabled={!primaryProjectDir || rightFolderRootPath === primaryProjectDir}'), 'folder load shortcut must disable when no project dir exists or the folder is already loaded');
+    assert.equal(folderToolbar.includes('불러오기'), false, 'folder load shortcut must not be placed in the lower FolderPanel toolbar row');
+    assert.ok(css.includes('.right-sub-load-folder'), 'folder load shortcut must have compact header styling');
     assert.ok(sidebar.includes('<div className="right-sub-header">'), 'non-browser and split panels must keep visible headers so close controls remain reachable');
     assert.ok(sidebar.includes("aria-label={`Show only ${label}`}"), 'split panels must expose explicit tree/document only controls');
     assert.ok(sidebar.includes("dispatch({ type: 'SOLO_RIGHT_SUB', slot })"), 'split-only controls must promote a slot to a single panel');

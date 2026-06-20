@@ -15,6 +15,7 @@ test('FolderPanel refresh reloads the visible expanded tree and git summaries', 
     assert.ok(refreshHookSource.includes('await loadChildren(path, { force: true })'), 'refresh must force reload expanded child entries');
     assert.ok(refreshHookSource.includes('refreshWorktrees();'), 'refresh must also refresh git worktree summaries');
     assert.ok(refreshHookSource.includes('onGitRefresh?.();'), 'refresh must notify the shared diff/git refresh bus');
+    assert.ok(folderPanelSource.includes('repoRoot: gitStatus.repoRoot ?? repoRootPath'), 'FolderPanel worktree count must prefer its own detected git root over DiffPanel manual root state');
 });
 
 test('FolderPanel visible refresh reports status without replacing action errors', () => {

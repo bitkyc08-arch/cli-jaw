@@ -327,6 +327,29 @@ export function SidebarRailRouter(props: Props) {
     const handlePreviewDroppedFiles = useCallback((files: File[]): void => {
         void electronDrop.resolveDroppedFiles(files, 'preview');
     }, [electronDrop]);
+    const primaryProjectDir = props.selectedInstance?.projectDirs?.[0]?.trim() || null;
+    const handleLoadPrimaryProjectDir = useCallback((): void => {
+        if (!primaryProjectDir) return;
+        updateRightFolderRoot(primaryProjectDir);
+        const { topMode, bottomMode } = panelLayout.state.rightPanel;
+        if (topMode !== 'folder' && bottomMode !== 'folder') {
+            panelLayout.dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'folder', slot: 'top' });
+        }
+    }, [panelLayout, primaryProjectDir, updateRightFolderRoot]);
+    const renderRightHeaderAction = useCallback((mode: RightPanelMode): ReactNode => {
+        if (mode !== 'folder') return null;
+        return (
+            <button
+                type="button"
+                className="right-sub-action right-sub-load-folder"
+                disabled={!primaryProjectDir || rightFolderRootPath === primaryProjectDir}
+                title={primaryProjectDir ? `Load ${primaryProjectDir}` : 'No project folder'}
+                onClick={handleLoadPrimaryProjectDir}
+            >
+                불러오기
+            </button>
+        );
+    }, [handleLoadPrimaryProjectDir, primaryProjectDir, rightFolderRootPath]);
 
     return (
         <NotesCommandProvider>
@@ -340,7 +363,7 @@ export function SidebarRailRouter(props: Props) {
             onCloseDrawer={props.onCloseDrawer}
             rightPanelOpen={rightPanelOpen}
             rightPanelWidth={panelLayout.state.rightPanel.width}
-            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, repoRootPath, repoRootMode, gitRefreshVersion, handleRightPreviewFile, updateRightFolderRoot, updateRepoRoot, followInstanceRepoRoot, bumpGitRefresh, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} /> : undefined}
+            rightPanelContent={rightPanelOpen ? <RightSidebar renderPanel={mode => renderRightPanelContent(mode, rightPreviewFilePath, rightFolderRootPath, repoRootPath, repoRootMode, gitRefreshVersion, handleRightPreviewFile, updateRightFolderRoot, updateRepoRoot, followInstanceRepoRoot, bumpGitRefresh, props.selectedInstance, props.dashboardSettingsUi, props.onDashboardSettingsPatch, props.notesModel, jawCeoPanel, folderPanelSession, setFolderPanelSession)} renderHeaderAction={renderRightHeaderAction} /> : undefined}
             bottomPanelOpen={bottomPanelOpen}
             bottomPanelHeight={panelLayout.state.bottomPanel.height}
             bottomPanelContent={panelLayout.state.bottomPanel.tabs.length > 0 ? <BottomPanel renderTab={renderBottomTabContent} /> : undefined}

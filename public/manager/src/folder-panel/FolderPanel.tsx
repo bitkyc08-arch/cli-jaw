@@ -209,7 +209,7 @@ export function FolderPanel(props: FolderPanelProps) {
     });
     const worktreeState = useGitWorktrees({
         folderPanelRoot: rootPath,
-        repoRoot: repoRootPath ?? gitStatus.repoRoot,
+        repoRoot: gitStatus.repoRoot ?? repoRootPath,
         enabled: source.kind === 'electron-folder' && gitStatus.available,
         refreshToken: gitRefreshToken + gitRefreshVersion,
     });
