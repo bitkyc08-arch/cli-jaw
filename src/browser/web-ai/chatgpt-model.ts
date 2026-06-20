@@ -80,25 +80,25 @@ const CHATGPT_SIMPLIFIED_INTELLIGENCE_OPTIONS: Readonly<Record<ChatGptModelChoic
     efforts: Readonly<Partial<Record<ChatGptEffortChoice, readonly string[]>>>;
 }>> = {
     instant: {
-        defaultLabels: ['Instant'],
+        defaultLabels: ['Instant', '즉시'],
         efforts: {
-            light: ['Instant'],
+            light: ['Instant', '즉시'],
         },
     },
     thinking: {
-        defaultLabels: ['Medium'],
+        defaultLabels: ['Medium', '중간'],
         efforts: {
-            light: ['Instant'],
-            standard: ['Medium'],
-            extended: ['High'],
-            heavy: ['Extra High'],
+            light: ['Instant', '즉시'],
+            standard: ['Medium', '중간'],
+            extended: ['High', '높음'],
+            heavy: ['Extra High', '매우 높음'],
         },
     },
     pro: {
-        defaultLabels: ['Pro Extended'],
+        defaultLabels: ['Pro Extended', 'Pro 확장', '프로 확장'],
         efforts: {
-            standard: ['Pro Extended'],
-            extended: ['Pro Extended'],
+            standard: ['Pro Extended', 'Pro 확장', '프로 확장'],
+            extended: ['Pro Extended', 'Pro 확장', '프로 확장'],
         },
     },
 };
