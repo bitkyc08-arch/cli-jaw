@@ -336,8 +336,11 @@ test('code backend normalizes JWC session title metadata and returns title on lo
     assert.ok(host.includes("stringField(raw['title'])"), 'backend must normalize title');
     assert.ok(host.includes("stringField(raw['firstMessage'])"), 'backend must normalize firstMessage');
     assert.ok(host.includes("stringField(raw['updatedAt'])"), 'backend must normalize updatedAt');
+    assert.ok(host.includes("stringField(raw['updatedAt']) ?? stringField(raw['modified'])"), 'backend must accept JWC top-level modified timestamp');
     assert.ok(host.includes("objectField(raw['_meta'])"), 'backend must normalize ACP _meta');
+    assert.ok(host.includes("numberField(raw['messageCount']) ?? numberField(meta['messageCount'])"), 'backend must prefer JWC top-level messageCount and keep _meta fallback');
     assert.ok(host.includes("numberField(meta['messageCount'])"), 'backend must normalize messageCount');
+    assert.ok(host.includes("numberField(raw['size']) ?? numberField(meta['size'])"), 'backend must prefer JWC top-level size and keep _meta fallback');
     assert.ok(host.includes("numberField(meta['size'])"), 'backend must normalize size');
     assert.ok(host.includes('const stored = await this.#findStoredSession(sessionId, cwd)'), 'loadSession must find stored metadata');
     assert.ok(host.includes('if (stored?.title) info.title = stored.title'), 'loadSession must attach stored title to returned session');

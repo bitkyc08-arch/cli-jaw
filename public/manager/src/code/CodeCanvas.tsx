@@ -212,7 +212,6 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
             const content = normalizeToolContentFromUpdate(update);
-            const rawOutput = update['rawOutput'];
             setMessages(prev => {
                 const idx = findLastToolMessageIndex(prev, toolCallId);
                 if (idx < 0) return prev;
@@ -220,7 +219,6 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 const entry = { ...updated[idx] };
                 if (status) entry.toolStatus = normalizeToolStatus(status);
                 if (content.length > 0) entry.toolContent = content;
-                if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
                 updated[idx] = entry;
                 return updated;
             });

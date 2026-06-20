@@ -172,6 +172,44 @@ function stringifyToolValue(value: unknown): string {
     }
 }
 
+function textFromToolContentParts(value: unknown): string | null {
+    if (!Array.isArray(value)) return null;
+    const parts: string[] = [];
+    for (const part of value) {
+        if (typeof part === 'string') {
+            if (part) parts.push(part);
+            continue;
+        }
+        if (!part || typeof part !== 'object' || Array.isArray(part)) continue;
+        const record = part as Record<string, unknown>;
+        const rawType = typeof record['type'] === 'string' ? record['type'].toLowerCase() : '';
+        const text = record['text'];
+        if ((!rawType || rawType === 'text') && typeof text === 'string' && text) parts.push(text);
+    }
+    return parts.length > 0 ? parts.join('\n') : null;
+}
+
+function textFromToolPayload(value: unknown): string | null {
+    if (typeof value === 'string') return value;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    const record = value as Record<string, unknown>;
+    const contentText = textFromToolContentParts(record['content']);
+    if (contentText) return contentText;
+    const details = record['details'];
+    if (details && typeof details === 'object' && !Array.isArray(details)) {
+        const displayContent = (details as Record<string, unknown>)['displayContent'];
+        if (displayContent && typeof displayContent === 'object' && !Array.isArray(displayContent)) {
+            const text = (displayContent as Record<string, unknown>)['text'];
+            if (typeof text === 'string' && text) return text;
+        }
+    }
+    return null;
+}
+
+function stringifyToolPayload(value: unknown): string {
+    return textFromToolPayload(value) ?? stringifyToolValue(value);
+}
+
 function normalizeToolContentItem(raw: unknown): ToolContent | null {
     if (typeof raw === 'string') return { type: 'text', text: raw };
     if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
@@ -181,17 +219,19 @@ function normalizeToolContentItem(raw: unknown): ToolContent | null {
     if (rawType === 'diff' && typeof record['diff'] === 'string') return { type: 'diff', diff: record['diff'], ...(label ? { label } : {}) };
     if (rawType === 'error') return { type: 'error', text: stringifyToolValue(record['text'] ?? record['error'] ?? record['message'] ?? record), ...(label ? { label } : {}) };
     if (rawType === 'args' || rawType === 'arguments' || rawType === 'input') return { type: 'args', json: record['json'] ?? record['args'] ?? record['arguments'] ?? record['input'] ?? record, ...(label ? { label } : {}) };
-    if (rawType === 'output') return { type: 'output', text: stringifyToolValue(record['text'] ?? record['output'] ?? record), ...(label ? { label } : {}) };
+    if (rawType === 'output') return { type: 'output', text: stringifyToolPayload(record['text'] ?? record['output'] ?? record), ...(label ? { label } : {}) };
     if (rawType === 'json') return { type: 'json', json: record['json'] ?? record['value'] ?? record, ...(label ? { label } : {}) };
     if (typeof record['diff'] === 'string') return { type: 'diff', diff: record['diff'], ...(label ? { label } : {}) };
     if (typeof record['text'] === 'string') return { type: 'text', text: record['text'], ...(label ? { label } : {}) };
+    const payloadText = textFromToolPayload(record);
+    if (payloadText) return { type: 'text', text: payloadText, ...(label ? { label } : {}) };
     return { type: 'json', json: record, ...(label ? { label } : {}) };
 }
 
 function pushToolFieldContent(content: ToolContent[], type: ToolContent['type'], label: string, value: unknown): void {
     if (value === undefined || value === null || value === '') return;
     if (type === 'args' || type === 'json') content.push({ type, label, json: value });
-    else content.push({ type, label, text: stringifyToolValue(value) });
+    else content.push({ type, label, text: type === 'output' ? stringifyToolPayload(value) : stringifyToolValue(value) });
 }
 
 export function normalizeToolContentFromUpdate(update: Record<string, unknown>): ToolContent[] {

@@ -40,13 +40,11 @@ export function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]
             const toolCallId = String(update['toolCallId'] ?? '');
             const status = String(update['status'] ?? '');
             const content = normalizeToolContentFromUpdate(update);
-            const rawOutput = update['rawOutput'];
             const idx = findLastToolMessageIndex(entries, toolCallId);
             if (idx < 0) continue;
             const entry = { ...entries[idx] };
             if (status) entry.toolStatus = normalizeToolStatus(status);
             if (content.length > 0) entry.toolContent = content;
-            if (rawOutput !== undefined) entry.toolOutput = typeof rawOutput === 'string' ? rawOutput : JSON.stringify(rawOutput, null, 2);
             entries[idx] = entry;
         }
     }

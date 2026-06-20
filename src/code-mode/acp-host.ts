@@ -73,7 +73,7 @@ function objectField(value: unknown): Record<string, unknown> {
 
 function normalizeStoredSession(raw: Record<string, unknown>): StoredCodeSessionInfo {
     const meta = objectField(raw['_meta']);
-    const updatedAt = stringField(raw['updatedAt']);
+    const updatedAt = stringField(raw['updatedAt']) ?? stringField(raw['modified']);
     const parsedUpdatedAt = updatedAt ? Date.parse(updatedAt) : NaN;
     const lastModified = numberField(raw['lastModified']) ?? (Number.isFinite(parsedUpdatedAt) ? parsedUpdatedAt : undefined);
     const entry: StoredCodeSessionInfo = {
@@ -82,8 +82,8 @@ function normalizeStoredSession(raw: Record<string, unknown>): StoredCodeSession
     };
     const title = stringField(raw['title']);
     const firstMessage = stringField(raw['firstMessage']);
-    const messageCount = numberField(meta['messageCount']);
-    const size = numberField(meta['size']);
+    const messageCount = numberField(raw['messageCount']) ?? numberField(meta['messageCount']);
+    const size = numberField(raw['size']) ?? numberField(meta['size']);
     if (title) entry.title = title;
     if (firstMessage) entry.firstMessage = firstMessage;
     if (updatedAt) entry.updatedAt = updatedAt;
