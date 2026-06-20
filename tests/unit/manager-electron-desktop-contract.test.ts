@@ -234,10 +234,16 @@ test('Electron window fits within the visible display work area', () => {
 test('Electron titlebar spacing survives React timing and CSS cascade', () => {
     const preload = read('electron/src/preload/index.ts');
     const compact = read('public/manager/src/manager-p0-1-1.css');
+    const reserveMatch = compact.match(/--electron-titlebar-left-reserve:\s*(\d+)px;/);
 
     assert.ok(preload.includes("document.documentElement.dataset.cliJawDesktop = 'true'"), 'preload must mark the document as cli-jaw Desktop');
     assert.ok(compact.includes(':root[data-cli-jaw-desktop="true"] .command-center.command-bar'), 'desktop titlebar CSS must work from the preload document marker');
-    assert.ok(compact.includes('padding: 6px 10px 6px 92px'), 'desktop titlebar padding must reserve room for macOS traffic lights');
+    assert.ok(reserveMatch, 'desktop titlebar must define an explicit left reserve for macOS traffic lights');
+    assert.ok(Number(reserveMatch[1]) >= 132, 'desktop titlebar left reserve must clear hiddenInset traffic lights');
+    assert.ok(
+        compact.includes('padding: 6px 10px 6px var(--electron-titlebar-left-reserve)'),
+        'desktop titlebar padding must consume the explicit traffic-light reserve',
+    );
     assert.ok(compact.includes('-webkit-app-region: no-drag'), 'desktop titlebar controls must remain clickable');
 });
 

@@ -87,7 +87,7 @@ h2 { font-size: 13px; }
 .command-actions { justify-self: end; }
 .is-electron-titlebar {
     -webkit-app-region: drag;
-    padding-left: 96px;
+    padding-left: 132px;
 }
 .is-electron-titlebar button,
 .is-electron-titlebar input,

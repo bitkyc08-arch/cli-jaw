@@ -4,7 +4,8 @@
 }
 .command-center.command-bar.is-electron-titlebar,
 :root[data-cli-jaw-desktop="true"] .command-center.command-bar {
-    padding: 6px 10px 6px 92px;
+    --electron-titlebar-left-reserve: 132px;
+    padding: 6px 10px 6px var(--electron-titlebar-left-reserve);
 }
 :root[data-cli-jaw-desktop="true"] .command-center.command-bar {
     -webkit-app-region: drag;
