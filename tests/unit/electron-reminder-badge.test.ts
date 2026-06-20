@@ -1,0 +1,108 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+
+import { createReminderBadgePoller } from '../../electron/src/main/lib/reminder-badge.ts';
+import type { TrayReminderDateItem } from '../../src/shared/reminders/tray-triage.ts';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const projectRoot = join(__dirname, '..', '..');
+const originalFetch = globalThis.fetch;
+
+function read(path: string): string {
+    return readFileSync(join(projectRoot, path), 'utf8');
+}
+
+function item(partial: Partial<TrayReminderDateItem> = {}): TrayReminderDateItem {
+    return {
+        status: partial.status ?? 'open',
+        dueAt: partial.dueAt ?? null,
+    };
+}
+
+function jsonResponse(body: unknown, status = 200): Response {
+    return new Response(JSON.stringify(body), {
+        status,
+        headers: { 'content-type': 'application/json' },
+    });
+}
+
+test.after(() => {
+    globalThis.fetch = originalFetch;
+});
+
+test('badge poller maps reminder feed to overdue plus today count', async () => {
+    const now = new Date();
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 9).toISOString();
+    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 18).toISOString();
+    const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 9).toISOString();
+    let badge = -1;
+    globalThis.fetch = async () => jsonResponse({
+        ok: true,
+        items: [
+            item({ dueAt: yesterday }),
+            item({ dueAt: today }),
+            item({ dueAt: tomorrow }),
+            item({ status: 'done', dueAt: today }),
+        ],
+    });
+
+    const poller = createReminderBadgePoller({
+        managerUrl: 'http://127.0.0.1:24577/',
+        setBadge: count => { badge = count; },
+    });
+
+    await poller.refreshNow();
+    assert.equal(badge, 2);
+});
+
+test('badge poller logs failures and does not throw', async () => {
+    const logs: string[] = [];
+    globalThis.fetch = async () => jsonResponse({ ok: false }, 500);
+    const poller = createReminderBadgePoller({
+        managerUrl: 'http://127.0.0.1:24577/',
+        setBadge: () => { throw new Error('setBadge should not run'); },
+        log: message => logs.push(message),
+    });
+
+    await assert.doesNotReject(() => poller.refreshNow());
+    assert.equal(logs.length, 1);
+    assert.match(logs[0] ?? '', /^\[jaw-tray\] badge refresh failed:/);
+});
+
+test('badge poller coalesces overlapping refreshes', async () => {
+    let resolveFetch: ((response: Response) => void) | null = null;
+    let fetchCount = 0;
+    globalThis.fetch = async () => {
+        fetchCount += 1;
+        return await new Promise<Response>(resolve => { resolveFetch = resolve; });
+    };
+    const poller = createReminderBadgePoller({
+        managerUrl: 'http://127.0.0.1:24577/',
+        setBadge: () => undefined,
+    });
+
+    const first = poller.refreshNow();
+    const second = poller.refreshNow();
+    resolveFetch?.(jsonResponse({ ok: true, items: [] }));
+    await Promise.all([first, second]);
+
+    assert.equal(fetchCount, 1);
+});
+
+test('main process starts and stops reminder badge polling with manager lifecycle', () => {
+    const index = read('electron/src/main/index.ts');
+    const badge = read('electron/src/main/lib/reminder-badge.ts');
+
+    assert.ok(index.includes('createReminderBadgePoller'));
+    assert.ok(index.includes('startTrayReminderBadgePolling();'));
+    assert.ok(index.includes('stopTrayReminderBadgePolling();'));
+    assert.ok(index.includes('markManagerRunning'));
+    assert.ok(index.includes('reminderBadgePoller?.stop();'));
+    assert.ok(index.includes('reminderBadgePoller?.refreshNow();'));
+    assert.ok(badge.includes("new URL('/api/dashboard/reminders', opts.managerUrl)"));
+    assert.ok(badge.includes('countTrayReminderBadgeItems'));
+    assert.ok(badge.includes('setTimeout'));
+});

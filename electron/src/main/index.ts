@@ -8,10 +8,11 @@ import { findJawBinary, spawnJawDashboard, gracefulShutdown } from './lib/jaw-sp
 import { promptInstallCli } from './lib/install-cli.js';
 import {
   createTray, isKeepRunning, destroyTray,
-  updateServerStatus, notifyServerCrash, clearTrayBadge,
+  updateServerStatus, notifyServerCrash, setTrayBadge,
   setTrayClickHandler, popUpTrayMenu, getTrayBoundsSafe,
 } from './lib/tray-manager.js';
 import { createReminderPopover, type ReminderPopover } from './lib/reminder-popover.js';
+import { createReminderBadgePoller, type ReminderBadgePoller } from './lib/reminder-badge.js';
 import { waitForManagerReady, isManagerHealthy, probeOnce } from './lib/health-check.js';
 import {
   buildManagerCsp,
@@ -191,6 +192,7 @@ let managerReadyPromise: Promise<void> | null = null;
 let metricsCollector: MetricsCollectorHandle | null = null;
 let webContentsHardeningRegistered = false;
 let reminderPopover: ReminderPopover | null = null;
+let reminderBadgePoller: ReminderBadgePoller | null = null;
 let trayPopupMenuIpcRegistered = false;
 
 const __filename = fileURLToPath(import.meta.url);
@@ -378,12 +380,21 @@ async function forceQuit(): Promise<void> {
 
 function installTrayReminders(): void {
   reminderPopover?.destroy();
+  reminderBadgePoller?.stop();
   reminderPopover = createReminderPopover({
     managerUrl: MANAGER_URL,
     managerOrigin: MANAGER_ORIGIN,
     preloadPath: PRELOAD_PATH,
   });
-  setTrayClickHandler(() => reminderPopover?.toggle(getTrayBoundsSafe()));
+  reminderBadgePoller = createReminderBadgePoller({
+    managerUrl: MANAGER_URL,
+    setBadge: setTrayBadgeFromReminderPoller,
+    log: (message) => ringBuffer.append(`${message}\n`),
+  });
+  setTrayClickHandler(() => {
+    reminderPopover?.toggle(getTrayBoundsSafe());
+    void reminderBadgePoller?.refreshNow();
+  });
   if (!trayPopupMenuIpcRegistered) {
     trayPopupMenuIpcRegistered = true;
     ipcMain.on('tray:popup-menu', (event) => {
@@ -394,8 +405,33 @@ function installTrayReminders(): void {
 }
 
 function destroyTrayReminders(): void {
+  reminderBadgePoller?.stop();
+  reminderBadgePoller = null;
   reminderPopover?.destroy();
   reminderPopover = null;
+}
+
+function setTrayBadgeFromReminderPoller(count: number): void {
+  if (shuttingDown || shutdownComplete || crashLoopStopped) return;
+  setTrayBadge(count);
+}
+
+function refreshTrayReminderBadge(): void {
+  void reminderBadgePoller?.refreshNow();
+}
+
+function startTrayReminderBadgePolling(): void {
+  reminderBadgePoller?.start();
+}
+
+function stopTrayReminderBadgePolling(): void {
+  reminderBadgePoller?.stop();
+}
+
+function markManagerRunning(status = 'Server: Running'): void {
+  updateServerStatus(status);
+  startTrayReminderBadgePolling();
+  refreshTrayReminderBadge();
 }
 
 async function createManagerWindow(): Promise<void> {
@@ -408,8 +444,7 @@ async function createManagerWindow(): Promise<void> {
   windowCreating = true;
   try {
     await createWindow();
-    updateServerStatus('Server: Running');
-    clearTrayBadge();
+    markManagerRunning();
     if (!metricsCollector) {
       try {
         metricsCollector = startAppMetricsCollector();
@@ -427,6 +462,7 @@ async function createManagerWindow(): Promise<void> {
 
 async function restartManagerServer(): Promise<void> {
   managerRestarting = true;
+  stopTrayReminderBadgePolling();
   updateServerStatus('Server: Restarting...');
   const child = managerProcess;
   managerProcess = null;
@@ -436,13 +472,13 @@ async function restartManagerServer(): Promise<void> {
       await gracefulShutdown(child, 5000);
     }
     await ensureManagerRunning();
-    updateServerStatus('Server: Running');
-    clearTrayBadge();
+    markManagerRunning();
     if (mainWindow && !mainWindow.isDestroyed()) {
       await mainWindow.loadURL(MANAGER_URL);
     }
   } catch (err) {
     ringBuffer.append(`[restart error] ${(err as Error)?.message ?? err}\n`);
+    stopTrayReminderBadgePolling();
     updateServerStatus('Server: Restart failed');
     notifyServerCrash();
   } finally {
@@ -477,9 +513,9 @@ async function bootstrap(): Promise<void> {
 
   await ensureManagerRunning();
   installTrayReminders();
-  updateServerStatus('Server: Running');
+  markManagerRunning();
   if (FLAGS.background) {
-    updateServerStatus('Server: Running (background)');
+    markManagerRunning('Server: Running (background)');
   } else {
     await createManagerWindow();
   }
@@ -1010,14 +1046,14 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
   ringBuffer.append(`[manager exit] code=${code} signal=${signal}\n`);
   if (shuttingDown || crashLoopStopped) return;
   if (managerRestarting) return;
+  stopTrayReminderBadgePolling();
 
   if (code === PLANNED_RESTART_CODE) {
     ringBuffer.append(`[manager exit] planned restart (code ${PLANNED_RESTART_CODE})\n`);
     void (async () => {
       try {
         await ensureManagerRunning();
-        updateServerStatus('Server: Running');
-        clearTrayBadge();
+        markManagerRunning();
         if (mainWindow && !mainWindow.isDestroyed()) {
           try {
             await mainWindow.loadURL(MANAGER_URL);
@@ -1043,8 +1079,10 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
           ringBuffer.append(`[attach error] ${(err as Error)?.message ?? err}\n`);
         }
       }
+      markManagerRunning();
       return;
     }
+    stopTrayReminderBadgePolling();
     updateServerStatus('Server: Crashed');
     if (isKeepRunning() && (!mainWindow || mainWindow.isDestroyed())) {
       notifyServerCrash();
@@ -1061,8 +1099,7 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
     }
     try {
       await ensureManagerRunning();
-      updateServerStatus('Server: Running');
-      clearTrayBadge();
+      markManagerRunning();
       if (await probeOnce(MANAGER_URL)) {
         if (mainWindow && !mainWindow.isDestroyed()) {
           try {
@@ -1157,7 +1194,7 @@ async function createWindow(): Promise<void> {
       }
       cleanupTerminals();
       cleanupFolderWatchers();
-      updateServerStatus('Server: Running (background)');
+      markManagerRunning('Server: Running (background)');
       return;
     }
     event.preventDefault();
