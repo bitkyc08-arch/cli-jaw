@@ -24,6 +24,7 @@ jobs:
             script: dist:mac
             sidecar_platform: darwin
             sidecar_arch: arm64
+            sidecar_check_script: check:electron-dist-mac-jwc
             artifact_globs: |
               electron/dist/*.dmg
               electron/dist/*.zip
@@ -32,6 +33,7 @@ jobs:
             script: dist:win
             sidecar_platform: win32
             sidecar_arch: x64
+            sidecar_check_script: check:electron-dist-win-jwc
             artifact_globs: |
               electron/dist/*.exe
               electron/dist/*.msi
@@ -41,6 +43,7 @@ jobs:
             script: dist:linux
             sidecar_platform: linux
             sidecar_arch: x64
+            sidecar_check_script: check:electron-dist-linux-jwc
             artifact_globs: |
               electron/dist/*.AppImage
               electron/dist/*.deb
@@ -92,10 +95,12 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Verify macOS packaged app JWC and app icons
+      - name: Verify packaged app JWC
+        run: npm run ${{ matrix.sidecar_check_script }}
+
+      - name: Verify macOS app icons
         if: matrix.platform == 'macos'
         run: |
-          npm run check:electron-dist-mac-jwc
           npm run check:app-icons
 
       - name: Upload build artifacts (manual run)

@@ -114,6 +114,8 @@
     "check:cli-bin-links": "node scripts/check-cli-bin-links.cjs",
     "check:electron-sidecar-jwc": "node scripts/check-electron-sidecar-jwc.cjs",
     "check:electron-dist-mac-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server",
+    "check:electron-dist-win-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/win-unpacked/resources/server",
+    "check:electron-dist-linux-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/linux-unpacked/resources/server",
     "check:app-icons": "node scripts/check-app-icon-assets.cjs",
     "check:electron-no-native": "node scripts/check-electron-no-native.cjs",
     "smoke:tui-fullscreen": "tsx scripts/smoke/tui-fullscreen-frame-smoke.ts"

@@ -44,6 +44,14 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
         pkg.includes('"check:electron-dist-mac-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server"'),
         'package scripts must expose a final macOS app JWC validator',
     );
+    assert.ok(
+        pkg.includes('"check:electron-dist-win-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/win-unpacked/resources/server"'),
+        'package scripts must expose a final Windows app JWC validator',
+    );
+    assert.ok(
+        pkg.includes('"check:electron-dist-linux-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/linux-unpacked/resources/server"'),
+        'package scripts must expose a final Linux app JWC validator',
+    );
     assert.ok(pkg.includes('"check:app-icons": "node scripts/check-app-icon-assets.cjs"'), 'package scripts must expose app icon validation');
 });
 

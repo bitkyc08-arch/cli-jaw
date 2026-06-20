@@ -68,9 +68,13 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('ubuntu-latest'), 'desktop workflow must build Linux artifacts');
     assert.ok(workflow.includes('npm --prefix electron run typecheck'), 'desktop workflow must typecheck Electron shell');
     assert.ok(workflow.includes('npm --prefix electron run build'), 'desktop workflow must build Electron shell');
-    assert.ok(workflow.includes('Verify macOS packaged app JWC and app icons'), 'desktop workflow must verify the packaged macOS app before upload');
-    assert.ok(workflow.includes("if: matrix.platform == 'macos'"), 'macOS final app verification must not run on Windows/Linux matrix legs');
-    assert.ok(workflow.includes('npm run check:electron-dist-mac-jwc'), 'desktop workflow must validate bundled JWC in the final macOS app');
+    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-mac-jwc'), 'desktop workflow must bind macOS to the mac packaged sidecar verifier');
+    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-win-jwc'), 'desktop workflow must bind Windows to the Windows packaged sidecar verifier');
+    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-linux-jwc'), 'desktop workflow must bind Linux to the Linux packaged sidecar verifier');
+    assert.ok(workflow.includes('Verify packaged app JWC'), 'desktop workflow must verify packaged app JWC before upload on every OS');
+    assert.ok(workflow.includes('npm run ${{ matrix.sidecar_check_script }}'), 'desktop workflow must run the OS-specific final sidecar verifier');
+    assert.ok(workflow.includes('Verify macOS app icons'), 'desktop workflow must validate macOS app icons separately');
+    assert.ok(workflow.includes("if: matrix.platform == 'macos'"), 'macOS icon verification must not run on Windows/Linux matrix legs');
     assert.ok(workflow.includes('npm run check:app-icons'), 'desktop workflow must validate app icon assets before uploading macOS artifacts');
     assert.ok(workflow.includes('CSC_IDENTITY_AUTO_DISCOVERY: false'), 'desktop workflow must keep unsigned mac builds explicit');
     assert.ok(workflow.includes('gh release upload'), 'desktop workflow must upload artifacts to the existing release');
