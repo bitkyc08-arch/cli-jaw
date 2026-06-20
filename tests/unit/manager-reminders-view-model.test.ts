@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import type { DashboardReminder } from '../../public/manager/src/dashboard-reminders/reminders-api.ts';
 import {
+    buildTrayTriageSections,
     MATRIX_SECTIONS,
     matrixBucketToPatch,
     matrixItems,
@@ -98,4 +99,37 @@ test('manual rank orders reminders inside each urgency tier', () => {
 
     assert.deepEqual(rankTopPriorityItems(items, 4).map(item => item.id), ['second-high', 'fallback', 'first-normal', 'second-normal']);
     assert.deepEqual(matrixItems('urgentImportant', items).map(item => item.id), ['second-high', 'fallback']);
+});
+
+test('tray triage sections dedupe overdue priority and today rows', () => {
+    const now = new Date(2026, 5, 20, 12, 0, 0);
+    const items = [
+        reminder({ id: 'overdue', priority: 'high', dueAt: new Date(2026, 5, 20, 8, 0, 0).toISOString() }),
+        reminder({ id: 'priority-today', priority: 'high', dueAt: new Date(2026, 5, 20, 14, 0, 0).toISOString() }),
+        reminder({ id: 'today-visible', priority: 'normal', dueAt: new Date(2026, 5, 20, 16, 0, 0).toISOString() }),
+        reminder({ id: 'today-over-cap', priority: 'low', dueAt: new Date(2026, 5, 20, 18, 0, 0).toISOString() }),
+        reminder({ id: 'future', dueAt: new Date(2026, 5, 21, 9, 0, 0).toISOString() }),
+        reminder({ id: 'done', status: 'done', dueAt: new Date(2026, 5, 20, 10, 0, 0).toISOString() }),
+    ];
+
+    const sections = buildTrayTriageSections(items, now, 1);
+
+    assert.deepEqual(sections.overdue.map(item => item.id), ['overdue']);
+    assert.deepEqual(sections.priority.map(item => item.id), ['priority-today', 'today-visible', 'future']);
+    assert.deepEqual(sections.today.map(item => item.id), ['today-over-cap']);
+    assert.equal(sections.badgeCount, 4);
+    assert.equal(sections.upcomingCount, 0);
+});
+
+test('tray triage leaves overdue uncapped and excludes done and future-only badge items', () => {
+    const now = new Date(2026, 5, 20, 12, 0, 0);
+    const sections = buildTrayTriageSections([
+        reminder({ id: 'old-1', dueAt: new Date(2026, 5, 19, 8, 0, 0).toISOString() }),
+        reminder({ id: 'old-2', dueAt: new Date(2026, 5, 18, 8, 0, 0).toISOString() }),
+        reminder({ id: 'future', dueAt: new Date(2026, 5, 22, 8, 0, 0).toISOString() }),
+        reminder({ id: 'done-today', status: 'done', dueAt: new Date(2026, 5, 20, 8, 0, 0).toISOString() }),
+    ], now);
+
+    assert.deepEqual(sections.overdue.map(item => item.id), ['old-2', 'old-1']);
+    assert.equal(sections.badgeCount, 2);
 });

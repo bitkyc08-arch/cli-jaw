@@ -3,6 +3,7 @@ import type { RemindersView } from './DashboardRemindersSidebar';
 import { compareManualPriority } from './reminder-order';
 
 export type MatrixBucket = 'urgentImportant' | 'important' | 'waiting' | 'later';
+export type TrayReminderSectionId = 'overdue' | 'priority' | 'today';
 
 export type MatrixSection = {
     id: MatrixBucket;
@@ -60,4 +61,57 @@ export function rankTopPriorityItems(items: DashboardReminder[], limit = 3): Das
         .filter(item => item.status !== 'done')
         .sort(compareManualPriority)
         .slice(0, limit);
+}
+
+export interface TrayTriageSections {
+    overdue: DashboardReminder[];
+    priority: DashboardReminder[];
+    today: DashboardReminder[];
+    upcomingCount: number;
+    badgeCount: number;
+}
+
+export function buildTrayTriageSections(
+    items: DashboardReminder[],
+    now: Date,
+    todayCap = 3,
+): TrayTriageSections {
+    const active = items.filter(item => item.status !== 'done');
+    const overdue = active
+        .filter(item => {
+            const due = parseReminderDate(item.dueAt);
+            return due !== null && due.getTime() < now.getTime();
+        })
+        .sort(compareManualPriority);
+    const overdueIds = new Set(overdue.map(item => item.id));
+    const afterOverdue = active.filter(item => !overdueIds.has(item.id));
+    const priority = rankTopPriorityItems(afterOverdue, 3);
+    const shownIds = new Set([...overdue, ...priority].map(item => item.id));
+    const todayAll = afterOverdue
+        .filter(item => {
+            const due = parseReminderDate(item.dueAt);
+            return due !== null && isSameLocalDay(due, now);
+        })
+        .sort(compareManualPriority);
+    const today = todayAll.filter(item => !shownIds.has(item.id)).slice(0, todayCap);
+    for (const item of today) shownIds.add(item.id);
+    return {
+        overdue,
+        priority,
+        today,
+        upcomingCount: active.filter(item => !shownIds.has(item.id)).length,
+        badgeCount: overdue.length + todayAll.length,
+    };
+}
+
+function parseReminderDate(value: string | null): Date | null {
+    if (!value) return null;
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function isSameLocalDay(left: Date, right: Date): boolean {
+    return left.getFullYear() === right.getFullYear()
+        && left.getMonth() === right.getMonth()
+        && left.getDate() === right.getDate();
 }

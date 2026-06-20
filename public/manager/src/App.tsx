@@ -19,8 +19,9 @@ import { publishInvalidation } from './sync/invalidation-bus';
 import { useInvalidationSubscription } from './sync/useInvalidationSubscription';
 import type { BoardView } from './dashboard-board/board-view';
 import { type ScheduleGroup } from './dashboard-schedule/DashboardScheduleSidebar';
-import { normalizeSidebarModeForBuild } from './dashboard-features';
-import { readInitialSidebarMode } from './dashboard-url-state';
+import { normalizeSidebarModeForBuild, REMINDERS_WORKSPACE_ENABLED } from './dashboard-features';
+import { readInitialSidebarMode, readTrayRemindersMode } from './dashboard-url-state';
+import { TrayRemindersApp } from './dashboard-reminders/TrayRemindersApp';
 import { useDashboardRegistry } from './hooks/useDashboardRegistry';
 import { useDashboardView } from './hooks/useDashboardView';
 import { useActivityUnread } from './hooks/useActivityUnread';
@@ -42,7 +43,7 @@ import { runManagerShortcut as runManagerShortcutAction } from './manager-shortc
 import { getDesktop } from './panels/desktop-bridge';
 import type { PanelLayoutState } from './panels/PanelLayoutProvider';
 import { panelLayoutInitialStateFromUi, panelLayoutUiFromState } from './panels/panel-layout-registry-state';
-export function App() {
+export function App() { if (readTrayRemindersMode(window.location.search) && REMINDERS_WORKSPACE_ENABLED) return <TrayRemindersApp />;
     const [data, setData] = useState<DashboardScanResult | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);

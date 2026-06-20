@@ -19,6 +19,7 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     const app = read('public/manager/src/App.tsx');
     const appChrome = read('public/manager/src/AppChrome.tsx');
     const urlState = read('public/manager/src/dashboard-url-state.ts');
+    const trayApp = read('public/manager/src/dashboard-reminders/TrayRemindersApp.tsx');
     const serverTypes = read('src/manager/types.ts');
     const registry = read('src/manager/registry.ts');
     const main = read('public/manager/src/main.tsx');
@@ -36,13 +37,19 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(router.includes('<DashboardRemindersSidebar'), 'router must render the reminders sidebar');
     assert.ok(router.includes('<DashboardRemindersWorkspace'), 'router must render the reminders workspace');
     assert.ok(app.includes('<AppChrome'), 'App must delegate dashboard chrome out of the root shell');
+    assert.ok(app.includes('readTrayRemindersMode(window.location.search)'), 'App must allow compact tray URL entry');
+    assert.ok(app.includes('<TrayRemindersApp />'), 'Tray mode must bypass dashboard chrome');
     assert.ok(appChrome.includes('<SidebarRailRouter'), 'AppChrome must delegate workspace routing out of the root shell');
     assert.ok(app.includes('readInitialSidebarMode(window.location.search)'), 'App must allow sidebar URL entry');
     assert.ok(urlState.includes("'reminders'"), 'URL sidebar parser must allow reminders');
+    assert.ok(urlState.includes('readTrayRemindersMode'), 'URL parser must expose tray mode');
     assert.ok(main.includes('./manager-dashboard-reminders.css'), 'Reminders CSS must be loaded by the manager entry');
     assert.ok(main.includes('./manager-dashboard-reminders-priority.css'), 'Reminders priority CSS must be loaded by the manager entry');
     assert.ok(main.includes('./manager-dashboard-reminders-parity.css'), 'Reminders parity CSS must be loaded by the manager entry');
+    assert.ok(main.includes('./manager-tray-reminders.css'), 'Tray reminders CSS must be loaded by the manager entry');
     assert.ok(sidebar.includes('countRemindersView'), 'Reminders sidebar counts must use the shared view model');
+    assert.ok(trayApp.includes('buildTrayTriageSections'), 'Tray reminders app must use the shared triage helper');
+    assert.ok(trayApp.includes('getDesktop()?.trayReminders?.popUpMenu()'), 'Tray reminders app must use the typed desktop bridge for menu access');
     assert.ok(sidebar.includes('PrioritySidebarList'), 'Reminders sidebar must expose draggable manual priority ordering');
     assert.ok(sidebar.includes('manualRank'), 'Reminders sidebar drag must persist manualRank updates');
     assert.ok(read('public/manager/src/dashboard-reminders/reminders-api.ts').includes('assertManualRankSupport'), 'manualRank PATCH must fail visibly when the running backend is stale');
@@ -66,11 +73,13 @@ test('manager reminders frontend files and App line budget stay in bounds', () =
         'public/manager/src/dashboard-reminders/InlineReminderTitle.tsx',
         'public/manager/src/dashboard-reminders/reminder-order.ts',
         'public/manager/src/dashboard-reminders/reminders-view-model.ts',
+        'public/manager/src/dashboard-reminders/TrayRemindersApp.tsx',
         'public/manager/src/dashboard-reminders/ReminderDetailPopover.tsx',
         'public/manager/src/dashboard-reminders/useDashboardReminderDrag.ts',
         'public/manager/src/manager-dashboard-reminders.css',
         'public/manager/src/manager-dashboard-reminders-priority.css',
         'public/manager/src/manager-dashboard-reminders-parity.css',
+        'public/manager/src/manager-tray-reminders.css',
     ];
     for (const path of required) {
         assert.equal(existsSync(join(projectRoot, path)), true, `${path} must exist`);

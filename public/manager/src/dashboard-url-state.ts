@@ -13,3 +13,7 @@ export function readInitialSidebarMode(search: string): DashboardSidebarMode | n
     const mode = new URLSearchParams(search).get('sidebar');
     return SIDEBAR_MODES.has(mode as DashboardSidebarMode) ? mode as DashboardSidebarMode : null;
 }
+
+export function readTrayRemindersMode(search: string): boolean {
+    return new URLSearchParams(search).get('tray') === '1';
+}
