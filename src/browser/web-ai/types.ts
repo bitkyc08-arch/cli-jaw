@@ -55,6 +55,10 @@ export interface QuestionEnvelopeInput {
     sourceAuditRatio?: string | number;
     sourceAuditScope?: string;
     sourceAuditDate?: string;
+    tools?: string[];
+    autoTools?: boolean;
+    research?: string;
+    followUps?: string[];
 }
 
 export interface RenderedQuestionBundle {
