@@ -5,6 +5,7 @@ import {
     postPreviewOpenDoc,
     previewParentOrigin,
     parentSupportsDocPanel,
+    waitForDocPanelCapability,
     ensurePreviewCapabilityListener,
 } from '../preview-parent-origin.js';
 import { normalizeNotesVaultPath } from './notes-vault-path.js';
@@ -15,6 +16,7 @@ const TRAILING_PUNCT_RE = /[.,!?:;]+$/;
 const LOCAL_FILE_HREF_RE = /^(?:~\/|\/(?:Users|home|tmp|var|opt|private)\/)/;
 // Mirrors DocPanel EXT_LANG keys exactly (drift guarded by tests/unit/preview-doc-links.test.ts).
 const DOC_PANEL_CODE_RE = /\.(ts|tsx|js|jsx|py|rs|go|java|cpp|c|css|html|xml|json|yaml|yml|sh|bash|sql)$/i;
+const DOC_PANEL_MARKDOWN_RE = /\.(md|mdx)$/i;
 
 let notesRootCache: string | null | undefined;
 let notesRootFetch: Promise<string | null> | null = null;
@@ -226,15 +228,15 @@ async function handleFilePathClick(path: string, link: HTMLElement): Promise<voi
         setTimeout(() => link.classList.remove('opened'), 1500);
         return;
     }
-    if (/\.(md|mdx)$/i.test(path) && parentSupportsDocPanel() && previewParentOrigin() && postPreviewOpenDoc(path)) {
-        link.classList.add('opened');
-        setTimeout(() => link.classList.remove('opened'), 1500);
-        return;
-    }
-    // Code files route to the manager DocPanel only when the parent announced
-    // the capability (Electron manager); browser-manager parents keep the
-    // openLocalPath fallback below.
-    if (DOC_PANEL_CODE_RE.test(path) && parentSupportsDocPanel() && previewParentOrigin() && postPreviewOpenDoc(path)) {
+    const docPanelCandidate = DOC_PANEL_MARKDOWN_RE.test(path) || DOC_PANEL_CODE_RE.test(path);
+    // DocPanel-capable Electron parents may announce capability after the
+    // iframe click handler mounts; wait briefly before falling back to Finder.
+    if (
+        docPanelCandidate
+        && (parentSupportsDocPanel() || await waitForDocPanelCapability())
+        && previewParentOrigin()
+        && postPreviewOpenDoc(path)
+    ) {
         link.classList.add('opened');
         setTimeout(() => link.classList.remove('opened'), 1500);
         return;

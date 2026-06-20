@@ -38,16 +38,19 @@ test('DOC_PANEL_CODE_RE extensions exactly mirror DocPanel EXT_LANG keys', () =>
 
 test('DocPanel routing is capability-gated for markdown and code files; fallback remains', () => {
     const fileLinks = read('public/js/render/file-links.ts');
+    const previewOrigin = read('public/js/preview-parent-origin.ts');
     assert.ok(
-        /DOC_PANEL_CODE_RE\.test\(path\) && parentSupportsDocPanel\(\)/.test(fileLinks),
-        'code branch must require parent docPanel capability (browser-manager keeps Finder open)',
+        fileLinks.includes('DOC_PANEL_MARKDOWN_RE.test(path) || DOC_PANEL_CODE_RE.test(path)'),
+        'markdown and code files must be the only DocPanel routing candidates',
     );
     assert.ok(
-        fileLinks.includes('/\\.(md|mdx)$/i.test(path) && parentSupportsDocPanel()'),
-        'md|mdx branch must require parent docPanel capability (browser-manager keeps Finder open)',
+        fileLinks.includes('parentSupportsDocPanel() || await waitForDocPanelCapability()'),
+        'DocPanel branch must allow a short late capability settle before fallback',
     );
     assert.ok(fileLinks.includes('openLocalPath(path, link)'), 'openLocalPath fallback must remain');
     assert.ok(fileLinks.includes('ensurePreviewCapabilityListener()'), 'capability listener must be installed with delegation');
+    assert.ok(previewOrigin.includes('export function waitForDocPanelCapability'), 'capability wait helper must be exported');
+    assert.ok(previewOrigin.includes('parentDocPanelCapabilityKnown'), 'known false capability must skip repeated fallback delays');
 });
 
 test('capability message type literal matches between sender and receiver', () => {
