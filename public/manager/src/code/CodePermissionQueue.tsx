@@ -2,6 +2,7 @@ import {
     getPermissionToolName,
     PERMISSION_ACTION_LABELS,
     PERMISSION_ACTION_ORDER,
+    PERMISSION_ACTION_TONES,
     resolvePermissionOption,
     type PendingPermission,
     type PermissionOptionKind,
@@ -26,12 +27,12 @@ export function CodePermissionQueue({ permissions, onAnswer }: CodePermissionQue
                     <div className="code-permission-actions">
                         {PERMISSION_ACTION_ORDER.map(action => {
                             const option = resolvePermissionOption(p.options, action);
-                            const isAllow = action.startsWith('allow');
+                            const tone = PERMISSION_ACTION_TONES[action];
                             return (
                                 <button
                                     key={action}
                                     type="button"
-                                    className={`code-permission-btn ${isAllow ? 'code-permission-allow' : 'code-permission-deny'}`}
+                                    className={`code-permission-btn is-${tone}`}
                                     disabled={!option}
                                     title={option ? option.optionId : `${PERMISSION_ACTION_LABELS[action]} option was not provided by JWC`}
                                     onClick={() => onAnswer(p, action)}

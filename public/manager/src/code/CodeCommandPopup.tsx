@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
 import type { CodeCommand, CodeCommandPopupKind, PermissionMode } from './code-types';
+import { CodePermissionModePicker } from './CodePermissionModePicker';
 
 type CodeCommandPopupProps = {
     popupKind: CodeCommandPopupKind;
@@ -218,15 +219,11 @@ export function CodeCommandPopup({
 
                 {(popupKind === 'settings' || popupKind === 'permission') && (
                     <div className="code-popup-section">
-                        <label className="code-popup-field">
-                            <span>Permission mode</span>
-                            <select value={permissionMode} onChange={event => onPermissionModeChange(event.target.value as PermissionMode)} disabled={disabled}>
-                                <option value="ask">Ask</option>
-                                <option value="always-allow">Always allow</option>
-                                <option value="always-deny">Always deny</option>
-                            </select>
-                            <small>Automatic modes answer the next JWC permission request with allow_always or reject_always. Default is Ask.</small>
-                        </label>
+                        <CodePermissionModePicker
+                            value={permissionMode}
+                            disabled={Boolean(disabled)}
+                            onChange={onPermissionModeChange}
+                        />
                         {popupKind === 'settings' && (
                             <div className="code-popup-summary">
                                 <span>Provider</span><strong>{provider || '-'}</strong>

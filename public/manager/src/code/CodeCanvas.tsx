@@ -48,7 +48,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [provider, setProvider] = useState('anthropic');
     const [model, setModel] = useState('claude-sonnet-4-6');
     const [effort, setEffort] = useState('high');
-    const [permissionMode, setPermissionMode] = useState<PermissionMode>('ask');
+    const [permissionMode, setPermissionMode] = useState<PermissionMode>('always-allow');
     const [modelOptions, setModelOptions] = useState<CodeModelOptions>(FALLBACK_MODEL_OPTIONS);
     const [modelAssignments, setModelAssignments] = useState<CodeModelAssignments | null>(null);
     const [modelPresets, setModelPresets] = useState<CodeModelPresetInfo | null>(null);

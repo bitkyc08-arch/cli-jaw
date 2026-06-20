@@ -187,6 +187,147 @@
     color: var(--text-primary);
 }
 
+.code-permission-mode-field {
+    display: grid;
+    gap: 8px;
+}
+
+.code-permission-mode-label {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text-secondary);
+    font-size: 12px;
+}
+
+.code-permission-mode-label span {
+    color: var(--text-tertiary);
+    font-size: 10px;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+
+.code-permission-mode-label strong {
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.code-permission-mode-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+    padding: 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 10px;
+    background: var(--bg-base);
+}
+
+.code-permission-mode-option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+    min-height: 52px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.code-permission-mode-option:hover:not(:disabled),
+.code-permission-mode-option.is-selected {
+    background: var(--bg-raised);
+}
+
+.code-permission-mode-option:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-default) 70%, transparent);
+    outline-offset: 2px;
+}
+
+.code-permission-mode-option:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
+.code-permission-mode-option.is-allow {
+    border-color: color-mix(in srgb, var(--status-success) 36%, var(--border-default));
+}
+
+.code-permission-mode-option.is-allow.is-selected {
+    background: color-mix(in srgb, var(--status-success) 11%, var(--bg-raised));
+    border-color: color-mix(in srgb, var(--status-success) 62%, var(--border-default));
+}
+
+.code-permission-mode-option.is-ask.is-selected {
+    border-color: color-mix(in srgb, var(--accent-default) 50%, var(--border-default));
+}
+
+.code-permission-mode-option.is-deny {
+    border-color: color-mix(in srgb, var(--status-error) 30%, var(--border-default));
+}
+
+.code-permission-mode-option.is-deny.is-selected {
+    background: color-mix(in srgb, var(--status-error) 9%, var(--bg-raised));
+    border-color: color-mix(in srgb, var(--status-error) 54%, var(--border-default));
+}
+
+.code-permission-mode-option span {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+}
+
+.code-permission-mode-option strong,
+.code-permission-mode-option small {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.code-permission-mode-option strong {
+    font-size: 12px;
+    font-weight: 650;
+}
+
+.code-permission-mode-option small {
+    color: var(--text-tertiary);
+    font-size: 11px;
+}
+
+.code-permission-mode-option em {
+    color: var(--accent-default);
+    font-style: normal;
+    font-size: 14px;
+    font-weight: 800;
+}
+
+.code-permission-mode-note {
+    margin: 0;
+    padding: 7px 9px;
+    border: 1px solid var(--border-default);
+    border-radius: 7px;
+    background: color-mix(in srgb, var(--bg-raised) 70%, var(--bg-base));
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.4;
+}
+
+.code-permission-mode-note.is-allow {
+    border-color: color-mix(in srgb, var(--status-success) 30%, var(--border-default));
+}
+
+.code-permission-mode-note.is-deny {
+    border-color: color-mix(in srgb, var(--status-error) 30%, var(--border-default));
+}
+
 .code-popup-summary {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -210,4 +351,10 @@
 .code-popup-note {
     margin: 0;
     font-size: 12px;
+}
+
+@media (max-width: 560px) {
+    .code-permission-mode-list {
+        grid-template-columns: 1fr;
+    }
 }

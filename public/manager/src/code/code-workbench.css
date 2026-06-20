@@ -37,9 +37,9 @@
     gap: 10px;
     align-items: center;
     padding: 8px 12px; margin-bottom: 4px;
-    border: 1px solid var(--accent-default);
+    border: 1px solid color-mix(in srgb, var(--accent-default) 30%, var(--border-default));
     border-radius: 6px;
-    background: var(--accent-subtle);
+    background: color-mix(in srgb, var(--accent-subtle) 46%, var(--bg-panel));
 }
 .code-permission-title {
     display: flex;
@@ -69,28 +69,46 @@
     gap: 6px;
 }
 .code-permission-btn {
-    padding: 4px 12px;
+    padding: 5px 12px;
     border: 1px solid var(--border-strong);
     border-radius: 4px;
     background: var(--bg-panel);
     color: var(--text-primary);
-    font-size: 11px; cursor: pointer;
+    font-size: 11px;
+    font-weight: 650;
+    cursor: pointer;
     min-height: auto;
     white-space: nowrap;
+    transition: border-color 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+.code-permission-btn:hover:not(:disabled) {
+    background: var(--bg-raised);
+}
+.code-permission-btn:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-default) 70%, transparent);
+    outline-offset: 2px;
 }
 .code-permission-btn:disabled {
     opacity: 0.45;
     cursor: not-allowed;
 }
-.code-permission-allow {
-    background: var(--status-success);
-    color: white;
-    border-color: var(--status-success);
+.code-permission-btn.is-allow-once {
+    border-color: color-mix(in srgb, var(--status-success) 46%, var(--border-default));
+    color: var(--text-primary);
 }
-.code-permission-deny {
-    background: var(--status-error);
-    color: white;
-    border-color: var(--status-error);
+.code-permission-btn.is-allow-always {
+    border-color: color-mix(in srgb, var(--status-success) 62%, var(--border-default));
+    background: color-mix(in srgb, var(--status-success) 13%, var(--bg-panel));
+    color: var(--text-primary);
+}
+.code-permission-btn.is-deny-once {
+    border-color: color-mix(in srgb, var(--status-error) 42%, var(--border-default));
+    color: var(--text-primary);
+}
+.code-permission-btn.is-deny-always {
+    border-color: color-mix(in srgb, var(--status-error) 58%, var(--border-default));
+    background: color-mix(in srgb, var(--status-error) 10%, var(--bg-panel));
+    color: var(--text-primary);
 }
 .code-permission-audit {
     margin-bottom: 6px;
@@ -124,6 +142,18 @@
     color: var(--accent-default);
     font-style: normal;
     font-weight: 700;
+}
+.code-permission-audit.is-allow {
+    border-color: color-mix(in srgb, var(--status-success) 34%, var(--border-default));
+}
+.code-permission-audit.is-allow .code-permission-audit-head em {
+    color: var(--status-success);
+}
+.code-permission-audit.is-deny {
+    border-color: color-mix(in srgb, var(--status-error) 34%, var(--border-default));
+}
+.code-permission-audit.is-deny .code-permission-audit-head em {
+    color: var(--status-error);
 }
 .code-permission-audit-meta {
     display: flex;

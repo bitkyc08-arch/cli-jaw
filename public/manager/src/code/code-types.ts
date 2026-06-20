@@ -28,6 +28,17 @@ export type PermissionMode = 'ask' | 'always-allow' | 'always-deny';
 
 export type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always';
 
+export type PermissionActionTone = 'allow-once' | 'allow-always' | 'deny-once' | 'deny-always';
+
+export type PermissionModeTone = 'allow' | 'ask' | 'deny';
+
+export type PermissionModeOption = {
+    value: PermissionMode;
+    label: string;
+    detail: string;
+    tone: PermissionModeTone;
+};
+
 export type PermissionDecisionKind = PermissionOptionKind | 'pending' | 'cancelled' | 'missing_option' | 'answer_error';
 
 export type ResolvedPermissionOption = {
@@ -98,6 +109,25 @@ export const PERMISSION_ACTION_LABELS: Record<PermissionOptionKind, string> = {
     allow_always: 'Always allow',
     reject_once: 'Deny once',
     reject_always: 'Always deny',
+};
+
+export const PERMISSION_ACTION_TONES: Record<PermissionOptionKind, PermissionActionTone> = {
+    allow_once: 'allow-once',
+    allow_always: 'allow-always',
+    reject_once: 'deny-once',
+    reject_always: 'deny-always',
+};
+
+export const PERMISSION_MODE_OPTIONS: PermissionModeOption[] = [
+    { value: 'always-allow', label: 'Always allow', detail: 'Auto-allow gated tools', tone: 'allow' },
+    { value: 'ask', label: 'Ask first', detail: 'Review each gated tool', tone: 'ask' },
+    { value: 'always-deny', label: 'Always deny', detail: 'Auto-deny gated tools', tone: 'deny' },
+];
+
+export const PERMISSION_MODE_DESCRIPTIONS: Record<PermissionMode, string> = {
+    ask: 'Review each gated tool',
+    'always-allow': 'Auto-allow gated tools',
+    'always-deny': 'Auto-deny gated tools',
 };
 
 const PERMISSION_KIND_PATTERNS: Record<PermissionOptionKind, RegExp> = {

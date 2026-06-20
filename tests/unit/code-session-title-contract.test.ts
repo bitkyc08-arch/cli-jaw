@@ -283,6 +283,7 @@ test('code permission mode uses JWC ACP option ids and records transcript audit'
     const queue = read('public/manager/src/code/CodePermissionQueue.tsx');
     const footer = read('public/manager/src/code/ComposerFooter.tsx');
     const popup = read('public/manager/src/code/CodeCommandPopup.tsx');
+    const picker = read('public/manager/src/code/CodePermissionModePicker.tsx');
     const transcript = read('public/manager/src/code/CodeTranscript.tsx');
     const flow = read('public/manager/src/code/code-permission-flow.ts');
     const types = read('public/manager/src/code/code-types.ts');
@@ -290,11 +291,14 @@ test('code permission mode uses JWC ACP option ids and records transcript audit'
 
     assert.ok(types.includes("export type PermissionMode = 'ask' | 'always-allow' | 'always-deny'"), 'permission modes must be explicit and no local auto mode');
     assert.ok(types.includes("export type PermissionOptionKind = 'allow_once' | 'allow_always' | 'reject_once' | 'reject_always'"), 'permission option kinds must match JWC ACP ids');
+    assert.ok(types.includes('export const PERMISSION_ACTION_TONES'), 'permission actions must have canonical tone classes');
+    assert.ok(types.includes('export const PERMISSION_MODE_OPTIONS'), 'permission mode labels/details must be centralized');
     assert.ok(types.includes('export function resolvePermissionOption'), 'JWC option resolution must be centralized');
     assert.ok(types.includes("PERMISSION_ACTION_ORDER: PermissionOptionKind[] = ['allow_once', 'allow_always', 'reject_once', 'reject_always']"), 'manual queue must prefer the four JWC actions in order');
     assert.ok(types.includes('permissionAuditEntry'), 'permission decisions must create transcript audit entries');
     assert.ok(types.includes("role: 'permission'"), 'transcript entries must support permission audit role');
 
+    assert.ok(canvas.includes("useState<PermissionMode>('always-allow')"), 'Code mode must default to the explicit always-allow policy');
     assert.ok(flow.includes("permissionMode === 'always-allow' ? 'allow_always' : 'reject_always'"), 'automatic modes must resolve JWC always option ids');
     assert.ok(flow.includes('resolvePermissionOption(permission.options, targetKind)'), 'automatic permission answers must use resolver output');
     assert.ok(flow.includes('client.answerPermission(permission.permissionId, option.optionId)'), 'automatic permission answers must pass JWC option id through');
@@ -303,6 +307,7 @@ test('code permission mode uses JWC ACP option ids and records transcript audit'
     assert.equal(canvas.includes(": 'allow'"), false, 'CodeCanvas must not synthesize fake allow option ids');
 
     assert.ok(queue.includes('PERMISSION_ACTION_ORDER.map'), 'permission request card must render the four canonical actions');
+    assert.ok(queue.includes('PERMISSION_ACTION_TONES[action]'), 'permission request buttons must use per-action tone classes');
     for (const label of ['Allow once', 'Always allow', 'Deny once', 'Always deny']) {
         assert.ok(types.includes(label), `permission labels must include ${label}`);
     }
@@ -311,13 +316,18 @@ test('code permission mode uses JWC ACP option ids and records transcript audit'
 
     assert.equal(footer.includes('<option value="auto">Auto</option>'), false, 'footer must remove decorative auto mode');
     assert.equal(popup.includes('<option value="auto">Auto</option>'), false, 'settings popup must remove decorative auto mode');
-    assert.ok(footer.includes('Select JWC allow_always'), 'footer must describe real JWC allow_always behavior');
-    assert.ok(footer.includes('Select JWC reject_always'), 'footer must describe real JWC reject_always behavior');
-    assert.ok(popup.includes('allow_always or reject_always'), 'settings popup must explain automatic mode semantics');
+    assert.equal(popup.includes('<select value={permissionMode}'), false, 'settings popup must not use native select for permission mode');
+    assert.ok(footer.includes('PERMISSION_MODE_OPTIONS'), 'footer must reuse shared permission mode copy');
+    assert.ok(picker.includes('Default: Always allow'), 'popup must name the explicit new default');
+    assert.ok(picker.includes('JWC persistent options'), 'settings popup must explain automatic mode semantics');
 
     assert.ok(transcript.includes('code-permission-audit'), 'transcript must render permission audit cards');
     assert.ok(transcript.includes('permissionDecisionLabel'), 'transcript must label permission decisions');
+    assert.ok(transcript.includes('toneClass'), 'transcript audit rows must carry allow/deny tone classes');
     assert.ok(css.includes('.code-permission-audit'), 'permission audit cards must have styles');
+    for (const selector of ['.code-permission-btn.is-allow-once', '.code-permission-btn.is-allow-always', '.code-permission-btn.is-deny-once', '.code-permission-btn.is-deny-always', '.code-permission-audit.is-allow', '.code-permission-audit.is-deny']) {
+        assert.ok(css.includes(selector), `permission CSS must include ${selector}`);
+    }
 });
 
 test('code backend normalizes JWC session title metadata and returns title on load', () => {

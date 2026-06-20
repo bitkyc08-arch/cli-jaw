@@ -123,8 +123,13 @@ export function CodeTranscript({ messages, sending, workingDir, transcriptRef }:
                             );
                         })() : msg.role === 'permission' && msg.permissionAudit ? (() => {
                             const audit = msg.permissionAudit;
+                            const toneClass = audit.decision.startsWith('allow')
+                                ? 'is-allow'
+                                : audit.decision.startsWith('reject')
+                                    ? 'is-deny'
+                                    : '';
                             return (
-                                <div className={`code-permission-audit is-${audit.decision}`}>
+                                <div className={`code-permission-audit is-${audit.decision} ${toneClass}`.trim()}>
                                     <div className="code-permission-audit-head">
                                         <span>Permission</span>
                                         <strong>{audit.toolName}</strong>

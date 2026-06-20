@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import type { PermissionMode } from './code-types';
+import { PERMISSION_MODE_DESCRIPTIONS, PERMISSION_MODE_OPTIONS, type PermissionMode } from './code-types';
 
 type ComposerFooterProps = {
     provider: string;
@@ -15,18 +15,6 @@ type ComposerFooterProps = {
     onEffortChange: (value: string) => void;
     onPermissionModeChange: (value: PermissionMode) => void;
 };
-
-const permissionDescriptions: Record<PermissionMode, string> = {
-    ask: 'Prompt before gated tools',
-    'always-allow': 'Select JWC allow_always',
-    'always-deny': 'Select JWC reject_always',
-};
-
-const permissionOptions: Array<{ value: PermissionMode; label: string; detail: string }> = [
-    { value: 'ask', label: 'Ask for approval', detail: 'Prompt before gated tools' },
-    { value: 'always-allow', label: 'Approve for me', detail: 'Select JWC allow_always' },
-    { value: 'always-deny', label: 'Reject for me', detail: 'Select JWC reject_always' },
-];
 
 type FooterMenuProps<T extends string> = {
     label: string;
@@ -134,9 +122,9 @@ export function ComposerFooter({
             <FooterMenu
                 label="Permission"
                 value={permissionMode}
-                options={permissionOptions}
+                options={PERMISSION_MODE_OPTIONS}
                 disabled={disabled}
-                title={permissionDescriptions[permissionMode]}
+                title={PERMISSION_MODE_DESCRIPTIONS[permissionMode]}
                 onChange={onPermissionModeChange}
             />
             {providerOptions.length > 0 && (
