@@ -2,6 +2,7 @@ import type { RefObject } from 'react';
 import type { FolderPanelEntry, FolderPanelRowDecoration, FolderPanelSourceKind } from './folder-panel-types';
 import { FolderTreeRows } from './FolderTreeRows';
 import { FolderUnavailableRoot } from './FolderUnavailableRoot';
+import type { FolderInlineMutationState } from './use-folder-mutations';
 import type { FolderDragSelection, FolderSelectionActions } from './use-folder-selection';
 
 type FolderPanelTreeProps = {
@@ -15,6 +16,8 @@ type FolderPanelTreeProps = {
     decorationsByPath: Map<string, FolderPanelRowDecoration>;
     dropTargetPath: string | null;
     dragSelection: FolderDragSelection | null;
+    inlineMutation: FolderInlineMutationState | null;
+    isMutating: boolean;
     canUseNativeActions: boolean;
     sourceKind: FolderPanelSourceKind;
     unavailableRoot: { path: string; error: string } | null;
@@ -22,9 +25,12 @@ type FolderPanelTreeProps = {
     setDropTargetPath: (path: string | null) => void;
     requestMove: (sourceEntry: FolderPanelEntry, targetEntry: FolderPanelEntry) => void;
     handleEntryKeyDown: (event: React.KeyboardEvent, entry: FolderPanelEntry) => void;
-    selectEntry: (entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean }) => void;
+    selectEntry: (entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean; preview?: boolean }) => void;
     toggleEntryExpansion: (entry: FolderPanelEntry) => void;
+    openFileEntry: (entry: FolderPanelEntry) => void;
     openContextMenu: (entry: FolderPanelEntry, x: number, y: number) => void;
+    submitInlineMutation: (name: string) => void;
+    cancelInlineMutation: () => void;
     onPickFolder: () => void;
     onClearUnavailableRoot: () => void;
 };
@@ -39,6 +45,7 @@ export function FolderPanelTree(props: FolderPanelTreeProps) {
         >
             <FolderTreeRows
                 entries={props.entries}
+                parentPath={props.rootPath}
                 depth={0}
                 expanded={props.expanded}
                 childrenCache={props.childrenCache}
@@ -47,6 +54,8 @@ export function FolderPanelTree(props: FolderPanelTreeProps) {
                 decorationsByPath={props.decorationsByPath}
                 dropTargetPath={props.dropTargetPath}
                 dragSelection={props.dragSelection}
+                inlineMutation={props.inlineMutation}
+                isMutating={props.isMutating}
                 canUseNativeActions={props.canUseNativeActions}
                 setDragSelection={props.setDragSelection}
                 setDropTargetPath={props.setDropTargetPath}
@@ -55,7 +64,10 @@ export function FolderPanelTree(props: FolderPanelTreeProps) {
                 handleEntryKeyDown={props.handleEntryKeyDown}
                 selectEntry={props.selectEntry}
                 toggleEntryExpansion={props.toggleEntryExpansion}
+                openFileEntry={props.openFileEntry}
                 openContextMenu={props.openContextMenu}
+                submitInlineMutation={props.submitInlineMutation}
+                cancelInlineMutation={props.cancelInlineMutation}
             />
             {props.rootPath === null && !props.error && (
                 <div className="folder-empty-root__content">Choose a folder to browse files.</div>
@@ -68,7 +80,7 @@ export function FolderPanelTree(props: FolderPanelTreeProps) {
                     onClear={props.onClearUnavailableRoot}
                 />
             )}
-            {props.entries.length === 0 && !props.error && !props.unavailableRoot && props.rootPath !== null && (
+            {props.entries.length === 0 && !props.inlineMutation && !props.error && !props.unavailableRoot && props.rootPath !== null && (
                 <div className="folder-empty">{props.sourceKind === 'notes-vault' ? 'No notes in vault' : 'Empty directory'}</div>
             )}
         </div>

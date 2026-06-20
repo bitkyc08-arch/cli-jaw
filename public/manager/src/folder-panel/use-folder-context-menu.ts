@@ -25,11 +25,16 @@ export function useFolderContextMenu(input: UseFolderContextMenuInput) {
         const closeOnEscape = (event: KeyboardEvent) => {
             if (event.key === 'Escape') setContextMenu(null);
         };
+        const closeOnFrameFocus = () => {
+            if (document.activeElement instanceof HTMLIFrameElement) setContextMenu(null);
+        };
         window.addEventListener('pointerdown', closeContextMenu);
         window.addEventListener('keydown', closeOnEscape);
+        window.addEventListener('blur', closeOnFrameFocus);
         return () => {
             window.removeEventListener('pointerdown', closeContextMenu);
             window.removeEventListener('keydown', closeOnEscape);
+            window.removeEventListener('blur', closeOnFrameFocus);
         };
     }, [closeContextMenu, contextMenu]);
 

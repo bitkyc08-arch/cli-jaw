@@ -1,7 +1,13 @@
 import { useCallback, useState, type Dispatch, type SetStateAction } from 'react';
-import type { FolderMutationDialogState } from './FolderPanelOverlays';
 import { parentPath } from './folder-panel-state';
 import type { FolderPanelEntry, FolderPanelSource } from './folder-panel-types';
+
+export type FolderInlineMutationState = {
+    kind: 'file' | 'directory' | 'rename';
+    parentDirectory: string;
+    targetPath?: string | undefined;
+    initialName: string;
+};
 
 type FolderMutationSelection = {
     selectOnlyPath: (path: string) => void;
@@ -23,7 +29,7 @@ type UseFolderMutationsInput = {
 };
 
 export function useFolderMutations(input: UseFolderMutationsInput) {
-    const [mutationDialog, setMutationDialog] = useState<FolderMutationDialogState | null>(null);
+    const [inlineMutation, setInlineMutation] = useState<FolderInlineMutationState | null>(null);
     const [isMutating, setIsMutating] = useState(false);
 
     const mutationParentDirectory = useCallback((): string | null => {
@@ -37,18 +43,16 @@ export function useFolderMutations(input: UseFolderMutationsInput) {
         if (!parentDirectory) return;
         if (kind === 'file' && !input.source.createFile) return;
         if (kind === 'directory' && !input.source.createFolder) return;
-        setMutationDialog({
+        input.setExpanded(prev => new Set(prev).add(parentDirectory));
+        setInlineMutation({
             kind,
-            title: kind === 'file' ? 'New File' : 'New Folder',
+            parentDirectory,
             initialName: kind === 'file' ? 'untitled.txt' : 'untitled',
-            confirmLabel: 'Create',
         });
         input.closeContextMenu();
     }, [input, mutationParentDirectory]);
 
-    const submitCreateEntry = useCallback(async (kind: 'file' | 'directory', name: string) => {
-        const parentDirectory = mutationParentDirectory();
-        if (!parentDirectory) return;
+    const submitCreateEntry = useCallback(async (kind: 'file' | 'directory', parentDirectory: string, name: string) => {
         const create = kind === 'file' ? input.source.createFile : input.source.createFolder;
         if (!create) return;
         const label = kind === 'file' ? 'New file name' : 'New folder name';
@@ -65,43 +69,43 @@ export function useFolderMutations(input: UseFolderMutationsInput) {
             }
             input.setActionStatus(kind === 'file' ? 'Created file' : 'Created folder');
             input.setError(null);
-            setMutationDialog(null);
+            setInlineMutation(null);
             await input.refreshAfterMutation(parentDirectory, entry?.path ?? null);
         } catch (err) {
             input.setError((err as Error).message);
         } finally {
             setIsMutating(false);
         }
-    }, [input, mutationParentDirectory]);
+    }, [input]);
 
     const requestRenameSelectedEntry = useCallback(() => {
         if (!input.selectedEntry || !input.source.renamePath) return;
-        setMutationDialog({
+        setInlineMutation({
             kind: 'rename',
-            title: 'Rename',
+            parentDirectory: parentPath(input.selectedEntry.path),
+            targetPath: input.selectedEntry.path,
             initialName: input.selectedEntry.name,
-            confirmLabel: 'Rename',
         });
         input.closeContextMenu();
     }, [input]);
 
-    const submitRenameSelectedEntry = useCallback(async (name: string) => {
-        if (!input.selectedEntry || !input.source.renamePath) return;
+    const submitRenameEntry = useCallback(async (mutation: FolderInlineMutationState, name: string) => {
+        if (!mutation.targetPath || !input.source.renamePath) return;
         const nextName = name.trim();
-        if (!nextName || nextName === input.selectedEntry.name) {
-            setMutationDialog(null);
+        if (!nextName || nextName === mutation.initialName) {
+            setInlineMutation(null);
             return;
         }
         setIsMutating(true);
         try {
-            const result = await input.source.renamePath(input.selectedEntry.path, nextName);
-            const parentDirectory = parentPath(input.selectedEntry.path);
+            const result = await input.source.renamePath(mutation.targetPath, nextName);
+            const parentDirectory = mutation.parentDirectory;
             const nextPath = result.entry?.path ?? null;
-            const nextPreviewPath = nextPath ? input.renamedPreviewPath(input.selectedFilePath, input.selectedEntry.path, nextPath) : null;
+            const nextPreviewPath = nextPath ? input.renamedPreviewPath(input.selectedFilePath, mutation.targetPath, nextPath) : null;
             input.setActionStatus('Renamed');
             input.setError(null);
-            setMutationDialog(null);
-            await input.refreshAfterMutation(parentDirectory, nextPath, [input.selectedEntry.path]);
+            setInlineMutation(null);
+            await input.refreshAfterMutation(parentDirectory, nextPath, [mutation.targetPath]);
             if (nextPreviewPath) input.onPreviewFile?.(nextPreviewPath);
         } catch (err) {
             input.setError((err as Error).message);
@@ -110,18 +114,18 @@ export function useFolderMutations(input: UseFolderMutationsInput) {
         }
     }, [input]);
 
-    const submitMutation = useCallback((name: string) => {
-        if (!mutationDialog) return;
-        if (mutationDialog.kind === 'rename') void submitRenameSelectedEntry(name);
-        else void submitCreateEntry(mutationDialog.kind, name);
-    }, [mutationDialog, submitCreateEntry, submitRenameSelectedEntry]);
+    const submitInlineMutation = useCallback((name: string) => {
+        if (!inlineMutation) return;
+        if (inlineMutation.kind === 'rename') void submitRenameEntry(inlineMutation, name);
+        else void submitCreateEntry(inlineMutation.kind, inlineMutation.parentDirectory, name);
+    }, [inlineMutation, submitCreateEntry, submitRenameEntry]);
 
     return {
-        mutationDialog,
+        inlineMutation,
         isMutating,
         requestCreateEntry,
         requestRenameSelectedEntry,
-        submitMutation,
-        cancelMutation: () => setMutationDialog(null),
+        submitInlineMutation,
+        cancelInlineMutation: () => setInlineMutation(null),
     };
 }

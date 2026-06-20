@@ -26,7 +26,7 @@ test('FolderPanel wires native move, copy, reveal, and confirmation actions', ()
     assert.ok(panel.includes("import { useFolderSelection"), 'FolderPanel must delegate selection ownership to the selection hook');
     assert.ok(panel.includes('onPreviewFile,'), 'file preview behavior must be wired into the selection hook');
     assert.ok(panel.includes('const toggleEntryExpansion = useCallback'), 'directory expansion must be a separate helper');
-    assert.ok(rows.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event) })'), 'row click must pass multi-select modifiers without expanding');
+    assert.ok(rows.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event), preview: false })'), 'row click must pass multi-select modifiers without opening files');
     assert.ok(rows.includes('props.toggleEntryExpansion(entry)'), 'row disclosure/double-click must expand separately');
     assert.ok(panel.includes('<FolderPanelTree'), 'FolderPanel must delegate tree rendering to the extracted component');
 });
@@ -40,7 +40,8 @@ test('FolderPanel uses arrow and double-click for directory expansion', () => {
     assert.ok(rows.includes('event.stopPropagation()'), 'disclosure activation must not also trigger row selection bubbling');
     assert.ok(panel.includes("if (event.key === 'Enter')"), 'keyboard Enter must keep explicit row activation');
     assert.ok(panel.includes("if (entry.kind === 'directory') toggleEntryExpansion(entry)"), 'Enter must expand directories through the same helper');
-    assert.ok(panel.includes('else selectEntry(entry)'), 'Enter must preview files through the selection helper');
+    assert.ok(panel.includes('else selectEntry(entry)'), 'Enter must open files through the selection helper');
+    assert.ok(rows.includes('else props.openFileEntry(entry)'), 'file double-click must open the file without expanding folders');
 });
 
 test('FolderPanel separates preview selection from local action selection', () => {
@@ -73,23 +74,27 @@ test('FolderPanel starts from explicit initial root policy instead of project ro
     assert.ok(sources.includes("getInitialRoot: async () => ''"), 'notes-vault source must keep its virtual notes root');
 });
 
-test('FolderPanel uses an in-panel mutation dialog instead of browser prompts', () => {
+test('FolderPanel uses inline create and rename editors instead of browser prompts or modal mutation dialogs', () => {
     const panel = read('public/manager/src/folder-panel/FolderPanel.tsx');
     const mutations = read('public/manager/src/folder-panel/use-folder-mutations.ts');
     const overlays = read('public/manager/src/folder-panel/FolderPanelOverlays.tsx');
-    const dialog = read('public/manager/src/folder-panel/FolderMutationDialog.tsx');
+    const rows = read('public/manager/src/folder-panel/FolderTreeRows.tsx');
+    const editor = read('public/manager/src/folder-panel/FolderInlineNameEditor.tsx');
 
     assert.equal(panel.includes('window.prompt'), false, 'FolderPanel must not rely on browser prompt dialogs for Electron file mutations');
     assert.ok(panel.includes("import { useFolderMutations } from './use-folder-mutations'"), 'FolderPanel must delegate mutation state to the mutation hook');
-    assert.ok(mutations.includes('const [mutationDialog'), 'mutation hook must own file mutation dialog state');
-    assert.ok(mutations.includes('requestCreateEntry'), 'mutation hook must open the mutation dialog for create actions');
-    assert.ok(mutations.includes('requestRenameSelectedEntry'), 'mutation hook must open the mutation dialog for rename actions');
-    assert.ok(mutations.includes('submitMutation'), 'mutation hook must submit create and rename actions through one visible dialog path');
+    assert.ok(mutations.includes('const [inlineMutation'), 'mutation hook must own inline file mutation state');
+    assert.ok(mutations.includes('requestCreateEntry'), 'mutation hook must open inline create actions');
+    assert.ok(mutations.includes('requestRenameSelectedEntry'), 'mutation hook must open inline rename actions');
+    assert.ok(mutations.includes('submitInlineMutation'), 'mutation hook must submit create and rename actions through one inline path');
     assert.ok(mutations.includes('renamedPreviewPath'), 'mutation hook must translate the open document preview when a selected file or parent directory is renamed');
     assert.ok(mutations.includes('onPreviewFile?.(nextPreviewPath)'), 'rename must move the DocPanel preview to the new file path');
-    assert.ok(overlays.includes('FolderMutationDialog'), 'FolderPanel overlays must render the mutation dialog');
-    assert.ok(dialog.includes('role="dialog"'), 'mutation dialog must expose native dialog semantics');
-    assert.ok(dialog.includes('autoFocus'), 'mutation dialog must focus the entry name input');
+    assert.equal(overlays.includes('FolderMutationDialog'), false, 'FolderPanel overlays must not render the old modal mutation dialog');
+    assert.ok(rows.includes('FolderInlineNameEditor'), 'FolderPanel rows must render the inline name editor');
+    assert.ok(rows.includes("props.inlineMutation?.kind === 'rename'"), 'rename editor must replace the selected row label');
+    assert.ok(rows.includes("props.inlineMutation.kind !== 'rename'"), 'create editor must render inside the target parent directory');
+    assert.ok(editor.includes('input.focus()'), 'inline editor must focus the entry name input');
+    assert.ok(editor.includes('input.select()'), 'inline editor must select the basename on mount');
 });
 
 test('electron folder source treats picker cancellation as a non-error', async () => {
@@ -127,7 +132,8 @@ test('folder panel CSS exposes selected, drop target, drag, action, and confirm 
         '.folder-move-confirm',
         '.folder-move-confirm__actions',
         '.folder-status',
-        '.folder-mutation-dialog',
+        '.folder-inline-editor',
+        '.folder-inline-editor__input',
     ]) {
         assert.ok(css.includes(selector), `folder panel CSS must include ${selector}`);
     }

@@ -37,8 +37,9 @@ test('FolderPanel row shortcuts copy paths and activate rows locally', () => {
     assert.ok(folderPanelSource.includes("event.key === 'Enter'"), 'Enter must activate focused row');
     assert.ok(folderPanelSource.includes("event.key === ' '"), 'Space must have explicit row behavior');
     assert.ok(folderPanelSource.includes('selectEntry(entry)'), 'file/space activation must use the selection helper');
-    assert.ok(folderRowsSource.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event) })'), 'row click must route through the selection helper with modifiers');
+    assert.ok(folderRowsSource.includes('props.selectEntry(entry, { range: event.shiftKey, toggle: isPlatformToggleClick(event), preview: false })'), 'row click must route through the selection helper without opening files');
     assert.ok(folderRowsSource.includes('props.toggleEntryExpansion(entry)'), 'row expansion must stay separate from selection');
+    assert.ok(folderRowsSource.includes('else props.openFileEntry(entry)'), 'row double-click must open files explicitly');
 });
 
 test('FolderPanel shortcut helper supports quick keys and VS Code aliases', () => {
@@ -80,6 +81,8 @@ test('FolderPanel context menu exposes native path actions', () => {
     assert.ok(folderPanelSource.includes('folderContextMenu.closeContextMenu(); void revealSelectedPath()'), 'reveal menu action must close menu before running selected-primary reveal');
     assert.ok(folderPanelSource.includes("folderContextMenu.closeContextMenu(); void refreshVisibleTree('manual')"), 'refresh menu action must close menu before running');
     assert.ok(folderContextMenuHookSource.includes("event.key === 'Escape'"), 'keyboard dismissal must be Escape-only');
+    assert.ok(folderContextMenuHookSource.includes("document.activeElement instanceof HTMLIFrameElement"), 'iframe focus must dismiss only the context menu');
+    assert.ok(folderContextMenuHookSource.includes("window.addEventListener('blur', closeOnFrameFocus)"), 'context menu must close when pointer focus moves into the preview iframe');
     assert.ok(folderContextMenuSource.includes('onKeyDown={event => event.stopPropagation()}'), 'menu keyboard activation must not be swallowed by window dismissal');
 });
 

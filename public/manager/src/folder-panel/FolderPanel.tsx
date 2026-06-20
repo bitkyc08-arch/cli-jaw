@@ -24,7 +24,6 @@ import './folder-panel.css';
 function getFolderBridge(): FolderBridgeApi | null {
     return getDesktop()?.folder ?? null;
 }
-
 function renamedPreviewPath(currentPath: string | null | undefined, oldPath: string, newPath: string): string | null {
     if (!currentPath || !isDescendantPath(oldPath, currentPath)) return null;
     return currentPath === oldPath ? newPath : `${newPath}${currentPath.slice(oldPath.length)}`;
@@ -72,7 +71,6 @@ export function FolderPanel(props: FolderPanelProps) {
         selectedPaths: folderSelection.selectedPaths,
         selectOnlyPath: folderSelection.selectOnlyPath,
     });
-
     useEffect(() => {
         const selectedPath = props.selectedFilePath;
         if (!selectedPath || !rootPath) return;
@@ -87,7 +85,6 @@ export function FolderPanel(props: FolderPanelProps) {
         props.selectedFilePath,
         rootPath,
     ]);
-
     useEffect(() => {
         props.onSessionStateChange?.(folderPanelSessionFromState({
             rootPath,
@@ -111,7 +108,6 @@ export function FolderPanel(props: FolderPanelProps) {
             return { ok: false, error: message };
         }
     }, [source]);
-
     const openFolderRoot = useCallback(async (
         nextRoot: string,
         options: { registerGitWorktree?: boolean; repoRoot?: string | null } = {},
@@ -304,10 +300,15 @@ export function FolderPanel(props: FolderPanelProps) {
         setError,
     });
 
-    const selectEntry = useCallback((entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean }) => {
+    const selectEntry = useCallback((entry: FolderPanelEntry, options?: { range?: boolean; toggle?: boolean; preview?: boolean }) => {
         folderSelection.selectEntry(entry, options);
         folderContextMenu.closeContextMenu();
     }, [folderContextMenu, folderSelection]);
+
+    const openFileEntry = useCallback((entry: FolderPanelEntry) => {
+        if (entry.kind !== 'file') return;
+        selectEntry(entry);
+    }, [selectEntry]);
 
     const toggleEntryExpansion = useCallback((entry: FolderPanelEntry) => {
         folderSelection.selectEntry(entry, { preview: false });
@@ -452,6 +453,8 @@ export function FolderPanel(props: FolderPanelProps) {
                 decorationsByPath={gitStatus.decorationsByPath}
                 dropTargetPath={dropTargetPath}
                 dragSelection={dragSelection}
+                inlineMutation={folderMutations.inlineMutation}
+                isMutating={folderMutations.isMutating}
                 canUseNativeActions={canUseNativeActions}
                 sourceKind={source.kind}
                 unavailableRoot={unavailableRoot}
@@ -461,16 +464,17 @@ export function FolderPanel(props: FolderPanelProps) {
                 handleEntryKeyDown={handleEntryKeyDown}
                 selectEntry={selectEntry}
                 toggleEntryExpansion={toggleEntryExpansion}
+                openFileEntry={openFileEntry}
                 openContextMenu={folderContextMenu.openContextMenu}
+                submitInlineMutation={folderMutations.submitInlineMutation}
+                cancelInlineMutation={folderMutations.cancelInlineMutation}
                 onPickFolder={() => void pickFolder()}
                 onClearUnavailableRoot={clearUnavailableRoot}
             />
             <FolderPanelOverlays
                 pendingMove={pendingMove}
                 contextMenu={folderContextMenu.contextMenu}
-                mutationDialog={folderMutations.mutationDialog}
                 isMoving={isMoving}
-                isMutating={folderMutations.isMutating}
                 skipMoveConfirmChecked={skipMoveConfirmChecked}
                 canReveal={Boolean(source.revealPath)}
                 canRefresh={Boolean(rootPath)}
@@ -489,8 +493,6 @@ export function FolderPanel(props: FolderPanelProps) {
                 onCreateContextFile={() => folderMutations.requestCreateEntry('file')}
                 onCreateContextFolder={() => folderMutations.requestCreateEntry('directory')}
                 onRenameContextPath={() => folderMutations.requestRenameSelectedEntry()}
-                onCancelMutation={folderMutations.cancelMutation}
-                onSubmitMutation={folderMutations.submitMutation}
             />
         </div>
     );

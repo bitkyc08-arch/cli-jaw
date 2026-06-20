@@ -494,6 +494,9 @@
 .folder-entry.is-dragging {
     opacity: 0.58;
 }
+.folder-entry-inline {
+    background: color-mix(in srgb, var(--accent-primary) 7%, transparent);
+}
 .folder-indent {
     display: flex;
     flex-shrink: 0;
@@ -554,6 +557,31 @@
 }
 .folder-entry-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .folder-entry-directory .folder-entry-name { font-weight: 500; }
+.folder-inline-editor {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    min-width: 0;
+    height: 22px;
+    padding: 1px 10px 1px 4px;
+    box-sizing: border-box;
+}
+.folder-inline-editor__input {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    height: 20px;
+    padding: 1px 5px;
+    border: 1px solid color-mix(in srgb, var(--accent-primary) 48%, var(--border-subtle));
+    border-radius: 3px;
+    color: var(--text-base);
+    background: var(--bg-base);
+    font: inherit;
+    outline: none;
+}
+.folder-inline-editor__input:focus {
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-primary) 38%, transparent);
+}
 .folder-entry-git-badge {
     display: inline-flex;
     align-items: center;
