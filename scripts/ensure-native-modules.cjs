@@ -8,21 +8,24 @@
  */
 const { execFileSync } = require('child_process');
 const { existsSync } = require('fs');
-const { join } = require('path');
+const { dirname, join } = require('path');
 
-const npmBin = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const root = join(__dirname, '..');
+const nodeBinDir = dirname(process.execPath);
+const adjacentNpm = process.platform === 'win32' ? join(nodeBinDir, 'npm.cmd') : join(nodeBinDir, 'npm');
+const npmBin = existsSync(adjacentNpm) ? adjacentNpm : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
 
 function rebuildBetterSqlite3() {
-    if (existsSync(join(process.cwd(), 'pnpm-lock.yaml'))) {
+    if (existsSync(join(root, 'pnpm-lock.yaml'))) {
         execFileSync('corepack', ['pnpm', 'rebuild', 'better-sqlite3'], {
             stdio: 'inherit',
-            cwd: process.cwd(),
+            cwd: root,
         });
         return;
     }
     execFileSync(npmBin, ['rebuild', 'better-sqlite3'], {
         stdio: 'inherit',
-        cwd: process.cwd(),
+        cwd: root,
     });
 }
 

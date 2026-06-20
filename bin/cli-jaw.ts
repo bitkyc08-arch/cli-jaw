@@ -4,9 +4,10 @@
  * CLI entrypoint with subcommand routing.
  * No external dependencies — Node built-in only.
  */
+import { execFileSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { maybePromptGithubStar } from './star-prompt.js';
 import { resolveHomePath } from '../src/core/path-expand.js';
@@ -22,11 +23,13 @@ function readPackageJson(pkgPath: string): PackageJson {
 }
 
 let pkg: PackageJson;
+let packageRoot = join(__dirname, '..');
 try {
-    const pkgPath = join(__dirname, '..', 'package.json');
+    const pkgPath = join(packageRoot, 'package.json');
     pkg = readPackageJson(pkgPath);
 } catch {
-    const pkgPath = join(__dirname, '..', '..', 'package.json');
+    packageRoot = join(__dirname, '..', '..');
+    const pkgPath = join(packageRoot, 'package.json');
     pkg = readPackageJson(pkgPath);
 }
 
@@ -77,6 +80,27 @@ if (_portShortIdx !== -1) {
 }
 
 const command = process.argv[2];
+
+function shouldSkipNativeGuard(cmd: string | undefined): boolean {
+    return !cmd || cmd === '--help' || cmd === '-h' || cmd === '--version' || cmd === '-v';
+}
+
+function ensureNativeModulesReady(cmd: string | undefined): void {
+    if (shouldSkipNativeGuard(cmd)) return;
+    const guardPath = join(packageRoot, 'scripts', 'ensure-native-modules.cjs');
+    if (!existsSync(guardPath)) return;
+    try {
+        execFileSync(process.execPath, [guardPath], {
+            cwd: packageRoot,
+            stdio: 'inherit',
+        });
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error(`[jaw:native] native dependency check failed for Node ${process.version}.`);
+        console.error(`[jaw:native] ${message}`);
+        process.exit(1);
+    }
+}
 
 async function maybePromptForStarOnLaunch(): Promise<void> {
     try {
@@ -148,8 +172,10 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
     CLI_JAW_HOME        Override data directory
     PORT                Default server port (3457)
     DASHBOARD_PORT      Dashboard port (24576)
-`);
+	`);
 }
+
+ensureNativeModulesReady(command);
 
 switch (command) {
     case 'serve':
