@@ -16,6 +16,21 @@ const adjacentNpm = process.platform === 'win32' ? join(nodeBinDir, 'npm.cmd') :
 const npmBin = existsSync(adjacentNpm) ? adjacentNpm : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
 
 function rebuildBetterSqlite3() {
+    const betterSqliteDir = join(root, 'node_modules', 'better-sqlite3');
+    if (existsSync(join(betterSqliteDir, 'package.json'))) {
+        execFileSync(npmBin, ['run', 'install', '--foreground-scripts'], {
+            stdio: 'inherit',
+            cwd: betterSqliteDir,
+            env: {
+                ...process.env,
+                npm_config_runtime: 'node',
+                npm_config_target: process.versions.node,
+                npm_config_disturl: 'https://nodejs.org/dist',
+                npm_config_build_from_source: 'true',
+            },
+        });
+        return;
+    }
     if (existsSync(join(root, 'pnpm-lock.yaml'))) {
         execFileSync('corepack', ['pnpm', 'rebuild', 'better-sqlite3'], {
             stdio: 'inherit',
@@ -31,7 +46,9 @@ function rebuildBetterSqlite3() {
 
 function loadBetterSqlite3() {
     try {
-        require('better-sqlite3');
+        const Database = require('better-sqlite3');
+        const db = new Database(':memory:');
+        db.close();
         return null;
     } catch (error) {
         return error;

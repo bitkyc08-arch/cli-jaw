@@ -36,6 +36,16 @@ test('ensure-native rebuilds from package root with current Node npm', () => {
     assert.match(src, /const root = join\(__dirname, '\.\.'\)/);
     assert.match(src, /dirname\(process\.execPath\)/);
     assert.match(src, /adjacentNpm/);
+    assert.match(src, /node_modules', 'better-sqlite3'/);
+    assert.match(src, /'run', 'install', '--foreground-scripts'/);
+    assert.match(src, /npm_config_target: process\.versions\.node/);
     assert.match(src, /cwd: root/);
     assert.doesNotMatch(src, /cwd: process\.cwd\(\)/);
+});
+
+test('ensure-native opens an in-memory database to prove ABI compatibility', () => {
+    const src = read('scripts/ensure-native-modules.cjs');
+
+    assert.match(src, /new Database\(':memory:'\)/);
+    assert.match(src, /db\.close\(\)/);
 });
