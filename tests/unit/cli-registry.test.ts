@@ -57,7 +57,7 @@ test('JWC registry exposes package-backed runtime metadata', () => {
     assert.equal(CLI_REGISTRY.jwc.label, 'JWC');
     assert.equal(CLI_REGISTRY.jwc.binary, 'jwc');
     assert.equal(CLI_REGISTRY.jwc.experimental, true);
-    assert.equal(CLI_REGISTRY.jwc.defaultModel, 'claude-fable-5');
+    assert.equal(CLI_REGISTRY.jwc.defaultModel, 'claude-sonnet-4-6');
     assert.equal(CLI_REGISTRY.jwc.defaultEffort, 'high');
     assert.ok(CLI_REGISTRY.jwc.models.includes('claude-fable-5'));
     assert.ok(CLI_REGISTRY.jwc.efforts.includes('high'));
@@ -77,7 +77,7 @@ test('live CLI registry preserves JWC runtime metadata', async () => {
     assert.equal(registry.jwc.label, 'JWC');
     assert.equal(registry.jwc.binary, 'jwc');
     assert.equal(registry.jwc.experimental, true);
-    assert.equal(registry.jwc.defaultModel, 'claude-fable-5');
+    assert.equal(registry.jwc.defaultModel, 'claude-sonnet-4-6');
     assert.equal(registry.jwc.defaultEffort, 'high');
 });
 

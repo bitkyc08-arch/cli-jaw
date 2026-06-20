@@ -7,7 +7,19 @@ import {
     renderMarkdownJawcode,
 } from '../../src/cli/tui/jawcode-render.ts';
 
-test('renderMarkdownJawcode renders headings without exported getMarkdownTheme', async () => {
+// The jawcode TUI renderer loads the pi_natives native addon. On hosts where the
+// platform-specific .node addon is not built (e.g. a fresh dev checkout), skip
+// cleanly instead of failing — these are environment gaps, not regressions.
+let nativeSkip: string | false = false;
+try {
+    await initJawcodeTui();
+} catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('pi_natives')) nativeSkip = 'pi_natives native addon not built for this platform';
+    else throw err;
+}
+
+test('renderMarkdownJawcode renders headings without exported getMarkdownTheme', { skip: nativeSkip }, async () => {
     await initJawcodeTui();
     assert.equal(isInitialized(), true);
     assert.equal(typeof getInteractive().getMarkdownTheme, 'undefined');
@@ -17,7 +29,7 @@ test('renderMarkdownJawcode renders headings without exported getMarkdownTheme',
     assert.ok(lines.join('\n').includes('Hello'));
 });
 
-test('renderMarkdownJawcode renders common markdown blocks', async () => {
+test('renderMarkdownJawcode renders common markdown blocks', { skip: nativeSkip }, async () => {
     await initJawcodeTui();
     const lines = renderMarkdownJawcode('## Title\n\n- one\n- two\n\n```ts\nconst x = 1;\n```', 80);
     const out = lines.join('\n');
@@ -26,7 +38,7 @@ test('renderMarkdownJawcode renders common markdown blocks', async () => {
     assert.ok(out.includes('const x = 1'));
 });
 
-test('renderMarkdownJawcode renders tables without missing symbol theme', async () => {
+test('renderMarkdownJawcode renders tables without missing symbol theme', { skip: nativeSkip }, async () => {
     await initJawcodeTui();
     const lines = renderMarkdownJawcode('| A | B |\n|---|---|\n| 1 | 2 |', 80);
     const out = lines.join('\n');
@@ -35,7 +47,7 @@ test('renderMarkdownJawcode renders tables without missing symbol theme', async 
     assert.ok(out.includes('┌') || out.includes('| A | B |'));
 });
 
-test('renderMarkdownJawcode can be called repeatedly after one initialization', async () => {
+test('renderMarkdownJawcode can be called repeatedly after one initialization', { skip: nativeSkip }, async () => {
     await initJawcodeTui();
     const first = renderMarkdownJawcode('plain text', 80);
     const second = renderMarkdownJawcode('plain text', 80);

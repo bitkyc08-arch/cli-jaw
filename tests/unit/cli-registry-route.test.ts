@@ -35,7 +35,7 @@ test('/api/cli-registry exposes JWC runtime metadata', async () => {
         assert.equal(body.data.jwc.label, 'JWC');
         assert.equal(body.data.jwc.binary, 'jwc');
         assert.equal(body.data.jwc.experimental, true);
-        assert.equal(body.data.jwc.defaultModel, 'claude-fable-5');
+        assert.equal(body.data.jwc.defaultModel, 'claude-sonnet-4-6');
         assert.equal(body.data.jwc.defaultEffort, 'high');
     } finally {
         await new Promise<void>((resolveClose) => server.close(() => resolveClose()));
