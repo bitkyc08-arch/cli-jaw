@@ -124,3 +124,11 @@ export async function updateReminder(id: string, patch: DashboardReminderPatchIn
     assertManualRankSupport(patch, body.item);
     return normalizeReminder(body.item);
 }
+
+export async function markReminderDone(id: string): Promise<DashboardReminder> {
+    return await updateReminder(id, { status: 'done' });
+}
+
+export async function snoozeReminder(id: string, nextRemindAt: string): Promise<DashboardReminder> {
+    return await updateReminder(id, { remindAt: nextRemindAt });
+}

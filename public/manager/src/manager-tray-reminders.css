@@ -165,6 +165,24 @@
     font-weight: 800;
 }
 
+.tray-reminders-row-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    min-width: 0;
+}
+
+.tray-reminders-row-actions button,
+.tray-reminders-row-actions select {
+    min-height: 26px;
+    padding: 3px 6px;
+    font-size: 11px;
+}
+
+.tray-reminders-row-actions select {
+    max-width: 82px;
+}
+
 .tray-reminders-empty-row {
     padding: 8px;
     background: color-mix(in srgb, var(--surface-panel) 72%, transparent);

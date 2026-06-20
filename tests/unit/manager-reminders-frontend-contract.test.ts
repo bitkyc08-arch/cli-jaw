@@ -25,6 +25,8 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     const main = read('public/manager/src/main.tsx');
     const sidebar = read('public/manager/src/dashboard-reminders/DashboardRemindersSidebar.tsx');
     const workspace = read('public/manager/src/dashboard-reminders/DashboardRemindersWorkspace.tsx');
+    const remindersApi = read('public/manager/src/dashboard-reminders/reminders-api.ts');
+    const remindersFeed = read('public/manager/src/dashboard-reminders/useRemindersFeed.ts');
 
     assert.ok(types.includes("'reminders'"), 'DashboardSidebarMode must include reminders');
     assert.ok(serverTypes.includes("'reminders'"), 'server DashboardSidebarMode must include reminders');
@@ -50,9 +52,17 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(sidebar.includes('countRemindersView'), 'Reminders sidebar counts must use the shared view model');
     assert.ok(trayApp.includes('buildTrayTriageSections'), 'Tray reminders app must use the shared triage helper');
     assert.ok(trayApp.includes('getDesktop()?.trayReminders?.popUpMenu()'), 'Tray reminders app must use the typed desktop bridge for menu access');
+    assert.ok(trayApp.includes('aria-label="Mark done"'), 'Tray reminders rows must expose an accessible done action');
+    assert.ok(trayApp.includes('aria-label="Snooze reminder"'), 'Tray reminders rows must expose a snooze menu');
+    assert.ok(trayApp.includes('feed.markDone(id)'), 'Tray reminders done action must call the feed helper');
+    assert.ok(trayApp.includes('feed.snooze(id, next)'), 'Tray reminders snooze action must call the feed helper');
     assert.ok(sidebar.includes('PrioritySidebarList'), 'Reminders sidebar must expose draggable manual priority ordering');
     assert.ok(sidebar.includes('manualRank'), 'Reminders sidebar drag must persist manualRank updates');
-    assert.ok(read('public/manager/src/dashboard-reminders/reminders-api.ts').includes('assertManualRankSupport'), 'manualRank PATCH must fail visibly when the running backend is stale');
+    assert.ok(remindersApi.includes('assertManualRankSupport'), 'manualRank PATCH must fail visibly when the running backend is stale');
+    assert.ok(remindersApi.includes("return await updateReminder(id, { status: 'done' })"), 'mark done helper must PATCH status done');
+    assert.ok(remindersApi.includes('return await updateReminder(id, { remindAt: nextRemindAt })'), 'snooze helper must PATCH remindAt only');
+    assert.ok(remindersFeed.includes('markDone: (id: string) => Promise<void>'), 'feed must expose markDone');
+    assert.ok(remindersFeed.includes('snooze: (id: string, nextRemindAt: string) => Promise<void>'), 'feed must expose snooze');
     assert.ok(router.includes('onUpdate={(id, patch) => void remindersFeed.update(id, patch)}'), 'Reminders sidebar must receive update wiring');
     assert.ok(workspace.includes('InlineReminderTitle'), 'Reminders rows must support double-click inline title editing');
     assert.ok(workspace.includes('data-reminder-drop-before-id'), 'Reminders row drop targets must expose before/after order metadata');

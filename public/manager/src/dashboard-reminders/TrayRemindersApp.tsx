@@ -33,14 +33,57 @@ function openDashboard(): void {
     window.open('/?sidebar=reminders', 'cli-jaw-dashboard', 'noopener,noreferrer');
 }
 
-function TrayReminderRow(props: { item: DashboardReminder; section: TrayReminderSectionId }) {
+function snoozeTime(option: string): string | null {
+    const next = new Date();
+    if (option === 'later-today') {
+        next.setHours(next.getHours() + 3, 0, 0, 0);
+        return next.toISOString();
+    }
+    if (option === 'tomorrow') {
+        next.setDate(next.getDate() + 1);
+        next.setHours(9, 0, 0, 0);
+        return next.toISOString();
+    }
+    if (option === 'next-week') {
+        next.setDate(next.getDate() + 7);
+        next.setHours(9, 0, 0, 0);
+        return next.toISOString();
+    }
+    return null;
+}
+
+function TrayReminderRow(props: {
+    item: DashboardReminder;
+    section: TrayReminderSectionId;
+    busy: boolean;
+    onMarkDone: (id: string) => void;
+    onSnooze: (id: string, nextRemindAt: string) => void;
+}) {
     return (
         <li className="tray-reminders-row" data-section={props.section} data-priority={props.item.priority}>
             <span className="tray-reminders-row-main">
                 <b>{props.item.title}</b>
                 <small>{reminderMeta(props.item)}</small>
             </span>
-            {props.item.priority === 'high' ? <span className="tray-reminders-priority-pill">High</span> : null}
+            <span className="tray-reminders-row-actions">
+                {props.item.priority === 'high' ? <span className="tray-reminders-priority-pill">High</span> : null}
+                <button type="button" aria-label="Mark done" onClick={() => props.onMarkDone(props.item.id)} disabled={props.busy}>Done</button>
+                <select
+                    aria-label="Snooze reminder"
+                    value=""
+                    disabled={props.busy}
+                    onChange={event => {
+                        const next = snoozeTime(event.target.value);
+                        event.currentTarget.value = '';
+                        if (next) props.onSnooze(props.item.id, next);
+                    }}
+                >
+                    <option value="" disabled>Snooze</option>
+                    <option value="later-today">Later today</option>
+                    <option value="tomorrow">Tomorrow</option>
+                    <option value="next-week">Next week</option>
+                </select>
+            </span>
         </li>
     );
 }
@@ -48,6 +91,9 @@ function TrayReminderRow(props: { item: DashboardReminder; section: TrayReminder
 function TrayReminderSection(props: {
     id: TrayReminderSectionId;
     items: DashboardReminder[];
+    busy: boolean;
+    onMarkDone: (id: string) => void;
+    onSnooze: (id: string, nextRemindAt: string) => void;
 }) {
     return (
         <section className="tray-reminders-section" data-section={props.id}>
@@ -56,7 +102,16 @@ function TrayReminderSection(props: {
                 <span>{props.items.length}</span>
             </header>
             <ol>
-                {props.items.map(item => <TrayReminderRow key={item.id} item={item} section={props.id} />)}
+                {props.items.map(item => (
+                    <TrayReminderRow
+                        key={item.id}
+                        item={item}
+                        section={props.id}
+                        busy={props.busy}
+                        onMarkDone={props.onMarkDone}
+                        onSnooze={props.onSnooze}
+                    />
+                ))}
                 {props.items.length === 0 ? <li className="tray-reminders-empty-row">No reminders</li> : null}
             </ol>
         </section>
@@ -88,9 +143,9 @@ export function TrayRemindersApp() {
             {feed.loading && feed.items.length === 0 ? <p className="tray-reminders-status">Loading reminders</p> : null}
             {!feed.loading && !feed.error && !hasVisibleItems ? <p className="tray-reminders-empty">No urgent reminders</p> : null}
             <div className="tray-reminders-sections">
-                <TrayReminderSection id="overdue" items={sections.overdue} />
-                <TrayReminderSection id="priority" items={sections.priority} />
-                <TrayReminderSection id="today" items={sections.today} />
+                <TrayReminderSection id="overdue" items={sections.overdue} busy={feed.loading} onMarkDone={(id) => void feed.markDone(id)} onSnooze={(id, next) => void feed.snooze(id, next)} />
+                <TrayReminderSection id="priority" items={sections.priority} busy={feed.loading} onMarkDone={(id) => void feed.markDone(id)} onSnooze={(id, next) => void feed.snooze(id, next)} />
+                <TrayReminderSection id="today" items={sections.today} busy={feed.loading} onMarkDone={(id) => void feed.markDone(id)} onSnooze={(id, next) => void feed.snooze(id, next)} />
             </div>
             <footer className="tray-reminders-footer">
                 <span>{sections.upcomingCount} upcoming</span>

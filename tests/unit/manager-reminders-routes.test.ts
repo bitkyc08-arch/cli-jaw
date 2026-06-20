@@ -98,6 +98,19 @@ test('reminders from-message route creates local linked reminders and allows loc
         assert.equal(patched.status, 200);
         const patchedBody = await patched.json() as { item: { status: string } };
         assert.equal(patchedBody.item.status, 'done');
+
+        const nextRemindAt = '2026-05-10T09:00:00.000Z';
+        const snoozed = await fetch(`${baseUrl}/api/dashboard/reminders/${createdBody.item.id}`, {
+            method: 'PATCH',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ remindAt: nextRemindAt }),
+        });
+        assert.equal(snoozed.status, 200);
+        const snoozedBody = await snoozed.json() as { item: { title: string; status: string; priority: string; remindAt: string | null } };
+        assert.equal(snoozedBody.item.title, 'Pin from chat');
+        assert.equal(snoozedBody.item.status, 'done');
+        assert.equal(snoozedBody.item.priority, 'high');
+        assert.equal(snoozedBody.item.remindAt, nextRemindAt);
     });
 });
 

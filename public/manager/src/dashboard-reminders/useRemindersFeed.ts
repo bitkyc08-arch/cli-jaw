@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from 'react';
 import {
     createReminder,
     listReminders,
+    markReminderDone,
+    snoozeReminder,
     updateReminder,
     type DashboardReminder,
     type DashboardReminderCreateInput,
@@ -15,6 +17,8 @@ export type RemindersFeedState = {
     refresh: () => Promise<void>;
     create: (input: DashboardReminderCreateInput) => Promise<void>;
     update: (id: string, patch: DashboardReminderPatchInput) => Promise<void>;
+    markDone: (id: string) => Promise<void>;
+    snooze: (id: string, nextRemindAt: string) => Promise<void>;
 };
 
 type UseRemindersFeedOptions = {
@@ -63,10 +67,36 @@ export function useRemindersFeed(options: UseRemindersFeedOptions): RemindersFee
         }
     }, []);
 
+    const markDone = useCallback(async (id: string): Promise<void> => {
+        setError(null);
+        let previous: DashboardReminder[] = [];
+        setItems(current => {
+            previous = current;
+            return current.map(existing => existing.id === id ? { ...existing, status: 'done' } : existing);
+        });
+        try {
+            const item = await markReminderDone(id);
+            setItems(current => current.map(existing => existing.id === id ? item : existing));
+        } catch (err) {
+            setItems(previous);
+            setError((err as Error).message);
+        }
+    }, []);
+
+    const snooze = useCallback(async (id: string, nextRemindAt: string): Promise<void> => {
+        setError(null);
+        try {
+            const item = await snoozeReminder(id, nextRemindAt);
+            setItems(current => current.map(existing => existing.id === id ? item : existing));
+        } catch (err) {
+            setError((err as Error).message);
+        }
+    }, []);
+
     useEffect(() => {
         if (!options.active) return;
         void load();
     }, [options.active, load]);
 
-    return { items, loading, error, refresh, create, update };
+    return { items, loading, error, refresh, create, update, markDone, snooze };
 }
