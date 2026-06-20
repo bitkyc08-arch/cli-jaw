@@ -30,10 +30,17 @@ export interface ProcessBlockState {
     element: HTMLElement;
     steps: ProcessStep[];
     collapsed: boolean;
+    /** When true, a long block renders ALL steps instead of the head/tail window —
+     *  set by the "show N hidden steps" expander so a live long turn stays fully
+     *  reachable (devlog 260620 Phase 4). Persists across new live steps. */
+    expandedSteps?: boolean;
     _durationEl?: HTMLElement | null;
 }
 let _tickerHandle: ReturnType<typeof setInterval> | null = null;
 let _tickerBlock: ProcessBlockState | null = null;
+// Maps a live block's root element → its state so the delegated click handler can
+// flip expandedSteps and re-render from pb.steps (which holds every step, uncapped).
+const blockStatesByElement = new WeakMap<HTMLElement, ProcessBlockState>();
 const PROCESS_DETAIL_PREVIEW_CHARS = 160;
 const PROCESS_DETAIL_RETAIN_CHARS = 3000;
 const PROCESS_DETAIL_COLLAPSE_CLEAR_CHARS = 1000;
@@ -224,9 +231,9 @@ function updateProcessBlockDetailIndex(pb: ProcessBlockState): void {
     pb.element.dataset['processStepIds'] = pb.steps.map(step => step.id).join(' ');
 }
 
-function visibleStepIndexes(steps: ProcessStep[]): Set<number> {
+function visibleStepIndexes(steps: ProcessStep[], expandedSteps = false): Set<number> {
     const indexes = new Set<number>();
-    if (steps.length <= PROCESS_BLOCK_MAX_RENDERED_STEPS) {
+    if (expandedSteps || steps.length <= PROCESS_BLOCK_MAX_RENDERED_STEPS) {
         steps.forEach((_step, idx) => indexes.add(idx));
         return indexes;
     }
@@ -289,13 +296,15 @@ function renderStep(step: ProcessStep): string {
 }
 
 function renderOmittedStepSummary(count: number): string {
-    return `<div class="process-step process-step-omitted" aria-hidden="true">
-        <span class="process-step-snippet">${count} completed tool step${count === 1 ? '' : 's'} hidden for memory safety</span>
-    </div>`;
+    // Clickable: reveals the elided middle (data is in pb.steps). Default-collapsed for
+    // DOM/memory safety; expanding is an explicit opt-in (devlog 260620 Phase 4).
+    return `<button type="button" class="process-step process-step-omitted" data-expand-steps>
+        <span class="process-step-snippet">Show ${count} hidden tool step${count === 1 ? '' : 's'}</span>
+    </button>`;
 }
 
-function renderSteps(steps: ProcessStep[]): string {
-    const indexes = visibleStepIndexes(steps);
+function renderSteps(steps: ProcessStep[], expandedSteps = false): string {
+    const indexes = visibleStepIndexes(steps, expandedSteps);
     let omitted = 0;
     const parts: string[] = [];
     for (let idx = 0; idx < steps.length; idx++) {
@@ -375,6 +384,21 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
             return;
         }
 
+        const expandTrigger = target.closest('[data-expand-steps]') as HTMLElement | null;
+        if (expandTrigger) {
+            event.preventDefault();
+            const block = expandTrigger.closest('.process-block') as HTMLElement | null;
+            const pb = block ? blockStatesByElement.get(block) : null;
+            if (pb && block) {
+                withProcessBlockLayoutMutation(block, () => {
+                    pb.expandedSteps = true;
+                    const inner = pb.element.querySelector('.process-steps-inner');
+                    if (inner) inner.innerHTML = renderSteps(pb.steps, true);
+                });
+            }
+            return;
+        }
+
         const stepToggle = target.closest('.process-step-toggle') as HTMLElement | null;
         if (stepToggle) {
             withProcessBlockLayoutMutation(stepToggle.closest('.process-step, .process-block'), () => {
@@ -448,7 +472,9 @@ export function createProcessBlock(parentEl: HTMLElement): ProcessBlockState {
     if (content) content.before(el);
     else parentEl.appendChild(el);
 
-    return { element: el, steps: [], collapsed: true };
+    const state: ProcessBlockState = { element: el, steps: [], collapsed: true };
+    blockStatesByElement.set(el, state);
+    return state;
 }
 
 export function addStep(pb: ProcessBlockState, step: ProcessStep): void {
@@ -456,7 +482,7 @@ export function addStep(pb: ProcessBlockState, step: ProcessStep): void {
     pb.steps.push(compactStep);
     const inner = pb.element.querySelector('.process-steps-inner');
     if (inner) {
-        if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS) inner.innerHTML = renderSteps(pb.steps);
+        if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS) inner.innerHTML = renderSteps(pb.steps, pb.expandedSteps);
         else inner.insertAdjacentHTML('beforeend', renderStep(compactStep));
     }
     updateProcessBlockDetailIndex(pb);
@@ -480,7 +506,7 @@ export function replaceStep(pb: ProcessBlockState, oldStepId: string, newStep: P
         if (newEl) oldEl.replaceWith(newEl);
     } else if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS) {
         const inner = pb.element.querySelector('.process-steps-inner');
-        if (inner) inner.innerHTML = renderSteps(pb.steps);
+        if (inner) inner.innerHTML = renderSteps(pb.steps, pb.expandedSteps);
     }
     updateProcessBlockDetailIndex(pb);
     updateSummary(pb);

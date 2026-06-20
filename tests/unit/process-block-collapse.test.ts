@@ -32,7 +32,8 @@ test('process block static HTML still allows explicit expanded override', () => 
 test('createProcessBlock creates collapsed live blocks by default', () => {
     const block = functionBlock('createProcessBlock');
     assert.ok(block.includes("blockShell('', true)"), 'live block constructor should request collapsed shell');
-    assert.ok(block.includes('return { element: el, steps: [], collapsed: true }'), 'state should match collapsed DOM');
+    assert.ok(block.includes('const state: ProcessBlockState = { element: el, steps: [], collapsed: true }'), 'state should match collapsed DOM');
+    assert.ok(block.includes('blockStatesByElement.set(el, state)'), 'live block registers its state so the step expander can re-render');
     assert.ok(!block.includes("blockShell('', false)"), 'expanded shell should not be the live default');
     assert.ok(!block.includes('collapsed: false'), 'expanded state should not be the live default');
 });
