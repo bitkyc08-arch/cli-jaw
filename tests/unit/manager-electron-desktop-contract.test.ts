@@ -62,11 +62,18 @@ test('Electron sidecar bundle installs jawcode as a real package and verifies jw
 test('Electron CLI installer rejects incomplete or partially installed sidecar commands', () => {
     const installCli = read('electron/src/main/lib/install-cli.ts');
 
+    assert.ok(installCli.includes('function findInstallConflicts'), 'installCli must check for pre-existing terminal commands before writing symlinks');
+    assert.ok(installCli.includes('Existing CLI commands were not overwritten'), 'installCli must refuse to overwrite existing non-sidecar CLI commands');
+    assert.ok(installCli.includes('desktop app can still run from its bundled sidecar'), 'installCli conflict messaging must explain that terminal shims are optional');
     assert.ok(installCli.includes('if (missing.length > 0)'), 'installCli must fail when any sidecar command is missing');
     assert.ok(installCli.includes('Incomplete sidecar bundle'), 'installCli must report incomplete sidecar bundles explicitly');
     assert.ok(installCli.includes('if (failed.length > 0)'), 'installCli must fail when any symlink attempt fails after installation starts');
     assert.ok(installCli.includes('Failed to install CLI links'), 'installCli must not present partial symlink failures as success');
     assert.ok(installCli.includes("if (!getSidecarBinPath('jaw') || !getSidecarBinPath('jwc')) return"), 'install prompt must require both jaw and jwc before offering install');
+    assert.ok(installCli.includes("buttons: ['Skip', 'Install']"), 'install prompt must make the non-invasive option first');
+    assert.ok(installCli.includes('Existing terminal commands are not overwritten'), 'install prompt must disclose that existing commands are protected');
+    assert.ok(installCli.includes("if (response === 1)"), 'install prompt must only install after the explicit Install choice');
+    assert.ok(installCli.includes('Windows installer PATH entry'), 'Windows packaged installs must explain that NSIS owns PATH setup instead of symlinking');
     assert.equal(installCli.includes('Partial failures:'), false, 'installCli must not append partial failures to an ok:true success message');
 });
 

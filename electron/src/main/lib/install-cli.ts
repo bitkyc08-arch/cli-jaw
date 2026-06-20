@@ -1,4 +1,4 @@
-import { existsSync, symlinkSync, unlinkSync, mkdirSync } from 'node:fs';
+import { existsSync, symlinkSync, unlinkSync, mkdirSync, lstatSync, realpathSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir, platform } from 'node:os';
 import { execSync } from 'node:child_process';
@@ -20,7 +20,35 @@ function getSidecarBinPath(name: string): string | null {
   return existsSync(bin) ? bin : null;
 }
 
+function targetExists(path: string): boolean {
+  try {
+    lstatSync(path);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isSidecarLink(target: string, src: string): boolean {
+  try {
+    return realpathSync(target) === realpathSync(src);
+  } catch {
+    return false;
+  }
+}
+
+function findInstallConflicts(bins: Array<{ name: string; src: string | null }>, dir: string): string[] {
+  const conflicts: string[] = [];
+  for (const { name, src } of bins) {
+    if (!src) continue;
+    const target = join(dir, name);
+    if (targetExists(target) && !isSidecarLink(target, src)) conflicts.push(target);
+  }
+  return conflicts;
+}
+
 export function isCliInstalled(): boolean {
+  if (platform() === 'win32') return CLI_BINS.every(name => !!getSidecarBinPath(name));
   const dir = SYMLINK_DIR[platform()];
   if (!dir) return false;
   return CLI_BINS.every(name => existsSync(join(dir, name)));
@@ -28,15 +56,27 @@ export function isCliInstalled(): boolean {
 
 export async function installCli(): Promise<{ ok: boolean; message: string }> {
   const plat = platform();
-  const dir = SYMLINK_DIR[plat];
-  if (!dir) return { ok: false, message: `Unsupported platform: ${plat}` };
-
   const bins = CLI_BINS.map(name => ({ name, src: getSidecarBinPath(name) }));
   const missing = bins.filter(b => !b.src);
   if (missing.length > 0) {
     return {
       ok: false,
       message: `Incomplete sidecar bundle:\n${missing.map(b => `${b.name}: not found in sidecar`).join('\n')}`,
+    };
+  }
+
+  if (plat === 'win32') {
+    return { ok: true, message: 'CLI is available via the Windows installer PATH entry. Open a new terminal window before running "jaw" or "jwc".' };
+  }
+
+  const dir = SYMLINK_DIR[plat];
+  if (!dir) return { ok: false, message: `Unsupported platform: ${plat}` };
+
+  const conflicts = findInstallConflicts(bins, dir);
+  if (conflicts.length > 0) {
+    return {
+      ok: false,
+      message: `Existing CLI commands were not overwritten:\n${conflicts.join('\n')}\n\nRemove or rename those commands first, or keep using the existing terminal CLI. The desktop app can still run from its bundled sidecar.`,
     };
   }
 
@@ -69,10 +109,6 @@ export async function installCli(): Promise<{ ok: boolean; message: string }> {
     }
   }
 
-  if (plat === 'win32') {
-    return { ok: true, message: 'CLI is available via the installer PATH entry.' };
-  }
-
   if (installed.length === 0) {
     return { ok: false, message: `Installation failed:\n${failed.join('\n')}` };
   }
@@ -93,14 +129,14 @@ export async function promptInstallCli(): Promise<void> {
 
   const { response } = await dialog.showMessageBox({
     type: 'question',
-    buttons: ['Install', 'Skip'],
+    buttons: ['Skip', 'Install'],
     defaultId: 0,
     title: 'Install CLI Command',
     message: 'Install "jaw" and "jwc" commands to your terminal?',
-    detail: 'This creates symlinks so you can run "jaw" and "jwc" from any terminal window. You can always install them later from the tray menu.',
+    detail: 'This creates symlinks so you can run "jaw" and "jwc" from any terminal window. Existing terminal commands are not overwritten. You can skip this; the desktop app still runs from its bundled sidecar.',
   });
 
-  if (response === 0) {
+  if (response === 1) {
     const result = await installCli();
     await dialog.showMessageBox({
       type: result.ok ? 'info' : 'error',
