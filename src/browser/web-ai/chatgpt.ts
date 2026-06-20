@@ -46,6 +46,9 @@ import { listCapabilitySchemas } from './capability-registry.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import { appendTraceToSession, type TracePersistableValue } from './trace-persistence.js';
 import { detectInterstitial, isPageDeathError } from './interstitial.js';
+import { selectChatGptComposerTools } from './chatgpt-tools.js';
+import { sendDeepResearch } from './chatgpt-deep-research.js';
+import { sendMultiTurn } from './chatgpt-multi-turn.js';
 import type {
     QuestionEnvelopeInput,
     WebAiOutput,
@@ -249,6 +252,18 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             : renderQuestionEnvelope(envelope)
         : renderQuestionEnvelope(envelope);
     const selectedModel = await selectChatGptModel(page, input.model, stripUndefined({ effort: input.reasoningEffort }));
+    const toolSelection = (input.tools?.length || input.autoTools)
+        ? await selectChatGptComposerTools(page, {
+            ...(input.tools ? { tools: input.tools } : {}),
+            ...(input.autoTools ? { autoTools: input.autoTools } : {}),
+            ...(input.prompt ? { prompt: input.prompt } : {}),
+            ...(input.goal ? { goal: input.goal } : {}),
+            ...(input.question ? { question: input.question } : {}),
+            ...(input.context ? { context: input.context } : {}),
+            ...(input.constraints ? { constraints: input.constraints } : {}),
+            ...(input.research ? { research: input.research } : {}),
+        }).catch(() => null)
+        : null;
     await waitForStableAssistantCount(page);
     const assistantCount = await countAssistantMessages(page);
     const baseline = saveBaseline({
@@ -368,6 +383,9 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
             ...(selectedModel?.warnings || []),
             ...(selectedModel?.selected ? [`model selected: ${selectedModel.selected}${selectedModel.alreadySelected ? ' (already selected)' : ''}`] : []),
             ...(selectedModel?.effort ? [`reasoning effort selected: ${selectedModel.effort}`] : []),
+            ...(toolSelection?.warnings || []),
+            ...(toolSelection?.selectedTools?.length ? [`tools selected: ${toolSelection.selectedTools.join(', ')}`] : []),
+            ...(toolSelection?.selectedPlugins?.length ? [`plugins selected: ${toolSelection.selectedPlugins.join(', ')}`] : []),
         ],
     });
 }
@@ -607,6 +625,9 @@ function parseSourceAuditRatio(value: unknown): number {
 }
 
 export async function query(port: number, input: QuestionEnvelopeInput & { timeout?: number | string; allowCopyMarkdownFallback?: boolean } = {}): Promise<WebAiOutput> {
+    if (input.research === 'deep' && parseVendor(input.vendor) === 'chatgpt') {
+        return queryDeepResearch(port, input);
+    }
     const sent = await send(port, input);
     const result = await poll(port, stripUndefined({
         vendor: sent.vendor,
@@ -618,10 +639,68 @@ export async function query(port: number, input: QuestionEnvelopeInput & { timeo
         sourceAuditScope: input.sourceAuditScope,
         sourceAuditDate: input.sourceAuditDate,
     }));
-    return {
+    const merged: WebAiOutput = {
         ...result,
         usedFallbacks: [...(sent.usedFallbacks || []), ...(result.usedFallbacks || [])],
         warnings: [...(sent.warnings || []), ...(result.warnings || [])],
+    };
+    if (input.followUps?.length && parseVendor(input.vendor) === 'chatgpt') {
+        return queryMultiTurn(port, input, merged);
+    }
+    return merged;
+}
+
+async function queryDeepResearch(port: number, input: QuestionEnvelopeInput & { timeout?: number | string }): Promise<WebAiOutput> {
+    const { page, targetId } = await ensureProviderTab(port, input);
+    const session = createSession({
+        vendor: 'chatgpt',
+        targetId,
+        url: page.url(),
+        conversationUrl: page.url(),
+        envelope: normalizeEnvelope(input),
+        assistantCount: await countAssistantMessages(page),
+        timeoutMs: Number(input.timeout || 1200) * 1000,
+    });
+    bindSessionToTab(session.sessionId, targetId);
+    const deps = {
+        getCdpSession: () => getCdpSession(port),
+    };
+    const dr = await sendDeepResearch(page, deps, {
+        prompt: input.prompt || '',
+        session,
+        timeoutMs: Number(input.timeout || 1200) * 1000,
+    });
+    const drStatusMap: Record<string, WebAiOutput['status']> = {
+        complete: 'complete', timeout: 'timeout', blocked: 'blocked', failed: 'error',
+    };
+    return {
+        ok: dr.ok,
+        vendor: 'chatgpt',
+        status: drStatusMap[dr.status] || 'error',
+        url: dr.conversationUrl,
+        sessionId: dr.sessionId,
+        ...(dr.reportText ? { answerText: dr.reportText } : {}),
+        warnings: dr.warnings,
+    };
+}
+
+async function queryMultiTurn(port: number, input: QuestionEnvelopeInput, baseResult: WebAiOutput): Promise<WebAiOutput> {
+    if (!input.followUps?.length || !baseResult.sessionId) return baseResult;
+    const session = getSession(baseResult.sessionId);
+    if (!session) return baseResult;
+    const page = await getPageByTargetId(port, session.targetId);
+    if (!page) return baseResult;
+    const deps = { getCdpSession: () => getCdpSession(port) };
+    const mt = await sendMultiTurn(page, deps, {
+        followUps: input.followUps,
+        session,
+    });
+    return {
+        ...baseResult,
+        ok: mt.ok,
+        status: mt.finalStatus === 'complete' ? 'complete' : 'error',
+        ...(mt.finalAnswer ? { answerText: mt.finalAnswer } : {}),
+        warnings: [...(baseResult.warnings || []), ...mt.warnings, `multi-turn: ${mt.turns.length} follow-ups`],
     };
 }
 
