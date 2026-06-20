@@ -29,6 +29,8 @@ if [ -f src/lib/tui/jawcode-tui-bundle.mjs ]; then
     NATIVE_SRC=""
     for candidate in \
         "src/lib/native/$NATIVE_FILE" \
+        "electron/sidecar/server/node_modules/@jawcode-dev/natives/native/$NATIVE_FILE" \
+        "node_modules/@jawcode-dev/natives/native/$NATIVE_FILE" \
         "node_modules/@jawcode-internal/natives/native/$NATIVE_FILE" \
         "electron/sidecar/server/dist/src/lib/native/$NATIVE_FILE" \
         "electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server/dist/src/lib/native/$NATIVE_FILE"; do
