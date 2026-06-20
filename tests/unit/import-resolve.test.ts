@@ -47,9 +47,16 @@ for (const file of allFiles) {
     for (const { specifier, line } of imports) {
         if (!specifier.startsWith('.')) continue; // skip bare specifiers
         const resolved = path.resolve(path.dirname(file), specifier);
-        // NodeNext: .ts files use .js in import specifiers, so also check .ts equivalent
-        const resolvedTs = resolved.endsWith('.js') ? resolved.replace(/\.js$/, '.ts') : null;
-        if (!fs.existsSync(resolved) && !(resolvedTs && fs.existsSync(resolvedTs))) {
+        // NodeNext: .ts files use .js in import specifiers, so also check .ts equivalent.
+        // Bundler resolution (src/lib/tui/tsconfig.json) also allows extensionless
+        // specifiers, so accept '<path>.ts' / '<path>/index.ts' candidates too.
+        const candidates = [
+            resolved,
+            resolved.endsWith('.js') ? resolved.replace(/\.js$/, '.ts') : `${resolved}.ts`,
+            `${resolved}.tsx`,
+            path.join(resolved, 'index.ts'),
+        ];
+        if (!candidates.some(c => fs.existsSync(c))) {
             const rel = path.relative(ROOT, file);
             broken.push(`${rel}:${line} → ${specifier} (resolved: ${path.relative(ROOT, resolved)})`);
         }

@@ -29,7 +29,7 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
     const pkg = read('package.json');
 
     assert.ok(
-        pkg.includes('"electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run check:electron-dist-mac-jwc && npm run check:app-icons"'),
+        pkg.includes('"electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run electron:resign:mac && npm run check:electron-dist-mac-jwc && npm run check:app-icons"'),
         'electron:dist:mac must rebuild assets, bundle the sidecar, package the shell, and verify the final app before success',
     );
     assert.ok(
@@ -396,9 +396,9 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(router.includes('rightPreviewFilePath'), 'router must keep the selected file path for document preview');
     assert.ok(router.includes("panelLayout.dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'doc', slot: 'bottom' })"), 'selecting a file must open document preview in a folder/file split view');
     assert.ok(folder.includes('onPreviewFile'), 'folder panel must expose file selection to the preview panel');
-    assert.ok(folder.includes('onPreviewFile: props.onPreviewFile'), 'clicking a file in Folders must open it in preview through the selection hook');
+    assert.ok(folder.includes('const onPreviewFile = props.onPreviewFile;'), 'clicking a file in Folders must open it in preview through the selection hook');
     assert.ok(folder.includes('onRootChange'), 'folder panel must report manual root changes back to the owning right sidebar');
-    assert.ok(router.includes('setRightFolderRootPath'), 'right sidebar must own and update the FolderPanel root prop');
+    assert.ok(router.includes('setFolderRootPath'), 'right sidebar must own and update the FolderPanel root prop');
     assert.ok(router.includes('onRootChange={onFolderRootChange}'), 'manual Open Folder must replace stale dropped-folder roots');
     assert.ok(folderSources.includes('getInitialRoot'), 'folder panel source must expose explicit initial root policy');
     assert.ok(folderSources.includes('getInitialRoot: async () => null'), 'Electron FolderPanel must start empty instead of opening an implicit root');

@@ -10,6 +10,7 @@ const sessionSource = read('public/manager/src/folder-panel/folder-panel-session
 const folderPanelSource = read('public/manager/src/folder-panel/FolderPanel.tsx');
 const folderSelectionSource = read('public/manager/src/folder-panel/use-folder-selection.ts');
 const sidebarRouterSource = read('public/manager/src/SidebarRailRouter.tsx');
+const folderPanelPropsSource = read('public/manager/src/folder-panel/folder-panel-props.ts');
 
 test('FolderPanel session helper owns serializable same-session tree snapshots', () => {
     assert.ok(sessionSource.includes('export type FolderPanelSessionState'), 'session helper must export FolderPanelSessionState');
@@ -21,8 +22,8 @@ test('FolderPanel session helper owns serializable same-session tree snapshots',
 });
 
 test('FolderPanel restores session state while preserving real root reset boundaries', () => {
-    assert.ok(folderPanelSource.includes('sessionState?: FolderPanelSessionState'), 'FolderPanel props must accept a session snapshot');
-    assert.ok(folderPanelSource.includes('onSessionStateChange?:'), 'FolderPanel props must emit session snapshots');
+    assert.ok(folderPanelPropsSource.includes('sessionState?: FolderPanelSessionState'), 'FolderPanel props must accept a session snapshot');
+    assert.ok(folderPanelPropsSource.includes('onSessionStateChange?:'), 'FolderPanel props must emit session snapshots');
     assert.ok(folderPanelSource.includes('snapshotToChildrenCache(initialSession.childrenCache)'), 'FolderPanel must restore cached expanded children');
     assert.ok(folderPanelSource.includes('new Set(initialSession?.expandedPaths ?? [])'), 'FolderPanel must restore expanded paths');
     assert.ok(folderPanelSource.includes('initialSelection: initialSession?.selection'), 'FolderPanel must restore selection through useFolderSelection');

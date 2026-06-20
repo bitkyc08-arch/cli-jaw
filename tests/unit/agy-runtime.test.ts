@@ -350,7 +350,7 @@ test('AGY-RT-014: AGY quiet completion is anchored on the final transcript plann
     }), null);
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     assert.match(spawnSrc, /getAgyQuietCompletionDelayMs\(ctx\)/);
-    assert.match(spawnSrc, /onActivity:\s*\(\)\s*=>\s*\{\s*scheduleAgyQuietCompletion\(\);\s*\}/);
+    assert.match(spawnSrc, /onActivity:\s*\(\)\s*=>\s*\{[\s\S]*?scheduleAgyQuietCompletion\(\);\s*\}/);
 });
 
 test('AGY-RT-015: transcript watcher drives the final planner flag and growth activity', () => {

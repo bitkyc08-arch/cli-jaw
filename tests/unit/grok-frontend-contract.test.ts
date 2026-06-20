@@ -98,7 +98,6 @@ test('LEGACY-FE-001: legacy settings sidebar exposes every canonical CLI row', (
     for (const [cli, suffix] of [
         ['ai-e', 'AiE'],
         ['claude', 'Claude'],
-        ['claude-e', 'ClaudeE'],
         ['codex', 'Codex'],
         ['codex-app', 'CodexApp'],
         ['cursor', 'Cursor'],
@@ -112,11 +111,13 @@ test('LEGACY-FE-001: legacy settings sidebar exposes every canonical CLI row', (
         assert.match(html, new RegExp(`id="model${suffix}"`), `settings row must include model${suffix}`);
     }
 
+    // claude-e is hidden from the active/flush dropdowns but keeps its (hidden) settings row.
+    assert.match(html, /id="modelClaudeE"/);
     assert.match(html, /id="providerAiE"/);
     assert.match(settingsCore, /function toDomSuffix\(cli: string\)/);
     assert.match(settingsCore, /split\(\/\[\^a-zA-Z0-9\]\+\/\)/);
     assert.match(main, /function toDomSuffix\(cli: string\)/);
-    assert.match(main, /onPerCliAiEProviderChange/);
+    assert.match(main, /onPerCliProviderChange/);
 });
 
 test('GROK-FE-003: quota renderer shows setup commands for status-only CLIs', () => {
@@ -167,7 +168,7 @@ test('LEGACY-FE-002: fallback CLI surfaces include every canonical CLI', () => {
 test('AI-E-FE-001: legacy active settings store provider only in perCli', () => {
     const settingsCore = src('public/js/features/settings-core.ts');
     const saveActive = settingsCore.match(/export async function saveActiveCliSettings\(\): Promise<void> \{[\s\S]*?\n\}/)?.[0] || '';
-    assert.match(saveActive, /patch\['perCli'\]\s*=\s*\{\s*'ai-e':\s*\{\s*provider:/);
+    assert.match(saveActive, /patch\['perCli'\]\s*=\s*\{\s*\[cli\]:\s*\{\s*provider:/);
     assert.doesNotMatch(saveActive, /overrides\[cli\]\.provider\s*=/);
 });
 
@@ -177,10 +178,10 @@ test('AI-E-FE-002: active AI-E provider change syncs per-CLI provider before reb
     assert.match(main, /document\.getElementById\('providerAiE'\)/);
     assert.match(main, /perCliProvider\.value\s*=\s*provider/);
 
-    const listenerStart = main.indexOf("document.getElementById('selAiEProvider')?.addEventListener('change'");
-    assert.ok(listenerStart >= 0, 'selAiEProvider change listener must exist');
+    const listenerStart = main.indexOf("document.getElementById('selCliProvider')?.addEventListener('change'");
+    assert.ok(listenerStart >= 0, 'selCliProvider change listener must exist');
     const listenerEnd = main.indexOf("document.getElementById('selModel')", listenerStart);
-    assert.ok(listenerEnd > listenerStart, 'selAiEProvider listener must appear before selModel listener');
+    assert.ok(listenerEnd > listenerStart, 'selCliProvider listener must appear before selModel listener');
     const listener = main.slice(listenerStart, listenerEnd);
     const syncIdx = listener.indexOf('syncAiEProviderSelectsFromActiveProvider(event.target)');
     const cliChangeIdx = listener.indexOf('onCliChange()');

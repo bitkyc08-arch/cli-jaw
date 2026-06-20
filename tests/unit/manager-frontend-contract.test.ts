@@ -146,7 +146,7 @@ test('manager frontend exposes one-instance preview controls', () => {
     assert.ok(router.includes('function WorkspaceSurface'), 'SidebarRailRouter must wrap top-level workspaces in persistent surfaces');
     assert.ok(router.includes('workspace-surface-stack'), 'SidebarRailRouter must keep the top-level workspace stack mounted across sidebar mode changes');
     assert.ok(router.includes('workspace-surface-layer'), 'SidebarRailRouter must separate persistent workspace surfaces from lifecycle messages');
-    assert.ok(router.includes("<WorkspaceSurface active={props.sidebarMode === 'instances'}>"), 'Instances workbench must hide without unmounting across sidebar mode changes');
+    assert.ok(router.includes("<WorkspaceSurface active={props.sidebarMode === 'instances' && props.viewMode === 'jaw'}>"), 'Instances workbench must hide without unmounting across sidebar mode changes');
     assert.ok(router.includes("<WorkspaceSurface active={props.sidebarMode === 'notes'}>"), 'Notes workspace must hide without unmounting across sidebar mode changes');
     assert.ok(router.includes("<WorkspaceSurface active={props.sidebarMode === 'settings'}>"), 'Dashboard settings workspace must hide without unmounting across sidebar mode changes');
     assert.ok(router.includes('hidden={!props.active}'), 'inactive persistent workspace surfaces must use hidden instead of conditional unmounting');

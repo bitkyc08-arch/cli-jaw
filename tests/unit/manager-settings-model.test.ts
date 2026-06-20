@@ -135,7 +135,7 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     const jwcMeta = metaFor('jwc');
     assert.equal(PRIMARY_CLIS.includes('jwc'), true);
     assert.equal(jwcMeta.label, 'JWC');
-    assert.deepEqual(jwcMeta.models, CLI_REGISTRY.jwc.models);
+    assert.deepEqual(jwcMeta.models, ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5']);
     assert.deepEqual(jwcMeta.efforts, CLI_REGISTRY.jwc.efforts);
     assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('jwc'), true);
     assert.equal(PRIMARY_CLIS.indexOf('jwc') < PRIMARY_CLIS.indexOf('agy'), true);

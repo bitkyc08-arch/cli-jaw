@@ -37,8 +37,9 @@ test('TMPISO-003: spawnCwd is used (not settings.workingDir) for AcpClient', () 
     const src = readSrc('../../src/agent/spawn.ts');
     // AcpClient should use spawnCwd
     assert.ok(src.includes('workDir: spawnCwd'));
-    // There should be no workDir: settings.workingDir for AcpClient
-    assert.ok(!src.includes('workDir: settings.workingDir'));
+    // There should be no AcpClient constructed with workDir: settings.workingDir
+    // (autoCompactRefresh legitimately uses settings.workingDir and must not false-trip this).
+    assert.ok(!/new AcpClient\(\{[^}]*workDir:\s*settings\.workingDir/.test(src));
 });
 
 test('TMPISO-004: acp.createSession uses spawnCwd (both occurrences)', () => {

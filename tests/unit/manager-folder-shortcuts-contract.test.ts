@@ -9,6 +9,7 @@ const folderCss = readFileSync('public/manager/src/folder-panel/folder-panel.css
 const shortcutsSource = readFileSync('public/manager/src/manager-shortcuts.ts', 'utf8');
 const folderShortcutsSource = readFileSync('public/manager/src/folder-panel/folder-shortcuts.ts', 'utf8');
 const folderContextMenuSource = readFileSync('public/manager/src/folder-panel/FolderContextMenu.tsx', 'utf8');
+const folderContextMenuHookSource = readFileSync('public/manager/src/folder-panel/use-folder-context-menu.ts', 'utf8');
 
 function keyEvent(overrides: Partial<Parameters<typeof folderShortcutAction>[0]>): Parameters<typeof folderShortcutAction>[0] {
     return {
@@ -75,10 +76,10 @@ test('FolderPanel context menu exposes native path actions', () => {
     }
     assert.ok(folderContextMenuSource.includes('role="menu"'), 'context menu must expose menu role');
     assert.ok(folderContextMenuSource.includes('role="menuitem"'), 'context menu actions must expose menuitem role');
-    assert.ok(folderPanelSource.includes("setContextMenu(null); void copySelectedPath('absolute')"), 'copy menu actions must close menu before running selected-set copy');
-    assert.ok(folderPanelSource.includes('setContextMenu(null); void revealSelectedPath()'), 'reveal menu action must close menu before running selected-primary reveal');
-    assert.ok(folderPanelSource.includes('setContextMenu(null); void refreshVisibleTree'), 'refresh menu action must close menu before running');
-    assert.ok(folderPanelSource.includes("event.key === 'Escape'"), 'keyboard dismissal must be Escape-only');
+    assert.ok(folderPanelSource.includes("folderContextMenu.closeContextMenu(); void copySelectedPath('absolute')"), 'copy menu actions must close menu before running selected-set copy');
+    assert.ok(folderPanelSource.includes('folderContextMenu.closeContextMenu(); void revealSelectedPath()'), 'reveal menu action must close menu before running selected-primary reveal');
+    assert.ok(folderPanelSource.includes("folderContextMenu.closeContextMenu(); void refreshVisibleTree('manual')"), 'refresh menu action must close menu before running');
+    assert.ok(folderContextMenuHookSource.includes("event.key === 'Escape'"), 'keyboard dismissal must be Escape-only');
     assert.ok(folderContextMenuSource.includes('onKeyDown={event => event.stopPropagation()}'), 'menu keyboard activation must not be swallowed by window dismissal');
 });
 
