@@ -7,6 +7,7 @@ import { isWithinHome, assertContained, assertContainedLexical } from '../path-s
 import { isAllowedSender } from '../ipc-origin-guard.js';
 import { resolveDroppedPaths } from './dropped-paths.js';
 import { moveFolderPath } from './move-path.js';
+import { loadApprovedFolderRoots, rememberApprovedFolderRoot } from './approved-roots-store.js';
 import { resolveFolderGitRoot } from '../../../../../src/manager/git/folder-root-validation.js';
 import { getGitWorktrees } from '../../../../../src/manager/git/worktree-service.js';
 
@@ -18,8 +19,12 @@ const watchers = new Map<string, FSWatcher>();
 let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 const pickedRoots = new Set<string>();
+let approvedRootsSeed: Promise<void> | null = null;
 
-async function authorizeFolderRoot(rawPath: string): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+async function authorizeFolderRoot(
+    rawPath: string,
+    options: { persist?: boolean } = {},
+): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
     const target = resolve(rawPath);
     if (!isWithinHome(target)) return { ok: false, error: 'path not allowed' };
     try {
@@ -28,10 +33,24 @@ async function authorizeFolderRoot(rawPath: string): Promise<{ ok: true; path: s
         if (!ls.isDirectory()) return { ok: false, error: 'root must be a directory' };
         const targetReal = await realOrResolved(target);
         pickedRoots.add(targetReal);
+        if (options.persist !== false) await rememberApprovedFolderRoot(targetReal);
         return { ok: true, path: targetReal };
     } catch {
         return { ok: false, error: 'path not accessible' };
     }
+}
+
+function ensureApprovedRootsSeeded(): Promise<void> {
+    if (!approvedRootsSeed) {
+        approvedRootsSeed = loadApprovedFolderRoots()
+            .then(async roots => {
+                for (const root of roots) {
+                    await authorizeFolderRoot(root, { persist: false });
+                }
+            })
+            .catch(() => undefined);
+    }
+    return approvedRootsSeed;
 }
 
 function isAllowedByRoot(p: string): boolean {
@@ -93,6 +112,8 @@ async function realOrResolved(path: string): Promise<string> {
 }
 
 export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
+    void ensureApprovedRootsSeeded();
+
     // FolderPanel starts empty and must not call this on initial render.
     // It remains available for explicit cold-start callers such as DocPanel.
     ipcMain.handle('folder:getDefaultRoot', (event) => {
@@ -111,10 +132,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
             defaultPath: homedir(),
         });
         if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'cancelled' };
-        const picked = result.filePaths[0];
-        if (!isWithinHome(picked)) return { ok: false, error: 'path not allowed' };
-        pickedRoots.add(resolve(picked));
-        return { ok: true, path: picked };
+        return authorizeFolderRoot(result.filePaths[0]);
     });
 
     ipcMain.handle('folder:authorizeRoot', async (event, rootPath: string) => {
@@ -137,6 +155,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
             const allowed = await Promise.all(worktrees.map(async entry => realOrResolved(entry.path)));
             if (!allowed.includes(targetReal)) return { ok: false, error: 'worktree root is not registered for this repo' };
             pickedRoots.add(targetReal);
+            await rememberApprovedFolderRoot(targetReal);
             return { ok: true, path: targetReal };
         } catch (err) {
             return { ok: false, error: (err as Error).message };
@@ -145,6 +164,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
 
     ipcMain.handle('folder:listDir', async (event, dirPath: string, _depth?: number) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(dirPath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(dirPath);
         try {
@@ -179,6 +199,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
 
     ipcMain.handle('folder:readFile', async (event, filePath: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(filePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         try {
             const ls = await lstat(resolve(filePath));
@@ -200,6 +221,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
 
     ipcMain.handle('folder:movePath', async (event, sourcePath: string, targetDirectory: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized', code: 'unauthorized' };
+        await ensureApprovedRootsSeeded();
         return moveFolderPath(sourcePath, targetDirectory, {
             allowPath: isAllowedByRoot,
             allowDestinationPath: isAllowedNewPathByRoot,
@@ -209,6 +231,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     ipcMain.handle('folder:createFile', async (event, parentDirectory: string, rawName: unknown) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         try {
+            await ensureApprovedRootsSeeded();
             if (!isAllowedByRoot(parentDirectory)) return { ok: false, error: 'path not allowed — pick a folder first' };
             const parent = resolve(parentDirectory);
             const ls = await lstat(parent);
@@ -226,6 +249,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     ipcMain.handle('folder:createFolder', async (event, parentDirectory: string, rawName: unknown) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         try {
+            await ensureApprovedRootsSeeded();
             if (!isAllowedByRoot(parentDirectory)) return { ok: false, error: 'path not allowed — pick a folder first' };
             const parent = resolve(parentDirectory);
             const ls = await lstat(parent);
@@ -243,6 +267,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     ipcMain.handle('folder:renamePath', async (event, sourcePath: string, rawName: unknown) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         try {
+            await ensureApprovedRootsSeeded();
             if (!isAllowedByRoot(sourcePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
             const source = resolve(sourcePath);
             const ls = await lstat(source);
@@ -266,6 +291,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
 
     ipcMain.handle('folder:revealPath', async (event, filePath: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(filePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(filePath);
         try {
@@ -289,6 +315,8 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
             const result = await resolveDroppedPaths(rawPaths, {
                 addRoot: root => pickedRoots.add(resolve(root)),
             });
+            const roots = new Set(result.entries.map(entry => entry.kind === 'directory' ? entry.path : dirname(entry.path)));
+            for (const root of roots) await rememberApprovedFolderRoot(root);
             return {
                 ok: result.entries.length > 0,
                 entries: result.entries,
@@ -302,6 +330,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
 
     ipcMain.handle('folder:watchDir', async (event, dirPath: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        await ensureApprovedRootsSeeded();
         if (!isAllowedByRoot(dirPath)) return { ok: false, error: 'path not allowed — pick a folder first' };
         const resolved = resolve(dirPath);
         if (watchers.has(resolved)) return { ok: true };
