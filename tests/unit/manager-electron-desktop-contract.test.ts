@@ -208,7 +208,7 @@ test('Electron default launch owns its manager server instead of attaching to we
 test('Electron window fits within the visible display work area', () => {
     const main = read('electron/src/main/index.ts');
 
-    assert.ok(main.includes("import { app, BrowserWindow, dialog, Menu, screen, session, shell } from 'electron'"), 'Electron main must import screen for work-area sizing');
+    assert.match(main, /import\s+\{[^}]*\bscreen\b[^}]*\}\s+from 'electron'/, 'Electron main must import screen for work-area sizing');
     assert.ok(main.includes('function getInitialWindowBounds()'), 'Electron main must compute initial bounds before creating BrowserWindow');
     assert.ok(main.includes('screen.getPrimaryDisplay()'), 'initial bounds must use the active display work area');
     assert.ok(main.includes('workArea.height - WINDOW_WORK_AREA_MARGIN'), 'initial height must leave a margin inside the visible work area');
@@ -501,7 +501,7 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
     assert.ok(shortcuts.includes("toggleRightPanel: ['Meta+B']"), 'right side panel alias list must not conflict with toggleLeftSidebar on Cmd+Shift+B');
     assert.ok(shortcuts.includes("event.code === 'Backquote'"), 'shortcut matching must handle shifted backquote key events');
     assert.ok(main.includes("contents.on('before-input-event'"), 'Electron main must catch shortcuts before iframe/webview focus traps them');
-    assert.ok(main.includes("import { app, BrowserWindow, dialog, Menu, screen, session, shell } from 'electron'"), 'Electron main must import Menu for native accelerators');
+    assert.match(main, /import\s+\{[^}]*\bMenu\b[^}]*\}\s+from 'electron'/, 'Electron main must import Menu for native accelerators');
     assert.ok(main.includes('function sendManagerShortcut'), 'Electron main must route all shortcut sources through one sender');
     assert.ok(main.includes("sendManagerShortcut(action)"), 'Electron before-input-event handler must forward desktop shortcuts to the manager renderer');
     assert.ok(main.includes('function installManagerApplicationMenu()'), 'Electron main must install application menu accelerators for shortcuts that macOS consumes before the page');
