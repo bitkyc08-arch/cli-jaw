@@ -12,8 +12,26 @@ import {
 } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
 import { dashboardActivityTitleFromExcerpt } from '../core/message-summary.js';
-import { sanitizeSerializedToolLog } from '../shared/tool-log-sanitize.js';
+import { sanitizeSerializedToolLog, serializeSanitizedToolLog } from '../shared/tool-log-sanitize.js';
 import { isAgentBusy } from '../agent/spawn.js';
+import { listToolEntriesForMessage } from '../trace/store.js';
+import { HYDRATE_TOOL_CARDS_FROM_TRACE } from '../core/config.js';
+
+// Option D (devlog 260620 Phase 3): tool cards for a finished message come from
+// trace_events (durable, uncapped) when the rollout flag is on AND the message has a
+// linked trace run with tools; otherwise the messages.tool_log blob (legacy/fallback).
+// `fromTrace` is a parameter so both branches stay unit-testable.
+export function resolveToolLog(
+    messageId: unknown,
+    blobToolLog: string | null | undefined,
+    fromTrace: boolean = HYDRATE_TOOL_CARDS_FROM_TRACE,
+): string | null {
+    if (fromTrace && Number.isInteger(messageId) && (messageId as number) > 0) {
+        const traceTools = listToolEntriesForMessage(messageId as number);
+        if (traceTools.length) return serializeSanitizedToolLog(traceTools);
+    }
+    return sanitizeSerializedToolLog(blobToolLog);
+}
 
 export function registerMessageRoutes(app: Router): void {
     app.get('/api/messages', (req, res) => {
@@ -32,7 +50,7 @@ export function registerMessageRoutes(app: Router): void {
         }
         const safeRows = (rows as Record<string, unknown>[]).map(row => ({
             ...row,
-            tool_log: sanitizeSerializedToolLog(row["tool_log"] as string | null | undefined),
+            tool_log: resolveToolLog(row["id"], row["tool_log"] as string | null | undefined),
         }));
         ok(res, safeRows);
     });
@@ -60,7 +78,7 @@ export function registerMessageRoutes(app: Router): void {
                 content: row['content'],
                 cli: row['cli'],
                 match_field: row['match_field'],
-                tool_log: sanitizeSerializedToolLog(row['tool_log'] as string | null | undefined),
+                tool_log: resolveToolLog(row['id'], row['tool_log'] as string | null | undefined),
                 created_at: row['created_at'],
             };
             if (contextRange > 0) {

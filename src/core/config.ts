@@ -44,6 +44,12 @@ export const SKILLS_REF_DIR = join(JAW_HOME, 'skills_ref');
 export const DEFAULT_PORT = '3457';
 export const CDP_PORT_OFFSET = 5783;  // 9240 - 3457
 
+// Option D rollout (devlog 260620 Phase 3): when set, /api/messages rebuilds a
+// finished message's tool cards from trace_events (durable, uncapped) instead of the
+// messages.tool_log blob. Default OFF — flip per-surface after parity is verified.
+export const HYDRATE_TOOL_CARDS_FROM_TRACE =
+    ['1', 'true', 'yes'].includes(String(process.env["JAW_HYDRATE_TOOL_CARDS_FROM_TRACE"] || '').toLowerCase());
+
 export function deriveCdpPort(serverPort?: number | string): number {
     const port = Number(serverPort || process.env["PORT"] || DEFAULT_PORT);
     if (!Number.isInteger(port) || port < 1 || port > 65535) return 9240;

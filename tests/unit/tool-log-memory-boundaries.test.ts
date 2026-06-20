@@ -26,7 +26,10 @@ test('message and orchestrate snapshot API boundaries sanitize before res.json',
     const server = src('src/routes/messages.ts');
     const orchestrate = src('src/routes/orchestrate.ts');
 
-    assert.ok(server.includes('sanitizeSerializedToolLog(row["tool_log"]'));
+    // /api/messages routes tool_log through resolveToolLog (Option D, devlog 260620 P3),
+    // which sanitizes internally: blob → sanitizeSerializedToolLog, trace → serializeSanitizedToolLog.
+    assert.ok(server.includes('resolveToolLog(row["id"], row["tool_log"]'), 'main read resolves tool_log via Option D boundary');
+    assert.ok(server.includes('return sanitizeSerializedToolLog(blobToolLog)'), 'resolveToolLog blob fallback still sanitizes');
     assert.ok(orchestrate.includes('function getSafeLiveRun(scope: string)'));
     assert.ok(orchestrate.includes('toolLog: sanitizeToolLogForDurableStorage(liveRun.toolLog)'));
     assert.ok(orchestrate.includes('activeRun: getSafeLiveRun(scope)'));
