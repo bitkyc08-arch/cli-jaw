@@ -371,7 +371,7 @@ cli-jaw/
 │       ├── service.ts        ← 크로스 플랫폼 서비스 관리 (systemd/launchd/docker, 289L)
 │       ├── orchestrate.ts    ← IPABCD 상태 제어 CLI (jaw orchestrate [I|P|A|B|C|D|reset]) (156L)
 │       ├── browser.ts        ← 브라우저 CLI (primitive + tab/debug + web-ai delegator, 876L)
-│       ├── browser-web-ai.ts ← `jaw browser web-ai` ChatGPT/Gemini/Grok 자동화 helper (436L)
+│       ├── browser-web-ai.ts ← `jaw browser web-ai` ChatGPT/Gemini/Grok 자동화 helper (452L)
 │       ├── dashboard.ts      ← `jaw dashboard serve` + dashboard memory delegation (274L)
 │       ├── dashboard-memory.ts ← `jaw dashboard memory` L2 federation CLI helper (244L)
 │       ├── connector.ts      ← dashboard connector board/notes/reminders/audit CLI (216L)
