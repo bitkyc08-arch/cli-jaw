@@ -81,7 +81,15 @@ export function replaceLiveRunTools(scope: string, toolLog: unknown[]): void {
     if (!current?.running) return;
     const sanitized = sanitizeToolLogForDurableStorage(toolLog);
     toolLog.splice(0, toolLog.length, ...sanitized);
-    current.toolLog = sanitized;
+    // Preserve worker-mirror entries (isEmployee) already accumulated in this scope:
+    // a boss tool sync must NOT wipe employee progress appended via appendLiveRunTool.
+    // Without this, a dense boss (claude) overwrites the scope on every tool, so the
+    // mirrors are gone by persist time, while a sparse boss (codex) leaves them intact
+    // — the exact reported tool-card asymmetry (hydration loss R1, devlog 260620).
+    const mirrors = current.toolLog.filter((t) => t.isEmployee === true);
+    current.toolLog = mirrors.length
+        ? sanitizeToolLogForDurableStorage([...sanitized, ...mirrors])
+        : sanitized;
 }
 
 export function appendLiveRunTool(scope: string, tool: SanitizableToolLogEntry): void {

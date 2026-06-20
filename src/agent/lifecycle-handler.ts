@@ -512,8 +512,21 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 });
             }
             const liveRun = getLiveRun(liveScope);
-            const mergedToolLog = liveRun.toolLog.length > ctx.toolLog.length ? liveRun.toolLog : ctx.toolLog;
-            const sanitizedToolLog = sanitizeToolLogForDurableStorage(mergedToolLog);
+            // Union, not pick-one: boss tools (ctx.toolLog) + worker mirrors (liveRun.toolLog,
+            // preserved across syncs by replaceLiveRunTools). Key on stepRef (durable, never
+            // stripped by the sanitizer); identity-less entries append (no false dedup). The
+            // old ternary kept only the longer array and discarded the other, dropping worker
+            // mirrors whenever the boss tool log was longer (claude). (devlog 260620 R1.)
+            const unionSeen = new Set<string>();
+            const unionToolLog: unknown[] = [];
+            const pushUnionTool = (t: { stepRef?: unknown }): void => {
+                const ref = typeof t.stepRef === 'string' && t.stepRef ? t.stepRef : null;
+                if (ref) { if (unionSeen.has(ref)) return; unionSeen.add(ref); }
+                unionToolLog.push(t);
+            };
+            for (const t of ctx.toolLog) pushUnionTool(t);
+            for (const t of liveRun.toolLog) pushUnionTool(t);
+            const sanitizedToolLog = sanitizeToolLogForDurableStorage(unionToolLog);
             const toolLogJson = serializeSanitizedToolLog(sanitizedToolLog);
             const info = insertMessageWithTraceRun.run(
                 'assistant', finalContent, cli, model,

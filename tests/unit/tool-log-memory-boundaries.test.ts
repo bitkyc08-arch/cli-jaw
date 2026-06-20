@@ -10,11 +10,15 @@ function src(path: string): string {
 test('backend agent_done DB and broadcast boundaries use sanitized tool logs', () => {
     const source = src('src/agent/lifecycle-handler.ts');
 
-    assert.ok(source.includes('sanitizeToolLogForDurableStorage(mergedToolLog)'));
+    // Persist unions ctx.toolLog (boss) + liveRun.toolLog (worker mirrors) by stepRef
+    // since the tool-card hydration fix (devlog 260620 R1) — the old pick-one ternary
+    // discarded the array that held the worker mirrors.
+    assert.ok(source.includes('sanitizeToolLogForDurableStorage(unionToolLog)'));
+    assert.ok(source.includes('for (const t of liveRun.toolLog) pushUnionTool(t)'), 'persist must union ctx + liveRun');
+    assert.ok(!source.includes('liveRun.toolLog.length > ctx.toolLog.length ? liveRun.toolLog : ctx.toolLog'), 'pick-one ternary must be gone');
     assert.ok(source.includes('serializeSanitizedToolLog(sanitizedToolLog)'));
     // runTag(ctx) rides first since the replay-idempotency patch (260612 audit 08).
     assert.ok(source.includes("broadcast('agent_done', { ...runTag(ctx), text: finalContent, toolLog: sanitizedToolLog"));
-    assert.ok(!source.includes('const toolLogJson = mergedToolLog.length ? JSON.stringify(mergedToolLog) : null'));
 });
 
 test('message and orchestrate snapshot API boundaries sanitize before res.json', () => {
