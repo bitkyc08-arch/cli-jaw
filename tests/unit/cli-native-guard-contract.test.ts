@@ -36,11 +36,14 @@ test('ensure-native rebuilds from package root with current Node npm', () => {
     assert.match(src, /const root = join\(__dirname, '\.\.'\)/);
     assert.match(src, /dirname\(process\.execPath\)/);
     assert.match(src, /adjacentNpm/);
+    assert.match(src, /PATH: \[nodeBinDir, process\.env\.PATH \|\| ''\]/);
     assert.match(src, /node_modules', 'better-sqlite3'/);
+    assert.match(src, /rmSync\(join\(betterSqliteDir, 'build'\), \{ recursive: true, force: true \}\)/);
     assert.match(src, /'run', 'install', '--foreground-scripts'/);
     assert.match(src, /npm_config_target: process\.versions\.node/);
-    assert.match(src, /cwd: root/);
+    assert.match(src, /cwd: betterSqliteDir/);
     assert.doesNotMatch(src, /cwd: process\.cwd\(\)/);
+    assert.doesNotMatch(src, /npm_config_build_from_source: 'true'/);
 });
 
 test('ensure-native opens an in-memory database to prove ABI compatibility', () => {

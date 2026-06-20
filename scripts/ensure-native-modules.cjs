@@ -7,27 +7,34 @@
  * rebuild it in-place before build/test steps continue.
  */
 const { execFileSync } = require('child_process');
-const { existsSync } = require('fs');
-const { dirname, join } = require('path');
+const { existsSync, rmSync } = require('fs');
+const { delimiter, dirname, join } = require('path');
 
 const root = join(__dirname, '..');
 const nodeBinDir = dirname(process.execPath);
 const adjacentNpm = process.platform === 'win32' ? join(nodeBinDir, 'npm.cmd') : join(nodeBinDir, 'npm');
 const npmBin = existsSync(adjacentNpm) ? adjacentNpm : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
 
+function nativeBuildEnv() {
+    const env = {
+        ...process.env,
+        PATH: [nodeBinDir, process.env.PATH || ''].filter(Boolean).join(delimiter),
+        npm_config_runtime: 'node',
+        npm_config_target: process.versions.node,
+        npm_config_disturl: 'https://nodejs.org/dist',
+    };
+    delete env.npm_config_build_from_source;
+    return env;
+}
+
 function rebuildBetterSqlite3() {
     const betterSqliteDir = join(root, 'node_modules', 'better-sqlite3');
     if (existsSync(join(betterSqliteDir, 'package.json'))) {
+        rmSync(join(betterSqliteDir, 'build'), { recursive: true, force: true });
         execFileSync(npmBin, ['run', 'install', '--foreground-scripts'], {
             stdio: 'inherit',
             cwd: betterSqliteDir,
-            env: {
-                ...process.env,
-                npm_config_runtime: 'node',
-                npm_config_target: process.versions.node,
-                npm_config_disturl: 'https://nodejs.org/dist',
-                npm_config_build_from_source: 'true',
-            },
+            env: nativeBuildEnv(),
         });
         return;
     }
@@ -35,12 +42,14 @@ function rebuildBetterSqlite3() {
         execFileSync('corepack', ['pnpm', 'rebuild', 'better-sqlite3'], {
             stdio: 'inherit',
             cwd: root,
+            env: nativeBuildEnv(),
         });
         return;
     }
-    execFileSync(npmBin, ['rebuild', 'better-sqlite3'], {
+    execFileSync(npmBin, ['rebuild', 'better-sqlite3', '--foreground-scripts'], {
         stdio: 'inherit',
         cwd: root,
+        env: nativeBuildEnv(),
     });
 }
 
