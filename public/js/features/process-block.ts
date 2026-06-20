@@ -527,7 +527,7 @@ export function updateStepStatus(pb: ProcessBlockState, stepId: string, status: 
         }
     } else if (status === 'running' || status === 'error') {
         const inner = pb.element.querySelector('.process-steps-inner');
-        if (inner) inner.innerHTML = renderSteps(pb.steps);
+        if (inner) inner.innerHTML = renderSteps(pb.steps, pb.expandedSteps);
     }
     updateProcessBlockDetailIndex(pb);
     updateSummary(pb);
