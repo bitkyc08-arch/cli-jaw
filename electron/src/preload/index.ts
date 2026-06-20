@@ -131,6 +131,9 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
       return () => { ipcRenderer.removeListener('manager:shortcut', handler); };
     },
   },
+  trayReminders: {
+    popUpMenu: () => ipcRenderer.send('tray:popup-menu'),
+  },
   browser: {
     onOpenUrl: (cb: (payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => void) => {
       const handler = (_e: unknown, payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => cb(payload);

@@ -42,6 +42,8 @@ function savePrefs(): void {
 let tray: Tray | null = null;
 let callbacks: TrayCallbacks | null = null;
 let serverStatus = 'Starting...';
+let currentMenu: Menu | null = null;
+let onTrayClick: (() => void) | null = null;
 
 export interface TrayCallbacks {
   onOpenDashboard: () => void;
@@ -67,7 +69,8 @@ export function createTray(cb: TrayCallbacks): Tray {
   tray = new Tray(icon);
   tray.setToolTip('cli-jaw');
   rebuildMenu();
-  tray.on('click', cb.onOpenDashboard);
+  tray.on('click', () => (onTrayClick ? onTrayClick() : cb.onOpenDashboard()));
+  tray.on('right-click', () => popUpTrayMenu());
   return tray;
 }
 
@@ -97,10 +100,24 @@ export function clearTrayBadge(): void {
   setTrayBadge(0);
 }
 
+export function setTrayClickHandler(fn: () => void): void {
+  onTrayClick = fn;
+}
+
+export function popUpTrayMenu(): void {
+  if (tray && currentMenu) tray.popUpContextMenu(currentMenu);
+}
+
+export function getTrayBoundsSafe(): Electron.Rectangle | null {
+  return tray?.getBounds() ?? null;
+}
+
 export function destroyTray(): void {
   tray?.destroy();
   tray = null;
   callbacks = null;
+  currentMenu = null;
+  onTrayClick = null;
 }
 
 function syncLoginItemSetting(): void {
@@ -164,5 +181,5 @@ function rebuildMenu(): void {
     { type: 'separator' },
     { label: 'Quit cli-jaw', click: cb.onQuit },
   ]);
-  tray.setContextMenu(menu);
+  currentMenu = menu;
 }

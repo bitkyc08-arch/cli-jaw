@@ -1,4 +1,4 @@
-import type { IpcMainInvokeEvent } from 'electron';
+import type { IpcMainEvent, IpcMainInvokeEvent } from 'electron';
 
 let allowedOrigin: string | null = null;
 
@@ -6,7 +6,7 @@ export function setAllowedOrigin(origin: string): void {
     allowedOrigin = origin;
 }
 
-export function isAllowedSender(event: IpcMainInvokeEvent): boolean {
+export function isAllowedSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
     if (!allowedOrigin) return false;
     try {
         const frameUrl = event.senderFrame?.url;

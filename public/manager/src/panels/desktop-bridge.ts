@@ -168,6 +168,10 @@ export type ShortcutBridgeApi = {
     onAction: (cb: (action: DashboardShortcutAction) => void) => () => void;
 };
 
+export type TrayRemindersBridgeApi = {
+    popUpMenu: () => void;
+};
+
 export type BrowserBridgeApi = {
     onOpenUrl: (cb: (payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => void) => () => void;
 };
@@ -209,6 +213,7 @@ export type CliJawDesktopApi = {
     clipboard?: ClipboardBridgeApi | undefined;
     permissions?: PermissionDiagnosticsBridgeApi | undefined;
     shortcuts?: ShortcutBridgeApi | undefined;
+    trayReminders?: TrayRemindersBridgeApi | undefined;
     browser?: BrowserBridgeApi | undefined;
     reloadWindow?: (() => void) | undefined;
     hardReloadWindow?: (() => void) | undefined;

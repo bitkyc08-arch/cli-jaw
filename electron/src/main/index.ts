@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { fileURLToPath, URL } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -9,7 +9,9 @@ import { promptInstallCli } from './lib/install-cli.js';
 import {
   createTray, isKeepRunning, destroyTray,
   updateServerStatus, notifyServerCrash, clearTrayBadge,
+  setTrayClickHandler, popUpTrayMenu, getTrayBoundsSafe,
 } from './lib/tray-manager.js';
+import { createReminderPopover, type ReminderPopover } from './lib/reminder-popover.js';
 import { waitForManagerReady, isManagerHealthy, probeOnce } from './lib/health-check.js';
 import {
   buildManagerCsp,
@@ -42,7 +44,7 @@ import { registerFolderIpc, cleanupFolderWatchers } from './lib/folder/ipc.js';
 import { registerClipboardIpc } from './lib/clipboard/ipc.js';
 import { registerPermissionDiagnosticsIpc } from './lib/permission-diagnostics/ipc.js';
 import { registerWindowIpc } from './lib/window/ipc.js';
-import { setAllowedOrigin } from './lib/ipc-origin-guard.js';
+import { isAllowedSender, setAllowedOrigin } from './lib/ipc-origin-guard.js';
 import { primeMacAutomationPermission } from './lib/mac-automation-permission.js';
 import { showQuitProgress } from './lib/quit-progress.js';
 import {
@@ -188,6 +190,8 @@ let bootstrapPromise: Promise<void> | null = null;
 let managerReadyPromise: Promise<void> | null = null;
 let metricsCollector: MetricsCollectorHandle | null = null;
 let webContentsHardeningRegistered = false;
+let reminderPopover: ReminderPopover | null = null;
+let trayPopupMenuIpcRegistered = false;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -325,6 +329,7 @@ async function requestApplicationQuit(reason: string): Promise<void> {
   }
   if (shuttingDown) return;
   shuttingDown = true;
+  destroyTrayReminders();
   destroyTray();
   ringBuffer.append(`[quit] requested by ${reason}\n`);
   showQuitProgress(mainWindow, ringBuffer);
@@ -366,8 +371,31 @@ async function requestApplicationQuit(reason: string): Promise<void> {
 
 async function forceQuit(): Promise<void> {
   forceQuitRequested = true;
+  destroyTrayReminders();
   destroyTray();
   void requestApplicationQuit('tray-quit');
+}
+
+function installTrayReminders(): void {
+  reminderPopover?.destroy();
+  reminderPopover = createReminderPopover({
+    managerUrl: MANAGER_URL,
+    managerOrigin: MANAGER_ORIGIN,
+    preloadPath: PRELOAD_PATH,
+  });
+  setTrayClickHandler(() => reminderPopover?.toggle(getTrayBoundsSafe()));
+  if (!trayPopupMenuIpcRegistered) {
+    trayPopupMenuIpcRegistered = true;
+    ipcMain.on('tray:popup-menu', (event) => {
+      if (!isAllowedSender(event)) return;
+      popUpTrayMenu();
+    });
+  }
+}
+
+function destroyTrayReminders(): void {
+  reminderPopover?.destroy();
+  reminderPopover = null;
 }
 
 async function createManagerWindow(): Promise<void> {
@@ -448,6 +476,7 @@ async function bootstrap(): Promise<void> {
   });
 
   await ensureManagerRunning();
+  installTrayReminders();
   updateServerStatus('Server: Running');
   if (FLAGS.background) {
     updateServerStatus('Server: Running (background)');
