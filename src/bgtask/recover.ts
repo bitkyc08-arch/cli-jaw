@@ -34,6 +34,17 @@ function pidAlive(pid: number | null): boolean {
     }
 }
 
+// SQLite CURRENT_TIMESTAMP yields a naive UTC string ("YYYY-MM-DD HH:MM:SS",
+// no zone). `new Date()` parses that space-separated, zone-less form as LOCAL
+// time, which skews computed task age by the host UTC offset (e.g. +9h in KST →
+// a fresh orphan looks >30min old and gets killed immediately; negative offsets
+// never expire). Normalize to explicit UTC before parsing.
+function sqliteTimestampMs(ts: string): number {
+    const hasZone = /[zZ]$|[+-]\d\d:?\d\d$/.test(ts);
+    const iso = hasZone ? ts : `${ts.replace(' ', 'T')}Z`;
+    return new Date(iso).getTime();
+}
+
 export async function recoverBgTasks(deps: Partial<NotifierDeps> = {}): Promise<RecoverSummary> {
     const summary: RecoverSummary = {
         resumedProbes: 0, respawnedChildren: 0, failedLost: 0, orphaned: 0, renotified: 0,
@@ -74,7 +85,7 @@ export async function recoverBgTasks(deps: Partial<NotifierDeps> = {}): Promise<
                 startTask(row, onTerminal);
                 summary.respawnedChildren += 1;
             } else if (alive) {
-                const ageMs = row.createdAt ? Date.now() - new Date(row.createdAt).getTime() : Infinity;
+                const ageMs = row.createdAt ? Date.now() - sqliteTimestampMs(row.createdAt) : Infinity;
                 if (ageMs > 30 * 60_000) {
                     try { if (row.pid) process.kill(row.pid, 'SIGTERM'); } catch {}
                     const capture = JSON.stringify({
