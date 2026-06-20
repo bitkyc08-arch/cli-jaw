@@ -64,17 +64,17 @@ function normalizePluginName(name: string): string | null {
 
 function looksLikeImageGeneration(prompt: string): boolean {
     return /\b(generate|create|make|draw|design|render)\b.*\b(image|picture|photo|illustration|art|icon|logo|poster|banner)/i.test(prompt)
-        || /\b(이미지|그림|사진|일러스트|포스터|배너|아이콘|로고)\b.*\b(만들|생성|그려)/i.test(prompt);
+        || /(이미지|그림|사진|일러스트|포스터|배너|아이콘|로고).*(만들|생성|그려)/i.test(prompt);
 }
 
 function looksLikeDeepResearch(prompt: string): boolean {
     return /\b(deep\s*research|in-depth|thorough|comprehensive)\b.*\b(research|analysis|report|study|investigation)/i.test(prompt)
-        || /\b(심층|깊이|종합|철저)\b.*\b(리서치|분석|조사|연구|보고서)/i.test(prompt);
+        || /(심층|깊이|종합|철저).*(리서치|분석|조사|연구|보고서)/i.test(prompt);
 }
 
 function looksLikeWebSearch(prompt: string): boolean {
     return /\b(search|find|look\s*up|google|browse|check)\b.*\b(web|online|internet|latest|current|recent|news)/i.test(prompt)
-        || /\b(검색|찾|최신|현재|최근|뉴스|웹)\b/i.test(prompt);
+        || /(검색|찾|최신|현재|최근|뉴스|웹)/i.test(prompt);
 }
 
 export interface ToolResolutionInput {
