@@ -39,7 +39,7 @@ test('normalizeTuiWsEvent bounds and maps agent_done toolLog entries', () => {
     assert.equal(event.kind, 'agent-done');
     if (event.kind === 'agent-done') {
         assert.deepEqual(event.toolLog, [
-            { icon: '🔧', label: 'Bash', detail: 'npm test', status: 'done', agentId: 'main', stepRef: 's1' },
+            { icon: '🔧', label: 'Bash', detail: 'npm test', status: 'done', agentId: 'main', stepRef: 's1', toolType: 'bash' },
             { icon: '•', label: 'Read', detail: 'src/a.ts', status: 'error', stepRef: 's2' },
         ]);
     }

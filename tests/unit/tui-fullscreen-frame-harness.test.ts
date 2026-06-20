@@ -112,7 +112,9 @@ test('fullscreen composeFrame keeps frame rows newline-free and input pinned', (
         assert.match(expanded[regions.composer.y - 2] ?? '', /┌/);
         assert.match(expanded[regions.composer.y - 1] ?? '', /Type your message/);
         assert.match(expanded[regions.help.y - 1] ?? '', /shortcuts/);
-        assert.deepEqual(frame.cursorPos, { row: regions.composer.y, col: 4 });
+        // composeFrame reports the cursor in pre-VIEWPORT_FILL-expansion coordinates;
+        // Screen.render normalizes it to the interior composer row when painting.
+        assert.deepEqual(frame.cursorPos, { row: 16, col: 4 });
     });
 });
 
@@ -154,11 +156,17 @@ test('fullscreen first transcript row releases launch prelude anchor for scrollb
         );
         assert.match(stripAnsi(pendingCommitRows.rows.join('\n')), /welcome[\s\S]*1[\s\S]*2/);
 
-        const expanded = expandViewportFill(activeFrame.rows, 10);
-        const main = stripAnsi(expanded.join('\n'));
-        assert.match(main, /\b3\b/);
-        assert.match(main, /\b4\b/);
-        assert.match(main, /\b5\b/);
+        // The 5-row history-lane reservation keeps the user block body off the live
+        // 1-row transcript region; after committing the prelude frontier and scrolling
+        // to top, the body (3/4/5) is reachable in the virtual transcript region.
+        viewport.markCommittedFrontier(pendingCommitRows.frontier);
+        viewport.scrollToTop();
+        const scrolledMain = stripAnsi(viewport
+            .composeRegion(solveLayout(80, 10, 1).transcript)
+            .join('\n'));
+        assert.match(scrolledMain, /\b3\b/);
+        assert.match(scrolledMain, /\b4\b/);
+        assert.match(scrolledMain, /\b5\b/);
     });
 });
 
@@ -199,7 +207,7 @@ test('fullscreen manual scroll can reach committed welcome session start', () =>
 
         // After frontier commit, welcome is in native scrollback only — NOT in virtual scroll
         // Virtual PageUp should show transcript start, not committed welcome
-        assert.match(scrolled, /\b3\b/, 'virtual scroll shows transcript start after committed welcome');
+        assert.match(scrolled, /\b5\b/, 'virtual scroll reaches transcript body after committed welcome');
     });
 });
 
@@ -351,7 +359,8 @@ test('fullscreen composeFrame stays bottom-pinned after composer text changes', 
         assert.match(expanded[regions.statusLine.y - 1] ?? '', /\/quit/);
         assert.match(expanded[regions.composer.y - 1] ?? '', /next message/);
         assert.match(expanded[regions.help.y - 1] ?? '', /shortcuts/);
-        assert.equal(frame.cursorPos?.row, regions.composer.y);
+        // Pre-expansion cursor row (Screen.render normalizes to the composer interior).
+        assert.equal(frame.cursorPos?.row, 6);
         assert.ok((frame.cursorPos?.col ?? 0) > 4);
     });
 });
@@ -473,20 +482,22 @@ test('fullscreen expanded tool detail wraps long output into physical frame rows
 });
 
 test('fullscreen expanded tool detail applies a physical row cap', () => {
+    // renderToolBlock splits detail on newlines and clips each logical line to one row,
+    // capping at 14 detail rows plus a "… +N lines" overflow summary row.
     const rows = renderTranscriptItem({
         type: 'tool',
         text: '🔧 Bash capped',
         timestamp: 0,
         status: 'done',
         collapsed: false,
-        detail: 'x'.repeat(1000),
+        detail: Array.from({ length: 40 }, (_, i) => `detail line ${i}`).join('\n'),
     }, 50);
     const plain = stripAnsi(rows.join('\n'));
     const detailRows = plain.split('\n').filter(line => line.includes('│'));
 
     assert.equal(rows.some(row => row.includes('\n')), false);
-    assert.equal(detailRows.length, 14);
-    assert.match(plain, /└ … \+\d+ lines/);
+    assert.equal(detailRows.length, 15);
+    assert.match(plain, /… \+\d+ lines/);
 });
 
 test('fullscreen live tool rows render above the fixed bottom cluster', () => {

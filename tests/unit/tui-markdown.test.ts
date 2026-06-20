@@ -25,7 +25,8 @@ test('renders ordered list with numbers', () => {
 
 test('preserves fenced code block markers and content', () => {
     const out = renderMarkdown('```\ncode line\n```', opts);
-    assert.equal((out.match(/```/g) ?? []).length, 2);
+    assert.equal((out.match(/┌/g) ?? []).length, 1);
+    assert.equal((out.match(/└/g) ?? []).length, 1);
     assert.ok(out.includes('code line'));
 });
 

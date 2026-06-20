@@ -25,7 +25,7 @@ test('Viewport tail-follow bottom-aligns short transcript', () => {
 
     assert.deepEqual(
         v.composeRegion({ x: 1, y: 1, width: 40, height: 4 }),
-        ['', '', '', 'u:hello'],
+        ['u:hello'],
     );
 });
 
@@ -69,10 +69,11 @@ test('Viewport commits welcome prelude with older transcript rows after collisio
         { type: 'user', displayText: '4', submitText: '4', timestamp: 3 },
     ], render, 3);
 
-    const firstCommit = v.peekCommitRows(3);
-    assert.deepEqual(firstCommit, ['welcome', 'u:1']);
+    const firstCommit = v.peekStableCommitRows(3, 4);
+    assert.ok(firstCommit !== null);
+    assert.deepEqual(firstCommit.rows, ['welcome', 'u:1']);
 
-    v.markCommittedRows(firstCommit.length, 3);
+    v.markCommittedFrontier(firstCommit.frontier);
     assert.deepEqual(
         v.composeRegion({ x: 1, y: 1, width: 40, height: 3 }),
         ['u:2', 'u:3', 'u:4'],
@@ -171,10 +172,11 @@ test('Viewport exposes offscreen launch transcript rows for native scrollback co
         { type: 'user', displayText: '5', submitText: '5', timestamp: 4 },
     ], render, 3);
 
-    const firstCommit = v.peekCommitRows(3);
-    assert.deepEqual(firstCommit, ['u:1', 'u:2']);
+    const firstCommit = v.peekStableCommitRows(3, 5);
+    assert.ok(firstCommit !== null);
+    assert.deepEqual(firstCommit.rows, ['u:1', 'u:2']);
 
-    v.markCommittedRows(firstCommit.length, 3);
+    v.markCommittedFrontier(firstCommit.frontier);
     assert.deepEqual(
         v.composeRegion({ x: 1, y: 1, width: 40, height: 3 }),
         ['u:3', 'u:4', 'u:5'],
@@ -189,7 +191,7 @@ test('Viewport exposes offscreen launch transcript rows for native scrollback co
         { type: 'user', displayText: '6', submitText: '6', timestamp: 5 },
     ], render, 3);
 
-    assert.deepEqual(v.peekCommitRows(3), ['u:3']);
+    assert.deepEqual(v.peekStableCommitRows(3, 6)?.rows, ['u:3']);
 });
 
 test('Viewport does not commit additional rows while user is reading earlier content', () => {
@@ -202,5 +204,5 @@ test('Viewport does not commit additional rows while user is reading earlier con
     ], render, 2);
 
     v.scrollToTop();
-    assert.deepEqual(v.peekCommitRows(2), []);
+    assert.equal(v.peekStableCommitRows(2, 4), null);
 });

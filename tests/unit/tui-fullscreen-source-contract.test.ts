@@ -30,12 +30,15 @@ test('fullscreen tool renderer uses transcript status and detail fields', () => 
 });
 
 test('fullscreen completed tool expansion is full-sweep and newline-safe', () => {
+    // Tool detail expansion was extracted from fullscreen-mode into renderToolBlock;
+    // fullscreen-mode delegates and the bridge owns the newline-safe full sweep + row cap.
     assert.match(source, /toggleToolExpansion\(ctx\.store\.transcript\)/);
-    assert.match(source, /const detailLines = toolDetail\.split\('\\n'\)/);
-    assert.match(source, /wrapTextToCols\(line, detailWidth\)/);
-    assert.match(source, /expandedDone/);
-    assert.match(source, /const detailPrefix = `\$\{gutter\}\$\{c\.dim\}│ /);
-    assert.match(source, /rows\.push\(`\$\{detailPrefix\}\$\{clipTextToCols\(line, detailWidth\)\}/);
+    assert.match(source, /const toolDetail = item\.detail \?\? parsed\.detail/);
+    assert.match(source, /renderToolBlock\(parsed\.label, toolDetail, state, \{/);
+    assert.match(source, /collapsed: item\.collapsed/);
+    const bridge = readFileSync(new URL('../../src/cli/tui/jawcode-bridge.ts', import.meta.url), 'utf8');
+    assert.match(bridge, /const detailLines = detail\.split\('\\n'\)/);
+    assert.match(bridge, /const maxRows = 14/);
 });
 
 test('fullscreen live tool handling keeps running tools out of committed transcript', () => {

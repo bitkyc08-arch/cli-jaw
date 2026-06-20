@@ -19,8 +19,8 @@ test('fullscreen user transcript wraps long screenshot paths into physical rows'
 
     assert.equal(rows.some(row => row.includes('\n')), false);
     assert.ok(rows.length > 2, 'long path should wrap to continuation rows');
-    assert.match(plainRows[0] ?? '', /❯/);
-    assert.match(plainRows[1] ?? '', /↳/);
+    assert.match(plainRows[0] ?? '', /╭─ You/);
+    assert.match(plainRows[1] ?? '', /│/);
     assert.ok(rows.every(row => visualWidth(row) <= 54), 'wrapped rows must fit the frame width');
     assert.match(plainRows.join('\n'), /NSIRD_screencaptureui/);
 });

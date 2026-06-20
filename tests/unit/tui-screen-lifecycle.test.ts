@@ -106,13 +106,13 @@ test('Screen forceRedraw repaints from the existing frame top instead of current
         screen.enter();
         output = '';
         screen.render({ rows: ['top', 'input', 'help'], cursorPos: { row: 1, col: 3 } });
-        assert.ok(output.includes('\x1b[1A'), 'first render leaves cursor on input row');
+        assert.ok(output.includes('\x1b[23;4H'), 'first render absolutely positions cursor on the bottom-pinned input row');
 
         output = '';
         screen.forceRedraw();
         screen.render({ rows: ['new top', 'new input', 'new help'], cursorPos: { row: 1, col: 3 } });
 
-        assert.ok(output.includes('\x1b[1A'), 'full redraw should move from input row back to frame top');
+        assert.ok(output.includes('\x1b[22A'), 'full redraw should move from input row back to frame top');
         assert.ok(output.includes('new top'));
         assert.ok(output.includes('new input'));
         assert.ok(output.includes('new help'));
@@ -477,8 +477,8 @@ test('Screen render sanitizes embedded row newlines and clamps cursor column', (
         screen.render({ rows: ['top', 'tool\npayload that is too long', 'bottom'], cursorPos: { row: 1, col: 999 } });
         assert.ok(!output.includes('tool\npayload'), 'embedded newline should not split the frame row');
         assert.ok(output.includes('tool paylo'), 'row should be newline-sanitized then width-clipped');
-        assert.ok(output.includes('\x1b[9C'), 'cursor column should clamp to terminal width - 1');
-        assert.ok(!output.includes('\x1b[999C'));
+        assert.ok(output.includes('\x1b[3;10H'), 'cursor column should clamp to terminal width - 1');
+        assert.ok(!output.includes(';1000H'));
         screen.exit();
     } finally {
         process.stdout.write = origWrite;
