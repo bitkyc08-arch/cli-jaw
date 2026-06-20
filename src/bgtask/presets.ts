@@ -13,6 +13,7 @@ export interface WebAiPresetInput {
     /** Boss prompt template override. Placeholders: {{result}} {{taskId}} {{status}} */
     prompt?: string;
     deadlineAt?: string;
+    stallAfterMs?: number;
 }
 
 export interface WebAiPresetResult {
@@ -53,6 +54,7 @@ export async function webAiPreset(input: WebAiPresetInput): Promise<WebAiPresetR
         promptTemplate: input.prompt?.trim()
             || `[bgtask:{{taskId}}] web-ai session ${sessionId} finished ({{status}}). Result:\n{{result}}\n\nInterpret the result and deliver it to the user.`,
         deadlineAt: input.deadlineAt ?? new Date(Date.now() + WEB_AI_DEFAULT_DEADLINE_MS).toISOString(),
+        ...(input.stallAfterMs && input.stallAfterMs > 0 ? { stallAfterMs: input.stallAfterMs } : {}),
     };
     return { kind: 'web-ai', spec, warnings };
 }

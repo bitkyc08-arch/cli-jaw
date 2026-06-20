@@ -57,6 +57,7 @@ export function registerBgtaskRoutes(app: Express, requireAuth: AuthMiddleware):
                     sessionId: body['sessionId'],
                     ...(typeof body['prompt'] === 'string' ? { prompt: body['prompt'] } : {}),
                     ...(typeof body['deadlineAt'] === 'string' ? { deadlineAt: body['deadlineAt'] } : {}),
+                    ...(Number(body['stallAfterMs']) > 0 ? { stallAfterMs: Number(body['stallAfterMs']) } : {}),
                 });
                 kind = preset.kind;
                 spec = preset.spec;

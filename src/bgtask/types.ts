@@ -62,7 +62,7 @@ export interface BgTaskRow {
     notifiedAt: string | null;
 }
 
-export const BGTASK_DEFAULT_STALL_MS = 5 * 60_000;
+export const BGTASK_DEFAULT_STALL_MS = 10 * 60_000;
 export const BGTASK_PROBE_INTERVAL_MS = 30_000;
 export const BGTASK_DEFAULT_MAX_RESULT_CHARS = 32_000;
 export const BGTASK_STDERR_RING_LINES = 100;

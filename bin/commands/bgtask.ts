@@ -12,9 +12,9 @@ if (shouldShowHelp(process.argv)) printAndExit(`
   Usage: jaw bgtask <subcommand> [args...]
 
   Subcommands:
-    add --preset web-ai --session <sessionId> [--prompt <template>] [--deadline <ISO>]
+    add --preset web-ai --session <sessionId> [--prompt <template>] [--deadline <ISO>] [--stall-after-ms <ms>]
                           Watch a native web-ai session; boss is re-invoked on completion
-    add --cmd '<json-argv>' [--kind <kind>] [--completion exit|'<json>'] [--prompt <template>]
+    add --cmd '<json-argv>' [--kind <kind>] [--completion exit|'<json>'] [--prompt <template>] [--stall-after-ms <ms>]
                           Generic child task, e.g. --cmd '["gh","run","watch","123"]'
     list [--status running|complete|failed|cancelled|orphaned]
     show <taskId>
@@ -93,6 +93,8 @@ if (sub === 'add') {
     const payload: Record<string, unknown> = {};
     const prompt = flagValue('--prompt');
     const deadline = flagValue('--deadline');
+    const stallRaw = flagValue('--stall-after-ms');
+    const stallAfterMs = stallRaw ? Number(stallRaw) : undefined;
 
     if (preset === 'web-ai') {
         const sessionId = flagValue('--session');
@@ -101,6 +103,7 @@ if (sub === 'add') {
         payload['sessionId'] = sessionId;
         if (prompt) payload['prompt'] = prompt;
         if (deadline) payload['deadlineAt'] = deadline;
+        if (stallAfterMs && stallAfterMs > 0) payload['stallAfterMs'] = stallAfterMs;
     } else if (preset) {
         console.error(`Unknown preset: ${preset}`);
         process.exit(1);
@@ -125,6 +128,7 @@ if (sub === 'add') {
             completion,
             promptTemplate: prompt,
             ...(deadline ? { deadlineAt: deadline } : {}),
+            ...(stallAfterMs && stallAfterMs > 0 ? { stallAfterMs } : {}),
         };
     }
 
