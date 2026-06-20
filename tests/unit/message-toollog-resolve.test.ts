@@ -39,3 +39,21 @@ test('MTL-004: invalid messageId or null blob → safe, never throws', () => {
     assert.deepEqual(labels(resolveToolLog(null, blob, true)), ['B'], 'null id → blob');
     assert.equal(resolveToolLog(123, null, false), null, 'null blob → null');
 });
+
+test('MTL-005: flag on preserves blob worker mirrors alongside trace boss tools (anti-regression)', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const ctx = { traceRunId: runId, traceAudience: 'public' as const };
+    stampTraceTool({ icon: '🔧', label: 'BossRead', stepRef: 'claude:tooluse:b1', status: 'done', toolType: 'tool' }, ctx, 'tool');
+    const messageId = 992001;
+    linkTraceRunToMessage(runId, messageId);
+
+    // blob holds the boss tool (also in trace) + a worker mirror (Phase 1 preserves isEmployee here)
+    const blob = JSON.stringify([
+        { icon: '🔧', label: 'BossRead', stepRef: 'claude:tooluse:b1', isEmployee: false },
+        { icon: '🔧', label: 'WorkerGrep', stepRef: 'w:tooluse:1', isEmployee: true },
+    ]);
+    const got = labels(resolveToolLog(messageId, blob, true));
+    assert.ok(got.includes('BossRead'), 'boss tool present (from trace)');
+    assert.ok(got.includes('WorkerGrep'), 'worker mirror preserved from blob — NOT dropped when flag on');
+    assert.equal(got.filter((l) => l === 'BossRead').length, 1, 'boss tool deduped by stepRef (trace + blob)');
+});
