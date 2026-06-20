@@ -33,11 +33,18 @@ export function previewParentOrigin(): string | null {
 // Parent-manager capability flags, announced via 'jaw-preview-capabilities'.
 // Defaults to false so non-Electron parents keep the openLocalPath fallback.
 let parentDocPanelCapable = false;
+let parentDocPanelCapabilityKnown = false;
 let capabilityListenerReady = false;
 let insertTextListenerReady = false;
+const docPanelCapabilityWaiters = new Set<(capable: boolean) => void>();
 
 export function parentSupportsDocPanel(): boolean {
     return parentDocPanelCapable;
+}
+
+function resolveDocPanelCapabilityWaiters(capable: boolean): void {
+    for (const resolve of docPanelCapabilityWaiters) resolve(capable);
+    docPanelCapabilityWaiters.clear();
 }
 
 export function ensurePreviewCapabilityListener(): void {
@@ -48,6 +55,28 @@ export function ensurePreviewCapabilityListener(): void {
         const data = event.data as { type?: unknown; docPanel?: unknown } | null;
         if (!data || data.type !== 'jaw-preview-capabilities') return;
         parentDocPanelCapable = data.docPanel === true;
+        parentDocPanelCapabilityKnown = true;
+        resolveDocPanelCapabilityWaiters(parentDocPanelCapable);
+    });
+}
+
+export function waitForDocPanelCapability(timeoutMs = 180): Promise<boolean> {
+    ensurePreviewCapabilityListener();
+    if (parentDocPanelCapable || parentDocPanelCapabilityKnown) {
+        return Promise.resolve(parentDocPanelCapable);
+    }
+    if (!previewParentOrigin()) return Promise.resolve(false);
+    return new Promise(resolve => {
+        let settled = false;
+        const finish = (capable: boolean) => {
+            if (settled) return;
+            settled = true;
+            docPanelCapabilityWaiters.delete(finish);
+            window.clearTimeout(timer);
+            resolve(capable);
+        };
+        const timer = window.setTimeout(() => finish(parentDocPanelCapable), timeoutMs);
+        docPanelCapabilityWaiters.add(finish);
     });
 }
 
