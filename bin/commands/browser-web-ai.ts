@@ -74,6 +74,14 @@ Prompt and context:
   --source-audit-date <text>
                       Checked date for absence/no-result claims
 
+ChatGPT tools & modes:
+  --tool <name>       Select a ChatGPT composer tool; repeatable.
+                      Values: image, deep-research, web-search, agent-mode, tasks
+                      Plugins: canva, figma, github, gmail, supabase, etc.
+  --auto-tools        Heuristically select tools from prompt content
+  --research deep     Activate ChatGPT Deep Research mode
+  --follow-up <text>  Send follow-up prompts into existing conversation; repeatable
+
 Sessions:
   --session <id>      Resume/poll a saved session
   --deadline <iso>    Override session deadline
@@ -298,6 +306,10 @@ export async function runWebAiCommand(
             'new-tab': { type: 'boolean', default: false },
             parallel: { type: 'boolean', default: false },
             'reuse-tab': { type: 'boolean', default: false },
+            tool: { type: 'string', multiple: true },
+            'auto-tools': { type: 'boolean', default: false },
+            research: { type: 'string' },
+            'follow-up': { type: 'string', multiple: true },
             full: { type: 'boolean', default: false },
             json: { type: 'boolean', default: false },
         },
@@ -347,6 +359,10 @@ export async function runWebAiCommand(
         ...(values['source-audit-date'] ? { sourceAuditDate: values['source-audit-date'] } : {}),
         ...(values['new-tab'] || values.parallel ? { newTab: true } : {}),
         ...(values['reuse-tab'] ? { reuseTab: true } : {}),
+        ...(Array.isArray(values.tool) && values.tool.length ? { tools: values.tool } : {}),
+        ...(values['auto-tools'] ? { autoTools: true } : {}),
+        ...(values.research ? { research: values.research } : {}),
+        ...(Array.isArray(values['follow-up']) && values['follow-up'].length ? { followUps: values['follow-up'] } : {}),
     };
     const rawResult = await callWebAiEndpoint(command, body, values, deps);
     const fullContextOutput = values.full === true || command === 'context-render';
