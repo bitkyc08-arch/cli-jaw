@@ -59,13 +59,22 @@ test('code composer renders as one dense workbench dock with responsive controls
     assert.ok(workbench.indexOf('<CodeComposer') < workbench.indexOf('<ComposerFooter'), 'prompt input must sit above its setting controls inside the same surface');
 
     for (const token of ['title={provider}', 'title={model}', 'title={effort}', 'title={permissionDescriptions[permissionMode]}']) {
-        assert.ok(footer.includes(token), `footer select must preserve hover/readback title ${token}`);
+        assert.ok(footer.includes(token), `footer menu must preserve hover/readback title ${token}`);
     }
+    assert.equal(footer.includes('<select'), false, 'footer controls must not use browser-native select dropdowns');
+    assert.ok(footer.includes('aria-haspopup="listbox"'), 'footer menus must announce custom listbox popups');
+    assert.ok(footer.includes('className="code-footer-dropup"'), 'footer menus must open as custom dropups above the composer');
+    assert.ok(footer.includes("event.key === 'Escape'"), 'footer menus must close on Escape');
+    assert.ok(footer.includes("event.key === 'ArrowDown'"), 'footer menus must support keyboard cycling');
 
     for (const selector of [
         '.code-composer-dock',
         '.code-composer-surface',
-        '.code-footer-field-model { max-width: min(42vw, 420px); }',
+        '.code-footer-menu-trigger',
+        '.code-footer-dropup',
+        'bottom: calc(100% + 8px);',
+        'flex-wrap: nowrap;',
+        '.code-footer-field-model {',
         'text-overflow: ellipsis;',
         '@media (max-width: 720px)',
         '.code-composer-footer {',
@@ -75,5 +84,5 @@ test('code composer renders as one dense workbench dock with responsive controls
 
     assert.equal(legacyCss.includes('.code-composer {'), false, 'composer layout styles must live in code-composer.css, not the workbench transient stylesheet');
     assert.ok(css.includes('grid-template-columns: minmax(0, 1fr) auto'), 'composer input and send button must have stable grid columns');
-    assert.ok(css.includes('grid-template-columns: 1fr'), 'narrow view must collapse footer controls to one column');
+    assert.equal(css.includes('.code-composer-footer {\n        grid-template-columns: 1fr;'), false, 'narrow view must keep footer controls on one line');
 });

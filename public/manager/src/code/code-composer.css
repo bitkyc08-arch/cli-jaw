@@ -79,70 +79,190 @@
     cursor: not-allowed;
 }
 .code-composer-footer {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto);
-    gap: 8px;
+    display: flex;
+    gap: 6px;
     align-items: center;
+    flex-wrap: nowrap;
     min-width: 0;
     padding-top: 7px;
     border-top: 1px solid var(--border-default);
+    overflow: visible;
 }
-.code-composer-footer-left,
-.code-composer-footer-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
+.code-footer-menu {
+    position: relative;
+    flex: 0 1 auto;
     min-width: 0;
 }
-.code-composer-footer-right {
-    justify-content: flex-end;
-    flex-wrap: wrap;
+.code-footer-menu:first-child {
+    flex: 0 0 auto;
 }
-.code-footer-field {
-    display: inline-grid;
-    grid-template-columns: auto minmax(0, 1fr);
+.code-footer-field-model {
+    flex: 1 1 320px;
+    max-width: min(42vw, 420px);
+}
+.code-footer-menu-trigger {
+    display: grid;
+    grid-template-columns: auto minmax(0, auto) auto;
     align-items: center;
-    gap: 5px;
-    min-width: 0;
-    height: 30px;
-    padding: 0 7px;
+    gap: 7px;
+    max-width: 100%;
+    height: 32px;
+    padding: 0 10px;
     border: 1px solid var(--border-default);
-    border-radius: 8px;
+    border-radius: 999px;
     background: color-mix(in srgb, var(--bg-panel) 62%, var(--bg-base));
+    color: var(--text-primary);
+    font: inherit;
+    cursor: pointer;
 }
-.code-footer-field-model { max-width: min(42vw, 420px); }
+.code-footer-menu-trigger:hover,
+.code-footer-menu-trigger[aria-expanded="true"] {
+    border-color: color-mix(in srgb, var(--accent-default) 42%, var(--border-default));
+    background: var(--bg-raised);
+}
+.code-footer-menu-trigger:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-default) 70%, transparent);
+    outline-offset: 2px;
+}
+.code-footer-menu-trigger:disabled {
+    cursor: not-allowed;
+    opacity: 0.62;
+}
+.code-footer-menu-trigger strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+    font-weight: 650;
+    color: var(--text-primary);
+}
 .code-footer-label {
     color: var(--text-tertiary);
     font-size: 10px;
     font-weight: 750;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    white-space: nowrap;
 }
-.code-footer-description {
-    grid-column: 1 / -1;
-    max-width: 240px;
-    margin-top: -3px;
+.code-footer-chevron {
     color: var(--text-tertiary);
-    font-size: 10px;
+    font-size: 13px;
+    line-height: 1;
+}
+.code-footer-dropup {
+    position: absolute;
+    left: 0;
+    bottom: calc(100% + 8px);
+    z-index: 35;
+    width: max(260px, 100%);
+    max-width: min(520px, calc(100vw - 28px));
+    max-height: min(280px, 46vh);
+    overflow-y: auto;
+    padding: 6px;
+    border: 1px solid var(--border-default);
+    border-radius: 12px;
+    background: var(--bg-panel);
+    box-shadow: 0 -18px 42px rgba(0,0,0,0.28);
+}
+.code-footer-field-model .code-footer-dropup {
+    width: min(520px, calc(100vw - 28px));
+}
+.code-footer-dropup-option {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 10px;
+    border: 1px solid transparent;
+    border-radius: 9px;
+    background: transparent;
+    color: var(--text-primary);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+.code-footer-dropup-option:hover,
+.code-footer-dropup-option.is-selected {
+    border-color: color-mix(in srgb, var(--accent-default) 36%, var(--border-default));
+    background: var(--bg-raised);
+}
+.code-footer-dropup-option:focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--accent-default) 70%, transparent);
+    outline-offset: 1px;
+}
+.code-footer-dropup-option span,
+.code-footer-dropup-option strong,
+.code-footer-dropup-option small {
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.code-footer-select {
-    min-width: 0;
-    max-width: 100%;
-    height: 26px;
-    border: 0;
-    border-radius: 6px;
-    background: transparent;
-    color: var(--text-primary);
-    font: inherit;
-    font-size: 12px;
-    padding: 0 18px 0 2px;
-    text-overflow: ellipsis;
+.code-footer-dropup-option span {
+    display: grid;
+    gap: 2px;
 }
-.code-footer-select:focus {
-    outline: none;
+.code-footer-dropup-option strong {
+    font-size: 13px;
+    font-weight: 650;
+}
+.code-footer-dropup-option small {
+    color: var(--text-tertiary);
+    font-size: 12px;
+}
+.code-footer-dropup-option em {
+    color: var(--accent-default);
+    font-style: normal;
+    font-size: 15px;
+    font-weight: 800;
+}
+@media (max-width: 900px) {
+    .code-footer-label {
+        display: none;
+    }
+    .code-footer-field-model {
+        flex-basis: 220px;
+        max-width: 100%;
+    }
+}
+@media (max-width: 720px) {
+    .code-footer-menu-trigger {
+        padding: 0 8px;
+        gap: 5px;
+    }
+    .code-footer-menu-trigger strong {
+        max-width: 120px;
+    }
+    .code-footer-field-model .code-footer-menu-trigger strong {
+        max-width: 180px;
+    }
+    .code-footer-dropup {
+        width: min(340px, calc(100vw - 28px));
+    }
+}
+@media (max-width: 560px) {
+    .code-composer-footer {
+        overflow-x: auto;
+        scrollbar-width: none;
+    }
+    .code-composer-footer::-webkit-scrollbar {
+        display: none;
+    }
+    .code-footer-menu {
+        flex: 0 0 auto;
+    }
+    .code-footer-menu-trigger strong {
+        max-width: 112px;
+    }
+    .code-footer-field-model .code-footer-menu-trigger strong {
+        max-width: 150px;
+    }
+}
+.code-footer-menu-trigger:focus {
+    outline-color: var(--accent-default);
     color: var(--accent-default);
 }
 .code-command-palette {
@@ -232,18 +352,6 @@
     }
     .code-composer {
         grid-template-columns: minmax(0, 1fr) auto;
-    }
-    .code-composer-footer {
-        grid-template-columns: 1fr;
-    }
-    .code-composer-footer-left,
-    .code-composer-footer-right {
-        flex-wrap: wrap;
-        justify-content: flex-start;
-    }
-    .code-footer-field,
-    .code-footer-field-model {
-        max-width: 100%;
     }
     .code-command-palette {
         right: 0;
