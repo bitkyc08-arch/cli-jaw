@@ -119,7 +119,7 @@ function TrayReminderSection(props: {
 }
 
 export function TrayRemindersApp() {
-    const feed = useRemindersFeed({ active: true });
+    const feed = useRemindersFeed({ active: true, pollWhileActiveMs: 30000 });
     const now = useMemo(() => new Date(), [feed.items]);
     const sections = useMemo(
         () => buildTrayTriageSections(feed.items, now),
@@ -127,6 +127,12 @@ export function TrayRemindersApp() {
     );
     const todayCount = Math.max(0, sections.badgeCount - sections.overdue.length);
     const hasVisibleItems = sections.overdue.length > 0 || sections.priority.length > 0 || sections.today.length > 0;
+    const markDone = (id: string): void => {
+        void feed.markDone(id).then(() => feed.refresh());
+    };
+    const snooze = (id: string, nextRemindAt: string): void => {
+        void feed.snooze(id, nextRemindAt).then(() => feed.refresh());
+    };
 
     return (
         <main className="tray-reminders-app" aria-label="Tray reminders">
@@ -143,9 +149,9 @@ export function TrayRemindersApp() {
             {feed.loading && feed.items.length === 0 ? <p className="tray-reminders-status">Loading reminders</p> : null}
             {!feed.loading && !feed.error && !hasVisibleItems ? <p className="tray-reminders-empty">No urgent reminders</p> : null}
             <div className="tray-reminders-sections">
-                <TrayReminderSection id="overdue" items={sections.overdue} busy={feed.loading} onMarkDone={(id) => void feed.markDone(id)} onSnooze={(id, next) => void feed.snooze(id, next)} />
-                <TrayReminderSection id="priority" items={sections.priority} busy={feed.loading} onMarkDone={(id) => void feed.markDone(id)} onSnooze={(id, next) => void feed.snooze(id, next)} />
-                <TrayReminderSection id="today" items={sections.today} busy={feed.loading} onMarkDone={(id) => void feed.markDone(id)} onSnooze={(id, next) => void feed.snooze(id, next)} />
+                <TrayReminderSection id="overdue" items={sections.overdue} busy={feed.loading} onMarkDone={markDone} onSnooze={snooze} />
+                <TrayReminderSection id="priority" items={sections.priority} busy={feed.loading} onMarkDone={markDone} onSnooze={snooze} />
+                <TrayReminderSection id="today" items={sections.today} busy={feed.loading} onMarkDone={markDone} onSnooze={snooze} />
             </div>
             <footer className="tray-reminders-footer">
                 <span>{sections.upcomingCount} upcoming</span>

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell } from 'electron';
+import { app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, session, shell } from 'electron';
 import type { MenuItemConstructorOptions } from 'electron';
 import { fileURLToPath, URL } from 'node:url';
 import { dirname, join } from 'node:path';
@@ -140,6 +140,7 @@ const WINDOW_WORK_AREA_MARGIN = 80;
 const MIN_VISIBLE_WINDOW_WIDTH = 960;
 const MIN_VISIBLE_WINDOW_HEIGHT = 640;
 const QUIT_WINDOW_HIDE_DELAY_MS = 600;
+const TRAY_REMINDERS_ACCELERATOR = 'CommandOrControl+Shift+M';
 
 type ManagerShortcutAction =
   | 'toggleBottomPanel'
@@ -194,6 +195,7 @@ let webContentsHardeningRegistered = false;
 let reminderPopover: ReminderPopover | null = null;
 let reminderBadgePoller: ReminderBadgePoller | null = null;
 let trayPopupMenuIpcRegistered = false;
+let trayRemindersShortcutRegistered = false;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -391,10 +393,8 @@ function installTrayReminders(): void {
     setBadge: setTrayBadgeFromReminderPoller,
     log: (message) => ringBuffer.append(`${message}\n`),
   });
-  setTrayClickHandler(() => {
-    reminderPopover?.toggle(getTrayBoundsSafe());
-    void reminderBadgePoller?.refreshNow();
-  });
+  setTrayClickHandler(toggleTrayRemindersPopover);
+  registerTrayRemindersShortcut();
   if (!trayPopupMenuIpcRegistered) {
     trayPopupMenuIpcRegistered = true;
     ipcMain.on('tray:popup-menu', (event) => {
@@ -405,10 +405,32 @@ function installTrayReminders(): void {
 }
 
 function destroyTrayReminders(): void {
+  unregisterTrayRemindersShortcut();
   reminderBadgePoller?.stop();
   reminderBadgePoller = null;
   reminderPopover?.destroy();
   reminderPopover = null;
+}
+
+function toggleTrayRemindersPopover(): void {
+  reminderPopover?.toggle(getTrayBoundsSafe());
+  refreshTrayReminderBadge();
+}
+
+function registerTrayRemindersShortcut(): void {
+  if (trayRemindersShortcutRegistered) return;
+  const registered = globalShortcut.register(TRAY_REMINDERS_ACCELERATOR, toggleTrayRemindersPopover);
+  if (!registered) {
+    ringBuffer.append('[tray-reminders] shortcut registration failed\n');
+    return;
+  }
+  trayRemindersShortcutRegistered = true;
+}
+
+function unregisterTrayRemindersShortcut(): void {
+  if (!trayRemindersShortcutRegistered) return;
+  globalShortcut.unregister(TRAY_REMINDERS_ACCELERATOR);
+  trayRemindersShortcutRegistered = false;
 }
 
 function setTrayBadgeFromReminderPoller(count: number): void {

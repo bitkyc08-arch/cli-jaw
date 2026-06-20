@@ -30,7 +30,7 @@ test('main process wires reminder popover, typed IPC bridge, and origin guard', 
     const preload = read('electron/src/preload/index.ts');
     const desktopBridge = read('public/manager/src/panels/desktop-bridge.ts');
 
-    assert.match(index, /import \{ app, BrowserWindow, dialog, ipcMain, Menu, screen, session, shell \} from 'electron';/);
+    assert.match(index, /import \{ app, BrowserWindow, dialog, globalShortcut, ipcMain, Menu, screen, session, shell \} from 'electron';/);
     assert.ok(index.includes("from './lib/reminder-popover.js'"));
     assert.ok(index.includes('setTrayClickHandler'));
     assert.ok(index.includes('popUpTrayMenu'));
@@ -44,4 +44,15 @@ test('main process wires reminder popover, typed IPC bridge, and origin guard', 
     assert.ok(preload.includes("popUpMenu: () => ipcRenderer.send('tray:popup-menu')"));
     assert.ok(desktopBridge.includes('export type TrayRemindersBridgeApi'));
     assert.ok(desktopBridge.includes('trayReminders?: TrayRemindersBridgeApi | undefined'));
+});
+
+test('main process registers and unregisters tray reminders shortcut', () => {
+    const index = read('electron/src/main/index.ts');
+
+    assert.match(index, /globalShortcut, ipcMain/);
+    assert.ok(index.includes("TRAY_REMINDERS_ACCELERATOR = 'CommandOrControl+Shift+M'"));
+    assert.ok(index.includes('globalShortcut.register(TRAY_REMINDERS_ACCELERATOR, toggleTrayRemindersPopover)'));
+    assert.ok(index.includes("ringBuffer.append('[tray-reminders] shortcut registration failed\\n')"));
+    assert.ok(index.includes('globalShortcut.unregister(TRAY_REMINDERS_ACCELERATOR)'));
+    assert.ok(index.includes('setTrayClickHandler(toggleTrayRemindersPopover)'));
 });

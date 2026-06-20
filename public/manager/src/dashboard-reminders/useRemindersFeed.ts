@@ -23,6 +23,7 @@ export type RemindersFeedState = {
 
 type UseRemindersFeedOptions = {
     active: boolean;
+    pollWhileActiveMs?: number;
 };
 
 export function useRemindersFeed(options: UseRemindersFeedOptions): RemindersFeedState {
@@ -97,6 +98,29 @@ export function useRemindersFeed(options: UseRemindersFeedOptions): RemindersFee
         if (!options.active) return;
         void load();
     }, [options.active, load]);
+
+    useEffect(() => {
+        if (!options.active || !options.pollWhileActiveMs) return undefined;
+        const timer = window.setInterval(() => {
+            if (document.hidden) return;
+            void load();
+        }, options.pollWhileActiveMs);
+        return () => window.clearInterval(timer);
+    }, [options.active, options.pollWhileActiveMs, load]);
+
+    useEffect(() => {
+        if (!options.active || !options.pollWhileActiveMs) return undefined;
+        const refreshIfVisible = (): void => {
+            if (document.hidden) return;
+            void load();
+        };
+        window.addEventListener('focus', refreshIfVisible);
+        document.addEventListener('visibilitychange', refreshIfVisible);
+        return () => {
+            window.removeEventListener('focus', refreshIfVisible);
+            document.removeEventListener('visibilitychange', refreshIfVisible);
+        };
+    }, [options.active, options.pollWhileActiveMs, load]);
 
     return { items, loading, error, refresh, create, update, markDone, snooze };
 }

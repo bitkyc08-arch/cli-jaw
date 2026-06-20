@@ -55,7 +55,9 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(trayApp.includes('aria-label="Mark done"'), 'Tray reminders rows must expose an accessible done action');
     assert.ok(trayApp.includes('aria-label="Snooze reminder"'), 'Tray reminders rows must expose a snooze menu');
     assert.ok(trayApp.includes('feed.markDone(id)'), 'Tray reminders done action must call the feed helper');
-    assert.ok(trayApp.includes('feed.snooze(id, next)'), 'Tray reminders snooze action must call the feed helper');
+    assert.ok(trayApp.includes('pollWhileActiveMs: 30000'), 'Tray reminders app must enable active polling');
+    assert.ok(trayApp.includes('feed.markDone(id).then(() => feed.refresh())'), 'Tray reminders done action must refresh after completion');
+    assert.ok(trayApp.includes('feed.snooze(id, nextRemindAt).then(() => feed.refresh())'), 'Tray reminders snooze action must refresh after completion');
     assert.ok(sidebar.includes('PrioritySidebarList'), 'Reminders sidebar must expose draggable manual priority ordering');
     assert.ok(sidebar.includes('manualRank'), 'Reminders sidebar drag must persist manualRank updates');
     assert.ok(remindersApi.includes('assertManualRankSupport'), 'manualRank PATCH must fail visibly when the running backend is stale');
@@ -63,6 +65,9 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(remindersApi.includes('return await updateReminder(id, { remindAt: nextRemindAt })'), 'snooze helper must PATCH remindAt only');
     assert.ok(remindersFeed.includes('markDone: (id: string) => Promise<void>'), 'feed must expose markDone');
     assert.ok(remindersFeed.includes('snooze: (id: string, nextRemindAt: string) => Promise<void>'), 'feed must expose snooze');
+    assert.ok(remindersFeed.includes('pollWhileActiveMs?: number'), 'feed must keep active polling opt-in');
+    assert.ok(remindersFeed.includes("window.addEventListener('focus', refreshIfVisible)"), 'feed must refresh on focus when active polling is enabled');
+    assert.ok(remindersFeed.includes("document.addEventListener('visibilitychange', refreshIfVisible)"), 'feed must refresh on visibility gain when active polling is enabled');
     assert.ok(router.includes('onUpdate={(id, patch) => void remindersFeed.update(id, patch)}'), 'Reminders sidebar must receive update wiring');
     assert.ok(workspace.includes('InlineReminderTitle'), 'Reminders rows must support double-click inline title editing');
     assert.ok(workspace.includes('data-reminder-drop-before-id'), 'Reminders row drop targets must expose before/after order metadata');
