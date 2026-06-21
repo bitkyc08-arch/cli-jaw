@@ -53,7 +53,23 @@ function classifyAgyQuotaFamily(model: AntigravityModelQuota): AgyQuotaFamily | 
 }
 
 export function collapseAgyQuotaWindows(models: AntigravityModelQuota[]) {
-    const buckets = new Map<AgyQuotaFamily, { label: string; percent: number; resetsAt: string | null; modelId?: string }>();
+    const quotaModels = models.filter((model) => (
+        !model.isAutocompleteOnly
+        && classifyAgyQuotaFamily(model) !== null
+        && model.remainingPercentage != null
+        && Number.isFinite(model.remainingPercentage)
+    ));
+    const binaryOnly = quotaModels.length > 0 && quotaModels.every((model) => (
+        model.remainingPercentage === 0 || model.remainingPercentage === 1
+    ));
+    const buckets = new Map<AgyQuotaFamily, {
+        label: string;
+        percent: number;
+        resetsAt: string | null;
+        modelId?: string;
+        precision?: 'binary';
+        status?: 'available' | 'exhausted';
+    }>();
     for (const model of models) {
         if (model.isAutocompleteOnly) continue;
         const family = classifyAgyQuotaFamily(model);
@@ -64,6 +80,10 @@ export function collapseAgyQuotaWindows(models: AntigravityModelQuota[]) {
             percent: usedPercentFromRemaining(model.remainingPercentage, model.isExhausted),
             resetsAt: model.resetTime ?? null,
             modelId: model.modelId,
+            precision: binaryOnly ? 'binary' : undefined,
+            status: binaryOnly
+                ? (model.isExhausted || model.remainingPercentage === 0 ? 'exhausted' : 'available')
+                : undefined,
         }));
     }
     return (['gem', 'cla'] as const).flatMap((family) => {

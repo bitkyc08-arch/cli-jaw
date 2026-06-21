@@ -3,7 +3,24 @@
 export interface PerCliConfig { provider?: string; model?: string; effort?: string; fastMode?: boolean; contextWindow?: boolean; contextWindowSize?: number; contextCompactLimit?: number; }
 export interface TelegramConfig { enabled?: boolean; token?: string; allowedChatIds?: number[]; forwardAll?: boolean; mentionOnly?: boolean; }
 export interface DiscordConfig { enabled?: boolean; token?: string; guildId?: string; channelIds?: string[]; forwardAll?: boolean; allowBots?: boolean; mentionOnly?: boolean; }
-export interface QuotaWindow { label: string; percent: number; resetsAt?: string | number | null; modelId?: string; }
+export interface QuotaWindow {
+    label: string;
+    percent: number;
+    resetsAt?: string | number | null;
+    modelId?: string;
+    precision?: 'binary';
+    status?: 'available' | 'exhausted';
+}
+export function resolveQuotaWindowDisplay(window: QuotaWindow): { percent: number | null; text: string } {
+    if (window.precision === 'binary') {
+        return {
+            percent: null,
+            text: window.status === 'exhausted' ? 'Exhausted' : 'Available',
+        };
+    }
+    const percent = Math.max(0, Math.min(100, Math.round(window.percent)));
+    return { percent, text: `${percent}%` };
+}
 export interface QuotaEntry {
     account?: { email?: string; type?: string; plan?: string; tier?: string };
     windows?: QuotaWindow[];

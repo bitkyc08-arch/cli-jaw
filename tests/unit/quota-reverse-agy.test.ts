@@ -86,10 +86,12 @@ test('normalizeAntigravityUsageSnapshot converts remaining percentage to used pe
     assert.deepEqual(result.windows?.map((window) => window.label), ['Gem', 'Cla']);
     assert.equal(result.windows?.[0]?.percent, 75);
     assert.equal(result.windows?.[1]?.percent, 0);
+    assert.equal(result.windows?.[0]?.precision, undefined);
+    assert.equal(result.windows?.[1]?.precision, undefined);
     assert.equal((result.account as { tier?: string })?.tier, 'Google AI Pro');
 });
 
-test('normalizeAntigravityUsageSnapshot degrades binary remaining values to 0/100 bars', () => {
+test('normalizeAntigravityUsageSnapshot marks binary remaining values as availability states', () => {
     const result = normalizeAntigravityUsageSnapshot({
         method: 'google',
         models: [
@@ -111,4 +113,8 @@ test('normalizeAntigravityUsageSnapshot degrades binary remaining values to 0/10
     assert.deepEqual(result.windows?.map((window) => window.label), ['Gem', 'Cla']);
     assert.equal(result.windows?.[0]?.percent, 100);
     assert.equal(result.windows?.[1]?.percent, 0);
+    assert.equal(result.windows?.[0]?.precision, 'binary');
+    assert.equal(result.windows?.[0]?.status, 'exhausted');
+    assert.equal(result.windows?.[1]?.precision, 'binary');
+    assert.equal(result.windows?.[1]?.status, 'available');
 });
