@@ -355,7 +355,8 @@ test('AGY-RT-014: AGY quiet completion is anchored on the final transcript plann
 
 test('AGY-RT-015: transcript watcher drives the final planner flag and growth activity', () => {
     const watcherSrc = readFileSync(join(__dirname, '../../src/agent/agy-transcript-watcher.ts'), 'utf8');
-    assert.match(watcherSrc, /updateFinalPlannerFlag\(options\.ctx, line, startedAt - 5_000\)/);
+    assert.match(watcherSrc, /const minCreatedAtMs = startedAt - CURRENT_TURN_LOOKBACK_MS/);
+    assert.match(watcherSrc, /updateFinalPlannerFlag\(options\.ctx, line, minCreatedAtMs\)/);
     assert.match(watcherSrc, /agyFinalPlannerSeen = true/);
     assert.match(watcherSrc, /agyFinalPlannerSeen = false/);
     assert.match(watcherSrc, /agyFinalPlannerText = rowContent/);

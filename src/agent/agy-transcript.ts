@@ -35,21 +35,31 @@ export function resolveAgyConversationIdFromCache(cwd: string): string | null {
     }
 }
 
-export function agyTranscriptPathForConversation(conversationId: string): string {
-    return path.join(AGY_BRAIN_ROOT, conversationId, '.system_generated', 'logs', 'transcript.jsonl');
-}
-
-export function resolveAgyTranscriptPath(cwd: string, sessionId?: string | null): {
+export type AgyTranscriptResolution = {
     ok: boolean;
     conversationId?: string;
     transcriptPath?: string;
     reason?: string;
-} {
+};
+
+export type AgyTranscriptResolveOptions = {
+    brainRoot?: string;
+};
+
+export function agyTranscriptPathForConversation(conversationId: string, brainRoot = AGY_BRAIN_ROOT): string {
+    return path.join(brainRoot, conversationId, '.system_generated', 'logs', 'transcript.jsonl');
+}
+
+export function resolveAgyTranscriptPath(
+    cwd: string,
+    sessionId?: string | null,
+    options: AgyTranscriptResolveOptions = {},
+): AgyTranscriptResolution {
     const conversationId = sessionId || resolveAgyConversationIdFromCache(cwd);
     if (!conversationId) {
         return { ok: false, reason: 'no conversation id (stdout or last_conversations.json)' };
     }
-    const transcriptPath = agyTranscriptPathForConversation(conversationId);
+    const transcriptPath = agyTranscriptPathForConversation(conversationId, options.brainRoot);
     if (!fs.existsSync(transcriptPath)) {
         return { ok: false, conversationId, reason: 'transcript.jsonl not found yet' };
     }
@@ -81,18 +91,18 @@ export function transcriptContainsPrompt(transcriptPath: string, prompt?: string
     }
 }
 
-export function resolveRecentAgyTranscriptPath(minMtimeMs: number, prompt?: string): {
-    ok: boolean;
-    conversationId?: string;
-    transcriptPath?: string;
-    reason?: string;
-} {
+export function resolveRecentAgyTranscriptPath(
+    minMtimeMs: number,
+    prompt?: string,
+    options: AgyTranscriptResolveOptions = {},
+): AgyTranscriptResolution {
     try {
-        if (!fs.existsSync(AGY_BRAIN_ROOT)) return { ok: false, reason: 'brain root not found' };
+        const brainRoot = options.brainRoot ?? AGY_BRAIN_ROOT;
+        if (!fs.existsSync(brainRoot)) return { ok: false, reason: 'brain root not found' };
         let best: { conversationId: string; transcriptPath: string; mtimeMs: number } | null = null;
-        for (const entry of fs.readdirSync(AGY_BRAIN_ROOT, { withFileTypes: true })) {
+        for (const entry of fs.readdirSync(brainRoot, { withFileTypes: true })) {
             if (!entry.isDirectory()) continue;
-            const transcriptPath = agyTranscriptPathForConversation(entry.name);
+            const transcriptPath = agyTranscriptPathForConversation(entry.name, brainRoot);
             let stat: fs.Stats;
             try { stat = fs.statSync(transcriptPath); }
             catch { continue; }
@@ -107,6 +117,44 @@ export function resolveRecentAgyTranscriptPath(minMtimeMs: number, prompt?: stri
     } catch (e) {
         return { ok: false, reason: (e as Error).message };
     }
+}
+
+function transcriptIsFreshEnough(transcriptPath: string, minMtimeMs: number): boolean {
+    try {
+        return fs.statSync(transcriptPath).mtimeMs >= minMtimeMs;
+    } catch {
+        return false;
+    }
+}
+
+export function resolveAgyTranscriptPathForCurrentTurn(
+    cwd: string,
+    sessionId: string | null | undefined,
+    minMtimeMs: number,
+    prompt?: string,
+    options: AgyTranscriptResolveOptions = {},
+): AgyTranscriptResolution {
+    const saved = resolveAgyTranscriptPath(cwd, sessionId, options);
+    if (saved.ok && saved.transcriptPath) {
+        const savedCurrent =
+            transcriptIsFreshEnough(saved.transcriptPath, minMtimeMs)
+            && transcriptContainsPrompt(saved.transcriptPath, prompt);
+        if (savedCurrent) return saved;
+    }
+
+    const recent = resolveRecentAgyTranscriptPath(minMtimeMs, prompt, options);
+    if (recent.ok) return recent;
+
+    if (saved.ok) {
+        const waiting: AgyTranscriptResolution = {
+            ok: false,
+            reason: `saved transcript is not current-turn (${recent.reason ?? 'no recent prompt-matching transcript'})`,
+        };
+        if (saved.conversationId) waiting.conversationId = saved.conversationId;
+        return waiting;
+    }
+    if (recent.reason || !saved.reason) return recent;
+    return { ...recent, reason: saved.reason };
 }
 
 function sanitizeSnippet(text: string, max: number): string {
@@ -153,8 +201,9 @@ function labelForStep(type: string, content: string): { label: string; detail: s
     }
 }
 
-export function agyTranscriptStepKey(stepIndex: unknown, type: string): string {
-    return `${stepIndex ?? 'x'}:${type}`;
+export function agyTranscriptStepKey(stepIndex: unknown, type: string, namespace?: string | null): string {
+    const base = `${stepIndex ?? 'x'}:${type}`;
+    return namespace ? `${namespace}:${base}` : base;
 }
 
 export function parseTranscriptLine(line: string): ToolEntry | null {

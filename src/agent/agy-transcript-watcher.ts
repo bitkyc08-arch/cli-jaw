@@ -4,7 +4,7 @@ import {
     classifyAgyTranscriptRow,
     parseTranscriptLine,
     readTranscriptDelta,
-    resolveRecentAgyTranscriptPath,
+    resolveAgyTranscriptPathForCurrentTurn,
     resolveAgyTranscriptPath,
 } from './agy-transcript.js';
 
@@ -21,6 +21,8 @@ export type AgyTranscriptEmit = (
 
 const POLL_MS = 800;
 const WAIT_PATH_MS = 120_000;
+const CURRENT_TURN_LOOKBACK_MS = 5_000;
+const RETARGET_SCAN_MS = 2_000;
 
 function updateFinalPlannerFlag(ctx: SpawnContext, line: string, minCreatedAtMs: number): void {
     let rowType = '';
@@ -74,6 +76,7 @@ function applyTranscriptTool(
     cli: string,
     empTag: Record<string, unknown>,
     traceAudience: 'public' | 'internal',
+    conversationId: string | null,
 ): void {
     try {
         const parsed = JSON.parse(line) as { created_at?: unknown };
@@ -87,7 +90,10 @@ function applyTranscriptTool(
     let dedupeKey = tool.stepRef;
     try {
         const parsed = JSON.parse(line) as { step_index?: unknown; type?: string };
-        dedupeKey = agyTranscriptStepKey(parsed.step_index, parsed.type ?? '');
+        dedupeKey = agyTranscriptStepKey(parsed.step_index, parsed.type ?? '', conversationId);
+        if (conversationId) {
+            tool.stepRef = `agy:transcript:${conversationId}:${parsed.step_index ?? 'x'}:${parsed.type ?? ''}`;
+        }
     } catch { /* stepRef */ }
     const existingIdx = ctx.toolLog.findIndex((e) => e.stepRef === tool.stepRef);
     if (existingIdx >= 0) {
@@ -117,47 +123,67 @@ export function startAgyTranscriptWatcher(options: {
     let conversationId: string | null = null;
     let stopped = false;
     const startedAt = Date.now();
+    const minCreatedAtMs = startedAt - CURRENT_TURN_LOOKBACK_MS;
+    let lastRetargetScanAt = 0;
+
+    const resetSelection = () => {
+        transcriptPath = null;
+        conversationId = null;
+        offset = 0;
+        options.ctx.agyFinalPlannerSeen = false;
+        options.ctx.agyFinalPlannerText = undefined;
+    };
+
+    const selectTranscript = (currentSessionId: string | null, force: boolean): void => {
+        const now = Date.now();
+        if (!force && transcriptPath && now - lastRetargetScanAt < RETARGET_SCAN_MS) return;
+        lastRetargetScanAt = now;
+
+        const effectiveResolved = resolveAgyTranscriptPathForCurrentTurn(
+            options.cwd,
+            currentSessionId,
+            minCreatedAtMs,
+            options.prompt,
+        );
+        if (!effectiveResolved.ok || !effectiveResolved.transcriptPath) {
+            if (!transcriptPath && Date.now() - startedAt > WAIT_PATH_MS) {
+                console.warn(`[jaw:agy:transcript] gave up waiting (${effectiveResolved.reason ?? 'unknown'})`);
+            }
+            return;
+        }
+        if (transcriptPath === effectiveResolved.transcriptPath) return;
+        transcriptPath = effectiveResolved.transcriptPath;
+        conversationId = effectiveResolved.conversationId ?? currentSessionId ?? null;
+        offset = 0;
+        options.ctx.agyFinalPlannerSeen = false;
+        options.ctx.agyFinalPlannerText = undefined;
+        console.log(`[jaw:agy:transcript] tailing ${transcriptPath} (current-turn filter from ${new Date(startedAt).toISOString()})`);
+    };
 
     const tick = () => {
         if (stopped) return;
         const currentSessionId = options.getSessionId();
         if (transcriptPath && currentSessionId && conversationId && currentSessionId !== conversationId) {
-            transcriptPath = null;
-            conversationId = null;
-            offset = 0;
-            options.ctx.agyFinalPlannerSeen = false;
+            resetSelection();
         }
-        if (!transcriptPath) {
-            const resolved = resolveAgyTranscriptPath(options.cwd, currentSessionId);
-            const effectiveResolved = resolved.ok
-                ? resolved
-                : resolveRecentAgyTranscriptPath(startedAt - 5_000, options.prompt);
-            if (!effectiveResolved.ok || !effectiveResolved.transcriptPath) {
-                if (Date.now() - startedAt > WAIT_PATH_MS) {
-                    console.warn(`[jaw:agy:transcript] gave up waiting (${effectiveResolved.reason ?? resolved.reason ?? 'unknown'})`);
-                }
-                return;
-            }
-            transcriptPath = effectiveResolved.transcriptPath;
-            conversationId = effectiveResolved.conversationId ?? currentSessionId ?? null;
-            offset = 0;
-            console.log(`[jaw:agy:transcript] tailing ${transcriptPath} (current-turn filter from ${new Date(startedAt).toISOString()})`);
-        }
+        selectTranscript(currentSessionId, !transcriptPath);
+        if (!transcriptPath) return;
         try {
             const previousOffset = offset;
             const delta = readTranscriptDelta(transcriptPath, offset);
             offset = delta.offset;
             for (const line of delta.lines) {
-                updateFinalPlannerFlag(options.ctx, line, startedAt - 5_000);
+                updateFinalPlannerFlag(options.ctx, line, minCreatedAtMs);
                 applyTranscriptTool(
                     options.ctx,
                     line,
-                    startedAt - 5_000,
+                    minCreatedAtMs,
                     options.onEmit,
                     options.agentLabel,
                     options.cli,
                     options.empTag,
                     options.traceAudience,
+                    conversationId,
                 );
             }
             if (delta.offset > previousOffset) {
@@ -180,26 +206,31 @@ export function startAgyTranscriptWatcher(options: {
             clearInterval(interval);
             if (!transcriptPath) {
                 const resolved = resolveAgyTranscriptPath(options.cwd, options.getSessionId());
-                const effectiveResolved = resolved.ok
-                    ? resolved
-                    : resolveRecentAgyTranscriptPath(startedAt - 5_000, options.prompt);
+                const effectiveResolved = resolveAgyTranscriptPathForCurrentTurn(
+                    options.cwd,
+                    options.getSessionId(),
+                    minCreatedAtMs,
+                    options.prompt,
+                );
                 if (!effectiveResolved.ok || !effectiveResolved.transcriptPath) return;
                 transcriptPath = effectiveResolved.transcriptPath;
+                conversationId = effectiveResolved.conversationId ?? resolved.conversationId ?? options.getSessionId() ?? null;
                 offset = 0;
             }
             try {
                 const delta = readTranscriptDelta(transcriptPath, offset);
                 for (const line of delta.lines) {
-                    updateFinalPlannerFlag(options.ctx, line, startedAt - 5_000);
+                    updateFinalPlannerFlag(options.ctx, line, minCreatedAtMs);
                     applyTranscriptTool(
                         options.ctx,
                         line,
-                        startedAt - 5_000,
+                        minCreatedAtMs,
                         options.onEmit,
                         options.agentLabel,
                         options.cli,
                         options.empTag,
                         options.traceAudience,
+                        conversationId,
                     );
                 }
             } catch { /* best-effort final drain */ }

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
     agyTranscriptStepKey,
     classifyAgyTranscriptRow,
+    resolveAgyTranscriptPathForCurrentTurn,
     parseTranscriptLine,
     readTranscriptDelta,
     transcriptContainsPrompt,
@@ -60,6 +61,7 @@ test('AGY-TR-003: readTranscriptDelta returns only new bytes', () => {
 
 test('AGY-TR-004: agyTranscriptStepKey is stable', () => {
     assert.equal(agyTranscriptStepKey(5, 'RUN_COMMAND'), '5:RUN_COMMAND');
+    assert.equal(agyTranscriptStepKey(5, 'RUN_COMMAND', 'brain-b'), 'brain-b:5:RUN_COMMAND');
 });
 
 test('AGY-TR-005: spawn wires agy transcript watcher', () => {
@@ -82,9 +84,10 @@ test('AGY-TR-008: transcript watcher scans current-turn lines already written be
     assert.doesNotMatch(watcherSrc, /fs\.statSync\(transcriptPath\)\.size/);
     assert.match(watcherSrc, /offset\s*=\s*0/);
     assert.match(watcherSrc, /created_at/);
-    assert.match(watcherSrc, /startedAt - 5_000/);
-    assert.match(watcherSrc, /resolveAgyTranscriptPath\(options\.cwd, options\.getSessionId\(\)\)/);
-    assert.match(watcherSrc, /resolveRecentAgyTranscriptPath\(startedAt - 5_000, options\.prompt\)/);
+    assert.match(watcherSrc, /CURRENT_TURN_LOOKBACK_MS = 5_000/);
+    assert.match(watcherSrc, /startedAt - CURRENT_TURN_LOOKBACK_MS/);
+    assert.match(watcherSrc, /resolveAgyTranscriptPathForCurrentTurn/);
+    assert.match(watcherSrc, /RETARGET_SCAN_MS/);
     assert.match(transcriptSrc, /export function resolveRecentAgyTranscriptPath/);
     assert.match(transcriptSrc, /stat\.mtimeMs < minMtimeMs/);
     assert.match(transcriptSrc, /transcriptContainsPrompt\(transcriptPath, prompt\)/);
@@ -188,6 +191,83 @@ test('AGY-TR-014: transcriptContainsPrompt matches JSON-escaped multiline prompt
     // Raw JSONL stores the prompt with \n and \" escapes — must still match.
     assert.equal(transcriptContainsPrompt(p, prompt), true);
     assert.equal(transcriptContainsPrompt(p, '완전히 다른 프롬프트입니다. 이 내용은 transcript 어디에도 존재하지 않는 문장이어야 합니다.'), false);
+    fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+function writeBrainTranscript(
+    brainRoot: string,
+    conversationId: string,
+    rows: Array<Record<string, unknown>>,
+    mtimeMs: number,
+): string {
+    const transcriptPath = path.join(
+        brainRoot,
+        conversationId,
+        '.system_generated',
+        'logs',
+        'transcript.jsonl',
+    );
+    fs.mkdirSync(path.dirname(transcriptPath), { recursive: true });
+    fs.writeFileSync(transcriptPath, rows.map((row) => JSON.stringify(row)).join('\n') + '\n');
+    const mtime = new Date(mtimeMs);
+    fs.utimesSync(transcriptPath, mtime, mtime);
+    return transcriptPath;
+}
+
+test('AGY-TR-015: current-turn resolver prefers fresh prompt-matching brain over stale saved session', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-tr15-'));
+    const brainRoot = path.join(tmp, 'brain');
+    const startedAt = Date.now();
+    const prompt = '현재 실행의 고유 프롬프트입니다. stale saved transcript 대신 fresh brain B를 선택해야 합니다.';
+    const staleA = writeBrainTranscript(brainRoot, 'conversation-a', [{
+        step_index: 0,
+        type: 'USER_INPUT',
+        content: '이전 실행 프롬프트',
+    }], startedAt - 60_000);
+    const freshB = writeBrainTranscript(brainRoot, 'conversation-b', [{
+        step_index: 0,
+        type: 'USER_INPUT',
+        content: `<USER_REQUEST>\n${prompt}\n</USER_REQUEST>`,
+    }], startedAt + 1_000);
+
+    const resolved = resolveAgyTranscriptPathForCurrentTurn(
+        tmp,
+        'conversation-a',
+        startedAt - 5_000,
+        prompt,
+        { brainRoot },
+    );
+
+    assert.equal(resolved.ok, true);
+    assert.equal(resolved.conversationId, 'conversation-b');
+    assert.equal(resolved.transcriptPath, freshB);
+    assert.notEqual(resolved.transcriptPath, staleA);
+    fs.rmSync(tmp, { recursive: true, force: true });
+});
+
+test('AGY-TR-016: current-turn resolver waits instead of selecting stale saved transcript', () => {
+    const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-tr16-'));
+    const brainRoot = path.join(tmp, 'brain');
+    const startedAt = Date.now();
+    const prompt = '현재 실행 프롬프트가 아직 brain에 기록되지 않은 상태입니다.';
+    writeBrainTranscript(brainRoot, 'conversation-a', [{
+        step_index: 0,
+        type: 'USER_INPUT',
+        content: '오래된 다른 프롬프트',
+    }], startedAt - 60_000);
+
+    const resolved = resolveAgyTranscriptPathForCurrentTurn(
+        tmp,
+        'conversation-a',
+        startedAt - 5_000,
+        prompt,
+        { brainRoot },
+    );
+
+    assert.equal(resolved.ok, false);
+    assert.equal(resolved.conversationId, 'conversation-a');
+    assert.equal(resolved.transcriptPath, undefined);
+    assert.match(resolved.reason ?? '', /not current-turn/);
     fs.rmSync(tmp, { recursive: true, force: true });
 });
 
