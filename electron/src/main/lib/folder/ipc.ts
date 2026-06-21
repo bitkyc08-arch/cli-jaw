@@ -1,6 +1,6 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron';
 import { mkdir, readdir, rename, stat, lstat, readFile, realpath, writeFile } from 'node:fs/promises';
-import { basename, dirname, resolve, join } from 'node:path';
+import { basename, dirname, isAbsolute, resolve, join } from 'node:path';
 import { homedir } from 'node:os';
 import { statSync, watch, type FSWatcher } from 'node:fs';
 import { isWithinHome, assertContained, assertContainedLexical } from '../path-security.js';
@@ -74,6 +74,21 @@ function isBinary(buf: Buffer): boolean {
         if (buf[i] === 0) return true;
     }
     return false;
+}
+
+async function authorizeReadableFile(rawPath: string): Promise<{ ok: true; path: string } | { ok: false; error: string }> {
+    if (typeof rawPath !== 'string' || rawPath.trim().length === 0) return { ok: false, error: 'path required' };
+    if (!isAbsolute(rawPath)) return { ok: false, error: 'path not allowed' };
+    const resolved = resolve(rawPath);
+    if (!isWithinHome(resolved)) return { ok: false, error: 'path not allowed' };
+    try {
+        const ls = await lstat(resolved);
+        if (ls.isSymbolicLink()) return { ok: false, error: 'symlinks not allowed' };
+        if (!ls.isFile()) return { ok: false, error: 'not a file' };
+        return { ok: true, path: resolved };
+    } catch {
+        return { ok: false, error: 'file not accessible' };
+    }
 }
 
 function readSafeEntryName(rawName: unknown): string {
@@ -200,14 +215,9 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     ipcMain.handle('folder:readFile', async (event, filePath: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         await ensureApprovedRootsSeeded();
-        if (!isAllowedByRoot(filePath)) return { ok: false, error: 'path not allowed — pick a folder first' };
-        try {
-            const ls = await lstat(resolve(filePath));
-            if (ls.isSymbolicLink()) return { ok: false, error: 'symlinks not allowed' };
-        } catch {
-            return { ok: false, error: 'file not accessible' };
-        }
-        const resolved = resolve(filePath);
+        const readable = await authorizeReadableFile(filePath);
+        if (!readable.ok) return readable;
+        const resolved = readable.path;
         try {
             const s = await stat(resolved);
             if (s.size > READ_CAP) return { ok: true, content: '', truncated: true };

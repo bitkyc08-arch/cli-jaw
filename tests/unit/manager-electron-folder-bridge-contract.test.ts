@@ -74,6 +74,42 @@ test('Electron folder IPC can re-authorize persisted roots after app restart', (
     assert.ok(store.includes('export async function rememberApprovedFolderRoot'), 'approved roots store must expose append/update');
 });
 
+test('Electron DocPanel readFile can preview absolute home files without changing folder roots', () => {
+    const ipc = read('electron/src/main/lib/folder/ipc.ts');
+    const readableAuthorizer = ipc.slice(
+        ipc.indexOf('async function authorizeReadableFile'),
+        ipc.indexOf('function readSafeEntryName'),
+    );
+    const readHandler = ipc.slice(
+        ipc.indexOf("ipcMain.handle('folder:readFile'"),
+        ipc.indexOf("ipcMain.handle('folder:movePath'"),
+    );
+    const listHandler = ipc.slice(
+        ipc.indexOf("ipcMain.handle('folder:listDir'"),
+        ipc.indexOf("ipcMain.handle('folder:readFile'"),
+    );
+    const createHandler = ipc.slice(
+        ipc.indexOf("ipcMain.handle('folder:createFile'"),
+        ipc.indexOf("ipcMain.handle('folder:createFolder'"),
+    );
+    const revealHandler = ipc.slice(
+        ipc.indexOf("ipcMain.handle('folder:revealPath'"),
+        ipc.indexOf("ipcMain.handle('folder:resolveDroppedItems'"),
+    );
+
+    assert.ok(ipc.includes('async function authorizeReadableFile'), 'folder IPC must isolate read-only absolute file authorization');
+    assert.ok(readableAuthorizer.includes("if (typeof rawPath !== 'string' || rawPath.trim().length === 0) return { ok: false, error: 'path required' }"), 'read-only authorization must validate IPC input');
+    assert.ok(readableAuthorizer.includes("if (!isAbsolute(rawPath)) return { ok: false, error: 'path not allowed' }"), 'read-only authorization must require absolute paths');
+    assert.ok(readableAuthorizer.includes("if (!isWithinHome(resolved)) return { ok: false, error: 'path not allowed' }"), 'read-only authorization must stay inside the user home');
+    assert.ok(readableAuthorizer.includes("if (ls.isSymbolicLink()) return { ok: false, error: 'symlinks not allowed' }"), 'read-only authorization must reject symlink file paths');
+    assert.ok(readableAuthorizer.includes("if (!ls.isFile()) return { ok: false, error: 'not a file' }"), 'read-only authorization must reject directories');
+    assert.ok(readHandler.includes('const readable = await authorizeReadableFile(filePath)'), 'readFile must use read-only absolute file authorization');
+    assert.equal(readHandler.includes('isAllowedByRoot(filePath)'), false, 'readFile must not depend on the selected FolderPanel root');
+    assert.ok(listHandler.includes('if (!isAllowedByRoot(dirPath))'), 'listDir must remain bound to selected or approved folder roots');
+    assert.ok(createHandler.includes('if (!isAllowedByRoot(parentDirectory))'), 'createFile must remain bound to selected or approved folder roots');
+    assert.ok(revealHandler.includes('if (!isAllowedByRoot(filePath))'), 'revealPath must remain bound to selected or approved folder roots');
+});
+
 test('Electron folder rename rejects existing targets before filesystem rename', () => {
     const ipc = read('electron/src/main/lib/folder/ipc.ts');
     const targetExistsGuard = ipc.indexOf("code: 'target_exists'");
