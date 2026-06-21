@@ -251,6 +251,8 @@ export function ensureFilePathDelegation(): void {
     filePathDelegationReady = true;
     ensurePreviewCapabilityListener();
 
+    // Message/chat surfaces may consume bubbling pointer events for selection.
+    // Capture local-file activation before those handlers can swallow the click.
     document.addEventListener('click', (e: MouseEvent) => {
         const target = e.target as HTMLElement;
         const anchor = target?.closest('a') as HTMLAnchorElement | null;
@@ -274,7 +276,7 @@ export function ensureFilePathDelegation(): void {
         if (!filePath) return;
         e.preventDefault();
         void handleFilePathClick(filePath, link);
-    });
+    }, true);
 
     document.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key !== 'Enter' && e.key !== ' ') return;
@@ -283,5 +285,5 @@ export function ensureFilePathDelegation(): void {
             e.preventDefault();
             target.click();
         }
-    });
+    }, true);
 }

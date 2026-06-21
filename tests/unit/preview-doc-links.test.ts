@@ -53,6 +53,21 @@ test('DocPanel routing is capability-gated for markdown and code files; fallback
     assert.ok(previewOrigin.includes('parentDocPanelCapabilityKnown'), 'known false capability must skip repeated fallback delays');
 });
 
+test('file path activation is captured before nested message selection handlers', () => {
+    const fileLinks = read('public/js/render/file-links.ts');
+    assert.match(
+        fileLinks,
+        /document\.addEventListener\('click', \(e: MouseEvent\) => \{[\s\S]*?\n    \}, true\);/,
+        'pointer activation must reach file-path delegation before bubbling handlers can consume it',
+    );
+    assert.match(
+        fileLinks,
+        /document\.addEventListener\('keydown', \(e: KeyboardEvent\) => \{[\s\S]*?\n    \}, true\);/,
+        'Enter/Space activation must reach file-path delegation before bubbling handlers can consume it',
+    );
+    assert.ok(fileLinks.includes('target.click()'), 'keyboard activation must reuse the click routing path');
+});
+
 test('capability message type literal matches between sender and receiver', () => {
     const previewOrigin = read('public/js/preview-parent-origin.ts');
     const instancePreview = read('public/manager/src/InstancePreview.tsx');
