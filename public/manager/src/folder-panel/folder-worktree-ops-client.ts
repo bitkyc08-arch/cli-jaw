@@ -39,8 +39,12 @@ async function postJson<T>(path: string, body: unknown): Promise<T> {
 export async function previewWorktreeOperation(input: Omit<RunInput, 'confirmed'>): Promise<PreviewResult> {
     const repoRoot = input.repoRoot ?? undefined;
     try {
-        const result = getDesktop()?.git
-            ? await getDesktop()!.git!.previewWorktreeOperation(input.folderPanelRoot, repoRoot, input.operation)
+        const bridge = getDesktop()?.git;
+        const bridgeResult = bridge
+            ? await bridge.previewWorktreeOperation(input.folderPanelRoot, repoRoot, input.operation)
+            : null;
+        const result = bridgeResult?.ok
+            ? bridgeResult
             : await postJson<{ ok: boolean; preview?: GitWorktreeOperationPreview; error?: string }>('/api/dashboard/git/worktree-operation-preview', {
                 folderPanelRoot: input.folderPanelRoot,
                 ...(repoRoot ? { repoRoot } : {}),
@@ -63,8 +67,12 @@ export async function previewWorktreeOperation(input: Omit<RunInput, 'confirmed'
 export async function runWorktreeOperation(input: RunInput): Promise<RunResult> {
     const repoRoot = input.repoRoot ?? undefined;
     try {
-        const result = getDesktop()?.git
-            ? await getDesktop()!.git!.runWorktreeOperation(input.folderPanelRoot, repoRoot, input.operation, input.confirmed)
+        const bridge = getDesktop()?.git;
+        const bridgeResult = bridge
+            ? await bridge.runWorktreeOperation(input.folderPanelRoot, repoRoot, input.operation, input.confirmed)
+            : null;
+        const result = bridgeResult?.ok
+            ? bridgeResult
             : await postJson<{ ok: boolean; repoRoot?: string; preview?: GitWorktreeOperationPreview; stdout?: string; worktrees?: GitWorktreeEntry[]; error?: string }>('/api/dashboard/git/worktree-operation', {
                 folderPanelRoot: input.folderPanelRoot,
                 ...(repoRoot ? { repoRoot } : {}),

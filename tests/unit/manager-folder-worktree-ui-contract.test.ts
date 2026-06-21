@@ -26,6 +26,7 @@ test('FolderPanel consumes worktree hook unconditionally and keeps project surfa
 
 test('worktree client keeps frontend type ownership local and normalizes null repo roots', () => {
     const client = read('public/manager/src/folder-panel/folder-worktree-client.ts');
+    const gitClient = read('public/manager/src/folder-panel/folder-git-client.ts');
     const hook = read('public/manager/src/folder-panel/use-git-worktrees.ts');
     const bridge = read('public/manager/src/panels/desktop-bridge.ts');
 
@@ -33,9 +34,25 @@ test('worktree client keeps frontend type ownership local and normalizes null re
     assert.ok(bridge.includes("import type { GitWorktreeEntry } from '../folder-panel/folder-worktree-types'"), 'desktop bridge must use the frontend mirror type');
     assert.equal(client.includes('src/manager/git/worktree-service'), false, 'frontend must not import backend worktree service modules');
     assert.ok(client.includes('const requestedRepoRoot = repoRoot ?? undefined'), 'client must normalize nullable repo roots before bridge/HTTP calls');
+    assert.ok(client.includes('const bridgeResult = bridge'), 'worktree client must keep the desktop bridge result separate from the HTTP fallback');
+    assert.ok(client.includes('const result = bridgeResult?.ok'), 'worktree client must fall back to dashboard HTTP when Electron bridge git lookup fails');
+    assert.ok(gitClient.includes('const bridgeResult = bridge'), 'git status client must keep the desktop bridge result separate from the HTTP fallback');
+    assert.ok(gitClient.includes('const result = bridgeResult?.ok'), 'git status client must fall back to dashboard HTTP when Electron bridge git lookup fails');
     assert.ok(client.includes('} catch (error) {'), 'client must catch bridge/fetch/json failures and return state instead of rejecting');
     assert.ok(hook.includes('repoRoot ?? undefined'), 'hook path must avoid leaking null repo roots to the client boundary');
     assert.ok(hook.includes('loading: false'), 'hook must always be able to leave loading state from client results');
+});
+
+test('worktree operation and DiffPanel clients keep sidecar fallback for installed app bridge failures', () => {
+    const opsClient = read('public/manager/src/folder-panel/folder-worktree-ops-client.ts');
+    const diffPanel = read('public/manager/src/diff-panel/DiffPanel.tsx');
+    const diffFallback = read('public/manager/src/diff-panel/diff-bridge-fallback.ts');
+
+    assert.ok(opsClient.includes('const bridgeResult = bridge'), 'worktree operation client must keep bridge operation results separate');
+    assert.ok(opsClient.includes('const result = bridgeResult?.ok'), 'worktree operation client must retry through dashboard HTTP after bridge failure');
+    assert.ok(diffFallback.includes('export function createResilientDiffBridge'), 'DiffPanel fallback module must wrap the Electron diff bridge with a dashboard HTTP fallback');
+    assert.ok(diffFallback.includes('withDiffFallback'), 'DiffPanel bridge wrapper must share a single fallback path');
+    assert.ok(diffPanel.includes('createResilientDiffBridge(desktopBridge, createDashboardGitDiffClient'), 'DiffPanel must use the resilient bridge wrapper');
 });
 
 test('FolderPanel toolbar renders compact worktree dropdown using existing dense UI surface', () => {

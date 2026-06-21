@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react
 import { getDesktop, type DiffBridgeApi, type DiffOptions, type DiffResolvedRoot, type DiffRootCandidate, type SourceControlOperation, type SourceControlSnapshot } from '../panels/desktop-bridge';
 import type { DashboardDiffMode, DashboardInstance, DashboardRegistryUi } from '../types';
 import type { WorkbenchRepoRootMode } from '../workbench/workbench-resource-types';
+import { createResilientDiffBridge } from './diff-bridge-fallback';
 import { createDashboardGitDiffClient } from './diff-client';
 import { buildDiffRootCandidates } from './diff-root-candidates';
 import './diff-panel.css';
@@ -163,7 +164,7 @@ export function DiffPanel(props: DiffPanelProps) {
     const onRepoRootChange = props.onRepoRootChange;
     const desktopBridge = getDiffBridge();
     const bridge = useMemo(
-        () => desktopBridge ?? createDashboardGitDiffClient(props.selectedInstance, props.settings),
+        () => createResilientDiffBridge(desktopBridge, createDashboardGitDiffClient(props.selectedInstance, props.settings)),
         [desktopBridge, props.selectedInstance, props.settings],
     );
     const [repoCandidates, setRepoCandidates] = useState<DiffResolvedRoot[]>([]);

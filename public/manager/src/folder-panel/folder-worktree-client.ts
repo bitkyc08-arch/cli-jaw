@@ -28,8 +28,11 @@ export async function fetchGitWorktrees(folderPanelRoot: string, repoRoot?: stri
     const requestedRepoRoot = repoRoot ?? undefined;
     try {
         const bridge = getDesktop()?.git;
-        const result = bridge
+        const bridgeResult = bridge
             ? await bridge.getWorktrees(folderPanelRoot, requestedRepoRoot)
+            : null;
+        const result = bridgeResult?.ok
+            ? bridgeResult
             : await postWorktrees(folderPanelRoot, requestedRepoRoot);
         if (result.ok) {
             return {

@@ -33,11 +33,14 @@ async function postStatusMap(folderPanelRoot: string, options: LoadFolderGitStat
 
 export async function loadFolderGitStatus(folderPanelRoot: string, options: LoadFolderGitStatusOptions = {}): Promise<LoadFolderGitStatusResult> {
     const bridge = getDesktop()?.git;
-    const result = bridge
+    const bridgeResult = bridge
         ? await bridge.getStatusMap(folderPanelRoot, options.repoRoot, {
             includeIgnored: options.includeIgnored !== false,
             includeUntracked: options.includeUntracked !== false,
         })
+        : null;
+    const result = bridgeResult?.ok
+        ? bridgeResult
         : await postStatusMap(folderPanelRoot, options);
     if (result.ok && result.status) return { ok: true, status: result.status };
     const error = result.error ?? 'Failed to load git status';
