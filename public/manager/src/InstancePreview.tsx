@@ -74,6 +74,10 @@ function previewFrameOriginMatches(origin: string, src: string, frame: HTMLIFram
     return Boolean(targetOrigin && loopbackOriginsEquivalent(targetOrigin, origin));
 }
 
+function isExpectedPreviewMessage(event: MessageEvent, src: string, frame: HTMLIFrameElement | null): boolean {
+    return previewFrameOriginMatches(event.origin, src, frame);
+}
+
 function postPreviewSendResult(
     source: MessageEventSource | null,
     origin: string,
@@ -313,8 +317,7 @@ export function InstancePreview(props: InstancePreviewProps) {
         }
         window.addEventListener('message', onPreviewSend);
         function onPreviewOpenNotes(event: MessageEvent): void {
-            if (event.source !== iframeRef.current?.contentWindow) return;
-            if (!state.src || !previewFrameOriginMatches(event.origin, state.src, iframeRef.current)) return;
+            if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;
             const data = event.data as PreviewOpenNotesMessage | null;
             if (!data || data.type !== 'jaw-preview-open-notes') return;
             const path = typeof data.path === 'string' ? data.path.trim() : '';
@@ -323,8 +326,7 @@ export function InstancePreview(props: InstancePreviewProps) {
         }
         window.addEventListener('message', onPreviewOpenNotes);
         function onPreviewOpenDoc(event: MessageEvent): void {
-            if (event.source !== iframeRef.current?.contentWindow) return;
-            if (!state.src || !previewFrameOriginMatches(event.origin, state.src, iframeRef.current)) return;
+            if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;
             const data = event.data as { type?: unknown; path?: unknown } | null;
             if (!data || data.type !== 'jaw-preview-open-doc') return;
             const path = typeof data.path === 'string' ? data.path.trim() : '';
@@ -333,8 +335,7 @@ export function InstancePreview(props: InstancePreviewProps) {
         }
         window.addEventListener('message', onPreviewOpenDoc);
         function onPreviewCapabilitiesRequest(event: MessageEvent): void {
-            if (event.source !== iframeRef.current?.contentWindow) return;
-            if (!state.src || !previewFrameOriginMatches(event.origin, state.src, iframeRef.current)) return;
+            if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;
             const data = event.data as { type?: unknown } | null;
             if (!data || data.type !== 'jaw-preview-capabilities-request') return;
             postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true);

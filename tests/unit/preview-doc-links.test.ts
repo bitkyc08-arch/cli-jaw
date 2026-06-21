@@ -83,6 +83,26 @@ test('preview child can request capabilities after a missed onLoad announcement'
     );
 });
 
+test('manager accepts preview doc routing by expected origin, not fragile source identity', () => {
+    const instancePreview = read('public/manager/src/InstancePreview.tsx');
+    assert.ok(
+        instancePreview.includes('function isExpectedPreviewMessage(event: MessageEvent, src: string, frame: HTMLIFrameElement | null): boolean'),
+        'manager must centralize preview message acceptance',
+    );
+    assert.ok(
+        instancePreview.includes('return previewFrameOriginMatches(event.origin, src, frame);'),
+        'preview file routing must be guarded by the expected preview origin',
+    );
+    assert.ok(
+        instancePreview.includes('function onPreviewOpenDoc(event: MessageEvent): void {\n            if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;'),
+        'open-doc messages must not be rejected by strict event.source identity',
+    );
+    assert.ok(
+        instancePreview.includes('function onPreviewCapabilitiesRequest(event: MessageEvent): void {\n            if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;'),
+        'late capability requests must not be rejected by strict event.source identity',
+    );
+});
+
 test('DocPanel surfaces truncated reads instead of silent empty', () => {
     const docPanel = read('public/manager/src/doc-panel/DocPanel.tsx');
     assert.ok(docPanel.includes('result.truncated === true'), 'truncated flag must be tracked');
