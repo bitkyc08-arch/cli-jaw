@@ -27,6 +27,7 @@ export function previewParentOrigin(): string | null {
             if (isLocalPreviewRelayOrigin(origin)) return origin;
         }
     } catch { /* ignore */ }
+    if (parentRelayOriginCache) return parentRelayOriginCache;
     return null;
 }
 
@@ -36,10 +37,16 @@ let parentDocPanelCapable = false;
 let parentDocPanelCapabilityKnown = false;
 let capabilityListenerReady = false;
 let insertTextListenerReady = false;
+let parentRelayOriginCache: string | null = null;
 const docPanelCapabilityWaiters = new Set<(capable: boolean) => void>();
 
 export function parentSupportsDocPanel(): boolean {
     return parentDocPanelCapable;
+}
+
+function rememberParentRelayOrigin(origin: string): void {
+    if (!isLocalPreviewRelayOrigin(origin)) return;
+    parentRelayOriginCache = origin;
 }
 
 function resolveDocPanelCapabilityWaiters(capable: boolean): void {
@@ -65,6 +72,7 @@ export function ensurePreviewCapabilityListener(): void {
         if (!isLocalPreviewRelayOrigin(event.origin)) return;
         const data = event.data as { type?: unknown; docPanel?: unknown } | null;
         if (!data || data.type !== 'jaw-preview-capabilities') return;
+        rememberParentRelayOrigin(event.origin);
         parentDocPanelCapable = data.docPanel === true;
         parentDocPanelCapabilityKnown = true;
         resolveDocPanelCapabilityWaiters(parentDocPanelCapable);
@@ -132,6 +140,7 @@ export function ensurePreviewInsertTextListener(): void {
         if (!isLocalPreviewRelayOrigin(event.origin)) return;
         const data = event.data as { type?: unknown; requestId?: unknown; text?: unknown } | null;
         if (!data || data.type !== 'jaw-preview-insert-text') return;
+        rememberParentRelayOrigin(event.origin);
         const requestId = typeof data.requestId === 'string' ? data.requestId : '';
         const text = typeof data.text === 'string' ? data.text : '';
         const reply = (ok: boolean, error?: string) => {

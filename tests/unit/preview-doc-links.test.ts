@@ -83,6 +83,26 @@ test('preview child can request capabilities after a missed onLoad announcement'
     );
 });
 
+test('preview child reuses trusted parent capability origin for later doc opens', () => {
+    const previewOrigin = read('public/js/preview-parent-origin.ts');
+    assert.ok(
+        previewOrigin.includes('let parentRelayOriginCache: string | null = null'),
+        'child preview must cache the parent relay origin when referrer is unavailable',
+    );
+    assert.ok(
+        previewOrigin.includes('function rememberParentRelayOrigin(origin: string): void'),
+        'trusted parent origin caching must be centralized',
+    );
+    assert.ok(
+        previewOrigin.includes("if (parentRelayOriginCache) return parentRelayOriginCache"),
+        'previewParentOrigin must reuse the cached relay origin after cross-origin capability messages',
+    );
+    assert.ok(
+        previewOrigin.includes("if (!data || data.type !== 'jaw-preview-capabilities') return;\n        rememberParentRelayOrigin(event.origin);"),
+        'capability announcements must seed the cached parent origin before DocPanel clicks',
+    );
+});
+
 test('manager accepts preview doc routing by expected origin, not fragile source identity', () => {
     const instancePreview = read('public/manager/src/InstancePreview.tsx');
     assert.ok(
