@@ -98,6 +98,14 @@ test('preview child can request capabilities after a missed onLoad announcement'
         'child preview must request capabilities when the delegation listener starts late',
     );
     assert.ok(
+        previewOrigin.includes("const targetOrigin = previewParentOrigin() || '*'"),
+        'capability requests must still be sent when the parent origin is not bootstrapped yet',
+    );
+    assert.ok(
+        !previewOrigin.includes('if (!previewParentOrigin()) return Promise.resolve(false);'),
+        'capability wait must not short-circuit before sending the bootstrap request',
+    );
+    assert.ok(
         previewOrigin.includes('requestPreviewCapabilities();'),
         'capability wait path must trigger a fresh request before falling back',
     );

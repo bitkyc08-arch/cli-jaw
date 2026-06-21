@@ -55,8 +55,7 @@ function resolveDocPanelCapabilityWaiters(capable: boolean): void {
 }
 
 export function requestPreviewCapabilities(): boolean {
-    const targetOrigin = previewParentOrigin();
-    if (!targetOrigin) return false;
+    const targetOrigin = previewParentOrigin() || '*';
     try {
         window.parent.postMessage({ type: 'jaw-preview-capabilities-request' }, targetOrigin);
         return true;
@@ -86,8 +85,7 @@ export function waitForDocPanelCapability(timeoutMs = 180): Promise<boolean> {
     if (parentDocPanelCapable || parentDocPanelCapabilityKnown) {
         return Promise.resolve(parentDocPanelCapable);
     }
-    if (!previewParentOrigin()) return Promise.resolve(false);
-    requestPreviewCapabilities();
+    if (!requestPreviewCapabilities()) return Promise.resolve(false);
     return new Promise(resolve => {
         let settled = false;
         const finish = (capable: boolean) => {
