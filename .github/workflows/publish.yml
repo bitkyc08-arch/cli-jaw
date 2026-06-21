@@ -49,6 +49,9 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Checkout public skill fixtures
+        run: git submodule update --init --depth 1 skills_ref
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
