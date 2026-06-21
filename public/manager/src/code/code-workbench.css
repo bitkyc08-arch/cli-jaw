@@ -173,10 +173,10 @@
 
 .code-tool-card {
     border: 0;
-    border-radius: 6px;
+    border-radius: 4px;
     background: transparent;
     font-size: 12px;
-    margin-bottom: 2px;
+    margin-bottom: 0;
     overflow: hidden;
 }
 .code-tool-card[open] {
@@ -187,25 +187,28 @@
 .code-tool-summary {
     display: flex; align-items: center; gap: 6px;
     min-width: 0;
-    padding: 4px 8px;
+    min-height: 18px;
+    padding: 1px 8px;
     cursor: pointer;
     user-select: none;
     color: var(--accent-default);
+    line-height: 1.12;
     list-style: none;
 }
 .code-tool-summary::-webkit-details-marker { display: none; }
 .code-tool-summary:hover { background: var(--accent-subtle); }
-.code-tool-chevron { flex-shrink: 0; font-weight: 800; color: var(--text-tertiary); }
-.code-tool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+.code-tool-chevron { flex-shrink: 0; font-weight: 800; line-height: 1; color: var(--text-tertiary); }
+.code-tool-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; line-height: 1.15; }
 .code-tool-status {
     margin-left: auto;
     flex-shrink: 0;
-    padding: 2px 6px;
+    padding: 0 4px;
     border-radius: 999px;
     background: var(--bg-base);
     color: var(--text-tertiary);
-    font-size: 10px;
+    font-size: 9px;
     font-weight: 700;
+    line-height: 1.2;
     text-transform: uppercase;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
