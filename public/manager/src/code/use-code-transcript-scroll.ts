@@ -21,6 +21,11 @@ export function useCodeTranscriptScroll(messages: TranscriptEntry[], sending: bo
             const node = transcriptRef.current;
             if (!node) return;
             node.scrollTo({ top: node.scrollHeight, behavior });
+            window.setTimeout(() => {
+                const latest = transcriptRef.current;
+                if (!latest) return;
+                latest.scrollTo({ top: latest.scrollHeight, behavior: 'auto' });
+            }, 80);
         });
     }, []);
 

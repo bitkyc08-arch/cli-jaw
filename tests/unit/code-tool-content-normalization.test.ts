@@ -48,3 +48,40 @@ test('code replay keeps rawOutput in normalized toolContent only, avoiding dupli
     assert.equal(entries[0]?.toolContent?.[0]?.type, 'output');
     assert.equal(entries[0]?.toolContent?.[0]?.text, 'read result text');
 });
+
+test('code replay preserves final assistant message after tool calls', () => {
+    const entries = replayEventsToTranscriptEntries([
+        {
+            event: 'code_user_message_chunk',
+            sessionId: 's1',
+            update: { content: { type: 'text', text: 'tool use 10개해봐' } },
+        },
+        {
+            event: 'code_agent_message_chunk',
+            sessionId: 's1',
+            update: { content: { type: 'text', text: '10개의 도구를 사용해 워크스페이스를 탐색합니다.\n' } },
+        },
+        {
+            event: 'code_tool_call',
+            sessionId: 's1',
+            update: { toolCallId: 'tool-1', title: 'find', status: 'running' },
+        },
+        {
+            event: 'code_tool_call_update',
+            sessionId: 's1',
+            update: { toolCallId: 'tool-1', status: 'completed', rawOutput: { content: [{ type: 'text', text: 'README.md' }] } },
+        },
+        {
+            event: 'code_agent_message_chunk',
+            sessionId: 's1',
+            update: { content: { type: 'text', text: '요청하신 대로 **10개 도구**를 사용해 워크스페이스를 탐색했습니다.' } },
+        },
+    ]);
+
+    assert.equal(entries.length, 4);
+    assert.equal(entries[0]?.role, 'user');
+    assert.equal(entries[1]?.role, 'assistant');
+    assert.equal(entries[2]?.role, 'tool');
+    assert.equal(entries[3]?.role, 'assistant');
+    assert.match(entries[3]?.text ?? '', /10개 도구/);
+});

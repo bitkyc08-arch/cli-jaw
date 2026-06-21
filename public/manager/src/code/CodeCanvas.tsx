@@ -59,6 +59,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const activeSessionIdRef = useRef<string | null>(null);
     const skipNextCwdResetRef = useRef(false);
     const pendingUserEchoRef = useRef<string | null>(null);
+    const loadingSessionIdRef = useRef<string | null>(null);
+    const replayedAssistantTextsRef = useRef<Set<string>>(new Set());
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
     const { transcriptRef, scrollTranscriptToBottom } = useCodeTranscriptScroll(messages, sending, Boolean(activePopup));
 
@@ -180,12 +182,17 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const handleCodeEvent = useCallback((event: CodeEvent) => {
         const update = event.update ?? {};
         const kind = event.event;
+        if (loadingSessionIdRef.current && event.sessionId === loadingSessionIdRef.current && kind !== 'code_child_exit') return;
 
         if (kind === 'code_agent_message_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
             if (!text) return;
             setMessages(prev => {
+                if (replayedAssistantTextsRef.current.has(text) && prev[prev.length - 1]?.role === 'user') {
+                    replayedAssistantTextsRef.current.delete(text);
+                    return prev;
+                }
                 const last = prev[prev.length - 1];
                 if (last?.role === 'assistant') {
                     return [...prev.slice(0, -1), { ...last, text: last.text + text }];
@@ -288,6 +295,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const handleSubmit = useCallback(async () => {
         const text = inputText.trim();
         if (!text || sending) return;
+        loadingSessionIdRef.current = null;
         setSending(true);
         setWorkspaceFrozen(true); // slice 210: freeze cwd on first Send, before createSession; stays frozen on failure
         setChildRecovery(null);
@@ -408,6 +416,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
 
     const applySelectedLiveSession = (session: CodeSession) => {
         const replayMessages = replayEventsToTranscriptEntries(session.replayEvents ?? []);
+        replayedAssistantTextsRef.current = new Set(replayMessages.filter(msg => msg.role === 'assistant' && msg.text).map(msg => msg.text));
         activeSessionIdRef.current = session.sessionId;
         setActiveSessionId(session.sessionId);
         if (session.cwd !== codeWorkingDir) {
@@ -441,20 +450,22 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             onSelectSession={applySelectedLiveSession}
             onLoadSession={(id, cwd) => {
                 void (async () => {
+                    loadingSessionIdRef.current = id;
                     activeSessionIdRef.current = id;
                     setActiveSessionId(id);
                     pendingUserEchoRef.current = null;
+                    replayedAssistantTextsRef.current = new Set();
                     setMessages([]);
                     setPlanEntries([]);
                     setSessionTitle('');
                     setSending(false);
                     try {
                         const session = await client.loadSession(id, cwd);
+                        if (activeSessionIdRef.current !== id) return;
                         if (session.title) setSessionTitle(session.title);
                         const replayFallback = replayEventsToTranscriptEntries(session.replayEvents ?? []);
-                        if (replayFallback.length > 0) {
-                            setMessages(prev => prev.length > 0 ? prev : replayFallback);
-                        }
+                        replayedAssistantTextsRef.current = new Set(replayFallback.filter(msg => msg.role === 'assistant' && msg.text).map(msg => msg.text));
+                        setMessages(replayFallback);
                         setSending(false);
                     } catch (err) {
                         if (activeSessionIdRef.current === id) {
@@ -462,10 +473,12 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                             setActiveSessionId(null);
                         }
                         setMessages(prev => [...prev, { role: 'assistant', text: `Failed to load session: ${err instanceof Error ? err.message : String(err)}` }]);
+                    } finally {
+                        if (loadingSessionIdRef.current === id) loadingSessionIdRef.current = null;
                     }
                 })();
             }}
-            onNewSession={() => { activeSessionIdRef.current = null; pendingUserEchoRef.current = null; setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setSending(false); setWorkspaceFrozen(false); }}
+            onNewSession={() => { activeSessionIdRef.current = null; loadingSessionIdRef.current = null; pendingUserEchoRef.current = null; replayedAssistantTextsRef.current = new Set(); setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setSending(false); setWorkspaceFrozen(false); }}
         />
     );
 

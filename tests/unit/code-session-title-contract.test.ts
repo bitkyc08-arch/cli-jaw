@@ -128,7 +128,15 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.ok(loadBlock.includes('const session = await client.loadSession(id, cwd)'), 'load handler must read returned session metadata');
     assert.ok(loadBlock.includes('if (session.title) setSessionTitle(session.title)'), 'load handler must preserve returned JWC title in header');
     assert.ok(loadBlock.includes('const replayFallback = replayEventsToTranscriptEntries(session.replayEvents ?? [])'), 'load handler must convert returned replay fallback events');
-    assert.ok(loadBlock.includes('setMessages(prev => prev.length > 0 ? prev : replayFallback)'), 'replay fallback must only apply when SSE did not already populate transcript');
+    assert.ok(canvas.includes('const loadingSessionIdRef = useRef<string | null>(null)'), 'stored session loading must track the session being hydrated');
+    assert.ok(canvas.includes("event.sessionId === loadingSessionIdRef.current"), 'stored session load must ignore same-session SSE while replay is authoritative');
+    assert.ok(loadBlock.includes('loadingSessionIdRef.current = id'), 'stored session load must mark the active hydrate before setting the active session id');
+    assert.ok(loadBlock.includes('if (activeSessionIdRef.current !== id) return'), 'late load responses must not overwrite a newer active session');
+    assert.ok(loadBlock.includes('setMessages(replayFallback)'), 'stored session load must authoritatively hydrate from returned replay events');
+    assert.equal(loadBlock.includes('prev.length > 0 ? prev : replayFallback'), false, 'stored session load must not keep partial race-populated transcript over full replay');
+    assert.ok(loadBlock.includes('if (loadingSessionIdRef.current === id) loadingSessionIdRef.current = null'), 'stored session load must clear the hydrate guard in finally');
+    assert.ok(canvas.includes('const replayedAssistantTextsRef = useRef<Set<string>>(new Set())'), 'CodeCanvas must track replayed assistant chunks for duplicate suppression after load');
+    assert.ok(canvas.includes('replayedAssistantTextsRef.current.has(text)'), 'live assistant chunks must suppress exact replay duplicates after a stored load');
     assert.ok(loadBlock.includes('pendingUserEchoRef.current = null'), 'stored session load must clear pending prompt echo state');
     assert.ok(loadBlock.includes('setSending(false)'), 'stored session load must clear stale live-stream Thinking state');
     assert.equal(loadBlock.includes('messages.length'), false, 'load handler must not read stale messages.length after await');
@@ -266,6 +274,7 @@ test('code transcript preserves failed tool state and remains scrollable after r
     assert.ok(scroll.includes('const scrollTranscriptToBottom = useCallback'), 'Code mode must centralize transcript bottom scrolling');
     assert.ok(scroll.includes('const latestTranscriptFootprint = useMemo'), 'Code mode must track rendered transcript changes for replay/load scroll');
     assert.ok(scroll.includes('latestTranscriptFootprint'), 'auto-scroll must run from rendered message state, not only event delivery');
+    assert.ok(scroll.includes('window.setTimeout'), 'auto-scroll must re-check after lazy Markdown height settles');
 
     assert.ok(transcript.includes('role="log"'), 'transcript must expose log semantics');
     assert.ok(transcript.includes('aria-live="polite"'), 'transcript must announce appended output politely');
