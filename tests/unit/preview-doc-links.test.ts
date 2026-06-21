@@ -78,8 +78,21 @@ test('capability message type literal matches between sender and receiver', () =
 });
 
 test('preview child can request capabilities after a missed onLoad announcement', () => {
+    const main = read('public/js/main.ts');
     const previewOrigin = read('public/js/preview-parent-origin.ts');
     const instancePreview = read('public/manager/src/InstancePreview.tsx');
+    assert.ok(
+        main.includes("import { ensurePreviewCapabilityListener, ensurePreviewInsertTextListener } from './preview-parent-origin.js';"),
+        'main bootstrap must import the capability listener independently from insert-text',
+    );
+    assert.ok(
+        main.indexOf('ensurePreviewCapabilityListener();') < main.indexOf('ensurePreviewInsertTextListener();'),
+        'capability listener must be installed before insert-text listener during startup',
+    );
+    assert.ok(
+        main.indexOf('ensurePreviewCapabilityListener();') < main.indexOf('await initI18n();'),
+        'capability listener must be installed before async startup can miss the parent onLoad announcement',
+    );
     assert.ok(
         previewOrigin.includes("window.parent.postMessage({ type: 'jaw-preview-capabilities-request' }"),
         'child preview must request capabilities when the delegation listener starts late',
@@ -95,6 +108,18 @@ test('preview child can request capabilities after a missed onLoad announcement'
     assert.ok(
         instancePreview.includes('postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true)'),
         'manager preview must reply with the current DocPanel capability',
+    );
+});
+
+test('preview child only accepts capability messages from the parent window', () => {
+    const previewOrigin = read('public/js/preview-parent-origin.ts');
+    assert.ok(
+        previewOrigin.includes('if (event.source !== window.parent) return;'),
+        'capability listener must reject same-origin local messages that do not come from the iframe parent',
+    );
+    assert.ok(
+        previewOrigin.indexOf('if (event.source !== window.parent) return;') < previewOrigin.indexOf("if (!isLocalPreviewRelayOrigin(event.origin)) return;"),
+        'source validation should run before local-origin capability acceptance',
     );
 });
 
@@ -115,6 +140,18 @@ test('manager replies to preview capability requests through the exact validated
     assert.ok(
         instancePreview.includes('postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true)'),
         'proactive onLoad/activation capability announcements must remain for same-origin preview loads',
+    );
+});
+
+test('manager republishes DocPanel capability when desktop panel availability changes', () => {
+    const instancePreview = read('public/manager/src/InstancePreview.tsx');
+    assert.ok(
+        instancePreview.includes('if (loadedSrcRef.current !== state.src) return;'),
+        'capability republish must wait until the iframe document has loaded',
+    );
+    assert.ok(
+        instancePreview.includes('}, [props.enabled, props.docPanelCapable, state.canPreview, state.src]);'),
+        'capability republish effect must rerun when docPanelCapable changes',
     );
 });
 

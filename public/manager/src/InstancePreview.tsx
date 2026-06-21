@@ -393,6 +393,12 @@ export function InstancePreview(props: InstancePreviewProps) {
         }
     }, [props.active, state.src, props.docPanelCapable]);
 
+    useEffect(() => {
+        if (!props.enabled || !state.canPreview || !state.src) return;
+        if (loadedSrcRef.current !== state.src) return;
+        postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true);
+    }, [props.enabled, props.docPanelCapable, state.canPreview, state.src]);
+
     return (
         <aside
             className="preview-panel"

@@ -69,6 +69,7 @@ export function ensurePreviewCapabilityListener(): void {
     if (capabilityListenerReady) return;
     capabilityListenerReady = true;
     window.addEventListener('message', (event: MessageEvent) => {
+        if (event.source !== window.parent) return;
         if (!isLocalPreviewRelayOrigin(event.origin)) return;
         const data = event.data as { type?: unknown; docPanel?: unknown } | null;
         if (!data || data.type !== 'jaw-preview-capabilities') return;
