@@ -19,6 +19,7 @@
 .doc-toolbar {
     display: flex;
     align-items: center;
+    gap: 8px;
     padding: 6px 10px;
     border-bottom: 1px solid var(--border-subtle);
     flex-shrink: 0;
@@ -31,8 +32,16 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     flex: 1;
+    min-width: 0;
 }
-.doc-copy-path {
+.doc-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+}
+.doc-toolbar-button {
+    min-width: 34px;
     font-size: 10px;
     padding: 1px 6px;
     border: 1px solid var(--border-subtle);
@@ -41,11 +50,15 @@
     color: var(--text-dim);
     cursor: pointer;
     flex-shrink: 0;
-    margin-left: 6px;
 }
-.doc-copy-path:hover {
+.doc-toolbar-button:hover {
     background: var(--border-subtle);
     color: var(--text-base);
+}
+.doc-toolbar-button.is-active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .doc-content {
     flex: 1;

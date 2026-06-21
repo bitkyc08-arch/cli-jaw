@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { getDesktop, type FolderBridgeApi } from '../panels/desktop-bridge';
+import { copyText } from '../clipboard/copy-text';
 import { MarkdownRenderer } from '../notes/rendering/MarkdownRenderer';
 import { CodeBlock } from '../notes/rendering/CodeBlock';
 import { fetchNoteFile } from '../notes/notes-api';
@@ -29,7 +30,14 @@ function isNotesRelativePath(filePath: string): boolean {
     return !filePath.startsWith('/') && !/^[a-zA-Z]:[\\/]/.test(filePath);
 }
 
-function DocContent(props: { filePath: string; content: string }) {
+function getDisplayFileName(filePath: string): string {
+    return filePath.split(/[\\/]/).pop() || filePath;
+}
+
+function DocContent(props: { filePath: string; content: string; raw: boolean }) {
+    if (props.raw) {
+        return <pre className="doc-pre"><code>{props.content}</code></pre>;
+    }
     if (isMarkdown(props.filePath)) {
         return (
             <article className="notes-preview doc-markdown">
@@ -51,10 +59,40 @@ export function DocPanel(props: { filePath?: string | undefined }) {
     const activeFilePathRef = useRef<string | undefined>(undefined);
     const scrollSnapshotRef = useRef({ filePath: '', scrollTop: 0 });
     const resizeRestoreRef = useRef<number | null>(null);
+    const copiedTimerRef = useRef<number | null>(null);
     const [content, setContent] = useState<string>('');
     const [error, setError] = useState<string | null>(null);
     const [binary, setBinary] = useState(false);
     const [truncated, setTruncated] = useState(false);
+    const [raw, setRaw] = useState(false);
+    const [copiedAction, setCopiedAction] = useState<'path' | 'content' | null>(null);
+
+    const markCopied = useCallback((action: 'path' | 'content') => {
+        if (copiedTimerRef.current !== null) {
+            window.clearTimeout(copiedTimerRef.current);
+        }
+        setCopiedAction(action);
+        copiedTimerRef.current = window.setTimeout(() => {
+            copiedTimerRef.current = null;
+            setCopiedAction(current => current === action ? null : current);
+        }, 1200);
+    }, []);
+
+    const copyPath = useCallback(() => {
+        const filePath = props.filePath;
+        if (!filePath) return;
+        void copyText(filePath).then(result => {
+            if (result.ok) markCopied('path');
+            else console.error('[doc-panel:path-copy]', result.error);
+        });
+    }, [markCopied, props.filePath]);
+
+    const copyContent = useCallback(() => {
+        void copyText(content).then(result => {
+            if (result.ok) markCopied('content');
+            else console.error('[doc-panel:content-copy]', result.error);
+        });
+    }, [content, markCopied]);
 
     const scheduleScrollRestore = useCallback((filePath: string) => {
         if (resizeRestoreRef.current !== null) {
@@ -76,10 +114,14 @@ export function DocPanel(props: { filePath?: string | undefined }) {
             setContent('');
             setError(null);
             setTruncated(false);
+            setCopiedAction(null);
+            setRaw(false);
             return;
         }
         const filePath = props.filePath;
         let cancelled = false;
+        setCopiedAction(null);
+        setRaw(false);
         void (async () => {
             if (bridge) {
                 let result = await bridge.readFile(filePath);
@@ -152,6 +194,10 @@ export function DocPanel(props: { filePath?: string | undefined }) {
             cancelAnimationFrame(resizeRestoreRef.current);
             resizeRestoreRef.current = null;
         }
+        if (copiedTimerRef.current !== null) {
+            window.clearTimeout(copiedTimerRef.current);
+            copiedTimerRef.current = null;
+        }
     }, []);
 
     if (!props.filePath) {
@@ -173,20 +219,34 @@ export function DocPanel(props: { filePath?: string | undefined }) {
     return (
         <div className="doc-panel">
             <div className="doc-toolbar">
-                <span className="doc-file-name" title={props.filePath}>{props.filePath.split('/').pop()}</span>
-                <button
-                    type="button"
-                    className="doc-copy-path"
-                    title="Copy full path"
-                    onClick={() => {
-                        void navigator.clipboard.writeText(props.filePath!).then(() => {
-                            const btn = document.querySelector('.doc-copy-path');
-                            if (btn) { btn.textContent = 'Copied'; setTimeout(() => { btn.textContent = 'Path'; }, 1200); }
-                        });
-                    }}
-                >
-                    Path
-                </button>
+                <span className="doc-file-name" title={props.filePath}>{getDisplayFileName(props.filePath)}</span>
+                <div className="doc-toolbar-actions" aria-label="Document actions">
+                    <button
+                        type="button"
+                        className={`doc-toolbar-button ${raw ? 'is-active' : ''}`}
+                        aria-pressed={raw}
+                        title="Show raw source"
+                        onClick={() => setRaw(value => !value)}
+                    >
+                        Raw
+                    </button>
+                    <button
+                        type="button"
+                        className="doc-toolbar-button"
+                        title="Copy full path"
+                        onClick={copyPath}
+                    >
+                        {copiedAction === 'path' ? 'Copied' : 'Path'}
+                    </button>
+                    <button
+                        type="button"
+                        className="doc-toolbar-button"
+                        title="Copy file content"
+                        onClick={copyContent}
+                    >
+                        {copiedAction === 'content' ? 'Copied' : 'Copy'}
+                    </button>
+                </div>
             </div>
             <div
                 className="doc-content"
@@ -200,7 +260,7 @@ export function DocPanel(props: { filePath?: string | undefined }) {
                 }}
             >
                 <div className="doc-content-body" ref={contentBodyRef}>
-                    <DocContent filePath={props.filePath} content={content} />
+                    <DocContent filePath={props.filePath} content={content} raw={raw} />
                 </div>
             </div>
         </div>
