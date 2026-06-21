@@ -3,6 +3,7 @@ import { useEffect, useRef, type MutableRefObject } from 'react';
 export type CodeEvent = {
     topic: string;
     event: string;
+    sseEventId?: string;
     sessionId?: string;
     update?: Record<string, unknown>;
     stopReason?: string;
@@ -44,7 +45,7 @@ export function useCodeEvents({ port, sessionId, sessionIdRef: externalSessionId
         };
         es.onmessage = (msg) => {
             try {
-                const data = JSON.parse(msg.data) as CodeEvent;
+                const data = { ...JSON.parse(msg.data), sseEventId: msg.lastEventId || undefined } as CodeEvent;
                 if (data.topic !== 'jwc') return;
                 const isGlobalCodeEvent = data.event === 'code_child_exit';
                 const sid = externalSessionIdRef?.current ?? sessionIdRef.current;

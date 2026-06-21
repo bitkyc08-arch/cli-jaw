@@ -20,6 +20,12 @@ import {
 } from './code-types';
 import { answerQueuedPermission, handleIncomingPermissionRequest } from './code-permission-flow';
 import { normalizeToolStatus, replayEventsToTranscriptEntries } from './code-transcript-replay';
+import {
+    isDuplicateAssistantFinalChunk,
+    rememberCodeChunkEvents,
+    shouldDropDuplicateCodeChunk,
+    textFromCodeChunk,
+} from './code-event-dedupe';
 import { useCodeTranscriptScroll } from './use-code-transcript-scroll';
 import { useCodeEvents, type CodeEvent, type CodeTransportState } from './useCodeEvents';
 
@@ -61,6 +67,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const pendingUserEchoRef = useRef<string | null>(null);
     const loadingSessionIdRef = useRef<string | null>(null);
     const replayedAssistantTextsRef = useRef<Set<string>>(new Set());
+    const seenCodeChunkEventKeysRef = useRef<Set<string>>(new Set());
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
     const { transcriptRef, scrollTranscriptToBottom } = useCodeTranscriptScroll(messages, sending, Boolean(activePopup));
 
@@ -177,6 +184,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setUsage({});
         setSending(false);
         setChildRecovery(null);
+        seenCodeChunkEventKeysRef.current = new Set();
     }, [codeWorkingDir]);
 
     const handleCodeEvent = useCallback((event: CodeEvent) => {
@@ -185,24 +193,25 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         if (loadingSessionIdRef.current && event.sessionId === loadingSessionIdRef.current && kind !== 'code_child_exit') return;
 
         if (kind === 'code_agent_message_chunk') {
-            const content = update['content'] as { type?: string; text?: string } | undefined;
-            const text = String(content?.text ?? update['text'] ?? '');
+            const text = textFromCodeChunk(update);
             if (!text) return;
+            if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 if (replayedAssistantTextsRef.current.has(text) && prev[prev.length - 1]?.role === 'user') {
                     replayedAssistantTextsRef.current.delete(text);
                     return prev;
                 }
                 const last = prev[prev.length - 1];
+                if (last?.role === 'assistant' && isDuplicateAssistantFinalChunk(last.text, text)) return prev;
                 if (last?.role === 'assistant') {
                     return [...prev.slice(0, -1), { ...last, text: last.text + text }];
                 }
                 return [...prev, { role: 'assistant', text }];
             });
         } else if (kind === 'code_user_message_chunk') {
-            const content = update['content'] as { type?: string; text?: string } | undefined;
-            const text = String(content?.text ?? update['text'] ?? '');
+            const text = textFromCodeChunk(update);
             if (!text) return;
+            if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 if (pendingUserEchoRef.current === text) {
                     const optimisticIndex = prev.findLastIndex(msg => msg.role === 'user' && msg.text === text && msg.transient === 'pending-user-echo');
@@ -216,9 +225,9 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 return [...prev, { role: 'user', text }];
             });
         } else if (kind === 'code_agent_thought_chunk') {
-            const content = update['content'] as { type?: string; text?: string } | undefined;
-            const text = String(content?.text ?? update['text'] ?? '');
+            const text = textFromCodeChunk(update);
             if (!text) return;
+            if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 const last = prev[prev.length - 1];
                 if (last?.role === 'thinking') {
@@ -416,6 +425,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
 
     const applySelectedLiveSession = (session: CodeSession) => {
         const replayMessages = replayEventsToTranscriptEntries(session.replayEvents ?? []);
+        seenCodeChunkEventKeysRef.current = new Set();
+        rememberCodeChunkEvents(seenCodeChunkEventKeysRef.current, session.replayEvents ?? []);
         replayedAssistantTextsRef.current = new Set(replayMessages.filter(msg => msg.role === 'assistant' && msg.text).map(msg => msg.text));
         activeSessionIdRef.current = session.sessionId;
         setActiveSessionId(session.sessionId);
@@ -455,6 +466,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     setActiveSessionId(id);
                     pendingUserEchoRef.current = null;
                     replayedAssistantTextsRef.current = new Set();
+                    seenCodeChunkEventKeysRef.current = new Set();
                     setMessages([]);
                     setPlanEntries([]);
                     setSessionTitle('');
@@ -464,6 +476,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         if (activeSessionIdRef.current !== id) return;
                         if (session.title) setSessionTitle(session.title);
                         const replayFallback = replayEventsToTranscriptEntries(session.replayEvents ?? []);
+                        seenCodeChunkEventKeysRef.current = new Set();
+                        rememberCodeChunkEvents(seenCodeChunkEventKeysRef.current, session.replayEvents ?? []);
                         replayedAssistantTextsRef.current = new Set(replayFallback.filter(msg => msg.role === 'assistant' && msg.text).map(msg => msg.text));
                         setMessages(replayFallback);
                         setSending(false);
@@ -478,7 +492,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     }
                 })();
             }}
-            onNewSession={() => { activeSessionIdRef.current = null; loadingSessionIdRef.current = null; pendingUserEchoRef.current = null; replayedAssistantTextsRef.current = new Set(); setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setSending(false); setWorkspaceFrozen(false); }}
+            onNewSession={() => { activeSessionIdRef.current = null; loadingSessionIdRef.current = null; pendingUserEchoRef.current = null; replayedAssistantTextsRef.current = new Set(); seenCodeChunkEventKeysRef.current = new Set(); setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setSending(false); setWorkspaceFrozen(false); }}
         />
     );
 
