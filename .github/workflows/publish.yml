@@ -1,6 +1,11 @@
-name: npm Release
+name: npm Publish
 
 on:
+  push:
+    branches:
+      - preview
+      - master
+      - main
   workflow_dispatch:
     inputs:
       version:
@@ -31,7 +36,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: npm-release-${{ github.ref }}
+  group: npm-publish-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -57,26 +62,89 @@ jobs:
       - name: Install dependencies
         run: npm ci --ignore-scripts
 
-      - name: Verify release input
+      - name: Resolve release config
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+          INPUT_VERSION: ${{ inputs.version }}
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_DRY_RUN: ${{ inputs['dry-run'] }}
+          INPUT_CREATE_RELEASE: ${{ inputs['create-github-release'] }}
         run: |
           set -euo pipefail
           pkg_version="$(node -p "require('./package.json').version")"
+          tag=""
+          version="$pkg_version"
+          dry_run="false"
+          create_release="false"
+
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            version="$INPUT_VERSION"
+            tag="$INPUT_TAG"
+            dry_run="${INPUT_DRY_RUN:-true}"
+            create_release="${INPUT_CREATE_RELEASE:-false}"
+          else
+            case "$GITHUB_REF_NAME" in
+              preview)
+                tag="preview"
+                ;;
+              master|main)
+                tag="latest"
+                ;;
+              *)
+                echo "::error::Unsupported publish branch: $GITHUB_REF_NAME"
+                exit 1
+                ;;
+            esac
+          fi
+
           echo "package.json=${pkg_version}"
-          echo "input=${{ inputs.version }}"
-          test "$pkg_version" = "${{ inputs.version }}" || {
-            echo "::error::package.json version must equal workflow input version";
+          echo "release.version=${version}"
+          echo "release.tag=${tag}"
+          echo "release.dry_run=${dry_run}"
+
+          test "$pkg_version" = "$version" || {
+            echo "::error::package.json version must equal release version";
             exit 1;
           }
 
-          if [ "${{ inputs.tag }}" = "latest" ]; then
-            case "$GITHUB_REF" in
-              refs/heads/dev|refs/heads/main|refs/heads/master) ;;
+          if [ "$dry_run" != "true" ]; then
+            case "$tag:$GITHUB_REF_NAME" in
+              preview:preview) ;;
+              latest:master|latest:main) ;;
               *)
-                echo "::error::latest publishes must run from dev/main/master; got ${GITHUB_REF}";
+                echo "::error::Real $tag publishes must run from the matching branch; got $GITHUB_REF_NAME";
                 exit 1;
                 ;;
             esac
           fi
+
+          if [ "$tag" = "preview" ]; then
+            case "$version" in
+              *-preview.*) ;;
+              *)
+                echo "::error::preview publishes require a preview prerelease version; got $version";
+                exit 1;
+                ;;
+            esac
+          fi
+
+          if [ "$tag" = "latest" ]; then
+            case "$version" in
+              *-*)
+                echo "::error::latest publishes cannot use a prerelease version; got $version";
+                exit 1;
+                ;;
+            esac
+          fi
+
+          {
+            echo "version=$version"
+            echo "tag=$tag"
+            echo "dry-run=$dry_run"
+            echo "create-release=$create_release"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Guard npm package metadata
         run: |
@@ -127,42 +195,42 @@ jobs:
       - name: Publish or dry-run
         run: |
           set -euo pipefail
-          if [ "${{ inputs.dry-run }}" = "true" ]; then
+          if [ "${{ steps.release.outputs.dry-run }}" = "true" ]; then
             echo "::notice::DRY RUN - npm publish will not write to registry"
-            npm publish --dry-run --tag "${{ inputs.tag }}" --access public --provenance
+            npm publish --dry-run --tag "${{ steps.release.outputs.tag }}" --access public --provenance
           else
-            npm publish --tag "${{ inputs.tag }}" --access public --provenance
+            npm publish --tag "${{ steps.release.outputs.tag }}" --access public --provenance
           fi
 
       - name: Registry smoke
-        if: ${{ inputs.dry-run != true }}
+        if: ${{ steps.release.outputs.dry-run != 'true' }}
         run: |
           set -euo pipefail
           for attempt in $(seq 1 30); do
-            if version="$(npm view "cli-jaw@${{ inputs.version }}" version 2>/dev/null)"; then
-              test "$version" = "${{ inputs.version }}"
+            if version="$(npm view "cli-jaw@${{ steps.release.outputs.version }}" version 2>/dev/null)"; then
+              test "$version" = "${{ steps.release.outputs.version }}"
               npm dist-tag ls cli-jaw
               exit 0
             fi
-            echo "::notice::cli-jaw@${{ inputs.version }} not visible yet (${attempt}/30)"
+            echo "::notice::cli-jaw@${{ steps.release.outputs.version }} not visible yet (${attempt}/30)"
             sleep 10
           done
           echo "::error::registry smoke failed"
           exit 1
 
       - name: Create GitHub release
-        if: ${{ inputs.dry-run != true && inputs.create-github-release == true }}
+        if: ${{ steps.release.outputs.dry-run != 'true' && steps.release.outputs.create-release == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="v${{ inputs.version }}"
+          tag="v${{ steps.release.outputs.version }}"
           prerelease_args=()
-          if [ "${{ inputs.tag }}" = "preview" ]; then
+          if [ "${{ steps.release.outputs.tag }}" = "preview" ]; then
             prerelease_args+=(--prerelease)
           fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$tag" --notes "Published cli-jaw@${{ inputs.version }} with dist-tag ${{ inputs.tag }}."
+            gh release edit "$tag" --title "$tag" --notes "Published cli-jaw@${{ steps.release.outputs.version }} with dist-tag ${{ steps.release.outputs.tag }}."
           else
-            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes "Published cli-jaw@${{ inputs.version }} with dist-tag ${{ inputs.tag }}." "${prerelease_args[@]}"
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes "Published cli-jaw@${{ steps.release.outputs.version }} with dist-tag ${{ steps.release.outputs.tag }}." "${prerelease_args[@]}"
           fi
