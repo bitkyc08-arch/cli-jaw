@@ -8,7 +8,6 @@ import {
 } from './reminders-view-model';
 import {
     buildTrayQuickAddInput,
-    defaultTrayQuickAddDateTime,
     defaultTrayQuickAddTime,
     type TrayQuickAddMode,
 } from './tray-quick-add';
@@ -20,10 +19,10 @@ const SECTION_TITLES: Record<TrayReminderSectionId, string> = {
 };
 
 const QUICK_ADD_MODES: Array<{ id: TrayQuickAddMode; label: string }> = [
-    { id: 'inbox', label: 'Inbox' },
-    { id: 'today', label: 'Today' },
-    { id: 'tomorrow', label: 'Tomorrow' },
-    { id: 'pick-date', label: 'Pick date' },
+    { id: 'important-urgent', label: 'ImpUrg' },
+    { id: 'important', label: 'Imp' },
+    { id: 'urgent', label: 'Urg' },
+    { id: 'later', label: 'Later' },
 ];
 
 function formatWhen(value: string | null): string | null {
@@ -143,14 +142,11 @@ function TrayReminderQuickAddComposer(props: {
     const initialNow = useMemo(() => new Date(), []);
     const inputRef = useRef<HTMLInputElement | null>(null);
     const [title, setTitle] = useState('');
-    const [mode, setMode] = useState<TrayQuickAddMode>('inbox');
-    const [timeValue, setTimeValue] = useState(defaultTrayQuickAddTime('today', initialNow));
-    const [tomorrowTimeValue, setTomorrowTimeValue] = useState(defaultTrayQuickAddTime('tomorrow', initialNow));
-    const [dateTimeValue, setDateTimeValue] = useState(defaultTrayQuickAddDateTime(initialNow));
+    const [mode, setMode] = useState<TrayQuickAddMode>('later');
+    const [timeValue, setTimeValue] = useState(defaultTrayQuickAddTime(initialNow));
     const [localError, setLocalError] = useState<string | null>(null);
 
-    const activeTimeValue = mode === 'tomorrow' ? tomorrowTimeValue : timeValue;
-    const draft = { title, mode, timeValue: activeTimeValue, dateTimeValue };
+    const draft = { title, mode, timeValue };
     const built = buildTrayQuickAddInput(draft, new Date());
     const canSubmit = built.ok && !props.busy;
 
@@ -216,22 +212,10 @@ function TrayReminderQuickAddComposer(props: {
                 <button type="submit" disabled={!canSubmit}>Add</button>
             </form>
             <div className="tray-reminders-composer-date-row" data-mode={mode}>
-                {mode === 'today' ? (
+                {mode === 'important-urgent' || mode === 'urgent' ? (
                     <label>
-                        <span>Today</span>
-                        <input aria-label="Today reminder time" type="time" value={timeValue} onChange={event => setTimeValue(event.target.value)} />
-                    </label>
-                ) : null}
-                {mode === 'tomorrow' ? (
-                    <label>
-                        <span>Tomorrow</span>
-                        <input aria-label="Tomorrow reminder time" type="time" value={tomorrowTimeValue} onChange={event => setTomorrowTimeValue(event.target.value)} />
-                    </label>
-                ) : null}
-                {mode === 'pick-date' ? (
-                    <label>
-                        <span>Pick date</span>
-                        <input aria-label="Reminder date and time" type="datetime-local" value={dateTimeValue} onChange={event => setDateTimeValue(event.target.value)} />
+                        <span>Due</span>
+                        <input aria-label="Urgent reminder time" type="time" value={timeValue} onChange={event => setTimeValue(event.target.value)} />
                     </label>
                 ) : <span aria-hidden="true" />}
             </div>

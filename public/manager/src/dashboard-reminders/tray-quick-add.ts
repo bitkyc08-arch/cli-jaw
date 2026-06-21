@@ -1,12 +1,11 @@
 import type { DashboardReminderCreateInput } from './reminders-api';
 
-export type TrayQuickAddMode = 'inbox' | 'today' | 'tomorrow' | 'pick-date';
+export type TrayQuickAddMode = 'important-urgent' | 'important' | 'urgent' | 'later';
 
 export type TrayQuickAddDraft = {
     title: string;
     mode: TrayQuickAddMode;
     timeValue?: string;
-    dateTimeValue?: string;
 };
 
 export type TrayQuickAddBuildResult =
@@ -19,37 +18,19 @@ function pad(value: number): string {
     return String(value).padStart(2, '0');
 }
 
-export function defaultTrayQuickAddTime(mode: Exclude<TrayQuickAddMode, 'inbox' | 'pick-date'>, now: Date): string {
-    if (mode === 'tomorrow') return '09:00';
+export function defaultTrayQuickAddTime(now: Date): string {
     const next = new Date(now);
     next.setHours(next.getHours() + 1, 0, 0, 0);
     if (next.getDate() !== now.getDate()) return '23:59';
     return `${pad(next.getHours())}:00`;
 }
 
-export function defaultTrayQuickAddDateTime(now: Date): string {
-    const next = new Date(now);
-    next.setHours(next.getHours() + 1, 0, 0, 0);
-    return [
-        next.getFullYear(),
-        pad(next.getMonth() + 1),
-        pad(next.getDate()),
-    ].join('-') + `T${pad(next.getHours())}:00`;
-}
-
-function localDateAtTime(base: Date, dayOffset: number, timeValue: string | undefined): Date | null {
+function localDateAtTime(base: Date, timeValue: string | undefined): Date | null {
     const match = TIME_RE.exec(timeValue ?? '');
     if (!match) return null;
     const date = new Date(base);
-    date.setDate(date.getDate() + dayOffset);
     date.setHours(Number(match[1]), Number(match[2]), 0, 0);
     return date;
-}
-
-function localDateTimeValue(value: string | undefined): Date | null {
-    if (!value) return null;
-    const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? null : date;
 }
 
 export function buildTrayQuickAddInput(draft: TrayQuickAddDraft, now: Date): TrayQuickAddBuildResult {
@@ -59,20 +40,17 @@ export function buildTrayQuickAddInput(draft: TrayQuickAddDraft, now: Date): Tra
     const base: DashboardReminderCreateInput = {
         title,
         status: 'open',
-        priority: 'normal',
+        priority: draft.mode === 'important' || draft.mode === 'important-urgent' ? 'high' : 'normal',
     };
 
-    if (draft.mode === 'inbox') return { ok: true, input: base };
+    if (draft.mode !== 'important-urgent' && draft.mode !== 'urgent') {
+        return { ok: true, input: base };
+    }
 
-    const date = draft.mode === 'pick-date'
-        ? localDateTimeValue(draft.dateTimeValue)
-        : localDateAtTime(baseNow(now), draft.mode === 'tomorrow' ? 1 : 0, draft.timeValue);
+    const date = localDateAtTime(baseNow(now), draft.timeValue);
 
     if (!date) {
-        return {
-            ok: false,
-            error: draft.mode === 'pick-date' ? 'Pick a valid date and time.' : 'Pick a valid time.',
-        };
+        return { ok: false, error: 'Pick a valid time.' };
     }
 
     const iso = date.toISOString();

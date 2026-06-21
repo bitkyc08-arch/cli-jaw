@@ -59,7 +59,8 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(trayApp.includes('getDesktop()?.trayReminders?.popUpMenu()'), 'Tray reminders app must use the typed desktop bridge for menu access');
     assert.ok(trayApp.includes('bridge.openDashboard()'), 'Tray reminders Open Dashboard must delegate to the desktop shell');
     assert.equal(trayApp.includes('window.open'), false, 'Tray reminders must not open the dashboard inside the popover window');
-    assert.ok(trayApp.includes("id: 'inbox'") && trayApp.includes("id: 'today'") && trayApp.includes("id: 'tomorrow'") && trayApp.includes("id: 'pick-date'"), 'Tray quick-add must expose the four approved modes');
+    assert.ok(trayApp.includes("id: 'important-urgent'") && trayApp.includes("id: 'important'") && trayApp.includes("id: 'urgent'") && trayApp.includes("id: 'later'"), 'Tray quick-add must expose the four approved importance/urgency modes');
+    assert.ok(trayApp.includes("label: 'ImpUrg'") && trayApp.includes("label: 'Imp'") && trayApp.includes("label: 'Urg'") && trayApp.includes("label: 'Later'"), 'Tray quick-add buttons must use the compact approved labels');
     assert.ok(trayApp.includes('aria-label="Mark done"'), 'Tray reminders rows must expose an accessible done action');
     assert.ok(trayApp.includes('aria-label="Snooze reminder"'), 'Tray reminders rows must expose a snooze menu');
     assert.ok(trayApp.includes('feed.markDone(id)'), 'Tray reminders done action must call the feed helper');
@@ -79,9 +80,10 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(remindersFeed.includes("document.addEventListener('visibilitychange', refreshIfVisible)"), 'feed must refresh on visibility gain when active polling is enabled');
     assert.ok(router.includes('onCreate={(input) => void remindersFeed.create(input).catch(() => {})}'), 'Dashboard create call site must absorb create rejection after the feed sets error');
     assert.ok(router.includes('onUpdate={(id, patch) => void remindersFeed.update(id, patch)}'), 'Reminders sidebar must receive update wiring');
-    assert.ok(trayQuickAdd.includes("export type TrayQuickAddMode = 'inbox' | 'today' | 'tomorrow' | 'pick-date'"), 'quick-add helper must define the four supported modes only');
-    assert.ok(trayQuickAdd.includes('toISOString()'), 'quick-add date output must normalize datetime-local values to ISO');
-    assert.ok(trayCss.includes('.tray-reminders-composer-date-row[data-mode="inbox"]'), 'Inbox quick-add must hide the unused date row');
+    assert.ok(trayQuickAdd.includes("export type TrayQuickAddMode = 'important-urgent' | 'important' | 'urgent' | 'later'"), 'quick-add helper must define the four supported importance/urgency modes only');
+    assert.ok(trayQuickAdd.includes('toISOString()'), 'quick-add due output must normalize local time values to ISO');
+    assert.ok(trayCss.includes('.tray-reminders-composer-date-row[data-mode="important"]'), 'Important quick-add must hide the unused date row');
+    assert.ok(trayCss.includes('.tray-reminders-composer-date-row[data-mode="later"]'), 'Later quick-add must hide the unused date row');
     assert.ok(trayCss.includes('height: 30px;'), 'Tray quick-add mode buttons must stay compact');
     assert.ok(trayCss.includes('height: 34px;'), 'Tray quick-add title row must stay single-line compact');
     assert.ok(workspace.includes('InlineReminderTitle'), 'Reminders rows must support double-click inline title editing');

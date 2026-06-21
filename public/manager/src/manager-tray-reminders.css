@@ -260,7 +260,8 @@
     align-items: center;
 }
 
-.tray-reminders-composer-date-row[data-mode="inbox"] {
+.tray-reminders-composer-date-row[data-mode="important"],
+.tray-reminders-composer-date-row[data-mode="later"] {
     display: none;
 }
 
