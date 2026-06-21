@@ -45,7 +45,7 @@ aliases: [A1 system prompt, CLI-JAW A1, system prompt template]
 - `Channel File Delivery` (+ Discord notes): 로컬 채널 API, Telegram bot API curl 예시
 - `Long-term Memory (MANDATORY)`: `{{JAW_HOME}}/memory/structured/` 경로, L1 `cli-jaw memory ...` current-instance read/write, L2 `cli-jaw dashboard memory ...` cross-instance read-only 경계, 저장 가이드
   - **Compact Handoff Interpretation**: `/compact` 핸드오프 후 trust table(section별 High/Medium/Low) + decision tree(goal 검증 → memory search → file open 순서)
-- `Search routing — file vs web`: 로컬 코드/로그/심볼은 file search, 외부·현재 정보는 active `search` skill 또는 web/official-docs 경로를 사용한다. `agbrowse research plan`은 query-planning 보조일 뿐 provider 실행 경로가 아니며, `k-thread-gen`/`lecture-stt` 같은 private runtime skills는 public `skills_ref` surface로 문서화하지 않는다.
+- `Search routing — file vs web`: 로컬 코드/로그/심볼은 file search, 외부·현재 정보는 active `search` skill 또는 web/official-docs 경로를 사용한다. `agbrowse research plan`은 query-planning 보조일 뿐 provider 실행 경로가 아니며, `k-writing`/`lecture-stt` 같은 private runtime skills는 public `skills_ref` surface로 문서화하지 않는다. 한국어 홍보/콘텐츠 작성 작업은 구 `k-thread-gen` 라벨이 아니라 active `k-writing` skill로 라우팅한다.
 - `Goal System`: goal CLI 명령어 + `[goal-continuation]` 포인터 스텁. goal-mode 행동 규칙(autonomous advance, pause audit, evidence bundle)은 continuation 프롬프트(`src/goal/heartbeat.ts`)가 단일 소유 (260610 2차 슬림)
 - `Heartbeat System`: `heartbeat.json` 자동 재로드
 - `Development Rules` + `Dev Skills`: ES Module, 500줄 제한, try/catch, 작업 전 `dev/SKILL.md` 읽기

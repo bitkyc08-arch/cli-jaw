@@ -90,10 +90,10 @@
 <main class="docs-main">
 
 <h1>Productivity Skills</h1>
-<p class="lead">Document creation, knowledge management, task tracking, and note-taking skills. These 16 skills connect CLI-JAW to office suites, project management tools, and personal productivity apps so you can create, read, edit, and organize documents and tasks entirely from the chat interface.</p>
+<p class="lead">Document creation, knowledge management, task tracking, note-taking, and Korean content-writing skills. These 17 skills connect CLI-JAW to office suites, project management tools, personal productivity apps, and editorial workflows so you can create, read, edit, and organize documents, tasks, and content entirely from the chat interface.</p>
 
 <h2>Overview</h2>
-<p>Productivity skills fall into four groups: <strong>document formats</strong> (Office and HWP file I/O), <strong>knowledge management</strong> (Notion, Obsidian, Apple Notes), <strong>task management</strong> (Things, Reminders, Trello, Linear), and <strong>collaboration utilities</strong> (co-authoring, HTML-to-PPTX conversion).</p>
+<p>Productivity skills fall into five groups: <strong>document formats</strong> (Office and HWP file I/O), <strong>knowledge management</strong> (Notion, Obsidian, Apple Notes), <strong>task management</strong> (Things, Reminders, Trello, Linear), <strong>collaboration utilities</strong> (co-authoring, HTML-to-PPTX conversion), and <strong>content writing</strong> (Korean promotional/editorial output through <code>k-writing</code>).</p>
 
 <table>
 <tr><th>Skill</th><th>Status</th><th>Category</th><th>Description</th></tr>
@@ -101,6 +101,7 @@
 <tr><td><code>pptx</code></td><td>Active</td><td>Documents</td><td>Create, read, and edit PowerPoint (.pptx) presentations</td></tr>
 <tr><td><code>xlsx</code></td><td>Active</td><td>Documents</td><td>Create, read, and edit Excel (.xlsx) spreadsheets</td></tr>
 <tr><td><code>hwp</code></td><td>Active</td><td>Documents</td><td>Create, read, and edit Korean HWP/HWPX documents</td></tr>
+<tr><td><code>k-writing</code></td><td>Active</td><td>Content</td><td>Korean promotional/content writing with channel routing, mandatory pre-search, 3-candidate hook scoring, and anti-AI/humanness checks</td></tr>
 <tr><td><code>notion</code></td><td>Active</td><td>Knowledge</td><td>Read, create, and update Notion pages and databases</td></tr>
 <tr><td><code>notion-knowledge-capture</code></td><td>Planned</td><td>Knowledge</td><td>Auto-capture conversation insights into Notion</td></tr>
 <tr><td><code>notion-meeting</code></td><td>Planned</td><td>Knowledge</td><td>Meeting notes template with action items to Notion</td></tr>
@@ -266,6 +267,7 @@
 <li>"노션에 정리해줘" triggers the <code>notion</code> skill</li>
 <li>"한글 문서 읽어줘" triggers the <code>hwp</code> skill</li>
 <li>"엑셀로 정리해줘" triggers the <code>xlsx</code> skill</li>
+<li>"이거 홍보 쓰레드로 써줘" triggers the active <code>k-writing</code> skill</li>
 <li>"리마인더에 추가해줘" will trigger <code>apple-reminders</code></li>
 <li>"트렐로에 카드 만들어줘" will trigger <code>trello</code></li>
 </ul>
@@ -292,6 +294,7 @@ CLI-JAW matches your intent to the appropriate skill automatically.
 <li><strong>deep-research + notion</strong>: Research a topic and save findings to a Notion database</li>
 <li><strong>xlsx + pptx</strong>: Analyze spreadsheet data and generate a presentation with charts</li>
 <li><strong>hwp + docx</strong>: Convert between Korean HWP and Word formats</li>
+<li><strong>k-writing + search</strong>: Produce Korean promo copy with current-source checks, hook scoring, and anti-AI review</li>
 <li><strong>notion-meeting + telegram</strong>: Capture meeting notes and send a summary via Telegram</li>
 <li><strong>html2pptx + web-ai</strong>: Scrape a web page and convert it to a slide deck</li>
 <li><strong>linear + trello</strong>: Sync issue status across project management tools</li>

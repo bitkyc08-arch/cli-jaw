@@ -383,7 +383,7 @@ jaw memory search "我们是怎么设置 API 认证的？"
 
 ## 技能
 
-200+ 参考技能和活跃运行时技能覆盖开发工作流、办公文档、自动化和媒体。
+200+ 参考技能和活跃运行时技能覆盖开发工作流、办公文档、自动化、媒体和内容写作。
 
 | 分类 | 技能 | 覆盖范围 |
 |---|---|---|
@@ -392,6 +392,7 @@ jaw memory search "我们是怎么设置 API 认证的？"
 | **媒体** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion 视频、OpenAI 图像生成、讲座转录、文字转语音 |
 | **集成** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI、Notion 页面、Telegram 媒体发送、持久记忆 |
 | **可视化** | `diagram` | 在聊天中渲染 SVG 图表、图形、交互式可视化 |
+| **内容/写作** | `k-writing` | 韩语推广/内容写作：thread、Instagram 卡片新闻、LinkedIn、网站/博客和润色输出，包含强制搜索、钩子评分和去 AI 痕迹校验 |
 | **开发指南** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd` | 注入代理提示的工程指南 |
 
 参考技能位于 `skills_ref/`，按需安装到活跃运行时。

@@ -88,10 +88,10 @@
 <main class="docs-main">
 
 <h1>Productivity Skills</h1>
-<p class="lead">文档创建、知识管理、任务跟踪和笔记技能。这 16 项技能将 CLI-JAW 连接到办公套件、项目管理工具和个人生产力应用，让您可以完全通过聊天界面创建、阅读、编辑和组织文档与任务。</p>
+<p class="lead">文档创建、知识管理、任务跟踪、笔记和韩语内容写作技能。这 17 项技能将 CLI-JAW 连接到办公套件、项目管理工具、个人生产力应用和编辑工作流，让您可以完全通过聊天界面创建、阅读、编辑和组织文档、任务与内容。</p>
 
 <h2>概述</h2>
-<p>生产力技能分为四组：<strong>文档格式</strong>（Office 和 HWP 文件读写）、<strong>知识管理</strong>（Notion、Obsidian、Apple Notes）、<strong>任务管理</strong>（Things、Reminders、Trello、Linear）以及<strong>协作工具</strong>（协同编辑、HTML 转 PPTX 转换）。</p>
+<p>生产力技能分为五组：<strong>文档格式</strong>（Office 和 HWP 文件读写）、<strong>知识管理</strong>（Notion、Obsidian、Apple Notes）、<strong>任务管理</strong>（Things、Reminders、Trello、Linear）、<strong>协作工具</strong>（协同编辑、HTML 转 PPTX 转换）以及<strong>内容写作</strong>（通过 <code>k-writing</code> 生成韩语推广/编辑内容）。</p>
 
 <table>
 <tr><th>技能</th><th>状态</th><th>类别</th><th>描述</th></tr>
@@ -99,6 +99,7 @@
 <tr><td><code>pptx</code></td><td>已激活</td><td>文档</td><td>创建、阅读和编辑 PowerPoint (.pptx) 演示文稿</td></tr>
 <tr><td><code>xlsx</code></td><td>已激活</td><td>文档</td><td>创建、阅读和编辑 Excel (.xlsx) 电子表格</td></tr>
 <tr><td><code>hwp</code></td><td>已激活</td><td>文档</td><td>创建、阅读和编辑韩文 HWP/HWPX 文档</td></tr>
+<tr><td><code>k-writing</code></td><td>已激活</td><td>内容</td><td>韩语推广/内容写作，包含渠道路由、强制预搜索、3 候选钩子评分以及去 AI 痕迹/拟人化校验</td></tr>
 <tr><td><code>notion</code></td><td>已激活</td><td>知识</td><td>阅读、创建和更新 Notion 页面和数据库</td></tr>
 <tr><td><code>notion-knowledge-capture</code></td><td>计划中</td><td>知识</td><td>自动将对话洞察捕获到 Notion</td></tr>
 <tr><td><code>notion-meeting</code></td><td>计划中</td><td>知识</td><td>含待办事项的会议记录模板，同步到 Notion</td></tr>
@@ -264,6 +265,7 @@
 <li>"노션에 정리해줘" 触发 <code>notion</code> 技能</li>
 <li>"한글 문서 읽어줘" 触发 <code>hwp</code> 技能</li>
 <li>"엑셀로 정리해줘" 触发 <code>xlsx</code> 技能</li>
+<li>"이거 홍보 쓰레드로 써줘" 触发活跃的 <code>k-writing</code> 技能</li>
 <li>"리마인더에 추가해줘" 将触发 <code>apple-reminders</code></li>
 <li>"트렐로에 카드 만들어줘" 将触发 <code>trello</code></li>
 </ul>
@@ -290,6 +292,7 @@ CLI-JAW 会自动将您的意图匹配到相应的技能。
 <li><strong>deep-research + notion</strong>：研究某个主题并将发现保存到 Notion 数据库</li>
 <li><strong>xlsx + pptx</strong>：分析电子表格数据并生成带图表的演示文稿</li>
 <li><strong>hwp + docx</strong>：在韩文 HWP 和 Word 格式之间转换</li>
+<li><strong>k-writing + search</strong>：结合最新来源检查、钩子评分和去 AI 痕迹审查来生成韩语推广文案</li>
 <li><strong>notion-meeting + telegram</strong>：捕获会议记录并通过 Telegram 发送摘要</li>
 <li><strong>html2pptx + web-ai</strong>：抓取网页并将其转换为幻灯片</li>
 <li><strong>linear + trello</strong>：跨项目管理工具同步问题状态</li>

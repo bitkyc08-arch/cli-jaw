@@ -74,7 +74,7 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 - active skills는 `{{JAW_HOME}}/skills/`
 - reference skills는 `{{JAW_HOME}}/skills_ref/registry.json`
 - 둘 중 하나만 있어도 `Skills System` 섹션이 생성된다
-- `skills_ref`는 public/reference skill surface다. private local runtime skills such as `k-thread-gen` and `lecture-stt` can be deployed under active `{{JAW_HOME}}/skills/` without being registered in `skills_ref/registry.json`.
+- `skills_ref`는 public/reference skill surface다. private local runtime skills such as `k-writing` (Korean promotional/content writing; retired label: `k-thread-gen`) and `lecture-stt` can be deployed under active `{{JAW_HOME}}/skills/` without being registered in `skills_ref/registry.json`. Korean promotional/content writing routes through active `k-writing`, not free-form prose or the retired label.
 - The active `search` skill is the default search backend. Korean/source-sensitive search guidance rewrites the request into focused queries, treats search results as URL candidates, verifies original pages with fetch/open, and uses `agbrowse research plan` only as optional query-planning help.
 - dev skill은 TS-first strict-compatible 기본값과 Jawdev convention discovery/source-of-truth proposal 규칙을 포함한다.
 - dev skill은 기존 `structure/`, `devlog/`, `docs/`, `plans/` 같은 SOT/log가 있으면 broad change 전에 먼저 읽도록 지시한다.

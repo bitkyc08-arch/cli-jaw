@@ -421,7 +421,7 @@ jaw memory search "how did we set up the API auth?"
 
 ## Skills
 
-200+ reference skills plus active runtime skills cover dev workflows, office documents, automation, and media.
+200+ reference skills plus active runtime skills cover dev workflows, office documents, automation, media, and content writing.
 
 | Category | Skills | What they cover |
 |---|---|---|
@@ -430,6 +430,7 @@ jaw memory search "how did we set up the API auth?"
 | **Media** | `video`, `imagegen`, `lecture-stt`, `tts` | Remotion video, OpenAI image generation, lecture transcription, text-to-speech |
 | **Integration** | `github`, `notion`, `telegram-send`, `memory` | Issues/PRs/CI, Notion pages, Telegram media delivery, persistent memory |
 | **Visualization** | `diagram` | SVG diagrams, charts, interactive visualizations rendered in chat |
+| **Content / Writing** | `k-writing` | Korean promotional/content writing: thread, Instagram cardnews, LinkedIn, website/blog, and humanize outputs with mandatory search, hook scoring, and anti-AI checks |
 | **Dev Guides** | `dev`, `dev-frontend`, `dev-backend`, `dev-data`, `dev-testing`, `dev-pabcd` | Engineering guidelines injected into agent prompts |
 
 Reference skills live in `skills_ref/` and install into the active runtime on demand; active skills are loaded from the user runtime home.

@@ -88,10 +88,10 @@
 <main class="docs-main">
 
 <h1>Productivity Skills</h1>
-<p class="lead">문서 생성, 지식 관리, 작업 추적, 메모 작성 관련 스킬입니다. 이 16개 스킬은 CLI-JAW를 오피스 제품군, 프로젝트 관리 도구, 개인 생산성 앱과 연결하여 채팅 인터페이스에서 문서와 작업을 생성, 읽기, 편집, 정리할 수 있게 해줍니다.</p>
+<p class="lead">문서 생성, 지식 관리, 작업 추적, 메모 작성, 한국어 콘텐츠 작성 관련 스킬입니다. 이 17개 스킬은 CLI-JAW를 오피스 제품군, 프로젝트 관리 도구, 개인 생산성 앱, 편집 워크플로와 연결하여 채팅 인터페이스에서 문서, 작업, 콘텐츠를 생성, 읽기, 편집, 정리할 수 있게 해줍니다.</p>
 
 <h2>Overview</h2>
-<p>생산성 스킬은 네 그룹으로 나뉩니다: <strong>문서 형식</strong>(Office 및 HWP 파일 입출력), <strong>지식 관리</strong>(Notion, Obsidian, Apple Notes), <strong>작업 관리</strong>(Things, Reminders, Trello, Linear), <strong>협업 유틸리티</strong>(공동 작성, HTML-to-PPTX 변환).</p>
+<p>생산성 스킬은 다섯 그룹으로 나뉩니다: <strong>문서 형식</strong>(Office 및 HWP 파일 입출력), <strong>지식 관리</strong>(Notion, Obsidian, Apple Notes), <strong>작업 관리</strong>(Things, Reminders, Trello, Linear), <strong>협업 유틸리티</strong>(공동 작성, HTML-to-PPTX 변환), <strong>콘텐츠 작성</strong>(<code>k-writing</code>을 통한 한국어 홍보/편집 출력).</p>
 
 <table>
 <tr><th>Skill</th><th>Status</th><th>Category</th><th>Description</th></tr>
@@ -99,6 +99,7 @@
 <tr><td><code>pptx</code></td><td>Active</td><td>Documents</td><td>PowerPoint (.pptx) 프레젠테이션 생성, 읽기, 편집</td></tr>
 <tr><td><code>xlsx</code></td><td>Active</td><td>Documents</td><td>Excel (.xlsx) 스프레드시트 생성, 읽기, 편집</td></tr>
 <tr><td><code>hwp</code></td><td>Active</td><td>Documents</td><td>한국어 HWP/HWPX 문서 생성, 읽기, 편집</td></tr>
+<tr><td><code>k-writing</code></td><td>Active</td><td>Content</td><td>채널 라우팅, 필수 사전 검색, 훅 3안 채점, AI 티 제거/인간다움 검증을 포함한 한국어 홍보·콘텐츠 작성</td></tr>
 <tr><td><code>notion</code></td><td>Active</td><td>Knowledge</td><td>Notion 페이지 및 데이터베이스 읽기, 생성, 업데이트</td></tr>
 <tr><td><code>notion-knowledge-capture</code></td><td>Planned</td><td>Knowledge</td><td>대화 인사이트를 Notion에 자동 저장</td></tr>
 <tr><td><code>notion-meeting</code></td><td>Planned</td><td>Knowledge</td><td>액션 아이템이 포함된 회의록 템플릿을 Notion에 저장</td></tr>
@@ -264,6 +265,7 @@
 <li>"노션에 정리해줘"는 <code>notion</code> 스킬을 트리거합니다</li>
 <li>"한글 문서 읽어줘"는 <code>hwp</code> 스킬을 트리거합니다</li>
 <li>"엑셀로 정리해줘"는 <code>xlsx</code> 스킬을 트리거합니다</li>
+<li>"이거 홍보 쓰레드로 써줘"는 active <code>k-writing</code> 스킬을 트리거합니다</li>
 <li>"리마인더에 추가해줘"는 <code>apple-reminders</code> 스킬을 트리거합니다</li>
 <li>"트렐로에 카드 만들어줘"는 <code>trello</code> 스킬을 트리거합니다</li>
 </ul>
@@ -290,6 +292,7 @@ CLI-JAW가 사용자의 의도를 적절한 스킬에 자동으로 매칭합니�
 <li><strong>deep-research + notion</strong>: 주제를 리서치하고 결과를 Notion 데이터베이스에 저장</li>
 <li><strong>xlsx + pptx</strong>: 스프레드시트 데이터를 분석하고 차트가 포함된 프레젠테이션 생성</li>
 <li><strong>hwp + docx</strong>: 한국어 HWP와 Word 형식 간 변환</li>
+<li><strong>k-writing + search</strong>: 최신 출처 확인, 훅 채점, AI 티 검토를 거쳐 한국어 홍보 문안 생성</li>
 <li><strong>notion-meeting + telegram</strong>: 회의록을 작성하고 요약을 Telegram으로 전송</li>
 <li><strong>html2pptx + web-ai</strong>: 웹 페이지를 스크래핑하여 슬라이드 덱으로 변환</li>
 <li><strong>linear + trello</strong>: 프로젝트 관리 도구 간 이슈 상태 동기화</li>
