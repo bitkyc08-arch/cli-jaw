@@ -198,7 +198,7 @@ function renderRightPanelContent(
             onGitRefresh={onGitRefresh}
             onSettingsPatch={onDashboardSettingsPatch}
         /></Suspense>;
-        case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} repoRootPath={repoRootPath} gitRefreshVersion={gitRefreshVersion} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onRepoRootChange={onRepoRootChange} onGitRefresh={onGitRefresh} onPreviewFile={onPreviewFile} sessionState={folderPanelSession} onSessionStateChange={onFolderPanelSessionChange} /></Suspense>;
+        case 'folder': return <Suspense fallback={fallback}><FolderPanel selectedFilePath={previewFilePath} externalRootPath={folderRootPath} repoRootPath={repoRootMode === 'instance' ? repoRootPath : null} gitRefreshVersion={gitRefreshVersion} notesTree={notesModel.tree} notesRoot={notesModel.notesRoot} onRootChange={onFolderRootChange} onRepoRootChange={onRepoRootChange} onGitRefresh={onGitRefresh} onPreviewFile={onPreviewFile} sessionState={folderPanelSession} onSessionStateChange={onFolderPanelSessionChange} /></Suspense>;
         case 'doc': return <Suspense fallback={fallback}><DocPanel filePath={previewFilePath ?? undefined} /></Suspense>;
         case 'browser': return <Suspense fallback={fallback}><BrowserPanel /></Suspense>;
         case 'ceo': return jawCeoPanel;
@@ -290,19 +290,21 @@ export function SidebarRailRouter(props: Props) {
     useEffect(() => {
         if (rightFolderRootPath !== props.dashboardSettingsUi.rightFolderRootPath) {
             setFolderRootPath(props.dashboardSettingsUi.rightFolderRootPath);
+            setRepoRootPath(null);
         }
         setFolderPanelSession(current => (
             current?.rootPath === props.dashboardSettingsUi.rightFolderRootPath
                 ? current
                 : null
         ));
-    }, [props.dashboardSettingsUi.rightFolderRootPath, rightFolderRootPath, setFolderRootPath]);
+    }, [props.dashboardSettingsUi.rightFolderRootPath, rightFolderRootPath, setFolderRootPath, setRepoRootPath]);
 
     const updateRightFolderRoot = useCallback((path: string | null): void => {
         if (rightFolderRootPath !== path) setFolderPanelSession(null);
         setFolderRootPath(path);
+        setRepoRootPath(null);
         props.onDashboardSettingsPatch({ rightFolderRootPath: path });
-    }, [props.onDashboardSettingsPatch, rightFolderRootPath, setFolderRootPath]);
+    }, [props.onDashboardSettingsPatch, rightFolderRootPath, setFolderRootPath, setRepoRootPath]);
 
     const updateRepoRoot = useCallback((path: string | null, mode: WorkbenchRepoRootMode = 'instance'): void => {
         setRepoRootPath(path, mode);

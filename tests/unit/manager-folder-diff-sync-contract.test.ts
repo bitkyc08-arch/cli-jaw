@@ -51,6 +51,17 @@ test('Workbench repo root state preserves manual override until Follow Instance'
     assert.ok(diffPanelSource.includes('delete nextPinned[String(port)]'), 'Follow Instance must clear the pinned per-instance manual root');
 });
 
+test('FolderPanel root changes do not reuse stale or manual Diff repo roots', () => {
+    assert.ok(
+        routerSource.includes("repoRootPath={repoRootMode === 'instance' ? repoRootPath : null}"),
+        'FolderPanel must ignore manual Diff repo overrides and auto-detect its own root',
+    );
+    assert.ok(
+        routerSource.includes('setRepoRootPath(null);'),
+        'FolderPanel root changes must clear stale instance-follow repo roots before git status reload',
+    );
+});
+
 test('FolderPanel consumes shared selected file paths for visible-row synchronization', () => {
     assert.ok(folderPanelSource.includes('const selectedPath = props.selectedFilePath'), 'FolderPanel must read the shared preview file path');
     assert.ok(folderPanelSource.includes('isDescendantPath(rootPath, selectedPath)'), 'FolderPanel must ignore selected files outside the current folder root');
