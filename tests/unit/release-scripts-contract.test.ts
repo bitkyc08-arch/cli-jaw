@@ -80,3 +80,18 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('gh release upload'), 'desktop workflow must upload artifacts to the existing release');
     assert.ok(workflow.includes('--clobber'), 'desktop workflow reruns must replace stale release assets');
 });
+
+test('npm publish workflow creates GitHub releases and is safe to rerun for an existing version', () => {
+    const workflow = read('.github/workflows/publish.yml');
+
+    assert.ok(workflow.includes('push:'), 'publish workflow must run from branch pushes');
+    assert.ok(workflow.includes('- preview'), 'publish workflow must bind the preview branch');
+    assert.ok(workflow.includes('- master'), 'publish workflow must bind the master branch');
+    assert.ok(workflow.includes('id-token: write'), 'publish workflow must support npm Trusted Publishing OIDC');
+    assert.ok(workflow.includes('Check registry package version'), 'publish workflow must detect already-published versions');
+    assert.ok(workflow.includes('SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published'),
+        'publish workflow must skip npm publish when the exact version already exists');
+    assert.ok(workflow.includes('Create GitHub release'), 'publish workflow must create or update a GitHub Release');
+    assert.ok(workflow.includes('--prerelease'), 'preview publishes must create GitHub prereleases');
+    assert.ok(workflow.includes('notes-file'), 'GitHub releases should be created from a structured notes file');
+});

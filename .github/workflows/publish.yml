@@ -80,7 +80,7 @@ jobs:
           tag=""
           version="$pkg_version"
           dry_run="false"
-          create_release="false"
+          create_release="true"
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             version="$INPUT_VERSION"
@@ -195,12 +195,27 @@ jobs:
           console.log(`pack OK: ${pack.filename}, ${pack.files.length} files, ${pack.size} bytes`);
           NODE
 
+      - name: Check registry package version
+        id: registry
+        run: |
+          set -euo pipefail
+          if npm view "cli-jaw@${{ steps.release.outputs.version }}" version >/tmp/npm-version.txt 2>/dev/null; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::cli-jaw@${{ steps.release.outputs.version }} already exists on npm; publish will be skipped."
+            cat /tmp/npm-version.txt
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::cli-jaw@${{ steps.release.outputs.version }} is not on npm yet; publish will run."
+          fi
+
       - name: Publish or dry-run
         run: |
           set -euo pipefail
           if [ "${{ steps.release.outputs.dry-run }}" = "true" ]; then
             echo "::notice::DRY RUN - npm publish will not write to registry"
             npm publish --dry-run --tag "${{ steps.release.outputs.tag }}" --access public --provenance
+          elif [ "${{ steps.registry.outputs.exists }}" = "true" ]; then
+            echo "::notice::SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published"
           else
             npm publish --tag "${{ steps.release.outputs.tag }}" --access public --provenance
           fi
@@ -228,12 +243,37 @@ jobs:
         run: |
           set -euo pipefail
           tag="v${{ steps.release.outputs.version }}"
-          prerelease_args=()
+          notes_file="$(mktemp)"
+          cat > "$notes_file" <<'NOTES'
+          ## cli-jaw ${{ steps.release.outputs.version }}
+
+          Published from `${{ github.ref_name }}` with npm dist-tag `${{ steps.release.outputs.tag }}`.
+
+          ### Install
+          ```sh
+          npm install -g cli-jaw@${{ steps.release.outputs.tag }}
+          npm install -g cli-jaw@${{ steps.release.outputs.version }}
+          ```
+
+          ### Verification
+          - npm package gates passed in this workflow.
+          - npm registry smoke confirmed `cli-jaw@${{ steps.release.outputs.version }}`.
+          - npm provenance was requested through GitHub OIDC Trusted Publishing.
+          NOTES
+
+          create_args=()
+          edit_args=()
           if [ "${{ steps.release.outputs.tag }}" = "preview" ]; then
-            prerelease_args+=(--prerelease)
+            create_args+=(--prerelease)
+            edit_args+=(--prerelease)
+            title="v${{ steps.release.outputs.version }} (preview)"
+          else
+            create_args+=(--latest)
+            edit_args+=(--latest)
+            title="v${{ steps.release.outputs.version }}"
           fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$tag" --notes "Published cli-jaw@${{ steps.release.outputs.version }} with dist-tag ${{ steps.release.outputs.tag }}."
+            gh release edit "$tag" --title "$title" --notes-file "$notes_file" "${edit_args[@]}"
           else
-            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes "Published cli-jaw@${{ steps.release.outputs.version }} with dist-tag ${{ steps.release.outputs.tag }}." "${prerelease_args[@]}"
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file "$notes_file" "${create_args[@]}"
           fi

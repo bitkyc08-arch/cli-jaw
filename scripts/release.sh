@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# release.sh — 빌드 + 버전업 + npm publish + GitHub Release 한 번에 처리
+# release.sh — 빌드 + 버전업 + GitHub Release stub + publish workflow trigger
 # Auto-detects npm latest and bumps patch only (minor/major via explicit arg).
 # Usage:
 #   ./release.sh          → patch bump (1.6.9 → 1.6.10)
@@ -162,13 +162,11 @@ git push origin master
 git push origin "v$VERSION"
 
 # ─── GitHub Release with changelog ─────────────────────
-# IMPORTANT: create the GitHub Release BEFORE npm publish.
-# npm publish is the most failure-prone step (OTP, registry, prepublishOnly);
-# with `set -e`, a publish failure used to abort the script before the release
-# was ever created, leaving orphan tags with no GitHub Release (and no desktop
-# build, since desktop-release.yml triggers on `release: published`).
-# Creating the release first guarantees the release record + desktop trigger
-# survive a later publish hiccup, which is then independently retryable.
+# IMPORTANT: create/update the GitHub Release stub before the publish workflow.
+# npm publishing is handled by .github/workflows/publish.yml through GitHub OIDC
+# Trusted Publishing after the master/main push. Keeping the release record in
+# GitHub first makes the release visible and gives desktop-release.yml a stable
+# release target for artifact uploads.
 echo "📋 Creating GitHub Release..."
 RELEASE_BODY="## Release v$VERSION
 
@@ -202,11 +200,11 @@ else
 fi
 
 # ─── npm publish ───────────────────────────────────────
-echo "🚀 Publishing to npm..."
-npm publish --access public
+echo "🚀 npm publish is handled by .github/workflows/publish.yml after the master/main push."
+echo "   Workflow: https://github.com/lidge-jun/cli-jaw/actions/workflows/publish.yml?query=branch%3Amaster"
 
 echo ""
-echo "✅ cli-jaw@$VERSION published!"
+echo "✅ cli-jaw@$VERSION release queued!"
 echo "   Install: npm install -g cli-jaw"
 if [ "$RELEASE_CREATED" = true ]; then
     echo "   Release: https://github.com/lidge-jun/cli-jaw/releases/tag/v$VERSION"

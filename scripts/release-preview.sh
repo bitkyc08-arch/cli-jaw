@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# release-preview.sh — build + preview semver bump + npm publish --tag preview
+# release-preview.sh — build + preview semver bump + push preview branch
 # Auto-detects npm latest, bumps (default patch +1), then appends -preview.TIMESTAMP
 # Usage:
 #   ./release-preview.sh                 → patch bump (1.6.9 → 1.6.10-preview.*)
 #   ./release-preview.sh --minor         → minor bump (1.6.9 → 1.7.0-preview.*)
 #   ./release-preview.sh --major         → major bump (1.6.9 → 2.0.0-preview.*)
 #   ./release-preview.sh 1.8.0           → explicit base version
-# Desktop artifacts are built and attached by GitHub Actions after the
-# GitHub prerelease is published.
+# npm publish is handled by .github/workflows/publish.yml through npm Trusted
+# Publishing (OIDC). Desktop artifacts are built and attached by GitHub Actions
+# after the GitHub prerelease is published.
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
@@ -166,26 +167,22 @@ node scripts/require-release-evidence.mjs
 echo "🧪 Verifying npm package contents..."
 npm pack --dry-run >/dev/null
 
-# ─── Commit + Publish ─────────────────────────────────
+# ─── Commit + Push ────────────────────────────────────
 echo "📝 Creating local commit..."
 git add package.json package-lock.json
 git commit -m "[agent] chore: preview v$VERSION" --allow-empty
 
-echo "🚀 Publishing preview to npm..."
-TARBALL="$(npm pack | tail -1)"
-trap 'rm -f "$TARBALL"' EXIT
-npm publish "$TARBALL" --tag preview --access public
-
-echo "🏷️  Creating preview tag..."
-git tag "v$VERSION"
-
-echo "⬆️  Pushing branch + tag..."
+echo "⬆️  Pushing preview branch..."
 CURRENT_BRANCH=$(git rev-parse --abbrev-ref HEAD)
-git push origin "$CURRENT_BRANCH"
-git push origin "v$VERSION"
+if [ "$CURRENT_BRANCH" = "preview" ]; then
+  git push origin preview
+else
+  echo "ℹ️  Current branch is $CURRENT_BRANCH; pushing HEAD to origin/preview."
+  git push origin HEAD:preview
+fi
 
-# ─── GitHub Prerelease with changelog ──────────────────
-echo "📋 Creating GitHub prerelease..."
+# ─── GitHub Prerelease stub ────────────────────────────
+echo "📋 Creating/updating GitHub prerelease stub..."
 RELEASE_BODY="## Preview Release v$VERSION
 
 **Base**: $RAW_VERSION → preview patch $BASE_VERSION
@@ -194,21 +191,36 @@ RELEASE_BODY="## Preview Release v$VERSION
 ### Changes
 $CHANGELOG
 
+### Publish
+- npm preview publish runs from \`.github/workflows/publish.yml\` on the \`preview\` branch.
+- npm dist-tag: \`preview\`
+- Install after the workflow succeeds: \`npm install -g cli-jaw@preview\`
+
 $ELECTRON_RELEASE_NOTES"
 
 if command -v gh &>/dev/null; then
-  gh release create "v$VERSION" \
-    --title "v$VERSION (preview)" \
-    --notes "$RELEASE_BODY" \
-    --prerelease
-  echo "✅ GitHub prerelease v$VERSION created!"
+  if gh release view "v$VERSION" &>/dev/null; then
+    gh release edit "v$VERSION" \
+      --title "v$VERSION (preview)" \
+      --notes "$RELEASE_BODY" \
+      --prerelease
+    echo "✅ GitHub prerelease v$VERSION updated!"
+  else
+    gh release create "v$VERSION" \
+      --target "$(git rev-parse HEAD)" \
+      --title "v$VERSION (preview)" \
+      --notes "$RELEASE_BODY" \
+      --prerelease
+    echo "✅ GitHub prerelease v$VERSION created!"
+  fi
   echo "🖥️  Desktop assets will be built by the Desktop Release GitHub Actions workflow."
 else
   echo "⚠️  Skipped GitHub prerelease (gh CLI not found)"
 fi
 
 echo ""
-echo "✅ Preview published: cli-jaw@$VERSION"
+echo "✅ Preview release queued: cli-jaw@$VERSION"
 echo "   Install: npm install -g cli-jaw@preview"
 echo "   Exact:   npm install -g cli-jaw@$VERSION"
 echo "   Release: https://github.com/lidge-jun/cli-jaw/releases/tag/v$VERSION"
+echo "   Workflow: https://github.com/lidge-jun/cli-jaw/actions/workflows/publish.yml?query=branch%3Apreview"
