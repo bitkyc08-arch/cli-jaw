@@ -28,6 +28,7 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     const remindersApi = read('public/manager/src/dashboard-reminders/reminders-api.ts');
     const remindersFeed = read('public/manager/src/dashboard-reminders/useRemindersFeed.ts');
     const trayQuickAdd = read('public/manager/src/dashboard-reminders/tray-quick-add.ts');
+    const trayCss = read('public/manager/src/manager-tray-reminders.css');
 
     assert.ok(types.includes("'reminders'"), 'DashboardSidebarMode must include reminders');
     assert.ok(serverTypes.includes("'reminders'"), 'server DashboardSidebarMode must include reminders');
@@ -80,6 +81,9 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(router.includes('onUpdate={(id, patch) => void remindersFeed.update(id, patch)}'), 'Reminders sidebar must receive update wiring');
     assert.ok(trayQuickAdd.includes("export type TrayQuickAddMode = 'inbox' | 'today' | 'tomorrow' | 'pick-date'"), 'quick-add helper must define the four supported modes only');
     assert.ok(trayQuickAdd.includes('toISOString()'), 'quick-add date output must normalize datetime-local values to ISO');
+    assert.ok(trayCss.includes('.tray-reminders-composer-date-row[data-mode="inbox"]'), 'Inbox quick-add must hide the unused date row');
+    assert.ok(trayCss.includes('height: 30px;'), 'Tray quick-add mode buttons must stay compact');
+    assert.ok(trayCss.includes('height: 34px;'), 'Tray quick-add title row must stay single-line compact');
     assert.ok(workspace.includes('InlineReminderTitle'), 'Reminders rows must support double-click inline title editing');
     assert.ok(workspace.includes('data-reminder-drop-before-id'), 'Reminders row drop targets must expose before/after order metadata');
     assert.ok(workspace.includes('isAfterRowDrop'), 'Reminders row drops must distinguish upper/lower row halves for same-bucket reorder');
