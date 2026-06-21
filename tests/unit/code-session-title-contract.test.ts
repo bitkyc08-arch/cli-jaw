@@ -9,6 +9,68 @@ function read(path: string): string {
     return readFileSync(join(ROOT, path), 'utf8');
 }
 
+test('code transcript linearizes assistant markdown tables without changing Notes preview defaults', () => {
+    const transcript = read('public/manager/src/code/CodeTranscript.tsx');
+    const css = read('public/manager/src/code/code.css');
+    const notesPreview = read('public/manager/src/notes/MarkdownPreview.tsx');
+
+    assert.ok(
+        transcript.includes('<MarkdownRenderer markdown={msg.text} tableMode="linear" />'),
+        'Code assistant transcript must opt into linear markdown tables',
+    );
+    assert.ok(
+        css.includes('.code-message-text .markdown-linear-table'),
+        'Code CSS must own linear table transcript styling',
+    );
+    assert.ok(
+        css.includes('.code-message-text .markdown-linear-table-row'),
+        'Code CSS must style linear table rows without relying on native table layout',
+    );
+    assert.ok(
+        css.includes('grid-template-columns: var(--markdown-linear-table-grid'),
+        'Code linear tables must align header and body cells through one shared grid template',
+    );
+    assert.ok(
+        css.includes('display: contents'),
+        'Code linear table wrappers must flatten into the shared grid without native table semantics',
+    );
+    assert.ok(
+        notesPreview.includes('<MarkdownRenderer') && !notesPreview.includes('tableMode='),
+        'Notes preview must keep MarkdownRenderer semantic table defaults',
+    );
+});
+
+test('code transcript virtualizes rows only inside Code mode', () => {
+    const transcript = read('public/manager/src/code/CodeTranscript.tsx');
+    const hook = read('public/manager/src/code/useCodeTranscriptVirtualRows.ts');
+    const css = read('public/manager/src/code/code.css');
+    const workbench = read('public/manager/src/code/CodeWorkbench.tsx');
+    const jawMode = read('public/js/main.ts');
+
+    assert.ok(transcript.includes("import { useCodeTranscriptVirtualRows } from './useCodeTranscriptVirtualRows';"),
+        'CodeTranscript must own the Code-only virtual rows hook import');
+    assert.ok(transcript.includes('const virtual = useCodeTranscriptVirtualRows({'),
+        'CodeTranscript must render through the Code virtual rows hook');
+    assert.ok(transcript.includes('code-transcript-virtual-spacer'),
+        'CodeTranscript must render a virtual spacer');
+    assert.ok(transcript.includes('data-code-transcript-idx={virtualItem.index}'),
+        'CodeTranscript virtual rows must expose a stable measure index');
+    assert.ok(hook.includes("@tanstack/virtual-core"),
+        'Code transcript virtual hook must use the existing TanStack virtual-core dependency');
+    assert.ok(hook.includes("indexAttribute: 'data-code-transcript-idx'"),
+        'Code transcript virtual hook must measure the Code row index attribute');
+    assert.ok(hook.includes('getScrollElement: () => args.scrollElementRef.current'),
+        'Code transcript virtual hook must use the existing transcriptRef scroll element');
+    assert.ok(css.includes('.code-transcript-virtual-spacer'),
+        'Code CSS must own virtual spacer layout');
+    assert.ok(css.includes('.code-transcript-virtual-row'),
+        'Code CSS must own virtual row positioning');
+    assert.ok(workbench.includes('<CodeTranscript'),
+        'CodeTranscript must stay mounted through the Code workbench boundary');
+    assert.equal(jawMode.includes('useCodeTranscriptVirtualRows'), false,
+        'Jaw mode public/js entry must not import Code transcript virtualization');
+});
+
 test('code session stored rows use JWC title and first-message fallback instead of cwd primary fallback', () => {
     const list = read('public/manager/src/code/CodeSessionList.tsx');
 

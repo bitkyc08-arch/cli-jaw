@@ -1,6 +1,7 @@
-import { createElement, isValidElement, useMemo } from 'react';
+import { Children, createElement, isValidElement, useMemo } from 'react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import rehypeKatex from 'rehype-katex';
 import rehypeSanitize from 'rehype-sanitize';
 import remarkBreaks from 'remark-breaks';
@@ -23,6 +24,7 @@ type MarkdownRendererProps = {
     outgoing?: NotesNoteLinkRef[] | undefined;
     notes?: readonly NotesNoteMetadata[] | undefined;
     onWikiLinkNavigate?: ((path: string) => void) | undefined;
+    tableMode?: 'semantic' | 'linear' | undefined;
 };
 
 type MarkdownAnchorProps = ComponentProps<'a'> & {
@@ -52,6 +54,50 @@ type WikiContainerProps = {
     style?: CSSProperties | undefined;
     node?: unknown;
 };
+
+type LinearTableContainerProps = {
+    children?: ReactNode;
+    className?: string | undefined;
+    style?: CSSProperties | undefined;
+    node?: unknown;
+};
+
+type LinearTableCellProps = LinearTableContainerProps & {
+    align?: string | undefined;
+};
+
+type LinearTableNodeProps = {
+    children?: ReactNode;
+    node?: { tagName?: string | undefined } | undefined;
+};
+
+function mergeClassName(base: string, className?: string): string {
+    return className ? `${base} ${className}` : base;
+}
+
+function countLinearTableColumns(children: ReactNode): number {
+    let maxColumns = 0;
+    const visit = (node: ReactNode): void => {
+        if (Array.isArray(node)) {
+            node.forEach(visit);
+            return;
+        }
+        if (!isValidElement<LinearTableNodeProps>(node)) return;
+        if (node.props.node?.tagName === 'tr') {
+            maxColumns = Math.max(maxColumns, Children.count(node.props.children));
+        }
+        Children.forEach(node.props.children, visit);
+    };
+    Children.forEach(children, visit);
+    return Math.max(1, maxColumns);
+}
+
+function linearTableGridTemplate(columnCount: number): string {
+    if (columnCount <= 1) return 'minmax(0, 1fr)';
+    if (columnCount === 2) return 'max-content minmax(16rem, 1fr)';
+    if (columnCount === 3) return 'max-content minmax(12rem, .45fr) minmax(18rem, 1fr)';
+    return `max-content repeat(${columnCount - 1}, minmax(12rem, 1fr))`;
+}
 
 function textFromNode(node: ReactNode): string {
     if (typeof node === 'string' || typeof node === 'number') return String(node);
@@ -88,6 +134,99 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         return createElement(tag, { className, id, style }, transformed);
     };
 
+    const linearCellTransform = (tag: 'td' | 'th') => (cellProps: LinearTableCellProps) => {
+        const { children, node: _node, className, style, align } = cellProps;
+        const transformed = splitChildrenWithWikiLinks(children, wikiCtx, tag);
+        return (
+            <span
+                className={mergeClassName(`markdown-linear-table-cell markdown-linear-table-${tag}`, className)}
+                style={style}
+                data-align={align || undefined}
+            >
+                {transformed}
+            </span>
+        );
+    };
+
+    const components: Components = {
+        a: ({ href, children, node: _node, ...anchorProps }: MarkdownAnchorProps) => {
+            const safeHref = typeof href === 'string' && isSafeExternalHref(href) ? href : undefined;
+            const external = Boolean(safeHref && /^https?:\/\//i.test(safeHref));
+            return (
+                <a
+                    {...anchorProps}
+                    href={safeHref}
+                    target={external ? '_blank' : undefined}
+                    rel={external ? 'noreferrer noopener' : undefined}
+                >
+                    {children}
+                </a>
+            );
+        },
+        code: ({ className, children }: ComponentProps<'code'>) => (
+            <code className={className}>{children}</code>
+        ),
+        pre: ({ children }) => {
+            const language = languageFromCodeNode(children);
+            const code = textFromNode(children).replace(/\n$/, '');
+            if (language === 'mermaid') return <MermaidBlock code={code} />;
+            return <CodeBlock code={code} language={language} />;
+        },
+        img: ({ src, alt, ...imageProps }: ComponentProps<'img'>) => {
+            const safeSrc = typeof src === 'string' ? notesImageSrc(src) : '';
+            if (!safeSrc) return null;
+            if (safeSrc.endsWith('.pdf')) {
+                return <iframe src={safeSrc} title={alt ?? 'PDF embed'} className="notes-pdf-embed" />;
+            }
+            return <img {...imageProps} src={safeSrc} alt={alt ?? ''} loading="lazy" />;
+        },
+        p: wikiTransform('p'),
+        li: wikiTransform('li'),
+        h1: wikiTransform('h1'),
+        h2: wikiTransform('h2'),
+        h3: wikiTransform('h3'),
+        h4: wikiTransform('h4'),
+        h5: wikiTransform('h5'),
+        h6: wikiTransform('h6'),
+        blockquote: wikiTransform('blockquote'),
+        td: wikiTransform('td'),
+        th: wikiTransform('th'),
+        em: wikiTransform('em'),
+        strong: wikiTransform('strong'),
+        del: wikiTransform('del'),
+    };
+
+    if (props.tableMode === 'linear') {
+        components.table = ({ children, node: _node, className, style }: LinearTableContainerProps) => {
+            const tableStyle = {
+                ...style,
+                '--markdown-linear-table-grid': linearTableGridTemplate(countLinearTableColumns(children)),
+            } as CSSProperties;
+            return (
+                <div className={mergeClassName('markdown-linear-table', className)} style={tableStyle} role="list">
+                    {children}
+                </div>
+            );
+        };
+        components.thead = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+            <div className={mergeClassName('markdown-linear-table-head', className)} style={style}>
+                {children}
+            </div>
+        );
+        components.tbody = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+            <div className={mergeClassName('markdown-linear-table-body', className)} style={style}>
+                {children}
+            </div>
+        );
+        components.tr = ({ children, node: _node, className, style }: LinearTableContainerProps) => (
+            <div className={mergeClassName('markdown-linear-table-row', className)} style={style} role="listitem">
+                {children}
+            </div>
+        );
+        components.th = linearCellTransform('th');
+        components.td = linearCellTransform('td');
+    }
+
     return (
         <ReactMarkdown
             skipHtml
@@ -97,53 +236,7 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
                 [rehypeSanitize, markdownSanitizeSchema],
                 rehypeKatex,
             ]}
-            components={{
-                a: ({ href, children, node: _node, ...anchorProps }: MarkdownAnchorProps) => {
-                    const safeHref = typeof href === 'string' && isSafeExternalHref(href) ? href : undefined;
-                    const external = Boolean(safeHref && /^https?:\/\//i.test(safeHref));
-                    return (
-                        <a
-                            {...anchorProps}
-                            href={safeHref}
-                            target={external ? '_blank' : undefined}
-                            rel={external ? 'noreferrer noopener' : undefined}
-                        >
-                            {children}
-                        </a>
-                    );
-                },
-                code: ({ className, children }: ComponentProps<'code'>) => (
-                    <code className={className}>{children}</code>
-                ),
-                pre: ({ children }) => {
-                    const language = languageFromCodeNode(children);
-                    const code = textFromNode(children).replace(/\n$/, '');
-                    if (language === 'mermaid') return <MermaidBlock code={code} />;
-                    return <CodeBlock code={code} language={language} />;
-                },
-                img: ({ src, alt, ...imageProps }: ComponentProps<'img'>) => {
-                    const safeSrc = typeof src === 'string' ? notesImageSrc(src) : '';
-                    if (!safeSrc) return null;
-                    if (safeSrc.endsWith('.pdf')) {
-                        return <iframe src={safeSrc} title={alt ?? 'PDF embed'} className="notes-pdf-embed" />;
-                    }
-                    return <img {...imageProps} src={safeSrc} alt={alt ?? ''} loading="lazy" />;
-                },
-                p: wikiTransform('p'),
-                li: wikiTransform('li'),
-                h1: wikiTransform('h1'),
-                h2: wikiTransform('h2'),
-                h3: wikiTransform('h3'),
-                h4: wikiTransform('h4'),
-                h5: wikiTransform('h5'),
-                h6: wikiTransform('h6'),
-                blockquote: wikiTransform('blockquote'),
-                td: wikiTransform('td'),
-                th: wikiTransform('th'),
-                em: wikiTransform('em'),
-                strong: wikiTransform('strong'),
-                del: wikiTransform('del'),
-            }}
+            components={components}
         >
             {renderedMarkdown}
         </ReactMarkdown>

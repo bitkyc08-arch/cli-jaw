@@ -113,6 +113,19 @@ test('MarkdownRenderer wires math, sanitize, safe links, and block routing', () 
     assert.ok(renderer.includes('notes: props.notes'), 'MarkdownRenderer must pass vault notes into wikilink fallback context');
     assert.ok(renderer.includes('splitPreviewFrontmatter(props.markdown).body'), 'MarkdownRenderer must strip leading YAML frontmatter before rendering');
     assert.ok(renderer.includes('splitChildrenWithWikiLinks'), 'MarkdownRenderer must transform only supported text children for wikilinks');
+    assert.ok(renderer.includes("tableMode?: 'semantic' | 'linear' | undefined"), 'MarkdownRenderer must expose an opt-in table rendering mode');
+    assert.ok(renderer.includes("if (props.tableMode === 'linear')"), 'linear table rendering must be opt-in only');
+    assert.ok(renderer.includes("td: wikiTransform('td')"), 'default semantic table cells must keep Notes wikilink behavior');
+    assert.ok(renderer.includes("th: wikiTransform('th')"), 'default semantic table headers must keep Notes wikilink behavior');
+    assert.ok(renderer.includes('components.table ='), 'linear mode must override native table elements');
+    assert.ok(renderer.includes('components.tr ='), 'linear mode must override native row elements');
+    assert.ok(renderer.includes("components.th = linearCellTransform('th')"), 'linear mode must override native header cells');
+    assert.ok(renderer.includes("components.td = linearCellTransform('td')"), 'linear mode must override native body cells');
+    assert.ok(renderer.includes('role="list"'), 'linear mode must expose rows as a list, not a native table');
+    assert.ok(renderer.includes('role="listitem"'), 'linear mode must expose table rows as linear list items');
+    assert.ok(renderer.includes('countLinearTableColumns'), 'linear tables must derive a shared column count for grid alignment');
+    assert.ok(renderer.includes('linearTableGridTemplate'), 'linear tables must provide a shared grid template for header/body alignment');
+    assert.ok(renderer.includes("'--markdown-linear-table-grid'"), 'linear table grid template must be passed as a CSS custom property');
 });
 
 test('preview strips leading YAML frontmatter without losing body wikilinks', () => {
