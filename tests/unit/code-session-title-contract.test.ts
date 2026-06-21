@@ -96,6 +96,7 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.ok(host.includes('const event = `code_${kind}`'), 'ACP host must reuse the same event name for publish and replay capture');
     assert.ok(host.includes('for (const capture of captures)'), 'ACP host must append replay events to all active load captures');
     assert.ok(host.includes('capture.push({ event, sessionId, update })'), 'ACP host must capture replay update payloads');
+    assert.ok(host.includes('if (captures)') && host.includes('return;\n        }\n        // Sanitized public lane'), 'ACP host must not publish loadSession replay events to SSE after capturing them');
     assert.ok(host.includes('const replayCapture: CodeSessionReplayEvent[] = []'), 'loadSession must create a per-call replay capture');
     assert.ok(host.includes('captures.add(replayCapture)'), 'loadSession must register replay capture before session/load');
     assert.ok(host.includes('captures.delete(replayCapture)'), 'loadSession must remove replay capture in cleanup');
@@ -128,6 +129,8 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.ok(loadBlock.includes('if (session.title) setSessionTitle(session.title)'), 'load handler must preserve returned JWC title in header');
     assert.ok(loadBlock.includes('const replayFallback = replayEventsToTranscriptEntries(session.replayEvents ?? [])'), 'load handler must convert returned replay fallback events');
     assert.ok(loadBlock.includes('setMessages(prev => prev.length > 0 ? prev : replayFallback)'), 'replay fallback must only apply when SSE did not already populate transcript');
+    assert.ok(loadBlock.includes('pendingUserEchoRef.current = null'), 'stored session load must clear pending prompt echo state');
+    assert.ok(loadBlock.includes('setSending(false)'), 'stored session load must clear stale live-stream Thinking state');
     assert.equal(loadBlock.includes('messages.length'), false, 'load handler must not read stale messages.length after await');
     assert.ok(loadBlock.includes('if (activeSessionIdRef.current === id)'), 'load failure must only restore state when failed id is still active');
 
@@ -147,6 +150,18 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     const resetBlock = canvas.slice(resetBlockStart, resetBlockEnd);
     assert.ok(resetBlock.includes('if (skipNextCwdResetRef.current)'), 'cwd reset effect must consume the live-selection guard');
     assert.ok(resetBlock.includes('return;'), 'cwd reset guard must return before clearing active session state');
+});
+
+test('code canvas coalesces optimistic user prompt echo from SSE', () => {
+    const canvas = read('public/manager/src/code/CodeCanvas.tsx');
+    const types = read('public/manager/src/code/code-types.ts');
+
+    assert.ok(types.includes("transient?: 'pending-user-echo'"), 'transcript entries must allow an internal pending user echo marker');
+    assert.ok(canvas.includes('const pendingUserEchoRef = useRef<string | null>(null)'), 'CodeCanvas must track the prompt text awaiting SSE echo');
+    assert.ok(canvas.includes("transient: 'pending-user-echo'"), 'optimistic submit row must be marked as a pending echo');
+    assert.ok(canvas.includes("msg.transient === 'pending-user-echo'"), 'SSE user chunk handler must locate the optimistic row');
+    assert.ok(canvas.includes("updated[optimisticIndex] = { role: 'user', text }"), 'SSE echo must replace, not append, the optimistic user row');
+    assert.ok(canvas.includes('pendingUserEchoRef.current = null'), 'pending echo state must be cleared after merge or reset');
 });
 
 test('code canvas owns code cwd override independent from manager instance selection', () => {

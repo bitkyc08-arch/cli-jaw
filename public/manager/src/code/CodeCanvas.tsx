@@ -58,6 +58,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
     const skipNextCwdResetRef = useRef(false);
+    const pendingUserEchoRef = useRef<string | null>(null);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
     const { transcriptRef, scrollTranscriptToBottom } = useCodeTranscriptScroll(messages, sending, Boolean(activePopup));
 
@@ -195,7 +196,18 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
             if (!text) return;
-            setMessages(prev => [...prev, { role: 'user', text }]);
+            setMessages(prev => {
+                if (pendingUserEchoRef.current === text) {
+                    const optimisticIndex = prev.findLastIndex(msg => msg.role === 'user' && msg.text === text && msg.transient === 'pending-user-echo');
+                    if (optimisticIndex >= 0) {
+                        pendingUserEchoRef.current = null;
+                        const updated = [...prev];
+                        updated[optimisticIndex] = { role: 'user', text };
+                        return updated;
+                    }
+                }
+                return [...prev, { role: 'user', text }];
+            });
         } else if (kind === 'code_agent_thought_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
@@ -279,7 +291,8 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         setSending(true);
         setWorkspaceFrozen(true); // slice 210: freeze cwd on first Send, before createSession; stays frozen on failure
         setChildRecovery(null);
-        setMessages(prev => [...prev, { role: 'user', text }]);
+        pendingUserEchoRef.current = text;
+        setMessages(prev => [...prev, { role: 'user', text, transient: 'pending-user-echo' }]);
         setInputText('');
         try {
             let sessionId = activeSessionId;
@@ -292,6 +305,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             }
             await client.sendPrompt(sessionId, text);
         } catch (err) {
+            pendingUserEchoRef.current = null;
             setMessages(prev => [...prev, { role: 'assistant', text: `Error: ${err instanceof Error ? err.message : String(err)}` }]);
             setSending(false);
         }
@@ -429,9 +443,11 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 void (async () => {
                     activeSessionIdRef.current = id;
                     setActiveSessionId(id);
+                    pendingUserEchoRef.current = null;
                     setMessages([]);
                     setPlanEntries([]);
                     setSessionTitle('');
+                    setSending(false);
                     try {
                         const session = await client.loadSession(id, cwd);
                         if (session.title) setSessionTitle(session.title);
@@ -439,6 +455,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                         if (replayFallback.length > 0) {
                             setMessages(prev => prev.length > 0 ? prev : replayFallback);
                         }
+                        setSending(false);
                     } catch (err) {
                         if (activeSessionIdRef.current === id) {
                             activeSessionIdRef.current = null;
@@ -448,7 +465,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     }
                 })();
             }}
-            onNewSession={() => { setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setWorkspaceFrozen(false); }}
+            onNewSession={() => { activeSessionIdRef.current = null; pendingUserEchoRef.current = null; setActiveSessionId(null); setMessages([]); setPlanEntries([]); setSessionTitle(''); setSending(false); setWorkspaceFrozen(false); }}
         />
     );
 

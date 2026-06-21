@@ -10,6 +10,7 @@ export type ToolContent = {
 export type TranscriptEntry = {
     role: 'user' | 'assistant' | 'tool' | 'thinking' | 'permission';
     text: string;
+    transient?: 'pending-user-echo';
     toolName?: string;
     toolStatus?: string;
     toolCallId?: string;

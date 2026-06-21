@@ -208,14 +208,15 @@ class AcpHost implements CodeSessionTransport {
         const event = `code_${kind}`;
         const session = this.#sessions.get(sessionId);
         if (session) session.lastUsedAt = Date.now();
-        // Sanitized public lane (113.2 §5); raw payload stays host-side.
-        publish('jwc', event, { sessionId, update });
         const captures = this.#replayCaptures.get(sessionId);
         if (captures) {
             for (const capture of captures) {
                 capture.push({ event, sessionId, update });
             }
+            return;
         }
+        // Sanitized public lane (113.2 §5); raw payload stays host-side.
+        publish('jwc', event, { sessionId, update });
     }
 
     #onPermissionRequest(rpcId: number | string, params: Record<string, unknown>): void {
