@@ -168,6 +168,18 @@ function postPreviewCapabilities(frame: HTMLIFrameElement | null, src: string, d
     }
 }
 
+function replyPreviewCapabilities(source: MessageEventSource | null, origin: string, docPanel: boolean): void {
+    if (!source || !origin || origin === 'null') return;
+    try {
+        (source as Window).postMessage(
+            { type: 'jaw-preview-capabilities', docPanel },
+            origin,
+        );
+    } catch (error) {
+        console.warn('[manager-preview] capability reply skipped', error);
+    }
+}
+
 function postPreviewInsertText(
     frame: HTMLIFrameElement | null,
     src: string,
@@ -338,7 +350,7 @@ export function InstancePreview(props: InstancePreviewProps) {
             if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;
             const data = event.data as { type?: unknown } | null;
             if (!data || data.type !== 'jaw-preview-capabilities-request') return;
-            postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true);
+            replyPreviewCapabilities(event.source, event.origin, props.docPanelCapable === true);
         }
         window.addEventListener('message', onPreviewCapabilitiesRequest);
         function onPreviewDroppedFiles(event: MessageEvent): void {

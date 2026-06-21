@@ -83,6 +83,26 @@ test('preview child can request capabilities after a missed onLoad announcement'
     );
 });
 
+test('manager replies to preview capability requests through the exact validated sender origin', () => {
+    const instancePreview = read('public/manager/src/InstancePreview.tsx');
+    assert.ok(
+        instancePreview.includes('function replyPreviewCapabilities(source: MessageEventSource | null, origin: string, docPanel: boolean): void'),
+        'capability request replies must use a dedicated source/origin helper',
+    );
+    assert.ok(
+        instancePreview.includes("(source as Window).postMessage(\n            { type: 'jaw-preview-capabilities', docPanel },\n            origin,"),
+        'capability replies must target event.origin exactly after validation',
+    );
+    assert.ok(
+        instancePreview.includes('replyPreviewCapabilities(event.source, event.origin, props.docPanelCapable === true)'),
+        'late capability request handling must reply through event.source/event.origin',
+    );
+    assert.ok(
+        instancePreview.includes('postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true)'),
+        'proactive onLoad/activation capability announcements must remain for same-origin preview loads',
+    );
+});
+
 test('preview child reuses trusted parent capability origin for later doc opens', () => {
     const previewOrigin = read('public/js/preview-parent-origin.ts');
     assert.ok(
