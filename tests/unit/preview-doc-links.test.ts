@@ -118,6 +118,10 @@ test('preview child reuses trusted parent capability origin for later doc opens'
         'previewParentOrigin must reuse the cached relay origin after cross-origin capability messages',
     );
     assert.ok(
+        previewOrigin.indexOf('if (parentRelayOriginCache) return parentRelayOriginCache') < previewOrigin.indexOf('if (document.referrer)'),
+        'cached capability origin must outrank referrer so later doc-open postMessage uses the exact parent origin',
+    );
+    assert.ok(
         previewOrigin.includes("if (!data || data.type !== 'jaw-preview-capabilities') return;\n        rememberParentRelayOrigin(event.origin);"),
         'capability announcements must seed the cached parent origin before DocPanel clicks',
     );

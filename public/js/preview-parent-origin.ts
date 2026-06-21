@@ -21,13 +21,13 @@ export function previewParentOrigin(): string | null {
             return parentOrigin;
         }
     } catch { /* cross-origin preview iframe */ }
+    if (parentRelayOriginCache) return parentRelayOriginCache;
     try {
         if (document.referrer) {
             const origin = new URL(document.referrer).origin;
             if (isLocalPreviewRelayOrigin(origin)) return origin;
         }
     } catch { /* ignore */ }
-    if (parentRelayOriginCache) return parentRelayOriginCache;
     return null;
 }
 
