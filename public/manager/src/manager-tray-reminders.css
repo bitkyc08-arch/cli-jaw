@@ -9,6 +9,10 @@
     color: var(--ink-primary);
 }
 
+.tray-reminders-header {
+    grid-row: 1;
+}
+
 .tray-reminders-header,
 .tray-reminders-footer {
     display: flex;
@@ -52,6 +56,7 @@
 
 .tray-reminders-status,
 .tray-reminders-empty {
+    grid-row: 2;
     margin: 0;
     padding: 9px 12px;
     border-bottom: 1px solid var(--border-subtle);
@@ -64,6 +69,7 @@
 }
 
 .tray-reminders-sections {
+    grid-row: 3;
     min-height: 0;
     overflow: auto;
     display: grid;
@@ -189,6 +195,7 @@
 }
 
 .tray-reminders-composer {
+    grid-row: 4;
     min-width: 0;
     display: grid;
     grid-template-rows: auto auto auto;
@@ -287,4 +294,8 @@
 
 .tray-reminders-footer button {
     flex: 0 0 auto;
+}
+
+.tray-reminders-footer {
+    grid-row: 5;
 }

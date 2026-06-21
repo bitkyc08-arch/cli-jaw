@@ -86,6 +86,9 @@ test('manager frontend exposes Reminders as a gated SidebarRail workspace', () =
     assert.ok(trayCss.includes('.tray-reminders-composer-date-row[data-mode="later"]'), 'Later quick-add must hide the unused date row');
     assert.ok(trayCss.includes('height: 30px;'), 'Tray quick-add mode buttons must stay compact');
     assert.ok(trayCss.includes('height: 34px;'), 'Tray quick-add title row must stay single-line compact');
+    assert.ok(trayCss.includes('.tray-reminders-sections {\n    grid-row: 3;'), 'Tray reminders list must stay in the scroll row even when status rows are absent');
+    assert.ok(trayCss.includes('.tray-reminders-composer {\n    grid-row: 4;'), 'Tray quick-add composer must stay pinned above the footer');
+    assert.ok(trayCss.includes('.tray-reminders-footer {\n    grid-row: 5;'), 'Tray footer must stay in the bottom grid row');
     assert.ok(workspace.includes('InlineReminderTitle'), 'Reminders rows must support double-click inline title editing');
     assert.ok(workspace.includes('data-reminder-drop-before-id'), 'Reminders row drop targets must expose before/after order metadata');
     assert.ok(workspace.includes('isAfterRowDrop'), 'Reminders row drops must distinguish upper/lower row halves for same-bucket reorder');
