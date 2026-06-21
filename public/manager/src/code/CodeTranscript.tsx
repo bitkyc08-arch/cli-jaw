@@ -47,6 +47,41 @@ function toolErrorSnippet(msg: TranscriptEntry): string {
     return snippet.replace(/\s+/g, ' ').trim().slice(0, 240);
 }
 
+function firstLine(value: string): string {
+    return value.split(/\r?\n/)[0]?.replace(/\s+/g, ' ').trim() ?? '';
+}
+
+function safeToolContentLine(msg: TranscriptEntry): { name?: string; text: string } | null {
+    const content = msg.toolContent?.find(item => item.type === 'args' || item.type === 'text' || item.type === 'json');
+    if (!content) return null;
+    if (typeof content.text === 'string') {
+        const text = firstLine(content.text);
+        if (!text) return null;
+        return { text, ...(content.type === 'args' ? { name: 'bash' } : /^https?:\/\//.test(text) || text.startsWith('/') ? { name: 'read' } : {}) };
+    }
+    if (typeof content.json === 'string') {
+        const text = firstLine(content.json);
+        return text ? { text, ...(content.type === 'args' ? { name: 'bash' } : {}) } : null;
+    }
+    if (content.json && typeof content.json === 'object' && !Array.isArray(content.json)) {
+        const record = content.json as Record<string, unknown>;
+        for (const [key, name] of [['command', 'bash'], ['cmd', 'bash'], ['path', 'read'], ['url', 'read'], ['file', 'read'], ['query', 'search']] as const) {
+            const value = record[key];
+            if (typeof value === 'string' && value.trim()) return { name, text: firstLine(value) };
+        }
+    }
+    return null;
+}
+
+function toolSummaryLabel(msg: TranscriptEntry): string {
+    const name = firstLine(msg.toolName || msg.text || 'tool') || 'tool';
+    const detail = safeToolContentLine(msg);
+    if (name.includes(':')) return name;
+    if (!detail) return name;
+    if (name === 'tool') return detail.name ? `${detail.name}: ${detail.text}` : detail.text;
+    return `${name}: ${detail.text}`;
+}
+
 function permissionDecisionLabel(decision: string): string {
     if (decision === 'pending') return 'Pending';
     if (decision === 'allow_once') return 'Allow once';
@@ -104,10 +139,8 @@ export function CodeTranscript({ messages, sending, workingDir, transcriptRef }:
                             return (
                             <details className={`code-tool-card code-tool-${status}`} open={status === 'running' || failed}>
                                 <summary className="code-tool-summary">
-                                    <span className={`code-tool-icon ${status === 'running' ? 'spinning' : ''}`}>
-                                        {status === 'running' ? 'run' : failed ? 'fail' : 'done'}
-                                    </span>
-                                    <span className="code-tool-name">{msg.toolName}</span>
+                                    <span className="code-tool-chevron">&gt;</span>
+                                    <span className="code-tool-name">{toolSummaryLabel(msg)}</span>
                                     <span className="code-tool-status">{status}</span>
                                 </summary>
                                 {snippet && <div className="code-tool-error-snippet">{snippet}</div>}

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { createCodeSessionClient } from './code-session-client';
-import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo } from './code-session-client';
+import type { CodeGitInfo, CodeModelAssignment, CodeModelAssignments, CodeModelOptions, CodeModelPresetInfo, CodeSession } from './code-session-client';
 import { CodeSessionList } from './CodeSessionList';
 import { CodeWorkbench } from './CodeWorkbench';
 import { getDesktop } from '../panels/desktop-bridge';
@@ -57,6 +57,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const [transportState, setTransportState] = useState<CodeTransportState>('connected');
     const [sidebarHost, setSidebarHost] = useState<HTMLElement | null>(null);
     const activeSessionIdRef = useRef<string | null>(null);
+    const skipNextCwdResetRef = useRef(false);
     const selectedModelId = useMemo(() => model ? toModelId(provider, model) : '', [provider, model]);
     const { transcriptRef, scrollTranscriptToBottom } = useCodeTranscriptScroll(messages, sending, Boolean(activePopup));
 
@@ -160,6 +161,10 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     }, [client, codeWorkingDir]);
 
     useEffect(() => {
+        if (skipNextCwdResetRef.current) {
+            skipNextCwdResetRef.current = false;
+            return;
+        }
         setActiveSessionId(null);
         activeSessionIdRef.current = null;
         setMessages([]);
@@ -387,6 +392,23 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
     const currentModelOptions = providerRecord?.models ?? [];
     const currentEffortOptions = providerRecord?.efforts ?? [];
 
+    const applySelectedLiveSession = (session: CodeSession) => {
+        const replayMessages = replayEventsToTranscriptEntries(session.replayEvents ?? []);
+        activeSessionIdRef.current = session.sessionId;
+        setActiveSessionId(session.sessionId);
+        if (session.cwd !== codeWorkingDir) {
+            skipNextCwdResetRef.current = true;
+            setCodeWorkingDir(session.cwd);
+        }
+        setMessages(replayMessages);
+        setPermissions([]);
+        setPlanEntries([]);
+        setSessionTitle(session.title?.trim() || replayMessages.find(msg => msg.role === 'user')?.text.split(/\r?\n/)[0]?.replace(/\s+/g, ' ').trim() || '');
+        setUsage({});
+        setSending(false);
+        setChildRecovery(null);
+    };
+
     if (!port) {
         return (
             <div className="code-canvas">
@@ -402,7 +424,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             client={client}
             activeSessionId={activeSessionId}
             workingDir={codeWorkingDir}
-            onSelectSession={id => { setActiveSessionId(id); setMessages([]); setPlanEntries([]); setSessionTitle(''); }}
+            onSelectSession={applySelectedLiveSession}
             onLoadSession={(id, cwd) => {
                 void (async () => {
                     activeSessionIdRef.current = id;

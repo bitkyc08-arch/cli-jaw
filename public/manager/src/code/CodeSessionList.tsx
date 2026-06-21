@@ -7,7 +7,7 @@ type CodeSessionListProps = {
     client: CodeSessionClient;
     activeSessionId: string | null;
     workingDir: string;
-    onSelectSession: (sessionId: string) => void;
+    onSelectSession: (session: CodeSession) => void;
     onLoadSession: (sessionId: string, cwd: string) => void;
     onNewSession: () => void;
 };
@@ -59,13 +59,23 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
     useEffect(() => { void refresh(); }, [refresh]);
 
     const cwdLabel = (cwd: string) => cwd.split('/').pop() || cwd;
+    const firstReplayUserLine = (session: CodeSession) => {
+        const event = session.replayEvents?.find(e => e.event === 'code_user_message_chunk');
+        const update = event?.update ?? {};
+        const content = update['content'] as { type?: string; text?: string } | undefined;
+        const text = String(content?.text ?? update['text'] ?? '').split(/\r?\n/)[0]?.replace(/\s+/g, ' ').trim();
+        return text || '';
+    };
     const liveSessionTitle = (session: CodeSession) => session.title?.trim()
+        || firstReplayUserLine(session)
+        || cwdLabel(session.cwd)
         || session.sessionId.slice(0, 12)
         || 'Untitled session';
     const liveSessionMeta = (session: CodeSession) => cwdLabel(session.cwd);
     const liveSessionSearchText = (session: CodeSession) => [
         session.sessionId,
         session.title ?? '',
+        firstReplayUserLine(session),
         session.cwd,
     ].join(' ').toLowerCase();
     const storedSessionTitle = (session: StoredSession) => session.title?.trim()
@@ -139,7 +149,7 @@ export function CodeSessionList({ client, activeSessionId, workingDir, onSelectS
                                 <li key={s.sessionId}>
                                     <button type="button"
                                         className={`code-session-item ${s.sessionId === activeSessionId ? 'active' : ''}`}
-                                        onClick={() => onSelectSession(s.sessionId)}>
+                                        onClick={() => onSelectSession(s)}>
                                         <span className="code-session-cwd">{liveSessionTitle(s)}</span>
                                         <span className="code-session-meta">{liveSessionMeta(s)}</span>
                                         <span className={`code-session-status code-session-status-${s.status}`}>{s.status}</span>

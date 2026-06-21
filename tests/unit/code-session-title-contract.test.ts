@@ -25,7 +25,9 @@ test('code session live rows do not use cwd basename as primary title', () => {
 
     assert.ok(list.includes('liveSessionTitle'), 'CodeSessionList must centralize live title fallback');
     assert.ok(list.includes("session.title?.trim()"), 'live title must prefer returned JWC title when available');
-    assert.ok(list.includes("session.sessionId.slice(0, 12)"), 'live title must fall back to stable session id prefix, not cwd');
+    assert.ok(list.includes('firstReplayUserLine(session)'), 'live title must fall back to the replayed first user line before ids');
+    assert.ok(list.includes('|| cwdLabel(session.cwd)'), 'live title may fall back to cwd basename before the final id fallback');
+    assert.ok(list.includes("session.sessionId.slice(0, 12)"), 'live title must keep stable session id prefix as the last fallback');
     assert.ok(list.includes('liveSessionMeta'), 'live cwd should render as secondary metadata');
     assert.equal(list.includes('<span className="code-session-cwd">{cwdLabel(s.cwd)}</span>'), false, 'live session primary title must not be cwd basename');
 });
@@ -128,6 +130,23 @@ test('code canvas accepts replay user chunks and loads stored sessions without d
     assert.ok(loadBlock.includes('setMessages(prev => prev.length > 0 ? prev : replayFallback)'), 'replay fallback must only apply when SSE did not already populate transcript');
     assert.equal(loadBlock.includes('messages.length'), false, 'load handler must not read stale messages.length after await');
     assert.ok(loadBlock.includes('if (activeSessionIdRef.current === id)'), 'load failure must only restore state when failed id is still active');
+
+    const selectBlockStart = canvas.indexOf('const applySelectedLiveSession = (session: CodeSession) => {');
+    const selectBlockEnd = canvas.indexOf('if (!port)', selectBlockStart);
+    assert.ok(selectBlockStart > 0 && selectBlockEnd > selectBlockStart, 'live session selection helper must be present');
+    const selectBlock = canvas.slice(selectBlockStart, selectBlockEnd);
+    assert.ok(selectBlock.includes('replayEventsToTranscriptEntries(session.replayEvents ?? [])'), 'live selection must hydrate from returned replayEvents');
+    assert.ok(selectBlock.includes('activeSessionIdRef.current = session.sessionId'), 'live selection must set ref before replay events can arrive');
+    assert.ok(selectBlock.includes('setActiveSessionId(session.sessionId)'), 'live selection must set active session state');
+    assert.ok(selectBlock.includes('skipNextCwdResetRef.current = true'), 'live selection must guard cwd reset before changing cwd');
+    assert.ok(selectBlock.includes('setCodeWorkingDir(session.cwd)'), 'live selection must switch the Code cwd to the selected session cwd');
+    assert.equal(selectBlock.includes('client.loadSession'), false, 'live selection must not ACP-load already-live sessions');
+
+    const resetBlockStart = canvas.indexOf('useEffect(() => {', canvas.indexOf('skipNextCwdResetRef'));
+    const resetBlockEnd = canvas.indexOf('}, [codeWorkingDir]);', resetBlockStart);
+    const resetBlock = canvas.slice(resetBlockStart, resetBlockEnd);
+    assert.ok(resetBlock.includes('if (skipNextCwdResetRef.current)'), 'cwd reset effect must consume the live-selection guard');
+    assert.ok(resetBlock.includes('return;'), 'cwd reset guard must return before clearing active session state');
 });
 
 test('code canvas owns code cwd override independent from manager instance selection', () => {
@@ -246,7 +265,7 @@ test('code transcript preserves failed tool state and remains scrollable after r
     }
     assert.ok(transcript.includes('isEditableTarget(event.target)'), 'transcript must not steal keys from composer inputs');
     assert.ok(transcript.includes("open={status === 'running' || failed}"), 'failed tools must open by default so error details are visible');
-    assert.ok(transcript.includes("failed ? 'fail' : 'done'"), 'failed tools must not show the done icon label');
+    assert.ok(transcript.includes('code-tool-status'), 'tool rows must keep visible status labels');
     assert.ok(transcript.includes('code-tool-error-snippet'), 'failed tools must show a visible error snippet');
 
     assert.ok(css.includes('.code-canvas-main'), 'code.css must style the Code main pane');
@@ -258,7 +277,7 @@ test('code transcript preserves failed tool state and remains scrollable after r
     assert.ok(css.includes('.code-tool-error-snippet'), 'failed tool error snippet must be styled');
 });
 
-test('code tool cards normalize args output error diff and json schema', () => {
+test('code tool rows normalize args output error diff and json schema', () => {
     const canvas = read('public/manager/src/code/CodeCanvas.tsx');
     const transcript = read('public/manager/src/code/CodeTranscript.tsx');
     const types = read('public/manager/src/code/code-types.ts');
@@ -272,8 +291,12 @@ test('code tool cards normalize args output error diff and json schema', () => {
     assert.ok(canvas.includes('normalizeToolContentFromUpdate(update)'), 'live and replay tool events must use normalized tool content');
     assert.equal(canvas.includes("const content = (update['content'] ?? []) as ToolContent[]"), false, 'CodeCanvas must not cast raw tool content directly into transcript cards');
 
+    assert.ok(transcript.includes('function toolSummaryLabel(msg: TranscriptEntry): string'), 'tool transcript must centralize compact summary labels');
+    assert.ok(transcript.includes('safeToolContentLine(msg)'), 'tool summary must derive safe one-line details from normalized content');
+    assert.ok(transcript.includes('className="code-tool-chevron"'), 'tool summary must render a leading > marker');
+    assert.ok(transcript.includes('{toolSummaryLabel(msg)}'), 'tool summary must render the compact label instead of only the raw tool name');
     assert.ok(transcript.includes('code-tool-section-label'), 'tool transcript must render labels for normalized sections');
-    for (const selector of ['.code-tool-args', '.code-tool-output', '.code-tool-error', '.code-tool-json', '.code-tool-diff']) {
+    for (const selector of ['.code-tool-chevron', '.code-tool-name', '.code-tool-args', '.code-tool-output', '.code-tool-error', '.code-tool-json', '.code-tool-diff']) {
         assert.ok(css.includes(selector), `tool card CSS must include ${selector}`);
     }
 });
