@@ -93,5 +93,12 @@ test('npm publish workflow creates GitHub releases and is safe to rerun for an e
         'publish workflow must skip npm publish when the exact version already exists');
     assert.ok(workflow.includes('Create GitHub release'), 'publish workflow must create or update a GitHub Release');
     assert.ok(workflow.includes('--prerelease'), 'preview publishes must create GitHub prereleases');
+    assert.ok(workflow.includes('previous_tag='), 'GitHub release notes must derive the previous tag automatically');
+    assert.ok(workflow.includes('git rev-list "$previous_tag"..HEAD --count'), 'GitHub release notes must include commit count');
+    assert.ok(workflow.includes("git log \"$previous_tag\"..HEAD -n 80 --pretty=format:'- %s' --no-merges"),
+        'GitHub release notes must include commit subjects');
+    assert.ok(workflow.includes('**Previous**:'), 'GitHub release notes must include a Previous line');
+    assert.ok(workflow.includes('### Changes'), 'GitHub release notes must include a Changes section');
+    assert.ok(workflow.includes('--target "$GITHUB_SHA"'), 'release edits must retarget the release to the current publish commit');
     assert.ok(workflow.includes('notes-file'), 'GitHub releases should be created from a structured notes file');
 });

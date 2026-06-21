@@ -244,22 +244,42 @@ jobs:
           set -euo pipefail
           tag="v${{ steps.release.outputs.version }}"
           notes_file="$(mktemp)"
-          cat > "$notes_file" <<'NOTES'
-          ## cli-jaw ${{ steps.release.outputs.version }}
+          previous_tag="$(git tag --sort=-creatordate | grep -E '^v[0-9]' | grep -v -F "$tag" | head -1 || true)"
+          if [ -n "$previous_tag" ]; then
+            previous_label="$previous_tag"
+            commit_count="$(git rev-list "$previous_tag"..HEAD --count)"
+            changelog="$(git log "$previous_tag"..HEAD -n 80 --pretty=format:'- %s' --no-merges)"
+          else
+            previous_label="(first release)"
+            commit_count="$(git rev-list HEAD --count)"
+            changelog="$(git log HEAD -n 80 --pretty=format:'- %s' --no-merges)"
+          fi
 
-          Published from `${{ github.ref_name }}` with npm dist-tag `${{ steps.release.outputs.tag }}`.
-
-          ### Install
-          ```sh
-          npm install -g cli-jaw@${{ steps.release.outputs.tag }}
-          npm install -g cli-jaw@${{ steps.release.outputs.version }}
-          ```
-
-          ### Verification
-          - npm package gates passed in this workflow.
-          - npm registry smoke confirmed `cli-jaw@${{ steps.release.outputs.version }}`.
-          - npm provenance was requested through GitHub OIDC Trusted Publishing.
-          NOTES
+          {
+            echo "## Release v${{ steps.release.outputs.version }}"
+            echo
+            echo "**Previous**: $previous_label"
+            echo "**Commits**: $commit_count"
+            echo
+            echo "### Changes"
+            if [ -n "$changelog" ]; then
+              printf '%s\n' "$changelog"
+            else
+              echo "- No commit changes found."
+            fi
+            echo
+            echo "### Install"
+            echo '```sh'
+            echo "npm install -g cli-jaw@${{ steps.release.outputs.tag }}"
+            echo "npm install -g cli-jaw@${{ steps.release.outputs.version }}"
+            echo '```'
+            echo
+            echo "### Verification"
+            echo "- Published from \`${{ github.ref_name }}\` with npm dist-tag \`${{ steps.release.outputs.tag }}\`."
+            echo "- npm package gates passed in this workflow."
+            echo "- npm registry smoke confirmed \`cli-jaw@${{ steps.release.outputs.version }}\`."
+            echo "- npm provenance was requested through GitHub OIDC Trusted Publishing."
+          } > "$notes_file"
 
           create_args=()
           edit_args=()
@@ -273,7 +293,7 @@ jobs:
             title="v${{ steps.release.outputs.version }}"
           fi
           if gh release view "$tag" >/dev/null 2>&1; then
-            gh release edit "$tag" --title "$title" --notes-file "$notes_file" "${edit_args[@]}"
+            gh release edit "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file "$notes_file" "${edit_args[@]}"
           else
             gh release create "$tag" --target "$GITHUB_SHA" --title "$title" --notes-file "$notes_file" "${create_args[@]}"
           fi
