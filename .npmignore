@@ -17,6 +17,10 @@ node_modules/
 dist/bin/cli-claw.js
 dist/bin/cli-claw.js.map
 
+# Native addons are rebuilt/downloaded per install target; never publish a
+# locally-built platform binary from dist/.
+dist/src/lib/native/*.node
+
 # Prevent nested Vite publicDir/build artifacts
 public/public/
 public/dist/dist/

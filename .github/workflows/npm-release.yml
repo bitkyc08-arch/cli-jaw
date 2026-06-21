@@ -1,0 +1,168 @@
+name: npm Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish; must equal package.json"
+        required: true
+        type: string
+      tag:
+        description: "npm dist-tag"
+        required: true
+        type: choice
+        options:
+          - preview
+          - latest
+        default: preview
+      dry-run:
+        description: "Dry run: build, pack, and validate without publishing"
+        required: false
+        type: boolean
+        default: true
+      create-github-release:
+        description: "Create a GitHub release after a real publish"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  id-token: write
+
+concurrency:
+  group: npm-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          registry-url: "https://registry.npmjs.org"
+          cache: npm
+
+      - name: Use latest npm
+        run: npm install -g npm@latest
+
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Verify release input
+        run: |
+          set -euo pipefail
+          pkg_version="$(node -p "require('./package.json').version")"
+          echo "package.json=${pkg_version}"
+          echo "input=${{ inputs.version }}"
+          test "$pkg_version" = "${{ inputs.version }}" || {
+            echo "::error::package.json version must equal workflow input version";
+            exit 1;
+          }
+
+          if [ "${{ inputs.tag }}" = "latest" ]; then
+            case "$GITHUB_REF" in
+              refs/heads/dev|refs/heads/main|refs/heads/master) ;;
+              *)
+                echo "::error::latest publishes must run from dev/main/master; got ${GITHUB_REF}";
+                exit 1;
+                ;;
+            esac
+          fi
+
+      - name: Guard npm package metadata
+        run: |
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
+          const sections = ['dependencies', 'optionalDependencies'];
+          const offenders = [];
+          for (const section of sections) {
+            for (const [name, spec] of Object.entries(pkg[section] ?? {})) {
+              if (String(spec).startsWith('file:')) offenders.push(`${section}.${name}=${spec}`);
+            }
+          }
+          if (offenders.length) {
+            console.error(`file: dependencies cannot be published:\n${offenders.join('\n')}`);
+            process.exit(1);
+          }
+          console.log('package metadata OK');
+          NODE
+
+      - name: Build and package gates
+        run: |
+          set -euo pipefail
+          npm run prepublishOnly
+          npm run gate:all
+
+      - name: Pack audit
+        run: |
+          set -euo pipefail
+          npm pack --dry-run --json > /tmp/pack.json
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const pack = JSON.parse(fs.readFileSync('/tmp/pack.json', 'utf8'))[0];
+          const forbidden = pack.files
+            .map(file => file.path)
+            .filter(path => /(^|\/)(devlog|skills_ref|officecli|node_modules)(\/|$)|\.node$/.test(path));
+          if (forbidden.length) {
+            console.error(`forbidden files in npm pack:\n${forbidden.join('\n')}`);
+            process.exit(1);
+          }
+          if (pack.size > 25_000_000) {
+            console.error(`packed tarball too large: ${pack.size}`);
+            process.exit(1);
+          }
+          console.log(`pack OK: ${pack.filename}, ${pack.files.length} files, ${pack.size} bytes`);
+          NODE
+
+      - name: Publish or dry-run
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.dry-run }}" = "true" ]; then
+            echo "::notice::DRY RUN - npm publish will not write to registry"
+            npm publish --dry-run --tag "${{ inputs.tag }}" --access public --provenance
+          else
+            npm publish --tag "${{ inputs.tag }}" --access public --provenance
+          fi
+
+      - name: Registry smoke
+        if: ${{ inputs.dry-run != true }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 30); do
+            if version="$(npm view "cli-jaw@${{ inputs.version }}" version 2>/dev/null)"; then
+              test "$version" = "${{ inputs.version }}"
+              npm dist-tag ls cli-jaw
+              exit 0
+            fi
+            echo "::notice::cli-jaw@${{ inputs.version }} not visible yet (${attempt}/30)"
+            sleep 10
+          done
+          echo "::error::registry smoke failed"
+          exit 1
+
+      - name: Create GitHub release
+        if: ${{ inputs.dry-run != true && inputs.create-github-release == true }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v${{ inputs.version }}"
+          prerelease_args=()
+          if [ "${{ inputs.tag }}" = "preview" ]; then
+            prerelease_args+=(--prerelease)
+          fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release edit "$tag" --title "$tag" --notes "Published cli-jaw@${{ inputs.version }} with dist-tag ${{ inputs.tag }}."
+          else
+            gh release create "$tag" --target "$GITHUB_SHA" --title "$tag" --notes "Published cli-jaw@${{ inputs.version }} with dist-tag ${{ inputs.tag }}." "${prerelease_args[@]}"
+          fi
