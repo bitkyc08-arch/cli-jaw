@@ -21,6 +21,7 @@ import {
 import { answerQueuedPermission, handleIncomingPermissionRequest } from './code-permission-flow';
 import { normalizeToolStatus, replayEventsToTranscriptEntries } from './code-transcript-replay';
 import {
+    assistantChunkMergeAction,
     isDuplicateAssistantFinalChunk,
     rememberCodeChunkEvents,
     shouldDropDuplicateCodeChunk,
@@ -204,7 +205,10 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 const last = prev[prev.length - 1];
                 if (last?.role === 'assistant' && isDuplicateAssistantFinalChunk(last.text, text)) return prev;
                 if (last?.role === 'assistant') {
-                    return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                    const mergeAction = assistantChunkMergeAction(last.text, text);
+                    if (mergeAction === 'drop') return prev;
+                    const nextText = mergeAction === 'replace' ? text : last.text + text;
+                    return [...prev.slice(0, -1), { ...last, text: nextText }];
                 }
                 return [...prev, { role: 'assistant', text }];
             });
@@ -214,7 +218,14 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
             if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 if (pendingUserEchoRef.current === text) {
-                    const optimisticIndex = prev.findLastIndex(msg => msg.role === 'user' && msg.text === text && msg.transient === 'pending-user-echo');
+                    let optimisticIndex = -1;
+                    for (let index = prev.length - 1; index >= 0; index -= 1) {
+                        const msg = prev[index];
+                        if (msg?.role === 'user' && msg.text === text && msg.transient === 'pending-user-echo') {
+                            optimisticIndex = index;
+                            break;
+                        }
+                    }
                     if (optimisticIndex >= 0) {
                         pendingUserEchoRef.current = null;
                         const updated = [...prev];

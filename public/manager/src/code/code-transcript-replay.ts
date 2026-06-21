@@ -1,4 +1,5 @@
 import type { CodeSessionReplayEvent } from './code-session-client';
+import { assistantChunkMergeAction } from './code-event-dedupe';
 import { findLastToolMessageIndex, normalizeToolContentFromUpdate, type TranscriptEntry } from './code-types';
 
 export function normalizeToolStatus(status: string): 'running' | 'done' | 'failed' {
@@ -21,8 +22,13 @@ export function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]
             const text = String(content?.text ?? update['text'] ?? '');
             if (!text) continue;
             const last = entries[entries.length - 1];
-            if (last?.role === 'assistant') last.text += text;
-            else entries.push({ role: 'assistant', text });
+            if (last?.role === 'assistant') {
+                const mergeAction = assistantChunkMergeAction(last.text, text);
+                if (mergeAction === 'drop') continue;
+                last.text = mergeAction === 'replace' ? text : last.text + text;
+            } else {
+                entries.push({ role: 'assistant', text });
+            }
         } else if (event.event === 'code_agent_thought_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');

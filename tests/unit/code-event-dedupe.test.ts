@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+    assistantChunkMergeAction,
     codeChunkEventKey,
     isDuplicateAssistantFinalChunk,
     rememberCodeChunkEvents,
@@ -66,4 +67,28 @@ test('code event dedupe treats an adjacent long identical assistant final as dup
 
     assert.equal(isDuplicateAssistantFinalChunk(text, text), true);
     assert.equal(isDuplicateAssistantFinalChunk('짧은 답변', '짧은 답변'), false);
+});
+
+test('assistant chunk merge replaces an incomplete prefix with a cumulative final snapshot', () => {
+    const prefix = '요청하신 대로 10개 도구를 사용해 워크스페이스를 탐색했습니다.';
+    const final = [
+        prefix,
+        '',
+        '# 도구 결과',
+        '1 Glob integration tests 10개',
+        '2 Grep code unit tests 매치 없음',
+    ].join('\n');
+
+    assert.equal(assistantChunkMergeAction(prefix, final), 'replace');
+});
+
+test('assistant chunk merge drops an older prefix after the complete text already rendered', () => {
+    const prefix = '요청하신 대로 10개 도구를 사용해 워크스페이스를 탐색했습니다.';
+    const final = `${prefix}\n\n# 도구 결과\n1 Glob integration tests 10개`;
+
+    assert.equal(assistantChunkMergeAction(final, prefix), 'drop');
+});
+
+test('assistant chunk merge still appends true delta chunks', () => {
+    assert.equal(assistantChunkMergeAction('첫 번째 문장입니다.\n', '두 번째 문장입니다.'), 'append');
 });

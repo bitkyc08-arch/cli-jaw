@@ -2,6 +2,7 @@ import type { CodeSessionReplayEvent } from './code-session-client';
 import type { CodeEvent } from './useCodeEvents';
 
 type ChunkLikeEvent = Pick<CodeEvent, 'event' | 'sessionId' | 'update' | 'sseEventId'>;
+export type AssistantChunkMergeAction = 'append' | 'drop' | 'replace';
 
 const CHUNK_EVENTS = new Set([
     'code_user_message_chunk',
@@ -49,4 +50,12 @@ export function isDuplicateAssistantFinalChunk(lastText: string, incomingText: s
     const normalizedIncoming = incomingText.trim();
     if (normalizedIncoming.length < 80) return false;
     return normalizedLast === normalizedIncoming;
+}
+
+export function assistantChunkMergeAction(currentText: string, incomingText: string): AssistantChunkMergeAction {
+    if (!currentText || !incomingText) return 'append';
+    if (currentText === incomingText) return 'drop';
+    if (incomingText.startsWith(currentText)) return 'replace';
+    if (currentText.startsWith(incomingText)) return 'drop';
+    return 'append';
 }
