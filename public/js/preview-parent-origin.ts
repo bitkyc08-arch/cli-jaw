@@ -47,6 +47,17 @@ function resolveDocPanelCapabilityWaiters(capable: boolean): void {
     docPanelCapabilityWaiters.clear();
 }
 
+export function requestPreviewCapabilities(): boolean {
+    const targetOrigin = previewParentOrigin();
+    if (!targetOrigin) return false;
+    try {
+        window.parent.postMessage({ type: 'jaw-preview-capabilities-request' }, targetOrigin);
+        return true;
+    } catch {
+        return false;
+    }
+}
+
 export function ensurePreviewCapabilityListener(): void {
     if (capabilityListenerReady) return;
     capabilityListenerReady = true;
@@ -58,6 +69,7 @@ export function ensurePreviewCapabilityListener(): void {
         parentDocPanelCapabilityKnown = true;
         resolveDocPanelCapabilityWaiters(parentDocPanelCapable);
     });
+    requestPreviewCapabilities();
 }
 
 export function waitForDocPanelCapability(timeoutMs = 180): Promise<boolean> {
@@ -66,6 +78,7 @@ export function waitForDocPanelCapability(timeoutMs = 180): Promise<boolean> {
         return Promise.resolve(parentDocPanelCapable);
     }
     if (!previewParentOrigin()) return Promise.resolve(false);
+    requestPreviewCapabilities();
     return new Promise(resolve => {
         let settled = false;
         const finish = (capable: boolean) => {

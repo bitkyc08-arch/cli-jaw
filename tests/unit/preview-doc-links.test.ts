@@ -62,6 +62,27 @@ test('capability message type literal matches between sender and receiver', () =
     assert.ok(sidebarRouter.includes('docPanelCapable={desktopPanelsAvailable}'), 'capability must follow desktopPanelsAvailable (Electron-only)');
 });
 
+test('preview child can request capabilities after a missed onLoad announcement', () => {
+    const previewOrigin = read('public/js/preview-parent-origin.ts');
+    const instancePreview = read('public/manager/src/InstancePreview.tsx');
+    assert.ok(
+        previewOrigin.includes("window.parent.postMessage({ type: 'jaw-preview-capabilities-request' }"),
+        'child preview must request capabilities when the delegation listener starts late',
+    );
+    assert.ok(
+        previewOrigin.includes('requestPreviewCapabilities();'),
+        'capability wait path must trigger a fresh request before falling back',
+    );
+    assert.ok(
+        instancePreview.includes("data.type !== 'jaw-preview-capabilities-request'"),
+        'manager preview must recognize child capability requests',
+    );
+    assert.ok(
+        instancePreview.includes('postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true)'),
+        'manager preview must reply with the current DocPanel capability',
+    );
+});
+
 test('DocPanel surfaces truncated reads instead of silent empty', () => {
     const docPanel = read('public/manager/src/doc-panel/DocPanel.tsx');
     assert.ok(docPanel.includes('result.truncated === true'), 'truncated flag must be tracked');

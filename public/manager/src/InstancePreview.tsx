@@ -332,6 +332,14 @@ export function InstancePreview(props: InstancePreviewProps) {
             props.onOpenDocFromPreview?.(path);
         }
         window.addEventListener('message', onPreviewOpenDoc);
+        function onPreviewCapabilitiesRequest(event: MessageEvent): void {
+            if (event.source !== iframeRef.current?.contentWindow) return;
+            if (!state.src || !previewFrameOriginMatches(event.origin, state.src, iframeRef.current)) return;
+            const data = event.data as { type?: unknown } | null;
+            if (!data || data.type !== 'jaw-preview-capabilities-request') return;
+            postPreviewCapabilities(iframeRef.current, state.src, props.docPanelCapable === true);
+        }
+        window.addEventListener('message', onPreviewCapabilitiesRequest);
         function onPreviewDroppedFiles(event: MessageEvent): void {
             if (event.source !== iframeRef.current?.contentWindow) return;
             if (!state.src || !previewFrameOriginMatches(event.origin, state.src, iframeRef.current)) return;
@@ -344,9 +352,10 @@ export function InstancePreview(props: InstancePreviewProps) {
             window.removeEventListener('message', onPreviewSend);
             window.removeEventListener('message', onPreviewOpenNotes);
             window.removeEventListener('message', onPreviewOpenDoc);
+            window.removeEventListener('message', onPreviewCapabilitiesRequest);
             window.removeEventListener('message', onPreviewDroppedFiles);
         };
-    }, [props.enabled, props.instance, props.onOpenNotesFromPreview, props.onOpenDocFromPreview, props.onPreviewDroppedFiles, state.canPreview, state.src]);
+    }, [props.enabled, props.instance, props.onOpenNotesFromPreview, props.onOpenDocFromPreview, props.onPreviewDroppedFiles, props.docPanelCapable, state.canPreview, state.src]);
 
     useEffect(() => {
         if (!props.active || !props.enabled || !state.canPreview || !state.src) return undefined;
