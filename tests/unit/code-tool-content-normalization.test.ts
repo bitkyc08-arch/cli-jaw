@@ -119,3 +119,64 @@ test('code replay replaces incomplete assistant prefix with cumulative final sna
     assert.equal((entries[1]?.text ?? '').indexOf(prefix), 0);
     assert.equal((entries[1]?.text ?? '').lastIndexOf(prefix), 0);
 });
+
+test('code replay replaces a leading-truncated assistant snapshot with the complete snapshot', () => {
+    const truncated = [
+        '개 도구를 한 번에 병렬 호출해 봤습니다. 결과 요약입니다.',
+        '',
+        '#',
+        '도구',
+        '결과',
+        '1',
+        'Glob',
+        'README 33개 발견 (README.md, README.ko.md 등)',
+        '2',
+        'Grep',
+        '*.ts에서 export 검색 — 매치 없음',
+        '워크스페이스 스냅샷',
+        '',
+        '프로젝트: cli-jaw (AI agent orchestration platform)',
+        '주요 디렉터리: src/, bin/, electron/, officecli/, skills_ref/',
+        '다른 도구 조합이나 특정 파일/기능 검색도 원하시면 말씀 주세요.',
+    ].join('\n');
+    const complete = [
+        '10개 도구를 한 번에 병렬 호출해 봤습니다. 결과 요약입니다.',
+        '',
+        '#',
+        '도구',
+        '결과',
+        '1',
+        'Glob',
+        'README 33개 발견 (README.md, README.ko.md 등)',
+        '2',
+        'Grep',
+        '*.ts에서 export 검색 — 매치 없음',
+        '워크스페이스 스냅샷',
+        '',
+        '프로젝트: cli-jaw (AI agent orchestration platform)',
+        '주요 디렉터리: src/, bin/, electron/, officecli/, skills_ref/',
+        '다른 도구 조합이나 특정 파일/기능 검색도 원하시면 말씀해 주세요.',
+    ].join('\n');
+    const entries = replayEventsToTranscriptEntries([
+        {
+            event: 'code_user_message_chunk',
+            sessionId: 's1',
+            update: { content: { type: 'text', text: 'tool use 10개해봐' } },
+        },
+        {
+            event: 'code_agent_message_chunk',
+            sessionId: 's1',
+            update: { content: { type: 'text', text: truncated } },
+        },
+        {
+            event: 'code_agent_message_chunk',
+            sessionId: 's1',
+            update: { content: { type: 'text', text: complete } },
+        },
+    ]);
+
+    assert.equal(entries.length, 2);
+    assert.equal(entries[1]?.role, 'assistant');
+    assert.equal(entries[1]?.text, complete);
+    assert.equal((entries[1]?.text ?? '').includes(truncated), false);
+});
