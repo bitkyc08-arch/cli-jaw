@@ -5,7 +5,7 @@ import { t } from './i18n.js';
 import { state } from '../state.js';
 import { ICONS } from '../icons.js';
 import { providerIcon, providerLabel } from '../provider-icons.js';
-import type { QuotaEntry } from './settings-types.js';
+import { resolveQuotaWindowDisplay, type QuotaEntry } from './settings-types.js';
 import {
     buildAccountParts,
     normalizeQuotaWindowLabel,
@@ -360,7 +360,8 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
             windowsHtml = renderQuotaSetupBox(name, q);
         } else if (q?.windows?.length) {
             windowsHtml = q.windows.map(w => {
-                const pct = Math.round(w.percent);
+                const display = resolveQuotaWindowDisplay(w);
+                const pct = display.percent ?? 0;
                 const barColor = pct > 80 ? 'var(--error)' : pct > 50 ? 'var(--warning)' : 'var(--info)';
                 const shortLabel = normalizeQuotaWindowLabel(name, w.label);
                 let resetStr = '';
@@ -373,13 +374,13 @@ function renderCliStatus(data: { cliStatus: Record<string, { available: boolean 
                         resetStr = `${d.getMonth() + 1}/${d.getDate()}`;
                     }
                 }
+                const usageDisplay = display.percent == null
+                    ? `<span style="flex:1"></span><span style="min-width:52px;text-align:right" title="Exact percentage unavailable">${escapeHtml(display.text)}</span>`
+                    : `<div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div style="width:${pct}%;height:100%;background:${barColor};border-radius:2px"></div></div><span style="width:24px;text-align:right">${display.text}</span>`;
                 return `
                     <div style="display:flex;align-items:center;gap:4px;margin-left:16px;font-size:10px;color:var(--text-dim)">
                         <span style="min-width:18px;max-width:48px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(shortLabel)}</span>
-                        <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
-                            <div style="width:${pct}%;height:100%;background:${barColor};border-radius:2px"></div>
-                        </div>
-                        <span style="width:24px;text-align:right">${pct}%</span>
+                        ${usageDisplay}
                         ${resetStr ? `<span style="width:30px;text-align:right;opacity:0.6">${resetStr}</span>` : ''}
                     </div>
                 `;
