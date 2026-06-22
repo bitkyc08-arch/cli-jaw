@@ -10,12 +10,18 @@ const devSkillPath = join(__dirname, '../../skills_ref/dev/SKILL.md');
 const devDebuggingSkillPath = join(__dirname, '../../skills_ref/dev-debugging/SKILL.md');
 const devSecuritySkillPath = join(__dirname, '../../skills_ref/dev-security/SKILL.md');
 const devDevopsSkillPath = join(__dirname, '../../skills_ref/dev-devops/SKILL.md');
+const devBackendSkillPath = join(__dirname, '../../skills_ref/dev-backend/SKILL.md');
+const devFrontendSkillPath = join(__dirname, '../../skills_ref/dev-frontend/SKILL.md');
+const devTestingSkillPath = join(__dirname, '../../skills_ref/dev-testing/SKILL.md');
 const registryPath = join(__dirname, '../../skills_ref/registry.json');
 const hasSearchSkill = fs.existsSync(searchSkillPath);
 const hasDevSkill = fs.existsSync(devSkillPath);
 const hasDevDebuggingSkill = fs.existsSync(devDebuggingSkillPath);
 const hasDevSecuritySkill = fs.existsSync(devSecuritySkillPath);
 const hasDevDevopsSkill = fs.existsSync(devDevopsSkillPath);
+const hasDevBackendSkill = fs.existsSync(devBackendSkillPath);
+const hasDevFrontendSkill = fs.existsSync(devFrontendSkillPath);
+const hasDevTestingSkill = fs.existsSync(devTestingSkillPath);
 
 test('SSP-001: restored search skill is a registered unified search hub', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
     const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
@@ -176,4 +182,40 @@ test('SSP-015: devops skill routes current release and provider evidence to sear
     assert.match(devDevopsSkill, /source-fetch and evidence-status rules/);
     assert.doesNotMatch(devDevopsSkill, /4-tier escalation/);
     assert.doesNotMatch(devDevopsSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-016: backend skill routes current API and provider evidence to search', { skip: !hasDevBackendSkill && 'skills_ref/dev-backend missing' }, () => {
+    const devBackendSkill = fs.readFileSync(devBackendSkillPath, 'utf8');
+
+    assert.match(devBackendSkill, /current external API docs, API lifecycle\s+changes/);
+    assert.match(devBackendSkill, /LLM\/RAG provider behavior, dependency freshness/);
+    assert.match(devBackendSkill, /package\/source\s+evidence/);
+    assert.match(devBackendSkill, /read the active `search` skill/);
+    assert.match(devBackendSkill, /query-rewrite,\s+source-fetch, and evidence-status rules/);
+    assert.doesNotMatch(devBackendSkill, /4-tier escalation/);
+    assert.doesNotMatch(devBackendSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-017: frontend skill routes current UI platform evidence to search', { skip: !hasDevFrontendSkill && 'skills_ref/dev-frontend missing' }, () => {
+    const devFrontendSkill = fs.readFileSync(devFrontendSkillPath, 'utf8');
+
+    assert.match(devFrontendSkill, /current framework, design-system, browser API/);
+    assert.match(devFrontendSkill, /library behavior, browser-rendered source evidence/);
+    assert.match(devFrontendSkill, /package\/source freshness/);
+    assert.match(devFrontendSkill, /read the active `search` skill/);
+    assert.match(devFrontendSkill, /source-fetch and evidence-status\s+rules/);
+    assert.doesNotMatch(devFrontendSkill, /4-tier escalation/);
+    assert.doesNotMatch(devFrontendSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-018: testing skill routes current provider and environment evidence to search', { skip: !hasDevTestingSkill && 'skills_ref/dev-testing missing' }, () => {
+    const devTestingSkill = fs.readFileSync(devTestingSkillPath, 'utf8');
+
+    assert.match(devTestingSkill, /current external API behavior, provider docs/);
+    assert.match(devTestingSkill, /CI service\s+behavior, test-environment versions/);
+    assert.match(devTestingSkill, /dependency audit evidence, or recorded\s+mock\/fixture sources/);
+    assert.match(devTestingSkill, /read the active `search` skill/);
+    assert.match(devTestingSkill, /source-fetch and evidence-status rules/);
+    assert.doesNotMatch(devTestingSkill, /4-tier escalation/);
+    assert.doesNotMatch(devTestingSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
 });
