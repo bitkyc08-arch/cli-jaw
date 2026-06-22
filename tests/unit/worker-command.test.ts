@@ -43,6 +43,16 @@ test('worker command keeps status/watch on safe-summary surfaces', () => {
     assert.match(workerSrc, /numericFlag\('--recent'\)/);
 });
 
+test('worker watch json emits a parseable safe progress snapshot', () => {
+    const watchJsonIdx = workerSrc.indexOf('if (json) {');
+    assert.ok(watchJsonIdx >= 0, 'watch branch should handle --json explicitly');
+    const watchJsonBlock = workerSrc.slice(watchJsonIdx, workerSrc.indexOf('const printed = new Set<string>()', watchJsonIdx));
+    assert.match(watchJsonBlock, /latest = await fetchProgress\(agentId\)/);
+    assert.match(watchJsonBlock, /hasCurrentRun\(latest\)/);
+    assert.match(watchJsonBlock, /JSON\.stringify\(latest, null, 2\)/);
+    assert.doesNotMatch(watchJsonBlock, /printNewTools|formatToolLine|console\.log\(formatToolLine/);
+});
+
 test('worker command prints lifecycle attention from progress snapshots', () => {
     assert.match(workerSrc, /phase\?: string \| null/);
     assert.match(workerSrc, /console\.log\(`phase:/);

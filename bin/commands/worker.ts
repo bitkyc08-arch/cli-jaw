@@ -308,6 +308,11 @@ function printNewTools(body: ProgressListBody, printed: Set<string>): boolean {
     return sawCurrent;
 }
 
+function hasCurrentRun(body: ProgressListBody): boolean {
+    const snapshots = body.progress ? [body.progress] : body.workers || [];
+    return snapshots.some(snapshot => Boolean(snapshot.current));
+}
+
 await getCliAuthToken(PORT);
 
 try {
@@ -360,6 +365,17 @@ try {
         const body = await fetchProgress(agentId);
         if (json) console.log(JSON.stringify(body, null, 2));
         else printProgress(body);
+        process.exit(0);
+    }
+
+    if (json) {
+        let latest: ProgressListBody = {};
+        while (true) {
+            latest = await fetchProgress(agentId);
+            if (!hasCurrentRun(latest)) break;
+            await sleep(2_000);
+        }
+        console.log(JSON.stringify(latest, null, 2));
         process.exit(0);
     }
 
