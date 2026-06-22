@@ -71,11 +71,12 @@ function flushAsyncCommands(): Promise<void> {
     return new Promise(resolve => setImmediate(resolve));
 }
 
-async function waitFor(condition: () => boolean, attempts = 20): Promise<void> {
+async function waitFor(condition: () => boolean, attempts = 100): Promise<void> {
     for (let i = 0; i < attempts; i += 1) {
         if (condition()) return;
-        await flushAsyncCommands();
+        await new Promise(resolve => setTimeout(resolve, 5));
     }
+    assert.equal(condition(), true);
 }
 
 test('fullscreen Enter submits without writing line-mode separators or moving the composer block', () => {
