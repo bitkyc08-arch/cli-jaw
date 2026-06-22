@@ -5,7 +5,7 @@
 ### 나만의 AI 에이전트. 2줄이면 설치 끝. 13개 AI 런타임 표면을 하나의 대시보드에서.
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.1.3-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.0-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.4-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)

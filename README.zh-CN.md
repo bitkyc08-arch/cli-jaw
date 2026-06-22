@@ -5,7 +5,7 @@
 ### 你的个人 AI 助手。2 行安装。13 个 AI 运行时入口，一个仪表盘。
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.1.3-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.0-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.4-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
