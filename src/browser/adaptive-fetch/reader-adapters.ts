@@ -2,9 +2,12 @@
 
 import type { ReaderCandidate } from './types.js';
 import { extractMetadataFromHtml } from './metadata.js';
+import { normalizePublicEndpointResult } from './public-endpoint-normalizers.js';
 import { htmlToReadableText, isHtmlContentType, normalizeWhitespace } from './transforms.js';
 
 export function fromFetchResult(fetched: Record<string, unknown>, context: { source?: string; label?: string } = {}): ReaderCandidate {
+    const publicEndpoint = normalizePublicEndpointResult(fetched, context);
+    if (publicEndpoint) return normalizeReaderCandidate(publicEndpoint);
     const source = (context.source || 'fetch') as string;
     const isHtml = isHtmlContentType((fetched['contentType'] as string) || '');
     const metadata = isHtml ? extractMetadataFromHtml((fetched['text'] as string) || '', (fetched['finalUrl'] as string) || '') : null;

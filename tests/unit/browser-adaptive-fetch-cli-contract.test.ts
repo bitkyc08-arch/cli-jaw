@@ -22,3 +22,14 @@ test('browser fetch help keeps URL-reader and search boundary language', () => {
     assert.match(cliSrc, /--allow-third-party-reader/);
     assert.match(cliSrc, /known public endpoints, direct fetch,\s+optional public reader services, and browser rendering/);
 });
+
+test('browser fetch public endpoint reader adapter is wired', () => {
+    const adapterSrc = fs.readFileSync(join(root, 'src/browser/adaptive-fetch/reader-adapters.ts'), 'utf8');
+    const normalizerSrc = fs.readFileSync(join(root, 'src/browser/adaptive-fetch/public-endpoint-normalizers.ts'), 'utf8');
+    assert.match(adapterSrc, /normalizePublicEndpointResult/);
+    assert.match(normalizerSrc, /github-repo-api/);
+    assert.match(normalizerSrc, /npm-registry/);
+    assert.match(normalizerSrc, /arxiv-api/);
+    assert.match(normalizerSrc, /wayback-cdx-api/);
+    assert.match(normalizerSrc, /youtube-oembed/);
+});
