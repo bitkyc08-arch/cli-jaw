@@ -39,7 +39,7 @@ jobs:
               electron/dist/*.dmg
               electron/dist/*.zip
           - platform: windows
-            os: windows-latest
+            os: windows-2022
             script: dist:win
             sidecar_platform: win32
             sidecar_arch: x64

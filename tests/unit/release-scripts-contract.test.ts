@@ -67,7 +67,8 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('upload-release-assets:'), 'manual desktop release dispatch must have an explicit release upload gate');
     assert.ok(!workflow.includes('push:'), 'desktop workflow must not run on git push');
     assert.ok(workflow.includes('macos-latest'), 'desktop workflow must build macOS artifacts');
-    assert.ok(workflow.includes('windows-latest'), 'desktop workflow must build Windows artifacts');
+    assert.ok(workflow.includes('windows-2022'), 'desktop workflow must pin Windows packaging to the VS 2022 runner for node-gyp native rebuilds');
+    assert.ok(!workflow.includes('os: windows-latest'), 'desktop workflow must not use the moving windows-latest label for native packaging');
     assert.ok(workflow.includes('ubuntu-latest'), 'desktop workflow must build Linux artifacts');
     assert.ok(workflow.includes('node-version: 24'), 'desktop workflow host Node must match the Node 24 sidecar release line');
     assert.ok(workflow.includes('npm --prefix electron run typecheck'), 'desktop workflow must typecheck Electron shell');
