@@ -42,6 +42,9 @@ test('dispatch batch output delegates to safe summary helper instead of printing
     const batchBlock = src.slice(batchStart, src.indexOf("if ((!agent && !virtual)", batchStart));
 
     assert.match(src, /printBatchDispatchSummary/);
+    assert.match(batchBlock, /if \(!json && !quiet\) console\.log\(`🚀 Batch dispatching/);
+    assert.match(batchBlock, /if \(json\) \{\s*console\.log\(JSON\.stringify\(body\)\);[\s\S]*?process\.exit\(\(body\.results \|\| \[\]\)\.every\(r => r\.ok\) \? 0 : 1\);[\s\S]*?\}/);
+    assert.match(batchBlock, /if \(quiet\) process\.exit\(\(body\.results \|\| \[\]\)\.every\(r => r\.ok\) \? 0 : 1\)/);
     assert.doesNotMatch(batchBlock, /r\.text/);
     assert.doesNotMatch(helper, /console\.log\(result\.text/);
     assert.match(helper, /worker read/);

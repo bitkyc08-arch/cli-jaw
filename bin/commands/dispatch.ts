@@ -98,7 +98,7 @@ if (isBatch) {
     }
     const BASE = getServerUrl();
     await getCliAuthToken();
-    console.log(`🚀 Batch dispatching ${batchAgents.length} agents...`);
+    if (!json && !quiet) console.log(`🚀 Batch dispatching ${batchAgents.length} agents...`);
     try {
         const res = await cliFetch(`${BASE}/api/orchestrate/dispatch/batch`, {
             method: 'POST',
@@ -110,6 +110,11 @@ if (isBatch) {
             console.error(`❌ ${body.error || `Failed: ${res.status}`}`);
             process.exit(1);
         }
+        if (json) {
+            console.log(JSON.stringify(body));
+            process.exit((body.results || []).every(r => r.ok) ? 0 : 1);
+        }
+        if (quiet) process.exit((body.results || []).every(r => r.ok) ? 0 : 1);
         process.exit(printBatchDispatchSummary(body.results || []));
     } catch (e: unknown) {
         console.error(`❌ Error: ${errString(e)}`);
