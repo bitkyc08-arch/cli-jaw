@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { fromFetchResult } from '../../src/browser/adaptive-fetch/reader-adapters.js';
+import { fromFetchResult, fromNetworkCandidate } from '../../src/browser/adaptive-fetch/reader-adapters.js';
 
 function fetched(text: string, contentType = 'application/json') {
     return {
@@ -159,4 +159,63 @@ test('unsupported public endpoint JSON falls back to generic text handling', () 
     assert.equal(generic.label, 'unknown-public-json');
     assert.equal(generic.title, '');
     assert.match(generic.text, /"hello":"world"/);
+});
+
+test('browser network JSON candidates reuse public endpoint readers for known API URLs', () => {
+    const npm = fromNetworkCandidate({
+        ...fetched(JSON.stringify({
+            name: 'cli-jaw',
+            version: '2.2.0',
+            description: 'Agent runtime',
+            'dist-tags': { latest: '2.2.0' },
+        })),
+        finalUrl: 'https://registry.npmjs.org/cli-jaw/latest',
+        evidence: ['browser-network-json'],
+    });
+    assert.equal(npm.source, 'public_endpoint');
+    assert.equal(npm.label, 'npm-registry-latest');
+    assert.match(npm.text, /Package: cli-jaw@2\.2\.0/);
+    assert.ok(npm.evidence.includes('public-endpoint:npm-registry-latest'));
+
+    const hn = fromNetworkCandidate({
+        ...fetched(JSON.stringify({
+            id: 456,
+            title: 'Network HN',
+            by: 'carol',
+            score: 11,
+            descendants: 4,
+        })),
+        finalUrl: 'https://hacker-news.firebaseio.com/v0/item/456.json',
+        evidence: ['browser-network-json'],
+    });
+    assert.equal(hn.label, 'hacker-news-item-api');
+    assert.match(hn.text, /Hacker News: Network HN/);
+
+    const github = fromNetworkCandidate({
+        ...fetched(JSON.stringify({
+            full_name: 'lidge-jun/cli-jaw',
+            description: 'CLI Jaw',
+            default_branch: 'dev',
+            stargazers_count: 10,
+            forks_count: 2,
+            open_issues_count: 1,
+            html_url: 'https://github.com/lidge-jun/cli-jaw',
+        })),
+        finalUrl: 'https://api.github.com/repos/lidge-jun/cli-jaw',
+        evidence: ['browser-network-json'],
+    });
+    assert.equal(github.label, 'github-repo-api');
+    assert.match(github.text, /Repository: lidge-jun\/cli-jaw/);
+});
+
+test('ordinary browser network JSON candidates keep generic network API behavior', () => {
+    const generic = fromNetworkCandidate({
+        ...fetched(JSON.stringify({ hello: 'world' })),
+        finalUrl: 'https://app.example.test/api/bootstrap',
+        evidence: ['browser-network-json'],
+    });
+    assert.equal(generic.source, 'network_api');
+    assert.equal(generic.label, 'network_api');
+    assert.match(generic.text, /"hello":"world"/);
+    assert.ok(!generic.evidence.some(item => item.startsWith('public-endpoint:')));
 });

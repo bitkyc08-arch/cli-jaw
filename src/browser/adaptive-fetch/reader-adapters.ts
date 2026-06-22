@@ -54,7 +54,32 @@ export function fromBrowserResult(result: Record<string, unknown>): ReaderCandid
 }
 
 export function fromNetworkCandidate(result: Record<string, unknown>): ReaderCandidate {
+    const label = inferPublicEndpointLabelFromUrl((result['finalUrl'] as string) || '');
+    if (label) {
+        const publicEndpoint = normalizePublicEndpointResult(result, { source: 'public_endpoint', label });
+        if (publicEndpoint) return normalizeReaderCandidate(publicEndpoint);
+    }
     return normalizeReaderCandidate({ ...result, source: 'network_api', label: (result['label'] as string) || 'network_api' });
+}
+
+function inferPublicEndpointLabelFromUrl(rawUrl: string): string {
+    let url: URL;
+    try {
+        url = new URL(rawUrl);
+    } catch {
+        return '';
+    }
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (url.hostname === 'api.github.com' && parts[0] === 'repos' && parts[1] && parts[2]) return 'github-repo-api';
+    if (url.hostname === 'registry.npmjs.org' && parts[0]) {
+        if (parts.at(-1) === 'latest') return 'npm-registry-latest';
+        if (parts.length >= 2) return 'npm-registry-version';
+        return 'npm-registry';
+    }
+    if (url.hostname === 'pypi.org' && parts[0] === 'pypi' && parts[1] && parts[2] === 'json') return 'pypi-json';
+    if (url.hostname === 'hacker-news.firebaseio.com' && parts[0] === 'v0' && parts[1] === 'item' && /\.json$/i.test(parts[2] || '')) return 'hacker-news-item-api';
+    if (url.hostname === 'hn.algolia.com' && parts[0] === 'api' && parts[1] === 'v1' && parts[2] === 'items' && parts[3]) return 'hacker-news-algolia-item-api';
+    return '';
 }
 
 export function normalizeReaderCandidates(results: Record<string, unknown>[] = []): ReaderCandidate[] {
