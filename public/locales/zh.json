@@ -45,6 +45,8 @@
     "cmd.artifact.action.startPabcd": "用于 PABCD P",
     "cmd.workflow.planAudit.desc": "创建只读计划审计任务",
     "cmd.workflow.planAudit.tg_desc": "创建计划审计任务",
+    "cmd.workflow.search.desc": "通过搜索技能路由搜索请求",
+    "cmd.workflow.search.tg_desc": "通过搜索技能搜索",
     "cmd.workflow.goal.desc": "目标状态和受限运行工作流",
     "cmd.workflow.goal.tg_desc": "查看目标或运行状态",
     "cmd.workflow.team.desc": "并行团队编排",

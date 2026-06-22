@@ -45,6 +45,8 @@
     "cmd.artifact.action.startPabcd": "Use in PABCD P",
     "cmd.workflow.planAudit.desc": "Create a read-only plan audit task",
     "cmd.workflow.planAudit.tg_desc": "Create plan audit task",
+    "cmd.workflow.search.desc": "Route search through the search skill",
+    "cmd.workflow.search.tg_desc": "Search through the search skill",
     "cmd.workflow.goal.desc": "Goal state and bounded run workflow",
     "cmd.workflow.goal.tg_desc": "Check goal or run state",
     "cmd.workflow.team.desc": "Parallel team orchestration",

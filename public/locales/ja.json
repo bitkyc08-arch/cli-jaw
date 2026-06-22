@@ -45,6 +45,8 @@
     "cmd.artifact.action.startPabcd": "PABCD Pで使う",
     "cmd.workflow.planAudit.desc": "読み取り専用の計画監査タスクを作成",
     "cmd.workflow.planAudit.tg_desc": "計画監査タスクを作成",
+    "cmd.workflow.search.desc": "検索スキル経由で検索を実行",
+    "cmd.workflow.search.tg_desc": "検索スキルで検索",
     "cmd.workflow.goal.desc": "ゴール状態と制限付き実行ワークフロー",
     "cmd.workflow.goal.tg_desc": "ゴールまたは実行状態を確認",
     "cmd.workflow.team.desc": "並列チームオーケストレーション",

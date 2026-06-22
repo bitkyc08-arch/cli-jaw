@@ -41,6 +41,7 @@ export const COMMAND_TOPIC_MAP: Record<string, HelpTopicId> = {
     deliberate: 'goals',
     planaudit: 'goals',
     review: 'goals',
+    search: 'mcp',
     team: 'goals',
     task: 'goals',
     help: 'keyboardShortcuts',

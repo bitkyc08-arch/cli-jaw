@@ -71,3 +71,49 @@ test('SSP-006: agbrowse remains an optional planner, not a provider runner', { s
     assert.match(searchSkill, /optional planning helper/);
     assert.match(searchSkill, /Do not use agbrowse to execute Exa,\s+Tavily, Perplexity, Brave, or any other search provider/);
 });
+
+test('SSP-007: /search is a routing command, not a provider implementation', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
+    const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
+
+    assert.match(searchSkill, /`\/search <query>` is a routing command, not a provider implementation/);
+    assert.match(searchSkill, /force the active agent to read and follow this search skill/);
+    assert.match(searchSkill, /candidate URL discovery/);
+    assert.match(searchSkill, /must not pass raw natural-language queries to browser fetch/);
+    assert.match(searchSkill, /URL\/search-result URL reader, not generic\s+search/);
+});
+
+test('SSP-008: search skill documents browser command selection after candidate URLs', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
+    const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
+
+    assert.match(searchSkill, /choose the smallest browser command that proves the\s+claim/);
+    assert.match(searchSkill, /cli-jaw browser fetch <url> --json/);
+    assert.match(searchSkill, /cli-jaw browser open <url>/);
+    assert.match(searchSkill, /cli-jaw browser text/);
+    assert.match(searchSkill, /cli-jaw browser get-dom --selector/);
+    assert.match(searchSkill, /cli-jaw browser snapshot --interactive/);
+    assert.match(searchSkill, /Adaptive fetch can read a known URL or a search-result URL/);
+});
+
+test('SSP-009: model-gated parallel research is bounded and evidence-gated', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
+    const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
+
+    assert.match(searchSkill, /Model-gated parallel research/);
+    assert.match(searchSkill, /Use single-agent search by default/);
+    assert.match(searchSkill, /cap it at 2-4 lanes/);
+    assert.match(searchSkill, /official/);
+    assert.match(searchSkill, /community/);
+    assert.match(searchSkill, /realtime/);
+    assert.match(searchSkill, /fetch/);
+    assert.match(searchSkill, /Merge lane outputs into one evidence matrix/);
+    assert.match(searchSkill, /Parallel snippets still do not\s+count as sufficient evidence/);
+});
+
+test('SSP-010: evidence status vocabulary is explicit', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
+    const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
+
+    assert.match(searchSkill, /Evidence status:/);
+    assert.match(searchSkill, /`sufficient`: at least one original\/primary URL was opened or fetched/);
+    assert.match(searchSkill, /`partial`: candidate evidence exists/);
+    assert.match(searchSkill, /`browse-needed`: a candidate primary URL exists/);
+    assert.match(searchSkill, /`insufficient`: no credible candidate evidence was obtained/);
+});

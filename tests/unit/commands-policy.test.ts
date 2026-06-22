@@ -119,7 +119,7 @@ test('CP-014: workflow commands are remote-safe for telegram and discord', { ski
         const names = getVisibleCommands(iface)
             .filter(c => c.category === 'workflow')
             .map(c => c.name);
-        assert.deepEqual(names.sort(), ['deliberate', 'gd', 'goal', 'goalplan', 'interview', 'plan', 'planaudit', 'review', 'team'].sort());
+        assert.deepEqual(names.sort(), ['deliberate', 'gd', 'goal', 'goalplan', 'interview', 'plan', 'planaudit', 'review', 'search', 'team'].sort());
         for (const name of names) {
             assert.match(name, remoteName, `${iface} workflow command "${name}" must be remote-safe`);
             assert.equal(name.includes('-'), false, `${iface} workflow command "${name}" must not contain hyphen`);

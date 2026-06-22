@@ -45,6 +45,8 @@
     "cmd.artifact.action.startPabcd": "PABCD P로 사용",
     "cmd.workflow.planAudit.desc": "읽기 전용 계획 감사 작업 생성",
     "cmd.workflow.planAudit.tg_desc": "계획 감사 작업 생성",
+    "cmd.workflow.search.desc": "검색 스킬로 검색 요청 라우팅",
+    "cmd.workflow.search.tg_desc": "검색 스킬로 검색",
     "cmd.workflow.goal.desc": "목표 상태와 제한 실행 워크플로우",
     "cmd.workflow.goal.tg_desc": "목표 또는 실행 상태 확인",
     "cmd.workflow.team.desc": "병렬 팀 오케스트레이션",
