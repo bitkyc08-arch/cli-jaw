@@ -1,6 +1,6 @@
 {
   "name": "cli-jaw",
-  "version": "2.1.9-preview.20260622153241",
+  "version": "2.2.0",
   "description": "Personal AI assistant powered by Pi, Antigravity, AI-E, Claude, Claude E, Codex, Codex App, Cursor, Gemini, Grok, Kiro, OpenCode, and Copilot — Web, Terminal, Telegram, and Discord interfaces with 107 built-in skills",
   "type": "module",
   "keywords": [
