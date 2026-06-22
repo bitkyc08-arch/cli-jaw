@@ -139,7 +139,7 @@ test('fullscreen known slash command does not submit as an agent message or user
     assert.equal(ctx.store.transcript.items.some(item => item.type === 'user'), false);
     assert.equal(ctx.commandRunning, true);
 
-    await flushAsyncCommands();
+    await waitFor(() => ctx.commandRunning === false);
 
     assert.equal(ctx.commandRunning, false);
     assert.equal(ctx.inputActive, true);

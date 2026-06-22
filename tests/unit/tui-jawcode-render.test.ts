@@ -16,6 +16,7 @@ try {
 } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     if (msg.includes('pi_natives')) nativeSkip = 'pi_natives native addon not built for this platform';
+    else if (msg.includes('jawcode-tui-bundle.mjs')) nativeSkip = 'jawcode TUI bundle not built in this checkout';
     else throw err;
 }
 

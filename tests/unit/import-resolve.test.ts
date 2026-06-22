@@ -53,6 +53,7 @@ for (const file of allFiles) {
         const candidates = [
             resolved,
             resolved.endsWith('.js') ? resolved.replace(/\.js$/, '.ts') : `${resolved}.ts`,
+            resolved.endsWith('.mjs') ? resolved.replace(/\.mjs$/, '.d.mts') : `${resolved}.d.mts`,
             `${resolved}.tsx`,
             path.join(resolved, 'index.ts'),
         ];
