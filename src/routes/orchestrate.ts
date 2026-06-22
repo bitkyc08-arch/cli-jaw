@@ -24,6 +24,7 @@ import {
     listWorkerProgressSnapshots,
     setWorkerOrchestration,
 } from '../orchestrator/worker-registry.js';
+import { previewText } from '../orchestrator/worker-progress.js';
 import {
     getWorkerRunRecord,
     listWorkerRunEvents,
@@ -646,7 +647,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         validateParallelSafety(agentPhases);
         const parallelResolved = new Map(agentPhases.map((ap, i) => [i, ap.parallel]));
 
-        const runOne = async (entry: BatchEntry): Promise<{ agent: string; ok: boolean; text?: string; error?: string }> => {
+        const runOne = async (entry: BatchEntry): Promise<{ agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string }> => {
             let slot;
             try { slot = claimWorker(entry.emp, entry.task, replayMeta); }
             catch (err) {
@@ -676,20 +677,37 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 const result = await runSingleAgent(ap, entry.emp, worklog, 1, { origin: 'api', projectDirs: dispatchCtx?.projectDirs }, []);
                 const resultTools = Array.isArray(result["tools"]) ? result["tools"] : [];
                 updateWorkerTools(slot.agentId, resultTools);
-                finishWorker(slot.agentId, String(result["text"] || ''), resultTools);
+                const text = String(result["text"] || '');
+                finishWorker(slot.agentId, text, resultTools);
                 recordDispatch();
-                return { agent: entry.agentName, ok: true, text: String(result["text"] || '') };
+                const run = getWorkerRunRecord(slot.runId);
+                return {
+                    agent: entry.agentName,
+                    ok: true,
+                    runId: slot.runId,
+                    status: run?.status || 'done',
+                    preview: previewText(text, 600) || '',
+                    recoveryCommand: `cli-jaw worker read ${slot.runId} --tail 120`,
+                    outputBytes: run?.outputBytes || 0,
+                };
             } catch (err: unknown) {
-                const msg = (err as Error)?.message || String(err);
+                const msg = previewText((err as Error)?.message || String(err), 600) || 'unknown error';
                 failWorker(slot.agentId, msg);
-                return { agent: entry.agentName, ok: false, error: msg };
+                return {
+                    agent: entry.agentName,
+                    ok: false,
+                    runId: slot.runId,
+                    status: 'failed',
+                    error: msg,
+                    recoveryCommand: `cli-jaw worker status ${slot.runId}`,
+                };
             }
         };
 
         const parallelEntries = entries.filter((_, i) => parallelResolved.get(i));
         const sequentialEntries = entries.filter((_, i) => !parallelResolved.get(i));
 
-        const results: { agent: string; ok: boolean; text?: string; error?: string }[] = [];
+        const results: { agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string }[] = [];
         if (parallelEntries.length > 0) {
             const settled = await Promise.allSettled(parallelEntries.map(e => runOne(e)));
             for (const s of settled) {

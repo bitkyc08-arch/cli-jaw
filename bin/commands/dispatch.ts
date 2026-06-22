@@ -7,6 +7,7 @@ import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { errString, isConnRefused } from '../_http-client.js';
 import { unwrapEmployeeSummaries } from './dispatch-helpers.js';
+import { printBatchDispatchSummary, type BatchDispatchResultSummary } from './dispatch-batch-summary.js';
 import {
     displayShellCommand,
     displayShellCommandDetail,
@@ -109,14 +110,7 @@ if (isBatch) {
             console.error(`❌ ${body.error || `Failed: ${res.status}`}`);
             process.exit(1);
         }
-        let exitCode = 0;
-        for (const r of body.results || []) {
-            const status = r.ok ? '✅' : '❌';
-            console.log(`\n${status} ${r.agent}`);
-            if (r.text) console.log(r.text);
-            if (r.error) { console.error(`  Error: ${r.error}`); exitCode = 1; }
-        }
-        process.exit(exitCode);
+        process.exit(printBatchDispatchSummary(body.results || []));
     } catch (e: unknown) {
         console.error(`❌ Error: ${errString(e)}`);
         process.exit(1);
@@ -159,7 +153,7 @@ type DispatchResultBody = {
     };
 };
 type BatchDispatchBody = {
-    ok?: boolean; results?: { agent: string; ok: boolean; text?: string; error?: string }[]; error?: string;
+    ok?: boolean; results?: BatchDispatchResultSummary[]; error?: string;
 };
 
 function sleep(ms: number): Promise<void> {

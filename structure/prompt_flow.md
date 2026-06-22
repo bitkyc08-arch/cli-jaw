@@ -155,6 +155,8 @@ cli-jaw dispatch --agent "Frontend" --task "Specific task instruction"
 running-only이고 완료된 safe-summary progress는 worker-progress previous
 snapshot에 남는다고 명시한다.
 
+지연된 employee 결과 replay도 boss context에 full stdout을 재주입하지 않는다. 원래 dispatch 연결이 끊긴 뒤 결과가 도착하면 다음 boss turn에는 bounded notice만 들어가며, notice는 agent/run identity, 짧은 preview, `cli-jaw worker status <runId>`, `cli-jaw worker read <runId> --tail 120` 복구 명령을 제공한다. 전체 raw output은 runId 기반 explicit read surface에서만 읽는다.
+
 추가로 `skills/dev-pabcd/SKILL.md`가 있으면 `## PABCD Orchestration Guide`가 이어 붙는다.
 
 ### Heartbeat

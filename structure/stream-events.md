@@ -123,6 +123,8 @@ SSE behavior:
 | `worker_run_attention` | `{ runId, agentId, employeeName, status, outputBytes, seq, attention }` | `orchestrator/worker-run-store.ts`; safe attention metadata |
 | `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | `{ runId, agentId, employeeName, status, outputBytes, seq, completedAt, safeSummary? }` | `orchestrator/worker-run-store.ts`; completion event; raw output path/content excluded |
 
+Worker run events, delayed replay notices, and batch dispatch summaries are safe metadata surfaces. They may carry bounded previews and recovery commands, but they do not embed raw employee stdout; raw worker output remains an explicit `/api/orchestrate/worker-runs/:runId/output` / `cli-jaw worker read <runId>` read path.
+
 ### Web client handling
 
 현재 Web UI는 `public/js/event-channel.ts`를 통해 SSE payload를 받고, topic/event subscription을 `public/js/ws.ts`의 기존 handler path로 연결한다. legacy WebSocket fallback도 같은 handler set을 사용하므로 UI event 처리 코드는 transport와 분리되어 있다.

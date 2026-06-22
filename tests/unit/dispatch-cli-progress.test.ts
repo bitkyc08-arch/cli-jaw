@@ -33,3 +33,16 @@ test('dispatch CLI defaults to safe live progress and keeps quiet/json paths qui
     assert.match(src, /--quiet\s+Suppress live progress summaries/);
     assert.match(src, /--json\s+JSON output; suppresses human progress lines/);
 });
+
+test('dispatch batch output delegates to safe summary helper instead of printing full text', () => {
+    const src = fs.readFileSync(path.join(ROOT, 'bin', 'commands', 'dispatch.ts'), 'utf8');
+    const helper = fs.readFileSync(path.join(ROOT, 'bin', 'commands', 'dispatch-batch-summary.ts'), 'utf8');
+    const batchStart = src.indexOf('if (isBatch)');
+    assert.ok(batchStart >= 0, 'batch branch must exist');
+    const batchBlock = src.slice(batchStart, src.indexOf("if ((!agent && !virtual)", batchStart));
+
+    assert.match(src, /printBatchDispatchSummary/);
+    assert.doesNotMatch(batchBlock, /r\.text/);
+    assert.doesNotMatch(helper, /console\.log\(result\.text/);
+    assert.match(helper, /worker read/);
+});

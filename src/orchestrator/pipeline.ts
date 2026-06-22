@@ -24,6 +24,7 @@ import {
     listPendingWorkerResults, claimWorkerReplay, markWorkerReplayed, releaseWorkerReplay,
     getActiveWorkers, cancelWorker, clearAllWorkers,
 } from './worker-registry.js';
+import { buildWorkerReplayNotice } from './worker-replay-notice.js';
 import { processQueue } from '../agent/spawn.js';
 import {
     getState, getPrefix, resetState, setState, getStatePrompt,
@@ -205,10 +206,7 @@ export async function drainPendingReplays(fallbackMeta: Record<string, any> = {}
             ...(slotMeta.requestId ? { requestId: slotMeta.requestId } : {}),
         };
         try {
-            // Marker line: the boss that fired the original dispatch may have
-            // already compensated for the lost result (devlog 260613 doc 08
-            // §2.3) — a late re-injection must be recognizable as such.
-            const replayText = `[worker-replay agent=${pr.agentId} — delayed result: the original dispatch connection dropped before delivery]\n${pr.text}`;
+            const replayText = buildWorkerReplayNotice(pr);
             await orchestrate(replayText, { ...meta, _workerResult: true, _skipInsert: true, _skipReplayDrain: true });
             markWorkerReplayed(pr.agentId);
             processQueue();

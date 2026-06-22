@@ -353,13 +353,15 @@ export function hasPendingWorkerReplays(): boolean {
     return false;
 }
 
-export function listPendingWorkerResults(): Array<{ agentId: string; runId: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> {
-    const results: Array<{ agentId: string; runId: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> = [];
+export function listPendingWorkerResults(): Array<{ agentId: string; runId: string; employeeName: string; taskPreview: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> {
+    const results: Array<{ agentId: string; runId: string; employeeName: string; taskPreview: string; text: string; tools?: SanitizedToolLogEntry[]; meta?: WorkerReplayMeta }> = [];
     for (const slot of workers.values()) {
         if (slot.state === 'done' && slot.pendingReplay && !slot.replayClaimed && slot.result !== null) {
             results.push(stripUndefined({
                 agentId: slot.agentId,
                 runId: slot.runId,
+                employeeName: slot.employeeName,
+                taskPreview: previewText(slot.task, 200) || '',
                 text: slot.result,
                 tools: slot.tools.length > 0 ? slot.tools : undefined,
                 meta: slot.replayMeta,

@@ -118,6 +118,18 @@ test('dispatch route accepts optional phase override in request body', () => {
     );
 });
 
+test('batch dispatch route returns safe run summaries instead of full employee text', () => {
+    const batchStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch/batch'");
+    assert.ok(batchStart >= 0, 'batch dispatch route should exist');
+    const batchBlock = orchestrateSrc.slice(batchStart, batchStart + 9000);
+
+    assert.ok(batchBlock.includes('runId: slot.runId'), 'batch summaries must include runId');
+    assert.ok(batchBlock.includes('preview: previewText(text, 600)'), 'batch summaries must include bounded preview');
+    assert.ok(batchBlock.includes('recoveryCommand: `cli-jaw worker read ${slot.runId} --tail 120`'), 'batch summaries must include worker read recovery command');
+    assert.ok(batchBlock.includes('outputBytes: run?.outputBytes || 0'), 'batch summaries must include durable output size');
+    assert.equal(batchBlock.includes('ok: true, text'), false, 'batch success response must not expose full text field by default');
+});
+
 test('dispatch route resolves virtual employees through shared dispatch target helper', () => {
     assert.ok(
         orchestrateSrc.includes('function resolveDispatchTarget'),

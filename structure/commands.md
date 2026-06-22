@@ -9,7 +9,7 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 # src/cli/ — Slash Command Registry & Dispatcher
 
 > `commands.ts`(552L) + `handlers.ts`(448L) + `handlers-runtime.ts`(507L) + `handlers-completions.ts`(103L) + `handlers-workflows.ts`(494L) + `handlers-search.ts`(34L) + `api-auth.ts`(45L) + `command-context.ts`(144L) + `registry.ts`(264L) + `acp-client.ts`(382L) + `claude-models.ts`(84L) + `compact.ts`(143L)
-> slash registry는 51개 커맨드이며 interface별 가시성은 CLI 50 / Web 44 / Telegram 37 / Discord 37다. root cmdline에는 workflow/interactive hidden set을 제외한 27개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 26개 root router case를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 27개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 30개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`로 분리되어 있다.
+> slash registry는 51개 커맨드이며 interface별 가시성은 CLI 50 / Web 44 / Telegram 37 / Discord 37다. root cmdline에는 workflow/interactive hidden set을 제외한 27개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 24개 root router case를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 27개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 32개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
 > 모델/CLI 선택은 `registry.ts` 단일 소스를 따른다. 현재 registry 런타임은 `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `gemini`, `grok`, `kiro-code`, `opencode`, `copilot` 13개다.
 
 ---
@@ -72,7 +72,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 
 ## Root CLI Surface (`bin/cli-jaw.ts` + `bin/commands/*.ts`)
 
-소스 기준 entrypoint는 `bin/cli-jaw.ts`(228L)다. 현재 소스 트리에서 root command router는 26개 case를 동적 import 한다. 아래 표는 grouped subcommand(`chat search`, `browser web-ai`, dashboard federation 등)를 포함한 user-facing surface다. 파일 수 기준으로는 `browser-web-ai.ts`, `dashboard-memory.ts`, `dashboard-chat.ts`, `dispatch-helpers.ts`, `task.ts` helper/command가 포함되어 `bin/commands/*.ts` top-level은 30개다.
+소스 기준 entrypoint는 `bin/cli-jaw.ts`(280L)다. 현재 소스 트리에서 root command router는 24개 case를 동적 import 한다. 아래 표는 grouped subcommand(`chat search`, `browser web-ai`, dashboard federation 등)를 포함한 user-facing surface다. 파일 수 기준으로는 `browser-web-ai.ts`, `dashboard-memory.ts`, `dashboard-chat.ts`, `dispatch-helpers.ts`, `dispatch-batch-summary.ts`, `task.ts`, `bgtask.ts` helper/command가 포함되어 `bin/commands/*.ts` top-level은 32개다.
 
 ### Global options
 
@@ -102,7 +102,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `launchd` | `bin/commands/launchd.ts` | `[--port PORT] [status\|unset\|cleanup]` |
 | `clone` | `bin/commands/clone.ts` | `<target-dir> [--from <source>] [--with-memory] [--link-ref]` |
 | `orchestrate` | `bin/commands/orchestrate.ts` | `[I\|P\|A\|B\|C\|D\|status\|reset] [--force] [--json] [--port <port>]` |
-| `dispatch` | `bin/commands/dispatch.ts` | `(--agent <name> \| --virtual <name>) --task <task> [--role <role>] [--cli <cli>] [--model <model>] [--mutable] [--scope <path>] [--port <port>] [--watch] [--quiet] [--json]`; human output follows bounded safe worker progress by default; `--quiet`/`--json` suppress live progress; `--batch --agents '<JSON array>'` where each entry accepts `agent` or `virtual` |
+| `dispatch` | `bin/commands/dispatch.ts` | `(--agent <name> \| --virtual <name>) --task <task> [--role <role>] [--cli <cli>] [--model <model>] [--mutable] [--scope <path>] [--port <port>] [--watch] [--quiet] [--json]`; human output follows bounded safe worker progress by default; `--quiet`/`--json` suppress live progress; `--batch --agents '<JSON array>'` where each entry accepts `agent` or `virtual` and prints grouped safe summaries with `runId` recovery commands instead of full worker text |
 | `goal` | `bin/commands/goal.ts` | `set <objective>`, `plan [hint]`, `refine <objective>`, `status`, `update <summary>`, `done [note]`, `cancel [reason]`, `pause`, `resume`, `clear`, `reset`, `history [limit]`; `--json`; plan-mode stores hints as `planHint` and requires refine before checkpoints |
 | `worker` | `bin/commands/worker.ts` | `status [agent\|runId] [--recent N] [--json]`, `watch [agent\|runId] [--json]`, `read <runId> [--offset N] [--limit N] [--tail N] [--json]`, `--port <port>`; status/watch use safe summaries (`snapshot.workers` is running-only; `--recent` reads durable safe records), while read is the explicit raw worker-output surface backed by `/api/orchestrate/worker-runs/:runId/output` |
 | `service` | `bin/commands/service.ts` | `[--port PORT] [--backend launchd\|systemd\|docker] [status\|unset\|logs]` |
@@ -111,6 +111,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `reminders` | `bin/commands/reminders.ts` | `list`, `add`, `done`; `--json`, `--priority`, `--due`, `--remind`, message/thread link flags |
 | `project` | `bin/commands/project.ts` | `set <path>[, <path>...]`, `reset`/`clear`, `list` (instance projectDirs 관리) |
 | `task` | `bin/commands/task.ts` | `add/edit/list/start/done/assign/clear`; dashboard-visible atomic checklist |
+| `bgtask` | `bin/commands/bgtask.ts` | `add/list/show/cancel`; server-owned background task registration and inspection |
 | `lock` | `bin/commands/lock.ts` | `[--port 3457]`; instance lock (stopAll 보호). `unlock`도 동일 파일 처리 |
 | `unlock` | `bin/commands/lock.ts` | `[--port 3457]`; instance unlock |
 | `history` | `bin/commands/history.ts` | `search "<query>" [--limit N]`; 채팅 히스토리 검색 (65L) |
@@ -169,6 +170,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 - If `--cli`/`--model` are omitted for virtual dispatch, the server resolves the current CLI and uses the registry default model for that CLI.
 - Human dispatch output follows live safe worker progress by default. Use `--quiet` for final-result-only output, or `--json` for parseable machine output without human progress lines.
 - On dispatch polling timeout/disconnect, recovery output is run-aware when possible: `cli-jaw worker status <runId>` for safe progress and `cli-jaw worker read <runId> --tail 80` only as an explicit raw-output follow-up.
+- Batch dispatch prints one bounded summary per worker. It does not inline full employee stdout; each row carries `runId`, status/preview, and an explicit `cli-jaw worker read <runId> --tail 120` recovery command when raw output is needed.
 
 ### `/steer <prompt>`
 

@@ -72,3 +72,16 @@ test('WRH-003: replay drain picks up pending results from prior workers', () => 
     assert.ok(!after.some(p => p.agentId === id1), 'worker 1 should no longer be pending');
     assert.ok(!after.some(p => p.agentId === id2), 'worker 2 should no longer be pending');
 });
+
+test('WRH-004: pending replay entries include run identity and safe metadata', () => {
+    const id = `wrh4-${Date.now()}`;
+    claimWorker(fakeEmp(id), 'sensitive full task with safe preview');
+    finishWorker(id, `result-${id}`);
+
+    const pending = listPendingWorkerResults().find(p => p.agentId === id);
+    assert.ok(pending, 'worker should be in pending list');
+    assert.ok(pending.runId.startsWith('wr_'), 'pending replay must carry runId recovery identity');
+    assert.equal(pending.employeeName, `test-${id}`);
+    assert.equal(pending.taskPreview.includes('safe preview'), true);
+    markWorkerReplayed(id);
+});

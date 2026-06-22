@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-06-10 (최근 500개 커밋 기준 문서/카운트 재측정)
-> `server.ts` 635L / `src/routes/` 32 TS files (registrars + helper modules + extracted base-route modules, 199 route handlers including `/`) / `src/cli/handlers*.ts` 448L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs (checkpoint/permissions/context-map) / `src/agent/` 29 root TS + `spawn/` 3 files + `events/` 12 files (spawn.ts 2388L + pi-runtime.ts 460L + lifecycle-handler.ts 1030L + kiro-runtime.ts 386L + kiro-auth.ts 230L + kiro-models.ts 98L + cursor-runtime.ts 240L) / `src/goal/` 4 files (543L) / `src/goal-run/` 5 files (337L) / `src/trace/` 3 files (279L) / `src/team/` 5 files (323L, team dispatch planner/collector/preflight) / `src/jaw-ceo/` 16 files (2614L, OpenAI Realtime CEO channel) / `src/shared/` 2 files (253L) / `src/manager/` 79 TS/TSX files (dashboard + board/notes/search/schedule/reminders/connector/routes/memory/git) / `src/browser/web-ai/` 68 TS files (12561L) + `adaptive-fetch/` 19 files (2608L) / `src/types/` 3 files (329L) / `bin/commands/` 30 top-level ts files + `tui/` 10 helper files / `electron/` Electron tray app + sidecar packaging (27 TS/TSX files, 3096L) / `native/jaw-claude-i/` 11 Rust source files (1934L)
+> `server.ts` 635L / `src/routes/` 32 TS files (registrars + helper modules + extracted base-route modules, 199 route handlers including `/`) / `src/cli/handlers*.ts` 448L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs (checkpoint/permissions/context-map) / `src/agent/` 29 root TS + `spawn/` 3 files + `events/` 12 files (spawn.ts 2388L + pi-runtime.ts 460L + lifecycle-handler.ts 1030L + kiro-runtime.ts 386L + kiro-auth.ts 230L + kiro-models.ts 98L + cursor-runtime.ts 240L) / `src/goal/` 4 files (543L) / `src/goal-run/` 5 files (337L) / `src/trace/` 3 files (279L) / `src/team/` 5 files (323L, team dispatch planner/collector/preflight) / `src/jaw-ceo/` 16 files (2614L, OpenAI Realtime CEO channel) / `src/shared/` 2 files (253L) / `src/manager/` 79 TS/TSX files (dashboard + board/notes/search/schedule/reminders/connector/routes/memory/git) / `src/browser/web-ai/` 68 TS files (12561L) + `adaptive-fetch/` 19 files (2608L) / `src/types/` 3 files (329L) / `bin/commands/` 32 top-level ts files + `tui/` 10 helper files / `electron/` Electron tray app + sidecar packaging (27 TS/TSX files, 3096L) / `native/jaw-claude-i/` 11 Rust source files (1934L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -117,7 +117,7 @@ cli-jaw/
 │   │   └── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (27L)
 │   ├── orchestrator/         ← 직원 오케스트레이션 + 인터페이스 통합 (16 files)
 │   │   ├── state-machine.ts ← IPABCD 상태 머신 (I=Interview pre-plan) + broadcast(state,title) + worklog 타이틀 파싱 + employee terminology + OrcContext.workingDir + OrcContext.interview + Project root dispatch contract (616L)
-│   │   ├── pipeline.ts       ← IPABCD orchestration (explicit entry only) + interview first-turn detection + plan context persistence + memorySnapshot injection + reset clears boss session + OrcContext workingDir init + Approved Plan Project root guard + remote-channel elicitation guard (623L)
+│   │   ├── pipeline.ts       ← IPABCD orchestration (explicit entry only) + interview first-turn detection + plan context persistence + memorySnapshot injection + reset clears boss session + OrcContext workingDir init + Approved Plan Project root guard + remote-channel elicitation guard + bounded delayed worker replay notice (621L)
 │   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers + tiered findEmployee + employee resume diagnostics + virtual employee session-skip (615L)
 │   │   ├── parser.ts         ← triage + subtask JSON + verdict 파싱 + isResetIntent (176L)
 │   │   ├── gateway.ts        ← submitMessage 통합 진입점 (WebUI+CLI+TG+Discord 공통) + working_dir scoped insertMessage (155L)
@@ -125,7 +125,8 @@ cli-jaw/
 │   │   ├── scope.ts          ← 현재 단일 'default' scope를 반환하는 stub (17L)
 │   │   ├── worker-monitor.ts ← Worker stall detection — activity timestamps + stall/disconnect/timeout callbacks (58L)
 │   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + runId-aware current/previous snapshot types
-│   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + runId progress current/previous memory retention + durable worker-run hook (412L)
+│   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + runId progress current/previous memory retention + pending replay metadata + durable worker-run hook (414L)
+│   │   ├── worker-replay-notice.ts ← delayed worker replay bounded notice builder + runId recovery command contract (41L)
 │   │   ├── worker-run-store.ts ← Worker run safe metadata/events JSONL store + worker_run_* SSE broadcast bridge (192L)
 │   │   ├── worker-output-store.ts ← Worker raw output file store + bounded offset/limit read API (86L)
 │   │   ├── workspace-context.ts ← Project root/path hint resolver for employee dispatch context (136L)
@@ -237,7 +238,7 @@ cli-jaw/
 │   │   ├── jaw-memory.ts     ← jaw memory search/read/list/save/init/reflect/flush/soul/soul-activate/bootstrap 라우트 (352L)
 │   │   ├── jaw-ceo.ts        ← Jaw CEO channel/session support routes (321L) ✨
 │   │   ├── i18n.ts           ← locale bundle 라우트 (35L)
-│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/worker result/state PUT 라우트 (893L)
+│   │   ├── orchestrate.ts    ← IPABCD reset/state/workers/worker-runs/snapshot/queue cancel/queue steer async accept/dispatch/virtual dispatch/batch safe summary/worker result/state PUT 라우트 (911L)
 │   │   ├── memory.ts         ← memory status/KV/files/settings 라우트 (191L)
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (432L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (259L)
@@ -352,9 +353,9 @@ cli-jaw/
 │   ├── star-prompt.ts        ← `gh` 기반 GitHub star 1회 프롬프트 (129L)
 │   ├── postinstall.ts        ← npm install 후 CLI 런타임 + OfficeCLI 자동설치 + MCP + 스킬 + safe 가드 (1036L)
 │   ├── helpers/help.ts       ← CLI help text helper (9L)
-│   └── commands/             ← 30 top-level ts files + `tui/` 10 helper 모듈
+│   └── commands/             ← 32 top-level ts files + `tui/` 10 helper 모듈
 │       ├── serve.ts          ← 서버 시작 (--port/--host/--open) + SIGINT child.kill('SIGINT') orphan fix (123L)
-│       ├── dispatch.ts       ← 직원 호출 (pipe mode 호환) + default safe live progress follow + `--quiet`/`--json` quiet paths + virtual employee dispatch + batch dispatch + stale/non-JSON route diagnostics + worker result polling + ECONNREFUSED retry
+│       ├── dispatch.ts       ← 직원 호출 (pipe mode 호환) + default safe live progress follow + `--quiet`/`--json` quiet paths + virtual employee dispatch + batch dispatch safe summary + stale/non-JSON route diagnostics + worker result polling + ECONNREFUSED retry (493L)
 │       ├── chat.ts           ← 터미널 채팅 TUI (3모드, locale bootstrap, refreshInfo, active model 표시, no-arg `/model`·`/cli` selector intercept, transcript 축적, overlay wiring, batched key tokenization, settings snapshot, 320L)
 │       ├── chat-search.ts    ← 채팅 메시지 히스토리 검색 (--days/--recent/--context/--limit, 70L)
 │       ├── goal.ts           ← goal autonomy CLI (start/status/pause/resume/stop) (186L) ✨
@@ -378,11 +379,14 @@ cli-jaw/
 │       ├── browser-web-ai.ts ← `jaw browser web-ai` ChatGPT/Gemini/Grok 자동화 helper (452L)
 │       ├── dashboard.ts      ← `jaw dashboard serve` + dashboard memory delegation (274L)
 │       ├── dashboard-memory.ts ← `jaw dashboard memory` L2 federation CLI helper (244L)
+│       ├── dashboard-chat.ts ← `jaw dashboard chat search` L2 federation CLI helper (121L)
+│       ├── bgtask.ts         ← server-owned background task CLI add/list/show/cancel (149L)
 │       ├── connector.ts      ← dashboard connector board/notes/reminders/audit CLI (216L)
 │       ├── reminders.ts      ← local reminders list/add/done CLI (100L)
 │       ├── dispatch-helpers.ts ← dispatch output unwrap helper (21L)
+│       ├── dispatch-batch-summary.ts ← batch dispatch safe summary printer + recovery command fallback (41L)
 │       └── tui/              ← chat 터미널 TUI 분리 (10 files: api 89L, channel 115L, fullscreen-mode 500L, input-handler 470L, overlays 526L, renderer 135L, simple-mode 101L, tui-io 12L, types 145L, ws-handler 317L)
-├── tests/                    ← 회귀 방지 테스트 (587 files: root/unit/integration/browser/fixtures/smoke)
+├── tests/                    ← 회귀 방지 테스트 (588 files: root/unit/integration/browser/fixtures/smoke)
 ├── scripts/                  ← 도구 스크립트 (TypeScript + Shell + CJS; atomic build, sidecar bundle, release gates, install-risk evidence)
 ├── officecli/                ← OfficeCLI 포크 서브모듈 (lidge-jun/OfficeCLI, Apache 2.0)
 ├── skills_ref/               ← 레퍼런스 스킬 (241 top-level dirs)
@@ -457,7 +461,7 @@ graph LR
 
 1.  **큐**: busy 시 queue → agent 종료 후 자동 처리 (persistent DB queue)
 2.  **세션 무효화**: CLI 변경 시 session_id 제거
-3.  **직원 dispatch**: `cli-jaw dispatch --agent ... --task ...` shell surface가 현재 실행 경로이며, one-off 전문 검토는 `cli-jaw dispatch --virtual ... --task ...`로 ephemeral synthetic employee를 사용한다. 직원 task body에는 `Project root: <absolute path>`를 명시한다. Human dispatch output은 bounded safe progress를 기본 follow하며, `--quiet`/`--json`은 live progress line을 끈다. Worker progress는 `agentId` compatibility와 per-run `runId`를 함께 노출한다.
+3.  **직원 dispatch**: `cli-jaw dispatch --agent ... --task ...` shell surface가 현재 실행 경로이며, one-off 전문 검토는 `cli-jaw dispatch --virtual ... --task ...`로 ephemeral synthetic employee를 사용한다. 직원 task body에는 `Project root: <absolute path>`를 명시한다. Human dispatch output은 bounded safe progress를 기본 follow하며, `--quiet`/`--json`은 live progress line을 끈다. Batch dispatch와 delayed replay는 full employee stdout을 boss context/stdout에 자동 주입하지 않고 bounded summary + runId recovery command만 출력한다. Worker progress는 `agentId` compatibility와 per-run `runId`를 함께 노출한다.
 4.  **메모리 flush**: `forceNew` spawn → 메인 세션 분리, threshold개 메시지만 요약
 5.  **메모리 주입**: MEMORY.md = 매번, session memory = `injectEvery` cycle마다
 6.  **에러 처리**: 429/auth 커스텀 메시지 + smart retry + fallback chain

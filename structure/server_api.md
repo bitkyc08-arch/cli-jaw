@@ -32,7 +32,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 488L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
-| `src/routes/orchestrate.ts` | 893L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
+| `src/routes/orchestrate.ts` | 911L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
 | `src/routes/goal.ts` | 177L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
 | `src/routes/goal-run.ts` | 83L | 3 | bounded goal-run state/preflight/start-pause-resume-stop |
 | `src/routes/messaging.ts` | 259L | 6 | upload/file-open/voice/telegram/channel/discord send |
@@ -196,7 +196,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - 현재 plan이 있으면 dispatch body 상단에 `## Approved Plan`으로 자동 주입된다.
 - `wait:false` async dispatch `202`, `worker_busy` `409`, and result polling payloads include both stable `agentId` and per-dispatch `runId`. The `agentId` remains the same-employee concurrency guard; `runId` identifies a specific worker run in memory progress history.
 - `GET /api/orchestrate/worker-runs*` exposes durable worker-run safe metadata/events and bounded raw output reads. List/get/events are safe-only; `/output` is the only raw-text worker-run route and requires explicit `runId` plus offset/limit. `jaw worker read <runId>` is the CLI consumer of that explicit raw-output route; `worker status/watch` remain safe-summary surfaces.
-- `POST /api/orchestrate/dispatch/batch`는 같은 boss token으로 여러 직원/virtual task를 병렬 dispatch한다. 각 entry는 `agent` 또는 `virtual` 중 하나를 가진다. 구버전 manager가 이 route 없이 HTML 404를 반환하면 `jaw dispatch --batch`는 JSON parse 예외 대신 stale/missing route 진단을 출력한다.
+- `POST /api/orchestrate/dispatch/batch`는 같은 boss token으로 여러 직원/virtual task를 병렬 dispatch한다. 각 entry는 `agent` 또는 `virtual` 중 하나를 가진다. 응답은 full worker text를 기본 포함하지 않고 `{ agent, ok, runId, status, preview, recoveryCommand, outputBytes, error? }` 형태의 safe summary metadata를 반환한다. raw output은 `runId`로 `/api/orchestrate/worker-runs/:runId/output` 또는 `jaw worker read <runId>`에서 명시적으로 읽는다. 구버전 manager가 이 route 없이 HTML 404를 반환하면 `jaw dispatch --batch`는 JSON parse 예외 대신 stale/missing route 진단을 출력한다.
 
 ### `/api/jaw-ceo/*`
 
