@@ -15,11 +15,32 @@ test('root CLI registers worker command', () => {
 });
 
 test('worker command queries status and watch progress endpoints', () => {
-    assert.match(workerSrc, /worker status \[agent\|runId\]/);
-    assert.match(workerSrc, /worker watch \[agent\|runId\]/);
+    assert.match(workerSrc, /worker status \[agent\|runId\] \[--recent N\] \[--json\]/);
+    assert.match(workerSrc, /worker watch \[agent\|runId\] \[--json\]/);
     assert.match(workerSrc, /\/api\/orchestrate\/worker-progress/);
     assert.match(workerSrc, /\/api\/orchestrate\/worker-progress\/\$\{encodeURIComponent\(agentId\)\}/);
     assert.match(workerSrc, /setTimeout|sleep\(2_000\)/);
+});
+
+test('worker command exposes explicit raw output read by runId only', () => {
+    assert.match(workerSrc, /worker read <runId> \[--offset N --limit N\] \[--json\]/);
+    assert.match(workerSrc, /worker read <runId> \[--tail N\]/);
+    assert.match(workerSrc, /function requireRunId/);
+    assert.match(workerSrc, /worker read requires an explicit runId/);
+    assert.match(workerSrc, /\/api\/orchestrate\/worker-runs\/\$\{encodeURIComponent\(runId\)\}\/output/);
+    assert.match(workerSrc, /\/api\/orchestrate\/worker-runs\/\$\{encodeURIComponent\(runId\)\}/);
+    assert.match(workerSrc, /const offset = Math\.max\(0, run\.outputBytes - tail\)/);
+    assert.match(workerSrc, /More output available: cli-jaw worker read/);
+});
+
+test('worker command keeps status/watch on safe-summary surfaces', () => {
+    const readIdx = workerSrc.indexOf("if (command === 'read')");
+    const statusIdx = workerSrc.indexOf("if (command === 'status')");
+    assert.ok(readIdx >= 0 && statusIdx > readIdx, 'read branch should be isolated before safe status/watch flow');
+    const safeStatusWatchBlock = workerSrc.slice(statusIdx);
+    assert.doesNotMatch(safeStatusWatchBlock, /worker-runs\/\$\{encodeURIComponent\(runId\)\}\/output/);
+    assert.match(workerSrc, /fetchRunRecords\(\)/);
+    assert.match(workerSrc, /numericFlag\('--recent'\)/);
 });
 
 test('worker command prints lifecycle attention from progress snapshots', () => {

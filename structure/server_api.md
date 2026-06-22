@@ -195,7 +195,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - virtual dispatch에서 `cli`/`model`이 생략되면 현재 CLI와 `src/cli/registry.ts`의 registry default model을 사용한다.
 - 현재 plan이 있으면 dispatch body 상단에 `## Approved Plan`으로 자동 주입된다.
 - `wait:false` async dispatch `202`, `worker_busy` `409`, and result polling payloads include both stable `agentId` and per-dispatch `runId`. The `agentId` remains the same-employee concurrency guard; `runId` identifies a specific worker run in memory progress history.
-- `GET /api/orchestrate/worker-runs*` exposes durable worker-run safe metadata/events and bounded raw output reads. List/get/events are safe-only; `/output` is the only raw-text worker-run route and requires explicit `runId` plus offset/limit.
+- `GET /api/orchestrate/worker-runs*` exposes durable worker-run safe metadata/events and bounded raw output reads. List/get/events are safe-only; `/output` is the only raw-text worker-run route and requires explicit `runId` plus offset/limit. `jaw worker read <runId>` is the CLI consumer of that explicit raw-output route; `worker status/watch` remain safe-summary surfaces.
 - `POST /api/orchestrate/dispatch/batch`는 같은 boss token으로 여러 직원/virtual task를 병렬 dispatch한다. 각 entry는 `agent` 또는 `virtual` 중 하나를 가진다. 구버전 manager가 이 route 없이 HTML 404를 반환하면 `jaw dispatch --batch`는 JSON parse 예외 대신 stale/missing route 진단을 출력한다.
 
 ### `/api/jaw-ceo/*`

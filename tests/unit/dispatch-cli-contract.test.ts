@@ -98,3 +98,30 @@ test('dispatch CLI prints worker-status recovery hints for initial fetch failure
         'initial request failures should print fetch recovery guidance before exiting',
     );
 });
+
+test('dispatch CLI preserves runId in poll recovery hints without auto-inlining raw output', () => {
+    assert.ok(
+        dispatchSrc.includes('function printPollErrorWithRecovery'),
+        'poll failures should use a dedicated run-aware recovery helper',
+    );
+    assert.ok(
+        dispatchSrc.includes('public readonly runId?: string'),
+        'DispatchPollError should carry the per-run id when known',
+    );
+    assert.ok(
+        dispatchSrc.includes('cli-jaw worker status ${e.runId}'),
+        'poll recovery should point directly at the runId status surface',
+    );
+    assert.ok(
+        dispatchSrc.includes('cli-jaw worker read ${e.runId} --tail 80'),
+        'poll recovery should expose raw output only as an explicit worker read command',
+    );
+    assert.ok(
+        dispatchSrc.includes('const pollRunId = body?.worker?.runId'),
+        '202 polling should thread the server-provided runId into pollers',
+    );
+    assert.ok(
+        dispatchSrc.includes('body?.worker?.runId || body?.existing?.runId'),
+        '409 worker-busy polling should thread the existing runId into pollers',
+    );
+});

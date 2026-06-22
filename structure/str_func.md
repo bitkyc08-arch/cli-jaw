@@ -367,7 +367,7 @@ cli-jaw/
 │       ├── mcp.ts            ← MCP 관리 (install/sync/list/reset) (230L)
 │       ├── skill.ts          ← 스킬 관리 (install/remove/info/list/reset soft·hard) (245L)
 │       ├── employee.ts       ← 직원 관리 (list/reset, REST API 호출, JSON/table 출력, 82L)
-│       ├── worker.ts         ← 직원 progress status/watch CLI + employee name/id/runId resolver + safe-summary printer (218L)
+│       ├── worker.ts         ← 직원 progress status/watch CLI + explicit raw `read <runId>` output reader + employee name/id/runId resolver + safe-summary printer (386L)
 │       ├── reset.ts          ← 전체 초기화 (MCP/스킬/직원/세션) (104L)
 │       ├── clone.ts          ← 인스턴스 복제 (--from, --with-memory, regenerateB) (180L)
 │       ├── memory.ts         ← 메모리 CLI (search/read/save/list/init, --chat 통합검색) (195L)
