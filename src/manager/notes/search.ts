@@ -30,6 +30,17 @@ const MAX_COUNT_PER_FILE = 3;
 const DEFAULT_TIMEOUT_MS = 5000;
 const MAX_OUTPUT_BYTES = 2 * 1024 * 1024;
 const RIPGREP_ENV_PATH = 'CLI_JAW_RIPGREP_PATH';
+const PROTECTED_SEARCH_DIR_GLOBS = [
+    '.Trash',
+    '.Trashes',
+    'Backups.backupdb',
+    'MobileBackups',
+    '.Spotlight-V100',
+    '.fseventsd',
+    'backup',
+    'backups',
+];
+const PROTECTED_SEARCH_SEGMENTS = new Set(PROTECTED_SEARCH_DIR_GLOBS.map(dir => dir.toLocaleLowerCase()));
 
 function parseLimit(input: number | undefined): number {
     if (input === undefined) return DEFAULT_LIMIT;
@@ -40,7 +51,14 @@ function parseLimit(input: number | undefined): number {
 }
 
 function reservedGlobArgs(): string[] {
-    return [...NOTES_RESERVED_DIRS].flatMap(dir => ['--glob', `!**/${dir}/**`]);
+    return [...NOTES_RESERVED_DIRS, ...PROTECTED_SEARCH_DIR_GLOBS]
+        .flatMap(dir => ['--glob', `!**/${dir}/**`]);
+}
+
+function hasProtectedSearchSegment(relativePath: string): boolean {
+    return relativePath
+        .split(/[\\/]+/u)
+        .some(segment => PROTECTED_SEARCH_SEGMENTS.has(segment.toLocaleLowerCase()));
 }
 
 function normalizeResultPath(root: string, rawPath: string): string | null {
@@ -50,6 +68,7 @@ function normalizeResultPath(root: string, rawPath: string): string | null {
     if (!rel || rel.startsWith('../') || rel === '..') return null;
     if (!rel.endsWith(NOTE_FILE_EXT)) return null;
     if (hasReservedNoteSegment(rel)) return null;
+    if (hasProtectedSearchSegment(rel)) return null;
     return rel;
 }
 
@@ -75,6 +94,7 @@ async function collectPathMatches(root: string, query: string, limit: number): P
             if (results.length >= limit) return;
             const childPath = relativeDir ? `${relativeDir}/${entry.name}` : entry.name;
             if (hasReservedNoteSegment(childPath)) continue;
+            if (hasProtectedSearchSegment(childPath)) continue;
             if (entry.isDirectory()) {
                 await walk(childPath);
                 continue;

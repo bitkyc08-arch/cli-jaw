@@ -11,7 +11,7 @@
 // Probe rows: always restart (probe is stateless/read-only).
 // Terminal-but-unnotified rows: re-notify (gateway 5s dedup absorbs repeats).
 
-import { loadRecoverable, markTerminal, markOrphaned } from './registry.js';
+import { loadRecoverable, markTerminal } from './registry.js';
 import { startTask, isTaskRunnerActive } from './runner.js';
 import { notifyTask, type NotifierDeps } from './notifier.js';
 import type { BgTaskRow } from './types.js';
@@ -96,7 +96,8 @@ export async function recoverBgTasks(deps: Partial<NotifierDeps> = {}): Promise<
                     summary.failedLost += 1;
                     console.warn(`[bgtask:${row.id}] killed orphan (pid ${row.pid}, age ${Math.round(ageMs / 60_000)}min)`);
                 } else {
-                    markOrphaned(row.id);
+                    // Keep the row recoverable: clearing pid/status here prevents
+                    // later restarts from enforcing the grace-window cleanup.
                     summary.orphaned += 1;
                     console.warn(`[bgtask:${row.id}] orphaned — pid ${row.pid} alive, will kill after 30min`);
                 }

@@ -97,6 +97,39 @@ test('notes search builds rg args for literal dash-leading queries', () => {
     assert.equal(args.at(-1), '/notes');
 });
 
+test('notes search excludes protected backup and trash directories in rg and path walk', async () => {
+    const args = buildRipgrepArgs('alpha', '/notes', false);
+    const globPairs = args
+        .map((arg, index) => arg === '--glob' ? args[index + 1] : null)
+        .filter((arg): arg is string => Boolean(arg));
+    assert.ok(globPairs.includes('!**/Backups.backupdb/**'));
+    assert.ok(globPairs.includes('!**/.Trash/**'));
+    assert.ok(globPairs.includes('!**/backup/**'));
+
+    const root = tmpRoot();
+    try {
+        mkdirSync(join(root, 'backup'), { recursive: true });
+        mkdirSync(join(root, '.Trash'), { recursive: true });
+        writeFileSync(join(root, 'backup', 'alpha-plan.md'), 'alpha backup path\n');
+        writeFileSync(join(root, '.Trash', 'alpha-trash.md'), 'alpha trash path\n');
+        writeFileSync(join(root, 'alpha-live.md'), 'alpha live path\n');
+
+        const results = await searchNotes(root, 'alpha', {
+            spawnImpl: fakeSpawn({
+                stdout: [
+                    match(join(root, 'Backups.backupdb', 'hidden.md'), 'alpha hidden'),
+                    match(join(root, '.Trash', 'hidden.md'), 'alpha trash'),
+                    match(join(root, 'alpha-live.md'), 'alpha live'),
+                ],
+            }),
+        });
+
+        assert.deepEqual(results.map(result => result.path), ['alpha-live.md']);
+    } finally {
+        rmSync(root, { recursive: true, force: true });
+    }
+});
+
 test('notes search parses matches and filters reserved folders', async () => {
     const root = tmpRoot();
     try {

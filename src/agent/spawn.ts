@@ -89,6 +89,18 @@ import { getEmployeeMcpServers } from './mcp-passthrough.js';
 export let activeProcess: ChildProcess | null = null;
 export const activeProcesses = new Map<string, ChildProcess>(); // agentId → child process
 
+function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
+    const prev = activeProcesses.get(agentLabel);
+    if (prev && prev !== child) {
+        if (prev.exitCode !== null || prev.killed) {
+            activeProcesses.delete(agentLabel);
+        } else {
+            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
+        }
+    }
+    activeProcesses.set(agentLabel, child);
+}
+
 // Current Boss main session context — set when a mainManaged spawnAgent starts,
 // cleared on exit. Used by dispatch routes to capture the original channel
 // (web/telegram/discord + chatId) so that disconnected worker results can be
@@ -1163,12 +1175,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             throw new Error('Copilot ACP process was not created');
         }
         if (mainManaged) activeProcess = child;
-        // Phase 7-3: detect duplicate spawn for same agentLabel. claimWorker guards
-        // the route, but log here as a last-chance diagnostic if something slips past.
-        if (activeProcesses.has(agentLabel)) {
-            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
-        }
-        activeProcesses.set(agentLabel, child);
+        registerActiveProcess(agentLabel, child);
         if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
         if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 
@@ -1554,10 +1561,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ctx.stallWatchdog = piWatchdog;
 
         if (mainManaged) activeProcess = child;
-        if (activeProcesses.has(agentLabel)) {
-            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
-        }
-        activeProcesses.set(agentLabel, child);
+        registerActiveProcess(agentLabel, child);
         if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, provider: profile.id, ...empTag });
         if (mainManaged && !opts.internal) {
             beginLiveRun(liveScope, cli);
@@ -1635,10 +1639,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             throw new Error('Codex AppServer process was not created');
         }
         if (mainManaged) activeProcess = child;
-        if (activeProcesses.has(agentLabel)) {
-            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
-        }
-        activeProcesses.set(agentLabel, child);
+        registerActiveProcess(agentLabel, child);
         if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...empTag });
         if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 
@@ -1920,16 +1921,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(windowsSpawnUsesShell ? { shell: true } : {}),
     });
     if (mainManaged) activeProcess = child;
-    // Phase 7-3: detect duplicate spawn for same agentLabel.
-    if (activeProcesses.has(agentLabel)) {
-        const prev = activeProcesses.get(agentLabel)!;
-        if (prev.exitCode !== null || prev.killed) {
-            activeProcesses.delete(agentLabel);
-        } else {
-            console.warn(`[spawn:dup] activeProcesses already has child for ${agentLabel} — orphaning previous reference`);
-        }
-    }
-    activeProcesses.set(agentLabel, child);
+    registerActiveProcess(agentLabel, child);
     if (!opts.internal) broadcast('agent_status', { running: true, agentId: agentLabel, cli, ...runtimeStatusMeta, ...empTag });
     if (mainManaged && !opts.internal) beginLiveRun(liveScope, cli);
 

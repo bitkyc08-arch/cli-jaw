@@ -502,6 +502,8 @@ const bindHost: string = lanMode ? '0.0.0.0'
 server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
         console.error(`[server] port ${PORT} already in use — exiting`);
+        console.error(`[server] diagnose: lsof -nP -iTCP:${PORT} -sTCP:LISTEN`);
+        console.error(`[server] if this is a stale cli-jaw process, stop that process and restart; no process was killed automatically`);
     } else {
         console.error('[server] listen error:', err.message);
     }

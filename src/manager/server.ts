@@ -838,6 +838,8 @@ server.on('error', (error: NodeJS.ErrnoException) => {
     void previewProxy.close();
     if (error.code === 'EADDRINUSE') {
         console.error(`[dashboard] port ${port} already in use`);
+        console.error(`[dashboard] diagnose: lsof -nP -iTCP:${port} -sTCP:LISTEN`);
+        console.error('[dashboard] stop the stale dashboard process or configure a different dashboard port; no process was killed automatically');
     } else {
         console.error(`[dashboard] listen error: ${error.message}`);
     }

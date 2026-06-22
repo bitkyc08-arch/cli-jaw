@@ -10,6 +10,7 @@ import type { QuestionEnvelope } from '../../src/browser/web-ai/types.ts';
 import { createTask, getTask, markTerminal, setTaskPid } from '../../src/bgtask/registry.ts';
 import { isTaskRunnerActive, stopAllBgTasks } from '../../src/bgtask/runner.ts';
 import { recoverBgTasks } from '../../src/bgtask/recover.ts';
+import { db } from '../../src/core/db.ts';
 import type { SubmitResult } from '../../src/orchestrator/gateway.ts';
 import type { BgTaskSpec } from '../../src/bgtask/types.ts';
 
@@ -47,7 +48,7 @@ async function deadPid(): Promise<number> {
     return pid;
 }
 
-test('recovery matrix: probe resumed, dead child failed+notified, live child orphaned, unnotified re-notified', async () => {
+test('recovery matrix: probe resumed, dead child failed+notified, young live child stays recoverable, unnotified re-notified', async () => {
     // probe row
     const session = createSession({
         vendor: 'chatgpt', targetId: `t-${Date.now()}`, url: 'https://chatgpt.com/',
@@ -63,7 +64,7 @@ test('recovery matrix: probe resumed, dead child failed+notified, live child orp
     const dead = createTask({ kind: 'shell', spec: childSpec() });
     setTaskPid(dead.id, await deadPid());
 
-    // live child, no respawn → orphaned
+    // young live child, no respawn → left running with pid so the next boot can re-check the grace window
     const live = spawnLivePid();
     const orphan = createTask({ kind: 'shell', spec: childSpec() });
     setTaskPid(orphan.id, live.pid);
@@ -85,11 +86,35 @@ test('recovery matrix: probe resumed, dead child failed+notified, live child orp
         assert.ok(calls.some((t) => t.includes(dead.id) && t.includes('lost during server restart')));
 
         assert.equal(summary.orphaned, 1);
-        assert.equal(getTask(orphan.id)?.status, 'orphaned');
+        assert.equal(getTask(orphan.id)?.status, 'running');
+        assert.equal(getTask(orphan.id)?.pid, live.pid);
 
         assert.equal(summary.renotified, 1);
         assert.ok(getTask(unnotified.id)?.notifiedAt);
         assert.ok(calls.some((t) => t.includes(unnotified.id) && t.includes('done')));
+    } finally {
+        markTerminal(orphan.id, 'failed', 'test cleanup');
+        live.kill();
+        stopAllBgTasks();
+    }
+});
+
+test('recovery kills live orphaned child after grace window while preserving fresh orphans for re-check', async () => {
+    const live = spawnLivePid();
+    const row = createTask({ kind: 'shell', spec: childSpec() });
+    setTaskPid(row.id, live.pid);
+    db.prepare("UPDATE background_tasks SET created_at = datetime('now', '-31 minutes') WHERE id = ?").run(row.id);
+
+    const { calls, submit } = makeSubmitSpy();
+    try {
+        const summary = await recoverBgTasks({ submit });
+
+        assert.equal(summary.failedLost, 1);
+        assert.equal(summary.orphaned, 0);
+        const recovered = getTask(row.id);
+        assert.equal(recovered?.status, 'failed');
+        assert.equal(recovered?.pid, null);
+        assert.ok(calls.some((text) => text.includes(row.id) && text.includes('orphaned child killed after')));
     } finally {
         live.kill();
         stopAllBgTasks();
