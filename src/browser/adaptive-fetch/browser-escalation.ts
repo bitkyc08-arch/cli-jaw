@@ -7,6 +7,7 @@ import { runDefuddleInPage } from './defuddle-extractor.js';
 import { validateFetchUrl } from './safety.js';
 import { classifyBoundarySignals } from './validators.js';
 
+// @strict-allow-any(playwright page/response mirror boundary from agbrowse adaptive-fetch)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnyPage = any;
 

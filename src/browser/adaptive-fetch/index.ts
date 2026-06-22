@@ -17,6 +17,7 @@ import { shouldTryUserSession, navigateInUserSession } from './browser-session.j
 import { humanResolve } from './human-loop.js';
 import { compactAdaptiveFetchResult, writeStdoutLine } from './output.js';
 
+// @strict-allow-any(mirrored adaptive-fetch scorer result shape is intentionally duck-typed)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type ScoredResult = any;
 

@@ -22,7 +22,7 @@ function hash(data: string | ArrayBuffer, seed?: number | bigint): number {
     h.update(typeof data === 'string' ? data : Buffer.from(data));
     return h.digest().readUInt32LE(0);
 }
-if (typeof (globalThis as any).Bun === 'undefined') {
-    (globalThis as any).Bun = { env: process.env, stringWidth, stripANSI, hash };
+if (typeof (globalThis as any).Bun === 'undefined') { // @strict-allow-any(Bun global shim for bundled TUI runtime)
+    (globalThis as any).Bun = { env: process.env, stringWidth, stripANSI, hash }; // @strict-allow-any(Bun global shim for bundled TUI runtime)
 }
 export {};

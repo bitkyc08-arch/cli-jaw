@@ -4,8 +4,10 @@
  * Tier 2: jawcode-interactive-bundle.mjs (InteractiveMode components: Welcome, StatusLine, etc.)
  */
 
+// @strict-allow-any(jawcode bundled ESM module surface is loaded dynamically)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _tui: any = null;
+// @strict-allow-any(jawcode bundled ESM module surface is loaded dynamically)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 let _interactive: any = null;
 let _initialized = false;
@@ -28,7 +30,9 @@ function ensureInit(): void {
 }
 
 export function isInitialized(): boolean { return _initialized; }
+// @strict-allow-any(jawcode bundled ESM module surface is loaded dynamically)
 export function getTui(): any { ensureInit(); return _tui; }
+// @strict-allow-any(jawcode bundled ESM module surface is loaded dynamically)
 export function getInteractive(): any { ensureInit(); return _interactive; }
 
 type MarkdownThemeFn = (text: string) => string;
