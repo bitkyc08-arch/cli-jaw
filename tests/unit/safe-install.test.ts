@@ -553,7 +553,7 @@ test('SAF-004j2: fresh-machine evidence collector documents supported release ev
     assert.ok(readmeSrc.includes('audit-fresh-install-evidence.mjs'), 'README should show evidence directory auditing');
     assert.ok(readmeSrc.includes('node scripts/audit-fresh-install-evidence.mjs "$EVIDENCE_DIR" --target macos'), 'README should show local checkout auditor usage');
     assert.ok(readmeSrc.includes('node scripts/verify-release-evidence.mjs --macos /path/to/macos-evidence --wsl /path/to/wsl-evidence'), 'README should show local checkout release gate usage');
-    assert.ok(readmeSrc.includes('curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"'), 'README should download the collector to a file before executing it');
+    assert.ok(readmeSrc.includes('curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"'), 'README should download the collector to a file before executing it');
     assert.ok(readmeSrc.includes('33-powershell-to-wsl-probe.log'), 'README should document host-side PowerShell-to-WSL probe evidence when the collector cannot run it from WSL');
     assert.ok(freshInstallEvidenceAuditSrc.includes('--allow-skip-install'), 'auditor should distinguish release evidence from local smoke evidence');
     assert.ok(freshInstallEvidenceAuditSrc.includes("requireArchivedScript('collector', '00-collector-script.sh')"), 'auditor should require archived collector source for release evidence');
@@ -597,18 +597,28 @@ test('SAF-004j3: publish scripts enforce fresh-machine evidence before push or p
 
     const releaseGatePos = releaseScriptSrc.indexOf('npm run gate:all');
     const freshEvidencePos = releaseScriptSrc.indexOf('node scripts/require-release-evidence.mjs');
-    const pushPos = releaseScriptSrc.indexOf('git push origin master');
+    const pushPos = releaseScriptSrc.indexOf('git push origin main');
     const publishPos = releaseScriptSrc.indexOf('npm publish --access public');
     assert.ok(releaseGatePos >= 0 && freshEvidencePos > releaseGatePos, 'fresh evidence gate should run after normal release gates');
     assert.ok(freshEvidencePos >= 0 && freshEvidencePos < pushPos, 'fresh evidence gate must run before git push');
-    assert.ok(freshEvidencePos >= 0 && freshEvidencePos < publishPos, 'fresh evidence gate must run before npm publish');
+    if (publishPos >= 0) {
+        assert.ok(freshEvidencePos >= 0 && freshEvidencePos < publishPos, 'fresh evidence gate must run before npm publish');
+    }
 
     const previewGatePos = releasePreviewScriptSrc.indexOf('npm run gate:all');
     const previewFreshEvidencePos = releasePreviewScriptSrc.indexOf('node scripts/require-release-evidence.mjs');
     const previewPublishPos = releasePreviewScriptSrc.indexOf('npm publish "$TARBALL" --tag preview --access public');
-    const previewPushPos = releasePreviewScriptSrc.indexOf('git push origin "$CURRENT_BRANCH"');
+    const previewPushCandidates = [
+        releasePreviewScriptSrc.indexOf('git push origin preview'),
+        releasePreviewScriptSrc.indexOf('git push origin HEAD:preview'),
+        releasePreviewScriptSrc.indexOf('git push origin "$CURRENT_BRANCH"'),
+    ].filter(position => position >= 0);
+    const previewPushPos = Math.min(...previewPushCandidates);
     assert.ok(previewGatePos >= 0 && previewFreshEvidencePos > previewGatePos, 'preview fresh evidence gate should run after normal release gates');
-    assert.ok(previewFreshEvidencePos >= 0 && previewFreshEvidencePos < previewPublishPos, 'preview evidence gate must run before npm publish');
+    if (previewPublishPos >= 0) {
+        assert.ok(previewFreshEvidencePos >= 0 && previewFreshEvidencePos < previewPublishPos, 'preview evidence gate must run before npm publish');
+    }
+    assert.ok(previewPushCandidates.length > 0, 'preview release script must push the preview branch');
     assert.ok(previewFreshEvidencePos >= 0 && previewFreshEvidencePos < previewPushPos, 'preview evidence gate must run before git push');
 });
 

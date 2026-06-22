@@ -44,7 +44,7 @@ That's it. Open **http://localhost:24576** for the manager dashboard. Per-instan
 <summary><b>macOS one-click</b> — don't have Node.js? This installs everything</summary>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash
 source "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null || true
 bash "$(npm root -g)/cli-jaw/scripts/verify-fresh-install.sh"
 ```
@@ -63,7 +63,7 @@ Restart, open **Ubuntu**, then:
 
 ```bash
 # 2. Install CLI-JAW + all dependencies
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install-wsl.sh | bash
 source ~/.bashrc
 jaw dashboard
 bash "$(npm root -g)/cli-jaw/scripts/verify-fresh-install.sh"
@@ -85,19 +85,19 @@ Run this on a clean VM before publishing installer changes. It writes environmen
 ```bash
 # macOS Terminal
 COLLECTOR=/tmp/cli-jaw-collect-fresh-install-evidence.sh
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"
 bash "$COLLECTOR" --target macos
 
 # Ubuntu inside WSL
 COLLECTOR=/tmp/cli-jaw-collect-fresh-install-evidence.sh
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"
 bash "$COLLECTOR" --target wsl
 ```
 
 From Windows PowerShell, enter the supported WSL path:
 
 ```powershell
-wsl.exe -d Ubuntu -- bash -lc 'COLLECTOR=/tmp/cli-jaw-collect-fresh-install-evidence.sh; curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"; bash "$COLLECTOR" --target wsl'
+wsl.exe -d Ubuntu -- bash -lc 'COLLECTOR=/tmp/cli-jaw-collect-fresh-install-evidence.sh; curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/collect-fresh-install-evidence.sh -o "$COLLECTOR"; bash "$COLLECTOR" --target wsl'
 ```
 
 If the collector says `powershell.exe` is not available inside WSL, run this from Windows PowerShell before auditing:
@@ -626,7 +626,7 @@ Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Internal struct
 
 ## Contributing
 
-1. Fork and branch from `master`
+1. Fork and branch from `dev`
 2. `npm run build && npm run build:frontend && npm test`
 3. For release-sensitive changes, also run `npm run gate:all` and any focused checks for the touched surface.
 4. Submit a PR

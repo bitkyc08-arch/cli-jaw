@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════
 #  🦈 CLI-JAW — One-Click Installer (macOS / Linux)
-#  Usage:  curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
+#  Usage:  curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash
 # ═══════════════════════════════════════════════════════════════
 set -euo pipefail
 

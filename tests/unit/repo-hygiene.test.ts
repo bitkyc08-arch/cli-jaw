@@ -116,5 +116,5 @@ test('RH-008: root npm package stays lean and excludes Electron app/deps', () =>
 
     assert.equal(hasElectronDep, false, 'root package.json must not depend on electron');
     assert.equal(includesElectronApp, false, 'published npm files must not include electron/');
-    assert.deepEqual(files, ['dist/', 'public/', 'scripts/', 'package.json']);
+    assert.deepEqual(files, ['dist/', '!dist/src/lib/native/*.node', 'public/', 'scripts/', 'package.json']);
 });

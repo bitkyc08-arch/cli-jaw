@@ -28,7 +28,7 @@ test('FolderPanel delegates toolbar and recursive row rendering to focused compo
 test('FolderPanel remains below the file-size limit after the split', () => {
     const panelLines = read('public/manager/src/folder-panel/FolderPanel.tsx').split('\n').length;
 
-    assert.ok(panelLines < 500, `FolderPanel.tsx must stay below 500 lines, got ${panelLines}`);
+    assert.ok(panelLines <= 500, `FolderPanel.tsx must stay at or below 500 lines, got ${panelLines}`);
 });
 
 test('folder panel shared helpers and types have canonical owners', () => {

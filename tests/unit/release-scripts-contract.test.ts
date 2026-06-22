@@ -98,16 +98,24 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('--clobber'), 'desktop workflow reruns must replace stale release assets');
 });
 
-test('npm publish workflow creates GitHub releases and is safe to rerun for an existing version', () => {
+test('npm publish workflow uses dev/preview/main branch policy without release retargeting existing versions', () => {
     const workflow = read('.github/workflows/publish.yml');
 
     assert.ok(workflow.includes('push:'), 'publish workflow must run from branch pushes');
     assert.ok(workflow.includes('- preview'), 'publish workflow must bind the preview branch');
-    assert.ok(workflow.includes('- master'), 'publish workflow must bind the master branch');
+    assert.ok(workflow.includes('- main'), 'publish workflow must bind the main branch');
+    assert.ok(!workflow.includes('- master'), 'publish workflow must not bind the removed master branch');
+    assert.ok(!workflow.includes('- dev'), 'publish workflow must not publish from the development branch');
     assert.ok(workflow.includes('id-token: write'), 'publish workflow must support npm Trusted Publishing OIDC');
+    assert.ok(workflow.includes('latest:main) ;;'), 'real latest publishes must run only from main');
+    assert.ok(!workflow.includes('latest:master'), 'real latest publishes must not accept master');
+    assert.ok(workflow.includes('skip_publish="true"'), 'preview stable sync must set an explicit skip output');
+    assert.ok(workflow.includes('preview branch stable sync'), 'preview stable sync skip should be visible in the workflow logs');
     assert.ok(workflow.includes('Check registry package version'), 'publish workflow must detect already-published versions');
     assert.ok(workflow.includes('SKIP - cli-jaw@${{ steps.release.outputs.version }} is already published'),
         'publish workflow must skip npm publish when the exact version already exists');
+    assert.ok(workflow.includes("steps.registry.outputs.exists != 'true'"),
+        'publish workflow must not retarget a GitHub Release for an already-published npm version');
     assert.ok(workflow.includes('Create GitHub release'), 'publish workflow must create or update a GitHub Release');
     assert.ok(workflow.includes('--prerelease'), 'preview publishes must create GitHub prereleases');
     assert.ok(workflow.includes('previous_tag='), 'GitHub release notes must derive the previous tag automatically');
@@ -118,4 +126,53 @@ test('npm publish workflow creates GitHub releases and is safe to rerun for an e
     assert.ok(workflow.includes('### Changes'), 'GitHub release notes must include a Changes section');
     assert.ok(workflow.includes('--target "$GITHUB_SHA"'), 'release edits must retarget the release to the current publish commit');
     assert.ok(workflow.includes('notes-file'), 'GitHub releases should be created from a structured notes file');
+});
+
+test('release branch policy is reflected in CI workflows, release script, installers, and public docs', () => {
+    const testWorkflow = read('.github/workflows/test.yml');
+    const postinstallWorkflow = read('.github/workflows/postinstall-platform.yml');
+    const pagesWorkflow = read('.github/workflows/pages.yml');
+    const releaseScript = read('scripts/release.sh');
+    const installScript = read('scripts/install.sh');
+    const installWslScript = read('scripts/install-wsl.sh');
+    const collectorScript = read('scripts/collect-fresh-install-evidence.sh');
+    const readmes = [
+        read('README.md'),
+        read('README.ko.md'),
+        read('README.ja.md'),
+        read('README.zh-CN.md'),
+    ].join('\n');
+    const docs = [
+        read('docs/index.html'),
+        read('docs/windows.html'),
+    ].join('\n');
+
+    for (const workflow of [testWorkflow, postinstallWorkflow]) {
+        assert.ok(workflow.includes('- dev'), 'CI workflows must run on dev');
+        assert.ok(workflow.includes('- preview'), 'CI workflows must run on preview');
+        assert.ok(workflow.includes('- main'), 'CI workflows must run on main');
+        assert.ok(!workflow.includes('- master'), 'CI workflows must not run on removed master');
+    }
+    assert.ok(pagesWorkflow.includes('branches: [main]'), 'Pages deploy must publish docs from main');
+    assert.ok(!pagesWorkflow.includes('branches: [master]'), 'Pages deploy must not depend on master');
+
+    assert.ok(releaseScript.includes('git push origin main'), 'stable release script must push main');
+    assert.ok(!releaseScript.includes('git push origin master'), 'stable release script must not push master');
+    assert.ok(releaseScript.includes('branch%3Amain'), 'stable release script must link to main workflow runs');
+    assert.ok(!releaseScript.includes('branch%3Amaster'), 'stable release script must not link to master workflow runs');
+
+    assert.ok(installScript.includes('/cli-jaw/main/scripts/install.sh'), 'install.sh usage should use main raw URL');
+    assert.ok(installWslScript.includes('/cli-jaw/main/scripts/install-wsl.sh'), 'install-wsl.sh usage should use main raw URL');
+    assert.ok(collectorScript.includes('INSTALL_REF="${CLI_JAW_INSTALL_REF:-main}"'), 'fresh evidence collector should default to main');
+
+    assert.ok(readmes.includes('/cli-jaw/main/scripts/install.sh'), 'README install URLs should use main');
+    assert.ok(readmes.includes('/cli-jaw/main/scripts/install-wsl.sh'), 'README WSL install URLs should use main');
+    assert.ok(readmes.includes('/cli-jaw/main/scripts/collect-fresh-install-evidence.sh'), 'README evidence URLs should use main');
+    assert.ok(!readmes.includes('raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/'), 'README files must not point installers at master');
+    assert.ok(readmes.includes('branch from `dev`') || readmes.includes('`dev`에서 Fork') || readmes.includes('`dev` から Fork') || readmes.includes('从 `dev` Fork'),
+        'contributor guidance should direct branches from dev');
+
+    assert.ok(docs.includes('/cli-jaw/main/scripts/install.sh'), 'landing page install URL should use main');
+    assert.ok(docs.includes('/cli-jaw/main/scripts/install-wsl.sh'), 'Windows docs install URL should use main');
+    assert.ok(!docs.includes('raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install'), 'static docs must not point installers at master');
 });

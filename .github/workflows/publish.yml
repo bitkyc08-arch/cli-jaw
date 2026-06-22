@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - preview
-      - master
       - main
   workflow_dispatch:
     inputs:
@@ -81,6 +80,8 @@ jobs:
           version="$pkg_version"
           dry_run="false"
           create_release="true"
+          skip_publish="false"
+          skip_reason=""
 
           if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             version="$INPUT_VERSION"
@@ -92,7 +93,7 @@ jobs:
               preview)
                 tag="preview"
                 ;;
-              master|main)
+              main)
                 tag="latest"
                 ;;
               *)
@@ -115,7 +116,7 @@ jobs:
           if [ "$dry_run" != "true" ]; then
             case "$tag:$GITHUB_REF_NAME" in
               preview:preview) ;;
-              latest:master|latest:main) ;;
+              latest:main) ;;
               *)
                 echo "::error::Real $tag publishes must run from the matching branch; got $GITHUB_REF_NAME";
                 exit 1;
@@ -123,7 +124,20 @@ jobs:
             esac
           fi
 
-          if [ "$tag" = "preview" ]; then
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" = "preview" ]; then
+            case "$version" in
+              *-preview.*) ;;
+              *)
+                skip_publish="true"
+                skip_reason="preview branch stable sync"
+                dry_run="true"
+                create_release="false"
+                echo "::notice::Skipping npm publish for preview branch stable sync: $version"
+                ;;
+            esac
+          fi
+
+          if [ "$tag" = "preview" ] && [ "$skip_publish" != "true" ]; then
             case "$version" in
               *-preview.*) ;;
               *)
@@ -147,7 +161,13 @@ jobs:
             echo "tag=$tag"
             echo "dry-run=$dry_run"
             echo "create-release=$create_release"
+            echo "skip-publish=$skip_publish"
+            echo "skip-reason=$skip_reason"
           } >> "$GITHUB_OUTPUT"
+
+      - name: Report skipped publish
+        if: ${{ steps.release.outputs.skip-publish == 'true' }}
+        run: echo "::notice::${{ steps.release.outputs.skip-reason }}"
 
       - name: Guard npm package metadata
         run: |
@@ -197,6 +217,7 @@ jobs:
 
       - name: Check registry package version
         id: registry
+        if: ${{ steps.release.outputs.skip-publish != 'true' }}
         run: |
           set -euo pipefail
           if npm view "cli-jaw@${{ steps.release.outputs.version }}" version >/tmp/npm-version.txt 2>/dev/null; then
@@ -209,6 +230,7 @@ jobs:
           fi
 
       - name: Publish or dry-run
+        if: ${{ steps.release.outputs.skip-publish != 'true' }}
         run: |
           set -euo pipefail
           if [ "${{ steps.release.outputs.dry-run }}" = "true" ]; then
@@ -221,7 +243,7 @@ jobs:
           fi
 
       - name: Registry smoke
-        if: ${{ steps.release.outputs.dry-run != 'true' }}
+        if: ${{ steps.release.outputs.skip-publish != 'true' && steps.release.outputs.dry-run != 'true' }}
         run: |
           set -euo pipefail
           for attempt in $(seq 1 30); do
@@ -237,7 +259,7 @@ jobs:
           exit 1
 
       - name: Create GitHub release
-        if: ${{ steps.release.outputs.dry-run != 'true' && steps.release.outputs.create-release == 'true' }}
+        if: ${{ steps.release.outputs.skip-publish != 'true' && steps.release.outputs.dry-run != 'true' && steps.release.outputs.create-release == 'true' && steps.registry.outputs.exists != 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
         run: |

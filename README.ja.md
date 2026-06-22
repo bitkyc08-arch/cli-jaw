@@ -44,7 +44,7 @@ jaw dashboard
 <summary><b>macOS ワンクリック</b> — Node.js がない場合はこちら</summary>
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash
 source "${ZDOTDIR:-$HOME}/.zshrc" 2>/dev/null || true
 bash "$(npm root -g)/cli-jaw/scripts/verify-fresh-install.sh"
 ```
@@ -63,7 +63,7 @@ wsl --install
 
 ```bash
 # 2. CLI-JAW + 全依存関係をインストール
-curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/master/scripts/install-wsl.sh | bash
+curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install-wsl.sh | bash
 source ~/.bashrc
 jaw dashboard
 bash "$(npm root -g)/cli-jaw/scripts/verify-fresh-install.sh"
@@ -495,7 +495,7 @@ npm run gate:all       # リリース/ドキュメント整合性ゲート
 
 ## コントリビュート
 
-1. `master` から Fork してブランチを作成
+1. `dev` から Fork してブランチを作成
 2. `npm run build && npm test`
 3. PR を送信
 

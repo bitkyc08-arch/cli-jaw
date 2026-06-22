@@ -3,8 +3,9 @@ name: Tests
 on:
   push:
     branches:
+      - dev
+      - preview
       - main
-      - master
     paths-ignore:
       - 'README*.md'
       - 'docs/**'

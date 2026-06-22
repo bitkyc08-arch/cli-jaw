@@ -158,13 +158,13 @@ echo "🏷️  Creating git tag v$VERSION..."
 git add package.json package-lock.json
 git commit -m "[agent] chore: release v$VERSION" --allow-empty
 git tag "v$VERSION"
-git push origin master
+git push origin main
 git push origin "v$VERSION"
 
 # ─── GitHub Release with changelog ─────────────────────
 # IMPORTANT: create/update the GitHub Release stub before the publish workflow.
 # npm publishing is handled by .github/workflows/publish.yml through GitHub OIDC
-# Trusted Publishing after the master/main push. Keeping the release record in
+# Trusted Publishing after the main push. Keeping the release record in
 # GitHub first makes the release visible and gives desktop-release.yml a stable
 # release target for artifact uploads.
 echo "📋 Creating GitHub Release..."
@@ -200,8 +200,8 @@ else
 fi
 
 # ─── npm publish ───────────────────────────────────────
-echo "🚀 npm publish is handled by .github/workflows/publish.yml after the master/main push."
-echo "   Workflow: https://github.com/lidge-jun/cli-jaw/actions/workflows/publish.yml?query=branch%3Amaster"
+echo "🚀 npm publish is handled by .github/workflows/publish.yml after the main push."
+echo "   Workflow: https://github.com/lidge-jun/cli-jaw/actions/workflows/publish.yml?query=branch%3Amain"
 
 echo ""
 echo "✅ cli-jaw@$VERSION release queued!"

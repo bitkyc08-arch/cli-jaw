@@ -58,7 +58,7 @@ test('code composer renders as one dense workbench dock with responsive controls
     assert.ok(workbench.includes('className="code-composer-surface" aria-label="Code composer controls"'), 'dock must expose a single composer surface');
     assert.ok(workbench.indexOf('<CodeComposer') < workbench.indexOf('<ComposerFooter'), 'prompt input must sit above its setting controls inside the same surface');
 
-    for (const token of ['title={provider}', 'title={model}', 'title={effort}', 'title={permissionDescriptions[permissionMode]}']) {
+    for (const token of ['title={provider}', 'title={model}', 'title={effort}', 'title={PERMISSION_MODE_DESCRIPTIONS[permissionMode]}']) {
         assert.ok(footer.includes(token), `footer menu must preserve hover/readback title ${token}`);
     }
     assert.equal(footer.includes('<select'), false, 'footer controls must not use browser-native select dropdowns');

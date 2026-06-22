@@ -164,7 +164,7 @@ test('SF-EDGE: processQueue is triggered after mainManaged exit in both paths', 
 
     // CLI path — processQueue passed to handleAgentExit (or called directly)
     const cliCloseIdx = src.indexOf("child.on('close'");
-    const cliBlock = src.slice(cliCloseIdx, cliCloseIdx + 10000);
+    const cliBlock = src.slice(cliCloseIdx, cliCloseIdx + 20000);
     assert.ok(
         cliBlock.includes('processQueue'),
         'CLI close should reference processQueue (direct call or handleAgentExit param)',

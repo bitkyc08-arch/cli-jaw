@@ -3,8 +3,9 @@ name: Postinstall Platform Checks
 on:
   push:
     branches:
+      - dev
+      - preview
       - main
-      - master
     paths:
       - '.gitattributes'
       - '.github/workflows/postinstall-platform.yml'
