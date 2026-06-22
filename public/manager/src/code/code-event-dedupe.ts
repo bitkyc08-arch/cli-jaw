@@ -15,12 +15,15 @@ export function textFromCodeChunk(update: Record<string, unknown> | undefined): 
     return String(content?.text ?? update?.['text'] ?? '');
 }
 
+export function messageIdFromCodeChunk(update: Record<string, unknown> | undefined): string {
+    const messageId = update?.['messageId'];
+    return typeof messageId === 'string' ? messageId.trim() : '';
+}
+
 export function codeChunkEventKey(event: ChunkLikeEvent, text: string): string | null {
     if (!CHUNK_EVENTS.has(event.event) || !text) return null;
     const update = event.update ?? {};
-    const messageId = typeof update['messageId'] === 'string' && update['messageId'].trim()
-        ? update['messageId'].trim()
-        : '';
+    const messageId = messageIdFromCodeChunk(update);
     const sseEventId = typeof event.sseEventId === 'string' && event.sseEventId.trim()
         ? event.sseEventId.trim()
         : '';

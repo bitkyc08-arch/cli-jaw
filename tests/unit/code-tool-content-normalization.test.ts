@@ -180,3 +180,37 @@ test('code replay replaces a leading-truncated assistant snapshot with the compl
     assert.equal(entries[1]?.text, complete);
     assert.equal((entries[1]?.text ?? '').includes(truncated), false);
 });
+
+test('code replay never overlap-merges different assistant message ids', () => {
+    const first = [
+        '10개 도구를 한 번에 병렬 호출해 봤습니다.',
+        'README 33개 발견',
+        'package.json 확인',
+        '프로젝트 스냅샷 완료',
+    ].join('\n');
+    const second = [
+        '추가 검토입니다.',
+        '10개 도구를 한 번에 병렬 호출해 봤습니다.',
+        'README 33개 발견',
+        'package.json 확인',
+        '프로젝트 스냅샷 완료',
+    ].join('\n');
+    const entries = replayEventsToTranscriptEntries([
+        {
+            event: 'code_agent_message_chunk',
+            sessionId: 's1',
+            update: { messageId: 'assistant-1', content: { type: 'text', text: first } },
+        },
+        {
+            event: 'code_agent_message_chunk',
+            sessionId: 's1',
+            update: { messageId: 'assistant-2', content: { type: 'text', text: second } },
+        },
+    ]);
+
+    assert.equal(entries.length, 2);
+    assert.equal(entries[0]?.messageId, 'assistant-1');
+    assert.equal(entries[1]?.messageId, 'assistant-2');
+    assert.equal(entries[0]?.text, first);
+    assert.equal(entries[1]?.text, second);
+});

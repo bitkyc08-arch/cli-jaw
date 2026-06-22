@@ -230,7 +230,7 @@ test('code canvas coalesces optimistic user prompt echo from SSE', () => {
     assert.ok(canvas.includes('const pendingUserEchoRef = useRef<string | null>(null)'), 'CodeCanvas must track the prompt text awaiting SSE echo');
     assert.ok(canvas.includes("transient: 'pending-user-echo'"), 'optimistic submit row must be marked as a pending echo');
     assert.ok(canvas.includes("msg.transient === 'pending-user-echo'"), 'SSE user chunk handler must locate the optimistic row');
-    assert.ok(canvas.includes("updated[optimisticIndex] = { role: 'user', text }"), 'SSE echo must replace, not append, the optimistic user row');
+    assert.ok(canvas.includes("updated[optimisticIndex] = { role: 'user', text,"), 'SSE echo must replace, not append, the optimistic user row');
     assert.ok(canvas.includes('pendingUserEchoRef.current = null'), 'pending echo state must be cleared after merge or reset');
 });
 

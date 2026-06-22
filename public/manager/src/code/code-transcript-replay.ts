@@ -1,5 +1,5 @@
 import type { CodeSessionReplayEvent } from './code-session-client';
-import { assistantChunkMergeAction } from './code-event-dedupe';
+import { assistantChunkMergeAction, messageIdFromCodeChunk } from './code-event-dedupe';
 import { findLastToolMessageIndex, normalizeToolContentFromUpdate, type TranscriptEntry } from './code-types';
 
 export function normalizeToolStatus(status: string): 'running' | 'done' | 'failed' {
@@ -16,26 +16,37 @@ export function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]
         if (event.event === 'code_user_message_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
-            if (text) entries.push({ role: 'user', text });
+            const messageId = messageIdFromCodeChunk(update);
+            if (text) entries.push({ role: 'user', text, ...(messageId ? { messageId } : {}) });
         } else if (event.event === 'code_agent_message_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
             if (!text) continue;
+            const messageId = messageIdFromCodeChunk(update);
             const last = entries[entries.length - 1];
             if (last?.role === 'assistant') {
+                if (last.messageId && messageId && last.messageId !== messageId) {
+                    entries.push({ role: 'assistant', text, messageId });
+                    continue;
+                }
                 const mergeAction = assistantChunkMergeAction(last.text, text);
                 if (mergeAction === 'drop') continue;
                 last.text = mergeAction === 'replace' ? text : last.text + text;
+                if (messageId && !last.messageId) last.messageId = messageId;
             } else {
-                entries.push({ role: 'assistant', text });
+                entries.push({ role: 'assistant', text, ...(messageId ? { messageId } : {}) });
             }
         } else if (event.event === 'code_agent_thought_chunk') {
             const content = update['content'] as { type?: string; text?: string } | undefined;
             const text = String(content?.text ?? update['text'] ?? '');
             if (!text) continue;
+            const messageId = messageIdFromCodeChunk(update);
             const last = entries[entries.length - 1];
-            if (last?.role === 'thinking') last.text += text;
-            else entries.push({ role: 'thinking', text });
+            if (last?.role === 'thinking' && (!last.messageId || !messageId || last.messageId === messageId)) {
+                last.text += text;
+                if (messageId && !last.messageId) last.messageId = messageId;
+            }
+            else entries.push({ role: 'thinking', text, ...(messageId ? { messageId } : {}) });
         } else if (event.event === 'code_tool_call') {
             const title = String(update['title'] ?? update['toolName'] ?? 'tool');
             const toolCallId = String(update['toolCallId'] ?? '');

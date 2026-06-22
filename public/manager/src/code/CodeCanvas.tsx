@@ -23,6 +23,7 @@ import { normalizeToolStatus, replayEventsToTranscriptEntries } from './code-tra
 import {
     assistantChunkMergeAction,
     isDuplicateAssistantFinalChunk,
+    messageIdFromCodeChunk,
     rememberCodeChunkEvents,
     shouldDropDuplicateCodeChunk,
     textFromCodeChunk,
@@ -196,6 +197,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
         if (kind === 'code_agent_message_chunk') {
             const text = textFromCodeChunk(update);
             if (!text) return;
+            const messageId = messageIdFromCodeChunk(update);
             if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 if (replayedAssistantTextsRef.current.has(text) && prev[prev.length - 1]?.role === 'user') {
@@ -205,16 +207,20 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 const last = prev[prev.length - 1];
                 if (last?.role === 'assistant' && isDuplicateAssistantFinalChunk(last.text, text)) return prev;
                 if (last?.role === 'assistant') {
+                    if (last.messageId && messageId && last.messageId !== messageId) {
+                        return [...prev, { role: 'assistant', text, messageId }];
+                    }
                     const mergeAction = assistantChunkMergeAction(last.text, text);
                     if (mergeAction === 'drop') return prev;
                     const nextText = mergeAction === 'replace' ? text : last.text + text;
-                    return [...prev.slice(0, -1), { ...last, text: nextText }];
+                    return [...prev.slice(0, -1), { ...last, text: nextText, ...(messageId && !last.messageId ? { messageId } : {}) }];
                 }
-                return [...prev, { role: 'assistant', text }];
+                return [...prev, { role: 'assistant', text, ...(messageId ? { messageId } : {}) }];
             });
         } else if (kind === 'code_user_message_chunk') {
             const text = textFromCodeChunk(update);
             if (!text) return;
+            const messageId = messageIdFromCodeChunk(update);
             if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 if (pendingUserEchoRef.current === text) {
@@ -229,22 +235,23 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                     if (optimisticIndex >= 0) {
                         pendingUserEchoRef.current = null;
                         const updated = [...prev];
-                        updated[optimisticIndex] = { role: 'user', text };
+                        updated[optimisticIndex] = { role: 'user', text, ...(messageId ? { messageId } : {}) };
                         return updated;
                     }
                 }
-                return [...prev, { role: 'user', text }];
+                return [...prev, { role: 'user', text, ...(messageId ? { messageId } : {}) }];
             });
         } else if (kind === 'code_agent_thought_chunk') {
             const text = textFromCodeChunk(update);
             if (!text) return;
+            const messageId = messageIdFromCodeChunk(update);
             if (shouldDropDuplicateCodeChunk(seenCodeChunkEventKeysRef.current, event, text)) return;
             setMessages(prev => {
                 const last = prev[prev.length - 1];
-                if (last?.role === 'thinking') {
-                    return [...prev.slice(0, -1), { ...last, text: last.text + text }];
+                if (last?.role === 'thinking' && (!last.messageId || !messageId || last.messageId === messageId)) {
+                    return [...prev.slice(0, -1), { ...last, text: last.text + text, ...(messageId && !last.messageId ? { messageId } : {}) }];
                 }
-                return [...prev, { role: 'thinking', text }];
+                return [...prev, { role: 'thinking', text, ...(messageId ? { messageId } : {}) }];
             });
         } else if (kind === 'code_tool_call') {
             const title = String(update['title'] ?? update['toolName'] ?? 'tool');
