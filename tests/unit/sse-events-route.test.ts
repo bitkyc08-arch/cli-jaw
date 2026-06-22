@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import express, { type NextFunction, type Request, type Response } from 'express';
 import { registerEventsRoutes } from '../../src/routes/events.ts';
+import { broadcast } from '../../src/core/bus.ts';
 import { publish, currentSeq } from '../../src/core/event-bus.ts';
 
 function noAuth(_req: Request, _res: Response, next: NextFunction): void {
@@ -145,5 +146,29 @@ test('SSE signals replay_gap when the cursor is AHEAD of the current seq (pre-re
         ac.abort();
 
         assert.ok(out.includes('"event":"replay_gap"'), `expected replay_gap for ahead-of-seq cursor, got: ${out.slice(0, 200)}`);
+    });
+});
+
+test('SSE streams safe worker_run events without raw output fields', async () => {
+    await withServer(async baseUrl => {
+        const ac = new AbortController();
+        const res = await fetch(`${baseUrl}/api/events`, { signal: ac.signal });
+        assert.equal(res.status, 200);
+        assert.ok(res.body);
+
+        setTimeout(() => broadcast('worker_run_done', {
+            runId: 'wr_backend_sse',
+            safeSummary: 'done',
+            outputBytes: 12,
+        }), 50);
+
+        const out = await readUntil(res.body, buf => buf.includes('worker_run_done'));
+        ac.abort();
+
+        assert.ok(out.includes('"topic":"worker"'));
+        assert.ok(out.includes('"event":"worker_run_done"'));
+        assert.ok(out.includes('"safeSummary":"done"'));
+        assert.ok(!out.includes('raw output'));
+        assert.ok(!out.includes('outputFile'));
     });
 });

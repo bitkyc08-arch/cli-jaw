@@ -6,10 +6,10 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 > 📚 [INDEX](INDEX.md) · [체크리스트 ↗](AGENTS.md) · [커맨드 ↗](commands.md) · **서버 API**
 
-# server.ts — Glue + Route Registration (593L)
+# server.ts — Glue + Route Registration (635L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 228개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 227개다.
+> 현재 라이브 surface는 총 232개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 231개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -32,7 +32,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
 | `src/routes/browser.ts` | 488L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
-| `src/routes/orchestrate.ts` | 862L | 14 | reset/state/workers/worker-progress/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
+| `src/routes/orchestrate.ts` | 893L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
 | `src/routes/goal.ts` | 177L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
 | `src/routes/goal-run.ts` | 83L | 3 | bounded goal-run state/preflight/start-pause-resume-stop |
 | `src/routes/messaging.ts` | 259L | 6 | upload/file-open/voice/telegram/channel/discord send |
@@ -117,7 +117,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Heartbeat | `GET/PUT /api/heartbeat` |
 | Browser | `POST /api/browser/start` `POST /api/browser/stop` `GET /api/browser/status` `GET /api/browser/doctor` `POST /api/browser/cleanup-runtimes` `GET /api/browser/snapshot` `POST /api/browser/screenshot` `POST /api/browser/act` `POST /api/browser/vision-click` `POST /api/browser/navigate` `POST /api/browser/reload` `POST /api/browser/resize` `GET /api/browser/tabs` `GET /api/browser/active-tab` `POST /api/browser/tab-switch` `POST /api/browser/tab-new` `POST /api/browser/tab-close` `POST /api/browser/tab-cleanup` `POST /api/browser/evaluate` `GET /api/browser/text` `GET /api/browser/dom` `GET /api/browser/console` `GET /api/browser/network` `POST /api/browser/fetch` `POST /api/browser/wait-for-selector` `POST /api/browser/wait-for-text` `POST /api/browser/web-ai/render` `POST /api/browser/web-ai/context-dry-run` `POST /api/browser/web-ai/context-render` `GET /api/browser/web-ai/status` `POST /api/browser/web-ai/send` `GET /api/browser/web-ai/poll` `GET /api/browser/web-ai/watch` `GET /api/browser/web-ai/watchers` `GET /api/browser/web-ai/sessions` `POST /api/browser/web-ai/sessions/prune` `GET /api/browser/web-ai/notifications` `GET /api/browser/web-ai/capabilities` `POST /api/browser/web-ai/query` `POST /api/browser/web-ai/code` `POST /api/browser/web-ai/code-extract` `POST /api/browser/web-ai/stop` `GET /api/browser/web-ai/diagnose` |
 | Code Mode | `GET /api/code/git-info` `GET /api/code/models` `POST /api/code/model-default` `POST /api/code/workspace/pick` `GET /api/code/model-assignments` `PUT /api/code/model-assignments/:role` `DELETE /api/code/model-assignments/:role` `GET /api/code/model-presets` `GET /api/code/sessions` `GET /api/code/sessions/stored` `POST /api/code/sessions/load` `POST /api/code/sessions/:id/ext` `POST /api/code/sessions/:id/fork` `POST /api/code/sessions/:id/model` `POST /api/code/sessions` `POST /api/code/sessions/:id/prompt` `POST /api/code/sessions/:id/cancel` `POST /api/code/sessions/:id/config` `DELETE /api/code/sessions/:id` `GET /api/code/permissions` `POST /api/code/permissions/:id` |
-| Orchestrate | `POST /api/orchestrate/reset` `GET /api/orchestrate/state` `GET /api/orchestrate/workers` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` (also accepts a current/recent `runId`) `GET /api/orchestrate/snapshot` `DELETE /api/orchestrate/queue/:id` `POST /api/orchestrate/queue/:id/hold` `DELETE /api/orchestrate/queue/:id/hold` `POST /api/orchestrate/queue/:id/steer` `POST /api/orchestrate/dispatch` `POST /api/orchestrate/dispatch/batch` `GET /api/orchestrate/worker/:agentId/result` (also accepts a current `runId`) `PUT /api/orchestrate/state` |
+| Orchestrate | `POST /api/orchestrate/reset` `GET /api/orchestrate/state` `GET /api/orchestrate/workers` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` (also accepts a current/recent `runId`) `GET /api/orchestrate/worker-runs` `GET /api/orchestrate/worker-runs/:runId` `GET /api/orchestrate/worker-runs/:runId/events` `GET /api/orchestrate/worker-runs/:runId/output` `GET /api/orchestrate/snapshot` `DELETE /api/orchestrate/queue/:id` `POST /api/orchestrate/queue/:id/hold` `DELETE /api/orchestrate/queue/:id/hold` `POST /api/orchestrate/queue/:id/steer` `POST /api/orchestrate/dispatch` `POST /api/orchestrate/dispatch/batch` `GET /api/orchestrate/worker/:agentId/result` (also accepts a current `runId`) `PUT /api/orchestrate/state` |
 | Background Tasks | `GET/POST /api/bgtask` `GET/DELETE /api/bgtask/:id` |
 | Goal | `GET /api/goal` `GET /api/goal/history` `POST /api/goal` |
 | Goal Run | `GET /api/goal-run` `GET /api/goal-run/preflight` `POST /api/goal-run` |
@@ -136,7 +136,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 228개 route handler 기준이다. 이 중 API 엔드포인트는 227개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 232개 route handler 기준이다. 이 중 API 엔드포인트는 231개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
@@ -195,6 +195,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - virtual dispatch에서 `cli`/`model`이 생략되면 현재 CLI와 `src/cli/registry.ts`의 registry default model을 사용한다.
 - 현재 plan이 있으면 dispatch body 상단에 `## Approved Plan`으로 자동 주입된다.
 - `wait:false` async dispatch `202`, `worker_busy` `409`, and result polling payloads include both stable `agentId` and per-dispatch `runId`. The `agentId` remains the same-employee concurrency guard; `runId` identifies a specific worker run in memory progress history.
+- `GET /api/orchestrate/worker-runs*` exposes durable worker-run safe metadata/events and bounded raw output reads. List/get/events are safe-only; `/output` is the only raw-text worker-run route and requires explicit `runId` plus offset/limit.
 - `POST /api/orchestrate/dispatch/batch`는 같은 boss token으로 여러 직원/virtual task를 병렬 dispatch한다. 각 entry는 `agent` 또는 `virtual` 중 하나를 가진다. 구버전 manager가 이 route 없이 HTML 404를 반환하면 `jaw dispatch --batch`는 JSON parse 예외 대신 stale/missing route 진단을 출력한다.
 
 ### `/api/jaw-ceo/*`
@@ -271,6 +272,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `system_notice` | compact refresh 같은 시스템 공지 |
 | `heartbeat_pending` | pending heartbeat job 수 |
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | distributed worker 상태 변화; 같은 상태가 `/api/orchestrate/worker-progress`의 safe `attention` metadata에도 반영됨 |
+| `worker_run_started` / `worker_run_progress` / `worker_run_attention` / `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | per-run worker lifecycle safe events; raw output is never embedded and must be fetched through `/api/orchestrate/worker-runs/:runId/output` |
 | `goal_done` / `goal_done_rejected` / `goal_cancel` / `goal_continuation` / `goal_continuation_failed` / `goal_continuation_limit` | durable goal / bounded continuation lifecycle |
 | `goal_pause_detected` | goal pause 2-tap gate 감지 |
 | `session_switched` / `session_created` / `session_list` | multi-session state update |

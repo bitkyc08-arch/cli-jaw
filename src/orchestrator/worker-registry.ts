@@ -11,6 +11,12 @@ import {
     type WorkerProgressRun,
     type WorkerProgressSnapshot,
 } from './worker-progress.js';
+import {
+    completeWorkerRun,
+    createWorkerRunRecord,
+    recordWorkerRunAttention,
+    recordWorkerRunProgress,
+} from './worker-run-store.js';
 
 const workers = new Map<string, WorkerSlot>();
 const previousRuns = new Map<string, WorkerProgressRun>();
@@ -98,6 +104,13 @@ export function claimWorker(emp: WorkerEmployeeRef, task: string, replayMeta?: W
         replayMeta: replayMeta && Object.keys(replayMeta).length ? { ...replayMeta } : undefined,
     });
     workers.set(emp.id, slot);
+    createWorkerRunRecord({
+        runId: slot.runId,
+        agentId: slot.agentId,
+        employeeName: slot.employeeName,
+        taskPreview: previewText(slot.task, 200) || '',
+        startedAt: slot.startedAt,
+    });
     return slot;
 }
 
@@ -156,6 +169,7 @@ function setWorkerAttention(agentId: string, attention: WorkerProgressAttention 
     if (!slot) return;
     slot.attention = attention;
     slot.progressUpdatedAt = Date.now();
+    recordWorkerRunAttention(slot.runId, attention);
 }
 
 export function markWorkerStalled(agentId: string): void {
@@ -240,6 +254,7 @@ export function updateWorkerTools(agentId: string, tools: unknown[]): void {
     if (slot.attention?.kind === 'stalled') slot.attention = null;
     slot.tools = sanitizeWorkerProgressTools(tools);
     slot.progressUpdatedAt = Date.now();
+    recordWorkerRunProgress(slot.runId, slot.tools);
 }
 
 export function finishWorker(agentId: string, result: string, tools: unknown[] = []): void {
@@ -249,6 +264,7 @@ export function finishWorker(agentId: string, result: string, tools: unknown[] =
     slot.completedAt = Date.now();
     slot.result = result;
     if (tools.length > 0) updateWorkerTools(agentId, tools);
+    completeWorkerRun(slot.runId, 'done', result);
     rememberCompletedRun(slot);
     slot.pendingReplay = true;
 }
@@ -259,6 +275,7 @@ export function failWorker(agentId: string, result: string): void {
     slot.state = 'failed';
     slot.completedAt = Date.now();
     slot.result = result;
+    completeWorkerRun(slot.runId, 'failed', result);
     rememberCompletedRun(slot);
     slot.pendingReplay = false;  // Failed workers don't need replay — no result to feed back to Boss
 }
@@ -269,6 +286,7 @@ export function cancelWorker(agentId: string): void {
     slot.state = 'cancelled';
     slot.completedAt = Date.now();
     slot.pendingReplay = false;
+    completeWorkerRun(slot.runId, 'cancelled', slot.result || '');
     rememberCompletedRun(slot);
     workers.delete(agentId);
 }
@@ -381,6 +399,8 @@ export function releaseWorkerReplay(agentId: string): void {
             occurredAt: Date.now(),
             attempts: slot.replayAttempts,
         };
+        recordWorkerRunAttention(slot.runId, slot.attention);
+        completeWorkerRun(slot.runId, 'failed', slot.result || '');
         rememberCompletedRun(slot);
     }
 }

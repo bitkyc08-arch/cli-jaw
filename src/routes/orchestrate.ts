@@ -24,6 +24,12 @@ import {
     listWorkerProgressSnapshots,
     setWorkerOrchestration,
 } from '../orchestrator/worker-registry.js';
+import {
+    getWorkerRunRecord,
+    listWorkerRunEvents,
+    listWorkerRunRecords,
+    readWorkerRunOutput,
+} from '../orchestrator/worker-run-store.js';
 import { findEmployee, runSingleAgent, validateParallelSafety } from '../orchestrator/distribute.js';
 import { getEmployees } from '../core/db.js';
 import { settings } from '../core/config.js';
@@ -695,6 +701,31 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         }
 
         res.json({ ok: true, results });
+    });
+
+    app.get('/api/orchestrate/worker-runs', requireAuth, (_req, res) => {
+        res.json({ ok: true, runs: listWorkerRunRecords() });
+    });
+
+    app.get('/api/orchestrate/worker-runs/:runId', requireAuth, (req, res) => {
+        const runId = String(req.params["runId"] || '');
+        const run = getWorkerRunRecord(runId);
+        if (!run) return fail(res, 404, 'worker run not found');
+        res.json({ ok: true, run });
+    });
+
+    app.get('/api/orchestrate/worker-runs/:runId/events', requireAuth, (req, res) => {
+        const runId = String(req.params["runId"] || '');
+        if (!getWorkerRunRecord(runId)) return fail(res, 404, 'worker run not found');
+        res.json({ ok: true, events: listWorkerRunEvents(runId) });
+    });
+
+    app.get('/api/orchestrate/worker-runs/:runId/output', requireAuth, (req, res) => {
+        const runId = String(req.params["runId"] || '');
+        if (!getWorkerRunRecord(runId)) return fail(res, 404, 'worker run not found');
+        const offset = Number(req.query["offset"] || 0);
+        const limit = Number(req.query["limit"] || 0);
+        res.json({ ok: true, output: readWorkerRunOutput(runId, { offset, limit }) });
     });
 
     // Phase 7-4: explicit result polling for 409 retries and reconnects.

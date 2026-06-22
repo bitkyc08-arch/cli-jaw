@@ -301,7 +301,8 @@ app.use((req, res, next) => {
     // manager scan and the browser. A 429 mid-poll aborts a worker watch for
     // no protective gain (260613 doc 60). Exact poll prefixes only — the
     // workers LIST endpoint stays limited (adversarial review #3).
-    if (req.path.startsWith('/api/orchestrate/worker/')
+    if (req.path.startsWith('/api/orchestrate/worker-runs')
+        || req.path.startsWith('/api/orchestrate/worker/')
         || req.path.startsWith('/api/orchestrate/worker-progress')) return next();
     const ip = req.ip;
     const now = Date.now();

@@ -4,6 +4,7 @@ import {
     publish, subscribe, replaySince, hasReplayGap, currentSeq,
     RING_SIZE, type BusEvent,
 } from '../src/core/event-bus.ts';
+import { broadcast } from '../src/core/bus.ts';
 
 // Module-level ring/seq persist across tests — every test reads currentSeq()
 // first and asserts relatively, so order or prior publishes never matter.
@@ -71,4 +72,14 @@ test('a throwing listener does not break publish or other listeners', () => {
     unsubBad();
     unsubGood();
     assert.equal(got.length, 1);
+});
+
+test('worker_run events use the existing worker topic replay path', () => {
+    const mark = currentSeq();
+    broadcast('worker_run_progress', { runId: 'wr_backend_bus', safeSummary: 'ok' });
+
+    const replayed = replaySince(mark);
+    assert.equal(replayed.at(-1)?.topic, 'worker');
+    assert.equal(replayed.at(-1)?.event, 'worker_run_progress');
+    assert.equal(replayed.at(-1)?.data['safeSummary'], 'ok');
 });
