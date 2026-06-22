@@ -78,7 +78,7 @@ export const OPENCLAW_ACTIVE = new Set([
     'browser', 'memory', 'search',
     'screen-capture', 'docx', 'xlsx', 'pptx', 'hwp', 'github', 'telegram-send',
     'video', 'pdf-vision', 'diagram', 'structured-renderers',
-    'desktop-control',
+    'desktop-control', 'goal',
 ]);
 
 /** Walk up from current file to find package.json → package root */
