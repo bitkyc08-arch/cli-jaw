@@ -15,6 +15,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const dispatchSrc = readFileSync(join(__dirname, '../../bin/commands/dispatch.ts'), 'utf8');
 const serverSrc = readFileSync(join(__dirname, '../../server.ts'), 'utf8');
 const pipelineSrc = readFileSync(join(__dirname, '../../src/orchestrator/pipeline.ts'), 'utf8');
+const replayNoticeSrc = readFileSync(join(__dirname, '../../src/orchestrator/worker-replay-notice.ts'), 'utf8');
 const configSrc = readFileSync(join(__dirname, '../../src/core/config.ts'), 'utf8');
 
 test('DTH-001: dispatch always polls — no blocking wait past undici headersTimeout', () => {
@@ -44,8 +45,12 @@ test('DTH-003: server keep-alive outlives pollers and worker polls skip the rate
 });
 
 test('DTH-004: delayed worker replays carry an explicit marker', () => {
-    assert.ok(pipelineSrc.includes('[worker-replay agent=${pr.agentId}'),
+    assert.ok(pipelineSrc.includes('buildWorkerReplayNotice(pr)'),
+        'late replay prompt text should be delegated to the bounded notice builder');
+    assert.ok(replayNoticeSrc.includes('[worker-replay agent=${input.agentId}'),
         'late re-injections must be recognizable — the boss may have already compensated (doc 08 §2.3)');
+    assert.ok(replayNoticeSrc.includes('run=${input.runId}'),
+        'late re-injections must carry run identity for explicit recovery');
 });
 
 test('DTH-005: CLI base URL skips the dual-stack localhost lookup', () => {

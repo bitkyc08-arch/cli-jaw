@@ -324,7 +324,7 @@ cli-jaw/
 │       ├── deliberate.ts     ← `/deliberate` workflow handler (85L)
 │       ├── planaudit.ts      ← `/planaudit` workflow handler (82L)
 │       ├── review.ts         ← `/review` projectDirs/recent-context scope resolution + Markdown report path + fix/dispatch steer prompt (195L)
-│       ├── search.ts         ← `/search` steer prompt builder + search-skill/browser verification policy text (35L)
+│       ├── search.ts         ← `/search` steer prompt builder + search-skill/browser verification policy text (37L)
 │       ├── competitive-gap.ts ← competitive gap analysis workflow (113L)
 │       ├── runtime.ts / runtime-guards.ts / guards.ts / events.ts / status.ts / context.ts / index.ts / types.ts / browser-web-ai.ts / web-ai-guards.ts
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
