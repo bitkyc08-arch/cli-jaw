@@ -79,3 +79,33 @@ test('P37-PROMPT-009: Computer Use tool surface includes text selection', () => 
     assert.match(a1, /select_text/);
     assert.match(control, /select_text/);
 });
+
+test('P40-PROMPT-010: A1 gates external realtime lookup through active search skill', () => {
+    const a1 = readA1();
+
+    assert.match(a1, /Search routing — file vs web/);
+    assert.match(a1, /BEFORE any external\/web\/X\/real-time search/);
+    assert.match(a1, /MUST read the active search skill once per session/);
+    assert.match(a1, /skills\/search\/SKILL\.md/);
+    assert.match(a1, /provider rules NOT repeated here/);
+});
+
+test('P40-PROMPT-011: A1 keeps programming docs before generic search when applicable', () => {
+    const a1 = readA1();
+
+    assert.match(a1, /programming library\/framework\/API documentation/);
+    assert.match(a1, /Context7 or official docs search first when available/);
+    assert.ok(
+        a1.indexOf('Context7 or official docs search first when available') < a1.indexOf('Treat search results as URL candidates'),
+        'official documentation routing should appear before evidence handling'
+    );
+});
+
+test('P40-PROMPT-012: A1 treats search results as URL candidates and browser verification as downstream', () => {
+    const a1 = readA1();
+
+    assert.match(a1, /Treat search results as URL candidates, not final evidence/);
+    assert.match(a1, /fetch\/open the original page/);
+    assert.match(a1, /Use browser\/browse escalation only as downstream verification/);
+    assert.match(a1, /Naver shell\/PDF\/table-only evidence/);
+});
