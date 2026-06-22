@@ -3,15 +3,19 @@ set -euo pipefail
 
 PLATFORM="${1:?Usage: bundle-sidecar.sh <platform> <arch>}"
 ARCH="${2:?Usage: bundle-sidecar.sh <platform> <arch>}"
-NODE_VERSION="22.16.0"
+NODE_VERSION="24.17.0"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIDECAR_DIR="$PROJECT_ROOT/electron/sidecar/server"
-JAWCODE_SRC_CANDIDATE="$PROJECT_ROOT/../jawcode/packages/jwc"
-JAWCODE_SRC=""
-if [ -d "$JAWCODE_SRC_CANDIDATE" ]; then
-  JAWCODE_SRC="$(cd "$JAWCODE_SRC_CANDIDATE" && pwd)"
-fi
+JAWCODE_SRC="${CLI_JAW_LOCAL_JAWCODE:-}"
+
+install_locked_production_dependencies() {
+  if [ -f package-lock.json ]; then
+    npm ci --omit=dev --ignore-scripts
+  else
+    npm install --omit=dev --ignore-scripts
+  fi
+}
 
 echo "=== Bundling sidecar: $PLATFORM-$ARCH ==="
 
@@ -49,34 +53,43 @@ cp -r public "$SIDECAR_DIR/public"
 cp package.json "$SIDECAR_DIR/package.json"
 cp package-lock.json "$SIDECAR_DIR/package-lock.json" 2>/dev/null || true
 
-if [ -z "$JAWCODE_SRC" ] || [ ! -f "$JAWCODE_SRC/package.json" ]; then
-  echo "ERROR: jawcode local dependency not found at $PROJECT_ROOT/../jawcode/packages/jwc" >&2
-  exit 1
-fi
-
-BUN_BIN="${BUN_BIN:-bun}"
-if ! command -v "$BUN_BIN" >/dev/null 2>&1; then
-  echo "ERROR: bun is required to build jawcode dist-node before sidecar bundling" >&2
-  exit 1
-fi
-
-echo "Building jawcode Node SDK..."
-(cd "$JAWCODE_SRC" && "$BUN_BIN" run build:node)
-
-echo "Packing jawcode local dependency..."
-JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC" --pack-destination "$SIDECAR_DIR" --silent)")"
-
 echo "Installing production dependencies..."
 cd "$SIDECAR_DIR"
-node "$PROJECT_ROOT/scripts/prepare-sidecar-package-json.cjs" \
-  --package-json "$SIDECAR_DIR/package.json" \
-  --remove-dependency jawcode
-npm install --omit=dev --ignore-scripts
-npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"
-rm -f "$SIDECAR_DIR/$JAWCODE_TARBALL"
+
+if [ -n "$JAWCODE_SRC" ]; then
+  if [ ! -f "$JAWCODE_SRC/package.json" ]; then
+    echo "ERROR: CLI_JAW_LOCAL_JAWCODE must point to a jawcode package directory with package.json" >&2
+    echo "       got: $JAWCODE_SRC" >&2
+    exit 1
+  fi
+  JAWCODE_SRC="$(cd "$JAWCODE_SRC" && pwd)"
+
+  BUN_BIN="${BUN_BIN:-bun}"
+  if ! command -v "$BUN_BIN" >/dev/null 2>&1; then
+    echo "ERROR: bun is required when CLI_JAW_LOCAL_JAWCODE is set" >&2
+    exit 1
+  fi
+
+  echo "Using local jawcode override: $JAWCODE_SRC"
+  echo "Building jawcode Node SDK..."
+  (cd "$JAWCODE_SRC" && "$BUN_BIN" run build:node)
+
+  echo "Packing jawcode local dependency..."
+  JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC" --pack-destination "$SIDECAR_DIR" --silent)")"
+
+  node "$PROJECT_ROOT/scripts/prepare-sidecar-package-json.cjs" \
+    --package-json "$SIDECAR_DIR/package.json" \
+    --remove-dependency jawcode
+  npm install --omit=dev --ignore-scripts
+  npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"
+  rm -f "$SIDECAR_DIR/$JAWCODE_TARBALL"
+else
+  echo "Using package-lock pinned jawcode dependency."
+  install_locked_production_dependencies
+fi
 
 if [ ! -f "$SIDECAR_DIR/node_modules/jawcode/package.json" ]; then
-  echo "ERROR: jawcode local dependency did not resolve inside sidecar" >&2
+  echo "ERROR: jawcode dependency did not resolve inside sidecar" >&2
   exit 1
 fi
 

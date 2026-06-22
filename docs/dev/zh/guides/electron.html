@@ -73,7 +73,7 @@
 npm run electron:dist:mac</code></pre>
 
 <h2>Bundled Sidecar</h2>
-<p>Release workflow 会在打包前运行 <code>scripts/bundle-sidecar.sh</code>。Sidecar 包含 Node.js 22.16、编译后的 server output、frontend assets、production dependencies、重建后的 native modules（如 <code>better-sqlite3</code>），以及 <code>server/bin/jaw</code>/<code>server/bin/jaw.cmd</code> CLI shim。</p>
+<p>Release workflow 会在打包前运行 <code>scripts/bundle-sidecar.sh</code>。Sidecar 包含 Node.js 24.17、编译后的 server output、frontend assets、production dependencies、重建后的 native modules（如 <code>better-sqlite3</code>），以及 <code>server/bin/jaw</code>/<code>server/bin/jaw.cmd</code> CLI shim。</p>
 <table>
 <tr><th>平台</th><th>目标</th><th>Artifact</th></tr>
 <tr><td>macOS</td><td>arm64</td><td>DMG, ZIP</td></tr>

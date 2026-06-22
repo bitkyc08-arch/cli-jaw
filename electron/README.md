@@ -60,14 +60,15 @@ npm run sidecar:bundle
 
 `scripts/bundle-sidecar.sh` currently:
 
-- downloads Node.js `22.16.0` for the target platform/arch,
+- downloads Node.js `24.17.0` for the target platform/arch,
 - runs the root backend and frontend builds,
 - copies `dist/`, `public/`, `package.json`, and lockfile into
   `electron/sidecar/server`,
-- installs production dependencies with scripts disabled,
-- packs the sibling `jawcode/packages/jwc` package and installs that tarball as
-  a real runtime dependency instead of linking or copying it into
-  `node_modules`,
+- installs production dependencies with scripts disabled from the copied lockfile,
+- installs the package-lock pinned `jawcode` registry dependency by default for
+  reproducible release builds,
+- optionally packs and installs a local `jawcode` package only when
+  `CLI_JAW_LOCAL_JAWCODE=/absolute/path/to/jawcode/packages/jwc` is set,
 - prunes frontend-only packages,
 - rebuilds `better-sqlite3`,
 - creates `bin/jaw` or `bin/jaw.cmd` to launch `dist/bin/cli-jaw.js`,
@@ -120,7 +121,7 @@ It runs on GitHub Release publish and manual `workflow_dispatch`.
 For each platform matrix entry it:
 
 1. checks out the release tag or current ref,
-2. installs Node.js 22 and Python 3.11 for `node-gyp`,
+2. installs Node.js 24 and Python 3.11 for `node-gyp`,
 3. runs root `npm ci --ignore-scripts`,
 4. bundles the platform sidecar,
 5. installs Electron dependencies,

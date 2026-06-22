@@ -58,10 +58,16 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
 test('Electron sidecar bundle installs jawcode as a real package and verifies jwc', () => {
     const script = read('scripts/bundle-sidecar.sh');
 
-    assert.ok(script.includes('"$BUN_BIN" run build:node'), 'sidecar bundle must build jawcode dist-node before packing');
-    assert.ok(script.includes('JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC"'), 'sidecar bundle must npm-pack jawcode before installation');
-    assert.ok(script.includes('prepare-sidecar-package-json.cjs'), 'sidecar bundle must remove local jawcode file dependency before npm install');
-    assert.ok(script.includes('npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"'), 'sidecar bundle must install jawcode from the packed tarball');
+    assert.ok(script.includes('NODE_VERSION="24.17.0"'), 'sidecar must bundle a Node runtime compatible with lockfile-pinned jawcode');
+    assert.ok(script.includes('CLI_JAW_LOCAL_JAWCODE'), 'local jawcode override must be explicit, not an implicit sibling checkout');
+    assert.ok(script.includes('Using package-lock pinned jawcode dependency.'), 'release sidecar bundle must default to package-lock pinned jawcode');
+    assert.ok(script.includes('npm ci --omit=dev --ignore-scripts'), 'release sidecar bundle must prefer lockfile-based production installs');
+    assert.ok(script.includes('"$BUN_BIN" run build:node'), 'sidecar bundle must still build jawcode dist-node for explicit local overrides');
+    assert.ok(script.includes('JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC"'), 'explicit local override must npm-pack jawcode before installation');
+    assert.ok(script.includes('prepare-sidecar-package-json.cjs'), 'explicit local override must remove registry jawcode before tarball install');
+    assert.ok(script.includes('--remove-dependency jawcode'), 'explicit local override must avoid registry jawcode plus tarball double install');
+    assert.ok(script.includes('npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"'), 'explicit local override must install jawcode from the packed tarball');
+    assert.equal(script.includes('../jawcode/packages/jwc'), false, 'release sidecar bundle must not depend on an unpinned sibling jawcode checkout');
     assert.equal(script.includes('npm install --omit=dev --ignore-scripts --install-links'), false, 'sidecar bundle must not rely on linked local file dependencies');
     assert.equal(script.includes('"$SIDECAR_DIR/node_modules/jawcode/"'), false, 'sidecar bundle must not rsync jawcode directly into runtime node_modules');
     assert.ok(script.includes('scripts/check-electron-sidecar-jwc.cjs'), 'sidecar bundle must run the JWC validator after creating shims');

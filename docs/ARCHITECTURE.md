@@ -197,7 +197,7 @@ The Electron app now ships as a self-contained desktop runtime instead of
 depending solely on a globally installed `jaw` binary. Packaged desktop builds
 include a Node.js sidecar:
 
-- `scripts/bundle-sidecar.sh` downloads Node.js 22.16 for the target platform.
+- `scripts/bundle-sidecar.sh` downloads Node.js 24.17 for the target platform.
 - The sidecar copies `dist/`, `public/`, `package.json`, and production
   dependencies into `electron/sidecar/server`.
 - Frontend-only dependencies are pruned before packaging.

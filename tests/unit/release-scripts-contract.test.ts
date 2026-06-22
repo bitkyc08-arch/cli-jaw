@@ -62,10 +62,14 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
 
     assert.ok(workflow.includes('release:'), 'desktop workflow must be release-triggered');
     assert.ok(workflow.includes('types: [published]'), 'desktop workflow must run only after release publication');
+    assert.ok(workflow.includes('workflow_dispatch:'), 'desktop workflow must also support manual release-tag dispatches');
+    assert.ok(workflow.includes('release-tag:'), 'manual desktop release dispatch must accept a release tag');
+    assert.ok(workflow.includes('upload-release-assets:'), 'manual desktop release dispatch must have an explicit release upload gate');
     assert.ok(!workflow.includes('push:'), 'desktop workflow must not run on git push');
     assert.ok(workflow.includes('macos-latest'), 'desktop workflow must build macOS artifacts');
     assert.ok(workflow.includes('windows-latest'), 'desktop workflow must build Windows artifacts');
     assert.ok(workflow.includes('ubuntu-latest'), 'desktop workflow must build Linux artifacts');
+    assert.ok(workflow.includes('node-version: 24'), 'desktop workflow host Node must match the Node 24 sidecar release line');
     assert.ok(workflow.includes('npm --prefix electron run typecheck'), 'desktop workflow must typecheck Electron shell');
     assert.ok(workflow.includes('npm --prefix electron run build'), 'desktop workflow must build Electron shell');
     assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-mac-jwc'), 'desktop workflow must bind macOS to the mac packaged sidecar verifier');
@@ -78,6 +82,18 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('npm run check:app-icons'), 'desktop workflow must validate app icon assets before uploading macOS artifacts');
     assert.ok(workflow.includes('CSC_IDENTITY_AUTO_DISCOVERY: false'), 'desktop workflow must keep unsigned mac builds explicit');
     assert.ok(workflow.includes('gh release upload'), 'desktop workflow must upload artifacts to the existing release');
+    assert.ok(
+        workflow.includes('ref: ${{ inputs.release-tag || github.event.release.tag_name || github.ref }}'),
+        'manual desktop release dispatch must check out the selected release tag',
+    );
+    assert.ok(
+        workflow.includes("github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release-tag != '' && inputs.upload-release-assets == true)"),
+        'manual desktop release dispatch must upload release assets only when a non-empty tag and explicit upload gate are present',
+    );
+    assert.ok(
+        workflow.includes('TAG_NAME: ${{ inputs.release-tag || github.event.release.tag_name }}'),
+        'desktop release upload must use the manual release tag when dispatched',
+    );
     assert.ok(workflow.includes('--clobber'), 'desktop workflow reruns must replace stale release assets');
 });
 

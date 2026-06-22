@@ -12,8 +12,29 @@ const { delimiter, dirname, join } = require('path');
 
 const root = join(__dirname, '..');
 const nodeBinDir = dirname(process.execPath);
-const adjacentNpm = process.platform === 'win32' ? join(nodeBinDir, 'npm.cmd') : join(nodeBinDir, 'npm');
-const npmBin = existsSync(adjacentNpm) ? adjacentNpm : (process.platform === 'win32' ? 'npm.cmd' : 'npm');
+
+function npmCliCandidates() {
+    return [
+        process.env.npm_execpath,
+        join(nodeBinDir, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        join(nodeBinDir, 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+        join(dirname(nodeBinDir), 'lib', 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+    ].filter(Boolean);
+}
+
+function resolveNpmCommand() {
+    for (const candidate of npmCliCandidates()) {
+        if (existsSync(candidate)) {
+            return { bin: process.execPath, baseArgs: [candidate] };
+        }
+    }
+    return { bin: process.platform === 'win32' ? 'npm.cmd' : 'npm', baseArgs: [] };
+}
+
+function runNpm(args, options) {
+    const command = resolveNpmCommand();
+    execFileSync(command.bin, [...command.baseArgs, ...args], options);
+}
 
 function nativeBuildEnv() {
     const env = {
@@ -31,7 +52,7 @@ function rebuildBetterSqlite3() {
     const betterSqliteDir = join(root, 'node_modules', 'better-sqlite3');
     if (existsSync(join(betterSqliteDir, 'package.json'))) {
         rmSync(join(betterSqliteDir, 'build'), { recursive: true, force: true });
-        execFileSync(npmBin, ['run', 'install', '--foreground-scripts'], {
+        runNpm(['run', 'install', '--foreground-scripts'], {
             stdio: 'inherit',
             cwd: betterSqliteDir,
             env: nativeBuildEnv(),
@@ -46,7 +67,7 @@ function rebuildBetterSqlite3() {
         });
         return;
     }
-    execFileSync(npmBin, ['rebuild', 'better-sqlite3', '--foreground-scripts'], {
+    runNpm(['rebuild', 'better-sqlite3', '--foreground-scripts'], {
         stdio: 'inherit',
         cwd: root,
         env: nativeBuildEnv(),

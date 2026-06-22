@@ -73,7 +73,7 @@
 npm run electron:dist:mac</code></pre>
 
 <h2>번들 Sidecar</h2>
-<p>릴리스 workflow는 패키징 전에 <code>scripts/bundle-sidecar.sh</code>를 실행합니다. Sidecar에는 Node.js 22.16, 컴파일된 서버 출력, 프론트엔드 assets, production dependencies, <code>better-sqlite3</code> 같은 rebuilt native modules, 그리고 <code>server/bin/jaw</code>/<code>server/bin/jaw.cmd</code> CLI shim이 포함됩니다.</p>
+<p>릴리스 workflow는 패키징 전에 <code>scripts/bundle-sidecar.sh</code>를 실행합니다. Sidecar에는 Node.js 24.17, 컴파일된 서버 출력, 프론트엔드 assets, production dependencies, <code>better-sqlite3</code> 같은 rebuilt native modules, 그리고 <code>server/bin/jaw</code>/<code>server/bin/jaw.cmd</code> CLI shim이 포함됩니다.</p>
 <table>
 <tr><th>플랫폼</th><th>대상</th><th>아티팩트</th></tr>
 <tr><td>macOS</td><td>arm64</td><td>DMG, ZIP</td></tr>

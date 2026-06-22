@@ -3,7 +3,17 @@ name: Desktop Release
 on:
   release:
     types: [published]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      release-tag:
+        description: "GitHub release tag to build from and upload assets to"
+        required: false
+        type: string
+      upload-release-assets:
+        description: "Upload artifacts to the release-tag GitHub Release"
+        required: false
+        type: boolean
+        default: true
 
 permissions:
   contents: write
@@ -13,7 +23,7 @@ jobs:
     name: Build ${{ matrix.platform }} desktop app
     runs-on: ${{ matrix.os }}
     concurrency:
-      group: desktop-release-${{ github.event.release.tag_name || github.run_id }}-${{ matrix.platform }}
+      group: desktop-release-${{ inputs.release-tag || github.event.release.tag_name || github.run_id }}-${{ matrix.platform }}
       cancel-in-progress: false
     strategy:
       fail-fast: false
@@ -54,12 +64,12 @@ jobs:
       - name: Checkout release tag
         uses: actions/checkout@v5
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ inputs.release-tag || github.event.release.tag_name || github.ref }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
-          node-version: 22
+          node-version: 24
           cache: npm
           cache-dependency-path: |
             package-lock.json
@@ -120,11 +130,11 @@ jobs:
           retention-days: 7
 
       - name: Upload desktop assets to release
-        if: github.event_name == 'release'
+        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.release-tag != '' && inputs.upload-release-assets == true)
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG_NAME: ${{ github.event.release.tag_name }}
+          TAG_NAME: ${{ inputs.release-tag || github.event.release.tag_name }}
           ARTIFACT_GLOBS: ${{ matrix.artifact_globs }}
         run: |
           set -euo pipefail
