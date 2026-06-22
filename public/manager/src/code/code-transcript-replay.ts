@@ -25,11 +25,16 @@ export function replayEventsToTranscriptEntries(events: CodeSessionReplayEvent[]
             const messageId = messageIdFromCodeChunk(update);
             const last = entries[entries.length - 1];
             if (last?.role === 'assistant') {
+                const mergeAction = assistantChunkMergeAction(last.text, text);
                 if (last.messageId && messageId && last.messageId !== messageId) {
+                    if (mergeAction === 'replace') {
+                        last.text = text;
+                        last.messageId = messageId;
+                        continue;
+                    }
                     entries.push({ role: 'assistant', text, messageId });
                     continue;
                 }
-                const mergeAction = assistantChunkMergeAction(last.text, text);
                 if (mergeAction === 'drop') continue;
                 last.text = mergeAction === 'replace' ? text : last.text + text;
                 if (messageId && !last.messageId) last.messageId = messageId;

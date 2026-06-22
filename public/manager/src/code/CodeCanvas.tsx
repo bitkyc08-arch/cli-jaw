@@ -207,10 +207,13 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 const last = prev[prev.length - 1];
                 if (last?.role === 'assistant' && isDuplicateAssistantFinalChunk(last.text, text)) return prev;
                 if (last?.role === 'assistant') {
+                    const mergeAction = assistantChunkMergeAction(last.text, text);
                     if (last.messageId && messageId && last.messageId !== messageId) {
+                        if (mergeAction === 'replace') {
+                            return [...prev.slice(0, -1), { ...last, text, messageId }];
+                        }
                         return [...prev, { role: 'assistant', text, messageId }];
                     }
-                    const mergeAction = assistantChunkMergeAction(last.text, text);
                     if (mergeAction === 'drop') return prev;
                     const nextText = mergeAction === 'replace' ? text : last.text + text;
                     return [...prev.slice(0, -1), { ...last, text: nextText, ...(messageId && !last.messageId ? { messageId } : {}) }];
