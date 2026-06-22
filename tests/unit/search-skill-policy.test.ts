@@ -90,22 +90,23 @@ test('SSP-007: /search is a routing command, not a provider implementation', { s
     const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
 
     assert.match(searchSkill, /`\/search <query>` is a routing command, not a provider implementation/);
-    assert.match(searchSkill, /force the active agent to read and follow this search skill/);
-    assert.match(searchSkill, /candidate URL discovery/);
-    assert.match(searchSkill, /must not pass raw natural-language queries to browser fetch/);
-    assert.match(searchSkill, /URL\/search-result URL reader, not generic\s+search/);
+    assert.match(searchSkill, /inherit this skill's routing\/evidence invariants/);
+    assert.match(searchSkill, /discover candidate URLs/);
+    assert.match(searchSkill, /Slash-specific report fields/);
+    assert.doesNotMatch(searchSkill, /Final report fields:/);
 });
 
-test('SSP-008: search skill documents browser command selection after candidate URLs', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
+test('SSP-008: search skill routes public source classes to browser reader policy', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
     const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
 
-    assert.match(searchSkill, /choose the smallest browser command that proves the\s+claim/);
-    assert.match(searchSkill, /cli-jaw browser fetch <url> --json/);
-    assert.match(searchSkill, /cli-jaw browser open <url>/);
-    assert.match(searchSkill, /cli-jaw browser text/);
-    assert.match(searchSkill, /cli-jaw browser get-dom --selector/);
-    assert.match(searchSkill, /cli-jaw browser snapshot --interactive/);
-    assert.match(searchSkill, /Adaptive fetch can read a known URL or a search-result URL/);
+    assert.match(searchSkill, /Public-source reader routing map/);
+    assert.match(searchSkill, /known source classes toward `browser fetch` \/ adaptive-fetch/);
+    assert.match(searchSkill, /Package registries/);
+    assert.match(searchSkill, /Academic\/library records/);
+    assert.match(searchSkill, /Korean portals, Naver pages/);
+    assert.match(searchSkill, /Media pages/);
+    assert.match(searchSkill, /Archive-needed or removed pages/);
+    assert.match(searchSkill, /requires login, payment, private membership, CAPTCHA solving/);
 });
 
 test('SSP-009: model-gated parallel research is bounded and evidence-gated', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {

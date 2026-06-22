@@ -20,4 +20,5 @@ test('browser fetch help keeps URL-reader and search boundary language', () => {
     assert.match(cliSrc, /Read one URL\/search-result URL/);
     assert.match(cliSrc, /Not generic search/);
     assert.match(cliSrc, /--allow-third-party-reader/);
+    assert.match(cliSrc, /known public endpoints, direct fetch,\s+optional public reader services, and browser rendering/);
 });

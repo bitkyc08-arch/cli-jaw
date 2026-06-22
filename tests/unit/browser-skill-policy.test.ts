@@ -45,6 +45,20 @@ test('BSP-005: browser skill documents Korean search result verification ladder'
     assert.match(browserSkill, /does not replace native\s+cli-jaw search\/browser verification/);
 });
 
+test('BSP-006: browser skill documents known URL reader fallback ladder', { skip: !hasBrowserSkill && 'skills_ref submodule not checked out' }, () => {
+    const browserSkill = fs.readFileSync(browserSkillPath, 'utf8');
+    assert.match(browserSkill, /Known URL Reader \/ Adaptive Fetch/);
+    assert.match(browserSkill, /known-URL reader lane/);
+    assert.match(browserSkill, /not generic search/);
+    assert.match(browserSkill, /Public endpoint resolver/);
+    assert.match(browserSkill, /Direct fetch/);
+    assert.match(browserSkill, /Optional public reader service/);
+    assert.match(browserSkill, /Browser render/);
+    assert.match(browserSkill, /DOM\/table extraction/);
+    assert.match(browserSkill, /Network\/metadata inspection/);
+    assert.match(browserSkill, /requires login, payment, private\s+membership/);
+});
+
 test('BSP-002: vision-click skill documents screenshot-based coordinate click', { skip: !hasVisionSkill && 'skills_ref submodule not checked out' }, () => {
     const visionSkill = fs.readFileSync(visionSkillPath, 'utf8');
     assert.match(visionSkill, /screenshot/i);

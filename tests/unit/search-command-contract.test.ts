@@ -27,11 +27,15 @@ test('/search handler stays thin and delegates prompt policy', () => {
 
 test('/search steer prompt routes through search skill and browser-command boundary', () => {
     assert.match(searchWorkflowSrc, /active search skill/);
+    assert.match(searchWorkflowSrc, /Command boundary/);
+    assert.match(searchWorkflowSrc, /command-specific report shape/);
+    assert.match(searchWorkflowSrc, /source-class routing/);
     assert.match(searchWorkflowSrc, /rewrite the request into 1-3 focused keyword queries/);
     assert.match(searchWorkflowSrc, /candidate URLs/);
     assert.match(searchWorkflowSrc, /cli-jaw browser fetch <url> --json/);
     assert.match(searchWorkflowSrc, /open.*text.*get-dom.*snapshot/s);
     assert.match(searchWorkflowSrc, /raw natural-language queries/);
+    assert.match(searchWorkflowSrc, /known source classes/);
     assert.match(searchWorkflowSrc, /model-gated parallel research/);
     assert.match(searchWorkflowSrc, /official, community, realtime, and fetch\/browser verification/);
     assert.match(searchWorkflowSrc, /evidence_status/);
