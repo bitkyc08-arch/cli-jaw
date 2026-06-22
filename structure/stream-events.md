@@ -132,7 +132,7 @@ SSE behavior:
 | Type | 현재 처리 경로 |
 | --- | --- |
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | `public/js/ws.ts`에서 disconnected/timeout/stalled handler로 처리하고, manager server는 worker-SSE bridge/cache로 별도 추적한다. 현재/이전 worker progress API는 UI hydration용 safe `attention` metadata도 제공한다 |
-| `worker_run_*` | 현재는 safe SSE/replay와 `/api/orchestrate/worker-runs*` read API용 backend contract다. Manager Worker Runs 패널은 후속 PABCD에서 이 이벤트를 소비한다 |
+| `worker_run_*` | safe SSE/replay와 `/api/orchestrate/worker-runs*` read API용 backend contract다. Manager Worker Runs 패널은 기존 frontend worker progress EventSource bridge로 이 이벤트를 refresh invalidation으로 소비하고, raw output은 명시 클릭 시 `/output` route로만 읽는다 |
 | `system_notice` | SSE public emit은 되지만 `public/js/ws.ts` 직접 분기는 없다 |
 | `agent:claude-e:*` | native helper lifecycle/status telemetry. 현재 Web UI 직접 분기는 없고, trace/internal listener와 외부 observer용이다 |
 

@@ -65,6 +65,7 @@ import { ModeSwitch } from './code/ModeSwitch';
 const CodeCanvas = lazy(() => import('./code/CodeCanvas').then(m => ({ default: m.CodeCanvas })));
 import './code/code.css';
 import { useWorkbenchResourceState } from './workbench/useWorkbenchResourceState';
+import { WorkerProgressMonitorPanel } from './workers/WorkerProgressMonitorPanel';
 
 type WorkspaceSurfaceProps = {
     active: boolean;
@@ -399,9 +400,12 @@ export function SidebarRailRouter(props: Props) {
                                 <div id="code-session-sidebar-host" className="code-session-sidebar-host" />
                             </section>
                         ) : (
-                            <InstanceNavigator active={props.selectedInstance} hiddenCount={props.instances.filter(instance => instance.hidden).length} collapsed={props.sidebarCollapsed}>
-                                {props.instanceListContent}
-                            </InstanceNavigator>
+                            <>
+                                <InstanceNavigator active={props.selectedInstance} hiddenCount={props.instances.filter(instance => instance.hidden).length} collapsed={props.sidebarCollapsed}>
+                                    {props.instanceListContent}
+                                </InstanceNavigator>
+                                <WorkerProgressMonitorPanel />
+                            </>
                         )}
                     </div>
                 </>

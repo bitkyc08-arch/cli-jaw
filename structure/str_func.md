@@ -329,7 +329,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 528 files source/assets, ~88774L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 532 files source/assets, ~89390L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1137L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
@@ -382,7 +382,7 @@ cli-jaw/
 │       ├── reminders.ts      ← local reminders list/add/done CLI (100L)
 │       ├── dispatch-helpers.ts ← dispatch output unwrap helper (21L)
 │       └── tui/              ← chat 터미널 TUI 분리 (10 files: api 89L, channel 115L, fullscreen-mode 500L, input-handler 470L, overlays 526L, renderer 135L, simple-mode 101L, tui-io 12L, types 145L, ws-handler 317L)
-├── tests/                    ← 회귀 방지 테스트 (586 files: root/unit/integration/browser/fixtures/smoke)
+├── tests/                    ← 회귀 방지 테스트 (587 files: root/unit/integration/browser/fixtures/smoke)
 ├── scripts/                  ← 도구 스크립트 (TypeScript + Shell + CJS; atomic build, sidecar bundle, release gates, install-risk evidence)
 ├── officecli/                ← OfficeCLI 포크 서브모듈 (lidge-jun/OfficeCLI, Apache 2.0)
 ├── skills_ref/               ← 레퍼런스 스킬 (241 top-level dirs)

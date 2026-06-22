@@ -50,7 +50,7 @@ public/
 | `public/js/diagram/` | 3 | SVG/iframe diagram pipeline |
 | `public/js/render/` | 18 | markdown/KaTeX/Mermaid/SVG/file-link/post-render/structured card renderer 책임 분리 |
 | `public/js/features/` | 52 | settings 분해 + help/attention/orchestrate scope + process-step-match + preview shortcut/invalidate bridge + MCP registry + chat-search + workflow-event-adapter + media-lightbox + elicitation-state + Pi settings + project git header status 포함 |
-| `public/manager/src/` | 300 | React 19 manager dashboard |
+| `public/manager/src/` | 304 | React 19 manager dashboard |
 | `public/css/` | 12 | theme/layout/chat/markdown/tool UI/diagram/trace drawer/workflow cockpit/chat-search |
 | `public/locales/` | 4 | `ko.json`, `en.json`, `ja.json`, `zh.json` |
 | `public/assets/providers/` | 18 | provider SVG 세트 |
@@ -265,7 +265,7 @@ settings.ts (barrel)
 - Pi model field는 발견된 모델이 있으면 `SelectField`를 사용하고, 목록이 비어 있을 때만 free-text `TextField`로 fallback한다.
 - 등록 성공 시 `settings.pi.profiles`, `settings.pi.discoveredModels`, `perCli.pi.provider`, `perCli.pi.model` draft가 함께 갱신되어 Pi model dropdown에 새 모델이 바로 나타난다.
 | `manager/src/jaw-ceo/` | Jaw CEO console panels, orchestration-control actions, voice, virtual timeline |
-| `manager/src/goal-status/` `manager/src/background-tasks/` `manager/src/workers/` | Code mode runtime-observability monitors for goal/PABCD, background tasks, web-ai bgtask bridges, and worker progress |
+| `manager/src/goal-status/` `manager/src/background-tasks/` `manager/src/workers/` | Manager runtime-observability monitors for goal/PABCD, background tasks, web-ai bgtask bridges, worker progress, durable worker runs, safe event timelines, and explicit bounded raw-output drill-down |
 | `manager/src/notes/` | markdown notes, search sidebar, WYSIWYG editing, wikilinks, graph view |
 | `manager/src/hooks/` | dashboard registry/view persistence/instance message events hooks |
 | `manager/src/sync/` | dashboard sync helpers (invalidation bus, iframe/visibility bridge) |

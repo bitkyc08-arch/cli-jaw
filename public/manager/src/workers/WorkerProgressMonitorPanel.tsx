@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import type { WorkerProgressRun, WorkerProgressSnapshot } from './worker-progress-client';
 import { buildWorkerActivityTimeline } from './worker-activity-timeline';
 import { countWorkerProgress, useWorkerProgress } from './useWorkerProgress';
+import { WorkerRunsPanel } from './WorkerRunsPanel';
 
 function runOf(snapshot: WorkerProgressSnapshot): WorkerProgressRun | null {
     return snapshot.current ?? snapshot.previous;
@@ -155,6 +156,7 @@ export function WorkerProgressMonitorPanel() {
                 <span>{workers.length} tracked</span>
                 <span>{lastReason}</span>
             </div>
+            <WorkerRunsPanel />
         </section>
     );
 }

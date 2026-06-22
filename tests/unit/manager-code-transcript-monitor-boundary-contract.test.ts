@@ -38,9 +38,12 @@ test('runtime monitor components remain Manager-local and independent of Code se
         read('public/manager/src/goal-status/GoalPabcdStatusPanel.tsx'),
         read('public/manager/src/background-tasks/BackgroundTaskMonitorPanel.tsx'),
         read('public/manager/src/workers/WorkerProgressMonitorPanel.tsx'),
+        read('public/manager/src/workers/WorkerRunsPanel.tsx'),
         read('public/manager/src/goal-status/goal-pabcd-status-client.ts'),
         read('public/manager/src/background-tasks/background-task-client.ts'),
         read('public/manager/src/workers/worker-progress-client.ts'),
+        read('public/manager/src/workers/worker-runs-client.ts'),
+        read('public/manager/src/workers/useWorkerRuns.ts'),
     ].join('\n');
 
     assert.ok(monitorSources.includes('/api/manager/runtime-status'), 'goal monitor remains backed by Manager runtime status');
