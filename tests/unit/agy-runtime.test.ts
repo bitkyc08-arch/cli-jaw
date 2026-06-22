@@ -9,10 +9,12 @@ import {
     AGY_PRINT_QUIET_COMPLETION_MS,
     extractAgyConversationId,
     formatAgyTimeoutMessage,
+    formatAgyTranscriptErrorMessage,
     getAgyQuietCompletionDelayMs,
     hasRunningAgyTranscriptTool,
     isAgyTimeoutOutput,
     normalizeAgyCloseText,
+    resolveAgyEmptyCloseError,
     shouldCompleteAgyPrintRun,
     stripAgyPromptEchoPrefix,
     stripAgyResumeReplayPrefix,
@@ -34,6 +36,29 @@ test('AGY-RT-002: formats empty timeout output defensively', () => {
     assert.equal(
         formatAgyTimeoutMessage(' Error: timed out waiting for response '),
         'Error: timed out waiting for response',
+    );
+});
+
+test('AGY-RT-002b: formats unresolved AGY transcript provider errors', () => {
+    assert.equal(
+        formatAgyTranscriptErrorMessage({ message: 'The model is currently unreachable.', code: 503 }),
+        'Antigravity backend unavailable (503): The model is currently unreachable.',
+    );
+    assert.equal(
+        resolveAgyEmptyCloseError({
+            fullText: '',
+            liveOutputText: '',
+            agyLastTranscriptError: { message: 'The model is currently unreachable.', code: 503 },
+        }),
+        'Antigravity backend unavailable (503): The model is currently unreachable.',
+    );
+    assert.equal(
+        resolveAgyEmptyCloseError({
+            fullText: 'final answer',
+            liveOutputText: '',
+            agyLastTranscriptError: { message: 'transient', code: 503 },
+        }),
+        null,
     );
 });
 
@@ -61,7 +86,8 @@ test('AGY-RT-004: AGY timeout stdout is routed to lifecycle as an error', () => 
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     assert.match(spawnSrc, /normalizeAgyCloseText\(\{[\s\S]*allowTimeoutSuffixStrip:\s*Boolean\(ctx\.agyFinalPlannerSeen\)/);
     assert.match(spawnSrc, /const agyTimedOut\s*=\s*cli === 'agy' && agyCloseTimedOut/);
-    assert.match(spawnSrc, /effectiveExitCode\s*=\s*agyCompletedByQuietOutput\s*\?\s*0\s*:\s*agyTimedOut\s*\?\s*124\s*:\s*ctx\.stallReason\s*\?\s*124\s*:\s*code/);
+    assert.match(spawnSrc, /agyTranscriptErrorMessage[\s\S]*resolveAgyEmptyCloseError\(ctx\)/);
+    assert.match(spawnSrc, /effectiveExitCode\s*=\s*agyCompletedByQuietOutput && !agyTranscriptErrorMessage[\s\S]*\?\s*0[\s\S]*agyTimedOut\s*\?\s*124[\s\S]*ctx\.stallReason\s*\?\s*124[\s\S]*code/);
     assert.match(spawnSrc, /ctx\.stderrBuf\s*=/);
     assert.match(spawnSrc, /ctx\.fullText\s*=\s*''/);
     assert.match(spawnSrc, /detectSmokeResponse\(ctx\.fullText,\s*ctx\.toolLog,\s*effectiveExitCode,\s*cli\)/);
@@ -143,7 +169,7 @@ test('AGY-RT-010: AGY quiet completion is mapped to lifecycle success, not inter
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     assert.match(spawnSrc, new RegExp(`stdKillReason === ['"]${AGY_COMPLETE_KILL_REASON}['"]|stdKillReason === AGY_COMPLETE_KILL_REASON`));
     assert.match(spawnSrc, /wasKilled\s*=\s*!!stdKillReason\s*&&\s*!agyCompletedByQuietOutput/);
-    assert.match(spawnSrc, /effectiveExitCode\s*=\s*agyCompletedByQuietOutput\s*\?\s*0\s*:/);
+    assert.match(spawnSrc, /effectiveExitCode\s*=\s*agyCompletedByQuietOutput && !agyTranscriptErrorMessage[\s\S]*\?\s*0/);
     assert.match(spawnSrc, /getAgyQuietCompletionDelayMs\(ctx\)/);
 });
 
@@ -364,7 +390,26 @@ test('AGY-RT-015: transcript watcher drives the final planner flag and growth ac
     assert.match(watcherSrc, /delta\.offset > previousOffset/);
     assert.match(watcherSrc, /agyTranscriptActive = true/);
     assert.match(watcherSrc, /options\.onActivity\?\.\(\)/);
+    assert.match(watcherSrc, /agyLastTranscriptError = error/);
+    assert.match(watcherSrc, /agyLastTranscriptError = undefined/);
+    assert.match(watcherSrc, /kind === 'provider-error'/);
     // Fast-resume regression: a USER_INPUT row must clear a stale final-planner flag set
     // by the previous turn's row inside the lookback buffer.
     assert.match(watcherSrc, /rowType === 'USER_INPUT'/);
+});
+
+test('AGY-RT-016: AGY unresolved transcript provider error is finalized before smoke and lifecycle', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const helperIdx = spawnSrc.indexOf('resolveAgyEmptyCloseError(ctx)');
+    const exitCodeIdx = spawnSrc.indexOf('const effectiveExitCode =', helperIdx);
+    const smokeIdx = spawnSrc.indexOf('detectSmokeResponse(ctx.fullText', helperIdx);
+    const lifecycleIdx = spawnSrc.indexOf('handleAgentExit({', helperIdx);
+    assert.ok(helperIdx >= 0, 'spawn must resolve unresolved AGY transcript errors');
+    assert.ok(exitCodeIdx > helperIdx, 'effective exit code must use transcript error result');
+    assert.ok(smokeIdx > exitCodeIdx, 'smoke detection must see the provider-error exit code');
+    assert.ok(lifecycleIdx > smokeIdx, 'lifecycle must run after provider-error finalization');
+    assert.match(spawnSrc, /agyTranscriptErrorMessage[\s\S]*\?\s*1/);
+    assert.match(spawnSrc, /ctx\.fullText\s*=\s*''/);
+    assert.match(spawnSrc, /ctx\.liveOutputText\s*=\s*''/);
+    assert.match(spawnSrc, /appendTraceEvent\(\{[\s\S]*eventType:\s*'runtime_error'[\s\S]*agyTranscriptErrorMessage/);
 });

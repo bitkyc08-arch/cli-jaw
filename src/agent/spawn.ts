@@ -58,6 +58,7 @@ import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.
 import {
     AGY_COMPLETE_KILL_REASON,
     extractAgyConversationId,
+    resolveAgyEmptyCloseError,
     formatAgyTimeoutMessage,
     getAgyQuietCompletionDelayMs,
     isAgyStaleSessionOutput,
@@ -2405,12 +2406,24 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             agyTimeoutMessage = normalizedCloseText.timeoutMessage;
         }
         const agyTimedOut = cli === 'agy' && agyCloseTimedOut;
-        const effectiveExitCode = agyCompletedByQuietOutput ? 0 : agyTimedOut ? 124 : ctx.stallReason ? 124 : code;
+        const agyTranscriptErrorMessage = cli === 'agy' && !agyTimedOut
+            ? resolveAgyEmptyCloseError(ctx)
+            : null;
+        const effectiveExitCode = agyCompletedByQuietOutput && !agyTranscriptErrorMessage
+            ? 0
+            : agyTranscriptErrorMessage
+                ? 1
+                : agyTimedOut ? 124 : ctx.stallReason ? 124 : code;
         if (agyTimedOut) {
             const message = formatAgyTimeoutMessage(agyTimeoutMessage);
             ctx.stderrBuf = ctx.stderrBuf ? `${ctx.stderrBuf}\n${message}` : message;
             ctx.fullText = '';
             appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'runtime_error', raw: message });
+        } else if (agyTranscriptErrorMessage) {
+            ctx.stderrBuf = ctx.stderrBuf ? `${ctx.stderrBuf}\n${agyTranscriptErrorMessage}` : agyTranscriptErrorMessage;
+            ctx.fullText = '';
+            if (ctx.liveOutputText !== undefined) ctx.liveOutputText = '';
+            appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'runtime_error', raw: agyTranscriptErrorMessage });
         }
         opts.lifecycle?.onExit?.(effectiveExitCode ?? null);
 

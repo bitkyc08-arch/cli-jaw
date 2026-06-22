@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ToolEntry } from '../types/agent.js';
+import type { AgyTranscriptError, ToolEntry } from '../types/agent.js';
 
 export const AGY_ANTIGRAVITY_HOME = path.join(os.homedir(), '.gemini', 'antigravity-cli');
 export const AGY_BRAIN_ROOT = path.join(AGY_ANTIGRAVITY_HOME, 'brain');
@@ -13,6 +13,7 @@ const NON_TOOL_TYPES = new Set([
     'CHECKPOINT',
     'SYSTEM_MESSAGE',
     'PLANNER_RESPONSE',
+    'ERROR_MESSAGE',
 ]);
 
 const LABEL_MAX = 120;
@@ -234,7 +235,27 @@ export function parseTranscriptLine(line: string): ToolEntry | null {
     return entry;
 }
 
-export type AgyTranscriptRowKind = 'tool' | 'final-planner' | 'planner' | 'meta' | 'invalid';
+export type AgyTranscriptRowKind = 'tool' | 'final-planner' | 'planner' | 'provider-error' | 'meta' | 'invalid';
+
+function parseAgyTranscriptError(row: Record<string, unknown>): AgyTranscriptError {
+    const rawMessage = typeof row['error'] === 'string'
+        ? row['error']
+        : typeof row['content'] === 'string'
+            ? row['content']
+            : 'Antigravity provider error';
+    const error: AgyTranscriptError = {
+        message: sanitizeSnippet(rawMessage, DETAIL_MAX) || 'Antigravity provider error',
+    };
+    const rawCode = row['error_code'];
+    if (typeof rawCode === 'number' || typeof rawCode === 'string') {
+        error.code = rawCode;
+    }
+    if (typeof row['created_at'] === 'string') {
+        const createdAt = Date.parse(row['created_at']);
+        if (Number.isFinite(createdAt)) error.createdAtMs = createdAt;
+    }
+    return error;
+}
 
 function hasEmptyToolCalls(row: Record<string, unknown>): boolean {
     const toolCalls = row['tool_calls'];
@@ -244,7 +265,7 @@ function hasEmptyToolCalls(row: Record<string, unknown>): boolean {
     return false;
 }
 
-export function classifyAgyTranscriptRow(line: string): { kind: AgyTranscriptRowKind; tool?: ToolEntry } {
+export function classifyAgyTranscriptRow(line: string): { kind: AgyTranscriptRowKind; tool?: ToolEntry; error?: AgyTranscriptError } {
     const trimmed = line.trim();
     if (!trimmed) return { kind: 'invalid' };
     let row: Record<string, unknown>;
@@ -255,6 +276,9 @@ export function classifyAgyTranscriptRow(line: string): { kind: AgyTranscriptRow
     }
     const type = typeof row['type'] === 'string' ? row['type'] : '';
     if (!type) return { kind: 'invalid' };
+    if (type === 'ERROR_MESSAGE') {
+        return { kind: 'provider-error', error: parseAgyTranscriptError(row) };
+    }
     if (type === 'PLANNER_RESPONSE') {
         const content = typeof row['content'] === 'string' ? row['content'].trim() : '';
         return { kind: content && hasEmptyToolCalls(row) ? 'final-planner' : 'planner' };

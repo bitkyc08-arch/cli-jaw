@@ -47,10 +47,15 @@ function updateFinalPlannerFlag(ctx: SpawnContext, line: string, minCreatedAtMs:
     if (rowType === 'USER_INPUT') {
         ctx.agyFinalPlannerSeen = false;
         ctx.agyFinalPlannerText = undefined;
+        ctx.agyLastTranscriptError = undefined;
         return;
     }
-    const { kind } = classifyAgyTranscriptRow(line);
-    if (kind === 'final-planner') {
+    const { kind, error } = classifyAgyTranscriptRow(line);
+    if (kind === 'provider-error' && error) {
+        ctx.agyFinalPlannerSeen = false;
+        ctx.agyFinalPlannerText = undefined;
+        ctx.agyLastTranscriptError = error;
+    } else if (kind === 'final-planner') {
         // The current turn's final answer row is always written after spawn, so require a
         // fresh timestamp (1s allowance for second-truncation). The wider minCreatedAtMs
         // lookback stays for tool display, but a previous turn's final planner inside that
@@ -60,10 +65,12 @@ function updateFinalPlannerFlag(ctx: SpawnContext, line: string, minCreatedAtMs:
         if (createdAtMs !== null && createdAtMs >= freshThresholdMs) {
             ctx.agyFinalPlannerSeen = true;
             ctx.agyFinalPlannerText = rowContent;
+            ctx.agyLastTranscriptError = undefined;
         }
     } else if (kind === 'tool' || kind === 'planner') {
         ctx.agyFinalPlannerSeen = false;
         ctx.agyFinalPlannerText = undefined;
+        ctx.agyLastTranscriptError = undefined;
     }
 }
 
@@ -132,6 +139,7 @@ export function startAgyTranscriptWatcher(options: {
         offset = 0;
         options.ctx.agyFinalPlannerSeen = false;
         options.ctx.agyFinalPlannerText = undefined;
+        options.ctx.agyLastTranscriptError = undefined;
     };
 
     const selectTranscript = (currentSessionId: string | null, force: boolean): void => {
@@ -157,6 +165,7 @@ export function startAgyTranscriptWatcher(options: {
         offset = 0;
         options.ctx.agyFinalPlannerSeen = false;
         options.ctx.agyFinalPlannerText = undefined;
+        options.ctx.agyLastTranscriptError = undefined;
         console.log(`[jaw:agy:transcript] tailing ${transcriptPath} (current-turn filter from ${new Date(startedAt).toISOString()})`);
     };
 

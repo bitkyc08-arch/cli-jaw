@@ -178,6 +178,33 @@ test('AGY-TR-013: classifyAgyTranscriptRow separates final planner rows from int
     assert.equal(classifyAgyTranscriptRow('{"content":"no type"}').kind, 'invalid');
 });
 
+test('AGY-TR-017: ERROR_MESSAGE is provider error evidence, not a transcript tool', () => {
+    const line = JSON.stringify({
+        type: 'ERROR_MESSAGE',
+        error: 'The model is currently unreachable.',
+        error_code: 503,
+        created_at: '2026-06-22T04:00:00.000Z',
+    });
+    const row = classifyAgyTranscriptRow(line);
+    assert.equal(row.kind, 'provider-error');
+    assert.equal(row.error?.message, 'The model is currently unreachable.');
+    assert.equal(row.error?.code, 503);
+    assert.equal(row.error?.createdAtMs, Date.parse('2026-06-22T04:00:00.000Z'));
+    assert.equal(parseTranscriptLine(line), null);
+});
+
+test('AGY-TR-018: malformed ERROR_MESSAGE rows classify safely', () => {
+    const row = classifyAgyTranscriptRow(JSON.stringify({
+        type: 'ERROR_MESSAGE',
+        error_code: { nested: true },
+        created_at: 'not-a-date',
+    }));
+    assert.equal(row.kind, 'provider-error');
+    assert.equal(row.error?.message, 'Antigravity provider error');
+    assert.equal(row.error?.code, undefined);
+    assert.equal(row.error?.createdAtMs, undefined);
+});
+
 test('AGY-TR-014: transcriptContainsPrompt matches JSON-escaped multiline prompts', () => {
     const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'agy-tr14-'));
     const p = path.join(tmp, 'transcript.jsonl');

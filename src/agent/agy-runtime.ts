@@ -19,6 +19,21 @@ export function formatAgyTimeoutMessage(text: string): string {
     return trimmed || AGY_TIMEOUT_PREFIX;
 }
 
+export function formatAgyTranscriptErrorMessage(error: NonNullable<SpawnContext['agyLastTranscriptError']>): string {
+    const message = String(error.message || 'Antigravity provider error').replace(/\s+/g, ' ').trim();
+    const suffix = error.code !== undefined && error.code !== ''
+        ? ` (${error.code})`
+        : '';
+    return `Antigravity backend unavailable${suffix}: ${message || 'Antigravity provider error'}`;
+}
+
+export function resolveAgyEmptyCloseError(ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText' | 'agyLastTranscriptError'>): string | null {
+    if (!ctx.agyLastTranscriptError) return null;
+    const visibleText = String(ctx.liveOutputText || ctx.fullText || '').trim();
+    if (visibleText) return null;
+    return formatAgyTranscriptErrorMessage(ctx.agyLastTranscriptError);
+}
+
 export function stripAgyTrailingTimeoutOutput(text: string): { text: string; stripped: boolean } {
     const idx = text.indexOf(AGY_TIMEOUT_PREFIX);
     if (idx <= 0) return { text, stripped: false };

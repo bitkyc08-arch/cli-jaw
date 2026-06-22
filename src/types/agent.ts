@@ -20,6 +20,12 @@ export interface ToolEntry {
   rawRetentionStatus?: string;
 }
 
+export interface AgyTranscriptError {
+  message: string;
+  code?: string | number;
+  createdAtMs?: number;
+}
+
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
   fullText: string;
@@ -93,6 +99,7 @@ export interface SpawnContext {
   agyTranscriptActive?: boolean;
   agyFinalPlannerSeen?: boolean;
   agyFinalPlannerText?: string | undefined;
+  agyLastTranscriptError?: AgyTranscriptError | undefined;
   kiroDisplayedText?: string;
   kiroLineBuffer?: string;
   kiroToolSeq?: number;
