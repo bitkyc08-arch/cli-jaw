@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const searchSkillPath = join(__dirname, '../../skills_ref/search/SKILL.md');
+const devSkillPath = join(__dirname, '../../skills_ref/dev/SKILL.md');
 const registryPath = join(__dirname, '../../skills_ref/registry.json');
 const hasSearchSkill = fs.existsSync(searchSkillPath);
+const hasDevSkill = fs.existsSync(devSkillPath);
 
 test('SSP-001: restored search skill is a registered unified search hub', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
     const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
@@ -116,4 +118,23 @@ test('SSP-010: evidence status vocabulary is explicit', { skip: !hasSearchSkill 
     assert.match(searchSkill, /`partial`: candidate evidence exists/);
     assert.match(searchSkill, /`browse-needed`: a candidate primary URL exists/);
     assert.match(searchSkill, /`insufficient`: no credible candidate evidence was obtained/);
+});
+
+test('SSP-011: search remains standalone owner for external evidence policy', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
+    const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
+
+    assert.match(searchSkill, /Standalone owner/);
+    assert.match(searchSkill, /other skills may point here for external\/current evidence/);
+    assert.match(searchSkill, /should not copy this tier policy/);
+    assert.match(searchSkill, /Update this skill first/);
+});
+
+test('SSP-012: common dev skill points external current evidence to search', { skip: !hasDevSkill && 'skills_ref/dev missing' }, () => {
+    const devSkill = fs.readFileSync(devSkillPath, 'utf8');
+
+    assert.match(devSkill, /External\/current evidence/);
+    assert.match(devSkill, /current versions, release notes, CVEs, package\/source checks, provider\s+behavior/);
+    assert.match(devSkill, /read the active `search` skill/);
+    assert.match(devSkill, /query-rewrite, source-fetch, and evidence-status rules/);
+    assert.doesNotMatch(devSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
 });
