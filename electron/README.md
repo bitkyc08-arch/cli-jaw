@@ -167,7 +167,7 @@ Recent desktop surfaces include:
    `200/400/800/1600/3000/5000ms` for up to 60 seconds.
 2. Healthy manager loads immediately.
 3. Unhealthy and not `--attach-only`: discover sidecar/global `jaw`, spawn
-   `jaw dashboard serve --port <port>`, then re-check.
+   `jaw dashboard serve --port <port> --no-open`, then re-check.
 4. Binary missing: show native install/pick-path/quit dialog.
 5. Crash loop guard: more than 3 manager exits within 60 seconds stops
    auto-restart and shows a dialog.

@@ -182,7 +182,7 @@ export function spawnJawDashboard(
   binary: string,
   opts: SpawnOptions,
 ): ChildProcess {
-  const invocation = shellScriptInvocation(binary, ['dashboard', 'serve', '--port', String(opts.port)]);
+  const invocation = shellScriptInvocation(binary, ['dashboard', 'serve', '--port', String(opts.port), '--no-open']);
   const child = spawn(invocation.command, invocation.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
     env: { ...process.env, ...(opts.env ?? {}) },
