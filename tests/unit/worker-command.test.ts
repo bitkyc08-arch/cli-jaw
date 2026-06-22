@@ -15,8 +15,8 @@ test('root CLI registers worker command', () => {
 });
 
 test('worker command queries status and watch progress endpoints', () => {
-    assert.match(workerSrc, /worker status \[agent\]/);
-    assert.match(workerSrc, /worker watch \[agent\]/);
+    assert.match(workerSrc, /worker status \[agent\|runId\]/);
+    assert.match(workerSrc, /worker watch \[agent\|runId\]/);
     assert.match(workerSrc, /\/api\/orchestrate\/worker-progress/);
     assert.match(workerSrc, /\/api\/orchestrate\/worker-progress\/\$\{encodeURIComponent\(agentId\)\}/);
     assert.match(workerSrc, /setTimeout|sleep\(2_000\)/);
@@ -30,6 +30,13 @@ test('worker command prints lifecycle attention from progress snapshots', () => 
     assert.match(workerSrc, /console\.log\(`attention:/);
 });
 
+test('worker command prints run identity from progress snapshots', () => {
+    assert.match(workerSrc, /runId\?: string/);
+    assert.match(workerSrc, /snapshot\.runId/);
+    assert.match(workerSrc, /console\.log\(`runId:/);
+    assert.match(workerSrc, /console\.log\(`agentId:/);
+});
+
 test('worker command resolves display names through employees API', () => {
     assert.match(workerSrc, /unwrapEmployeeSummaries/);
     assert.match(workerSrc, /\/api\/employees/);
@@ -37,7 +44,7 @@ test('worker command resolves display names through employees API', () => {
 });
 
 test('structure commands document worker progress and employee sessions-reset surfaces', () => {
-    assert.match(commandsDoc, /`worker`\s*\|\s*`bin\/commands\/worker\.ts`\s*\|[^|\n]*status \[agent\][^|\n]*watch \[agent\]/);
+    assert.match(commandsDoc, /`worker`\s*\|\s*`bin\/commands\/worker\.ts`\s*\|[^|\n]*status \[agent\\\|runId\][^|\n]*watch \[agent\\\|runId\]/);
     assert.match(commandsDoc, /snapshot\.workers[^)\n]*running-only/);
     assert.match(commandsDoc, /`employee`\s*\|\s*`bin\/commands\/employee\.ts`\s*\|[^|\n]*sessions-reset \[--port 3457\]/);
 });

@@ -25,6 +25,7 @@ export interface WorkerProgressAttention {
 }
 
 export interface WorkerProgressRun {
+    runId: string;
     agentId: string;
     employeeName: string;
     state: WorkerRunState;
@@ -34,16 +35,20 @@ export interface WorkerProgressRun {
     startedAt: number;
     completedAt: number | null;
     progressUpdatedAt: number | null;
+    elapsedMs: number;
+    lastUpdateAgeMs?: number | null;
     resultPreview?: string;
     attention?: WorkerProgressAttention;
     tools: SanitizedToolLogEntry[];
 }
 
 export interface WorkerProgressSnapshot {
+    runId?: string | null;
     agentId: string;
     employeeName: string;
     current: WorkerProgressRun | null;
     previous: WorkerProgressRun | null;
+    previousRuns?: WorkerProgressRun[];
     generatedAt: number;
 }
 

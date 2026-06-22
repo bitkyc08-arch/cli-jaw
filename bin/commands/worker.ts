@@ -15,12 +15,13 @@ if (shouldShowHelp(process.argv)) printAndExit(`
   jaw worker — inspect employee progress
 
   Usage:
-    jaw worker status [agent] [--json]
-    jaw worker watch [agent]
+    jaw worker status [agent|runId] [--json]
+    jaw worker watch [agent|runId]
 
   Examples:
     jaw worker status
     jaw worker status Backend
+    jaw worker status wr_backend_...
     jaw worker watch Backend
 `);
 
@@ -48,6 +49,7 @@ interface WorkerToolEntry {
 }
 
 interface WorkerRun {
+    runId?: string;
     agentId?: string;
     employeeName?: string;
     state?: string;
@@ -67,6 +69,7 @@ interface WorkerRun {
 }
 
 interface WorkerProgressSnapshot {
+    runId?: string | null;
     agentId?: string;
     employeeName?: string;
     current?: WorkerRun | null;
@@ -122,6 +125,8 @@ function printRun(snapshot: WorkerProgressSnapshot): void {
     if (!run) return;
     const name = snapshot.employeeName || run.employeeName || snapshot.agentId || run.agentId || 'worker';
     console.log(`${name}: ${run.state || 'unknown'}`);
+    if (run.runId || snapshot.runId) console.log(`runId: ${run.runId || snapshot.runId}`);
+    if (run.agentId || snapshot.agentId) console.log(`agentId: ${run.agentId || snapshot.agentId}`);
     if (run.taskPreview) console.log(`task: ${run.taskPreview}`);
     if (run.phase || run.phaseLabel) console.log(`phase: ${run.phaseLabel || run.phase}`);
     if (run.attention?.message) {

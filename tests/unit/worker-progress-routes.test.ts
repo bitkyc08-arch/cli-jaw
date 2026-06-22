@@ -22,7 +22,18 @@ test('dispatch route supports wait false async start response', () => {
     assert.match(routeBlock, /void runDispatch\(false\)/);
     assert.match(routeBlock, /res\.status\(202\)\.json/);
     assert.match(routeBlock, /agentId: slot\.agentId/);
+    assert.match(routeBlock, /runId: slot\.runId/);
     assert.match(routeBlock, /progress: getWorkerProgressSnapshot\(slot\.agentId\)/);
+});
+
+test('dispatch busy response includes active run identity', () => {
+    const routeStart = routeSrc.indexOf("app.post('/api/orchestrate/dispatch'");
+    assert.ok(routeStart >= 0, 'dispatch route should exist');
+    const routeBlock = routeSrc.slice(routeStart, routeStart + 7000);
+
+    assert.match(routeBlock, /error: 'worker_busy'/);
+    assert.match(routeBlock, /agentId: err\.existing\.agentId/);
+    assert.match(routeBlock, /runId: err\.existing\.runId/);
 });
 
 test('worker result route preserves existing fields and adds progress', () => {
@@ -31,6 +42,8 @@ test('worker result route preserves existing fields and adds progress', () => {
     const routeBlock = routeSrc.slice(routeStart, routeStart + 3000);
 
     assert.match(routeBlock, /state: slot\.state/);
+    assert.match(routeBlock, /runId: slot\.runId/);
+    assert.match(routeBlock, /agentId: slot\.agentId/);
     assert.match(routeBlock, /result: slot\.result/);
     assert.match(routeBlock, /tools: slot\.tools/);
     assert.match(routeBlock, /progress: getWorkerProgressSnapshot\(slot\.agentId\)/);

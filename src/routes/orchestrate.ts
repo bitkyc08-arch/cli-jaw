@@ -406,6 +406,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                     error: 'worker_busy',
                     existing: {
                         agentId: err.existing.agentId,
+                        runId: err.existing.runId,
                         employeeName: err.existing.employeeName,
                         task: err.existing.task.slice(0, 200),
                         startedAt: err.existing.startedAt,
@@ -514,7 +515,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
 
             try {
                 getSecurityAuditLog().append('dispatch_end', String(req.ip || 'local'), {
-                    agent: emp.name, agentId: slot.agentId, status: 'success',
+	                agent: emp.name, agentId: slot.agentId, status: 'success',
                 });
             } catch { /* non-fatal */ }
 
@@ -554,9 +555,10 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             res.status(202).json({
                 ok: true,
                 state: 'running',
-                worker: {
-                    agentId: slot.agentId,
-                    employeeName: slot.employeeName,
+                    worker: {
+                        agentId: slot.agentId,
+                        runId: slot.runId,
+                        employeeName: slot.employeeName,
                     startedAt: slot.startedAt,
                 },
                 progress: getWorkerProgressSnapshot(slot.agentId),
@@ -705,6 +707,8 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             res.json({
                 ok: true,
                 state: 'running',
+                runId: slot.runId,
+                agentId: slot.agentId,
                 startedAt: slot.startedAt,
                 task: slot.task,
                 tools: slot.tools,
@@ -720,6 +724,8 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         res.json({
             ok: true,
             state: slot.state,
+            runId: slot.runId,
+            agentId: slot.agentId,
             result: slot.result,
             tools: slot.tools,
             // Verdict/persistence block — the always-poll CLI prints this

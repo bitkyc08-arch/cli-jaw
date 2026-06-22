@@ -20,7 +20,7 @@ test.afterEach(() => {
 });
 
 test('worker registry stores readable employee tool progress while running', () => {
-    claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
+    const claimed = claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
     updateWorkerTools('backend', [{
         icon: '🔧',
         label: "/bin/zsh -lc 'npm run typecheck'",
@@ -29,13 +29,21 @@ test('worker registry stores readable employee tool progress while running', () 
     }]);
 
     const slot = getWorkerSlot('backend');
+    assert.equal(slot?.runId, claimed.runId);
+    assert.match(slot?.runId || '', /^wr_backend_/);
     assert.equal(slot?.tools.length, 1);
     assert.equal(slot?.tools[0]?.label, 'npm run typecheck');
     assert.equal(slot?.progressUpdatedAt && slot.progressUpdatedAt > 0, true);
 
     const progress = getWorkerProgressSnapshot('backend');
+    assert.equal(progress?.runId, claimed.runId);
+    assert.equal(progress?.current?.runId, claimed.runId);
     assert.equal(progress?.current?.tools[0]?.label, 'npm run typecheck');
     assert.equal(progress?.previous, null);
+
+    const progressByRun = getWorkerProgressSnapshot(claimed.runId);
+    assert.equal(progressByRun?.agentId, 'backend');
+    assert.equal(progressByRun?.current?.runId, claimed.runId);
 });
 
 test('worker registry progress exposes phase context', () => {
@@ -67,7 +75,7 @@ test('pending worker replay includes final employee tool process', () => {
 });
 
 test('previous completed progress survives replay cleanup', () => {
-    claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
+    const claimed = claimWorker({ id: 'backend', name: 'Backend' }, 'verify build');
     finishWorker('backend', 'done', [{
         icon: '⚡',
         label: "/bin/zsh -lc 'npm run build'",
@@ -80,10 +88,37 @@ test('previous completed progress survives replay cleanup', () => {
 
     const slot = getWorkerSlot('backend');
     const progress = getWorkerProgressSnapshot('backend');
+    const progressByRun = getWorkerProgressSnapshot(claimed.runId);
     assert.equal(slot, undefined);
     assert.equal(progress?.current, null);
+    assert.equal(progress?.previous?.runId, claimed.runId);
     assert.equal(progress?.previous?.state, 'done');
     assert.equal(progress?.previous?.tools[0]?.label, 'npm run build');
+    assert.equal(progressByRun?.previous?.runId, claimed.runId);
+});
+
+test('same-employee completed runs remain distinguishable by runId', () => {
+    const first = claimWorker({ id: 'backend', name: 'Backend' }, 'first audit');
+    finishWorker('backend', 'first done');
+    markWorkerReplayed('backend');
+
+    const second = claimWorker({ id: 'backend', name: 'Backend' }, 'second audit');
+    finishWorker('backend', 'second done');
+    markWorkerReplayed('backend');
+
+    assert.notEqual(first.runId, second.runId);
+
+    const firstProgress = getWorkerProgressSnapshot(first.runId);
+    const secondProgress = getWorkerProgressSnapshot(second.runId);
+    const agentProgress = getWorkerProgressSnapshot('backend');
+
+    assert.equal(firstProgress?.previous?.resultPreview, 'first done');
+    assert.equal(secondProgress?.previous?.resultPreview, 'second done');
+    assert.equal(agentProgress?.previous?.runId, second.runId);
+    assert.deepEqual(
+        agentProgress?.previousRuns?.map(run => run.runId),
+        [first.runId, second.runId],
+    );
 });
 
 test('worker registry progress omits thinking rows', () => {

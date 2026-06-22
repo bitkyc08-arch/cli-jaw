@@ -40,7 +40,22 @@ test('dispatch route supports async wait:false progress start', () => {
     assert.ok(routeBlock.includes('void runDispatch(false)'), 'wait:false should start worker asynchronously');
     assert.ok(routeBlock.includes('res.status(202).json'), 'wait:false should return 202');
     assert.ok(routeBlock.includes('worker: {'), 'wait:false should include worker metadata');
+    assert.ok(routeBlock.includes('runId: slot.runId'), 'wait:false should include runId metadata');
     assert.ok(routeBlock.includes('progress: getWorkerProgressSnapshot(slot.agentId)'), 'wait:false should include progress snapshot');
+});
+
+test('dispatch route exposes runId in busy and result polling contracts', () => {
+    const routeStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
+    assert.ok(routeStart >= 0, 'dispatch route should exist');
+    const dispatchBlock = orchestrateSrc.slice(routeStart, routeStart + 18000);
+    const resultStart = orchestrateSrc.indexOf("app.get('/api/orchestrate/worker/:agentId/result'");
+    assert.ok(resultStart >= 0, 'worker result route should exist');
+    const resultBlock = orchestrateSrc.slice(resultStart, resultStart + 3000);
+
+    assert.ok(dispatchBlock.includes('runId: err.existing.runId'), '409 worker_busy should include active runId');
+    assert.ok(dispatchBlock.includes('runId: slot.runId'), '202 dispatch response should include active runId');
+    assert.ok(resultBlock.includes('runId: slot.runId'), 'result polling should include runId');
+    assert.ok(resultBlock.includes('agentId: slot.agentId'), 'result polling should keep agentId');
 });
 
 test('dispatch route reports verdict persistence diagnostics', () => {
