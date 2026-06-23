@@ -40,7 +40,7 @@ const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
 if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
     const _homeVal = process.argv[_homeIdx + 1]!;
     // Guard: if the "value" looks like a known subcommand, user forgot the path
-    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'memory', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask'];
+    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'memory', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc'];
     if (_knownCmds.includes(_homeVal)) {
         console.error(`  ❌ --home requires a path argument (got subcommand '${_homeVal}')`);
         console.error(`  Usage: jaw --home <path> ${_homeVal}`);
@@ -140,6 +140,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
   ${c.bold}Setup & diagnostics:${c.reset}
     init                                Interactive setup wizard
     doctor [--json]                     Installation diagnostics
+    jwc install|clean|doctor            Optional external JWC runtime helper
     reset [--all|--mcp|--skills|...]    Reset configuration
 
   ${c.bold}Orchestration:${c.reset}
@@ -187,6 +188,9 @@ switch (command) {
         break;
     case 'doctor':
         await import('./commands/doctor.js');
+        break;
+    case 'jwc':
+        await import('./commands/jwc.js');
         break;
     case 'chat':
         if (process.argv[3] === 'search') {

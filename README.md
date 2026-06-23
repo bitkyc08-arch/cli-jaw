@@ -40,6 +40,22 @@ That's it. Open **http://localhost:24576** for the manager dashboard. Per-instan
 
 > **First time?** The default npm install initializes CLI-JAW and attempts native Claude setup. Other AI CLIs are optional; install them all during npm setup with `CLI_JAW_INSTALL_CLI_TOOLS=1 npm install -g cli-jaw` on macOS/Linux. On Windows, use the WSL install path below.
 
+### Optional JWC Runtime
+
+JWC is optional and external-only. The default npm install and Electron desktop sidecar do not bundle `jawcode`, `@jawcode-dev`, `@oven`, `bun`, or a `jwc` payload. To use JWC, install the runtime into CLI-JAW's external prefix and opt in with the printed SDK path:
+
+```bash
+jaw jwc install
+export JWC_SDK_PATH="/absolute/path/printed/by/jaw-jwc-install/sdk.js"
+jaw jwc doctor
+```
+
+To remove the optional external JWC dependencies later:
+
+```bash
+jaw jwc clean
+```
+
 <details>
 <summary><b>macOS one-click</b> — don't have Node.js? This installs everything</summary>
 

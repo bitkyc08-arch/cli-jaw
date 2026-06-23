@@ -46,7 +46,7 @@ interface EngineSdk {
 let sdkPromise: Promise<EngineSdk> | null = null;
 const DEFAULT_JWC_SDK_SPEC = 'jawcode/sdk';
 const JWC_INSTALL_HINT =
-    'cli-jaw does not bundle JWC. Build or install jawcode separately, then set JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js (for example, /Users/jun/Developer/new/700_projects/jawcode/packages/jwc/dist-node/sdk.js).';
+    'cli-jaw does not bundle JWC. Run jaw jwc install, set the printed JWC_SDK_PATH, and verify with jaw jwc doctor. For source builds, set JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js (for example, /Users/jun/Developer/new/700_projects/jawcode/packages/jwc/dist-node/sdk.js). Remove optional JWC dependencies with jaw jwc clean.';
 
 function formatSdkLoadError(spec: string, err: unknown): Error {
     const detail = err instanceof Error ? err.message : String(err);

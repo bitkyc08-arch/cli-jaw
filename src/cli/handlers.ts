@@ -221,6 +221,14 @@ export async function modelHandler(args: string[], ctx: CliCommandContext): Prom
     };
 }
 
+function jwcExternalRuntimeReminder(): string {
+    return [
+        'JWC is external-only: cli-jaw npm and Electron installs do not bundle JWC.',
+        'Run jaw jwc install, set the printed JWC_SDK_PATH, then check readiness with jaw jwc doctor.',
+        'Remove optional JWC dependencies with jaw jwc clean.',
+    ].join('\n');
+}
+
 export async function cliHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
     const L = ctx.locale || 'ko';
     const settings = await safeCall(ctx.getSettings, null) as Record<string, unknown> | null;
@@ -251,7 +259,11 @@ export async function cliHandler(args: string[], ctx: CliCommandContext): Promis
 
     const updateResult = await ctx.updateSettings({ cli: nextCli }) as SlashResult;
     if (updateResult?.ok === false) return updateResult;
-    return { ok: true, text: t('cmd.cli.changed', { from: current, to: nextCli }, L) };
+    const text = t('cmd.cli.changed', { from: current, to: nextCli }, L);
+    return {
+        ok: true,
+        text: nextCli === 'jwc' ? `${text}\n\n${jwcExternalRuntimeReminder()}` : text,
+    };
 }
 
 export async function thoughtHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
