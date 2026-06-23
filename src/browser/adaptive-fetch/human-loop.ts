@@ -73,7 +73,16 @@ function formatChallengeMessage(challengeInfo: ChallengeInfoInput, url: string):
 
 function formatNonInteractiveMessage(challengeInfo: ChallengeInfoInput, url: string): string {
     const type = challengeInfo.type || 'obstacle';
-    return `${type} detected at ${url}. Run with --browser-session interactive to resolve.`;
+    switch (type) {
+        case 'challenge':
+            return `WAF challenge detected at ${url}. To resolve: cli-jaw browser fetch "${url}" --browser-session interactive`;
+        case 'auth_required':
+            return `Login required at ${url}. To resolve: cli-jaw browser fetch "${url}" --browser-session user (uses your logged-in Chrome session)`;
+        case 'paywall':
+            return `Paywall detected at ${url}. To resolve: cli-jaw browser fetch "${url}" --browser-session user (requires subscription in your browser)`;
+        default:
+            return `${type} detected at ${url}. To resolve: cli-jaw browser fetch "${url}" --browser-session interactive`;
+    }
 }
 
 async function presentToUser(message: string): Promise<void> {

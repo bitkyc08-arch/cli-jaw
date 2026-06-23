@@ -9,6 +9,7 @@ import {
 import { BrowserRequiredError } from './browser-runtime.js';
 import { fetchViaCamoufox } from './camoufox-session.js';
 import { scoreReaderCandidate } from './content-scorer.js';
+import { extractStructuredContent } from './structured-extractor.js';
 import { fromBrowserResult, fromMetadataResult, fromNetworkCandidate } from './reader-adapters.js';
 import { appendAttempt } from './trace.js';
 
@@ -23,8 +24,12 @@ export async function tryBrowserEscalation(
 
     const camoufoxResult = await fetchViaCamoufox(url, { timeoutMs: options.timeoutMs });
     if (camoufoxResult?.ok && camoufoxResult.html) {
+        const structured = extractStructuredContent(camoufoxResult.html);
+        const evidence = ['camoufox-stealth'];
+        if (structured.tables.length) evidence.push(`structured:${structured.tables.length}-tables`);
+        if (structured.jsonLd.length) evidence.push(`structured:${structured.jsonLd.length}-jsonld`);
         appendAttempt(trace, { source: 'camoufox', verdict: 'ok', url, reason: 'camoufox-stealth' });
-        return { ok: true, status: 200, finalUrl: url, contentType: 'text/html', text: camoufoxResult.html, title: camoufoxResult.title, headers: {}, evidence: ['camoufox-stealth'], warnings: [] };
+        return { ok: true, status: 200, finalUrl: url, contentType: 'text/html', text: camoufoxResult.html, title: camoufoxResult.title, headers: {}, evidence, warnings: [], structured };
     }
     if (camoufoxResult === null) {
         appendAttempt(trace, { source: 'camoufox', verdict: 'skip', url, reason: 'camoufox-not-available' });
