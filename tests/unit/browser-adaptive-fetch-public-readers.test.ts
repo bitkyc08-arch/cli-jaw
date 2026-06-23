@@ -151,6 +151,47 @@ test('public endpoint normalizers convert social and media APIs into readable ev
     assert.match(oembed.text, /Provider: YouTube/);
 });
 
+test('public endpoint normalizers convert RSS, Atom, and JSON Feed items into bounded evidence', () => {
+    const rss = fromFetchResult(fetched(`
+        <rss><channel>
+          <title>Release Feed</title><link>https://example.com</link>
+          <item><title>First release</title><pubDate>Tue, 23 Jun 2026 00:00:00 GMT</pubDate><link>https://example.com/1</link><description>First summary</description></item>
+          <item><title>Second release</title><pubDate>Mon, 22 Jun 2026 00:00:00 GMT</pubDate><link>https://example.com/2</link><description>Second summary</description></item>
+        </channel></rss>
+    `, 'application/rss+xml'), { source: 'public_endpoint', label: 'rss-atom-discovered' });
+    assert.match(rss.text, /Feed: Release Feed/);
+    assert.match(rss.text, /Item 1: First release/);
+    assert.match(rss.text, /URL: https:\/\/example\.com\/1/);
+    assert.match(rss.text, /Item 2: Second release/);
+
+    const atom = fromFetchResult(fetched(`
+        <feed><title>Atom Feed</title><link href="https://atom.example"/>
+          <entry><title>Atom entry</title><updated>2026-06-23T00:00:00Z</updated><link href="https://atom.example/e1"/><summary>Atom summary</summary></entry>
+        </feed>
+    `, 'application/atom+xml'), { source: 'public_endpoint', label: 'rss-atom-discovered' });
+    assert.match(atom.text, /Feed: Atom Feed/);
+    assert.match(atom.text, /Item 1: Atom entry/);
+    assert.match(atom.text, /Date: 2026-06-23T00:00:00Z/);
+    assert.match(atom.text, /URL: https:\/\/atom\.example\/e1/);
+    assert.match(atom.text, /Summary: Atom summary/);
+
+    const jsonFeed = fromFetchResult(fetched(JSON.stringify({
+        title: 'JSON Feed',
+        home_page_url: 'https://json.example',
+        items: [{
+            title: 'JSON entry',
+            date_published: '2026-06-23T01:00:00Z',
+            url: 'https://json.example/e1',
+            summary: 'JSON summary',
+        }],
+    })), { source: 'public_endpoint', label: 'rss-atom-discovered' });
+    assert.match(jsonFeed.text, /Feed: JSON Feed/);
+    assert.match(jsonFeed.text, /Item 1: JSON entry/);
+    assert.match(jsonFeed.text, /Date: 2026-06-23T01:00:00Z/);
+    assert.match(jsonFeed.text, /URL: https:\/\/json\.example\/e1/);
+    assert.ok(!jsonFeed.text.includes('"items"'), 'feed reader should not expose raw JSON as primary text');
+});
+
 test('unsupported public endpoint JSON falls back to generic text handling', () => {
     const generic = fromFetchResult(fetched(JSON.stringify({ hello: 'world' })), {
         source: 'public_endpoint',

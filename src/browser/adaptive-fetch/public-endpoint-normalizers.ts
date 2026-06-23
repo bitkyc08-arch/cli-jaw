@@ -347,15 +347,58 @@ function reddit(json: Json | null) {
 }
 
 function rssAtom(rawText: string, json: Json | null) {
-    if (json) return built('feed-json', str(asObject(json)['title']) || 'Feed', [`Feed: ${str(asObject(json)['title'])}`, line('Home', asObject(json)['home_page_url'])], {});
+    if (json) {
+        const obj = asObject(json);
+        const title = str(obj['title']) || 'Feed';
+        const items = arr(obj['items']).slice(0, 3).map(feedJsonItem);
+        return built('feed-json', title, [
+            `Feed: ${title}`,
+            line('Home', obj['home_page_url']),
+            ...feedItemLines(items),
+        ], { items: items.length });
+    }
     const title = xmlTag(rawText, 'title') || 'RSS/Atom feed';
-    const itemTitle = xmlTag(rawText, 'title', 1);
+    const itemBlocks = (xmlBlocks(rawText, 'item').length ? xmlBlocks(rawText, 'item') : xmlBlocks(rawText, 'entry')).slice(0, 3);
+    const items = itemBlocks.map(block => ({
+        title: xmlTag(block, 'title'),
+        date: xmlTag(block, 'pubDate') || xmlTag(block, 'published') || xmlTag(block, 'updated'),
+        url: xmlTag(block, 'link') || xmlLinkHref(block),
+        summary: clip(stripHtml(xmlTag(block, 'description') || xmlTag(block, 'summary') || xmlTag(block, 'content'))),
+    }));
     return built('rss-atom', title, [
         `Feed: ${title}`,
-        line('First item', itemTitle && itemTitle !== title ? itemTitle : ''),
-        line('Description', xmlTag(rawText, 'description') || xmlTag(rawText, 'summary')),
-        line('URL', xmlTag(rawText, 'link')),
-    ], {});
+        line('Description', xmlTag(rawText, 'description') || xmlTag(rawText, 'subtitle')),
+        line('URL', xmlTag(rawText, 'link') || xmlLinkHref(rawText)),
+        ...feedItemLines(items),
+    ], { items: items.length });
+}
+
+function feedJsonItem(value: unknown): Record<string, string> {
+    const obj = asObject(value);
+    return {
+        title: str(obj['title']),
+        date: str(obj['date_published'] || obj['date_modified']),
+        url: str(obj['url'] || obj['external_url']),
+        summary: clip(stripHtml(str(obj['summary'] || obj['content_text'] || obj['content_html']))),
+    };
+}
+
+function feedItemLines(items: Record<string, string>[]): string[] {
+    return items.flatMap((item, index) => [
+        item['title'] ? `Item ${index + 1}: ${item['title']}` : '',
+        line('  Date', item['date']),
+        line('  URL', item['url']),
+        line('  Summary', item['summary']),
+    ].filter((line): line is string => Boolean(line)));
+}
+
+function xmlBlocks(xml: string, tag: string): string[] {
+    return [...xml.matchAll(new RegExp(`<${tag}(?:\\s[^>]*)?>[\\s\\S]*?<\\/${tag}>`, 'gi'))].map(match => match[0]);
+}
+
+function xmlLinkHref(xml: string): string {
+    const match = xml.match(/<link\b[^>]*href=["']([^"']+)["'][^>]*\/?>/i);
+    return cleanXml(match?.[1] || '');
 }
 
 function built(kind: string, title: string, lines: (string | null | undefined)[], metadata: Record<string, unknown>) {
@@ -410,6 +453,10 @@ function dateParts(value: unknown): string {
 
 function stripHtml(value: string): string {
     return normalizeWhitespace(value.replace(/<[^>]+>/g, ' ').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+}
+
+function clip(value: string, max = 240): string {
+    return value.length > max ? `${value.slice(0, max - 3)}...` : value;
 }
 
 function xmlTag(xml: string, tag: string, index = 0): string {
