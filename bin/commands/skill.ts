@@ -60,6 +60,14 @@ function installFromRef(name: string) {
     return { status: 'installed', path: dst, source: 'skills_ref' };
 }
 
+function resolveSkillReadPath(name: string): { path: string; source: 'active' | 'skills_ref' } | null {
+    const activePath = join(SKILLS_DIR, name, 'SKILL.md');
+    if (existsSync(activePath)) return { path: activePath, source: 'active' };
+    const refPath = join(JAW_HOME, 'skills_ref', name, 'SKILL.md');
+    if (existsSync(refPath)) return { path: refPath, source: 'skills_ref' };
+    return null;
+}
+
 function installFromGithub(name: string) {
     // Try known repos: openai/codex
     const repos = [
@@ -163,13 +171,17 @@ switch (sub) {
             console.log(`  Usage: cli-jaw skill info <name>`);
             process.exit(1);
         }
-        const skillMd = join(SKILLS_DIR, arg, 'SKILL.md');
-        if (!existsSync(skillMd)) {
+        const resolved = resolveSkillReadPath(arg);
+        if (!resolved) {
             console.log(`  ${c.red}❌ "${arg}" not found or no SKILL.md${c.reset}`);
             break;
         }
-        console.log(`\n  ${c.bold}📋 ${arg}${c.reset}\n`);
-        console.log(readFileSync(skillMd, 'utf8'));
+        console.log(`\n  ${c.bold}📋 ${arg}${c.reset}`);
+        if (resolved.source === 'skills_ref') {
+            console.log(`  ${c.dim}source: skills_ref fallback${c.reset}`);
+        }
+        console.log('');
+        console.log(readFileSync(resolved.path, 'utf8'));
         break;
     }
 

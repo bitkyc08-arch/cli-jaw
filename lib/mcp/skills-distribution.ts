@@ -294,25 +294,23 @@ export function propagateSkillsToInstances() {
             }
         }
 
-        // 2. Sync active skills: update existing + auto-activate standard set
+        // 2. Sync default active skills from the instance's freshly synced ref.
+        // Keep a baseActive fallback for future local-only defaults.
         let activeUpdated = 0, autoActivated = 0;
-        if (fs.existsSync(baseActive)) {
-            for (const entry of fs.readdirSync(baseActive, { withFileTypes: true })) {
-                if (!entry.isDirectory() || !isDiscoverableSkillDirName(entry.name)) continue;
-                const src = join(baseActive, entry.name);
-                const dst = join(instActive, entry.name);
+        for (const id of autoActivate) {
+            const refSrc = join(instRef, id);
+            const baseSrc = join(baseActive, id);
+            const src = fs.existsSync(refSrc) ? refSrc : baseSrc;
+            if (!fs.existsSync(src)) continue;
 
-                if (fs.existsSync(dst)) {
-                    // Update existing active skill if any source file is newer.
-                    if (shouldUpdateSkillDirectory(entry.name, src, dst, { skills: {} }, { skills: {} })) {
-                        fs.rmSync(dst, { recursive: true, force: true });
-                        copyDirRecursive(src, dst);
-                        activeUpdated++;
-                    }
-                } else if (autoActivate.has(entry.name)) {
-                    copyDirRecursive(src, dst);
-                    autoActivated++;
-                }
+            const dst = join(instActive, id);
+            if (!fs.existsSync(dst)) {
+                copyDirRecursive(src, dst);
+                autoActivated++;
+            } else if (shouldUpdateSkillDirectory(id, src, dst, { skills: {} }, { skills: {} })) {
+                fs.rmSync(dst, { recursive: true, force: true });
+                copyDirRecursive(src, dst);
+                activeUpdated++;
             }
         }
 

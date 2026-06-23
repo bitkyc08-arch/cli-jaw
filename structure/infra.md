@@ -495,6 +495,7 @@ module-level policy로 `browser start` mode 정규화 + agent/debug/manual launc
 | `toCopilotMcp(config)` | Copilot `~/.copilot/mcp-config.json` 변환 |
 | `syncToAll(config, workDir)` | 통합 → 지원 MCP-aware CLI 설정 동기화 |
 | `copyDefaultSkills()` | 2×3 분류 + Codex 폴백 + registry.json 동기화 |
+| `propagateSkillsToInstances()` | base `skills_ref`를 `~/.cli-jaw-*` instances로 동기화하고, 각 instance의 synced `skills_ref` 기준으로 default active skills를 활성화 (`baseActive` fallback 포함) |
 | `installMcpServers(config)` | npm -g / uv tool install |
 | `ensureSymlinkSafe(target, linkPath, opts)` | symlink 보호 모드 |
 | `safeMoveToBackup(pathToMove)` | 충돌 디렉토리 백업 이동 |
