@@ -118,12 +118,14 @@ SSE behavior:
 | `worker_stalled` | `{ agentId, employeeName, isEmployee: true }` | `orchestrator/distribute.ts`; worker stall; progress snapshot `attention.kind=stalled` |
 | `worker_disconnected` | `{ agentId, exitCode, isEmployee: true }` | `orchestrator/distribute.ts`; worker disconnect; progress snapshot `attention.kind=disconnected` |
 | `worker_timeout` | `{ agentId, employeeName, isEmployee: true }` | `orchestrator/distribute.ts`; worker timeout; progress snapshot `attention.kind=timeout` |
-| `worker_run_started` | `{ runId, agentId, employeeName, status, outputBytes, seq, taskPreview }` | `orchestrator/worker-run-store.ts`; durable run started safe event |
-| `worker_run_progress` | `{ runId, agentId, employeeName, status, outputBytes, seq, tools, toolCount }` | `orchestrator/worker-run-store.ts`; sanitized tool progress snapshot; no raw output |
-| `worker_run_attention` | `{ runId, agentId, employeeName, status, outputBytes, seq, attention }` | `orchestrator/worker-run-store.ts`; safe attention metadata |
-| `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | `{ runId, agentId, employeeName, status, outputBytes, seq, completedAt, safeSummary? }` | `orchestrator/worker-run-store.ts`; completion event; raw output path/content excluded |
+| `worker_run_started` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, taskPreview }` | `orchestrator/worker-run-store.ts`; durable run started safe event |
+| `worker_run_progress` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, tools, toolCount }` | `orchestrator/worker-run-store.ts`; sanitized tool progress snapshot; no raw output |
+| `worker_run_attention` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, attention }` | `orchestrator/worker-run-store.ts`; safe attention metadata |
+| `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, completedAt, safeSummary? }` | `orchestrator/worker-run-store.ts`; completion event; raw output path/content excluded |
 
 Worker run events, delayed replay notices, and batch dispatch summaries are safe metadata surfaces. They may carry bounded previews and recovery commands, but they do not embed raw employee stdout; raw worker output remains an explicit `/api/orchestrate/worker-runs/:runId/output` / `cli-jaw worker read <runId>` read path.
+
+`bgtask_update` frames stay on topic `bgtask` and expose `running[]` plus `changed`; both entries keep native bgtask `status` and add shared `statusCategory`. Worker runs and bgtasks do not share storage, but Manager can compare their status buckets without reimplementing per-surface mappings.
 
 ### Web client handling
 

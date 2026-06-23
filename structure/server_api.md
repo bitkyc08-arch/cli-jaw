@@ -195,7 +195,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - virtual dispatch에서 `cli`/`model`이 생략되면 현재 CLI와 `src/cli/registry.ts`의 registry default model을 사용한다.
 - 현재 plan이 있으면 dispatch body 상단에 `## Approved Plan`으로 자동 주입된다.
 - `wait:false` async dispatch `202`, `worker_busy` `409`, and result polling payloads include both stable `agentId` and per-dispatch `runId`. The `agentId` remains the same-employee concurrency guard; `runId` identifies a specific worker run in memory progress history.
-- `GET /api/orchestrate/worker-runs*` exposes durable worker-run safe metadata/events and bounded raw output reads. List/get/events are safe-only; `/output` is the only raw-text worker-run route and requires explicit `runId` plus offset/limit. `jaw worker read <runId>` is the CLI consumer of that explicit raw-output route; `worker status/watch` remain safe-summary surfaces.
+- `GET /api/orchestrate/worker-runs*` exposes durable worker-run safe metadata/events and bounded raw output reads. List/get/events are safe-only and include both native `status` plus shared `statusCategory` (`running|succeeded|failed|cancelled|orphaned`) for comparison with background tasks; `/output` is the only raw-text worker-run route and requires explicit `runId` plus offset/limit. `jaw worker read <runId>` is the CLI consumer of that explicit raw-output route; `worker status/watch` remain safe-summary surfaces.
+- `GET/POST /api/bgtask` and `GET/DELETE /api/bgtask/:id` keep the existing background-task schema and add `statusCategory` to public task payloads. `statusCategory` is additive; bgtask storage and worker-run storage remain separate and no bgtask migration is performed.
 - `POST /api/orchestrate/dispatch/batch`는 같은 boss token으로 여러 직원/virtual task를 병렬 dispatch한다. 각 entry는 `agent` 또는 `virtual` 중 하나를 가진다. 응답은 full worker text를 기본 포함하지 않고 `{ agent, ok, runId, status, preview, recoveryCommand, outputBytes, error? }` 형태의 safe summary metadata를 반환한다. raw output은 `runId`로 `/api/orchestrate/worker-runs/:runId/output` 또는 `jaw worker read <runId>`에서 명시적으로 읽는다. 구버전 manager가 이 route 없이 HTML 404를 반환하면 `jaw dispatch --batch`는 JSON parse 예외 대신 stale/missing route 진단을 출력한다.
 
 ### `/api/jaw-ceo/*`
@@ -272,12 +273,12 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `system_notice` | compact refresh 같은 시스템 공지 |
 | `heartbeat_pending` | pending heartbeat job 수 |
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | distributed worker 상태 변화; 같은 상태가 `/api/orchestrate/worker-progress`의 safe `attention` metadata에도 반영됨 |
-| `worker_run_started` / `worker_run_progress` / `worker_run_attention` / `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | per-run worker lifecycle safe events; raw output is never embedded and must be fetched through `/api/orchestrate/worker-runs/:runId/output` |
+| `worker_run_started` / `worker_run_progress` / `worker_run_attention` / `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | per-run worker lifecycle safe events with native `status` plus shared `statusCategory`; raw output is never embedded and must be fetched through `/api/orchestrate/worker-runs/:runId/output` |
 | `goal_done` / `goal_done_rejected` / `goal_cancel` / `goal_continuation` / `goal_continuation_failed` / `goal_continuation_limit` | durable goal / bounded continuation lifecycle |
 | `goal_pause_detected` | goal pause 2-tap gate 감지 |
 | `session_switched` / `session_created` / `session_list` | multi-session state update |
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |
-| `bgtask_update` | background task lifecycle/status update for manager/runtime monitors |
+| `bgtask_update` | background task lifecycle/status update for manager/runtime monitors; running and changed entries include native `status` plus shared `statusCategory` |
 
 ---
 

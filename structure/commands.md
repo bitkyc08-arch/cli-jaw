@@ -111,7 +111,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `reminders` | `bin/commands/reminders.ts` | `list`, `add`, `done`; `--json`, `--priority`, `--due`, `--remind`, message/thread link flags |
 | `project` | `bin/commands/project.ts` | `set <path>[, <path>...]`, `reset`/`clear`, `list` (instance projectDirs 관리) |
 | `task` | `bin/commands/task.ts` | `add/edit/list/start/done/assign/clear`; dashboard-visible atomic checklist |
-| `bgtask` | `bin/commands/bgtask.ts` | `add/list/show/cancel`; server-owned background task registration and inspection |
+| `bgtask` | `bin/commands/bgtask.ts` | `add/list/show/cancel`; server-owned background task registration and inspection. Human list output keeps native status and appends the shared runtime status category as `native/category` when the server provides it. |
 | `lock` | `bin/commands/lock.ts` | `[--port 3457]`; instance lock (stopAll 보호). `unlock`도 동일 파일 처리 |
 | `unlock` | `bin/commands/lock.ts` | `[--port 3457]`; instance unlock |
 | `history` | `bin/commands/history.ts` | `search "<query>" [--limit N]`; 채팅 히스토리 검색 (65L) |

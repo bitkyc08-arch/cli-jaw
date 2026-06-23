@@ -9,7 +9,8 @@ import { createTask, getTask, listTasks, DuplicateBgTaskError } from '../bgtask/
 import { startTask, cancelTask, isTaskRunnerActive } from '../bgtask/runner.js';
 import { notifyTask } from '../bgtask/notifier.js';
 import { webAiPreset } from '../bgtask/presets.js';
-import { validateBgTaskSpec, type BgTaskSpec, type BgTaskStatus, type OriginMeta } from '../bgtask/types.js';
+import { validateBgTaskSpec, type BgTaskRow, type BgTaskSpec, type BgTaskStatus, type OriginMeta } from '../bgtask/types.js';
+import { normalizeBgTaskStatus, type RuntimeStatusCategory } from '../shared/runtime-observability.js';
 import { getCurrentMainMeta } from '../agent/spawn.js';
 
 const VALID_STATUSES = new Set(['running', 'complete', 'failed', 'cancelled', 'orphaned']);
@@ -18,6 +19,14 @@ function onTerminal(taskId: string): void {
     notifyTask(taskId).catch((err: Error) => {
         console.error(`[bgtask:${taskId}] notify failed:`, err.message);
     });
+}
+
+function toPublicTask(task: BgTaskRow): BgTaskRow & { runnerActive: boolean; statusCategory: RuntimeStatusCategory } {
+    return {
+        ...task,
+        runnerActive: isTaskRunnerActive(task.id),
+        statusCategory: normalizeBgTaskStatus(task.status),
+    };
 }
 
 export function registerBgtaskRoutes(app: Express, requireAuth: AuthMiddleware): void {
@@ -29,7 +38,7 @@ export function registerBgtaskRoutes(app: Express, requireAuth: AuthMiddleware):
         }
         const limit = Number(req.query['limit']) > 0 ? Number(req.query['limit']) : 100;
         const tasks = listTasks({ ...(statusRaw ? { status: statusRaw as BgTaskStatus } : {}), limit });
-        res.json({ tasks: tasks.map((t) => ({ ...t, runnerActive: isTaskRunnerActive(t.id) })) });
+        res.json({ tasks: tasks.map(toPublicTask) });
     });
 
     app.get('/api/bgtask/:id', requireAuth, (req, res) => {
@@ -38,7 +47,7 @@ export function registerBgtaskRoutes(app: Express, requireAuth: AuthMiddleware):
             res.status(404).json({ error: 'task not found' });
             return;
         }
-        res.json({ task: { ...task, runnerActive: isTaskRunnerActive(task.id) } });
+        res.json({ task: toPublicTask(task) });
     });
 
     app.post('/api/bgtask', requireAuth, async (req, res) => {
@@ -84,7 +93,7 @@ export function registerBgtaskRoutes(app: Express, requireAuth: AuthMiddleware):
 
             const row = createTask({ kind, spec, originMeta });
             startTask(row, onTerminal);
-            res.json({ ok: true, task: row, warnings });
+            res.json({ ok: true, task: toPublicTask(row), warnings });
         } catch (err) {
             if (err instanceof DuplicateBgTaskError) {
                 res.status(409).json({ error: err.message, existingId: err.existingId });
@@ -102,6 +111,7 @@ export function registerBgtaskRoutes(app: Express, requireAuth: AuthMiddleware):
             return;
         }
         const cancelled = cancelTask(id);
-        res.json({ ok: true, cancelled, task: getTask(id) });
+        const next = getTask(id);
+        res.json({ ok: true, cancelled, task: next ? toPublicTask(next) : null });
     });
 }

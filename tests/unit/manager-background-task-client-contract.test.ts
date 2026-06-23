@@ -96,18 +96,22 @@ test('background task update normalizer accepts only bgtask_update frames', () =
     const update = normalizeBackgroundTaskUpdate({
         ...backgroundTaskUpdateFixture(),
         running: [
-            { id: 'bg_1', kind: 'shell', startedAt: '2026-06-19T00:00:01.000Z' },
+            { id: 'bg_1', kind: 'shell', status: 'running', statusCategory: 'running', startedAt: '2026-06-19T00:00:01.000Z' },
+            { id: 'bg_invalid_category', kind: 'shell', status: 'running', statusCategory: 'bad' },
             { id: 2, kind: 'bad' },
         ],
-        changed: { id: 'bg_2', kind: 'web-ai', status: 'complete' },
+        changed: { id: 'bg_2', kind: 'web-ai', status: 'complete', statusCategory: 'succeeded' },
         sseReplay: true,
     });
 
     assert.deepEqual(update, {
         topic: 'bgtask',
         event: 'bgtask_update',
-        running: [{ id: 'bg_1', kind: 'shell', startedAt: '2026-06-19T00:00:01.000Z' }],
-        changed: { id: 'bg_2', kind: 'web-ai', status: 'complete' },
+        running: [
+            { id: 'bg_1', kind: 'shell', status: 'running', statusCategory: 'running', startedAt: '2026-06-19T00:00:01.000Z' },
+            { id: 'bg_invalid_category', kind: 'shell', status: 'running' },
+        ],
+        changed: { id: 'bg_2', kind: 'web-ai', status: 'complete', statusCategory: 'succeeded' },
         sseReplay: true,
     });
 });
@@ -151,8 +155,8 @@ test('background task SSE subscription filters multiplexed /api/events frames', 
         data: JSON.stringify({
             topic: 'bgtask',
             event: 'bgtask_update',
-            running: [{ id: 'bg_3', kind: 'shell' }],
-            changed: { id: 'bg_3', kind: 'shell', status: 'running' },
+            running: [{ id: 'bg_3', kind: 'shell', status: 'running', statusCategory: 'running' }],
+            changed: { id: 'bg_3', kind: 'shell', status: 'running', statusCategory: 'running' },
         }),
     } as MessageEvent);
     es.onerror?.({ type: 'error' } as Event);
@@ -172,6 +176,7 @@ test('background task monitor contract stays separate from Code sessions and chi
     );
     assert.ok(source.includes('/api/bgtask'), 'client must use Manager /api/bgtask');
     assert.ok(source.includes('/api/events'), 'client must use Manager multiplexed SSE stream');
+    assert.ok(source.includes('statusCategory'), 'client must preserve shared runtime status categories');
     assert.equal(source.includes('CodeSession'), false, 'background tasks must not be modeled as Code sessions');
     assert.equal(source.includes('selectedInstance'), false, 'background tasks must not depend on selected child Jaw instance');
     assert.equal(source.includes('3465'), false, 'client must not hardcode child Jaw ports');

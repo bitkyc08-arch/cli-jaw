@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-06-10 (최근 500개 커밋 기준 문서/카운트 재측정)
-> `server.ts` 635L / `src/routes/` 32 TS files (registrars + helper modules + extracted base-route modules, 199 route handlers including `/`) / `src/cli/handlers*.ts` 448L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs (checkpoint/permissions/context-map) / `src/agent/` 29 root TS + `spawn/` 3 files + `events/` 12 files (spawn.ts 2388L + pi-runtime.ts 460L + lifecycle-handler.ts 1030L + kiro-runtime.ts 386L + kiro-auth.ts 230L + kiro-models.ts 98L + cursor-runtime.ts 240L) / `src/goal/` 4 files (543L) / `src/goal-run/` 5 files (337L) / `src/trace/` 3 files (279L) / `src/team/` 5 files (323L, team dispatch planner/collector/preflight) / `src/jaw-ceo/` 16 files (2614L, OpenAI Realtime CEO channel) / `src/shared/` 2 files (253L) / `src/manager/` 79 TS/TSX files (dashboard + board/notes/search/schedule/reminders/connector/routes/memory/git) / `src/browser/web-ai/` 68 TS files (12561L) + `adaptive-fetch/` 19 files (2608L) / `src/types/` 3 files (329L) / `bin/commands/` 32 top-level ts files + `tui/` 10 helper files / `electron/` Electron tray app + sidecar packaging (27 TS/TSX files, 3096L) / `native/jaw-claude-i/` 11 Rust source files (1934L)
+> `server.ts` 635L / `src/routes/` 32 TS files (registrars + helper modules + extracted base-route modules, 199 route handlers including `/`) / `src/cli/handlers*.ts` 448L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs (checkpoint/permissions/context-map) / `src/agent/` 29 root TS + `spawn/` 3 files + `events/` 12 files (spawn.ts 2388L + pi-runtime.ts 460L + lifecycle-handler.ts 1030L + kiro-runtime.ts 386L + kiro-auth.ts 230L + kiro-models.ts 98L + cursor-runtime.ts 240L) / `src/goal/` 4 files (543L) / `src/goal-run/` 5 files (337L) / `src/trace/` 3 files (279L) / `src/team/` 5 files (323L, team dispatch planner/collector/preflight) / `src/jaw-ceo/` 16 files (2614L, OpenAI Realtime CEO channel) / `src/shared/` 6 files + reminders helper (605L) / `src/manager/` 79 TS/TSX files (dashboard + board/notes/search/schedule/reminders/connector/routes/memory/git) / `src/browser/web-ai/` 68 TS files (12561L) + `adaptive-fetch/` 19 files (2608L) / `src/types/` 3 files (329L) / `bin/commands/` 32 top-level ts files + `tui/` 10 helper files / `electron/` Electron tray app + sidecar packaging (27 TS/TSX files, 3096L) / `native/jaw-claude-i/` 11 Rust source files (1934L)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -127,7 +127,7 @@ cli-jaw/
 │   │   ├── worker-progress.ts ← 직원 progress safe-summary sanitizer + runId-aware current/previous snapshot types
 │   │   ├── worker-registry.ts ← Worker 프로세스 레지스트리 + runId progress current/previous memory retention + pending replay metadata + durable worker-run hook (414L)
 │   │   ├── worker-replay-notice.ts ← delayed worker replay bounded notice builder + runId recovery command contract (41L)
-│   │   ├── worker-run-store.ts ← Worker run safe metadata/events JSONL store + worker_run_* SSE broadcast bridge (192L)
+│   │   ├── worker-run-store.ts ← Worker run safe metadata/events JSONL store + worker_run_* SSE broadcast bridge + shared status category projection (202L)
 │   │   ├── worker-output-store.ts ← Worker raw output file store + bounded offset/limit read API (86L)
 │   │   ├── workspace-context.ts ← Project root/path hint resolver for employee dispatch context (136L)
 │   │   ├── friction.ts       ← Interview friction/stagnation detector (76L)
@@ -285,8 +285,13 @@ cli-jaw/
 │   │   ├── store.ts          ← startTraceRun + appendTraceEvent + stampTraceTool + finalizeTraceRun + pruneTraceEvents (257L)
 │   │   ├── types.ts          ← TraceRunInput, TraceEventInput, TracePointer, TraceRunRow 타입 (36L)
 │   │   └── redact.ts         ← trace event redaction helpers (48L)
-│   ├── shared/               ← 공유 유틸리티 (2 files) ✨
+│   ├── shared/               ← 공유 유틸리티 (6 files + reminders helper) ✨
+│   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
+│   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
+│   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
+│   │   ├── structured-fence.ts ← structured renderer fence scanner/parser helper (80L)
 │   │   ├── tool-log-sanitize.ts ← tool log sanitization helpers (240L)
+│   │   └── reminders/tray-triage.ts ← tray reminder badge/count triage helper (30L)
 │   │   └── shell-command-display.ts ← shell command display formatter (48L)
 │   ├── manager/              ← Multi-instance 대시보드 매니저 (79 TS/TSX files, 13052L; board/notes/search/schedule/reminders/connector/routes/memory/git 서브모듈)
 │   ├── team/                 ← Team dispatch planner (5 files, 323L) ✨
@@ -380,7 +385,7 @@ cli-jaw/
 │       ├── dashboard.ts      ← `jaw dashboard serve` + dashboard memory delegation (274L)
 │       ├── dashboard-memory.ts ← `jaw dashboard memory` L2 federation CLI helper (244L)
 │       ├── dashboard-chat.ts ← `jaw dashboard chat search` L2 federation CLI helper (121L)
-│       ├── bgtask.ts         ← server-owned background task CLI add/list/show/cancel (149L)
+│       ├── bgtask.ts         ← server-owned background task CLI add/list/show/cancel + native/shared status display (150L)
 │       ├── connector.ts      ← dashboard connector board/notes/reminders/audit CLI (216L)
 │       ├── reminders.ts      ← local reminders list/add/done CLI (100L)
 │       ├── dispatch-helpers.ts ← dispatch output unwrap helper (21L)
@@ -481,7 +486,7 @@ graph LR
 20. **Adaptive fetch**: `src/browser/adaptive-fetch/` 19 files — multi-strategy web fetch (direct → reader API → browser escalation) with WAF detection + content scoring
 21. **Team dispatch**: `src/team/` — planner/collector/dispatcher/preflight for structured multi-employee coordination
 22. **Jaw CEO**: `src/jaw-ceo/` — OpenAI Realtime API sideband channel + coordinator (admin/workers/completions/realtime-tools)
-23. **SSE event channel**: `src/core/event-bus.ts` + `src/routes/events.ts` + `public/js/event-channel.ts` provide `GET /api/events` with replay; worker-run lifecycle publishes safe `worker_run_*` events through the same topic/replay path; `public/js/ws.ts` remains the legacy browser fallback dispatcher and `bin/commands/tui/channel.ts` provides the SSE-first terminal chat transport.
+23. **SSE event channel**: `src/core/event-bus.ts` + `src/routes/events.ts` + `public/js/event-channel.ts` provide `GET /api/events` with replay; worker-run lifecycle publishes safe `worker_run_*` events through the same topic/replay path and bgtask/worker-run payloads share additive `statusCategory` vocabulary; `public/js/ws.ts` remains the legacy browser fallback dispatcher and `bin/commands/tui/channel.ts` provides the SSE-first terminal chat transport.
 
 ---
 

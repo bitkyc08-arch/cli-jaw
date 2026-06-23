@@ -42,7 +42,8 @@ function flagValue(flag: string): string | undefined {
 function printTask(task: Record<string, unknown>): void {
     const spec = (task['spec'] ?? {}) as Record<string, unknown>;
     const completion = (spec['completion'] ?? {}) as Record<string, unknown>;
-    console.log(`${task['id']}  [${task['status']}${task['runnerActive'] ? ' • runner active' : ''}]  kind=${task['kind']}  completion=${completion['type'] ?? '?'}`);
+    const category = task['statusCategory'] ? `/${task['statusCategory']}` : '';
+    console.log(`${task['id']}  [${task['status']}${category}${task['runnerActive'] ? ' • runner active' : ''}]  kind=${task['kind']}  completion=${completion['type'] ?? '?'}`);
     if (task['createdAt']) console.log(`  created: ${task['createdAt']}${task['completedAt'] ? `  completed: ${task['completedAt']}` : ''}`);
     if (task['notifiedAt']) console.log(`  notified: ${task['notifiedAt']}`);
 }

@@ -30,6 +30,7 @@ test('worker run store appends monotonic safe events and publishes worker topic 
         taskPreview: 'verify',
         startedAt: 100,
     });
+    assert.equal(getWorkerRunRecord(runId)?.statusCategory, 'running');
     appendWorkerRunEvent(runId, 'worker_run_attention', { attention: { kind: 'stalled' } });
     recordWorkerRunProgress(runId, [{ label: 'npm test', toolType: 'tool' }]);
 
@@ -44,6 +45,7 @@ test('worker run store appends monotonic safe events and publishes worker topic 
     const busEvents = replaySince(mark).filter(event => event.event.startsWith('worker_run_'));
     assert.equal(busEvents.length, 3);
     assert.ok(busEvents.every(event => event.topic === 'worker'));
+    assert.ok(busEvents.every(event => event.data['statusCategory'] === 'running'));
     assert.ok(!JSON.stringify(busEvents).includes('raw secret output'));
 });
 
@@ -64,7 +66,9 @@ test('worker run store keeps raw output out of safe list and get records', () =>
     const output = readWorkerRunOutput(runId, { offset: 4, limit: 6 });
 
     assert.equal(listed?.hasOutput, true);
+    assert.equal(listed?.statusCategory, 'succeeded');
     assert.equal(record?.hasOutput, true);
+    assert.equal(record?.statusCategory, 'succeeded');
     assert.equal('outputFile' in (record || {}), false);
     assert.ok(!JSON.stringify(record).includes('raw secret output'));
     assert.ok(!JSON.stringify(events).includes('raw secret output'));

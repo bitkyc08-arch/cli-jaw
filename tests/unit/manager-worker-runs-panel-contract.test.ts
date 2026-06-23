@@ -16,6 +16,7 @@ test('worker runs client consumes durable run APIs and unwraps safe envelopes', 
     assert.ok(client.includes('/api/orchestrate/worker-runs/${encodeURIComponent(runId)}/events'), 'client must read safe event timeline by runId');
     assert.ok(client.includes('/api/orchestrate/worker-runs/${encodeURIComponent(runId)}/output'), 'client must keep raw output behind explicit output API');
     assert.ok(client.includes('Promise<WorkerRunRecord[]>'), 'client must expose typed run records');
+    assert.ok(client.includes('statusCategory: RuntimeStatusCategory'), 'client must expose shared runtime status category');
     assert.ok(client.includes('return body.runs;'), 'client must unwrap { runs }');
     assert.ok(client.includes('return body.events;'), 'client must unwrap { events }');
     assert.ok(client.includes('return body.output;'), 'client must unwrap { output }');

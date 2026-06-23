@@ -1,4 +1,5 @@
 export type WorkerRunStatus = 'running' | 'done' | 'failed' | 'cancelled';
+export type RuntimeStatusCategory = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'orphaned';
 
 export type WorkerRunEventType =
     | 'worker_run_started'
@@ -21,6 +22,7 @@ export interface WorkerRunRecord {
     eventSeq: number;
     safeSummary?: string;
     hasOutput: boolean;
+    statusCategory: RuntimeStatusCategory;
 }
 
 export interface WorkerRunEvent {

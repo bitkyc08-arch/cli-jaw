@@ -1,4 +1,5 @@
 export type BackgroundTaskStatus = 'running' | 'complete' | 'failed' | 'cancelled' | 'orphaned';
+export type RuntimeStatusCategory = 'running' | 'succeeded' | 'failed' | 'cancelled' | 'orphaned';
 
 export type BackgroundTaskCompletion =
     | { type: 'exit' }
@@ -46,11 +47,14 @@ export interface BackgroundTaskRow {
     completedAt: string | null;
     notifiedAt: string | null;
     runnerActive?: boolean;
+    statusCategory?: RuntimeStatusCategory;
 }
 
 export interface BackgroundTaskRunningSnapshot {
     id: string;
     kind: string;
+    status?: BackgroundTaskStatus;
+    statusCategory?: RuntimeStatusCategory;
     startedAt?: string | null;
 }
 
@@ -58,6 +62,7 @@ export interface BackgroundTaskChangedSnapshot {
     id: string;
     kind: string;
     status: BackgroundTaskStatus;
+    statusCategory?: RuntimeStatusCategory;
 }
 
 export interface BackgroundTaskUpdate {
@@ -206,6 +211,14 @@ function isStatus(value: unknown): value is BackgroundTaskStatus {
         || value === 'orphaned';
 }
 
+function isStatusCategory(value: unknown): value is RuntimeStatusCategory {
+    return value === 'running'
+        || value === 'succeeded'
+        || value === 'failed'
+        || value === 'cancelled'
+        || value === 'orphaned';
+}
+
 function normalizeRunning(value: unknown): BackgroundTaskRunningSnapshot[] {
     if (!Array.isArray(value)) return [];
     return value.flatMap((entry) => {
@@ -213,6 +226,8 @@ function normalizeRunning(value: unknown): BackgroundTaskRunningSnapshot[] {
         return [{
             id: entry['id'],
             kind: entry['kind'],
+            ...(isStatus(entry['status']) ? { status: entry['status'] } : {}),
+            ...(isStatusCategory(entry['statusCategory']) ? { statusCategory: entry['statusCategory'] } : {}),
             ...(typeof entry['startedAt'] === 'string' || entry['startedAt'] === null ? { startedAt: entry['startedAt'] } : {}),
         }];
     });
@@ -221,7 +236,12 @@ function normalizeRunning(value: unknown): BackgroundTaskRunningSnapshot[] {
 function normalizeChanged(value: unknown): BackgroundTaskChangedSnapshot | null {
     if (!isObject(value)) return null;
     if (typeof value['id'] !== 'string' || typeof value['kind'] !== 'string' || !isStatus(value['status'])) return null;
-    return { id: value['id'], kind: value['kind'], status: value['status'] };
+    return {
+        id: value['id'],
+        kind: value['kind'],
+        status: value['status'],
+        ...(isStatusCategory(value['statusCategory']) ? { statusCategory: value['statusCategory'] } : {}),
+    };
 }
 
 export function normalizeBackgroundTaskUpdate(frame: unknown): BackgroundTaskUpdate | null {

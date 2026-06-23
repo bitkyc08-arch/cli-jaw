@@ -41,9 +41,10 @@ test('createTask emits bgtask_update with the new task in running[] and changed'
     const row = createTask({ kind: 'shell', spec: spec() });
     assert.equal(captured.length, 1);
     const data = captured[0]!.data;
-    const running = data['running'] as Array<{ id: string; kind: string }>;
+    const running = data['running'] as Array<{ id: string; kind: string; status: string; statusCategory: string }>;
     assert.ok(running.some((r) => r.id === row.id));
-    assert.deepEqual(data['changed'], { id: row.id, kind: 'shell', status: 'running' });
+    assert.ok(running.some((r) => r.id === row.id && r.status === 'running' && r.statusCategory === 'running'));
+    assert.deepEqual(data['changed'], { id: row.id, kind: 'shell', status: 'running', statusCategory: 'running' });
 });
 
 test('markTerminal emits once with terminal status; repeated transition emits nothing', () => {
@@ -52,7 +53,7 @@ test('markTerminal emits once with terminal status; repeated transition emits no
     assert.equal(markTerminal(row.id, 'complete', null), true);
     assert.equal(captured.length, 1);
     const data = captured[0]!.data;
-    assert.deepEqual(data['changed'], { id: row.id, kind: 'shell', status: 'complete' });
+    assert.deepEqual(data['changed'], { id: row.id, kind: 'shell', status: 'complete', statusCategory: 'succeeded' });
     const running = data['running'] as Array<{ id: string }>;
     assert.ok(!running.some((r) => r.id === row.id), 'terminal task left running[]');
 
@@ -67,12 +68,14 @@ test('markCancelled, markOrphaned, and markNotified emit monitor updates', () =>
     markCancelled(a.id);
     assert.equal(captured.length, 1);
     assert.equal((captured[0]!.data['changed'] as { status: string }).status, 'cancelled');
+    assert.equal((captured[0]!.data['changed'] as { statusCategory: string }).statusCategory, 'cancelled');
 
     const b = createTask({ kind: 'shell', spec: spec() });
     captured = [];
     markOrphaned(b.id);
     assert.equal(captured.length, 1);
     assert.equal((captured[0]!.data['changed'] as { status: string }).status, 'orphaned');
+    assert.equal((captured[0]!.data['changed'] as { statusCategory: string }).statusCategory, 'orphaned');
 
     const c = createTask({ kind: 'shell', spec: spec() });
     markTerminal(c.id, 'complete', null);
@@ -80,4 +83,5 @@ test('markCancelled, markOrphaned, and markNotified emit monitor updates', () =>
     markNotified(c.id);
     assert.equal(captured.length, 1, 'markNotified must refresh notifiedAt in monitors');
     assert.equal((captured[0]!.data['changed'] as { status: string }).status, 'complete');
+    assert.equal((captured[0]!.data['changed'] as { statusCategory: string }).statusCategory, 'succeeded');
 });

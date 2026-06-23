@@ -22,6 +22,8 @@ test('orchestrate routes expose worker-runs safe metadata, events, and bounded o
 test('worker-runs metadata store redacts output file and keeps raw text behind output route', () => {
     assert.match(storeSrc, /Omit<WorkerRunRecord, 'outputFile'>/);
     assert.match(storeSrc, /hasOutput: record\.outputBytes > 0/);
+    assert.match(storeSrc, /statusCategory: normalizeWorkerRunStatus\(record\.status\)/);
+    assert.match(storeSrc, /statusCategory: normalizeWorkerRunStatus\(record\.status\)/);
     assert.match(storeSrc, /readWorkerRunOutput/);
     assert.doesNotMatch(routeSrc, /run:\s*\{[^}]*outputFile/s);
 });

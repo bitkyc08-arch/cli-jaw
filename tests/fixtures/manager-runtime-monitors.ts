@@ -33,6 +33,7 @@ export function backgroundTaskFixture(
         completedAt: input.completedAt ?? null,
         notifiedAt: input.notifiedAt ?? null,
         runnerActive: input.runnerActive ?? false,
+        ...(input.statusCategory ? { statusCategory: input.statusCategory } : {}),
     };
 }
 

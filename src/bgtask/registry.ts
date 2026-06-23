@@ -5,6 +5,7 @@
 import { randomUUID } from 'node:crypto';
 import { db } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
+import { normalizeBgTaskStatus } from '../shared/runtime-observability.js';
 import {
     dedupKeyForSpec,
     type BgTaskRow,
@@ -89,13 +90,22 @@ function toRow(raw: RawRow): BgTaskRow {
 function emitBgtaskUpdate(changedId?: string): void {
     try {
         const running = (activeStmt.all() as RawRow[]).map(toRow).map((r) => ({
-            id: r.id, kind: r.kind, startedAt: r.startedAt,
+            id: r.id,
+            kind: r.kind,
+            status: r.status,
+            statusCategory: normalizeBgTaskStatus(r.status),
+            startedAt: r.startedAt,
         }));
         const changedRow = changedId ? getTask(changedId) : null;
         broadcast('bgtask_update', {
             running,
             changed: changedRow
-                ? { id: changedRow.id, kind: changedRow.kind, status: changedRow.status }
+                ? {
+                    id: changedRow.id,
+                    kind: changedRow.kind,
+                    status: changedRow.status,
+                    statusCategory: normalizeBgTaskStatus(changedRow.status),
+                }
                 : null,
         });
     } catch (err) {

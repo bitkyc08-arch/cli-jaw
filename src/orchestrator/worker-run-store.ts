@@ -1,6 +1,10 @@
 import fs from 'node:fs';
 import { join } from 'node:path';
 import { broadcast } from '../core/bus.js';
+import {
+    normalizeWorkerRunStatus,
+    type RuntimeStatusCategory,
+} from '../shared/runtime-observability.js';
 import type { SanitizedToolLogEntry } from '../shared/tool-log-sanitize.js';
 import { previewText, type WorkerProgressAttention, type WorkerRunState } from './worker-progress.js';
 import {
@@ -40,6 +44,7 @@ export interface WorkerRunRecord extends WorkerRunRecordInput {
 
 export interface PublicWorkerRunRecord extends Omit<WorkerRunRecord, 'outputFile'> {
     hasOutput: boolean;
+    statusCategory: RuntimeStatusCategory;
 }
 
 export interface WorkerRunEvent {
@@ -58,7 +63,11 @@ function eventsPath(runId: string): string { return join(workerRunDir(runId), 'e
 function toPublicRecord(record: WorkerRunRecord): PublicWorkerRunRecord {
     const { outputFile: _outputFile, ...safe } = record;
     void _outputFile;
-    return { ...safe, hasOutput: record.outputBytes > 0 };
+    return {
+        ...safe,
+        hasOutput: record.outputBytes > 0,
+        statusCategory: normalizeWorkerRunStatus(record.status),
+    };
 }
 
 function readRecord(runId: string): WorkerRunRecord | null {
@@ -90,6 +99,7 @@ function safeEventData(record: WorkerRunRecord, extra: Record<string, unknown>):
         agentId: record.agentId,
         employeeName: record.employeeName,
         status: record.status,
+        statusCategory: normalizeWorkerRunStatus(record.status),
         outputBytes: record.outputBytes,
         ...extra,
     };
