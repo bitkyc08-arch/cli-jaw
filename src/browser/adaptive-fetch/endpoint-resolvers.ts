@@ -254,11 +254,10 @@ function waybackCandidates(url: URL): CandidateUrl[] {
 function youtubeCandidates(url: URL): CandidateUrl[] {
     const videoUrl = youtubeVideoUrl(url);
     if (!videoUrl) return [];
-    return [{
-        label: 'youtube-oembed',
-        url: `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`,
-        source: 'public_endpoint',
-    }];
+    return [
+        { label: 'youtube-oembed', url: `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`, source: 'public_endpoint' },
+        { label: 'youtube-ytdlp', url: videoUrl, source: 'ytdlp' },
+    ];
 }
 
 function youtubeVideoUrl(url: URL): string {

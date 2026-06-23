@@ -7,6 +7,7 @@ import { appendAttempt, createAttemptTrace, summarizeAttempts } from './trace.js
 import { resolvePublicEndpointCandidates } from './endpoint-resolvers.js';
 import { fetchTextCandidate } from './fetcher.js';
 import { tlsFetch } from './tls-fetch.js';
+import { ytdlpMetadata, formatYtdlpEvidence } from './ytdlp-reader.js';
 import { fromFetchResult, fromUserSessionResult, fromHumanResolvedResult } from './reader-adapters.js';
 import { chooseBestReaderCandidate, scoreReaderCandidate } from './content-scorer.js';
 import { fetchThirdPartyReaderCandidate } from './third-party-readers.js';
@@ -96,6 +97,23 @@ export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Rec
 
     for (const candidate of candidateUrls) {
         let fetched: Record<string, unknown>;
+
+        if (candidate.source === 'ytdlp') {
+            try {
+                const meta = await ytdlpMetadata(candidate.url, { timeoutMs: options.timeoutMs });
+                if (meta) {
+                    const text = formatYtdlpEvidence(meta);
+                    fetched = { ok: true, status: 200, finalUrl: candidate.url, contentType: 'text/plain', text, headers: {}, evidence: ['ytdlp-metadata'], warnings: [] };
+                    appendAttempt(trace, { source: 'ytdlp', verdict: 'ok', url: candidate.url, reason: 'ytdlp-metadata' });
+                } else {
+                    appendAttempt(trace, { source: 'ytdlp', verdict: 'skip', url: candidate.url, reason: 'ytdlp-not-available' });
+                    continue;
+                }
+            } catch (error: unknown) {
+                appendAttempt(trace, { source: 'ytdlp', verdict: 'error', url: candidate.url, reason: (error as Error).message || 'ytdlp-error' });
+                continue;
+            }
+        } else {
         try {
             fetched = await fetchTextCandidate(candidate.url, {
                 maxBytes: options.maxBytes,
@@ -112,6 +130,7 @@ export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Rec
                 reason: (error as Error).message || 'fetch-candidate-error',
             });
             continue;
+        }
         }
         fetchedUrls.add((fetched['finalUrl'] as string) || candidate.url);
 
