@@ -23,8 +23,10 @@ assert.equal(packageLock.packages?.['']?.dependencies?.jawcode, undefined, 'pack
 assert.equal(packageLock.packages?.['']?.optionalDependencies?.jawcode, undefined, 'package-lock root must not pull optional jawcode by default');
 assert.equal(packageLock.packages?.['node_modules/jawcode'], undefined, 'package-lock must not include jawcode in the default install tree');
 assert.equal(packageLock.packages?.['node_modules/@jawcode-dev/natives'], undefined, 'package-lock must not include @jawcode-dev/natives in the default install tree');
+assert.equal(packageLock.packages?.['node_modules/bun'], undefined, 'package-lock must not include bun from JWC in the default install tree');
 assert.ok(runtimeSource.includes("'jawcode/sdk'"), 'jwc runtime must default to jawcode/sdk');
 assert.ok(!runtimeSource.includes("'jwc/sdk'"), 'jwc runtime must not default to jwc/sdk');
-assert.ok(runtimeSource.includes('npm installs do not include JWC by default'), 'jwc runtime must explain the npm default-install boundary');
+assert.ok(runtimeSource.includes('does not bundle JWC'), 'jwc runtime must explain that JWC is not bundled');
+assert.ok(runtimeSource.includes('JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js'), 'jwc runtime must show the install path env override');
 
-process.stdout.write('[jwc no-global] global jwc absent; npm default install excludes jawcode; runtime guidance present\n');
+process.stdout.write('[jwc no-global] global jwc absent; cli-jaw excludes bundled JWC and runtime guidance is present\n');

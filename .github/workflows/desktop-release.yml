@@ -34,7 +34,7 @@ jobs:
             script: dist:mac
             sidecar_platform: darwin
             sidecar_arch: arm64
-            sidecar_check_script: check:electron-dist-mac-jwc
+            sidecar_check_script: check:electron-dist-mac-no-jwc
             artifact_globs: |
               electron/dist/*.dmg
               electron/dist/*.zip
@@ -43,7 +43,7 @@ jobs:
             script: dist:win
             sidecar_platform: win32
             sidecar_arch: x64
-            sidecar_check_script: check:electron-dist-win-jwc
+            sidecar_check_script: check:electron-dist-win-no-jwc
             artifact_globs: |
               electron/dist/*.exe
               electron/dist/*.msi
@@ -53,7 +53,7 @@ jobs:
             script: dist:linux
             sidecar_platform: linux
             sidecar_arch: x64
-            sidecar_check_script: check:electron-dist-linux-jwc
+            sidecar_check_script: check:electron-dist-linux-no-jwc
             artifact_globs: |
               electron/dist/*.AppImage
               electron/dist/*.deb
@@ -105,7 +105,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
-      - name: Verify packaged app JWC
+      - name: Verify packaged app has no JWC payload
         run: npm run ${{ matrix.sidecar_check_script }}
 
       - name: Verify macOS app icons

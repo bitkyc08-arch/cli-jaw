@@ -13,7 +13,7 @@
 // The engine is loaded lazily by dynamic import so this module compiles before
 // the jwc package is linked (100 in flight). Resolution order:
 //   1. JWC_SDK_PATH env (absolute path to dist-node/sdk.js — dev/CI)
-//   2. "jawcode/sdk" package export (Electron sidecar or separately installed package path)
+//   2. "jawcode/sdk" package export (separately installed package path)
 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -46,7 +46,7 @@ interface EngineSdk {
 let sdkPromise: Promise<EngineSdk> | null = null;
 const DEFAULT_JWC_SDK_SPEC = 'jawcode/sdk';
 const JWC_INSTALL_HINT =
-    'cli-jaw npm installs do not include JWC by default. Use the Electron app with bundled JWC, install jawcode separately, or set JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js.';
+    'cli-jaw does not bundle JWC. Build or install jawcode separately, then set JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js (for example, /Users/jun/Developer/new/700_projects/jawcode/packages/jwc/dist-node/sdk.js).';
 
 function formatSdkLoadError(spec: string, err: unknown): Error {
     const detail = err instanceof Error ? err.message : String(err);

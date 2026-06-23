@@ -4,7 +4,7 @@ import { homedir, platform } from 'node:os';
 import { execSync } from 'node:child_process';
 import { app, dialog } from 'electron';
 
-const CLI_BINS = ['jaw', 'jwc'] as const;
+const CLI_BINS = ['jaw'] as const;
 
 const SYMLINK_DIR: Record<string, string> = {
   darwin: '/usr/local/bin',
@@ -66,7 +66,7 @@ export async function installCli(): Promise<{ ok: boolean; message: string }> {
   }
 
   if (plat === 'win32') {
-    return { ok: true, message: 'CLI is available via the Windows installer PATH entry. Open a new terminal window before running "jaw" or "jwc".' };
+    return { ok: true, message: 'CLI is available via the Windows installer PATH entry. Open a new terminal window before running "jaw".' };
   }
 
   const dir = SYMLINK_DIR[plat];
@@ -118,22 +118,22 @@ export async function installCli(): Promise<{ ok: boolean; message: string }> {
 
   const msg = [`Installed: ${installed.join(', ')}`];
   if (plat === 'linux') msg.push('Make sure ~/.local/bin is in your PATH.');
-  msg.push('You can now run "jaw" and "jwc" in any terminal.');
+  msg.push('You can now run "jaw" in any terminal.');
   return { ok: true, message: msg.join('\n') };
 }
 
 export async function promptInstallCli(): Promise<void> {
   if (!app.isPackaged) return;
   if (isCliInstalled()) return;
-  if (!getSidecarBinPath('jaw') || !getSidecarBinPath('jwc')) return;
+  if (!getSidecarBinPath('jaw')) return;
 
   const { response } = await dialog.showMessageBox({
     type: 'question',
     buttons: ['Skip', 'Install'],
     defaultId: 0,
     title: 'Install CLI Command',
-    message: 'Install "jaw" and "jwc" commands to your terminal?',
-    detail: 'This creates symlinks so you can run "jaw" and "jwc" from any terminal window. Existing terminal commands are not overwritten. You can skip this; the desktop app still runs from its bundled sidecar.',
+    message: 'Install "jaw" command to your terminal?',
+    detail: 'This creates a symlink so you can run "jaw" from any terminal window. Existing terminal commands are not overwritten. You can skip this; the desktop app still runs from its bundled sidecar.',
   });
 
   if (response === 1) {

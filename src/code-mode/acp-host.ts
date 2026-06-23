@@ -41,16 +41,10 @@ function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
         if (cmd) return { cmd, args: parts.slice(1) };
     }
     const candidates = [
-        // Electron packaged sidecar: .../server/dist/src/code-mode/acp-host.js -> .../server/bin/jwc
-        join(MODULE_DIR, '..', '..', '..', 'bin', 'jwc'),
-        // Source/tsx mode: .../src/code-mode/acp-host.ts -> repo/bin/jwc
-        join(MODULE_DIR, '..', '..', 'bin', 'jwc'),
-        // Electron/local-dev runtime: prefer an explicitly bundled or locally installed jawcode .bin before any stale global jwc shim. Plain npm installs do not include jawcode by default.
+        // External JWC runtime: prefer an explicitly installed package-local jawcode .bin before any stale global jwc shim. cli-jaw never bundles JWC.
         join(MODULE_DIR, '..', '..', '..', 'node_modules', '.bin', 'jwc'),
         join(MODULE_DIR, '..', '..', 'node_modules', '.bin', 'jwc'),
         join(process.cwd(), 'node_modules', '.bin', 'jwc'),
-        // CLI/server launched from repo root.
-        join(process.cwd(), 'bin', 'jwc'),
     ];
     for (const candidate of candidates) {
         if (existsSync(candidate)) return { cmd: candidate, args: ['--mode', 'acp'], binDir: dirname(candidate) };

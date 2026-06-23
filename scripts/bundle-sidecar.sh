@@ -4,11 +4,9 @@ set -euo pipefail
 PLATFORM="${1:?Usage: bundle-sidecar.sh <platform> <arch>}"
 ARCH="${2:?Usage: bundle-sidecar.sh <platform> <arch>}"
 NODE_VERSION="24.17.0"
-JAWCODE_VERSION="${CLI_JAW_ELECTRON_JAWCODE_VERSION:-1.0.9}"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIDECAR_DIR="$PROJECT_ROOT/electron/sidecar/server"
-JAWCODE_SRC="${CLI_JAW_LOCAL_JAWCODE:-}"
 
 install_locked_production_dependencies() {
   if [ -f package-lock.json ]; then
@@ -56,44 +54,7 @@ cp package-lock.json "$SIDECAR_DIR/package-lock.json" 2>/dev/null || true
 
 echo "Installing production dependencies..."
 cd "$SIDECAR_DIR"
-
-if [ -n "$JAWCODE_SRC" ]; then
-  if [ ! -f "$JAWCODE_SRC/package.json" ]; then
-    echo "ERROR: CLI_JAW_LOCAL_JAWCODE must point to a jawcode package directory with package.json" >&2
-    echo "       got: $JAWCODE_SRC" >&2
-    exit 1
-  fi
-  JAWCODE_SRC="$(cd "$JAWCODE_SRC" && pwd)"
-
-  BUN_BIN="${BUN_BIN:-bun}"
-  if ! command -v "$BUN_BIN" >/dev/null 2>&1; then
-    echo "ERROR: bun is required when CLI_JAW_LOCAL_JAWCODE is set" >&2
-    exit 1
-  fi
-
-  echo "Using local jawcode override: $JAWCODE_SRC"
-  echo "Building jawcode Node SDK..."
-  (cd "$JAWCODE_SRC" && "$BUN_BIN" run build:node)
-
-  echo "Packing jawcode local dependency..."
-  JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC" --pack-destination "$SIDECAR_DIR" --silent)")"
-
-  node "$PROJECT_ROOT/scripts/prepare-sidecar-package-json.cjs" \
-    --package-json "$SIDECAR_DIR/package.json" \
-    --remove-dependency jawcode
-  npm install --omit=dev --ignore-scripts
-  npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"
-  rm -f "$SIDECAR_DIR/$JAWCODE_TARBALL"
-else
-  echo "Installing Electron-only jawcode dependency: jawcode@$JAWCODE_VERSION"
-  install_locked_production_dependencies
-  npm install --omit=dev --ignore-scripts "jawcode@$JAWCODE_VERSION"
-fi
-
-if [ ! -f "$SIDECAR_DIR/node_modules/jawcode/package.json" ]; then
-  echo "ERROR: jawcode dependency did not resolve inside sidecar" >&2
-  exit 1
-fi
+install_locked_production_dependencies
 
 echo "Pruning frontend-only dependencies..."
 PRUNE_PKGS=(
@@ -157,20 +118,6 @@ echo "Verifying better-sqlite3 opens with bundled Node..."
   exit 1
 }
 
-echo "Verifying jawcode SDK import with bundled Node..."
-if "$NODE_BIN" --input-type=module <<'NODE'
-const sdk = await import("jawcode/sdk");
-if (typeof sdk.createAgentSession !== "function") {
-  throw new Error("missing createAgentSession");
-}
-NODE
-then
-  echo "  jawcode SDK OK"
-else
-  echo "ERROR: jawcode SDK failed to import with bundled Node"
-  exit 1
-fi
-
 echo "Cleaning up Node extract..."
 rm -rf "/tmp/${NODE_PKG}" /tmp/node-sidecar.zip 2>/dev/null || true
 
@@ -190,11 +137,6 @@ if [[ "$PLATFORM" == "win32" ]]; then
 set "DIR=%~dp0.."
 "%DIR%\node.exe" "%DIR%\dist\bin\cli-jaw.js" %*
 SHIM
-  cat > "$SIDECAR_DIR/bin/jwc.cmd" << 'SHIM'
-@echo off
-set "DIR=%~dp0.."
-"%DIR%\node.exe" "%DIR%\node_modules\jawcode\bin\jwc.js" %*
-SHIM
 else
   cat > "$SIDECAR_DIR/bin/jaw" << 'SHIM'
 #!/bin/sh
@@ -202,15 +144,9 @@ DIR="$(cd "$(dirname "$0")/.." && pwd)"
 exec "$DIR/node" "$DIR/dist/bin/cli-jaw.js" "$@"
 SHIM
   chmod +x "$SIDECAR_DIR/bin/jaw"
-  cat > "$SIDECAR_DIR/bin/jwc" << 'SHIM'
-#!/bin/sh
-DIR="$(cd "$(dirname "$0")/.." && pwd)"
-exec "$DIR/node" "$DIR/node_modules/jawcode/bin/jwc.js" "$@"
-SHIM
-  chmod +x "$SIDECAR_DIR/bin/jwc"
 fi
 
-node "$PROJECT_ROOT/scripts/check-electron-sidecar-jwc.cjs" --server-root "$SIDECAR_DIR"
+node "$PROJECT_ROOT/scripts/check-electron-sidecar-no-jwc.cjs" --server-root "$SIDECAR_DIR"
 
 echo "=== Sidecar ready ==="
 du -sh "$SIDECAR_DIR"

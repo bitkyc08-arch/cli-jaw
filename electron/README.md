@@ -65,17 +65,12 @@ npm run sidecar:bundle
 - copies `dist/`, `public/`, `package.json`, and lockfile into
   `electron/sidecar/server`,
 - installs production dependencies with scripts disabled from the copied lockfile,
-- installs `jawcode@1.0.9` only into the Electron sidecar by default, keeping
-  plain `npm install cli-jaw` free of the JWC native payload,
-- optionally packs and installs a local `jawcode` package only when
-  `CLI_JAW_LOCAL_JAWCODE=/absolute/path/to/jawcode/packages/jwc` is set,
+- does not install JWC, `jawcode`, `@jawcode-dev`, `@oven`, or `bun`; users who
+  select JWC must install/build jawcode separately and set `JWC_SDK_PATH`,
 - prunes frontend-only packages,
 - rebuilds `better-sqlite3`,
 - creates `bin/jaw` or `bin/jaw.cmd` to launch `dist/bin/cli-jaw.js`,
-- creates `bin/jwc` or `bin/jwc.cmd` to launch the bundled
-  `jawcode/bin/jwc.js`,
-- verifies the staging sidecar can import `jawcode/sdk` and contains the
-  `json5`, `strip-ansi`, and `markit-ai` runtime dependencies,
+- verifies the staging sidecar contains no bundled JWC payload,
 - optionally copies the native `jaw-claude-i` helper when available.
 
 `electron/src/main/lib/jaw-spawn.ts` searches the bundled sidecar first in
@@ -94,7 +89,7 @@ npm run build:frontend
 npm run sidecar:bundle
 npm --prefix electron run build
 CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac
-npm run check:electron-dist-mac-jwc
+npm run check:electron-dist-mac-no-jwc
 npm run check:app-icons
 ```
 

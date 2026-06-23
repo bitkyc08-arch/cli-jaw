@@ -146,8 +146,8 @@ checks.push(runPackageContentsCheck);
 checks.push(() => run('cli bin link contract', process.execPath, ['scripts/check-cli-bin-links.cjs'], {
   skip: existsSync('dist/bin/cli-jaw.js') ? '' : 'dist build output not available',
 }));
-checks.push(() => run('electron staged sidecar JWC contract', npm, ['run', 'check:electron-sidecar-jwc'], {
-  skip: existsSync('electron/sidecar/server/node_modules/jawcode/package.json') ? '' : 'staged sidecar not bundled',
+checks.push(() => run('electron staged sidecar no-JWC contract', npm, ['run', 'check:electron-sidecar-no-jwc'], {
+  skip: existsSync('electron/sidecar/server/package.json') ? '' : 'staged sidecar not bundled',
 }));
 checks.push(() => run('app icon asset contract', npm, ['run', 'check:app-icons']));
 

@@ -483,7 +483,7 @@ test('SAF-004i: install risk gate covers fresh-machine installer regressions', (
     assert.ok(gateSrc.includes("npm, ['pack', '--dry-run', '--json']"), 'gate should verify npm package contents');
     assert.ok(gateSrc.includes('scripts/postinstall-guard.cjs'), 'gate should ensure postinstall guard is packed');
     assert.ok(gateSrc.includes('scripts/check-cli-bin-links.cjs'), 'gate should syntax-check the CLI bin link verifier');
-    assert.ok(gateSrc.includes('check:electron-sidecar-jwc'), 'gate should run the staged Electron JWC checker when sidecar artifacts exist');
+    assert.ok(gateSrc.includes('check:electron-sidecar-no-jwc'), 'gate should run the staged Electron no-JWC checker when sidecar artifacts exist');
     assert.ok(gateSrc.includes('check:app-icons'), 'gate should run packaged app icon asset checks');
     assert.ok(gateSrc.includes('scripts/require-release-evidence.mjs'), 'gate should ensure publish-time release evidence guard is packed');
     assert.ok(gateSrc.includes("'public/public/'"), 'gate should reject nested Vite publicDir artifacts');

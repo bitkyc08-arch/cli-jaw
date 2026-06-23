@@ -29,7 +29,7 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
     const pkg = read('package.json');
 
     assert.ok(
-        pkg.includes('"electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run electron:resign:mac && npm run check:electron-dist-mac-jwc && npm run check:app-icons"'),
+        pkg.includes('"electron:dist:mac": "npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run electron:resign:mac && npm run check:electron-dist-mac-no-jwc && npm run check:app-icons"'),
         'electron:dist:mac must rebuild assets, bundle the sidecar, package the shell, and verify the final app before success',
     );
     assert.ok(
@@ -37,45 +37,45 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
         'sidecar:bundle must assemble the Node.js sidecar for local mac packaging',
     );
     assert.ok(
-        pkg.includes('"check:electron-sidecar-jwc": "node scripts/check-electron-sidecar-jwc.cjs"'),
-        'package scripts must expose a staging sidecar JWC validator',
+        pkg.includes('"check:electron-sidecar-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs"'),
+        'package scripts must expose a staging sidecar no-JWC validator',
     );
     assert.ok(
-        pkg.includes('"check:electron-dist-mac-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server"'),
-        'package scripts must expose a final macOS app JWC validator',
+        pkg.includes('"check:electron-dist-mac-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server"'),
+        'package scripts must expose a final macOS app no-JWC validator',
     );
     assert.ok(
-        pkg.includes('"check:electron-dist-win-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/win-unpacked/resources/server"'),
-        'package scripts must expose a final Windows app JWC validator',
+        pkg.includes('"check:electron-dist-win-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs --server-root electron/dist/win-unpacked/resources/server"'),
+        'package scripts must expose a final Windows app no-JWC validator',
     );
     assert.ok(
-        pkg.includes('"check:electron-dist-linux-jwc": "node scripts/check-electron-sidecar-jwc.cjs --server-root electron/dist/linux-unpacked/resources/server"'),
-        'package scripts must expose a final Linux app JWC validator',
+        pkg.includes('"check:electron-dist-linux-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs --server-root electron/dist/linux-unpacked/resources/server"'),
+        'package scripts must expose a final Linux app no-JWC validator',
     );
     assert.ok(pkg.includes('"check:app-icons": "node scripts/check-app-icon-assets.cjs"'), 'package scripts must expose app icon validation');
 });
 
-test('Electron sidecar bundle installs jawcode as a real package and verifies jwc', () => {
+test('Electron sidecar bundle excludes JWC payload and verifies the absence contract', () => {
     const script = read('scripts/bundle-sidecar.sh');
+    const checker = read('scripts/check-electron-sidecar-no-jwc.cjs');
     const pkg = JSON.parse(read('package.json'));
 
     assert.equal(pkg.dependencies?.jawcode, undefined, 'plain npm installs must not install jawcode by default');
     assert.equal(pkg.optionalDependencies?.jawcode, undefined, 'jawcode must not be optional because optional dependencies install by default');
-    assert.ok(script.includes('NODE_VERSION="24.17.0"'), 'sidecar must bundle a Node runtime compatible with Electron-only jawcode');
-    assert.ok(script.includes('JAWCODE_VERSION="${CLI_JAW_ELECTRON_JAWCODE_VERSION:-1.0.9}"'), 'sidecar must pin the Electron-only jawcode version with an explicit release override');
-    assert.ok(script.includes('CLI_JAW_LOCAL_JAWCODE'), 'local jawcode override must be explicit, not an implicit sibling checkout');
-    assert.ok(script.includes('Installing Electron-only jawcode dependency: jawcode@$JAWCODE_VERSION'), 'release sidecar bundle must install jawcode only inside Electron sidecar');
-    assert.ok(script.includes('npm install --omit=dev --ignore-scripts "jawcode@$JAWCODE_VERSION"'), 'Electron sidecar must install the pinned jawcode package after root production deps');
+    assert.ok(script.includes('NODE_VERSION="24.17.0"'), 'sidecar must bundle a Node runtime');
     assert.ok(script.includes('npm ci --omit=dev --ignore-scripts'), 'release sidecar bundle must prefer lockfile-based production installs');
-    assert.ok(script.includes('"$BUN_BIN" run build:node'), 'sidecar bundle must still build jawcode dist-node for explicit local overrides');
-    assert.ok(script.includes('JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC"'), 'explicit local override must npm-pack jawcode before installation');
-    assert.ok(script.includes('prepare-sidecar-package-json.cjs'), 'explicit local override must remove registry jawcode before tarball install');
-    assert.ok(script.includes('--remove-dependency jawcode'), 'explicit local override must avoid registry jawcode plus tarball double install');
-    assert.ok(script.includes('npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"'), 'explicit local override must install jawcode from the packed tarball');
+    assert.equal(script.includes('CLI_JAW_LOCAL_JAWCODE'), false, 'sidecar bundle must not have a local jawcode override');
+    assert.equal(script.includes('CLI_JAW_ELECTRON_JAWCODE_VERSION'), false, 'sidecar bundle must not have an Electron jawcode install override');
+    assert.equal(script.includes('jawcode@$JAWCODE_VERSION'), false, 'Electron sidecar must not install jawcode');
+    assert.equal(script.includes('jawcode/sdk'), false, 'Electron sidecar must not import jawcode/sdk during bundling');
+    assert.equal(script.includes('bin/jwc'), false, 'Electron sidecar must not create a jwc shim');
     assert.equal(script.includes('../jawcode/packages/jwc'), false, 'release sidecar bundle must not depend on an unpinned sibling jawcode checkout');
     assert.equal(script.includes('npm install --omit=dev --ignore-scripts --install-links'), false, 'sidecar bundle must not rely on linked local file dependencies');
     assert.equal(script.includes('"$SIDECAR_DIR/node_modules/jawcode/"'), false, 'sidecar bundle must not rsync jawcode directly into runtime node_modules');
-    assert.ok(script.includes('scripts/check-electron-sidecar-jwc.cjs'), 'sidecar bundle must run the JWC validator after creating shims');
+    assert.ok(script.includes('scripts/check-electron-sidecar-no-jwc.cjs'), 'sidecar bundle must run the no-JWC validator after creating shims');
+    for (const token of ['jawcode package', '@jawcode-dev scope', '@oven scope', 'bun package', 'jwc shim']) {
+        assert.ok(checker.includes(token), `no-JWC validator must reject ${token}`);
+    }
 });
 
 test('Electron CLI installer rejects incomplete or partially installed sidecar commands', () => {
@@ -88,7 +88,10 @@ test('Electron CLI installer rejects incomplete or partially installed sidecar c
     assert.ok(installCli.includes('Incomplete sidecar bundle'), 'installCli must report incomplete sidecar bundles explicitly');
     assert.ok(installCli.includes('if (failed.length > 0)'), 'installCli must fail when any symlink attempt fails after installation starts');
     assert.ok(installCli.includes('Failed to install CLI links'), 'installCli must not present partial symlink failures as success');
-    assert.ok(installCli.includes("if (!getSidecarBinPath('jaw') || !getSidecarBinPath('jwc')) return"), 'install prompt must require both jaw and jwc before offering install');
+    assert.ok(installCli.includes("const CLI_BINS = ['jaw'] as const"), 'Electron terminal installer must only install jaw');
+    assert.ok(installCli.includes("if (!getSidecarBinPath('jaw')) return"), 'install prompt must require the jaw sidecar shim before offering install');
+    assert.equal(installCli.includes("getSidecarBinPath('jwc')"), false, 'install prompt must not require jwc');
+    assert.equal(installCli.includes('and "jwc"'), false, 'installer copy must not claim jwc is installed');
     assert.ok(installCli.includes("buttons: ['Skip', 'Install']"), 'install prompt must make the non-invasive option first');
     assert.ok(installCli.includes('Existing terminal commands are not overwritten'), 'install prompt must disclose that existing commands are protected');
     assert.ok(installCli.includes("if (response === 1)"), 'install prompt must only install after the explicit Install choice');

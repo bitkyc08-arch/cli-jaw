@@ -73,10 +73,10 @@ test('desktop release workflow uploads OS matrix artifacts only after GitHub rel
     assert.ok(workflow.includes('node-version: 24'), 'desktop workflow host Node must match the Node 24 sidecar release line');
     assert.ok(workflow.includes('npm --prefix electron run typecheck'), 'desktop workflow must typecheck Electron shell');
     assert.ok(workflow.includes('npm --prefix electron run build'), 'desktop workflow must build Electron shell');
-    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-mac-jwc'), 'desktop workflow must bind macOS to the mac packaged sidecar verifier');
-    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-win-jwc'), 'desktop workflow must bind Windows to the Windows packaged sidecar verifier');
-    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-linux-jwc'), 'desktop workflow must bind Linux to the Linux packaged sidecar verifier');
-    assert.ok(workflow.includes('Verify packaged app JWC'), 'desktop workflow must verify packaged app JWC before upload on every OS');
+    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-mac-no-jwc'), 'desktop workflow must bind macOS to the mac packaged sidecar no-JWC verifier');
+    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-win-no-jwc'), 'desktop workflow must bind Windows to the Windows packaged sidecar no-JWC verifier');
+    assert.ok(workflow.includes('sidecar_check_script: check:electron-dist-linux-no-jwc'), 'desktop workflow must bind Linux to the Linux packaged sidecar no-JWC verifier');
+    assert.ok(workflow.includes('Verify packaged app has no JWC payload'), 'desktop workflow must verify packaged app excludes JWC before upload on every OS');
     assert.ok(workflow.includes('npm run ${{ matrix.sidecar_check_script }}'), 'desktop workflow must run the OS-specific final sidecar verifier');
     assert.ok(workflow.includes('Verify macOS app icons'), 'desktop workflow must validate macOS app icons separately');
     assert.ok(workflow.includes("if: matrix.platform == 'macos'"), 'macOS icon verification must not run on Windows/Linux matrix legs');
