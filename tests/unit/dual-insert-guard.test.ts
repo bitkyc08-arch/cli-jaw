@@ -98,7 +98,8 @@ test('DI-006: tgOrchestrate passes _skipInsert: true to orchestrateAndCollect', 
 
 test('DI-007: processQueue passes _skipInsert: true to orchestrate calls', () => {
     const pqStart = queueSrc.indexOf('async function processQueue');
-    const pqBlock = queueSrc.slice(pqStart, pqStart + 3000);
+    const pqEnd = queueSrc.indexOf('function purgeQueueOnStop', pqStart);
+    const pqBlock = queueSrc.slice(pqStart, pqEnd > 0 ? pqEnd : pqStart + 5000);
     // All 3 orchestrate calls in processQueue must have _skipInsert
     assert.ok(pqBlock.includes("orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })"), 'processQueue orchestrateReset');
     assert.ok(pqBlock.includes("orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })"), 'processQueue orchestrateContinue');
@@ -120,7 +121,8 @@ test('DI-008: steerAgent passes _skipInsert: true to orchestrate calls', () => {
 
 test('DI-009: processQueue still has its own insertMessage.run (not removed)', () => {
     const pqStart = queueSrc.indexOf('async function processQueue');
-    const pqBlock = queueSrc.slice(pqStart, pqStart + 3000);
+    const pqEnd = queueSrc.indexOf('function purgeQueueOnStop', pqStart);
+    const pqBlock = queueSrc.slice(pqStart, pqEnd > 0 ? pqEnd : pqStart + 5000);
     assert.ok(
         pqBlock.includes("deps.insertMessage.run('user', combined, source, ''"),
         'processQueue must retain its own insertMessage call',
