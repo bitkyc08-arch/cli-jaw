@@ -104,6 +104,8 @@ test('SSP-007: /search is a routing command, not a provider implementation', { s
     assert.match(searchSkill, /discover candidate URLs/);
     assert.match(searchSkill, /Slash-specific report fields/);
     assert.doesNotMatch(searchSkill, /Final report fields:/);
+    assert.doesNotMatch(searchSkill, /focused_queries|search_route_used|candidate_urls|original_pages_opened_or_fetched/);
+    assert.doesNotMatch(searchSkill, /browse_escalation_decision|final_answer|evidence_status|remaining_uncertainty/);
 });
 
 test('SSP-008: search skill routes public source classes to browser reader policy', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
