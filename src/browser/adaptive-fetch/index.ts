@@ -9,9 +9,14 @@ import { fetchTextCandidate } from './fetcher.js';
 import { fromFetchResult, fromUserSessionResult, fromHumanResolvedResult } from './reader-adapters.js';
 import { chooseBestReaderCandidate, scoreReaderCandidate } from './content-scorer.js';
 import { fetchThirdPartyReaderCandidate } from './third-party-readers.js';
-import { BrowserRequiredError } from './browser-runtime.js';
-import { collectBrowserCandidate, collectDefuddleCandidate, collectNetworkJsonCandidates } from './browser-escalation.js';
-import { fromBrowserResult, fromNetworkCandidate } from './reader-adapters.js';
+import {
+    collectBrowserMetadataCandidate,
+    collectBrowserStructuredResultCandidates,
+    collectDefuddleCandidate,
+    collectNetworkJsonCandidates,
+} from './browser-escalation.js';
+import { tryBrowserEscalation } from './browser-flow.js';
+import { fromBrowserResult, fromMetadataResult, fromNetworkCandidate } from './reader-adapters.js';
 import { classifyChallengeType } from './challenge-detector.js';
 import { shouldTryUserSession, navigateInUserSession } from './browser-session.js';
 import { humanResolve } from './human-loop.js';
@@ -232,6 +237,11 @@ export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Rec
     const browserResult = await tryBrowserEscalation(parsed.href, options, deps, trace, detectedChallenge);
     if (browserResult) {
         readerCandidates.push(fromBrowserResult(browserResult));
+        const metadataCandidate = collectBrowserMetadataCandidate(browserResult);
+        if (metadataCandidate) readerCandidates.push(fromMetadataResult(metadataCandidate));
+        for (const structuredCandidate of collectBrowserStructuredResultCandidates(browserResult)) {
+            readerCandidates.push(fromBrowserResult(structuredCandidate));
+        }
         const defuddleCandidate = collectDefuddleCandidate(browserResult);
         if (defuddleCandidate) readerCandidates.push(fromBrowserResult(defuddleCandidate));
         for (const networkCandidate of collectNetworkJsonCandidates(browserResult)) {
@@ -471,61 +481,6 @@ function shouldReturnWithoutBrowser(best: ScoredResult | null, options: Adaptive
     if (options.browserMode === 'required') return false;
     if (options.browserMode === 'never') return Boolean(best);
     return Boolean(best && best.verdict === 'strong_ok');
-}
-
-async function tryBrowserEscalation(url: string, options: AdaptiveFetchOptions, deps: Record<string, unknown>, trace: AttemptTrace, challengeInfo: ChallengeInfo | null): Promise<Record<string, unknown> | null> {
-    if (options.browserMode === 'never') return null;
-    try {
-        const result = await collectBrowserCandidate(url, {
-            browserDeps: deps,
-            browserSession: options.browserSession as 'none' | 'isolated' | 'existing',
-            timeoutMs: options.timeoutMs,
-            selector: options.selector,
-            allowPrivateNetwork: options.allowPrivateNetwork,
-            challengeInfo,
-        });
-        const scored = scoreReaderCandidate(fromBrowserResult(result));
-        appendAttempt(trace, {
-            source: 'browser',
-            verdict: scored.verdict,
-            url: result['finalUrl'] as string,
-            status: result['status'] as number,
-            reason: `score:${scored.score}`,
-        });
-        const defuddleCandidate = collectDefuddleCandidate(result);
-        if (defuddleCandidate) {
-            const scoredDefuddle = scoreReaderCandidate(fromBrowserResult(defuddleCandidate));
-            appendAttempt(trace, {
-                source: 'browser',
-                verdict: scoredDefuddle.verdict,
-                url: defuddleCandidate['finalUrl'] as string,
-                status: defuddleCandidate['status'] as number,
-                reason: `score:${scoredDefuddle.score}`,
-            });
-        }
-        for (const networkCandidate of collectNetworkJsonCandidates(result)) {
-            const scoredNetwork = scoreReaderCandidate(fromNetworkCandidate(networkCandidate));
-            appendAttempt(trace, {
-                source: 'network_api',
-                verdict: scoredNetwork.verdict,
-                url: networkCandidate['finalUrl'] as string,
-                status: networkCandidate['status'] as number,
-                reason: `score:${scoredNetwork.score}`,
-            });
-        }
-        return result;
-    } catch (error: unknown) {
-        if (error instanceof BrowserRequiredError || (error as Record<string, unknown>)?.['code'] === 'browser_required') {
-            appendAttempt(trace, {
-                source: 'browser',
-                verdict: 'browser_required',
-                url,
-                reason: (error as Error).message,
-            });
-            return null;
-        }
-        throw error;
-    }
 }
 
 function hasUnresolvedChallenge(candidates: ReaderCandidate[], best: ScoredResult | null): boolean {
