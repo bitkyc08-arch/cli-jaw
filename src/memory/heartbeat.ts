@@ -5,7 +5,9 @@ import { basename, dirname } from 'path';
 import crypto from 'crypto';
 import { settings, HEARTBEAT_JOBS_PATH, loadHeartbeatFile, saveHeartbeatFile } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { isAgentBusy, messageQueue } from '../agent/spawn.js';
 import { orchestrateAndCollect } from '../orchestrator/collect.js';
+import { hasPendingWorkerReplays } from '../orchestrator/worker-registry.js';
 import { broadcast } from '../core/bus.js';
 import { sendChannelOutput } from '../messaging/send.js';
 import { insertHeartbeatAnchor } from '../core/db.js';
@@ -26,7 +28,7 @@ const heartbeatTimers = new Map<string, ReturnType<typeof setTimeout>>();
 const heartbeatCronSlots = new Map<string, string>();
 let heartbeatWatcher: fs.FSWatcher | null = null;
 let heartbeatBusy = false;
-type HeartbeatPendingReason = 'busy' | 'pabcd_active';
+type HeartbeatPendingReason = 'busy' | 'pabcd_active' | 'agent_busy';
 type HeartbeatPendingPolicy = 'defer';
 interface PendingHeartbeatJob {
     job: Record<string, any>;
@@ -36,10 +38,12 @@ interface PendingHeartbeatJob {
 const pendingJobs: PendingHeartbeatJob[] = [];
 
 function pendingSnapshot(reason?: HeartbeatPendingReason, policy?: HeartbeatPendingPolicy) {
-    const deferredPending = pendingJobs.filter(item => item.reason === 'pabcd_active').length;
+    const deferredPending = pendingJobs.filter(item => item.policy === 'defer').length;
+    const agentBusyPending = pendingJobs.filter(item => item.reason === 'agent_busy').length;
     return {
         pending: pendingJobs.length,
         deferredPending,
+        agentBusyPending,
         ...(reason ? { reason } : {}),
         ...(policy ? { policy } : {}),
     };
@@ -108,6 +112,11 @@ async function runHeartbeatJob(job: Record<string, any>) {
         }
         return;
     }
+    if (isAgentBusy()) {
+        const queued = queueHeartbeatJob(job, 'agent_busy', 'defer');
+        console.log(`[heartbeat:${job["name"]}] ${queued ? 'deferred' : 'already deferred'} during active main agent (${pendingJobs.length} pending)`);
+        return;
+    }
     heartbeatBusy = true;
     try {
         const schedule = normalizeHeartbeatSchedule(job["schedule"]);
@@ -159,6 +168,7 @@ async function runHeartbeatJob(job: Record<string, any>) {
 
 export async function drainPending() {
     if (pendingJobs.length === 0) return;
+    if (isAgentBusy() || messageQueue.length > 0 || hasPendingWorkerReplays()) return;
     const next = pendingJobs.shift()?.job;
     if (!next) return;
     broadcast('heartbeat_pending', pendingSnapshot());

@@ -433,7 +433,7 @@ Advanced memory runtime의 entry point. FTS5 인덱스, search routing, task sna
 
 ### heartbeat.ts / heartbeat-schedule.ts
 
-주기 작업과 스케줄 파싱/실행을 담당한다. 현재 소스 오브 트루스는 `~/.cli-jaw/heartbeat.json`이며, schedule은 `every`/`cron` + `timeZone`을 지원한다. busy 중첩 시 `pendingJobs` 큐로 밀어두고, 프롬프트 앞에 memory search 지시를 자동 주입한다.
+주기 작업과 스케줄 파싱/실행을 담당한다. 현재 소스 오브 트루스는 `~/.cli-jaw/heartbeat.json`이며, schedule은 `every`/`cron` + `timeZone`을 지원한다. PABCD 활성, heartbeat 중첩, main agent busy 상태에서는 `pendingJobs` 큐로 밀어두고, user message queue가 먼저 비워진 뒤 heartbeat pending을 drain한다. 프롬프트 앞에는 memory search 지시를 자동 주입한다.
 
 ### indexing.ts / keyword-expand.ts / bootstrap.ts
 

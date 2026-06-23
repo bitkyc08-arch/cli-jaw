@@ -195,6 +195,14 @@ export function createQueueController(deps: QueueDeps): QueueController {
         };
     }
 
+    function drainHeartbeatPendingSoon(): void {
+        queueMicrotask(() => {
+            import('../../memory/heartbeat.js')
+                .then(({ drainPending }) => drainPending())
+                .catch(err => console.error('[processQueue:heartbeat-drain]', (err as Error).message));
+        });
+    }
+
     function removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number } {
         const idx = messageQueue.findIndex(item => item.id === id);
         if (idx === -1) return { removed: null, pending: messageQueue.length };
@@ -236,6 +244,15 @@ export function createQueueController(deps: QueueDeps): QueueController {
                     .then(({ drainPendingReplays }) => drainPendingReplays({ origin: 'system' }))
                     .catch(err => console.error('[processQueue:drain]', (err as Error).message));
             });
+        }
+        if (
+            !deps.isSpawnBusy()
+            && !deps.hasBlockingWorkers()
+            && !deps.hasPendingWorkerReplays()
+            && messageQueue.length === 0
+            && !queueHoldId
+        ) {
+            drainHeartbeatPendingSoon();
         }
 
         if (

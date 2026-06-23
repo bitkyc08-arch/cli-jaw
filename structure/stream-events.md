@@ -98,7 +98,7 @@ SSE behavior:
 | `agent_updated` | `Employee \| {}` | `routes/employees.ts`, `core/employees.ts`; 직원 수정/reset |
 | `agent_deleted` | `{ id }` | `routes/employees.ts`; 직원 삭제 |
 | `memory_status` | `buildMemorySyncPayload(reason)` | `routes/jaw-memory.ts`; memory sidebar refresh |
-| `heartbeat_pending` | `{ pending, deferredPending, reason?, policy?, jobId?, jobName? }` | `memory/heartbeat.ts`; heartbeat busy/defer queue |
+| `heartbeat_pending` | `{ pending, deferredPending, agentBusyPending, reason?, policy?, jobId?, jobName? }` | `memory/heartbeat.ts`; heartbeat busy/defer queue. `reason` may be `busy`, `pabcd_active`, or `agent_busy` |
 | `system_notice` | `{ code, text }` | `core/compact.ts`, `lifecycle-handler.ts`; compact/session refresh notice |
 | `alert_escalation` | `{ message?, reason?, ... }` | `agent/alert-escalation.ts`; repeated failure / capacity fallback escalation |
 | `settings_change` | `{ ... }` | settings/project/workspace refresh signal |
