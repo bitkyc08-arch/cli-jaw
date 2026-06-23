@@ -393,13 +393,14 @@ test('S-026d: claude-e is optional so npm install works without Cargo', () => {
     assert.equal(lock.packages?.['node_modules/claude-e']?.optional, true, 'lockfile package entry should mark claude-e optional');
 });
 
-test('S-026e: ai-e is optional so cli-jaw can install the PTY runtime helper', () => {
+test('S-026e: ai-e is not bundled — use jaw provider install ai-e', () => {
     const pkg = JSON.parse(readFileSync(join(projectRoot, 'package.json'), 'utf8'));
     const lock = JSON.parse(readFileSync(join(projectRoot, 'package-lock.json'), 'utf8'));
-    assert.equal(pkg.dependencies?.['@bitkyc08/ai-e'], undefined, 'ai-e should not be a hard dependency');
-    assert.equal(pkg.optionalDependencies?.['@bitkyc08/ai-e'], 'latest', 'ai-e should track latest like claude-e');
-    assert.equal(lock.packages?.['']?.optionalDependencies?.['@bitkyc08/ai-e'], 'latest', 'lockfile root should mark ai-e optional latest');
-    assert.equal(lock.packages?.['node_modules/@bitkyc08/ai-e']?.optional, true, 'lockfile package entry should mark ai-e optional');
+    assert.equal(pkg.dependencies?.['@bitkyc08/ai-e'], undefined, 'ai-e must not be a hard dependency');
+    assert.equal(pkg.optionalDependencies?.['@bitkyc08/ai-e'], undefined, 'ai-e must not be an optional dependency — use jaw provider install');
+    assert.equal(lock.packages?.['']?.dependencies?.['@bitkyc08/ai-e'], undefined, 'lockfile root must not have ai-e in dependencies');
+    assert.equal(lock.packages?.['']?.optionalDependencies?.['@bitkyc08/ai-e'], undefined, 'lockfile root must not have ai-e in optionalDependencies');
+    assert.equal(lock.packages?.['node_modules/@bitkyc08/ai-e'], undefined, 'lockfile must not include ai-e in the install tree');
 });
 
 test('S-027: install.sh verifies chromium via --version not just command -v', () => {

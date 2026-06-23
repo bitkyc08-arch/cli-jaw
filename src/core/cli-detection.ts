@@ -1,8 +1,10 @@
 import fs from 'fs';
 import { execFileSync } from 'child_process';
+import { homedir } from 'os';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { CLI_KEYS, CLI_REGISTRY } from '../cli/registry.js';
+import { resolveHomePath } from './path-expand.js';
 import { detectCliBinary, listCliBinaryCandidates, selectSpawnableCliPath, type CliDetection } from './cli-detect.js';
 
 function findPackageJson(): string {
@@ -136,7 +138,12 @@ function detectClaudeE(): CliDetection {
 
 function getAiEPackageCandidates(): string[] {
     const helper = nativeExecutableName('ai-e');
+    const jawHome = process.env['CLI_JAW_HOME']
+        ? resolveHomePath(process.env['CLI_JAW_HOME'], homedir())
+        : join(homedir(), '.cli-jaw');
     const candidates = [
+        join(jawHome, 'providers', 'ai-e', 'node_modules', '@bitkyc08', 'ai-e', 'target', 'release', helper),
+        join(jawHome, 'providers', 'ai-e', 'node_modules', '@bitkyc08', 'ai-e', 'target', 'debug', helper),
         join(getProjectDir(), 'node_modules', '@bitkyc08', 'ai-e', 'target', 'release', helper),
         join(getProjectDir(), 'node_modules', '@bitkyc08', 'ai-e', 'target', 'debug', helper),
         join(process.cwd(), 'node_modules', '@bitkyc08', 'ai-e', 'target', 'release', helper),

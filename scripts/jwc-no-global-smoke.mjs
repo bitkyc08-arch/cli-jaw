@@ -29,4 +29,10 @@ assert.ok(!runtimeSource.includes("'jwc/sdk'"), 'jwc runtime must not default to
 assert.ok(runtimeSource.includes('does not bundle JWC'), 'jwc runtime must explain that JWC is not bundled');
 assert.ok(runtimeSource.includes('JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js'), 'jwc runtime must show the install path env override');
 
-process.stdout.write('[jwc no-global] global jwc absent; cli-jaw excludes bundled JWC and runtime guidance is present\n');
+// ai-e must also be excluded from default install (jaw provider install ai-e instead)
+assert.equal(packageJson.dependencies?.['@bitkyc08/ai-e'], undefined, 'ai-e must not be a hard dependency');
+assert.equal(packageJson.optionalDependencies?.['@bitkyc08/ai-e'], undefined, 'ai-e must not be an optional dependency — use jaw provider install');
+assert.equal(packageLock.packages?.['']?.optionalDependencies?.['@bitkyc08/ai-e'], undefined, 'package-lock root must not pull optional ai-e');
+assert.equal(packageLock.packages?.['node_modules/@bitkyc08/ai-e'], undefined, 'package-lock must not include ai-e in the default install tree');
+
+process.stdout.write('[jwc no-global] global jwc absent; cli-jaw excludes bundled JWC, ai-e, and runtime guidance is present\n');

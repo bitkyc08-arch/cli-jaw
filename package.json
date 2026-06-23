@@ -172,7 +172,6 @@
     "yaml": "^2.8.4"
   },
   "optionalDependencies": {
-    "@bitkyc08/ai-e": "latest",
     "claude-e": "latest"
   },
   "devDependencies": {
