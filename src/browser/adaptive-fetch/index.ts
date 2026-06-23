@@ -6,6 +6,7 @@ import { validateFetchUrl, DEFAULT_MAX_BYTES, DEFAULT_TIMEOUT_MS } from './safet
 import { appendAttempt, createAttemptTrace, summarizeAttempts } from './trace.js';
 import { resolvePublicEndpointCandidates } from './endpoint-resolvers.js';
 import { fetchTextCandidate } from './fetcher.js';
+import { tlsFetch } from './tls-fetch.js';
 import { fromFetchResult, fromUserSessionResult, fromHumanResolvedResult } from './reader-adapters.js';
 import { chooseBestReaderCandidate, scoreReaderCandidate } from './content-scorer.js';
 import { fetchThirdPartyReaderCandidate } from './third-party-readers.js';
@@ -129,6 +130,14 @@ export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Rec
                     status: fetched['status'] as number,
                     reason: `challenge:${challengeResult.type}`,
                 });
+            }
+        }
+
+        if (candidate.source === 'fetch' && !fetched['ok'] && (fetched['status'] === 403 || fetched['status'] === 429 || detectedChallenge)) {
+            const tlsResult = await tlsFetch(candidate.url, { timeoutMs: options.timeoutMs, maxBytes: options.maxBytes });
+            if (tlsResult?.ok) {
+                appendAttempt(trace, { source: 'tls-fetch', verdict: 'ok', url: candidate.url, status: tlsResult.status, reason: `tls-profile:${tlsResult.profile}` });
+                fetched = { ok: true, status: tlsResult.status, finalUrl: candidate.url, contentType: tlsResult.headers['content-type'] || '', text: tlsResult.body, headers: tlsResult.headers, evidence: [`tls-fetch:${tlsResult.profile}`], warnings: [] };
             }
         }
 
