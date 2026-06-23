@@ -7,6 +7,7 @@ import {
     collectNetworkJsonCandidates,
 } from './browser-escalation.js';
 import { BrowserRequiredError } from './browser-runtime.js';
+import { fetchViaCamoufox } from './camoufox-session.js';
 import { scoreReaderCandidate } from './content-scorer.js';
 import { fromBrowserResult, fromMetadataResult, fromNetworkCandidate } from './reader-adapters.js';
 import { appendAttempt } from './trace.js';
@@ -19,6 +20,16 @@ export async function tryBrowserEscalation(
     challengeInfo: ChallengeInfo | null,
 ): Promise<Record<string, unknown> | null> {
     if (options.browserMode === 'never') return null;
+
+    const camoufoxResult = await fetchViaCamoufox(url, { timeoutMs: options.timeoutMs });
+    if (camoufoxResult?.ok && camoufoxResult.html) {
+        appendAttempt(trace, { source: 'camoufox', verdict: 'ok', url, reason: 'camoufox-stealth' });
+        return { ok: true, status: 200, finalUrl: url, contentType: 'text/html', text: camoufoxResult.html, title: camoufoxResult.title, headers: {}, evidence: ['camoufox-stealth'], warnings: [] };
+    }
+    if (camoufoxResult === null) {
+        appendAttempt(trace, { source: 'camoufox', verdict: 'skip', url, reason: 'camoufox-not-available' });
+    }
+
     try {
         const result = await collectBrowserCandidate(url, {
             browserDeps: deps,
