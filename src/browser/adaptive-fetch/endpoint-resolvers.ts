@@ -22,6 +22,12 @@ export function resolvePublicEndpointCandidates(rawUrl: string | URL): Candidate
         ...xTwitterCandidates(url),
         ...v2exCandidates(url),
         ...lobstersCandidates(url),
+        ...naverBlogCandidates(url),
+        ...naverNewsCandidates(url),
+        ...naverFinanceCandidates(url),
+        ...mediumCandidates(url),
+        ...substackCandidates(url),
+        ...linkedinCandidates(url),
     ];
 }
 
@@ -300,6 +306,60 @@ function lobstersCandidates(url: URL): CandidateUrl[] {
     return [{
         label: 'lobsters-story-json',
         url: clone.href,
+        source: 'public_endpoint',
+    }];
+}
+
+function naverBlogCandidates(url: URL): CandidateUrl[] {
+    if (!/(^|\.)blog\.naver\.com$/i.test(url.hostname)) return [];
+    const mobile = new URL(url.href);
+    mobile.hostname = 'm.blog.naver.com';
+    return [{ label: 'naver-blog-mobile', url: mobile.href, source: 'public_endpoint' }];
+}
+
+function naverNewsCandidates(url: URL): CandidateUrl[] {
+    if (!/(^|\.)news\.naver\.com$/i.test(url.hostname)
+        && url.hostname !== 'n.news.naver.com') return [];
+    const mobile = new URL(url.href);
+    mobile.hostname = 'n.news.naver.com';
+    return [{ label: 'naver-news-mobile', url: mobile.href, source: 'public_endpoint' }];
+}
+
+function naverFinanceCandidates(url: URL): CandidateUrl[] {
+    if (url.hostname !== 'finance.naver.com') return [];
+    const code = url.searchParams.get('code');
+    if (!code || !/^[A-Z0-9]{4,12}$/i.test(code)) return [];
+    return [{
+        label: 'naver-finance-json',
+        url: `https://api.finance.naver.com/siseJson.naver?symbol=${encodeURIComponent(code)}&requestType=1&startTime=20240101&endTime=20261231&timeframe=day`,
+        source: 'public_endpoint',
+    }];
+}
+
+function mediumCandidates(url: URL): CandidateUrl[] {
+    if (!/(^|\.)medium\.com$/i.test(url.hostname)) return [];
+    return [{
+        label: 'medium-oembed',
+        url: `https://medium.com/oembed?url=${encodeURIComponent(url.href)}`,
+        source: 'public_endpoint',
+    }];
+}
+
+function substackCandidates(url: URL): CandidateUrl[] {
+    if (!/(^|\.)substack\.com$/i.test(url.hostname)) return [];
+    return [{
+        label: 'substack-oembed',
+        url: `https://substack.com/oembed?url=${encodeURIComponent(url.href)}`,
+        source: 'public_endpoint',
+    }];
+}
+
+function linkedinCandidates(url: URL): CandidateUrl[] {
+    if (!/(^|\.)linkedin\.com$/i.test(url.hostname)) return [];
+    if (!url.pathname.startsWith('/posts/') && !url.pathname.startsWith('/pulse/')) return [];
+    return [{
+        label: 'linkedin-oembed',
+        url: `https://www.linkedin.com/oembed?url=${encodeURIComponent(url.href)}&format=json`,
         source: 'public_endpoint',
     }];
 }
