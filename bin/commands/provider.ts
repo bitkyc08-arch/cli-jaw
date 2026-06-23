@@ -7,7 +7,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, parse, resolve } from 'node:path';
+import { dirname, join, parse, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { JAW_HOME } from '../../src/core/config.js';
 import { resolveHomePath } from '../../src/core/path-expand.js';
@@ -86,7 +86,7 @@ function assertSafePrefix(prefix: string): void {
     const root = parse(prefix).root;
     const home = resolve(homedir());
     const jawHome = resolve(JAW_HOME);
-    if (!prefix || prefix === root || prefix === home || prefix === jawHome) {
+    if (!prefix || prefix === root || prefix === home || prefix === jawHome || dirname(prefix) === root) {
         throw new Error(`Refusing unsafe provider prefix: ${prefix}`);
     }
 }
