@@ -13,6 +13,11 @@ const devDevopsSkillPath = join(__dirname, '../../skills_ref/dev-devops/SKILL.md
 const devBackendSkillPath = join(__dirname, '../../skills_ref/dev-backend/SKILL.md');
 const devFrontendSkillPath = join(__dirname, '../../skills_ref/dev-frontend/SKILL.md');
 const devTestingSkillPath = join(__dirname, '../../skills_ref/dev-testing/SKILL.md');
+const devDataSkillPath = join(__dirname, '../../skills_ref/dev-data/SKILL.md');
+const devCodeReviewerSkillPath = join(__dirname, '../../skills_ref/dev-code-reviewer/SKILL.md');
+const devArchitectureSkillPath = join(__dirname, '../../skills_ref/dev-architecture/SKILL.md');
+const devScaffoldingSkillPath = join(__dirname, '../../skills_ref/dev-scaffolding/SKILL.md');
+const devUiuxDesignSkillPath = join(__dirname, '../../skills_ref/dev-uiux-design/SKILL.md');
 const registryPath = join(__dirname, '../../skills_ref/registry.json');
 const hasSearchSkill = fs.existsSync(searchSkillPath);
 const hasDevSkill = fs.existsSync(devSkillPath);
@@ -22,6 +27,11 @@ const hasDevDevopsSkill = fs.existsSync(devDevopsSkillPath);
 const hasDevBackendSkill = fs.existsSync(devBackendSkillPath);
 const hasDevFrontendSkill = fs.existsSync(devFrontendSkillPath);
 const hasDevTestingSkill = fs.existsSync(devTestingSkillPath);
+const hasDevDataSkill = fs.existsSync(devDataSkillPath);
+const hasDevCodeReviewerSkill = fs.existsSync(devCodeReviewerSkillPath);
+const hasDevArchitectureSkill = fs.existsSync(devArchitectureSkillPath);
+const hasDevScaffoldingSkill = fs.existsSync(devScaffoldingSkillPath);
+const hasDevUiuxDesignSkill = fs.existsSync(devUiuxDesignSkillPath);
 
 test('SSP-001: restored search skill is a registered unified search hub', { skip: !hasSearchSkill && 'skills_ref/search missing' }, () => {
     const searchSkill = fs.readFileSync(searchSkillPath, 'utf8');
@@ -219,4 +229,69 @@ test('SSP-018: testing skill routes current provider and environment evidence to
     assert.match(devTestingSkill, /source-fetch and evidence-status rules/);
     assert.doesNotMatch(devTestingSkill, /4-tier escalation/);
     assert.doesNotMatch(devTestingSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-019: data skill routes current dataset and pipeline evidence to search', { skip: !hasDevDataSkill && 'skills_ref/dev-data missing' }, () => {
+    const devDataSkill = fs.readFileSync(devDataSkillPath, 'utf8');
+
+    assert.match(devDataSkill, /External\/current data evidence/);
+    assert.match(devDataSkill, /current external dataset contracts, source freshness/);
+    assert.match(devDataSkill, /pipeline\/tool version\s+behavior, provider data API changes/);
+    assert.match(devDataSkill, /read the\s+active `search` skill/);
+    assert.match(devDataSkill, /query-rewrite, source-fetch, and\s+evidence-status rules/);
+    assert.match(devDataSkill, /candidate URLs exist/);
+    assert.doesNotMatch(devDataSkill, /4-tier escalation/);
+    assert.doesNotMatch(devDataSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-020: code reviewer routes current review evidence to search', { skip: !hasDevCodeReviewerSkill && 'skills_ref/dev-code-reviewer missing' }, () => {
+    const devCodeReviewerSkill = fs.readFileSync(devCodeReviewerSkillPath, 'utf8');
+
+    assert.match(devCodeReviewerSkill, /External\/current review evidence/);
+    assert.match(devCodeReviewerSkill, /dependency CVEs, release-note claims/);
+    assert.match(devCodeReviewerSkill, /package maintainer\/source checks,\s+provider behavior/);
+    assert.match(devCodeReviewerSkill, /read the\s+active `search` skill/);
+    assert.match(devCodeReviewerSkill, /source-fetch, and\s+evidence-status rules/);
+    assert.match(devCodeReviewerSkill, /not a raw-query search substitute/);
+    assert.doesNotMatch(devCodeReviewerSkill, /4-tier escalation/);
+    assert.doesNotMatch(devCodeReviewerSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-021: architecture skill routes current platform evidence to search', { skip: !hasDevArchitectureSkill && 'skills_ref/dev-architecture missing' }, () => {
+    const devArchitectureSkill = fs.readFileSync(devArchitectureSkillPath, 'utf8');
+
+    assert.match(devArchitectureSkill, /External\/current architecture evidence/);
+    assert.match(devArchitectureSkill, /current framework guidance, cloud\/provider reference\s+architecture/);
+    assert.match(devArchitectureSkill, /package deprecation, platform limits/);
+    assert.match(devArchitectureSkill, /read the active `search` skill/);
+    assert.match(devArchitectureSkill, /query-rewrite, source-fetch, and\s+evidence-status rules/);
+    assert.match(devArchitectureSkill, /candidate URLs exist/);
+    assert.doesNotMatch(devArchitectureSkill, /4-tier escalation/);
+    assert.doesNotMatch(devArchitectureSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-022: scaffolding skill routes current generator and template evidence to search', { skip: !hasDevScaffoldingSkill && 'skills_ref/dev-scaffolding missing' }, () => {
+    const devScaffoldingSkill = fs.readFileSync(devScaffoldingSkillPath, 'utf8');
+
+    assert.match(devScaffoldingSkill, /External\/current scaffolding evidence/);
+    assert.match(devScaffoldingSkill, /current generator behavior, template commands/);
+    assert.match(devScaffoldingSkill, /package versions, framework\s+recommendations/);
+    assert.match(devScaffoldingSkill, /read the active `search` skill/);
+    assert.match(devScaffoldingSkill, /query-rewrite, source-fetch, and\s+evidence-status rules/);
+    assert.match(devScaffoldingSkill, /candidate URLs exist/);
+    assert.doesNotMatch(devScaffoldingSkill, /4-tier escalation/);
+    assert.doesNotMatch(devScaffoldingSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
+});
+
+test('SSP-023: UI/UX design skill routes current design evidence to search', { skip: !hasDevUiuxDesignSkill && 'skills_ref/dev-uiux-design missing' }, () => {
+    const devUiuxDesignSkill = fs.readFileSync(devUiuxDesignSkillPath, 'utf8');
+
+    assert.match(devUiuxDesignSkill, /External\/current design evidence/);
+    assert.match(devUiuxDesignSkill, /live product-reference claims, current\s+design-system docs/);
+    assert.match(devUiuxDesignSkill, /browser API behavior, accessibility guidance/);
+    assert.match(devUiuxDesignSkill, /read the active `search` skill/);
+    assert.match(devUiuxDesignSkill, /query-rewrite, source-fetch, and\s+evidence-status rules/);
+    assert.match(devUiuxDesignSkill, /candidate URLs exist/);
+    assert.doesNotMatch(devUiuxDesignSkill, /4-tier escalation/);
+    assert.doesNotMatch(devUiuxDesignSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
 });
