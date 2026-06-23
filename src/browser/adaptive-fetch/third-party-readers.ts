@@ -5,9 +5,18 @@ import { fetchTextCandidate } from './fetcher.js';
 import { validateThirdPartyReaderTarget } from './safety.js';
 
 const JINA_READER_PREFIX = 'https://r.jina.ai/';
+const COOLDOWN_MS = 60_000;
+
+let coolingUntil = 0;
 
 export function shouldUseThirdPartyReader(options: { allowThirdPartyReader?: boolean } = {}): boolean {
-    return Boolean(options.allowThirdPartyReader);
+    if (options.allowThirdPartyReader === false) return false;
+    if (performance.now() < coolingUntil) return false;
+    return true;
+}
+
+export function recordJinaRateLimit(): void {
+    coolingUntil = performance.now() + COOLDOWN_MS;
 }
 
 export function buildJinaReaderUrl(rawUrl: string): string {
@@ -25,6 +34,10 @@ export async function fetchThirdPartyReaderCandidate(rawUrl: string, options: { 
         allowPrivateNetwork: false,
         fetchImpl: options.fetchImpl,
     } as FetchTextCandidateOptions);
+    if (fetched.status === 429) {
+        recordJinaRateLimit();
+        return null;
+    }
     return {
         ...fetched,
         finalUrl: target.href,

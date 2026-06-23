@@ -381,7 +381,7 @@ export async function runAdaptiveFetchCli(args: string[], deps: Record<string, u
             'timeout-ms': { type: 'string' },
             selector: { type: 'string' },
             'no-public-endpoints': { type: 'boolean', default: false },
-            'allow-third-party-reader': { type: 'boolean', default: false },
+            'allow-third-party-reader': { type: 'boolean', default: true },
             'allow-archive': { type: 'boolean', default: false },
             help: { type: 'boolean', short: 'h', default: false },
         },
@@ -435,7 +435,8 @@ Options:
   --max-bytes N                  Maximum response bytes per read
   --timeout-ms N                 Per-attempt timeout
   --selector CSS                 Browser text extraction selector
-  --allow-third-party-reader     Allow opt-in public reader services
+  --allow-third-party-reader     Use Jina Reader as fallback (default: on)
+  --no-allow-third-party-reader  Disable Jina Reader fallback
   --no-public-endpoints          Skip known public endpoint resolvers
   --allow-archive                Accepted but deferred; emits a warning
 `;
