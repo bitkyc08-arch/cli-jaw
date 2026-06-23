@@ -45,8 +45,7 @@ function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
         join(MODULE_DIR, '..', '..', '..', 'bin', 'jwc'),
         // Source/tsx mode: .../src/code-mode/acp-host.ts -> repo/bin/jwc
         join(MODULE_DIR, '..', '..', 'bin', 'jwc'),
-        // Repo/npm package runtime: prefer the embedded jawcode dependency over
-        // any stale global jwc shim.
+        // Electron/local-dev runtime: prefer an explicitly bundled or locally installed jawcode .bin before any stale global jwc shim. Plain npm installs do not include jawcode by default.
         join(MODULE_DIR, '..', '..', '..', 'node_modules', '.bin', 'jwc'),
         join(MODULE_DIR, '..', '..', 'node_modules', '.bin', 'jwc'),
         join(process.cwd(), 'node_modules', '.bin', 'jwc'),

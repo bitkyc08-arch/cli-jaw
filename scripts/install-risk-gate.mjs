@@ -124,6 +124,7 @@ checks.push(() => run('node syntax: scripts/audit-fresh-install-evidence.mjs', p
 checks.push(() => run('node syntax: scripts/verify-release-evidence.mjs', process.execPath, ['--check', 'scripts/verify-release-evidence.mjs']));
 checks.push(() => run('node syntax: scripts/require-release-evidence.mjs', process.execPath, ['--check', 'scripts/require-release-evidence.mjs']));
 checks.push(() => run('node syntax: scripts/check-cli-bin-links.cjs', process.execPath, ['--check', 'scripts/check-cli-bin-links.cjs']));
+checks.push(() => run('jwc default npm install exclusion smoke', npm, ['run', 'smoke:jwc:no-global']));
 
 checks.push(() => run('installer risk tests', npx, [
   'tsx',

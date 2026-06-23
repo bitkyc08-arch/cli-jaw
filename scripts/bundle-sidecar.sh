@@ -4,6 +4,7 @@ set -euo pipefail
 PLATFORM="${1:?Usage: bundle-sidecar.sh <platform> <arch>}"
 ARCH="${2:?Usage: bundle-sidecar.sh <platform> <arch>}"
 NODE_VERSION="24.17.0"
+JAWCODE_VERSION="${CLI_JAW_ELECTRON_JAWCODE_VERSION:-1.0.9}"
 
 PROJECT_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SIDECAR_DIR="$PROJECT_ROOT/electron/sidecar/server"
@@ -84,8 +85,9 @@ if [ -n "$JAWCODE_SRC" ]; then
   npm install --omit=dev --ignore-scripts "./$JAWCODE_TARBALL"
   rm -f "$SIDECAR_DIR/$JAWCODE_TARBALL"
 else
-  echo "Using package-lock pinned jawcode dependency."
+  echo "Installing Electron-only jawcode dependency: jawcode@$JAWCODE_VERSION"
   install_locked_production_dependencies
+  npm install --omit=dev --ignore-scripts "jawcode@$JAWCODE_VERSION"
 fi
 
 if [ ! -f "$SIDECAR_DIR/node_modules/jawcode/package.json" ]; then

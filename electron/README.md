@@ -65,8 +65,8 @@ npm run sidecar:bundle
 - copies `dist/`, `public/`, `package.json`, and lockfile into
   `electron/sidecar/server`,
 - installs production dependencies with scripts disabled from the copied lockfile,
-- installs the package-lock pinned `jawcode` registry dependency by default for
-  reproducible release builds,
+- installs `jawcode@1.0.9` only into the Electron sidecar by default, keeping
+  plain `npm install cli-jaw` free of the JWC native payload,
 - optionally packs and installs a local `jawcode` package only when
   `CLI_JAW_LOCAL_JAWCODE=/absolute/path/to/jawcode/packages/jwc` is set,
 - prunes frontend-only packages,

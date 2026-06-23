@@ -57,10 +57,15 @@ test('Electron desktop build refreshes manager frontend assets before packaging'
 
 test('Electron sidecar bundle installs jawcode as a real package and verifies jwc', () => {
     const script = read('scripts/bundle-sidecar.sh');
+    const pkg = JSON.parse(read('package.json'));
 
-    assert.ok(script.includes('NODE_VERSION="24.17.0"'), 'sidecar must bundle a Node runtime compatible with lockfile-pinned jawcode');
+    assert.equal(pkg.dependencies?.jawcode, undefined, 'plain npm installs must not install jawcode by default');
+    assert.equal(pkg.optionalDependencies?.jawcode, undefined, 'jawcode must not be optional because optional dependencies install by default');
+    assert.ok(script.includes('NODE_VERSION="24.17.0"'), 'sidecar must bundle a Node runtime compatible with Electron-only jawcode');
+    assert.ok(script.includes('JAWCODE_VERSION="${CLI_JAW_ELECTRON_JAWCODE_VERSION:-1.0.9}"'), 'sidecar must pin the Electron-only jawcode version with an explicit release override');
     assert.ok(script.includes('CLI_JAW_LOCAL_JAWCODE'), 'local jawcode override must be explicit, not an implicit sibling checkout');
-    assert.ok(script.includes('Using package-lock pinned jawcode dependency.'), 'release sidecar bundle must default to package-lock pinned jawcode');
+    assert.ok(script.includes('Installing Electron-only jawcode dependency: jawcode@$JAWCODE_VERSION'), 'release sidecar bundle must install jawcode only inside Electron sidecar');
+    assert.ok(script.includes('npm install --omit=dev --ignore-scripts "jawcode@$JAWCODE_VERSION"'), 'Electron sidecar must install the pinned jawcode package after root production deps');
     assert.ok(script.includes('npm ci --omit=dev --ignore-scripts'), 'release sidecar bundle must prefer lockfile-based production installs');
     assert.ok(script.includes('"$BUN_BIN" run build:node'), 'sidecar bundle must still build jawcode dist-node for explicit local overrides');
     assert.ok(script.includes('JAWCODE_TARBALL="$(basename "$(npm pack "$JAWCODE_SRC"'), 'explicit local override must npm-pack jawcode before installation');
