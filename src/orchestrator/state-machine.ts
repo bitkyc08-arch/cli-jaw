@@ -6,9 +6,11 @@
 import { getOrcState, setOrcState, resetOrcState, resetAllOrcStates, deleteNonDefaultOrcStates } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
 import { readLatestWorklog } from '../memory/worklog.js';
+import { checkAttestationGate } from './attestation.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ResolvedSelection } from './parser.js';
 import type { Seed } from './seed.js';
+import type { PhaseAttestation } from './attestation.js';
 
 // ─── Types ──────────────────────────────────────────
 
@@ -70,6 +72,8 @@ export interface OrcContext {
   verificationStatus?: VerificationVerdict;
   userApproved?: boolean;
   projectDirs?: string[] | null;
+  // ─── Phase 60: evidence gate (fallback only; --attest is the gate SOT) ──
+  pendingAttestation?: PhaseAttestation | null;
   // ─── Interview state (P1-1: Evidence-Ref) ────────
   interview?: {
     request: string;
@@ -569,10 +573,24 @@ export interface TransitionResult {
   reason?: string;
 }
 
+/**
+ * Actor + evidence input for a gated transition (Phase 60: evidence gate).
+ * Omitting `gate` entirely keeps the legacy human behavior (back-compat for the
+ * many existing 3-arg call sites). `actor:'agent'` switches to the FORM-ONLY
+ * attestation gate for all forward transitions; humans keep the free pass.
+ */
+export interface GateInput {
+  actor?: 'agent' | 'human';
+  attestation?: PhaseAttestation | null;
+  /** Hidden emergency override — only honored for the agent path. */
+  force?: boolean;
+}
+
 export function canTransition(
   from: OrcStateName,
   to: OrcStateName,
   ctx?: OrcContext | null,
+  gate?: GateInput,
 ): TransitionResult {
   if (!VALID_TRANSITIONS[from]?.includes(to)) {
     return { ok: false, reason: `Invalid transition: ${from} → ${to}. Force cannot skip phases; start from the next valid phase.` };
@@ -585,6 +603,16 @@ export function canTransition(
   if (from === 'I' && to === 'P' && !ctx?.interview) {
     console.warn('[jaw:pabcd] I→P without interview context — proceeding anyway');
   }
+
+  // Phase 60: AGENT path — FORM-ONLY evidence gate on the 4 forward transitions.
+  // The agent cannot advance by heuristic narration; it must submit a well-formed
+  // <phase_attestation> (via --attest). Hidden --force is the only override.
+  if (gate?.actor === 'agent') {
+    if (gate.force) return { ok: true };
+    return checkAttestationGate(from, to, gate.attestation ?? null);
+  }
+
+  // HUMAN / legacy path (no gate, or actor!=='agent'): keep the pre-Phase-60 behavior.
   // Phase 58: Gate A→B on audit verdict (strict equality, not truthy).
   if (from === 'A' && to === 'B') {
     if (ctx?.userApproved) return { ok: true };

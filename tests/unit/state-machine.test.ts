@@ -145,4 +145,40 @@ describe('PABCD state-machine', () => {
         assert.ok(d.includes('D → IDLE → P'), 'D must state the legal re-entry path D → IDLE → P');
         assert.ok(d.includes('Do not declare the whole goal done yet'), 'D must not declare whole goal done after one cycle');
     });
+
+    // --- Phase 60: agent evidence gate (GateInput) on canTransition ---
+    test('30. agent path: P→A/A→B/B→C/C→D blocked without attestation', () => {
+        for (const [f, t] of [['P', 'A'], ['A', 'B'], ['B', 'C'], ['C', 'D']] as const) {
+            const r = canTransition(f, t, null, { actor: 'agent' });
+            assert.equal(r.ok, false, `agent ${f}→${t} must be blocked without attestation`);
+            assert.match(r.reason!, /attestation|--attest/i);
+        }
+    });
+    test('31. agent path: passes with a well-formed attestation (narrative did)', () => {
+        for (const [f, t] of [['P', 'A'], ['A', 'B'], ['B', 'C']] as const) {
+            const att = { from: f, to: t, did: 'did specific real work this phase', raw: '{}' };
+            assert.equal(canTransition(f, t, null, { actor: 'agent', attestation: att }).ok, true, `agent ${f}→${t}`);
+        }
+    });
+    test('32. agent path: C→D needs checkOutput', () => {
+        const noOut = { from: 'C' as const, to: 'D' as const, did: 'ran checks', raw: '{}' };
+        assert.equal(canTransition('C', 'D', null, { actor: 'agent', attestation: noOut }).ok, false);
+        const withOut = { from: 'C' as const, to: 'D' as const, did: 'ran checks', checkOutput: '49/49 pass', raw: '{}' };
+        assert.equal(canTransition('C', 'D', null, { actor: 'agent', attestation: withOut }).ok, true);
+    });
+    test('33. agent path: hidden --force overrides the gate', () => {
+        assert.equal(canTransition('A', 'B', null, { actor: 'agent', force: true }).ok, true);
+    });
+    test('34. agent path: any→I never requires attestation', () => {
+        assert.equal(canTransition('B', 'I', null, { actor: 'agent' }).ok, true);
+        assert.equal(canTransition('C', 'B', null, { actor: 'agent' }).ok, true); // reject route
+    });
+    test('35. human/legacy path unchanged: A→B still uses ctx auditStatus', () => {
+        // No gate arg ⇒ legacy behavior; auditStatus!=='pass' blocks.
+        assert.equal(canTransition('A', 'B', { auditStatus: 'fail' } as never).ok, false);
+        assert.equal(canTransition('A', 'B', { auditStatus: 'pass' } as never).ok, true);
+        assert.equal(canTransition('A', 'B', { userApproved: true } as never).ok, true);
+        // Human actor explicitly ⇒ still legacy (not the agent form-gate).
+        assert.equal(canTransition('A', 'B', { userApproved: true } as never, { actor: 'human' }).ok, true);
+    });
 });
