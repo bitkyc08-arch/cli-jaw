@@ -70,7 +70,7 @@ export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Rec
         browserSession: options.browserSessionRaw || options.browserSession,
     });
     const fetchImpl = (deps['fetch'] || input['fetchImpl']) as typeof fetch | undefined;
-    const fetchOpt = fetchImpl ? { fetchImpl } : {};
+    const fetchOpt = { ...(fetchImpl ? { fetchImpl } : {}), ...(options.proxy ? { proxy: options.proxy } : {}) };
     const parsed = validateFetchUrl(options.url, { allowPrivateNetwork: options.allowPrivateNetwork });
     appendAttempt(trace, {
         source: 'validation',
@@ -156,7 +156,9 @@ export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Rec
         }
 
         if (candidate.source === 'fetch' && !fetched['ok'] && (fetched['status'] === 403 || fetched['status'] === 429 || detectedChallenge)) {
-            const tlsResult = await tlsFetch(candidate.url, { timeoutMs: options.timeoutMs, maxBytes: options.maxBytes });
+            const tlsOpts: { timeoutMs?: number; maxBytes?: number; proxy?: string } = { timeoutMs: options.timeoutMs, maxBytes: options.maxBytes };
+            if (options.proxy) tlsOpts.proxy = options.proxy;
+            const tlsResult = await tlsFetch(candidate.url, tlsOpts);
             if (tlsResult?.ok) {
                 appendAttempt(trace, { source: 'tls-fetch', verdict: 'ok', url: candidate.url, status: tlsResult.status, reason: `tls-profile:${tlsResult.profile}` });
                 fetched = { ok: true, status: tlsResult.status, finalUrl: candidate.url, contentType: tlsResult.headers['content-type'] || '', text: tlsResult.body, headers: tlsResult.headers, evidence: [`tls-fetch:${tlsResult.profile}`], warnings: [] };

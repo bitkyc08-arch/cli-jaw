@@ -1,7 +1,7 @@
 // Mirrored from agbrowse adaptive-fetch v2; keep runtime behavior aligned while cli-jaw mirror remains experimental.
 
 import type { BrowserCandidateOptions } from './types.js';
-import { closeFetchBrowserPage, getFetchBrowserPage } from './browser-runtime.js';
+import { releaseFetchBrowserPage, getFetchBrowserPage } from './browser-runtime.js';
 import { classifyAccessBoundary, detectChallengeMarkers } from './challenge-detector.js';
 import { runDefuddleInPage } from './defuddle-extractor.js';
 import { extractMetadataFromHtml } from './metadata.js';
@@ -146,7 +146,7 @@ export async function collectBrowserCandidate(url: string, options: BrowserCandi
         };
     } finally {
         if (typeof page.off === 'function') page.off('response', onResponse);
-        await closeFetchBrowserPage(pageRef);
+        await releaseFetchBrowserPage(pageRef);
     }
 }
 
