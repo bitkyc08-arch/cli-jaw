@@ -26,6 +26,7 @@ export interface AdaptiveFetchOptions {
     interactive: boolean;
     query?: string;
     proxy?: string;
+    overallTimeoutMs?: number;
     optionWarnings: string[];
 }
 

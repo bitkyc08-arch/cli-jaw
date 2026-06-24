@@ -43,6 +43,7 @@ export async function executeAdaptiveFetch(
         reason: 'url-valid',
     });
 
+    const overallTimeoutMs = options.overallTimeoutMs || 60_000;
     const ctx: StageContext = {
         url: parsed,
         options,
@@ -53,17 +54,18 @@ export async function executeAdaptiveFetch(
         fetchedUrls: new Set<string>(),
         fetchOpt,
         chromeUsed: false,
+        deadline: Date.now() + overallTimeoutMs,
     };
 
     runEndpointStage(ctx);
-    await runDirectFetchStage(ctx);
-    await runDiscoveredEndpointStage(ctx);
-    await runJinaStage(ctx);
+    if (!isPastDeadline(ctx)) await runDirectFetchStage(ctx);
+    if (!isPastDeadline(ctx)) await runDiscoveredEndpointStage(ctx);
+    if (!isPastDeadline(ctx)) await runJinaStage(ctx);
 
     const earlyBest = evaluateEarlyExit(ctx);
     if (earlyBest) return finalize(ctx, earlyBest);
 
-    await runBrowserStages(ctx);
+    if (!isPastDeadline(ctx)) await runBrowserStages(ctx);
 
     const finalBest = chooseBestReaderCandidate(ctx.candidates);
     if (finalBest) return finalize(ctx, finalBest);
@@ -462,6 +464,19 @@ function resultFromScoredCandidate(scored: ScoredResult): {
         safetyFlags: candidate.safetyFlags || [],
         metadata: candidate.metadata || null,
     };
+}
+
+function isPastDeadline(ctx: StageContext): boolean {
+    if (Date.now() > ctx.deadline) {
+        appendAttempt(ctx.trace, {
+            source: 'scheduler',
+            verdict: 'blocked',
+            url: ctx.url.href,
+            reason: 'overall-deadline-exceeded',
+        });
+        return true;
+    }
+    return false;
 }
 
 function shouldReturnWithoutBrowser(best: ScoredResult | null, options: AdaptiveFetchOptions): boolean {

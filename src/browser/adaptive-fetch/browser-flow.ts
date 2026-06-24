@@ -1,4 +1,5 @@
 import type { AdaptiveFetchOptions, AttemptTrace, ChallengeInfo, ReaderCandidate } from './types.js';
+import { validateFetchUrl } from './safety.js';
 import {
     collectBrowserCandidate,
     collectBrowserMetadataCandidate,
@@ -25,7 +26,7 @@ export async function tryBrowserEscalation(
     const allCandidates: ReaderCandidate[] = [];
 
     const camoufoxResult = await fetchViaCamoufox(url, { timeoutMs: options.timeoutMs });
-    if (camoufoxResult?.ok && camoufoxResult.html) {
+    if (camoufoxResult?.ok && camoufoxResult.html && isSafeFinalUrl(camoufoxResult.url || url, options)) {
         const structured = extractStructuredContent(camoufoxResult.html);
         const evidence = ['camoufox-stealth'];
         if (structured.tables.length) evidence.push(`structured:${structured.tables.length}-tables`);
@@ -109,6 +110,15 @@ function buildCandidateOnlyResult(url: string, candidates: ReaderCandidate[]): R
         contentType: best.contentType, text: best.text,
         title: best.title, headers: {}, evidence: best.evidence, warnings: best.warnings,
     };
+}
+
+function isSafeFinalUrl(finalUrl: string, options: AdaptiveFetchOptions): boolean {
+    try {
+        validateFetchUrl(finalUrl, { allowPrivateNetwork: options.allowPrivateNetwork });
+        return true;
+    } catch {
+        return false;
+    }
 }
 
 function appendScoredAttempt(

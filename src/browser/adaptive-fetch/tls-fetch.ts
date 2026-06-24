@@ -71,10 +71,26 @@ export async function tlsFetch(
             if (idx > 0) headers[line.slice(0, idx).toLowerCase().trim()] = line.slice(idx + 1).trim();
         }
 
+        const finalUrl = extractFinalUrl(headerText) || safeUrl.href;
+        try {
+            validateFetchUrl(finalUrl, { allowPrivateNetwork: false });
+        } catch {
+            return null;
+        }
+
         return { ok: status >= 200 && status < 400, status, headers, body, profile };
     } catch {
         return null;
     }
+}
+
+function extractFinalUrl(headerText: string): string | null {
+    const lines = headerText.split('\r\n');
+    for (let i = lines.length - 1; i >= 0; i--) {
+        const match = lines[i]?.match(/^location:\s*(.+)/i);
+        if (match) return match[1]?.trim() || null;
+    }
+    return null;
 }
 
 export { detectCurlImpersonate, selectProfile };

@@ -1,5 +1,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { validateFetchUrl } from './safety.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -64,6 +65,7 @@ export async function ytdlpSubtitles(
     const vttEntry = captions.find(e => e.ext === 'vtt') || captions[0];
     if (!vttEntry?.url) return null;
     try {
+        validateFetchUrl(vttEntry.url);
         const fetchFn = options?.fetchImpl || fetch;
         const response = await fetchFn(vttEntry.url, { signal: AbortSignal.timeout(15_000) });
         if (!response.ok) return null;

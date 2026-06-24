@@ -35,6 +35,7 @@ export interface StageContext {
     fetchedUrls: Set<string>;
     fetchOpt: Record<string, unknown>;
     chromeUsed: boolean;
+    deadline: number;
 }
 
 export interface AdaptiveFetchFinalResult {
