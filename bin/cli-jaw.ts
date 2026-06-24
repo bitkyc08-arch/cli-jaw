@@ -40,7 +40,7 @@ const _homeEqArg = process.argv.find(a => a.startsWith('--home='));
 if (_homeIdx !== -1 && process.argv[_homeIdx + 1]) {
     const _homeVal = process.argv[_homeIdx + 1]!;
     // Guard: if the "value" looks like a known subcommand, user forgot the path
-    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'memory', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc'];
+    const _knownCmds = ['serve', 'init', 'doctor', 'chat', 'employee', 'reset', 'mcp', 'skill', 'status', 'browser', 'memory', 'hooks', 'launchd', 'clone', 'service', 'dashboard', 'connector', 'reminders', 'orchestrate', 'dispatch', 'worker', 'project', 'goal', 'task', 'bgtask', 'jwc'];
     if (_knownCmds.includes(_homeVal)) {
         console.error(`  ❌ --home requires a path argument (got subcommand '${_homeVal}')`);
         console.error(`  Usage: jaw --home <path> ${_homeVal}`);
@@ -156,6 +156,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
   ${c.bold}Automation:${c.reset}
     browser <sub>                       Chrome CDP browser control
     memory <search|read|save>           Persistent memory store
+    hooks inspect [--scope ...]         Inspect pre-prompt runtime context
     mcp <install|sync|list>             MCP server management
     skill <install|remove|info|list>    Skill management
 
@@ -220,6 +221,9 @@ switch (command) {
         break;
     case 'memory':
         await import('./commands/memory.js');
+        break;
+    case 'hooks':
+        await import('./commands/hooks.js');
         break;
     case 'launchd':
         await import('./commands/launchd.js');
