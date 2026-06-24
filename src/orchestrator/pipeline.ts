@@ -28,7 +28,7 @@ import { buildWorkerReplayNotice } from './worker-replay-notice.js';
 import { processQueue } from '../agent/spawn.js';
 import {
     getState, getPrefix, resetState, setState, getStatePrompt,
-    getCtx,
+    getCtx, buildScopeRebindGuard,
     type OrcStateName,
     type OrcContext,
     type DimensionAssessment,
@@ -287,7 +287,9 @@ export async function orchestrate(
                 ? `Project root: ${JSON.stringify(resolve(settings["workingDir"]))}`
                 : '';
         const wsBlock = wsInfo ? `\n## Workspace\n${wsInfo}\n` : '';
-        prompt = `${getStatePrompt('P')}${wsBlock}\nUser request:\n${planningTask}`;
+        const scopeRebindGuard = buildScopeRebindGuard(ctx);
+        const scopeRebindBlock = scopeRebindGuard ? `\n${scopeRebindGuard}\n` : '';
+        prompt = `${getStatePrompt('P')}${wsBlock}${scopeRebindBlock}\nUser request:\n${planningTask}`;
         skipPrefix = true;
 
         const nextCtx: OrcContext = {

@@ -244,6 +244,25 @@ Do NOT paste the full employee output verbatim.
 Employee results:`,
 };
 
+function compactLine(value: unknown, max = 700): string {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
+export function buildScopeRebindGuard(ctx?: OrcContext | null): string {
+  const parentGoal = compactLine(ctx?.originalPrompt);
+  const interviewPurpose = compactLine(ctx?.interview?.request);
+  if (!parentGoal || !ctx?.interview) return '';
+  return [
+    '## Scope Rebind Guard',
+    `Parent Goal: ${parentGoal}`,
+    interviewPurpose && interviewPurpose !== parentGoal ? `Interview Purpose: ${interviewPurpose}` : '',
+    '- Bind interview answers only as parameters, constraints, success criteria, or wording choices for the Parent Goal.',
+    '- Do not reinterpret a clarification answer as a new parent task or feature.',
+    '- If an answer appears to request a new goal, stop and ask whether to split it into a separate IPABCD/PABCD flow.',
+  ].filter(Boolean).join('\n');
+}
+
 export function getPrefix(state: OrcStateName, source: 'user' | 'worker' = 'user', ctx?: OrcContext | null): string | null {
   if (state === 'I') {
     let prefix = PREFIXES["Ip"]!;
@@ -261,7 +280,10 @@ export function getPrefix(state: OrcStateName, source: 'user' | 'worker' = 'user
     }
     return prefix;
   }
-  if (state === 'P') return PREFIXES["Pb2"]!;
+  if (state === 'P') {
+    const guard = buildScopeRebindGuard(ctx);
+    return guard ? `${PREFIXES["Pb2"]!}\n\n${guard}` : PREFIXES["Pb2"]!;
+  }
   if (state === 'A') return source === 'worker' ? PREFIXES["Ab2"]! : PREFIXES["Ap"]!;
   if (state === 'B' && source === 'worker') return PREFIXES["Bb2"]!;
   return null;

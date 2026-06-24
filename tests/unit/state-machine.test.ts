@@ -2,7 +2,7 @@ import { describe, test, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     getState, setState, getCtx, resetState,
-    canTransition, getPrefix, getStatePrompt,
+    canTransition, getPrefix, getStatePrompt, buildScopeRebindGuard,
     type OrcStateName,
 } from '../../src/orchestrator/state-machine.ts';
 
@@ -192,5 +192,45 @@ describe('PABCD state-machine', () => {
         const c = getStatePrompt('C');
         assert.match(c, /orchestrate D --attest/, 'C must instruct --attest to enter D');
         assert.match(c, /checkOutput/, 'C→D attestation must require pasted checkOutput');
+    });
+
+    // --- #253: scope rebind guard binds interview answers to the parent goal ---
+    test('38. scope rebind guard is empty without interview ctx', () => {
+        const ctx = { originalPrompt: 'build academy', workingDir: null, plan: null, workerResults: [], origin: 'web' };
+        assert.equal(buildScopeRebindGuard(ctx), '');
+    });
+    test('39. scope rebind guard binds interview answers to parent goal', () => {
+        const ctx = {
+            originalPrompt: 'Add a one-time study-session end notifier',
+            workingDir: null,
+            plan: null,
+            workerResults: [],
+            origin: 'web',
+            interview: {
+                request: 'Clarify praise phrase style and storage',
+                round: 2,
+                known: [],
+                unknown: [],
+            },
+        };
+        const guard = buildScopeRebindGuard(ctx);
+        assert.match(guard, /Scope Rebind Guard/);
+        assert.match(guard, /Parent Goal: Add a one-time study-session end notifier/);
+        assert.match(guard, /Interview Purpose: Clarify praise phrase style and storage/);
+        assert.match(guard, /Do not reinterpret a clarification answer as a new parent task/);
+    });
+    test('40. P prefix includes scope rebind guard when interview ctx exists', () => {
+        const ctx = {
+            originalPrompt: 'Add a session-end break notification',
+            workingDir: null,
+            plan: null,
+            workerResults: [],
+            origin: 'web',
+            interview: { request: 'Pick notification phrase style', round: 1, known: [], unknown: [] },
+        };
+        const prefix = getPrefix('P', 'user', ctx)!;
+        assert.match(prefix, /PLANNING MODE/);
+        assert.match(prefix, /Scope Rebind Guard/);
+        assert.match(prefix, /Bind interview answers only as parameters/);
     });
 });
