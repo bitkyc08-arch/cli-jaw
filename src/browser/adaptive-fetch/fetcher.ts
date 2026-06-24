@@ -5,11 +5,27 @@ import { isTextualContentType } from './transforms.js';
 
 import type { FetchTextCandidateOptions } from './types.js';
 
+function resolveProxy(options: FetchTextCandidateOptions): string | undefined {
+    return options.proxy || process.env['HTTPS_PROXY'] || process.env['HTTP_PROXY'] || undefined;
+}
+
+async function createDispatcher(proxy: string | undefined): Promise<unknown> {
+    if (!proxy) return undefined;
+    try {
+        const { ProxyAgent } = await import('undici');
+        return new ProxyAgent(proxy);
+    } catch {
+        return undefined;
+    }
+}
+
 export async function fetchTextCandidate(rawUrl: string, options: FetchTextCandidateOptions = {}) {
     const maxBytes = Number(options.maxBytes || DEFAULT_MAX_BYTES);
     const timeoutMs = Number(options.timeoutMs || DEFAULT_TIMEOUT_MS);
     const redirectLimit = Number(options.redirectLimit ?? DEFAULT_REDIRECT_LIMIT);
     const fetchImpl = options.fetchImpl || fetch;
+    const proxy = resolveProxy(options);
+    const dispatcher = await createDispatcher(proxy);
     const safetyOpts = options.allowPrivateNetwork != null ? { allowPrivateNetwork: options.allowPrivateNetwork } : {};
     let current = validateFetchUrl(rawUrl, safetyOpts).href;
     for (let redirects = 0; redirects <= redirectLimit; redirects += 1) {
@@ -18,7 +34,8 @@ export async function fetchTextCandidate(rawUrl: string, options: FetchTextCandi
             redirect: 'manual',
             headers: { accept: 'text/html,application/json,application/xml,text/plain,*/*;q=0.8' },
             signal: AbortSignal.timeout(timeoutMs),
-        });
+            ...(dispatcher ? { dispatcher } : {}),
+        } as RequestInit);
         if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {
             const next = new URL(response.headers.get('location') || '', current);
             current = validateFetchUrl(next.href, safetyOpts).href;

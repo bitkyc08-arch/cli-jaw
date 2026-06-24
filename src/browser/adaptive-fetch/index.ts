@@ -387,6 +387,7 @@ export async function runAdaptiveFetchCli(args: string[], deps: Record<string, u
             'allow-third-party-reader': { type: 'boolean', default: true },
             'allow-archive': { type: 'boolean', default: false },
             query: { type: 'string' },
+            proxy: { type: 'string' },
             help: { type: 'boolean', short: 'h', default: false },
         },
     });
@@ -408,6 +409,7 @@ export async function runAdaptiveFetchCli(args: string[], deps: Record<string, u
         allowThirdPartyReader: values['allow-third-party-reader'],
         allowArchive: values['allow-archive'],
         query: values['query'],
+        proxy: values['proxy'],
     }, deps);
     if (values.json) {
         const { _traceSummary, ...jsonResult } = result;

@@ -25,6 +25,7 @@ export interface AdaptiveFetchOptions {
     allowArchive: boolean;
     interactive: boolean;
     query?: string;
+    proxy?: string;
     optionWarnings: string[];
 }
 
@@ -36,6 +37,7 @@ export interface FetchTextCandidateOptions {
     fetchImpl?: typeof fetch;
     beforeFetch?: (url: string) => Promise<void> | void;
     identity?: string;
+    proxy?: string;
 }
 
 export interface BrowserCandidateOptions {

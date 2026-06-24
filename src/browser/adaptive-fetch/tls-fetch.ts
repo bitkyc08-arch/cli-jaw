@@ -39,7 +39,7 @@ export interface TlsFetchResult {
 
 export async function tlsFetch(
     rawUrl: string,
-    options?: { timeoutMs?: number; maxBytes?: number },
+    options?: { timeoutMs?: number; maxBytes?: number; proxy?: string },
 ): Promise<TlsFetchResult | null> {
     const binary = await detectCurlImpersonate();
     if (!binary) return null;
@@ -49,14 +49,16 @@ export async function tlsFetch(
     const timeout = Math.ceil((options?.timeoutMs || 15_000) / 1000);
 
     try {
-        const { stdout } = await execFileAsync(binary, [
+        const args = [
             '--impersonate', profile,
             '--max-time', String(timeout),
             '--max-filesize', String(options?.maxBytes || 5_000_000),
             '-L', '-s',
             '-i',
-            safeUrl.href,
-        ], { timeout: (timeout + 5) * 1000, maxBuffer: 10_000_000 });
+        ];
+        if (options?.proxy) args.push('--proxy', options.proxy);
+        args.push(safeUrl.href);
+        const { stdout } = await execFileAsync(binary, args, { timeout: (timeout + 5) * 1000, maxBuffer: 10_000_000 });
 
         const sep = stdout.indexOf('\r\n\r\n');
         const headerText = sep > 0 ? stdout.slice(0, sep) : '';
