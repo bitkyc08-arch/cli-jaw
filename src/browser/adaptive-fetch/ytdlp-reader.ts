@@ -55,20 +55,19 @@ export async function ytdlpMetadata(
 export async function ytdlpSubtitles(
     url: string,
     lang = 'en',
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; fetchImpl?: typeof fetch },
 ): Promise<string | null> {
-    const binary = await detectYtdlp();
-    if (!binary) return null;
-    const timeout = Math.ceil((options?.timeoutMs || 30_000) / 1000);
+    const meta = await ytdlpMetadata(url, options);
+    if (!meta) return null;
+    const captions = meta.automatic_captions?.[lang] || meta.subtitles?.[lang];
+    if (!Array.isArray(captions) || captions.length === 0) return null;
+    const vttEntry = captions.find(e => e.ext === 'vtt') || captions[0];
+    if (!vttEntry?.url) return null;
     try {
-        const { stdout } = await execFileAsync(binary, [
-            '--write-auto-sub', '--sub-lang', lang,
-            '--skip-download', '--sub-format', 'vtt',
-            '--print', '%(requested_subtitles)j',
-            '--socket-timeout', String(timeout),
-            url,
-        ], { timeout: (timeout + 10) * 1000, maxBuffer: 10_000_000 });
-        return extractSubtitleText(stdout);
+        const fetchFn = options?.fetchImpl || fetch;
+        const response = await fetchFn(vttEntry.url, { signal: AbortSignal.timeout(15_000) });
+        if (!response.ok) return null;
+        return extractSubtitleText(await response.text());
     } catch {
         return null;
     }
