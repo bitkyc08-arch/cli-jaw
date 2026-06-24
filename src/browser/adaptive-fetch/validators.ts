@@ -79,16 +79,19 @@ export function classifyBoundarySignals(input: ClassifyBoundaryInput = {}) {
     return { verdict: null, markers, reason: null };
 }
 
-export function findBoundaryMarkers(text: string): BoundaryMarker[] {
+export function findBoundaryMarkers(text: string, options?: { textLength?: number }): BoundaryMarker[] {
     const markers: BoundaryMarker[] = [];
+    const bodyLength = options?.textLength ?? text.length;
     for (const pattern of CHALLENGE_PATTERNS) {
         if (pattern.test(text)) markers.push({ kind: 'challenge', pattern: pattern.source });
     }
-    for (const pattern of LOGIN_PATTERNS) {
-        if (pattern.test(text)) markers.push({ kind: 'auth', pattern: pattern.source });
-    }
-    for (const pattern of PAYWALL_PATTERNS) {
-        if (pattern.test(text)) markers.push({ kind: 'paywall', pattern: pattern.source });
+    if (bodyLength < 2000) {
+        for (const pattern of LOGIN_PATTERNS) {
+            if (pattern.test(text)) markers.push({ kind: 'auth', pattern: pattern.source });
+        }
+        for (const pattern of PAYWALL_PATTERNS) {
+            if (pattern.test(text)) markers.push({ kind: 'paywall', pattern: pattern.source });
+        }
     }
     return markers;
 }

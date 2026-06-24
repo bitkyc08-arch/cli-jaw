@@ -39,7 +39,7 @@ export function detectWafChallenge(response: ResponseInput) {
 
     const matches = WAF_PROFILES
         .map((p: WafProfile) => ({ profile: p, score: scoreProfile(p, signals) }))
-        .filter((m: { profile: WafProfile; score: number }) => m.score > 0)
+        .filter((m: { profile: WafProfile; score: number }) => m.score >= 2)
         .sort((a: { score: number }, b: { score: number }) => b.score - a.score);
 
     return {

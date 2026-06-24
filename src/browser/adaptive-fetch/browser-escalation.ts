@@ -60,7 +60,7 @@ export async function collectBrowserCandidate(url: string, options: BrowserCandi
         }
 
         const challengeInfo = options.challengeInfo;
-        if ((challengeInfo as AnyPage)?.primary?.behavior?.jsChallengeSolvable) {
+        if ((challengeInfo as AnyPage)?.primary?.profile?.behavior?.jsChallengeSolvable) {
             await waitForChallengeResolution(page, 10000);
         } else if (typeof page.waitForTimeout === 'function') {
             await page.waitForTimeout(300).catch(() => undefined);
