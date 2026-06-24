@@ -6,6 +6,12 @@
 //
 //   tsx --experimental-test-module-mocks tests/run.mts [--all|--watch|<paths...>]
 // --experimental-test-module-mocks must stay a node flag so mock.module works.
+//
+// isolation:'process' runs each file in its own subprocess (matching the old
+// `--test` default). This keeps real-process/timing tests (bgtask spawn, session
+// probes) from contending in one shared event loop — in-process concurrency made
+// them flaky. CLI_JAW_HOME (set by setup/test-home.ts here) is inherited by the
+// child processes via env; --experimental-test-module-mocks propagates too.
 import './setup/test-home.ts';
 import { run } from 'node:test';
 import { spec } from 'node:test/reporters';
@@ -34,5 +40,5 @@ else if (all) files = list(TESTS_DIR, true);
 else files = [...list(TESTS_DIR, false), ...list(join(TESTS_DIR, 'unit'), false)];
 if (files.length === 0) { console.error('[tests/run] no test files matched'); process.exit(1); }
 let failures = 0;
-run({ files, concurrency: true, watch }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
+run({ files, concurrency: true, watch, isolation: 'process' }).on('test:fail', () => { failures += 1; }).compose(spec).pipe(process.stdout);
 if (!watch) process.on('beforeExit', () => { if (failures > 0 && !process.exitCode) process.exitCode = 1; });
