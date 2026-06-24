@@ -41,7 +41,7 @@ graph LR
     AGT --> NATIVE["native/jaw-claude-i"]
 ```
 
-5개 인터페이스(CLI, TUI, Web, Telegram, Discord) + Electron 데스크톱은 core `server.ts`를 경유하고, `server.ts`(587L)는 인증/보안/SSE/bootstrap을 맡은 뒤 `src/routes/`의 추출 route modules와 mounted sub-router로 API를 위임합니다(총 195 handlers including `/`). Web UI event delivery는 `GET /api/events` SSE channel을 우선 사용하고 legacy 서버에서만 WebSocket fallback을 탄다. `src/goal/`은 goal-mode autonomy(completion evidence gate)를 관리하고, `src/team/`은 multi-agent dispatch planning, `src/jaw-ceo/`는 OpenAI Realtime CEO channel을 제공합니다. 별도 `jaw dashboard serve` manager 서버는 notes/search/schedule/reminders/board/git/memory surface를 `src/manager/`에서 제공하고, manager server가 worker instance SSE를 bridge/cache한다. Process/tool logs는 `src/shared/tool-log-sanitize.ts`에서 SSE와 snapshot 저장 전에 cap/truncate되어 Manager 대시보드 메모리 폭주를 막습니다.
+5개 인터페이스(CLI, TUI, Web, Telegram, Discord) + Electron 데스크톱은 core `server.ts`를 경유하고, `server.ts`(635L)는 인증/보안/SSE/bootstrap을 맡은 뒤 `src/routes/`의 추출 route modules와 mounted sub-router로 API를 위임합니다(총 232 handlers including `/`). Web UI event delivery는 `GET /api/events` SSE channel을 우선 사용하고 legacy 서버에서만 WebSocket fallback을 탄다. `src/goal/`은 goal-mode autonomy(completion evidence gate)를 관리하고, `src/team/`은 multi-agent dispatch planning, `src/jaw-ceo/`는 OpenAI Realtime CEO channel을 제공합니다. 별도 `jaw dashboard serve` manager 서버는 notes/search/schedule/reminders/board/git/memory surface를 `src/manager/`에서 제공하고, manager server가 worker instance SSE를 bridge/cache한다. Process/tool logs는 `src/shared/tool-log-sanitize.ts`에서 SSE와 snapshot 저장 전에 cap/truncate되어 Manager 대시보드 메모리 폭주를 막습니다.
 
 ---
 
@@ -69,7 +69,7 @@ graph LR
 | [memory_architecture.md](memory_architecture.md) | History Block + Flush + Advanced Runtime + Task Snapshot | 메모리, flush, runtime, snapshot |
 | [infra.md](infra.md) | config, db, bus, security 등 코어 모듈 | 인프라, SQLite, EventBus |
 | [commands.md](commands.md) | 40개 슬래시 커맨드 + workflow category(`/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/goal`, `/goalplan`, `/gd`, `/team`; 자동 실행은 `/goal run ...`) + root CLI 27개 dynamic import branch / 28개 grouped user-facing surface + 13개 CLI registry runtime | 커맨드, 디스패처, 레지스트리 |
-| [server_api.md](server_api.md) | `server.ts` 글루 + `src/routes/`/mounted sub-router API 195 handlers + SSE `/api/events` + 47 public event types + legacy WS fallback boundary | REST, SSE, WebSocket, 라우트 |
+| [server_api.md](server_api.md) | `server.ts` 글루 + `src/routes/`/mounted sub-router API 232 handlers + SSE `/api/events` + 48 public event types + legacy WS fallback boundary | REST, SSE, WebSocket, 라우트 |
 | [stream-events.md](stream-events.md) | SSE-first runtime event channel + WebSocket fallback + CLI NDJSON/Grok streaming-json + ProcessBlock 매핑 | SSE, WebSocket, NDJSON, stepRef, ProcessBlock, Grok |
 | [🎨 frontend.md](frontend.md) | `public/` 소스/자산 + Electron 데스크톱, slash workflow chips, Manager notes/search/settings/reminders/WYSIWYG, interview tracker panel, MCP settings page, Pi profile popup, kiro-code provider UI, ProcessBlock 렌더링 | 프론트엔드, Vite 8, PWA, Electron, ProcessBlock |
 | [frontend_modernization_analysis.md](frontend_modernization_analysis.md) | 8개 현대화 제안의 비용-편익 분석 | 리팩터링, 비용분석, 마이그레이션 |
@@ -192,4 +192,4 @@ Support labels must stay aligned with agbrowse:
 
 ---
 
-*마지막 갱신: 2026-06-10 (`server.ts` 587L, `src/routes/` 32 TS files / 195 route handlers including `/`, `src/agent/` 44 TS files including spawn/events submodules, `src/goal/` 4 TS files, `src/cli/commands.ts` 40 slash commands, `src/core/event-bus.ts` + `src/routes/events.ts` SSE channel, `src/manager/` 79 TS/TSX files, `src/browser/web-ai/` 68 TS files + `adaptive-fetch/` 19 files, `bin/commands/` 30 top-level TS files, `electron/` sidecar packaging 기준)*
+*마지막 갱신: 2026-06-24 (`server.ts` 635L, `src/routes/` 32 TS files / 232 route handlers including `/`, `src/agent/` 44 TS files including spawn/events submodules, `src/goal/` 4 TS files, `src/cli/commands.ts` 51 slash commands, `src/core/event-bus.ts` + `src/routes/events.ts` SSE channel, `src/manager/` 79 TS/TSX files, `src/browser/web-ai/` 68 TS files + `adaptive-fetch/` 19 files, `bin/commands/` 30 top-level TS files, `electron/` sidecar packaging 기준)*

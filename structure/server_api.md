@@ -273,7 +273,6 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `system_notice` | compact refresh 같은 시스템 공지 |
 | `heartbeat_pending` | pending heartbeat job 수 |
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | distributed worker 상태 변화; 같은 상태가 `/api/orchestrate/worker-progress`의 safe `attention` metadata에도 반영됨 |
-| `worker_run_started` / `worker_run_progress` / `worker_run_attention` / `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | per-run worker lifecycle safe events with native `status` plus shared `statusCategory`; raw output is never embedded and must be fetched through `/api/orchestrate/worker-runs/:runId/output` |
 | `goal_done` / `goal_done_rejected` / `goal_cancel` / `goal_continuation` / `goal_continuation_failed` / `goal_continuation_limit` | durable goal / bounded continuation lifecycle |
 | `goal_pause_detected` | goal pause 2-tap gate 감지 |
 | `session_switched` / `session_created` / `session_list` | multi-session state update |

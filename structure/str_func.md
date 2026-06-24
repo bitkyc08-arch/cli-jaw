@@ -116,8 +116,8 @@ cli-jaw/
 │   │   ├── session-key.ts    ← 세션 키 헬퍼 (27L)
 │   │   └── types.ts          ← MessengerChannel, OutboundType, RemoteTarget 타입 (27L)
 │   ├── orchestrator/         ← 직원 오케스트레이션 + 인터페이스 통합 (18 files)
-│   │   ├── state-machine.ts ← IPABCD 상태 머신 (I=Interview pre-plan) + broadcast(state,title) + worklog 타이틀 파싱 + employee terminology + OrcContext.workingDir + OrcContext.interview + Project root dispatch contract + Phase60 actor-aware canTransition(GateInput) form-only evidence gate + STATE_PROMPTS --attest instructions (670L)
-│   │   ├── pipeline.ts       ← IPABCD orchestration (explicit entry only) + interview first-turn detection + plan context persistence + memorySnapshot injection + reset clears boss session + OrcContext workingDir init + Approved Plan Project root guard + remote-channel elicitation guard + bounded delayed worker replay notice + Phase60 phase_attestation strip/fallback + no-state narration warn (649L)
+│   │   ├── state-machine.ts ← IPABCD 상태 머신 (I=Interview pre-plan) + broadcast(state,title) + worklog 타이틀 파싱 + employee terminology + OrcContext.workingDir + OrcContext.interview + Project root dispatch contract + Phase60 actor-aware canTransition(GateInput) form-only evidence gate + STATE_PROMPTS --attest instructions (692L)
+│   │   ├── pipeline.ts       ← IPABCD orchestration (explicit entry only) + interview first-turn detection + plan context persistence + memorySnapshot injection + reset clears boss session + OrcContext workingDir init + Approved Plan Project root guard + remote-channel elicitation guard + bounded delayed worker replay notice + Phase60 phase_attestation strip/fallback + no-state narration warn (651L)
 │   │   ├── distribute.ts     ← runSingleAgent + buildPlanPrompt + parallel helpers + tiered findEmployee + employee resume diagnostics + virtual employee session-skip (615L)
 │   │   ├── parser.ts         ← triage + subtask JSON + verdict 파싱 + isResetIntent (176L)
 │   │   ├── gateway.ts        ← submitMessage 통합 진입점 (WebUI+CLI+TG+Discord 공통) + working_dir scoped insertMessage (155L)
@@ -135,13 +135,13 @@ cli-jaw/
 │   │   ├── sanitize.ts       ← Interview tracker strip helper + stripPhaseAttestation re-export (79L)
 │   │   └── attestation.ts    ← Phase60 PABCD evidence gate: parse/validate <phase_attestation> (tagged block + --attest object) + form-only checkAttestationGate (gates P→A/A→B/B→C/C→D; narrative did required, C→D needs checkOutput) + stripPhaseAttestation + warn-only no-state narration detector (178L)
 │   ├── prompt/               ← 프롬프트 조립 (4 files + templates/ 10 files)
-│   │   ├── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache (4-segment key: emp:role:phase:workingDir) + on-demand dev skill path contract + advanced memory mode branch + task snapshot injection + dashboard-connector anchor preserve + Phase60 inline PABCD guide --attest evidence note (915L)
+│   │   ├── builder.ts        ← A-1/A-2 + 스킬 + 직원 프롬프트 v2 + promptCache (4-segment key: emp:role:phase:workingDir) + on-demand dev skill path contract + advanced memory mode branch + task snapshot injection + dashboard-connector anchor preserve + Phase60 inline PABCD guide --attest evidence note (946L)
 │   │   ├── runtime-context.ts ← 런타임 컨텍스트 주입 (RuntimeContextEntry, loadEntries, getActiveEntries, addEntry, removeEntry, clearAll, buildInjectionBlock) (80L)
 │   │   ├── soul-bootstrap-prompt.ts ← LLM 기반 soul.md 개인화 부트스트랩 프롬프트 빌더 (52L)
 │   │   ├── template-loader.ts ← 프롬프트 템플릿 로더 (50L)
 │   │   └── templates/        ← 프롬프트 템플릿 (a1-system.md, a2-default.md, employee.md, orchestration.md, control-system.md, worker-context.md, vision-click.md, skills.md, heartbeat-*.md)
 │   ├── cli/                  ← 커맨드 시스템 (18 root files + tui/ 19 files)
-│   │   ├── commands.ts       ← 슬래시 커맨드 레지스트리 + workflow metadata + 디스패처 + 파일경로 필터 + /commands alias /cmd + /settings fullscreen transition + /orchestrate alias /pabcd + /compact + /plan + /search + /gd force-done alias + artifact persistence (552L)
+│   │   ├── commands.ts       ← 슬래시 커맨드 레지스트리 + workflow metadata + 디스패처 + 파일경로 필터 + /commands alias /cmd + /settings fullscreen transition + /orchestrate alias /pabcd + /compact + /plan + /search + /gd force-done alias + artifact persistence (602L)
 │   │   ├── handlers.ts       ← core command handlers + runtime/completion re-export hub + compact re-export + unknown command recovery payload (460L)
 │   │   ├── handlers-runtime.ts ← memory/browser/prompt/quit/file/steer/forward/fallback/flush/ide/orchestrate 핸들러 + `LEGACY_MODEL_CLI_HINTS` (507L)
 │   │   ├── handlers-completions.ts ← `/model` `/cli` `/skill` `/employee` `/browser` `/fallback` `/flush` 인자 자동완성 헬퍼 (103L)
@@ -158,7 +158,7 @@ cli-jaw/
 │   │   ├── command-context.ts ← 공유 커맨드 컨텍스트 팩토리 + runSkillReset 위임 + regenerateB 유지 (144L)
 │   │   ├── connector.ts      ← dashboard connector CLI API bridge (board/notes/reminders/audit) (73L)
 │   │   ├── reminders.ts      ← local reminders CLI action helpers (35L)
-│   │   ├── types.ts          ← CLI helper shared result/shape 타입 + workflow command/artifact/recovery metadata contract + command help detail key (204L)
+│   │   ├── types.ts          ← CLI helper shared result/shape 타입 + workflow command/artifact/recovery metadata contract + command help detail key (205L)
 │   │   └── tui/              ← TUI 모듈 (26 files)
 │   │       ├── store.ts      ← TuiStore (transcript + overlay 상태 통합), OverlayState + SelectorState + settings screen state (78L)
 │   │       ├── events.ts     ← TUI WS event normalizer (`agent_done.toolLog` bounded backfill 포함) (142L)
@@ -221,7 +221,7 @@ cli-jaw/
 │   │   ├── tab-lifecycle.ts  ← tab lifecycle management (212L)
 │   │   ├── index.ts          ← re-export hub (34L)
 │   │   ├── adaptive-fetch/   ← Adaptive web fetch 서브모듈 (19 files, 2608L) ✨
-│   │   │   ├── index.ts      ← adaptive fetch orchestrator (524L)
+│   │   │   ├── index.ts      ← adaptive fetch orchestrator (152L)
 │   │   │   ├── safety.ts     ← URL/content safety checks (244L)
 │   │   │   ├── endpoint-resolvers.ts ← reader API endpoint resolution (364L)
 │   │   │   ├── browser-escalation.ts ← fallback to browser fetch (306L)
@@ -268,7 +268,7 @@ cli-jaw/
 │   │   ├── cli-engine.ts     ← CliEngine union + registry key tuple + `agy`/`ai-e`/`claude-e`/`kiro-code` discriminators (60L)
 │   │   └── cli-events.ts     ← CLI event record/discriminator helpers (154L)
 │   ├── command-contract/     ← 커맨드 인터페이스 통합 (3 files)
-│   │   ├── catalog.ts        ← COMMANDS → capability map 확장 (45L)
+│   │   ├── catalog.ts        ← COMMANDS → capability map 확장 (67L)
 │   │   ├── policy.ts         ← getVisibleCommands, getTelegramMenuCommands (39L)
 │   │   └── help-renderer.ts  ← renderHelp list/detail mode (44L)
 │   ├── goal/                 ← Goal autonomy 시스템 (4 files, 544L)
@@ -330,7 +330,7 @@ cli-jaw/
 │       ├── deliberate.ts     ← `/deliberate` workflow handler (85L)
 │       ├── planaudit.ts      ← `/planaudit` workflow handler (82L)
 │       ├── review.ts         ← `/review` projectDirs/recent-context scope resolution + Markdown report path + fix/dispatch steer prompt (195L)
-│       ├── search.ts         ← `/search` steer prompt builder + search-skill/browser verification policy text (37L)
+│       ├── search.ts         ← `/search` steer prompt builder + search-skill/browser verification policy text (25L)
 │       ├── competitive-gap.ts ← competitive gap analysis workflow (113L)
 │       ├── runtime.ts / runtime-guards.ts / guards.ts / events.ts / status.ts / context.ts / index.ts / types.ts / browser-web-ai.ts / web-ai-guards.ts
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
@@ -354,7 +354,7 @@ cli-jaw/
 │       ├── Cargo.toml        ← Rust package/dependency/test profile
 │       └── src/              ← main.rs(467L) + args/child/hook/protocol/transcript/config/terminal/cleanup/normalize/sanitize
 ├── bin/
-│   ├── cli-jaw.ts            ← 27개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (288L)
+│   ├── cli-jaw.ts            ← 27개 root dynamic import branch + grouped user-facing 서브커맨드 라우팅 + --home flag (292L)
 │   ├── _http-client.ts       ← shared HTTP client helper (35L) ✨
 │   ├── star-prompt.ts        ← `gh` 기반 GitHub star 1회 프롬프트 (129L)
 │   ├── postinstall.ts        ← npm install 후 CLI 런타임 + OfficeCLI 자동설치 + MCP + 스킬 + safe 가드 (1036L)
