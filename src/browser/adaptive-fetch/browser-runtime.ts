@@ -65,6 +65,10 @@ export async function getFetchBrowserPage(options: { browserDeps?: Record<string
 
 export async function releaseFetchBrowserPage(pageRef: { page?: unknown; cleanup?: () => Promise<void> | void; isolated?: boolean }): Promise<void> {
     if (!pageRef.cleanup) return;
+    if (!pageRef.isolated) {
+        if (typeof pageRef.cleanup === 'function') await pageRef.cleanup();
+        return;
+    }
     if (warmPool.length < POOL_MAX) {
         warmPool.push({
             page: pageRef.page ?? null,

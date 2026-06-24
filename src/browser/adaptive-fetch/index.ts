@@ -40,7 +40,7 @@ export function normalizeAdaptiveFetchOptions(raw: Record<string, unknown> = {})
     const identity = normalizeEnum(raw['identity'], IDENTITY_MODES, 'auto', 'identity') as IdentityMode;
     const userSessionExplicit = browserSession === 'user' || browserSession === 'interactive';
     const humanLoop = browserSession === 'interactive';
-    return {
+    const result: AdaptiveFetchOptions = {
         url: typeof raw['url'] === 'string' ? raw['url'] : '',
         json: Boolean(raw['json']),
         trace: Boolean(raw['trace']),
@@ -60,6 +60,9 @@ export function normalizeAdaptiveFetchOptions(raw: Record<string, unknown> = {})
         interactive: Boolean(raw['interactive']),
         optionWarnings: raw['allowArchive'] ? ['archive-fallback-deferred'] : [],
     };
+    if (typeof raw['query'] === 'string' && raw['query']) result.query = raw['query'];
+    if (typeof raw['proxy'] === 'string' && raw['proxy']) result.proxy = raw['proxy'];
+    return result;
 }
 
 export async function runAdaptiveFetch(input: Record<string, unknown>, deps: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
