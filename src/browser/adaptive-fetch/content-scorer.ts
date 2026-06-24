@@ -18,7 +18,7 @@ interface ScoreOptions {
     minWeakScore?: number;
 }
 
-interface ScoredResult {
+export interface ScoredResult {
     candidate: ReaderCandidate;
     score: number;
     verdict: string;
