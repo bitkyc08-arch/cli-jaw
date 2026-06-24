@@ -127,7 +127,7 @@ tr.hidden-row { display: none; }
 <main class="docs-main">
 
 <h1>스킬 카탈로그</h1>
-<p class="lead">CLI-JAW는 활성 런타임 스킬과 200개 이상의 참조 스킬을 제공합니다. 이 페이지는 GitHub Pages에 게시된 대표 카탈로그이며, 실제 사용 가능한 스킬은 <code>jaw skill list</code>와 <code>skills_ref/</code> 기준으로 확인하세요.</p>
+<p class="lead">CLI-JAW은 11개 카테고리에 걸쳐 230개 스킬을 제공한다. 이 중 30개는 기본 활성(시스템 프롬프트에 주입)이고, 나머지 200개는 <code>jaw skill install</code>로 필요할 때 켜는 레퍼런스 스킬이다.</p>
 
 <div class="callout callout-info">
   <strong>자연어 사용:</strong> "스킬 목록 보여줘", "cloudflare 스킬 설치해줘", "프론트엔드 스킬 켜줘" -- 이 모든 표현이 채팅에서 동작합니다. 슬래시 커맨드 버전은 <code>/skill list</code>를 사용하세요.
@@ -154,7 +154,7 @@ tr.hidden-row { display: none; }
   </div>
   <div class="cmd-card">
     <code>jaw skill reset</code>
-    <div class="cmd-desc">모든 스킬을 기본 25개로 초기화</div>
+    <div class="cmd-desc">모든 스킬을 기본 30개로 초기화</div>
   </div>
   <div class="cmd-card">
     <code>/skill list</code>
@@ -163,7 +163,7 @@ tr.hidden-row { display: none; }
 </div>
 
 <h2>스킬 작동 방식</h2>
-<p>각 스킬은 <code>SKILL.md</code> 파일이 포함된 디렉토리에 존재합니다. 활성 스킬은 <code>getSystemPrompt()</code>를 통해 에이전트의 시스템 프롬프트에 주입됩니다. 레퍼런스 스킬은 "사용 가능한 스킬" 목록에 표시되어 에이전트가 해당 스킬의 존재를 알 수 있지만, 활성화되기 전까지 콘텐츠가 로드되지 않습니다.</p>
+<p>각 스킬은 <code>SKILL.md</code> 파일이 포함된 디렉토리에 존재합니다. 활성 스킬은 <code>getSystemPrompt()</code>로 에이전트 시스템 프롬프트에 주입됩니다. 레퍼런스 스킬은 "사용 가능한 스킬" 목록에 표시되어 에이전트가 해당 스킬의 존재를 알 수 있지만, 활성화되기 전까지 콘텐츠가 로드되지 않습니다.</p>
 <pre><code># Active skills directory
 ~/.cli-jaw/skills/
   dev/SKILL.md
@@ -174,8 +174,8 @@ tr.hidden-row { display: none; }
 # Reference skills directory
 ~/.cli-jaw/skills_ref/
   registry.json
-  cloudflare/SKILL.md
-  docker/SKILL.md
+  cloudflare-deploy/SKILL.md
+  terraform/SKILL.md
   ...</code></pre>
 
 <p>Employee 프롬프트(<code>getEmployeePromptV2()</code>)는 역할별 및 단계별 스킬을 자동으로 주입합니다. "Frontend" employee는 <code>dev-frontend</code>를 받고, Check 단계에서는 employee가 <code>dev-testing</code>을 받습니다.</p>
@@ -188,16 +188,16 @@ tr.hidden-row { display: none; }
   <select id="categoryFilter">
     <option value="all">전체 카테고리</option>
     <option value="Development">Development</option>
-    <option value="Automation">Automation</option>
+    <option value="Dev Tools">Dev Tools</option>
     <option value="AI &amp; Media">AI &amp; Media</option>
-    <option value="Communication">Communication</option>
-    <option value="Cloud &amp; Deploy">Cloud &amp; Deploy</option>
-    <option value="Security &amp; Review">Security &amp; Review</option>
-    <option value="Dev Workflow">Dev Workflow</option>
     <option value="Productivity">Productivity</option>
+    <option value="Automation">Automation</option>
+    <option value="Communication">Communication</option>
+    <option value="Research">Research</option>
+    <option value="Visualization">Visualization</option>
+    <option value="Media">Media</option>
     <option value="Smart Home">Smart Home</option>
     <option value="Utility">Utility</option>
-    <option value="System">System</option>
   </select>
   <select id="statusFilter">
     <option value="all">전체 상태</option>
@@ -205,192 +205,299 @@ tr.hidden-row { display: none; }
     <option value="ref">레퍼런스만</option>
   </select>
 </div>
-<p class="skill-count"><strong id="visibleCount">118</strong>개 대표 카탈로그 항목 표시 중</p>
+<p class="skill-count">전체 <strong>230</strong>개 중 <strong id="visibleCount">230</strong>개 표시</p>
 
 <table class="skill-table" id="skillTable">
 <thead>
 <tr><th></th><th>스킬 이름</th><th>카테고리</th><th>설명</th><th>상태</th></tr>
 </thead>
 <tbody>
-<!-- Development (10 active) -->
-<tr data-cat="Development" data-status="active"><td>&#128187;</td><td>dev</td><td>Development</td><td>핵심 개발 규칙, 코딩 표준 및 일반 프로그래밍 가이드</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#127912;</td><td>dev-frontend</td><td>Development</td><td>프로덕션 수준의 프론트엔드: 스택 감지 및 전문 규칙 (React, Vue, Svelte 등)</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#9881;</td><td>dev-backend</td><td>Development</td><td>백엔드 개발 패턴: API, 데이터베이스, 인증, 캐싱 및 서버 아키텍처</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128202;</td><td>dev-data</td><td>Development</td><td>데이터 엔지니어링, SQL 최적화, ETL 파이프라인 및 분석</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#129514;</td><td>dev-testing</td><td>Development</td><td>테스트 전략, Vitest/Jest, E2E, 커버리지 및 TDD 패턴</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128269;</td><td>dev-code-reviewer</td><td>Development</td><td>자동 코드 리뷰: 정확성, 스타일, 성능 및 보안 검사</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#127959;</td><td>dev-scaffolding</td><td>Development</td><td>프로젝트 스캐폴딩, 보일러플레이트 및 디렉토리 구조 생성</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128272;</td><td>dev-security</td><td>Development</td><td>보안 모범 사례: 입력 검증, 인증, OWASP 및 취약점 패턴</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128027;</td><td>dev-debugging</td><td>Development</td><td>디버깅 전략, 로그 분석, 오류 추적 및 근본 원인 식별</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128196;</td><td>dev-pabcd</td><td>Development</td><td>PABCD 방법론 적용: Purpose, Audience, Behavior, Constraints, Deliverables</td><td><span class="badge badge-active">Active</span></td></tr>
-
-<!-- Automation (7 ref) -->
-<tr data-cat="Automation" data-status="active"><td>&#127760;</td><td>browser</td><td>Automation</td><td>Chrome 브라우저 제어: 페이지 열기, 스냅샷, 클릭, 입력, CDP를 통한 스크린샷</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Automation" data-status="active"><td>&#128421;</td><td>desktop-control</td><td>Automation</td><td>통합 데스크톱 + 브라우저 자동화: CDP를 통한 DOM 타겟, Computer Use를 통한 데스크톱 앱</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#129302;</td><td>web-ai</td><td>Automation</td><td>Web AI 기반 브라우징: 지능형 페이지 파싱, 콘텐츠 추출 및 요약</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#128065;</td><td>vision-click</td><td>Automation</td><td>비전 기반 클릭 타겟팅: 시각적 설명으로 UI 요소를 찾아 클릭</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#128247;</td><td>screen-capture</td><td>Automation</td><td>화면 캡처 및 녹화: 스크린샷 촬영, 클립 녹화, 영역 주석</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#127916;</td><td>video</td><td>Automation</td><td>비디오 처리: 변환, 트리밍, 연결, 프레임 추출, 자막 추가</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#128270;</td><td>deep-research</td><td>Automation</td><td>팬아웃 웹 검색, 출처 수집, 적대적 검증, 인용 보고서 작성</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- AI & Media (8 ref) -->
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128240;</td><td>pdf</td><td>AI &amp; Media</td><td>PDF 생성, 읽기, 편집, 병합 및 텍스트 추출</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128065;</td><td>pdf-vision</td><td>AI &amp; Media</td><td>비전 기반 PDF 분석: OCR, 레이아웃 이해, 스캔 문서에서 표 추출</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128202;</td><td>pptx</td><td>AI &amp; Media</td><td>PowerPoint 생성 및 편집: 슬라이드, 차트, 테마 및 발표자 노트</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128200;</td><td>xlsx</td><td>AI &amp; Media</td><td>Excel 스프레드시트 생성, 수식 편집, 피벗 테이블 및 데이터 분석</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128196;</td><td>docx</td><td>AI &amp; Media</td><td>Word 문서 생성: 템플릿, 서식, 머리글, 바닥글 및 목차</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#127464;</td><td>hwp</td><td>AI &amp; Media</td><td>HWP/HWPX 한글 문서 처리: 생성, 읽기, 편집, 검토, 템플릿 채우기 및 QA</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128200;</td><td>diagram</td><td>AI &amp; Media</td><td>채팅 UI 렌더링용 SVG 다이어그램, 차트 및 인터랙티브 시각화</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#127908;</td><td>lecture-stt</td><td>AI &amp; Media</td><td>강의 음성 인식: 전사, 화자 분리 및 타임스탬프 정렬</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Communication (6 ref, 2 active) -->
-<tr data-cat="Communication" data-status="ref"><td>&#128172;</td><td>telegram-send</td><td>Communication</td><td>Telegram Bot API를 통한 메시지, 사진 및 문서 전송</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Communication" data-status="active"><td>&#128221;</td><td>notion</td><td>Communication</td><td>Notion 워크스페이스 연동: 페이지, 데이터베이스, 블록 및 쿼리 작업</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Communication" data-status="active"><td>&#128025;</td><td>github</td><td>Communication</td><td>GitHub 작업: gh CLI를 통한 PR, 이슈, 리뷰, 릴리스 및 Actions</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Communication" data-status="ref"><td>&#128038;</td><td>x-post</td><td>Communication</td><td>X (Twitter) 게시: 작성, 스레드, 예약 및 게시물 관리</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Communication" data-status="ref"><td>&#128221;</td><td>thread_notion</td><td>Communication</td><td>Notion 스레드 관리: 자동 구조화가 포함된 대화-페이지 파이프라인</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Communication" data-status="ref"><td>&#128231;</td><td>cloudflare-email-service</td><td>Communication</td><td>Cloudflare Email Routing 및 Workers를 통한 트랜잭션 이메일 송수신</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Cloud & Deploy (7 ref) -->
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#9729;</td><td>cloudflare</td><td>Cloud &amp; Deploy</td><td>종합 Cloudflare 플랫폼: Workers, Pages, KV, D1, R2, AI, 네트워킹, 보안</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#129302;</td><td>agents-sdk</td><td>Cloud &amp; Deploy</td><td>Cloudflare Agents SDK: 상태 유지 에이전트, 내구성 워크플로, WebSocket, MCP 서버</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#128230;</td><td>durable-objects</td><td>Cloud &amp; Deploy</td><td>Cloudflare Durable Objects: 상태 유지 조정, SQLite 저장소, WebSocket, 알람</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#128220;</td><td>sandbox-sdk</td><td>Cloud &amp; Deploy</td><td>샌드박스 코드 실행: Cloudflare Sandbox SDK를 사용한 AI 인터프리터, CI/CD, 신뢰할 수 없는 코드</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#128295;</td><td>wrangler</td><td>Cloud &amp; Deploy</td><td>Cloudflare Workers용 Wrangler CLI: 배포, 개발, 테일, 시크릿 및 구성 관리</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#9889;</td><td>workers-best-practices</td><td>Cloud &amp; Deploy</td><td>Cloudflare Workers 모범 사례: 성능, 오류 처리, 캐싱 및 엣지 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#127919;</td><td>web-perf</td><td>Cloud &amp; Deploy</td><td>웹 성능 최적화: Core Web Vitals, Lighthouse, 번들 분석, 지연 로딩</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Security & Review (4 active) -->
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#128269;</td><td>code-review</td><td>Security &amp; Review</td><td>설정 가능한 노력 수준으로 정확성 버그 및 효율성 개선을 위한 diff 리뷰</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#128274;</td><td>security-review</td><td>Security &amp; Review</td><td>보안 중심 코드 리뷰: 취약점 스캔, 의존성 감사, 위협 모델링</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#9989;</td><td>verify</td><td>Security &amp; Review</td><td>앱을 실행하고 동작을 관찰하여 변경 사항, PR 수정 또는 기능이 정상 작동하는지 확인</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#128296;</td><td>simplify</td><td>Security &amp; Review</td><td>변경된 코드의 재사용, 단순화 및 효율성 개선을 검토한 후 수정 적용</td><td><span class="badge badge-active">Active</span></td></tr>
-
-<!-- Dev Workflow (8 active/ref) -->
-<tr data-cat="Dev Workflow" data-status="active"><td>&#128640;</td><td>init</td><td>Dev Workflow</td><td>프로젝트 초기화: 스택 감지, 구성 생성, 구조 스캐폴딩 및 첫 커밋</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="active"><td>&#128209;</td><td>review</td><td>Dev Workflow</td><td>코드 리뷰 오케스트레이터: 정확성, 스타일 및 보안을 결합한 다중 패스 리뷰</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="active"><td>&#128187;</td><td>run</td><td>Dev Workflow</td><td>프로젝트 앱을 실행하여 변경 사항 확인 (CLI, 서버, TUI, Electron)</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#128260;</td><td>loop</td><td>Dev Workflow</td><td>프롬프트나 슬래시 커맨드를 자동 조절 간격으로 반복 실행</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#128197;</td><td>schedule</td><td>Dev Workflow</td><td>크론 스케줄에 따른 예약 원격 에이전트(루틴) 생성, 업데이트 및 조회</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#128268;</td><td>fewer-permission-prompts</td><td>Dev Workflow</td><td>트랜스크립트에서 일반적인 읽기 전용 호출을 스캔하고 설정에 우선순위 허용 목록 추가</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#9881;</td><td>update-config</td><td>Dev Workflow</td><td>settings.json을 통한 Claude Code 하네스 구성: 훅, 권한, 환경 변수</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#9000;</td><td>keybindings-help</td><td>Dev Workflow</td><td>keybindings.json에서 키보드 단축키 사용자 정의, 키 재바인딩, 코드 바인딩 추가</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Productivity (2 active / 2 ref representative) -->
-<tr data-cat="Productivity" data-status="active"><td>&#129504;</td><td>memory</td><td>Productivity</td><td>영구 메모리 시스템: 자동 메모리, 세션 간 회상, 메모리 페더레이션 및 L2 검색</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Productivity" data-status="ref"><td>&#128214;</td><td>openai-docs</td><td>Productivity</td><td>인용이 포함된 최신 OpenAI API 문서: Codex, Responses, Chat Completions</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Productivity" data-status="ref"><td>&#129302;</td><td>claude-api</td><td>Productivity</td><td>프롬프트 캐싱을 포함한 Claude API / Anthropic SDK 앱 빌드, 디버그 및 최적화</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Productivity" data-status="active"><td>&#128214;</td><td>k-writing</td><td>Productivity</td><td>한국어 홍보·콘텐츠 작성: 쓰레드, 인스타 카드뉴스, 링크드인, 웹/블로그, 윤문을 필수 검색·훅 채점·AI 티 제거 검증으로 생성</td><td><span class="badge badge-active">Active</span></td></tr>
-
-<!-- Smart Home (10 ref) -->
-<tr data-cat="Smart Home" data-status="ref"><td>&#127968;</td><td>homeassistant</td><td>Smart Home</td><td>Home Assistant 연동: 엔티티, 자동화, 씬, 스크립트 및 대시보드 카드</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128161;</td><td>hue-lights</td><td>Smart Home</td><td>Philips Hue 조명 제어: 씬, 밝기, 색온도, 그룹 및 예약</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#127777;</td><td>hvac-control</td><td>Smart Home</td><td>냉난방 및 온도 조절기 제어: 온도, 모드, 예약 및 에너지 모니터링</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128274;</td><td>smart-lock</td><td>Smart Home</td><td>스마트 잠금장치 관리: 잠금/해제, 접근 코드, 게스트 접근 및 활동 로그</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#127909;</td><td>smart-camera</td><td>Smart Home</td><td>보안 카메라 피드: 실시간 보기, 동작 알림, 녹화 재생 및 구역 설정</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128266;</td><td>smart-speaker</td><td>Smart Home</td><td>스마트 스피커 제어: 음악 재생, 공지, 인터콤 및 멀티룸 오디오</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128268;</td><td>smart-plug</td><td>Smart Home</td><td>스마트 플러그 및 콘센트 제어: 온/오프, 에너지 모니터링, 예약 및 자동화</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128692;</td><td>robot-vacuum</td><td>Smart Home</td><td>로봇 청소기 제어: 청소, 도킹, 구역, 예약 및 유지보수 알림</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#127782;</td><td>weather-station</td><td>Smart Home</td><td>기상 관측소 데이터: 실내/실외 센서, 예보, 습도, 공기질 지수</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128187;</td><td>home-network</td><td>Smart Home</td><td>홈 네트워크 관리: 라우터 구성, 장치 추적, 대역폭 모니터링, VLAN</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Utility (30 ref) -->
-<tr data-cat="Utility" data-status="ref"><td>&#128230;</td><td>docker</td><td>Utility</td><td>Docker 컨테이너 관리: 빌드, 실행, 컴포즈, 볼륨, 네트워크 및 멀티스테이지 빌드</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9096;</td><td>kubernetes</td><td>Utility</td><td>Kubernetes 운영: 디플로이먼트, 서비스, 파드, 헬름 차트 및 클러스터 관리</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128218;</td><td>terraform</td><td>Utility</td><td>Terraform 코드형 인프라: 프로바이더, 모듈, 상태 관리 및 plan/apply</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128295;</td><td>ansible</td><td>Utility</td><td>Ansible 자동화: 플레이북, 롤, 인벤토리 및 구성 관리</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128640;</td><td>ci-cd</td><td>Utility</td><td>CI/CD 파이프라인 설계: GitHub Actions, GitLab CI, Jenkins 및 배포 전략</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128451;</td><td>nginx</td><td>Utility</td><td>Nginx 구성: 리버스 프록시, 로드 밸런싱, SSL, 로케이션 블록 및 캐싱</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128450;</td><td>redis</td><td>Utility</td><td>Redis 운영: 캐싱, pub/sub, 스트림, 데이터 구조 및 클러스터 설정</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128451;</td><td>postgresql</td><td>Utility</td><td>PostgreSQL 관리: 쿼리, 인덱스, 마이그레이션, 확장 및 성능 튜닝</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128450;</td><td>mongodb</td><td>Utility</td><td>MongoDB 운영: CRUD, 집계 파이프라인, 인덱스, 레플리카 세트 및 Atlas</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128209;</td><td>graphql</td><td>Utility</td><td>GraphQL 스키마 설계: 리졸버, 쿼리, 뮤테이션, 서브스크립션 및 페더레이션</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128279;</td><td>rest-api-design</td><td>Utility</td><td>REST API 설계 패턴: 버저닝, 페이지네이션, 오류 처리 및 OpenAPI 스펙</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128272;</td><td>oauth</td><td>Utility</td><td>OAuth 2.0 / OIDC 구현: 인가 플로우, 토큰, 스코프 및 프로바이더</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128236;</td><td>websocket</td><td>Utility</td><td>WebSocket 구현: 실시간 통신, 프로토콜, 재연결 및 스케일링</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#127760;</td><td>dns</td><td>Utility</td><td>DNS 관리: 레코드, 존, DNSSEC, 문제 해결 및 프로바이더 구성</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128274;</td><td>ssl-tls</td><td>Utility</td><td>SSL/TLS 인증서 관리: 생성, 갱신, 피닝 및 HTTPS 구성</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128202;</td><td>monitoring</td><td>Utility</td><td>애플리케이션 모니터링: Prometheus, Grafana, 알림 규칙, 대시보드 및 SLO</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128203;</td><td>logging</td><td>Utility</td><td>구조화된 로깅: 로그 레벨, 집계, ELK 스택 및 로그 기반 알림</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128640;</td><td>performance</td><td>Utility</td><td>애플리케이션 성능: 프로파일링, 벤치마킹, 메모리 누수 및 최적화 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128300;</td><td>testing-e2e</td><td>Utility</td><td>엔드투엔드 테스트: Playwright, Cypress, 테스트 픽스처 및 CI 통합 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128225;</td><td>mobile-dev</td><td>Utility</td><td>모바일 개발: React Native, Flutter, 반응형 디자인 및 앱 스토어 배포</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#127918;</td><td>game-dev</td><td>Utility</td><td>게임 개발: 엔진, 물리, 렌더링, 게임 루프 및 에셋 파이프라인</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#129303;</td><td>accessibility</td><td>Utility</td><td>웹 접근성: WCAG 준수, ARIA, 스크린 리더, 키보드 내비게이션 및 감사</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#127757;</td><td>i18n</td><td>Utility</td><td>국제화: 로케일 관리, 번역 워크플로, RTL 지원 및 날짜/숫자 포맷</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128200;</td><td>seo</td><td>Utility</td><td>SEO 최적화: 메타 태그, 구조화된 데이터, 사이트맵, Core Web Vitals 및 크롤 예산</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128190;</td><td>git-advanced</td><td>Utility</td><td>고급 Git 워크플로: 리베이스 전략, 체리픽, 이분 탐색, 워크트리 및 훅</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128195;</td><td>markdown</td><td>Utility</td><td>Markdown 작성: GFM, MDX, 표 서식 및 문서 사이트 생성</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128187;</td><td>shell-scripting</td><td>Utility</td><td>셸 스크립팅: Bash/Zsh, 인자 파싱, 오류 처리 및 크로스 플랫폼 스크립트</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128011;</td><td>python</td><td>Utility</td><td>Python 개발: 타이핑, 가상 환경, 패키징, 비동기 및 프레임워크 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9749;</td><td>java</td><td>Utility</td><td>Java 개발: Spring Boot, Maven/Gradle, JVM 튜닝 및 엔터프라이즈 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128039;</td><td>go</td><td>Utility</td><td>Go 개발: 모듈, 고루틴, 채널, 오류 처리 및 관용적 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- System (5 ref) -->
-<tr data-cat="System" data-status="ref"><td>&#128203;</td><td>aws</td><td>System</td><td>AWS 서비스: Lambda, S3, DynamoDB, CloudFormation, IAM 및 멀티 서비스 아키텍처</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#9729;</td><td>gcp</td><td>System</td><td>Google Cloud Platform: Cloud Functions, Firestore, Cloud Run, BigQuery 및 IAM</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#128309;</td><td>azure</td><td>System</td><td>Microsoft Azure: Functions, Cosmos DB, App Service, DevOps 및 Active Directory</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#128187;</td><td>linux-admin</td><td>System</td><td>Linux 시스템 관리: systemd, cron, 사용자, 권한, 네트워킹 및 문제 해결</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#127823;</td><td>macos-admin</td><td>System</td><td>macOS 시스템 관리: defaults, launchd, Homebrew, 디스크 유틸리티 및 자동화</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Additional representative skills -->
-<tr data-cat="Utility" data-status="ref"><td>&#128295;</td><td>rust</td><td>Utility</td><td>Rust 개발: 소유권, 라이프타임, 비동기, 크레이트 및 시스템 프로그래밍 패턴</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128024;</td><td>php</td><td>Utility</td><td>PHP 개발: Laravel, Composer, PSR 표준 및 최신 PHP 8+ 기능</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9889;</td><td>svelte</td><td>Utility</td><td>Svelte 및 SvelteKit: 컴포넌트, 스토어, SSR, 라우팅 및 어댑터 구성</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128308;</td><td>angular</td><td>Utility</td><td>Angular 개발: 컴포넌트, 서비스, RxJS, 모듈, 라우팅 및 상태 관리</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128154;</td><td>vue</td><td>Utility</td><td>Vue.js 개발: Composition API, Vuex/Pinia, Vue Router 및 Nuxt 통합</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9883;</td><td>react</td><td>Utility</td><td>React 패턴: 훅, 컨텍스트, Suspense, Server Components 및 Next.js 통합</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9883;</td><td>nextjs</td><td>Utility</td><td>Next.js: App Router, Server Actions, 미들웨어, ISR 및 배포 최적화</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128295;</td><td>tailwind</td><td>Utility</td><td>Tailwind CSS: 유틸리티 클래스, 커스텀 설정, 플러그인, 다크 모드 및 반응형 디자인</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128230;</td><td>prisma</td><td>Utility</td><td>Prisma ORM: 스키마 설계, 마이그레이션, 쿼리, 관계 및 데이터베이스 인트로스펙션</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128300;</td><td>drizzle</td><td>Utility</td><td>Drizzle ORM: 타입 안전 SQL, 스키마 정의, 마이그레이션 및 쿼리 빌더</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128640;</td><td>vite</td><td>Utility</td><td>Vite 빌드 도구: 설정, 플러그인, HMR, 라이브러리 모드 및 환경 변수</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128230;</td><td>turbo</td><td>Utility</td><td>Turborepo: 모노레포 관리, 태스크 파이프라인, 캐싱 및 원격 캐시 구성</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128195;</td><td>stripe</td><td>Utility</td><td>Stripe 연동: 결제, 구독, 웹훅, Connect 및 체크아웃 세션</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128293;</td><td>firebase</td><td>Utility</td><td>Firebase: Auth, Firestore, Cloud Functions, Hosting, Storage 및 Analytics</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128279;</td><td>supabase</td><td>Utility</td><td>Supabase: 데이터베이스, 인증, 스토리지, 엣지 함수, 실시간 구독 및 RLS</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128300;</td><td>electron</td><td>Utility</td><td>Electron 앱 개발: 메인/렌더러 프로세스, IPC, 패키징, 자동 업데이트 및 보안</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128301;</td><td>tauri</td><td>Utility</td><td>Tauri 앱 개발: Rust 백엔드, IPC 커맨드, 플러그인 및 크로스 플랫폼 빌드</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#129302;</td><td>ml-ops</td><td>Utility</td><td>MLOps: 모델 학습 파이프라인, 실험 추적, 모델 서빙 및 모니터링</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128200;</td><td>prompt-engineering</td><td>Utility</td><td>프롬프트 엔지니어링: 사고 연쇄, 퓨샷, 시스템 프롬프트 및 평가 프레임워크</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Development (13: 13 active) -->
+<tr data-cat="Development" data-status="active"><td>🔧</td><td>dev</td><td>Development</td><td>공통 개발 가이드. 모듈화 개발, 체계적 디버깅, 완료 전 검증, 코드 품질 신호.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🏗️</td><td>dev-architecture</td><td>Development</td><td>모듈 경계 규칙, 순환 의존성 탐지·예방, 암묵적 결합 분류, barrel/re-export 규율, 경계 한정 방어 프로그래밍의 표준 소유 스킬. dev·dev-code-reviewer·dev-backend·dev-frontend 스텁이 참조.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>⚙️</td><td>dev-backend</td><td>Development</td><td>백엔드 개발 가이드. API 설계, 아키텍처 패턴, 데이터베이스 최적화, 에러 처리, 보안, 로깅.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🔍</td><td>dev-code-reviewer</td><td>Development</td><td>코드 리뷰 가이드. 리뷰 프로세스, 품질 기준, 안티패턴, 피드백 주고받기. 모든 에이전트가 사용 가능.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>📊</td><td>dev-data</td><td>Development</td><td>데이터 엔지니어링·분석 가이드. 파이프라인, ETL/ELT, 데이터 품질, SQL 최적화, 리포팅, 아키텍처 결정.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🐛</td><td>dev-debugging</td><td>Development</td><td>버그 수정을 위한 사고 과정 스킬. 체계적 디버깅 절차 강제.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🚀</td><td>dev-devops</td><td>Development</td><td>컨테이너 빌드, 배포 파이프라인, Kubernetes, IaC, SRE, 엣지/서버리스, ML 인프라.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🎨</td><td>dev-frontend</td><td>Development</td><td>프런트엔드 역할 가이드. 독창적 UI/UX 구현, 컴포넌트 설계, 미적 기준.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🎯</td><td>dev-pabcd</td><td>Development</td><td>PABCD orchestration workflow. Plan → Audit → Build → Check → Done. 구조화된 멀티스텝 개발 with human checkpoints.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🏗️</td><td>dev-scaffolding</td><td>Development</td><td>Lidge Standard 프로젝트 스캐폴딩. Feature-based + Colocation + Barrel Export + devlog 구조.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🛡️</td><td>dev-security</td><td>Development</td><td>보안을 사후 정리가 아닌 빌드 제약으로 다루는 가이드.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🧪</td><td>dev-testing</td><td>Development</td><td>디버깅 phase 전용. Playwright 웹앱 테스팅, 정찰-행동 패턴.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🎯</td><td>dev-uiux-design</td><td>Development</td><td>UI/UX 의도 발견, 디자인 어휘, 제품 성격, UX 상태 패턴. 디자인 방향이 모호하거나 온보딩/빈상태/에러상태 구현 시 사용.</td><td><span class="badge badge-active">Active</span></td></tr>
+<!-- Dev Tools (145: 3 active) -->
+<tr data-cat="Dev Tools" data-status="active"><td>🐙</td><td>github</td><td>Dev Tools</td><td>GitHub gh CLI 통합: 이슈·PR·CI·코드리뷰·API + PR 코멘트·CI 디버깅·이슈 자동수정·yeet.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Dev Tools" data-status="active"><td>🎯</td><td>goal</td><td>Dev Tools</td><td>Goal 실행 가이드: PABCD 통합, 검증 티어, 문서화 워크플로우, AI-driven 목표 수립.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Dev Tools" data-status="active"><td>🧩</td><td>structured-renderers</td><td>Dev Tools</td><td>compose-block 초안, search-results 카드, dataframe 표, chart-json 차트, diff 출력을 위한 Web UI 구조화 렌더러 스키마.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📊</td><td>agent-eval</td><td>Dev Tools</td><td>재현 가능한 작업에서 코딩 에이전트를 정면 비교하는 경량 CLI 도구. 감이 아닌 데이터 기반 비교.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>agent-harness-construction</td><td>Dev Tools</td><td>에이전트의 계획·도구 호출·에러 복구·완료 수렴 방식을 개선할 때 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💻</td><td>agent-repl</td><td>Dev Tools</td><td>멀티턴 에이전트 대화용 영구 REPL 세션 관리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧙</td><td>agent-setup-wizard</td><td>Dev Tools</td><td>스킬·룰 라이브러리용 대화형 단계별 설치 마법사. 선택적 설치와 버전 관리 안내.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🤖</td><td>agentic-engineering</td><td>Dev Tools</td><td>AI 에이전트가 구현 대부분을 맡고 사람이 품질·리스크를 통제하는 엔지니어링 워크플로에 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🤖</td><td>agents-sdk</td><td>Dev Tools</td><td>Cloudflare Workers AI 에이전트 SDK 사용 가이드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧠</td><td>ai-first-engineering</td><td>Dev Tools</td><td>AI 보조 코드 생성으로 출시하는 팀의 프로세스·리뷰·아키텍처 설계 시 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📱</td><td>android-clean-architecture</td><td>Dev Tools</td><td>Android·KMP 프로젝트용 클린 아키텍처 패턴. 모듈 경계, 의존성 역전, UseCase/Repository, 데이터 레이어.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📐</td><td>api-design-reviewer</td><td>Dev Tools</td><td>REST API 설계 리뷰: 네이밍 규칙, HTTP 메서드, 페이지네이션, 에러 포맷, 버저닝, 호환성 파괴 변경, 레이트 리밋.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📐</td><td>architecture-decision-records</td><td>Dev Tools</td><td>코딩 중 발생하는 아키텍처 결정을 그 순간 ADR로 기록. Slack 스레드·PR 코멘트·개인 머릿속에만 남지 않게 보존.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔄</td><td>autonomous-loops</td><td>Dev Tools</td><td>Claude Code를 루프로 자율 실행하는 패턴·아키텍처·레퍼런스 구현. 단순 `claude -p` 파이프라인부터 복합 구성까지.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📘</td><td>blueprint</td><td>Dev Tools</td><td>한 줄 목표를 어떤 코딩 에이전트든 맨바닥에서 실행 가능한 단계별 구축 계획으로 변환.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💡</td><td>brainstorming</td><td>Dev Tools</td><td>코딩 전 아이디어 정제→디자인 문서 작성 (obra/superpowers).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔥</td><td>bun-runtime</td><td>Dev Tools</td><td>Bun 올인원 JavaScript 런타임·툴킷: 런타임, 패키지 매니저, 번들러, 테스트 러너.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚚</td><td>carrier-relationship-management</td><td>Dev Tools</td><td>트럭로드·LTL·인터모달에 걸쳐 40~200개 이상 운송사 포트폴리오를 관리하는 시니어 운송 매니저 페르소나.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📰</td><td>changelog-generator</td><td>Dev Tools</td><td>git commit → 체인지로그/릴리스 노트 생성.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🤖</td><td>claude-api</td><td>Dev Tools</td><td>Anthropic Claude API·SDK로 애플리케이션 구축.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚓</td><td>claude-devfleet</td><td>Dev Tools</td><td>여러 Claude Code 에이전트를 병렬 디스패치해 코딩 작업 처리. 각 에이전트는 격리된 git worktree에서 실행.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗄️</td><td>clickhouse-io</td><td>Dev Tools</td><td>고성능 분석·데이터 엔지니어링을 위한 ClickHouse 전용 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>☁️</td><td>cloudflare-deploy</td><td>Dev Tools</td><td>Cloudflare Workers/Pages 배포. wrangler CLI.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗺️</td><td>codebase-onboarding</td><td>Dev Tools</td><td>낯선 코드베이스를 체계적으로 분석해 구조화된 온보딩 가이드 생성. 새 프로젝트 합류 개발자용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗺️</td><td>codebase-orientation</td><td>Dev Tools</td><td>프로젝트 엔트리포인트/모듈/빌드 매핑. 온보딩 가이드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📱</td><td>compose-multiplatform-patterns</td><td>Dev Tools</td><td>Compose Multiplatform·Jetpack Compose로 Android·iOS·Desktop·Web 공유 UI 구축 패턴. 상태 관리, 내비게이션.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚙️</td><td>config-file-explainer</td><td>Dev Tools</td><td>설정 파일 구조/키/기본값 설명.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔑</td><td>content-hash-cache-pattern</td><td>Dev Tools</td><td>SHA-256 콘텐츠 해시를 캐시 키로 써서 무거운 파일 처리(PDF 파싱, 텍스트 추출, 이미지 분석) 결과를 캐싱. 경로 기반 방식과 차별화.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📏</td><td>context-budget</td><td>Dev Tools</td><td>에이전트 세션의 모든 로드 컴포넌트 토큰 오버헤드를 분석, 컨텍스트 공간 회수를 위한 실행 가능한 최적화 제시.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗜️</td><td>context-compression</td><td>Dev Tools</td><td>컨텍스트 압축 전략. 긴 세션 최적화.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>♾️</td><td>continuous-agent-loop</td><td>Dev Tools</td><td>장시간 실행 에이전트 워크플로 구성 패턴. 루프 선택, 품질 게이트, 실패 복구.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📚</td><td>continuous-learning</td><td>Dev Tools</td><td>완료된 에이전트 세션을 평가해 재사용 패턴을 학습 스킬로 추출·저장.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📚</td><td>continuous-learning-v2</td><td>Dev Tools</td><td>에이전트 세션을 원자적 '본능(instinct)'으로 재사용 지식화하는 고급 학습 시스템. 신뢰도 점수가 붙은 작은 학습 행동.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💰</td><td>cost-aware-llm-pipeline</td><td>Dev Tools</td><td>품질을 유지하며 LLM API 비용을 통제하는 패턴. 모델 라우팅, 예산 추적, 재시도 로직, 프롬프트 캐싱 결합.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔷</td><td>cpp-coding-standards</td><td>Dev Tools</td><td>C++ Core Guidelines 기반 모던 C++(C++17/20/23) 코딩 표준. 타입 안전, 리소스 안전, 불변성, 명료성 강제.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>cpp-testing</td><td>Dev Tools</td><td>GoogleTest/GoogleMock·CMake/CTest 기반 모던 C++(C++17/20) 에이전트 중심 테스트 워크플로.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🛃</td><td>customs-trade-compliance</td><td>Dev Tools</td><td>미국·EU·영국·아태 관할에 걸쳐 통관 업무를 관리하는 시니어 무역 컴플라이언스 전문가 페르소나.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🕷️</td><td>data-scraper-agent</td><td>Dev Tools</td><td>공개 데이터 소스용 프로덕션급 AI 데이터 수집 에이전트 구축.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>data-structure-chooser</td><td>Dev Tools</td><td>자료구조 시간/공간 트레이드오프 추천.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗃️</td><td>database-designer</td><td>Dev Tools</td><td>스키마 설계, 정규화(1NF–BCNF), 인덱스 최적화, 마이그레이션 전략, 파티셔닝, 데이터베이스 선택 가이드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔀</td><td>database-migrations</td><td>Dev Tools</td><td>프로덕션 시스템을 위한 안전하고 되돌릴 수 있는 DB 스키마 변경.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>debugging-checklist</td><td>Dev Tools</td><td>재현→격리→로깅→가설검증 디버깅 체크리스트.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐛</td><td>debugging-helpers</td><td>Dev Tools</td><td>체계적 디버깅 보조 (systematic-debugging).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔬</td><td>deep-research</td><td>Dev Tools</td><td>멀티스텝 리서치 에이전트. 검색→분석→요약.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📦</td><td>dependency-install-helper</td><td>Dev Tools</td><td>플랫폼별 의존성 설치 단계 + 검증 명령.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚀</td><td>deployment-patterns</td><td>Dev Tools</td><td>프로덕션 배포 워크플로·CI/CD 모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎮</td><td>develop-web-game</td><td>Dev Tools</td><td>웹 게임 개발 + Playwright 테스트 루프.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔎</td><td>differential-review</td><td>Dev Tools</td><td>보안 관점 diff 리뷰. 변경된 코드의 보안 영향 분석.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔀</td><td>dispatching-parallel-agents</td><td>Dev Tools</td><td>병렬 서브에이전트 디스패치 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐍</td><td>django-patterns</td><td>Dev Tools</td><td>확장·유지보수 가능한 앱을 위한 프로덕션급 Django 아키텍처 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>django-security</td><td>Dev Tools</td><td>Django 앱 보안 가이드라인. 흔한 취약점과 하드닝 실무.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>django-tdd</td><td>Dev Tools</td><td>pytest·factory_boy·Django REST Framework 기반 Django TDD.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>django-verification</td><td>Dev Tools</td><td>PR 전·대규모 변경 후·배포 전 구조화된 검증 파이프라인 실행. 마이그레이션·품질·보안·설정 문제 포착.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐳</td><td>docker-patterns</td><td>Dev Tools</td><td>컨테이너 개발을 위한 Docker·Docker Compose 모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📖</td><td>documentation-lookup</td><td>Dev Tools</td><td>라이브러리·프레임워크·API 질문 시 Context7 MCP로 최신 문서 조회 (`resolve-library-id`·`query-docs` 도구).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💾</td><td>durable-objects</td><td>Dev Tools</td><td>Cloudflare Durable Objects (RPC+SQLite+WebSocket) 스테이트풀 워커.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚡</td><td>energy-procurement</td><td>Dev Tools</td><td>규제·비규제 시장에 걸친 다수 사업장을 둔 대형 C&amp;I 수요처의 시니어 에너지 조달 매니저 페르소나.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏢</td><td>enterprise-agent-ops</td><td>Dev Tools</td><td>단일 CLI 세션을 넘어 운영 통제가 필요한 클라우드 호스팅·상시 실행 에이전트 시스템에 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💬</td><td>error-message-explainer</td><td>Dev Tools</td><td>컴파일러/런타임 에러 → 원인 + 수정 제안.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📊</td><td>eval-harness</td><td>Dev Tools</td><td>에이전트 보조 워크플로용 평가 프레임워크. 구현 전 기대 동작 정의, 지속 평가 실행, 회귀 추적.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔍</td><td>exa-search</td><td>Dev Tools</td><td>Exa MCP 서버로 웹 콘텐츠·코드·기업·인물 뉴럴 검색.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎨</td><td>figma-implement-design</td><td>Dev Tools</td><td>Figma 디자인을 1:1 코드로 변환. Figma MCP 필요.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🦋</td><td>flutter-dart-code-review</td><td>Dev Tools</td><td>라이브러리 무관 Flutter/Dart 앱 리뷰 체크리스트. 상태 관리 방식과 상관없이 적용되는 원칙.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📲</td><td>foundation-models-on-device</td><td>Dev Tools</td><td>FoundationModels 프레임워크로 Apple 온디바이스 언어 모델을 앱에 통합하는 패턴. 텍스트 생성, 구조화 출력.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🖥️</td><td>frontend-slides</td><td>Dev Tools</td><td>브라우저에서 완전히 동작하는 무의존성 애니메이션 HTML 프레젠테이션 제작.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🌲</td><td>git-worktrees</td><td>Dev Tools</td><td>git worktree 기반 격리 브랜치 워크플로.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐹</td><td>golang-patterns</td><td>Dev Tools</td><td>견고·효율·유지보수 가능한 앱을 위한 관용적 Go 패턴·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>golang-testing</td><td>Dev Tools</td><td>TDD 방법론 기반 신뢰성 있는 Go 테스트 작성 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>insecure-defaults</td><td>Dev Tools</td><td>하드코딩 시크릿, 약한 암호, 안전하지 않은 기본값 탐지.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📦</td><td>inventory-demand-planning</td><td>Dev Tools</td><td>지역 물류센터를 둔 40–200개 매장 리테일러의 시니어 수요 계획 담당자 페르소나.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔁</td><td>iterative-retrieval</td><td>Dev Tools</td><td>서브에이전트가 작업 전엔 필요한 컨텍스트를 예측할 수 없는 멀티에이전트 워크플로의 '컨텍스트 문제' 해결.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>☕</td><td>java-coding-standards</td><td>Dev Tools</td><td>Spring Boot 서비스의 읽기 쉽고 유지보수 가능한 Java(17+) 코드 표준.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗃️</td><td>jpa-patterns</td><td>Dev Tools</td><td>Spring Boot 데이터 모델링·리포지토리·성능 튜닝에 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📓</td><td>jupyter-notebook</td><td>Dev Tools</td><td>.ipynb 생성/편집. 번들 Python 스크립트.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🌊</td><td>kotlin-coroutines-flows</td><td>Dev Tools</td><td>Android·Kotlin Multiplatform의 구조적 동시성, Flow 기반 반응형 스트림, 코루틴 테스트 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📊</td><td>kotlin-exposed-patterns</td><td>Dev Tools</td><td>JetBrains Exposed ORM DB 접근 패턴. DSL 쿼리, DAO, 트랜잭션, 프로덕션 설정.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🌐</td><td>kotlin-ktor-patterns</td><td>Dev Tools</td><td>Kotlin 코루틴으로 견고한 HTTP 서버를 구축하는 Ktor 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🟣</td><td>kotlin-patterns</td><td>Dev Tools</td><td>견고·효율·유지보수 가능한 앱을 위한 관용적 Kotlin 패턴·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>kotlin-testing</td><td>Dev Tools</td><td>Kotest·MockK·TDD 기반 신뢰성 있는 Kotlin 테스트 작성 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>laravel-patterns</td><td>Dev Tools</td><td>확장·유지보수 가능한 앱을 위한 프로덕션급 Laravel 아키텍처 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>laravel-security</td><td>Dev Tools</td><td>흔한 취약점을 막는 Laravel 앱 보안 가이드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>laravel-tdd</td><td>Dev Tools</td><td>PHPUnit·Pest로 커버리지 80%+ 달성하는 Laravel TDD (유닛 + 기능).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>laravel-verification</td><td>Dev Tools</td><td>PR 전·대규모 변경 후·배포 전 실행하는 검증.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧹</td><td>linter-fix-guide</td><td>Dev Tools</td><td>린트 룰 설명 + 패턴 제시 + 최소 수정 제안.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💎</td><td>liquid-glass-design</td><td>Dev Tools</td><td>Apple Liquid Glass 구현 패턴. 뒤 콘텐츠를 흐리고 주변의 색·빛을 반사하는 동적 머티리얼.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📄</td><td>log-summarizer</td><td>Dev Tools</td><td>로그 그룹핑 + 첫 실패 식별 + 액션 제안.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚨</td><td>logistics-exception-management</td><td>Dev Tools</td><td>전 운송 모드(LTL·FTL·소포·복합·해상·항공) 화물 예외 처리. TMS·WMS·운송사 포털·클레임·ERP 주문 연계.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔌</td><td>mcp-builder</td><td>Dev Tools</td><td>외부 API 연동용 MCP 서버를 설계/구현하는 스킬.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐍</td><td>modern-python</td><td>Dev Tools</td><td>uv+ruff+ty+pytest Python 모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔺</td><td>netlify-deploy</td><td>Dev Tools</td><td>Netlify 사이트 배포. netlify CLI.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>▲</td><td>nextjs-turbopack</td><td>Dev Tools</td><td>Next.js 16+는 로컬 개발에 Turbopack 기본 사용. Rust로 작성된 증분 번들러로 개발 시작·핫 리로드 가속.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💚</td><td>nuxt4-patterns</td><td>Dev Tools</td><td>SSR·하이브리드 렌더링·라우트 규칙·페이지 단위 데이터 페칭을 쓰는 Nuxt 4 앱 구축·디버깅에 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📖</td><td>openai-docs</td><td>Dev Tools</td><td>OpenAI 제품/API 공식 문서 참조. 빌드 가이드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐪</td><td>perl-patterns</td><td>Dev Tools</td><td>견고·유지보수 가능한 앱을 위한 관용적 Perl 5.36+ 패턴·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>perl-security</td><td>Dev Tools</td><td>Perl 앱 보안 가이드라인. 입력 검증, 인젝션 방지, 안전한 코딩 실무.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>perl-testing</td><td>Dev Tools</td><td>Test2::V0·Test::More·prove·TDD 기반 Perl 테스트 전략.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🦠</td><td>plankton-code-quality</td><td>Dev Tools</td><td>쓰기 시점 코드 품질 강제 시스템 Plankton(제작: @alxfazio) 연동 레퍼런스. 매 저장마다 포매터·린터 실행.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐘</td><td>postgres</td><td>Dev Tools</td><td>PostgreSQL 읽기 전용 쿼리. 스키마 탐색.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐘</td><td>postgres-patterns</td><td>Dev Tools</td><td>PostgreSQL 모범사례 빠른 참조.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏭</td><td>production-scheduling</td><td>Dev Tools</td><td>가공·조립·마감·포장 작업장 전반의 개별·배치 생산 스케줄링. ERP(SAP PP, Oracle) 연계.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📋</td><td>project-guidelines-example</td><td>Dev Tools</td><td>프로젝트 전용 스킬 제작 템플릿. 아래 섹션을 프로젝트에 맞게 수정.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎯</td><td>prompt-engineering</td><td>Dev Tools</td><td>초안 프롬프트를 분석해 빈틈을 찾고 사용 가능한 에이전트 컴포넌트에 매핑.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>property-based-testing</td><td>Dev Tools</td><td>다언어 속성 기반 테스트 (Hypothesis/fast-check 등).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐍</td><td>python-patterns</td><td>Dev Tools</td><td>견고·효율·유지보수 가능한 앱을 위한 관용적 Python 패턴·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>python-testing</td><td>Dev Tools</td><td>pytest·TDD 방법론 기반 Python 테스트 전략·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔥</td><td>pytorch-patterns</td><td>Dev Tools</td><td>견고·효율·재현 가능한 딥러닝 앱을 위한 관용적 PyTorch 패턴·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚠️</td><td>quality-nonconformance</td><td>Dev Tools</td><td>규제 제조(FDA 21 CFR 820, IATF 16949, AS9100, ISO 13485)의 부적합 라이프사이클 관리. QMS(MasterControl) 연계.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📄</td><td>ralphinho-rfc-pipeline</td><td>Dev Tools</td><td>단일 에이전트 패스로 처리하기엔 큰 기능을 독립 검증 가능한 작업 단위로 분할할 때 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚛️</td><td>react-best-practices</td><td>Dev Tools</td><td>React 코드 패턴, 성능 최적화, 컴포넌트 설계 모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📩</td><td>receiving-code-review</td><td>Dev Tools</td><td>코드 리뷰 피드백 수신 및 대응 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔤</td><td>regex-vs-llm-structured-text</td><td>Dev Tools</td><td>구조화 텍스트(퀴즈·폼·청구서·문서) 파싱 의사결정 프레임워크. 핵심: 정규식이 95–98%를 저렴하게 처리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚀</td><td>render-deploy</td><td>Dev Tools</td><td>Render 서비스 배포. Blueprint YAML.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📝</td><td>requesting-code-review</td><td>Dev Tools</td><td>에이전트 내부 코드 리뷰. severity 기반 차단.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📦</td><td>returns-reverse-logistics</td><td>Dev Tools</td><td>리테일·이커머스·옴니채널 반품 전 과정. RMA, 상태 등급, 처분 경로, 환불 처리, 사기 탐지.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📏</td><td>rules-distill</td><td>Dev Tools</td><td>설치된 스킬을 스캔해 여러 스킬에 공통된 원칙을 추출, 룰로 정제해 기존 룰 파일에 추가.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🦀</td><td>rust-patterns</td><td>Dev Tools</td><td>안전·고성능·유지보수 가능한 앱을 위한 관용적 Rust 패턴·모범사례.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>rust-testing</td><td>Dev Tools</td><td>TDD 방법론 기반 신뢰성 있는 Rust 테스트 작성 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🛡️</td><td>security-best-practices</td><td>Dev Tools</td><td>언어별 보안 취약점 패턴 리뷰.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>👥</td><td>security-ownership-map</td><td>Dev Tools</td><td>코드베이스 소유자/버스팩터 매핑.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚠️</td><td>security-threat-model</td><td>Dev Tools</td><td>리포별 위협 모델 생성 (STRIDE/DREAD).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏛️</td><td>senior-architect</td><td>Dev Tools</td><td>아키텍처 결정 기록(ADR), 패턴 선택(모놀리스·마이크로서비스·CQRS·이벤트 소싱), 의존성 분석, 기술 스택 결정.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐛</td><td>sentry</td><td>Dev Tools</td><td>Sentry 이슈/이벤트 조회. 번들 Python 스크립트.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>skill-creator</td><td>Dev Tools</td><td>새 SKILL.md 자동 생성. 템플릿 + 가이드라인 제공.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📋</td><td>skill-stocktake</td><td>Dev Tools</td><td>품질 체크리스트와 AI 종합 판단으로 설치된 스킬·커맨드 전체 감사. 변경분 빠른 스캔과 전체 스캔 두 모드 지원.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍃</td><td>springboot-patterns</td><td>Dev Tools</td><td>확장 가능한 프로덕션급 서비스를 위한 Spring Boot 아키텍처·API 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>springboot-security</td><td>Dev Tools</td><td>인증 추가, 입력 처리, 엔드포인트 생성, 시크릿 취급 시 사용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>springboot-tdd</td><td>Dev Tools</td><td>커버리지 80%+ (유닛 + 통합)를 목표로 하는 Spring Boot TDD 가이드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>springboot-verification</td><td>Dev Tools</td><td>PR 전·대규모 변경 후·배포 전 실행하는 검증.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔍</td><td>static-analysis</td><td>Dev Tools</td><td>CodeQL+Semgrep+SARIF 정적 보안 분석.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧠</td><td>strategic-compact</td><td>Dev Tools</td><td>임의의 자동 압축 대신 전략적 시점의 수동 압축을 제안.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swift-actor-persistence</td><td>Dev Tools</td><td>Swift actor로 스레드 안전 데이터 영속 레이어 구축 패턴. 인메모리 캐시와 파일 기반 저장 결합.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swift-concurrency-6-2</td><td>Dev Tools</td><td>기본 단일 스레드 실행에 동시성을 명시적으로 도입하는 Swift 6.2 동시성 모델 채택 패턴. 데이터 레이스 제거.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swift-protocol-di-testing</td><td>Dev Tools</td><td>외부 의존성(파일 시스템·네트워크·iCloud)을 작고 집중된 프로토콜 뒤로 추상화해 Swift 코드를 테스트 가능하게 만드는 패턴.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swiftui-patterns</td><td>Dev Tools</td><td>Apple 플랫폼에서 선언적·고성능 UI를 만드는 모던 SwiftUI 패턴. Observation 프레임워크, 뷰 구성.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>tdd</td><td>Dev Tools</td><td>RED-GREEN-REFACTOR TDD 사이클 강제.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>👥</td><td>team-builder</td><td>Dev Tools</td><td>필요 시 에이전트 팀을 탐색·구성하는 대화형 메뉴. 평면 또는 도메인 하위 디렉토리 컬렉션 지원.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>terraform</td><td>Dev Tools</td><td>HashiCorp Terraform HCL/모듈/프로바이더 IaC.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧵</td><td>tmux</td><td>Dev Tools</td><td>tmux 세션 원격 제어. 키 입력 전송 + 출력 읽기.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎨</td><td>ui-design-system</td><td>Dev Tools</td><td>디자인 토큰 생성, 컬러 팔레트, 타이포그래피 스케일, 컴포넌트 아키텍처, WCAG 접근성, 개발자 핸드오프.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔬</td><td>ux-researcher</td><td>Dev Tools</td><td>사용자 페르소나 생성, 여정 매핑, 사용성 테스트 프레임워크, 리서치 종합. 데이터 기반 UX 리서치 툴킷.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>▲</td><td>vercel-deploy</td><td>Dev Tools</td><td>Vercel 프로젝트 배포.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>verification-loop</td><td>Dev Tools</td><td>여섯 단계에 걸친 코드 변경 체계적 품질 검사.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧱</td><td>web-artifacts-builder</td><td>Dev Tools</td><td>React/Tailwind 기반 복합 웹 아티팩트 제작 스킬.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚡</td><td>web-perf</td><td>Dev Tools</td><td>Core Web Vitals 감사. Lighthouse/CrUX 기반 성능 분석.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📋</td><td>writing-plans</td><td>Dev Tools</td><td>2-5분 단위 태스크 분해. 파일 경로/코드/검증 포함.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- AI & Media (16: 0 active) -->
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎨</td><td>algorithmic-art</td><td>AI &amp; Media</td><td>p5.js 제너러티브 아트. 알고리즘 기반 시각 작품 생성.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🌍</td><td>atlas</td><td>AI &amp; Media</td><td>ChatGPT Atlas 앱 제어. macOS 전용.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🖼️</td><td>canvas-design</td><td>AI &amp; Media</td><td>Canvas API로 PNG/PDF 시각 디자인 생성.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>📝</td><td>content-engine</td><td>AI &amp; Media</td><td>같은 글을 여기저기 올리는 대신, 하나의 아이디어를 플랫폼별 콘텐츠로 변환.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>✏️</td><td>fal-image-edit</td><td>AI &amp; Media</td><td>fal.ai AI 이미지 편집 (스타일 전환, 오브젝트 제거).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🤗</td><td>hugging-face-cli</td><td>AI &amp; Media</td><td>HF Hub CLI로 모델/데이터셋/스페이스 관리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>📊</td><td>hugging-face-evaluation</td><td>AI &amp; Media</td><td>vLLM/lighteval 모델 평가 및 벤치마크.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🏋️</td><td>hugging-face-model-trainer</td><td>AI &amp; Media</td><td>TRL: SFT/DPO/GRPO 모델 학습.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🖼️</td><td>imagegen</td><td>AI &amp; Media</td><td>OpenAI Images API로 이미지 생성·편집.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🖼️</td><td>nano-banana-pro</td><td>AI &amp; Media</td><td>Gemini 3 Pro로 이미지 생성·편집. Codex imagegen과 다른 모델.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎥</td><td>sora</td><td>AI &amp; Media</td><td>Sora 비디오 생성/관리. OpenAI API.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🗣️</td><td>speech</td><td>AI &amp; Media</td><td>OpenAI TTS로 음성 합성. 번들 Python 스크립트.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎭</td><td>theme-factory</td><td>AI &amp; Media</td><td>문서/슬라이드/HTML 산출물에 재사용 가능한 테마를 적용하는 스킬.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎤</td><td>transcribe</td><td>AI &amp; Media</td><td>OpenAI Whisper 음성→텍스트 + 다화자 분리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎥</td><td>videodb</td><td>AI &amp; Media</td><td>영상·라이브 스트림·데스크톱 세션을 위한 인식 + 기억 + 행동.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🤖</td><td>web-ai</td><td>AI &amp; Media</td><td>ChatGPT, Gemini, Grok 브라우저 워크플로우.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Productivity (25: 3 active) -->
+<tr data-cat="Productivity" data-status="active"><td>📄</td><td>docx</td><td>Productivity</td><td>.docx 문서 생성·편집·읽기. 시각 검증(soffice→PDF→PNG), tracked changes, python-docx.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Productivity" data-status="active"><td>🇰🇷</td><td>hwp</td><td>Productivity</td><td>한글 문서(.hwp/.hwpx) 생성/읽기/편집/변환. OfficeCLI + rhwp sidecars, OWPML XML 편집, Python fallback.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Productivity" data-status="active"><td>📽️</td><td>pptx</td><td>Productivity</td><td>프레젠테이션(.pptx) 생성/수정/분석 전용 스킬.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🍎</td><td>apple-notes</td><td>Productivity</td><td>Apple Notes 메모 생성·검색. AppleScript 기반.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🔔</td><td>apple-reminders</td><td>Productivity</td><td>Apple 미리알림 추가·완료·목록 관리. AppleScript 기반.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>✍️</td><td>article-writing</td><td>Productivity</td><td>뻔한 AI 글이 아니라 실제 사람·브랜드처럼 들리는 롱폼 콘텐츠 작성.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>✍️</td><td>doc-coauthoring</td><td>Productivity</td><td>기획/스펙/문서 공동작성 워크플로우를 구조화하는 스킬.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🔄</td><td>html2pptx</td><td>Productivity</td><td>HTML 슬라이드를 네이티브 PowerPoint 요소로 변환. Playwright DOM 파싱 → PptxGenJS.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>💼</td><td>investor-materials</td><td>Productivity</td><td>일관되고 신뢰할 수 있으며 방어하기 쉬운 투자자용 자료 제작.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🤝</td><td>investor-outreach</td><td>Productivity</td><td>짧고 개인화되어 바로 실행하기 쉬운 투자자 커뮤니케이션 작성.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📐</td><td>linear</td><td>Productivity</td><td>Linear 이슈·프로젝트 관리. CLI로 태스크 생성/조회.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📊</td><td>market-research</td><td>Productivity</td><td>보여주기식이 아니라 의사결정을 뒷받침하는 리서치 생산.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📝</td><td>notion</td><td>Productivity</td><td>Notion 페이지/DB CRUD. curl로 API 호출. Codex notion-* 스킬과 보완.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📚</td><td>notion-knowledge-capture</td><td>Productivity</td><td>대화→Notion 위키/FAQ/HOW-TO 캡처. Notion MCP.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📊</td><td>notion-meeting-intelligence</td><td>Productivity</td><td>회의 자료 준비 (참석자별 맥락, 어젠다). Notion MCP.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🔬</td><td>notion-research-documentation</td><td>Productivity</td><td>Notion 다중 소스 → 보고서/비교 합성. Notion MCP.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📋</td><td>notion-spec-to-implementation</td><td>Productivity</td><td>PRD/스펙 → 구현계획 + 태스크 자동 생성. Notion MCP.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📄</td><td>nutrient-document-processing</td><td>Productivity</td><td>Nutrient DWS Processor API로 문서 처리. 포맷 변환, 텍스트·표 추출, 스캔 문서 OCR, PII 마스킹, 워터마크 추가.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🗃️</td><td>obsidian</td><td>Productivity</td><td>Obsidian 볼트 노트 생성·검색·태그 관리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>♿</td><td>officecli-accessibility</td><td>Productivity</td><td>Office 문서 접근성 검사 및 수정. WCAG 2.1 AA 준수.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🇰🇷</td><td>officecli-cjk</td><td>Productivity</td><td>CJK(한중일) 텍스트 처리. 글꼴, 언어 태그, 줄바꿈 규칙.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📊</td><td>officecli-data-pipeline</td><td>Productivity</td><td>Pandas DataFrame → Excel 파이프라인. CSV/TSV 내보내기, 서식, 차트.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>✅</td><td>things-mac</td><td>Productivity</td><td>Things 3 할일 추가·완료·검색. AppleScript + URL scheme.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📋</td><td>trello</td><td>Productivity</td><td>Trello 보드·리스트·카드 관리. curl로 REST API 호출.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🛂</td><td>visa-doc-translate</td><td>Productivity</td><td>사용자가 이미지 파일 경로를 주면 비자 서류 번역 단계를 자동 실행.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Automation (5: 2 active) -->
+<tr data-cat="Automation" data-status="active"><td>🌐</td><td>browser</td><td>Automation</td><td>Chrome 브라우저 조작. ref 스냅샷으로 페이지 요소 식별 → 클릭/입력.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Automation" data-status="active"><td>🖥️</td><td>desktop-control</td><td>Automation</td><td>CDP + Computer Use 통합 자동화. DOM은 cli-jaw browser, 데스크톱 앱은 mcp__computer_use__, 섞이면 하이브리드. Codex CLI + macOS 필수.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Automation" data-status="ref"><td>🧵</td><td>dmux-workflows</td><td>Automation</td><td>에이전트 하니스용 tmux 페인 매니저 dmux로 병렬 AI 에이전트 세션 오케스트레이션.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Automation" data-status="ref"><td>👁️</td><td>vision-click</td><td>Automation</td><td>비전 기반 좌표 클릭. Codex CLI 전용. 스크린샷 → AI 좌표 추출 → 픽셀 클릭.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Automation" data-status="ref"><td>🧭</td><td>web-routing</td><td>Automation</td><td>브라우저 요청을 browser/webapp-testing으로 단순 분기하는 가이드 스킬.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Communication (8: 1 active) -->
+<tr data-cat="Communication" data-status="active"><td>📨</td><td>telegram-send</td><td>Communication</td><td>텔레그램으로 voice/photo/document 직접 전송 (로컬 API 호출).</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>📢</td><td>crosspost</td><td>Communication</td><td>플랫폼별 최적화로 여러 소셜 플랫폼에 콘텐츠 배포.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>✉️</td><td>email-draft-polish</td><td>Communication</td><td>이메일 초안 톤 조절/포맷팅.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>🌐</td><td>gog</td><td>Communication</td><td>Gmail·Calendar·Drive·Sheets·Docs 통합 관리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>📧</td><td>himalaya</td><td>Communication</td><td>터미널 이메일 읽기·쓰기·답장·검색. Gmail/Outlook 지원.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>💬</td><td>whatsapp</td><td>Communication</td><td>WhatsApp 메시지 자동화 (automate-whatsapp).</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>🐦</td><td>x-api</td><td>Communication</td><td>X(Twitter) 게시·조회·검색·분석을 위한 프로그래밍 방식 연동.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>🐦</td><td>xurl</td><td>Communication</td><td>트윗 게시·검색·답글·DM·미디어 업로드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Research (2: 1 active) -->
+<tr data-cat="Research" data-status="active"><td>🔎</td><td>search</td><td>Research</td><td>웹, 실시간, X/Twitter, 한국어 원문 민감 검색, 딥리서치 라우팅을 위한 통합 검색 허브.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Research" data-status="ref"><td>🔍</td><td>research-worker</td><td>Research</td><td>리서치 직원 가이드. 읽기 전용 탐색, 구조화된 보고서.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Visualization (1: 1 active) -->
+<tr data-cat="Visualization" data-status="active"><td>📊</td><td>diagram</td><td>Visualization</td><td>SVG 다이어그램, 차트, 인터랙티브 시각화 생성</td><td><span class="badge badge-active">Active</span></td></tr>
+<!-- Media (1: 1 active) -->
+<tr data-cat="Media" data-status="active"><td>🎬</td><td>video</td><td>Media</td><td>Remotion JSON timeline, HyperFrames HTML video, FFmpeg 변환을 라우팅하는 코드 기반 영상 스킬.</td><td><span class="badge badge-active">Active</span></td></tr>
+<!-- Smart Home (2: 0 active) -->
+<tr data-cat="Smart Home" data-status="ref"><td>💡</td><td>openhue</td><td>Smart Home</td><td>Hue 조명·씬 제어. "거실 50%로 낮춰"</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Smart Home" data-status="ref"><td>🎵</td><td>spotify-player</td><td>Smart Home</td><td>Spotify 재생·일시정지·곡 검색·플레이리스트 관리.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<!-- Utility (12: 5 active) -->
+<tr data-cat="Utility" data-status="active"><td>🧠</td><td>memory</td><td>Utility</td><td>세션 간 장기 기억. 마크다운 파일에 저장, grep 검색.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📄</td><td>pdf</td><td>Utility</td><td>PDF 읽기·생성·편집·리뷰. reportlab/pdfplumber/pypdf + nano-pdf 자연어 편집.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📄</td><td>pdf-vision</td><td>Utility</td><td>PDF 하이브리드 추출: 이미지 렌더링(pypdfium2) + 텍스트 추출(pypdf). 시험/표/수식 분석에 최적.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📸</td><td>screen-capture</td><td>Utility</td><td>macOS 스크린샷·웹캠·녹화. 전체/영역/윈도우/다중모니터. 도구별 캡처 불가 시 기본 폴백.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📊</td><td>xlsx</td><td>Utility</td><td>.xlsx/.xlsm/.csv/.tsv 파일 생성·편집·분석·포맷팅. pandas 데이터 분석 포함.</td><td><span class="badge badge-active">Active</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🔐</td><td>1password</td><td>Utility</td><td>1Password CLI로 비밀번호·문서·OTP 조회.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>📍</td><td>goplaces</td><td>Utility</td><td>Google Places API로 장소·리뷰·영업시간 검색.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>📑</td><td>summarize</td><td>Utility</td><td>URL·유튜브·파일을 텍스트로 요약.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🔊</td><td>tts</td><td>Utility</td><td>macOS say 명령으로 텍스트 음성 변환. 다국어 지원, 파일 저장.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🎬</td><td>video-downloader</td><td>Utility</td><td>yt-dlp 래퍼. 유튜브/미디어 다운로드.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🎬</td><td>video-frames</td><td>Utility</td><td>ffmpeg로 영상 프레임·구간 추출.</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🌤️</td><td>weather</td><td>Utility</td><td>wttr.in 날씨·예보 조회. API 키 불필요.</td><td><span class="badge badge-ref">Reference</span></td></tr>
 </tbody>
 </table>
 
-<h2>기본 활성 스킬 (25개)</h2>
-<p>이 스킬들은 기본적으로 시스템 프롬프트에 로드됩니다. 가장 일반적인 개발 및 워크플로 시나리오를 다룹니다.</p>
+<h2>기본 활성 스킬 (30개)</h2>
+<p>이 스킬들은 기본값으로 시스템 프롬프트에 로드됩니다. 개발·문서·자동화·검색 등 일반적인 작업을 다룹니다.</p>
 
 <table>
 <thead>
 <tr><th>#</th><th>스킬</th><th>카테고리</th><th>용도</th></tr>
 </thead>
 <tbody>
-<tr><td>1</td><td><code>dev</code></td><td>Development</td><td>핵심 개발 규칙 및 코딩 표준</td></tr>
-<tr><td>2</td><td><code>dev-frontend</code></td><td>Development</td><td>프론트엔드 프레임워크 및 UI 패턴</td></tr>
-<tr><td>3</td><td><code>dev-backend</code></td><td>Development</td><td>백엔드 아키텍처 및 API 패턴</td></tr>
-<tr><td>4</td><td><code>dev-data</code></td><td>Development</td><td>데이터 엔지니어링 및 SQL</td></tr>
-<tr><td>5</td><td><code>dev-testing</code></td><td>Development</td><td>테스트 전략 및 TDD</td></tr>
-<tr><td>6</td><td><code>dev-code-reviewer</code></td><td>Development</td><td>자동 코드 리뷰</td></tr>
-<tr><td>7</td><td><code>dev-scaffolding</code></td><td>Development</td><td>프로젝트 스캐폴딩</td></tr>
-<tr><td>8</td><td><code>dev-security</code></td><td>Development</td><td>보안 모범 사례</td></tr>
-<tr><td>9</td><td><code>dev-debugging</code></td><td>Development</td><td>디버깅 전략</td></tr>
-<tr><td>10</td><td><code>dev-pabcd</code></td><td>Development</td><td>PABCD 방법론</td></tr>
-<tr><td>11</td><td><code>browser</code></td><td>Automation</td><td>CDP를 통한 Chrome 브라우저 제어</td></tr>
-<tr><td>12</td><td><code>desktop-control</code></td><td>Automation</td><td>데스크톱 + 브라우저 자동화</td></tr>
-<tr><td>13</td><td><code>notion</code></td><td>Communication</td><td>Notion 워크스페이스 연동</td></tr>
-<tr><td>14</td><td><code>github</code></td><td>Communication</td><td>gh CLI를 통한 GitHub 작업</td></tr>
-<tr><td>15</td><td><code>code-review</code></td><td>Security &amp; Review</td><td>정확성을 위한 diff 리뷰</td></tr>
-<tr><td>16</td><td><code>security-review</code></td><td>Security &amp; Review</td><td>보안 중심 리뷰</td></tr>
-<tr><td>17</td><td><code>verify</code></td><td>Security &amp; Review</td><td>앱 실행 및 변경 사항 검증</td></tr>
-<tr><td>18</td><td><code>simplify</code></td><td>Security &amp; Review</td><td>재사용 및 단순화</td></tr>
-<tr><td>19</td><td><code>init</code></td><td>Dev Workflow</td><td>프로젝트 초기화</td></tr>
-<tr><td>20</td><td><code>review</code></td><td>Dev Workflow</td><td>다중 패스 코드 리뷰</td></tr>
-<tr><td>21</td><td><code>run</code></td><td>Dev Workflow</td><td>앱 실행 및 구동</td></tr>
-<tr><td>22</td><td><code>memory</code></td><td>Productivity</td><td>영구적 세션 간 메모리</td></tr>
-<tr><td>23</td><td><code>dev-frontend</code> (auto)</td><td>Employee</td><td>Frontend employee에 자동 주입</td></tr>
-<tr><td>24</td><td><code>dev-testing</code> (auto)</td><td>Employee</td><td>Check 단계에서 자동 주입</td></tr>
-<tr><td>25</td><td><code>dev-security</code> (auto)</td><td>Employee</td><td>보안 관련 목표에서 자동 주입</td></tr>
+<tr><td>1</td><td><code>browser</code></td><td>Automation</td><td>Chrome 브라우저 조작. ref 스냅샷으로 페이지 요소 식별 → 클릭/입력</td></tr>
+<tr><td>2</td><td><code>desktop-control</code></td><td>Automation</td><td>CDP + Computer Use 통합 자동화</td></tr>
+<tr><td>3</td><td><code>dev</code></td><td>Development</td><td>공통 개발 가이드. 모듈화, 디버깅, 검증, 코드 품질</td></tr>
+<tr><td>4</td><td><code>dev-architecture</code></td><td>Development</td><td>모듈 경계, 순환 의존성, barrel/re-export 규칙</td></tr>
+<tr><td>5</td><td><code>dev-backend</code></td><td>Development</td><td>백엔드 API, DB, 보안, 로깅 패턴</td></tr>
+<tr><td>6</td><td><code>dev-code-reviewer</code></td><td>Development</td><td>코드 리뷰 프로세스, 품질 기준, 안티패턴</td></tr>
+<tr><td>7</td><td><code>dev-data</code></td><td>Development</td><td>데이터 파이프라인, ETL, SQL, 분석</td></tr>
+<tr><td>8</td><td><code>dev-debugging</code></td><td>Development</td><td>구조화된 버그 수정 사고 과정</td></tr>
+<tr><td>9</td><td><code>dev-devops</code></td><td>Development</td><td>컨테이너, 배포, Kubernetes, IaC, SRE</td></tr>
+<tr><td>10</td><td><code>dev-frontend</code></td><td>Development</td><td>프런트엔드 UI/UX, 컴포넌트 설계</td></tr>
+<tr><td>11</td><td><code>dev-pabcd</code></td><td>Development</td><td>PABCD 오케스트레이션 (Plan → Audit → Build → Check → Done)</td></tr>
+<tr><td>12</td><td><code>dev-scaffolding</code></td><td>Development</td><td>Lidge Standard 프로젝트 스캐폴딩</td></tr>
+<tr><td>13</td><td><code>dev-security</code></td><td>Development</td><td>보안을 빌드 제약으로 다루는 가이드</td></tr>
+<tr><td>14</td><td><code>dev-testing</code></td><td>Development</td><td>Playwright 웹앱 테스트, 정찰-행동 패턴</td></tr>
+<tr><td>15</td><td><code>dev-uiux-design</code></td><td>Development</td><td>UI/UX 의도 발견, 디자인 어휘, UX 상태 패턴</td></tr>
+<tr><td>16</td><td><code>diagram</code></td><td>Visualization</td><td>SVG 다이어그램, 차트, 인터랙티브 시각화</td></tr>
+<tr><td>17</td><td><code>docx</code></td><td>Productivity</td><td>.docx 문서 생성·편집·읽기</td></tr>
+<tr><td>18</td><td><code>github</code></td><td>Dev Tools</td><td>GitHub gh CLI: 이슈·PR·CI·코드리뷰</td></tr>
+<tr><td>19</td><td><code>goal</code></td><td>Dev Tools</td><td>Goal 실행, PABCD 통합, 검증 티어</td></tr>
+<tr><td>20</td><td><code>hwp</code></td><td>Productivity</td><td>한글(.hwp/.hwpx) 문서 생성/읽기/편집</td></tr>
+<tr><td>21</td><td><code>memory</code></td><td>Utility</td><td>세션 간 장기 기억</td></tr>
+<tr><td>22</td><td><code>pdf</code></td><td>Utility</td><td>PDF 읽기·생성·편집·리뷰</td></tr>
+<tr><td>23</td><td><code>pdf-vision</code></td><td>Utility</td><td>PDF 하이브리드 추출 (이미지 + 텍스트)</td></tr>
+<tr><td>24</td><td><code>pptx</code></td><td>Productivity</td><td>프레젠테이션(.pptx) 생성/수정/분석</td></tr>
+<tr><td>25</td><td><code>screen-capture</code></td><td>Utility</td><td>macOS 스크린샷·웹캠·녹화</td></tr>
+<tr><td>26</td><td><code>search</code></td><td>Research</td><td>웹·실시간·X·딥리서치 통합 검색 허브</td></tr>
+<tr><td>27</td><td><code>structured-renderers</code></td><td>Dev Tools</td><td>Web UI 구조화 렌더러 (compose-block, chart-json 등)</td></tr>
+<tr><td>28</td><td><code>telegram-send</code></td><td>Communication</td><td>텔레그램 voice/photo/document 전송</td></tr>
+<tr><td>29</td><td><code>video</code></td><td>Media</td><td>코드 기반 영상 생성·편집·렌더</td></tr>
+<tr><td>30</td><td><code>xlsx</code></td><td>Utility</td><td>스프레드시트 생성·편집·분석</td></tr>
 </tbody>
 </table>
+
+<p><code>k-writing</code>, <code>lecture-stt</code> 2개도 기본 활성이지만 공개 레지스트리 밖의 비공개 런타임 스킬이다.</p>
 
 <h2>스킬 설치 및 관리</h2>
 
@@ -399,13 +506,13 @@ tr.hidden-row { display: none; }
 jaw skill install cloudflare
 
 # Install multiple skills at once
-jaw skill install docker kubernetes terraform
+jaw skill install cloudflare-deploy terraform wrangler
 
 # Install all skills in a category
-jaw skill install --category "Cloud &amp; Deploy"</code></pre>
+jaw skill install --category "Dev Tools"</code></pre>
 
 <div class="callout callout-info">
-  <strong>채팅 내:</strong> "cloudflare 스킬 설치해줘" 또는 "Docker랑 Kubernetes 스킬 켜줘" -- 에이전트가 자동으로 설치 명령을 실행합니다.
+  <strong>채팅 내:</strong> "cloudflare 스킬 설치해줘" 또는 "terraform이랑 wrangler 스킬 켜줘" -- 에이전트가 자동으로 설치 명령을 실행합니다.
 </div>
 
 <h3>스킬 제거</h3>
@@ -413,7 +520,7 @@ jaw skill install --category "Cloud &amp; Deploy"</code></pre>
 jaw skill remove cloudflare
 
 # Remove multiple
-jaw skill remove docker kubernetes</code></pre>
+jaw skill remove cloudflare-deploy terraform</code></pre>
 
 <h3>스킬 정보 확인</h3>
 <pre><code># Detailed info about a skill
@@ -428,35 +535,35 @@ jaw skill info dev-frontend
 #   Lines:    127</code></pre>
 
 <h3>기본값으로 초기화</h3>
-<pre><code># Reset all skills to the 25 defaults
+<pre><code># Reset all skills to the 30 defaults
 jaw skill reset
 
 # Force reset (no confirmation prompt)
 jaw skill reset --force</code></pre>
 
 <div class="callout callout-warn">
-  <strong>경고:</strong> <code>jaw skill reset</code>은 모든 커스텀 스킬을 비활성화하고 기본 25개로 복원합니다. 커스텀 스킬 파일은 <code>~/.cli-jaw/skills_ref/</code>에 보존됩니다.
+  <strong>경고:</strong> <code>jaw skill reset</code>은 모든 커스텀 스킬을 비활성화하고 기본 30개로 복원합니다. 커스텀 스킬 파일은 <code>~/.cli-jaw/skills_ref/</code>에 보존됩니다.
 </div>
 
-<h2>카테고리 분류</h2>
+<h2>카테고리별 분포</h2>
 
 <table>
 <thead>
 <tr><th>카테고리</th><th>활성</th><th>레퍼런스</th><th>합계</th><th>설명</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Development</strong></td><td>10</td><td>0</td><td>10</td><td>핵심 개발, 프론트엔드, 백엔드, 데이터, 테스트, 스캐폴딩, 보안, 디버깅, 코드 리뷰, PABCD</td></tr>
-<tr><td><strong>Automation</strong></td><td>2</td><td>5</td><td>7</td><td>브라우저 제어, 데스크톱 자동화, 웹 AI, 비전, 화면 캡처, 비디오, 심층 리서치</td></tr>
-<tr><td><strong>AI &amp; Media</strong></td><td>0</td><td>8</td><td>8</td><td>PDF, PPTX, XLSX, DOCX, HWP, 다이어그램, 강의 전사</td></tr>
-<tr><td><strong>Communication</strong></td><td>2</td><td>4</td><td>6</td><td>Telegram, Notion, GitHub, X/Twitter, 이메일</td></tr>
-<tr><td><strong>Cloud &amp; Deploy</strong></td><td>0</td><td>7</td><td>7</td><td>Cloudflare, Workers, Durable Objects, Wrangler, 웹 성능</td></tr>
-<tr><td><strong>Security &amp; Review</strong></td><td>4</td><td>0</td><td>4</td><td>코드 리뷰, 보안 리뷰, 검증, 단순화</td></tr>
-<tr><td><strong>Dev Workflow</strong></td><td>3</td><td>5</td><td>8</td><td>초기화, 리뷰, 실행, 반복, 예약, 설정, 키바인딩, 권한</td></tr>
-<tr><td><strong>Productivity</strong></td><td>2</td><td>2</td><td>4</td><td>메모리, k-writing, OpenAI 문서, Claude API</td></tr>
-<tr><td><strong>Smart Home</strong></td><td>0</td><td>10</td><td>10</td><td>Home Assistant, 조명, 냉난방, 잠금장치, 카메라, 스피커, 플러그, 청소기, 날씨, 네트워크</td></tr>
-<tr><td><strong>Utility</strong></td><td>0</td><td>49</td><td>49</td><td>프로그래밍 언어, 프레임워크, 데이터베이스, 인프라 도구 등</td></tr>
-<tr><td><strong>System</strong></td><td>0</td><td>5</td><td>5</td><td>AWS, GCP, Azure, Linux 관리, macOS 관리</td></tr>
-<tr><td colspan="2"><strong>대표 카탈로그</strong></td><td></td><td><strong>118</strong></td><td>전체 참조 스킬은 <code>skills_ref/</code> 기준</td></tr>
+<tr><td><strong>Development</strong></td><td>13</td><td>0</td><td>13</td><td>아키텍처, 프론트/백엔드, 데이터, 테스트, 보안, 디버깅, PABCD, 스캐폴딩, UI/UX</td></tr>
+<tr><td><strong>Dev Tools</strong></td><td>3</td><td>142</td><td>145</td><td>GitHub, goal, structured-renderers + 언어/프레임워크, 배포, 에이전트 도구</td></tr>
+<tr><td><strong>AI &amp; Media</strong></td><td>0</td><td>16</td><td>16</td><td>이미지/영상 생성, web-ai, Hugging Face, 음성, 크리에이티브 미디어</td></tr>
+<tr><td><strong>Productivity</strong></td><td>3</td><td>22</td><td>25</td><td>DOCX, HWP, PPTX, Notion, Obsidian, 오피스 워크플로</td></tr>
+<tr><td><strong>Automation</strong></td><td>2</td><td>3</td><td>5</td><td>브라우저, 데스크톱 자동화, vision-click, 워크플로 라우팅</td></tr>
+<tr><td><strong>Communication</strong></td><td>1</td><td>7</td><td>8</td><td>Telegram, 이메일, X/Twitter, WhatsApp, 크로스포스트</td></tr>
+<tr><td><strong>Research</strong></td><td>1</td><td>1</td><td>2</td><td>통합 검색 허브, research-worker</td></tr>
+<tr><td><strong>Visualization</strong></td><td>1</td><td>0</td><td>1</td><td>SVG 다이어그램, 차트, 인터랙티브 시각화</td></tr>
+<tr><td><strong>Media</strong></td><td>1</td><td>0</td><td>1</td><td>코드 기반 영상 생성·편집·렌더</td></tr>
+<tr><td><strong>Smart Home</strong></td><td>0</td><td>2</td><td>2</td><td>Philips Hue, Spotify 플레이어</td></tr>
+<tr><td><strong>Utility</strong></td><td>5</td><td>7</td><td>12</td><td>memory, PDF, screen-capture, xlsx, 날씨 등</td></tr>
+<tr><td colspan="2"><strong>합계</strong></td><td>30</td><td>200</td><td><strong>230</strong></td><td></td></tr>
 </tbody>
 </table>
 
@@ -514,14 +621,7 @@ EOF</code></pre>
 </thead>
 <tbody>
 <tr><td><code>/skill list</code></td><td>채팅에서 활성 및 레퍼런스 스킬 개수 표시</td></tr>
-<tr><td><code>/skill reset</code></td><td>기본값으로 소프트 리셋 (확인 필요)</td></tr>
-<tr><td><code>/code-review</code></td><td>현재 diff에 대해 code-review 스킬 실행</td></tr>
-<tr><td><code>/security-review</code></td><td>현재 diff에 대해 security-review 스킬 실행</td></tr>
-<tr><td><code>/simplify</code></td><td>변경된 코드에 대해 simplify 스킬 실행</td></tr>
-<tr><td><code>/verify</code></td><td>앱을 실행하고 테스트하는 verify 스킬 실행</td></tr>
-<tr><td><code>/deep-research &lt;topic&gt;</code></td><td>출처 검증을 포함한 팬아웃 웹 리서치</td></tr>
-<tr><td><code>/init</code></td><td>감지된 스택으로 새 프로젝트 초기화</td></tr>
-<tr><td><code>/run</code></td><td>프로젝트 앱 실행</td></tr>
+<tr><td><code>/skill reset</code></td><td>기본 30개로 소프트 리셋 (확인 필요)</td></tr>
 </tbody>
 </table>
 

@@ -127,7 +127,7 @@ tr.hidden-row { display: none; }
 <main class="docs-main">
 
 <h1>技能目录</h1>
-<p class="lead">CLI-JAW 提供活跃运行时技能和 200+ 参考技能。本页面是 GitHub Pages 上发布的代表性目录；实际可用技能请以 <code>jaw skill list</code> 和 <code>skills_ref/</code> 为准。</p>
+<p class="lead">CLI-JAW 提供 230 个技能，涵盖 11 个分类。其中 30 个默认启用（注入系统提示词）；其余 200 个为参考技能，可通过 <code>jaw skill install</code> 按需安装。</p>
 
 <div class="callout callout-info">
   <strong>自然语言：</strong>"스킬 목록 보여줘"、"cloudflare 스킬 설치해줘"、"프론트엔드 스킬 켜줘"——这些都可以在聊天中直接使用。也可以使用斜杠命令 <code>/skill list</code>。
@@ -154,7 +154,7 @@ tr.hidden-row { display: none; }
   </div>
   <div class="cmd-card">
     <code>jaw skill reset</code>
-    <div class="cmd-desc">将所有技能重置为默认的 25 个</div>
+    <div class="cmd-desc">将所有技能重置为默认的 30 个</div>
   </div>
   <div class="cmd-card">
     <code>/skill list</code>
@@ -187,17 +187,17 @@ tr.hidden-row { display: none; }
   <input type="text" id="skillSearch" placeholder="搜索技能...（例如 frontend、cloudflare、pdf）" autocomplete="off">
   <select id="categoryFilter">
     <option value="all">所有分类</option>
-    <option value="Development">Development</option>
-    <option value="Automation">Automation</option>
-    <option value="AI &amp; Media">AI &amp; Media</option>
-    <option value="Communication">Communication</option>
-    <option value="Cloud &amp; Deploy">Cloud &amp; Deploy</option>
-    <option value="Security &amp; Review">Security &amp; Review</option>
-    <option value="Dev Workflow">Dev Workflow</option>
-    <option value="Productivity">Productivity</option>
-    <option value="Smart Home">Smart Home</option>
-    <option value="Utility">Utility</option>
-    <option value="System">System</option>
+    <option value="Development">Development（开发）</option>
+    <option value="Dev Tools">Dev Tools（开发工具）</option>
+    <option value="AI &amp; Media">AI &amp; Media（AI 与媒体）</option>
+    <option value="Productivity">Productivity（效率）</option>
+    <option value="Automation">Automation（自动化）</option>
+    <option value="Communication">Communication（通信）</option>
+    <option value="Research">Research（研究）</option>
+    <option value="Visualization">Visualization（可视化）</option>
+    <option value="Media">Media（媒体）</option>
+    <option value="Smart Home">Smart Home（智能家居）</option>
+    <option value="Utility">Utility（实用工具）</option>
   </select>
   <select id="statusFilter">
     <option value="all">所有状态</option>
@@ -205,192 +205,288 @@ tr.hidden-row { display: none; }
     <option value="ref">仅参考</option>
   </select>
 </div>
-<p class="skill-count">显示 <strong id="visibleCount">118</strong> 个代表性目录条目</p>
+<p class="skill-count">显示 <strong id="visibleCount">230</strong> / 230 个技能</p>
 
 <table class="skill-table" id="skillTable">
 <thead>
 <tr><th></th><th>技能名称</th><th>分类</th><th>描述</th><th>状态</th></tr>
 </thead>
 <tbody>
-<!-- Development (10 active) -->
-<tr data-cat="Development" data-status="active"><td>&#128187;</td><td>dev</td><td>Development</td><td>核心开发规则、编码标准和通用编程指南</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#127912;</td><td>dev-frontend</td><td>Development</td><td>生产级前端开发，支持技术栈检测和专用规则（React、Vue、Svelte 等）</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#9881;</td><td>dev-backend</td><td>Development</td><td>后端开发模式：API、数据库、认证、缓存和服务器架构</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128202;</td><td>dev-data</td><td>Development</td><td>数据工程、SQL 优化、ETL 管道和数据分析</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#129514;</td><td>dev-testing</td><td>Development</td><td>测试策略、Vitest/Jest、端到端测试、覆盖率和 TDD 模式</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128269;</td><td>dev-code-reviewer</td><td>Development</td><td>自动化代码审查：正确性、代码风格、性能和安全检查</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#127959;</td><td>dev-scaffolding</td><td>Development</td><td>项目脚手架、样板代码和目录结构生成</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128272;</td><td>dev-security</td><td>Development</td><td>安全最佳实践：输入验证、认证、OWASP 和漏洞模式</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128027;</td><td>dev-debugging</td><td>Development</td><td>调试策略、日志分析、错误追踪和根因定位</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Development" data-status="active"><td>&#128196;</td><td>dev-pabcd</td><td>Development</td><td>PABCD 方法论：Purpose（目的）、Audience（受众）、Behavior（行为）、Constraints（约束）、Deliverables（交付物）</td><td><span class="badge badge-active">Active</span></td></tr>
-
-<!-- Automation (7 ref) -->
-<tr data-cat="Automation" data-status="active"><td>&#127760;</td><td>browser</td><td>Automation</td><td>Chrome 浏览器控制：通过 CDP 打开页面、快照、点击、输入和截图</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Automation" data-status="active"><td>&#128421;</td><td>desktop-control</td><td>Automation</td><td>统一桌面 + 浏览器自动化：DOM 目标通过 CDP，桌面应用通过 Computer Use</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#129302;</td><td>web-ai</td><td>Automation</td><td>Web AI 驱动的浏览：智能页面解析、内容提取和摘要生成</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#128065;</td><td>vision-click</td><td>Automation</td><td>基于视觉的点击定位：通过视觉描述查找 UI 元素并点击</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#128247;</td><td>screen-capture</td><td>Automation</td><td>屏幕捕获和录制：截图、录制片段、标注区域</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#127916;</td><td>video</td><td>Automation</td><td>视频处理：转码、裁剪、拼接、提取帧、添加字幕</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Automation" data-status="ref"><td>&#128270;</td><td>deep-research</td><td>Automation</td><td>扇出式网络搜索、获取来源、对抗性验证声明、合成引用报告</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- AI & Media (8 ref) -->
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128240;</td><td>pdf</td><td>AI &amp; Media</td><td>PDF 创建、阅读、编辑、合并和文本提取</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128065;</td><td>pdf-vision</td><td>AI &amp; Media</td><td>基于视觉的 PDF 分析：OCR、版面理解、从扫描文档中提取表格</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128202;</td><td>pptx</td><td>AI &amp; Media</td><td>PowerPoint 生成和编辑：幻灯片、图表、主题和演讲者备注</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128200;</td><td>xlsx</td><td>AI &amp; Media</td><td>Excel 电子表格创建、公式编辑、数据透视表和数据分析</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128196;</td><td>docx</td><td>AI &amp; Media</td><td>Word 文档生成：模板、格式化、页眉、页脚和目录</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#127464;</td><td>hwp</td><td>AI &amp; Media</td><td>HWP/HWPX 韩文文档处理：创建、阅读、编辑、审查、模板填充和质量检查</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#128200;</td><td>diagram</td><td>AI &amp; Media</td><td>SVG 图表、图形和交互式可视化，用于聊天 UI 渲染</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="AI &amp; Media" data-status="ref"><td>&#127908;</td><td>lecture-stt</td><td>AI &amp; Media</td><td>讲座语音转文字：转录、说话人分离和时间戳对齐</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Communication (6 ref, 2 active) -->
-<tr data-cat="Communication" data-status="ref"><td>&#128172;</td><td>telegram-send</td><td>Communication</td><td>通过 Telegram Bot API 发送消息、图片和文档</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Communication" data-status="active"><td>&#128221;</td><td>notion</td><td>Communication</td><td>Notion 工作区集成：页面、数据库、区块和查询操作</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Communication" data-status="active"><td>&#128025;</td><td>github</td><td>Communication</td><td>GitHub 操作：通过 gh CLI 管理 PR、Issues、审查、发布和 Actions</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Communication" data-status="ref"><td>&#128038;</td><td>x-post</td><td>Communication</td><td>发布到 X (Twitter)：撰写、创建话题、定时发布和管理帖子</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Communication" data-status="ref"><td>&#128221;</td><td>thread_notion</td><td>Communication</td><td>Notion 对话管理：对话到页面的流水线，支持自动结构化</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Communication" data-status="ref"><td>&#128231;</td><td>cloudflare-email-service</td><td>Communication</td><td>通过 Cloudflare Email Routing 和 Workers 发送和接收事务性邮件</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Cloud & Deploy (7 ref) -->
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#9729;</td><td>cloudflare</td><td>Cloud &amp; Deploy</td><td>全面的 Cloudflare 平台支持：Workers、Pages、KV、D1、R2、AI、网络和安全</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#129302;</td><td>agents-sdk</td><td>Cloud &amp; Deploy</td><td>Cloudflare Agents SDK：有状态智能体、持久化工作流、WebSockets、MCP 服务器</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#128230;</td><td>durable-objects</td><td>Cloud &amp; Deploy</td><td>Cloudflare Durable Objects：有状态协调、SQLite 存储、WebSockets、定时器</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#128220;</td><td>sandbox-sdk</td><td>Cloud &amp; Deploy</td><td>沙盒化代码执行：AI 解释器、CI/CD、使用 Cloudflare Sandbox SDK 执行不可信代码</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#128295;</td><td>wrangler</td><td>Cloud &amp; Deploy</td><td>Wrangler CLI（Cloudflare Workers）：部署、开发、日志、密钥和配置管理</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#9889;</td><td>workers-best-practices</td><td>Cloud &amp; Deploy</td><td>Cloudflare Workers 最佳实践：性能、错误处理、缓存和边缘模式</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Cloud &amp; Deploy" data-status="ref"><td>&#127919;</td><td>web-perf</td><td>Cloud &amp; Deploy</td><td>Web 性能优化：Core Web Vitals、Lighthouse、包分析、懒加载</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Security & Review (4 active) -->
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#128269;</td><td>code-review</td><td>Security &amp; Review</td><td>审查差异中的正确性错误和效率优化，支持可配置的审查力度</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#128274;</td><td>security-review</td><td>Security &amp; Review</td><td>以安全为重点的代码审查：漏洞扫描、依赖审计、威胁建模</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#9989;</td><td>verify</td><td>Security &amp; Review</td><td>运行应用并观察行为，验证变更、PR 修复或功能是否正常工作</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Security &amp; Review" data-status="active"><td>&#128296;</td><td>simplify</td><td>Security &amp; Review</td><td>审查已变更的代码，寻找复用、简化和效率优化机会，然后应用修复</td><td><span class="badge badge-active">Active</span></td></tr>
-
-<!-- Dev Workflow (8 active/ref) -->
-<tr data-cat="Dev Workflow" data-status="active"><td>&#128640;</td><td>init</td><td>Dev Workflow</td><td>项目初始化：检测技术栈、生成配置、搭建结构、首次提交</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="active"><td>&#128209;</td><td>review</td><td>Dev Workflow</td><td>代码审查编排器：结合正确性、风格和安全的多轮审查</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="active"><td>&#128187;</td><td>run</td><td>Dev Workflow</td><td>启动并驱动项目应用以查看变更效果（CLI、服务器、TUI、Electron）</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#128260;</td><td>loop</td><td>Dev Workflow</td><td>按定时间隔运行提示词或斜杠命令，支持自适应节奏</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#128197;</td><td>schedule</td><td>Dev Workflow</td><td>创建、更新、列出基于 cron 计划的定时远程智能体（例程）</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#128268;</td><td>fewer-permission-prompts</td><td>Dev Workflow</td><td>扫描会话记录中常见的只读调用，并在设置中添加优先级白名单</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#9881;</td><td>update-config</td><td>Dev Workflow</td><td>通过 settings.json 配置 Claude Code 运行环境：钩子、权限、环境变量</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Dev Workflow" data-status="ref"><td>&#9000;</td><td>keybindings-help</td><td>Dev Workflow</td><td>在 keybindings.json 中自定义键盘快捷键、重新绑定按键、添加组合键</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Productivity (2 active / 2 ref representative) -->
-<tr data-cat="Productivity" data-status="active"><td>&#129504;</td><td>memory</td><td>Productivity</td><td>持久化记忆系统：自动记忆、跨会话回忆、记忆联邦和 L2 搜索</td><td><span class="badge badge-active">Active</span></td></tr>
-<tr data-cat="Productivity" data-status="ref"><td>&#128214;</td><td>openai-docs</td><td>Productivity</td><td>附带引用的最新 OpenAI API 文档：Codex、Responses、Chat Completions</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Productivity" data-status="ref"><td>&#129302;</td><td>claude-api</td><td>Productivity</td><td>构建、调试和优化 Claude API / Anthropic SDK 应用，支持提示词缓存</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Productivity" data-status="active"><td>&#128214;</td><td>k-writing</td><td>Productivity</td><td>韩语推广/内容写作：thread、Instagram 卡片新闻、LinkedIn、网站/博客和润色工作流，包含强制搜索、钩子评分和去 AI 痕迹校验</td><td><span class="badge badge-active">Active</span></td></tr>
-
-<!-- Smart Home (10 ref) -->
-<tr data-cat="Smart Home" data-status="ref"><td>&#127968;</td><td>homeassistant</td><td>Smart Home</td><td>Home Assistant 集成：实体、自动化、场景、脚本和仪表盘卡片</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128161;</td><td>hue-lights</td><td>Smart Home</td><td>Philips Hue 灯光控制：场景、亮度、色温、分组和定时</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#127777;</td><td>hvac-control</td><td>Smart Home</td><td>暖通空调和恒温器控制：温度、模式、定时和能耗监控</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128274;</td><td>smart-lock</td><td>Smart Home</td><td>智能锁管理：锁定/解锁、访问密码、访客权限和活动日志</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#127909;</td><td>smart-camera</td><td>Smart Home</td><td>安防摄像头：实时画面、移动警报、录像回放和区域设置</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128266;</td><td>smart-speaker</td><td>Smart Home</td><td>智能音箱控制：播放音乐、广播、对讲和多房间音频</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128268;</td><td>smart-plug</td><td>Smart Home</td><td>智能插座控制：开关、能耗监控、定时和自动化</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128692;</td><td>robot-vacuum</td><td>Smart Home</td><td>扫地机器人控制：清扫、回充、分区、定时和维护提醒</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#127782;</td><td>weather-station</td><td>Smart Home</td><td>气象站数据：室内外传感器、天气预报、湿度、空气质量指数</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Smart Home" data-status="ref"><td>&#128187;</td><td>home-network</td><td>Smart Home</td><td>家庭网络管理：路由器配置、设备追踪、带宽监控、VLAN</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Utility (30 ref) -->
-<tr data-cat="Utility" data-status="ref"><td>&#128230;</td><td>docker</td><td>Utility</td><td>Docker 容器管理：构建、运行、编排、卷、网络和多阶段构建</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9096;</td><td>kubernetes</td><td>Utility</td><td>Kubernetes 操作：部署、服务、Pod、Helm Chart 和集群管理</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128218;</td><td>terraform</td><td>Utility</td><td>Terraform 基础设施即代码：Provider、模块、状态管理和 plan/apply</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128295;</td><td>ansible</td><td>Utility</td><td>Ansible 自动化：Playbook、角色、清单和配置管理</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128640;</td><td>ci-cd</td><td>Utility</td><td>CI/CD 流水线设计：GitHub Actions、GitLab CI、Jenkins 和部署策略</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128451;</td><td>nginx</td><td>Utility</td><td>Nginx 配置：反向代理、负载均衡、SSL、location 块和缓存</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128450;</td><td>redis</td><td>Utility</td><td>Redis 操作：缓存、发布/订阅、流、数据结构和集群搭建</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128451;</td><td>postgresql</td><td>Utility</td><td>PostgreSQL 管理：查询、索引、迁移、扩展和性能调优</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128450;</td><td>mongodb</td><td>Utility</td><td>MongoDB 操作：CRUD、聚合管道、索引、副本集和 Atlas</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128209;</td><td>graphql</td><td>Utility</td><td>GraphQL Schema 设计：解析器、查询、变更、订阅和联邦</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128279;</td><td>rest-api-design</td><td>Utility</td><td>REST API 设计模式：版本控制、分页、错误处理和 OpenAPI 规范</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128272;</td><td>oauth</td><td>Utility</td><td>OAuth 2.0 / OIDC 实现：授权流程、令牌、作用域和提供商</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128236;</td><td>websocket</td><td>Utility</td><td>WebSocket 实现：实时通信、协议、重连和扩展</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#127760;</td><td>dns</td><td>Utility</td><td>DNS 管理：记录、区域、DNSSEC、故障排除和提供商配置</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128274;</td><td>ssl-tls</td><td>Utility</td><td>SSL/TLS 证书管理：生成、续期、固定和 HTTPS 配置</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128202;</td><td>monitoring</td><td>Utility</td><td>应用监控：Prometheus、Grafana、告警规则、仪表盘和 SLO</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128203;</td><td>logging</td><td>Utility</td><td>结构化日志：日志级别、聚合、ELK 栈和基于日志的告警</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128640;</td><td>performance</td><td>Utility</td><td>应用性能：性能分析、基准测试、内存泄漏和优化模式</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128300;</td><td>testing-e2e</td><td>Utility</td><td>端到端测试：Playwright、Cypress、测试夹具和 CI 集成模式</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128225;</td><td>mobile-dev</td><td>Utility</td><td>移动端开发：React Native、Flutter、响应式设计和应用商店部署</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#127918;</td><td>game-dev</td><td>Utility</td><td>游戏开发：引擎、物理、渲染、游戏循环和资源管线</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#129303;</td><td>accessibility</td><td>Utility</td><td>Web 无障碍：WCAG 合规、ARIA、屏幕阅读器、键盘导航和审计</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#127757;</td><td>i18n</td><td>Utility</td><td>国际化：语言环境管理、翻译工作流、RTL 支持和日期/数字格式化</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128200;</td><td>seo</td><td>Utility</td><td>SEO 优化：meta 标签、结构化数据、站点地图、Core Web Vitals 和爬取预算</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128190;</td><td>git-advanced</td><td>Utility</td><td>高级 Git 工作流：rebase 策略、cherry-pick、bisect、worktree 和钩子</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128195;</td><td>markdown</td><td>Utility</td><td>Markdown 写作：GFM、MDX、表格格式化和文档站点生成</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128187;</td><td>shell-scripting</td><td>Utility</td><td>Shell 脚本：Bash/Zsh、参数解析、错误处理和跨平台脚本</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128011;</td><td>python</td><td>Utility</td><td>Python 开发：类型标注、虚拟环境、打包、异步和框架模式</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9749;</td><td>java</td><td>Utility</td><td>Java 开发：Spring Boot、Maven/Gradle、JVM 调优和企业级模式</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128039;</td><td>go</td><td>Utility</td><td>Go 开发：模块、goroutine、channel、错误处理和地道的 Go 风格</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- System (5 ref) -->
-<tr data-cat="System" data-status="ref"><td>&#128203;</td><td>aws</td><td>System</td><td>AWS 服务：Lambda、S3、DynamoDB、CloudFormation、IAM 和多服务架构</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#9729;</td><td>gcp</td><td>System</td><td>Google Cloud Platform：Cloud Functions、Firestore、Cloud Run、BigQuery 和 IAM</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#128309;</td><td>azure</td><td>System</td><td>Microsoft Azure：Functions、Cosmos DB、App Service、DevOps 和 Active Directory</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#128187;</td><td>linux-admin</td><td>System</td><td>Linux 系统管理：systemd、cron、用户、权限、网络和故障排除</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="System" data-status="ref"><td>&#127823;</td><td>macos-admin</td><td>System</td><td>macOS 系统管理：defaults、launchd、Homebrew、磁盘工具和自动化</td><td><span class="badge badge-ref">Reference</span></td></tr>
-
-<!-- Additional skills to reach 118 -->
-<tr data-cat="Utility" data-status="ref"><td>&#128295;</td><td>rust</td><td>Utility</td><td>Rust 开发：所有权、生命周期、异步、crate 和系统编程模式</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128024;</td><td>php</td><td>Utility</td><td>PHP 开发：Laravel、Composer、PSR 标准和现代 PHP 8+ 特性</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9889;</td><td>svelte</td><td>Utility</td><td>Svelte 和 SvelteKit：组件、Store、SSR、路由和适配器配置</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128308;</td><td>angular</td><td>Utility</td><td>Angular 开发：组件、服务、RxJS、模块、路由和状态管理</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128154;</td><td>vue</td><td>Utility</td><td>Vue.js 开发：Composition API、Vuex/Pinia、Vue Router 和 Nuxt 集成</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9883;</td><td>react</td><td>Utility</td><td>React 模式：Hooks、Context、Suspense、Server Components 和 Next.js 集成</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#9883;</td><td>nextjs</td><td>Utility</td><td>Next.js：App Router、Server Actions、中间件、ISR 和部署优化</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128295;</td><td>tailwind</td><td>Utility</td><td>Tailwind CSS：工具类、自定义配置、插件、暗黑模式和响应式设计</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128230;</td><td>prisma</td><td>Utility</td><td>Prisma ORM：Schema 设计、迁移、查询、关系和数据库自省</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128300;</td><td>drizzle</td><td>Utility</td><td>Drizzle ORM：类型安全 SQL、Schema 定义、迁移和查询构建器</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128640;</td><td>vite</td><td>Utility</td><td>Vite 构建工具：配置、插件、HMR、库模式和环境变量</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128230;</td><td>turbo</td><td>Utility</td><td>Turborepo：monorepo 管理、任务流水线、缓存和远程缓存配置</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128195;</td><td>stripe</td><td>Utility</td><td>Stripe 集成：支付、订阅、Webhook、Connect 和结账会话</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128293;</td><td>firebase</td><td>Utility</td><td>Firebase：Auth、Firestore、Cloud Functions、Hosting、Storage 和 Analytics</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128279;</td><td>supabase</td><td>Utility</td><td>Supabase：数据库、认证、存储、边缘函数、实时订阅和 RLS</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128300;</td><td>electron</td><td>Utility</td><td>Electron 应用开发：主进程/渲染进程、IPC、打包、自动更新和安全</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128301;</td><td>tauri</td><td>Utility</td><td>Tauri 应用开发：Rust 后端、IPC 命令、插件和跨平台构建</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#129302;</td><td>ml-ops</td><td>Utility</td><td>MLOps：模型训练管道、实验追踪、模型服务和监控</td><td><span class="badge badge-ref">Reference</span></td></tr>
-<tr data-cat="Utility" data-status="ref"><td>&#128200;</td><td>prompt-engineering</td><td>Utility</td><td>提示词工程：思维链、少样本、系统提示词和评估框架</td><td><span class="badge badge-ref">Reference</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🔧</td><td>dev</td><td>Development</td><td>通用开发指南。模块化开发、自引用模式、skills_ref 探索与变更日志。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🏗️</td><td>dev-architecture</td><td>Development</td><td>模块边界规则、循环依赖检测/预防、隐式耦合分类、barrel 重导出规范及边界防御性编程的权威指南。被 dev、dev-code-reviewer、dev-backend、dev-frontend 等引用。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>⚙️</td><td>dev-backend</td><td>Development</td><td>后端角色指南。Express.js 模式、SQLite、错误处理与安全基础。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🔍</td><td>dev-code-reviewer</td><td>Development</td><td>代码审查指南。审查流程、质量阈值、反模式、反馈给出与接收。适用于所有智能体。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>📊</td><td>dev-data</td><td>Development</td><td>数据角色指南。ETL 管道、CSV/JSON 处理、SQL 查询与分析。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🐛</td><td>dev-debugging</td><td>Development</td><td>修复 bug 的思维流程技能，强制执行结构化调试方法。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🚀</td><td>dev-devops</td><td>Development</td><td>容器构建、部署流水线、Kubernetes、IaC、SRE 基础、边缘/无服务器、ML 基础设施。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🎨</td><td>dev-frontend</td><td>Development</td><td>前端角色指南。独特 UI/UX 实现、组件设计与美学标准。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🎯</td><td>dev-pabcd</td><td>Development</td><td>PABCD 编排工作流，用于各阶段设有人工检查点的结构化多步开发。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🏗️</td><td>dev-scaffolding</td><td>Development</td><td>按 Lidge 标准脚手架项目：基于功能的布局、就近放置、barrel 导出、devlog 结构。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🛡️</td><td>dev-security</td><td>Development</td><td>将安全视为构建约束，而非事后清理步骤。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🧪</td><td>dev-testing</td><td>Development</td><td>仅用于调试阶段。Playwright Web 应用测试、侦察-行动模式。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Development" data-status="active"><td>🎯</td><td>dev-uiux-design</td><td>Development</td><td>UI/UX 意图发现、设计词汇、产品个性与 UX 状态模式。适用于设计方向模糊、构建引导/空/错误状态或参考产品美学时。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Dev Tools" data-status="active"><td>🐙</td><td>github</td><td>Dev Tools</td><td>GitHub gh CLI 集成：Issues、PR、CI、代码审查、API 与 PR 评论、CI 调试、自动修复。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Dev Tools" data-status="active"><td>🎯</td><td>goal</td><td>Dev Tools</td><td>目标执行指南：PABCD 集成、验证层级、文档工作流、AI 驱动规划。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Dev Tools" data-status="active"><td>🧩</td><td>structured-renderers</td><td>Dev Tools</td><td>原生 Web UI 结构化渲染器 schema：compose-block 草稿、search-results 卡片、dataframe 表格、chart-json 图表与 diff 输出。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📊</td><td>agent-eval</td><td>Dev Tools</td><td>用于在可复现任务上横向对比编码智能体的轻量 CLI 工具。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>agent-harness-construction</td><td>Dev Tools</td><td>改进智能体规划、工具调用、错误恢复与完成收敛时使用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💻</td><td>agent-repl</td><td>Dev Tools</td><td>管理多轮智能体对话的持久 REPL 会话。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧙</td><td>agent-setup-wizard</td><td>Dev Tools</td><td>技能与规则库的交互式分步安装向导，引导用户选择性安装并验证。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🤖</td><td>agentic-engineering</td><td>Dev Tools</td><td>适用于 AI 智能体承担大部分实现工作、人类把控质量与风险的工程工作流。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🤖</td><td>agents-sdk</td><td>Dev Tools</td><td>Cloudflare Workers AI Agents SDK 使用指南。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧠</td><td>ai-first-engineering</td><td>Dev Tools</td><td>为采用 AI 辅助代码生成的团队设计流程、审查与架构时使用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📱</td><td>android-clean-architecture</td><td>Dev Tools</td><td>Android 与 KMP 项目的整洁架构模式：模块边界、依赖倒置、UseCase/Repository 模式与数据层。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📐</td><td>api-design-reviewer</td><td>Dev Tools</td><td>REST API 设计审查：命名规范、HTTP 方法、分页、错误格式、版本控制、破坏性变更、速率限制。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📐</td><td>architecture-decision-records</td><td>Dev Tools</td><td>在编码会话中捕获架构决策，避免决策仅存在于 Slack、PR 评论或个人记忆中。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔄</td><td>autonomous-loops</td><td>Dev Tools</td><td>Claude Code 自主循环运行的模式、架构与参考实现，涵盖从简单 claude -p 管道到复杂编排。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📘</td><td>blueprint</td><td>Dev Tools</td><td>将一行目标转化为任何编码智能体可直接执行的逐步构建计划。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💡</td><td>brainstorming</td><td>Dev Tools</td><td>编码前创意精炼 → 设计文档创建（obra/superpowers）。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔥</td><td>bun-runtime</td><td>Dev Tools</td><td>Bun 是快速一体化 JavaScript 运行时与工具包：运行时、包管理器、打包器与测试运行器。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚚</td><td>carrier-relationship-management</td><td>Dev Tools</td><td>资深运输经理角色：管理 40–200+ 活跃承运商组合，涵盖整车、零担、联运等。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📰</td><td>changelog-generator</td><td>Dev Tools</td><td>git commit → 变更日志/发布说明生成。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🤖</td><td>claude-api</td><td>Dev Tools</td><td>使用 Anthropic Claude API 与 SDK 构建应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚓</td><td>claude-devfleet</td><td>Dev Tools</td><td>并行调度多个 Claude Code 智能体处理编码任务，每个智能体在独立 git worktree 中运行。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗄️</td><td>clickhouse-io</td><td>Dev Tools</td><td>ClickHouse 高性能分析与数据工程专用模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>☁️</td><td>cloudflare-deploy</td><td>Dev Tools</td><td>部署到 Cloudflare Workers/Pages，使用 wrangler CLI。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗺️</td><td>codebase-onboarding</td><td>Dev Tools</td><td>系统分析陌生代码库并产出结构化入门指南，适用于新成员加入或项目上手。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗺️</td><td>codebase-orientation</td><td>Dev Tools</td><td>项目入口/模块/构建映射，入门指南。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📱</td><td>compose-multiplatform-patterns</td><td>Dev Tools</td><td>使用 Compose Multiplatform 与 Jetpack Compose 跨 Android、iOS、桌面与 Web 构建共享 UI 的模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚙️</td><td>config-file-explainer</td><td>Dev Tools</td><td>配置文件结构/键/默认值说明。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔑</td><td>content-hash-cache-pattern</td><td>Dev Tools</td><td>使用 SHA-256 内容哈希作为缓存键，缓存 PDF 解析、文本提取、图像分析等昂贵文件处理结果。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📏</td><td>context-budget</td><td>Dev Tools</td><td>分析智能体会话中各加载组件的 token 开销，给出可操作的上下文空间优化建议。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗜️</td><td>context-compression</td><td>Dev Tools</td><td>上下文压缩策略，长会话优化。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>♾️</td><td>continuous-agent-loop</td><td>Dev Tools</td><td>结构化长时运行智能体工作流的模式：循环选择、质量门与失败恢复。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📚</td><td>continuous-learning</td><td>Dev Tools</td><td>在会话完成时评估并提取可复用模式，保存为已学技能。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📚</td><td>continuous-learning-v2</td><td>Dev Tools</td><td>高级学习系统，通过原子「本能」——带置信度的小型学习行为——将智能体会话转化为可复用知识。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💰</td><td>cost-aware-llm-pipeline</td><td>Dev Tools</td><td>在保持质量的同时控制 LLM API 成本的模式：模型路由、预算追踪、重试逻辑与提示词缓存。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔷</td><td>cpp-coding-standards</td><td>Dev Tools</td><td>源自 C++ Core Guidelines 的现代 C++（C++17/20/23）编码标准，强调类型安全、资源安全、不可变与清晰。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>cpp-testing</td><td>Dev Tools</td><td>面向智能体的现代 C++（C++17/20）测试工作流，使用 GoogleTest/GoogleMock 与 CMake/CTest。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🛃</td><td>customs-trade-compliance</td><td>Dev Tools</td><td>资深贸易合规专家角色：管理美国、欧盟、英国及亚太地区的海关业务。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🕷️</td><td>data-scraper-agent</td><td>Dev Tools</td><td>为任意公开数据源构建生产就绪的 AI 驱动数据采集智能体。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>data-structure-chooser</td><td>Dev Tools</td><td>数据结构时间/空间权衡建议。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗃️</td><td>database-designer</td><td>Dev Tools</td><td>Schema 设计、规范化（1NF–BCNF）、索引优化、迁移策略、分区与数据库选型指南。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔀</td><td>database-migrations</td><td>Dev Tools</td><td>生产系统安全、可逆的数据库 Schema 变更。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>debugging-checklist</td><td>Dev Tools</td><td>复现 → 隔离 → 日志 → 假设验证的调试清单。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐛</td><td>debugging-helpers</td><td>Dev Tools</td><td>系统化调试辅助工具。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔬</td><td>deep-research</td><td>Dev Tools</td><td>多步研究智能体：搜索 → 分析 → 总结。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📦</td><td>dependency-install-helper</td><td>Dev Tools</td><td>平台特定依赖安装步骤与验证命令。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚀</td><td>deployment-patterns</td><td>Dev Tools</td><td>生产部署工作流与 CI/CD 最佳实践。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎮</td><td>develop-web-game</td><td>Dev Tools</td><td>Web 游戏开发 + Playwright 测试循环。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔎</td><td>differential-review</td><td>Dev Tools</td><td>以安全为重点的差异审查，分析代码变更的安全影响。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔀</td><td>dispatching-parallel-agents</td><td>Dev Tools</td><td>并行子智能体调度模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐍</td><td>django-patterns</td><td>Dev Tools</td><td>可扩展、可维护应用的生产级 Django 架构模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>django-security</td><td>Dev Tools</td><td>Django 应用安全指南，涵盖常见漏洞与加固实践。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>django-tdd</td><td>Dev Tools</td><td>使用 pytest、factory_boy 与 Django REST Framework 的 Django TDD。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>django-verification</td><td>Dev Tools</td><td>PR 前、重大变更后或部署前运行结构化验证流水线，捕获迁移、质量、安全与配置问题。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐳</td><td>docker-patterns</td><td>Dev Tools</td><td>容器化开发的 Docker 与 Docker Compose 最佳实践。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📖</td><td>documentation-lookup</td><td>Dev Tools</td><td>用户询问库、框架或 API 时，通过 Context7 MCP（resolve-library-id 与 query-docs 工具）获取最新文档。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💾</td><td>durable-objects</td><td>Dev Tools</td><td>Cloudflare Durable Objects（RPC+SQLite+WebSocket）有状态 Worker。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚡</td><td>energy-procurement</td><td>Dev Tools</td><td>大型工商业能源采购经理角色：管理多设施受监管与放松管制市场的能源采购。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏢</td><td>enterprise-agent-ops</td><td>Dev Tools</td><td>适用于需要超出单次 CLI 会话运营控制的云托管或持续运行智能体系统。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💬</td><td>error-message-explainer</td><td>Dev Tools</td><td>编译器/运行时错误 → 原因 + 修复建议。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📊</td><td>eval-harness</td><td>Dev Tools</td><td>智能体辅助工作流的评估框架：实现前定义预期行为、持续运行评估并追踪回归。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔍</td><td>exa-search</td><td>Dev Tools</td><td>通过 Exa MCP 服务器进行网页内容、代码、公司与人员的神经搜索。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎨</td><td>figma-implement-design</td><td>Dev Tools</td><td>将 Figma 设计 1:1 转为代码，需要 Figma MCP。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🦋</td><td>flutter-dart-code-review</td><td>Dev Tools</td><td>Flutter/Dart 应用审查的综合、库无关清单，适用于任何状态管理方案。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📲</td><td>foundation-models-on-device</td><td>Dev Tools</td><td>使用 FoundationModels 框架将 Apple 设备端语言模型集成到应用的模式，涵盖文本生成与结构化输出。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🖥️</td><td>frontend-slides</td><td>Dev Tools</td><td>创建零依赖、动画丰富的 HTML 演示文稿，完全在浏览器中运行。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🌲</td><td>git-worktrees</td><td>Dev Tools</td><td>基于 git worktree 的隔离分支工作流。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐹</td><td>golang-patterns</td><td>Dev Tools</td><td>地道的 Go 模式与最佳实践，构建健壮、高效、可维护的应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>golang-testing</td><td>Dev Tools</td><td>遵循 TDD 方法论的综合 Go 测试模式，编写可靠、可维护的测试。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>insecure-defaults</td><td>Dev Tools</td><td>检测硬编码密钥、弱加密与不安全的默认配置。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📦</td><td>inventory-demand-planning</td><td>Dev Tools</td><td>多地点零售商资深需求计划师角色：管理 40–200 家门店与区域配送中心。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔁</td><td>iterative-retrieval</td><td>Dev Tools</td><td>解决多智能体工作流中的「上下文问题」：子智能体在工作开始前无法预测所需上下文。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>☕</td><td>java-coding-standards</td><td>Dev Tools</td><td>Spring Boot 服务中可读、可维护的 Java（17+）代码标准。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🗃️</td><td>jpa-patterns</td><td>Dev Tools</td><td>Spring Boot 中的数据建模、Repository 与性能调优。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📓</td><td>jupyter-notebook</td><td>Dev Tools</td><td>.ipynb 创建/编辑，附带 Python 脚本。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🌊</td><td>kotlin-coroutines-flows</td><td>Dev Tools</td><td>Android 与 Kotlin Multiplatform 项目中结构化并发、Flow 响应式流与协程测试的模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📊</td><td>kotlin-exposed-patterns</td><td>Dev Tools</td><td>JetBrains Exposed ORM 数据库访问的综合模式：DSL 查询、DAO、事务与生产配置。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🌐</td><td>kotlin-ktor-patterns</td><td>Dev Tools</td><td>使用 Kotlin 协程构建健壮、可维护 HTTP 服务器的 Ktor 综合模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🟣</td><td>kotlin-patterns</td><td>Dev Tools</td><td>地道的 Kotlin 模式与最佳实践，构建健壮、高效、可维护的应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>kotlin-testing</td><td>Dev Tools</td><td>使用 Kotest 与 MockK 遵循 TDD 方法论的综合 Kotlin 测试模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>laravel-patterns</td><td>Dev Tools</td><td>可扩展、可维护应用的生产级 Laravel 架构模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>laravel-security</td><td>Dev Tools</td><td>Laravel 应用的综合安全指南，防范常见漏洞。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>laravel-tdd</td><td>Dev Tools</td><td>使用 PHPUnit 与 Pest 的 Laravel TDD，单元 + 功能测试覆盖率 80%+。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>laravel-verification</td><td>Dev Tools</td><td>PR 前、重大变更后及部署前运行。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧹</td><td>linter-fix-guide</td><td>Dev Tools</td><td>Lint 规则说明 + 模式示例 + 最小修复建议。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💎</td><td>liquid-glass-design</td><td>Dev Tools</td><td>实现 Apple Liquid Glass 动态材质的模式：模糊背后内容、反射周围色彩与光线。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📄</td><td>log-summarizer</td><td>Dev Tools</td><td>日志分组 + 首次失败识别 + 行动建议。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚨</td><td>logistics-exception-management</td><td>Dev Tools</td><td>全模式货运异常（零担、整车、包裹、联运、海运、空运），涵盖 TMS、WMS、承运商门户与 ERP 订单。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔌</td><td>mcp-builder</td><td>Dev Tools</td><td>为外部 API 集成设计/实现 MCP 服务器。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐍</td><td>modern-python</td><td>Dev Tools</td><td>uv+ruff+ty+pytest Python 最佳实践。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔺</td><td>netlify-deploy</td><td>Dev Tools</td><td>部署 Netlify 站点，使用 netlify CLI。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>▲</td><td>nextjs-turbopack</td><td>Dev Tools</td><td>Next.js 16+ 默认使用 Turbopack 进行本地开发：Rust 增量打包器，显著加速启动与热更新。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>💚</td><td>nuxt4-patterns</td><td>Dev Tools</td><td>构建或调试 Nuxt 4 应用时使用，涵盖 SSR、混合渲染、路由规则与页面级数据获取。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📖</td><td>openai-docs</td><td>Dev Tools</td><td>OpenAI 产品/API 官方文档参考与构建指南。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐪</td><td>perl-patterns</td><td>Dev Tools</td><td>Perl 5.36+ 地道模式与最佳实践，构建健壮、可维护的应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>perl-security</td><td>Dev Tools</td><td>Perl 应用的综合安全指南，涵盖输入验证、注入防护与安全编码。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>perl-testing</td><td>Dev Tools</td><td>使用 Test2::V0、Test::More、prove 与 TDD 方法论的 Perl 测试策略。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🦠</td><td>plankton-code-quality</td><td>Dev Tools</td><td>Plankton（@alxfazio）写入时代码质量强制系统的集成参考，在每次写入时运行格式化与 lint。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐘</td><td>postgres</td><td>Dev Tools</td><td>PostgreSQL 只读查询与 Schema 探索。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐘</td><td>postgres-patterns</td><td>Dev Tools</td><td>PostgreSQL 最佳实践快速参考。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏭</td><td>production-scheduling</td><td>Dev Tools</td><td>机加工、装配、精加工与包装工位的离散与批量制造排程，与 ERP（SAP PP、Oracle 等）集成。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📋</td><td>project-guidelines-example</td><td>Dev Tools</td><td>创建项目特定技能的模板，按项目调整以下章节。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎯</td><td>prompt-engineering</td><td>Dev Tools</td><td>分析草稿提示词、识别缺口并映射到可用智能体组件。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>property-based-testing</td><td>Dev Tools</td><td>多语言属性测试（Hypothesis/fast-check 等）。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐍</td><td>python-patterns</td><td>Dev Tools</td><td>Python 地道模式与最佳实践，构建健壮、高效、可维护的应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>python-testing</td><td>Dev Tools</td><td>使用 pytest 与 TDD 方法论的综合 Python 测试策略。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔥</td><td>pytorch-patterns</td><td>Dev Tools</td><td>PyTorch 地道模式与最佳实践，构建健壮、高效、可复现的深度学习应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚠️</td><td>quality-nonconformance</td><td>Dev Tools</td><td>受监管制造（FDA 21 CFR 820、IATF 16949、AS9100、ISO 13485）中的不合格品生命周期管理，与 QMS 集成。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📄</td><td>ralphinho-rfc-pipeline</td><td>Dev Tools</td><td>功能过大无法单次智能体通过时，拆分为可独立验证的工作单元。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚛️</td><td>react-best-practices</td><td>Dev Tools</td><td>React 代码模式、性能优化与组件设计最佳实践。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📩</td><td>receiving-code-review</td><td>Dev Tools</td><td>代码审查反馈接收与响应模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔤</td><td>regex-vs-llm-structured-text</td><td>Dev Tools</td><td>解析结构化文本（测验、表单、发票、文档）的实用决策框架：正则处理 95–98% 的常见情况。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🚀</td><td>render-deploy</td><td>Dev Tools</td><td>部署 Render 服务，Blueprint YAML。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📝</td><td>requesting-code-review</td><td>Dev Tools</td><td>内部智能体代码审查，基于严重程度的阻塞。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📦</td><td>returns-reverse-logistics</td><td>Dev Tools</td><td>零售、电商与全渠道的完整退货生命周期：RMA、状况分级、处置路由、退款与欺诈检测。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📏</td><td>rules-distill</td><td>Dev Tools</td><td>扫描已安装技能，提取跨技能通用原则并提炼为规则，追加到现有规则文件。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🦀</td><td>rust-patterns</td><td>Dev Tools</td><td>Rust 地道模式与最佳实践，构建安全、高性能、可维护的应用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧪</td><td>rust-testing</td><td>Dev Tools</td><td>遵循 TDD 方法论的综合 Rust 测试模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🛡️</td><td>security-best-practices</td><td>Dev Tools</td><td>特定语言的安全漏洞模式审查。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>👥</td><td>security-ownership-map</td><td>Dev Tools</td><td>代码库负责人/巴士因子映射。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚠️</td><td>security-threat-model</td><td>Dev Tools</td><td>按仓库生成威胁模型（STRIDE/DREAD）。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏛️</td><td>senior-architect</td><td>Dev Tools</td><td>架构决策记录（ADR）、模式选择（单体、微服务、CQRS、事件溯源）、依赖分析、技术栈决策。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🐛</td><td>sentry</td><td>Dev Tools</td><td>Sentry issue/事件查询，附带 Python 脚本。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>skill-creator</td><td>Dev Tools</td><td>自动生成新 SKILL.md，提供模板与指南。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📋</td><td>skill-stocktake</td><td>Dev Tools</td><td>使用质量清单 + AI 整体判断审计所有已安装技能与命令，支持快速扫描与全量模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍃</td><td>springboot-patterns</td><td>Dev Tools</td><td>可扩展生产级服务的 Spring Boot 架构与 API 模式。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔒</td><td>springboot-security</td><td>Dev Tools</td><td>添加认证、处理输入、创建端点或处理密钥时使用。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>springboot-tdd</td><td>Dev Tools</td><td>Spring Boot 服务 TDD 指南，单元 + 集成测试覆盖率 80%+。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>springboot-verification</td><td>Dev Tools</td><td>PR 前、重大变更后及部署前运行。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔍</td><td>static-analysis</td><td>Dev Tools</td><td>CodeQL+Semgrep+SARIF 静态安全分析。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧠</td><td>strategic-compact</td><td>Dev Tools</td><td>在战略节点建议手动压缩，而非依赖任意自动压缩。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swift-actor-persistence</td><td>Dev Tools</td><td>使用 Swift actor 构建线程安全数据持久层的模式，结合内存缓存与文件存储。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swift-concurrency-6-2</td><td>Dev Tools</td><td>采用 Swift 6.2 并发模型的模式：默认单线程运行，显式引入并发。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swift-protocol-di-testing</td><td>Dev Tools</td><td>通过小型专注协议抽象外部依赖（文件系统、网络、iCloud），使 Swift 代码可测试。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🍎</td><td>swiftui-patterns</td><td>Dev Tools</td><td>Apple 平台声明式、高性能 SwiftUI 的现代模式，涵盖 Observation 框架与视图组合。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔴</td><td>tdd</td><td>Dev Tools</td><td>RED-GREEN-REFACTOR TDD 循环强制。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>👥</td><td>team-builder</td><td>Dev Tools</td><td>按需浏览与组合智能体团队的交互式菜单，支持扁平或域子目录智能体集合。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🏗️</td><td>terraform</td><td>Dev Tools</td><td>HashiCorp Terraform HCL/模块/Provider 基础设施即代码。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧵</td><td>tmux</td><td>Dev Tools</td><td>tmux 会话远程控制，发送按键并读取输出。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🎨</td><td>ui-design-system</td><td>Dev Tools</td><td>设计 token 生成、色板、排版比例、组件架构、WCAG 无障碍与开发者交接。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🔬</td><td>ux-researcher</td><td>Dev Tools</td><td>用户画像生成、旅程映射、可用性测试框架与研究综合，数据驱动 UX 研究工具包。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>▲</td><td>vercel-deploy</td><td>Dev Tools</td><td>Vercel 项目部署。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>✅</td><td>verification-loop</td><td>Dev Tools</td><td>代码变更的六阶段系统化质量检查。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>🧱</td><td>web-artifacts-builder</td><td>Dev Tools</td><td>React/Tailwind 复杂 Web 工件创建技能。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>⚡</td><td>web-perf</td><td>Dev Tools</td><td>Core Web Vitals 审计，基于 Lighthouse/CrUX 的性能分析。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Dev Tools" data-status="ref"><td>📋</td><td>writing-plans</td><td>Dev Tools</td><td>2–5 分钟任务分解，含文件路径/代码/验证步骤。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎨</td><td>algorithmic-art</td><td>AI &amp; Media</td><td>p5.js 生成艺术，基于算法的视觉作品创作。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🌍</td><td>atlas</td><td>AI &amp; Media</td><td>控制 ChatGPT Atlas 应用，仅 macOS。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🖼️</td><td>canvas-design</td><td>AI &amp; Media</td><td>通过 Canvas API 创建 PNG/PDF 视觉设计。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>📝</td><td>content-engine</td><td>AI &amp; Media</td><td>将一个创意转化为各平台原生强内容，而非到处发同样内容。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>✏️</td><td>fal-image-edit</td><td>AI &amp; Media</td><td>fal.ai AI 图像编辑（风格迁移、物体移除）。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🤗</td><td>hugging-face-cli</td><td>AI &amp; Media</td><td>HF Hub CLI，用于模型/数据集/Space 管理。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>📊</td><td>hugging-face-evaluation</td><td>AI &amp; Media</td><td>vLLM/lighteval 模型评估与基准测试。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🏋️</td><td>hugging-face-model-trainer</td><td>AI &amp; Media</td><td>TRL：SFT/DPO/GRPO 模型训练。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🖼️</td><td>imagegen</td><td>AI &amp; Media</td><td>通过 OpenAI Images API 生成/编辑图像。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🖼️</td><td>nano-banana-pro</td><td>AI &amp; Media</td><td>使用 Gemini 3 Pro 生成/编辑图像，与 Codex imagegen 不同模型。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎥</td><td>sora</td><td>AI &amp; Media</td><td>Sora 视频生成/管理，OpenAI API。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🗣️</td><td>speech</td><td>AI &amp; Media</td><td>OpenAI TTS 语音合成，附带 Python 脚本。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎭</td><td>theme-factory</td><td>AI &amp; Media</td><td>将可复用主题应用于文档/幻灯片/HTML 输出。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎤</td><td>transcribe</td><td>AI &amp; Media</td><td>OpenAI Whisper 语音转文字 + 说话人分离。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🎥</td><td>videodb</td><td>AI &amp; Media</td><td>视频、直播与桌面会话的感知 + 记忆 + 行动。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="AI &amp; Media" data-status="ref"><td>🤖</td><td>web-ai</td><td>AI &amp; Media</td><td>ChatGPT、Gemini 与 Grok 的结构化浏览器 web-ai 工作流。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="active"><td>📄</td><td>docx</td><td>Productivity</td><td>.docx 文档创建/编辑/阅读。视觉验证（soffice→PDF→PNG）、修订追踪、python-docx。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Productivity" data-status="active"><td>🇰🇷</td><td>hwp</td><td>Productivity</td><td>HWP/HWPX 文档创建/阅读/编辑/转换。OfficeCLI + rhwp 侧车、OWPML XML 编辑、Python 回退。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Productivity" data-status="active"><td>📽️</td><td>pptx</td><td>Productivity</td><td>演示文稿（.pptx）创建/编辑/分析技能。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🍎</td><td>apple-notes</td><td>Productivity</td><td>Apple 备忘录创建/搜索，基于 AppleScript。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🔔</td><td>apple-reminders</td><td>Productivity</td><td>Apple 提醒事项添加/完成/列表管理，基于 AppleScript。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>✍️</td><td>article-writing</td><td>Productivity</td><td>撰写像真人或品牌的长文内容，而非通用 AI 输出。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>✍️</td><td>doc-coauthoring</td><td>Productivity</td><td>结构化规划/规格/文档协作编写工作流技能。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🔄</td><td>html2pptx</td><td>Productivity</td><td>将 HTML 幻灯片转为原生 PowerPoint 元素，Playwright DOM 解析 → PptxGenJS。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>💼</td><td>investor-materials</td><td>Productivity</td><td>构建一致、可信、易于辩护的投资者材料。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🤝</td><td>investor-outreach</td><td>Productivity</td><td>撰写简短、个性化、易于行动的投资者沟通。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📐</td><td>linear</td><td>Productivity</td><td>通过 GraphQL API 管理 Linear issue/项目/周期。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📊</td><td>market-research</td><td>Productivity</td><td>产出支持决策而非「研究表演」的研究。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📝</td><td>notion</td><td>Productivity</td><td>通过 curl API 调用进行 Notion 页面/数据库 CRUD，补充 Codex notion-* 技能。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📚</td><td>notion-knowledge-capture</td><td>Productivity</td><td>对话 → Notion wiki/FAQ/HOW-TO 捕获，Notion MCP。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📊</td><td>notion-meeting-intelligence</td><td>Productivity</td><td>会议准备（按参会者上下文、议程），Notion MCP。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🔬</td><td>notion-research-documentation</td><td>Productivity</td><td>Notion 多源 → 报告/对比综合，Notion MCP。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📋</td><td>notion-spec-to-implementation</td><td>Productivity</td><td>PRD/规格 → 实现计划 + 自动任务创建，Notion MCP。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📄</td><td>nutrient-document-processing</td><td>Productivity</td><td>使用 Nutrient DWS Processor API 处理文档：格式转换、文本/表格提取、OCR、PII 脱敏、水印等。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🗃️</td><td>obsidian</td><td>Productivity</td><td>Obsidian 库笔记创建、搜索与标签管理。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>♿</td><td>officecli-accessibility</td><td>Productivity</td><td>Office 文档无障碍检查与修复，WCAG 2.1 AA 合规。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🇰🇷</td><td>officecli-cjk</td><td>Productivity</td><td>OfficeCLI 的 CJK 文本处理：字体、语言标签、换行规则。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📊</td><td>officecli-data-pipeline</td><td>Productivity</td><td>Pandas DataFrame 到 Excel 管道，CSV/TSV 导出、格式化与图表。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>✅</td><td>things-mac</td><td>Productivity</td><td>Things 3 待办添加/完成/搜索，AppleScript + URL scheme。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>📋</td><td>trello</td><td>Productivity</td><td>通过 curl REST API 管理 Trello 看板/列表/卡片。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Productivity" data-status="ref"><td>🛂</td><td>visa-doc-translate</td><td>Productivity</td><td>用户提供图像文件路径时，自动执行以下步骤。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Automation" data-status="active"><td>🌐</td><td>browser</td><td>Automation</td><td>Chrome 浏览器自动化，通过 ref 快照识别元素 → 点击/输入。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Automation" data-status="active"><td>🖥️</td><td>desktop-control</td><td>Automation</td><td>统一 CDP + Computer Use 自动化。DOM 路由到 cli-jaw browser，桌面应用路由到 mcp__computer_use__，混合场景两者并用。需要 Codex CLI + macOS。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Automation" data-status="ref"><td>🧵</td><td>dmux-workflows</td><td>Automation</td><td>使用 dmux（智能体 harness 的 tmux 面板管理器）编排并行 AI 智能体会话。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Automation" data-status="ref"><td>👁️</td><td>vision-click</td><td>Automation</td><td>基于视觉的坐标点击，仅 Codex CLI。截图 → AI 坐标 → 像素点击。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Automation" data-status="ref"><td>🧭</td><td>web-routing</td><td>Automation</td><td>将浏览器请求路由到 browser/webapp-testing 的引导技能。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="active"><td>📨</td><td>telegram-send</td><td>Communication</td><td>通过 Telegram 本地 API 直接发送语音/图片/文档。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>📢</td><td>crosspost</td><td>Communication</td><td>跨多个社交平台分发内容，按平台原生适配。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>✉️</td><td>email-draft-polish</td><td>Communication</td><td>邮件草稿语气调整/格式化。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>🌐</td><td>gog</td><td>Communication</td><td>Gmail、Calendar、Drive、Sheets、Docs 集成管理。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>📧</td><td>himalaya</td><td>Communication</td><td>终端邮件读/写/回复/搜索，支持 Gmail/Outlook。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>💬</td><td>whatsapp</td><td>Communication</td><td>WhatsApp 消息自动化（automate-whatsapp）。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>🐦</td><td>x-api</td><td>Communication</td><td>以编程方式与 X (Twitter) 交互：发帖、阅读、搜索与分析。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Communication" data-status="ref"><td>🐦</td><td>xurl</td><td>Communication</td><td>推文发布/搜索/回复/DM/媒体上传。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Research" data-status="active"><td>🔎</td><td>search</td><td>Research</td><td>统一搜索中心：网页、实时、X/Twitter、韩语源敏感查询与深度研究路由。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Research" data-status="ref"><td>🔍</td><td>research-worker</td><td>Research</td><td>Research 员工的搜索指南与输出契约。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Visualization" data-status="active"><td>📊</td><td>diagram</td><td>Visualization</td><td>SVG 图表、图形与交互式可视化。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Media" data-status="active"><td>🎬</td><td>video</td><td>Media</td><td>基于代码的视频创建、编辑、渲染、预览、验证与字幕。默认 Remotion（JSON/React 时间线）；路由 HyperFrames HTML 视频、脚本优先 TTS 字幕、progrok STT 字幕、FFmpeg 变换、现有素材编辑及文档优先的视频理解工作流。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Smart Home" data-status="ref"><td>💡</td><td>openhue</td><td>Smart Home</td><td>Hue 灯光/场景控制，如「将客厅调暗至 50%」。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Smart Home" data-status="ref"><td>🎵</td><td>spotify-player</td><td>Smart Home</td><td>Spotify 播放/暂停/搜索/播放列表管理。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>🧠</td><td>memory</td><td>Utility</td><td>跨会话长期记忆，存储于 markdown 文件，grep 搜索。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📄</td><td>pdf</td><td>Utility</td><td>PDF 读/创建/编辑/审查。reportlab/pdfplumber/pypdf + nano-pdf 自然语言编辑。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📄</td><td>pdf-vision</td><td>Utility</td><td>混合 PDF 提取：图像渲染（pypdfium2）+ 文本提取（pypdf），针对试卷、表格与公式优化。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📸</td><td>screen-capture</td><td>Utility</td><td>macOS 截图/摄像头/录制，全屏/区域/窗口/多显示器，工具特定捕获不可用时的默认回退。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Utility" data-status="active"><td>📊</td><td>xlsx</td><td>Utility</td><td>.xlsx/.xlsm/.csv/.tsv 文件创建/编辑/分析/格式化，含 pandas 数据分析。</td><td><span class="badge badge-active">启用</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🔐</td><td>1password</td><td>Utility</td><td>1Password CLI，用于密码/文档/OTP 查询。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>📍</td><td>goplaces</td><td>Utility</td><td>Google Places API，用于地点、评论与营业时间搜索。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>📑</td><td>summarize</td><td>Utility</td><td>将 URL、YouTube 视频与文件摘要为文本。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🔊</td><td>tts</td><td>Utility</td><td>macOS say 命令文字转语音，多语言、文件输出。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🎬</td><td>video-downloader</td><td>Utility</td><td>yt-dlp 封装，YouTube/媒体下载。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🎬</td><td>video-frames</td><td>Utility</td><td>使用 ffmpeg 提取视频帧/片段。</td><td><span class="badge badge-ref">参考</span></td></tr>
+<tr data-cat="Utility" data-status="ref"><td>🌤️</td><td>weather</td><td>Utility</td><td>wttr.in 天气/预报查询，无需 API 密钥。</td><td><span class="badge badge-ref">参考</span></td></tr>
 </tbody>
 </table>
 
-<h2>默认激活技能（25 个）</h2>
-<p>这些技能开箱即用，直接加载到系统提示词中，覆盖了最常见的开发和工作流场景。</p>
+<h2>默认激活技能（30 个）</h2>
+<p>这些技能开箱即用，直接加载到系统提示词中，覆盖最常见的开发与工作流场景。</p>
 
 <table>
 <thead>
 <tr><th>#</th><th>技能</th><th>分类</th><th>用途</th></tr>
 </thead>
 <tbody>
-<tr><td>1</td><td><code>dev</code></td><td>Development</td><td>核心开发规则和编码标准</td></tr>
-<tr><td>2</td><td><code>dev-frontend</code></td><td>Development</td><td>前端框架和 UI 模式</td></tr>
-<tr><td>3</td><td><code>dev-backend</code></td><td>Development</td><td>后端架构和 API 模式</td></tr>
-<tr><td>4</td><td><code>dev-data</code></td><td>Development</td><td>数据工程和 SQL</td></tr>
-<tr><td>5</td><td><code>dev-testing</code></td><td>Development</td><td>测试策略和 TDD</td></tr>
-<tr><td>6</td><td><code>dev-code-reviewer</code></td><td>Development</td><td>自动化代码审查</td></tr>
-<tr><td>7</td><td><code>dev-scaffolding</code></td><td>Development</td><td>项目脚手架</td></tr>
-<tr><td>8</td><td><code>dev-security</code></td><td>Development</td><td>安全最佳实践</td></tr>
-<tr><td>9</td><td><code>dev-debugging</code></td><td>Development</td><td>调试策略</td></tr>
-<tr><td>10</td><td><code>dev-pabcd</code></td><td>Development</td><td>PABCD 方法论</td></tr>
-<tr><td>11</td><td><code>browser</code></td><td>Automation</td><td>通过 CDP 控制 Chrome 浏览器</td></tr>
-<tr><td>12</td><td><code>desktop-control</code></td><td>Automation</td><td>桌面 + 浏览器自动化</td></tr>
-<tr><td>13</td><td><code>notion</code></td><td>Communication</td><td>Notion 工作区集成</td></tr>
-<tr><td>14</td><td><code>github</code></td><td>Communication</td><td>通过 gh CLI 进行 GitHub 操作</td></tr>
-<tr><td>15</td><td><code>code-review</code></td><td>Security &amp; Review</td><td>差异审查以确保正确性</td></tr>
-<tr><td>16</td><td><code>security-review</code></td><td>Security &amp; Review</td><td>以安全为重点的审查</td></tr>
-<tr><td>17</td><td><code>verify</code></td><td>Security &amp; Review</td><td>运行应用并验证变更</td></tr>
-<tr><td>18</td><td><code>simplify</code></td><td>Security &amp; Review</td><td>复用和简化</td></tr>
-<tr><td>19</td><td><code>init</code></td><td>Dev Workflow</td><td>项目初始化</td></tr>
-<tr><td>20</td><td><code>review</code></td><td>Dev Workflow</td><td>多轮代码审查</td></tr>
-<tr><td>21</td><td><code>run</code></td><td>Dev Workflow</td><td>启动并驱动应用</td></tr>
-<tr><td>22</td><td><code>memory</code></td><td>Productivity</td><td>持久化跨会话记忆</td></tr>
-<tr><td>23</td><td><code>dev-frontend</code> (auto)</td><td>Employee</td><td>为 Frontend 员工自动注入</td></tr>
-<tr><td>24</td><td><code>dev-testing</code> (auto)</td><td>Employee</td><td>在 Check 阶段自动注入</td></tr>
-<tr><td>25</td><td><code>dev-security</code> (auto)</td><td>Employee</td><td>在安全敏感目标期间自动注入</td></tr>
+<tr><td>1</td><td><code>browser</code></td><td>Automation</td><td>Chrome 浏览器自动化</td></tr>
+<tr><td>2</td><td><code>desktop-control</code></td><td>Automation</td><td>统一 CDP + Computer Use 自动化</td></tr>
+<tr><td>3</td><td><code>dev</code></td><td>Development</td><td>通用开发指南</td></tr>
+<tr><td>4</td><td><code>dev-architecture</code></td><td>Development</td><td>模块边界与架构规则权威指南</td></tr>
+<tr><td>5</td><td><code>dev-backend</code></td><td>Development</td><td>后端角色指南</td></tr>
+<tr><td>6</td><td><code>dev-code-reviewer</code></td><td>Development</td><td>代码审查指南</td></tr>
+<tr><td>7</td><td><code>dev-data</code></td><td>Development</td><td>数据角色指南</td></tr>
+<tr><td>8</td><td><code>dev-debugging</code></td><td>Development</td><td>结构化 bug 修复思维流程</td></tr>
+<tr><td>9</td><td><code>dev-devops</code></td><td>Development</td><td>容器构建、部署流水线、IaC 与 SRE</td></tr>
+<tr><td>10</td><td><code>dev-frontend</code></td><td>Development</td><td>前端角色指南</td></tr>
+<tr><td>11</td><td><code>dev-pabcd</code></td><td>Development</td><td>PABCD 编排工作流</td></tr>
+<tr><td>12</td><td><code>dev-scaffolding</code></td><td>Development</td><td>按 Lidge 标准脚手架项目</td></tr>
+<tr><td>13</td><td><code>dev-security</code></td><td>Development</td><td>将安全视为构建约束</td></tr>
+<tr><td>14</td><td><code>dev-testing</code></td><td>Development</td><td>调试阶段测试指南</td></tr>
+<tr><td>15</td><td><code>dev-uiux-design</code></td><td>Development</td><td>UI/UX 意图发现与设计词汇</td></tr>
+<tr><td>16</td><td><code>diagram</code></td><td>Visualization</td><td>SVG 图表与交互式可视化</td></tr>
+<tr><td>17</td><td><code>docx</code></td><td>Productivity</td><td>DOCX 文档创建、编辑与阅读</td></tr>
+<tr><td>18</td><td><code>github</code></td><td>Dev Tools</td><td>GitHub gh CLI 集成</td></tr>
+<tr><td>19</td><td><code>goal</code></td><td>Dev Tools</td><td>目标执行指南</td></tr>
+<tr><td>20</td><td><code>hwp</code></td><td>Productivity</td><td>HWP/HWPX 文档创建/阅读/编辑/转换</td></tr>
+<tr><td>21</td><td><code>memory</code></td><td>Utility</td><td>跨会话长期记忆</td></tr>
+<tr><td>22</td><td><code>pdf</code></td><td>Utility</td><td>PDF 读/创建/编辑/审查</td></tr>
+<tr><td>23</td><td><code>pdf-vision</code></td><td>Utility</td><td>混合 PDF 提取（图像渲染 + 文本提取）</td></tr>
+<tr><td>24</td><td><code>pptx</code></td><td>Productivity</td><td>演示文稿创建、编辑与分析</td></tr>
+<tr><td>25</td><td><code>screen-capture</code></td><td>Utility</td><td>macOS 截图/摄像头/录制</td></tr>
+<tr><td>26</td><td><code>search</code></td><td>Research</td><td>统一搜索中心</td></tr>
+<tr><td>27</td><td><code>structured-renderers</code></td><td>Dev Tools</td><td>原生 Web UI 结构化渲染器 schema</td></tr>
+<tr><td>28</td><td><code>telegram-send</code></td><td>Communication</td><td>通过 Telegram 本地 API 发送语音/图片/文档</td></tr>
+<tr><td>29</td><td><code>video</code></td><td>Media</td><td>基于代码的视频创建、编辑、渲染与字幕</td></tr>
+<tr><td>30</td><td><code>xlsx</code></td><td>Utility</td><td>电子表格创建、编辑、分析与格式化</td></tr>
 </tbody>
 </table>
+
+<p>另有 <code>k-writing</code> 与 <code>lecture-stt</code> 两个技能也默认启用，但属于公共 registry 之外的私有运行时技能。</p>
 
 <h2>安装和管理技能</h2>
 
@@ -428,35 +524,35 @@ jaw skill info dev-frontend
 #   Lines:    127</code></pre>
 
 <h3>重置为默认</h3>
-<pre><code># Reset all skills to the 25 defaults
+<pre><code># Reset all skills to the 30 defaults
 jaw skill reset
 
 # Force reset (no confirmation prompt)
 jaw skill reset --force</code></pre>
 
 <div class="callout callout-warn">
-  <strong>警告：</strong><code>jaw skill reset</code> 将停用所有自定义技能并恢复默认的 25 个。你的自定义技能文件会保留在 <code>~/.cli-jaw/skills_ref/</code> 中。
+  <strong>警告：</strong><code>jaw skill reset</code> 将停用所有自定义技能并恢复默认的 30 个。你的自定义技能文件会保留在 <code>~/.cli-jaw/skills_ref/</code> 中。
 </div>
 
 <h2>分类概览</h2>
 
 <table>
 <thead>
-<tr><th>分类</th><th>激活</th><th>参考</th><th>总计</th><th>描述</th></tr>
+<tr><th>分类</th><th>启用</th><th>参考</th><th>总计</th><th>描述</th></tr>
 </thead>
 <tbody>
-<tr><td><strong>Development</strong></td><td>10</td><td>0</td><td>10</td><td>核心开发、前端、后端、数据、测试、脚手架、安全、调试、代码审查、PABCD</td></tr>
-<tr><td><strong>Automation</strong></td><td>2</td><td>5</td><td>7</td><td>浏览器控制、桌面自动化、Web AI、视觉、屏幕捕获、视频、深度研究</td></tr>
-<tr><td><strong>AI &amp; Media</strong></td><td>0</td><td>8</td><td>8</td><td>PDF、PPTX、XLSX、DOCX、HWP、图表、讲座转录</td></tr>
-<tr><td><strong>Communication</strong></td><td>2</td><td>4</td><td>6</td><td>Telegram、Notion、GitHub、X/Twitter、邮件</td></tr>
-<tr><td><strong>Cloud &amp; Deploy</strong></td><td>0</td><td>7</td><td>7</td><td>Cloudflare、Workers、Durable Objects、Wrangler、Web 性能</td></tr>
-<tr><td><strong>Security &amp; Review</strong></td><td>4</td><td>0</td><td>4</td><td>代码审查、安全审查、验证、简化</td></tr>
-<tr><td><strong>Dev Workflow</strong></td><td>3</td><td>5</td><td>8</td><td>初始化、审查、运行、循环、定时、配置、快捷键、权限</td></tr>
-<tr><td><strong>Productivity</strong></td><td>2</td><td>2</td><td>4</td><td>记忆、k-writing、OpenAI 文档、Claude API</td></tr>
-<tr><td><strong>Smart Home</strong></td><td>0</td><td>10</td><td>10</td><td>Home Assistant、灯光、暖通空调、门锁、摄像头、音箱、插座、扫地机、气象站、网络</td></tr>
-<tr><td><strong>Utility</strong></td><td>0</td><td>49</td><td>49</td><td>编程语言、框架、数据库、基础设施工具等</td></tr>
-<tr><td><strong>System</strong></td><td>0</td><td>5</td><td>5</td><td>AWS、GCP、Azure、Linux 管理、macOS 管理</td></tr>
-<tr><td colspan="2"><strong>代表性目录</strong></td><td></td><td><strong>118</strong></td><td>完整参考技能以 <code>skills_ref/</code> 为准</td></tr>
+<tr><td><strong>Development</strong></td><td>13</td><td>0</td><td>13</td><td>核心开发指南：架构、前端、后端、数据、测试、安全、调试、PABCD、脚手架、UI/UX</td></tr>
+<tr><td><strong>Dev Tools</strong></td><td>3</td><td>142</td><td>145</td><td>GitHub、目标、结构化渲染器，以及语言/框架模式、部署、测试与智能体工具</td></tr>
+<tr><td><strong>AI &amp; Media</strong></td><td>0</td><td>16</td><td>16</td><td>图像/视频生成、web AI、Hugging Face、语音与创意媒体技能</td></tr>
+<tr><td><strong>Productivity</strong></td><td>3</td><td>22</td><td>25</td><td>DOCX、HWP、PPTX、Notion、Obsidian、Office 工作流与效率集成</td></tr>
+<tr><td><strong>Automation</strong></td><td>2</td><td>3</td><td>5</td><td>浏览器控制、桌面自动化、视觉点击与工作流路由</td></tr>
+<tr><td><strong>Communication</strong></td><td>1</td><td>7</td><td>8</td><td>Telegram、邮件、X/Twitter、WhatsApp 与跨平台发布</td></tr>
+<tr><td><strong>Research</strong></td><td>1</td><td>1</td><td>2</td><td>统一搜索中心与 Research 员工指南</td></tr>
+<tr><td><strong>Visualization</strong></td><td>1</td><td>0</td><td>1</td><td>SVG 图表与交互式可视化</td></tr>
+<tr><td><strong>Media</strong></td><td>1</td><td>0</td><td>1</td><td>基于代码的视频创建、编辑、渲染与字幕</td></tr>
+<tr><td><strong>Smart Home</strong></td><td>0</td><td>2</td><td>2</td><td>Philips Hue 与 Spotify 播放器控制</td></tr>
+<tr><td><strong>Utility</strong></td><td>5</td><td>7</td><td>12</td><td>记忆、PDF、屏幕捕获、电子表格、天气等实用工具</td></tr>
+<tr><td><strong>总计</strong></td><td>30</td><td>200</td><td><strong>230</strong></td><td></td></tr>
 </tbody>
 </table>
 
@@ -513,15 +609,8 @@ EOF</code></pre>
 <tr><th>命令</th><th>描述</th></tr>
 </thead>
 <tbody>
-<tr><td><code>/skill list</code></td><td>在聊天中显示激活和参考技能的数量</td></tr>
+<tr><td><code>/skill list</code></td><td>在聊天中显示启用与参考技能数量</td></tr>
 <tr><td><code>/skill reset</code></td><td>软重置为默认值（需要确认）</td></tr>
-<tr><td><code>/code-review</code></td><td>对当前差异触发 code-review 技能</td></tr>
-<tr><td><code>/security-review</code></td><td>对当前差异触发 security-review 技能</td></tr>
-<tr><td><code>/simplify</code></td><td>对已变更的代码触发 simplify 技能</td></tr>
-<tr><td><code>/verify</code></td><td>触发 verify 技能来运行和测试应用</td></tr>
-<tr><td><code>/deep-research &lt;topic&gt;</code></td><td>扇出式网络研究，附带来源验证</td></tr>
-<tr><td><code>/init</code></td><td>使用检测到的技术栈初始化新项目</td></tr>
-<tr><td><code>/run</code></td><td>启动项目应用</td></tr>
 </tbody>
 </table>
 
