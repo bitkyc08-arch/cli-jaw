@@ -532,8 +532,8 @@ IF Seed exists:
   - Empty evidence = NOT MET.
 
 **Stage 3: Verdict**
-- All passed → RUN \`cli-jaw orchestrate D\` now WITH the check evidence (C→D uniquely requires a
-  pasted command tail — narration alone will NOT pass the gate):
+- All passed → RUN \`cli-jaw orchestrate D --attest\` now (C→D uniquely requires a pasted command
+  tail — a plain \`cli-jaw orchestrate D\` or narration alone will NOT pass the gate):
   \`\`\`bash
   cli-jaw orchestrate D --attest '{"from":"C","to":"D","did":"<what you checked>","checkOutput":"<paste the real tail of tsc/test output>","exitCode":0}'
   \`\`\`

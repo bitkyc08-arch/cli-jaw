@@ -8,9 +8,10 @@ const projectRoot = join(__dirname, '../..');
 const stateMachineSrc = readSource(join(projectRoot, 'src/orchestrator/state-machine.ts'), 'utf8');
 const goalCliSrc = readSource(join(projectRoot, 'bin/commands/goal.ts'), 'utf8');
 
-test('C phase prompt tells agents to run orchestrate D instead of suggesting it', () => {
-    assert.match(stateMachineSrc, /RUN \\\\?`cli-jaw orchestrate D\\\\?` now/,
-        'C phase should require executing the D transition command');
+test('C phase prompt tells agents to run orchestrate D (with --attest) instead of suggesting it', () => {
+    // Phase 60: the executable instruction must carry --attest — a bare `orchestrate D` 409s.
+    assert.match(stateMachineSrc, /RUN \\\\?`cli-jaw orchestrate D --attest\\\\?` now/,
+        'C phase should require executing the D transition command WITH --attest evidence');
     assert.ok(stateMachineSrc.includes('Do not merely suggest it'),
         'C phase should distinguish command execution from suggestion text');
 });
