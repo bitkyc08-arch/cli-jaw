@@ -2,6 +2,7 @@
 // Phase 9.5 → Phase 00: /model, /cli Telegram full 승격
 
 import { COMMANDS } from '../cli/commands.js';
+import { getSkillCommandsCache } from '../core/skill-cache.js';
 
 export const CAPABILITY = {
     full: 'full',         // 실행 가능
@@ -22,7 +23,7 @@ const CMDLINE_HIDDEN = new Set(['help', 'clear', 'model', 'cli', 'fallback',
  * @returns {Array} 확장된 커맨드 배열
  */
 export function getCommandCatalog() {
-    return COMMANDS.map(cmd => ({
+    const base = COMMANDS.map(cmd => ({
         ...cmd,
         capability: (cmd as Record<string, any>)["capability"] || {
             cli: cmd.interfaces.includes('cli')
@@ -42,4 +43,25 @@ export function getCommandCatalog() {
                 : CAPABILITY.full,
         },
     }));
+
+    let skillCmds: typeof base = [];
+    try {
+        skillCmds = getSkillCommandsCache().map(sc => ({
+            name: `skill:${sc.id}`,
+            desc: sc.description,
+            args: '[args...]',
+            category: 'skills',
+            interfaces: ['cli', 'web'] as readonly string[],
+            handler: (async () => ({ ok: true })) as any,
+            capability: {
+                cli: CAPABILITY.full,
+                web: CAPABILITY.full,
+                telegram: CAPABILITY.hidden,
+                discord: CAPABILITY.hidden,
+                cmdline: CAPABILITY.hidden,
+            },
+        }));
+    } catch { /* skill cache not ready */ }
+
+    return [...base, ...skillCmds];
 }

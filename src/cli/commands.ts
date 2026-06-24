@@ -2,6 +2,7 @@
 // Handlers extracted to commands-handlers.js for 500-line compliance.
 
 import { t } from '../core/i18n.js';
+import { getSkillCommandsCache } from '../core/skill-cache.js';
 import {
     unknownCommand, unsupportedCommand, normalizeResult,
     statusHandler, modelHandler, cliHandler, skillHandler, employeeHandler,
@@ -35,12 +36,13 @@ import type {
     SlashCommand, SlashChoice, SlashResult, ParsedSlashCommand, CompletionCtx,
 } from './types.js';
 
-const CATEGORY_ORDER = ['session', 'workflow', 'model', 'tools', 'cli'];
-const CATEGORY_LABEL = {
+const CATEGORY_ORDER = ['session', 'workflow', 'model', 'tools', 'skills', 'cli'];
+const CATEGORY_LABEL: Record<string, string> = {
     session: 'Session',
     workflow: 'Workflow',
     model: 'Model',
     tools: 'Tools',
+    skills: 'Skills',
     cli: 'CLI',
 };
 
@@ -327,6 +329,11 @@ export function parseCommand(text: string): ParsedSlashCommand {
     }
     const parts = tokenizeArgs(body);
     const name = (parts.shift() || '').toLowerCase();
+    if (name.startsWith('skill:')) {
+        const skillId = name.slice(6);
+        if (!skillId) return { type: 'unknown', name, args: parts, rawText: text };
+        return { type: 'skill', skillId, name, args: parts, rawText: text };
+    }
     const cmd = findCommand(name);
     if (!cmd) return { type: 'unknown', name, args: parts, rawText: text };
     return { type: 'known', cmd, args: parts, name, rawText: text };
@@ -335,6 +342,10 @@ export function parseCommand(text: string): ParsedSlashCommand {
 export async function executeCommand(parsed: ParsedSlashCommand, ctx: { interface?: string; locale?: string; [k: string]: unknown }): Promise<SlashResult | null> {
     const L = ctx?.locale || 'ko';
     if (!parsed) return null;
+    if (parsed.type === 'skill') {
+        const { executeSkillCommand } = await import('./handlers-skill-invoke.js');
+        return executeSkillCommand(parsed.skillId, parsed.args, ctx as unknown as CliCommandContext);
+    }
     if (parsed.type === 'unknown') {
         const recovery = {
             args: parsed.args || [],
@@ -401,25 +412,64 @@ export interface CommandCompletionItem {
 
 export function getCompletionItems(partial: string, iface: string = 'cli', locale: string = 'ko'): CommandCompletionItem[] {
     const query = String(partial || '').replace(/^\//, '').trim().toLowerCase();
-    return COMMANDS
+
+    type CompletionSource = { name: string; desc: string; args: string; category: string; workflow?: SlashCommand['workflow'] };
+
+    const builtinItems: CompletionSource[] = COMMANDS
         .filter(c => c.interfaces.includes(iface) && !c.hidden)
-        .map(cmd => ({ cmd, score: scoreCommandCandidate(cmd, query) }))
-        .filter(({ score }) => !query || score >= 0)
-        .sort((a, b) => {
-            if (b.score !== a.score) return b.score - a.score;
-            const catDiff = categoryIndex(a.cmd.category) - categoryIndex(b.cmd.category);
-            if (catDiff !== 0) return catDiff;
-            return a.cmd.name.localeCompare(b.cmd.name);
-        })
-        .map(({ cmd }) => ({
-            kind: 'command' as const,
+        .map(cmd => ({
             name: cmd.name,
             desc: (cmd.descKey ? t(cmd.descKey, {}, locale) : cmd.desc) || '',
             args: cmd.args || '',
             category: cmd.category || 'tools',
             workflow: cmd.workflow,
-            insertText: `/${cmd.name}${cmd.args ? ' ' : ''}`,
         }));
+
+    let skillItems: CompletionSource[] = [];
+    if (iface === 'cli' || iface === 'web') {
+        try {
+            skillItems = getSkillCommandsCache().map(sc => ({
+                name: `skill:${sc.id}`,
+                desc: sc.description,
+                args: '[args...]',
+                category: 'skills',
+            }));
+        } catch { /* skill cache not ready */ }
+    }
+
+    const allItems = [...builtinItems, ...skillItems];
+
+    return allItems
+        .map(item => ({ item, score: scoreCompletionSource(item.name, item.desc, query) }))
+        .filter(({ score }) => !query || score >= 0)
+        .sort((a, b) => {
+            if (b.score !== a.score) return b.score - a.score;
+            const catDiff = categoryIndex(a.item.category) - categoryIndex(b.item.category);
+            if (catDiff !== 0) return catDiff;
+            return a.item.name.localeCompare(b.item.name);
+        })
+        .map(({ item }) => ({
+            kind: 'command' as const,
+            name: item.name,
+            desc: item.desc,
+            args: item.args,
+            category: item.category,
+            workflow: item.workflow,
+            insertText: `/${item.name} `,
+        }));
+}
+
+function scoreCompletionSource(name: string, desc: string, query: string): number {
+    if (!query) return 0;
+    const n = name.toLowerCase();
+    if (n === query) return 100;
+    if (n.startsWith(query)) return 60;
+    if (n.includes(query)) return 30;
+    const parts = n.split(/[-:]/);
+    if (parts.some(p => p.startsWith(query))) return 40;
+    if ((desc || '').toLowerCase().includes(query)) return 15;
+    if (query.length >= 2 && levenshtein(n, query) <= 2) return 10;
+    return -1;
 }
 
 export interface ArgumentCompletionItem {

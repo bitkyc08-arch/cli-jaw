@@ -16,6 +16,7 @@ import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { getEmployeeMcpToolSummary } from '../agent/mcp-passthrough.js';
 import { buildInjectionBlock as buildRuntimeContextBlock } from './runtime-context.js';
 import { buildPrePromptContextHook } from './context-hooks.js';
+import { invalidateSkillCommandsCache, registerSkillLoader } from '../core/skill-cache.js';
 
 const promptCache = new Map();
 
@@ -190,6 +191,10 @@ export function loadActiveSkills() {
             .filter(Boolean);
     } catch { return []; }
 }
+
+registerSkillLoader(() => (loadActiveSkills() || []).filter(Boolean).map(s => ({
+    id: s!.id, name: s!.name, description: s!.description, content: s!.content,
+})));
 
 /** Read skills_ref registry.json */
 export function loadSkillRegistry() {
@@ -919,6 +924,7 @@ let _lastPromptHash = '';
 export function regenerateB() {
     clearTemplateCache();
     clearPromptCache();
+    try { invalidateSkillCommandsCache(); } catch { /* skill-cache not ready */ }
     const fullPrompt = getSystemPrompt({ forDisk: true });
 
     // Skip file write if content unchanged — preserves mtime so CLI prompt

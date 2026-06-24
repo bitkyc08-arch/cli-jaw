@@ -186,6 +186,7 @@ export interface SlashCommand {
 
 export type ParsedSlashCommand =
     | { type: 'known'; cmd: SlashCommand; args: string[]; name: string; rawText?: string }
+    | { type: 'skill'; skillId: string; name: string; args: string[]; rawText?: string }
     | { type: 'unknown'; name: string; args: string[]; rawText?: string }
     | null;
 

@@ -52,7 +52,7 @@ test('BSP-006: browser skill documents known URL reader fallback ladder', { skip
     assert.match(browserSkill, /not generic search/);
     assert.match(browserSkill, /Public endpoint resolver/);
     assert.match(browserSkill, /Direct fetch/);
-    assert.match(browserSkill, /Optional public reader service/);
+    assert.match(browserSkill, /Jina Reader/);
     assert.match(browserSkill, /Browser render/);
     assert.match(browserSkill, /DOM\/table extraction/);
     assert.match(browserSkill, /Network\/metadata inspection/);

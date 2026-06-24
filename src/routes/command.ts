@@ -79,7 +79,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         // but /api/message callers (REST, goal-continuation) bypass /api/command.
         if (trimmed.startsWith('/')) {
             const parsed = parseCommand(trimmed);
-            if (parsed && (parsed.type === 'known' || parsed.type === 'unknown')) {
+            if (parsed && (parsed.type === 'known' || parsed.type === 'skill' || parsed.type === 'unknown')) {
                 try {
                     const locale = resolveRequestLocale(req);
                     const cmdResult = await executeCommand(parsed, makeWebCommandCtx(req, locale));
