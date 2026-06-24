@@ -1000,7 +1000,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     const sysPrompt = customSysPrompt !== undefined
         ? customSysPrompt
-        : getSystemPrompt(stripUndefined({ currentPrompt: promptForSnapshot, forDisk: false, memorySnapshot: memorySnapshotForPrompt, activeCli: cli }));
+        : getSystemPrompt(stripUndefined({ currentPrompt: promptForSnapshot, forDisk: false, memorySnapshot: memorySnapshotForPrompt, activeCli: cli, freshSession: !isResume }));
 
     // ─── User prompt wrapper (boss main only) ───
     // #99: compact timestamp + project root (moved from builder.ts system prompt → user prompt)
