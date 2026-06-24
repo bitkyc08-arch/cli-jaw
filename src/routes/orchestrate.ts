@@ -7,6 +7,7 @@ import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isCo
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
 import { getState, getCtx, setState, resetState, canTransition, resetAllStaleStates, parseWorkerVerdict } from '../orchestrator/state-machine.js';
+import { parsePhaseAttestationObject } from '../orchestrator/attestation.js';
 import { resetFriction } from '../orchestrator/friction.js';
 import { buildSeedFromEvidence, renderSeedBlock } from '../orchestrator/seed.js';
 import type { OrcStateName } from '../orchestrator/state-machine.js';
@@ -796,18 +797,39 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         // Phase 58/59: HTTP override via { force: true } or explicit user command.
         const force = req.body?.force === true;
         const userInitiated = req.body?.userInitiated === true;
-        const hasExplicitApproval = force || userInitiated;
         const currentCtx = getCtx(scope);
-        const gateCtx = hasExplicitApproval && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
-        if (hasExplicitApproval && currentCtx) {
+
+        // Phase 60: actor distinction. A valid JAW_BOSS_TOKEN ⇒ the main AGENT (gated by
+        // evidence). No token ⇒ a human (web/CLI/TG) ⇒ keep the free pass. The token is
+        // present in the main agent's env and stripped from employee subagents (spawn.ts).
+        const bossTokenHeader = String(req.headers['x-jaw-boss-token'] || '');
+        const isAgent = bossTokenHeader.length > 0 && verifyBossToken(bossTokenHeader);
+
+        // Attestation source of truth = the --attest JSON forwarded in the body. Pipeline-parsed
+        // ctx.pendingAttestation is only a best-effort fallback (no parse-timing dependency).
+        const bodyAttestation = parsePhaseAttestationObject(req.body?.attestation);
+        const attestation = bodyAttestation ?? currentCtx?.pendingAttestation ?? null;
+
+        // Human keeps the free pass; the agent must submit a well-formed attestation.
+        const humanApproval = !isAgent && (force || userInitiated);
+        const gateCtx = humanApproval && currentCtx ? { ...currentCtx, userApproved: true } : currentCtx;
+        if (humanApproval && currentCtx) {
             setState(current, gateCtx, scope);
         }
-        const gate = canTransition(current, t, gateCtx);
+        const gate = canTransition(current, t, gateCtx, {
+            actor: isAgent ? 'agent' : 'human',
+            attestation,
+            force: isAgent && force,   // hidden agent emergency hatch
+        });
         if (!gate.ok) {
-            const forceMissingCtx = force && !currentCtx && (current === 'A' || current === 'B');
-            const reason = forceMissingCtx
+            const forceMissingCtx = !isAgent && force && !currentCtx && (current === 'A' || current === 'B');
+            let reason = forceMissingCtx
                 ? `Cannot force ${current} → ${t} because orchestration context is missing; restart from P.`
                 : (gate.reason || `Cannot transition: ${current} → ${t}`);
+            // The ONLY place --force is surfaced to the agent: as a discouraged emergency hatch.
+            if (isAgent && !force) {
+                reason += ` (emergency only — do NOT use --force unless the user explicitly instructs you to.)`;
+            }
             return fail(res, 409, reason, {
                 current,
                 target: t,
@@ -905,6 +927,13 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 scope,
                 t === 'P' ? 'P' : t === 'I' ? 'Interview' : t,
             );
+            // Phase 60 (audit fix #3): a stale attestation must not survive into the next
+            // phase. setState(t, undefined) preserves prior ctx, so explicitly null it on
+            // every successful transition (the just-consumed evidence is single-use).
+            const afterCtx = getCtx(scope);
+            if (afterCtx?.pendingAttestation) {
+                setState(getState(scope), { ...afterCtx, pendingAttestation: null }, scope);
+            }
         }
         res.json({ ok: true, state: getState(scope), current, target: t, force, userInitiated, ctxPresent: Boolean(currentCtx) });
     });

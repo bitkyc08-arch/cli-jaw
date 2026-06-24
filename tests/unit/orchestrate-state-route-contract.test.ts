@@ -32,12 +32,33 @@ test('ORC-STATE-003: gate messages describe force as gate override, not phase sk
 test('ORC-STATE-004: state route returns diagnostics on failed transition', () => {
     assert.ok(routeSrc.includes('forceMissingCtx'), 'route should detect force with missing ctx');
     assert.ok(routeSrc.includes('const userInitiated = req.body?.userInitiated === true'), 'route should accept explicit user command marker');
-    assert.ok(routeSrc.includes('const hasExplicitApproval = force || userInitiated'), 'route should apply user approval without requiring --force');
+    assert.ok(routeSrc.includes('const humanApproval = !isAgent && (force || userInitiated)'), 'route should apply human approval only for non-agent (Phase 60)');
     assert.ok(routeSrc.includes('ctxPresent: Boolean(currentCtx)'), 'route should report ctx presence');
     assert.ok(routeSrc.includes('current,'), 'route should report current state');
     assert.ok(routeSrc.includes('target: t'), 'route should report target state');
     assert.ok(routeSrc.includes('force,'), 'route should report force flag');
     assert.ok(routeSrc.includes('userInitiated,'), 'route should report userInitiated flag');
+});
+
+test('ORC-STATE-010: route distinguishes agent (boss-token) from human actor', () => {
+    assert.ok(routeSrc.includes("req.headers['x-jaw-boss-token']"), 'route should read the boss-token header');
+    assert.ok(routeSrc.includes('verifyBossToken(bossTokenHeader)'), 'route should verify the boss token');
+    assert.ok(routeSrc.includes("actor: isAgent ? 'agent' : 'human'"), 'route should pass actor to canTransition');
+});
+
+test('ORC-STATE-011: route reads attestation from --attest body, ctx fallback only', () => {
+    assert.ok(routeSrc.includes('parsePhaseAttestationObject(req.body?.attestation)'), 'route should parse --attest body');
+    assert.ok(routeSrc.includes('bodyAttestation ?? currentCtx?.pendingAttestation ?? null'), 'body attestation is SOT, ctx is fallback');
+});
+
+test('ORC-STATE-012: route forces --force only for the agent + surfaces it as discouraged', () => {
+    assert.ok(routeSrc.includes('force: isAgent && force'), 'force override honored only for the agent');
+    assert.ok(routeSrc.includes('do NOT use --force'), 'blocked agent reason should discourage --force');
+});
+
+test('ORC-STATE-013: route clears single-use pendingAttestation after a successful transition', () => {
+    assert.ok(routeSrc.includes('pendingAttestation: null'), 'route should null pendingAttestation after success');
+    assert.ok(routeSrc.includes('the just-consumed evidence is single-use'), 'route should document single-use evidence clearing');
 });
 
 test('ORC-STATE-005: state route success response also includes transition diagnostics', () => {
