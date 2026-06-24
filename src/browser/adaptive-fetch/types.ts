@@ -24,6 +24,7 @@ export interface AdaptiveFetchOptions {
     allowThirdPartyReader: boolean;
     allowArchive: boolean;
     interactive: boolean;
+    query?: string;
     optionWarnings: string[];
 }
 

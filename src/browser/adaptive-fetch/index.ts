@@ -22,6 +22,7 @@ import { fromBrowserResult, fromMetadataResult, fromNetworkCandidate } from './r
 import { classifyChallengeType } from './challenge-detector.js';
 import { shouldTryUserSession, navigateInUserSession } from './browser-session.js';
 import { humanResolve } from './human-loop.js';
+import { bm25Filter } from './bm25-filter.js';
 import { compactAdaptiveFetchResult, writeStdoutLine } from './output.js';
 
 // @strict-allow-any(mirrored adaptive-fetch scorer result shape is intentionally duck-typed)
@@ -385,6 +386,7 @@ export async function runAdaptiveFetchCli(args: string[], deps: Record<string, u
             'no-public-endpoints': { type: 'boolean', default: false },
             'allow-third-party-reader': { type: 'boolean', default: true },
             'allow-archive': { type: 'boolean', default: false },
+            query: { type: 'string' },
             help: { type: 'boolean', short: 'h', default: false },
         },
     });
@@ -405,6 +407,7 @@ export async function runAdaptiveFetchCli(args: string[], deps: Record<string, u
         publicEndpoints: !values['no-public-endpoints'],
         allowThirdPartyReader: values['allow-third-party-reader'],
         allowArchive: values['allow-archive'],
+        query: values['query'],
     }, deps);
     if (values.json) {
         const { _traceSummary, ...jsonResult } = result;
@@ -486,6 +489,12 @@ function resultFromReaderCandidate(scored: ScoredResult): Record<string, unknown
 }
 
 function finishResult(result: Record<string, unknown>, options: AdaptiveFetchOptions, trace: AttemptTrace, runtime: { chromeUsed?: boolean } = {}): Record<string, unknown> {
+    let content = result['content'] as string || '';
+    const evidence = [...((result['evidence'] as unknown[]) || [])];
+    if (options.query && content.length > 5000) {
+        content = bm25Filter(content, { query: options.query, topK: 15 });
+        evidence.push('bm25-filtered');
+    }
     return {
         ok: result['ok'],
         verdict: result['verdict'],
@@ -497,11 +506,11 @@ function finishResult(result: Record<string, unknown>, options: AdaptiveFetchOpt
         chromeUsed: Boolean(runtime.chromeUsed),
         chromeRequired: result['verdict'] === 'browser_required' || (options.browserMode === 'required' && !result['ok']),
         title: result['title'],
-        content: result['content'],
+        content,
         summary: result['summary'],
         attempts: options.trace ? trace.attempts : [],
         safetyFlags: Array.isArray(result['safetyFlags']) ? result['safetyFlags'] : [],
-        evidence: (result['evidence'] as unknown[]) || [],
+        evidence,
         warnings: [...(options.optionWarnings || []), ...((result['warnings'] as string[]) || [])],
         metadata: result['metadata'] || null,
         _traceSummary: summarizeAttempts(trace.attempts),
