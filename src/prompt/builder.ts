@@ -15,6 +15,7 @@ import { findStaticEmployee } from '../core/employees.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 import { getEmployeeMcpToolSummary } from '../agent/mcp-passthrough.js';
 import { buildInjectionBlock as buildRuntimeContextBlock } from './runtime-context.js';
+import { buildPrePromptContextHook } from './context-hooks.js';
 
 const promptCache = new Map();
 
@@ -495,7 +496,7 @@ export function getBoundedLocalSearchContract(): string {
     ].join('\n');
 }
 
-export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string } = {}) {
+export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string; freshSession?: boolean } = {}) {
     // A-1: file takes priority (user-editable), rendered template fallback
     const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
     const a2 = fs.existsSync(A2_PATH) ? fs.readFileSync(A2_PATH, 'utf8') : '';
@@ -652,6 +653,15 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
             const block = buildRuntimeContextBlock();
             if (block) prompt += '\n\n---\n' + block;
         } catch { /* runtime-context not ready */ }
+
+        try {
+            const hook = buildPrePromptContextHook(stripUndefined({
+                currentPrompt: opts.currentPrompt,
+                activeCli: opts.activeCli,
+                freshSession: opts.freshSession,
+            }));
+            if (hook.block) prompt += '\n\n---\n' + hook.block;
+        } catch { /* pre-prompt hooks are fail-open */ }
     }
 
     prompt += '\n\n---\n' + getBoundedLocalSearchContract();
