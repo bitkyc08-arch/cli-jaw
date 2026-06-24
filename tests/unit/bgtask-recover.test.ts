@@ -75,7 +75,7 @@ test('recovery matrix: probe resumed, dead child failed+notified, young live chi
 
     const { calls, submit } = makeSubmitSpy();
     try {
-        const summary = await recoverBgTasks({ submit });
+        const summary = await recoverBgTasks({ submit, isAlive: (pid) => pid === live.pid });
 
         assert.equal(summary.resumedProbes, 1);
         assert.ok(isTaskRunnerActive(probe.id), 'probe runner re-attached');
@@ -107,7 +107,7 @@ test('recovery kills live orphaned child after grace window while preserving fre
 
     const { calls, submit } = makeSubmitSpy();
     try {
-        const summary = await recoverBgTasks({ submit });
+        const summary = await recoverBgTasks({ submit, isAlive: (pid) => pid === live.pid });
 
         assert.equal(summary.failedLost, 1);
         assert.equal(summary.orphaned, 0);

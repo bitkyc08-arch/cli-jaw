@@ -45,7 +45,12 @@ function sqliteTimestampMs(ts: string): number {
     return new Date(iso).getTime();
 }
 
-export async function recoverBgTasks(deps: Partial<NotifierDeps> = {}): Promise<RecoverSummary> {
+export async function recoverBgTasks(
+    deps: Partial<NotifierDeps> & { isAlive?: (pid: number | null) => boolean } = {},
+): Promise<RecoverSummary> {
+    // Liveness check is injectable so tests can be deterministic instead of
+    // spawning real processes (whose OS-level liveness flakes under load).
+    const checkAlive = deps.isAlive ?? pidAlive;
     const summary: RecoverSummary = {
         resumedProbes: 0, respawnedChildren: 0, failedLost: 0, orphaned: 0, renotified: 0,
     };
@@ -77,7 +82,7 @@ export async function recoverBgTasks(deps: Partial<NotifierDeps> = {}): Promise<
                 summary.resumedProbes += 1;
                 continue;
             }
-            const alive = pidAlive(row.pid);
+            const alive = checkAlive(row.pid);
             if (alive && row.spec.respawn === true) {
                 try {
                     if (row.pid) process.kill(row.pid, 'SIGTERM');
