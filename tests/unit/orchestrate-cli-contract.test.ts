@@ -30,6 +30,15 @@ test('ORC-CLI-003: standalone force and user approval are sent in state transiti
     assert.ok(!cliSrc.includes('JSON.stringify({ state: target })'), 'old body without force should not remain');
 });
 
+test('ORC-CLI-008: standalone CLI attaches boss-token + --attest for the agent evidence gate', () => {
+    assert.ok(cliSrc.includes("arg === '--attest'"), 'CLI parser should recognize --attest <json>');
+    assert.ok(cliSrc.includes("process.env['JAW_BOSS_TOKEN']"), 'CLI should read the boss token from env');
+    assert.ok(cliSrc.includes("'x-jaw-boss-token': bossToken"), 'CLI should send the boss-token header when present');
+    assert.ok(cliSrc.includes('attestation !== undefined ? { attestation }'), 'CLI should forward the attestation in the body');
+    assert.ok(cliSrc.includes('--attest'), 'help text should document --attest for agents');
+    assert.ok(!cliSrc.includes('--force  '), 'help text must NOT advertise --force as a normal flag');
+});
+
 test('ORC-CLI-004: transition failures print current server state for operator clarity', () => {
     assert.ok(cliSrc.includes('Current server state:'), 'CLI should print current state after transition failure');
     assert.ok(cliSrc.includes('/api/orchestrate/state'), 'CLI failure path should query current state');

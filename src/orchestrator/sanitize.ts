@@ -1,3 +1,8 @@
+// Phase 60: <phase_attestation> evidence blocks are stripped from user-visible text at the
+// same broadcast points as the interview tracker. The canonical implementation lives in
+// attestation.ts (single source of truth); re-export it here for call-site symmetry.
+export { stripPhaseAttestation } from './attestation.js';
+
 /**
  * Strip interview tracker data from user-visible text.
  * Removes both XML-tagged blocks and raw known:/unknown: arrays.

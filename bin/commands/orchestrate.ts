@@ -25,6 +25,10 @@ if (shouldShowHelp(process.argv)) printAndExit(`
 
   Transitions: IDLE -> I -> P -> A -> B -> C -> D -> IDLE
   Interview is optional: IDLE -> P is also valid. I -> IDLE ends interview.
+
+  Evidence (agent): forward transitions require a phase attestation, e.g.
+    jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you actually did>"}'
+    jaw orchestrate D --attest '{"from":"C","to":"D","did":"ran checks","checkOutput":"<tsc/test tail>","exitCode":0}'
 `);
 
 loadSettings();
@@ -34,6 +38,7 @@ interface Args {
   port?: string;
   force: boolean;
   json: boolean;
+  attest?: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -45,6 +50,13 @@ function parseArgs(argv: string[]): Args {
       parsed.force = true;
     } else if (arg === '--json') {
       parsed.json = true;
+    } else if (arg === '--attest') {
+      // Phase 60: agent evidence — a JSON string {"from","to","did",...}. The gate reads
+      // this from the request body, so there is no parse-timing dependency on the message.
+      const v = argv[++i];
+      if (v !== undefined) parsed.attest = v;
+    } else if (arg?.startsWith('--attest=')) {
+      parsed.attest = arg.slice('--attest='.length);
     } else if (arg === '--port') {
       const port = argv[++i];
       if (port !== undefined) parsed.port = port;
@@ -121,10 +133,27 @@ try {
   }
 
   // State transition: P|A|B|C|D
+  // Phase 60: identify the main AGENT to the server via the boss token (present in the
+  // agent's env, stripped from employee subagents). A human in a plain shell has no token
+  // ⇒ treated as human ⇒ free pass. The agent must also pass --attest to clear the gate.
+  const bossToken = process.env['JAW_BOSS_TOKEN'] || '';
+  let attestation: unknown;
+  if (parsed.attest) {
+    try { attestation = JSON.parse(parsed.attest); }
+    catch { attestation = { raw: parsed.attest }; }   // malformed → route rejects via gate
+  }
   const res = await cliFetch(`${BASE}/api/orchestrate/state`, {
     method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state: target, userInitiated: true, ...(parsed.force ? { force: true } : {}) }),
+    headers: {
+      'Content-Type': 'application/json',
+      ...(bossToken ? { 'x-jaw-boss-token': bossToken } : {}),
+    },
+    body: JSON.stringify({
+      state: target,
+      userInitiated: true,
+      ...(parsed.force ? { force: true } : {}),
+      ...(attestation !== undefined ? { attestation } : {}),
+    }),
   });
 
   const body = await res.json() as OrchestrateStatusBody;

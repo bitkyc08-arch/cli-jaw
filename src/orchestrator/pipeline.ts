@@ -36,6 +36,7 @@ import {
 } from './state-machine.js';
 import { resetFriction } from './friction.js';
 import { stripInterviewTracker } from './sanitize.js';
+import { parsePhaseAttestation, stripPhaseAttestation, detectNoStateNarration } from './attestation.js';
 import { scanStructuredFence } from '../shared/structured-fence.js';
 import {
     parseElicitationSpec,
@@ -405,6 +406,33 @@ export async function orchestrate(
     // Re-read state from DB — it may have changed during agent execution
     // (phase transitions via CLI commands, user reset, etc.)
     state = getState(scope);
+
+    // Phase 60: strip any <phase_attestation> block from the user-visible message, and keep a
+    // best-effort fallback copy in ctx. The GATE itself reads --attest from the request body
+    // (no parse-timing dependency), so this branch is purely cosmetic + fallback.
+    if (['P', 'A', 'B', 'C'].includes(state) && !meta["_workerResult"]) {
+        const attText = result["text"] as string || '';
+        if (attText.includes('<phase_attestation>')) {
+            result["text"] = stripPhaseAttestation(attText);
+            try {
+                const att = parsePhaseAttestation(attText);
+                if (att) {
+                    const cur = getCtx(scope);
+                    if (cur) setState(state, { ...cur, pendingAttestation: att }, scope);
+                }
+            } catch { /* fallback only — gate uses --attest */ }
+        }
+    }
+
+    // Phase 60: no-state narration detector. If the agent ASSERTS a current PABCD phase in prose
+    // while the real orchestrator state is IDLE (i.e. it never ran `cli-jaw orchestrate`), append
+    // a one-time correction. Detect + warn only — never blocks, never mutates the message body.
+    if (state === 'IDLE' && !meta["_workerResult"]) {
+        const narrated = result["text"] as string || '';
+        if (detectNoStateNarration(narrated)) {
+            result["text"] = `${narrated}\n\n> ⚠️ [pabcd] You referred to a PABCD phase, but the orchestrator is IDLE — no phase is active. Phases are real state, not narration: run \`cli-jaw orchestrate P\` (or \`I\`) to actually enter the state machine.`;
+        }
+    }
 
     if (state === 'I' && !meta["_workerResult"]) {
         const ivCtx = getCtx(scope);
