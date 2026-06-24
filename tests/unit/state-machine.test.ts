@@ -118,4 +118,31 @@ describe('PABCD state-machine', () => {
         const saved = getCtx('default');
         assert.deepEqual(saved!.interview, ctx.interview);
     });
+    // --- Loop / multi-pass work-phase prompt contract (devlog 260624_goal_work_phase_pabcd_loop, Slice 6) ---
+    test('26. I prompt has Loop / Multi-Pass section recognizing loop/루프 + Phase 0', () => {
+        const i = getStatePrompt('I');
+        assert.ok(i.includes('Loop / Multi-Pass Tasks'), 'I prompt missing Loop / Multi-Pass section');
+        assert.ok(i.includes('"loop"') && i.includes('"루프"'), 'I prompt must recognize loop/루프 keyword');
+        assert.ok(i.includes('one per work-phase'), 'I prompt must assume one PABCD cycle per work-phase');
+        assert.ok(i.includes('design-only PABCD pass (Phase 0)'), 'I prompt missing design-only Phase 0 mention');
+    });
+    test('27. P prompt pre-plans full slice map + design-only Phase 0 for loop tasks', () => {
+        const p = getStatePrompt('P');
+        assert.ok(p.includes('loop / multi-pass task'), 'P prompt missing loop/multi-pass guidance');
+        assert.ok(p.includes('pre-plan the FULL work-phase slice map'), 'P prompt must pre-plan full slice map');
+        assert.ok(p.includes('design-only PABCD pass (Phase 0)'), 'P prompt missing design-only Phase 0 mention');
+    });
+    test('28. D prompt scopes summary to work-phase, not whole goal', () => {
+        const d = getStatePrompt('D');
+        assert.ok(d.includes('This PABCD cycle is finished'), 'D must scope to the cycle, not "all phases finished"');
+        assert.ok(d.includes('in this work-phase'), 'D summary must be work-phase scoped');
+        assert.ok(!d.includes('All phases finished'), 'D must not declare all phases finished unconditionally');
+    });
+    test('29. D prompt re-enters P for next work-phase when a goal is active', () => {
+        const d = getStatePrompt('D');
+        assert.ok(d.includes('a goal is active'), 'D missing goal-active branch');
+        assert.ok(d.includes('cli-jaw orchestrate P'), 'D must point next work-phase to orchestrate P');
+        assert.ok(d.includes('D → IDLE → P'), 'D must state the legal re-entry path D → IDLE → P');
+        assert.ok(d.includes('Do not declare the whole goal done yet'), 'D must not declare whole goal done after one cycle');
+    });
 });

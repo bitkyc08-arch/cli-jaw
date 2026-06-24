@@ -47,6 +47,13 @@ test('PSC-004: PABCD guide is a path contract, not an inlined skill body', () =>
     const block = builderSrc.slice(orchestrationIdx, orchestrationIdx + 1600);
     assert.ok(!block.includes('readFileSync(pabcdPath'), 'skill body must not be inlined');
     assert.ok(block.includes('cli-jaw orchestrate I|P|A|B|C|D'), 'transition command summary stays inline');
+    // devlog 260624_goal_work_phase_pabcd_loop, Slice 6: pin the loop / work-phase semantics
+    // so the inline guide cannot silently regress to single-cycle wording.
+    assert.ok(block.includes('one full P→A→B→C→D per work-phase'), 'inline guide must state one full cycle per work-phase');
+    assert.ok(block.includes('a work-phase is an outcome slice, not a PABCD letter'), 'inline guide must disambiguate work-phase vs PABCD-phase');
+    assert.ok(block.includes('re-enters P (D→IDLE→P)'), 'inline guide must state goal-mode D→IDLE→P re-entry');
+    assert.ok(block.includes('never rubber-stamp to advance'), 'inline guide must carry the anti-skip rule');
+    assert.ok(block.includes('design-only PABCD pass'), 'inline guide must mention design-only Phase 0 pass');
 });
 
 test('PSC-005: ref skill catalog stays a lookup instruction, never a listing', () => {
