@@ -44,8 +44,10 @@ export interface CamoufoxResult {
 
 export async function fetchViaCamoufox(
     url: string,
-    options?: { timeoutMs?: number },
+    options?: { timeoutMs?: number; signal?: AbortSignal },
 ): Promise<CamoufoxResult | null> {
+    // P0-6: bail before spawning if the overall deadline already fired.
+    if (options?.signal?.aborted) return null;
     const available = await detectCamoufox();
     if (!available) return null;
 
@@ -68,6 +70,8 @@ export async function fetchViaCamoufox(
         const { stdout } = await execFileAsync(python, ['-c', script], {
             timeout: (timeout + 30) * 1000,
             maxBuffer: 10_000_000,
+            // P0-6: kill the Camoufox subprocess if the overall deadline fires.
+            ...(options?.signal ? { signal: options.signal } : {}),
         });
         const result = JSON.parse(stdout.trim().split('\n').pop() || '{}');
         return result as CamoufoxResult;

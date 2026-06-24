@@ -289,7 +289,8 @@ async function runJinaStage(ctx: StageContext): Promise<void> {
 }
 
 async function runBrowserStages(ctx: StageContext): Promise<void> {
-    const browserResult = await tryBrowserEscalation(ctx.url.href, ctx.options, ctx.deps, ctx.trace, ctx.challenge);
+    if (ctx.signal.aborted) return;
+    const browserResult = await tryBrowserEscalation(ctx.url.href, ctx.options, ctx.deps, ctx.trace, ctx.challenge, ctx.signal);
     if (browserResult) {
         ctx.chromeUsed = true;
         ctx.candidates.push(fromBrowserResult(browserResult));
@@ -316,6 +317,7 @@ async function runBrowserStages(ctx: StageContext): Promise<void> {
 async function runUserSessionStage(ctx: StageContext): Promise<void> {
     const sessionDecision = shouldTryUserSession(ctx.candidates, { ...ctx.options, browserDeps: ctx.deps });
     if (sessionDecision !== true) return;
+    if (ctx.signal.aborted) return; // P0-6: skip the user-session tail past the deadline
 
     try {
         const userResult = await navigateInUserSession(ctx.url.href, {
@@ -345,6 +347,7 @@ async function runUserSessionStage(ctx: StageContext): Promise<void> {
 async function runHumanLoopStage(ctx: StageContext): Promise<void> {
     const best = chooseBestReaderCandidate(ctx.candidates);
     if (!ctx.options.humanLoop || !hasUnresolvedChallenge(ctx.candidates, best)) return;
+    if (ctx.signal.aborted) return; // P0-6: skip the human-loop tail past the deadline
 
     const challengeInfo = ctx.challenge || { type: 'challenge' };
     try {

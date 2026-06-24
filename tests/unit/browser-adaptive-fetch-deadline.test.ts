@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { executeAdaptiveFetch } from '../../src/browser/adaptive-fetch/scheduler.js';
+import { fetchViaCamoufox } from '../../src/browser/adaptive-fetch/camoufox-session.js';
 import type { AdaptiveFetchOptions } from '../../src/browser/adaptive-fetch/types.js';
 
 // P0-6: the overall deadline must ABORT an in-flight fetch, not merely skip the
@@ -33,6 +34,16 @@ test('overall deadline aborts an in-flight fetch (P0-6)', async () => {
     assert.equal(signalAborted, true, 'the in-flight fetch signal must be aborted at the overall deadline');
     assert.ok(elapsed < 5000, `executeAdaptiveFetch returned promptly after the 100ms deadline (was ${elapsed}ms) instead of blocking on the per-request timeout`);
     assert.ok(result && typeof result === 'object', 'returns a final result after deadline abort');
+});
+
+test('browser (Camoufox) stage bails immediately when the deadline already fired (P0-6)', async () => {
+    // The scheduler threads its deadline signal into the browser stages too; an
+    // already-aborted signal must short-circuit before spawning the Camoufox
+    // subprocess (proves the browser/CDP path honors the overall deadline).
+    const ctrl = new AbortController();
+    ctrl.abort();
+    const result = await fetchViaCamoufox('https://example.com/', { timeoutMs: 30_000, signal: ctrl.signal });
+    assert.equal(result, null);
 });
 
 test('a fast fetch is not aborted by a generous deadline', async () => {

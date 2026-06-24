@@ -19,6 +19,13 @@ export async function collectBrowserCandidate(url: string, options: BrowserCandi
         browserSession: options.browserSession || 'isolated',
     });
     const page: AnyPage = pageRef.page;
+    if (options.signal?.aborted) {
+        await releaseFetchBrowserPage(pageRef);
+        return { source: 'browser', label: 'browser-render', ok: false, status: 0, finalUrl: url, text: '', title: '', evidence: ['deadline-aborted'], warnings: ['deadline-aborted'] };
+    }
+    // P0-6: close the page if the overall deadline fires so a hung page.goto rejects.
+    const onDeadlineAbort = (): void => { try { page.close?.(); } catch { /* page already closing */ } };
+    options.signal?.addEventListener('abort', onDeadlineAbort, { once: true });
     const networkCandidates: Record<string, unknown>[] = [];
     const onResponse = async (response: AnyPage) => {
         try {
@@ -145,6 +152,7 @@ export async function collectBrowserCandidate(url: string, options: BrowserCandi
             defuddleCandidate,
         };
     } finally {
+        options.signal?.removeEventListener('abort', onDeadlineAbort);
         if (typeof page.off === 'function') page.off('response', onResponse);
         await releaseFetchBrowserPage(pageRef);
     }

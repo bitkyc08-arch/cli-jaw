@@ -20,12 +20,14 @@ export async function tryBrowserEscalation(
     deps: Record<string, unknown>,
     trace: AttemptTrace,
     challengeInfo: ChallengeInfo | null,
+    signal?: AbortSignal,
 ): Promise<Record<string, unknown> | null> {
     if (options.browserMode === 'never') return null;
+    if (signal?.aborted) return null; // P0-6: overall deadline already fired
 
     const allCandidates: ReaderCandidate[] = [];
 
-    const camoufoxResult = await fetchViaCamoufox(url, { timeoutMs: options.timeoutMs });
+    const camoufoxResult = await fetchViaCamoufox(url, { timeoutMs: options.timeoutMs, ...(signal ? { signal } : {}) });
     if (camoufoxResult?.ok && camoufoxResult.html && isSafeFinalUrl(camoufoxResult.url || url, options)) {
         const structured = extractStructuredContent(camoufoxResult.html);
         const evidence = ['camoufox-stealth'];
@@ -58,6 +60,7 @@ export async function tryBrowserEscalation(
             selector: options.selector,
             allowPrivateNetwork: options.allowPrivateNetwork,
             challengeInfo,
+            ...(signal ? { signal } : {}),
         });
         appendScoredAttempt(trace, 'browser', fromBrowserResult(result), result);
         const metadataCandidate = collectBrowserMetadataCandidate(result);

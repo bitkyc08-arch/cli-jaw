@@ -49,6 +49,7 @@ export interface BrowserCandidateOptions {
     selector?: string | null;
     allowPrivateNetwork?: boolean;
     challengeInfo?: ChallengeInfo | null;
+    signal?: AbortSignal;
 }
 
 export interface FetchAttempt {
