@@ -24,7 +24,7 @@ export function buildJinaReaderUrl(rawUrl: string): string {
     return `${JINA_READER_PREFIX}${target.href}`;
 }
 
-export async function fetchThirdPartyReaderCandidate(rawUrl: string, options: { allowThirdPartyReader?: boolean; maxBytes?: number; timeoutMs?: number; fetchImpl?: typeof fetch } = {}): Promise<ReaderCandidate | null> {
+export async function fetchThirdPartyReaderCandidate(rawUrl: string, options: { allowThirdPartyReader?: boolean; maxBytes?: number; timeoutMs?: number; fetchImpl?: typeof fetch; signal?: AbortSignal } = {}): Promise<ReaderCandidate | null> {
     if (!shouldUseThirdPartyReader(options)) return null;
     const target = validateThirdPartyReaderTarget(rawUrl);
     const readerUrl = buildJinaReaderUrl(target.href);
@@ -33,6 +33,7 @@ export async function fetchThirdPartyReaderCandidate(rawUrl: string, options: { 
         timeoutMs: options.timeoutMs,
         allowPrivateNetwork: false,
         fetchImpl: options.fetchImpl,
+        signal: options.signal,
     } as FetchTextCandidateOptions);
     if (fetched.status === 429) {
         recordJinaRateLimit();

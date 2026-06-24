@@ -39,6 +39,7 @@ export interface FetchTextCandidateOptions {
     beforeFetch?: (url: string) => Promise<void> | void;
     identity?: string;
     proxy?: string;
+    signal?: AbortSignal;
 }
 
 export interface BrowserCandidateOptions {

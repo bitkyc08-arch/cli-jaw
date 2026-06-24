@@ -33,7 +33,9 @@ export async function fetchTextCandidate(rawUrl: string, options: FetchTextCandi
         const response = await fetchImpl(current, {
             redirect: 'manual',
             headers: { accept: 'text/html,application/json,application/xml,text/plain,*/*;q=0.8' },
-            signal: AbortSignal.timeout(timeoutMs),
+            signal: options.signal
+                ? AbortSignal.any([AbortSignal.timeout(timeoutMs), options.signal])
+                : AbortSignal.timeout(timeoutMs),
             ...(dispatcher ? { dispatcher } : {}),
         } as RequestInit);
         if (response.status >= 300 && response.status < 400 && response.headers.get('location')) {

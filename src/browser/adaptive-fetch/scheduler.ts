@@ -44,6 +44,16 @@ export async function executeAdaptiveFetch(
     });
 
     const overallTimeoutMs = options.overallTimeoutMs || 60_000;
+    // P0-6: an overall-deadline AbortController so a hung in-flight stage is
+    // actually aborted at the deadline — not merely skipped before the next
+    // stage. The signal flows through fetchOpt into every HTTP fetch path
+    // (direct/discovered/jina) and is combined with each request's own timeout.
+    const deadlineController = new AbortController();
+    const deadlineTimer = setTimeout(
+        () => deadlineController.abort(new Error('overall-deadline-exceeded')),
+        overallTimeoutMs,
+    );
+    deadlineTimer.unref?.();
     const ctx: StageContext = {
         url: parsed,
         options,
@@ -52,25 +62,30 @@ export async function executeAdaptiveFetch(
         candidates: [],
         challenge: null,
         fetchedUrls: new Set<string>(),
-        fetchOpt,
+        fetchOpt: { ...fetchOpt, signal: deadlineController.signal },
         chromeUsed: false,
         deadline: Date.now() + overallTimeoutMs,
+        signal: deadlineController.signal,
     };
 
-    runEndpointStage(ctx);
-    if (!isPastDeadline(ctx)) await runDirectFetchStage(ctx);
-    if (!isPastDeadline(ctx)) await runDiscoveredEndpointStage(ctx);
-    if (!isPastDeadline(ctx)) await runJinaStage(ctx);
+    try {
+        runEndpointStage(ctx);
+        if (!isPastDeadline(ctx)) await runDirectFetchStage(ctx);
+        if (!isPastDeadline(ctx)) await runDiscoveredEndpointStage(ctx);
+        if (!isPastDeadline(ctx)) await runJinaStage(ctx);
 
-    const earlyBest = evaluateEarlyExit(ctx);
-    if (earlyBest) return finalize(ctx, earlyBest);
+        const earlyBest = evaluateEarlyExit(ctx);
+        if (earlyBest) return finalize(ctx, earlyBest);
 
-    if (!isPastDeadline(ctx)) await runBrowserStages(ctx);
+        if (!isPastDeadline(ctx)) await runBrowserStages(ctx);
 
-    const finalBest = chooseBestReaderCandidate(ctx.candidates);
-    if (finalBest) return finalize(ctx, finalBest);
+        const finalBest = chooseBestReaderCandidate(ctx.candidates);
+        if (finalBest) return finalize(ctx, finalBest);
 
-    return finalize(ctx, null);
+        return finalize(ctx, null);
+    } finally {
+        clearTimeout(deadlineTimer);
+    }
 }
 
 function runEndpointStage(ctx: StageContext): void {

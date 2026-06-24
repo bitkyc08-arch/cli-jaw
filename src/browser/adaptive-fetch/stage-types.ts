@@ -36,6 +36,8 @@ export interface StageContext {
     fetchOpt: Record<string, unknown>;
     chromeUsed: boolean;
     deadline: number;
+    // P0-6: aborts in-flight fetches when the overall deadline fires.
+    signal: AbortSignal;
 }
 
 export interface AdaptiveFetchFinalResult {
