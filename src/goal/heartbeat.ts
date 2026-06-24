@@ -86,6 +86,7 @@ export function buildGoalContinuation(): GoalContinuationResult {
         '- Every phase must produce documentation evidence (devlog path or structure update)',
         '',
         '**Commit Discipline**: small, atomic commits after each logical change — never batch; each commit self-contained and independently reversible.',
+        'MULTI-PHASE LOOP: if the goal is a multi-pass / "loop" task and work-phases remain after a completed PABCD cycle (state is IDLE), start the next work-phase with `cli-jaw orchestrate P`. Do not treat one completed cycle as the whole goal.',
         '',
         '**Quality Gates**: no placeholder evidence (todo, tbd, stub, fake pass); artifact paths required in all validation summaries.',
         ...(goal.goalMode === 'plan'
@@ -125,8 +126,12 @@ export function buildGoalContinuation(): GoalContinuationResult {
                 '  - B done → `cli-jaw orchestrate C` → check → `cli-jaw orchestrate D`',
                 '  - C passed → `cli-jaw orchestrate D` immediately; do NOT only say "run D" or "C → D".',
                 'Use employees/sub-agents for verification, NOT as approval gates. Dispatch → receive result → act on it → continue.',
-                'Do not advance a development phase unless the documentation, implementation, and verification evidence bundle is present for that phase.',
-                'NEVER end a turn just because a PABCD phase completed. Keep working through ALL phases in a single goal continuation.',
+                'TERMINOLOGY: a "work-phase" is one outcome slice of the goal (e.g. "Phase 3: Management API"); "PABCD-phase" = the letters P/A/B/C/D of one cycle. They are NOT the same.',
+                'ONE WORK-PHASE = ONE FULL PABCD CYCLE: run P→A→B→C→D for the current work-phase. Do NOT run B for several work-phases back-to-back, and do NOT commit a work-phase straight out of B without passing C and D.',
+                'WORK-PHASE BOUNDARY: after C passes, run `cli-jaw orchestrate D` to close the cycle (state returns to IDLE). If the goal objective still has remaining work-phases, run `cli-jaw orchestrate P` to start the next work-phase. Repeat until the objective is met.',
+                'FAITHFUL EXECUTION (anti-skip): do the real work of each PABCD-phase — P writes the real diff-level plan, A really dispatches the audit, B really implements AND verifies, C really runs tsc/tests/scrutiny, D really summarizes with evidence. Advancing the state is NOT the same as doing the phase; never rubber-stamp a phase to move on.',
+                'Do not advance a PABCD-phase within the current cycle unless its documentation + implementation + verification evidence is present.',
+                'Within one PABCD cycle, NEVER end a turn just because a single PABCD-phase completed — keep going P→A→B→C→D. Across work-phases, close D then re-enter P; do not collapse multiple work-phases into one continuous B.',
               ]
             : []),
         ...(pauseCount >= 1

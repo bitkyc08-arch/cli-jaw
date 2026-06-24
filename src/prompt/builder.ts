@@ -544,11 +544,11 @@ export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolea
             const pabcdPath = join(SKILLS_DIR, 'dev-pabcd', 'SKILL.md');
             if (fs.existsSync(pabcdPath)) {
                 prompt += `\n\n## PABCD Orchestration Guide
-PABCD is the structured 5-phase development workflow: I(Interview) → P(Plan) → A(Plan Audit) → B(Build) → C(Check) → D(Done).
+PABCD is the structured 5-phase development workflow: I(Interview) → P(Plan) → A(Plan Audit) → B(Build) → C(Check) → D(Done). Large/"loop" work runs as MULTIPLE passes — one full P→A→B→C→D per work-phase (a work-phase is an outcome slice, not a PABCD letter).
 - Transitions are shell commands only: \`cli-jaw orchestrate I|P|A|B|C|D\` (forward-only; \`I\` reachable from any state, context preserved; \`reset\` → IDLE).
-- Gates: P/A/B end with ⛔ STOP — present results and WAIT for user approval before advancing (goal mode self-advances).
+- Gates: P/A/B end with ⛔ STOP — present results and WAIT for user approval before advancing (goal mode self-advances). In goal mode, after D the agent re-enters P (D→IDLE→P) for the next work-phase until the objective is met; do each phase's real work, never rubber-stamp to advance.
 - A audits the PLAN via a read-only employee dispatch; B: YOU write all code, employees verify (\`--mutable\` is the only write exception); C runs mechanical checks (tsc/tests) then D summarizes.
-- Devlog plan docs use decade numbering (00-09 research, 10-19 phase 1, ...).
+- Devlog plan docs use decade numbering (00-09 research, 10-19 phase 1, ...). A loop/multi-pass task pre-plans the full slice map and scaffolds per-phase docs up front, and may open with a design-only PABCD pass.
 ⛔ BEFORE running any PABCD phase, you MUST read the full workflow guide once per session: ${pabcdPath}
 It defines phase contracts, dispatch pitfalls (delegation trap, context drift, phase skip), worklog/plan injection rules, and repository-root contracts that are NOT repeated here.`;
             }

@@ -365,7 +365,14 @@ Suggest planning when ALL of these hold:
 When ready: Summarize known facts (grouped by dimension), remaining unknowns, risky assumptions.
 Then suggest: "Ready for planning. Run \`cli-jaw orchestrate P\` to proceed."
 
-The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\` (→ Planning).`,
+The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\` (→ Planning).
+
+## Loop / Multi-Pass Tasks
+
+If the user's request contains "loop" / "루프" (or clearly describes work too large for one PABCD cycle), treat it as a MULTI-PASS task:
+- Assume PABCD will run several full cycles — one per work-phase.
+- An Interview output may be a devlog scaffold: the work-phase decomposition (slice map) and per-phase stub docs using decade numbering (10_phase1, 20_phase2, ...), so the structure is agreed before P.
+- A loop may open with a design-only PABCD pass (Phase 0): a code-free whole-system design/documentation cycle that runs before the first implementation work-phase. Note this possibility to the user when the task warrants it.`,
 
   P: `[PABCD — P: PLANNING]
 
@@ -378,6 +385,7 @@ Steps:
 2. Write the complete plan internally:
    - Diff-level precision: exact file paths (NEW/MODIFY/DELETE), before/after diffs for MODIFY, complete content for NEW.
    - Save to a devlog plan file using Jawdev decade numbering (see dev-pabcd skill).
+   - For a loop / multi-pass task: pre-plan the FULL work-phase slice map up front and scaffold per-phase stub docs (10_phase1, 20_phase2, ...). The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
 3. Present to the user in chat:
    - Part 1: Easy, non-developer explanation of what will change and why (≤5 sentences).
    - A Mermaid/SVG diagram showing the file change map.
@@ -515,7 +523,7 @@ IF Seed exists:
 
   D: `[PABCD — D: DONE + WONDER/REFLECT]
 
-All phases finished. Summarize what was accomplished:
+This PABCD cycle is finished. Summarize what was accomplished in this work-phase:
 1. Files changed (list)
 2. Which acceptance criteria were met (if Seed exists)
 
@@ -534,9 +542,10 @@ Then perform two reflections:
 
 Present findings to user. Then:
 - If significant issues: "Seed를 개선하려면: \`cli-jaw orchestrate I\`"
+- If a goal is active and the objective still has remaining work-phases: this cycle's D closes the current work-phase; start the next one with \`cli-jaw orchestrate P\` (the legal path is D → IDLE → P). Do not declare the whole goal done yet.
 - Otherwise: "완료. D 단계까지 실행했고 오케스트레이션을 마무리했습니다."
 
-Returning to idle after D.`,
+Returning to idle after D (next work-phase, if any, re-enters at P).`,
 };
 
 export function getStatePrompt(target: string): string {

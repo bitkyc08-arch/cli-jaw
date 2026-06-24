@@ -64,8 +64,8 @@ test('GSO-004: PABCD-state continuation keeps the OVERRIDE block once, under bud
         const res = buildGoalContinuation();
         const p = res.prompt ?? '';
         assert.equal(count(p, 'GOAL IS THE SUPREME RULE — PABCD OVERRIDE'), 1, 'override block present once');
-        assert.equal(count(p, 'Do not advance a development phase unless'), 1, 'phase gate rule owned once');
-        assert.ok(p.length < 6800, `PABCD-B continuation is ${p.length} chars — over the 6,800 budget`);
+        assert.equal(count(p, 'Do not advance a PABCD-phase within the current cycle unless'), 1, 'phase gate rule owned once');
+        assert.ok(p.length < 7400, `PABCD-B continuation is ${p.length} chars — over the 7,400 budget`);
     } finally {
         cleanup();
     }
