@@ -26,18 +26,18 @@ test('/search handler stays thin and delegates prompt policy', () => {
 });
 
 test('/search steer prompt routes through search skill and browser-command boundary', () => {
-    assert.match(searchWorkflowSrc, /active search skill/);
-    assert.match(searchWorkflowSrc, /Command boundary/);
-    assert.match(searchWorkflowSrc, /command-specific report shape/);
-    assert.match(searchWorkflowSrc, /source-class routing/);
-    assert.match(searchWorkflowSrc, /rewrite the request into 1-3 focused keyword queries/);
-    assert.match(searchWorkflowSrc, /candidate URLs/);
-    assert.match(searchWorkflowSrc, /cli-jaw browser fetch <url> --json/);
-    assert.match(searchWorkflowSrc, /open.*text.*get-dom.*snapshot/s);
-    assert.match(searchWorkflowSrc, /raw natural-language queries/);
-    assert.match(searchWorkflowSrc, /known source classes/);
-    assert.match(searchWorkflowSrc, /model-gated parallel research/);
-    assert.match(searchWorkflowSrc, /official, community, realtime, and fetch\/browser verification/);
+    // The steer prompt was deliberately slimmed to point at the skills rather than
+    // inline the workflow. Assert it routes to the search skill, crosses the
+    // browser-command boundary, and carries the report-format contract.
+    assert.match(searchWorkflowSrc, /User invoked \/search/);
+    assert.match(searchWorkflowSrc, /MUST READ before searching/);
+    assert.match(searchWorkflowSrc, /skills\/search\/SKILL\.md/);
+    assert.match(searchWorkflowSrc, /skills\/browser\/SKILL\.md/);
+    assert.match(searchWorkflowSrc, /Known URL Reader/);
+    assert.match(searchWorkflowSrc, /Adaptive-fetch ladder/);
+    assert.match(searchWorkflowSrc, /cli-jaw browser fetch <url>/);
+    assert.match(searchWorkflowSrc, /Report format/);
+    assert.match(searchWorkflowSrc, /focused_queries/);
     assert.match(searchWorkflowSrc, /evidence_status/);
 });
 

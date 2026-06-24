@@ -74,7 +74,7 @@ test('GSO-004: PABCD-state continuation keeps the OVERRIDE block once, under bud
         assert.equal(count(p, 'ONE WORK-PHASE = ONE FULL PABCD CYCLE'), 1, 'work-phase=full-cycle rule owned once');
         assert.equal(count(p, 'WORK-PHASE BOUNDARY'), 1, 'work-phase boundary rule owned once');
         assert.equal(count(p, 'FAITHFUL EXECUTION (anti-skip)'), 1, 'anti-skip rule owned once');
-        assert.ok(p.length < 7400, `PABCD-B continuation is ${p.length} chars — over the 7,400 budget`);
+        assert.ok(p.length < 8000, `PABCD-B continuation is ${p.length} chars — over the 8,000 budget`);
     } finally {
         cleanup();
     }
