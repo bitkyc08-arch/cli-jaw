@@ -194,7 +194,8 @@ User says:`,
 
   Pb2: `[PLANNING MODE — User Feedback]
 The user has reviewed your plan. Apply their feedback and present the revised plan.
-If user explicitly approves, run \`cli-jaw orchestrate A\` to advance.
+If user explicitly approves, advance with evidence:
+\`cli-jaw orchestrate A --attest '{"from":"P","to":"A","did":"<the plan you wrote>"}'\`.
 Otherwise revise and present again.
 
 ⛔ STOP after presenting the revision. WAIT for another user response.
@@ -216,7 +217,8 @@ User says:`,
 Below are the plan audit results from the verification employee.
 If issues found: fix the plan and re-audit (output employee JSON again).
 If PASS: report results to the user and wait for approval.
-When user approves, run \`cli-jaw orchestrate B\` to advance to Build.
+When user approves, advance with evidence:
+\`cli-jaw orchestrate B --attest '{"from":"A","to":"B","did":"<who audited + verdict>"}'\`.
 
 Reporting: distill the verdict and key findings into a concise bullet list (≤5 items).
 Use a diagram when the audit covers 3+ files or integration points.
@@ -230,7 +232,8 @@ Employee results:`,
 Below are verification results for your code.
 If NEEDS_FIX: fix and re-verify (output employee JSON again).
 If DONE: report results to the user and wait for approval.
-When user approves, run \`cli-jaw orchestrate C\` to advance to Check.
+When user approves, advance with evidence:
+\`cli-jaw orchestrate C --attest '{"from":"B","to":"C","did":"<what you built + verifier verdict>"}'\`.
 
 Reporting: distill the verdict and key findings into a concise bullet list (≤5 items).
 Use a diagram when the verification covers 3+ files.
@@ -397,7 +400,10 @@ Steps:
 4. Final confirmation: "혼자 결정하면 안 되는 비즈니스 로직이 있나요?" and "이 방향이 맞습니까?"
 
 ⛔ STOP. WAIT for user approval before advancing.
-⛔ When approved, run: \`cli-jaw orchestrate A\`
+⛔ When approved, advance WITH an evidence attestation (the forward gate requires it):
+\`\`\`bash
+cli-jaw orchestrate A --attest '{"from":"P","to":"A","did":"<one sentence: the concrete plan you wrote — files/surfaces + the devlog path>"}'
+\`\`\`
 
 You will receive user feedback with a [PLANNING MODE] prefix. Revise until approved.
 
@@ -441,7 +447,10 @@ The result is returned via stdout. Review it:
 - If PASS: report results to the user.
 
 ⛔ STOP after reporting. WAIT for user approval.
-⛔ When user approves, run: \`cli-jaw orchestrate B\``,
+⛔ When user approves, advance WITH an evidence attestation (the forward gate requires it):
+\`\`\`bash
+cli-jaw orchestrate B --attest '{"from":"A","to":"B","did":"<one sentence: who audited the plan + the verdict (PASS / fixed N issues)>"}'
+\`\`\``,
 
   B: `[PABCD — B: BUILD]
 
@@ -484,7 +493,10 @@ Review the stdout result:
 - DONE: Report results to the user.
 
 ⛔ STOP after reporting. WAIT for user approval.
-⛔ When user approves, run: \`cli-jaw orchestrate C\``,
+⛔ When user approves, advance WITH an evidence attestation (the forward gate requires it):
+\`\`\`bash
+cli-jaw orchestrate C --attest '{"from":"B","to":"C","did":"<one sentence: what you built + who verified it + the verdict>"}'
+\`\`\``,
 
   C: `[PABCD — C: CHECK + SCRUTINY]
 
@@ -520,7 +532,12 @@ IF Seed exists:
   - Empty evidence = NOT MET.
 
 **Stage 3: Verdict**
-- All passed → RUN \`cli-jaw orchestrate D\` now. Do not merely suggest it or write "C → D"; execute the command before claiming C is complete.
+- All passed → RUN \`cli-jaw orchestrate D\` now WITH the check evidence (C→D uniquely requires a
+  pasted command tail — narration alone will NOT pass the gate):
+  \`\`\`bash
+  cli-jaw orchestrate D --attest '{"from":"C","to":"D","did":"<what you checked>","checkOutput":"<paste the real tail of tsc/test output>","exitCode":0}'
+  \`\`\`
+  Do not merely suggest it or write "C → D"; execute the command before claiming C is complete.
 - Code issue → suggest \`cli-jaw orchestrate B\`
 - Plan issue (AC not met) → suggest \`cli-jaw orchestrate P\`
 - Spec issue (wrong requirements) → suggest \`cli-jaw orchestrate I\``,

@@ -44,8 +44,9 @@ test('ORC-CLI-004: transition failures print current server state for operator c
     assert.ok(cliSrc.includes('/api/orchestrate/state'), 'CLI failure path should query current state');
 });
 
-test('ORC-CLI-005: slash command and command metadata expose status and force', () => {
-    assert.ok(commandsSrc.includes('[I|P|A|B|C|D|status|reset] [--force]'), 'command metadata should expose I state, status and --force');
+test('ORC-CLI-005: slash command and command metadata expose status and attest (force scrubbed)', () => {
+    assert.ok(commandsSrc.includes('[I|P|A|B|C|D|status|reset] [--attest <json>]'), 'command metadata should expose I state, status and --attest (not --force)');
+    assert.ok(!commandsSrc.includes('[I|P|A|B|C|D|status|reset] [--force]'), 'command metadata should no longer advertise --force');
     assert.ok(handlerSrc.includes("target === 'STATUS'"), 'slash orchestrate handler should support status');
     assert.ok(handlerSrc.includes('const userInitiated = true'), 'slash orchestrate transitions should count as explicit user approval');
     assert.ok(handlerSrc.includes('const hasExplicitApproval = force || userInitiated'), 'slash handler should apply user approval without requiring --force');

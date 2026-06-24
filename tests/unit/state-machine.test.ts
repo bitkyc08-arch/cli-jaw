@@ -181,4 +181,16 @@ describe('PABCD state-machine', () => {
         // Human actor explicitly ⇒ still legacy (not the agent form-gate).
         assert.equal(canTransition('A', 'B', { userApproved: true } as never, { actor: 'human' }).ok, true);
     });
+
+    // --- Phase 60: prompts instruct the --attest evidence transport ---
+    test('36. P/A/B prompts instruct advancing with --attest', () => {
+        assert.match(getStatePrompt('P'), /orchestrate A --attest/, 'P must instruct --attest to enter A');
+        assert.match(getStatePrompt('A'), /orchestrate B --attest/, 'A must instruct --attest to enter B');
+        assert.match(getStatePrompt('B'), /orchestrate C --attest/, 'B must instruct --attest to enter C');
+    });
+    test('37. C prompt uniquely requires checkOutput in the C→D attestation', () => {
+        const c = getStatePrompt('C');
+        assert.match(c, /orchestrate D --attest/, 'C must instruct --attest to enter D');
+        assert.match(c, /checkOutput/, 'C→D attestation must require pasted checkOutput');
+    });
 });
