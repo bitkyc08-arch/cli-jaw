@@ -5,7 +5,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { JAW_HOME, SKILLS_DIR, SKILLS_REF_DIR } from '../../src/core/config.ts';
-import { getSystemPrompt } from '../../src/prompt/builder.ts';
+import { getBoundedLocalSearchContract, getEmployeePromptV2, getSystemPrompt } from '../../src/prompt/builder.ts';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = join(__dirname, '..', '..');
@@ -173,6 +173,25 @@ test('rendered Boss prompt keeps skill matching guidance when only ref skills ex
         'ref-only Boss prompt should point to CLI command for browsing ref skills');
     assert.ok(prompt.includes(JAW_HOME),
         'rendered prompt should still use the configured test JAW_HOME');
+});
+
+test('rendered prompts include bounded local search contract', () => {
+    const contract = getBoundedLocalSearchContract();
+    const bossPrompt = getSystemPrompt({ forDisk: false });
+    const employeePrompt = getEmployeePromptV2(
+        { id: 1, name: 'Audit', role: 'reviewer', cli: 'agy' },
+        'backend',
+        2,
+    );
+
+    assert.ok(contract.includes('grep_search'),
+        'bounded local search contract should cover native grep_search tools');
+    assert.ok(contract.includes('timeout 20s rg'),
+        'bounded local search contract should recommend bounded shell search');
+    assert.ok(bossPrompt.includes(contract),
+        'Boss prompt should include the bounded local search contract');
+    assert.ok(employeePrompt.includes(contract),
+        'Employee prompt should include the bounded local search contract');
 });
 
 // ─── Active channel auto-selection ───────────────────
