@@ -226,7 +226,7 @@ cli-jaw/
 │   │   │   ├── index.ts      ← adaptive fetch orchestrator (152L)
 │   │   │   ├── safety.ts     ← URL/content safety checks (244L)
 │   │   │   ├── endpoint-resolvers.ts ← reader API endpoint resolution (364L)
-│   │   │   ├── browser-escalation.ts ← fallback to browser fetch (306L)
+│   │   │   ├── browser-escalation.ts ← fallback to browser fetch (314L)
 │   │   │   └── ... (14 more: fetcher, content-scorer, validators, metadata, transforms, trace, waf-profiles, browser-session, human-loop, output, browser-runtime, third-party-readers, reader-adapters, challenge-detector)
 │   │   └── web-ai/           ← Web AI 브라우저 자동화 (68 TS files, 12561L; ChatGPT/Gemini/Grok 멀티벤더 + resolver/source-audit/observation helpers + context-pack + tab lifecycle/pool)
 │   ├── ide/                   ← IDE 연동 (jaw chat TUI 전용)
