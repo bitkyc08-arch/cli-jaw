@@ -484,6 +484,17 @@ export function shouldIncludeVisionClickHint(activeCli?: string | null): boolean
     return activeCli === 'codex';
 }
 
+export function getBoundedLocalSearchContract(): string {
+    return [
+        '## Bounded Local Search Contract',
+        '- Native local search tools such as `grep_search`, Grep, Glob, or broad file listing must start from one known file or a narrow task-specific directory.',
+        '- Never run local search from `/`, a home directory, the whole runtime directory, dependency trees, caches, logs, backups, generated trees, or database files such as `*.db`.',
+        '- If a shell search is needed, prefer a bounded form such as `timeout 20s rg --glob \'!*.db\' --glob \'!*.log\' <query> <narrow-path>` and cap output.',
+        '- If a search times out, do not widen the search. Mark the item unresolved, ask for a narrower path when needed, or stop with a partial result.',
+        '- Use exact file checks (`test -e`, `test -s`, or a direct file read) when checking a known path; do not discover known files through repository-wide search.',
+    ].join('\n');
+}
+
 export function getSystemPrompt(opts: { currentPrompt?: string; forDisk?: boolean; memorySnapshot?: string; activeCli?: string } = {}) {
     // A-1: file takes priority (user-editable), rendered template fallback
     const a1 = fs.existsSync(A1_PATH) ? fs.readFileSync(A1_PATH, 'utf8') : getA1Content();
@@ -641,6 +652,8 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
             if (block) prompt += '\n\n---\n' + block;
         } catch { /* runtime-context not ready */ }
     }
+
+    prompt += '\n\n---\n' + getBoundedLocalSearchContract();
 
     // ─── Delegation rules: jaw employees vs CLI sub-agents ───
     // Always-injected guard block (survives user-edited A-1.md overrides).
@@ -869,6 +882,8 @@ export function getEmployeePromptV2(
     prompt += `\n- Your process cwd may be an isolated temporary directory. Do NOT treat process.cwd() as the repository root.`;
     prompt += `\n- Use the task's ## Workspace Context block as the source of truth for Project root and Devlog root.`;
     prompt += `\n- Resolve relative repository paths against Project root, and always use absolute paths in commands and reports.`;
+
+    prompt += `\n\n${getBoundedLocalSearchContract()}`;
 
     prompt += `\n\n## Delegation Rules`;
     prompt += `\n- Execute the assigned task directly in this employee session.`;
