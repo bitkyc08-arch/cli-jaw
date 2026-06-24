@@ -96,8 +96,12 @@ test('goal continuation prompt requires executing PABCD transition commands thro
         assert.equal(res.shouldContinue, true);
         assert.match(res.prompt ?? '', /Phase-transition commands are mandatory actions/);
         assert.match(res.prompt ?? '', /Run the exact `cli-jaw orchestrate \.\.\.` command/);
-        assert.match(res.prompt ?? '', /C passed → `cli-jaw orchestrate D` immediately/);
+        assert.match(res.prompt ?? '', /C passed → `cli-jaw orchestrate D --attest/);
         assert.match(res.prompt ?? '', /do NOT only say "run D"/);
+        // Phase 60: goal-mode override must instruct the evidence gate, else self-advance 409s.
+        assert.match(res.prompt ?? '', /EVIDENCE GATE/);
+        assert.match(res.prompt ?? '', /--attest/);
+        assert.match(res.prompt ?? '', /checkOutput/);
     } finally {
         cleanup();
     }

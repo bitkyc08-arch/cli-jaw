@@ -49,6 +49,8 @@ declare -a CHECKS=(
   "distribute.ts|src/orchestrator/distribute.ts"
   "gateway.ts.*submitMessage|src/orchestrator/gateway.ts"
   "collect.ts.*orchestrateAndCollect|src/orchestrator/collect.ts"
+  "sanitize.ts.*Interview tracker strip|src/orchestrator/sanitize.ts"
+  "attestation.ts.*PABCD evidence gate|src/orchestrator/attestation.ts"
   "builder.ts.*프롬프트|src/prompt/builder.ts"
   "commands.ts.*레지스트리|src/cli/commands.ts"
   "handlers.ts.*핸들러|src/cli/handlers.ts"
@@ -81,6 +83,7 @@ declare -a CHECKS=(
   "postinstall.ts|bin/postinstall.ts"
   "serve.ts|bin/commands/serve.ts"
   "dispatch.ts|bin/commands/dispatch.ts"
+  "orchestrate.ts.*IPABCD 상태 제어 CLI|bin/commands/orchestrate.ts"
   "chat.ts.*TUI|bin/commands/chat.ts"
 )
 
