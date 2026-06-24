@@ -79,6 +79,7 @@
     "smoke:opencode": "tsx scripts/smoke/opencode-external-dir-smoke.ts",
     "smoke:jwc:no-global": "node scripts/jwc-no-global-smoke.mjs",
     "test:install-risk": "node scripts/install-risk-gate.mjs",
+    "test:waf": "WAF_TEST_ENABLED=1 npx tsx tests/waf/waf-runner.ts",
     "verify:fresh-install": "bash scripts/verify-fresh-install.sh",
     "collect:fresh-install-evidence": "bash scripts/collect-fresh-install-evidence.sh",
     "audit:fresh-install-evidence": "node scripts/audit-fresh-install-evidence.mjs",
