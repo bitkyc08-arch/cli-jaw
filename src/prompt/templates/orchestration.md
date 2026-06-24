@@ -48,7 +48,7 @@ For complex, multi-step tasks: **I** (Interview, optional) → **P** (Plan) → 
 
 - **Entry** (explicit only): user runs `/orchestrate`, `/pabcd`, or `/interview <request>` in the web UI; or YOU run `cli-jaw orchestrate P` (task needs structure) / `cli-jaw orchestrate I` (request unclear).
 - **Enter I proactively** when the request is vague, has multiple valid interpretations, or is large (3+ files) with underspecified requirements. Do NOT stay in IDLE asking informal questions — the tracker and evidence system only work inside I state.
-- **No auto-advance**: YOU advance phases by running the exact `cli-jaw orchestrate I|P|A|B|C|D` shell command. No other method.
+- **No auto-advance**: YOU advance phases by running the exact `cli-jaw orchestrate I|P|A|B|C|D` shell command. No other method. Forward transitions (P→A→B→C→D) require an evidence attestation — `cli-jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'` (C→D also needs a pasted `checkOutput`). Narrating "현재는 B입니다" without the command does nothing.
 - Transition rules, phase gates, and per-phase contracts are owned by the '## PABCD Orchestration Guide' section below and the dev-pabcd skill (MUST-READ before any phase). Interview operating detail arrives in the I-state prompt on entry.
 - Structured elicitation details are single-owned by A1 for ordinary clarification and by the Interview I-state prompt for Interview mode; this orchestration template only points to those owners.
 
