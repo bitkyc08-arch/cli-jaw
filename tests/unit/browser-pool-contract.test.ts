@@ -2,41 +2,41 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getFetchBrowserPage, releaseFetchBrowserPage, drainPool, getPoolSize } from '../../src/browser/adaptive-fetch/browser-runtime.js';
 
-test('browser pool warm hit reuses released page', async () => {
+test('isolated pages are always freshly created (no pooling)', async () => {
     let createCount = 0;
+    let cleanupCount = 0;
     const mockDeps = {
         createIsolatedPage: async () => {
             createCount++;
-            const id = createCount;
-            return { page: { id }, cleanup: async () => undefined, isolated: true };
+            return { page: { id: createCount }, cleanup: async () => { cleanupCount++; }, isolated: true };
         },
     };
 
     const page1 = await getFetchBrowserPage({ browserDeps: mockDeps, browserSession: 'isolated' });
     assert.equal(createCount, 1);
     await releaseFetchBrowserPage(page1);
-    assert.equal(getPoolSize(), 1);
+    assert.equal(cleanupCount, 1, 'isolated page cleaned up on release');
+    assert.equal(getPoolSize(), 0, 'pool is always empty');
 
     const page2 = await getFetchBrowserPage({ browserDeps: mockDeps, browserSession: 'isolated' });
-    assert.equal(createCount, 1, 'should reuse warm page, not create new');
-    assert.equal(getPoolSize(), 0, 'warm page removed from pool on checkout');
-
+    assert.equal(createCount, 2, 'always creates fresh page');
     await releaseFetchBrowserPage(page2);
+    assert.equal(cleanupCount, 2);
+});
+
+test('drainPool is a safe no-op', async () => {
     await drainPool();
     assert.equal(getPoolSize(), 0);
 });
 
-test('drainPool empties all warm pages', async () => {
+test('existing session pages are not cleaned up by release', async () => {
+    let cleanupCalled = false;
     const mockDeps = {
-        createIsolatedPage: async () => ({ page: {}, cleanup: async () => undefined, isolated: true }),
+        getPage: async () => ({ id: 'user-page' }),
     };
 
-    const p1 = await getFetchBrowserPage({ browserDeps: mockDeps, browserSession: 'isolated' });
-    const p2 = await getFetchBrowserPage({ browserDeps: mockDeps, browserSession: 'isolated' });
-    await releaseFetchBrowserPage(p1);
-    await releaseFetchBrowserPage(p2);
-    assert.equal(getPoolSize(), 2);
-
-    await drainPool();
-    assert.equal(getPoolSize(), 0);
+    const page = await getFetchBrowserPage({ browserDeps: mockDeps, browserSession: 'existing' });
+    assert.equal(page.isolated, false);
+    await releaseFetchBrowserPage({ ...page, cleanup: async () => { cleanupCalled = true; } });
+    assert.equal(cleanupCalled, true, 'cleanup is always called');
 });
