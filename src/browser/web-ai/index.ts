@@ -31,6 +31,20 @@ export * from './answer-artifact.js';
 export * from './source-audit.js';
 export * from './chatgpt-attachments.js';
 export * from './chatgpt-archive.js';
+// chatgpt-attachments already exports UPLOAD_BUTTON_SELECTORS; re-export the rest explicitly.
+export {
+    IMAGE_ATTACHMENT_EXTENSIONS,
+    isImageAttachmentPath,
+    scoreFileInputCandidate,
+    findFirstFileInput,
+    setFilesViaUploadSurface,
+} from './chatgpt-upload-surface.js';
+export type {
+    AttachmentProbeFile,
+    AttachmentTarget,
+    UploadSurfaceResult,
+    FileInputMetadata,
+} from './chatgpt-upload-surface.js';
 export * from './chatgpt-model.js';
 export * from './chatgpt-tools.js';
 export * from './chatgpt-multi-turn.js';
