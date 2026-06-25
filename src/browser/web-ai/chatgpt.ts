@@ -30,6 +30,7 @@ import {
 } from './session.js';
 import { captureAssistantResponse } from './chatgpt-response.js';
 import { saveAssistantDownloadableFiles } from './chatgpt-files.js';
+import { resolveTimeoutDefaultSec } from './tier-timeout.js';
 import { selectChatGptModel } from './chatgpt-model.js';
 import { withAnswerArtifact } from './answer-artifact.js';
 import { auditSources } from './source-audit.js';
@@ -282,7 +283,8 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         conversationUrl: page.url(),
         envelope,
         assistantCount,
-        timeoutMs: 600_000,
+        // 105.4: tier-aware default (pro/deep-research → 1h) instead of a flat 10 min.
+        timeoutMs: resolveTimeoutDefaultSec(input, envelope.vendor) * 1000,
     });
     bindSessionToTab(session.sessionId, targetId);
     await recordActiveLease({
@@ -681,7 +683,8 @@ async function queryDeepResearch(port: number, input: QuestionEnvelopeInput & { 
         conversationUrl: page.url(),
         envelope: normalizeEnvelope(input),
         assistantCount: await countAssistantMessages(page),
-        timeoutMs: Number(input.timeout || 1200) * 1000,
+        // 105.4: deep-research → tier-aware 1h default (was a flat 20 min) unless --timeout.
+        timeoutMs: Number(input.timeout || resolveTimeoutDefaultSec(input, 'chatgpt')) * 1000,
     });
     bindSessionToTab(session.sessionId, targetId);
     const deps = {
@@ -690,7 +693,7 @@ async function queryDeepResearch(port: number, input: QuestionEnvelopeInput & { 
     const dr = await sendDeepResearch(page, deps, {
         prompt: input.prompt || '',
         session,
-        timeoutMs: Number(input.timeout || 1200) * 1000,
+        timeoutMs: session.timeoutMs, // reuse the session's tier-aware timeout (105.4)
     });
     const drStatusMap: Record<string, WebAiOutput['status']> = {
         complete: 'complete', timeout: 'timeout', blocked: 'blocked', failed: 'error',
