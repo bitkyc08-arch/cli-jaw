@@ -49,6 +49,7 @@ export * from './chatgpt-model.js';
 export * from './chatgpt-tools.js';
 export * from './chatgpt-multi-turn.js';
 export * from './chatgpt-deep-research.js';
+export * from './chatgpt-project-sources.js';
 export * from './session-target-guard.js';
 export * from './product-surfaces.js';
 export * from './ax-snapshot.js';
