@@ -1,5 +1,7 @@
 export type WebAiVendor = 'chatgpt' | 'gemini' | 'grok';
-export type WebAiStatus = 'ready' | 'rendered' | 'sent' | 'streaming' | 'complete' | 'blocked' | 'timeout' | 'error' | 'interstitial';
+// 104.18: 'conversation-mismatch' (the held tab drifted to a different chat) and 'tab-crashed'
+// (the tab died mid-poll, recoverable) are per-tick poll bail-out states.
+export type WebAiStatus = 'ready' | 'rendered' | 'sent' | 'streaming' | 'complete' | 'blocked' | 'timeout' | 'error' | 'interstitial' | 'conversation-mismatch' | 'tab-crashed';
 export type WebAiNotificationStatus = 'pending' | 'sent' | 'failed' | 'skipped';
 /**
  * ChatGPT supports the `upload` runtime after PRD32.7-B. Gemini upload remains
@@ -79,7 +81,7 @@ export interface CommittedTurnBaseline {
     capturedAt: string;
 }
 
-export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error';
+export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error' | 'crashed';
 
 export interface WebAiSessionTabState {
     createdAt: string;
@@ -180,6 +182,8 @@ export interface WebAiOutput {
         status: 'running' | 'complete' | 'timeout' | 'error';
     }>;
     next?: 'poll' | 'reattach' | 'stop';
+    // 104.18: a 'tab-crashed' poll outcome is recoverable (relaunch + resume).
+    recoverable?: boolean;
     canvas?: { kind: 'opened'; reason?: string };
     traceSummary?: import('./action-trace.js').TraceSummary;
     contextPack?: import('./context-pack/index.js').ContextPackSummary;

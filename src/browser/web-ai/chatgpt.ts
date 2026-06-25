@@ -8,6 +8,7 @@ import { listLeases, recordActiveLease } from './tab-lease-store.js';
 import { basename } from 'node:path';
 import { statSync } from 'node:fs';
 import { countConversationTurns } from './chatgpt-composer.js';
+import { extractConversationId } from './code-mode.js';
 import {
     attachLocalFileLive,
     sendButtonTimeoutMs,
@@ -495,12 +496,42 @@ export async function poll(port: number, input: {
         } satisfies WebAiOutput;
     }
     const timeoutMs = Math.max(1, Number(input.timeout || 1200)) * 1000;
+    // 104.18: per-tick conversation-drift guard. baseline.url is the chat we committed to; if the
+    // held page later sits on a *different* /c/<id>, we're polling the wrong thread. The expected
+    // fresh-chat none→id transition is NOT flagged (it only fires when both ids exist and differ).
+    const baselineConvoId = extractConversationId(baseline.url);
+    const driftCheck = async (): Promise<string | null> => {
+        const currentConvoId = extractConversationId(page.url?.() || '');
+        if (baselineConvoId && currentConvoId && baselineConvoId !== currentConvoId) {
+            return `conversation changed: ${baselineConvoId} → ${currentConvoId}`;
+        }
+        return null;
+    };
     const result = await captureAssistantResponse(page, {
         minTurnIndex: baseline.assistantCount,
         timeoutMs,
         promptText: '',
         allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
+        driftCheck,
     });
+    // 104.18: surface a per-tick drift/crash bail-out as a typed, (for crashes) recoverable outcome.
+    if (result.drift) {
+        if (session) updateSessionStatus(session.sessionId, result.drift.status === 'tab-crashed' ? 'crashed' : session.status);
+        return stripUndefined({
+            ok: false,
+            vendor,
+            status: result.drift.status,
+            url: page.url?.() || currentUrl,
+            ...(session ? { sessionId: session.sessionId } : {}),
+            answerText: '',
+            baseline,
+            usedFallbacks: result.usedFallbacks,
+            warnings: result.warnings,
+            error: result.drift.reason,
+            ...(result.drift.recoverable ? { recoverable: true } : {}),
+            next: 'poll',
+        }) satisfies WebAiOutput;
+    }
     if (session && result.ok) updateSessionStatus(session.sessionId, 'complete');
     if (session && !result.ok) updateSessionStatus(session.sessionId, 'timeout');
     const traceSummary = session
