@@ -201,6 +201,7 @@ export function updateSessionResult(input: {
     tabState?: WebAiSessionTabState;
     turns?: import('./types.js').WebAiTurnRecord[];
     followUpCount?: number;
+    modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
 }): WebAiSessionRecord | null {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
@@ -216,6 +217,7 @@ export function updateSessionResult(input: {
     if (input.tabState) record.tabState = input.tabState;
     if (input.turns !== undefined) record.turns = input.turns;
     if (input.followUpCount !== undefined) record.followUpCount = input.followUpCount;
+    if (input.modelSelection !== undefined) record.modelSelection = input.modelSelection;
     if (input.answerText !== undefined) {
         record.answerText = input.answerText;
         record.lastSeenTextHash = createHash('sha256').update(input.answerText).digest('hex');

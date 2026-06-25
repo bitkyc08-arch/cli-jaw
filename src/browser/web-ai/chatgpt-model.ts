@@ -14,6 +14,17 @@ declare const document: { querySelectorAll(selector: string): Iterable<BrowserNo
 export type ChatGptModelChoice = 'instant' | 'thinking' | 'pro';
 export type ChatGptEffortChoice = 'light' | 'standard' | 'extended' | 'heavy';
 
+export interface ChatGptModelSelectionEvidence {
+    requestedModel: string | null;
+    resolvedLabel: string | null;
+    normalizedModel: ChatGptModelChoice | null;
+    strategy: 'select';
+    status: 'verified' | 'unverified';
+    verified: boolean;
+    source: 'chatgpt-model-picker';
+    capturedAt: string;
+}
+
 export interface ChatGptModelSelectionResult {
     requested: ChatGptModelChoice | null;
     selected: ChatGptModelChoice | null;
@@ -22,6 +33,26 @@ export interface ChatGptModelSelectionResult {
     requestedEffort?: ChatGptEffortChoice | null;
     usedFallbacks: string[];
     warnings: string[];
+    modelSelection?: ChatGptModelSelectionEvidence;
+}
+
+/** 104.5: structured, persistable evidence of what model was requested vs resolved/verified. */
+export function createModelSelectionEvidence(input: {
+    requestedModel?: string | null;
+    resolvedLabel?: string | null;
+    normalizedModel?: ChatGptModelChoice | null;
+    verified: boolean;
+}): ChatGptModelSelectionEvidence {
+    return {
+        requestedModel: input.requestedModel ?? null,
+        resolvedLabel: input.resolvedLabel ?? null,
+        normalizedModel: input.normalizedModel ?? null,
+        strategy: 'select',
+        status: input.verified ? 'verified' : 'unverified',
+        verified: input.verified,
+        source: 'chatgpt-model-picker',
+        capturedAt: new Date().toISOString(),
+    };
 }
 
 export const CHATGPT_MODEL_SELECTOR_BUTTONS = [
@@ -246,6 +277,12 @@ export async function selectChatGptModel(page: Page, model: string | undefined, 
         requestedEffort: requestedEffort || null,
         usedFallbacks,
         warnings,
+        modelSelection: createModelSelectionEvidence({
+            requestedModel: model ?? null,
+            resolvedLabel: after,
+            normalizedModel: targetModel,
+            verified: after === targetModel,
+        }),
     };
 }
 

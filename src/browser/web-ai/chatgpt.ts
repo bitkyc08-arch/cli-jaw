@@ -287,6 +287,10 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         timeoutMs: resolveTimeoutDefaultSec(input, envelope.vendor) * 1000,
     });
     bindSessionToTab(session.sessionId, targetId);
+    // 104.5: persist structured model-selection evidence to the session.
+    if (selectedModel?.modelSelection) {
+        updateSessionResult({ sessionId: session.sessionId, status: session.status, modelSelection: selectedModel.modelSelection });
+    }
     await recordActiveLease({
         owner: 'cli-jaw',
         vendor: envelope.vendor,

@@ -131,6 +131,7 @@ export interface WebAiSessionRecord {
     turns?: WebAiTurnRecord[];
     followUpCount?: number;
     artifacts?: WebAiArtifactDescriptor[];
+    modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
     completedAt?: string;
     failedAt?: string;
     staleAt?: string;
