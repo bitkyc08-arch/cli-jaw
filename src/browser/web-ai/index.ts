@@ -37,6 +37,7 @@ export * from './chatgpt-deep-research.js';
 export * from './session-target-guard.js';
 export * from './product-surfaces.js';
 export * from './ax-snapshot.js';
+export * from './candidate-reconcile.js';
 export * from './ref-registry.js';
 export * from './observe-targets.js';
 export * from './annotated-screenshot.js';
