@@ -8,14 +8,15 @@
  */
 
 import type { ResponseCaptureResult } from './provider-adapter.js';
-import { ActionTranscript, captureTextBaseline } from '../primitives.js';
+import { ActionTranscript } from '../primitives.js';
+import { readTopLevelAssistantTexts, readTopLevelAssistantTextsFromLocators } from './chatgpt-response-dom.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { resolveActionTarget } from './self-heal.js';
 import { createTraceContext, getSessionTrace, recordTraceStep } from './action-trace.js';
 import type { ResolveActionTargetResult, TargetCandidate } from './self-heal.js';
 import type { TraceContext, TraceStep } from './action-trace.js';
-import type { Locator, Page } from 'playwright-core';
+import type { Page } from 'playwright-core';
 
 export const ASSISTANT_TURN_SELECTORS = [
     '[data-message-author-role="assistant"]',
@@ -111,20 +112,14 @@ export async function readAssistantSnapshot(page: Page, minTurnIndex: number, pr
 }
 
 async function readAssistantTexts(page: Page): Promise<string[]> {
-    const baseline = await captureTextBaseline(page, ASSISTANT_TURN_SELECTORS);
-    if (baseline.texts.length) return baseline.texts.map(normalizeAssistantText).filter(Boolean);
-
-    const allTexts: string[] = [];
-    for (const selector of ASSISTANT_TURN_SELECTORS) {
-        const locators = await safeAll(page, selector);
-        for (const loc of locators) {
-            const raw = await loc.innerText().catch(() => '');
-            const normalized = normalizeAssistantText(raw);
-            if (normalized) allTexts.push(normalized);
-        }
-        if (allTexts.length > 0) break;
-    }
-    return allTexts;
+    // Descendant-dedup (catalog 106.13): prefer top-level assistant nodes so a nested
+    // match never double-counts its parent's text. page.evaluate first, locator fallback.
+    const viaEvaluate = await page.evaluate(readTopLevelAssistantTexts, ASSISTANT_TURN_SELECTORS)
+        .catch(() => [] as string[]);
+    const texts = viaEvaluate.length
+        ? viaEvaluate
+        : await readTopLevelAssistantTextsFromLocators(page, ASSISTANT_TURN_SELECTORS);
+    return texts.map(normalizeAssistantText).filter(Boolean);
 }
 
 export async function captureAssistantResponse(page: Page, options: CaptureOptions): Promise<ResponseCaptureResult> {
@@ -307,11 +302,6 @@ async function isCanvasOpened(page: Page): Promise<boolean> {
         }
     }
     return false;
-}
-
-async function safeAll(page: Page, selector: string): Promise<Locator[]> {
-    try { return await page.locator(selector).all(); }
-    catch { return []; }
 }
 
 function wait(ms: number): Promise<void> {
