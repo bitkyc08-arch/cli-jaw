@@ -30,6 +30,7 @@ export * from './target-resolver.js';
 export * from './answer-artifact.js';
 export * from './source-audit.js';
 export * from './chatgpt-attachments.js';
+export * from './chatgpt-archive.js';
 export * from './chatgpt-model.js';
 export * from './chatgpt-tools.js';
 export * from './chatgpt-multi-turn.js';
