@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { wrapError } from './errors.js';
+import { editorContractForVendor } from './vendor-editor-contract.js';
 import type { WebAiVendor } from './types.js';
 
 export interface ContractTarget {
@@ -39,37 +40,20 @@ export interface ContractAuditPage {
     };
 }
 
-const CONTRACTS: Record<WebAiVendor, Record<string, ContractTarget>> = {
-    chatgpt: {
-        composer: { roles: ['textbox'], names: [/message/i, /prompt/i, /chatgpt/i] },
-        modelPicker: { roles: ['button', 'combobox'], names: [/model/i, /gpt/i] },
-        uploadSurface: { roles: ['button'], names: [/attach/i, /upload/i, /file/i, /add/i] },
-        copyButton: { roles: ['button'], names: [/copy/i] },
-    },
-    gemini: {
-        composer: { roles: ['textbox'], names: [/prompt/i, /message/i, /ask/i] },
-        modelPicker: { roles: ['button', 'combobox'], names: [/model/i, /mode/i, /picker/i] },
-        uploadSurface: { roles: ['button'], names: [/upload/i, /file/i, /attach/i] },
-        copyButton: { roles: ['button'], names: [/copy/i] },
-    },
-    grok: {
-        composer: { roles: ['textbox'], names: [/message/i, /prompt/i, /ask/i, /grok/i] },
-        modelPicker: { roles: ['button', 'combobox'], names: [/model/i] },
-        uploadSurface: { roles: ['button'], names: [/upload/i, /attach/i, /file/i] },
-        copyButton: { roles: ['button'], names: [/copy/i] },
-    },
-};
-
 export async function auditContractAgainstSnapshot(page: ContractAuditPage, vendor: WebAiVendor): Promise<ContractAuditReport> {
     try {
-        const contract = CONTRACTS[vendor] || CONTRACTS.chatgpt;
+        // 104.21: audit against the shared 7-feature editor contract (incl. responseFeed /
+        // streamingIndicator + excludeNames) instead of a forked 4-feature copy, so drift on
+        // those features is caught and a "search" textbox no longer false-satisfies composer.
+        const contract = editorContractForVendor(vendor).semanticTargets;
         const snapshot = await buildContractSnapshot(page);
         const drifts: ContractDrift[] = [];
         for (const [feature, target] of Object.entries(contract)) {
             const matches = snapshot.refs.filter((ref) => {
                 const roleMatches = !target.roles?.length || target.roles.includes(ref.role);
                 const nameMatches = !target.names?.length || target.names.some((pattern) => pattern.test(ref.name || ''));
-                return roleMatches && nameMatches;
+                const excluded = target.excludeNames?.some((pattern) => pattern.test(ref.name || '')) ?? false;
+                return roleMatches && nameMatches && !excluded;
             });
             if (matches.length === 0) {
                 drifts.push({ feature, severity: 'error', message: `No elements match contract for ${feature}` });
