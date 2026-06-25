@@ -64,6 +64,9 @@ export const INPUT_SELECTORS = [
     'textarea[aria-label="Message ChatGPT"]',
     'main textarea:not([disabled])',
     'form textarea:not([disabled])',
+    // 105.8: restore agbrowse's bare-textarea fallback (cli-jaw had narrowed to main/form-scoped only,
+    // missing layouts where the composer textarea is neither inside <main> nor a <form>).
+    'textarea:not([disabled])',
     'textarea[name="prompt-textarea"]',
     '#prompt-textarea',
     '.ProseMirror',
@@ -77,6 +80,10 @@ export const SEND_BUTTON_SELECTORS = [
     'button[type="submit"][data-testid*="send"]',
     'button[aria-label*="Send prompt" i]',
     'button[aria-label*="Send message" i]',
+    // 105.8: restore agbrowse's generic Send fallbacks (precision-first ordering kept — these run last)
+    // so a relabeled / form-submit Send button is still found when the specific testids/labels miss.
+    'form button[type="submit"]',
+    'button[aria-label*="Send" i]',
 ] as const;
 
 export const STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';

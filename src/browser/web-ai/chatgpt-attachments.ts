@@ -165,10 +165,16 @@ const COMPOSER_FILE_INPUT_SELECTORS = [
     'input[type="file"][multiple]',
     'input[type="file"]',
 ];
-const UPLOAD_BUTTON_SELECTORS = [
+// 105.8: exported for parity testing. Restores agbrowse's explicit composer-plus-btn data-testid,
+// the explicit "Add files and more" label, and the Korean i18n label that the broad `*="Add" i`
+// pattern can't match — selector resilience for upload-surface discovery.
+export const UPLOAD_BUTTON_SELECTORS = [
+    'button[data-testid="composer-plus-btn"]',
     'button[aria-label*="Upload" i]',
     'button[aria-label*="Attach" i]',
+    'button[aria-label="Add files and more"]',
     'button[aria-label*="Add" i]',
+    'button[aria-label="파일 추가 및 기타"]',
     'button[data-testid*="plus" i]',
     'button:has-text("Upload")',
 ];
