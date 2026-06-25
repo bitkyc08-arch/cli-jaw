@@ -10,6 +10,7 @@ import { statSync } from 'node:fs';
 import { countConversationTurns } from './chatgpt-composer.js';
 import {
     attachLocalFileLive,
+    sendButtonTimeoutMs,
     verifySentTurnAttachmentLive,
 } from './chatgpt-attachments.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
@@ -301,8 +302,8 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         url: page.url(),
     });
 
-    const adapter = createChatGptEditorAdapter(page, {
-        insertText: async (text: string) => {
+    const editorOptions = {
+        insertText: async (text: string): Promise<void> => {
             const cdp = await getCdpSession(port);
             if (!cdp) throw new Error('No CDP session available for text insertion');
             try {
@@ -311,7 +312,8 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
                 await cdp.detach?.().catch(() => undefined);
             }
         },
-    });
+    };
+    const adapter = createChatGptEditorAdapter(page, editorOptions);
     const attachmentWarnings: string[] = [];
     const usedFallbacks: string[] = [];
     try {
@@ -322,9 +324,14 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         if (!composerTarget.ok && composerTarget.required) {
             throw new Error(`composer target unresolved: ${composerTarget.errorCode || 'unknown'}`);
         }
-        await adapter.waitForReady();
+        // 104.12: route the resolver-verified composer selector into the adapter (readiness + insert use it).
+        const composerSelector = composerTarget.ok ? composerTarget.target?.selector : null;
+        const liveAdapter = composerSelector
+            ? createChatGptEditorAdapter(page, { ...editorOptions, composerTarget: { selector: composerSelector, resolution: composerTarget.resolutionSource } })
+            : adapter;
+        await liveAdapter.waitForReady();
         const commitBaseline = { turnsCount: await countConversationTurns(page).catch(() => assistantCount) };
-        await adapter.insertPrompt(rendered.composerText);
+        await liveAdapter.insertPrompt(rendered.composerText);
         const contextAttachmentPath = contextPack?.attachments?.[0]?.path;
         const requestedPaths = Array.isArray(input.filePaths) && input.filePaths.length
             ? input.filePaths
@@ -354,8 +361,13 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         if (!sendTarget.ok && sendTarget.required) {
             throw new Error(`send target unresolved: ${sendTarget.errorCode || 'unknown'}`);
         }
-        await adapter.submitPrompt();
-        await adapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
+        // 104.12: hand the resolved send target + upload-aware timeout to the submit path.
+        const sendSelector = sendTarget.ok ? sendTarget.target?.selector : null;
+        await liveAdapter.submitPrompt({
+            ...(sendSelector ? { sendTarget: { selector: sendSelector, resolution: sendTarget.resolutionSource } } : {}),
+            sendButtonTimeoutMs: sendButtonTimeoutMs(uploadPaths),
+        });
+        await liveAdapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
         for (const uploadPath of uploadPaths) {
             // eslint-disable-next-line no-await-in-loop -- evidence follows upload order.
             const sentAttachment = await verifySentTurnAttachmentLive(page, localFileInfo(uploadPath));

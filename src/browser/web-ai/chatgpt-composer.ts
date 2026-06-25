@@ -1,4 +1,4 @@
-import type { PromptCommitBaseline, PromptCommitResult, PromptSubmitResult, VendorEditorAdapterOptions } from './vendor-editor-contract.js';
+import type { PromptCommitBaseline, PromptCommitResult, PromptSubmitResult, SendTarget, VendorEditorAdapterOptions } from './vendor-editor-contract.js';
 import { findVisibleCandidate, type BrowserLocatorLike } from '../primitives.js';
 import type { Page } from 'playwright-core';
 
@@ -107,14 +107,21 @@ type ComposerCandidate = {
     locator: ComposerLocator;
 };
 
-export async function findComposerCandidate(page: Page): Promise<ComposerCandidate> {
+export async function findComposerCandidate(page: Page, options: VendorEditorAdapterOptions = {}): Promise<ComposerCandidate> {
+    // 104.12: a resolver-verified composer target short-circuits the selector scan.
+    if (options.composerTarget?.selector) {
+        return {
+            selector: options.composerTarget.selector,
+            locator: page.locator(options.composerTarget.selector).first() as unknown as ComposerLocator,
+        };
+    }
     const candidate = await findVisibleCandidate(page, INPUT_SELECTORS, { allowFirstCandidateFallback: true });
     if (candidate) return { selector: candidate.selector, locator: candidate.locator as ComposerLocator };
     throw new Error(`ChatGPT composer not found. Tried: ${INPUT_SELECTORS.join(', ')}`);
 }
 
 export async function insertPromptIntoComposer(page: Page, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
-    const candidate = await findComposerCandidate(page);
+    const candidate = await findComposerCandidate(page, options);
     await focusComposerLikeUser(candidate.locator);
     try {
         await insertTextLikeProvider(page, text, options);
@@ -136,8 +143,15 @@ export async function insertPromptIntoComposer(page: Page, text: string, options
     }
 }
 
-export async function submitPromptFromComposer(page: Page): Promise<PromptSubmitResult> {
-    const clicked = await clickEnabledSendButton(page);
+export async function submitPromptFromComposer(page: Page, options: VendorEditorAdapterOptions = {}): Promise<PromptSubmitResult> {
+    // 104.12: a resolver-verified send target is tried first (with force-retry), then the scan, then Enter.
+    if (options.sendTarget?.selector) {
+        const clickedResolved = await clickResolvedSendButton(page, options.sendTarget);
+        if (clickedResolved) {
+            return { method: 'button', selector: options.sendTarget.selector, resolution: options.sendTarget.resolution ?? null };
+        }
+    }
+    const clicked = await clickEnabledSendButton(page, options.sendButtonTimeoutMs);
     if (clicked) return { method: 'button' };
     await page.keyboard.press('Enter');
     return { method: 'enter' };
@@ -288,8 +302,27 @@ async function readComposerState(page: Page, fallbackLocator?: ComposerLocator):
     return { editorText: String(actual || ''), fallbackValue: '', activeValue: String(actual || '') };
 }
 
-async function clickEnabledSendButton(page: Page): Promise<boolean> {
-    const deadline = Date.now() + 8_000;
+// 104.12: click a resolver-verified send button, with a force-retry before giving up.
+async function clickResolvedSendButton(page: Page, target: SendTarget): Promise<boolean> {
+    const button = page.locator(target.selector).first();
+    const visible = await button.isVisible().catch(() => false);
+    const enabled = await button.isEnabled().catch(() => false);
+    if (!visible || !enabled) return false;
+    try {
+        await button.click({ timeout: 5_000 });
+        return true;
+    } catch {
+        try {
+            await button.click({ timeout: 2_000, force: true });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
+async function clickEnabledSendButton(page: Page, timeoutMs = 8_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const result = await page.evaluate(({ inputSelectors, sendSelectors }: { inputSelectors: readonly string[]; sendSelectors: readonly string[] }) => {
             const dispatchClickSequence = (target: BrowserNodeLike | null): boolean => {

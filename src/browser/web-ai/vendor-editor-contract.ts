@@ -23,12 +23,30 @@ export interface PromptCommitResult {
 
 export interface PromptSubmitResult {
     method: 'button' | 'enter';
+    // 104.12: which resolver-verified target was clicked, when the resolved-send path won.
+    selector?: string;
+    resolution?: unknown;
+}
+
+// 104.12: resolver-verified targets carry the self-healed selector + its resolution provenance.
+export interface ComposerTarget {
+    selector: string;
+    resolution?: unknown;
+}
+
+export interface SendTarget {
+    selector: string;
+    resolution?: unknown;
 }
 
 export interface VendorEditorAdapterOptions {
     insertText?: (text: string) => Promise<void>;
     // 104.14: optional CDP session for Input.insertText (large prompts the keyboard path chokes on).
     getCdpSession?: () => Promise<{ send(method: string, params: Record<string, unknown>): Promise<unknown>; detach?(): Promise<void> } | null>;
+    // 104.12: resolver-verified composer/send targets + configurable send-button timeout.
+    composerTarget?: ComposerTarget;
+    sendTarget?: SendTarget;
+    sendButtonTimeoutMs?: number;
 }
 
 export interface VendorEditorAdapter {
@@ -36,7 +54,7 @@ export interface VendorEditorAdapter {
     waitForReady(): Promise<void>;
     getCommitBaseline(): Promise<PromptCommitBaseline>;
     insertPrompt(text: string): Promise<void>;
-    submitPrompt(): Promise<PromptSubmitResult>;
+    submitPrompt(submitOptions?: VendorEditorAdapterOptions): Promise<PromptSubmitResult>;
     verifyPromptCommitted(prompt: string, baseline?: PromptCommitBaseline): Promise<PromptCommitResult>;
 }
 
@@ -44,7 +62,9 @@ export function createChatGptEditorAdapter(page: Page, options: VendorEditorAdap
     return {
         vendor: 'chatgpt',
         async waitForReady(): Promise<void> {
-            await page.locator('#prompt-textarea, .ProseMirror, [contenteditable="true"]').first().waitFor({ state: 'visible', timeout: 10_000 });
+            // 104.12: prefer the resolver-verified composer selector when one was self-healed.
+            const selector = options.composerTarget?.selector || '#prompt-textarea, .ProseMirror, [contenteditable="true"]';
+            await page.locator(selector).first().waitFor({ state: 'visible', timeout: 10_000 });
         },
         async getCommitBaseline(): Promise<PromptCommitBaseline> {
             return { turnsCount: await countConversationTurns(page) };
@@ -52,8 +72,9 @@ export function createChatGptEditorAdapter(page: Page, options: VendorEditorAdap
         async insertPrompt(text: string): Promise<void> {
             await insertPromptIntoComposer(page, text, options);
         },
-        async submitPrompt(): Promise<PromptSubmitResult> {
-            return submitPromptFromComposer(page);
+        async submitPrompt(submitOptions: VendorEditorAdapterOptions = {}): Promise<PromptSubmitResult> {
+            // 104.12: per-call options (sendTarget / sendButtonTimeoutMs) override the constructor defaults.
+            return submitPromptFromComposer(page, { ...options, ...submitOptions });
         },
         async verifyPromptCommitted(prompt: string, baseline: PromptCommitBaseline = {}): Promise<PromptCommitResult> {
             return verifyPromptCommitted(page, prompt, baseline);

@@ -35,6 +35,11 @@ const UNSUPPORTED_EXTENSIONS = new Set(['.gdoc', '.gsheet', '.gslides']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic']);
 const SPREADSHEET_EXTENSIONS = new Set(['.csv', '.tsv', '.xls', '.xlsx']);
 
+// 104.12: uploads delay send-button enablement, so widen the resolved/scan click window when files are attached.
+export function sendButtonTimeoutMs(fileNames: readonly unknown[] = []): number {
+    return Array.isArray(fileNames) && fileNames.length > 0 ? 45_000 : 20_000;
+}
+
 export function preflightAttachment(file: { path: string; sizeBytes: number; basename: string }): AttachmentPreflightResult {
     const extension = extractExtension(file.basename);
     const softWarnings: string[] = [];
