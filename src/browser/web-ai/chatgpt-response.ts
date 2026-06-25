@@ -10,6 +10,7 @@
 import type { ResponseCaptureResult } from './provider-adapter.js';
 import { ActionTranscript } from '../primitives.js';
 import { readTopLevelAssistantTexts, readTopLevelAssistantTextsFromLocators } from './chatgpt-response-dom.js';
+import { observeAssistantResponse, recoverAssistantResponse } from './chatgpt-response-observer.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { resolveActionTarget } from './self-heal.js';
@@ -130,6 +131,13 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
     let stableSince: number | null = null;
     let stableText: string | undefined;
 
+    // 101 #2 early-wake: a MutationObserver wakes the loop as soon as the response settles.
+    // The poller stays authoritative — this only reduces latency (worst case = identical polling).
+    const observerBudgetMs = Math.min(Math.max(0, deadline - Date.now()), 120_000);
+    let observerWake: Promise<{ settled: true } | null> | null = observerBudgetMs > 1000
+        ? observeAssistantResponse(page, { baselineAssistantCount: options.minTurnIndex, timeoutMs: observerBudgetMs })
+        : null;
+
     while (Date.now() < deadline) {
         const snap = await readAssistantSnapshot(page, options.minTurnIndex, options.promptText);
         if (snap.canvasOpened) {
@@ -171,7 +179,12 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
             stableSince = null;
             stableText = undefined;
         }
-        await wait(pollIntervalMs);
+        if (observerWake) {
+            await Promise.race([wait(pollIntervalMs), observerWake]);
+            observerWake = null; // one-shot: wake once on settle, then poll normally
+        } else {
+            await wait(pollIntervalMs);
+        }
     }
 
     if (options.allowCopyMarkdownFallback && stableText) {
@@ -184,6 +197,20 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
         }
         transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
     }
+
+    // 101 #2 3rd-tier recovery (after the opt-in copy fallback): re-read the latest
+    // assistant turn once, recovering a final answer the poll loop missed (late DOM settle).
+    const recovered = await recoverAssistantResponse(page, {
+        baselineAssistantCount: options.minTurnIndex,
+        isFinalAnswer: (t) => !isPlaceholderAssistantText(t),
+        readStreaming: () => isStreaming(page),
+        readFinished: () => isResponseFinished(page),
+    });
+    if (recovered?.text && !recovered.streaming && (recovered.finished || recovered.responseStableMs > 0)) {
+        transcript.fallback('recovery');
+        return withResolverTrace({ ok: true, answerText: normalizeAssistantText(recovered.text), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+    }
+
     return withResolverTrace(stripUndefined({ ok: false, answerText: stableText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }), resolverTrace);
 }
 
