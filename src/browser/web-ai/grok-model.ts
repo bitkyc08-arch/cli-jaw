@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core';
+import type { CapabilityProbeResult } from './capability-probe.js';
 
 export type GrokModelChoice = 'auto' | 'fast' | 'expert' | 'grok-4.3' | 'heavy';
 
@@ -113,6 +114,41 @@ async function readGrokModel(page: Page): Promise<GrokModelChoice | null> {
         return normalizeGrokModelChoice(await loc.innerText({ timeout: 1_000 }).catch(() => ''));
     }
     return null;
+}
+
+// 104.9: read-only probe — close any menu we open and never mutate the selection.
+async function closeGrokModelMenu(page: Page): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+        const menuVisible = await page.locator('[role="menuitem"]')
+            .filter({ hasText: /^Auto\b|^Fast\b|^Expert\b|^Grok 4\.3\b|^Heavy\b/i }).first().isVisible().catch(() => false);
+        if (!menuVisible) return;
+        await page.keyboard.press('Escape').catch(() => undefined);
+        await page.waitForTimeout(250).catch(() => undefined);
+    }
+}
+
+/**
+ * 104.9: read-only Grok model capability probe with a fallback ladder.
+ * Reports whether the requested model is already active ('ok'), selectable but not
+ * active ('warn'), or unavailable ('fail') — without ever changing the selection.
+ */
+export async function grokModelCapabilityProbe(page: Page, model: string | undefined): Promise<CapabilityProbeResult> {
+    if (!model) return { state: 'unknown', evidence: { requested: null }, next: 'send' };
+    const requested = normalizeGrokModelChoice(model);
+    if (!requested) return { state: 'fail', evidence: { requested: model }, next: 'model-fallback' };
+    const active = await readGrokModel(page).catch(() => null);
+    if (active === requested) return { state: 'ok', evidence: { active, requested, selectable: true }, next: 'send' };
+    const usedFallbacks: string[] = [];
+    try {
+        await openGrokModelMenu(page, usedFallbacks);
+    } catch {
+        return { state: 'warn', evidence: { active, requested, menuOpenFailed: true, usedFallbacks }, next: 'model-fallback' };
+    }
+    const option = await findGrokModelOption(page, requested).catch(() => null);
+    await closeGrokModelMenu(page);
+    return option
+        ? { state: 'warn', evidence: { active, requested, selectable: true, usedFallbacks }, next: 'model-fallback' }
+        : { state: 'fail', evidence: { active, requested, selectable: false, usedFallbacks }, next: 'model-fallback' };
 }
 
 function escapeRegExp(value: string): string {
