@@ -2,6 +2,7 @@ import { getActivePage } from '../connection.js';
 import { buildCodeModePrompt, checkContractCompliance } from './code-mode-prompt.js';
 import { ensureCodeDevContextZip } from './code-dev-context.js';
 import { retrieveAllCodeArtifacts, retrieveCodeArtifact, type PageLike } from './code-artifact.js';
+import { WebAiError } from './errors.js';
 import { getSession } from './session.js';
 import { query } from './chatgpt.js';
 import type { QuestionEnvelopeInput } from './types.js';
@@ -25,7 +26,9 @@ export function extractConversationId(url: string | null | undefined): string | 
 }
 
 export async function codeWebAi(port: number, input: QuestionEnvelopeInput & { conversation?: string; session?: string; outputZip?: string; outputDir?: string; multiZip?: boolean; contextRefresh?: boolean; timeout?: string | number } = {}): Promise<Record<string, unknown>> {
-    if (input.vendor && input.vendor !== 'chatgpt') throw new Error('web-ai code is ChatGPT-only (container tool contract)');
+    if (input.vendor && input.vendor !== 'chatgpt') {
+        throw new WebAiError({ errorCode: 'code-mode.vendor-unsupported', stage: 'code-mode', retryHint: 'use-chatgpt', message: 'web-ai code is ChatGPT-only (container tool contract)' });
+    }
     // Continuation turns (existing conversation via url/conversation, or a resumed
     // recorded session) reuse the same ChatGPT container: the dev-agent context zip
     // from the first turn is already in /mnt/data and its contract lives in the
@@ -72,7 +75,9 @@ export async function codeWebAi(port: number, input: QuestionEnvelopeInput & { c
 }
 
 export async function extractCodeArtifacts(port: number, input: { vendor?: string; url?: string; conversation?: string; session?: string; outputZip?: string; outputDir?: string; multiZip?: boolean } = {}): Promise<Record<string, unknown>> {
-    if (input.vendor && input.vendor !== 'chatgpt') throw new Error('web-ai code-extract is ChatGPT-only (container artifact contract)');
+    if (input.vendor && input.vendor !== 'chatgpt') {
+        throw new WebAiError({ errorCode: 'code-mode.vendor-unsupported', stage: 'code-extract', retryHint: 'use-chatgpt', message: 'web-ai code-extract is ChatGPT-only (container artifact contract)' });
+    }
     const session = input.session ? getSession(input.session) : null;
     const page = await getActivePage(port);
     const pageUrl = typeof page?.url === 'function' ? page.url() : '';

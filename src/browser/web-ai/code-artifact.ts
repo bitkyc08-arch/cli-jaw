@@ -209,7 +209,12 @@ async function downloadAndSaveZip(page: PageLike, params: { conversationId: stri
     if (!verified) return { ...result, sizeBytes: buffer.length, reason: 'code-artifact:invalid-zip' };
     const hasPlan = hasPlanArtifact(verified.files);
     if (params.requirePlan && !hasPlan) return { ...result, sizeBytes: buffer.length, files: verified.files, hasPlanArtifact: false, reason: 'code-artifact:plan-missing' };
-    await mkdir(dirname(params.outputPath), { recursive: true });
-    await writeFile(params.outputPath, buffer);
+    // 104.16: a write failure is a graceful result, not an unhandled throw.
+    try {
+        await mkdir(dirname(params.outputPath), { recursive: true });
+        await writeFile(params.outputPath, buffer);
+    } catch {
+        return { ...result, sizeBytes: buffer.length, files: verified.files, hasPlanArtifact: hasPlan, reason: 'code-artifact:write-failed' };
+    }
     return { ok: true, reason: null, zipPath: params.zipPath, savedPath: params.outputPath, sizeBytes: buffer.length, files: verified.files, hasPlanArtifact: hasPlan, mintedMessageId };
 }
