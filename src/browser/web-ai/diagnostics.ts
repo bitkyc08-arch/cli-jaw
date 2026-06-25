@@ -24,6 +24,13 @@ export type WebAiFailureStage =
     | 'provider-select-mode'
     | 'provider-interstitial'
     | 'session-reattach'
+    // 105.7: agbrowse core happy-path stage labels (diagnostics-contract parity; log-scrapers key on stage).
+    | 'connect'
+    | 'poll'
+    | 'commit-verify'
+    | 'composer-prereq'
+    | 'context-preflight'
+    | 'attachment-verify'
     | 'unknown';
 
 export interface WebAiDiagnostics {
@@ -86,6 +93,13 @@ const KNOWN_STAGES: ReadonlySet<WebAiFailureStage> = new Set([
     'provider-select-mode',
     'provider-interstitial',
     'session-reattach',
+    // 105.7: agbrowse core happy-path stage labels.
+    'connect',
+    'poll',
+    'commit-verify',
+    'composer-prereq',
+    'context-preflight',
+    'attachment-verify',
     'unknown',
 ]);
 
