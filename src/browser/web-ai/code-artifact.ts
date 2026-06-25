@@ -7,7 +7,29 @@ export type PageLike = {
     evaluate: (fn: (...args: any[]) => unknown, arg?: unknown) => Promise<any>;
 };
 
-export type ConversationJson = { mapping?: Record<string, { message?: { id?: string; content?: { content_type?: string } } }> };
+type ConversationMessage = { id?: string; content?: { content_type?: string }; create_time?: number; update_time?: number };
+export type ConversationJson = { mapping?: Record<string, { message?: ConversationMessage }> };
+
+/**
+ * 104.11: iterate conversation messages in chronological order (create_time/update_time, then
+ * mapping order) so the resolved zip is deterministic (the most recent one), not whichever the
+ * unordered object iteration happened to hit last.
+ */
+function orderedConversationMessages(conversation: ConversationJson): ConversationMessage[] {
+    return Object.values(conversation?.mapping || {})
+        .map((node, index) => ({ message: node?.message, index }))
+        .filter((item): item is { message: ConversationMessage; index: number } => Boolean(item.message))
+        .sort((a, b) => {
+            const at = Number(a.message.create_time ?? a.message.update_time);
+            const bt = Number(b.message.create_time ?? b.message.update_time);
+            const aHasTime = Number.isFinite(at);
+            const bHasTime = Number.isFinite(bt);
+            if (aHasTime && bHasTime && at !== bt) return at - bt;
+            if (aHasTime !== bHasTime) return aHasTime ? -1 : 1;
+            return a.index - b.index;
+        })
+        .map((item) => item.message);
+}
 
 export interface RetrieveResult {
     ok: boolean;
@@ -26,9 +48,7 @@ const ZIP_PATH_RE_GLOBAL = /\/mnt\/data\/[A-Za-z0-9_\-./]+\.zip/g;
 export function scanConversationForZip(conversation: ConversationJson): { zipPath: string | null; candidateMids: string[] } {
     let zipPath: string | null = null;
     const candidateMids: string[] = [];
-    for (const node of Object.values(conversation?.mapping || {})) {
-        const message = node?.message;
-        if (!message) continue;
+    for (const message of orderedConversationMessages(conversation)) {
         const contentType = message.content?.content_type || '';
         const blob = JSON.stringify(message.content || {});
         const match = blob.match(ZIP_PATH_RE);
@@ -42,9 +62,7 @@ export function scanConversationForAllZips(conversation: ConversationJson): { zi
     const zipPaths: string[] = [];
     const seen = new Set<string>();
     const candidateMids: string[] = [];
-    for (const node of Object.values(conversation?.mapping || {})) {
-        const message = node?.message;
-        if (!message) continue;
+    for (const message of orderedConversationMessages(conversation)) {
         const contentType = message.content?.content_type || '';
         const blob = JSON.stringify(message.content || {});
         for (const match of blob.match(ZIP_PATH_RE_GLOBAL) || []) {
