@@ -148,15 +148,28 @@ export function withStoreLock<T>(fn: () => T): T {
     });
 }
 
-function isStaleLock(path: string): boolean {
+export function isStaleLock(path: string): boolean {
     try {
         const raw = readFileSync(path, 'utf8');
-        const parsed = JSON.parse(raw) as { acquiredAt?: string };
-        const acquired = Date.parse(parsed?.acquiredAt || '');
-        if (!Number.isFinite(acquired)) return true;
-        return Date.now() - acquired > STALE_LOCK_MS;
+        const parsed = JSON.parse(raw) as { acquiredAt?: string; heartbeatAt?: string; pid?: number };
+        // 104.1: a crashed holder's lock is immediately stale (PID-liveness), not held until TTL.
+        if (parsed?.pid != null && !pidAlive(Number(parsed.pid))) return true;
+        const stamp = Date.parse(parsed?.heartbeatAt || parsed?.acquiredAt || '');
+        if (!Number.isFinite(stamp)) return true;
+        return Date.now() - stamp > STALE_LOCK_MS;
     } catch {
         return true;
+    }
+}
+
+/** True if the process is alive (or exists but not ours: EPERM). */
+function pidAlive(pid: number): boolean {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (err) {
+        return (err as { code?: string })?.code === 'EPERM';
     }
 }
 
@@ -189,14 +202,35 @@ export function patchSession(sessionId: string, patch: Partial<StoredSession>): 
     });
 }
 
+const ACTIVE_SESSION_STATUSES = new Set(['sent', 'polling']);
+
+function sessionDeadlineMs(session: StoredSession): number | null {
+    if (session.deadlineAt) {
+        const d = Date.parse(session.deadlineAt);
+        if (Number.isFinite(d)) return d;
+    }
+    const timeoutMs = session['timeoutMs'];
+    if (session.createdAt && typeof timeoutMs === 'number') {
+        const d = Date.parse(session.createdAt) + timeoutMs;
+        if (Number.isFinite(d)) return d;
+    }
+    return null;
+}
+
+/** 104.2: active = an active status AND not past its deadline (expired sessions are inactive). */
+export function isSessionActive(session: StoredSession, now = Date.now()): boolean {
+    if (!ACTIVE_SESSION_STATUSES.has(session.status)) return false;
+    const deadline = sessionDeadlineMs(session);
+    return deadline === null || deadline > now;
+}
+
 export function listStoredSessions(filter: SessionFilter = {}): StoredSession[] {
     const store = readSessionStoreLocked();
-    const active = new Set(['sent', 'polling']);
     let rows = store.sessions;
     if (filter.sessionId) rows = rows.filter(s => s.sessionId === filter.sessionId);
     if (filter.vendor) rows = rows.filter(s => s.vendor === filter.vendor);
     if (filter.status) rows = rows.filter(s => s.status === filter.status);
-    if (filter.active === true) rows = rows.filter(s => active.has(s.status));
+    if (filter.active === true) rows = rows.filter(s => isSessionActive(s));
     rows = rows.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
     if (typeof filter.limit === 'number' && filter.limit > 0) rows = rows.slice(-filter.limit);
     return rows;
