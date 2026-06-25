@@ -127,7 +127,8 @@ function geminiIncludeDirectoryArgs(options: BuildArgOptions): string[] {
 export function resolveAgyAddDirectories(options: BuildArgOptions = {}): string[] {
     const dirs = [
         options.workingDir,
-        options.homedir ?? os.homedir(),
+        // AGY's native tools can search every --add-dir root. Do not grant the
+        // whole home directory by default; callers may opt in via includeDirectories.
         ...(options.includeDirectories ?? []),
     ];
     const seen = new Set<string>();

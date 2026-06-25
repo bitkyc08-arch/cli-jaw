@@ -32,7 +32,6 @@ test('AG-000a: agy uses print p-mode with timeout, permissions, and add-dir root
         '--print-timeout', '10m',
         '--dangerously-skip-permissions',
         '--add-dir', '/repo',
-        '--add-dir', '/home/jun',
         '--add-dir', '/extra',
     ]);
 });
@@ -56,12 +55,12 @@ test('AG-000c: agy passes --model but never unsupported output/include-directory
     assert.ok(!args.includes('--include-directories'));
 });
 
-test('AG-000d: agy add-dir roots dedupe with working directory first', () => {
+test('AG-000d: agy add-dir roots dedupe without implicit home directory', () => {
     assert.deepEqual(resolveAgyAddDirectories({
         workingDir: '/repo/',
         homedir: '/home/jun',
         includeDirectories: ['/repo', '/extra', '/extra/'],
-    }), ['/repo', '/home/jun', '/extra']);
+    }), ['/repo', '/extra']);
 });
 
 test('AG-000e: agy resume uses exact native conversation id with print mode', () => {
