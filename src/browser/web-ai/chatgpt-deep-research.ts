@@ -1,5 +1,6 @@
 import type { Page } from 'playwright-core';
-import { updateSessionResult, updateSessionStatus } from './session.js';
+import { updateSessionResult, updateSessionStatus, appendSessionArtifact } from './session.js';
+import { trySaveReport } from './session-artifacts.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
 import type { WebAiSessionRecord } from './types.js';
 import { chooseDeepResearchReportRead, type DeepResearchReportRead } from './chatgpt-deep-research-report.js';
@@ -284,8 +285,9 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
                             answerText: report.text,
                             conversationUrl: page.url(),
                         });
-                        // NOTE: report-artifact-save (trySaveReport/appendArtifactRecord) deferred
-                        // to Cycle 2 — depends on session-artifacts.ts.
+                        const saved = trySaveReport(session.sessionId, { text: report.text, sources: report.sources });
+                        if (saved.ok) appendSessionArtifact(session.sessionId, saved.descriptor);
+                        else warnings.push(`artifact-save-failed:${saved.stage}:${saved.error}`);
 
                         return {
                             ok: true,
@@ -316,6 +318,11 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
         status: 'timeout',
         ...(finalText ? { answerText: finalText } : {}),
     });
+    if (finalText) {
+        const saved = trySaveReport(session.sessionId, { text: finalText, sources: finalReport?.sources ?? [] });
+        if (saved.ok) appendSessionArtifact(session.sessionId, saved.descriptor);
+        else warnings.push(`artifact-save-failed:${saved.stage}:${saved.error}`);
+    }
 
     return {
         ok: false,

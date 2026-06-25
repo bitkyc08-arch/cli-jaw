@@ -47,6 +47,7 @@ test('BWAI-DR-003: stable answer without research activity is rejected, not save
         namedExports: {
             updateSessionResult: (input: Record<string, unknown>) => { persistCalls.push(input); return null; },
             updateSessionStatus: () => null,
+            appendSessionArtifact: () => null,
         },
     });
     mock.module('../../src/browser/web-ai/vendor-editor-contract.js', {

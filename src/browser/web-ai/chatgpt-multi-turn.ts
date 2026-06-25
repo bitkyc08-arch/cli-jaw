@@ -1,5 +1,6 @@
 import type { Page } from 'playwright-core';
-import { updateSessionResult } from './session.js';
+import { updateSessionResult, appendSessionArtifact } from './session.js';
+import { trySaveTranscript } from './session-artifacts.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
 import type { WebAiSessionRecord, WebAiTurnRecord } from './types.js';
 
@@ -165,11 +166,16 @@ export async function sendMultiTurn(page: Page, deps: MultiTurnDeps, opts: {
         }
     }
 
-    // NOTE: transcript-artifact-save on partial failure (catalog 106.6) is deferred
-    // to Cycle 2 — it depends on session-artifacts.ts, which does not exist yet.
     const allTurns = [...existingTurns, ...turns];
     const transcriptMarkdown = renderMultiTurnTranscript(allTurns);
     const ok = turns.length === followUps.length && turns.every((t) => t.status === 'complete');
+
+    // On partial failure, persist the merged transcript as a session artifact (catalog 106.6).
+    if (!ok && transcriptMarkdown) {
+        const saved = trySaveTranscript(session.sessionId, transcriptMarkdown);
+        if (saved.ok) appendSessionArtifact(session.sessionId, saved.descriptor);
+        else allWarnings.push(`artifact-save-failed:${saved.stage}:${saved.error}`);
+    }
 
     updateSessionResult({
         sessionId: session.sessionId,
