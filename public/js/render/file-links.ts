@@ -183,7 +183,7 @@ export function linkifyFilePaths(container: HTMLElement, notesRoot: string | nul
     let textNode: Text | null;
     while ((textNode = walker.nextNode() as Text | null)) {
         const text = textNode.textContent || '';
-        const hits = mergeHits(collectAbsoluteHits(text), collectRelativeNoteHits(text));
+        const hits = mergeHits(collectAbsoluteHits(text), notesRoot ? collectRelativeNoteHits(text) : []);
         if (hits.length) nodeMatches.set(textNode, hits);
     }
 

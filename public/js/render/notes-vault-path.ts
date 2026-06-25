@@ -48,7 +48,7 @@ export function normalizeNotesVaultPath(input: string, notesRoot: string | null)
     const raw = normalizeSlashes(input);
     if (!raw) return null;
 
-    if (!raw.startsWith('~/') && looksLikeNoteRelPath(raw)) return raw;
+    if (notesRoot && !raw.startsWith('~/') && looksLikeNoteRelPath(raw)) return raw;
 
     if (!notesRoot) return null;
 

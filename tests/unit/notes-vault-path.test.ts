@@ -33,6 +33,12 @@ test('normalizeNotesVaultPath rejects paths outside notesRoot', () => {
     assert.equal(normalizeNotesVaultPath('/tmp/other.md', notesRoot), null);
 });
 
+test('normalizeNotesVaultPath rejects relative paths when notesRoot is null', () => {
+    assert.equal(normalizeNotesVaultPath('profile.md', null), null);
+    assert.equal(normalizeNotesVaultPath('daily/foo.md', null), null);
+    assert.equal(normalizeNotesVaultPath('SKILL.md', null), null);
+});
+
 test('isNotesVaultPath mirrors normalizeNotesVaultPath', () => {
     assert.equal(isNotesVaultPath('daily/foo.md', notesRoot), true);
     assert.equal(isNotesVaultPath('/Users/jun/project/foo.ts', notesRoot), false);
