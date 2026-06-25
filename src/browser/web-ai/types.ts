@@ -134,6 +134,12 @@ export interface WebAiSessionRecord {
     followUpCount?: number;
     artifacts?: WebAiArtifactDescriptor[];
     modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
+    // 105.5: streaming-progress fields persisted for cross-process resume / progress display.
+    envelopeSummary?: Record<string, unknown>;
+    lastDomHash?: string | null;
+    lastAxHash?: string | null;
+    lastStreamingState?: string;
+    lastResponseCharCount?: number;
     completedAt?: string;
     failedAt?: string;
     staleAt?: string;

@@ -7,6 +7,7 @@ import {
     updateSessionStatus,
     setSessionNotifyOnComplete,
     updateSessionResult,
+    updateSessionProgress,
     listSessions,
     listNotifications,
     markNotificationDelivered,
@@ -112,4 +113,44 @@ test('SESS-008: notification delivery status is persisted in the event ledger', 
     markNotificationDelivered({ eventId: event.eventId, status: 'sent' });
     assert.equal(listNotifications({ status: 'pending' }).length, 0);
     assert.equal(listNotifications({ status: 'sent' })[0]?.eventId, event.eventId);
+});
+
+// 105.5 — persisted session streaming-progress fields.
+test('SESS-105.5-A: createSession seeds envelopeSummary + default progress fields', () => {
+    __resetSessionState();
+    const s = createSession({ vendor: 'chatgpt', targetId: 'tp1', url: 'https://chatgpt.com/c/p1', conversationUrl: 'https://chatgpt.com/c/p1', envelope: { vendor: 'chatgpt', prompt: 'hello world', attachmentPolicy: 'inline-only', system: 'be terse' }, assistantCount: 0, timeoutMs: 60_000 });
+    const r = getSession(s.sessionId);
+    assert.equal(r?.lastStreamingState, 'unknown');
+    assert.equal(r?.lastResponseCharCount, 0);
+    assert.equal((r?.envelopeSummary as { promptChars?: number }).promptChars, 'hello world'.length);
+    assert.equal((r?.envelopeSummary as { hasSystem?: boolean }).hasSystem, true);
+    assert.equal((r?.envelopeSummary as { hasContext?: boolean }).hasContext, false);
+});
+
+test('SESS-105.5-B: updateSessionResult persists char-count + derives streaming state', () => {
+    __resetSessionState();
+    const s = createSession({ vendor: 'chatgpt', targetId: 'tp2', url: 'u', conversationUrl: 'u', envelope: baseEnvelope, assistantCount: 0, timeoutMs: 60_000 });
+    updateSessionResult({ sessionId: s.sessionId, status: 'complete', answerText: 'twelve chars' });
+    const r = getSession(s.sessionId);
+    assert.equal(r?.lastResponseCharCount, 'twelve chars'.length);
+    assert.equal(r?.lastStreamingState, 'complete');
+});
+
+test('SESS-105.5-C: updateSessionStatus(streaming) maps to streaming state', () => {
+    __resetSessionState();
+    const s = createSession({ vendor: 'chatgpt', targetId: 'tp3', url: 'u', conversationUrl: 'u', envelope: baseEnvelope, assistantCount: 0, timeoutMs: 60_000 });
+    updateSessionStatus(s.sessionId, 'streaming');
+    assert.equal(getSession(s.sessionId)?.lastStreamingState, 'streaming');
+});
+
+test('SESS-105.5-D: updateSessionProgress persists dom/ax hashes and only touches given keys', () => {
+    __resetSessionState();
+    const s = createSession({ vendor: 'chatgpt', targetId: 'tp4', url: 'u', conversationUrl: 'u', envelope: baseEnvelope, assistantCount: 0, timeoutMs: 60_000 });
+    updateSessionProgress(s.sessionId, { lastDomHash: 'dom-abc', lastAxHash: 'ax-def', lastResponseCharCount: 42 });
+    const r = getSession(s.sessionId);
+    assert.equal(r?.lastDomHash, 'dom-abc');
+    assert.equal(r?.lastAxHash, 'ax-def');
+    assert.equal(r?.lastResponseCharCount, 42);
+    // streaming-state untouched (not in the patch) — still the seeded default.
+    assert.equal(r?.lastStreamingState, 'unknown');
 });

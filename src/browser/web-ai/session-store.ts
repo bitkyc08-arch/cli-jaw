@@ -22,6 +22,12 @@ export interface StoredSession {
     composerBefore?: string;
     composerAfter?: string;
     deadlineAt?: string;
+    // 105.5: streaming-progress fields (also storable via the index signature, declared for type-safety).
+    envelopeSummary?: Record<string, unknown>;
+    lastDomHash?: string | null;
+    lastAxHash?: string | null;
+    lastStreamingState?: string;
+    lastResponseCharCount?: number;
     [key: string]: unknown;
 }
 
