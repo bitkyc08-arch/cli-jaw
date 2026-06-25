@@ -29,6 +29,7 @@ import {
     updateSessionStatus,
 } from './session.js';
 import { captureAssistantResponse } from './chatgpt-response.js';
+import { saveAssistantDownloadableFiles } from './chatgpt-files.js';
 import { selectChatGptModel } from './chatgpt-model.js';
 import { withAnswerArtifact } from './answer-artifact.js';
 import { auditSources } from './source-audit.js';
@@ -487,6 +488,27 @@ export async function poll(port: number, input: {
     const traceSummary = session
         ? appendTraceToSession(session.sessionId, (result.resolverTrace || []) as TracePersistableValue[])
         : null;
+    // 101 #1 (follow-up 2.4): capture generic assistant-turn downloadable files as session
+    // artifacts on successful completion. Covers every complete return below. Never throws
+    // past its boundary; only adds warnings. Skipped when no CDP session is available.
+    if (session && result.ok) {
+        const fileCdp = await getCdpSession(port);
+        if (fileCdp) {
+            try {
+                const fileResult = await saveAssistantDownloadableFiles(
+                    // BrowserCdpSession structurally provides send/detach used here.
+                    fileCdp as unknown as Parameters<typeof saveAssistantDownloadableFiles>[0],
+                    {},
+                    { sessionId: session.sessionId, baselineAssistantCount: baseline.assistantCount },
+                );
+                if (fileResult.warnings.length) result.warnings.push(...fileResult.warnings);
+            } catch (err) {
+                result.warnings.push(`file-artifact-capture-failed:${(err as Error)?.message || 'unknown'}`);
+            } finally {
+                await fileCdp.detach?.().catch(() => undefined);
+            }
+        }
+    }
     if (result.canvas) {
         if (session) {
             await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
