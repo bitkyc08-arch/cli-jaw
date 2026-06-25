@@ -25,6 +25,26 @@ export function extractConversationId(url: string | null | undefined): string | 
     return BARE_CONVERSATION_ID_RE.test(value) ? value : null;
 }
 
+/** 104.10: the canonical conversation URL to extract from (a full chatgpt URL, else built from id). */
+export function resolveConversationUrl(conversationRef: string | null | undefined, conversationId: string): string {
+    const value = String(conversationRef || '').trim();
+    if (/^https:\/\/chatgpt\.com\/c\//i.test(value)) return value;
+    return `https://chatgpt.com/c/${conversationId}`;
+}
+
+/** 104.10: navigate before extraction when the active tab is a different origin or conversation. */
+export function shouldNavigateForExtraction(pageUrl: string | null | undefined, targetUrl: string): boolean {
+    if (!pageUrl) return true;
+    try {
+        const current = new URL(pageUrl);
+        const target = new URL(targetUrl);
+        if (current.origin !== target.origin) return true;
+        return extractConversationId(current.href) !== extractConversationId(target.href);
+    } catch {
+        return true;
+    }
+}
+
 export async function codeWebAi(port: number, input: QuestionEnvelopeInput & { conversation?: string; session?: string; outputZip?: string; outputDir?: string; multiZip?: boolean; contextRefresh?: boolean; timeout?: string | number } = {}): Promise<Record<string, unknown>> {
     if (input.vendor && input.vendor !== 'chatgpt') {
         throw new WebAiError({ errorCode: 'code-mode.vendor-unsupported', stage: 'code-mode', retryHint: 'use-chatgpt', message: 'web-ai code is ChatGPT-only (container tool contract)' });
@@ -84,6 +104,16 @@ export async function extractCodeArtifacts(port: number, input: { vendor?: strin
     const conversationRef = input.conversation || input.url || session?.conversationUrl || session?.url || pageUrl;
     const conversationId = extractConversationId(conversationRef);
     if (!conversationId) return { ok: false, status: 'error', errorCode: 'code-extract.conversation-id-missing', warnings: [] };
+    // 104.10: navigate to the target conversation before extracting, so we read the RIGHT
+    // conversation (not whatever the active tab currently shows).
+    const targetUrl = resolveConversationUrl(conversationRef, conversationId);
+    if (page && shouldNavigateForExtraction(pageUrl, targetUrl)) {
+        try {
+            await page.goto(targetUrl, { waitUntil: 'domcontentloaded', timeout: 30_000 });
+        } catch (err) {
+            return { ok: false, status: 'error', errorCode: 'code-extract.navigation-failed', conversationId, warnings: [(err as Error)?.message || 'navigation failed'] };
+        }
+    }
     if (input.multiZip === true) {
         const outputDir = input.outputDir || `${process.cwd()}/code-artifacts-${conversationId.slice(0, 8)}`;
         const multi = await retrieveAllCodeArtifacts(page as unknown as PageLike, { conversationId, outputDir, requirePlan: false });
