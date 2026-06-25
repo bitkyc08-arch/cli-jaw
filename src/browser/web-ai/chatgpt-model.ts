@@ -38,7 +38,7 @@ const CHATGPT_COMPOSER_MODEL_PILL_SELECTORS = [
 ] as const;
 
 const CHATGPT_MODEL_MENU_ITEM_SELECTOR = '[data-testid^="model-switcher-gpt-"]';
-const CHATGPT_MODEL_TEXT_BUTTON_PATTERN = /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b|Medium\b|High\b|Extra High\b|Pro Standard\b|Pro Extended\b)/i;
+const CHATGPT_MODEL_TEXT_BUTTON_PATTERN = /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b|Medium\b|High\b|Extra High\b|Pro Standard\b|Pro Extended\b|즉시|중간|높음|매우 높음|Pro 확장|프로 확장)/i;
 const CHATGPT_OBSERVED_PRO_PILL_LABELS = ['Standard Pro', 'Extended Pro'] as const;
 const CHATGPT_EFFORT_TRIGGER_SELECTORS = [
     '[data-testid*="thinking-effort"]',
@@ -51,9 +51,9 @@ const CHATGPT_EFFORT_TRIGGER_SELECTORS = [
 ] as const;
 
 export const CHATGPT_MODEL_OPTIONS: Record<ChatGptModelChoice, { testIds: string[]; labels: string[] }> = {
-    instant: { testIds: ['model-switcher-gpt-5-5', 'model-switcher-gpt-5-3'], labels: ['Instant'] },
-    thinking: { testIds: ['model-switcher-gpt-5-5-thinking', 'model-switcher-gpt-5-5-thinking-thinking-effort'], labels: ['Thinking', 'Medium', 'High', 'Extra High'] },
-    pro: { testIds: ['model-switcher-gpt-5-5-pro', 'model-switcher-gpt-5-5-pro-thinking-effort'], labels: ['Pro', 'Heavy', 'Pro Standard', 'Pro Extended'] },
+    instant: { testIds: ['model-switcher-gpt-5-5', 'model-switcher-gpt-5-3'], labels: ['Instant', '즉시'] },
+    thinking: { testIds: ['model-switcher-gpt-5-5-thinking', 'model-switcher-gpt-5-5-thinking-thinking-effort'], labels: ['Thinking', 'Medium', 'High', 'Extra High', '중간', '높음', '매우 높음'] },
+    pro: { testIds: ['model-switcher-gpt-5-5-pro', 'model-switcher-gpt-5-5-pro-thinking-effort'], labels: ['Pro', 'Heavy', 'Pro Standard', 'Pro Extended', 'Pro 확장', '프로 확장'] },
 };
 
 export const CHATGPT_MODEL_EFFORT_OPTIONS: Record<'thinking' | 'pro', { triggerTestIds: string[]; efforts: Partial<Record<ChatGptEffortChoice, string>> }> = {
@@ -696,7 +696,7 @@ async function isModelMenuOpen(page: Page): Promise<boolean> {
             const testId = item.getAttribute?.('data-testid') || '';
             if (!text) return false;
             if (testId.includes('effort') && /^(Light|Standard|Extended|Heavy|Standard Pro|Extended Pro)$/i.test(text)) return false;
-            return /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b|Medium\b|High\b|Extra High\b|Pro Standard\b|Pro Extended\b)/i.test(text);
+            return /^(ChatGPT|GPT[-\s]?\d|((Light|Standard|Extended|Heavy)\s+)?(Instant|Fast|Thinking|Pro|Heavy)\b|Medium\b|High\b|Extra High\b|Pro Standard\b|Pro Extended\b|즉시|중간|높음|매우 높음|Pro 확장|프로 확장)/i.test(text);
         }))
         .catch(() => false);
     if (legacyOpen || await isSimplifiedIntelligenceMenuOpen(page, null, null)) return true;
@@ -708,9 +708,9 @@ async function isModelMenuOpen(page: Page): Promise<boolean> {
 }
 
 function modelLabelPattern(choice: ChatGptModelChoice, label: string): RegExp {
-    if (choice === 'instant') return /\b(Instant|Fast)\b/i;
-    if (choice === 'thinking') return /\b(Thinking|Think|Medium|High|Extra High)\b/i;
-    if (choice === 'pro') return /\b(Pro|Heavy|Pro Standard|Pro Extended)\b/i;
+    if (choice === 'instant') return /\b(Instant|Fast)\b|즉시/i;
+    if (choice === 'thinking') return /\b(Thinking|Think|Medium|High|Extra High)\b|중간|높음|매우 높음/i;
+    if (choice === 'pro') return /\b(Pro|Heavy|Pro Standard|Pro Extended)\b|Pro 확장|프로 확장/i;
     return new RegExp(`(^|\\s)${escapeRegExp(label)}\\b`, 'i');
 }
 
@@ -718,10 +718,10 @@ function effortLabelPattern(label: string): RegExp {
     return new RegExp(`(^|\\s)${escapeRegExp(label)}\\b`, 'i');
 }
 
-function modelChoiceFromText(text: string): ChatGptModelChoice | null {
-    if (/\b(Instant|Fast)\b/i.test(text)) return 'instant';
-    if (/\b(Pro Standard|Pro Extended)\b/i.test(text)) return 'pro';
-    if (/\b(Medium|High|Extra High)\b/i.test(text)) return 'thinking';
+export function modelChoiceFromText(text: string): ChatGptModelChoice | null {
+    if (/\b(Instant|Fast)\b|즉시/i.test(text)) return 'instant';
+    if (/\b(Pro Standard|Pro Extended)\b|Pro 확장|프로 확장/i.test(text)) return 'pro';
+    if (/\b(Medium|High|Extra High)\b|중간|높음|매우 높음/i.test(text)) return 'thinking';
     if (/\b(Thinking|Think)\b/i.test(text)) return 'thinking';
     if (/\b(Pro|Heavy)\b/i.test(text)) return 'pro';
     return null;
@@ -776,10 +776,12 @@ function menuTextHasExactLine(text: string, label: string): boolean {
         .includes(normalizeModelPickerText(label));
 }
 
-function normalizeModelPickerText(text: unknown): string {
+export function normalizeModelPickerText(text: unknown): string {
     return String(text || '')
         .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ' ')
+        // 104.6: Unicode-aware so Korean labels (즉시/중간/높음/…) survive normalization
+        // instead of being stripped to '' (which made all pure-Korean labels collide).
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
         .replace(/\s+/g, ' ')
         .trim();
 }
