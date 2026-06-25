@@ -27,6 +27,8 @@ export interface PromptSubmitResult {
 
 export interface VendorEditorAdapterOptions {
     insertText?: (text: string) => Promise<void>;
+    // 104.14: optional CDP session for Input.insertText (large prompts the keyboard path chokes on).
+    getCdpSession?: () => Promise<{ send(method: string, params: Record<string, unknown>): Promise<unknown>; detach?(): Promise<void> } | null>;
 }
 
 export interface VendorEditorAdapter {

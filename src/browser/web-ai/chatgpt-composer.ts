@@ -199,10 +199,22 @@ async function focusComposerLikeUser(locator: ComposerLocator): Promise<void> {
     }).catch(() => undefined);
 }
 
-async function insertTextLikeProvider(page: Page, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
+export async function insertTextLikeProvider(page: Page, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
     if (typeof options.insertText === 'function') {
         await options.insertText(text);
         return;
+    }
+    // 104.14: CDP Input.insertText handles large prompts the keyboard insertText path can choke on.
+    if (typeof options.getCdpSession === 'function') {
+        const cdp = await options.getCdpSession();
+        if (cdp) {
+            try {
+                await cdp.send('Input.insertText', { text });
+            } finally {
+                await cdp.detach?.().catch(() => undefined);
+            }
+            return;
+        }
     }
     await page.keyboard.insertText(text);
 }
