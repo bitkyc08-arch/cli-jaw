@@ -175,6 +175,17 @@ function pidAlive(pid: number): boolean {
 }
 
 /**
+ * Normalize a capacity limit, faithful to agbrowse tab-lease-store.mjs:normalizeLimit:
+ * non-finite → -1 (the `>= 0` guards disable that check); finite → clamped to >= 0
+ * (so a negative cap becomes 0 = block-all, not "unlimited"). Mirrors the source exactly.
+ */
+function normalizeLimit(value: number): number {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return -1;
+    return Math.max(0, Math.floor(parsed));
+}
+
+/**
  * 8.11: enforce active-session capacity (per leaseKey, then global per owner+profile).
  * Throws ProviderActiveCapacityError when the next lease would exceed a configured cap.
  */
@@ -188,7 +199,7 @@ export function assertActiveCapacity(
         lease.owner === nextLease.owner &&
         lease.browserProfileKey === nextLease.browserProfileKey,
     );
-    const maxPerKey = Number.isFinite(limits.maxPerKey) ? Math.floor(limits.maxPerKey) : DEFAULT_ACTIVE_MAX_PER_KEY;
+    const maxPerKey = normalizeLimit(limits.maxPerKey);
     if (maxPerKey >= 0) {
         const perKeyCount = active.filter(lease => lease.leaseKey === nextLease.leaseKey).length;
         if (perKeyCount >= maxPerKey) {
@@ -202,7 +213,7 @@ export function assertActiveCapacity(
             });
         }
     }
-    const globalMax = Number.isFinite(limits.globalMax) ? Math.floor(limits.globalMax) : DEFAULT_ACTIVE_GLOBAL_MAX;
+    const globalMax = normalizeLimit(limits.globalMax);
     if (globalMax >= 0 && active.length >= globalMax) {
         throw new ProviderActiveCapacityError({
             reason: 'active-global-max',

@@ -64,9 +64,12 @@ test('BWAI-LEASECAP-004: caps only count same owner+profile active-session lease
     assert.doesNotThrow(() => assertActiveCapacity(retained, lease(), { maxPerKey: 1, globalMax: 1 }));
 });
 
-test('BWAI-LEASECAP-005: negative cap disables that check', () => {
+test('BWAI-LEASECAP-005: non-finite cap disables the check; a negative cap blocks all (agbrowse-faithful)', () => {
     const retained = Array.from({ length: 20 }, () => lease());
-    assert.doesNotThrow(() => assertActiveCapacity(retained, lease(), { maxPerKey: -1, globalMax: -1 }));
+    // non-finite → normalizeLimit -1 → the `>= 0` guard is skipped → unlimited (no throw)
+    assert.doesNotThrow(() => assertActiveCapacity(retained, lease(), { maxPerKey: Infinity, globalMax: Infinity }));
+    // a negative cap is clamped to 0 → block-all (matches agbrowse normalizeLimit), so it throws
+    assert.throws(() => assertActiveCapacity(retained, lease(), { maxPerKey: -1, globalMax: 99 }), ProviderActiveCapacityError);
 });
 
 test('BWAI-LEASECAP-006: isDeadOwnerActiveLease only reclaims active leases with a dead positive pid', () => {
