@@ -10,6 +10,7 @@ import {
     updateSessionStatus,
 } from './session.js';
 import { isPageDeathError } from './interstitial.js';
+import { acquireWatcherSessionLock, type WatcherSessionLock } from './watcher-lock.js';
 import type { WebAiOutput, WebAiSessionRecord, WebAiVendor } from './types.js';
 
 export interface StartWebAiWatcherInput {
@@ -37,7 +38,16 @@ export interface WebAiWatcherState {
     status: 'running' | 'complete' | 'timeout' | 'error';
 }
 
-const activeWatchers = new Map<string, WebAiWatcherState & { timer?: ReturnType<typeof setTimeout> }>();
+type WatcherRuntimeState = WebAiWatcherState & { timer?: ReturnType<typeof setTimeout>; lock?: WatcherSessionLock };
+
+const activeWatchers = new Map<string, WatcherRuntimeState>();
+
+/** Release the cross-process lock (104.3) + clear the timer + drop from the active map. */
+function deactivateWatcher(state: WatcherRuntimeState): void {
+    try { state.lock?.release(); } catch { /* best-effort: lock cleanup must never throw */ }
+    if (state.timer) clearTimeout(state.timer);
+    activeWatchers.delete(state.sessionId);
+}
 const POLL_TICK_SECONDS = 30;
 const POLL_INTERVAL_SECONDS = 30;
 const TERMINAL_SESSION_STATUSES = new Set(['complete', 'timeout', 'error']);
@@ -53,13 +63,16 @@ export function startWebAiWatcher(input: StartWebAiWatcherInput): WebAiWatcherSt
         markStale(session, 'session deadline already expired');
         throw new Error(`web-ai watcher session expired: ${input.sessionId}`);
     }
-    const state: WebAiWatcherState & { timer?: ReturnType<typeof setTimeout> } = {
+    const state: WatcherRuntimeState = {
         sessionId: input.sessionId,
         vendor: session.vendor,
         startedAt: new Date(now).toISOString(),
         deadlineAt: new Date(deadline).toISOString(),
         status: 'running',
     };
+    // 104.3: acquire the cross-process lock before registering (throws watcher.already-running
+    // if another live process is already watching this session).
+    state.lock = acquireWatcherSessionLock(input.sessionId);
     activeWatchers.set(input.sessionId, state);
     setSessionNotifyOnComplete(input.sessionId, true);
     updateSessionStatus(input.sessionId, 'streaming');
@@ -74,6 +87,7 @@ export function listActiveWebAiWatchers(): WebAiWatcherState[] {
 export function stopWebAiWatchers(): void {
     for (const watcher of activeWatchers.values()) {
         if (watcher.timer) clearTimeout(watcher.timer);
+        try { watcher.lock?.release(); } catch { /* best-effort */ }
     }
     activeWatchers.clear();
 }
@@ -94,21 +108,22 @@ export function resumeStoredWebAiWatchers(input: ResumeStoredWebAiWatchersInput)
     })));
 }
 
-function scheduleTick(input: StartWebAiWatcherInput, state: WebAiWatcherState & { timer?: ReturnType<typeof setTimeout> }, delayMs: number): void {
+function scheduleTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState, delayMs: number): void {
     state.timer = setTimeout(() => {
         void runTick(input, state);
     }, delayMs);
     state.timer.unref?.();
 }
 
-async function runTick(input: StartWebAiWatcherInput, state: WebAiWatcherState & { timer?: ReturnType<typeof setTimeout> }): Promise<void> {
+async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState): Promise<void> {
     if (Date.now() >= Date.parse(state.deadlineAt)) {
         state.status = 'timeout';
         markStale(input.sessionId, 'watcher deadline reached');
-        activeWatchers.delete(input.sessionId);
+        deactivateWatcher(state);
         await drainPendingWebAiNotifications();
         return;
     }
+    state.lock?.heartbeat(); // 104.3: keep the cross-process lock fresh each tick
     try {
         let result: WebAiOutput;
         try {
@@ -140,7 +155,7 @@ async function runTick(input: StartWebAiWatcherInput, state: WebAiWatcherState &
                 ...(result.answerText ? { answerText: result.answerText } : {}),
             });
             state.status = 'complete';
-            activeWatchers.delete(input.sessionId);
+            deactivateWatcher(state);
             await drainPendingWebAiNotifications();
             return;
         }
@@ -154,7 +169,7 @@ async function runTick(input: StartWebAiWatcherInput, state: WebAiWatcherState &
                 reason: terminal.reason,
                 error: result.error,
             }));
-            activeWatchers.delete(input.sessionId);
+            deactivateWatcher(state);
             await drainPendingWebAiNotifications();
             return;
         }
@@ -173,7 +188,7 @@ async function runTick(input: StartWebAiWatcherInput, state: WebAiWatcherState &
             reason: 'watcher poll failed',
             error,
         });
-        activeWatchers.delete(input.sessionId);
+        deactivateWatcher(state);
         await drainPendingWebAiNotifications();
         return;
     }
