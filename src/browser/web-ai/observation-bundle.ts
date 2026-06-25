@@ -31,6 +31,8 @@ export interface ObservationBundleInput {
     textSummary?: string;
     maxTextChars?: number;
     capturedAt?: string;
+    observationId?: string;
+    targetId?: string;
 }
 
 export interface ObservationBundleRef {
@@ -44,6 +46,8 @@ export interface ObservationBundleRef {
 
 export interface ObservationBundleV1 {
     schemaVersion: 'observation-bundle-v1';
+    observationId: string;
+    targetId: string;
     url: string;
     title: string;
     viewport: { width: number; height: number };
@@ -52,7 +56,23 @@ export interface ObservationBundleV1 {
     refs: ObservationBundleRef[];
     screenshot: string | null;
     textSummary: string;
+    basis: { url: string; targetId: string; viewport: { width: number; height: number }; dpr: number; capturedAt: string };
     stats: { refCount: number; boxCount: number; textChars: number; hasScreenshot: boolean };
+}
+
+function isElementRef(ref: string): boolean {
+    return /^@?e\d+$/.test(ref);
+}
+
+/** FNV-1a hash of (url, capturedAt, refCount) for a stable default observationId. */
+function hashBasis(url: string, capturedAt: string, refCount: number): string {
+    let hash = 2166136261;
+    const input = `${url}|${capturedAt}|${refCount}`;
+    for (let i = 0; i < input.length; i += 1) {
+        hash ^= input.charCodeAt(i);
+        hash = Math.imul(hash, 16777619);
+    }
+    return (hash >>> 0).toString(16);
 }
 
 const SCHEMA_VERSION = 'observation-bundle-v1' as const;
@@ -80,7 +100,8 @@ export function buildObservationBundle(input: ObservationBundleInput): Observati
     const refs: ObservationBundleRef[] = [];
     for (const node of input.snapshotNodes) {
         if (!node || typeof node.ref !== 'string') continue;
-        if (node.ref === '...' || !node.ref.startsWith('@')) continue;
+        // 104.22: accept bare or @-prefixed element refs (@?e\d+); reject non-element refs like @x.
+        if (!isElementRef(node.ref)) continue;
         const row: ObservationBundleRef = {
             ref: node.ref,
             role: String(node.role || ''),
@@ -103,8 +124,12 @@ export function buildObservationBundle(input: ObservationBundleInput): Observati
     const capturedAt = input.capturedAt || new Date().toISOString();
     let boxCount = 0;
     for (const r of refs) if (r.box) boxCount += 1;
+    const targetId = input.targetId || '';
+    const observationId = input.observationId || `obs-${hashBasis(input.url, capturedAt, refs.length)}`;
     return {
         schemaVersion: SCHEMA_VERSION,
+        observationId,
+        targetId,
         url: input.url,
         title: String(input.title || ''),
         viewport: { width: input.viewport.width, height: input.viewport.height },
@@ -113,6 +138,13 @@ export function buildObservationBundle(input: ObservationBundleInput): Observati
         refs,
         screenshot,
         textSummary,
+        basis: {
+            url: input.url,
+            targetId,
+            viewport: { width: input.viewport.width, height: input.viewport.height },
+            dpr,
+            capturedAt,
+        },
         stats: {
             refCount: refs.length,
             boxCount,
