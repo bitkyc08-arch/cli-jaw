@@ -184,6 +184,10 @@ export interface WebAiOutput {
     next?: 'poll' | 'reattach' | 'stop';
     // 104.18: a 'tab-crashed' poll outcome is recoverable (relaunch + resume).
     recoverable?: boolean;
+    // 104.8: runtime capability-probe rows + worst-state. Named `capabilityProbes` to stay distinct
+    // from the DECLARATIVE `capabilities` (CapabilitySchemaRow[]) that top-level status() attaches.
+    capabilityProbes?: import('./capability-probe.js').CapabilityRow[];
+    capabilityState?: import('./capability-probe.js').CapabilityState;
     canvas?: { kind: 'opened'; reason?: string };
     traceSummary?: import('./action-trace.js').TraceSummary;
     contextPack?: import('./context-pack/index.js').ContextPackSummary;

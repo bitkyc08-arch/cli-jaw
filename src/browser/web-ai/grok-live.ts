@@ -22,6 +22,7 @@ import type { WebAiFailureStage } from './diagnostics.js';
 import { attachLocalFileLive } from './chatgpt-attachments.js';
 import { captureCopiedResponseText, GROK_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { selectGrokModel } from './grok-model.js';
+import { grokCapabilityStatus } from './grok-capabilities.js';
 
 const GROK_HOSTS = new Set(['grok.com']);
 type StagedGrokError = Error & { stage?: WebAiFailureStage };
@@ -87,11 +88,15 @@ export async function grokStatus(port: number): Promise<WebAiOutput> {
         return { ok: false, vendor: 'grok', status: 'blocked', url: page.url(), warnings: [`active tab is not grok.com (${page.url()})`], error: 'not grok' };
     }
     const composerSel = await findFirstSelector(page, GROK_SELECTORS.composer, 5_000);
+    // 104.8: attach runtime capability-probe rows (active-tab/composer/model/upload/copy/streaming).
+    const probe = await grokCapabilityStatus({ getPage: async () => page }).catch(() => ({ capabilities: [], capabilityState: 'unknown' as const }));
     return {
         ok: Boolean(composerSel),
         vendor: 'grok',
         status: composerSel ? 'ready' : 'blocked',
         url: page.url(),
+        capabilityProbes: probe.capabilities,
+        capabilityState: probe.capabilityState,
         warnings: composerSel ? ['grok composer visible'] : ['grok composer not visible'],
         ...(composerSel ? {} : { error: 'grok composer not visible' }),
     };

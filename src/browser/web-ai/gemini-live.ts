@@ -32,6 +32,7 @@ import type { WebAiFailureStage } from './diagnostics.js';
 import { prepareContextForBrowser, summarizeContextPack } from './context-pack/index.js';
 import { captureCopiedResponseText, GEMINI_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { selectGeminiModel } from './gemini-model.js';
+import { geminiCapabilityStatus } from './gemini-capabilities.js';
 import { preflightAttachment } from './chatgpt-attachments.js';
 
 const GEMINI_HOSTS = new Set(['gemini.google.com']);
@@ -173,11 +174,16 @@ export async function geminiStatus(port: number): Promise<WebAiOutput> {
         return { ok: false, vendor: 'gemini', status: 'blocked', warnings: [], error: 'no active page' };
     }
     const report = await reportGeminiLiveStatus(page);
+    // 104.8: attach the runtime capability-probe rows so `status` reports composer/model/upload/
+    // copy/streaming readiness, not just the account/plan gate.
+    const probe = await geminiCapabilityStatus({ getPage: async () => page }).catch(() => ({ capabilities: [], capabilityState: 'unknown' as const }));
     return {
         ok: report.status === 'ready',
         vendor: 'gemini',
         status: report.status === 'ready' ? 'ready' : 'blocked',
         url: page.url(),
+        capabilityProbes: probe.capabilities,
+        capabilityState: probe.capabilityState,
         warnings: report.notes,
         ...(report.status !== 'ready' ? { error: `gemini status: ${report.status}` } : {}),
     };
