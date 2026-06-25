@@ -88,6 +88,16 @@ export interface WebAiSessionTabState {
     closeCount: number;
 }
 
+export interface WebAiTurnRecord {
+    index: number;
+    prompt: string;
+    answer: string | null;
+    status: 'complete' | 'failed';
+    warnings: string[];
+    sentAt: string;
+    completedAt: string | null;
+}
+
 export interface WebAiSessionRecord {
     vendor: WebAiVendor;
     sessionId: string;
@@ -107,6 +117,8 @@ export interface WebAiSessionRecord {
     sourceAudit?: import('./source-audit.js').SourceAuditResult;
     lastSeenTextHash?: string;
     tabState?: WebAiSessionTabState;
+    turns?: WebAiTurnRecord[];
+    followUpCount?: number;
     completedAt?: string;
     failedAt?: string;
     staleAt?: string;

@@ -1,17 +1,11 @@
 import type { Page } from 'playwright-core';
-import { updateSessionResult, updateSessionStatus } from './session.js';
+import { updateSessionResult } from './session.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
-import type { WebAiSessionRecord } from './types.js';
+import type { WebAiSessionRecord, WebAiTurnRecord } from './types.js';
 
-export interface TurnResult {
-    index: number;
-    prompt: string;
-    answer: string | null;
-    status: 'complete' | 'failed';
-    warnings: string[];
-    sentAt: string;
-    completedAt: string | null;
-}
+// Re-exported alias preserves the public `TurnResult` name while reusing the
+// canonical session turn shape owned by types.ts (avoids a duplicate contract).
+export type TurnResult = WebAiTurnRecord;
 
 export interface MultiTurnResult {
     ok: boolean;
@@ -108,7 +102,10 @@ export async function sendMultiTurn(page: Page, deps: MultiTurnDeps, opts: {
     const turns: TurnResult[] = [];
     const allWarnings: string[] = [];
     let finalAnswer: string | null = session.answerText || null;
-    let turnIndex = 0;
+    // Resume-safe: continue indices from prior turns and merge history on persist,
+    // instead of restarting at 0 and dropping earlier turns (catalog 106.2/106.5).
+    const existingTurns: WebAiTurnRecord[] = session.turns ?? [];
+    let turnIndex = existingTurns.length;
 
     for (const prompt of followUps) {
         const sentAt = new Date().toISOString();
@@ -130,10 +127,13 @@ export async function sendMultiTurn(page: Page, deps: MultiTurnDeps, opts: {
             turns.push(turn);
             turnIndex++;
 
+            const allTurns = [...existingTurns, ...turns];
             if (result.answerText) finalAnswer = result.answerText;
             updateSessionResult({
                 sessionId: session.sessionId,
                 status: result.ok ? 'streaming' : 'error',
+                turns: allTurns,
+                followUpCount: allTurns.length,
                 ...(result.answerText ? { answerText: result.answerText } : {}),
             });
 
@@ -153,19 +153,30 @@ export async function sendMultiTurn(page: Page, deps: MultiTurnDeps, opts: {
             });
             turnIndex++;
 
-            updateSessionStatus(session.sessionId, 'error');
+            const allTurns = [...existingTurns, ...turns];
+            updateSessionResult({
+                sessionId: session.sessionId,
+                status: 'error',
+                turns: allTurns,
+                followUpCount: allTurns.length,
+            });
             allWarnings.push(`turn-${turnIndex - 1}-error`);
             break;
         }
     }
 
-    const transcriptMarkdown = renderMultiTurnTranscript(turns);
+    // NOTE: transcript-artifact-save on partial failure (catalog 106.6) is deferred
+    // to Cycle 2 — it depends on session-artifacts.ts, which does not exist yet.
+    const allTurns = [...existingTurns, ...turns];
+    const transcriptMarkdown = renderMultiTurnTranscript(allTurns);
     const ok = turns.length === followUps.length && turns.every((t) => t.status === 'complete');
 
     updateSessionResult({
         sessionId: session.sessionId,
         status: ok ? 'complete' : 'error',
         conversationUrl: page.url(),
+        turns: allTurns,
+        followUpCount: allTurns.length,
         ...(finalAnswer ? { answerText: finalAnswer } : {}),
     });
 

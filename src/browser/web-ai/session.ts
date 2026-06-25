@@ -183,6 +183,8 @@ export function updateSessionResult(input: {
     capabilityMode?: string;
     tabId?: string;
     tabState?: WebAiSessionTabState;
+    turns?: import('./types.js').WebAiTurnRecord[];
+    followUpCount?: number;
 }): WebAiSessionRecord | null {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
@@ -196,6 +198,8 @@ export function updateSessionResult(input: {
     if (input.error) record.lastError = input.error;
     if (input.tabId) record.tabId = input.tabId;
     if (input.tabState) record.tabState = input.tabState;
+    if (input.turns !== undefined) record.turns = input.turns;
+    if (input.followUpCount !== undefined) record.followUpCount = input.followUpCount;
     if (input.answerText !== undefined) {
         record.answerText = input.answerText;
         record.lastSeenTextHash = createHash('sha256').update(input.answerText).digest('hex');
