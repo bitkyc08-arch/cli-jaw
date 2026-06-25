@@ -25,6 +25,9 @@ export interface TabLease {
     closePreviousState?: TabLeaseState | null;
     updatedAt: string;
     leaseKey: string;
+    // 8.11 (catalog 106): owner process for active-session leases; a lease whose owner
+    // process is gone is reclaimable (orphaned tab) on cleanup.
+    ownerPid?: number | null;
 }
 
 export interface LeaseScopeInput {
@@ -42,6 +45,10 @@ export interface ReleaseLeaseInput extends LeaseScopeInput {
     sessionId?: string | null;
     url?: string | null;
     completedAt?: string;
+    // 8.11: active-session lease owner + per-call active capacity overrides.
+    ownerPid?: number | null;
+    activeMaxPerKey?: number;
+    activeGlobalMax?: number;
 }
 
 export interface CheckoutLeaseInput extends LeaseScopeInput {
@@ -55,6 +62,9 @@ const LOCK_TIMEOUT_MS = 5_000;
 const DEFAULT_POOL_TTL_MS = 15 * 60 * 1000;
 const DEFAULT_POOL_MAX_PER_KEY = 3;
 const DEFAULT_POOL_GLOBAL_MAX = 8;
+// 8.11 (catalog 106): active-session capacity caps (per leaseKey and global per owner+profile).
+const DEFAULT_ACTIVE_MAX_PER_KEY = 5;
+const DEFAULT_ACTIVE_GLOBAL_MAX = 14;
 
 interface LeaseStoreFile {
     version: 1;
@@ -63,7 +73,21 @@ interface LeaseStoreFile {
 
 interface ClosePlanItem {
     lease: TabLease;
-    reason: 'expired' | 'overflow' | 'closed';
+    reason: 'expired' | 'overflow' | 'closed' | 'owner-pid-dead';
+}
+
+/** Thrown when recording a new active lease would exceed the provider active-tab caps. */
+export class ProviderActiveCapacityError extends Error {
+    errorCode = 'provider.active-capacity';
+    stage = 'provider-capacity';
+    retryHint = 'wait-or-retry-later';
+    mutationAllowed = false;
+    evidence: { reason: string; limit: number; current: number; leaseKey: string; vendor: string; browserProfileKey: string };
+    constructor(details: { reason: string; limit: number; current: number; leaseKey: string; vendor: string; browserProfileKey: string }) {
+        super(`provider active tab capacity exceeded: ${details.reason} ${details.current}/${details.limit}`);
+        this.name = 'ProviderActiveCapacityError';
+        this.evidence = details;
+    }
 }
 
 function storePath(): string {
@@ -114,6 +138,83 @@ function poolGlobalMax(): number {
     return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_POOL_GLOBAL_MAX;
 }
 
+function activeMaxPerKey(): number {
+    const parsed = Number(process.env["JAW_BROWSER_PROVIDER_ACTIVE_MAX_PER_KEY"] || process.env["AGBROWSE_PROVIDER_ACTIVE_MAX_PER_KEY"] || DEFAULT_ACTIVE_MAX_PER_KEY);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_ACTIVE_MAX_PER_KEY;
+}
+
+function activeGlobalMax(): number {
+    const parsed = Number(process.env["JAW_BROWSER_PROVIDER_ACTIVE_GLOBAL_MAX"] || process.env["AGBROWSE_PROVIDER_ACTIVE_GLOBAL_MAX"] || DEFAULT_ACTIVE_GLOBAL_MAX);
+    return Number.isFinite(parsed) && parsed >= 0 ? Math.floor(parsed) : DEFAULT_ACTIVE_GLOBAL_MAX;
+}
+
+/**
+ * 8.11: a lease is reclaimable when it is an active-session lease whose owner process
+ * is gone. A missing/non-positive ownerPid is never treated as dead (legacy-safe).
+ */
+export function isDeadOwnerActiveLease(
+    lease: Pick<TabLease, 'state' | 'ownerPid'>,
+    alive: (pid: number) => boolean,
+): boolean {
+    return lease.state === 'active-session'
+        && typeof lease.ownerPid === 'number'
+        && lease.ownerPid > 0
+        && Number.isFinite(lease.ownerPid)
+        && !alive(lease.ownerPid);
+}
+
+/** True if the process is alive (or exists but not ours: EPERM). Mirrors watcher-lock. */
+function pidAlive(pid: number): boolean {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (err) {
+        return (err as { code?: string })?.code === 'EPERM';
+    }
+}
+
+/**
+ * 8.11: enforce active-session capacity (per leaseKey, then global per owner+profile).
+ * Throws ProviderActiveCapacityError when the next lease would exceed a configured cap.
+ */
+export function assertActiveCapacity(
+    retained: TabLease[],
+    nextLease: TabLease,
+    limits: { maxPerKey: number; globalMax: number },
+): void {
+    const active = retained.filter(lease =>
+        lease.state === 'active-session' &&
+        lease.owner === nextLease.owner &&
+        lease.browserProfileKey === nextLease.browserProfileKey,
+    );
+    const maxPerKey = Number.isFinite(limits.maxPerKey) ? Math.floor(limits.maxPerKey) : DEFAULT_ACTIVE_MAX_PER_KEY;
+    if (maxPerKey >= 0) {
+        const perKeyCount = active.filter(lease => lease.leaseKey === nextLease.leaseKey).length;
+        if (perKeyCount >= maxPerKey) {
+            throw new ProviderActiveCapacityError({
+                reason: 'active-max-per-key',
+                limit: maxPerKey,
+                current: perKeyCount,
+                leaseKey: nextLease.leaseKey,
+                vendor: nextLease.vendor,
+                browserProfileKey: nextLease.browserProfileKey,
+            });
+        }
+    }
+    const globalMax = Number.isFinite(limits.globalMax) ? Math.floor(limits.globalMax) : DEFAULT_ACTIVE_GLOBAL_MAX;
+    if (globalMax >= 0 && active.length >= globalMax) {
+        throw new ProviderActiveCapacityError({
+            reason: 'active-global-max',
+            limit: globalMax,
+            current: active.length,
+            leaseKey: nextLease.leaseKey,
+            vendor: nextLease.vendor,
+            browserProfileKey: nextLease.browserProfileKey,
+        });
+    }
+}
+
 export function originFromUrl(url: string | null | undefined, fallback = 'unknown-origin'): string {
     if (!url) return fallback;
     try {
@@ -157,6 +258,9 @@ function normalizeLease(raw: Partial<TabLease>): TabLease | null {
         closePreviousState: raw.closePreviousState || null,
         updatedAt: raw.updatedAt || nowIso(),
         leaseKey,
+        // Preserve a stored owner pid; missing → null (not stamped, so legacy leases
+        // are never mistaken for dead-owned and reclaimed).
+        ownerPid: typeof raw.ownerPid === 'number' ? raw.ownerPid : null,
     };
 }
 
@@ -246,9 +350,16 @@ export async function recordActiveLease(input: ReleaseLeaseInput): Promise<TabLe
             leaseDisposition: null,
             updatedAt: now,
             leaseKey,
+            ownerPid: input.ownerPid === null ? null : Number(input.ownerPid ?? process.pid),
         };
-        store.leases = store.leases.filter(existing => !sameTargetScope(existing, lease) && !sameSessionScope(existing, lease));
-        store.leases.push(lease);
+        const retained = store.leases.filter(existing => !sameTargetScope(existing, lease) && !sameSessionScope(existing, lease));
+        // 8.11: cap active leases (per key, then global per owner+profile) before recording.
+        assertActiveCapacity(retained, lease, {
+            maxPerKey: input.activeMaxPerKey ?? activeMaxPerKey(),
+            globalMax: input.activeGlobalMax ?? activeGlobalMax(),
+        });
+        retained.push(lease);
+        store.leases = retained;
         writeStoreUnlocked(store);
         return lease;
     });
@@ -407,7 +518,12 @@ export async function cleanupLeasedTabs(port: number): Promise<{ closed: number;
     await withLeaseLock(() => {
         const store = readStoreUnlocked();
         const browserProfileKey = `cdp:${port || 'default'}`;
-        closePlan = selectPoolClosePlan(store.leases.filter(lease => lease.browserProfileKey === browserProfileKey));
+        const profileLeases = store.leases.filter(lease => lease.browserProfileKey === browserProfileKey);
+        // 8.11: reclaim active-session leases whose owner process is gone (orphaned tabs).
+        const deadOwner: ClosePlanItem[] = profileLeases
+            .filter(lease => isDeadOwnerActiveLease(lease, pidAlive))
+            .map(lease => ({ lease, reason: 'owner-pid-dead' as const }));
+        closePlan = [...selectPoolClosePlan(profileLeases), ...deadOwner];
         const closeIds = new Set(closePlan.map(item => scopedTargetKey(item.lease)));
         store.leases = store.leases.map(lease => closeIds.has(scopedTargetKey(lease))
             ? { ...lease, state: 'closing', closePreviousState: lease.closePreviousState || lease.state, leaseDisposition: 'closing', updatedAt: nowIso() }
