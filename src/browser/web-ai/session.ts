@@ -171,6 +171,22 @@ export function setSessionNotifyOnComplete(sessionId: string, notifyOnComplete: 
     return record;
 }
 
+export function appendSessionArtifact(
+    sessionId: string,
+    descriptor: import('./types.js').WebAiArtifactDescriptor,
+): WebAiSessionRecord | null {
+    loadPersistentStore();
+    const record = sessions.get(sessionId);
+    if (!record) return null;
+    const existing = record.artifacts ?? [];
+    // Same kind+path overwrites (latest wins) — mirrors agbrowse appendArtifactRecord.
+    const withoutDuplicate = existing.filter((a) => !(a.kind === descriptor.kind && a.path === descriptor.path));
+    record.artifacts = [...withoutDuplicate, descriptor];
+    record.updatedAt = new Date().toISOString();
+    savePersistentStore();
+    return record;
+}
+
 export function updateSessionResult(input: {
     sessionId: string;
     status: WebAiSessionStatus;

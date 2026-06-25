@@ -98,6 +98,17 @@ export interface WebAiTurnRecord {
     completedAt: string | null;
 }
 
+export interface WebAiArtifactDescriptor {
+    kind: 'transcript' | 'report' | 'image' | 'file' | 'diagnostics';
+    label: string;
+    path: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    sourceUrl?: string;
+    screenshotPath?: string;
+    savedAt: string;
+}
+
 export interface WebAiSessionRecord {
     vendor: WebAiVendor;
     sessionId: string;
@@ -119,6 +130,7 @@ export interface WebAiSessionRecord {
     tabState?: WebAiSessionTabState;
     turns?: WebAiTurnRecord[];
     followUpCount?: number;
+    artifacts?: WebAiArtifactDescriptor[];
     completedAt?: string;
     failedAt?: string;
     staleAt?: string;
