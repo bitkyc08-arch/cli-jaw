@@ -7,7 +7,7 @@ aliases: [CLI Stream Event Reference, stream events, SSE event channel, NDJSON p
 # CLI Stream Event Reference (SSE + Legacy WS + Provider Streams)
 
 > 각 CLI의 NDJSON/ACP/stream-json 이벤트를 `src/agent/events/`가 파싱하고, AGY plain-text output은 `spawn.ts`가 직접 처리한다. X-01 이후 current server의 public Web delivery는 `src/core/event-bus.ts` + `GET /api/events` SSE channel이 담당한다. WebSocket은 current server broadcast path가 아니라 `/api/events`가 한 번도 열리지 않는 pre-X-01 server용 client/TUI fallback이다.
-> 마지막 코드 대조: 2026-06-11 (`src/core/bus.ts`, `src/core/event-bus.ts`, `src/routes/events.ts`, `src/agent/spawn.ts`, `src/agent/events/*`, `src/agent/agy-runtime.ts`, `src/agent/claude-e-runtime.ts`, `src/agent/lifecycle-handler.ts`, `public/js/event-channel.ts`, `public/js/ws.ts`)
+> 마지막 코드 대조: 2026-06-27 (`src/core/event-bus.ts`, `src/agent/lifecycle-handler.ts`, `src/goal/heartbeat.ts`, `src/agent/events/claude.ts`, `public/js/features/process-block.ts`, `public/js/ws.ts`)
 
 ---
 
@@ -111,7 +111,7 @@ SSE behavior:
 | `goal_cancel` | `{ ... }` | durable goal cancellation |
 | `goal_pause_detected` | `{ ... }` | pause 2-tap gate detection |
 | `goal_pause_gate_pending` | `{ goalId, reason }` | armed pause gate remains after a goal-continuation audit turn; no further automatic continuation is scheduled |
-| `goal_continuation` | `{ ... }` | goal continuation kick |
+| `goal_continuation` | `{ ... }` | goal continuation kick; **suppressed** while pause gate armed (`pause_gate_pending`) or goal not `active` |
 | `goal_continuation_failed` | `{ ... }` | goal continuation failure |
 | `goal_continuation_limit` | `{ ... }` | bounded continuation limit |
 | `schedule_wakeup` | `{ ... }` | ScheduleWakeup accepted |
@@ -140,6 +140,7 @@ Worker run events, delayed replay notices, and batch dispatch summaries are safe
 | `worker_run_*` | safe SSE/replay와 `/api/orchestrate/worker-runs*` read API용 backend contract다. Manager Worker Runs 패널은 기존 frontend worker progress EventSource bridge로 이 이벤트를 refresh invalidation으로 소비하고, raw output은 명시 클릭 시 `/output` route로만 읽는다 |
 | `system_notice` | SSE public emit은 되지만 `public/js/ws.ts` 직접 분기는 없다 |
 | `agent:claude-e:*` | native helper lifecycle/status telemetry. 현재 Web UI 직접 분기는 없고, trace/internal listener와 외부 observer용이다 |
+| `goal_pause_detected` / `goal_pause_gate_pending` | lifecycle/goal heartbeat가 pause 2-tap gate 상태를 broadcast. `goal_pause_gate_pending`은 armed gate가 남은 채 goal-continuation audit turn이 끝났고 **추가 automatic continuation이 스케줄되지 않음**을 뜻함(P0 2026-06-27). Main Web UI `ws.ts`에는 전용 handler 없음 — Manager / `GET /api/goal` / CLI 관측 |
 
 ### Web UI에 legacy 분기만 남은 타입
 
@@ -175,6 +176,7 @@ Plaintext `thinking_delta`는 headless `--print`/`-p` stream에서 partial messa
 | `content_block_start` | `tool_use` | 일반 tool은 `🔧 {name}`, `Agent` tool은 `🤖 subagent`; 둘 다 `stepRef=claude:tooluse:{id}` |
 | `content_block_start` | `thinking` | placeholder는 내보내지 않고 버퍼 시작 |
 | `content_block_delta` | `thinking_delta` | `claudeThinkingBuf`에 축적 |
+| `content_block_delta` | `text_delta` | plain `claude` runtime: `appendAssistantRawText()` → live `agent_output` (`claudeStreamedText` guard on complete `assistant` prevents doubling) |
 | `content_block_delta` | `input_json_delta` | `claudeInputJsonBuf`에 축적 |
 | `content_block_delta` | `signature_delta` | 의도적으로 무시 |
 | `message_delta` | `usage.output_tokens` | output token 갱신 |
@@ -459,6 +461,27 @@ Final `agent_done` body도 `resolveSpawnOutputText()`에서 normalized display c
 | `toolType` | `thinking`, `search`, `subagent`, `tool` semantic 분류 |
 | `stepRef` | running ↔ done/error 매칭 키 |
 | `status` | `running`, `done`, `error`, 그리고 ACP에서 온 `pending`, `cancelled`, `unknown` 같은 raw 상태도 통과 가능 |
+| `detailPreview` / `detailLength` / `detailTruncated` | compact storage + lazy `<pre>`; `detailLength>0` → `data-had-detail` |
+| `traceRunId` / `traceSeq` / `detailAvailable` | Trace drawer 버튼; server-side raw retention metadata |
+
+### Hydrated ProcessBlock + `agent_done.toolLog`
+
+Live path: `agent_tool` → `ws.ts` `showProcessStep()` → live `ProcessBlockState`.
+
+History path: persisted/`agent_done.toolLog` → `buildProcessBlockHtml()` → virtual-scroll lazy mount.
+
+Long blocks(>80 steps)는 DOM에 head/tail만 있고 middle은 elided. Hydrated/recycled block에서 `[data-expand-steps]`는 `reconstructStepsFromBlock()`이 `dataset.processStepIds` + in-memory meta store로 middle 복원(WeakMap miss fallback). Virtual-scroll unmount는 `releaseProcessBlockDetails()`로 detail store 해제; `detailLength>0` step은 `data-had-detail` placeholder로 blank expand 방지.
+
+Grok CLI는 live stdout에 tool event가 없을 수 있어 §8 trace backfill 후 `agent_done.toolLog`에 step이 들어온다. ProcessBlock history hydrate는 이 backfill된 log를 다른 CLI와 동일하게 렌더한다.
+
+### Goal pause gate ↔ continuation (P0 2026-06-27)
+
+Agent pause는 2-tap gate: 첫 `cli-jaw goal pause --agent --audit` → `agentPauseCount = 1`; 둘째 → `pauseGoal()`.
+
+| Surface | Behavior |
+| --- | --- |
+| `buildGoalContinuation()` | armed gate면 `shouldContinue: false`, `reason: "pause_gate_pending"` |
+| `lifecycle-handler.ts` | continuation turn 종료 시 gate still armed면 `goal_pause_gate_pending` broadcast, 다음 automatic continuation 미스케줄 |
 
 ---
 

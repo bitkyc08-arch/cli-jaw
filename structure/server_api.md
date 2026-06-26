@@ -87,7 +87,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `GET` | `/api/auth/token` | same-origin/CLI용 Bearer token bootstrap |
 | `POST` | `/api/command` | slash command 실행 |
 | `GET` | `/api/commands` | 인터페이스별 command palette 데이터 |
-| `POST` | `/api/message` | 일반 프롬프트 제출 |
+| `POST` | `/api/message` | 일반 프롬프트 제출. Optional `target: RemoteTarget` when Dashboard hub forwards a forum topic message (`origin:'telegram'`). Shape validated by `isValidHubTarget` + `validateTarget`. |
 | `POST` | `/api/stop` | 현재 실행 중 agent 모두 종료 |
 | `POST` | `/api/clear` | UI-only clear broadcast, DB 메시지는 유지 |
 | `POST` | `/api/session/reset` | 메시지 삭제 + session reset |
@@ -300,6 +300,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Board | `GET/POST/PATCH/DELETE /api/dashboard/board/tasks` `POST /api/dashboard/board/tasks/from-message` |
 | Schedule | `GET/POST/PATCH/DELETE /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | Reminders | `GET /api/dashboard/reminders` `POST /api/dashboard/reminders` `POST /api/dashboard/reminders/from-message` `PATCH /api/dashboard/reminders/:id` |
+| Telegram Hub | `GET/PUT /api/dashboard/telegram-hub` `POST /api/dashboard/telegram-hub/routes` `DELETE /api/dashboard/telegram-hub/routes/:chatId/:threadId` `POST /api/dashboard/telegram-hub/outbound` (loopback-only) |
 | Connector | `POST /api/dashboard/connector/board` `PATCH /api/dashboard/connector/board/:id` `POST /api/dashboard/connector/reminders` `PATCH /api/dashboard/connector/reminders/:id` `POST /api/dashboard/connector/notes` `GET /api/dashboard/connector/audit` |
 | Git diff/status/worktrees | `POST /api/dashboard/git/repo-candidates` `POST /api/dashboard/git/diff-summary` `POST /api/dashboard/git/file-diff` `POST /api/dashboard/git/status-map` `POST /api/dashboard/git/worktrees` `POST /api/dashboard/git/worktree-operation-preview` `POST /api/dashboard/git/worktree-operation` |
 | Memory federation | `GET /api/dashboard/memory/instances` `GET /api/dashboard/memory/search` `GET /api/dashboard/memory/read` `GET /api/dashboard/memory/chat/search` |

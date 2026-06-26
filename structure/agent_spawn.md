@@ -9,7 +9,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 # Agent Spawn — agent/ · orchestrator/ · cli/acp-client · goal/
 
 > CLI spawn + ACP 분기 + Pi RPC + 스트림 + 큐 + 메모리 flush + PABCD 오케스트레이션 + goal-mode autonomy
-> 현재 기준: `src/agent/` 43개 TS 파일(이벤트/spawn 서브모듈 포함), `src/orchestrator/` 14개 파일, `src/goal/` 4개 파일, `src/cli/acp-client.ts`
+> 현재 기준: `src/agent/` 46개 TS 파일, `src/orchestrator/` 15개 파일 (+`attestation.ts`), `src/goal/` 5개 파일 (+`pause-gate.ts`), `src/cli/acp-client.ts`
 
 ---
 
@@ -56,10 +56,10 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | File | Line count | Role |
 | --- | ---: | --- |
 | `events/index.ts` | 353L | Event dispatcher + public API (extractSessionId, extractOutputChunk, extractFromEvent) |
-| `events/helpers.ts` | 322L | syncLiveTools, emitAgentTool, pushTrace, buildPreview, resolveSpawnOutputText |
+| `events/helpers.ts` | 322L | syncLiveTools, emitAgentTool, pushTrace, buildPreview, `appendAssistantRawText` (plain `claude` text_delta), `resolveSpawnOutputText` |
 | `events/tool-labels.ts` | 343L | tool label extraction + summarizeToolInput |
 | `events/grok.ts` | 344L | Grok streaming-json text/thought/end/error + duplicate suppression |
-| `events/claude.ts` | 264L | Claude/claude-e complete-message parsing + rate limit handling |
+| `events/claude.ts` | 264L | Claude/claude-e complete-message parsing + `text_delta` live path + rate limit handling |
 | `events/codex.ts` | 96L | Codex NDJSON event adapter |
 | `events/cursor.ts` | 196L | Cursor stream-json event adapter |
 | `events/acp.ts` | 219L | ACP `session/update` / subagent lifecycle mapping |
@@ -126,9 +126,9 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | CLI | 표면 | 특이사항 |
 | --- | --- | --- |
 | `pi` | `pi --mode rpc` | isolated `PI_CODING_AGENT_DIR`, profile/model from `settings.pi`, npm-exec fallback |
-| `claude` | stdin에 `withHistoryPrompt()` 직접 쓰기 | — |
+| `claude` | stdin에 `withHistoryPrompt()` + `stream-json` | `text_delta` → `appendAssistantRawText` → live `agent_output`; `claudeStreamedText` prevents duplicate on complete `assistant` |
 | `claude-e` | `claude-e run --jsonl --output-format stream-json --idle-timeout-ms 600000 --hard-timeout-ms 3600000` | `jaw_runtime` 이벤트 가로채기, resume `--resume <sessionId>` |
-| `agy` | `agy -p <prompt> --print-timeout 10m --log-file <tmp>` | plain text stdout, session id from stdout/log, resume `--conversation <id>` |
+| `agy` | `agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp>` | plain text stdout; `--model` when not `default`; session id from stdout/log; resume `--conversation <id>` |
 | `cursor` | `cursor-agent -p --trust --output-format stream-json --model <resolvedModelId>` | effort는 full model id로 해석, `runtimeModel` session bucket |
 | `codex` | stdin에 `[User Message]` 블록 (fresh only) | — |
 | `gemini` | headless `-p`, model, stream JSON, `--skip-trust`, `--approval-mode yolo` | multi-directory workspace `--include-directories` |
@@ -191,28 +191,31 @@ are persisted or displayed through trace helpers.
 
 ---
 
-## src/goal/* — Goal-Mode Autonomy (4 files)
+## src/goal/* — Goal-Mode Autonomy (5 files)
 
 | File | Line count | Role |
 | --- | ---: | --- |
 | `goal/store.ts` | 158L | active goal CRUD, checkpoint, history, completion evidence gate |
 | `goal/heartbeat.ts` | 92L | goal-aware heartbeat continuation builder (stale detection, worker/orc state check) |
+| `goal/pause-gate.ts` | 26L | derived armed gate: `active` + `agentPauseCount >= 1` → `pause_gate_pending` |
 | `goal/runtime.ts` | 55L | goal runtime helpers |
 | `goal/types.ts` | 42L | GoalState, GoalHistory, GoalCheckpoint, GoalBudget types |
 
 - `lifecycle-handler.ts`는 agent 종료 후 active goal이 있으면 `buildGoalContinuation()`으로 자동 재스폰 판단.
+- **Pause gate (P0 2026-06-27):** armed gate (`describeGoalPauseGate()`)이면 `buildGoalContinuation()` returns `shouldContinue: false`; audit turn 종료 시 `goal_pause_gate_pending` broadcast, 추가 automatic continuation 미스케줄. `agentPauseCount`는 productive goal events에서만 reset — assistant text alone does not clear gate.
 - `completeGoal()`은 `goalHasCompletionEvidence()`가 true일 때만 goal을 완료 처리 (verification evidence gate).
 - Goal continuation은 `GOAL_CONT_MAX_ATTEMPTS = 20` 회 제한, goal ID 변경 시 카운터 리셋.
 
 ---
 
-## src/orchestrator/* — PABCD Orchestration (14 files)
+## src/orchestrator/* — PABCD Orchestration (15 files)
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `orchestrator/pipeline.ts` | 537L | PABCD sole entry point + interview first-turn init + `<interview_tracker>` 추출 |
-| `orchestrator/state-machine.ts` | 604L | IPABCD state + prompts + interview tracker → OrcContext + audit/verification verdict |
-| `orchestrator/distribute.ts` | 583L | employee dispatch + parallel safety |
+| `orchestrator/pipeline.ts` | 657L | PABCD sole entry point + interview first-turn init + `<interview_tracker>` 추출 |
+| `orchestrator/state-machine.ts` | 692L | IPABCD state + prompts + interview tracker → OrcContext + audit/verification verdict + attestation gate |
+| `orchestrator/attestation.ts` | 178L | `--attest` / `<phase_attestation>` parse + `checkAttestationGate()` (narrative `did`, C→D `checkOutput`) |
+| `orchestrator/distribute.ts` | 615L | employee dispatch + parallel safety |
 | `orchestrator/worker-registry.ts` | 241L | worker ownership + replay registry + sanitized progress snapshots |
 | `orchestrator/gateway.ts` | 155L | queue / intent gateway |
 | `orchestrator/parser.ts` | 176L | legacy subtask JSON 파서 + intent matcher + numeric reference + verdict 파서 |

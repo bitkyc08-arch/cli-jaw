@@ -147,7 +147,7 @@ public/
 | `features/orchestrate-scope.ts` | — | PABCD/orchestration scope display helper |
 | `features/pending-queue.ts` | — | queued prompt overlay / pending queue 렌더 |
 | `features/preview-shortcut-bridge.ts` | 44L | preview iframe shortcut message bridge |
-| `features/process-block.ts` | 563L | collapsible ProcessBlock UI. `tool`/`thinking`/`search`/`subagent` step type, type별 summary, trusted icon 렌더링, expandable detail row |
+| `features/process-block.ts` | 641L | collapsible ProcessBlock UI: `tool`/`thinking`/`search`/`subagent` steps, type별 summary, trusted SVG icon policy, lazy per-step detail (`data-detail-lazy`), long-turn head/tail window + `[data-expand-steps]` full expand, in-memory `processDetailStore`/`processStepMetaStore`, `dataset.processStepIds` persistence, `reconstructStepsFromBlock()` WeakMap fallback for hydrated/virtual-scroll-recycled blocks, `releaseProcessBlockDetails()` on unmount, `data-had-detail` released-detail placeholder |
 | `features/process-block-dom.ts` | 175L | ProcessBlock DOM ownership, normalization, row replacement helpers |
 | `features/process-log-adapter.ts` | — | persisted tool log to ProcessStep adapter |
 | `features/process-step-match.ts` | — | ProcessStep matching helper |
@@ -294,6 +294,22 @@ tool history의 canonical UI는 `features/process-block.ts`다. `ui.ts`는 live 
 | layout mutation anchor | `window.__jawProcessBlockLayoutMutation(anchor, mutate)` bridge로 virtual-scroll remeasure + row-top anchor 보존 |
 | lazy history render | virtual-scroll history item은 mounted lazy render 시점에 ProcessBlock detail HTML 생성 |
 | mermaid cleanup | unmount/deactivate 전 `releaseMermaidNodes()` 호출 |
+| long-turn step window | `steps.length > 80`이면 head 24 + tail 24 + running/error만 DOM에 렌더; 가운데는 `[data-expand-steps]` 버튼으로 opt-in 전체 펼침 |
+| live state ownership | `blockStatesByElement` WeakMap은 `createProcessBlock()` 라이브 블록만 등록; hydrate/virtual-scroll remount 블록은 WeakMap 미스 가능 |
+| hydrated expand fallback | `[data-expand-steps]` 클릭 시 WeakMap 미스면 `reconstructStepsFromBlock(block)`이 `dataset.processStepIds` + `processStepMetaStore`에서 **전체** step list 복원(elided middle 포함) |
+| DOM-only restore limit | `currentProcessBlockFromDom()`는 보이는 `.process-step` row만 스캔 — long-block middle 복원은 `reconstructStepsFromBlock` 경로 필수 |
+| detail release + placeholder | virtual-scroll unmount 시 `releaseProcessBlockDetails()`; `detailLength>0` step은 `data-had-detail` 표식; release 후 빈 펼침은 reload hint 표시 |
+
+### ProcessBlock key exports (`features/process-block.ts`)
+
+| Export | Role |
+| --- | --- |
+| `buildProcessBlockHtml(steps, collapsed?)` | history hydrate HTML; sets `dataset.processStepIds`, populates meta store |
+| `createProcessBlock` / `addStep` / `replaceStep` / `collapseBlock` | live SSE path; registers `blockStatesByElement` |
+| `reconstructStepsFromBlock(block)` | hydrated/recycled block용 전체 step 복원 — elided middle 포함 |
+| `releaseProcessBlockDetails(root)` | virtual-scroll unmount, agent switch 시 in-memory detail/meta 해제 |
+
+Regression context: `devlog/_plan/260627_process_block_blank_expand/`.
 
 ---
 
@@ -322,7 +338,7 @@ tool history의 canonical UI는 `features/process-block.ts`다. `ui.ts`는 live 
 | Event channel | `GET /api/events` SSE primary channel handles `agent_tool`→typed ProcessBlock step, `agent_output`→streaming renderer, `agent_done`→finalization; `ws.ts` is the shared dispatcher and legacy WebSocket fallback for pre-X-01 servers. Transient SSE drops are quiet for 8 seconds before the UI posts a disconnected message. |
 | 상태 | `agent_status`, `queue_update`, `orc_state`, `session_reset`, `clear`, Telegram/Discord `new_message` |
 | 반응형 | sidebar collapse/expand, mobile edge swipe, theme switch, PABCD roadmap, voice shortcut(`Ctrl/Cmd+Shift+Space`, `Alt/Option+M`) |
-| Manager | 별도 React 앱이 dashboard API polling으로 Jaw 인스턴스 scan/preview/lifecycle, notes, board, reminders, schedule, CEO console을 관리하고, manager server가 worker SSE bridge/cache를 담당 |
+| Manager | 별도 React 앱이 dashboard API polling으로 Jaw 인스턴스 scan/preview/lifecycle, notes, board, reminders, schedule, CEO console, **Telegram Hub** settings을 관리하고, manager server가 worker SSE bridge/cache를 담당 |
 
 ---
 
@@ -332,6 +348,8 @@ tool history의 canonical UI는 `features/process-block.ts`다. `ui.ts`는 live 
 | --- | --- |
 | Web UI runtime tests | `tests/unit/web-ui-test-dom.ts`가 jsdom globals를 먼저 설치 |
 | ProcessBlock DOM recovery | `.process-step` row는 `data-step-id`, `data-type`, `data-status`, `data-step-ref`, `data-start-time` 보존 |
+| ProcessBlock recycle | unmount 시 `releaseProcessBlockDetails()`; expand 복원은 `dataset.processStepIds` + meta store. DOM row만으로 long-block middle 복원 금지 |
+| Released detail UX | `data-had-detail="true"` when `detailLength>0`; empty expand after release shows reload hint |
 | Restore bottom-follow intent | `scrollIntent = unknown/following/pinnedAway` 기준 guarded reconciliation |
 | Build output guard | `npm run check:frontend-build-output`가 eager Mermaid reference 차단 |
 | Tool-log memory cap | Server-side `sanitizeToolLog*()` caps before ProcessBlock/Manager hydration |

@@ -159,6 +159,45 @@ snapshot에 남는다고 명시한다.
 
 추가로 `skills/dev-pabcd/SKILL.md`가 있으면 `## PABCD Orchestration Guide`가 이어 붙는다. 이 인라인 가이드는 loop/multi-pass 작업을 명시한다 — 큰/"loop" 작업은 work-phase(결과 슬라이스)마다 풀 PABCD 한 바퀴를 돌고, goal 모드에서 D 이후 D→IDLE→P로 다음 work-phase의 P에 재진입하며, 각 phase의 실제 작업을 충실히 수행한다(anti-skip). devlog/_plan/260624_goal_work_phase_pabcd_loop/ 참고.
 
+### PABCD evidence gate (`--attest`)
+
+Forward phase transitions **P→A, A→B, B→C, C→D** require a narrative attestation — not a boolean checkbox. Implementation: `src/orchestrator/attestation.ts`, enforced in `state-machine.ts` via `checkAttestationGate()`.
+
+```bash
+cli-jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you actually did this phase>"}'
+cli-jaw orchestrate D --attest '{"from":"C","to":"D","did":"ran checks","checkOutput":"<tsc/test tail>","exitCode":0}'
+```
+
+| Rule | Detail |
+| --- | --- |
+| `did` | Required non-empty narrative; placeholders (`tbd`, `done`, `ok`, …) rejected |
+| C→D | Also requires pasted `checkOutput` + non-zero `exitCode` rejects advance |
+| Parse sources | CLI `--attest` JSON **or** `<phase_attestation>{…}</phase_attestation>` block in agent text |
+| Goal mode | Gates are self-advancing (no user wait) but attestation is still proof-of-work |
+| Exempt | I/IDLE/reject paths; human actor bypasses gate |
+
+`--force` is scrubbed from orchestration prompts. See `devlog/_plan/260624_pabcd_evidence_gate/`.
+
+### Pre-prompt context hooks
+
+`src/prompt/context-hooks.ts` + `~/.cli-jaw/context-hooks.json` (optional).
+
+- Injected in `getSystemPrompt()` **after** runtime-context block, **before** bounded-local-search contract (runtime turns only; skipped for `forDisk`)
+- Config: bounded sources under `JAW_HOME`, scopes `main` | `heartbeat`, per-source `maxAgeSeconds`, char budgets (hard caps: 8 sources / 4000 total chars)
+- `freshSession` from `spawn.ts` (`!isResume`) is passed into hook metadata
+- Fail-open: missing/invalid config does not block spawn
+- CLI: `cli-jaw hooks` (`bin/commands/hooks.ts`) — inspect config + dry-run report
+- Docs: `docs/dev/pre-prompt-context-hooks.md`
+
+### Bounded local search contract
+
+`getBoundedLocalSearchContract()` is always appended near the end of `getSystemPrompt()` (boss + employee paths that call it).
+
+- Native Grep/Glob must start from one known file or narrow directory — no repo-wide/home/`node_modules` sweeps
+- Shell search: `timeout 20s rg … <narrow-path>` with output cap; timeout → do not widen
+- Korean/source-sensitive **external** search routes through active `search` skill (focused query rewrite + fetch original pages); `agbrowse research plan` is optional planning help only
+- Enforced in A1 via `builder.ts`; aligns with AGENTS.md bounded-search rules (#255)
+
 ### Heartbeat
 
 heartbeat 섹션은 `loadHeartbeatFile()` 결과를 본다.
@@ -244,8 +283,8 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 
 | CLI | 시스템 프롬프트 | 현재 턴 입력 |
 | --- | --- | --- |
-| Claude | `buildArgs(..., sysPrompt)` | stdin에 `withHistoryPrompt(prompt, historyBlock)` |
-| AGY (`agy`) | 별도 system prompt flag 없음 | fresh run은 args 레벨 prompt (`withHistoryPrompt`)를 `agy -p`로 전달하고 native AGY UI의 현재 선택 모델을 따른다. resume은 `agy --conversation <sessionId> -p <prompt>` |
+| Claude | `buildArgs(..., sysPrompt)` + `stream-json`/`text_delta` | stdin에 `withHistoryPrompt(prompt, historyBlock)`; live `agent_output` via `appendAssistantRawText()` |
+| AGY (`agy`) | 별도 system prompt flag 없음 | fresh run: `agy -p <prompt>` with optional `--model` when not `default`; `--print-timeout 10m`, `--log-file`; resume `agy --conversation <sessionId> -p <prompt>` |
 | AI-E (`ai-e`) | 선택 provider의 adapter를 따른다 | provider별 args로 위임하되 AGY는 provider 목록에 포함하지 않는다 |
 | Claude E (`claude-e`) | helper 뒤의 Claude CLI에 args로 `--model`/`--effort`/permission 전달 | fresh run은 stdin에 `withHistoryPrompt(prompt, historyBlock)`, resume run은 `claude-e --resume <sessionId>` + 현재 prompt. legacy bucket/event namespace는 `claude-i` |
 | Codex | `{workDir}/AGENTS.md` 자동 로드 | 새 세션일 때만 stdin에 `[User Message]` 블록 |
@@ -295,4 +334,4 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 
 ## 한 줄 요약
 
-현재 prompt 파이프라인은 "A1/A2 파일 기반 캐시 + role-aware memory injection + `cli-jaw dispatch` 중심 orchestration + per-CLI spawn input adapter" 구조다. 가장 큰 최근 변화는 JSON subtask 설명이 사라지고, memory injection이 `src/memory/injection.ts`로 중앙화되었으며, heartbeat 입력이 `heartbeat.json`으로 고정되고, Grok CLI는 `-p` 기반 표준 런타임으로 추가됐지만 `grok-build` effort/system prompt flag는 비활성화된 점이다.
+현재 prompt 파이프라인은 "A1/A2 파일 기반 캐시 + role-aware memory injection + pre-prompt context hooks + bounded local search contract + `cli-jaw dispatch` 중심 orchestration + PABCD `--attest` evidence gate + per-CLI spawn input adapter" 구조다.

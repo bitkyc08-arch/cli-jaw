@@ -6,11 +6,12 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 > 📚 [INDEX](INDEX.md) · [에이전트 실행 ↗](agent_spawn.md) · [인프라 ↗](infra.md) · **텔레그램 & 하트비트**
 
-# Telegram & Heartbeat — telegram/bot.ts · telegram/forwarder.ts · telegram/telegram-file.ts · telegram/voice.ts · messaging/runtime.ts · messaging/send.ts · memory/heartbeat.ts · memory/heartbeat-schedule.ts
+# Telegram & Heartbeat — telegram/bot.ts · telegram/forwarder.ts · telegram/telegram-file.ts · telegram/voice.ts · telegram/hub-callback.ts · messaging/runtime.ts · messaging/send.ts · messaging/thread-target.ts · manager/telegram-hub/* · memory/heartbeat.ts · memory/heartbeat-schedule.ts
 
-> Telegram transport + shared messaging runtime + forwarder lifecycle + origin filtering + voice STT
+> Telegram transport (standalone + hub-member) + Dashboard forum-topic hub + shared messaging runtime + forwarder lifecycle + origin filtering + voice STT
 > 현재 Telegram/Discord는 `src/messaging/`을 공유하며, settings restart는 `core/runtime-settings.ts`에서 한 번에 처리된다
 > v5 Update: `forwardAll` 토글은 Telegram/Discord 각각의 channel setting으로 분리됨
+> v6 Update: forum **topic-aware** programmatic send (P0) + Dashboard **Telegram Hub** — one bot, many topics → many instances (P1–P3)
 
 ---
 
@@ -30,6 +31,13 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 - `validateTarget()`는 Telegram allowedChatIds와 Discord channelIds / thread parent 허용을 둘 다 검사한다
 - `registerSendTransport()`로 채널별 outbound sender를 주입한다
 
+### `src/messaging/thread-target.ts`
+
+- `threadIdNumber(target)` — programmatic Telegram sends용 `message_thread_id` 추출
+- `threadId`가 없거나 General topic (`'1'`)이면 `undefined` → wire payload에서 필드 생략 (DM/비포럼 그룹 동작 불변)
+- 실제 topic id는 `n > 1`일 때만 전달
+- 사용처: `telegram/bot.ts` `telegramSendHandler`, legacy `/api/telegram/send`, hub `sendToTopic`
+
 ### Remote channel structured elicitation guard
 
 - 21 Elicitation은 Web UI main DOM 전용 상호작용이다.
@@ -46,7 +54,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 ---
 
-## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice (632L)
+## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (707L)
 
 | Function | 역할 |
 | --- | --- |
@@ -55,8 +63,29 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 | `makeTelegramCommandCtx()` | Telegram용 ctx 생성, `applyRuntimeSettingsPatch()` 경로 사용 |
 | `syncTelegramCommands(bot)` | `getTelegramMenuCommands()` 기반 default + locale `setMyCommands` |
 | `sendTelegramText()` | outbound text send |
-| `buildTelegramTarget()` | `RemoteTarget` 생성 |
+| `buildTelegramTarget()` | `RemoteTarget` 생성 (`threadId` = `message_thread_id` when present) |
 | `attachTelegramForwarder()` / `detachTelegramForwarder()` | broadcast listener lifecycle |
+| `invalidateTelegramSendClient()` | send-only bot cache 무효화 (`runtime-settings` patch 시) |
+
+### Thread-aware programmatic send (P0)
+
+- `registerSendTransport('telegram', telegramSendHandler)` 경로가 `threadIdNumber(req.target)`로 `message_thread_id`를 text/file send에 전달한다
+- Interactive `ctx.reply`는 grammY가 자동으로 thread를 유지하므로 handler 경로와 분리된다
+- `telegram-file.ts` `sendTelegramFile(..., { threadId })`도 동일 semantics
+
+### Hub-member outbound relay (P2b)
+
+`settings.telegramHub.mode === 'hub-member'`이고 `req.target.channel === 'telegram'`이면 인스턴스 자체 봇 대신 Dashboard hub callback으로 relay:
+
+```text
+telegramSendHandler (hub-member):
+  base = resolveHubCallback(settings.telegramHub.hubCallbackUrl)  // src/telegram/hub-callback.ts
+  POST {base}/api/dashboard/telegram-hub/outbound
+    body { chatId, threadId, type, text?, filePath?, caption? }
+```
+
+- `resolveHubCallback()` — loopback `http:` only; https·credentials·non-loopback → `http://127.0.0.1:24576` fallback
+- Hub mode invariant: forum 그룹의 **동일 bot token**은 long-poll **한 곳**만 가능 (409). Hub 그룹에 묶인 인스턴스는 `telegram.enabled=false` 유지
 
 ### 현재 동작
 
@@ -142,7 +171,92 @@ bot.ts on("message:voice"):
 | `TELEGRAM_LIMITS` | file size limits |
 | `validateFileSize(path, type)` | 20MB size gate |
 | `classifyUpstreamError(err)` | upstream error classification |
-| `sendTelegramFile(...)` | file send + exponential backoff retry |
+| `sendTelegramFile(...)` | file send + exponential backoff retry; optional `{ threadId }` for forum topics |
+
+---
+
+## telegram/hub-callback.ts — Hub callback URL SSRF guard (19L)
+
+| Export | 역할 |
+| --- | --- |
+| `resolveHubCallback(configured?)` | hub-member outbound의 callback origin 결정; loopback `http`만 허용 |
+
+- Default: `http://127.0.0.1:24576` (`DASHBOARD_DEFAULT_PORT`)
+- Path/query는 strip; origin만 반환
+
+---
+
+## Telegram Hub (Dashboard) — forum topic → instance routing
+
+> Dashboard manager server(`src/manager/server.ts`, port `24576`)가 **단일 bot token + 단일 forum supergroup**을 소유하고, topic(`message_thread_id`)별로 managed instance(3457–3506)에 라우팅한다. **Mode A**(per-instance bot + P0 thread-aware send)와 공존.
+
+### Two operating modes
+
+| Mode | Who polls Telegram | Inbound | Outbound |
+| --- | --- | --- | --- |
+| **Standalone** (`telegram.enabled=true`) | Each instance's `initTelegram()` | Instance bot handlers | Instance `telegramSendHandler` (thread-aware) |
+| **Hub** (dashboard `telegramHub.enabled`) | `startHubBot()` only | Hub `hub-bot.ts` → `POST /api/message` on mapped port | Instance `hub-member` send → `POST …/telegram-hub/outbound` → hub `sendToTopic` |
+
+### Module map
+
+| Path | 역할 |
+| --- | --- |
+| `src/manager/telegram-hub/types.ts` | `TelegramHubConfig`, `ThreadRoute` |
+| `src/manager/telegram-hub/routing-store.ts` | Registry `telegramHub` CRUD |
+| `src/manager/telegram-hub/hub-bot.ts` | Hub grammY bot: inbound intercept, instance forward, `sendToTopic` |
+| `src/manager/routes/telegram-hub.ts` | Loopback-only REST: config CRUD + outbound relay |
+| `public/manager/src/settings/pages/TelegramHub.tsx` | Manager settings UI |
+
+### Routing model
+
+```text
+threadKey(message_thread_id): id > 1 → String(id); else → '1' (General)
+
+Inbound (hub-bot):
+  1. chatId must equal config.chatId
+  2. Hub slash commands → handleHubCommand (no @mention gate)
+  3. route = resolveRoute(chatId, threadId) — none → "미연결" (no defaultPort auto-route)
+  4. POST http://127.0.0.1:{port}/api/message { prompt, target: { channel, targetId, threadId } }
+
+Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic
+```
+
+### Hub bot commands
+
+| Command | Auth | Behavior |
+| --- | --- | --- |
+| `/setthread` | read | 현재 topic 바인딩 표시 |
+| `/setthread <port>` | admin | `(chatId, threadId) → port` upsert; port ∈ 3457–3506 |
+| `/setthread off` | admin | 현재 topic route 삭제 |
+| `/threads` | read | 이 그룹의 전체 route 목록 |
+| `/hubhelp` | read | command help |
+
+### Hub HTTP API (loopback-only)
+
+Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
+
+| Method | Path | Body | Response |
+| --- | --- | --- | --- |
+| `GET` | `/` | — | `{ ok, config }` — token redacted |
+| `PUT` | `/` | `{ enabled?, token?, chatId?, defaultPort? }` | patches registry; restarts hub bot |
+| `POST` | `/routes` | `ThreadRoute` | upsert route |
+| `DELETE` | `/routes/:chatId/:threadId` | — | remove route |
+| `POST` | `/outbound` | `{ chatId, threadId, type, text?, filePath?, caption? }` | instance → hub → topic relay |
+
+### Dashboard settings UI (`TelegramHub.tsx`)
+
+- Sidebar: **Settings → Channels → Telegram Hub**
+- Fields: Enable hub, Bot token, Forum group chat ID, Default port
+- Routes table: read-only list + Delete; add/bind는 Telegram `/setthread`만
+
+### Instance hub-member settings (manual today)
+
+```jsonc
+{
+  "telegram": { "enabled": false },
+  "telegramHub": { "mode": "hub-member", "hubCallbackUrl": "http://127.0.0.1:24576" }
+}
+```
 
 ---
 
