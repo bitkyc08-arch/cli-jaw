@@ -215,14 +215,17 @@ export function handleClaudeEvent(
         if (cli === 'claude-e') {
             const segment = appendClaudeISnapshotText(ctx, evt);
             ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
+        } else if (ctx.claudeStreamedText) {
+            // text_delta already streamed this prose live (index.ts stream_event);
+            // re-appending the complete block would double it (260612 audit 07 F-T4).
+            // Reset the per-message flag so the next assistant message starts clean.
+            ctx.claudeStreamedText = false;
         } else {
+            // Fallback: no partial text stream seen (e.g. --include-partial-messages
+            // absent) → surface the complete assistant text block here.
             for (const block of evt.message.content) {
                 if (block.type === 'text') {
                     const segment = appendAssistantTextSegment(ctx, block.text);
-                    // Live-run accumulation happens once in the dispatcher's
-                    // broadcastAgentOutput when pendingOutputChunk drains —
-                    // appending here too doubled the snapshot text for the
-                    // plain `claude` CLI (260612 audit 07 F-T4).
                     ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
                 }
             }
