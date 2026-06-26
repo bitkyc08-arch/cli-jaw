@@ -14,7 +14,7 @@ import { SettingsSection, PageError, PageLoading, usePageSnapshot } from './page
 const PORT_MIN = 3457;
 const PORT_MAX = 3506;
 
-type Route = { chatId: string; threadId: string; port: number; label?: string; enabled: boolean };
+type Route = { chatId: string; threadId: string; port: number; label?: string; enabled: boolean; systemPrompt?: string; model?: string };
 type HubConfig = { enabled: boolean; hasToken: boolean; chatId: string; defaultPort: number; routes: Route[] };
 type HubResponse = { ok: boolean; config: HubConfig };
 
@@ -149,11 +149,12 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
                     <p className="settings-empty">No routes yet.</p>
                 ) : (
                     <table className="settings-table">
-                        <thead><tr><th>Thread</th><th>Port</th><th>Label</th><th>On</th><th /></tr></thead>
+                        <thead><tr><th>Thread</th><th>Port</th><th>Label</th><th>Model</th><th>Prompt</th><th>On</th><th /></tr></thead>
                         <tbody>
                             {config.routes.map((r) => (
                                 <tr key={`${r.chatId}:${r.threadId}`}>
                                     <td>{r.threadId}</td><td>{r.port}</td><td>{r.label || '—'}</td>
+                                    <td>{r.model || '—'}</td><td>{r.systemPrompt ? '✓' : '—'}</td>
                                     <td>{r.enabled ? '✓' : '—'}</td>
                                     <td><button type="button" onClick={() => void removeRoute(r)}>Delete</button></td>
                                 </tr>
