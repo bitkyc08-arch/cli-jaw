@@ -8,6 +8,9 @@ Technical overview for contributors. The detailed source-of-truth map lives in
 This file is intentionally higher level than `structure/` so it can stay useful
 in public and submodule-light checkouts.
 
+The static HTML site under `docs/dev/` is a browsable mirror; when it diverges,
+treat `structure/` plus the Markdown files in `docs/` as source of truth.
+
 ---
 
 ## System Overview

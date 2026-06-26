@@ -154,6 +154,7 @@
 <li>Always start with <code>/interview</code> for complex projects to avoid planning with incomplete information.</li>
 <li>Phase transitions are explicit -- the agent will tell you to run <code>jaw orchestrate A</code> when planning is done.</li>
 <li>Use <code>/continue</code> for explicit worklog/PABCD resume. Natural "continue" messages are treated as normal prompts.</li>
+<li>Forward phase transitions require evidence attestation: <code>jaw orchestrate B --attest '{"from":"A","to":"B","did":"..."}'</code> (C→D also needs pasted <code>checkOutput</code> and <code>exitCode</code>).</li>
 <li>The <code>/orchestrate reset</code> command cleans up everything: active agents, workers, queue, employee sessions, state, and worklog.</li>
 </ul>
 
