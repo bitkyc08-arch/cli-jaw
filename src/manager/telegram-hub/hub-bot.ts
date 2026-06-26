@@ -5,8 +5,9 @@
 // deleteWebhook, secure-by-default routing (unmapped topics refused), and a
 // timeout on the hub->instance forward.
 import { Bot } from 'grammy';
-import { getHubConfig, resolveRoute } from './routing-store.js';
+import { getHubConfig, resolveRoute, upsertRoute, removeRoute } from './routing-store.js';
 import type { TelegramHubConfig } from './types.js';
+import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 
 let hubBot: Bot | null = null;
@@ -47,9 +48,39 @@ async function forwardToInstance(port: number, prompt: string, chatId: string, t
     }
 }
 
-// P3 implements real handlers; P2 ships a stub so interception is wired.
-async function handleHubCommand(_name: string, _args: string[], _chatId: string, _threadId: string): Promise<string> {
-    return 'hub command (P3)';
+// P3: real hub-command handlers over the P1 routing-store. Mutating /setthread
+// requires the sender to be a Telegram group admin/creator (GPT Pro auth fix, doc 05);
+// read-only forms (bare /setthread, /threads, /hubhelp) need no authorization.
+async function handleHubCommand(
+    name: string,
+    args: string[],
+    chatId: string,
+    threadId: string,
+    isAdmin: () => Promise<boolean>,
+): Promise<string> {
+    if (name === 'setthread') {
+        const arg = (args[0] || '').toLowerCase();
+        if (!arg) {                                   // bare: show current binding (read-only)
+            const r = resolveRoute(chatId, threadId);
+            return r ? `이 토픽 → 인스턴스 ${r.port}${r.label ? ` (${r.label})` : ''}`
+                     : '이 토픽은 미연결입니다. /setthread <port> 로 연결하세요.';
+        }
+        if (!(await isAdmin())) return '권한이 없습니다 — 그룹 관리자만 /setthread 로 변경할 수 있습니다.';
+        if (arg === 'off') { removeRoute(chatId, threadId); return '이 토픽 라우팅을 해제했습니다.'; }
+        const port = Number(arg);
+        if (!Number.isInteger(port) || port < MANAGED_INSTANCE_PORT_FROM || port > MANAGED_INSTANCE_PORT_TO)
+            return `포트는 ${MANAGED_INSTANCE_PORT_FROM}–${MANAGED_INSTANCE_PORT_TO} 범위여야 합니다.`;
+        upsertRoute({ chatId, threadId, port, enabled: true });
+        return `✅ 이 토픽 → 인스턴스 ${port} 연결됨.`;
+    }
+    if (name === 'threads') {
+        const mine = getHubConfig().routes.filter(r => r.chatId === chatId);
+        return mine.length
+            ? `이 그룹의 라우트:\n${mine.map(r => `• thread ${r.threadId} → ${r.port}${r.enabled ? '' : ' (off)'}`).join('\n')}`
+            : '연결된 토픽이 없습니다.';
+    }
+    if (name === 'hubhelp') return '/setthread <port> · /setthread off · /threads';
+    return '알 수 없는 허브 명령입니다.';
 }
 
 export function createHubBot(token: string): Bot {
@@ -69,7 +100,15 @@ export function createHubBot(token: string): Bot {
             const name = text.slice(1).split(/\s+/)[0]!.split('@')[0]!.toLowerCase();
             if (HUB_COMMANDS.has(name)) {
                 const args = text.slice(1).split(/\s+/).slice(1);
-                await ctx.reply(await handleHubCommand(name, args, chatId, threadId)); // grammY auto-threads
+                const isAdmin = async (): Promise<boolean> => {
+                    try {
+                        const uid = ctx.from?.id;
+                        if (!uid) return false;
+                        const m = await ctx.getChatMember(uid);
+                        return m.status === 'creator' || m.status === 'administrator';
+                    } catch { return false; }
+                };
+                await ctx.reply(await handleHubCommand(name, args, chatId, threadId, isAdmin)); // grammY auto-threads
                 return;
             }
         }
