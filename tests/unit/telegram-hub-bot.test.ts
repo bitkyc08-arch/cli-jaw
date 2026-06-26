@@ -3,7 +3,7 @@
 // normalization and the start guard (GPT Pro B1: enabled+token+chatId required).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { threadKey, canStartHub } from '../../src/manager/telegram-hub/hub-bot.ts';
+import { threadKey, canStartHub, canMutateHubRoute } from '../../src/manager/telegram-hub/hub-bot.ts';
 import type { TelegramHubConfig } from '../../src/manager/telegram-hub/types.ts';
 
 const cfg = (o: Partial<TelegramHubConfig>): TelegramHubConfig =>
@@ -19,7 +19,17 @@ test('threadKey: General (<=1) → "1", real topics pass through', () => {
 
 test('canStartHub requires enabled + token + chatId (GPT Pro B1: no unbound start)', () => {
     assert.equal(canStartHub(cfg({ enabled: true, token: 't', chatId: '-100' })), true);
+    assert.equal(canStartHub(cfg({ enabled: true, token: 't', chatId: '8231528245' })), true);
     assert.equal(canStartHub(cfg({ enabled: false, token: 't', chatId: '-100' })), false);
     assert.equal(canStartHub(cfg({ enabled: true, token: '', chatId: '-100' })), false);
     assert.equal(canStartHub(cfg({ enabled: true, token: 't', chatId: '' })), false);
+});
+
+test('canMutateHubRoute allows private chats and preserves group admin gating', () => {
+    assert.equal(canMutateHubRoute('private', false), true);
+    assert.equal(canMutateHubRoute('private', true), true);
+    assert.equal(canMutateHubRoute('group', false), false);
+    assert.equal(canMutateHubRoute('group', true), true);
+    assert.equal(canMutateHubRoute('supergroup', false), false);
+    assert.equal(canMutateHubRoute('supergroup', true), true);
 });

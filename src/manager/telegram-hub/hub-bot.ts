@@ -1,6 +1,7 @@
-// Dashboard-owned Telegram hub bot (P2). One bot token bound to one forum
-// supergroup; each topic (message_thread_id) routes to its mapped instance and
-// replies relay back into the topic. Includes the GPT Pro review fixes (doc 05):
+// Dashboard-owned Telegram hub bot (P2). One bot token bound to one Telegram
+// hub chat; each topic/thread (message_thread_id) routes to its mapped instance
+// and replies relay back into the topic. The hub chat may be a forum supergroup
+// or a bot private chat with topics enabled. Includes the GPT Pro review fixes (doc 05):
 // chatId-required start guard, 409 retry-state fix, getWebhookInfo+await
 // deleteWebhook, secure-by-default routing (unmapped topics refused), and a
 // timeout on the hub->instance forward.
@@ -27,6 +28,10 @@ export function canStartHub(cfg: TelegramHubConfig): boolean {
     return cfg.enabled === true && Boolean(cfg.token) && Boolean(cfg.chatId);
 }
 
+export function canMutateHubRoute(chatType: string | undefined, isGroupAdmin: boolean): boolean {
+    return chatType === 'private' || isGroupAdmin;
+}
+
 async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
     const target = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: chatId, threadId };
     try {
@@ -51,7 +56,7 @@ async function forwardToInstance(port: number, prompt: string, chatId: string, t
 // P3: real hub-command handlers over the P1 routing-store. Mutating /setthread
 // requires the sender to be a Telegram group admin/creator (GPT Pro auth fix, doc 05);
 // read-only forms (bare /setthread, /threads, /hubhelp) need no authorization.
-async function handleHubCommand(
+export async function handleHubCommand(
     name: string,
     args: string[],
     chatId: string,
@@ -65,7 +70,7 @@ async function handleHubCommand(
             return r ? `이 토픽 → 인스턴스 ${r.port}${r.label ? ` (${r.label})` : ''}`
                      : '이 토픽은 미연결입니다. /setthread <port> 로 연결하세요.';
         }
-        if (!(await isAdmin())) return '권한이 없습니다 — 그룹 관리자만 /setthread 로 변경할 수 있습니다.';
+        if (!(await isAdmin())) return '권한이 없습니다 — 그룹 관리자 또는 허용된 개인 채팅만 /setthread 로 변경할 수 있습니다.';
         if (arg === 'off') { removeRoute(chatId, threadId); return '이 토픽 라우팅을 해제했습니다.'; }
         const port = Number(arg);
         if (!Number.isInteger(port) || port < MANAGED_INSTANCE_PORT_FROM || port > MANAGED_INSTANCE_PORT_TO)
@@ -91,7 +96,7 @@ export function createHubBot(token: string): Bot {
         if (!ctx.chat || !ctx.message) return;
         const cfg = getHubConfig();
         const chatId = String(ctx.chat.id);
-        if (!cfg.chatId || chatId !== cfg.chatId) return;          // only the bound forum group
+        if (!cfg.chatId || chatId !== cfg.chatId) return;          // only the bound hub chat
         const threadId = threadKey(ctx.message.message_thread_id);
         const text = ctx.message.text.trim();
 
@@ -103,10 +108,10 @@ export function createHubBot(token: string): Bot {
                 const isAdmin = async (): Promise<boolean> => {
                     try {
                         const uid = ctx.from?.id;
-                        if (!uid) return false;
+                        if (!uid) return canMutateHubRoute(ctx.chat.type, false);
                         const m = await ctx.getChatMember(uid);
-                        return m.status === 'creator' || m.status === 'administrator';
-                    } catch { return false; }
+                        return canMutateHubRoute(ctx.chat.type, m.status === 'creator' || m.status === 'administrator');
+                    } catch { return canMutateHubRoute(ctx.chat.type, false); }
                 };
                 await ctx.reply(await handleHubCommand(name, args, chatId, threadId, isAdmin)); // grammY auto-threads
                 return;
@@ -178,7 +183,9 @@ export async function startHubBot(): Promise<void> {
         onStart: (info) => {
             hubBot = bot; hubToken = cfg.token; retries = 0;   // mark running ONLY after polling starts
             console.log(`[tg:hub] @${info.username} polling chat=${cfg.chatId}`);
-            // best-effort forum check (non-blocking)
+            // best-effort forum check (non-blocking); private bot-topic chats are valid
+            // hub targets but are not forum supergroups.
+            if (!cfg.chatId.startsWith('-100')) return;
             bot.api.getChat(cfg.chatId).then((c) => {
                 if (c.is_forum !== true) console.warn(`[tg:hub] WARNING: bound chat ${cfg.chatId} is not a forum (is_forum != true)`);
             }).catch(() => {});

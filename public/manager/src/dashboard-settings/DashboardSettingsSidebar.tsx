@@ -1,6 +1,6 @@
 import type { DashboardLocale } from '../types';
 
-type DashboardSettingsSection = 'display' | 'activity' | 'developer' | 'embedding';
+type DashboardSettingsSection = 'display' | 'activity' | 'developer' | 'embedding' | 'telegramHub';
 
 type DashboardSettingsSidebarProps = {
     activeSection: DashboardSettingsSection;
@@ -18,6 +18,7 @@ const COPY = {
             activity: { label: '미리보기와 활동', hint: '제목 출처와 기본값' },
             developer: { label: '개발 도구', hint: 'Git diff 기본값' },
             embedding: { label: '임베딩 검색', hint: 'Provider와 벡터 인덱스' },
+            telegramHub: { label: 'Telegram Hub', hint: '포럼 토픽 라우팅' },
         },
     },
     en: {
@@ -29,6 +30,7 @@ const COPY = {
             activity: { label: 'Preview & activity', hint: 'Title source and defaults' },
             developer: { label: 'Developer tools', hint: 'Git diff defaults' },
             embedding: { label: 'Embedding search', hint: 'Provider and vector index' },
+            telegramHub: { label: 'Telegram Hub', hint: 'Forum topic routing' },
         },
     },
     zh: {
@@ -40,6 +42,7 @@ const COPY = {
             activity: { label: '预览与活动', hint: '标题来源与默认值' },
             developer: { label: '开发工具', hint: 'Git diff 默认值' },
             embedding: { label: '嵌入搜索', hint: 'Provider 与向量索引' },
+            telegramHub: { label: 'Telegram Hub', hint: '论坛主题路由' },
         },
     },
     ja: {
@@ -51,11 +54,12 @@ const COPY = {
             activity: { label: 'プレビューとアクティビティ', hint: 'タイトルの取得元と既定値' },
             developer: { label: '開発ツール', hint: 'Git diff の既定値' },
             embedding: { label: 'エンベディング検索', hint: 'Provider とベクトルインデックス' },
+            telegramHub: { label: 'Telegram Hub', hint: 'フォーラムトピックルーティング' },
         },
     },
 } as const;
 
-const SECTION_IDS: DashboardSettingsSection[] = ['display', 'activity', 'developer', 'embedding'];
+const SECTION_IDS: DashboardSettingsSection[] = ['display', 'activity', 'developer', 'embedding', 'telegramHub'];
 
 export function DashboardSettingsSidebar(props: DashboardSettingsSidebarProps) {
     const copy = COPY[props.locale] || COPY.ko;

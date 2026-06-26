@@ -186,9 +186,9 @@ bot.ts on("message:voice"):
 
 ---
 
-## Telegram Hub (Dashboard) — forum topic → instance routing
+## Telegram Hub (Dashboard) — Telegram topic/thread → instance routing
 
-> Dashboard manager server(`src/manager/server.ts`, port `24576`)가 **단일 bot token + 단일 forum supergroup**을 소유하고, topic(`message_thread_id`)별로 managed instance(3457–3506)에 라우팅한다. **Mode A**(per-instance bot + P0 thread-aware send)와 공존.
+> Dashboard manager server(`src/manager/server.ts`, port `24576`)가 **단일 bot token + 단일 hub chat**을 소유하고, topic/thread(`message_thread_id`)별로 managed instance(3457–3506)에 라우팅한다. Hub chat은 forum supergroup(`-100...`) 또는 topics/thread mode가 켜진 bot private chat(`823...`)일 수 있다. **Mode A**(per-instance bot + P0 thread-aware send)와 공존.
 
 ### Two operating modes
 
@@ -233,9 +233,9 @@ Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTop
 | Command | Auth | Behavior |
 | --- | --- | --- |
 | `/setthread` | read | 현재 topic 바인딩 표시 |
-| `/setthread <port>` | admin | `(chatId, threadId) → port` upsert; port ∈ 3457–3506 |
-| `/setthread off` | admin | 현재 topic route 삭제 |
-| `/threads` | read | 이 그룹의 전체 route 목록 |
+| `/setthread <port>` | private chat owner or group admin | `(chatId, threadId) → port` upsert; port ∈ 3457–3506 |
+| `/setthread off` | private chat owner or group admin | 현재 topic route 삭제 |
+| `/threads` | read | 현재 hub chat의 전체 route 목록 |
 | `/hubhelp` | read | command help |
 
 ### Hub HTTP API (loopback-only)
@@ -253,8 +253,14 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 ### Dashboard settings UI (`TelegramHub.tsx`)
 
 - Sidebar: **Settings → Channels → Telegram Hub**
-- Fields: Enable hub, Bot token, Forum group chat ID, Default port
+- Fields: Enable hub, Bot token, Hub chat ID, Default port
 - Routes table: read-only list with per-topic **model** / **systemPrompt** columns + Delete; add/bind는 Telegram `/setthread`만
+
+### Hub chat ID choices
+
+- Bot private topic mode: set `chatId` to the private Telegram chat id (for example `8231528245`).
+- Forum supergroup topic mode: set `chatId` to the supergroup id (usually `-100...`).
+- Hub-member instances with a non-empty `telegram.allowedChatIds` allowlist must include this same hub `chatId`, because hub forwarding enters the instance through `/api/message` with a Telegram target.
 
 ### Instance hub-member settings (manual today)
 

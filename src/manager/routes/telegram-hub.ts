@@ -85,9 +85,9 @@ export function createDashboardTelegramHubRouter(): Router {
         const chatId = typeof b.chatId === 'string' ? b.chatId.trim() : '';
         const threadId = typeof b.threadId === 'string' ? b.threadId.trim() : '';
         if (!chatId || !threadId) return sendErr(res, 400, 'chatId+threadId required');
-        // Defense-in-depth: outbound may only target the bound forum group (mirror of the
+        // Defense-in-depth: outbound may only target the bound hub chat (mirror of the
         // inbound bind-check), so a local process cannot relay to other chats the bot is in.
-        if (chatId !== getHubConfig().chatId) return sendErr(res, 403, 'chatId is not the bound forum group');
+        if (chatId !== getHubConfig().chatId) return sendErr(res, 403, 'chatId is not the bound hub chat');
         const type = String(b.type || 'text');
         if (!OUTBOUND_TYPES.has(type)) return sendErr(res, 400, 'invalid type');
         let filePath: string | undefined;

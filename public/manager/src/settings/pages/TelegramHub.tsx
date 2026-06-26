@@ -117,7 +117,7 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
 
     return (
         <form className="settings-page-form settings-form" onSubmit={(e) => { e.preventDefault(); void onSave(); }}>
-            <SettingsSection title="Telegram hub" hint="One dashboard-owned bot routes a forum group's topics to instances 3457–3506.">
+            <SettingsSection title="Telegram hub" hint="One dashboard-owned bot routes Telegram chat topics to instances 3457–3506.">
                 <ToggleField
                     id="hub-enabled" label="Enable hub" value={enabled}
                     onChange={(next) => { setEnabled(next); dirty.set('hub.enabled', { value: next, original: config.enabled, valid: true }); }}
@@ -128,7 +128,7 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
                     onChange={(next) => { setToken(next); dirty.set('hub.token', { value: next, original: '', valid: true }); }}
                 />
                 <TextField
-                    id="hub-chat-id" label="Forum group chat ID" value={chatId} placeholder="-100…"
+                    id="hub-chat-id" label="Hub chat ID" value={chatId} placeholder="823… or -100…"
                     onChange={(next) => { setChatId(next); dirty.set('hub.chatId', { value: next, original: config.chatId, valid: true }); }}
                 />
                 <label className="settings-field" htmlFor="hub-default-port">
@@ -144,7 +144,7 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
                 </label>
             </SettingsSection>
 
-            <SettingsSection title="Topic routes" hint="(chatId, threadId) → instance port. Bind from Telegram with /setthread <port>.">
+            <SettingsSection title="Topic routes" hint="(chatId, threadId) → instance port. Bind in a bot private topic or group topic with /setthread <port>.">
                 {config.routes.length === 0 ? (
                     <p className="settings-empty">No routes yet.</p>
                 ) : (

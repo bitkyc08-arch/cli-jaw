@@ -3,7 +3,7 @@
 // No imports → no circular dependency with src/manager/types.ts.
 
 export type ThreadRoute = {
-    chatId: string;     // forum supergroup id
+    chatId: string;     // hub chat id (private bot chat or forum supergroup)
     threadId: string;   // message_thread_id; '1' = General
     port: number;       // managed instance port (3457..3506)
     label?: string;
@@ -16,7 +16,7 @@ export type ThreadRoute = {
 export type TelegramHubConfig = {
     enabled: boolean;
     token: string;        // SECRET — redacted on read
-    chatId: string;       // bound forum supergroup id
+    chatId: string;       // bound hub chat id
     defaultPort: number;  // fallback for unmapped topics
     routes: ThreadRoute[];
 };
