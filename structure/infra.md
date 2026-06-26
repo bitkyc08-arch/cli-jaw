@@ -132,7 +132,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_IDS` | `src/core/config.ts` | Discord settings override |
 | `DASHBOARD_PORT`, `DASHBOARD_SCAN_FROM`, `DASHBOARD_SCAN_COUNT`, `JAW_DASHBOARD_OPEN` | `bin/commands/dashboard.ts`, `src/manager/server.ts` | Manager dashboard 실행/scan 설정 |
 | `LOG_LEVEL` | `src/core/logger.ts` | logger verbosity |
-| `CLI_JAW_SKIP_OFFICECLI`, `CLI_JAW_FORCE_OFFICECLI`, `OFFICECLI_REPO` | `bin/postinstall.ts` | officecli postinstall 제어 |
+| `OFFICECLI_REPO` | `scripts/install-officecli.sh`, `scripts/install-officecli.ps1` | install 스크립트 소스 repo override (`lidge-jun/OfficeCLI` 기본) |
 | `JAW_SAFE`, `npm_config_jaw_safe` | `bin/postinstall.ts` | postinstall safe mode |
 | `CLI_JAW_MIGRATE_SHARED_PATHS`, `npm_config_jaw_migrate_shared_paths` | `bin/postinstall.ts` | shared path migration opt-in |
 | `TEST_PORT` | `package.json` `test:smoke` | smoke test target port |
@@ -235,7 +235,7 @@ CLI → 서버 API 호출 시 인증 토큰을 관리하는 경량 헬퍼. 포�
 | CLI | Default Model | Notable model aliases |
 | --- | --- | --- |
 | `pi` | `grok-composer-2.5-fast` | Pi RPC runtime with isolated profile/model registration |
-| `agy` | native UI selected | print-mode runtime; no per-run model/effort flag |
+| `agy` | AGY-selected | print-mode runtime; `--model` is capability-gated (observed in AGY 1.0.12); no separate effort flag |
 | `ai-e` | `sonnet` | AI-E wrapper runtime |
 | `claude` | `claude-opus-4-8` | canonical choices include `opus`, `sonnet`, `sonnet[1m]`, `haiku`; legacy aliases normalize |
 | `claude-e` | `claude-opus-4-8` | helper-backed Claude E runtime |

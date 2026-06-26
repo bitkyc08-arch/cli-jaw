@@ -70,9 +70,7 @@ cli-jaw에서 사용하는 주요 환경변수. **전체 목록·사용처**는 
 |------|--------|------|
 | `DASHBOARD_SCAN_FROM` | *(미설정)* | manager instance scan 시작 포트 |
 | `DASHBOARD_SCAN_COUNT` | *(미설정)* | scan 포트 개수 |
-| `CLI_JAW_SKIP_OFFICECLI` | *(미설정)* | `1`이면 postinstall officecli 스킵 |
-| `CLI_JAW_FORCE_OFFICECLI` | *(미설정)* | `1`이면 officecli 강제 설치 시도 |
-| `OFFICECLI_REPO` | *(미설정)* | officecli 소스/릴리스 경로 override |
+| `OFFICECLI_REPO` | *(미설정)* | `scripts/install-officecli.sh` 소스 repo override (`lidge-jun/OfficeCLI` 기본) |
 | `JAW_SAFE` | *(미설정)* | postinstall safe mode (`npm_config_jaw_safe` 동일) |
 
 ## 디버깅
