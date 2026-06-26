@@ -95,6 +95,5 @@ test('BWAI-DR-003: stable answer without research activity is rejected, not save
     assert.equal(result.status, 'failed');
     assert.ok(result.warnings.includes('deep-research-not-started'));
     assert.equal(result.reportText, null);
-    // never persisted as a completed report
     assert.equal(persistCalls.some((c) => c.status === 'complete'), false);
 });

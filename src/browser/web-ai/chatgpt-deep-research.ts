@@ -315,8 +315,8 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
     }
 
     const finalReport = await extractResearchReport(page);
-    // On timeout, only persist a COMPLETED report — never a planning/progress fragment.
-    const finalText = finalReport?.completed ? finalReport.text : null;
+    if (finalReport?.from === 'frame') researchActivityObserved = true;
+    const finalText = (finalReport?.completed && researchActivityObserved) ? finalReport.text : null;
     updateSessionResult({
         sessionId: session.sessionId,
         status: 'timeout',

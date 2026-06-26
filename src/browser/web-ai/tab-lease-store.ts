@@ -525,17 +525,19 @@ export async function checkoutPooledLease(input: CheckoutLeaseInput): Promise<{ 
     return checkedOut ? stripUndefined({ targetId: checkedOut.targetId, url: checkedOut.url }) : null;
 }
 
-export async function cleanupLeasedTabs(port: number): Promise<{ closed: number; closedTabs: string[] }> {
+export async function cleanupLeasedTabs(port: number, opts: { activeCommandTargetIds?: Set<string> } = {}): Promise<{ closed: number; closedTabs: string[] }> {
+    const protectedIds = opts.activeCommandTargetIds || new Set<string>();
     let closePlan: ClosePlanItem[] = [];
     await withLeaseLock(() => {
         const store = readStoreUnlocked();
         const browserProfileKey = `cdp:${port || 'default'}`;
         const profileLeases = store.leases.filter(lease => lease.browserProfileKey === browserProfileKey);
-        // 8.11: reclaim active-session leases whose owner process is gone (orphaned tabs).
         const deadOwner: ClosePlanItem[] = profileLeases
             .filter(lease => isDeadOwnerActiveLease(lease, pidAlive))
+            .filter(lease => !protectedIds.has(lease.targetId))
             .map(lease => ({ lease, reason: 'owner-pid-dead' as const }));
-        closePlan = [...selectPoolClosePlan(profileLeases), ...deadOwner];
+        closePlan = [...selectPoolClosePlan(profileLeases), ...deadOwner]
+            .filter(item => !protectedIds.has(item.lease.targetId));
         const closeIds = new Set(closePlan.map(item => scopedTargetKey(item.lease)));
         store.leases = store.leases.map(lease => closeIds.has(scopedTargetKey(lease))
             ? { ...lease, state: 'closing', closePreviousState: lease.closePreviousState || lease.state, leaseDisposition: 'closing', updatedAt: nowIso() }
