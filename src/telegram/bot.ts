@@ -6,6 +6,7 @@ import { sequentialize } from '@grammyjs/runner';
 import { addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { resolveHubCallback } from './hub-callback.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { submitMessage } from '../orchestrator/gateway.js';
@@ -178,6 +179,28 @@ function buildTelegramTarget(ctx: Context): RemoteTarget {
 }
 
 async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
+    // P2b: hub-member mode — this instance's own bot is disabled; relay outbound through the
+    // dashboard hub (it owns the single forum-group bot token). hubCallbackUrl is SSRF-guarded.
+    const hub = settings["telegramHub"];
+    if (hub?.mode === 'hub-member' && req.target?.channel === 'telegram' && req.target?.targetId) {
+        const base = resolveHubCallback(hub.hubCallbackUrl);
+        try {
+            const r = await fetch(`${base}/api/dashboard/telegram-hub/outbound`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(stripUndefined({
+                    chatId: req.target.targetId, threadId: req.target.threadId,
+                    type: req.type, text: req.text, filePath: req.filePath, caption: req.caption,
+                })),
+                signal: AbortSignal.timeout(15_000),
+            });
+            const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+            return j['ok'] ? { ok: true, via: 'hub', type: req.type } : { ok: false, error: String(j['error'] || 'hub outbound failed'), status: 502 };
+        } catch (e) {
+            return { ok: false, error: (e as Error).message, status: 502 };
+        }
+    }
+
     const bot = resolveTelegramSendBot();
     if (!bot) {
         const send = getTelegramSendClient();
