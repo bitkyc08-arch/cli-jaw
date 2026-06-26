@@ -1,6 +1,6 @@
 # 환경변수 가이드
 
-cli-jaw에서 사용하는 환경변수 목록.
+cli-jaw에서 사용하는 주요 환경변수. **전체 목록·사용처**는 `structure/infra.md` §환경변수가 source of truth다.
 
 ---
 
@@ -27,6 +27,20 @@ cli-jaw에서 사용하는 환경변수 목록.
 |------|--------|------|
 | `TELEGRAM_TOKEN` | *(미설정)* | 텔레그램 봇 토큰. `settings.json`의 `telegram.token`보다 우선 |
 | `TELEGRAM_ALLOWED_CHAT_IDS` | *(미설정)* | 허용된 채팅 ID (쉼표 구분) |
+| `JAW_HUB_CALLBACK_URL` | *(미설정)* | Telegram Hub member outbound callback override (loopback http only) |
+
+## Manager dashboard
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `DASHBOARD_PORT` | `24576` | Manager server 포트 |
+| `JAW_DASHBOARD_OPEN` | *(미설정)* | `1`이면 `jaw dashboard serve` 후 브라우저 오픈 |
+
+## 프롬프트 / 훅
+
+| 변수 | 기본값 | 설명 |
+|------|--------|------|
+| `CLI_JAW_PRE_PROMPT_HOOKS` | *(enabled)* | `0`이면 pre-prompt context hooks 비활성화 |
 
 ## 디버깅
 
