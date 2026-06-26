@@ -359,7 +359,7 @@ P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
 | **C — Check** | 类型检查（`tsc --noEmit`）、文档更新、一致性检查 |
 | **D — Done** | 汇总所有变更。返回空闲状态 |
 
-状态持久化在数据库中，服务器重启后仍然保留。工作者不能修改文件——只能验证。用 `jaw orchestrate`、`/orchestrate` 或 `/pabcd` 启动，并用 `/continue` 显式恢复进行中的 worklog。阶段前进需要证据 attestation，例如 `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'`（C→D 还需粘贴 `checkOutput` 和 `exitCode`）。Workflow helper slash commands 包括 `/plan`、`/interview`、`/deliberate`、`/planaudit`、`/review`、`/search`、`/goal`、`/goalplan`、`/team`、`/task`、`/fork`；`/plan` 是说明“这就是 PABCD P”的兼容指南，不会创建第二套计划模式。`/search <query>` 通过 active search skill 路由搜索意图。Bounded automation 用 `/goal run ...` 表达，没有单独的 `/autopilot`。Durable goal（`/goal <objective>` 加 `update`/`done`/`cancel`/`pause`/`resume`）在重启后仍保留，goal 恢复会在 Web/CLI 等所有界面重新触发工作。`/goal run`（`preflight`/`start`/`stop`/`status`）是需通过 preflight 的仅跟踪预览，记录 turn/dispatch 预算（强制尚未落地）。
+状态持久化在数据库中，服务器重启后仍然保留。工作者不能修改文件——只能验证。用 `jaw orchestrate`、`/orchestrate` 或 `/pabcd` 启动，并用 `/continue` 显式恢复进行中的 worklog。阶段前进需要证据 attestation，例如 `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'`（C→D 还需粘贴 `checkOutput` 和 `exitCode`）。Workflow helper slash commands 包括 `/plan`、`/interview`、`/deliberate`、`/planaudit`、`/review`、`/search`、`/goal`、`/goalplan`、`/team`、`/task`、`/fork`、`/gd`；`/plan` 是说明“这就是 PABCD P”的兼容指南，不会创建第二套计划模式。`/search <query>` 通过 active search skill 路由搜索意图。Bounded automation 用 `/goal run ...` 表达，没有单独的 `/autopilot`。Durable goal（`/goal <objective>` 加 `update`/`done`/`cancel`/`pause`/`resume`）在重启后仍保留，goal 恢复会在 Web/CLI 等所有界面重新触发工作。`/goal run`（`preflight`/`start`/`stop`/`status`）是需通过 preflight 的仅跟踪预览，记录 turn/dispatch 预算（强制尚未落地）。
 
 ---
 

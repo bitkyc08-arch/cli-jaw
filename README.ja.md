@@ -121,6 +121,7 @@ codex login          # OpenAI ChatGPT Pro 以上
 cursor-agent login   # Cursor
 gemini               # Google Gemini Advanced
 grok login --oauth   # xAI Grok / Grok Heavy
+kiro                 # AWS Kiro (free tier with AWS account)
 ```
 
 一括チェック：`jaw doctor`
@@ -254,11 +255,12 @@ Employee は「Frontend は CSS、Backend は API」用。サブエージェン�
 | **Antigravity** | AGY-selected | `agy` 実行時に確認 | `agy -p` 実験的 AGY print-mode runtime。任意の `--model` は capability probe 後、対応時のみ使用（AGY 1.0.12 で確認）。`--conversation` で resume。個別 effort flag はなし |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション以上 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション以上 |
-| **Cursor** | `composer-2.5-fast` | `cursor-agent login` または `CURSOR_API_KEY` | Cursor サブスクリプション。quota は auth/status-only |
-| **Gemini** | `gemini-3.1-pro-preview` | `gemini` | Gemini Advanced サブスクリプション |
+| **Cursor** | `composer-2.5` | `cursor-agent login` または `CURSOR_API_KEY` | Cursor サブスクリプション。quota は auth/status-only |
+| **Gemini** | `gemini-3-flash-preview` | `gemini` | Gemini Advanced サブスクリプション |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok サブスクリプション；クォータは認証/ステータスのみ |
-| **OpenCode** | `minimax-m2.7` | `opencode` | 無料モデルあり |
-| **Copilot** | `gpt-5-mini` | `copilot login` | 無料枠あり |
+| **Kiro** | registry-selected | `kiro` | AWS Kiro 無料枠；`kiro-cli chat --no-interactive` runtime |
+| **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | 無料モデルあり |
+| **Copilot** | `claude-sonnet-4.6` | `copilot login` | 無料枠あり |
 
 GPT 5.5 と Claude Opus 4.8 は Pro 以上のサブスクリプションで利用できます。6月からサブスクに含まれる Claude 利用枠を使う場合は、`claude-e` runtime を選択してください。
 
@@ -289,7 +291,7 @@ P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
 | **C — Check** | 型チェック（`tsc --noEmit`）、ドキュメント更新、整合性チェック |
 | **D — Done** | 全変更のサマリー。アイドル状態に復帰 |
 
-状態はデータベースに永続化され、再起動後も保持されます。ワーカーはファイルを変更できません — 検証のみ。`jaw orchestrate`、`/orchestrate`、`/pabcd` で開始し、進行中の worklog は `/continue` で明示的に再開します。フェーズ遷移には証拠 attestation が必要です。例: `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'`（C→D は `checkOutput` と `exitCode` も必要）。Workflow helper slash commands: `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, `/goal`, `/goalplan`, `/team`, `/task`, `/fork`。`/plan` は「これは PABCD P」の互換ガイドで、別の計画モードは作りません。`/search <query>` は active search skill にルーティングされます。Bounded automation は `/goal run ...` で表現され、別の `/autopilot` はありません。Durable goal（`/goal <objective>` + `update`/`done`/`cancel`/`pause`/`resume`）は再起動後も保持され、goal 再開は Web/CLI を含む全インターフェースで作業を再実行します。`/goal run`（`preflight`/`start`/`stop`/`status`）は preflight を通過する追跡専用 preview で、turn/dispatch 予算を追跡します（強制は今後）。
+状態はデータベースに永続化され、再起動後も保持されます。ワーカーはファイルを変更できません — 検証のみ。`jaw orchestrate`、`/orchestrate`、`/pabcd` で開始し、進行中の worklog は `/continue` で明示的に再開します。フェーズ遷移には証拠 attestation が必要です。例: `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'`（C→D は `checkOutput` と `exitCode` も必要）。Workflow helper slash commands: `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, `/goal`, `/goalplan`, `/team`, `/task`, `/fork`, `/gd`。`/plan` は「これは PABCD P」の互換ガイドで、別の計画モードは作りません。`/search <query>` は active search skill にルーティングされます。Bounded automation は `/goal run ...` で表現され、別の `/autopilot` はありません。Durable goal（`/goal <objective>` + `update`/`done`/`cancel`/`pause`/`resume`）は再起動後も保持され、goal 再開は Web/CLI を含む全インターフェースで作業を再実行します。`/goal run`（`preflight`/`start`/`stop`/`status`）は preflight を通過する追跡専用 preview で、turn/dispatch 予算を追跡します（強制は今後）。
 
 ---
 
