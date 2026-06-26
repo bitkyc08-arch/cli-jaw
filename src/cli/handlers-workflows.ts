@@ -6,6 +6,7 @@ import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
 import { clearGoalTimers } from '../agent/lifecycle-handler.js';
 import { GOAL_PLAN_PENDING_OBJECTIVE, type GoalState } from '../goal/types.js';
+import { describeGoalPauseGate } from '../goal/pause-gate.js';
 
 function joinArgs(args: string[]): string {
     return args.join(' ').trim();
@@ -41,6 +42,15 @@ async function resolveSettings(ctx: CliCommandContext): Promise<Record<string, u
 function archivedGoalLine(previous: GoalState | null): string {
     if (!previous || (previous.status !== 'active' && previous.status !== 'paused')) return '';
     return `\nPrevious goal archived: ${previous.objective}`;
+}
+
+function pauseGateStatusLines(goal: GoalState | null): string[] {
+    const pauseGate = describeGoalPauseGate(goal);
+    if (!pauseGate.armed) return [];
+    return [
+        `Pause gate: pending (${pauseGate.attempts}/${pauseGate.requiredAttempts})`,
+        `Pause gate action: ${pauseGate.nextAction}`,
+    ];
 }
 
 export async function interviewWorkflowHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
@@ -245,10 +255,11 @@ export async function goalWorkflowHandler(args: string[], ctx: CliCommandContext
         const goal = getActiveGoal();
         if (!goal) return info('No active goal. Use `/goal set <objective>` to create one.');
         const json = sub === '--json';
-        if (json) return { ok: true, text: JSON.stringify(goal, null, 2) };
+        if (json) return { ok: true, text: JSON.stringify({ goal, pauseGate: describeGoalPauseGate(goal) }, null, 2) };
         const lines = [
             `Goal: ${goal.objective}`,
             `Status: ${goal.status}`,
+            ...pauseGateStatusLines(goal),
             goal.goalMode ? `Mode: ${goal.goalMode}` : null,
             goal.planHint ? `Plan hint: ${goal.planHint}` : null,
             `Created: ${goal.createdAt}`,

@@ -3,6 +3,14 @@ export type PabcdGateStatus = 'idle' | 'pending' | 'pass' | 'fail';
 export type GoalStatusKind = 'active' | 'paused' | 'blocked' | 'complete' | 'cancelled';
 export type PabcdStateName = 'IDLE' | 'I' | 'P' | 'A' | 'B' | 'C' | 'D';
 
+export interface GoalPauseGateSummary {
+    armed: boolean;
+    attempts: number;
+    requiredAttempts: number;
+    reason: 'pause_gate_pending' | null;
+    nextAction: string | null;
+}
+
 export interface GoalCheckpointSummary {
     summary: string;
     nextAction: string;
@@ -20,6 +28,7 @@ export interface GoalStatusSummary {
     updatedAt: string;
     checkpointCount: number;
     lastCheckpoint: GoalCheckpointSummary | null;
+    pauseGate: GoalPauseGateSummary;
     evidenceFreshness: GoalEvidenceFreshness;
     evidenceAgeMs: number | null;
 }

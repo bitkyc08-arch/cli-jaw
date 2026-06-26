@@ -52,6 +52,16 @@ function splitFlagValue(values: string[], flag: string): { before: string[]; val
     };
 }
 
+function pauseGateLines(value: unknown): string[] {
+    if (!value || typeof value !== 'object') return [];
+    const gate = value as Record<string, unknown>;
+    if (gate['armed'] !== true) return [];
+    return [
+        `Pause gate: pending (${String(gate['attempts'] ?? 0)}/${String(gate['requiredAttempts'] ?? 2)})`,
+        `Pause gate action: ${String(gate['nextAction'] ?? 'Run a second audited agent pause or log a productive checkpoint.')}`,
+    ];
+}
+
 const PORT = undefined;
 const BASE = getServerUrl(PORT);
 await getCliAuthToken(PORT);
@@ -63,9 +73,10 @@ try {
         if (!res.ok) { console.error((body['error'] as string) || `Failed: ${res.status}`); process.exit(1); }
         const goal = body['goal'] as Record<string, unknown> | null;
         if (!goal) { console.log('No active goal.'); process.exit(0); }
-        if (sub === '--json') { console.log(JSON.stringify(goal, null, 2)); process.exit(0); }
+        if (sub === '--json') { console.log(JSON.stringify({ goal, pauseGate: body['pauseGate'] }, null, 2)); process.exit(0); }
         console.log(`Goal: ${goal['objective']}`);
         console.log(`Status: ${goal['status']}`);
+        for (const line of pauseGateLines(body['pauseGate'])) console.log(line);
         if (goal['goalMode']) console.log(`Mode: ${goal['goalMode']}`);
         if (goal['planHint']) console.log(`Plan hint: ${goal['planHint']}`);
         console.log(`ID: ${goal['id']}`);

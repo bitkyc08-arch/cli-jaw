@@ -11,6 +11,7 @@ import {
     setGoal,
     updateGoal,
 } from '../../src/goal/store.ts';
+import { describeGoalPauseGate } from '../../src/goal/pause-gate.ts';
 import { clearAllWorkers } from '../../src/orchestrator/worker-registry.ts';
 import { resetState } from '../../src/orchestrator/state-machine.ts';
 
@@ -34,6 +35,11 @@ test('agent pause first tap arms pause_gate_pending and second tap pauses', asyn
         assert.equal(first?.ok, false);
         assert.match(first?.text ?? '', /First agent pause attempt/);
         assert.equal(getAgentPauseCount(), 1);
+        const pauseGate = describeGoalPauseGate(getActiveGoal());
+        assert.equal(pauseGate.armed, true);
+        assert.equal(pauseGate.attempts, 1);
+        assert.equal(pauseGate.requiredAttempts, 2);
+        assert.equal(pauseGate.reason, 'pause_gate_pending');
 
         const armed = buildGoalContinuation();
         assert.equal(armed.shouldContinue, true);
@@ -66,6 +72,7 @@ test('productive checkpoint clears pause gate and returns to normal goal continu
         const updated = updateGoal('made progress', 'continue implementation', ['focused test pass']);
         assert.ok(updated);
         assert.equal(getAgentPauseCount(), 0);
+        assert.equal(describeGoalPauseGate(getActiveGoal()).armed, false);
 
         const normal = buildGoalContinuation();
         assert.equal(normal.shouldContinue, true);

@@ -9,12 +9,13 @@ import {
     MAX_GOAL_PLAN_HINT_CHARS,
 } from '../goal/store.js';
 import type { GoalMode } from '../goal/types.js';
+import { describeGoalPauseGate } from '../goal/pause-gate.js';
 import { clearGoalTimers, kickGoalContinuation } from '../agent/lifecycle-handler.js';
 
 export function registerGoalRoutes(app: Router, requireAuth: RequestHandler): void {
     app.get('/api/goal', requireAuth, (_req, res) => {
         const goal = getActiveGoal();
-        res.json({ ok: true, goal });
+        res.json({ ok: true, goal, pauseGate: describeGoalPauseGate(goal) });
     });
 
     app.get('/api/goal/history', requireAuth, (req, res) => {
@@ -120,10 +121,11 @@ export function registerGoalRoutes(app: Router, requireAuth: RequestHandler): vo
                         return;
                     }
                     if (actor === 'agent' && getAgentPauseCount() < 1) {
-                        incrementAgentPauseCount();
+                        const armedGoal = incrementAgentPauseCount() ?? getActiveGoal();
                         res.status(409).json({
                             ok: false,
                             blocked: true,
+                            pauseGate: describeGoalPauseGate(armedGoal),
                             error: 'First agent pause attempt recorded (1/2). Pause NOT executed. '
                                 + 'Complete the dev-skill audit checklist injected in the next goal continuation, '
                                 + 'then call `cli-jaw goal pause --agent --audit "<evidence>"` again to pause. '

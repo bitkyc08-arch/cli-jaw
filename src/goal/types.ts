@@ -21,6 +21,14 @@ export interface GoalPauseAudit {
     timestamp: string;
 }
 
+export interface GoalPauseGateState {
+    armed: boolean;
+    attempts: number;
+    requiredAttempts: number;
+    reason: 'pause_gate_pending' | null;
+    nextAction: string | null;
+}
+
 export interface GoalState {
     id: string;
     objective: string;

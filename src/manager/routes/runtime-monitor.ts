@@ -3,7 +3,8 @@ import { registerBgtaskRoutes } from '../../routes/bgtask.js';
 import type { AuthMiddleware } from '../../routes/types.js';
 import { getHeartbeatRuntimeState } from '../../memory/heartbeat.js';
 import { getActiveGoal } from '../../goal/store.js';
-import type { GoalCheckpoint, GoalState } from '../../goal/types.js';
+import type { GoalCheckpoint, GoalPauseGateState, GoalState } from '../../goal/types.js';
+import { describeGoalPauseGate } from '../../goal/pause-gate.js';
 import { getCtx, getState, type OrcContext, type OrcStateName } from '../../orchestrator/state-machine.js';
 import {
     getActiveWorkers,
@@ -31,6 +32,7 @@ interface GoalStatusSummary {
     updatedAt: string;
     checkpointCount: number;
     lastCheckpoint: GoalCheckpointSummary | null;
+    pauseGate: GoalPauseGateState;
     evidenceFreshness: 'fresh' | 'stale' | 'missing';
     evidenceAgeMs: number | null;
 }
@@ -92,6 +94,7 @@ function summarizeGoal(goal: GoalState | null): GoalStatusSummary | null {
         updatedAt: goal.updatedAt,
         checkpointCount: goal.checkpoints.length,
         lastCheckpoint: checkpointSummary(goal.lastCheckpoint),
+        pauseGate: describeGoalPauseGate(goal),
         evidenceFreshness,
         evidenceAgeMs,
     };

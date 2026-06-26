@@ -136,3 +136,10 @@ test('GR-018: goal replacement UX archives existing active or paused goals inste
     assert.ok(handlerSrc.includes('replace: true'), 'slash handler must use store replacement semantics');
     assert.doesNotMatch(handlerSrc, /recoverableGoalConflict/, 'slash goal creation must no longer use active-goal conflict recovery');
 });
+
+test('GR-019: goal API exposes derived pauseGate without persisting a new status', () => {
+    assert.ok(routeSrc.includes('describeGoalPauseGate'), 'route must import derived pause gate helper');
+    assert.ok(routeSrc.includes('pauseGate: describeGoalPauseGate(goal)'), 'GET /api/goal must expose pauseGate sibling');
+    assert.ok(routeSrc.includes('pauseGate: describeGoalPauseGate(armedGoal)'), 'first agent pause 409 must expose armed pauseGate');
+    assert.doesNotMatch(typesSrc, /waiting-for-user/, 'P1 must not add waiting-for-user status');
+});

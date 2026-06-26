@@ -33,7 +33,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/browser.ts` | 488L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
 | `src/routes/orchestrate.ts` | 911L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
-| `src/routes/goal.ts` | 177L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
+| `src/routes/goal.ts` | 183L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
 | `src/routes/goal-run.ts` | 83L | 3 | bounded goal-run state/preflight/start-pause-resume-stop |
 | `src/routes/messaging.ts` | 259L | 6 | upload/file-open/voice/telegram/channel/discord send |
 | `src/routes/employees.ts` | 123L | 5 | employee CRUD + reset |
@@ -182,9 +182,11 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 ### `/api/goal` — action-based POST
 
+- `GET /api/goal` returns `{ ok, goal, pauseGate }`; `pauseGate` is derived from `active + agentPauseCount >= 1` and stays present with `armed:false` when no goal is active.
 - `POST /api/goal` body `{ action }` 분기: `set`, `refine-objective`, `update`, `done`, `cancel`, `pause`, `resume`, `clear`, `reset`.
 - `set` may receive `goalMode: "plan"` and `planHint`; plan-mode stores a pending objective and rejects normal checkpoint updates until `refine-objective` replaces it with a concrete objective.
 - `done` action은 `goalHasCompletionEvidence()` gate를 거치며, evidence 없으면 `409`를 반환한다. `force:true`로 override 가능.
+- agent `pause` 첫 번째 audited 시도는 `409`와 `pauseGate:{ armed:true, reason:"pause_gate_pending" }`를 반환한다. 두 번째 audited 시도는 goal을 `paused`로 전환하고, productive `update`는 pending gate를 해제한다.
 - `resume` action은 이미 active이면 `{ alreadyActive:true }`를 반환하고, paused goal을 resume하면 `kickGoalContinuation()`을 즉시 트리거한다.
 
 ### `/api/orchestrate/dispatch`
@@ -215,7 +217,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - 응답 키: `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `gemini`, `grok`, `opencode`, `copilot`, `kiro-code` (`CLI_KEYS` 순서).
 - `pi`는 Settings의 Pi profile registration을 통해 endpoint/model/key를 검증하고, quota 자체는 auth/status-only로 표시한다.
 - `agy`는 `src/routes/quota-agy-reverse.ts`의 `fetchAgyUsage()`를 통해 Antigravity quota snapshot을 읽는다.
-- `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 degraded fallback으로 `0 -> 100% used`, `1 -> 0% used`만 표시한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
+- `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 `precision: "binary"`와 `status: "available" | "exhausted"`를 포함한다. backend의 `percent`는 호환 필드일 뿐이며, UI는 exact percent bar 대신 `Available` / `Exhausted` 상태 텍스트를 표시해야 한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
 - `cursor`는 `src/routes/quota-cursor-dashboard.ts`의 `fetchCursorUsage()`를 통해 dashboard session/usage를 읽는다.
 - `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
 
@@ -274,7 +276,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `heartbeat_pending` | pending heartbeat job 수 |
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | distributed worker 상태 변화; 같은 상태가 `/api/orchestrate/worker-progress`의 safe `attention` metadata에도 반영됨 |
 | `goal_done` / `goal_done_rejected` / `goal_cancel` / `goal_continuation` / `goal_continuation_failed` / `goal_continuation_limit` | durable goal / bounded continuation lifecycle |
-| `goal_pause_detected` | goal pause 2-tap gate 감지 |
+| `goal_pause_detected` / `goal_pause_gate_pending` | goal pause 2-tap gate 감지 및 pending gate continuation suppression |
 | `session_switched` / `session_created` / `session_list` | multi-session state update |
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |
 | `bgtask_update` | background task lifecycle/status update for manager/runtime monitors; running and changed entries include native `status` plus shared `statusCategory` |

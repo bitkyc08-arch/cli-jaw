@@ -110,6 +110,7 @@ SSE behavior:
 | `goal_done_rejected` | `{ ... }` | completion evidence gate rejection |
 | `goal_cancel` | `{ ... }` | durable goal cancellation |
 | `goal_pause_detected` | `{ ... }` | pause 2-tap gate detection |
+| `goal_pause_gate_pending` | `{ goalId, reason }` | armed pause gate remains after a goal-continuation audit turn; no further automatic continuation is scheduled |
 | `goal_continuation` | `{ ... }` | goal continuation kick |
 | `goal_continuation_failed` | `{ ... }` | goal continuation failure |
 | `goal_continuation_limit` | `{ ... }` | bounded continuation limit |
