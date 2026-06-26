@@ -8,6 +8,7 @@ aliases: [OfficeCLI Integration, cli-jaw OfficeCLI, officecli 연동]
 > **On-Demand Model (since v2.1):** OfficeCLI is no longer installed during `npm install -g cli-jaw`.
 > It is installed on-demand when a skill needs L1/L2 features or HWP support.
 > Basic office document editing uses Python OOXML libraries as the primary path.
+> Postinstall 제어: `CLI_JAW_SKIP_OFFICECLI`, `CLI_JAW_FORCE_OFFICECLI`, `OFFICECLI_REPO` (`structure/infra.md` §환경변수).
 
 OfficeCLI는 cli-jaw에서 오피스 문서를 직접 다룰 때 쓰는 기본 런타임 도구이다. Word, Excel, PowerPoint 파일을 열고, 읽고, 수정하고, 검증하는 일을 하나의 바이너리로 처리한다. Microsoft Office를 따로 설치하지 않아도 된다.
 

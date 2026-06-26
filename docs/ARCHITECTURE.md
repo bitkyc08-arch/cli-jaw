@@ -38,6 +38,8 @@ Workflow and memory
   src/goal/           persistent goal lifecycle and completion evidence gates
   src/goal-run/       bounded goal-run preview state
   src/task/           agent-native task checklist store
+  src/team/           multi-agent dispatch planning
+  src/jaw-ceo/        OpenAI Realtime CEO channel
   src/memory/         local structured memory, heartbeat schedules, indexing
 
 Manager dashboard
@@ -185,6 +187,26 @@ Use `structure/server_api.md` for the full table. Major route groups:
 
 `/api/channel/send` is the canonical outbound channel send endpoint. Telegram
 and Discord direct endpoints remain compatibility/direct paths.
+
+---
+
+## Web UI Structured Renderers
+
+The Web chat UI hydrates fenced structured payloads at final-render time (not
+during streaming) via `public/js/render/*` and `src/shared/structured-fence.ts`:
+
+| Fence / route | Role |
+| --- | --- |
+| `/api/link-preview` | Rich link unfurl cards (metadata + guarded image proxy) |
+| `search-results` | Native search-result cards from fenced JSON |
+| `compose-block` | Editable draft blocks (`compose-block-v1` schema) |
+| `diff` | Unified diff viewer (explicit fence or auto-detect) |
+| `dataframe` | Sortable/filterable tables |
+| `chart-json` | Simple bar/line/pie charts |
+| `/media/:filename` | Inline media + lightbox |
+
+Telegram/Discord channels receive prompt guards so raw fences are not forwarded
+unchanged. See `structure/INDEX.md` rows 145–146 and `structure/frontend.md`.
 
 ---
 
