@@ -12,6 +12,7 @@ import {
     createProcessBlock,
     addStep,
     bindProcessBlockInteractions,
+    buildProcessBlockHtml,
     stopBlockTicker,
 } from '../../public/js/features/process-block.ts';
 
@@ -67,4 +68,28 @@ test('PBX-003: short block (<= window) renders no expander', () => {
     const inner = pb.element.querySelector('.process-steps-inner') as HTMLElement;
     assert.equal(inner.querySelector('[data-expand-steps]'), null, 'no expander when nothing is elided');
     assert.equal(inner.querySelectorAll('[data-step-id]').length, 10, 'all short-block steps rendered');
+});
+
+test('PBX-004: hydrated block (absent from WeakMap) reveals all steps via dataset+meta reconstruction', () => {
+    setupWebUiDom();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    bindProcessBlockInteractions(host);
+    // Simulate history hydration / virtual-scroll rebuild: buildProcessBlockHtml renders
+    // head+tail+omitted-marker and populates dataset.processStepIds + the meta store, but
+    // does NOT register the block in blockStatesByElement (only createProcessBlock does, for
+    // live blocks). This is exactly the c301da6c regression case.
+    const steps = Array.from({ length: 120 }, (_, i) => makeStep(i));
+    host.innerHTML = buildProcessBlockHtml(steps, false);
+    const block = host.querySelector('.process-block') as HTMLElement;
+    const inner = block.querySelector('.process-steps-inner') as HTMLElement;
+
+    const before = inner.querySelectorAll('[data-step-id]').length;
+    assert.ok(before < 120, `middle elided on hydrate (rendered ${before})`);
+    assert.ok(inner.querySelector('[data-expand-steps]'), 'expander present on hydrated block');
+
+    (inner.querySelector('[data-expand-steps]') as HTMLElement).click(); // pre-fix: WeakMap miss → no-op
+
+    assert.equal(inner.querySelectorAll('[data-step-id]').length, 120, 'hydrated block reveals ALL steps after expand');
+    assert.equal(inner.querySelector('[data-expand-steps]'), null, 'no omitted marker after expand');
 });
