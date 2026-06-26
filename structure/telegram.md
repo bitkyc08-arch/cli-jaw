@@ -216,10 +216,17 @@ Inbound (hub-bot):
   1. chatId must equal config.chatId
   2. Hub slash commands → handleHubCommand (no @mention gate)
   3. route = resolveRoute(chatId, threadId) — none → "미연결" (no defaultPort auto-route)
-  4. POST http://127.0.0.1:{port}/api/message { prompt, target: { channel, targetId, threadId } }
+  4. POST http://127.0.0.1:{port}/api/message { prompt, target, model?, systemPrompt? }  // P4 overrides from ThreadRoute
 
-Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic
+Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic (P4: rich-message scaffold when available)
 ```
+
+### P4 — per-topic model and system prompt
+
+- `ThreadRoute` optional fields: `model`, `systemPrompt` (`src/manager/telegram-hub/types.ts`).
+- Hub `forwardToInstance()` passes overrides into instance ingest when route defines them.
+- Manager `TelegramHub.tsx` routes table shows per-topic `model` / `systemPrompt`.
+- Outbound relay may use `src/telegram/rich-message.ts` when Telegram rich payloads are available; otherwise HTML chunking fallback.
 
 ### Hub bot commands
 
@@ -247,7 +254,7 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 
 - Sidebar: **Settings → Channels → Telegram Hub**
 - Fields: Enable hub, Bot token, Forum group chat ID, Default port
-- Routes table: read-only list + Delete; add/bind는 Telegram `/setthread`만
+- Routes table: read-only list with per-topic **model** / **systemPrompt** columns + Delete; add/bind는 Telegram `/setthread`만
 
 ### Instance hub-member settings (manual today)
 
