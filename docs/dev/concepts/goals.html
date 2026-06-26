@@ -91,6 +91,9 @@
 <h1>Goal System</h1>
 <p class="lead">Goals are persistent objectives that survive across sessions. They give the agent long-term direction, require evidence-backed checkpoints, and can trigger bounded continuation runs with budget tracking.</p>
 
+<h2>Agent pause gate</h2>
+<p>AI-initiated <code>goal pause --agent --audit</code> uses a <strong>two-tap audited gate</strong>. After the first audited pause attempt, the goal stays <code>active</code> but exposes derived <code>pauseGate: { armed: true, reason: "pause_gate_pending" }</code> on status/API surfaces. While armed, automatic goal continuation is suppressed (<code>goal_pause_gate_pending</code> SSE event). A productive checkpoint clears the gate; a second audited pause fully pauses the goal.</p>
+
 <h2>Goal Lifecycle</h2>
 <p>A goal moves through these states: <strong>plan-mode pending</strong>, <strong>active</strong>, <strong>paused</strong>, <strong>done</strong>, or <strong>cancelled</strong>. Goal state is durable -- restarting the server preserves it.</p>
 
