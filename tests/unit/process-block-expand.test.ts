@@ -13,6 +13,7 @@ import {
     addStep,
     bindProcessBlockInteractions,
     buildProcessBlockHtml,
+    releaseProcessBlockDetails,
     stopBlockTicker,
 } from '../../public/js/features/process-block.ts';
 
@@ -92,4 +93,25 @@ test('PBX-004: hydrated block (absent from WeakMap) reveals all steps via datase
 
     assert.equal(inner.querySelectorAll('[data-step-id]').length, 120, 'hydrated block reveals ALL steps after expand');
     assert.equal(inner.querySelector('[data-expand-steps]'), null, 'no omitted marker after expand');
+});
+
+test('PBX-005: released had-detail step shows a hint; no-detail step stays blank (Cause 2)', () => {
+    setupWebUiDom();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    host.innerHTML = buildProcessBlockHtml([
+        { id: 'has', type: 'tool', icon: '🔧', label: 'has-detail', detail: 'X'.repeat(50), status: 'done', startTime: 0 },
+        { id: 'none', type: 'tool', icon: '🔧', label: 'no-detail', status: 'done', startTime: 0 },
+    ], true);
+    const block = host.querySelector('.process-block') as HTMLElement;
+    bindProcessBlockInteractions(block);
+
+    releaseProcessBlockDetails(block); // simulate virtual-scroll recycle: detail + meta released
+
+    const toggles = block.querySelectorAll('.process-step-toggle');
+    (toggles[0] as HTMLElement).click(); // had-detail step
+    (toggles[1] as HTMLElement).click(); // no-detail step
+    const pres = block.querySelectorAll('.process-step-full');
+    assert.match((pres[0] as HTMLElement).textContent || '', /released to save memory/, 'had-detail step shows a hint, not a blank box');
+    assert.equal((pres[1] as HTMLElement).textContent, '', 'no-detail step stays blank (no misleading hint)');
 });

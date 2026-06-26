@@ -290,7 +290,7 @@ function renderStep(step: ProcessStep): string {
             <span class="process-step-chevron">${ICONS.chevronRight}</span>
         </button>
         <div class="process-step-details collapsed" id="${detailId}">
-            <pre class="process-step-full" data-detail-lazy="true"></pre>
+            <pre class="process-step-full" data-detail-lazy="true"${(step.detailLength || 0) > 0 ? ' data-had-detail="true"' : ''}></pre>
         </div>
     </div>`;
 }
@@ -347,7 +347,13 @@ function toggleStepDetails(toggle: HTMLElement): void {
     const expanding = details.classList.contains('collapsed');
     if (expanding && pre?.dataset['detailLazy'] === 'true') {
         const detail = getStoredProcessStepDetail((wrapper as HTMLElement).dataset['stepId'] || '');
-        pre.textContent = detail || processStepMetaStore.get((wrapper as HTMLElement).dataset['stepId'] || '')?.preview || '';
+        const resolved = detail || processStepMetaStore.get((wrapper as HTMLElement).dataset['stepId'] || '')?.preview || '';
+        // If the step HAD detail (data-had-detail, set at render from detailLength) but
+        // both stores were released on recycle, show a hint instead of a blank <pre>.
+        // Steps that never had detail keep the empty box (nothing to show — no misleading).
+        pre.textContent = resolved || (pre.dataset['hadDetail'] === 'true'
+            ? '(detail released to save memory — scroll this message back into view to reload)'
+            : '');
         delete pre.dataset['detailLazy'];
     } else if (!expanding && pre && pre.textContent && pre.textContent.length > PROCESS_DETAIL_COLLAPSE_CLEAR_CHARS) {
         pre.textContent = '';
