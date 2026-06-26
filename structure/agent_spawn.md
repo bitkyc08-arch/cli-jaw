@@ -17,37 +17,37 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `src/agent/spawn.ts` | 2388L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
-| `src/agent/lifecycle-handler.ts` | 951L | child lifecycle, fallback, retry, queue resume, goal continuation |
-| `src/agent/args.ts` | 426L | CLI별 신규/재개 인자 생성 |
-| `src/agent/pi-runtime.ts` | 403L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
-| `src/agent/kiro-runtime.ts` | 377L | kiro-code plain-text stdout parser (tool lines, assistant blocks, parallel tool merge, tail-buffer flush) |
+| `src/agent/spawn.ts` | 2462L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
+| `src/agent/lifecycle-handler.ts` | 1072L | child lifecycle, fallback, retry, queue resume, goal continuation |
+| `src/agent/args.ts` | 455L | CLI별 신규/재개 인자 생성 |
+| `src/agent/pi-runtime.ts` | 460L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
+| `src/agent/kiro-runtime.ts` | 386L | kiro-code plain-text stdout parser (tool lines, assistant blocks, parallel tool merge, tail-buffer flush) |
 | `src/agent/kiro-auth.ts` | 230L | Kiro CLI data path resolution, session ID extraction from v2 sqlite store, conversation listing |
 | `src/agent/kiro-models.ts` | 98L | `kiro-cli chat --list-models --format json` dynamic model inventory |
 | `src/agent/codex-app-client.ts` | 274L | Codex App stdio server client (JSON-RPC thread/turn) |
 | `src/agent/codex-app-events.ts` | 291L | Codex App turn/tool/message/reasoning event adapter |
-| `src/agent/cursor-runtime.ts` | 239L | Cursor installed model inventory + model/effort → full model-id resolver |
-| `src/agent/memory-flush-controller.ts` | 184L | memory flush lock + post-response trigger |
+| `src/agent/cursor-runtime.ts` | 242L | Cursor installed model inventory + model/effort → full model-id resolver |
+| `src/agent/memory-flush-controller.ts` | 185L | memory flush lock + post-response trigger |
 | `src/agent/opencode-diagnostics.ts` | 156L | OpenCode binary/permission 점검 + raw event 버퍼 |
-| `src/agent/grok-trace-backfill.ts` | 153L | Grok streaming-json tool_calls/tool_result backfill from trace archive |
+| `src/agent/grok-trace-backfill.ts` | 167L | Grok streaming-json tool_calls/tool_result backfill from trace archive |
 | `src/agent/spawn-env.ts` | 148L | AGY plain-text `NO_COLOR=1`, OpenCode/Gemini 전용 env/permission 보정 |
-| `src/agent/smoke-detector.ts` | 141L | smoke response 감지 + auto-continue 판단 |
-| `src/agent/watchdog.ts` | 104L | idle/progress watchdog; progress extends deadline within 4h hard cap |
+| `src/agent/smoke-detector.ts` | 148L | smoke response 감지 + auto-continue 판단 |
+| `src/agent/watchdog.ts` | 113L | idle/progress watchdog; progress extends deadline within 4h hard cap |
 | `src/agent/resume-classifier.ts` | 81L | CLI별 stale session regex |
-| `src/agent/alert-escalation.ts` | 80L | alert escalation event helper |
+| `src/agent/alert-escalation.ts` | 86L | alert escalation event helper |
 | `src/agent/session-persistence.ts` | 78L | main session persistence gate |
-| `src/agent/live-run-state.ts` | 64L | active run snapshot / hydrate helper |
-| `src/agent/claude-e-runtime.ts` | 44L | `jaw_runtime` helper event → legacy `agent:claude-e:*` runtime broadcast 변환 |
-| `src/agent/error-classifier.ts` | 38L | stderr/result 기반 에러 분류 helper |
+| `src/agent/live-run-state.ts` | 108L | active run snapshot / hydrate helper |
+| `src/agent/claude-e-runtime.ts` | 46L | `jaw_runtime` helper event → legacy `agent:claude-e:*` runtime broadcast 변환 |
+| `src/agent/error-classifier.ts` | 52L | stderr/result 기반 에러 분류 helper |
 | `src/agent/tool-timeout.ts` | 33L | tool inactivity timeout helper |
-| `src/agent/agy-runtime.ts` | 160L | AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + session id 추출 |
-| `src/agent/cli-helpers.ts` | 7L | Claude-like CLI 판별 helper |
+| `src/agent/agy-runtime.ts` | 175L | AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + session id 추출 |
+| `src/agent/cli-helpers.ts` | 9L | Claude-like CLI 판별 helper |
 
 ### src/agent/spawn/ — Extracted Submodules
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `spawn/queue.ts` | 350L | Message queue controller (factory pattern, fair policy, race fix) |
+| `spawn/queue.ts` | 373L | Message queue controller (factory pattern, fair policy, race fix) |
 | `spawn/resume.ts` | 84L | ACP heartbeat helper + resume bucket decision (pure functions) |
 | `spawn/process-kill.ts` | 22L | Recursive process tree kill via `pgrep -P` (no shell injection) |
 
@@ -208,7 +208,7 @@ are persisted or displayed through trace helpers.
 
 ---
 
-## src/orchestrator/* — PABCD Orchestration (15 files)
+## src/orchestrator/* — PABCD Orchestration (18 files)
 
 | File | Line count | Role |
 | --- | ---: | --- |
@@ -283,7 +283,7 @@ orchestrate(prompt, meta)
 
 ---
 
-## prompt/builder.ts — System Prompt & Skills (727L)
+## prompt/builder.ts — System Prompt & Skills (946L)
 
 | Function | Role |
 | --- | --- |
@@ -319,7 +319,7 @@ orchestrate(prompt, meta)
 
 ---
 
-## Lifecycle Handler 주요 책임 (951L)
+## Lifecycle Handler 주요 책임 (1072L)
 
 | 관심사 | 구현 |
 | --- | --- |
