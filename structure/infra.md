@@ -129,6 +129,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `JAW_BOSS_TOKEN` | `src/core/boss-auth.ts`, `bin/commands/dispatch.ts` | boss-only employee dispatch token |
 | `JAW_EMPLOYEE_MODE` | `bin/commands/dispatch.ts` | employee 내부 dispatch 차단 |
 | `TELEGRAM_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` | `src/core/config.ts` | Telegram settings override |
+| `JAW_HUB_CALLBACK_URL` | `src/telegram/hub-callback.ts`, `src/manager/lifecycle.ts` | Telegram Hub member outbound callback override (loopback http only; manager spawn sets `http://127.0.0.1:${DASHBOARD_DEFAULT_PORT}`) |
 | `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_IDS` | `src/core/config.ts` | Discord settings override |
 | `DASHBOARD_PORT`, `DASHBOARD_SCAN_FROM`, `DASHBOARD_SCAN_COUNT`, `JAW_DASHBOARD_OPEN` | `bin/commands/dashboard.ts`, `src/manager/server.ts` | Manager dashboard 실행/scan 설정 |
 | `LOG_LEVEL` | `src/core/logger.ts` | logger verbosity |

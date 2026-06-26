@@ -1,6 +1,6 @@
 # 환경변수 가이드
 
-cli-jaw에서 사용하는 주요 환경변수. **전체 목록·사용처**는 `structure/infra.md` §환경변수가 source of truth다. 이 문서는 자주 쓰는 변수와 운영 팁을 **curated**로 정리하며, infra에 없는 항목(`CHROME_NO_SANDBOX`, `JAW_HUB_CALLBACK_URL`, `CLI_JAW_PRE_PROMPT_HOOKS`, `DEBUG`)은 코드 경로 기준 보조 설명이다.
+cli-jaw에서 사용하는 주요 환경변수. **전체 목록·사용처**는 `structure/infra.md` §환경변수가 source of truth다. 이 문서는 자주 쓰는 변수와 운영 팁을 **curated**로 정리하며, infra에 없는 항목(`CHROME_NO_SANDBOX`, `CLI_JAW_PRE_PROMPT_HOOKS`, `DEBUG`)은 코드 경로 기준 보조 설명이다.
 
 ---
 
