@@ -65,6 +65,9 @@ export function createDashboardTelegramHubRouter(): Router {
             port,
             ...(typeof b.label === 'string' && b.label.trim() ? { label: b.label.trim() } : {}),
             enabled: b.enabled !== false,
+            // P4 per-topic overrides (optional)
+            ...(typeof b.systemPrompt === 'string' && b.systemPrompt.trim() ? { systemPrompt: b.systemPrompt.trim() } : {}),
+            ...(typeof b.model === 'string' && b.model.trim() ? { model: b.model.trim() } : {}),
         };
         res.json({ ok: true, config: redact(upsertRoute(route)) });
     });

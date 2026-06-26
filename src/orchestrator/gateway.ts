@@ -81,7 +81,7 @@ function runDetached(
 
 export function submitMessage(
     text: string,
-    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number },
+    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; overrides?: { model?: string; systemPrompt?: string } },
 ): SubmitResult {
     const trimmed = text.trim();
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
@@ -139,7 +139,7 @@ export function submitMessage(
     // starting immediately is safe and avoids the processQueue deadlock
     // documented in devlog/_plan/260417_message_duplication/02_*.
     if (isAgentBusy() || hasBlockingWorkers()) {
-        const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope }));
+        const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, overrides: meta.overrides }));
         return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId };
     }
 
@@ -148,7 +148,7 @@ export function submitMessage(
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
         runDetached(
-            orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
+            orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides })),
             'orchestrate',
             { ...meta, requestId },
         );

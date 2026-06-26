@@ -398,10 +398,16 @@ export async function orchestrate(
     // chain). Building one here per call regenerated it every turn and broke
     // the byte-stable system prompt — do not reintroduce a memorySnapshot pass.
 
+    // P4 per-topic config: apply a transient per-request model/systemPrompt override
+    // (from a hub ThreadRoute) via the existing SpawnOpts.model/sysPrompt — no session
+    // persistence, so it affects only this request's agent run.
+    const overrides = meta["overrides"] as { model?: string; systemPrompt?: string } | undefined;
     const { promise } = runSpawnAgent(prompt, {
         origin,
         _skipInsert: !!meta["_skipInsert"],
         _heartbeatAnchorId: meta["_heartbeatAnchorId"],
+        ...(overrides?.model ? { model: overrides.model } : {}),
+        ...(overrides?.systemPrompt ? { sysPrompt: overrides.systemPrompt } : {}),
     });
     const result = await promise as Record<string, any>;
 

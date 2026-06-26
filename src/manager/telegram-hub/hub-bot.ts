@@ -27,13 +27,13 @@ export function canStartHub(cfg: TelegramHubConfig): boolean {
     return cfg.enabled === true && Boolean(cfg.token) && Boolean(cfg.chatId);
 }
 
-async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string): Promise<{ syncText?: string }> {
+async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
     const target = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: chatId, threadId };
     try {
         const res = await fetch(`http://127.0.0.1:${port}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ prompt, target }),
+            body: JSON.stringify(stripUndefined({ prompt, target, overrides })),
             signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
         });
         const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -121,7 +121,10 @@ export function createHubBot(token: string): Bot {
             return;
         }
         await ctx.replyWithChatAction('typing').catch(() => {});
-        const { syncText } = await forwardToInstance(route.port, text, chatId, threadId);
+        const overrides = (route.model || route.systemPrompt)
+            ? stripUndefined({ model: route.model, systemPrompt: route.systemPrompt })
+            : undefined;
+        const { syncText } = await forwardToInstance(route.port, text, chatId, threadId, overrides);
         if (syncText) await ctx.reply(syncText); // slash sync result; prompt result arrives via /outbound
     });
 
@@ -138,8 +141,9 @@ export async function sendToTopic(
     const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
     if (payload.type === 'text') {
         const { markdownToTelegramHtml, chunkTelegramMessage } = await import('../../telegram/forwarder.js');
+        const { sendRichOrHtml } = await import('../../telegram/rich-message.js');   // P4: rich when available, else HTML
         for (const chunk of chunkTelegramMessage(markdownToTelegramHtml(payload.text || ''))) {
-            await hubBot.api.sendMessage(chatId, chunk, stripUndefined({ parse_mode: 'HTML', message_thread_id }))
+            await sendRichOrHtml(hubBot, chatId, chunk, stripUndefined({ message_thread_id }))
                 .catch(() => hubBot!.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id })));
         }
         return { ok: true };

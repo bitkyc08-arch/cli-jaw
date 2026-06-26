@@ -28,6 +28,16 @@ export function isValidHubTarget(val: unknown): val is RemoteTarget {
     return true;
 }
 
+/** P4: sanitize per-topic model/systemPrompt overrides from a hub-forwarded request. */
+export function sanitizeOverrides(val: unknown): { model?: string; systemPrompt?: string } | undefined {
+    if (!val || typeof val !== 'object') return undefined;
+    const o = val as Record<string, unknown>;
+    const model = typeof o['model'] === 'string' && o['model'].trim() ? o['model'].trim() : undefined;
+    const systemPrompt = typeof o['systemPrompt'] === 'string' && o['systemPrompt'].trim() ? o['systemPrompt'].trim() : undefined;
+    if (!model && !systemPrompt) return undefined;
+    return stripUndefined({ model, systemPrompt });
+}
+
 // Attachment-sized command text (SAC-004 contract — slash commands may carry
 // inline attachment payloads, so the old 500-char truncation is forbidden).
 const WEB_COMMAND_TEXT_LIMIT = 30_000;
@@ -100,7 +110,9 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             return;
         }
         const target = (rawTarget ?? undefined) as RemoteTarget | undefined;
-        const submitMeta = stripUndefined({ origin: target ? 'telegram' as const : 'web' as const, target });
+        // P4: per-topic overrides are only honored when the hub forwards a telegram target.
+        const overrides = target ? sanitizeOverrides(req.body?.overrides) : undefined;
+        const submitMeta = stripUndefined({ origin: target ? 'telegram' as const : 'web' as const, target, overrides });
 
         // Slash command pre-processing: Telegram/Discord already do this,
         // but /api/message callers (REST, goal-continuation) bypass /api/command.
