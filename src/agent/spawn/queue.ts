@@ -13,6 +13,7 @@ type QueueItem = {
     target?: RemoteTarget;
     chatId?: string | number;
     requestId?: string;
+    overrides?: { model?: string; systemPrompt?: string };   // P4 per-topic override, carried through the queue
     ts: number;
 };
 
@@ -85,6 +86,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
                 target: parsed.target,
                 chatId: parsed.chatId,
                 requestId: parsed.requestId,
+                overrides: parsed.overrides,
                 ts: typeof parsed.ts === 'number' ? parsed.ts : Date.now(),
             })];
         } catch {
@@ -215,7 +217,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         return { removed: removed!, pending: messageQueue.length };
     }
 
-    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string }): string {
+    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string; overrides?: { model?: string; systemPrompt?: string } }): string {
         const item: QueueItem = stripUndefined({
             id: crypto.randomUUID(),
             prompt,
@@ -224,6 +226,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
             target: meta?.target,
             chatId: meta?.chatId,
             requestId: meta?.requestId,
+            overrides: meta?.overrides,
             ts: Date.now(),
         });
         deps.insertQueuedMessage.run(item.id, JSON.stringify(item));
@@ -291,6 +294,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         const target = item.target;
         const chatId = item.chatId;
         const requestId = item.requestId;
+        const overrides = item.overrides;
         const origin: RuntimeOrigin = source || 'web';
         console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
 
@@ -304,10 +308,10 @@ export function createQueueController(deps: QueueDeps): QueueController {
 
             const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await deps.importPipeline();
             const task = isResetIntent(combined)
-                ? orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })
+                ? orchestrateReset({ origin, target, chatId, requestId, overrides, _skipInsert: true })
                 : isContinueIntent(combined)
-                    ? orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })
-                    : orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
+                    ? orchestrateContinue({ origin, target, chatId, requestId, overrides, _skipInsert: true })
+                    : orchestrate(combined, { origin, target, chatId, requestId, overrides, _skipInsert: true });
 
             try {
                 await task;
