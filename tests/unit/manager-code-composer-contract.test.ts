@@ -86,3 +86,29 @@ test('code composer renders as one dense workbench dock with responsive controls
     assert.ok(css.includes('grid-template-columns: minmax(0, 1fr) auto'), 'composer input and send button must have stable grid columns');
     assert.equal(css.includes('.code-composer-footer {\n        grid-template-columns: 1fr;'), false, 'narrow view must keep footer controls on one line');
 });
+
+test('code composer stays bottom-pinned inside the Code workbench layout', () => {
+    const cssEntry = read('public/manager/src/code/code.css');
+    const css = read('public/manager/src/code/code-composer.css');
+
+    const canvasStart = cssEntry.indexOf('.code-canvas {');
+    const canvasBlock = cssEntry.slice(canvasStart, cssEntry.indexOf('}', canvasStart));
+    assert.ok(canvasBlock.includes('height: 100%;'), 'Code canvas must fill the manager workspace surface');
+    assert.ok(canvasBlock.includes('min-height: 0;'), 'Code canvas must allow its transcript child to shrink instead of pushing the composer');
+    assert.ok(canvasBlock.includes('overflow: hidden;'), 'Code canvas must not become the scroll container when switching manager surfaces');
+
+    const mainStart = cssEntry.indexOf('.code-canvas-main {');
+    const mainBlock = cssEntry.slice(mainStart, cssEntry.indexOf('}', mainStart));
+    assert.ok(mainBlock.includes('flex: 1 1 0;'), 'main workbench pane must consume bounded flex height');
+    assert.ok(mainBlock.includes('height: 100%;'), 'main workbench pane must inherit the bounded canvas height');
+    assert.ok(mainBlock.includes('overflow: hidden;'), 'main workbench pane must keep transcript scrolling internal');
+
+    const transcriptStart = cssEntry.indexOf('.code-transcript {');
+    const transcriptBlock = cssEntry.slice(transcriptStart, cssEntry.indexOf('}', transcriptStart));
+    assert.ok(transcriptBlock.includes('flex: 1 1 0;'), 'transcript must be the flexible scroll region above the composer');
+    assert.ok(transcriptBlock.includes('overflow-y: auto;'), 'transcript, not the whole workbench, must scroll');
+
+    const dockStart = css.indexOf('.code-composer-dock {');
+    const dockBlock = css.slice(dockStart, css.indexOf('}', dockStart));
+    assert.ok(dockBlock.includes('flex: 0 0 auto;'), 'composer dock must not shrink or drift when the transcript grows');
+});

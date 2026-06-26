@@ -280,6 +280,9 @@
 .code-canvas {
     display: flex;
     height: 100%;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
     background: var(--bg-base);
 }
 .code-canvas-sidebar {
@@ -290,11 +293,13 @@
     background: var(--bg-panel);
 }
 .code-canvas-main {
-    flex: 1;
+    flex: 1 1 0;
     display: flex;
     flex-direction: column;
     min-width: 0;
     min-height: 0;
+    height: 100%;
+    overflow: hidden;
 }
 
 /* Session header (title + context meter + plan) */
@@ -372,7 +377,7 @@
 
 /* Transcript */
 .code-transcript {
-    flex: 1;
+    flex: 1 1 0;
     min-height: 0;
     overflow-y: auto;
     padding: 16px;
