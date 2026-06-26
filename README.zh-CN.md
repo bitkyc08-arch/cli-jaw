@@ -320,7 +320,7 @@ jaw worker status Backend
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro 或更高订阅 |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro 或更高订阅；6 月订阅赠送额度的推荐 runtime |
 | **AI-E** | provider-selected | 所选 provider 认证 | 多 provider runtime wrapper |
-| **Antigravity** | AGY-selected | 由 `agy` 在运行时检查 | `agy -p` 实验性 AGY print-mode runtime；非 `default` 时可选 `--model`；通过 `--conversation` resume |
+| **Antigravity** | AGY-selected | 由 `agy` 在运行时检查 | `agy -p` 实验性 AGY print-mode runtime；可选 `--model` 会先做 capability probe，确认支持时才传递（AGY 1.0.12 已观察到）；通过 `--conversation` resume；无独立 effort flag |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro 或更高订阅 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro 或更高订阅 |
 | **Cursor** | `composer-2.5` | `cursor-agent login` 或 `CURSOR_API_KEY` | Cursor 订阅；quota 为 auth/status-only |
@@ -426,7 +426,7 @@ Computer Use 让你用自然语言控制任何 macOS 应用——Finder、Safari
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-文字聊天、语音消息（通过多供应商 STT——语音转文字 自动转录）、文件/照片上传、斜杠命令（51 个已注册；workflow helper：`/plan`、`/interview`、`/review`、`/search`、`/goal`、`/orchestrate`、`/task`、`/fork`）、论坛主题路由与 **Dashboard Telegram Hub**（`/setthread`、`/threads`、Manager UI 中按主题的 `model`/`systemPrompt` override）、定时任务（`every`/`cron` heartbeat）结果自动送达。
+文字聊天、语音消息（通过多供应商 STT——语音转文字 自动转录）、文件/照片上传、斜杠命令（51 个已注册；workflow helper：`/plan`、`/interview`、`/review`、`/search`、`/goal`、`/orchestrate`、`/task`、`/fork`、`/gd`；CLI/Web 动态 `/skill:<id>`）、论坛主题路由与 **Dashboard Telegram Hub**（`/setthread`、`/threads`、`/hubhelp`、Manager UI 中按主题的 `model`/`systemPrompt` override）、定时任务（`every`/`cron` heartbeat）结果自动送达。
 
 <details>
 <summary>设置（3 步）</summary>

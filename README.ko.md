@@ -320,7 +320,7 @@ jaw worker status Backend
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro 구독 이상 |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro 구독 이상; 6월 구독 포함 사용량 권장 런타임 |
 | **AI-E** | provider-selected | 선택 provider 인증 | 다중 provider runtime wrapper |
-| **Antigravity** | AGY-selected | `agy` 실행 시 확인 | `agy -p` 실험적 AGY print-mode runtime; `default`가 아니면 선택적 `--model`; `--conversation`으로 resume |
+| **Antigravity** | AGY-selected | `agy` 실행 시 확인 | `agy -p` 실험적 AGY print-mode runtime; 선택적 `--model`은 capability probe 후 지원될 때만 사용(AGY 1.0.12에서 관측); `--conversation`으로 resume; 별도 effort flag 없음 |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro 구독 이상 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro 구독 이상 |
 | **Cursor** | `composer-2.5` | `cursor-agent login` 또는 `CURSOR_API_KEY` | Cursor 구독; 쿼터는 인증/상태 전용 |
@@ -426,7 +426,7 @@ Computer Use로 Finder, Safari, 시스템 설정, Xcode 등 모든 macOS 앱을 
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-텍스트 채팅, 음성 메시지(다중 프로바이더 STT — 음성을 텍스트로 자동 변환), 파일/사진 업로드, 슬래시 명령어(51개 등록; workflow helper: `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`), 포럼 토픽 라우팅 및 **Dashboard Telegram Hub**(`/setthread`, `/threads`, Manager UI에서 토픽별 `model`/`systemPrompt` override), 예약 작업(`every`/`cron` heartbeat) 결과 자동 전달.
+텍스트 채팅, 음성 메시지(다중 프로바이더 STT — 음성을 텍스트로 자동 변환), 파일/사진 업로드, 슬래시 명령어(51개 등록; workflow helper: `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; CLI/Web 동적 `/skill:<id>`), 포럼 토픽 라우팅 및 **Dashboard Telegram Hub**(`/setthread`, `/threads`, `/hubhelp`, Manager UI에서 토픽별 `model`/`systemPrompt` override), 예약 작업(`every`/`cron` heartbeat) 결과 자동 전달.
 
 <details>
 <summary>설정 (3단계)</summary>

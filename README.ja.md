@@ -251,7 +251,7 @@ Employee は「Frontend は CSS、Backend は API」用。サブエージェン�
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro サブスクリプション以上 |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro サブスクリプション以上。6月のサブスク付与枠では推奨 runtime |
 | **AI-E** | provider-selected | 選択 provider の認証 | マルチ provider runtime wrapper |
-| **Antigravity** | AGY-selected | `agy` 実行時に確認 | `agy -p` 実験的 AGY print-mode runtime。`default` 以外は任意の `--model`。`--conversation` で resume |
+| **Antigravity** | AGY-selected | `agy` 実行時に確認 | `agy -p` 実験的 AGY print-mode runtime。任意の `--model` は capability probe 後、対応時のみ使用（AGY 1.0.12 で確認）。`--conversation` で resume。個別 effort flag はなし |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション以上 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション以上 |
 | **Cursor** | `composer-2.5-fast` | `cursor-agent login` または `CURSOR_API_KEY` | Cursor サブスクリプション。quota は auth/status-only |
@@ -356,7 +356,7 @@ Computer Use で Finder、Safari、システム設定、Xcode など、あらゆ
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-テキストチャット、音声メッセージ（マルチプロバイダ STT — 音声をテキストに自動変換）、ファイル/写真アップロード、スラッシュコマンド（51 件登録; workflow helper: `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`）、フォーラムトピックルーティングと **Dashboard Telegram Hub**（`/setthread`, `/threads`、Manager UI でトピックごとの `model`/`systemPrompt` override）、スケジュールタスク（`every`/`cron` heartbeat）結果の自動配信。
+テキストチャット、音声メッセージ（マルチプロバイダ STT — 音声をテキストに自動変換）、ファイル/写真アップロード、スラッシュコマンド（51 件登録; workflow helper: `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; CLI/Web 動的 `/skill:<id>`）、フォーラムトピックルーティングと **Dashboard Telegram Hub**（`/setthread`, `/threads`, `/hubhelp`、Manager UI でトピックごとの `model`/`systemPrompt` override）、スケジュールタスク（`every`/`cron` heartbeat）結果の自動配信。
 
 <details>
 <summary>セットアップ（3 ステップ）</summary>
@@ -451,9 +451,11 @@ jaw --home ~/my-project serve --port 3458
 
 ```bash
 npm run build          # tsc → dist/
+npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts（ホットリロード）
 npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
 npm run gate:all       # リリース/ドキュメント整合性ゲート
+bash structure/check-doc-drift.sh
 ```
 
 アーキテクチャ詳細：[ARCHITECTURE.md](docs/ARCHITECTURE.md) · テストカバレッジ：[TESTS.md](TESTS.md) · 内部構造ドキュメント：[structure/](structure/)

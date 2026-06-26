@@ -220,7 +220,7 @@ The manager owns:
 - multi-instance discovery and cached `InstanceRegistry` scans,
 - live instance previews, worker SSE bridge (`worker-sse-client.ts`), and preview-origin proxying,
 - board, schedule, reminders, and connector surfaces,
-- **Telegram Hub** (P0–P4): forum-topic routing `(chatId, threadId) → port`, hub-member inbound proxy and outbound relay, per-topic `model`/`systemPrompt` overrides, Manager settings GUI (`TelegramHub.tsx`); one bot token → one long-poller invariant,
+- **Telegram Hub** (P0–P4): forum-topic routing `(chatId, threadId) → port`, hub-member inbound proxy and outbound relay, per-topic `model`/`systemPrompt` overrides, Manager settings GUI (`TelegramHub.tsx`); hub commands `/setthread` `/threads` `/hubhelp`; one bot token → one long-poller invariant,
 - notes, WYSIWYG editing, graph/search, snippets, history, and assets,
 - git diff repo candidates, summary, and file diff APIs,
 - read-only dashboard memory federation (L1/L2) and optional embedding search,
