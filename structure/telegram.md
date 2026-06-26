@@ -11,7 +11,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 > Telegram transport (standalone + hub-member) + Dashboard forum-topic hub + shared messaging runtime + forwarder lifecycle + origin filtering + voice STT
 > 현재 Telegram/Discord는 `src/messaging/`을 공유하며, settings restart는 `core/runtime-settings.ts`에서 한 번에 처리된다
 > v5 Update: `forwardAll` 토글은 Telegram/Discord 각각의 channel setting으로 분리됨
-> v6 Update: forum **topic-aware** programmatic send (P0) + Dashboard **Telegram Hub** — one bot, many topics → many instances (P1–P3)
+> v6 Update: forum **topic-aware** programmatic send (P0) + Dashboard **Telegram Hub** — one bot, many topics → many instances (P0–P4; per-topic `model`/`systemPrompt` overrides)
 
 ---
 
