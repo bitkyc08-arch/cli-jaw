@@ -172,9 +172,14 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
         // claudeStreamedText so handleClaudeEvent skips the duplicate complete-block
         // append (and resets it) without false-skipping a tool-only turn.
         if (inner?.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
-            ctx.claudeStreamedText = true;
             const seg = appendAssistantRawText(ctx, inner.delta.text || '');
-            if (seg) ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + seg;
+            if (seg) {
+                // Arm the per-message guard only when real text flowed: an all-empty
+                // text_delta run must NOT skip the complete-block fallback (else its
+                // prose would be dropped).
+                ctx.claudeStreamedText = true;
+                ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + seg;
+            }
             return;
         }
 

@@ -314,6 +314,22 @@ test('claude falls back to complete assistant block when no text_delta streamed'
     assert.ok(!ctx.claudeStreamedText, 'per-message flag stays falsy in the fallback path');
 });
 
+test('claude empty text_delta does not arm the doubling guard (fallback still fires)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // An all-empty text_delta must NOT set claudeStreamedText, else a real complete block is skipped.
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '' } },
+    }, ctx, 'test');
+    assert.ok(!ctx.claudeStreamedText, 'empty delta must not arm the per-message flag');
+    // Complete assistant block must still be surfaced via fallback.
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Real prose.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, 'Real prose.', 'complete block appended when only empty deltas streamed');
+});
+
 test('extractFromEvent updates context for each CLI path', () => {
     const claudeCtx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
     extractFromEvent('claude', {
