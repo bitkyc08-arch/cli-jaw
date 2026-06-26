@@ -47,19 +47,21 @@ Manager dashboard
 
 Browser and automation
   src/browser/        CDP primitives, runtime diagnostics, tab lifecycle
-  src/browser/web-ai/ ChatGPT/Gemini/Grok web-AI session automation
-  src/browser/adaptive-fetch/ URL reader and browser-escalation pipeline
+  src/browser/web-ai/ ChatGPT/Gemini/Grok web-AI session automation (96 TS files)
+  src/browser/adaptive-fetch/ URL reader + browser-escalation pipeline (34 files;
+                      typed stage scheduler, SSRF guards, warm pool, BM25, Camoufox/yt-dlp/Jina)
 ```
 
-Current core API shape, as of June 10, 2026:
+Current core API shape, as of June 27, 2026 (see `structure/INDEX.md` footer and `structure/server_api.md` / `structure/commands.md` for live counts):
 
-- `server.ts`: 593 lines of glue/bootstrap.
-- REST/SSE routes: 201 handlers including `/`; 200 API/media endpoints.
-- Browser API: 43 handlers in `src/routes/browser.ts`, including Web-AI code-mode and code-extract routes.
-- Public event type names: 47.
+- `server.ts`: 635 lines of glue/bootstrap (auth, security, SSE bootstrap, route mounting).
+- REST/SSE routes: 232 handlers including `/` across `server.ts`, `src/routes/*.ts`, and mounted sub-routers.
+- Browser API: 43 handlers in `src/routes/browser.ts`, including Web-AI code-mode, code-extract, and adaptive-fetch routes.
+- Public SSE event types: 49 (`src/core/bus.ts` → `src/core/event-bus.ts` → `GET /api/events`).
 - Primary web event channel: `GET /api/events` SSE, with legacy WebSocket fallback only for pre-X-01 servers.
-- Slash command registry: 40 commands across CLI, Web, Telegram, and Discord.
-- Runtime registry: 13 top-level runtimes.
+- Slash command registry: 51 commands across CLI, Web, Telegram, and Discord, plus dynamic `/skill:<id>` for active skills (CLI/Web only).
+- Runtime registry: 13 top-level runtimes in `src/cli/registry.ts`.
+- Module scale: `src/routes/` 36 TS files · `src/agent/` 46 TS files · `src/goal/` 5 TS files (includes `pause-gate.ts`) · `src/browser/web-ai/` 96 TS files · `src/browser/adaptive-fetch/` 34 files · `src/telegram/` 5 files (includes `hub-callback.ts`) · `src/manager/` 94 TS/TSX files (includes `telegram-hub/`).
 
 ---
 
@@ -144,6 +146,21 @@ Key points:
 - Worker progress is query-first through `jaw worker status` and watchable via
   `jaw worker watch` or `jaw dispatch --watch`.
 
+Goal pause gate (P0):
+
+- `src/goal/pause-gate.ts` arms when an active goal has `agentPauseCount ≥ 1` after the first audited agent pause.
+- While armed, automatic goal continuation is suppressed; the audit turn ends with `goal_pause_gate_pending` on the SSE channel.
+- A second audited agent pause or a productive checkpoint clears the gate. See `structure/stream-events.md`.
+
+Pre-prompt context hooks:
+
+- `src/prompt/context-hooks.ts` injects bounded JSON snapshots from `JAW_HOME/context-hooks.json` before model reasoning (`main` / `heartbeat` scopes).
+- Inspected via `jaw hooks inspect`; kill switch `CLI_JAW_PRE_PROMPT_HOOKS=0`. Details: `docs/dev/pre-prompt-context-hooks.md`.
+
+PABCD evidence gate:
+
+- Forward P→A/A→B/B→C/C→D requires `jaw orchestrate <phase> --attest '{"from","to","did",...}'` (C→D also `checkOutput`/`exitCode`). Goal mode self-advances but still requires attestation as proof-of-work.
+
 ---
 
 ## API Surfaces
@@ -179,11 +196,12 @@ Electron implicit spawn uses a separate `24577-24590` lane.
 The manager owns:
 
 - multi-instance discovery and cached `InstanceRegistry` scans,
-- live instance previews and preview-origin proxying,
+- live instance previews, worker SSE bridge (`worker-sse-client.ts`), and preview-origin proxying,
 - board, schedule, reminders, and connector surfaces,
+- **Telegram Hub** (P0–P4): forum-topic routing `(chatId, threadId) → port`, hub-member inbound proxy and outbound relay, per-topic `model`/`systemPrompt` overrides, Manager settings GUI (`TelegramHub.tsx`); one bot token → one long-poller invariant,
 - notes, WYSIWYG editing, graph/search, snippets, history, and assets,
 - git diff repo candidates, summary, and file diff APIs,
-- read-only dashboard memory federation and optional embedding search,
+- read-only dashboard memory federation (L1/L2) and optional embedding search,
 - Electron panel bridges for terminal, browser, diff, folder, docs, and Jaw CEO.
 
 Manager routes are documented separately in `structure/server_api.md` because
@@ -225,11 +243,14 @@ Common local commands:
 ```bash
 npm run build
 npm run build:frontend
-npm test
+npm test          # tsx --experimental-test-module-mocks tests/run.mts
+npm run test:all  # same driver, all test files under tests/
 npm run gate:all
 bash structure/check-doc-drift.sh
 bash structure/verify-counts.sh
 ```
+
+`npm test` uses the programmatic `tests/run.mts` driver (`isolation: 'process'` per file for subprocess DB isolation) instead of a flat `tsx --test` glob.
 
 Frontend TypeScript under `public/js/**/*.ts` requires `npm run build:frontend`.
 Backend TypeScript under `src/**/*.ts` requires `npm run build` or
@@ -263,6 +284,9 @@ update these together:
 - `structure/commands.md`
 - `structure/str_func.md`
 - `docs/ARCHITECTURE.md`
+- `docs/dev/pre-prompt-context-hooks.md` when context-hook config or limits change
+- `structure/telegram.md` when Telegram Hub or topic routing changes
+- `structure/stream-events.md` when SSE event catalog or goal pause-gate events change
 - `electron/README.md` when desktop behavior changes
 
 Run `bash structure/check-doc-drift.sh` before calling the docs current.
