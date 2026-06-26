@@ -279,7 +279,7 @@ export async function withSessionCommandLock<T>(sessionId: string, fn: () => Pro
                 try { unlinkSync(path); } catch { /* races resolve naturally */ }
                 continue;
             }
-            sleepBlockingMs(LOCK_RETRY_MS);
+            await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_MS));
         }
     }
     if (fd === null) {
@@ -297,6 +297,7 @@ export async function withSessionCommandLock<T>(sessionId: string, fn: () => Pro
             renameSync(tmpHb, metaPath);
         } catch { /* best-effort heartbeat */ }
     }, 60_000);
+    heartbeatTimer.unref();
     try {
         return await fn();
     } finally {

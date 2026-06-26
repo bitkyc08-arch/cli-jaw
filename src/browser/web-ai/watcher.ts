@@ -123,7 +123,7 @@ async function runTick(input: StartWebAiWatcherInput, state: WatcherRuntimeState
         await drainPendingWebAiNotifications();
         return;
     }
-    state.lock?.heartbeat(); // 104.3: keep the cross-process lock fresh each tick
+    state.lock?.heartbeat(); // supplementary tick-start heartbeat (independent 60s interval handles long-poll gaps)
     try {
         let result: WebAiOutput;
         try {

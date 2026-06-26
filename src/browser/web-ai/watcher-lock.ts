@@ -74,7 +74,8 @@ export function isWatcherLockStale(metadata: WatcherLockMetadata | null, staleMs
     }
     if (!pidAlive(Number(metadata.pid))) return true;
     const heartbeat = Date.parse(metadata.heartbeatAt || metadata.startedAt || '');
-    return Number.isFinite(heartbeat) && Date.now() - heartbeat > staleMs;
+    if (!Number.isFinite(heartbeat)) return true;
+    return Date.now() - heartbeat > staleMs;
 }
 
 /**
@@ -96,17 +97,21 @@ export function acquireWatcherSessionLock(
                 startedAt: new Date().toISOString(),
                 heartbeatAt: new Date().toISOString(),
             });
+            const doHeartbeat = (extra: Record<string, unknown> = {}) => {
+                writeWatcherLockMetadata(dir, {
+                    sessionId,
+                    pid: process.pid,
+                    heartbeatAt: new Date().toISOString(),
+                    ...extra,
+                });
+            };
+            const heartbeatInterval = setInterval(doHeartbeat, 60_000);
+            heartbeatInterval.unref();
             return {
                 lockPath: dir,
-                heartbeat(extra = {}) {
-                    writeWatcherLockMetadata(dir, {
-                        sessionId,
-                        pid: process.pid,
-                        heartbeatAt: new Date().toISOString(),
-                        ...extra,
-                    });
-                },
+                heartbeat: doHeartbeat,
                 release() {
+                    clearInterval(heartbeatInterval);
                     rmSync(dir, { recursive: true, force: true });
                 },
             };
