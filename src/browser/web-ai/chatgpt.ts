@@ -495,7 +495,11 @@ export async function poll(port: number, input: {
             interstitial: pollInterstitial,
         } satisfies WebAiOutput;
     }
-    const timeoutMs = Math.max(1, Number(input.timeout || 1200)) * 1000;
+    const timeoutSec = input.timeout
+        ? Math.max(1, Number(input.timeout))
+        : session?.timeoutMs ? session.timeoutMs / 1000
+        : resolveTimeoutDefaultSec({}, vendor);
+    const timeoutMs = timeoutSec * 1000;
     // 104.18: per-tick conversation-drift guard. baseline.url is the chat we committed to; if the
     // held page later sits on a *different* /c/<id>, we're polling the wrong thread. The expected
     // fresh-chat none→id transition is NOT flagged (it only fires when both ids exist and differ).
@@ -780,11 +784,16 @@ export async function watch(port: number, input: { vendor?: string; timeout?: nu
     if (input.url) await navigateRequestedConversation(port, input.url, parseVendor(input.vendor));
     if (input.session && input.notify !== false) {
         const vendor = parseVendor(input.vendor);
+        const existingSession = getSession(input.session);
+        const watchTimeoutSec = input.timeout
+            ? Math.max(1, Number(input.timeout))
+            : existingSession?.timeoutMs ? existingSession.timeoutMs / 1000
+            : resolveTimeoutDefaultSec({}, vendor);
         const watcher = startWebAiWatcher({
             port,
             vendor,
             sessionId: input.session,
-            timeoutMs: Math.max(1, Number(input.timeout || 1200)) * 1000,
+            timeoutMs: watchTimeoutSec * 1000,
             pollIntervalSeconds: Number(input.pollIntervalSeconds || 30),
             ...(input.allowCopyMarkdownFallback !== undefined ? { allowCopyMarkdownFallback: input.allowCopyMarkdownFallback } : {}),
             pollOnce: (pollInput) => poll(port, pollInput),
