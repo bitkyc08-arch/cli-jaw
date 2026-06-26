@@ -1,0 +1,162 @@
+// Dashboard-owned Telegram hub bot (P2). One bot token bound to one forum
+// supergroup; each topic (message_thread_id) routes to its mapped instance and
+// replies relay back into the topic. Includes the GPT Pro review fixes (doc 05):
+// chatId-required start guard, 409 retry-state fix, getWebhookInfo+await
+// deleteWebhook, secure-by-default routing (unmapped topics refused), and a
+// timeout on the hub->instance forward.
+import { Bot } from 'grammy';
+import { getHubConfig, resolveRoute } from './routing-store.js';
+import type { TelegramHubConfig } from './types.js';
+import { stripUndefined } from '../../core/strip-undefined.js';
+
+let hubBot: Bot | null = null;
+let hubToken: string | null = null;
+let retries = 0;
+const MAX_RETRIES = 5;
+const FORWARD_TIMEOUT_MS = 15_000;
+const HUB_COMMANDS = new Set(['setthread', 'threads', 'hubhelp']); // P3 fills the handler bodies
+
+/** Map a raw message_thread_id to a route key. General topic (id<=1) → '1'. Exported for tests. */
+export function threadKey(thread?: number): string {
+    return thread && thread > 1 ? String(thread) : '1';
+}
+
+/** Whether startHubBot would actually start: enabled + token + bound chatId all present (GPT Pro B1). Exported for tests. */
+export function canStartHub(cfg: TelegramHubConfig): boolean {
+    return cfg.enabled === true && Boolean(cfg.token) && Boolean(cfg.chatId);
+}
+
+async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string): Promise<{ syncText?: string }> {
+    const target = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: chatId, threadId };
+    try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/message`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ prompt, target }),
+            signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
+        });
+        const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        // Slash commands return text synchronously; prompts reply later via /outbound.
+        if (j['command'] && typeof j['text'] === 'string' && (j['text'] as string).trim()) {
+            return { syncText: j['text'] as string };
+        }
+        return {};
+    } catch (e) {
+        console.error(`[tg:hub] forward to ${port} failed:`, (e as Error).message);
+        return { syncText: `⚠️ 인스턴스 ${port} 응답 실패: ${(e as Error).message}` };
+    }
+}
+
+// P3 implements real handlers; P2 ships a stub so interception is wired.
+async function handleHubCommand(_name: string, _args: string[], _chatId: string, _threadId: string): Promise<string> {
+    return 'hub command (P3)';
+}
+
+export function createHubBot(token: string): Bot {
+    const bot = new Bot(token);
+    bot.catch((err) => console.error('[tg:hub]', (err as Error).message || err));
+
+    bot.on('message:text', async (ctx) => {   // grammY narrows ctx.message.text to string here
+        if (!ctx.chat || !ctx.message) return;
+        const cfg = getHubConfig();
+        const chatId = String(ctx.chat.id);
+        if (!cfg.chatId || chatId !== cfg.chatId) return;          // only the bound forum group
+        const threadId = threadKey(ctx.message.message_thread_id);
+        const text = ctx.message.text.trim();
+
+        // (a) hub-level slash interception — NO mention-gate on the hub bot (topic binding = auth).
+        if (text.startsWith('/')) {
+            const name = text.slice(1).split(/\s+/)[0]!.split('@')[0]!.toLowerCase();
+            if (HUB_COMMANDS.has(name)) {
+                const args = text.slice(1).split(/\s+/).slice(1);
+                await ctx.reply(await handleHubCommand(name, args, chatId, threadId)); // grammY auto-threads
+                return;
+            }
+        }
+
+        // (b) route to the mapped instance — secure-by-default: refuse unmapped topics
+        // (GPT Pro B2: no silent defaultPort auto-routing).
+        const route = resolveRoute(chatId, threadId);
+        if (!route) {
+            await ctx.reply('이 토픽은 인스턴스에 연결되지 않았습니다. /setthread <port> 로 연결하세요.');
+            return;
+        }
+        await ctx.replyWithChatAction('typing').catch(() => {});
+        const { syncText } = await forwardToInstance(route.port, text, chatId, threadId);
+        if (syncText) await ctx.reply(syncText); // slash sync result; prompt result arrives via /outbound
+    });
+
+    return bot;
+}
+
+/** Send a relayed reply into a topic (used by POST /api/dashboard/telegram-hub/outbound). */
+export async function sendToTopic(
+    chatId: string,
+    threadId: string,
+    payload: { type: string; text?: string; filePath?: string; caption?: string },
+): Promise<{ ok: boolean; error?: string }> {
+    if (!hubBot) return { ok: false, error: 'hub bot not running' };
+    const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
+    if (payload.type === 'text') {
+        const { markdownToTelegramHtml, chunkTelegramMessage } = await import('../../telegram/forwarder.js');
+        for (const chunk of chunkTelegramMessage(markdownToTelegramHtml(payload.text || ''))) {
+            await hubBot.api.sendMessage(chatId, chunk, stripUndefined({ parse_mode: 'HTML', message_thread_id }))
+                .catch(() => hubBot!.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id })));
+        }
+        return { ok: true };
+    }
+    const { sendTelegramFile } = await import('../../telegram/telegram-file.js');
+    const r = await sendTelegramFile(hubBot, chatId, payload.filePath!, payload.type, stripUndefined({ caption: payload.caption, threadId: message_thread_id }));
+    return stripUndefined({ ok: r.ok, error: r.error });
+}
+
+/**
+ * Start (or restart) the hub bot from the current registry config. Idempotent.
+ * GPT Pro fixes: requires bound chatId; checks getWebhookInfo before deleteWebhook;
+ * marks running state only AFTER onStart so a 409 actually retries.
+ */
+export async function startHubBot(): Promise<void> {
+    const cfg = getHubConfig();
+    if (!canStartHub(cfg)) { await stopHubBot(); return; }
+    if (hubBot && hubToken === cfg.token) return;          // already running on this token
+    await stopHubBot();
+
+    const bot = createHubBot(cfg.token);
+    // deleteWebhook safety: only delete if a webhook is actually set (avoid blind drop).
+    try {
+        const info = await bot.api.getWebhookInfo();
+        if (info.url) await bot.api.deleteWebhook({ drop_pending_updates: true });
+    } catch (e) {
+        console.error('[tg:hub] getWebhookInfo failed:', (e as Error).message);
+    }
+
+    void bot.start({
+        drop_pending_updates: true,
+        onStart: (info) => {
+            hubBot = bot; hubToken = cfg.token; retries = 0;   // mark running ONLY after polling starts
+            console.log(`[tg:hub] @${info.username} polling chat=${cfg.chatId}`);
+            // best-effort forum check (non-blocking)
+            bot.api.getChat(cfg.chatId).then((c) => {
+                if (c.is_forum !== true) console.warn(`[tg:hub] WARNING: bound chat ${cfg.chatId} is not a forum (is_forum != true)`);
+            }).catch(() => {});
+        },
+    }).catch((err: unknown) => {
+        if (hubBot === bot) { hubBot = null; hubToken = null; }   // clear so retry re-runs
+        const e = err as { error_code?: number; message?: string };
+        const is409 = e?.error_code === 409 || String(e?.message).includes('409');
+        if (is409 && ++retries <= MAX_RETRIES) {
+            setTimeout(() => { void startHubBot(); }, Math.min(5000 * 2 ** (retries - 1), 30_000));
+        } else {
+            console.error('[tg:hub:fatal]', err);
+        }
+    });
+}
+
+export async function stopHubBot(): Promise<void> {
+    if (hubBot) {
+        const b = hubBot;
+        hubBot = null;
+        hubToken = null;
+        await b.stop().catch(() => {});
+    }
+}

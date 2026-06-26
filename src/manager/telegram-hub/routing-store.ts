@@ -23,7 +23,7 @@ export function removeRoute(chatId: string, threadId: string): TelegramHubConfig
     return setHubConfig({ routes });
 }
 
-/** Active route for an inbound topic, or undefined (P2 falls back to defaultPort). */
+/** Active route for an inbound topic, or undefined (P2 refuses unmapped topics — no defaultPort auto-route). */
 export function resolveRoute(chatId: string, threadId: string): ThreadRoute | undefined {
     return getHubConfig().routes.find(r => r.chatId === chatId && r.threadId === threadId && r.enabled);
 }
