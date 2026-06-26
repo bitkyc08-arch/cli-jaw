@@ -1,0 +1,26 @@
+{
+  "method": "google",
+  "email": "redacted@example.invalid",
+  "planType": "Google AI Pro",
+  "models": [
+    {
+      "label": "Gemini 3.1 Pro (Low)",
+      "modelId": "gemini-3.1-pro-low",
+      "remainingPercentage": 0.25,
+      "resetTime": "2026-05-28T18:00:00.000Z"
+    },
+    {
+      "label": "Claude Sonnet 4.6 (Thinking)",
+      "modelId": "claude-sonnet-4-6-thinking",
+      "remainingPercentage": 0.8,
+      "resetTime": "2026-05-28T19:00:00.000Z"
+    },
+    {
+      "label": "Autocomplete",
+      "modelId": "gemini-2.5-flash-002",
+      "remainingPercentage": 0.5,
+      "isAutocompleteOnly": true
+    }
+  ]
+}
+

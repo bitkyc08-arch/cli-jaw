@@ -552,7 +552,7 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 | `settings.ts` | settings/prompt/heartbeat-md/MCP/registry/status/quota/copilot |
 | `messaging.ts` | upload/file-open/voice/telegram/channel/discord send |
 | `browser.ts` | browser runtime endpoints |
-| `quota.ts` | `/api/quota` helper readers imported by `settings.ts` (direct provider usage where supported, wrapper runtime delegation for `ai-e`/`claude-e`/`codex-app`, and status-only metadata for AGY/Cursor/Grok/OpenCode when quota windows are not exposed by the CLI) |
+| `quota.ts` | `/api/quota` helper readers imported by `settings.ts` (direct provider usage where supported, wrapper runtime delegation for `ai-e`/`claude-e`/`codex-app`, reverse-engineered AGY Gem/Cla windows when `antigravity-usage --json` is available, and status-only metadata for Cursor/Grok/OpenCode or CLIs without quota windows) |
 
 핵심 포인트:
 - `server.ts`는 `register*Routes(app, requireAuth, ...)` 호출만 남기고 629L 글루 레이어로 유지된다. 현재 mutation endpoint 53개는 모두 `requireAuth` 미들웨어를 거쳐 인증 없는 상태 변경을 차단한다.
