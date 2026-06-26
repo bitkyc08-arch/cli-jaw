@@ -60,11 +60,11 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `test:fresh-install` | `tsx scripts/fresh-install-smoke.ts` |
 | `test:install-risk` | `node scripts/install-risk-gate.mjs` |
 | `check:cli-bin-links` | `node scripts/check-cli-bin-links.cjs` |
-| `test:claude-exec` | `cargo test --manifest-path native/jaw-claude-i/Cargo.toml` |
-| `test:claude-e` | compatibility alias for `test:claude-exec` |
+| `test:claude-e` | `cargo test --manifest-path native/claude-e/Cargo.toml` |
+| `test:claude-exec` | compatibility alias for `test:claude-e` |
 | `build` | `bash scripts/atomic-build.sh` — staged `dist/bin/cli-jaw.js` 실행권한을 보장한 뒤 atomic swap |
-| `build:claude-exec` | `cargo build --release --manifest-path native/jaw-claude-i/Cargo.toml` |
-| `build:claude-e` | compatibility alias for `build:claude-exec` |
+| `build:claude-e` | `cargo build --release --manifest-path native/claude-e/Cargo.toml` |
+| `build:claude-exec` | compatibility alias for `build:claude-e` |
 | `postbuild` | `node scripts/link-current-nvm-bin.cjs` — non-NVM Node에서는 링크를 skip하되 `dist/bin/cli-jaw.js` chmod repair는 먼저 수행 |
 | `build:frontend` | `vite build --config vite.config.ts` |
 | `qa:manager-frontend` | `npm run build:frontend && npm run typecheck:frontend` |

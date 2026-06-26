@@ -207,7 +207,7 @@ stream close →
 
 ### Claude E / Claude Interactive (`claude-e`)
 
-`claude-e`는 Claude CLI를 PTY로 띄우고, transcript tail과 hook output을 JSONL로 다시 내보내는 experimental runtime이다. Compatibility `claude-exec` and legacy `jaw-claude-i` / `claude-i` helper names remain fallback binaries. Public registry key is `claude-e`; runtime telemetry namespace is `agent:claude-e:*`. Some persisted helper/session internals still use the historical `claude-i` bucket name. `src/agent/spawn.ts`는 helper의 `jaw_runtime` 이벤트를 discriminator 전에 처리하고, 일반 Claude `system`/`assistant`/`result` event는 Claude-like parser 경로를 공유한다.
+`claude-e`는 Claude CLI를 PTY로 띄우고, transcript tail과 hook output을 JSONL로 다시 내보내는 experimental runtime이다. Embedded native source lives at `native/claude-e/` and still builds the compatibility binary `jaw-claude-i`; compatibility `claude-exec` and legacy `jaw-claude-i` / `claude-i` helper names remain fallback binaries outside the embedded crate. Public registry key is `claude-e`; runtime telemetry namespace is `agent:claude-e:*`. Some persisted helper/session internals still use the historical `claude-i` bucket name. `src/agent/spawn.ts`는 helper의 `jaw_runtime` 이벤트를 discriminator 전에 처리하고, 일반 Claude `system`/`assistant`/`result` event는 Claude-like parser 경로를 공유한다.
 
 호출 플래그:
 

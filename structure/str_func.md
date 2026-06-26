@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-06-10 (최근 500개 커밋 기준 문서/카운트 재측정)
-> `server.ts` 635L / `src/routes/` 32 TS files (registrars + helper modules + extracted base-route modules, 199 route handlers including `/`) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs (checkpoint/permissions/context-map) / `src/agent/` 29 root TS + `spawn/` 3 files + `events/` 12 files (spawn.ts 2388L + pi-runtime.ts 460L + lifecycle-handler.ts 1030L + kiro-runtime.ts 386L + kiro-auth.ts 230L + kiro-models.ts 98L + cursor-runtime.ts 240L) / `src/goal/` 4 files (543L) / `src/goal-run/` 5 files (337L) / `src/trace/` 3 files (279L) / `src/team/` 5 files (323L, team dispatch planner/collector/preflight) / `src/jaw-ceo/` 16 files (2614L, OpenAI Realtime CEO channel) / `src/shared/` 6 files + reminders helper (605L) / `src/manager/` 79 TS/TSX files (dashboard + board/notes/search/schedule/reminders/connector/routes/memory/git) / `src/browser/web-ai/` 68 TS files (12561L) + `adaptive-fetch/` 19 files (2608L) / `src/types/` 3 files (329L) / `bin/commands/` 33 top-level ts files + `tui/` 10 helper files / `electron/` Electron tray app + sidecar packaging (27 TS/TSX files, 3096L) / `native/jaw-claude-i/` 11 Rust source files (1934L)
+> `server.ts` 635L / `src/routes/` 32 TS files (registrars + helper modules + extracted base-route modules, 199 route handlers including `/`) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs (checkpoint/permissions/context-map) / `src/agent/` 29 root TS + `spawn/` 3 files + `events/` 12 files (spawn.ts 2388L + pi-runtime.ts 460L + lifecycle-handler.ts 1030L + kiro-runtime.ts 386L + kiro-auth.ts 230L + kiro-models.ts 98L + cursor-runtime.ts 240L) / `src/goal/` 4 files (543L) / `src/goal-run/` 5 files (337L) / `src/trace/` 3 files (279L) / `src/team/` 5 files (323L, team dispatch planner/collector/preflight) / `src/jaw-ceo/` 16 files (2614L, OpenAI Realtime CEO channel) / `src/shared/` 6 files + reminders helper (605L) / `src/manager/` 79 TS/TSX files (dashboard + board/notes/search/schedule/reminders/connector/routes/memory/git) / `src/browser/web-ai/` 68 TS files (12561L) + `adaptive-fetch/` 19 files (2608L) / `src/types/` 3 files (329L) / `bin/commands/` 33 top-level ts files + `tui/` 10 helper files / `electron/` Electron tray app + sidecar packaging (27 TS/TSX files, 3096L) / `native/claude-e/` 11 Rust source files (1934L; builds `jaw-claude-i` compatibility binary)
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -352,7 +352,7 @@ cli-jaw/
 │       ├── main/lib/         ← 24 helper modules (jaw-spawn 207L, install-cli 91L, tray-manager 168L, terminal/ 185L, navigation-policy 113L, app-metrics 93L, health-check 78L, deep-link 78L, permissions, path-security, quit-progress, etc.)
 │       └── preload/          ← preload scripts (index 126L + metrics 68L)
 ├── native/
-│   └── jaw-claude-i/         ← Claude Interactive native helper (Rust, 11 src files, 1934L)
+│   └── claude-e/             ← Claude E native helper source (Rust, builds `jaw-claude-i` compatibility binary; 11 src files, 1934L)
 │       ├── Cargo.toml        ← Rust package/dependency/test profile
 │       └── src/              ← main.rs(467L) + args/child/hook/protocol/transcript/config/terminal/cleanup/normalize/sanitize
 ├── bin/
@@ -440,7 +440,7 @@ graph LR
     SRV --> CORE["core/"] & AGT["agent/"] & ORC["orchestrator/"] & PRM["prompt/"]
     SRV --> MEM["memory/"] & MSG["messaging/"] & BR["browser/"] & RT["routes/"]
     SRV --> GOAL["goal/"] & TRACE["trace/"] & WF["workflows/"] & TEAM["team/"] & CEO["jaw-ceo/"]
-    AGT --> NATIVE["native/jaw-claude-i"] & ACP["cli/acp-client"]
+    AGT --> NATIVE["native/claude-e"] & ACP["cli/acp-client"]
     ORC --> AGT
     GOAL --> ORC
     TEAM --> ORC

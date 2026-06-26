@@ -278,12 +278,11 @@ function getClaudeExecEmbeddedFallbackCandidates(projectDir = getProjectDir()): 
 
 function getClaudeExecNativeFallbackCandidates(projectDir = getProjectDir()): string[] {
     const legacyHelper = nativeExecutableName('jaw-claude-i');
-    const legacyAlias = nativeExecutableName('claude-i');
     const candidates = [
+        join(projectDir, 'native', 'claude-e', 'target', 'release', legacyHelper),
+        join(projectDir, 'native', 'claude-e', 'target', 'debug', legacyHelper),
         join(projectDir, 'native', 'jaw-claude-i', 'target', 'release', legacyHelper),
-        join(projectDir, 'native', 'jaw-claude-i', 'target', 'release', legacyAlias),
         join(projectDir, 'native', 'jaw-claude-i', 'target', 'debug', legacyHelper),
-        join(projectDir, 'native', 'jaw-claude-i', 'target', 'debug', legacyAlias),
     ];
     return candidates.filter((candidate): candidate is string => typeof candidate === 'string' && candidate.trim().length > 0);
 }
