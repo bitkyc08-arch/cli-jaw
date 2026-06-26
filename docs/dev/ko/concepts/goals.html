@@ -67,6 +67,9 @@
 <h1>Goal 시스템</h1>
 <p class="lead">Goal은 세션 간에 유지되는 영속적인 목표입니다. 에이전트에게 장기적인 방향을 제시하며, 예산 추적과 함께 자동 연속 실행을 트리거할 수 있습니다.</p>
 
+<h2>에이전트 pause gate</h2>
+<p>AI <code>goal pause --agent --audit</code>는 <strong>2단계 감사 게이트</strong>를 사용합니다. 첫 감사 일시정지 시도 후 goal은 <code>active</code>로 유지되지만 status/API에 <code>pauseGate: { armed: true, reason: "pause_gate_pending" }</code>가 노출됩니다. armed 동안 자동 goal continuation이 억제됩니다(<code>goal_pause_gate_pending</code> SSE). 생산적 checkpoint가 게이트를 해제하고, 두 번째 감사 일시정지가 goal을 완전히 pause합니다.</p>
+
 <h2>Goal 생명주기</h2>
 <p>Goal은 다음 상태를 거칩니다: <strong>set</strong>(활성 목표), <strong>paused</strong>, <strong>resumed</strong>, <strong>done</strong>(완료), 또는 <strong>cancelled</strong>. Goal 상태는 영구적으로 저장되며, 서버를 재시작해도 유지됩니다.</p>
 

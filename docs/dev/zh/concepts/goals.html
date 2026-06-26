@@ -67,6 +67,9 @@
 <h1>目标系统</h1>
 <p class="lead">目标是跨会话持久存在的任务目标。它们为代理提供长期方向，并可以触发带有预算跟踪的自动续行运行。</p>
 
+<h2>代理 pause gate</h2>
+<p>AI <code>goal pause --agent --audit</code> 使用<strong>两步审计 gate</strong>。首次审计暂停后，goal 仍为 <code>active</code>，但 status/API 暴露 <code>pauseGate: { armed: true, reason: "pause_gate_pending" }</code>。armed 期间自动 goal continuation 被抑制（<code>goal_pause_gate_pending</code> SSE）。有成效的 checkpoint 清除 gate；第二次审计暂停才会真正 pause goal。</p>
+
 <h2>目标生命周期</h2>
 <p>目标在以下状态之间流转：<strong>set</strong>（活跃目标）、<strong>paused</strong>（已暂停）、<strong>resumed</strong>（已恢复）、<strong>done</strong>（已完成）或 <strong>cancelled</strong>（已取消）。目标状态是持久化的——重启服务器不会丢失状态。</p>
 

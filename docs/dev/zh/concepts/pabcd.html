@@ -130,6 +130,7 @@
 <li>对于复杂项目，务必先使用 <code>/interview</code>，以避免在信息不完整的情况下制定计划。</li>
 <li>阶段转换是显式的——代理会在计划完成后提示您运行 <code>jaw orchestrate A</code>。</li>
 <li>使用 <code>/continue</code> 进行显式的 worklog/PABCD 恢复。自然语言的"continue"消息会被视为普通提示词处理。</li>
+<li>阶段前进需要证据 attestation：<code>jaw orchestrate B --attest '{"from":"A","to":"B","did":"..."}'</code>（C→D 还需 <code>checkOutput</code> 和 <code>exitCode</code>）。</li>
 <li><code>/orchestrate reset</code> 命令会清理所有内容：活跃代理、工作者、队列、员工会话、状态和工作日志。</li>
 </ul>
 
