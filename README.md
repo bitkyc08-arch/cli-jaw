@@ -381,6 +381,7 @@ No per-token API billing. Route through subscriptions you already pay for.
 | **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; quota is auth/status-only |
 | **Gemini** | `gemini-3-flash-preview` | `gemini` | Gemini Advanced subscription |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok subscription; quota is auth/status-only |
+| **Kiro** | registry-selected | `kiro` | AWS Kiro free tier; `kiro-cli chat --no-interactive` runtime |
 | **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | Free models available |
 | **Copilot** | `claude-sonnet-4.6` | `copilot login` | Free tier available |
 
@@ -480,7 +481,7 @@ Computer Use lets you control any macOS app — Finder, Safari, System Settings,
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/photo upload, slash commands (51 registered; workflow helpers include `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`), forum-topic routing and **Dashboard Telegram Hub** (`/setthread`, `/threads`, per-topic model/systemPrompt overrides in Manager UI), scheduled task delivery via `every`/`cron` heartbeat jobs.
+Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/photo upload, slash commands (51 registered; workflow helpers include `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; dynamic `/skill:<id>` on CLI/Web), forum-topic routing and **Dashboard Telegram Hub** (`/setthread`, `/threads`, per-topic model/systemPrompt overrides in Manager UI), scheduled task delivery via `every`/`cron` heartbeat jobs.
 
 <details>
 <summary>Setup (3 steps)</summary>
