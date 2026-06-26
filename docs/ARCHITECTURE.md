@@ -73,7 +73,7 @@ model choices. Current top-level runtimes are:
 | Runtime | Role |
 | --- | --- |
 | `pi` | Pi RPC runtime with isolated `PI_CODING_AGENT_DIR` profiles |
-| `agy` | Antigravity print-mode runtime |
+| `agy` | Antigravity print-mode runtime (`agy -p`, optional `--model` when not `default`) |
 | `ai-e` | AI-E wrapper runtime |
 | `claude` | Anthropic Claude CLI |
 | `claude-e` | Claude E helper-backed runtime |

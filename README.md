@@ -375,7 +375,7 @@ No per-token API billing. Route through subscriptions you already pay for.
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro subscription or higher |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro subscription or higher; preferred for June subscription allowance |
 | **AI-E** | provider-selected | selected provider auth | Multi-provider runtime wrapper |
-| **Antigravity** | AGY-selected | checked by `agy` at run time | Experimental AGY print-mode runtime with `--conversation` resume; model switching stays in native AGY UI |
+| **Antigravity** | AGY-selected | checked by `agy` at run time | Experimental AGY print-mode runtime (`agy -p`) with optional `--model` when not `default`; resume via `--conversation` |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; quota is auth/status-only |
