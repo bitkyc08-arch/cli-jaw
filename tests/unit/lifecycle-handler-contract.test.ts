@@ -20,3 +20,12 @@ test('lifecycle handler diagnoses incomplete structured fences before durable as
     assert.ok(scanIdx < insertIdx, 'structured fence diagnostic must run before durable insert');
     assert.ok(scanIdx < broadcastIdx, 'structured fence diagnostic must run before agent_done broadcast');
 });
+
+test('lifecycle handler does not unconditionally reset the agent pause gate before continuation', () => {
+    assert.doesNotMatch(
+        lifecycleSrc,
+        /if\s*\(\s*!GOAL_PAUSE_RE\.test\(ctx\.fullText\s*\?\?\s*''\)\s*\)\s*{\s*resetAgentPauseCount\(\);\s*}/,
+    );
+    assert.match(lifecycleSrc, /pause_gate_pending/);
+    assert.match(lifecycleSrc, /not scheduling another continuation/);
+});

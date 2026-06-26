@@ -126,7 +126,8 @@ export function registerGoalRoutes(app: Router, requireAuth: RequestHandler): vo
                             blocked: true,
                             error: 'First agent pause attempt recorded (1/2). Pause NOT executed. '
                                 + 'Complete the dev-skill audit checklist injected in the next goal continuation, '
-                                + 'then call `cli-jaw goal pause --agent --audit "<evidence>"` again to confirm.',
+                                + 'then call `cli-jaw goal pause --agent --audit "<evidence>"` again to pause. '
+                                + 'A productive checkpoint clears the pending pause gate.',
                         });
                         return;
                     }

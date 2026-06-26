@@ -139,11 +139,16 @@ export function buildGoalContinuation(): GoalContinuationResult {
             ? [
                 '',
                 '--- ⚠ AGENT PAUSE GATE: First attempt recorded — dev-skill audit required ---',
-                'Your previous `cli-jaw goal pause --agent` was BLOCKED (attempt 1/2).',
-                'Before you may pause again, you MUST complete a thorough audit:',
+                'Your previous `cli-jaw goal pause --agent --audit "<evidence>"` was recorded as attempt 1/2. The goal is now in `pause_gate_pending`.',
+                'This is the audit/finalizer turn. Complete a thorough audit, then choose exactly one path:',
+                '- If no viable path remains, run `cli-jaw goal pause --agent --audit "<evidence>"` again. This second audited call pauses the goal.',
+                '- If productive work remains, continue and record a `cli-jaw goal update "<summary>" --evidence "<proof>"`; that checkpoint clears the pending pause gate.',
+                '',
+                'Audit requirements:',
                 '',
                 '**Requirement-by-requirement verification:**',
-                '- Derive every concrete requirement from the goal objective; for EACH, provide authoritative evidence (file path, command output, test result, runtime behavior) and mark it PROVEN, UNPROVEN, or CONTRADICTED. Any UNPROVEN/CONTRADICTED item means work remains — do NOT pause.',
+                '- Derive every concrete requirement from the goal objective; for EACH, provide authoritative evidence (file path, command output, test result, runtime behavior) and mark it PROVEN, UNPROVEN, or CONTRADICTED.',
+                '- UNPROVEN/CONTRADICTED items mean work remains unless they are blocked by an external/tool/environment condition that an independent reviewer confirms has no viable path.',
                 '',
                 '**Dev skill compliance:**',
                 '- Confirm the dev gates: fresh verification output (§3), import/export safety (§5), static analysis green (§7.2), 500-line file limit, atomic commits.',
@@ -154,7 +159,7 @@ export function buildGoalContinuation(): GoalContinuationResult {
                 '**Independent reviewer:**',
                 '- Dispatch a CLI sub-agent or jaw employee to challenge whether viable work remains. A viable path → continue working. No path confirmed → call `cli-jaw goal pause --agent --audit "<reviewer summary>"`.',
                 '',
-                'RULE: Do NOT call pause again unless EVERY requirement is PROVEN and the independent reviewer confirms PASS.',
+                'RULE: Do not leave this gate in a loop. Either second-tap pause with audit evidence, or make productive progress and log a checkpoint.',
               ]
             : []),
         '',
@@ -175,7 +180,7 @@ export function buildGoalContinuation(): GoalContinuationResult {
         'ONLY ASK THE USER when genuinely blocked by missing information or authority you cannot obtain yourself, or before a destructive/irreversible action (git push/reset/clean, deleting files or data, production or infra changes — these STILL require explicit user approval).',
     ].join('\n');
 
-    return { shouldContinue: true, reason: 'goal_active', prompt };
+    return { shouldContinue: true, reason: pauseCount >= 1 ? 'pause_gate_pending' : 'goal_active', prompt };
 }
 
 export function shouldHeartbeatContinueGoal(): boolean {

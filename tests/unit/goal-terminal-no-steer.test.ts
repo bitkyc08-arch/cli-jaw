@@ -250,6 +250,7 @@ test('/goal pause --agent --audit succeeds on second attempt (2-tap gate)', asyn
         assert.equal(result2?.ok, true);
         assert.equal('steerPrompt' in result2, false);
         assert.match(result2?.text ?? '', /Goal paused/);
+        assert.equal(getAgentPauseCount(), 0);
     } finally {
         resetGoalStore();
     }
