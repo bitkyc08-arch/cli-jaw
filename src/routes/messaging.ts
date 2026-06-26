@@ -185,13 +185,19 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
                 return;
             }
 
+            // P0: optional message_thread_id (alias thread_id). General topic id=1 sends as
+            // usual (n > 1), matching threadIdNumber + sendToTopic semantics.
+            const rawThread = req.body?.message_thread_id ?? req.body?.thread_id;
+            const threadNum = Number(rawThread);
+            const messageThreadId = rawThread != null && Number.isInteger(threadNum) && threadNum > 1 ? threadNum : undefined;
+
             if (type === 'text') {
                 const text = String(req.body?.text || '').trim();
                 if (!text) {
                     res.status(400).json({ error: 'text required for type=text' });
                     return;
                 }
-                await sendClient.client.api.sendMessage(chatId, text);
+                await sendClient.client.api.sendMessage(chatId, text, stripUndefined({ message_thread_id: messageThreadId }));
                 res.json({ ok: true, chat_id: chatId, type });
                 return;
             }
@@ -210,7 +216,7 @@ export function registerMessagingRoutes(app: Express, requireAuth: AuthMiddlewar
             validateFileSize(safePath, type);
 
             const caption = req.body?.caption ? String(req.body.caption) : undefined;
-            const result = await sendTelegramFile(sendClient.client, chatId, safePath, type, stripUndefined({ caption }));
+            const result = await sendTelegramFile(sendClient.client, chatId, safePath, type, stripUndefined({ caption, threadId: messageThreadId }));
 
             if (!result.ok) {
                 const sc = result.statusCode || 502;

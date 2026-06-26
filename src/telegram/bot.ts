@@ -187,6 +187,12 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     const chatId = req.chatId || req.target?.targetId || getLatestTelegramChatId();
     if (!chatId) return { ok: false, error: 'No telegram chatId available', status: 400 };
 
+    // P0: thread-aware send. Programmatic sends must carry message_thread_id so
+    // replies/files land in the originating forum topic (ctx.reply already auto-threads).
+    // stripUndefined drops the key for non-forum chats → identical wire payload.
+    const { threadIdNumber } = await import('../messaging/thread-target.js');
+    const messageThreadId = threadIdNumber(req.target);
+
     if (req.type === 'text') {
         const text = req.text?.trim();
         if (!text) return { ok: false, error: 'text required' };
@@ -195,9 +201,9 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
         const chunks = chunkTelegramMessage(html);
         for (const chunk of chunks) {
             try {
-                await bot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
+                await bot.api.sendMessage(chatId, chunk, stripUndefined({ parse_mode: 'HTML', message_thread_id: messageThreadId }));
             } catch {
-                await bot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
+                await bot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id: messageThreadId }));
             }
         }
         return { ok: true, chat_id: chatId, type: 'text' };
@@ -208,7 +214,7 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     if (!filePath) return { ok: false, error: 'file_path required for non-text types' };
     const { validateFileSize, sendTelegramFile } = await import('./telegram-file.js');
     validateFileSize(filePath, req.type);
-    const result = await sendTelegramFile(bot, chatId, filePath, req.type, stripUndefined({ caption: req.caption }));
+    const result = await sendTelegramFile(bot, chatId, filePath, req.type, stripUndefined({ caption: req.caption, threadId: messageThreadId }));
     return result;
 }
 

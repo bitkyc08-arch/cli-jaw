@@ -41,9 +41,11 @@ export type SubmitResult = {
 const DEDUP_WINDOW_MS = 5000;
 const recentSubmissions = new Map<string, { ts: number; requestId: string }>();
 
-function dedupKey(origin: string, text: string, chatId?: string | number): string {
+/** Exported for unit tests (pure, stateless). */
+export function dedupKey(origin: string, text: string, chatId?: string | number, threadId?: string): string {
     const normalized = text.trim().replace(/\s+/g, ' ');
-    return `${origin}:${chatId ?? ''}:${normalized}`;
+    // threadId included so identical text in different forum topics is not false-deduped.
+    return `${origin}:${chatId ?? ''}:${threadId ?? ''}:${normalized}`;
 }
 
 function gcRecentSubmissions(now: number): void {
@@ -87,7 +89,7 @@ export function submitMessage(
     // Dedup: same (origin, chatId, normalized text) within 5s → reject as duplicate
     // and return the earlier requestId so the client can absorb it silently.
     const now = Date.now();
-    const key = dedupKey(meta.origin, trimmed, meta.chatId);
+    const key = dedupKey(meta.origin, trimmed, meta.chatId, meta.target?.threadId);
     const prior = recentSubmissions.get(key);
     if (prior && now - prior.ts < DEDUP_WINDOW_MS) {
         console.log(`[gateway:dedup] suppressed duplicate (${now - prior.ts}ms window) origin=${meta.origin}`);

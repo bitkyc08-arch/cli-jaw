@@ -80,9 +80,10 @@ export async function sendTelegramFile(
     chatId: number | string,
     filePath: string,
     type: string,
-    opts?: { caption?: string },
+    opts?: { caption?: string; threadId?: number },
 ): Promise<{ ok: boolean; attempts: number; error?: string; retryAfter?: number; statusCode?: number }> {
     const caption = opts?.caption;
+    const message_thread_id = opts?.threadId;   // P0: thread file sends into their topic
     let totalWaited = 0;
 
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
@@ -90,13 +91,13 @@ export async function sendTelegramFile(
             const file = new InputFile(filePath);
             switch (type) {
                 case 'voice':
-                    await bot.api.sendVoice(chatId, file, stripUndefined({ caption }));
+                    await bot.api.sendVoice(chatId, file, stripUndefined({ caption, message_thread_id }));
                     break;
                 case 'photo':
-                    await bot.api.sendPhoto(chatId, file, stripUndefined({ caption }));
+                    await bot.api.sendPhoto(chatId, file, stripUndefined({ caption, message_thread_id }));
                     break;
                 case 'document':
-                    await bot.api.sendDocument(chatId, file, stripUndefined({ caption }));
+                    await bot.api.sendDocument(chatId, file, stripUndefined({ caption, message_thread_id }));
                     break;
                 default:
                     return { ok: false, attempts: attempt, error: `unsupported type: ${type}`, statusCode: 400 };
