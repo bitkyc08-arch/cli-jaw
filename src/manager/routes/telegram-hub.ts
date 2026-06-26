@@ -5,7 +5,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { getHubConfig, setHubConfig, upsertRoute, removeRoute } from '../telegram-hub/routing-store.js';
 import type { TelegramHubConfig, ThreadRoute } from '../telegram-hub/types.js';
 import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
-import { startHubBot, sendToTopic } from '../telegram-hub/hub-bot.js';
+import { startHubBot, sendToTopic, getHubBotStatus } from '../telegram-hub/hub-bot.js';
 import { assertSendFilePath } from '../../security/path-guards.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { settings } from '../../core/config.js';
@@ -23,6 +23,9 @@ function loopbackOnly(req: Request, res: Response, next: NextFunction): void {
 function redact(cfg: TelegramHubConfig): Omit<TelegramHubConfig, 'token'> & { token: string; hasToken: boolean } {
     return { ...cfg, token: '', hasToken: Boolean(cfg.token) };
 }
+function hubResponse(cfg: TelegramHubConfig): { ok: true; config: ReturnType<typeof redact>; runtime: ReturnType<typeof getHubBotStatus> } {
+    return { ok: true, config: redact(cfg), runtime: getHubBotStatus() };
+}
 function sendErr(res: Response, status: number, error: string): void {
     res.status(status).json({ ok: false, error });
 }
@@ -35,10 +38,10 @@ export function createDashboardTelegramHubRouter(): Router {
     router.use(loopbackOnly);
 
     router.get('/', (_req: Request, res: Response) => {
-        res.json({ ok: true, config: redact(getHubConfig()) });
+        res.json(hubResponse(getHubConfig()));
     });
 
-    router.put('/', (req: Request, res: Response) => {
+    router.put('/', async (req: Request, res: Response) => {
         const b = req.body || {};
         const patch: Partial<TelegramHubConfig> = {};
         if (typeof b.enabled === 'boolean') patch.enabled = b.enabled;
@@ -49,8 +52,8 @@ export function createDashboardTelegramHubRouter(): Router {
             patch.defaultPort = Number(b.defaultPort);
         }
         const config = setHubConfig(patch);
-        void startHubBot();   // apply enable/token/chatId changes to the running bot
-        res.json({ ok: true, config: redact(config) });
+        await startHubBot();   // apply enable/token/chatId changes to the running bot
+        res.json(hubResponse(config));
     });
 
     router.post('/routes', (req: Request, res: Response) => {

@@ -3,7 +3,7 @@
 // normalization and the start guard (GPT Pro B1: enabled+token+chatId required).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { threadKey, canStartHub, canMutateHubRoute } from '../../src/manager/telegram-hub/hub-bot.ts';
+import { threadKey, canStartHub, canMutateHubRoute, getHubBotStatus } from '../../src/manager/telegram-hub/hub-bot.ts';
 import type { TelegramHubConfig } from '../../src/manager/telegram-hub/types.ts';
 
 const cfg = (o: Partial<TelegramHubConfig>): TelegramHubConfig =>
@@ -15,6 +15,10 @@ test('threadKey: General (<=1) → "1", real topics pass through', () => {
     assert.equal(threadKey(1), '1');
     assert.equal(threadKey(5), '5');
     assert.equal(threadKey(100), '100');
+});
+
+test('getHubBotStatus starts as stopped without network side effects', () => {
+    assert.deepEqual(getHubBotStatus(), { state: 'stopped' });
 });
 
 test('canStartHub requires enabled + token + chatId (GPT Pro B1: no unbound start)', () => {

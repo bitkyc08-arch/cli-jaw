@@ -16,7 +16,8 @@ const PORT_MAX = 3506;
 
 type Route = { chatId: string; threadId: string; port: number; label?: string; enabled: boolean; systemPrompt?: string; model?: string };
 type HubConfig = { enabled: boolean; hasToken: boolean; chatId: string; defaultPort: number; routes: Route[] };
-type HubResponse = { ok: boolean; config: HubConfig };
+type HubRuntime = { state: 'stopped' | 'starting' | 'polling' | 'error'; chatId?: string; error?: string };
+type HubResponse = { ok: boolean; config: HubConfig; runtime?: HubRuntime };
 
 type ManagerClient = {
     get<T>(path: string): Promise<T>;
@@ -62,6 +63,7 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
     void state;
 
     const [config, setConfig] = useState<HubConfig | null>(null);
+    const [runtime, setRuntime] = useState<HubRuntime | null>(null);
     const [loadError, setLoadError] = useState<string | null>(null);
     const [enabled, setEnabled] = useState(false);
     const [token, setToken] = useState('');        // blank ⇒ keep stored token
@@ -74,6 +76,7 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
         try {
             const res = await mClient.get<HubResponse>('/api/dashboard/telegram-hub');
             setConfig(res.config);
+            setRuntime(res.runtime || null);
             setEnabled(res.config.enabled);
             setChatId(res.config.chatId);
             setDefaultPort(res.config.defaultPort);
@@ -91,6 +94,7 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
         if (token.trim()) body['token'] = token.trim();   // omit ⇒ keep stored token
         const res = await mClient.put<HubResponse>('/api/dashboard/telegram-hub', body);
         setConfig(res.config);
+        setRuntime(res.runtime || null);
         setToken('');
         for (const k of HUB_KEYS) dirty.remove(k);
     }, [enabled, chatId, defaultPort, token, mClient, dirty]);
@@ -131,6 +135,11 @@ export default function TelegramHub({ port, client, dirty, registerSave, manager
                     id="hub-chat-id" label="Hub chat ID" value={chatId} placeholder="823… or -100…"
                     onChange={(next) => { setChatId(next); dirty.set('hub.chatId', { value: next, original: config.chatId, valid: true }); }}
                 />
+                {runtime ? (
+                    <p className="settings-help">
+                        Runtime: {runtime.state}{runtime.chatId ? ` · ${runtime.chatId}` : ''}{runtime.error ? ` · ${runtime.error}` : ''}
+                    </p>
+                ) : null}
                 <label className="settings-field" htmlFor="hub-default-port">
                     <span className="settings-field-label">Default port</span>
                     <input

@@ -13,6 +13,9 @@ import { stripUndefined } from '../../core/strip-undefined.js';
 
 let hubBot: Bot | null = null;
 let hubToken: string | null = null;
+let hubState: 'stopped' | 'starting' | 'polling' | 'error' = 'stopped';
+let hubError: string | null = null;
+let hubChatId: string | null = null;
 let retries = 0;
 const MAX_RETRIES = 5;
 const FORWARD_TIMEOUT_MS = 15_000;
@@ -30,6 +33,10 @@ export function canStartHub(cfg: TelegramHubConfig): boolean {
 
 export function canMutateHubRoute(chatType: string | undefined, isGroupAdmin: boolean): boolean {
     return chatType === 'private' || isGroupAdmin;
+}
+
+export function getHubBotStatus(): { state: 'stopped' | 'starting' | 'polling' | 'error'; chatId?: string; error?: string } {
+    return stripUndefined({ state: hubState, chatId: hubChatId || undefined, error: hubError || undefined });
 }
 
 async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
@@ -166,10 +173,18 @@ export async function sendToTopic(
 export async function startHubBot(): Promise<void> {
     const cfg = getHubConfig();
     if (!canStartHub(cfg)) { await stopHubBot(); return; }
-    if (hubBot && hubToken === cfg.token) return;          // already running on this token
+    if (hubBot && hubToken === cfg.token) {
+        hubState = 'polling';
+        hubChatId = cfg.chatId;
+        hubError = null;
+        return;
+    }
     await stopHubBot();
 
     const bot = createHubBot(cfg.token);
+    hubState = 'starting';
+    hubChatId = cfg.chatId;
+    hubError = null;
     // deleteWebhook safety: only delete if a webhook is actually set (avoid blind drop).
     try {
         const info = await bot.api.getWebhookInfo();
@@ -182,6 +197,8 @@ export async function startHubBot(): Promise<void> {
         drop_pending_updates: true,
         onStart: (info) => {
             hubBot = bot; hubToken = cfg.token; retries = 0;   // mark running ONLY after polling starts
+            hubState = 'polling';
+            hubError = null;
             console.log(`[tg:hub] @${info.username} polling chat=${cfg.chatId}`);
             // best-effort forum check (non-blocking); private bot-topic chats are valid
             // hub targets but are not forum supergroups.
@@ -195,8 +212,12 @@ export async function startHubBot(): Promise<void> {
         const e = err as { error_code?: number; message?: string };
         const is409 = e?.error_code === 409 || String(e?.message).includes('409');
         if (is409 && ++retries <= MAX_RETRIES) {
+            hubState = 'starting';
+            hubError = `polling conflict; retry ${retries}/${MAX_RETRIES}`;
             setTimeout(() => { void startHubBot(); }, Math.min(5000 * 2 ** (retries - 1), 30_000));
         } else {
+            hubState = 'error';
+            hubError = e?.message || String(err);
             console.error('[tg:hub:fatal]', err);
         }
     });
@@ -207,6 +228,13 @@ export async function stopHubBot(): Promise<void> {
         const b = hubBot;
         hubBot = null;
         hubToken = null;
+        hubState = 'stopped';
+        hubChatId = null;
+        hubError = null;
         await b.stop().catch(() => {});
+    } else {
+        hubState = 'stopped';
+        hubChatId = null;
+        hubError = null;
     }
 }
