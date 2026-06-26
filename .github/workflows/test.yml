@@ -94,7 +94,7 @@ jobs:
 
       - name: Devlog _fin status gate
         if: steps.devlog-check.outputs.available == 'true'
-        run: bash devlog/structure/audit-fin-status.sh
+        run: bash structure/audit-fin-status.sh
 
       - name: Upload audit report
         if: always()
@@ -115,7 +115,7 @@ jobs:
 
       - name: Doc drift gate
         if: steps.devlog-check.outputs.available == 'true'
-        run: bash devlog/structure/check-doc-drift.sh
+        run: bash structure/check-doc-drift.sh
         env:
           GH_TOKEN: ${{ github.token }}
 
