@@ -417,6 +417,17 @@
     align-items: end;
 }
 
+.settings-percli-note {
+    margin: 4px 0 0;
+    color: var(--text-secondary);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.settings-percli-note--effort {
+    margin-bottom: 2px;
+}
+
 .settings-overrides-table {
     width: 100%;
     border-collapse: collapse;

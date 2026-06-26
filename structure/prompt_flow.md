@@ -284,7 +284,7 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 | CLI | 시스템 프롬프트 | 현재 턴 입력 |
 | --- | --- | --- |
 | Claude | `buildArgs(..., sysPrompt)` + `stream-json`/`text_delta` | stdin에 `withHistoryPrompt(prompt, historyBlock)`; live `agent_output` via `appendAssistantRawText()` |
-| AGY (`agy`) | 별도 system prompt flag 없음 | fresh run: `agy -p <prompt>` with optional `--model` when not `default`; `--print-timeout 10m`, `--log-file`; resume `agy --conversation <sessionId> -p <prompt>` |
+| AGY (`agy`) | 별도 system prompt flag 없음 | fresh run: `agy -p <prompt>` with capability-probed optional `--model` when supported; `--print-timeout 10m`, `--log-file`; resume `agy --conversation <sessionId> -p <prompt>` |
 | AI-E (`ai-e`) | 선택 provider의 adapter를 따른다 | provider별 args로 위임하되 AGY는 provider 목록에 포함하지 않는다 |
 | Claude E (`claude-e`) | helper 뒤의 Claude CLI에 args로 `--model`/`--effort`/permission 전달 | fresh run은 stdin에 `withHistoryPrompt(prompt, historyBlock)`, resume run은 `claude-e --resume <sessionId>` + 현재 prompt. legacy bucket/event namespace는 `claude-i` |
 | Codex | `{workDir}/AGENTS.md` 자동 로드 | 새 세션일 때만 stdin에 `[User Message]` 블록 |
@@ -304,6 +304,7 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 ### Resume 처리
 
 - standard CLI는 `buildResumeArgs()`로 세션 ID를 전달한다. AGY는 `--conversation <sessionId>`를 사용하고, `-c`/`--continue`는 최신 대화 재개라 bucket persistence에는 쓰지 않는다
+- AGY can ingest native active-directory context files such as `AGENTS.md` and `GEMINI.md`, and cli-jaw may pass workspace directories with `--add-dir`. That native ingestion does not by itself prove cli-jaw's wrapper-injected operational context, exact resume policy, transcript anchoring, quota UI, or post-compaction invariants; those remain supervised cli-jaw runtime contracts.
 - Copilot ACP는 `loadSession()`을 먼저 시도한다
 - ACP `loadSession()` 실패 시에만 `createSession()` 후 history fallback을 다시 붙인다
 

@@ -67,6 +67,7 @@ import {
     stripAgyResumeReplayPrefix,
     stripAgyResumeReplayPrefixes,
 } from './agy-runtime.js';
+import { detectAgyCapabilities } from './agy-capabilities.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
 import { appendAssistantTextSegment, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import { listKiroConversationIdsForCwd } from './kiro-auth.js';
@@ -647,6 +648,8 @@ function getRecentAssistantContentsForAgyResume(workingDir?: string | null): str
 import { buildArgs, buildResumeArgs, formatAgyPrintTimeout, resolveAiEProvider, resolveSessionBucket } from './args.js';
 export { buildArgs, buildResumeArgs, resolveAiEProvider, resolveSessionBucket };
 
+const warnedAgyCapabilityFallbacks = new Set<string>();
+
 // ─── Upload wrapper ──────────────────────────────────
 
 export const saveUpload = (buffer: Buffer | Uint8Array, originalName: string, options?: SaveUploadOptions) =>
@@ -1061,6 +1064,16 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const agyPrintTimeout = cli === 'agy'
         ? formatAgyPrintTimeout(resolvedAgyPrintTimeoutMs)
         : undefined;
+    const agyBinaryForCapabilities = cli === 'agy'
+        ? (detectCli('agy').path || 'agy')
+        : null;
+    const agyCapabilities = agyBinaryForCapabilities
+        ? detectAgyCapabilities(agyBinaryForCapabilities)
+        : undefined;
+    if (agyCapabilities?.usedFallback && agyBinaryForCapabilities && !warnedAgyCapabilityFallbacks.has(agyBinaryForCapabilities)) {
+        warnedAgyCapabilityFallbacks.add(agyBinaryForCapabilities);
+        console.warn('[agy-capabilities] probe failed; using legacy emit-all argv compatibility');
+    }
     const argOptions = {
         fastMode: cfg.fastMode,
         sysPrompt,
@@ -1070,6 +1083,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(claudeBin ? { claudeBin } : {}),
         ...(agyLogFile ? { agyLogFile } : {}),
         ...(agyPrintTimeout ? { agyPrintTimeout } : {}),
+        ...(agyCapabilities ? { agyCapabilities } : {}),
     };
     let args;
     if (isResume) {

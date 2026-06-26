@@ -294,14 +294,14 @@ raw `textDelta`는 app-server/모델 조합이 제공할 때만 온다. 확인�
 
 ## 5. Antigravity / AGY CLI (`-p`)
 
-AGY is not an NDJSON runtime in cli-jaw. It uses direct print mode and the current model selected inside native AGY UI:
+AGY is not an NDJSON runtime in cli-jaw. It uses direct print mode; optional flags are capability-probed before emission (`--model` is observed in AGY 1.0.12):
 
 ```text
-agy -p <prompt> --print-timeout 10m --log-file <tmp> [--dangerously-skip-permissions] [--add-dir <dir>...]
-agy --conversation <sessionId> -p <prompt> --print-timeout 10m --log-file <tmp> [...]
+agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp> [--dangerously-skip-permissions] [--add-dir <dir>...]
+agy --conversation <sessionId> -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp> [...]
 ```
 
-`spawn.ts` routes AGY stdout as plain text: each chunk is appended to `ctx.fullText`, scanned for `--conversation=<id>` resume hints, recorded as a trace `plain_text` event, emitted through `agent_output`, and skipped from `events.ts` JSON parsing. Because `agy -p` normally prints only the answer, close handling also scans the per-run log for `Created conversation <id>` / `conversation=<id>` before removing that log. `spawn-env.ts` sets `NO_COLOR=1` by default so chunks remain preview-safe.
+`spawn.ts` routes AGY stdout as plain text: each chunk is appended to `ctx.fullText`, scanned for `--conversation=<id>` resume hints, recorded as a trace `plain_text` event, emitted through `agent_output`, and skipped from `events.ts` JSON parsing. Because `agy -p` normally prints only the answer, close handling also scans the per-run log for `Created conversation <id>` / `conversation=<id>` before removing that log. `spawn-env.ts` sets `NO_COLOR=1` by default so chunks remain preview-safe. AGY can ingest native active-directory `AGENTS.md`/`GEMINI.md`, but cli-jaw still supervises wrapper-injected operational context, exact resume, transcript anchoring, quota UI, and post-compaction retention as separate runtime contracts.
 
 Timeout handling is stdout-based and anchored to the transcript final-planner signal. If AGY prints only `Error: timed out waiting for response`, or prints progress text followed by that timeout before a fresh final `PLANNER_RESPONSE` row is observed, `agy-runtime.ts` classifies the run as effective exit code `124`, records a trace `runtime_error`, clears final text, and lets lifecycle/fallback/smoke handling see the timeout as a runtime failure. Once a fresh final planner row is seen, its `content` is the authoritative final text; this strips native resume replay such as previous-turn answers before persistence. A trailing timeout can be stripped only after that final-planner anchor has been seen, preserving completed answers without saving progress-only resume turns as completion.
 

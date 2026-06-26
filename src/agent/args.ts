@@ -3,6 +3,7 @@
 
 import { existsSync } from 'node:fs';
 import os from 'node:os';
+import type { AgyCapabilities } from './agy-capabilities.js';
 import { resolveCursorModelVariant } from './cursor-runtime.js';
 
 const isCodexSparkModel = (model: string) => !!model && /spark/i.test(model);
@@ -36,6 +37,7 @@ type BuildArgOptions = {
     aiEProvider?: string;
     agyLogFile?: string;
     agyPrintTimeout?: string;
+    agyCapabilities?: AgyCapabilities;
 };
 
 export function resolveAiEProvider(explicitProvider: string | null | undefined, model: string | null | undefined): AiEProvider {
@@ -147,6 +149,21 @@ function agyAddDirArgs(options: BuildArgOptions): string[] {
         .flatMap((dir) => ['--add-dir', dir]);
 }
 
+function agyPrintArgs(prompt: string, options: BuildArgOptions): string[] {
+    const caps = options.agyCapabilities;
+    if (!caps) return ['-p', prompt || ''];
+    if (!caps.print || !caps.printFlag) {
+        throw new Error('AGY print mode requires print mode support (-p/--print/--prompt)');
+    }
+    return [caps.printFlag, prompt || ''];
+}
+
+function agyOptionalArgs(options: BuildArgOptions, key: keyof AgyCapabilities, args: string[]): string[] {
+    const caps = options.agyCapabilities;
+    if (!caps) return args;
+    return caps[key] ? args : [];
+}
+
 function claudeFastModeArgs(options: BuildArgOptions): string[] {
     return options.fastMode ? ['--settings', CLAUDE_FAST_MODE_SETTINGS] : [];
 }
@@ -170,12 +187,12 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
     const autoPerm = permissions === 'auto';
     switch (cli) {
         case 'agy':
-            return ['-p', prompt || '',
-                ...(model && model !== 'default' ? ['--model', model] : []),
-                '--print-timeout', options.agyPrintTimeout || AGY_PRINT_TIMEOUT,
-                ...(options.agyLogFile ? ['--log-file', options.agyLogFile] : []),
-                ...(autoPerm ? ['--dangerously-skip-permissions'] : []),
-                ...agyAddDirArgs(options)];
+            return [...agyPrintArgs(prompt, options),
+                ...(model && model !== 'default' ? agyOptionalArgs(options, 'model', ['--model', model]) : []),
+                ...agyOptionalArgs(options, 'printTimeout', ['--print-timeout', options.agyPrintTimeout || AGY_PRINT_TIMEOUT]),
+                ...(options.agyLogFile ? agyOptionalArgs(options, 'logFile', ['--log-file', options.agyLogFile]) : []),
+                ...(autoPerm ? agyOptionalArgs(options, 'dangerousSkipPermissions', ['--dangerously-skip-permissions']) : []),
+                ...agyOptionalArgs(options, 'addDir', agyAddDirArgs(options))];
         case 'claude':
             return ['--print', '--verbose', '--output-format', 'stream-json',
                 '--include-partial-messages',
@@ -303,14 +320,18 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
 export function buildResumeArgs(cli: string, model: string, effort: string, sessionId: string, prompt: string, permissions = 'auto', options: BuildArgOptions = {}) {
     const autoPerm = permissions === 'auto';
     switch (cli) {
-        case 'agy':
+        case 'agy': {
+            if (options.agyCapabilities && !options.agyCapabilities.conversation) {
+                throw new Error('AGY exact resume requires --conversation support');
+            }
             return [...(sessionId ? ['--conversation', sessionId] : []),
-                '-p', prompt || '',
-                ...(model && model !== 'default' ? ['--model', model] : []),
-                '--print-timeout', options.agyPrintTimeout || AGY_PRINT_TIMEOUT,
-                ...(options.agyLogFile ? ['--log-file', options.agyLogFile] : []),
-                ...(autoPerm ? ['--dangerously-skip-permissions'] : []),
-                ...agyAddDirArgs(options)];
+                ...agyPrintArgs(prompt, options),
+                ...(model && model !== 'default' ? agyOptionalArgs(options, 'model', ['--model', model]) : []),
+                ...agyOptionalArgs(options, 'printTimeout', ['--print-timeout', options.agyPrintTimeout || AGY_PRINT_TIMEOUT]),
+                ...(options.agyLogFile ? agyOptionalArgs(options, 'logFile', ['--log-file', options.agyLogFile]) : []),
+                ...(autoPerm ? agyOptionalArgs(options, 'dangerousSkipPermissions', ['--dangerously-skip-permissions']) : []),
+                ...agyOptionalArgs(options, 'addDir', agyAddDirArgs(options))];
+        }
         case 'claude':
             return ['--print', '--verbose', '--output-format', 'stream-json',
                 '--include-partial-messages',

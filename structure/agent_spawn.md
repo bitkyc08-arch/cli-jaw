@@ -17,7 +17,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `src/agent/spawn.ts` | 2462L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
+| `src/agent/spawn.ts` | 2476L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
 | `src/agent/lifecycle-handler.ts` | 1072L | child lifecycle, fallback, retry, queue resume, goal continuation |
 | `src/agent/args.ts` | 455L | CLI별 신규/재개 인자 생성 |
 | `src/agent/pi-runtime.ts` | 460L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
@@ -31,6 +31,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `src/agent/opencode-diagnostics.ts` | 156L | OpenCode binary/permission 점검 + raw event 버퍼 |
 | `src/agent/grok-trace-backfill.ts` | 167L | Grok streaming-json tool_calls/tool_result backfill from trace archive |
 | `src/agent/spawn-env.ts` | 148L | AGY plain-text `NO_COLOR=1`, OpenCode/Gemini 전용 env/permission 보정 |
+| `src/agent/agy-capabilities.ts` | 126L | AGY `--help`/`--version` capability probe + cached optional flag support map |
 | `src/agent/smoke-detector.ts` | 148L | smoke response 감지 + auto-continue 판단 |
 | `src/agent/watchdog.ts` | 113L | idle/progress watchdog; progress extends deadline within 4h hard cap |
 | `src/agent/resume-classifier.ts` | 81L | CLI별 stale session regex |
@@ -128,7 +129,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `pi` | `pi --mode rpc` | isolated `PI_CODING_AGENT_DIR`, profile/model from `settings.pi`, npm-exec fallback |
 | `claude` | stdin에 `withHistoryPrompt()` + `stream-json` | `text_delta` → `appendAssistantRawText` → live `agent_output`; `claudeStreamedText` prevents duplicate on complete `assistant` |
 | `claude-e` | `claude-e run --jsonl --output-format stream-json --idle-timeout-ms 600000 --hard-timeout-ms 3600000` | `jaw_runtime` 이벤트 가로채기, resume `--resume <sessionId>` |
-| `agy` | `agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp>` | plain text stdout; `--model` when not `default`; session id from stdout/log; resume `--conversation <id>` |
+| `agy` | `agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp>` | plain text stdout; optional flags are emitted only when `agy-capabilities.ts` detects support (`--model` observed in AGY 1.0.12); session id from stdout/log; resume `--conversation <id>` |
 | `cursor` | `cursor-agent -p --trust --output-format stream-json --model <resolvedModelId>` | effort는 full model id로 해석, `runtimeModel` session bucket |
 | `codex` | stdin에 `[User Message]` 블록 (fresh only) | — |
 | `gemini` | headless `-p`, model, stream JSON, `--skip-trust`, `--approval-mode yolo` | multi-directory workspace `--include-directories` |

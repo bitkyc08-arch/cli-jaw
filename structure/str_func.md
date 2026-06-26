@@ -9,7 +9,7 @@ aliases: [CLI-JAW Source Structure, str_func, source structure reference]
 # CLI-JAW — Source Structure & Function Reference
 
 > 마지막 검증: 2026-06-27 (git + devlog cross-ref refresh)
-> `server.ts` 635L / `src/routes/` 36 TS files (232 route handlers including `/`) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 46 TS files (spawn.ts 2462L + events/ submodules + cursor/claude-e/agy runtimes) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 94 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 5 files (+`hub-callback.ts`) / `src/messaging/` 7 files (+`thread-target.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
+> `server.ts` 635L / `src/routes/` 36 TS files (232 route handlers including `/`) / `src/cli/handlers*.ts` 460L + 507L + 103L + search 34L + project 73L + workflow 494L / `src/cli/api-auth.ts` 45L / `src/workflows/` 20 root files + 3 subdirs / `src/agent/` 47 TS files (spawn.ts 2476L + events/ submodules + cursor/claude-e/agy runtimes + AGY capability probe) / `src/goal/` 5 files (+`pause-gate.ts`) / `src/goal-run/` 5 files / `src/trace/` 3 files / `src/team/` 5 files / `src/jaw-ceo/` 16 files / `src/shared/` 6 files + reminders helper / `src/manager/` 94 TS/TSX files (+`telegram-hub/` 3 files) / `src/browser/web-ai/` 96 TS files / `adaptive-fetch/` 34 files / `src/telegram/` 5 files (+`hub-callback.ts`) / `src/messaging/` 7 files (+`thread-target.ts`) / `bin/commands/` 30 top-level + `hooks.ts` / `electron/` sidecar packaging / `native/claude-e/` canonical embedded crate
 >
 > 상세 모듈 문서는 [서브 문서](#서브-문서)를 참조하세요.
 
@@ -65,7 +65,7 @@ cli-jaw/
 │   │   ├── tcc.ts            ← macOS TCC / screen-recording 권한 점검 (55L)
 │   │   ├── settings-merge.ts ← perCli/activeOverrides/pi deep merge (52L)
 │   │   └── skill-cache.ts    ← 활성 스킬 슬래시 커맨드 캐시 (registerSkillLoader, getSkillCommandsCache, invalidateSkillCommandsCache) (44L)
-│   ├── agent/                ← CLI 에이전트 런타임 (29 root files + events/ 12 files + spawn/ 3 files)
+│   ├── agent/                ← CLI 에이전트 런타임 (32 root files + events/ 12 files + spawn/ 3 files)
 │   │   ├── spawn.ts          ← CLI spawn + ACP/Codex App/Pi RPC/AGY/Kiro plain text/log session capture/claude-e helper 분기 + v2 SQLite session resume + 큐 + 메모리 flush + 429 retry timer + isAgentBusy/isSteerInProgress + buildHistoryBlock compact cutoff + working_dir scoping + enqueue→processQueue race fix + QueueItem persistent DB queue + makeCleanEnv PATH augment (2476L)
 │   │   ├── spawn/            ← spawn 서브모듈 (3 files)
 │   │   │   ├── queue.ts      ← QueueItem persistent DB queue + processQueue race fix + enqueue/dequeue (373L)
@@ -86,6 +86,7 @@ cli-jaw/
 │   │   │   └── types.ts      ← event type definitions (23L)
 │   │   ├── spawn-env.ts      ← spawn용 child env 빌더 (AGY NO_COLOR, OpenCode/Gemini permissions config 주입 등, 148L)
 │   │   ├── args.ts           ← CLI별 인자 빌더 + AGY print-mode/`--log-file`/`--conversation` resume args + `claude-e` helper run/resume args + Pi session bucket 분리 (455L)
+│   │   ├── agy-capabilities.ts ← AGY `--help`/`--version` capability probe + cached optional flag support map + legacy emit-all fallback marker (126L)
 │   │   ├── pi-runtime.ts     ← Pi profile 정규화 + isolated `PI_CODING_AGENT_DIR` models/settings 생성 + `pi --offline --list-models` discovery + `pi --mode rpc` JSONL parser/spawner (460L) ✨
 │   │   ├── lifecycle-handler.ts ← child lifecycle + fallback/retry + queue resume orchestration + clearEmployeeSession on resume failure + stale resume fresh retry + kickGoalContinuation export + clearGoalTimers (1072L)
 │   │   ├── kiro-auth.ts      ← Kiro CLI auth store reader (resolveKiroDataPath, readKiroAuthFromStore, resolveKiroProfileArn, regionFromProfileArn, listKiroConversationIdsForCwd, resolveKiroSessionIdAfterSpawn, extractKiroSessionIdFromV2Store) (230L)
