@@ -43,6 +43,7 @@ export const FALLBACK_MAX_RETRIES = 3;
 export interface QueueController {
     enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: {
         target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string;
+        overrides?: { model?: string; systemPrompt?: string };
     }): string;
     removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number };
     processQueue(): Promise<void>;
