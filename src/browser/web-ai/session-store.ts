@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JAW_HOME } from '../../core/config.js';
 import { WebAiError } from './errors.js';
@@ -126,13 +126,16 @@ export function withStoreLock<T>(fn: () => T): T {
     while (attempts < LOCK_RETRY_LIMIT) {
         try {
             const fd = openSync(path, 'wx');
+            closeSync(fd);
+            const tmpMeta = `${path}.meta.${process.pid}`;
             try {
-                writeFileSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
-            } catch { /* best-effort metadata write */ }
+                writeFileSync(tmpMeta, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
+                renameSync(tmpMeta, `${path}.meta`);
+            } catch { try { unlinkSync(tmpMeta); } catch { /* cleanup */ } }
             try {
                 return fn();
             } finally {
-                try { closeSync(fd); } catch { /* already closed */ }
+                try { unlinkSync(`${path}.meta`); } catch { /* already gone */ }
                 try { unlinkSync(path); } catch { /* already gone */ }
             }
         } catch (err) {
@@ -140,6 +143,7 @@ export function withStoreLock<T>(fn: () => T): T {
             attempts += 1;
             const stale = isStaleLock(path);
             if (stale) {
+                try { unlinkSync(`${path}.meta`); } catch { /* may not exist */ }
                 try { unlinkSync(path); } catch { /* races resolve naturally */ }
                 continue;
             }
@@ -155,15 +159,19 @@ export function withStoreLock<T>(fn: () => T): T {
 }
 
 export function isStaleLock(path: string): boolean {
+    const metaPath = `${path}.meta`;
     try {
-        const raw = readFileSync(path, 'utf8');
+        const raw = readFileSync(metaPath, 'utf8');
         const parsed = JSON.parse(raw) as { acquiredAt?: string; heartbeatAt?: string; pid?: number };
-        // 104.1: a crashed holder's lock is immediately stale (PID-liveness), not held until TTL.
         if (parsed?.pid != null && !pidAlive(Number(parsed.pid))) return true;
         const stamp = Date.parse(parsed?.heartbeatAt || parsed?.acquiredAt || '');
         if (!Number.isFinite(stamp)) return true;
         return Date.now() - stamp > STALE_LOCK_MS;
     } catch {
+        try {
+            const lockStat = statSync(path);
+            if (Date.now() - lockStat.mtimeMs < 2000) return false;
+        } catch { /* lock file gone */ }
         return true;
     }
 }
@@ -248,21 +256,26 @@ function sessionCommandLockPath(sessionId: string): string {
 
 export async function withSessionCommandLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
     const path = sessionCommandLockPath(sessionId);
+    const metaPath = `${path}.meta`;
     mkdirSync(dirname(path), { recursive: true });
     let fd: number | null = null;
     let attempts = 0;
     while (attempts < LOCK_RETRY_LIMIT) {
         try {
             fd = openSync(path, 'wx');
+            closeSync(fd);
+            const tmpMeta = `${path}.meta.${process.pid}`;
             try {
-                writeFileSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), sessionId }));
-            } catch { /* best-effort metadata write */ }
+                writeFileSync(tmpMeta, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), sessionId }));
+                renameSync(tmpMeta, metaPath);
+            } catch { try { unlinkSync(tmpMeta); } catch { /* cleanup */ } }
             break;
         } catch (err: unknown) {
             if (!hasErrorCode(err, 'EEXIST')) throw err;
             attempts += 1;
             const stale = isStaleLock(path);
             if (stale) {
+                try { unlinkSync(metaPath); } catch { /* may not exist */ }
                 try { unlinkSync(path); } catch { /* races resolve naturally */ }
                 continue;
             }
@@ -277,10 +290,18 @@ export async function withSessionCommandLock<T>(sessionId: string, fn: () => Pro
             message: `web-ai session command: failed to acquire lock for ${sessionId} after ${LOCK_RETRY_LIMIT} attempts`,
         });
     }
+    const heartbeatTimer = setInterval(() => {
+        try {
+            const tmpHb = `${metaPath}.hb.${process.pid}`;
+            writeFileSync(tmpHb, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), sessionId }));
+            renameSync(tmpHb, metaPath);
+        } catch { /* best-effort heartbeat */ }
+    }, 60_000);
     try {
         return await fn();
     } finally {
-        try { closeSync(fd); } catch { /* already closed */ }
+        clearInterval(heartbeatTimer);
+        try { unlinkSync(metaPath); } catch { /* already gone */ }
         try { unlinkSync(path); } catch { /* already gone */ }
     }
 }

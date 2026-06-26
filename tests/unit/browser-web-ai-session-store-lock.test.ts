@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { isStaleLock, isSessionActive } from '../../src/browser/web-ai/session-store.js';
@@ -12,23 +12,28 @@ const mk = (o: object): Parameters<typeof isSessionActive>[0] => o as unknown as
 test('BWAI-SLOCK-001: dead-PID lock is stale immediately; live+recent is not', () => {
     const dir = mkdtempSync(join(tmpdir(), 'cjsl-'));
     const p = join(dir, 'lock');
+    const meta = `${p}.meta`;
 
     // dead PID + recent acquiredAt → stale (PID-liveness wins)
-    writeFileSync(p, JSON.stringify({ pid: 2147483646, acquiredAt: new Date().toISOString() }));
+    writeFileSync(p, '');
+    writeFileSync(meta, JSON.stringify({ pid: 2147483646, acquiredAt: new Date().toISOString() }));
     assert.equal(isStaleLock(p), true);
 
     // live PID (this process) + recent → NOT stale
-    writeFileSync(p, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
+    writeFileSync(meta, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
     assert.equal(isStaleLock(p), false);
 
     // no PID + old timestamp → stale by age
-    writeFileSync(p, JSON.stringify({ acquiredAt: new Date(Date.now() - 60 * 60_000).toISOString() }));
+    writeFileSync(meta, JSON.stringify({ acquiredAt: new Date(Date.now() - 60 * 60_000).toISOString() }));
     assert.equal(isStaleLock(p), true);
 
-    // missing/garbage file → stale
+    // missing/garbage meta file + fresh lock → NOT stale (grace window)
+    try { unlinkSync(meta); } catch { /* may not exist */ }
+    writeFileSync(p, '');
+    assert.equal(isStaleLock(p), false);
+
+    // missing/garbage meta file + stale lock → stale
     assert.equal(isStaleLock(join(dir, 'nope')), true);
-    writeFileSync(p, 'not json');
-    assert.equal(isStaleLock(p), true);
 });
 
 test('BWAI-SLOCK-002: isSessionActive excludes non-active status and expired deadlines', () => {

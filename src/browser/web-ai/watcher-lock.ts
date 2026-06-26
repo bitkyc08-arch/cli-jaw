@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { JAW_HOME } from '../../core/config.js';
 import { WebAiError } from './errors.js';
@@ -35,13 +35,17 @@ function watcherLockPath(sessionId: string): string {
 }
 
 function writeWatcherLockMetadata(dir: string, metadata: WatcherLockMetadata): void {
-    writeFileSync(join(dir, 'metadata.json'), `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+    const target = join(dir, 'metadata.json');
+    const tmp = join(dir, `metadata.json.tmp.${process.pid}`);
+    writeFileSync(tmp, `${JSON.stringify(metadata, null, 2)}\n`, 'utf8');
+    renameSync(tmp, target);
 }
 
 function readWatcherLockMetadata(dir: string): WatcherLockMetadata | null {
     try {
-        if (!existsSync(join(dir, 'metadata.json'))) return null;
-        return JSON.parse(readFileSync(join(dir, 'metadata.json'), 'utf8')) as WatcherLockMetadata;
+        const metaPath = join(dir, 'metadata.json');
+        if (!existsSync(metaPath)) return null;
+        return JSON.parse(readFileSync(metaPath, 'utf8')) as WatcherLockMetadata;
     } catch {
         return null;
     }
@@ -58,8 +62,16 @@ function pidAlive(pid: number): boolean {
     }
 }
 
-export function isWatcherLockStale(metadata: WatcherLockMetadata | null, staleMs: number): boolean {
-    if (!metadata) return true;
+export function isWatcherLockStale(metadata: WatcherLockMetadata | null, staleMs: number, lockDir?: string): boolean {
+    if (!metadata) {
+        if (lockDir) {
+            try {
+                const dirStat = statSync(lockDir);
+                if (Date.now() - dirStat.mtimeMs < 2000) return false;
+            } catch { /* dir gone */ }
+        }
+        return true;
+    }
     if (!pidAlive(Number(metadata.pid))) return true;
     const heartbeat = Date.parse(metadata.heartbeatAt || metadata.startedAt || '');
     return Number.isFinite(heartbeat) && Date.now() - heartbeat > staleMs;
@@ -101,7 +113,7 @@ export function acquireWatcherSessionLock(
         } catch (err) {
             if ((err as { code?: string })?.code !== 'EEXIST') throw err;
             const existing = readWatcherLockMetadata(dir);
-            if (isWatcherLockStale(existing, staleMs)) {
+            if (isWatcherLockStale(existing, staleMs, dir)) {
                 rmSync(dir, { recursive: true, force: true });
                 continue; // retry: the previous holder is dead/stale
             }
