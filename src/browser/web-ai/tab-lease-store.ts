@@ -197,7 +197,8 @@ export function assertActiveCapacity(
     const active = retained.filter(lease =>
         lease.state === 'active-session' &&
         lease.owner === nextLease.owner &&
-        lease.browserProfileKey === nextLease.browserProfileKey,
+        lease.browserProfileKey === nextLease.browserProfileKey &&
+        !isDeadOwnerActiveLease(lease, pidAlive),
     );
     const maxPerKey = normalizeLimit(limits.maxPerKey);
     if (maxPerKey >= 0) {

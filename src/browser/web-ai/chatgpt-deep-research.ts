@@ -223,7 +223,11 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
         const count = await countAssistants(page);
         const progress = await hasProgressIndicator(page);
         if (progress) researchActivityObserved = true;
-        if (count > baselineCount || await isStreaming(page) || progress) break;
+        const streaming = await isStreaming(page);
+        if (count > baselineCount || streaming || progress) {
+            if (streaming) researchActivityObserved = true;
+            break;
+        }
         await page.waitForTimeout(500);
     }
 
@@ -236,7 +240,7 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
 
         const streaming = await isStreaming(page);
         const progress = await hasProgressIndicator(page);
-        if (progress) researchActivityObserved = true;
+        if (progress || streaming) researchActivityObserved = true;
         const count = await countAssistants(page);
 
         if (count > baselineCount && !streaming && !progress) {

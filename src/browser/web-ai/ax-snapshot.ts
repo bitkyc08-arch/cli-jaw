@@ -302,7 +302,16 @@ async function captureAxViaCdp(
         const res = backendNodeId
             ? (await client.send('Accessibility.getPartialAXTree', { backendNodeId, fetchRelatives: true })) as { nodes?: CdpAxNode[] }
             : (await client.send('Accessibility.getFullAXTree', {})) as { nodes?: CdpAxNode[] };
-        return cdpNodesToAxTree(Array.isArray(res.nodes) ? res.nodes : [], { interactiveOnly });
+        const nodeList = Array.isArray(res.nodes) ? res.nodes : [];
+        if (!nodeList.length) {
+            throw new WebAiError({
+                errorCode: 'snapshot.unavailable',
+                stage: 'ax-snapshot',
+                retryHint: 'retry',
+                message: 'CDP returned 0 accessibility nodes for the requested subtree',
+            });
+        }
+        return cdpNodesToAxTree(nodeList, { interactiveOnly });
     } finally {
         await client.detach?.().catch(() => undefined);
     }
