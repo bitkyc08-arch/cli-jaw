@@ -110,8 +110,11 @@ POST /api/channel/send  # Unified endpoint (preferred)</code></pre>
 <h2>그룹 채팅</h2>
 <p>그룹/슈퍼그룹 채팅에서는 <code>@botUsername</code>으로 멘션할 때만 봇이 응답합니다. 멘션은 처리 전에 메시지에서 자동으로 제거됩니다.</p>
 
+<h2>Dashboard Telegram Hub (P0–P4)</h2>
+<p>포럼 토픽을 서로 다른 CLI-JAW 인스턴스로 라우팅합니다. Manager UI에서 <code>(chatId, threadId) → port</code> 매핑을 설정합니다. Hub 명령어: <code>/setthread</code>, <code>/threads</code>, <code>/hubhelp</code>. <strong>P4:</strong> Manager UI에서 토픽별 <code>model</code>/<code>systemPrompt</code> override. 자세한 hub-member relay 모델은 <code>structure/telegram.md</code>를 참조하세요.</p>
+
 <h2>사용 가능한 명령어</h2>
-<p>Telegram에서 27개의 슬래시 명령어를 사용할 수 있습니다 (Discord와 동일한 세트). 봇 전용 명령어:</p>
+<p>CLI/Web/Telegram/Discord에 51개 슬래시 명령어가 등록되어 있습니다 (Telegram에서 37개 표시). workflow helper: <code>/plan</code>, <code>/interview</code>, <code>/review</code>, <code>/search</code>, <code>/goal</code>, <code>/orchestrate</code>, <code>/task</code>, <code>/fork</code>, <code>/gd</code>. CLI/Web 동적 <code>/skill:&lt;id&gt;</code>. 봇 전용 명령어:</p>
 <table>
 <tr><th>명령어</th><th>설명</th></tr>
 <tr><td><code>/start</code></td><td>환영 메시지</td></tr>

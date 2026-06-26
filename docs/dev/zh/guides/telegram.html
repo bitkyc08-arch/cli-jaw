@@ -110,8 +110,11 @@ POST /api/channel/send  # Unified endpoint (preferred)</code></pre>
 <h2>群组聊天</h2>
 <p>在群组/超级群组聊天中，机器人仅在被 <code>@botUsername</code> 提及时才会回复。提及标记会在处理消息前自动去除。</p>
 
+<h2>Dashboard Telegram Hub（P0–P4）</h2>
+<p>论坛主题可路由到不同的 CLI-JAW 实例。Manager UI 配置 <code>(chatId, threadId) → port</code> 映射。Hub 命令：<code>/setthread</code>、<code>/threads</code>、<code>/hubhelp</code>。<strong>P4：</strong>Manager UI 中按主题的 <code>model</code>/<code>systemPrompt</code> override。完整 hub-member relay 模型见 <code>structure/telegram.md</code>。</p>
+
 <h2>可用命令</h2>
-<p>Telegram 中可见 27 个斜杠命令（与 Discord 相同）。机器人专属命令：</p>
+<p>CLI/Web/Telegram/Discord 共注册 51 个斜杠命令（Telegram 可见 37 个）。workflow helper：<code>/plan</code>、<code>/interview</code>、<code>/review</code>、<code>/search</code>、<code>/goal</code>、<code>/orchestrate</code>、<code>/task</code>、<code>/fork</code>、<code>/gd</code>。CLI/Web 动态 <code>/skill:&lt;id&gt;</code>。机器人专属命令：</p>
 <table>
 <tr><th>命令</th><th>描述</th></tr>
 <tr><td><code>/start</code></td><td>欢迎消息</td></tr>
