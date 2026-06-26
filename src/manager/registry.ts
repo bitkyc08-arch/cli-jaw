@@ -6,9 +6,11 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import {
     MANAGED_INSTANCE_PORT_COUNT,
     MANAGED_INSTANCE_PORT_FROM,
+    MANAGED_INSTANCE_PORT_TO,
 } from './constants.js';
 import { dashboardPath, resolveDashboardHome } from './dashboard-home.js';
 import { deriveProfiles, mergeProfiles } from './profiles.js';
+import type { TelegramHubConfig, ThreadRoute } from './telegram-hub/types.js';
 import type {
     DashboardDiffMode,
     DashboardDiffRootPolicy,
@@ -307,7 +309,7 @@ export function defaultDashboardRegistry(options: RegistryOptions = {}): Dashboa
     const from = clampInt(options.from, MANAGED_INSTANCE_PORT_FROM, 1, 65535);
     const maxCount = Math.max(1, 65535 - from + 1);
     const count = clampInt(options.count, MANAGED_INSTANCE_PORT_COUNT, 1, Math.min(MANAGED_INSTANCE_PORT_COUNT, maxCount));
-    return { scan: { from, count }, ui: defaultUi(), instances: {}, profiles: {}, activeProfileFilter: [] };
+    return { scan: { from, count }, ui: defaultUi(), instances: {}, profiles: {}, activeProfileFilter: [], telegramHub: normalizeTelegramHub(undefined) };
 }
 
 function normalizeUi(value: unknown): DashboardRegistryUi {
@@ -411,6 +413,37 @@ function normalizeProfile(key: string, value: unknown): Partial<DashboardProfile
     });
 }
 
+/** Normalize the telegramHub registry block (validates routes + port range). Exported for unit tests. */
+export function normalizeTelegramHub(value: unknown): TelegramHubConfig {
+    const input = isRecord(value) ? value : {};
+    const rawRoutes = Array.isArray(input["routes"]) ? input["routes"] : [];
+    const routes: ThreadRoute[] = [];
+    for (const r of rawRoutes) {
+        if (!isRecord(r)) continue;
+        const chatId = readString(r["chatId"]);
+        const threadId = readString(r["threadId"]);
+        const port = Number(r["port"]);
+        if (!chatId || !threadId
+            || !Number.isInteger(port) || port < MANAGED_INSTANCE_PORT_FROM || port > MANAGED_INSTANCE_PORT_TO) continue;
+        routes.push(stripUndefined({
+            chatId, threadId, port,
+            label: readString(r["label"]) || undefined,
+            enabled: r["enabled"] !== false,
+            systemPrompt: readString(r["systemPrompt"]) || undefined,
+            model: readString(r["model"]) || undefined,
+        }) as ThreadRoute);
+    }
+    const defaultPort = Number(input["defaultPort"]);
+    return {
+        enabled: input["enabled"] === true,
+        token: readString(input["token"]) || '',
+        chatId: readString(input["chatId"]) || '',
+        defaultPort: Number.isInteger(defaultPort) && defaultPort >= MANAGED_INSTANCE_PORT_FROM && defaultPort <= MANAGED_INSTANCE_PORT_TO
+            ? defaultPort : MANAGED_INSTANCE_PORT_FROM,
+        routes,
+    };
+}
+
 export function normalizeDashboardRegistry(value: unknown, options: RegistryOptions = {}): DashboardRegistry {
     const input = isRecord(value) ? value : {};
     const defaults = defaultDashboardRegistry(options);
@@ -438,7 +471,7 @@ export function normalizeDashboardRegistry(value: unknown, options: RegistryOpti
         ? input["activeProfileFilter"].map(readProfileId).filter((value): value is DashboardProfileId => Boolean(value))
         : [];
 
-    return { scan: { from, count }, ui: normalizeUi(input["ui"]), instances, profiles, activeProfileFilter };
+    return { scan: { from, count }, ui: normalizeUi(input["ui"]), instances, profiles, activeProfileFilter, telegramHub: normalizeTelegramHub(input["telegramHub"]) };
 }
 
 function statusFor(path: string, loaded: boolean, error: string | null, registry: DashboardRegistry, options: StatusOptions = {}): DashboardRegistryStatus {
@@ -522,6 +555,7 @@ export function patchDashboardRegistry(patch: DashboardRegistryPatch, options: R
         instances: { ...current.instances },
         profiles: { ...current.profiles },
         activeProfileFilter: patch.activeProfileFilter ?? current.activeProfileFilter,
+        telegramHub: patch.telegramHub ? { ...current.telegramHub, ...patch.telegramHub } : current.telegramHub,
     }, options);
 
     for (const [key, value] of Object.entries(patch.instances || {})) {
