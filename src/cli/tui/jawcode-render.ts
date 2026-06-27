@@ -51,9 +51,34 @@ export async function initJawcodeTui(): Promise<void> {
         _interactive = await import('../../lib/tui/jawcode-interactive-bundle.mjs');
         await _interactive.initTheme?.(false);
     } catch {
-        _interactive = { theme: {} };
+        // No interactive bundle: provide a functional ANSI theme rather than an
+        // empty object. Consumers call theme.fg/bold/italic directly (some
+        // without a null guard), so an empty theme would crash the status bar.
+        _interactive = { theme: defaultAnsiTheme() };
     }
     _initialized = true;
+}
+
+// Minimal terminal theme used when the jawcode interactive bundle is absent.
+// Mirrors the Theme surface the TUI actually calls: fg(color, text) plus the
+// text-style helpers.
+function defaultAnsiTheme(): Record<string, unknown> {
+    const FG: Record<string, string> = {
+        accent: '\x1b[38;2;96;165;250m',
+        muted: '\x1b[90m',
+        success: '\x1b[32m',
+        error: '\x1b[31m',
+        warning: '\x1b[33m',
+    };
+    const wrap = (open: string) => (text: string) => `${open}${text}\x1b[0m`;
+    return {
+        fg: (color: string, text: string) => (FG[color] ? `${FG[color]}${text}\x1b[0m` : text),
+        bold: wrap('\x1b[1m'),
+        italic: wrap('\x1b[3m'),
+        underline: wrap('\x1b[4m'),
+        strikethrough: wrap('\x1b[9m'),
+        dim: wrap('\x1b[2m'),
+    };
 }
 
 function ensureInit(): void {
