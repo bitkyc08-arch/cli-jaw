@@ -68,6 +68,48 @@ function parseLegacyMemorySections(content: string) {
     return sections;
 }
 
+export function mergeCoreProfileContent(
+    existing: string,
+    coreContent: string,
+    sourceHash: string,
+    updatedAt = new Date().toISOString(),
+) {
+    const parsed = parseLegacyMemorySections(coreContent);
+    const managedBlock = `<!-- cli-jaw:core-memory:start -->
+## Core Memory Sync
+
+### User Preferences
+${parsed.userPreferences || ''}
+
+### Key Decisions
+${parsed.keyDecisions || ''}
+
+### Active Projects
+${parsed.activeProjects || ''}
+<!-- cli-jaw:core-memory:end -->`;
+    const startMarker = '<!-- cli-jaw:core-memory:start -->';
+    const endMarker = '<!-- cli-jaw:core-memory:end -->';
+    const start = existing.indexOf(startMarker);
+    const end = existing.indexOf(endMarker);
+    let content = start >= 0 && end >= start
+        ? existing.slice(0, start) + managedBlock + existing.slice(end + endMarker.length)
+        : `${existing.trimEnd()}\n\n${managedBlock}\n`;
+
+    const closingFrontmatter = content.startsWith('---\n') ? content.indexOf('\n---\n', 4) : -1;
+    if (closingFrontmatter >= 0) {
+        const header = content.slice(0, closingFrontmatter);
+        const body = content.slice(closingFrontmatter);
+        const withHash = /^source_hash:\s*.+$/m.test(header)
+            ? header.replace(/^source_hash:\s*.+$/m, `source_hash: ${sourceHash}`)
+            : `${header}\nsource_hash: ${sourceHash}`;
+        const withTimestamp = /^updated_at:\s*.+$/m.test(withHash)
+            ? withHash.replace(/^updated_at:\s*.+$/m, `updated_at: ${updatedAt}`)
+            : `${withHash}\nupdated_at: ${updatedAt}`;
+        content = withTimestamp + body;
+    }
+    return content;
+}
+
 function getLegacyClaudeMemoryDir() {
     const wd = expandHomePath(settings["workingDir"] || os.homedir(), os.homedir());
     const hash = wd.replace(/[\\/]/g, '-');
@@ -130,7 +172,17 @@ export function syncCoreProfile(root: string, opts: { force?: boolean } = {}) {
         }
     }
 
+    const existing = fs.existsSync(profilePath) ? safeReadFile(profilePath) : '';
     const parsed = parseLegacyMemorySections(coreContent);
+
+    if (existing.trim()) {
+        const content = mergeCoreProfileContent(existing, coreContent, sourceHash);
+        writeText(profilePath, content);
+        reindexSingleFile(root, profilePath);
+        updateImportedCount('core', 1);
+        return { updated: true, path: profilePath, sourceHash, preserved: true };
+    }
+
     const body = `# Profile
 
 ## User Preferences
@@ -143,7 +195,6 @@ ${parsed.keyDecisions || ''}
 ${parsed.activeProjects || ''}
 `;
 
-    const existing = fs.existsSync(profilePath) ? safeReadFile(profilePath) : '';
     const existingCreatedAt = /^created_at:\s+(.+)$/m.exec(existing)?.[1]?.trim() || '';
 
     const fm = frontmatter({
