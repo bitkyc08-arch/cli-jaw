@@ -69,7 +69,7 @@ test('worker runs monitor remains Manager-local and independent of Code sessions
     ].join('\n');
     const router = read('public/manager/src/SidebarRailRouter.tsx');
 
-    assert.ok(router.includes('<WorkerProgressMonitorPanel />'), 'SidebarRailRouter must render the monitor in Manager navigation');
+    assert.equal(router.includes('<WorkerProgressMonitorPanel />'), false, 'SidebarRailRouter must not render worker monitor in user jaw instance sidebar');
     assert.equal(combined.includes('selectedInstance'), false, 'worker runs panel must not depend on selected child Jaw instance');
     assert.equal(combined.includes('CodeSession'), false, 'worker runs panel must not model runs as Code sessions');
     assert.equal(combined.includes('/api/code'), false, 'worker runs panel must not call Code session APIs');
