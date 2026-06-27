@@ -553,6 +553,37 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 triggerMemoryFlush();
             }
         }
+    } else if (code !== 0 && wasKilled && !wasSteer && ctx.stallReason) {
+        // Watchdog kills carry a useful reason, but `wasKilled` intentionally
+        // bypasses the generic retry/fallback path below. Surface that reason
+        // before the final resolver turns the empty process output into the
+        // channel's generic "no response" message.
+        const { message: errMsg } = classifyExitError(
+            runtimeCli,
+            code,
+            ctx.stderrBuf,
+            ctx.stallReason,
+            `${ctx.fullText}\n${ctx.traceLog.join('\n')}`,
+        );
+        if (mainManaged && !opts.internal) {
+            insertMessage.run(
+                'assistant',
+                errMsg,
+                cli,
+                model,
+                settings["workingDir"] || null,
+                getActiveChatSession(),
+            );
+        }
+        broadcast(
+            'agent_done',
+            { ...runTag(ctx), text: `❌ ${errMsg}`, error: true, origin, ...empTag },
+            isEmployee ? 'internal' : 'public',
+        );
+        finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+        resolve({ text: '', code: code ?? 1, diagnostic: errMsg });
+        if (mainManaged && !opts.internal) processQueue();
+        return;
     } else if (mainManaged && code !== 0 && !wasKilled) {
         // ─── Error handling ───
         const diagnosticText = `${ctx.fullText}\n${ctx.traceLog.join('\n')}`;

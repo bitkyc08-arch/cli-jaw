@@ -121,6 +121,41 @@ test('Claude rate-limit text is not classified as Jaw-level 429 retry', () => {
     }
 });
 
+test('watchdog kill broadcasts its stall reason instead of resolving as a generic no-response', async () => {
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    clearAllBroadcastListeners();
+    addBroadcastListener((type, data) => events.push({ type, data }));
+
+    try {
+        const reason = 'unsafe AGY run_command broad home search (conversation test-run)';
+        const { params, getResolved, wasQueued } = baseExitParams({
+            code: 124,
+            cli: 'agy',
+            model: 'gemini-3.5-flash',
+            wasKilled: true,
+            ctx: {
+                fullText: '',
+                sessionId: null,
+                toolLog: [],
+                traceLog: [],
+                stderrBuf: '',
+                stallReason: reason,
+            },
+        });
+
+        await handleAgentExit(params as any);
+
+        const done = events.find(event => event.type === 'agent_done');
+        assert.ok(done);
+        assert.equal(done.data["error"], true);
+        assert.match(String(done.data["text"]), /unsafe AGY run_command broad home search/);
+        assert.match(getResolved().diagnostic, /unsafe AGY run_command broad home search/);
+        assert.equal(wasQueued(), true);
+    } finally {
+        clearAllBroadcastListeners();
+    }
+});
+
 test('Claude rate-limit retry is restored but fallback is suppressed', () => {
     const lifecycle = readSrc('../../src/agent/lifecycle-handler.ts');
     assert.match(lifecycle, /const\s+suppressClaudeRateLimitFallback\s*=\s*isClaudeRateLimit/);
