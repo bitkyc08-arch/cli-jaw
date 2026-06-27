@@ -2057,6 +2057,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ...(agyBootstrap ? {
                 agyBootstrapSentinel: agyBootstrap.sentinel,
                 agyBootstrapHash: agyBootstrap.hash,
+                metadata: { agyPromptSpill: agyBootstrap.spill },
             } : {}),
             agyBootstrapAccepted: false,
             agyBootstrapAcceptanceMode: agyBootstrap ? 'pending' as const : 'not-applicable' as const,

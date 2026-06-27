@@ -264,6 +264,17 @@ test('AGY-RT-012d: AGY prompt path uses bootstrap envelope after final spawn cwd
     assert.match(agyBootstrapBlock, /args\s*=\s*buildCurrentArgs\(argOptions\)/);
 });
 
+test('AGY-RT-012e: AGY prompt spill metadata is attached safely after bootstrap exists', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const ctxIdx = spawnSrc.indexOf('const ctx: SpawnContext = {');
+    const lifecycleIdx = spawnSrc.indexOf('let geminiWatchdog', ctxIdx);
+    assert.ok(ctxIdx >= 0);
+    const ctxBlock = spawnSrc.slice(ctxIdx, lifecycleIdx);
+    assert.match(ctxBlock, /metadata:\s*\{\s*agyPromptSpill:\s*agyBootstrap\.spill\s*\}/);
+    assert.match(ctxBlock, /agyBootstrapSentinel:\s*agyBootstrap\.sentinel/);
+    assert.doesNotMatch(ctxBlock, /agyBootstrap\.prompt/);
+});
+
 test('AGY-RT-013: AGY resume replay prefix is stripped only when new output remains', () => {
     assert.deepEqual(
         stripAgyResumeReplayPrefix('OLD_ANSWER\nNEW_ANSWER', 'OLD_ANSWER'),

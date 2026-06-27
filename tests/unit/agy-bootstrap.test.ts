@@ -77,6 +77,86 @@ test('AGY-BS-003: AGY bootstrap hash changes when session id changes', () => {
     assert.notEqual(first.hash, second.hash);
 });
 
+test('AGY-BS-003b: no maxChars preserves sections and reports all present segments', () => {
+    const envelope = buildAgyBootstrapEnvelope({
+        taskPrompt: 'current task',
+        operationalContext: 'operational rules',
+        historyBlock: 'old context',
+        workingDir: '/repo',
+        sessionId: 'session-a',
+    });
+    assert.deepEqual(envelope.spill.included, ['bootstrap', 'current-task', 'operational-context', 'history']);
+    assert.deepEqual(envelope.spill.truncated, []);
+    assert.deepEqual(envelope.spill.omitted, []);
+    assert.equal(envelope.spill.totalChars, envelope.prompt.length);
+    assert.equal(envelope.spill.bootstrapHash, envelope.hash);
+});
+
+test('AGY-BS-003c: huge history spills before current task', () => {
+    const currentTask = 'CURRENT_TASK_MUST_SURVIVE';
+    const envelope = buildAgyBootstrapEnvelope({
+        taskPrompt: currentTask,
+        operationalContext: 'rules',
+        historyBlock: 'HISTORY '.repeat(2000),
+        workingDir: '/repo',
+        sessionId: 'session-a',
+        maxChars: 900,
+    });
+    assert.match(envelope.prompt, new RegExp(currentTask));
+    assert.match(envelope.prompt, /CLI_JAW_BOOTSTRAP_SHA=/);
+    assert.ok(envelope.spill.truncated.includes('history') || envelope.spill.omitted.includes('history'));
+    assert.ok(!envelope.spill.truncated.includes('current-task'));
+    assert.ok(!envelope.spill.omitted.includes('current-task'));
+});
+
+test('AGY-BS-003d: operational context can spill but required segments stay whole', () => {
+    const currentTask = 'TASK_SURVIVES_WHEN_CONTEXT_IS_HUGE';
+    const envelope = buildAgyBootstrapEnvelope({
+        taskPrompt: currentTask,
+        operationalContext: 'CONTEXT '.repeat(2000),
+        historyBlock: 'HISTORY '.repeat(2000),
+        workingDir: '/repo',
+        sessionId: 'session-a',
+        maxChars: 700,
+    });
+    assert.match(envelope.prompt, new RegExp(currentTask));
+    assert.match(envelope.prompt, /CLI_JAW_BOOTSTRAP_SHA=/);
+    assert.ok(envelope.spill.omitted.includes('history') || envelope.spill.truncated.includes('history'));
+    assert.ok(envelope.spill.omitted.includes('operational-context') || envelope.spill.truncated.includes('operational-context'));
+});
+
+test('AGY-BS-003e: required segments may exceed maxChars without losing current task', () => {
+    const currentTask = `VERY_LONG_CURRENT_TASK ${'task '.repeat(400)}`;
+    const envelope = buildAgyBootstrapEnvelope({
+        taskPrompt: currentTask,
+        operationalContext: 'rules',
+        historyBlock: 'history',
+        workingDir: '/repo',
+        sessionId: 'session-a',
+        maxChars: 100,
+    });
+    assert.match(envelope.prompt, /VERY_LONG_CURRENT_TASK/);
+    assert.match(envelope.prompt, /CLI_JAW_BOOTSTRAP_SHA=/);
+    assert.ok(envelope.spill.totalChars > 100);
+    assert.ok(!envelope.spill.omitted.includes('current-task'));
+    assert.ok(!envelope.spill.truncated.includes('current-task'));
+});
+
+test('AGY-BS-003f: spill report contains only safe metadata', () => {
+    const secret = 'RAW_SECRET_PROMPT_PAYLOAD';
+    const envelope = buildAgyBootstrapEnvelope({
+        taskPrompt: secret,
+        operationalContext: `${secret} context`,
+        historyBlock: `${secret} history`,
+        workingDir: '/repo',
+        sessionId: 'session-a',
+        maxChars: 500,
+    });
+    const serialized = JSON.stringify(envelope.spill);
+    assert.doesNotMatch(serialized, new RegExp(secret));
+    assert.match(serialized, /bootstrapHash/);
+});
+
 test('AGY-BS-004: transcript sentinel matcher detects JSON USER_INPUT content', () => {
     const envelope = buildAgyBootstrapEnvelope({
         taskPrompt: 'task',
