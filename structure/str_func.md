@@ -202,7 +202,7 @@ cli-jaw/
 │   ├── telegram/             ← Telegram 인터페이스 (4 files)
 │   │   ├── bot.ts            ← Telegram 봇 + forwarder lifecycle + origin 필터링 + inbound download size hints + voice 핸들러 등록 (730L)
 │   │   ├── voice.ts          ← 음성 메시지 → guarded download → STT → tgOrchestrate 파이프라인 (41L)
-│   │   ├── forwarder.ts      ← 포워딩 헬퍼 (escape, chunk, createForwarder) (127L)
+│   │   ├── forwarder.ts      ← 포워딩 헬퍼 (escape, chunk, createForwarder) (178L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (148L)
 │   ├── discord/              ← Discord 인터페이스 (6 files)
 │   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 (404L)

@@ -140,3 +140,76 @@ test('PG-019: assertSendFilePath rejects arbitrary tmp files outside allowed roo
         fs.rmSync(tmpFile, { force: true });
     }
 });
+
+test('PG-020: assertSendFilePath allows files under workingDir', () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-home-'));
+    const workingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-working-'));
+    const allowedFile = path.join(workingDir, 'report.txt');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        fs.writeFileSync(allowedFile, 'ok');
+        assert.equal(assertSendFilePath(allowedFile, workingDir), fs.realpathSync.native(allowedFile));
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(workingDir, { recursive: true, force: true });
+    }
+});
+
+test('PG-021: assertSendFilePath allows files under exact projectDirs realpath roots', () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-home-'));
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-project-'));
+    const allowedFile = path.join(projectDir, 'artifact.png');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        fs.writeFileSync(allowedFile, 'ok');
+        const canonicalProjectDir = fs.realpathSync.native(projectDir);
+        assert.equal(assertSendFilePath(allowedFile, undefined, [canonicalProjectDir]), fs.realpathSync.native(allowedFile));
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+});
+
+test('PG-022: assertSendFilePath rejects symlink escape from allowed workingDir', { skip: process.platform === 'win32' }, () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-home-'));
+    const workingDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-working-'));
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-outside-'));
+    const outsideFile = path.join(outsideDir, 'secret.txt');
+    const linkPath = path.join(workingDir, 'secret-link.txt');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        fs.writeFileSync(outsideFile, 'secret');
+        fs.symlinkSync(outsideFile, linkPath);
+        assert.throws(() => assertSendFilePath(linkPath, workingDir), /path_not_allowed/);
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(workingDir, { recursive: true, force: true });
+        fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
+});
+
+test('PG-023: assertSendFilePath rejects home files outside allowed roots', () => {
+    const previousCliHome = process.env.CLI_JAW_HOME;
+    const testHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-home-'));
+    const fakeHome = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-path-user-home-'));
+    const homeFile = path.join(fakeHome, 'private.txt');
+    try {
+        process.env.CLI_JAW_HOME = testHome;
+        fs.writeFileSync(homeFile, 'private');
+        assert.throws(() => assertSendFilePath(homeFile), /path_not_allowed/);
+    } finally {
+        if (previousCliHome == null) delete process.env.CLI_JAW_HOME;
+        else process.env.CLI_JAW_HOME = previousCliHome;
+        fs.rmSync(testHome, { recursive: true, force: true });
+        fs.rmSync(fakeHome, { recursive: true, force: true });
+    }
+});

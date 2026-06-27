@@ -162,6 +162,49 @@ test('normalizeChannelSendRequest maps body fields correctly', async () => {
     }
 });
 
+test('normalizeChannelSendRequest allows configured projectDir file paths', async () => {
+    const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
+    const { settings } = await import('../../src/core/config.js');
+    const previousProjectDirs = settings["projectDirs"];
+    const projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-send-project-dir-'));
+    const testPath = path.join(projectDir, 'image.png');
+    try {
+        fs.writeFileSync(testPath, '');
+        settings["projectDirs"] = [fs.realpathSync.native(projectDir)];
+        const req = normalizeChannelSendRequest({
+            channel: 'telegram',
+            type: 'photo',
+            file_path: testPath,
+        });
+        assert.equal(req.filePath, fs.realpathSync.native(testPath));
+    } finally {
+        settings["projectDirs"] = previousProjectDirs;
+        fs.rmSync(projectDir, { recursive: true, force: true });
+    }
+});
+
+test('normalizeChannelSendRequest rejects disallowed file paths before send transport', async () => {
+    const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
+    const { settings } = await import('../../src/core/config.js');
+    const previousProjectDirs = settings["projectDirs"];
+    const previousWorkingDir = settings["workingDir"];
+    const testPath = path.join(os.tmpdir(), `jaw-send-denied-${Date.now()}.txt`);
+    try {
+        fs.writeFileSync(testPath, 'secret');
+        settings["projectDirs"] = [];
+        settings["workingDir"] = '';
+        assert.throws(() => normalizeChannelSendRequest({
+            channel: 'telegram',
+            type: 'document',
+            file_path: testPath,
+        }), /path_not_allowed/);
+    } finally {
+        settings["projectDirs"] = previousProjectDirs;
+        settings["workingDir"] = previousWorkingDir;
+        fs.rmSync(testPath, { force: true });
+    }
+});
+
 test('normalizeChannelSendRequest defaults channel to active', async () => {
     const { normalizeChannelSendRequest } = await import('../../src/messaging/send.js');
     const req = normalizeChannelSendRequest({ type: 'text', text: 'hello' });
