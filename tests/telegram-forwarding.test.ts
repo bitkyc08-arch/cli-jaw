@@ -62,6 +62,25 @@ test('forwarder skips error responses', async () => {
     assert.equal(sent.length, 0);
 });
 
+test('forwarder sends watchdog stall diagnostics even when marked error', async () => {
+    const { bot, sent } = createBotSpy();
+    const forward = createTelegramForwarder({
+        bot,
+        getLastChatId: () => 123,
+    });
+
+    forward('agent_done', {
+        text: '❌ ⏱️ 응답 없음 — unsafe AGY run_command broad home search',
+        error: true,
+        origin: 'web',
+    });
+    await flush();
+
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].text.includes('응답 없음'), true);
+    assert.equal(sent[0].text.includes('broad home search'), true);
+});
+
 test('forwarder falls back to plain text when HTML send fails', async () => {
     const { bot, sent } = createBotSpy({ failHtmlOnce: true });
     const forward = createTelegramForwarder({

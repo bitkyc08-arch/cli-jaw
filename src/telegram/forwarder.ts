@@ -36,6 +36,10 @@ export function chunkTelegramMessage(text: string, limit = 4096) {
     return chunks;
 }
 
+function isUserSafeWatchdogDiagnostic(text: string) {
+    return /^❌\s*⏱️\s*응답 없음\s*—\s+/.test(String(text || '').trim());
+}
+
 /**
  * Listener lifecycle helper used by telegram bridge and unit tests.
  * Ensures attach/detach idempotency so re-init does not leak listeners.
@@ -99,7 +103,7 @@ export function createTelegramForwarder({
 }: TelegramForwarderOptions) {
     return (type: string, data: Record<string, unknown>) => {
         if (type !== 'agent_done' || !data?.["text"]) return;
-        if (data["error"]) return;
+        if (data["error"] && !isUserSafeWatchdogDiagnostic(String(data["text"]))) return;
         if (shouldSkip(data)) return;
 
         const chatId = typeof getLastChatId === 'function' ? getLastChatId() : null;
