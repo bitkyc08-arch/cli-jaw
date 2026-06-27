@@ -3,6 +3,7 @@
 // normalization and the start guard (GPT Pro B1: enabled+token+chatId required).
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
     threadKey,
     canStartHub,
@@ -18,6 +19,7 @@ import type { TelegramHubConfig } from '../../src/manager/telegram-hub/types.ts'
 
 const cfg = (o: Partial<TelegramHubConfig>): TelegramHubConfig =>
     ({ enabled: false, token: '', chatId: '', defaultPort: 3457, routes: [], ...o });
+const hubBotSrc = readFileSync(new URL('../../src/manager/telegram-hub/hub-bot.ts', import.meta.url), 'utf8');
 
 test('threadKey: General (<=1) → "1", real topics pass through', () => {
     assert.equal(threadKey(undefined), '1');
@@ -81,6 +83,20 @@ test('handleHubCommand /setthread invokes target hub-member ensure hook', async 
     );
     assert.equal(result, '✅ 이 토픽 → 인스턴스 3458 연결됨.');
     assert.deepEqual(calls, [{ port: 3458, chatId: '8231528245' }]);
+});
+
+test('sendToTopic stops topic typing before outbound delivery', () => {
+    const sendStart = hubBotSrc.indexOf('export async function sendToTopic(');
+    const sendEnd = hubBotSrc.indexOf('/**\n * Start', sendStart);
+    assert.ok(sendStart >= 0, 'sendToTopic export must exist');
+    assert.ok(sendEnd > sendStart, 'sendToTopic block must be bounded');
+    const sendBlock = hubBotSrc.slice(sendStart, sendEnd);
+    const stopIdx = sendBlock.indexOf('stopTopicTyping(chatId, threadId);');
+    const textSendIdx = sendBlock.indexOf("if (payload.type === 'text')");
+    const fileSendIdx = sendBlock.indexOf('sendTelegramFile(');
+    assert.ok(stopIdx >= 0, 'sendToTopic must stop typing for the topic');
+    assert.ok(textSendIdx > stopIdx, 'typing must stop before text delivery');
+    assert.ok(fileSendIdx > stopIdx, 'typing must stop before file delivery');
 });
 
 test('sendToTopic clears topic typing state before outbound delivery', async () => {
