@@ -52,6 +52,7 @@ import {
 } from './opencode-diagnostics.js';
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from '../types/cli-events.js';
+import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntime } from './jwc-runtime.js';
 import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
@@ -109,7 +110,7 @@ function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
 // replayed to the correct scope instead of defaulting to 'system'.
 export interface MainSessionMeta {
     origin: string;
-    target?: any;
+    target?: RemoteTarget;
     chatId?: string | number;
     requestId?: string;
     replyViaTarget?: boolean;
@@ -694,7 +695,7 @@ interface SpawnOpts {
     agentId?: string;
     sysPrompt?: string;
     origin?: string;
-    target?: any;
+    target?: RemoteTarget;
     requestId?: string;
     replyViaTarget?: boolean;
     employeeSessionId?: string;

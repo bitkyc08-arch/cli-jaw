@@ -20,6 +20,7 @@ import { sanitizeToolLogForDurableStorage, serializeSanitizedToolLog } from '../
 import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
 import type { ToolEntry } from '../types/agent.js';
+import type { RemoteTarget } from '../messaging/types.js';
 import { resolveSpawnOutputText } from './events/helpers.js';
 import { isKiroPlainTextCli, isKiroResumeDegradedOutput } from './kiro-runtime.js';
 import {
@@ -142,7 +143,7 @@ export function setSpawnAgent(fn: SpawnAgentRef): void {
 // Forward reference to setCurrentMainMeta — same reason.
 interface MainSessionMetaRef {
     origin: string;
-    target?: string;
+    target?: RemoteTarget;
     chatId?: string | number;
     requestId?: string;
     scopeId?: string;
