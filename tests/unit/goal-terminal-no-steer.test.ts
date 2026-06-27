@@ -235,6 +235,17 @@ test('/goal pause --agent --audit blocked on first attempt (2-tap gate)', async 
         assert.match(result?.text ?? '', /First agent pause attempt/);
         assert.match(result?.text ?? '', /1\/2/);
         assert.equal(getAgentPauseCount(), 1);
+
+        const status = await runGoalCommand('/goal status');
+        assert.equal(status?.ok, true);
+        assert.match(status?.text ?? '', /Pause gate: pending \(1\/2\)/);
+        assert.match(status?.text ?? '', /Pause gate action:/);
+
+        const json = await runGoalCommand('/goal --json');
+        assert.equal(json?.ok, true);
+        const parsed = JSON.parse(json?.text ?? '{}') as { pauseGate?: { armed?: boolean; reason?: string } };
+        assert.equal(parsed.pauseGate?.armed, true);
+        assert.equal(parsed.pauseGate?.reason, 'pause_gate_pending');
     } finally {
         resetGoalStore();
     }
@@ -250,6 +261,7 @@ test('/goal pause --agent --audit succeeds on second attempt (2-tap gate)', asyn
         assert.equal(result2?.ok, true);
         assert.equal('steerPrompt' in result2, false);
         assert.match(result2?.text ?? '', /Goal paused/);
+        assert.equal(getAgentPauseCount(), 0);
     } finally {
         resetGoalStore();
     }

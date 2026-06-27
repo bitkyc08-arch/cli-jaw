@@ -44,6 +44,8 @@ export interface ElementRef {
     framePath: string[];
     shadowPath: string[];
     signatureHash: string;
+    // 104.20: nth occurrence (0-based) of this role+name — disambiguates duplicate elements.
+    occurrenceIndex?: number;
 }
 
 export interface SerializedSnapshot {
@@ -167,19 +169,25 @@ export function extractInteractiveRefs(snapshot: WebAiSnapshot | AxNode, prefix 
         return { ...(snapshot as WebAiSnapshot).refs };
     }
     const refs: Record<string, ElementRef> = {};
+    const occurrenceCounts = new Map<string, number>();
     let counter = 1;
     walkAx(snapshot as AxNode, (node, depth, path) => {
         if (!isInteractiveNode(node)) return;
         const ref = `${prefix}${counter++}`;
         const name = truncateName(node.name || '');
+        const role = String(node.role || 'unknown');
+        const occurrenceKey = `${role} ${name}`;
+        const occurrenceIndex = occurrenceCounts.get(occurrenceKey) || 0;
+        occurrenceCounts.set(occurrenceKey, occurrenceIndex + 1);
         refs[ref] = {
             ref,
-            role: String(node.role || 'unknown'),
+            role,
             name,
             selector: null,
             framePath: [],
             shadowPath: [],
             signatureHash: hashElementSignature({ role: node.role, name, depth, path }),
+            occurrenceIndex,
         };
     });
     return refs;
@@ -209,12 +217,8 @@ async function captureAccessibilitySnapshot(
     { interactiveOnly, rootSelector }: { interactiveOnly: boolean; rootSelector: string | null },
 ): Promise<AxNode> {
     if (!page?.accessibility || typeof page.accessibility.snapshot !== 'function') {
-        throw new WebAiError({
-            errorCode: 'snapshot.unavailable',
-            stage: 'snapshot-capture',
-            retryHint: 'pin-playwright-or-add-cdp-fallback',
-            message: 'page.accessibility.snapshot() is not available in this Playwright runtime',
-        });
+        // playwright-core >= ~1.55 removed page.accessibility; fall back to the CDP AX tree (104.19).
+        return await captureAxViaCdp(page, { interactiveOnly, rootSelector });
     }
     let root: { dispose?: () => Promise<void> } | null = null;
     try {
@@ -239,6 +243,134 @@ async function captureAccessibilitySnapshot(
     }
 }
 
+/* ── CDP AX-tree fallback (104.19) — Playwright >= ~1.55 removed page.accessibility ── */
+
+interface CdpAxValue { value?: unknown }
+interface CdpAxProperty { name?: string; value?: CdpAxValue }
+interface CdpAxNode {
+    nodeId: string;
+    childIds?: string[];
+    ignored?: boolean;
+    role?: CdpAxValue;
+    name?: CdpAxValue;
+    value?: CdpAxValue;
+    properties?: CdpAxProperty[];
+}
+interface CdpClient {
+    send: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+    detach?: () => Promise<void>;
+}
+
+/** CDP role names mapped onto the Playwright accessibility-snapshot vocabulary. */
+const CDP_ROLE_ALIASES: Record<string, string> = {
+    StaticText: 'text', InlineTextBox: 'text', GenericContainer: 'generic',
+    none: 'generic', presentation: 'generic',
+};
+
+async function captureAxViaCdp(
+    page: AxSnapshotPageLike,
+    { interactiveOnly, rootSelector }: { interactiveOnly: boolean; rootSelector: string | null },
+): Promise<AxNode> {
+    const ctx = (page as { context?: () => { newCDPSession?: (p: unknown) => Promise<CdpClient> } | undefined }).context?.();
+    if (!ctx || typeof ctx.newCDPSession !== 'function') {
+        throw new WebAiError({
+            errorCode: 'snapshot.unavailable',
+            stage: 'snapshot-capture',
+            retryHint: 'pin-playwright-or-add-cdp-fallback',
+            message: 'page.accessibility.snapshot() is unavailable and no CDP session could be created for this page',
+        });
+    }
+    const client = await ctx.newCDPSession(page);
+    try {
+        await client.send('Accessibility.enable').catch(() => undefined);
+        let backendNodeId: number | undefined;
+        if (rootSelector) {
+            const doc = (await client.send('DOM.getDocument', { depth: 0 })) as { root?: { nodeId?: number } };
+            const qs = (await client.send('DOM.querySelector', { nodeId: doc.root?.nodeId, selector: rootSelector })) as { nodeId?: number };
+            if (!qs.nodeId) {
+                throw new WebAiError({
+                    errorCode: 'snapshot.root-not-found',
+                    stage: 'snapshot-capture',
+                    retryHint: 'fix-root-selector',
+                    message: `snapshot root selector did not match: ${rootSelector}`,
+                    evidence: { rootSelector },
+                });
+            }
+            const described = (await client.send('DOM.describeNode', { nodeId: qs.nodeId })) as { node?: { backendNodeId?: number } };
+            backendNodeId = described.node?.backendNodeId;
+        }
+        const res = backendNodeId
+            ? (await client.send('Accessibility.getPartialAXTree', { backendNodeId, fetchRelatives: true })) as { nodes?: CdpAxNode[] }
+            : (await client.send('Accessibility.getFullAXTree', {})) as { nodes?: CdpAxNode[] };
+        const nodeList = Array.isArray(res.nodes) ? res.nodes : [];
+        if (!nodeList.length) {
+            throw new WebAiError({
+                errorCode: 'snapshot.unavailable',
+                stage: 'ax-snapshot',
+                retryHint: 'retry',
+                message: 'CDP returned 0 accessibility nodes for the requested subtree',
+            });
+        }
+        return cdpNodesToAxTree(nodeList, { interactiveOnly });
+    } finally {
+        await client.detach?.().catch(() => undefined);
+    }
+}
+
+/** Convert a flat CDP AX node list into the nested AxNode tree shape. Exported for tests. */
+export function cdpNodesToAxTree(nodes: CdpAxNode[], { interactiveOnly }: { interactiveOnly: boolean }): AxNode {
+    if (!nodes.length) return { role: 'document', name: '', children: [] };
+    const byId = new Map<string, CdpAxNode>();
+    for (const n of nodes) byId.set(n.nodeId, n);
+    const childIds = new Set<string>();
+    for (const n of nodes) for (const c of n.childIds || []) childIds.add(c);
+    const rootCdp = nodes.find((n) => !childIds.has(n.nodeId)) || nodes[0];
+
+    const convert = (cdpNode: CdpAxNode): AxNode[] => {
+        const children: AxNode[] = [];
+        for (const cid of cdpNode.childIds || []) {
+            const child = byId.get(cid);
+            if (child) children.push(...convert(child));
+        }
+        if (isCdpNodeCollapsible(cdpNode, interactiveOnly)) return children;
+        return [{ ...mapCdpNode(cdpNode), children }];
+    };
+    const top = rootCdp ? convert(rootCdp) : [];
+    if (top.length === 1 && top[0]) return top[0];
+    return { role: 'document', name: '', children: top };
+}
+
+function isCdpNodeCollapsible(node: CdpAxNode, interactiveOnly: boolean): boolean {
+    if (node.ignored) return true;
+    if (!interactiveOnly) return false;
+    const role = String(node.role?.value || '');
+    const name = String(node.name?.value || '');
+    const generic = role === 'generic' || role === 'none' || role === 'presentation' || role === 'GenericContainer';
+    return generic && !name;
+}
+
+function mapCdpNode(node: CdpAxNode): AxNode {
+    const rawRole = String(node.role?.value || 'generic');
+    const out: AxNode = { role: CDP_ROLE_ALIASES[rawRole] || rawRole, name: String(node.name?.value ?? '') };
+    const value = node.value?.value;
+    if (typeof value === 'string' || typeof value === 'number') out.value = value;
+    const props = new Map<string, unknown>();
+    for (const p of node.properties || []) {
+        if (p?.name && p.value?.value !== undefined) props.set(p.name, p.value.value);
+    }
+    const checked = props.get('checked');
+    if (typeof checked === 'boolean' || typeof checked === 'string') out.checked = checked;
+    const pressed = props.get('pressed');
+    if (typeof pressed === 'boolean' || typeof pressed === 'string') out.pressed = pressed;
+    for (const key of ['disabled', 'expanded', 'selected', 'focused', 'focusable'] as const) {
+        const v = props.get(key);
+        if (typeof v === 'boolean') out[key] = v;
+    }
+    const level = props.get('level');
+    if (typeof level === 'number') out.level = level;
+    return out;
+}
+
 interface SerializeCtx {
     compact: boolean;
     maxDepth: number;
@@ -247,10 +379,11 @@ interface SerializeCtx {
     refs: Record<string, ElementRef>;
     nextRef: number;
     nodeCount: number;
+    occurrenceCounts: Map<string, number>;
 }
 
-function serializeAxTree(tree: AxNode, options: Omit<SerializeCtx, 'refs' | 'nextRef' | 'nodeCount'>): SerializedSnapshot {
-    const ctx: SerializeCtx = { ...options, refs: {}, nextRef: 1, nodeCount: 0 };
+function serializeAxTree(tree: AxNode, options: Omit<SerializeCtx, 'refs' | 'nextRef' | 'nodeCount' | 'occurrenceCounts'>): SerializedSnapshot {
+    const ctx: SerializeCtx = { ...options, refs: {}, nextRef: 1, nodeCount: 0, occurrenceCounts: new Map() };
     const lines = serializeNode(tree || { role: 'document', name: '' }, 0, ctx, []);
     return { text: lines.join('\n'), refs: ctx.refs, nodeCount: ctx.nodeCount };
 }
@@ -267,10 +400,14 @@ function serializeNode(node: AxNode, depth: number, ctx: SerializeCtx, path: num
     if (isInteractiveNode(node)) {
         const ref = `${ctx.refPrefix}${ctx.nextRef++}`;
         attrs.push(`ref=${ref}`);
+        const occurrenceKey = `${role} ${rawName}`;
+        const occurrenceIndex = ctx.occurrenceCounts.get(occurrenceKey) || 0;
+        ctx.occurrenceCounts.set(occurrenceKey, occurrenceIndex + 1);
         ctx.refs[ref] = {
             ref, role, name: rawName,
             selector: null, framePath: [], shadowPath: [],
             signatureHash: hashElementSignature({ role, name: rawName, depth, path }),
+            occurrenceIndex,
         };
     }
     for (const attr of ['checked', 'disabled', 'expanded', 'selected', 'pressed', 'level', 'value'] as const) {

@@ -19,9 +19,8 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     agy: {
         label: 'Antigravity',
         efforts: [],
-        effortNote: 'Change at TUI',
-        modelNote: 'Change at TUI',
-        models: [],
+        effortNote: 'AGY has no separate effort flag',
+        models: ['gemini-3.5-flash'],
     },
     'ai-e': {
         label: 'AI-E',

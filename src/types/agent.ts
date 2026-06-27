@@ -26,6 +26,12 @@ export interface AgyTranscriptError {
   createdAtMs?: number;
 }
 
+export type AgyBootstrapAcceptanceMode =
+  | 'pending'
+  | 'accepted'
+  | 'missing'
+  | 'not-applicable';
+
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
   fullText: string;
@@ -33,6 +39,12 @@ export interface SpawnContext {
   toolLog: ToolEntry[];
   seenToolKeys: Set<string>;
   hasClaudeStreamEvents: boolean;
+  /** Per-message guard: plain `claude` text_delta streamed prose live this message,
+   *  so handleClaudeEvent skips the duplicate complete-block append and resets it.
+   *  Distinct from run-level hasClaudeStreamEvents (set by ANY content_block_start,
+   *  incl tool_use) — that would false-skip a tool-only turn whose prose arrives
+   *  only in the complete assistant event. */
+  claudeStreamedText?: boolean;
   sessionId: string | null;
   cost: number | null;
   turns: number | null;
@@ -97,6 +109,10 @@ export interface SpawnContext {
   agyResumeOffset?: number;
   agyBytesReceived?: number;
   agyTranscriptActive?: boolean;
+  agyBootstrapSentinel?: string;
+  agyBootstrapHash?: string;
+  agyBootstrapAccepted?: boolean;
+  agyBootstrapAcceptanceMode?: AgyBootstrapAcceptanceMode;
   agyFinalPlannerSeen?: boolean;
   agyFinalPlannerText?: string | undefined;
   agyLastTranscriptError?: AgyTranscriptError | undefined;

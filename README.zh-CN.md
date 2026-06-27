@@ -5,7 +5,7 @@
 ### 你的个人 AI 助手。2 行安装。13 个 AI 运行时入口，一个仪表盘。
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.2.0-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.2-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.4-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
@@ -320,7 +320,7 @@ jaw worker status Backend
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro 或更高订阅 |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro 或更高订阅；6 月订阅赠送额度的推荐 runtime |
 | **AI-E** | provider-selected | 所选 provider 认证 | 多 provider runtime wrapper |
-| **Antigravity** | AGY-selected | 由 `agy` 在运行时检查 | 支持 `--conversation` resume 的实验性 AGY print-mode runtime；模型切换保留在 native AGY UI |
+| **Antigravity** | AGY-selected | 由 `agy` 在运行时检查 | `agy -p` 实验性 AGY print-mode runtime；可选 `--model` 会先做 capability probe，确认支持时才传递（AGY 1.0.12 已观察到）；通过 `--conversation` resume；无独立 effort flag |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro 或更高订阅 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro 或更高订阅 |
 | **Cursor** | `composer-2.5` | `cursor-agent login` 或 `CURSOR_API_KEY` | Cursor 订阅；quota 为 auth/status-only |
@@ -359,7 +359,7 @@ P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
 | **C — Check** | 类型检查（`tsc --noEmit`）、文档更新、一致性检查 |
 | **D — Done** | 汇总所有变更。返回空闲状态 |
 
-状态持久化在数据库中，服务器重启后仍然保留。工作者不能修改文件——只能验证。用 `jaw orchestrate`、`/orchestrate` 或 `/pabcd` 启动，并用 `/continue` 显式恢复进行中的 worklog。Workflow helper slash commands 包括 `/plan`、`/interview`、`/deliberate`、`/planaudit`、`/goal`。`/goal run ...` 是 bounded automation preview；durable goal 会保留 `update`/`done`/`cancel`/`pause`/`resume` 状态。
+状态持久化在数据库中，服务器重启后仍然保留。工作者不能修改文件——只能验证。用 `jaw orchestrate`、`/orchestrate` 或 `/pabcd` 启动，并用 `/continue` 显式恢复进行中的 worklog。阶段前进需要证据 attestation，例如 `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'`（C→D 还需粘贴 `checkOutput` 和 `exitCode`）。Workflow helper slash commands 包括 `/plan`、`/interview`、`/deliberate`、`/planaudit`、`/review`、`/search`、`/goal`、`/goalplan`、`/team`、`/task`、`/fork`、`/gd`；`/plan` 是说明“这就是 PABCD P”的兼容指南，不会创建第二套计划模式。`/search <query>` 通过 active search skill 路由搜索意图。Bounded automation 用 `/goal run ...` 表达，没有单独的 `/autopilot`。Durable goal（`/goal <objective>` 加 `update`/`done`/`cancel`/`pause`/`resume`）在重启后仍保留，goal 恢复会在 Web/CLI 等所有界面重新触发工作。AI `goal pause --agent --audit` 使用两步审计 gate（`goal_pause_gate_pending` 抑制自动 continuation）。`/gd` 是 `/goal done --force` 的简写（跳过完成证据 gate）。`/goal run`（`preflight`/`start`/`stop`/`status`）是需通过 preflight 的仅跟踪预览，记录 turn/dispatch 预算（强制尚未落地）。
 
 ---
 
@@ -426,7 +426,7 @@ Computer Use 让你用自然语言控制任何 macOS 应用——Finder、Safari
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-文字聊天、语音消息（通过多供应商 STT——语音转文字 自动转录）、文件/照片上传、斜杠命令（`/cli`、`/model`、`/status`）、定时任务（`every`/`cron`——循环计划）结果自动送达。
+文字聊天、语音消息（通过多供应商 STT——语音转文字 自动转录）、文件/照片上传、斜杠命令（51 个已注册；workflow helper：`/plan`、`/interview`、`/review`、`/search`、`/goal`、`/orchestrate`、`/task`、`/fork`、`/gd`；CLI/Web 动态 `/skill:<id>`）、论坛主题路由与 **Dashboard Telegram Hub**（`/setthread`、`/threads`、`/hubhelp`、Manager UI 中按主题的 `model`/`systemPrompt` override）、定时任务（`every`/`cron` heartbeat）结果自动送达。
 
 <details>
 <summary>设置（3 步）</summary>
@@ -540,7 +540,7 @@ jaw --home ~/my-project serve --port 3458
 npm run build          # tsc → dist/
 npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts（热重载）
-npm test               # Node.js 原生测试运行器
+npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
 npm run gate:all       # 命名 release/docs parity gates
 bash structure/check-doc-drift.sh
 ```

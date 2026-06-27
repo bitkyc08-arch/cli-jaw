@@ -113,6 +113,10 @@ export async function captureCopiedResponseText(
 
                 const originalWriteText = clipboard.writeText?.bind(clipboard);
                 const originalWrite = clipboard.write?.bind(clipboard);
+                // 104.17: suppress copy-induced scroll-jump (clicking the copy button can
+                // scrollIntoView/focus the turn). Saved here, patched around the copy, restored in finally.
+                const origScrollIntoView = Element.prototype.scrollIntoView;
+                const origFocus = HTMLElement.prototype.focus;
                 let intercepted = '';
                 let last = '';
                 let ticks = 0;
@@ -147,6 +151,11 @@ export async function captureCopiedResponseText(
                         });
                     }
 
+                    Element.prototype.scrollIntoView = function () {};
+                    HTMLElement.prototype.focus = function (this: HTMLElement, opts?: FocusOptions) {
+                        return origFocus.call(this, Object.assign({}, opts, { preventScroll: true }));
+                    };
+
                     const clickInit = { bubbles: true, cancelable: true, view: window };
                     button.dispatchEvent(new PointerEvent('pointerdown', clickInit));
                     button.dispatchEvent(new MouseEvent('mousedown', clickInit));
@@ -171,6 +180,8 @@ export async function captureCopiedResponseText(
                         ? { ok: true, text: intercepted }
                         : { ok: false, status: 'timeout' };
                 } finally {
+                    Element.prototype.scrollIntoView = origScrollIntoView;
+                    HTMLElement.prototype.focus = origFocus;
                     if (originalWriteText) {
                         Object.defineProperty(clipboard, 'writeText', { configurable: true, value: originalWriteText });
                     }

@@ -26,7 +26,8 @@ test('BWAC-002: active tab must be verified before web-ai actions', () => {
 
 test('BWAC-003: send captures baseline before prompt insertion', () => {
     const assistantIndex = chatgptSrc.indexOf('const assistantCount = await countAssistantMessages');
-    const insertIndex = chatgptSrc.indexOf('await adapter.insertPrompt');
+    // 104.12: adapter variable may be the resolver-aware `liveAdapter`; match the method, not the var name.
+    const insertIndex = chatgptSrc.indexOf('.insertPrompt(');
     assert.ok(assistantIndex > -1);
     assert.ok(insertIndex > assistantIndex);
 });

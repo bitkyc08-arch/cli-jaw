@@ -48,6 +48,8 @@ export function GoalPabcdStatusPanel() {
     const gateEvidence = useMemo(() => snapshot?.pabcd.gate.evidence.slice(0, 5) ?? [], [snapshot]);
     const goalEvidence = snapshot?.goal?.lastCheckpoint?.evidencePaths.slice(0, 5) ?? [];
     const goalStatus = snapshot?.goal?.status ?? 'idle';
+    const pauseGate = snapshot?.goal?.pauseGate;
+    const goalStatusLabel = pauseGate?.armed ? 'pause gate' : goalStatus;
     const evidenceFreshness = snapshot?.goal?.evidenceFreshness ?? 'missing';
 
     return (
@@ -60,7 +62,7 @@ export function GoalPabcdStatusPanel() {
                     <span className="code-goal-status-meta">{gateLine(snapshot)}</span>
                 </button>
                 <div className="code-goal-status-pills" aria-live="polite">
-                    <span className={statusClass(goalStatus)}>{goalStatus}</span>
+                    <span className={pauseGate?.armed ? 'is-pending' : statusClass(goalStatus)}>{goalStatusLabel}</span>
                     <span className={statusClass(snapshot?.pabcd.gate.status)}>{snapshot?.pabcd.gate.status ?? 'pending'}</span>
                     <span className={statusClass(evidenceFreshness)}>{evidenceFreshness}</span>
                 </div>
@@ -88,6 +90,12 @@ export function GoalPabcdStatusPanel() {
                         <span>Next action</span>
                         <code>{snapshot.goal?.lastCheckpoint?.nextAction || 'No checkpoint next action'}</code>
                     </div>
+                    {snapshot.goal?.pauseGate.armed && (
+                        <div className="code-goal-status-detail-row">
+                            <span>Pause gate</span>
+                            <code>{snapshot.goal.pauseGate.nextAction || 'Pending audited pause decision'}</code>
+                        </div>
+                    )}
                     <div className="code-goal-status-detail-row">
                         <span>Repository</span>
                         <code>{snapshot.goal?.repoRoot || snapshot.pabcd.projectDirs[0] || 'unknown'}</code>

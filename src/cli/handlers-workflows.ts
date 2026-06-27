@@ -6,6 +6,7 @@ import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
 import { clearGoalTimers } from '../agent/lifecycle-handler.js';
 import { GOAL_PLAN_PENDING_OBJECTIVE, type GoalState } from '../goal/types.js';
+import { describeGoalPauseGate } from '../goal/pause-gate.js';
 
 function joinArgs(args: string[]): string {
     return args.join(' ').trim();
@@ -41,6 +42,15 @@ async function resolveSettings(ctx: CliCommandContext): Promise<Record<string, u
 function archivedGoalLine(previous: GoalState | null): string {
     if (!previous || (previous.status !== 'active' && previous.status !== 'paused')) return '';
     return `\nPrevious goal archived: ${previous.objective}`;
+}
+
+function pauseGateStatusLines(goal: GoalState | null): string[] {
+    const pauseGate = describeGoalPauseGate(goal);
+    if (!pauseGate.armed) return [];
+    return [
+        `Pause gate: pending (${pauseGate.attempts}/${pauseGate.requiredAttempts})`,
+        `Pause gate action: ${pauseGate.nextAction}`,
+    ];
 }
 
 export async function interviewWorkflowHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
@@ -245,10 +255,11 @@ export async function goalWorkflowHandler(args: string[], ctx: CliCommandContext
         const goal = getActiveGoal();
         if (!goal) return info('No active goal. Use `/goal set <objective>` to create one.');
         const json = sub === '--json';
-        if (json) return { ok: true, text: JSON.stringify(goal, null, 2) };
+        if (json) return { ok: true, text: JSON.stringify({ goal, pauseGate: describeGoalPauseGate(goal) }, null, 2) };
         const lines = [
             `Goal: ${goal.objective}`,
             `Status: ${goal.status}`,
+            ...pauseGateStatusLines(goal),
             goal.goalMode ? `Mode: ${goal.goalMode}` : null,
             goal.planHint ? `Plan hint: ${goal.planHint}` : null,
             `Created: ${goal.createdAt}`,
@@ -320,8 +331,8 @@ export async function goalWorkflowHandler(args: string[], ctx: CliCommandContext
                     '4. Dev skill compliance: §3 verification gate, §5 safety rules, §7.2 static analysis.\n' +
                     '5. Documentation evidence: devlog entry, implementation paths, fresh verification output.\n' +
                     '6. Dispatch an independent reviewer (CLI sub-agent or jaw employee) to challenge whether viable work remains.\n\n' +
-                    'If you find remaining work, continue instead — the counter resets automatically on the next turn.\n' +
-                    'If everything is PROVEN and the reviewer confirms PASS, call `cli-jaw goal pause --agent --audit "<evidence>"` again to confirm.'
+                    'If you find productive work and log a checkpoint, the pending pause gate is cleared.\n' +
+                    'If no viable path remains and the reviewer confirms PASS, call `cli-jaw goal pause --agent --audit "<evidence>"` again; the second audited call pauses the goal.'
                 );
             }
         }

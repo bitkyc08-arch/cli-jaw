@@ -292,7 +292,8 @@ export class DashboardLifecycleManager {
 
         try {
             const child = this.spawnImpl(command[0]!, command.slice(1), {
-                env: process.env,
+                // P2b: instances in hub-member mode relay outbound to the dashboard hub.
+                env: { ...process.env, JAW_HUB_CALLBACK_URL: `http://127.0.0.1:${DASHBOARD_DEFAULT_PORT}` },
                 stdio: 'pipe',
             }) as ChildProcessWithoutNullStreams;
             const token = LifecycleStore.newToken();

@@ -205,6 +205,7 @@ export async function drainPendingReplays(fallbackMeta: Record<string, any> = {}
             ...(slotMeta.target ? { target: slotMeta.target } : {}),
             ...(slotMeta.chatId != null ? { chatId: slotMeta.chatId } : {}),
             ...(slotMeta.requestId ? { requestId: slotMeta.requestId } : {}),
+            ...(slotMeta.replyViaTarget === true || fallbackMeta["replyViaTarget"] === true ? { replyViaTarget: true } : {}),
         };
         try {
             const replayText = buildWorkerReplayNotice(pr);
@@ -228,6 +229,7 @@ export async function orchestrate(
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
+    const replyViaTarget = meta["replyViaTarget"] === true;
     const userText = String(prompt || '').trim();
 
     // --- drain pending worker results before normal processing ---
@@ -269,6 +271,7 @@ export async function orchestrate(
             chatId,
             target,
             requestId,
+            replyViaTarget,
         });
         return;
     }
@@ -398,10 +401,20 @@ export async function orchestrate(
     // chain). Building one here per call regenerated it every turn and broke
     // the byte-stable system prompt — do not reintroduce a memorySnapshot pass.
 
+    // P4 per-topic config: apply a transient per-request model/systemPrompt override
+    // (from a hub ThreadRoute) via the existing SpawnOpts.model/sysPrompt — no session
+    // persistence, so it affects only this request's agent run.
+    const overrides = meta["overrides"] as { model?: string; systemPrompt?: string } | undefined;
     const { promise } = runSpawnAgent(prompt, {
         origin,
+        target,
+        chatId,
+        requestId,
+        replyViaTarget,
         _skipInsert: !!meta["_skipInsert"],
         _heartbeatAnchorId: meta["_heartbeatAnchorId"],
+        ...(overrides?.model ? { model: overrides.model } : {}),
+        ...(overrides?.systemPrompt ? { sysPrompt: overrides.systemPrompt } : {}),
     });
     const result = await promise as Record<string, any>;
 
@@ -570,6 +583,7 @@ export async function orchestrate(
         chatId,
         target,
         requestId,
+        replyViaTarget,
     });
 }
 
@@ -582,6 +596,7 @@ export async function orchestrateContinue(
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
+    const replyViaTarget = meta["replyViaTarget"] === true;
     const scope = 'default';
     const state = getState(scope);
 
@@ -600,6 +615,7 @@ export async function orchestrateContinue(
         chatId,
         target,
         requestId,
+        replyViaTarget,
     });
 }
 
@@ -612,6 +628,7 @@ export async function orchestrateReset(
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
+    const replyViaTarget = meta["replyViaTarget"] === true;
     // --- cancel PABCD workers only — preserve main agent + message queue ---
     for (const w of getActiveWorkers()) {
         killAgentById(w.agentId);
@@ -636,6 +653,7 @@ export async function orchestrateReset(
             chatId,
             target,
             requestId,
+            replyViaTarget,
         });
         return;
     }
@@ -647,5 +665,6 @@ export async function orchestrateReset(
         chatId,
         target,
         requestId,
+        replyViaTarget,
     });
 }

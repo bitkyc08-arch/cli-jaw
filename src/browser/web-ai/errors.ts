@@ -73,6 +73,23 @@ export class WebAiError extends Error {
 
 export function wrapError(err: unknown, fallback: WebAiErrorInit = {}): WebAiError {
     if (err instanceof WebAiError) return err;
+    // 104.15: a plain error-like object that already carries a structured errorCode keeps its
+    // fields instead of being flattened to internal.unhandled.
+    if (err && typeof err === 'object' && typeof (err as { errorCode?: unknown }).errorCode === 'string') {
+        const e = err as Partial<WebAiErrorInit> & { message?: string };
+        return new WebAiError(stripUndefined({
+            errorCode: (err as { errorCode: string }).errorCode,
+            stage: e.stage,
+            retryHint: e.retryHint,
+            vendor: e.vendor,
+            mutationAllowed: e.mutationAllowed,
+            selectorsTried: e.selectorsTried,
+            evidence: e.evidence,
+            message: e.message,
+            ...fallback,
+            cause: err,
+        }) as WebAiErrorInit);
+    }
     return new WebAiError({
         errorCode: 'internal.unhandled',
         stage: 'internal',

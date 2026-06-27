@@ -30,13 +30,35 @@ export * from './target-resolver.js';
 export * from './answer-artifact.js';
 export * from './source-audit.js';
 export * from './chatgpt-attachments.js';
+export * from './chatgpt-archive.js';
+// chatgpt-attachments already exports UPLOAD_BUTTON_SELECTORS; re-export the rest explicitly.
+export {
+    IMAGE_ATTACHMENT_EXTENSIONS,
+    isImageAttachmentPath,
+    scoreFileInputCandidate,
+    findFirstFileInput,
+    setFilesViaUploadSurface,
+} from './chatgpt-upload-surface.js';
+export type {
+    AttachmentProbeFile,
+    AttachmentTarget,
+    UploadSurfaceResult,
+    FileInputMetadata,
+} from './chatgpt-upload-surface.js';
 export * from './chatgpt-model.js';
 export * from './chatgpt-tools.js';
 export * from './chatgpt-multi-turn.js';
 export * from './chatgpt-deep-research.js';
+export * from './chatgpt-project-sources.js';
+export * from './chatgpt-images.js';
 export * from './session-target-guard.js';
 export * from './product-surfaces.js';
 export * from './ax-snapshot.js';
+export * from './candidate-reconcile.js';
+export * from './control-summary.js';
+export * from './navigation-ready.js';
+export * from './tab-inspect.js';
+export * from './session-doctor.js';
 export * from './ref-registry.js';
 export * from './observe-targets.js';
 export * from './annotated-screenshot.js';

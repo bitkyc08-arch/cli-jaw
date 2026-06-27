@@ -100,6 +100,9 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                             placeholder={modelOptions[0] ?? 'model id'}
                         />
                     )}
+                    {meta.modelNote ? (
+                        <p className="settings-percli-note">{meta.modelNote}</p>
+                    ) : null}
                     {modelOptions.length > 0 ? (
                         <datalist id={modelDatalistId}>
                             {modelOptions.map((m) => (
@@ -109,19 +112,26 @@ export function PerCliRow({ cli, meta, original, value, setValue, setEntry, clie
                     ) : null}
                 </div>
                 {effortOptions.length > 0 ? (
-                    <SelectField
-                        id={`percli-${cli}-effort`}
-                        label="Effort"
-                        value={value.effort ?? ''}
-                        options={[
-                            { value: '', label: '(default)' },
-                            ...effortOptions.map((e) => ({ value: e, label: e })),
-                        ]}
-                        onChange={(next) => {
-                            setValue({ ...value, effort: next });
-                            setEntry(`perCli.${cli}.effort`, entryFor(next, original.effort ?? ''));
-                        }}
-                    />
+                    <div className="settings-percli-effort">
+                        <SelectField
+                            id={`percli-${cli}-effort`}
+                            label="Effort"
+                            value={value.effort ?? ''}
+                            options={[
+                                { value: '', label: '(default)' },
+                                ...effortOptions.map((e) => ({ value: e, label: e })),
+                            ]}
+                            onChange={(next) => {
+                                setValue({ ...value, effort: next });
+                                setEntry(`perCli.${cli}.effort`, entryFor(next, original.effort ?? ''));
+                            }}
+                        />
+                        {meta.effortNote ? (
+                            <p className="settings-percli-note">{meta.effortNote}</p>
+                        ) : null}
+                    </div>
+                ) : meta.effortNote ? (
+                    <p className="settings-percli-note settings-percli-note--effort">{meta.effortNote}</p>
                 ) : null}
                 <ToggleField
                     id={`percli-${cli}-fastmode`}

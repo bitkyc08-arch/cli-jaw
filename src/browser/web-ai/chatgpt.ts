@@ -8,8 +8,10 @@ import { listLeases, recordActiveLease } from './tab-lease-store.js';
 import { basename } from 'node:path';
 import { statSync } from 'node:fs';
 import { countConversationTurns } from './chatgpt-composer.js';
+import { extractConversationId } from './code-mode.js';
 import {
     attachLocalFileLive,
+    sendButtonTimeoutMs,
     verifySentTurnAttachmentLive,
 } from './chatgpt-attachments.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
@@ -29,6 +31,8 @@ import {
     updateSessionStatus,
 } from './session.js';
 import { captureAssistantResponse } from './chatgpt-response.js';
+import { saveAssistantDownloadableFiles } from './chatgpt-files.js';
+import { resolveTimeoutDefaultSec } from './tier-timeout.js';
 import { selectChatGptModel } from './chatgpt-model.js';
 import { withAnswerArtifact } from './answer-artifact.js';
 import { auditSources } from './source-audit.js';
@@ -281,9 +285,14 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         conversationUrl: page.url(),
         envelope,
         assistantCount,
-        timeoutMs: 600_000,
+        // 105.4: tier-aware default (pro/deep-research → 1h) instead of a flat 10 min.
+        timeoutMs: resolveTimeoutDefaultSec(input, envelope.vendor) * 1000,
     });
     bindSessionToTab(session.sessionId, targetId);
+    // 104.5: persist structured model-selection evidence to the session.
+    if (selectedModel?.modelSelection) {
+        updateSessionResult({ sessionId: session.sessionId, status: session.status, modelSelection: selectedModel.modelSelection });
+    }
     await recordActiveLease({
         owner: 'cli-jaw',
         vendor: envelope.vendor,
@@ -294,8 +303,8 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         url: page.url(),
     });
 
-    const adapter = createChatGptEditorAdapter(page, {
-        insertText: async (text: string) => {
+    const editorOptions = {
+        insertText: async (text: string): Promise<void> => {
             const cdp = await getCdpSession(port);
             if (!cdp) throw new Error('No CDP session available for text insertion');
             try {
@@ -304,7 +313,8 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
                 await cdp.detach?.().catch(() => undefined);
             }
         },
-    });
+    };
+    const adapter = createChatGptEditorAdapter(page, editorOptions);
     const attachmentWarnings: string[] = [];
     const usedFallbacks: string[] = [];
     try {
@@ -315,9 +325,14 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         if (!composerTarget.ok && composerTarget.required) {
             throw new Error(`composer target unresolved: ${composerTarget.errorCode || 'unknown'}`);
         }
-        await adapter.waitForReady();
+        // 104.12: route the resolver-verified composer selector into the adapter (readiness + insert use it).
+        const composerSelector = composerTarget.ok ? composerTarget.target?.selector : null;
+        const liveAdapter = composerSelector
+            ? createChatGptEditorAdapter(page, { ...editorOptions, composerTarget: { selector: composerSelector, resolution: composerTarget.resolutionSource } })
+            : adapter;
+        await liveAdapter.waitForReady();
         const commitBaseline = { turnsCount: await countConversationTurns(page).catch(() => assistantCount) };
-        await adapter.insertPrompt(rendered.composerText);
+        await liveAdapter.insertPrompt(rendered.composerText);
         const contextAttachmentPath = contextPack?.attachments?.[0]?.path;
         const requestedPaths = Array.isArray(input.filePaths) && input.filePaths.length
             ? input.filePaths
@@ -347,8 +362,13 @@ export async function send(port: number, input: QuestionEnvelopeInput = {}): Pro
         if (!sendTarget.ok && sendTarget.required) {
             throw new Error(`send target unresolved: ${sendTarget.errorCode || 'unknown'}`);
         }
-        await adapter.submitPrompt();
-        await adapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
+        // 104.12: hand the resolved send target + upload-aware timeout to the submit path.
+        const sendSelector = sendTarget.ok ? sendTarget.target?.selector : null;
+        await liveAdapter.submitPrompt({
+            ...(sendSelector ? { sendTarget: { selector: sendSelector, resolution: sendTarget.resolutionSource } } : {}),
+            sendButtonTimeoutMs: sendButtonTimeoutMs(uploadPaths),
+        });
+        await liveAdapter.verifyPromptCommitted(rendered.composerText, commitBaseline);
         for (const uploadPath of uploadPaths) {
             // eslint-disable-next-line no-await-in-loop -- evidence follows upload order.
             const sentAttachment = await verifySentTurnAttachmentLive(page, localFileInfo(uploadPath));
@@ -475,18 +495,73 @@ export async function poll(port: number, input: {
             interstitial: pollInterstitial,
         } satisfies WebAiOutput;
     }
-    const timeoutMs = Math.max(1, Number(input.timeout || 1200)) * 1000;
+    const timeoutSec = input.timeout
+        ? Math.max(1, Number(input.timeout))
+        : session?.timeoutMs ? session.timeoutMs / 1000
+        : resolveTimeoutDefaultSec({}, vendor);
+    const timeoutMs = timeoutSec * 1000;
+    // 104.18: per-tick conversation-drift guard. baseline.url is the chat we committed to; if the
+    // held page later sits on a *different* /c/<id>, we're polling the wrong thread. The expected
+    // fresh-chat none→id transition is NOT flagged (it only fires when both ids exist and differ).
+    const baselineConvoId = extractConversationId(baseline.url);
+    const driftCheck = async (): Promise<string | null> => {
+        const currentConvoId = extractConversationId(page.url?.() || '');
+        if (baselineConvoId && currentConvoId && baselineConvoId !== currentConvoId) {
+            return `conversation changed: ${baselineConvoId} → ${currentConvoId}`;
+        }
+        return null;
+    };
     const result = await captureAssistantResponse(page, {
         minTurnIndex: baseline.assistantCount,
         timeoutMs,
         promptText: '',
         allowCopyMarkdownFallback: input.allowCopyMarkdownFallback === true,
+        driftCheck,
     });
+    // 104.18: surface a per-tick drift/crash bail-out as a typed, (for crashes) recoverable outcome.
+    if (result.drift) {
+        if (session) updateSessionStatus(session.sessionId, result.drift.status === 'tab-crashed' ? 'crashed' : session.status);
+        return stripUndefined({
+            ok: false,
+            vendor,
+            status: result.drift.status,
+            url: page.url?.() || currentUrl,
+            ...(session ? { sessionId: session.sessionId } : {}),
+            answerText: '',
+            baseline,
+            usedFallbacks: result.usedFallbacks,
+            warnings: result.warnings,
+            error: result.drift.reason,
+            ...(result.drift.recoverable ? { recoverable: true } : {}),
+            next: 'poll',
+        }) satisfies WebAiOutput;
+    }
     if (session && result.ok) updateSessionStatus(session.sessionId, 'complete');
     if (session && !result.ok) updateSessionStatus(session.sessionId, 'timeout');
     const traceSummary = session
         ? appendTraceToSession(session.sessionId, (result.resolverTrace || []) as TracePersistableValue[])
         : null;
+    // 101 #1 (follow-up 2.4): capture generic assistant-turn downloadable files as session
+    // artifacts on successful completion. Covers every complete return below. Never throws
+    // past its boundary; only adds warnings. Skipped when no CDP session is available.
+    if (session && result.ok) {
+        const fileCdp = await getCdpSession(port);
+        if (fileCdp) {
+            try {
+                const fileResult = await saveAssistantDownloadableFiles(
+                    // BrowserCdpSession structurally provides send/detach used here.
+                    fileCdp as unknown as Parameters<typeof saveAssistantDownloadableFiles>[0],
+                    {},
+                    { sessionId: session.sessionId, baselineAssistantCount: baseline.assistantCount },
+                );
+                if (fileResult.warnings.length) result.warnings.push(...fileResult.warnings);
+            } catch (err) {
+                result.warnings.push(`file-artifact-capture-failed:${(err as Error)?.message || 'unknown'}`);
+            } finally {
+                await fileCdp.detach?.().catch(() => undefined);
+            }
+        }
+    }
     if (result.canvas) {
         if (session) {
             await finalizeProviderTab({ vendor, session, port, url: currentUrl, answerText: result.answerText || '' });
@@ -659,7 +734,8 @@ async function queryDeepResearch(port: number, input: QuestionEnvelopeInput & { 
         conversationUrl: page.url(),
         envelope: normalizeEnvelope(input),
         assistantCount: await countAssistantMessages(page),
-        timeoutMs: Number(input.timeout || 1200) * 1000,
+        // 105.4: deep-research → tier-aware 1h default (was a flat 20 min) unless --timeout.
+        timeoutMs: Number(input.timeout || resolveTimeoutDefaultSec(input, 'chatgpt')) * 1000,
     });
     bindSessionToTab(session.sessionId, targetId);
     const deps = {
@@ -668,7 +744,7 @@ async function queryDeepResearch(port: number, input: QuestionEnvelopeInput & { 
     const dr = await sendDeepResearch(page, deps, {
         prompt: input.prompt || '',
         session,
-        timeoutMs: Number(input.timeout || 1200) * 1000,
+        timeoutMs: session.timeoutMs, // reuse the session's tier-aware timeout (105.4)
     });
     const drStatusMap: Record<string, WebAiOutput['status']> = {
         complete: 'complete', timeout: 'timeout', blocked: 'blocked', failed: 'error',
@@ -708,11 +784,16 @@ export async function watch(port: number, input: { vendor?: string; timeout?: nu
     if (input.url) await navigateRequestedConversation(port, input.url, parseVendor(input.vendor));
     if (input.session && input.notify !== false) {
         const vendor = parseVendor(input.vendor);
+        const existingSession = getSession(input.session);
+        const watchTimeoutSec = input.timeout
+            ? Math.max(1, Number(input.timeout))
+            : existingSession?.timeoutMs ? existingSession.timeoutMs / 1000
+            : resolveTimeoutDefaultSec({}, vendor);
         const watcher = startWebAiWatcher({
             port,
             vendor,
             sessionId: input.session,
-            timeoutMs: Math.max(1, Number(input.timeout || 1200)) * 1000,
+            timeoutMs: watchTimeoutSec * 1000,
             pollIntervalSeconds: Number(input.pollIntervalSeconds || 30),
             ...(input.allowCopyMarkdownFallback !== undefined ? { allowCopyMarkdownFallback: input.allowCopyMarkdownFallback } : {}),
             pollOnce: (pollInput) => poll(port, pollInput),

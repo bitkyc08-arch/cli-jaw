@@ -225,6 +225,19 @@ function proxyHttpRequest(req: Request, res: Response, range: ProxyPortRange): v
     req.pipe(upstream);
 }
 
+function destroyQuietly(stream: Duplex): void {
+    if (!stream.destroyed) stream.destroy();
+}
+
+function writeThenDestroy(socket: Duplex, data: string): void {
+    if (socket.destroyed) return;
+    try {
+        socket.write(data, () => destroyQuietly(socket));
+    } catch {
+        destroyQuietly(socket);
+    }
+}
+
 export function buildProxyUpgradeRequest(req: IncomingMessage, targetPath: string, targetPort: number): string {
     const lines = [`${req.method || 'GET'} ${targetPath} HTTP/${req.httpVersion}`];
     const headers = rewriteUpstreamRequestHeaders(req.headers, targetPort);
@@ -241,8 +254,7 @@ export function buildProxyUpgradeRequest(req: IncomingMessage, targetPath: strin
 function proxyWebSocketUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, range: ProxyPortRange): void {
     const parsed = parseDashboardProxyUrl(req.url || '', range);
     if (!parsed.ok) {
-        socket.write(`HTTP/1.1 ${parsed.status} ${parsed.reason}\r\nConnection: close\r\n\r\n`);
-        socket.destroy();
+        writeThenDestroy(socket, `HTTP/1.1 ${parsed.status} ${parsed.reason}\r\nConnection: close\r\n\r\n`);
         return;
     }
 
@@ -252,9 +264,17 @@ function proxyWebSocketUpgrade(req: IncomingMessage, socket: Duplex, head: Buffe
         socket.pipe(upstream).pipe(socket);
     });
 
+    socket.on('error', () => {
+        destroyQuietly(upstream);
+    });
+    socket.on('close', () => {
+        destroyQuietly(upstream);
+    });
+    upstream.on('close', () => {
+        destroyQuietly(socket);
+    });
     upstream.on('error', () => {
-        socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
-        socket.destroy();
+        writeThenDestroy(socket, 'HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
     });
 }
 

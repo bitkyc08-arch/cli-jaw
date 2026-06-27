@@ -38,6 +38,17 @@ describe('Goal Store', () => {
         assert.equal(updated!.lastCheckpoint!.nextAction, 'Start Phase 2');
     });
 
+    test('4b. updateGoal clears a pending agent pause gate', () => {
+        setGoal('Checkpoint clears pause gate');
+        incrementAgentPauseCount();
+        assert.equal(getAgentPauseCount(), 1);
+
+        const updated = updateGoal('productive progress', 'continue', ['focused test pass']);
+
+        assert.ok(updated);
+        assert.equal(getAgentPauseCount(), 0);
+    });
+
     test('5. updateGoal fails with no active goal', () => {
         assert.equal(updateGoal('orphan'), null);
     });
@@ -73,6 +84,7 @@ describe('Goal Store', () => {
         });
         assert.ok(paused);
         assert.equal(paused!.status, 'paused');
+        assert.equal(paused!.agentPauseCount, 0);
         assert.equal(paused!.pauseReason, 'Need external auth');
         assert.equal(paused!.pauseAudit?.actor, 'agent');
         assert.match(paused!.pauseAudit?.evidence ?? '', /Independent reviewer/);
@@ -81,6 +93,7 @@ describe('Goal Store', () => {
         const resumed = resumeGoal();
         assert.ok(resumed);
         assert.equal(resumed!.status, 'active');
+        assert.equal(resumed!.agentPauseCount, 0);
     });
 
     test('9. pauseGoal fails with no active goal', () => {
@@ -101,6 +114,7 @@ describe('Goal Store', () => {
 
         assert.ok(pausedWithAudit);
         assert.equal(pausedWithAudit!.status, 'paused');
+        assert.equal(pausedWithAudit!.agentPauseCount, 0);
         assert.equal(pausedWithAudit!.pauseAudit?.actor, 'agent');
         assert.match(pausedWithAudit!.pauseAudit?.evidence ?? '', /Independent reviewer/);
     });
@@ -226,6 +240,7 @@ describe('Goal Store', () => {
             goalMode: 'plan',
             planHint: 'raw hint only',
         });
+        incrementAgentPauseCount();
 
         const refined = refineObjective('Implement refined goal objective');
 
@@ -233,6 +248,7 @@ describe('Goal Store', () => {
         assert.equal(refined!.objective, 'Implement refined goal objective');
         assert.equal(refined!.goalMode, 'direct');
         assert.equal(refined!.planHint, undefined);
+        assert.equal(refined!.agentPauseCount, 0);
         assert.ok(updateGoal('verified after refine'));
     });
 

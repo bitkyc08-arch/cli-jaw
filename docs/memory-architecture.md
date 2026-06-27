@@ -505,3 +505,88 @@ Provider options (for keyword expansion only, not search):
 | `openai`     | `apiKey`, `baseUrl`, `model`               | `expandViaOpenAiCompatible()` |
 | `vertex`     | `vertexConfig` (JSON with SA credentials)  | `expandViaVertex()`   |
 | `integrated` | (none — heuristic only)                    | `heuristicKeywords()` |
+
+---
+
+## 15. L1 / L2 Memory Lookup Boundary
+
+| Layer | Command surface | Scope | Write path |
+|------|-----------------|-------|------------|
+| **L1 instance-local** | `jaw memory search/read/save/context` | Current `JAW_HOME` structured memory | read/write |
+| **L2 dashboard federation (memory)** | `jaw dashboard memory search/read/instances` | Memory across dashboard-managed `~/.cli-jaw*` instances | read-only |
+| **L2 dashboard federation (chat)** | `jaw dashboard chat search` | Chat history in jaw.db across dashboard-managed instances | read-only |
+
+Operational rules:
+
+- **L1 is the default.** Search past decisions, preferences, and project facts with `jaw memory search` first.
+- Use **L2** only when the user explicitly asks for dashboard memory, all instances, another instance/home, or cross-instance context.
+- L2 is broader, not safer — stale context from other instances can mix in.
+- **Writes always go to L1:** `jaw memory save <file> <content>` on the current instance only.
+- `jaw memory context <file>` finds chat messages in a time window around a memory file's creation (`created_at` frontmatter or mtime) plus name/description keywords — cross-session, not session-bound.
+- `jaw memory search <query> --chat` runs L1 memory search then best-effort `/api/messages/search` (recent 7 days) to merge chat history.
+- L2 chat uses `jaw dashboard chat search` with LIKE search over other instances' jaw.db; schema probe detects `tool_log` column presence; native module mismatch or missing DB surfaces as warnings.
+- **Embedding is an L2 dashboard add-on and defaults OFF.** Until configured, FTS5/local search remains the default.
+
+See also: `structure/memory_architecture.md` (Korean operational reference, updated 2026-06-27).
+
+---
+
+## 16. Dashboard Embedding Search Layer
+
+> Source: `src/manager/memory/embedding/` — `provider.ts`, `vec-store.ts`, `sync.ts`, `state-machine.ts`, `hybrid-search.ts`, `index.ts`
+> Routes: `src/manager/routes/dashboard-memory.ts` (`embed-config`, `state`, `estimate`, `reindex-stream`)
+> UI: `public/manager/src/dashboard-settings/DashboardEmbeddingSection.tsx`
+
+Vector embeddings sit **on top of** existing FTS5 search. Default OFF; enable after provider/API key configuration and indexing in Dashboard Settings.
+
+### Architecture
+
+```
+Instance A (index.sqlite) ──┐
+Instance B (index.sqlite) ──┼── chunks ──→ sync.ts ──→ provider.ts ──→ vec_memory.sqlite
+Instance C (index.sqlite) ──┘                           (batch embed)     (vec_chunks table)
+                                                                             ↓
+                                                                    hybrid-search.ts
+                                                                    (FTS5 + vector RRF merge)
+```
+
+### Modules
+
+| File | Role |
+|------|------|
+| `provider.ts` | Unified embedding client (OpenAI/Gemini/Voyage/Vertex/Local Ollama). Batch size 20 |
+| `vec-store.ts` | SQLite vector store (`vec_chunks`). `searchScoped`, `getStats`, content-hash dedup |
+| `sync.ts` | Full instance sweep sync. Content-hash skip, 3 retries + 1s delay, 300ms between batches |
+| `state-machine.ts` | `getEmbeddingState()` → `EmbeddingState` (OFF/CONFIGURED/INDEXING/ACTIVE_*/NEEDS_REINDEX/ERROR) |
+| `hybrid-search.ts` | FTS5 + vector RRF (Reciprocal Rank Fusion) combined search |
+
+### State machine
+
+```
+OFF → CONFIGURED → INDEXING → ACTIVE_HYBRID / ACTIVE_EMBEDDING
+                                    ↓ provider change
+                               NEEDS_REINDEX → INDEXING → ...
+                                    ↓ error
+                                  ERROR (fallback to FTS5)
+```
+
+### Auto-sync
+
+- `memory_status` broadcast (on save) → 2s debounce → incremental sync
+- 30-minute background catchall sync
+- Unchanged chunks skipped via content hash
+
+### Config file
+
+`~/.cli-jaw-dashboard/embedding.json`:
+
+| Key | Example | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable embedding search |
+| `provider` | `"openai"` | `openai\|gemini\|voyage\|vertex\|local` |
+| `model` | `"text-embedding-3-small"` | Provider default model auto-selected |
+| `apiKey` | `"sk-..."` or `"$ENV_VAR"` | Env var reference supported |
+| `searchMode` | `"hybrid"` | `hybrid\|embedding\|fts5` |
+| `dimensions` | `1536` | Auto-set per provider |
+
+CLI inspection: `jaw dashboard memory state`, `jaw dashboard memory estimate`, `jaw dashboard memory config get`.

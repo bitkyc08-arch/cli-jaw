@@ -101,9 +101,9 @@ test('DI-007: processQueue passes _skipInsert: true to orchestrate calls', () =>
     const pqEnd = queueSrc.indexOf('function purgeQueueOnStop', pqStart);
     const pqBlock = queueSrc.slice(pqStart, pqEnd > 0 ? pqEnd : pqStart + 5000);
     // All 3 orchestrate calls in processQueue must have _skipInsert
-    assert.ok(pqBlock.includes("orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })"), 'processQueue orchestrateReset');
-    assert.ok(pqBlock.includes("orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })"), 'processQueue orchestrateContinue');
-    assert.ok(pqBlock.includes("orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true })"), 'processQueue orchestrate');
+    assert.ok(pqBlock.includes("orchestrateReset({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })"), 'processQueue orchestrateReset');
+    assert.ok(pqBlock.includes("orchestrateContinue({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })"), 'processQueue orchestrateContinue');
+    assert.ok(pqBlock.includes("orchestrate(combined, { origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })"), 'processQueue orchestrate');
 });
 
 // ─── DI-008: spawn.ts steerAgent → orchestrate with _skipInsert ───

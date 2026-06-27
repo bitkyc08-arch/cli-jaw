@@ -41,9 +41,11 @@ export type SubmitResult = {
 const DEDUP_WINDOW_MS = 5000;
 const recentSubmissions = new Map<string, { ts: number; requestId: string }>();
 
-function dedupKey(origin: string, text: string, chatId?: string | number): string {
+/** Exported for unit tests (pure, stateless). */
+export function dedupKey(origin: string, text: string, chatId?: string | number, threadId?: string): string {
     const normalized = text.trim().replace(/\s+/g, ' ');
-    return `${origin}:${chatId ?? ''}:${normalized}`;
+    // threadId included so identical text in different forum topics is not false-deduped.
+    return `${origin}:${chatId ?? ''}:${threadId ?? ''}:${normalized}`;
 }
 
 function gcRecentSubmissions(now: number): void {
@@ -61,7 +63,7 @@ export function __resetSubmitDedupForTest(): void {
 function runDetached(
     task: Promise<unknown>,
     label: string,
-    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string },
+    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string; replyViaTarget?: boolean },
 ) {
     task.catch((err: unknown) => {
         const msg = (err as Error)?.message || String(err);
@@ -72,6 +74,7 @@ function runDetached(
             target: meta.target,
             chatId: meta.chatId,
             requestId: meta.requestId,
+            replyViaTarget: meta.replyViaTarget,
             error: true,
         });
     });
@@ -79,7 +82,7 @@ function runDetached(
 
 export function submitMessage(
     text: string,
-    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number },
+    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean },
 ): SubmitResult {
     const trimmed = text.trim();
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
@@ -87,7 +90,7 @@ export function submitMessage(
     // Dedup: same (origin, chatId, normalized text) within 5s → reject as duplicate
     // and return the earlier requestId so the client can absorb it silently.
     const now = Date.now();
-    const key = dedupKey(meta.origin, trimmed, meta.chatId);
+    const key = dedupKey(meta.origin, trimmed, meta.chatId, meta.target?.threadId);
     const prior = recentSubmissions.get(key);
     if (prior && now - prior.ts < DEDUP_WINDOW_MS) {
         console.log(`[gateway:dedup] suppressed duplicate (${now - prior.ts}ms window) origin=${meta.origin}`);
@@ -107,7 +110,7 @@ export function submitMessage(
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
+                orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
                 'continue',
                 { ...meta, requestId },
             );
@@ -121,7 +124,7 @@ export function submitMessage(
         broadcast('new_message', { role: 'user', content: display, source: meta.origin });
         if (!meta.skipOrchestrate) {
             runDetached(
-                orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
+                orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
                 'reset',
                 { ...meta, requestId },
             );
@@ -137,7 +140,7 @@ export function submitMessage(
     // starting immediately is safe and avoids the processQueue deadlock
     // documented in devlog/_plan/260417_message_duplication/02_*.
     if (isAgentBusy() || hasBlockingWorkers()) {
-        const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope }));
+        const queuedId = enqueueMessage(trimmed, meta.origin, stripUndefined({ target: meta.target, chatId: meta.chatId, requestId, scope, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget }));
         return { action: 'queued', pending: messageQueue.length, queued: true, requestId, queuedId };
     }
 
@@ -146,7 +149,7 @@ export function submitMessage(
     broadcast('new_message', { role: 'user', content: display, source: meta.origin });
     if (!meta.skipOrchestrate) {
         runDetached(
-            orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true }),
+            orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget })),
             'orchestrate',
             { ...meta, requestId },
         );

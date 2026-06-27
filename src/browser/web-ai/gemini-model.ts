@@ -1,4 +1,5 @@
 import type { Page } from 'playwright-core';
+import type { CapabilityProbeResult } from './capability-probe.js';
 
 export type GeminiModelChoice = 'flash-lite' | 'flash' | 'pro';
 
@@ -142,6 +143,44 @@ async function readGeminiModel(page: Page): Promise<GeminiModelChoice | null> {
         return normalizeGeminiModelChoice(await loc.innerText({ timeout: 1_000 }).catch(() => ''));
     }
     return null;
+}
+
+// 104.9: read-only probe — close any menu we open and never mutate the selection.
+async function closeGeminiModelMenu(page: Page): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+        const menuVisible = await page.locator(GEMINI_MODE_OPTION_SELECTOR)
+            .filter({ hasText: /Flash|Pro|Thinking/i }).first().isVisible().catch(() => false);
+        if (!menuVisible) return;
+        await page.keyboard.press('Escape').catch(() => undefined);
+        await page.waitForTimeout(250).catch(() => undefined);
+    }
+}
+
+/**
+ * 104.9: read-only Gemini model capability probe with a fallback ladder.
+ * Reports whether the requested model is already active ('ok'), selectable but not
+ * active ('warn'), or unavailable ('fail') — without ever changing the selection.
+ */
+export async function geminiModelCapabilityProbe(page: Page, model: string | undefined): Promise<CapabilityProbeResult> {
+    if (isGeminiDeepThinkChoice(model)) {
+        return { state: 'unknown', evidence: { requested: model, tool: 'deepthink' }, next: 'send' };
+    }
+    if (!model) return { state: 'unknown', evidence: { requested: null }, next: 'send' };
+    const requested = normalizeGeminiModelChoice(model);
+    if (!requested) return { state: 'fail', evidence: { requested: model }, next: 'model-fallback' };
+    const active = await readGeminiModel(page).catch(() => null);
+    if (active === requested) return { state: 'ok', evidence: { active, requested, selectable: true }, next: 'send' };
+    const usedFallbacks: string[] = [];
+    try {
+        await openGeminiModelMenu(page, usedFallbacks);
+    } catch {
+        return { state: 'warn', evidence: { active, requested, menuOpenFailed: true, usedFallbacks }, next: 'model-fallback' };
+    }
+    const option = await findGeminiModelOption(page, requested).catch(() => null);
+    await closeGeminiModelMenu(page);
+    return option
+        ? { state: 'warn', evidence: { active, requested, selectable: true, usedFallbacks }, next: 'model-fallback' }
+        : { state: 'fail', evidence: { active, requested, selectable: false, usedFallbacks }, next: 'model-fallback' };
 }
 
 function geminiModeLabelPattern(label: string): RegExp {

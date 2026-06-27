@@ -13,6 +13,8 @@ type QueueItem = {
     target?: RemoteTarget;
     chatId?: string | number;
     requestId?: string;
+    overrides?: { model?: string; systemPrompt?: string };   // P4 per-topic override, carried through the queue
+    replyViaTarget?: boolean;
     ts: number;
 };
 
@@ -42,6 +44,8 @@ export const FALLBACK_MAX_RETRIES = 3;
 export interface QueueController {
     enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: {
         target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string;
+        overrides?: { model?: string; systemPrompt?: string };
+        replyViaTarget?: boolean;
     }): string;
     removeQueuedMessage(id: string): { removed: QueueItem | null; pending: number };
     processQueue(): Promise<void>;
@@ -85,6 +89,8 @@ export function createQueueController(deps: QueueDeps): QueueController {
                 target: parsed.target,
                 chatId: parsed.chatId,
                 requestId: parsed.requestId,
+                overrides: parsed.overrides,
+                replyViaTarget: parsed.replyViaTarget === true,
                 ts: typeof parsed.ts === 'number' ? parsed.ts : Date.now(),
             })];
         } catch {
@@ -215,7 +221,7 @@ export function createQueueController(deps: QueueDeps): QueueController {
         return { removed: removed!, pending: messageQueue.length };
     }
 
-    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string }): string {
+    function enqueueMessage(prompt: string, source: RuntimeOrigin, meta?: { target?: RemoteTarget; chatId?: string | number; requestId?: string; scope?: string; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean }): string {
         const item: QueueItem = stripUndefined({
             id: crypto.randomUUID(),
             prompt,
@@ -224,6 +230,8 @@ export function createQueueController(deps: QueueDeps): QueueController {
             target: meta?.target,
             chatId: meta?.chatId,
             requestId: meta?.requestId,
+            overrides: meta?.overrides,
+            replyViaTarget: meta?.replyViaTarget,
             ts: Date.now(),
         });
         deps.insertQueuedMessage.run(item.id, JSON.stringify(item));
@@ -291,6 +299,8 @@ export function createQueueController(deps: QueueDeps): QueueController {
         const target = item.target;
         const chatId = item.chatId;
         const requestId = item.requestId;
+        const overrides = item.overrides;
+        const replyViaTarget = item.replyViaTarget;
         const origin: RuntimeOrigin = source || 'web';
         console.log(`[queue] processing 1/${batch.length} message(s) for ${groupKey}, ${messageQueue.length} remaining`);
 
@@ -304,24 +314,24 @@ export function createQueueController(deps: QueueDeps): QueueController {
 
             const { orchestrate, orchestrateContinue, orchestrateReset, isContinueIntent, isResetIntent } = await deps.importPipeline();
             const task = isResetIntent(combined)
-                ? orchestrateReset({ origin, target, chatId, requestId, _skipInsert: true })
+                ? orchestrateReset({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })
                 : isContinueIntent(combined)
-                    ? orchestrateContinue({ origin, target, chatId, requestId, _skipInsert: true })
-                    : orchestrate(combined, { origin, target, chatId, requestId, _skipInsert: true });
+                    ? orchestrateContinue({ origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true })
+                    : orchestrate(combined, { origin, target, chatId, requestId, overrides, replyViaTarget, _skipInsert: true });
 
             try {
                 await task;
             } catch (err: unknown) {
                 const msg = (err as Error).message;
                 console.error('[queue:orchestrate]', msg);
-                deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId });
+                deps.broadcast('orchestrate_done', { text: `[error] ${msg}`, error: true, origin, chatId, target, requestId, replyViaTarget });
             }
         } catch (setupErr) {
             console.error('[queue:setup]', setupErr);
             if (!inserted) {
                 messageQueue.unshift(item);
             } else {
-                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId });
+                deps.broadcast('orchestrate_done', { text: `[error] setup failed: ${(setupErr as Error).message}`, error: true, origin, chatId, target, requestId, replyViaTarget });
             }
         } finally {
             queueProcessing = false;

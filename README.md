@@ -5,7 +5,7 @@
 ### Your personal AI agent. 2 lines to install. 13 AI runtime surfaces in one dashboard.
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.2.0-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.2-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.4-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
@@ -375,12 +375,13 @@ No per-token API billing. Route through subscriptions you already pay for.
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro subscription or higher |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro subscription or higher; preferred for June subscription allowance |
 | **AI-E** | provider-selected | selected provider auth | Multi-provider runtime wrapper |
-| **Antigravity** | AGY-selected | checked by `agy` at run time | Experimental AGY print-mode runtime with `--conversation` resume; model switching stays in native AGY UI |
+| **Antigravity** | AGY-selected | checked by `agy` at run time | Experimental AGY print-mode runtime (`agy -p`); optional `--model` is capability-probed (observed in AGY 1.0.12); resume via `--conversation`; no separate effort flag |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; quota is auth/status-only |
 | **Gemini** | `gemini-3-flash-preview` | `gemini` | Gemini Advanced subscription |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok subscription; quota is auth/status-only |
+| **Kiro** | registry-selected | `kiro` | AWS Kiro free tier; `kiro-cli chat --no-interactive` runtime |
 | **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | Free models available |
 | **Copilot** | `claude-sonnet-4.6` | `copilot login` | Free tier available |
 
@@ -413,7 +414,7 @@ P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
 | **C — Check** | Type-check (`tsc --noEmit`), docs update, consistency check |
 | **D — Done** | Summary of all changes. Returns to idle |
 
-State is database-persisted and survives restarts. Workers cannot modify files — only verify. Activate with `jaw orchestrate`, `/orchestrate`, or `/pabcd`; resume an active worklog explicitly with `/continue`. Workflow helper slash commands are exposed as `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, and `/goal`; `/plan` is a compatibility guide that explains "this is PABCD P" and points to the right next command instead of creating a second planning mode. `/search <query>` routes search intent through the active search skill: classify local vs external lookup, rewrite focused queries, discover candidate URLs, and only then use browser commands such as `browser fetch` for evidence verification. Bounded automation is expressed as `/goal run ...`, not a separate top-level `/autopilot`. Durable goals — `/goal <objective>` plus `update`/`done`/`cancel`/`pause`/`resume` — are functional and survive restarts, and a goal resume re-fires the work on every interface (Web/CLI included, not just messaging). `/goal run` (`preflight`/`start`/`stop`/`status`) is a tracking-only preview: it gates on preflight and tracks turn/dispatch budget, with enforcement still to come.
+State is database-persisted and survives restarts. Workers cannot modify files — only verify. Activate with `jaw orchestrate`, `/orchestrate`, or `/pabcd`; resume an active worklog explicitly with `/continue`. Forward phase transitions require evidence attestation, e.g. `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'` (C→D also needs pasted `checkOutput` and `exitCode`). Workflow helper slash commands include `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, `/goal`, `/goalplan`, `/team`, `/task`, `/fork`, and `/gd`; `/plan` is a compatibility guide that explains "this is PABCD P" and points to the right next command instead of creating a second planning mode. `/search <query>` routes search intent through the active search skill: classify local vs external lookup, rewrite focused queries, discover candidate URLs, and only then use browser commands such as `browser fetch` for evidence verification. Bounded automation is expressed as `/goal run ...`, not a separate top-level `/autopilot`. Durable goals — `/goal <objective>` plus `update`/`done`/`cancel`/`pause`/`resume` — are functional and survive restarts, and a goal resume re-fires the work on every interface (Web/CLI included, not just messaging). AI-initiated `goal pause --agent --audit` arms a two-tap gate (`goal_pause_gate_pending` suppresses auto-continuation until a productive checkpoint or a second audited pause). `/gd` is shorthand for `/goal done --force` (skips the completion evidence gate). `/goal run` (`preflight`/`start`/`stop`/`status`) is a tracking-only preview: it gates on preflight and tracks turn/dispatch budget, with enforcement still to come.
 
 ---
 
@@ -480,7 +481,7 @@ Computer Use lets you control any macOS app — Finder, Safari, System Settings,
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/photo upload, slash commands (`/cli`, `/model`, `/status`, `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`), scheduled task delivery via `every`/`cron` (recurring schedule) heartbeat jobs.
+Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/photo upload, slash commands (51 registered; workflow helpers include `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; dynamic `/skill:<id>` on CLI/Web), forum-topic routing and **Dashboard Telegram Hub** (`/setthread`, `/threads`, `/hubhelp`, per-topic model/systemPrompt overrides in Manager UI), scheduled task delivery via `every`/`cron` heartbeat jobs.
 
 <details>
 <summary>Setup (3 steps)</summary>
@@ -598,12 +599,12 @@ Each instance is fully independent — different working directory, different me
 npm run build          # tsc → dist/
 npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts (hot-reload)
-npm test               # native Node.js test runner
+npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
 npm run gate:all       # named release/docs parity gates
 bash structure/check-doc-drift.sh
 ```
 
-Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Internal structure docs: [structure/](structure/)
+Architecture details: [ARCHITECTURE.md](docs/ARCHITECTURE.md) · Pre-prompt context hooks: [pre-prompt-context-hooks.md](docs/dev/pre-prompt-context-hooks.md) · Internal structure docs: [structure/](structure/)
 
 ---
 

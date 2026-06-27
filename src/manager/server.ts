@@ -46,6 +46,8 @@ import { startRemindersScheduler } from './reminders/scheduler.js';
 import { createDashboardConnectorRouter } from './connector/routes.js';
 import { createDashboardMemoryRouter } from './routes/dashboard-memory.js';
 import { createDashboardGitRouter } from './routes/dashboard-git.js';
+import { createDashboardTelegramHubRouter } from './routes/telegram-hub.js';
+import { startHubBot } from './telegram-hub/hub-bot.js';
 import { registerManagerRuntimeMonitorRoutes } from './routes/runtime-monitor.js';
 import { VecStore, getVecDbPath, createProvider, syncAllInstances } from './memory/embedding/index.js';
 import type { EmbeddingConfig } from './memory/embedding/index.js';
@@ -250,6 +252,8 @@ app.use('/api/dashboard/schedule', createDashboardScheduleRouter({ store: schedu
 const remindersStore = new RemindersStore();
 app.use('/api/dashboard/reminders', createDashboardRemindersRouter({ store: remindersStore }));
 app.use('/api/dashboard/connector', createDashboardConnectorRouter({ remindersStore }));
+app.use('/api/dashboard/telegram-hub', createDashboardTelegramHubRouter());
+void startHubBot();   // P2: start the Telegram hub bot if enabled+token+chatId are configured
 
 const dashboardHome = resolveDashboardHome();
 app.use('/api/dashboard/git', createDashboardGitRouter({

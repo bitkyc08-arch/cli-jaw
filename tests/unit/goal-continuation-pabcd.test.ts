@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { buildGoalContinuation } from '../../src/goal/heartbeat.ts';
-import { setGoal, resetGoalStore, incrementAgentPauseCount } from '../../src/goal/store.ts';
+import { setGoal, resetGoalStore, incrementAgentPauseCount, pauseGoal } from '../../src/goal/store.ts';
 import { setState, resetState } from '../../src/orchestrator/state-machine.ts';
 import { claimWorker, finishWorker, clearAllWorkers } from '../../src/orchestrator/worker-registry.ts';
 
@@ -114,11 +114,27 @@ test('goal continuation injects dev-skill audit prompt when agentPauseCount >= 1
         incrementAgentPauseCount();
         const res = buildGoalContinuation();
         assert.equal(res.shouldContinue, true);
+        assert.equal(res.reason, 'pause_gate_pending');
         assert.match(res.prompt ?? '', /AGENT PAUSE GATE/);
         assert.match(res.prompt ?? '', /First attempt recorded/);
+        assert.match(res.prompt ?? '', /This second audited call pauses the goal/);
+        assert.match(res.prompt ?? '', /checkpoint clears the pending pause gate/);
         assert.match(res.prompt ?? '', /Requirement-by-requirement verification/);
         assert.match(res.prompt ?? '', /Dev skill compliance/);
         assert.match(res.prompt ?? '', /Independent reviewer/);
+    } finally {
+        cleanup();
+    }
+});
+
+test('paused goal does not continue', () => {
+    cleanup();
+    try {
+        setGoal('contract: paused goals halt continuation');
+        assert.ok(pauseGoal({ audit: { actor: 'agent', evidence: 'reviewer PASS', timestamp: '2026-06-27T00:00:00.000Z' } }));
+        const res = buildGoalContinuation();
+        assert.equal(res.shouldContinue, false);
+        assert.equal(res.reason, 'no_active_goal');
     } finally {
         cleanup();
     }

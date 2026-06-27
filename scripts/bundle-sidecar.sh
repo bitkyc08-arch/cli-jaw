@@ -121,10 +121,15 @@ echo "Verifying better-sqlite3 opens with bundled Node..."
 echo "Cleaning up Node extract..."
 rm -rf "/tmp/${NODE_PKG}" /tmp/node-sidecar.zip 2>/dev/null || true
 
-NATIVE_BIN="$PROJECT_ROOT/native/jaw-claude-i/target/release/jaw-claude-i"
+NATIVE_BIN="$PROJECT_ROOT/native/claude-e/target/release/jaw-claude-i"
+LEGACY_NATIVE_BIN="$PROJECT_ROOT/native/jaw-claude-i/target/release/jaw-claude-i"
 if [ -f "$NATIVE_BIN" ]; then
   echo "Copying jaw-claude-i..."
   cp "$NATIVE_BIN" "$SIDECAR_DIR/bin/jaw-claude-i"
+  chmod +x "$SIDECAR_DIR/bin/jaw-claude-i"
+elif [ -f "$LEGACY_NATIVE_BIN" ]; then
+  echo "Copying jaw-claude-i from legacy native path..."
+  cp "$LEGACY_NATIVE_BIN" "$SIDECAR_DIR/bin/jaw-claude-i"
   chmod +x "$SIDECAR_DIR/bin/jaw-claude-i"
 else
   echo "WARN: jaw-claude-i not found, skipping (optional)"

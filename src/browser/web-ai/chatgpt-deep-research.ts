@@ -1,7 +1,9 @@
 import type { Page } from 'playwright-core';
-import { updateSessionResult, updateSessionStatus } from './session.js';
+import { updateSessionResult, updateSessionStatus, appendSessionArtifact } from './session.js';
+import { trySaveReport } from './session-artifacts.js';
 import { createChatGptEditorAdapter } from './vendor-editor-contract.js';
 import type { WebAiSessionRecord } from './types.js';
+import { chooseDeepResearchReportRead, type DeepResearchReportRead } from './chatgpt-deep-research-report.js';
 
 export interface DeepResearchResult {
     ok: boolean;
@@ -118,8 +120,8 @@ export async function autoConfirmPlan(page: Page, timeoutMs = 70_000): Promise<b
     return false;
 }
 
-async function extractResearchReport(page: Page): Promise<{ text: string; sources: string[]; fromIframe: boolean }> {
-    const text = (await readLatestAssistant(page)).trim();
+async function extractResearchReport(page: Page): Promise<DeepResearchReportRead | null> {
+    const assistantText = (await readLatestAssistant(page)).trim();
 
     const sources: string[] = await page.evaluate(() => {
         const links = Array.from(document.querySelectorAll(
@@ -130,20 +132,26 @@ async function extractResearchReport(page: Page): Promise<{ text: string; source
             .filter((h) => h.startsWith('http'));
     }).catch(() => []);
 
-    if (text) return { text, sources, fromIframe: false };
+    const targetRead = assistantText ? { text: assistantText, sources, from: 'assistant' } : null;
 
+    // Legacy fallback: a deep-research app iframe on THIS page. Only used when the
+    // target read is missing/incomplete (chooseDeepResearchReportRead decides).
+    let frameRead: { text: string; sources: string[]; from: string } | null = null;
     const frames = page.frames();
     for (const frame of frames) {
         const frameUrl = frame.url();
         if (frameUrl.includes('deep-research') || frameUrl.includes('research')) {
-            const frameText = await frame.evaluate(() =>
+            const frameText = (await frame.evaluate(() =>
                 document.body?.innerText?.trim() || '',
-            ).catch(() => '');
-            if (frameText) return { text: frameText, sources, fromIframe: true };
+            ).catch(() => '')).trim();
+            if (frameText) {
+                frameRead = { text: frameText, sources, from: 'frame' };
+                break;
+            }
         }
     }
 
-    return { text: '', sources, fromIframe: false };
+    return chooseDeepResearchReportRead(targetRead, frameRead);
 }
 
 export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts: {
@@ -174,6 +182,9 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
     }
 
     const baselineCount = await countAssistants(page);
+    // Track whether any Deep Research activity (progress UI / app frame) is ever
+    // observed. If not, a final assistant answer is a normal reply, not a report.
+    let researchActivityObserved = false;
 
     const editorOptions = {
         insertText: async (text: string) => {
@@ -210,7 +221,13 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
             };
         }
         const count = await countAssistants(page);
-        if (count > baselineCount || await isStreaming(page) || await hasProgressIndicator(page)) break;
+        const progress = await hasProgressIndicator(page);
+        if (progress) researchActivityObserved = true;
+        const streaming = await isStreaming(page);
+        if (count > baselineCount || streaming || progress) {
+            if (streaming) researchActivityObserved = true;
+            break;
+        }
         await page.waitForTimeout(500);
     }
 
@@ -223,6 +240,7 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
 
         const streaming = await isStreaming(page);
         const progress = await hasProgressIndicator(page);
+        if (progress || streaming) researchActivityObserved = true;
         const count = await countAssistants(page);
 
         if (count > baselineCount && !streaming && !progress) {
@@ -231,7 +249,39 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
                 if (latest === stableText) {
                     if (Date.now() - stableSince >= 5000) {
                         const report = await extractResearchReport(page);
-                        if (report.fromIframe) warnings.push('report-extracted-from-iframe');
+                        // A frame report is definitive proof DR ran.
+                        if (report?.from === 'frame') researchActivityObserved = true;
+
+                        if (!researchActivityObserved) {
+                            // Stable assistant answer but no research activity ever observed
+                            // → a normal reply, not a Deep Research report (catalog 106.1).
+                            updateSessionResult({
+                                sessionId: session.sessionId,
+                                status: 'error',
+                                conversationUrl: page.url(),
+                            });
+                            return {
+                                ok: false,
+                                sessionId: session.sessionId,
+                                conversationUrl: page.url(),
+                                reportText: null,
+                                sources: [],
+                                warnings: [...warnings, 'deep-research-not-started'],
+                                status: 'failed',
+                            };
+                        }
+
+                        if (!report || !report.completed) {
+                            // Planning/progress/incomplete text — not a final report; keep waiting.
+                            if (!warnings.includes('deep-research-incomplete-report-skipped')) {
+                                warnings.push('deep-research-incomplete-report-skipped');
+                            }
+                            stableText = '';
+                            stableSince = 0;
+                            continue;
+                        }
+
+                        if (report.from === 'frame') warnings.push('report-extracted-from-iframe');
 
                         updateSessionResult({
                             sessionId: session.sessionId,
@@ -239,6 +289,9 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
                             answerText: report.text,
                             conversationUrl: page.url(),
                         });
+                        const saved = trySaveReport(session.sessionId, { text: report.text, sources: report.sources });
+                        if (saved.ok) appendSessionArtifact(session.sessionId, saved.descriptor);
+                        else warnings.push(`artifact-save-failed:${saved.stage}:${saved.error}`);
 
                         return {
                             ok: true,
@@ -262,18 +315,25 @@ export async function sendDeepResearch(page: Page, deps: DeepResearchDeps, opts:
     }
 
     const finalReport = await extractResearchReport(page);
+    if (finalReport?.from === 'frame') researchActivityObserved = true;
+    const finalText = (finalReport?.completed && researchActivityObserved) ? finalReport.text : null;
     updateSessionResult({
         sessionId: session.sessionId,
         status: 'timeout',
-        ...(finalReport.text ? { answerText: finalReport.text } : {}),
+        ...(finalText ? { answerText: finalText } : {}),
     });
+    if (finalText) {
+        const saved = trySaveReport(session.sessionId, { text: finalText, sources: finalReport?.sources ?? [] });
+        if (saved.ok) appendSessionArtifact(session.sessionId, saved.descriptor);
+        else warnings.push(`artifact-save-failed:${saved.stage}:${saved.error}`);
+    }
 
     return {
         ok: false,
         sessionId: session.sessionId,
         conversationUrl: page.url(),
-        reportText: finalReport.text || null,
-        sources: finalReport.sources,
+        reportText: finalText,
+        sources: finalReport?.sources ?? [],
         warnings: [...warnings, 'deep-research-timeout'],
         status: 'timeout',
     };

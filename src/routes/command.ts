@@ -10,6 +10,34 @@ import { makeWebCommandCtx } from '../cli/web-command-ctx.js';
 import { resolveRequestLocale } from '../http/locale.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import { t } from '../core/i18n.js';
+import { validateTarget } from '../messaging/send.js';
+import { stripUndefined } from '../core/strip-undefined.js';
+import type { RemoteTarget } from '../messaging/types.js';
+
+/**
+ * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
+ * Must be a telegram channel target with a string targetId and (optional) string threadId.
+ * Combined with validateTarget (allowlist) + requireAuth (loopback) before trusting it.
+ */
+export function isValidHubTarget(val: unknown): val is RemoteTarget {
+    if (!val || typeof val !== 'object') return false;
+    const o = val as Record<string, unknown>;
+    if (o['channel'] !== 'telegram' || o['targetKind'] !== 'channel') return false;
+    if (o['peerKind'] !== 'group' && o['peerKind'] !== 'direct') return false;
+    if (typeof o['targetId'] !== 'string' || !o['targetId']) return false;
+    if (o['threadId'] != null && typeof o['threadId'] !== 'string') return false;
+    return true;
+}
+
+/** P4: sanitize per-topic model/systemPrompt overrides from a hub-forwarded request. */
+export function sanitizeOverrides(val: unknown): { model?: string; systemPrompt?: string } | undefined {
+    if (!val || typeof val !== 'object') return undefined;
+    const o = val as Record<string, unknown>;
+    const model = typeof o['model'] === 'string' && o['model'].trim() ? o['model'].trim() : undefined;
+    const systemPrompt = typeof o['systemPrompt'] === 'string' && o['systemPrompt'].trim() ? o['systemPrompt'].trim() : undefined;
+    if (!model && !systemPrompt) return undefined;
+    return stripUndefined({ model, systemPrompt });
+}
 
 // Attachment-sized command text (SAC-004 contract — slash commands may carry
 // inline attachment payloads, so the old 500-char truncation is forbidden).
@@ -75,6 +103,24 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
 
         const trimmed = prompt.trim();
 
+        // P2b: optional RemoteTarget when the hub forwards an inbound topic message.
+        // Strict shape + allowlist validation; caller is loopback-trusted via requireAuth.
+        const rawTarget = req.body?.target;
+        if (rawTarget != null && (!isValidHubTarget(rawTarget) || !validateTarget(rawTarget, 'telegram'))) {
+            res.status(400).json({ ok: false, error: 'invalid target' });
+            return;
+        }
+        const target = (rawTarget ?? undefined) as RemoteTarget | undefined;
+        // P4: per-topic overrides are only honored when the hub forwards a telegram target.
+        const overrides = target ? sanitizeOverrides(req.body?.overrides) : undefined;
+        const submitMeta = stripUndefined({
+            origin: target ? 'telegram' as const : 'web' as const,
+            target,
+            chatId: target?.targetId,
+            overrides,
+            replyViaTarget: Boolean(target),
+        });
+
         // Slash command pre-processing: Telegram/Discord already do this,
         // but /api/message callers (REST, goal-continuation) bypass /api/command.
         if (trimmed.startsWith('/')) {
@@ -84,7 +130,14 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                     const locale = resolveRequestLocale(req);
                     const cmdResult = await executeCommand(parsed, makeWebCommandCtx(req, locale));
                     if (cmdResult?.steerPrompt) {
-                        submitMessage(cmdResult.steerPrompt, { origin: 'web' });
+                        const submit = submitMessage(cmdResult.steerPrompt, submitMeta);
+                        if (submit.action === 'rejected') {
+                            const status = (submit.reason === 'busy' || submit.reason === 'duplicate') ? 409 : 400;
+                            res.status(status).json({ ok: false, command: true, error: submit.reason, ...submit });
+                            return;
+                        }
+                        res.json({ ok: true, command: true, ...cmdResult, submit });
+                        return;
                     }
                     res.json({ ok: true, command: true, ...cmdResult });
                     return;
@@ -97,7 +150,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             }
         }
 
-        const result = submitMessage(trimmed, { origin: 'web' });
+        const result = submitMessage(trimmed, submitMeta);
         if (result.action === 'rejected') {
             const status = (result.reason === 'busy' || result.reason === 'duplicate') ? 409 : 400;
             res.status(status).json({ ok: false, error: result.reason, ...result });

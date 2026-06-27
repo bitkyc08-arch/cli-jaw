@@ -5,7 +5,7 @@
 ### あなた専用の AI エージェント。2 行でインストール。11 個の AI ランタイムをひとつのダッシュボードに。
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.0.0-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.2-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
@@ -121,6 +121,7 @@ codex login          # OpenAI ChatGPT Pro 以上
 cursor-agent login   # Cursor
 gemini               # Google Gemini Advanced
 grok login --oauth   # xAI Grok / Grok Heavy
+kiro                 # AWS Kiro (free tier with AWS account)
 ```
 
 一括チェック：`jaw doctor`
@@ -251,14 +252,15 @@ Employee は「Frontend は CSS、Backend は API」用。サブエージェン�
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro サブスクリプション以上 |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro サブスクリプション以上。6月のサブスク付与枠では推奨 runtime |
 | **AI-E** | provider-selected | 選択 provider の認証 | マルチ provider runtime wrapper |
-| **Antigravity** | AGY-selected | `agy` 実行時に確認 | `--conversation` resume 対応の実験的な AGY print-mode runtime。モデル変更は native AGY UI 側 |
+| **Antigravity** | AGY-selected | `agy` 実行時に確認 | `agy -p` 実験的 AGY print-mode runtime。任意の `--model` は capability probe 後、対応時のみ使用（AGY 1.0.12 で確認）。`--conversation` で resume。個別 effort flag はなし |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション以上 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro サブスクリプション以上 |
-| **Cursor** | `composer-2.5-fast` | `cursor-agent login` または `CURSOR_API_KEY` | Cursor サブスクリプション。quota は auth/status-only |
-| **Gemini** | `gemini-3.1-pro-preview` | `gemini` | Gemini Advanced サブスクリプション |
+| **Cursor** | `composer-2.5` | `cursor-agent login` または `CURSOR_API_KEY` | Cursor サブスクリプション。quota は auth/status-only |
+| **Gemini** | `gemini-3-flash-preview` | `gemini` | Gemini Advanced サブスクリプション |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok サブスクリプション；クォータは認証/ステータスのみ |
-| **OpenCode** | `minimax-m2.7` | `opencode` | 無料モデルあり |
-| **Copilot** | `gpt-5-mini` | `copilot login` | 無料枠あり |
+| **Kiro** | registry-selected | `kiro` | AWS Kiro 無料枠；`kiro-cli chat --no-interactive` runtime |
+| **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | 無料モデルあり |
+| **Copilot** | `claude-sonnet-4.6` | `copilot login` | 無料枠あり |
 
 GPT 5.5 と Claude Opus 4.8 は Pro 以上のサブスクリプションで利用できます。6月からサブスクに含まれる Claude 利用枠を使う場合は、`claude-e` runtime を選択してください。
 
@@ -289,7 +291,7 @@ P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
 | **C — Check** | 型チェック（`tsc --noEmit`）、ドキュメント更新、整合性チェック |
 | **D — Done** | 全変更のサマリー。アイドル状態に復帰 |
 
-状態はデータベースに永続化され、再起動後も保持されます。ワーカーはファイルを変更できません — 検証のみ。`jaw orchestrate`、`/orchestrate`、`/pabcd` で開始。
+状態はデータベースに永続化され、再起動後も保持されます。ワーカーはファイルを変更できません — 検証のみ。`jaw orchestrate`、`/orchestrate`、`/pabcd` で開始し、進行中の worklog は `/continue` で明示的に再開します。フェーズ遷移には証拠 attestation が必要です。例: `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'`（C→D は `checkOutput` と `exitCode` も必要）。Workflow helper slash commands: `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, `/goal`, `/goalplan`, `/team`, `/task`, `/fork`, `/gd`。`/plan` は「これは PABCD P」の互換ガイドで、別の計画モードは作りません。`/search <query>` は active search skill にルーティングされます。Bounded automation は `/goal run ...` で表現され、別の `/autopilot` はありません。Durable goal（`/goal <objective>` + `update`/`done`/`cancel`/`pause`/`resume`）は再起動後も保持され、goal 再開は Web/CLI を含む全インターフェースで作業を再実行します。AI `goal pause --agent --audit` は 2 段階監査ゲート（`goal_pause_gate_pending` で自動 continuation を抑制）です。`/gd` は `/goal done --force` の短縮（完了証拠ゲートをバイパス）。`/goal run`（`preflight`/`start`/`stop`/`status`）は preflight を通過する追跡専用 preview で、turn/dispatch 予算を追跡します（強制は今後）。
 
 ---
 
@@ -356,7 +358,7 @@ Computer Use で Finder、Safari、システム設定、Xcode など、あらゆ
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-テキストチャット、音声メッセージ（マルチプロバイダ STT — 音声をテキストに自動変換）、ファイル/写真アップロード、スラッシュコマンド（`/cli`、`/model`、`/status`）、スケジュールタスク（`every`/`cron` — 定期スケジュール）結果の自動配信。
+テキストチャット、音声メッセージ（マルチプロバイダ STT — 音声をテキストに自動変換）、ファイル/写真アップロード、スラッシュコマンド（51 件登録; workflow helper: `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; CLI/Web 動的 `/skill:<id>`）、フォーラムトピックルーティングと **Dashboard Telegram Hub**（`/setthread`, `/threads`, `/hubhelp`、Manager UI でトピックごとの `model`/`systemPrompt` override）、スケジュールタスク（`every`/`cron` heartbeat）結果の自動配信。
 
 <details>
 <summary>セットアップ（3 ステップ）</summary>
@@ -451,9 +453,11 @@ jaw --home ~/my-project serve --port 3458
 
 ```bash
 npm run build          # tsc → dist/
+npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts（ホットリロード）
-npm test               # Node.js ネイティブテストランナー
+npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
 npm run gate:all       # リリース/ドキュメント整合性ゲート
+bash structure/check-doc-drift.sh
 ```
 
 アーキテクチャ詳細：[ARCHITECTURE.md](docs/ARCHITECTURE.md) · テストカバレッジ：[TESTS.md](TESTS.md) · 内部構造ドキュメント：[structure/](structure/)

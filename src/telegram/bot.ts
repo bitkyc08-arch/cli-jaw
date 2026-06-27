@@ -6,6 +6,7 @@ import { sequentialize } from '@grammyjs/runner';
 import { addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { resolveHubCallback } from './hub-callback.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { submitMessage } from '../orchestrator/gateway.js';
@@ -23,7 +24,7 @@ import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { handleVoice } from './voice.js';
 import { registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
-import { registerSendTransport } from '../messaging/send.js';
+import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -55,6 +56,7 @@ let tgInitLock = false;
 let tg409RetryCount = 0;
 const TG_MAX_RETRIES = 3;
 let botUsername: string | null = null;
+let targetReplyForwarderInstalled = false;
 const telegramForwarderLifecycle = createForwarderLifecycle({
     addListener: addBroadcastListener,
     removeListener: removeBroadcastListener,
@@ -100,6 +102,27 @@ function detachTelegramForwarder() {
 
 function attachTelegramForwarder(bot: Bot) {
     telegramForwarderLifecycle.attach({ bot });
+}
+
+function installTelegramTargetReplyForwarder(): void {
+    if (targetReplyForwarderInstalled) return;
+    targetReplyForwarderInstalled = true;
+    addBroadcastListener((type, data) => {
+        if (type !== 'orchestrate_done' || data["origin"] !== 'telegram' || data["replyViaTarget"] !== true) return;
+        if (!data["text"]) return;
+        const target = data["target"] as RemoteTarget | undefined;
+        if (!target || target.channel !== 'telegram') return;
+        void sendChannelOutput({
+            channel: 'telegram',
+            type: 'text',
+            text: String(data["text"]),
+            target,
+        }).then((result) => {
+            if (!result.ok) console.error('[tg:target-reply]', result.error || 'send failed');
+        }).catch((err: unknown) => {
+            console.error('[tg:target-reply]', (err as Error).message);
+        });
+    });
 }
 
 // ─── Transport Contract Exports ─────────────────────
@@ -178,6 +201,28 @@ function buildTelegramTarget(ctx: Context): RemoteTarget {
 }
 
 async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boolean; error?: string; [k: string]: unknown }> {
+    // P2b: hub-member mode — this instance's own bot is disabled; relay outbound through the
+    // dashboard hub (it owns the single forum-group bot token). hubCallbackUrl is SSRF-guarded.
+    const hub = settings["telegramHub"];
+    if (hub?.mode === 'hub-member' && req.target?.channel === 'telegram' && req.target?.targetId) {
+        const base = resolveHubCallback(hub.hubCallbackUrl);
+        try {
+            const r = await fetch(`${base}/api/dashboard/telegram-hub/outbound`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify(stripUndefined({
+                    chatId: req.target.targetId, threadId: req.target.threadId,
+                    type: req.type, text: req.text, filePath: req.filePath, caption: req.caption,
+                })),
+                signal: AbortSignal.timeout(15_000),
+            });
+            const j = (await r.json().catch(() => ({}))) as Record<string, unknown>;
+            return j['ok'] ? { ok: true, via: 'hub', type: req.type } : { ok: false, error: String(j['error'] || 'hub outbound failed'), status: 502 };
+        } catch (e) {
+            return { ok: false, error: (e as Error).message, status: 502 };
+        }
+    }
+
     const bot = resolveTelegramSendBot();
     if (!bot) {
         const send = getTelegramSendClient();
@@ -187,6 +232,12 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     const chatId = req.chatId || req.target?.targetId || getLatestTelegramChatId();
     if (!chatId) return { ok: false, error: 'No telegram chatId available', status: 400 };
 
+    // P0: thread-aware send. Programmatic sends must carry message_thread_id so
+    // replies/files land in the originating forum topic (ctx.reply already auto-threads).
+    // stripUndefined drops the key for non-forum chats → identical wire payload.
+    const { threadIdNumber } = await import('../messaging/thread-target.js');
+    const messageThreadId = threadIdNumber(req.target);
+
     if (req.type === 'text') {
         const text = req.text?.trim();
         if (!text) return { ok: false, error: 'text required' };
@@ -195,9 +246,9 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
         const chunks = chunkTelegramMessage(html);
         for (const chunk of chunks) {
             try {
-                await bot.api.sendMessage(chatId, chunk, { parse_mode: 'HTML' });
+                await bot.api.sendMessage(chatId, chunk, stripUndefined({ parse_mode: 'HTML', message_thread_id: messageThreadId }));
             } catch {
-                await bot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''));
+                await bot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id: messageThreadId }));
             }
         }
         return { ok: true, chat_id: chatId, type: 'text' };
@@ -208,13 +259,14 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     if (!filePath) return { ok: false, error: 'file_path required for non-text types' };
     const { validateFileSize, sendTelegramFile } = await import('./telegram-file.js');
     validateFileSize(filePath, req.type);
-    const result = await sendTelegramFile(bot, chatId, filePath, req.type, stripUndefined({ caption: req.caption }));
+    const result = await sendTelegramFile(bot, chatId, filePath, req.type, stripUndefined({ caption: req.caption, threadId: messageThreadId }));
     return result;
 }
 
 // Register transport at module load time
 registerTransport('telegram', { init: initTelegram, shutdown: shutdownTelegram });
 registerSendTransport('telegram', telegramSendHandler);
+installTelegramTargetReplyForwarder();
 
 function toTelegramCommandDescription(desc: string) {
     const text = String(desc || '').trim();

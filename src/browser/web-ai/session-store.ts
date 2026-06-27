@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, openSync, closeSync, readFileSync, renameSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { JAW_HOME } from '../../core/config.js';
 import { WebAiError } from './errors.js';
@@ -22,6 +22,12 @@ export interface StoredSession {
     composerBefore?: string;
     composerAfter?: string;
     deadlineAt?: string;
+    // 105.5: streaming-progress fields (also storable via the index signature, declared for type-safety).
+    envelopeSummary?: Record<string, unknown>;
+    lastDomHash?: string | null;
+    lastAxHash?: string | null;
+    lastStreamingState?: string;
+    lastResponseCharCount?: number;
     [key: string]: unknown;
 }
 
@@ -120,13 +126,16 @@ export function withStoreLock<T>(fn: () => T): T {
     while (attempts < LOCK_RETRY_LIMIT) {
         try {
             const fd = openSync(path, 'wx');
+            closeSync(fd);
+            const tmpMeta = `${path}.meta.${process.pid}`;
             try {
-                writeFileSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
-            } catch { /* best-effort metadata write */ }
+                writeFileSync(tmpMeta, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString() }));
+                renameSync(tmpMeta, `${path}.meta`);
+            } catch { try { unlinkSync(tmpMeta); } catch { /* cleanup */ } }
             try {
                 return fn();
             } finally {
-                try { closeSync(fd); } catch { /* already closed */ }
+                try { unlinkSync(`${path}.meta`); } catch { /* already gone */ }
                 try { unlinkSync(path); } catch { /* already gone */ }
             }
         } catch (err) {
@@ -134,6 +143,7 @@ export function withStoreLock<T>(fn: () => T): T {
             attempts += 1;
             const stale = isStaleLock(path);
             if (stale) {
+                try { unlinkSync(`${path}.meta`); } catch { /* may not exist */ }
                 try { unlinkSync(path); } catch { /* races resolve naturally */ }
                 continue;
             }
@@ -148,15 +158,32 @@ export function withStoreLock<T>(fn: () => T): T {
     });
 }
 
-function isStaleLock(path: string): boolean {
+export function isStaleLock(path: string): boolean {
+    const metaPath = `${path}.meta`;
     try {
-        const raw = readFileSync(path, 'utf8');
-        const parsed = JSON.parse(raw) as { acquiredAt?: string };
-        const acquired = Date.parse(parsed?.acquiredAt || '');
-        if (!Number.isFinite(acquired)) return true;
-        return Date.now() - acquired > STALE_LOCK_MS;
+        const raw = readFileSync(metaPath, 'utf8');
+        const parsed = JSON.parse(raw) as { acquiredAt?: string; heartbeatAt?: string; pid?: number };
+        if (parsed?.pid != null && !pidAlive(Number(parsed.pid))) return true;
+        const stamp = Date.parse(parsed?.heartbeatAt || parsed?.acquiredAt || '');
+        if (!Number.isFinite(stamp)) return true;
+        return Date.now() - stamp > STALE_LOCK_MS;
     } catch {
+        try {
+            const lockStat = statSync(path);
+            if (Date.now() - lockStat.mtimeMs < 2000) return false;
+        } catch { /* lock file gone */ }
         return true;
+    }
+}
+
+/** True if the process is alive (or exists but not ours: EPERM). */
+function pidAlive(pid: number): boolean {
+    if (!Number.isFinite(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (err) {
+        return (err as { code?: string })?.code === 'EPERM';
     }
 }
 
@@ -189,14 +216,35 @@ export function patchSession(sessionId: string, patch: Partial<StoredSession>): 
     });
 }
 
+const ACTIVE_SESSION_STATUSES = new Set(['sent', 'polling']);
+
+function sessionDeadlineMs(session: StoredSession): number | null {
+    if (session.deadlineAt) {
+        const d = Date.parse(session.deadlineAt);
+        if (Number.isFinite(d)) return d;
+    }
+    const timeoutMs = session['timeoutMs'];
+    if (session.createdAt && typeof timeoutMs === 'number') {
+        const d = Date.parse(session.createdAt) + timeoutMs;
+        if (Number.isFinite(d)) return d;
+    }
+    return null;
+}
+
+/** 104.2: active = an active status AND not past its deadline (expired sessions are inactive). */
+export function isSessionActive(session: StoredSession, now = Date.now()): boolean {
+    if (!ACTIVE_SESSION_STATUSES.has(session.status)) return false;
+    const deadline = sessionDeadlineMs(session);
+    return deadline === null || deadline > now;
+}
+
 export function listStoredSessions(filter: SessionFilter = {}): StoredSession[] {
     const store = readSessionStoreLocked();
-    const active = new Set(['sent', 'polling']);
     let rows = store.sessions;
     if (filter.sessionId) rows = rows.filter(s => s.sessionId === filter.sessionId);
     if (filter.vendor) rows = rows.filter(s => s.vendor === filter.vendor);
     if (filter.status) rows = rows.filter(s => s.status === filter.status);
-    if (filter.active === true) rows = rows.filter(s => active.has(s.status));
+    if (filter.active === true) rows = rows.filter(s => isSessionActive(s));
     rows = rows.slice().sort((a, b) => String(a.createdAt).localeCompare(String(b.createdAt)));
     if (typeof filter.limit === 'number' && filter.limit > 0) rows = rows.slice(-filter.limit);
     return rows;
@@ -208,25 +256,30 @@ function sessionCommandLockPath(sessionId: string): string {
 
 export async function withSessionCommandLock<T>(sessionId: string, fn: () => Promise<T>): Promise<T> {
     const path = sessionCommandLockPath(sessionId);
+    const metaPath = `${path}.meta`;
     mkdirSync(dirname(path), { recursive: true });
     let fd: number | null = null;
     let attempts = 0;
     while (attempts < LOCK_RETRY_LIMIT) {
         try {
             fd = openSync(path, 'wx');
+            closeSync(fd);
+            const tmpMeta = `${path}.meta.${process.pid}`;
             try {
-                writeFileSync(fd, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), sessionId }));
-            } catch { /* best-effort metadata write */ }
+                writeFileSync(tmpMeta, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), sessionId }));
+                renameSync(tmpMeta, metaPath);
+            } catch { try { unlinkSync(tmpMeta); } catch { /* cleanup */ } }
             break;
         } catch (err: unknown) {
             if (!hasErrorCode(err, 'EEXIST')) throw err;
             attempts += 1;
             const stale = isStaleLock(path);
             if (stale) {
+                try { unlinkSync(metaPath); } catch { /* may not exist */ }
                 try { unlinkSync(path); } catch { /* races resolve naturally */ }
                 continue;
             }
-            sleepBlockingMs(LOCK_RETRY_MS);
+            await new Promise(resolve => setTimeout(resolve, LOCK_RETRY_MS));
         }
     }
     if (fd === null) {
@@ -237,10 +290,19 @@ export async function withSessionCommandLock<T>(sessionId: string, fn: () => Pro
             message: `web-ai session command: failed to acquire lock for ${sessionId} after ${LOCK_RETRY_LIMIT} attempts`,
         });
     }
+    const heartbeatTimer = setInterval(() => {
+        try {
+            const tmpHb = `${metaPath}.hb.${process.pid}`;
+            writeFileSync(tmpHb, JSON.stringify({ pid: process.pid, acquiredAt: new Date().toISOString(), heartbeatAt: new Date().toISOString(), sessionId }));
+            renameSync(tmpHb, metaPath);
+        } catch { /* best-effort heartbeat */ }
+    }, 60_000);
+    heartbeatTimer.unref();
     try {
         return await fn();
     } finally {
-        try { closeSync(fd); } catch { /* already closed */ }
+        clearInterval(heartbeatTimer);
+        try { unlinkSync(metaPath); } catch { /* already gone */ }
         try { unlinkSync(path); } catch { /* already gone */ }
     }
 }

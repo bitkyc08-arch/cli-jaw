@@ -31,6 +31,8 @@ test('goal PABCD status panel exposes goal, phase gate, runtime, and evidence su
     assert.ok(panel.includes('Goal / PABCD'), 'panel must label the combined goal/PABCD status');
     assert.ok(panel.includes('snapshot?.pabcd.gate.status'), 'panel must show phase gate status');
     assert.ok(panel.includes('snapshot?.goal?.evidenceFreshness'), 'panel must show goal evidence freshness');
+    assert.ok(panel.includes('pauseGate?.armed'), 'panel must expose armed pause gate state');
+    assert.ok(panel.includes('pause gate'), 'panel must label armed pause gate separately from active');
     assert.ok(panel.includes('runtime.activeWorkers'), 'panel must show worker runtime pressure');
     assert.ok(panel.includes('heartbeatPending'), 'panel must show heartbeat pending state');
     assert.ok(panel.includes('Gate evidence'), 'panel must show PABCD gate evidence detail');
@@ -54,4 +56,12 @@ test('goal PABCD status surface stays independent of child Jaw instances', () =>
     assert.equal(combined.includes('/api/code'), false, 'status surface must not call Code session APIs');
     assert.equal(combined.includes('/api/dashboard/instances'), false, 'status surface must not read child instance list');
     assert.equal(combined.includes('3465'), false, 'status surface must not hardcode child Jaw ports');
+});
+
+test('goal PABCD status client types include pauseGate summary', () => {
+    const client = read('public/manager/src/goal-status/goal-pabcd-status-client.ts');
+
+    assert.ok(client.includes('GoalPauseGateSummary'), 'client must type pause gate summary');
+    assert.ok(client.includes('pauseGate: GoalPauseGateSummary'), 'goal summary must include pauseGate');
+    assert.ok(client.includes("'pause_gate_pending' | null"), 'pause gate reason must keep stable literal');
 });

@@ -42,11 +42,11 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `i18n:registry` | `tsx scripts/i18n-registry.ts` |
 | `check:deps:online` | `bash scripts/check-deps-online.sh` |
 | `prebuild`, `pretest`, `pretest:all`, `pretest:integration`, `pretest:smoke` | `npm run ensure:native` |
-| `test` | `tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/*.test.ts tests/unit/*.test.ts` |
-| `test:all` | `tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/*.test.ts tests/**/*.test.ts` |
+| `test` | `tsx --experimental-test-module-mocks tests/run.mts` — programmatic driver, `isolation:'process'` for subprocess DB isolation |
+| `test:all` | `tsx --experimental-test-module-mocks tests/run.mts --all` |
 | `test:integration` | `tsx --experimental-test-module-mocks --test tests/integration/*.test.ts` |
-| `test:coverage` | `tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test --experimental-test-coverage tests/*.test.ts tests/**/*.test.ts` |
-| `test:watch` | `tsx --import ./tests/setup/test-home.ts --test --watch tests/*.test.ts tests/unit/*.test.ts` |
+| `test:coverage` | `tsx --experimental-test-module-mocks --experimental-test-coverage tests/run.mts --all` |
+| `test:watch` | `tsx --experimental-test-module-mocks tests/run.mts --watch` |
 | `test:web-ui-runtime` | `tsx --import ./tests/setup/test-home.ts --experimental-test-module-mocks --test tests/unit/web-ui-runtime-*.test.ts tests/unit/web-ui-processblock-runtime.test.ts tests/unit/web-ui-mermaid-runtime.test.ts tests/unit/web-ui-sanitizer.test.ts tests/unit/web-ui-build-output-guard.test.ts` |
 | `test:events` | `tsx --test tests/events.test.ts` |
 | `test:telegram` | `tsx --test tests/telegram-forwarding.test.ts` |
@@ -60,11 +60,11 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `test:fresh-install` | `tsx scripts/fresh-install-smoke.ts` |
 | `test:install-risk` | `node scripts/install-risk-gate.mjs` |
 | `check:cli-bin-links` | `node scripts/check-cli-bin-links.cjs` |
-| `test:claude-exec` | `cargo test --manifest-path native/jaw-claude-i/Cargo.toml` |
-| `test:claude-e` | compatibility alias for `test:claude-exec` |
+| `test:claude-e` | `cargo test --manifest-path native/claude-e/Cargo.toml` |
+| `test:claude-exec` | compatibility alias for `test:claude-e` |
 | `build` | `bash scripts/atomic-build.sh` — staged `dist/bin/cli-jaw.js` 실행권한을 보장한 뒤 atomic swap |
-| `build:claude-exec` | `cargo build --release --manifest-path native/jaw-claude-i/Cargo.toml` |
-| `build:claude-e` | compatibility alias for `build:claude-exec` |
+| `build:claude-e` | `cargo build --release --manifest-path native/claude-e/Cargo.toml` |
+| `build:claude-exec` | compatibility alias for `build:claude-e` |
 | `postbuild` | `node scripts/link-current-nvm-bin.cjs` — non-NVM Node에서는 링크를 skip하되 `dist/bin/cli-jaw.js` chmod repair는 먼저 수행 |
 | `build:frontend` | `vite build --config vite.config.ts` |
 | `qa:manager-frontend` | `npm run build:frontend && npm run typecheck:frontend` |
@@ -129,10 +129,11 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `JAW_BOSS_TOKEN` | `src/core/boss-auth.ts`, `bin/commands/dispatch.ts` | boss-only employee dispatch token |
 | `JAW_EMPLOYEE_MODE` | `bin/commands/dispatch.ts` | employee 내부 dispatch 차단 |
 | `TELEGRAM_TOKEN`, `TELEGRAM_ALLOWED_CHAT_IDS` | `src/core/config.ts` | Telegram settings override |
+| `JAW_HUB_CALLBACK_URL` | `src/telegram/hub-callback.ts`, `src/manager/lifecycle.ts` | Telegram Hub member outbound callback override (loopback http only; manager spawn sets `http://127.0.0.1:${DASHBOARD_DEFAULT_PORT}`) |
 | `DISCORD_TOKEN`, `DISCORD_GUILD_ID`, `DISCORD_CHANNEL_IDS` | `src/core/config.ts` | Discord settings override |
 | `DASHBOARD_PORT`, `DASHBOARD_SCAN_FROM`, `DASHBOARD_SCAN_COUNT`, `JAW_DASHBOARD_OPEN` | `bin/commands/dashboard.ts`, `src/manager/server.ts` | Manager dashboard 실행/scan 설정 |
 | `LOG_LEVEL` | `src/core/logger.ts` | logger verbosity |
-| `CLI_JAW_SKIP_OFFICECLI`, `CLI_JAW_FORCE_OFFICECLI`, `OFFICECLI_REPO` | `bin/postinstall.ts` | officecli postinstall 제어 |
+| `OFFICECLI_REPO` | `scripts/install-officecli.sh`, `scripts/install-officecli.ps1` | install 스크립트 소스 repo override (`lidge-jun/OfficeCLI` 기본) |
 | `JAW_SAFE`, `npm_config_jaw_safe` | `bin/postinstall.ts` | postinstall safe mode |
 | `CLI_JAW_MIGRATE_SHARED_PATHS`, `npm_config_jaw_migrate_shared_paths` | `bin/postinstall.ts` | shared path migration opt-in |
 | `TEST_PORT` | `package.json` `test:smoke` | smoke test target port |
@@ -235,7 +236,7 @@ CLI → 서버 API 호출 시 인증 토큰을 관리하는 경량 헬퍼. 포�
 | CLI | Default Model | Notable model aliases |
 | --- | --- | --- |
 | `pi` | `grok-composer-2.5-fast` | Pi RPC runtime with isolated profile/model registration |
-| `agy` | native UI selected | print-mode runtime; no per-run model/effort flag |
+| `agy` | AGY-selected | print-mode runtime; `--model` is capability-gated (observed in AGY 1.0.12); no separate effort flag |
 | `ai-e` | `sonnet` | AI-E wrapper runtime |
 | `claude` | `claude-opus-4-8` | canonical choices include `opus`, `sonnet`, `sonnet[1m]`, `haiku`; legacy aliases normalize |
 | `claude-e` | `claude-opus-4-8` | helper-backed Claude E runtime |
@@ -303,9 +304,11 @@ Virtual employees are not written to `employees` or `employee_sessions`. `src/co
 
 ---
 
-## src/messaging/ — shared messaging runtime (6 files, 506L)
+## src/messaging/ — shared messaging runtime (7 files)
 
 Telegram/Discord 채널의 활성 타겟 상태와 outbound routing을 공유한다. `settings.messaging.lastActive/latestSeen`를 유지하고, `core/runtime-settings.ts`의 restart 경로가 이 레이어를 다시 초기화한다.
+
+`thread-target.ts` — `threadIdNumber(target)` extracts `message_thread_id` for programmatic Telegram sends (P0 forum topic support).
 
 ### runtime.ts (146L)
 
@@ -346,13 +349,16 @@ Telegram/Discord 채널의 활성 타겟 상태와 outbound routing을 공유한
 
 ---
 
-## src/telegram/ — Telegram transport (4 files, 898L)
+## src/telegram/ — Telegram transport (5 files)
 
-`bot.ts`, `forwarder.ts`, `telegram-file.ts`, `voice.ts`.
+`bot.ts`, `forwarder.ts`, `telegram-file.ts`, `voice.ts`, `hub-callback.ts`.
 
-### bot.ts (624L)
+- `bot.ts` — thread-aware programmatic send (P0) + hub-member outbound relay (P2b)
+- `hub-callback.ts` — loopback-only SSRF guard for hub callback URL
 
-Telegram transport main entry. `registerTransport('telegram', ...)`와 `registerSendTransport('telegram', ...)`를 등록하고, `settings.telegram.forwardAll`, allowlist, mention gating, voice, attachment, slash command 흐름을 모두 처리한다.
+### bot.ts (707L)
+
+Telegram transport main entry. `registerTransport('telegram', ...)`와 `registerSendTransport('telegram', ...)`를 등록하고, `settings.telegram.forwardAll`, allowlist, mention gating, voice, attachment, slash command 흐름을 모두 처리한다. P0: thread-aware programmatic send via `thread-target.ts`. P2b: hub-member outbound relay to Dashboard `/api/dashboard/telegram-hub/outbound`.
 
 | Function | 역할 |
 | --- | --- |
@@ -361,7 +367,7 @@ Telegram transport main entry. `registerTransport('telegram', ...)`와 `register
 | `makeTelegramCommandCtx()` | Telegram용 ctx 생성 + `applyRuntimeSettingsPatch()` |
 | `syncTelegramCommands(bot)` | `getTelegramMenuCommands()` 기반 `setMyCommands` |
 | `sendTelegramText()` | outbound text send |
-| `buildTelegramTarget()` | `RemoteTarget` 생성 |
+| `buildTelegramTarget()` | `RemoteTarget` 생성 (`threadId` when `message_thread_id` present) |
 
 ### forwarder.ts (105L)
 
@@ -373,7 +379,11 @@ Telegram transport main entry. `registerTransport('telegram', ...)`와 `register
 
 ### telegram-file.ts (133L)
 
-Telegram file upload / retry helper. 텍스트가 아닌 media send와 attachment 전달에 사용된다.
+Telegram file upload / retry helper. 텍스트가 아닌 media send와 attachment 전달에 사용된다. Optional `{ threadId }` for forum topics.
+
+### hub-callback.ts (19L)
+
+`resolveHubCallback()` — loopback-only SSRF guard for hub-member outbound callback URL. Default `http://127.0.0.1:24576`.
 
 ### shared runtime points
 
@@ -381,6 +391,10 @@ Telegram file upload / retry helper. 텍스트가 아닌 media send와 attachmen
 - Telegram/Discord 설정 변경은 `core/runtime-settings.ts`를 통해 같은 restart 경로를 탄다.
 - `settings.messaging.lastActive/latestSeen`는 forward 대상 복원용 공통 저장소다.
 - `src/orchestrator/pipeline.ts`는 Telegram/Discord origin에만 21 Elicitation remote-channel guard를 동적으로 붙인다. A1 system prompt는 수정하지 않으며, accidental `elicitation` / `choice-buttons` fence 출력은 remote 응답 직전에 plain text numbered question fallback으로 normalize한다.
+
+### Dashboard Telegram Hub (`src/manager/telegram-hub/` — 3 files)
+
+Forum supergroup topic → managed instance port routing. Config in `DashboardRegistry.telegramHub`. Routes at `/api/dashboard/telegram-hub` (loopback-only). `hub-bot.ts` owns single-bot long-poll; hub commands `/setthread`, `/threads`, `/hubhelp`. Manager UI: `TelegramHub.tsx`. See `telegram.md` § Telegram Hub.
 
 ---
 
@@ -552,7 +566,7 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 | `settings.ts` | settings/prompt/heartbeat-md/MCP/registry/status/quota/copilot |
 | `messaging.ts` | upload/file-open/voice/telegram/channel/discord send |
 | `browser.ts` | browser runtime endpoints |
-| `quota.ts` | `/api/quota` helper readers imported by `settings.ts` (direct provider usage where supported, wrapper runtime delegation for `ai-e`/`claude-e`/`codex-app`, and status-only metadata for AGY/Cursor/Grok/OpenCode when quota windows are not exposed by the CLI) |
+| `quota.ts` | `/api/quota` helper readers imported by `settings.ts` (direct provider usage where supported, wrapper runtime delegation for `ai-e`/`claude-e`/`codex-app`, reverse-engineered AGY Gem/Cla windows when `antigravity-usage --json` is available, and status-only metadata for Cursor/Grok/OpenCode or CLIs without quota windows) |
 
 핵심 포인트:
 - `server.ts`는 `register*Routes(app, requireAuth, ...)` 호출만 남기고 629L 글루 레이어로 유지된다. 현재 mutation endpoint 53개는 모두 `requireAuth` 미들웨어를 거쳐 인증 없는 상태 변경을 차단한다.

@@ -37,7 +37,9 @@ test('claude-i helper candidates prefer explicit claude-e env override', () => {
     assert.equal(candidates[2], legacy);
     assert.ok(candidates.some((candidate) => candidate.includes(path.join('target', 'release'))));
     assert.ok(candidates.some((candidate) => candidate.includes(path.join('target', 'debug'))));
+    assert.ok(candidates.some((candidate) => candidate.includes(path.join('native', 'claude-e', 'target', 'release'))));
     assert.ok(candidates.some((candidate) => candidate.includes(path.join('native', 'jaw-claude-i', 'target', 'release'))));
+    assert.ok(!candidates.some((candidate) => candidate.includes(path.join('native', 'claude-e', 'target', 'release', 'claude-i'))));
 });
 
 test('claude-e helper candidates expose package bins and compatibility aliases', () => {

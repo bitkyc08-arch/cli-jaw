@@ -22,3 +22,11 @@ test('frontend cursor meta exposes model-ID effort choices', () => {
     assert.match(meta.effortNote || '', /model IDs/);
     assert.equal(meta.modelNote, undefined);
 });
+
+test('frontend AGY fallback keeps legacy model select enabled', () => {
+    const meta = getCliMeta('agy');
+    assert.ok(meta, 'agy metadata missing');
+    assert.equal(meta.modelNote, undefined);
+    assert.ok(meta.models.includes('gemini-3.5-flash'));
+    assert.match(meta.effortNote || '', /no separate effort flag/);
+});

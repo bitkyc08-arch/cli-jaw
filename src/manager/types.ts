@@ -1,3 +1,5 @@
+import type { TelegramHubConfig } from './telegram-hub/types.js';
+
 export type DashboardInstanceStatus =
     | 'online'
     | 'offline'
@@ -260,6 +262,7 @@ export type DashboardRegistry = {
     instances: Record<string, DashboardRegistryInstance>;
     profiles: Record<DashboardProfileId, Partial<DashboardProfile>>;
     activeProfileFilter: DashboardProfileId[];
+    telegramHub: TelegramHubConfig;
 };
 
 export type DashboardRegistryStatus = {
@@ -277,6 +280,7 @@ export type DashboardRegistryPatch = {
     instances?: Record<string, Partial<DashboardRegistryInstance> | null>;
     profiles?: Record<DashboardProfileId, Partial<DashboardProfile> | null>;
     activeProfileFilter?: DashboardProfileId[];
+    telegramHub?: Partial<TelegramHubConfig>;
 };
 
 export type DashboardNoteTreeEntry = {

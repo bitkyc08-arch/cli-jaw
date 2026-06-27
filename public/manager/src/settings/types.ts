@@ -17,6 +17,7 @@ export type SettingsCategoryId =
     | 'mcp'
     | 'browser'
     | 'dashboard-meta'
+    | 'telegram-hub'
     | 'advanced-export';
 
 export type SettingsCategoryGroup =

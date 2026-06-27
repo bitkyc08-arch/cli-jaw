@@ -86,8 +86,8 @@ test('filterEntries with empty query returns a copy of all entries', () => {
 
 test('filterEntries is case-insensitive against label and id', () => {
     const result = filterEntries(SETTINGS_CATEGORIES, 'TELEgram');
-    assert.equal(result.length, 1);
-    assert.equal(result[0]?.id, 'channels-telegram');
+    const ids = result.map((c) => c.id);
+    assert.deepEqual(ids.sort(), ['channels-telegram', 'telegram-hub'].sort());
 });
 
 test('filterEntries also matches on category id', () => {

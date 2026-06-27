@@ -43,6 +43,7 @@ const PAGE_REGISTRY: Record<
     mcp: lazy(() => import('./pages/Mcp')),
     browser: lazy(() => import('./pages/Browser')),
     'dashboard-meta': lazy(() => import('./pages/DashboardMeta')),
+    'telegram-hub': lazy(() => import('./pages/TelegramHub')),
     'advanced-export': lazy(() => import('./pages/AdvancedExport')),
 };
 

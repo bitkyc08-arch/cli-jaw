@@ -166,6 +166,43 @@ async function findPluginMenuItem(page: Page, pluginKey: string): Promise<Locato
     return null;
 }
 
+// 8.10 (catalog 106): plugins often live behind a "More"/"더 보기" submenu, and an
+// already-enabled tool/plugin must not be re-toggled (aria-checked="true"). Ported from
+// agbrowse chatgpt-tools.mjs selectMoreComposerMenuItem + checkedState.
+export const MORE_MENU_LABELS = ['더 보기', 'More'];
+
+/** True when a menu item is already enabled and a click would toggle it OFF. */
+export function shouldSkipAlreadyCheckedItem(ariaChecked: string | null): boolean {
+    return ariaChecked === 'true';
+}
+
+async function menuItemCheckedState(item: Locator): Promise<string | null> {
+    return item.getAttribute('aria-checked').catch(() => null);
+}
+
+async function findMenuItemByLabels(page: Page, labels: string[]): Promise<Locator | null> {
+    for (const label of labels) {
+        const item = page.locator(
+            `[role="menuitem"]:has-text("${label}"), [role="option"]:has-text("${label}"), [role="menuitemcheckbox"]:has-text("${label}")`,
+        ).first();
+        if (await item.isVisible().catch(() => false)) return item;
+    }
+    return null;
+}
+
+/** Reveal nested plugin items by hovering/clicking the More submenu, if present. */
+async function expandMoreComposerSubmenu(page: Page, targetLabels: string[]): Promise<boolean> {
+    const more = await findMenuItemByLabels(page, MORE_MENU_LABELS);
+    if (!more) return false;
+    await more.hover({ timeout: 1_000 }).catch(() => undefined);
+    await page.waitForTimeout(250).catch(() => undefined);
+    if (targetLabels.length && !(await findMenuItemByLabels(page, targetLabels))) {
+        await more.click({ timeout: 2_000 }).catch(() => undefined);
+        await page.waitForTimeout(400).catch(() => undefined);
+    }
+    return true;
+}
+
 export async function selectChatGptComposerTools(page: Page, input: ToolResolutionInput = {}): Promise<{
     requestedTools: string[];
     requestedPlugins: string[];
@@ -203,6 +240,11 @@ export async function selectChatGptComposerTools(page: Page, input: ToolResoluti
     for (const tool of resolved.tools) {
         const item = await findToolMenuItem(page, tool);
         if (item) {
+            // 8.10: an already-enabled tool must not be re-toggled OFF.
+            if (shouldSkipAlreadyCheckedItem(await menuItemCheckedState(item))) {
+                selectedTools.push(tool);
+                continue;
+            }
             await item.click();
             selectedTools.push(tool);
             await page.waitForTimeout(300);
@@ -222,8 +264,18 @@ export async function selectChatGptComposerTools(page: Page, input: ToolResoluti
     }
 
     for (const plugin of resolved.plugins) {
-        const item = await findPluginMenuItem(page, plugin);
+        let item = await findPluginMenuItem(page, plugin);
+        if (!item) {
+            // 8.10: the plugin may be nested under the "More"/"더 보기" submenu.
+            await expandMoreComposerSubmenu(page, PLUGIN_LABELS[plugin] ?? []);
+            item = await findPluginMenuItem(page, plugin);
+        }
         if (item) {
+            // 8.10: don't re-toggle an already-enabled plugin.
+            if (shouldSkipAlreadyCheckedItem(await menuItemCheckedState(item))) {
+                selectedPlugins.push(plugin);
+                continue;
+            }
             await item.click();
             selectedPlugins.push(plugin);
             await page.waitForTimeout(300);

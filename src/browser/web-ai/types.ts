@@ -1,5 +1,7 @@
 export type WebAiVendor = 'chatgpt' | 'gemini' | 'grok';
-export type WebAiStatus = 'ready' | 'rendered' | 'sent' | 'streaming' | 'complete' | 'blocked' | 'timeout' | 'error' | 'interstitial';
+// 104.18: 'conversation-mismatch' (the held tab drifted to a different chat) and 'tab-crashed'
+// (the tab died mid-poll, recoverable) are per-tick poll bail-out states.
+export type WebAiStatus = 'ready' | 'rendered' | 'sent' | 'streaming' | 'complete' | 'blocked' | 'timeout' | 'error' | 'interstitial' | 'conversation-mismatch' | 'tab-crashed';
 export type WebAiNotificationStatus = 'pending' | 'sent' | 'failed' | 'skipped';
 /**
  * ChatGPT supports the `upload` runtime after PRD32.7-B. Gemini upload remains
@@ -79,13 +81,34 @@ export interface CommittedTurnBaseline {
     capturedAt: string;
 }
 
-export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error';
+export type WebAiSessionStatus = 'sent' | 'streaming' | 'complete' | 'timeout' | 'error' | 'crashed';
 
 export interface WebAiSessionTabState {
     createdAt: string;
     lastActiveAt: string;
     recoveryCount: number;
     closeCount: number;
+}
+
+export interface WebAiTurnRecord {
+    index: number;
+    prompt: string;
+    answer: string | null;
+    status: 'complete' | 'failed';
+    warnings: string[];
+    sentAt: string;
+    completedAt: string | null;
+}
+
+export interface WebAiArtifactDescriptor {
+    kind: 'transcript' | 'report' | 'image' | 'file' | 'diagnostics';
+    label: string;
+    path: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    sourceUrl?: string;
+    screenshotPath?: string;
+    savedAt: string;
 }
 
 export interface WebAiSessionRecord {
@@ -107,6 +130,16 @@ export interface WebAiSessionRecord {
     sourceAudit?: import('./source-audit.js').SourceAuditResult;
     lastSeenTextHash?: string;
     tabState?: WebAiSessionTabState;
+    turns?: WebAiTurnRecord[];
+    followUpCount?: number;
+    artifacts?: WebAiArtifactDescriptor[];
+    modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
+    // 105.5: streaming-progress fields persisted for cross-process resume / progress display.
+    envelopeSummary?: Record<string, unknown>;
+    lastDomHash?: string | null;
+    lastAxHash?: string | null;
+    lastStreamingState?: string;
+    lastResponseCharCount?: number;
     completedAt?: string;
     failedAt?: string;
     staleAt?: string;
@@ -155,6 +188,12 @@ export interface WebAiOutput {
         status: 'running' | 'complete' | 'timeout' | 'error';
     }>;
     next?: 'poll' | 'reattach' | 'stop';
+    // 104.18: a 'tab-crashed' poll outcome is recoverable (relaunch + resume).
+    recoverable?: boolean;
+    // 104.8: runtime capability-probe rows + worst-state. Named `capabilityProbes` to stay distinct
+    // from the DECLARATIVE `capabilities` (CapabilitySchemaRow[]) that top-level status() attaches.
+    capabilityProbes?: import('./capability-probe.js').CapabilityRow[];
+    capabilityState?: import('./capability-probe.js').CapabilityState;
     canvas?: { kind: 'opened'; reason?: string };
     traceSummary?: import('./action-trace.js').TraceSummary;
     contextPack?: import('./context-pack/index.js').ContextPackSummary;

@@ -16,6 +16,7 @@ import {
     pushTrace,
     buildPreview,
     summarizeToolInput,
+    appendAssistantRawText,
 } from './helpers.js';
 import { handleClaudeEvent, handleClaudeRateLimitEvent, finalizeClaudeRateLimitOnResult } from './claude.js';
 import { handleCodexEvent } from './codex.js';
@@ -82,9 +83,11 @@ export function extractOutputChunk(cli: string, event: CliEventRecord, ctx?: Spa
         }
         return '';
     }
-    // claude-e transcript assistant records are snapshots; extractFromEvent
-    // converts them to deltas so the append-only frontend does not duplicate text.
-    if (cli === 'claude-e') {
+    // claude / claude-e: pendingOutputChunk holds live assistant-text deltas.
+    //  - claude:   text_delta stream events (extractFromEvent) append here
+    //  - claude-e: snapshot assistant records are diffed to deltas in handleClaudeEvent
+    // Drain it so the append-only frontend streams text without duplication.
+    if (cli === 'claude' || cli === 'claude-e') {
         if (ctx?.pendingOutputChunk) {
             const chunk = ctx.pendingOutputChunk;
             ctx.pendingOutputChunk = '';
@@ -158,6 +161,25 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
             if (!ctx.claudeThinkingBuf) ctx.claudeThinkingBuf = '';
             ctx.claudeThinkingBuf += inner.delta.thinking || '';
             ctx.claudeThinkingHadDelta = true;
+            return;
+        }
+
+        // Stream visible assistant text deltas live (the response prose). This is what
+        // makes plain `claude` stream like claude-e; without it the text only surfaces
+        // in the final complete `assistant` event as one dump. Use the RAW appender
+        // (not appendAssistantTextSegment) — the segment formatter injects "\n- " bullets
+        // between segments and would corrupt mid-token deltas. Set per-message
+        // claudeStreamedText so handleClaudeEvent skips the duplicate complete-block
+        // append (and resets it) without false-skipping a tool-only turn.
+        if (inner?.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
+            const seg = appendAssistantRawText(ctx, inner.delta.text || '');
+            if (seg) {
+                // Arm the per-message guard only when real text flowed: an all-empty
+                // text_delta run must NOT skip the complete-block fallback (else its
+                // prose would be dropped).
+                ctx.claudeStreamedText = true;
+                ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + seg;
+            }
             return;
         }
 

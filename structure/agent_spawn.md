@@ -9,7 +9,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 # Agent Spawn — agent/ · orchestrator/ · cli/acp-client · goal/
 
 > CLI spawn + ACP 분기 + Pi RPC + 스트림 + 큐 + 메모리 flush + PABCD 오케스트레이션 + goal-mode autonomy
-> 현재 기준: `src/agent/` 43개 TS 파일(이벤트/spawn 서브모듈 포함), `src/orchestrator/` 14개 파일, `src/goal/` 4개 파일, `src/cli/acp-client.ts`
+> 현재 기준: `src/agent/` 46개 TS 파일, `src/orchestrator/` 15개 파일 (+`attestation.ts`), `src/goal/` 5개 파일 (+`pause-gate.ts`), `src/cli/acp-client.ts`
 
 ---
 
@@ -17,37 +17,38 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `src/agent/spawn.ts` | 2388L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
-| `src/agent/lifecycle-handler.ts` | 951L | child lifecycle, fallback, retry, queue resume, goal continuation |
-| `src/agent/args.ts` | 426L | CLI별 신규/재개 인자 생성 |
-| `src/agent/pi-runtime.ts` | 403L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
-| `src/agent/kiro-runtime.ts` | 377L | kiro-code plain-text stdout parser (tool lines, assistant blocks, parallel tool merge, tail-buffer flush) |
+| `src/agent/spawn.ts` | 2476L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
+| `src/agent/lifecycle-handler.ts` | 1072L | child lifecycle, fallback, retry, queue resume, goal continuation |
+| `src/agent/args.ts` | 455L | CLI별 신규/재개 인자 생성 |
+| `src/agent/pi-runtime.ts` | 460L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
+| `src/agent/kiro-runtime.ts` | 386L | kiro-code plain-text stdout parser (tool lines, assistant blocks, parallel tool merge, tail-buffer flush) |
 | `src/agent/kiro-auth.ts` | 230L | Kiro CLI data path resolution, session ID extraction from v2 sqlite store, conversation listing |
 | `src/agent/kiro-models.ts` | 98L | `kiro-cli chat --list-models --format json` dynamic model inventory |
 | `src/agent/codex-app-client.ts` | 274L | Codex App stdio server client (JSON-RPC thread/turn) |
 | `src/agent/codex-app-events.ts` | 291L | Codex App turn/tool/message/reasoning event adapter |
-| `src/agent/cursor-runtime.ts` | 239L | Cursor installed model inventory + model/effort → full model-id resolver |
-| `src/agent/memory-flush-controller.ts` | 184L | memory flush lock + post-response trigger |
+| `src/agent/cursor-runtime.ts` | 242L | Cursor installed model inventory + model/effort → full model-id resolver |
+| `src/agent/memory-flush-controller.ts` | 185L | memory flush lock + post-response trigger |
 | `src/agent/opencode-diagnostics.ts` | 156L | OpenCode binary/permission 점검 + raw event 버퍼 |
-| `src/agent/grok-trace-backfill.ts` | 153L | Grok streaming-json tool_calls/tool_result backfill from trace archive |
+| `src/agent/grok-trace-backfill.ts` | 167L | Grok streaming-json tool_calls/tool_result backfill from trace archive |
 | `src/agent/spawn-env.ts` | 148L | AGY plain-text `NO_COLOR=1`, OpenCode/Gemini 전용 env/permission 보정 |
-| `src/agent/smoke-detector.ts` | 141L | smoke response 감지 + auto-continue 판단 |
-| `src/agent/watchdog.ts` | 104L | idle/progress watchdog; progress extends deadline within 4h hard cap |
+| `src/agent/agy-capabilities.ts` | 126L | AGY `--help`/`--version` capability probe + cached optional flag support map |
+| `src/agent/smoke-detector.ts` | 148L | smoke response 감지 + auto-continue 판단 |
+| `src/agent/watchdog.ts` | 113L | idle/progress watchdog; progress extends deadline within 4h hard cap |
 | `src/agent/resume-classifier.ts` | 81L | CLI별 stale session regex |
-| `src/agent/alert-escalation.ts` | 80L | alert escalation event helper |
+| `src/agent/alert-escalation.ts` | 86L | alert escalation event helper |
 | `src/agent/session-persistence.ts` | 78L | main session persistence gate |
-| `src/agent/live-run-state.ts` | 64L | active run snapshot / hydrate helper |
-| `src/agent/claude-e-runtime.ts` | 44L | `jaw_runtime` helper event → legacy `agent:claude-e:*` runtime broadcast 변환 |
-| `src/agent/error-classifier.ts` | 38L | stderr/result 기반 에러 분류 helper |
+| `src/agent/live-run-state.ts` | 108L | active run snapshot / hydrate helper |
+| `src/agent/claude-e-runtime.ts` | 46L | `jaw_runtime` helper event → legacy `agent:claude-e:*` runtime broadcast 변환 |
+| `src/agent/error-classifier.ts` | 52L | stderr/result 기반 에러 분류 helper |
 | `src/agent/tool-timeout.ts` | 33L | tool inactivity timeout helper |
-| `src/agent/agy-runtime.ts` | 160L | AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + session id 추출 |
-| `src/agent/cli-helpers.ts` | 7L | Claude-like CLI 판별 helper |
+| `src/agent/agy-runtime.ts` | 175L | AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + session id 추출 |
+| `src/agent/cli-helpers.ts` | 9L | Claude-like CLI 판별 helper |
 
 ### src/agent/spawn/ — Extracted Submodules
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `spawn/queue.ts` | 350L | Message queue controller (factory pattern, fair policy, race fix) |
+| `spawn/queue.ts` | 373L | Message queue controller (factory pattern, fair policy, race fix) |
 | `spawn/resume.ts` | 84L | ACP heartbeat helper + resume bucket decision (pure functions) |
 | `spawn/process-kill.ts` | 22L | Recursive process tree kill via `pgrep -P` (no shell injection) |
 
@@ -56,10 +57,10 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | File | Line count | Role |
 | --- | ---: | --- |
 | `events/index.ts` | 353L | Event dispatcher + public API (extractSessionId, extractOutputChunk, extractFromEvent) |
-| `events/helpers.ts` | 322L | syncLiveTools, emitAgentTool, pushTrace, buildPreview, resolveSpawnOutputText |
+| `events/helpers.ts` | 322L | syncLiveTools, emitAgentTool, pushTrace, buildPreview, `appendAssistantRawText` (plain `claude` text_delta), `resolveSpawnOutputText` |
 | `events/tool-labels.ts` | 343L | tool label extraction + summarizeToolInput |
 | `events/grok.ts` | 344L | Grok streaming-json text/thought/end/error + duplicate suppression |
-| `events/claude.ts` | 264L | Claude/claude-e complete-message parsing + rate limit handling |
+| `events/claude.ts` | 264L | Claude/claude-e complete-message parsing + `text_delta` live path + rate limit handling |
 | `events/codex.ts` | 96L | Codex NDJSON event adapter |
 | `events/cursor.ts` | 196L | Cursor stream-json event adapter |
 | `events/acp.ts` | 219L | ACP `session/update` / subagent lifecycle mapping |
@@ -126,9 +127,9 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | CLI | 표면 | 특이사항 |
 | --- | --- | --- |
 | `pi` | `pi --mode rpc` | isolated `PI_CODING_AGENT_DIR`, profile/model from `settings.pi`, npm-exec fallback |
-| `claude` | stdin에 `withHistoryPrompt()` 직접 쓰기 | — |
+| `claude` | stdin에 `withHistoryPrompt()` + `stream-json` | `text_delta` → `appendAssistantRawText` → live `agent_output`; `claudeStreamedText` prevents duplicate on complete `assistant` |
 | `claude-e` | `claude-e run --jsonl --output-format stream-json --idle-timeout-ms 600000 --hard-timeout-ms 3600000` | `jaw_runtime` 이벤트 가로채기, resume `--resume <sessionId>` |
-| `agy` | `agy -p <prompt> --print-timeout 10m --log-file <tmp>` | plain text stdout, session id from stdout/log, resume `--conversation <id>` |
+| `agy` | `agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp>` | plain text stdout; optional flags are emitted only when `agy-capabilities.ts` detects support (`--model` observed in AGY 1.0.12); session id from stdout/log; resume `--conversation <id>` |
 | `cursor` | `cursor-agent -p --trust --output-format stream-json --model <resolvedModelId>` | effort는 full model id로 해석, `runtimeModel` session bucket |
 | `codex` | stdin에 `[User Message]` 블록 (fresh only) | — |
 | `gemini` | headless `-p`, model, stream JSON, `--skip-trust`, `--approval-mode yolo` | multi-directory workspace `--include-directories` |
@@ -191,28 +192,31 @@ are persisted or displayed through trace helpers.
 
 ---
 
-## src/goal/* — Goal-Mode Autonomy (4 files)
+## src/goal/* — Goal-Mode Autonomy (5 files)
 
 | File | Line count | Role |
 | --- | ---: | --- |
 | `goal/store.ts` | 158L | active goal CRUD, checkpoint, history, completion evidence gate |
 | `goal/heartbeat.ts` | 92L | goal-aware heartbeat continuation builder (stale detection, worker/orc state check) |
+| `goal/pause-gate.ts` | 26L | derived armed gate: `active` + `agentPauseCount >= 1` → `pause_gate_pending` |
 | `goal/runtime.ts` | 55L | goal runtime helpers |
 | `goal/types.ts` | 42L | GoalState, GoalHistory, GoalCheckpoint, GoalBudget types |
 
 - `lifecycle-handler.ts`는 agent 종료 후 active goal이 있으면 `buildGoalContinuation()`으로 자동 재스폰 판단.
+- **Pause gate (P0 2026-06-27):** armed gate (`describeGoalPauseGate()`)이면 `buildGoalContinuation()` returns `shouldContinue: false`; audit turn 종료 시 `goal_pause_gate_pending` broadcast, 추가 automatic continuation 미스케줄. `agentPauseCount`는 productive goal events에서만 reset — assistant text alone does not clear gate.
 - `completeGoal()`은 `goalHasCompletionEvidence()`가 true일 때만 goal을 완료 처리 (verification evidence gate).
 - Goal continuation은 `GOAL_CONT_MAX_ATTEMPTS = 20` 회 제한, goal ID 변경 시 카운터 리셋.
 
 ---
 
-## src/orchestrator/* — PABCD Orchestration (14 files)
+## src/orchestrator/* — PABCD Orchestration (18 files)
 
 | File | Line count | Role |
 | --- | ---: | --- |
-| `orchestrator/pipeline.ts` | 537L | PABCD sole entry point + interview first-turn init + `<interview_tracker>` 추출 |
-| `orchestrator/state-machine.ts` | 604L | IPABCD state + prompts + interview tracker → OrcContext + audit/verification verdict |
-| `orchestrator/distribute.ts` | 583L | employee dispatch + parallel safety |
+| `orchestrator/pipeline.ts` | 657L | PABCD sole entry point + interview first-turn init + `<interview_tracker>` 추출 |
+| `orchestrator/state-machine.ts` | 692L | IPABCD state + prompts + interview tracker → OrcContext + audit/verification verdict + attestation gate |
+| `orchestrator/attestation.ts` | 178L | `--attest` / `<phase_attestation>` parse + `checkAttestationGate()` (narrative `did`, C→D `checkOutput`) |
+| `orchestrator/distribute.ts` | 615L | employee dispatch + parallel safety |
 | `orchestrator/worker-registry.ts` | 241L | worker ownership + replay registry + sanitized progress snapshots |
 | `orchestrator/gateway.ts` | 155L | queue / intent gateway |
 | `orchestrator/parser.ts` | 176L | legacy subtask JSON 파서 + intent matcher + numeric reference + verdict 파서 |
@@ -280,7 +284,7 @@ orchestrate(prompt, meta)
 
 ---
 
-## prompt/builder.ts — System Prompt & Skills (727L)
+## prompt/builder.ts — System Prompt & Skills (946L)
 
 | Function | Role |
 | --- | --- |
@@ -316,7 +320,7 @@ orchestrate(prompt, meta)
 
 ---
 
-## Lifecycle Handler 주요 책임 (951L)
+## Lifecycle Handler 주요 책임 (1072L)
 
 | 관심사 | 구현 |
 | --- | --- |

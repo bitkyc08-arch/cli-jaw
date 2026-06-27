@@ -1,6 +1,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { collapseAgyQuotaWindows, normalizeAntigravityUsageSnapshot } from '../../src/routes/quota-agy-reverse.ts';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const agyQuotaFixtureDir = path.join(__dirname, '../fixtures/agy-quota');
+
+function loadAgyQuotaFixture(name: string): Parameters<typeof normalizeAntigravityUsageSnapshot>[0] {
+    return JSON.parse(fs.readFileSync(path.join(agyQuotaFixtureDir, name), 'utf8')) as Parameters<typeof normalizeAntigravityUsageSnapshot>[0];
+}
 
 test('collapseAgyQuotaWindows keeps Gem and Cla families only', () => {
     const windows = collapseAgyQuotaWindows([
@@ -117,4 +127,53 @@ test('normalizeAntigravityUsageSnapshot marks binary remaining values as availab
     assert.equal(result.windows?.[0]?.status, 'exhausted');
     assert.equal(result.windows?.[1]?.precision, 'binary');
     assert.equal(result.windows?.[1]?.status, 'available');
+});
+
+test('AGY quota fixture: precise snapshot keeps percentage windows', () => {
+    const result = normalizeAntigravityUsageSnapshot(loadAgyQuotaFixture('precise-google-ai-pro.json'));
+
+    assert.equal(result.quotaCapable, true);
+    assert.equal(result.quotaSource, 'agy:antigravity-usage:google');
+    assert.deepEqual(result.windows?.map((window) => window.label), ['Gem', 'Cla']);
+    assert.equal(result.windows?.[0]?.percent, 75);
+    assert.equal(result.windows?.[1]?.percent, 20);
+    assert.equal(result.windows?.[0]?.precision, undefined);
+    assert.equal(result.windows?.[1]?.precision, undefined);
+    assert.equal((result.account as { email?: string })?.email, 'redacted@example.invalid');
+});
+
+test('AGY quota fixture: binary snapshot is availability-only', () => {
+    const result = normalizeAntigravityUsageSnapshot(loadAgyQuotaFixture('binary-available-exhausted.json'));
+
+    assert.equal(result.quotaCapable, true);
+    assert.deepEqual(result.windows?.map((window) => ({
+        label: window.label,
+        percent: window.percent,
+        precision: window.precision,
+        status: window.status,
+    })), [
+        { label: 'Gem', percent: 100, precision: 'binary', status: 'exhausted' },
+        { label: 'Cla', percent: 0, precision: 'binary', status: 'available' },
+    ]);
+});
+
+test('AGY quota fixture: missing empty or error-shaped models fail soft', () => {
+    for (const name of ['missing-models.json', 'empty-models.json', 'auth-or-upstream-error.json']) {
+        const result = normalizeAntigravityUsageSnapshot(loadAgyQuotaFixture(name));
+        assert.equal(result.quotaCapable, false, name);
+        assert.deepEqual(result.windows, [], name);
+    }
+});
+
+test('mixed precise/binary snapshot keeps snapshot-wide precise policy', () => {
+    const result = normalizeAntigravityUsageSnapshot(loadAgyQuotaFixture('mixed-precise-binary.json'));
+
+    assert.equal(result.quotaCapable, true);
+    assert.deepEqual(result.windows?.map((window) => window.label), ['Gem', 'Cla']);
+    assert.equal(result.windows?.[0]?.percent, 0);
+    assert.equal(result.windows?.[1]?.percent, 58);
+    assert.equal(result.windows?.[0]?.precision, undefined);
+    assert.equal(result.windows?.[1]?.precision, undefined);
+    assert.equal(result.windows?.[0]?.status, undefined);
+    assert.equal(result.windows?.[1]?.status, undefined);
 });

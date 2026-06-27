@@ -1,5 +1,6 @@
-import type { PromptCommitBaseline, PromptCommitResult, PromptSubmitResult, VendorEditorAdapterOptions } from './vendor-editor-contract.js';
+import type { PromptCommitBaseline, PromptCommitResult, PromptSubmitResult, SendTarget, VendorEditorAdapterOptions } from './vendor-editor-contract.js';
 import { findVisibleCandidate, type BrowserLocatorLike } from '../primitives.js';
+import { WebAiError } from './errors.js';
 import type { Page } from 'playwright-core';
 
 type BoxLike = { width: number; height: number };
@@ -64,6 +65,9 @@ export const INPUT_SELECTORS = [
     'textarea[aria-label="Message ChatGPT"]',
     'main textarea:not([disabled])',
     'form textarea:not([disabled])',
+    // 105.8: restore agbrowse's bare-textarea fallback (cli-jaw had narrowed to main/form-scoped only,
+    // missing layouts where the composer textarea is neither inside <main> nor a <form>).
+    'textarea:not([disabled])',
     'textarea[name="prompt-textarea"]',
     '#prompt-textarea',
     '.ProseMirror',
@@ -77,6 +81,10 @@ export const SEND_BUTTON_SELECTORS = [
     'button[type="submit"][data-testid*="send"]',
     'button[aria-label*="Send prompt" i]',
     'button[aria-label*="Send message" i]',
+    // 105.8: restore agbrowse's generic Send fallbacks (precision-first ordering kept — these run last)
+    // so a relabeled / form-submit Send button is still found when the specific testids/labels miss.
+    'form button[type="submit"]',
+    'button[aria-label*="Send" i]',
 ] as const;
 
 export const STOP_BUTTON_SELECTOR = '[data-testid="stop-button"]';
@@ -107,14 +115,29 @@ type ComposerCandidate = {
     locator: ComposerLocator;
 };
 
-export async function findComposerCandidate(page: Page): Promise<ComposerCandidate> {
+export async function findComposerCandidate(page: Page, options: VendorEditorAdapterOptions = {}): Promise<ComposerCandidate> {
+    // 104.12: a resolver-verified composer target short-circuits the selector scan.
+    if (options.composerTarget?.selector) {
+        return {
+            selector: options.composerTarget.selector,
+            locator: page.locator(options.composerTarget.selector).first() as unknown as ComposerLocator,
+        };
+    }
     const candidate = await findVisibleCandidate(page, INPUT_SELECTORS, { allowFirstCandidateFallback: true });
     if (candidate) return { selector: candidate.selector, locator: candidate.locator as ComposerLocator };
-    throw new Error(`ChatGPT composer not found. Tried: ${INPUT_SELECTORS.join(', ')}`);
+    // 105.1/105.7: typed code + composer-prereq stage (was a plain Error → invisible to log-scrapers/retryHint).
+    throw new WebAiError({
+        errorCode: 'provider.composer-not-visible',
+        stage: 'composer-prereq',
+        vendor: 'chatgpt',
+        retryHint: 're-snapshot',
+        message: `ChatGPT composer not found. Tried: ${INPUT_SELECTORS.join(', ')}`,
+        selectorsTried: [...INPUT_SELECTORS],
+    });
 }
 
 export async function insertPromptIntoComposer(page: Page, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
-    const candidate = await findComposerCandidate(page);
+    const candidate = await findComposerCandidate(page, options);
     await focusComposerLikeUser(candidate.locator);
     try {
         await insertTextLikeProvider(page, text, options);
@@ -129,15 +152,37 @@ export async function insertPromptIntoComposer(page: Page, text: string, options
     }
     const verified = await readComposerState(page, candidate.locator);
     if (!hasInsertedText(verified, text)) {
-        throw new Error('composer verification failed after prompt insertion');
+        // 105.1/105.7: typed commit-not-verified code + commit-verify stage (mutation already attempted).
+        throw new WebAiError({
+            errorCode: 'provider.commit-not-verified',
+            stage: 'commit-verify',
+            vendor: 'chatgpt',
+            retryHint: 're-snapshot',
+            message: 'composer verification failed after prompt insertion',
+            mutationAllowed: true,
+        });
     }
     if (text.length >= 50_000 && maxComposerLength(verified) > 0 && maxComposerLength(verified) < text.length - 2_000) {
-        throw new Error('Prompt appears truncated in the composer');
+        throw new WebAiError({
+            errorCode: 'provider.commit-not-verified',
+            stage: 'commit-verify',
+            vendor: 'chatgpt',
+            retryHint: 're-snapshot',
+            message: 'Prompt appears truncated in the composer',
+            mutationAllowed: true,
+        });
     }
 }
 
-export async function submitPromptFromComposer(page: Page): Promise<PromptSubmitResult> {
-    const clicked = await clickEnabledSendButton(page);
+export async function submitPromptFromComposer(page: Page, options: VendorEditorAdapterOptions = {}): Promise<PromptSubmitResult> {
+    // 104.12: a resolver-verified send target is tried first (with force-retry), then the scan, then Enter.
+    if (options.sendTarget?.selector) {
+        const clickedResolved = await clickResolvedSendButton(page, options.sendTarget);
+        if (clickedResolved) {
+            return { method: 'button', selector: options.sendTarget.selector, resolution: options.sendTarget.resolution ?? null };
+        }
+    }
+    const clicked = await clickEnabledSendButton(page, options.sendButtonTimeoutMs);
     if (clicked) return { method: 'button' };
     await page.keyboard.press('Enter');
     return { method: 'enter' };
@@ -169,7 +214,14 @@ export async function verifyPromptCommitted(
         if (composerCleared && hasNewTurn && (stopVisible || assistantVisible)) return { turnsCount: turns.length };
         await page.waitForTimeout?.(100);
     }
-    throw new Error('Prompt did not appear in conversation before timeout (send may have failed)');
+    throw new WebAiError({
+        errorCode: 'provider.commit-not-verified',
+        stage: 'commit-verify',
+        vendor: 'chatgpt',
+        retryHint: 're-snapshot',
+        message: 'Prompt did not appear in conversation before timeout (send may have failed)',
+        mutationAllowed: true,
+    });
 }
 
 export async function countConversationTurns(page: Page): Promise<number> {
@@ -199,10 +251,22 @@ async function focusComposerLikeUser(locator: ComposerLocator): Promise<void> {
     }).catch(() => undefined);
 }
 
-async function insertTextLikeProvider(page: Page, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
+export async function insertTextLikeProvider(page: Page, text: string, options: VendorEditorAdapterOptions = {}): Promise<void> {
     if (typeof options.insertText === 'function') {
         await options.insertText(text);
         return;
+    }
+    // 104.14: CDP Input.insertText handles large prompts the keyboard insertText path can choke on.
+    if (typeof options.getCdpSession === 'function') {
+        const cdp = await options.getCdpSession();
+        if (cdp) {
+            try {
+                await cdp.send('Input.insertText', { text });
+            } finally {
+                await cdp.detach?.().catch(() => undefined);
+            }
+            return;
+        }
     }
     await page.keyboard.insertText(text);
 }
@@ -276,8 +340,27 @@ async function readComposerState(page: Page, fallbackLocator?: ComposerLocator):
     return { editorText: String(actual || ''), fallbackValue: '', activeValue: String(actual || '') };
 }
 
-async function clickEnabledSendButton(page: Page): Promise<boolean> {
-    const deadline = Date.now() + 8_000;
+// 104.12: click a resolver-verified send button, with a force-retry before giving up.
+async function clickResolvedSendButton(page: Page, target: SendTarget): Promise<boolean> {
+    const button = page.locator(target.selector).first();
+    const visible = await button.isVisible().catch(() => false);
+    const enabled = await button.isEnabled().catch(() => false);
+    if (!visible || !enabled) return false;
+    try {
+        await button.click({ timeout: 5_000 });
+        return true;
+    } catch {
+        try {
+            await button.click({ timeout: 2_000, force: true });
+            return true;
+        } catch {
+            return false;
+        }
+    }
+}
+
+async function clickEnabledSendButton(page: Page, timeoutMs = 8_000): Promise<boolean> {
+    const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
         const result = await page.evaluate(({ inputSelectors, sendSelectors }: { inputSelectors: readonly string[]; sendSelectors: readonly string[] }) => {
             const dispatchClickSequence = (target: BrowserNodeLike | null): boolean => {

@@ -402,6 +402,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             target: bossMeta.target,
             chatId: bossMeta.chatId,
             requestId: bossMeta.requestId,
+            replyViaTarget: bossMeta.replyViaTarget,
             scopeId: bossMeta.scopeId,
         }) : undefined;
         let slot;
@@ -600,6 +601,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         const replayMeta = bossMeta ? stripUndefined({
             origin: bossMeta.origin, target: bossMeta.target,
             chatId: bossMeta.chatId, requestId: bossMeta.requestId,
+            replyViaTarget: bossMeta.replyViaTarget,
             scopeId: bossMeta.scopeId,
         }) : undefined;
 

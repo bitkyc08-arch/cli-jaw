@@ -2,6 +2,8 @@ import { readSource } from './source-normalize.js';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { join } from 'node:path';
+import { goalToStatus } from '../../src/workflows/status.ts';
+import { incrementAgentPauseCount, resetGoalStore, setGoal } from '../../src/goal/store.ts';
 
 const __dirname = import.meta.dirname;
 const projectRoot = join(__dirname, '../..');
@@ -46,4 +48,21 @@ test('WSJ-008: status does not expose raw tokens or credentials', () => {
     assert.ok(!statusSrc.includes('claimToken'), 'must not expose claim tokens');
     assert.ok(!statusSrc.includes('apiKey'), 'must not expose API keys');
     assert.ok(!statusSrc.includes('password'), 'must not expose passwords');
+});
+
+test('WSJ-009: goal status exposes pause gate as blocker without changing active state', () => {
+    resetGoalStore();
+    try {
+        const goal = setGoal('workflow pause gate status');
+        incrementAgentPauseCount();
+
+        const status = goalToStatus({ ...goal, agentPauseCount: 1 }, 'B');
+
+        assert.equal(status?.state, 'active');
+        assert.equal(status?.confirmationRequired, true);
+        assert.equal(status?.blockers?.[0]?.code, 'goal-pause-gate-pending');
+        assert.match(status?.blockers?.[0]?.message ?? '', /second audited agent pause/);
+    } finally {
+        resetGoalStore();
+    }
 });

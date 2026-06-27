@@ -106,6 +106,26 @@ test('AGY-TR-009: spawn captures AGY session id before final transcript drain', 
     assert.ok(watcherStopIdx > sessionIdx, 'AGY transcript final drain must run after session id extraction');
 });
 
+test('AGY-TR-009b: transcript watcher records bootstrap acceptance in poll and final drain', () => {
+    const watcherSrc = fs.readFileSync(path.join(__dirname, '../../src/agent/agy-transcript-watcher.ts'), 'utf8');
+    assert.match(watcherSrc, /applyAgyBootstrapAcceptanceFromTranscriptLine/);
+    const tickIdx = watcherSrc.indexOf('const tick = () => {');
+    const stopIdx = watcherSrc.indexOf('stop: () => {');
+    assert.ok(tickIdx >= 0);
+    assert.ok(stopIdx > tickIdx);
+    const tickBlock = watcherSrc.slice(tickIdx, stopIdx);
+    const stopBlock = watcherSrc.slice(stopIdx);
+    assert.match(tickBlock, /applyAgyBootstrapAcceptanceFromTranscriptLine\(options\.ctx, line, minCreatedAtMs\);[\s\S]*updateFinalPlannerFlag\(options\.ctx, line, minCreatedAtMs\);/);
+    assert.match(stopBlock, /applyAgyBootstrapAcceptanceFromTranscriptLine\(options\.ctx, line, minCreatedAtMs\);[\s\S]*updateFinalPlannerFlag\(options\.ctx, line, minCreatedAtMs\);/);
+});
+
+test('AGY-TR-009c: transcript watcher resets bootstrap acceptance on both retarget paths', () => {
+    const watcherSrc = fs.readFileSync(path.join(__dirname, '../../src/agent/agy-transcript-watcher.ts'), 'utf8');
+    assert.match(watcherSrc, /const resetBootstrapAcceptance = \(\) => \{/);
+    assert.match(watcherSrc, /const resetSelection = \(\) => \{[\s\S]*resetBootstrapAcceptance\(\);/);
+    assert.match(watcherSrc, /transcriptPath = effectiveResolved\.transcriptPath;[\s\S]*offset = 0;[\s\S]*resetBootstrapAcceptance\(\);/);
+});
+
 test('AGY-TR-011: parseTranscriptLine maps SEARCH_WEB and READ_URL_CONTENT to search tools', () => {
     const search = parseTranscriptLine(JSON.stringify({
         step_index: 12,

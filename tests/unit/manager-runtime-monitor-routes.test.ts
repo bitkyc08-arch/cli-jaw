@@ -5,7 +5,7 @@ import http from 'node:http';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { registerManagerRuntimeMonitorRoutes } from '../../src/manager/routes/runtime-monitor.ts';
-import { resetGoalStore, setGoal, updateGoal } from '../../src/goal/store.ts';
+import { incrementAgentPauseCount, resetGoalStore, setGoal, updateGoal } from '../../src/goal/store.ts';
 import { cancelWorker, claimWorker, markWorkerActive } from '../../src/orchestrator/worker-registry.ts';
 
 const root = join(import.meta.dirname, '..', '..');
@@ -79,7 +79,7 @@ test('manager runtime monitor exposes goal and PABCD status as Manager-local JSO
             assert.match(response.headers.get('content-type') || '', /application\/json/);
             const body = await response.json() as {
                 ok?: boolean;
-                goal?: { id?: string; objectivePreview?: string; lastCheckpoint?: { evidencePaths?: string[] }; evidenceFreshness?: string };
+                goal?: { id?: string; objectivePreview?: string; lastCheckpoint?: { evidencePaths?: string[] }; evidenceFreshness?: string; pauseGate?: { armed?: boolean; attempts?: number; reason?: string | null } };
                 pabcd?: { state?: string; gate?: { label?: string; status?: string; evidence?: string[] } };
                 runtime?: { activeWorkers?: number; pendingWorkerReplays?: boolean; heartbeatPending?: number };
             };
@@ -89,6 +89,7 @@ test('manager runtime monitor exposes goal and PABCD status as Manager-local JSO
             assert.equal(body.goal?.objectivePreview, 'Verify Manager-local Code mode status surface');
             assert.equal(body.goal?.lastCheckpoint?.evidencePaths?.[0], 'tests/unit/manager-runtime-monitor-routes.test.ts');
             assert.equal(body.goal?.evidenceFreshness, 'fresh');
+            assert.equal(body.goal?.pauseGate?.armed, false);
             assert.equal(typeof body.pabcd?.state, 'string');
             assert.equal(typeof body.pabcd?.gate?.label, 'string');
             assert.equal(typeof body.pabcd?.gate?.status, 'string');
@@ -96,6 +97,31 @@ test('manager runtime monitor exposes goal and PABCD status as Manager-local JSO
             assert.equal(typeof body.runtime?.activeWorkers, 'number');
             assert.equal(typeof body.runtime?.pendingWorkerReplays, 'boolean');
             assert.equal(typeof body.runtime?.heartbeatPending, 'number');
+        });
+    } finally {
+        resetGoalStore();
+    }
+});
+
+test('manager runtime monitor exposes armed pause gate in goal summary', async () => {
+    resetGoalStore();
+    setGoal('Verify pause gate status surface', { replace: true });
+    incrementAgentPauseCount();
+
+    try {
+        await withMonitorServer(async (baseUrl) => {
+            const response = await fetch(`${baseUrl}/api/manager/runtime-status`);
+            assert.equal(response.status, 200);
+            const body = await response.json() as {
+                ok?: boolean;
+                goal?: { pauseGate?: { armed?: boolean; attempts?: number; reason?: string | null; nextAction?: string | null } };
+            };
+
+            assert.equal(body.ok, true);
+            assert.equal(body.goal?.pauseGate?.armed, true);
+            assert.equal(body.goal?.pauseGate?.attempts, 1);
+            assert.equal(body.goal?.pauseGate?.reason, 'pause_gate_pending');
+            assert.match(body.goal?.pauseGate?.nextAction ?? '', /second audited agent pause/);
         });
     } finally {
         resetGoalStore();

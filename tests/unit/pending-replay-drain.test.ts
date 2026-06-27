@@ -92,6 +92,19 @@ test('PRD-011: dispatch route captures Boss main meta at claimWorker', () => {
     assert.match(call, /replayMeta/, 'claimWorker call must pass replayMeta');
 });
 
+test('PRD-013: replyViaTarget is preserved from spawn main meta into replay drain', () => {
+    const workerSrc = fs.readFileSync(join(srcRoot, 'orchestrator/worker-registry.ts'), 'utf8');
+    const spawnSrc = fs.readFileSync(join(srcRoot, 'agent/spawn.ts'), 'utf8');
+    const pipelineSrc = fs.readFileSync(join(srcRoot, 'orchestrator/pipeline.ts'), 'utf8');
+    const routeSrc = fs.readFileSync(join(srcRoot, 'routes/orchestrate.ts'), 'utf8');
+    assert.match(workerSrc, /replyViaTarget\?:\s*boolean/, 'WorkerReplayMeta should carry replyViaTarget');
+    assert.match(spawnSrc, /replyViaTarget\?:\s*boolean/, 'SpawnOpts/MainSessionMeta should carry replyViaTarget');
+    assert.match(spawnSrc, /replyViaTarget:\s*opts\.replyViaTarget/, 'setCurrentMainMeta should capture replyViaTarget from SpawnOpts');
+    assert.match(pipelineSrc, /replyViaTarget,\s*\n\s*_skipInsert/, 'pipeline spawn options should pass replyViaTarget');
+    assert.match(routeSrc, /replyViaTarget:\s*bossMeta\.replyViaTarget/, 'dispatch replayMeta should capture replyViaTarget');
+    assert.match(pipelineSrc, /slotMeta\.replyViaTarget === true \|\| fallbackMeta\["replyViaTarget"\] === true/, 'drain should preserve replyViaTarget');
+});
+
 test('PRD-007: processQueue auto-drains pending replays when Boss goes idle', () => {
     // Covers the case where Boss was alive at finishWorker() time (turn still
     // generating after Bash errored) — dispatch route skipped drain because

@@ -130,8 +130,11 @@ POST /api/channel/send  # Unified endpoint (preferred)</code></pre>
 <h2>Group Chat</h2>
 <p>In group/supergroup chats, the bot only responds when mentioned with <code>@botUsername</code>. The mention is automatically stripped from the message before processing.</p>
 
+<h2>Dashboard Telegram Hub (P0–P4)</h2>
+<p>Forum topics can route to different CLI-JAW instances. Manager UI configures <code>(chatId, threadId) → port</code> mappings. Hub commands: <code>/setthread</code>, <code>/threads</code>, <code>/hubhelp</code>. <strong>P4:</strong> per-topic <code>model</code> and <code>systemPrompt</code> overrides in Manager UI. See <code>structure/telegram.md</code> for the full hub-member relay model.</p>
+
 <h2>Available Commands</h2>
-<p>27 slash commands are visible in Telegram (same set as Discord). Bot-specific commands:</p>
+<p>51 slash commands are registered across CLI/Web/Telegram/Discord (37 visible in Telegram). Workflow helpers include <code>/plan</code>, <code>/interview</code>, <code>/review</code>, <code>/search</code>, <code>/goal</code>, <code>/orchestrate</code>, <code>/task</code>, <code>/fork</code>, <code>/gd</code>. Dynamic <code>/skill:&lt;id&gt;</code> is CLI/Web only. Bot-specific commands:</p>
 <table>
 <tr><th>Command</th><th>Description</th></tr>
 <tr><td><code>/start</code></td><td>Welcome message</td></tr>

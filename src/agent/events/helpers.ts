@@ -160,6 +160,18 @@ export function appendAssistantTextSegment(ctx: SpawnContext, text: unknown): st
     return segment;
 }
 
+/** Append raw assistant text with NO segment/bullet formatting — for token-granular
+ *  streams (plain `claude` text_delta). formatAssistantTextSegment() injects "\n- "
+ *  bullets between unjoined segments, which would corrupt mid-token deltas
+ *  ("Hel"+"lo" → "Hel\n- lo"), so those bypass it and accumulate raw. Mirrors how the
+ *  claude-e snapshot path raw-appends fullText (claude.ts) rather than re-formatting. */
+export function appendAssistantRawText(ctx: SpawnContext, text: string): string {
+    if (!text) return '';
+    if (!ctx.outputTextStarted) ctx.outputTextStarted = true;
+    appendAssistantStreamText(ctx, text);
+    return text;
+}
+
 /** Pick the best assistant body for agent_done after plain-text / segmented CLIs. */
 export function resolveSpawnOutputText(ctx: {
     fullText: string;

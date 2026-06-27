@@ -19,6 +19,7 @@ const CATEGORIES: SidebarEntry[] = [
     { id: 'display', label: 'Display', group: 'identity' },
     { id: 'channels-telegram', label: 'Channels — Telegram', group: 'channels' },
     { id: 'channels-discord', label: 'Channels — Discord', group: 'channels' },
+    { id: 'telegram-hub', label: 'Telegram Hub', group: 'channels' },
     { id: 'heartbeat', label: 'Heartbeat & schedules', group: 'automation' },
     { id: 'memory', label: 'Memory', group: 'automation' },
     { id: 'mcp', label: 'MCP servers', group: 'mcp' },

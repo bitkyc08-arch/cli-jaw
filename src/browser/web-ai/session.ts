@@ -106,6 +106,32 @@ export interface CreateSessionInput {
     capabilityMode?: string;
 }
 
+// 105.5: a compact, non-sensitive structural summary (counts/flags, never raw prompt/context text).
+function summarizeEnvelope(envelope: QuestionEnvelope): Record<string, unknown> {
+    return {
+        vendor: envelope.vendor,
+        attachmentPolicy: envelope.attachmentPolicy,
+        promptChars: envelope.prompt?.length ?? 0,
+        hasSystem: Boolean(envelope.system),
+        hasContext: Boolean(envelope.context),
+        hasGoal: Boolean(envelope.goal),
+        hasProject: Boolean(envelope.project),
+        hasConstraints: Boolean(envelope.constraints),
+    };
+}
+
+// 105.5: map a session status to a coarse streaming-state label (agbrowse `deriveStreamingState`).
+function deriveStreamingState(status: WebAiSessionStatus): string {
+    switch (status) {
+        case 'complete': return 'complete';
+        case 'streaming': return 'streaming';
+        case 'timeout': return 'timed-out';
+        case 'error': return 'error';
+        case 'crashed': return 'crashed';
+        default: return 'unknown';
+    }
+}
+
 export function createSession(input: CreateSessionInput): WebAiSessionRecord {
     loadPersistentStore();
     const now = new Date().toISOString();
@@ -122,6 +148,10 @@ export function createSession(input: CreateSessionInput): WebAiSessionRecord {
         timeoutMs: input.timeoutMs,
         ...(input.notifyOnComplete !== undefined ? { notifyOnComplete: input.notifyOnComplete } : {}),
         ...(input.capabilityMode ? { capabilityMode: input.capabilityMode } : {}),
+        // 105.5: seed streaming-progress fields so a cross-process reader sees a coherent record.
+        envelopeSummary: summarizeEnvelope(input.envelope),
+        lastStreamingState: 'unknown',
+        lastResponseCharCount: 0,
         createdAt: now,
         updatedAt: now,
     };
@@ -156,6 +186,29 @@ export function updateSessionStatus(sessionId: string, status: WebAiSessionStatu
     const record = sessions.get(sessionId);
     if (!record) return null;
     record.status = status;
+    record.lastStreamingState = deriveStreamingState(status);
+    record.updatedAt = new Date().toISOString();
+    savePersistentStore();
+    return record;
+}
+
+/**
+ * 105.5: persist live streaming-progress fields (dom/ax hashes, streaming state, response size) so a
+ * cross-process reader (watcher / a second CLI) can resume or render progress. Only provided keys move.
+ */
+export function updateSessionProgress(sessionId: string, patch: {
+    lastDomHash?: string | null;
+    lastAxHash?: string | null;
+    lastStreamingState?: string;
+    lastResponseCharCount?: number;
+}): WebAiSessionRecord | null {
+    loadPersistentStore();
+    const record = sessions.get(sessionId);
+    if (!record) return null;
+    if (patch.lastDomHash !== undefined) record.lastDomHash = patch.lastDomHash;
+    if (patch.lastAxHash !== undefined) record.lastAxHash = patch.lastAxHash;
+    if (patch.lastStreamingState !== undefined) record.lastStreamingState = patch.lastStreamingState;
+    if (patch.lastResponseCharCount !== undefined) record.lastResponseCharCount = patch.lastResponseCharCount;
     record.updatedAt = new Date().toISOString();
     savePersistentStore();
     return record;
@@ -166,6 +219,22 @@ export function setSessionNotifyOnComplete(sessionId: string, notifyOnComplete: 
     const record = sessions.get(sessionId);
     if (!record) return null;
     record.notifyOnComplete = notifyOnComplete;
+    record.updatedAt = new Date().toISOString();
+    savePersistentStore();
+    return record;
+}
+
+export function appendSessionArtifact(
+    sessionId: string,
+    descriptor: import('./types.js').WebAiArtifactDescriptor,
+): WebAiSessionRecord | null {
+    loadPersistentStore();
+    const record = sessions.get(sessionId);
+    if (!record) return null;
+    const existing = record.artifacts ?? [];
+    // Same kind+path overwrites (latest wins) — mirrors agbrowse appendArtifactRecord.
+    const withoutDuplicate = existing.filter((a) => !(a.kind === descriptor.kind && a.path === descriptor.path));
+    record.artifacts = [...withoutDuplicate, descriptor];
     record.updatedAt = new Date().toISOString();
     savePersistentStore();
     return record;
@@ -183,6 +252,9 @@ export function updateSessionResult(input: {
     capabilityMode?: string;
     tabId?: string;
     tabState?: WebAiSessionTabState;
+    turns?: import('./types.js').WebAiTurnRecord[];
+    followUpCount?: number;
+    modelSelection?: import('./chatgpt-model.js').ChatGptModelSelectionEvidence;
 }): WebAiSessionRecord | null {
     loadPersistentStore();
     const record = sessions.get(input.sessionId);
@@ -196,10 +268,17 @@ export function updateSessionResult(input: {
     if (input.error) record.lastError = input.error;
     if (input.tabId) record.tabId = input.tabId;
     if (input.tabState) record.tabState = input.tabState;
+    if (input.turns !== undefined) record.turns = input.turns;
+    if (input.followUpCount !== undefined) record.followUpCount = input.followUpCount;
+    if (input.modelSelection !== undefined) record.modelSelection = input.modelSelection;
     if (input.answerText !== undefined) {
         record.answerText = input.answerText;
         record.lastSeenTextHash = createHash('sha256').update(input.answerText).digest('hex');
+        // 105.5: persist the response size alongside the answer for progress display / resume.
+        record.lastResponseCharCount = input.answerText.length;
     }
+    // 105.5: derive the coarse streaming-state from the result status on every transition.
+    record.lastStreamingState = deriveStreamingState(input.status);
     if (input.answerArtifact !== undefined) record.answerArtifact = input.answerArtifact;
     if (input.sourceAudit !== undefined) record.sourceAudit = input.sourceAudit;
     if (input.status === 'complete') record.completedAt = now;

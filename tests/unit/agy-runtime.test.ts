@@ -114,9 +114,11 @@ test('AGY-RT-007: AGY stdout strips ANSI before persistence and sanitized trace 
     assert.match(spawnSrc, /rawText\s*=\s*agyUtf8!\.write\(chunk\)/);
     assert.match(spawnSrc, /rawText\.replace\(\/\\x1B/);
     assert.match(spawnSrc, /ctx\.fullText\s*\+=\s*text/);
+    const agyStdoutStart = spawnSrc.indexOf('const rawText = agyUtf8!.write(chunk)');
+    assert.ok(agyStdoutStart >= 0, 'AGY stdout decoder block must exist');
     const agyStdoutBlock = spawnSrc.slice(
-        spawnSrc.indexOf("if (cli === 'agy') {"),
-        spawnSrc.indexOf("if (kiroPlainText) {"),
+        agyStdoutStart,
+        spawnSrc.indexOf("if (kiroPlainText) {", agyStdoutStart),
     );
     assert.doesNotMatch(agyStdoutBlock, /appendTraceEvent\(\{[\s\S]*raw:\s*text/);
     assert.match(agyStdoutBlock, /appendTraceEvent\(\{[\s\S]*raw:\s*displayText/);
@@ -245,6 +247,23 @@ test('AGY-RT-012c: history injection treats prior context as read-only backgroun
     assert.match(spawnSrc, /\[Current Message\]/);
 });
 
+test('AGY-RT-012d: AGY prompt path uses bootstrap envelope after final spawn cwd', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    assert.match(spawnSrc, /buildAgyBootstrapEnvelope/);
+    assert.match(spawnSrc, /let agyBootstrap: AgyBootstrapEnvelope \| null = null/);
+    assert.doesNotMatch(spawnSrc, /cli === 'agy' \|\| cli === 'cursor'/);
+    const agyBootstrapBlock = spawnSrc.slice(
+        spawnSrc.indexOf("if (cli === 'agy') {"),
+        spawnSrc.indexOf('// ─── DIFF-A: Preflight', spawnSrc.indexOf("if (cli === 'agy') {")),
+    );
+    assert.match(agyBootstrapBlock, /buildAgyBootstrapEnvelope\(\{/);
+    assert.match(agyBootstrapBlock, /taskPrompt:\s*prompt/);
+    assert.match(agyBootstrapBlock, /workingDir:\s*spawnCwd/);
+    assert.match(agyBootstrapBlock, /promptForArgs\s*=\s*agyBootstrap\.prompt/);
+    assert.match(agyBootstrapBlock, /argOptions\s*=\s*\{\s*\.\.\.argOptions,\s*workingDir:\s*spawnCwd\s*\}/);
+    assert.match(agyBootstrapBlock, /args\s*=\s*buildCurrentArgs\(argOptions\)/);
+});
+
 test('AGY-RT-013: AGY resume replay prefix is stripped only when new output remains', () => {
     assert.deepEqual(
         stripAgyResumeReplayPrefix('OLD_ANSWER\nNEW_ANSWER', 'OLD_ANSWER'),
@@ -339,6 +358,8 @@ test('AGY-RT-014: AGY quiet completion is anchored on the final transcript plann
         toolLog: [],
         agyTranscriptActive: true,
         agyFinalPlannerSeen: true,
+        agyBootstrapAccepted: false,
+        agyBootstrapAcceptanceMode: 'missing',
     }), AGY_PRINT_QUIET_COMPLETION_MS);
     // Final planner seen but a transcript tool still running: blocked.
     assert.equal(getAgyQuietCompletionDelayMs({

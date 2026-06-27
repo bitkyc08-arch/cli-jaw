@@ -130,6 +130,7 @@
 <li>복잡한 프로젝트에서는 불완전한 정보로 계획을 세우는 것을 피하기 위해 항상 <code>/interview</code>로 시작하세요.</li>
 <li>단계 전환은 명시적입니다 -- 계획이 완료되면 에이전트가 <code>jaw orchestrate A</code>를 실행하라고 알려줍니다.</li>
 <li>명시적인 worklog/PABCD 재개를 위해서는 <code>/continue</code>를 사용하세요. 자연어 "continue" 메시지는 일반 프롬프트로 처리됩니다.</li>
+<li>단계 전환에는 증거 attestation이 필요합니다: <code>jaw orchestrate B --attest '{"from":"A","to":"B","did":"..."}'</code> (C→D는 <code>checkOutput</code>과 <code>exitCode</code>도 필요).</li>
 <li><code>/orchestrate reset</code> 명령어는 활성 에이전트, 워커, 큐, 직원 세션, 상태, 워크로그 등 모든 것을 정리합니다.</li>
 </ul>
 

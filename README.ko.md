@@ -5,7 +5,7 @@
 ### 나만의 AI 에이전트. 2줄이면 설치 끝. 13개 AI 런타임 표면을 하나의 대시보드에서.
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.2.0-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.2-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-6.0-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22.4-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)
@@ -320,7 +320,7 @@ jaw worker status Backend
 | **Claude** | `claude-opus-4-8` | `claude auth login` | Claude Pro 구독 이상 |
 | **Claude E** | `claude-opus-4-8` | underlying `claude auth login` | Claude Pro 구독 이상; 6월 구독 포함 사용량 권장 런타임 |
 | **AI-E** | provider-selected | 선택 provider 인증 | 다중 provider runtime wrapper |
-| **Antigravity** | AGY-selected | `agy` 실행 시 확인 | `--conversation` resume을 쓰는 실험적 AGY print-mode runtime; 모델 변경은 native AGY UI 표면 |
+| **Antigravity** | AGY-selected | `agy` 실행 시 확인 | `agy -p` 실험적 AGY print-mode runtime; 선택적 `--model`은 capability probe 후 지원될 때만 사용(AGY 1.0.12에서 관측); `--conversation`으로 resume; 별도 effort flag 없음 |
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro 구독 이상 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro 구독 이상 |
 | **Cursor** | `composer-2.5` | `cursor-agent login` 또는 `CURSOR_API_KEY` | Cursor 구독; 쿼터는 인증/상태 전용 |
@@ -359,7 +359,7 @@ P (Plan) → A (Audit) → B (Build) → C (Check) → D (Done) → IDLE
 | **C — Check** | 타입 체크 (`tsc --noEmit`), 문서 업데이트, 일관성 검사 |
 | **D — Done** | 모든 변경 사항 요약. IDLE로 복귀 |
 
-상태는 데이터베이스에 저장되므로 재시작해도 이어서 작업할 수 있습니다. 워커는 파일을 수정할 수 없습니다 — 검증만 합니다. `jaw orchestrate`, `/orchestrate`, `/pabcd`로 시작하고, 진행 중인 worklog는 `/continue`로 명시적으로 재개합니다. Workflow helper slash command는 `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/goal`로 제공됩니다. `/goal run ...`은 bounded automation preview이며, durable goal은 `update`/`done`/`cancel`/`pause`/`resume` 상태를 보존합니다.
+상태는 데이터베이스에 저장되므로 재시작해도 이어서 작업할 수 있습니다. 워커는 파일을 수정할 수 없습니다 — 검증만 합니다. `jaw orchestrate`, `/orchestrate`, `/pabcd`로 시작하고, 진행 중인 worklog는 `/continue`로 명시적으로 재개합니다. 단계 전환에는 증거 attestation이 필요합니다. 예: `jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'` (C→D는 `checkOutput`과 `exitCode`도 필요). Workflow helper slash command는 `/plan`, `/interview`, `/deliberate`, `/planaudit`, `/review`, `/search`, `/goal`, `/goalplan`, `/team`, `/task`, `/fork`, `/gd`입니다. `/plan`은 “이것이 PABCD P”를 안내하는 호환 가이드이며 별도 계획 모드를 만들지 않습니다. `/search <query>`는 active search skill로 라우팅됩니다. Bounded automation은 `/goal run ...`으로 표현되며 별도 `/autopilot`은 없습니다. Durable goal(`/goal <objective>` + `update`/`done`/`cancel`/`pause`/`resume`)은 재시작 후에도 유지되며, goal 재개는 Web/CLI 포함 모든 인터페이스에서 작업을 다시 실행합니다. AI `goal pause --agent --audit`는 2단계 감사 게이트(`goal_pause_gate_pending`로 자동 continuation 억제)를 사용합니다. `/gd`는 `/goal done --force` 축약(완료 증거 게이트 우회)입니다. `/goal run`(`preflight`/`start`/`stop`/`status`)은 preflight를 통과해야 하는 추적 전용 preview이며 turn/dispatch 예산을 추적합니다(실제 강제는 추후).
 
 ---
 
@@ -426,7 +426,7 @@ Computer Use로 Finder, Safari, 시스템 설정, Xcode 등 모든 macOS 앱을 
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-텍스트 채팅, 음성 메시지(다중 프로바이더 STT — 음성을 텍스트로 자동 변환), 파일/사진 업로드, 슬래시 명령어(`/cli`, `/model`, `/status`), 예약 작업(`every`/`cron` — 반복 스케줄) 결과 자동 전달.
+텍스트 채팅, 음성 메시지(다중 프로바이더 STT — 음성을 텍스트로 자동 변환), 파일/사진 업로드, 슬래시 명령어(51개 등록; workflow helper: `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; CLI/Web 동적 `/skill:<id>`), 포럼 토픽 라우팅 및 **Dashboard Telegram Hub**(`/setthread`, `/threads`, `/hubhelp`, Manager UI에서 토픽별 `model`/`systemPrompt` override), 예약 작업(`every`/`cron` heartbeat) 결과 자동 전달.
 
 <details>
 <summary>설정 (3단계)</summary>
@@ -540,7 +540,7 @@ jaw --home ~/my-project serve --port 3458
 npm run build          # tsc → dist/
 npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts (핫 리로드)
-npm test               # Node.js 네이티브 테스트 러너
+npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
 npm run gate:all       # named release/docs parity gates
 bash structure/check-doc-drift.sh
 ```

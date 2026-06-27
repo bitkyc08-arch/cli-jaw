@@ -28,6 +28,10 @@ pub enum Command {
         #[arg(long, default_value_t = 600_000)]
         timeout_ms: u64,
 
+        /// Compatibility alias for timeout in milliseconds
+        #[arg(long)]
+        idle_timeout_ms: Option<u64>,
+
         /// Path to claude binary (default: "claude")
         #[arg(long, default_value = "claude")]
         claude_bin: String,

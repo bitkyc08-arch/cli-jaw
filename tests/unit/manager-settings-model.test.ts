@@ -123,7 +123,9 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     assert.equal(metaFor('codex').models.includes('gpt-5.5'), true);
     assert.equal(metaFor('agy').label, 'Antigravity');
     assert.equal(metaFor('agy').models.includes('gemini-3.5-flash'), true);
-    assert.match(metaFor('agy').effortNote || '', /current AGY-selected model/);
+    assert.match(metaFor('agy').modelNote || '', /probes the installed binary/);
+    assert.match(metaFor('agy').modelNote || '', /--model/);
+    assert.match(metaFor('agy').effortNote || '', /no separate effort flag/);
     assert.equal(metaFor('cursor').models.includes('gpt-5.5'), true);
     assert.equal(metaFor('cursor').models.includes('gpt-5.1-codex-mini'), true);
     assert.equal(metaFor('cursor').efforts.includes('medium-fast'), true);
@@ -147,9 +149,16 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
         join(__dirname, '../../public/manager/src/settings/pages/components/agent/RuntimeHeader.tsx'),
         'utf8',
     );
+    const perCliRowSource = readFileSync(
+        join(__dirname, '../../public/manager/src/settings/pages/components/PerCliRow.tsx'),
+        'utf8',
+    );
     assert.ok(runtimeHeaderSource.includes('orderRuntimeCliOptions(cliOptions)'));
     assert.ok(runtimeHeaderSource.includes('orderedCliOptions.map'));
     assert.ok(runtimeHeaderSource.includes('collapsedAfter={orderedPrimaryCliCount}'));
+    assert.ok(perCliRowSource.includes('settings-percli-note'));
+    assert.ok(perCliRowSource.includes('meta.modelNote'));
+    assert.ok(perCliRowSource.includes('meta.effortNote'));
     assert.equal(metaFor('pi').label, 'Pi');
     assert.equal(PRIMARY_CLIS[0], 'pi');
 });

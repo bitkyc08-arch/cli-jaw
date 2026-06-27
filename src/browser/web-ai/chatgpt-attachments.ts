@@ -35,6 +35,11 @@ const UNSUPPORTED_EXTENSIONS = new Set(['.gdoc', '.gsheet', '.gslides']);
 const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.heic']);
 const SPREADSHEET_EXTENSIONS = new Set(['.csv', '.tsv', '.xls', '.xlsx']);
 
+// 104.12: uploads delay send-button enablement, so widen the resolved/scan click window when files are attached.
+export function sendButtonTimeoutMs(fileNames: readonly unknown[] = []): number {
+    return Array.isArray(fileNames) && fileNames.length > 0 ? 45_000 : 20_000;
+}
+
 export function preflightAttachment(file: { path: string; sizeBytes: number; basename: string }): AttachmentPreflightResult {
     const extension = extractExtension(file.basename);
     const softWarnings: string[] = [];
@@ -160,10 +165,16 @@ const COMPOSER_FILE_INPUT_SELECTORS = [
     'input[type="file"][multiple]',
     'input[type="file"]',
 ];
-const UPLOAD_BUTTON_SELECTORS = [
+// 105.8: exported for parity testing. Restores agbrowse's explicit composer-plus-btn data-testid,
+// the explicit "Add files and more" label, and the Korean i18n label that the broad `*="Add" i`
+// pattern can't match — selector resilience for upload-surface discovery.
+export const UPLOAD_BUTTON_SELECTORS = [
+    'button[data-testid="composer-plus-btn"]',
     'button[aria-label*="Upload" i]',
     'button[aria-label*="Attach" i]',
+    'button[aria-label="Add files and more"]',
     'button[aria-label*="Add" i]',
+    'button[aria-label="파일 추가 및 기타"]',
     'button[data-testid*="plus" i]',
     'button:has-text("Upload")',
 ];
@@ -241,8 +252,8 @@ export async function attachLocalFileLive(
             usedFallbacks,
         };
     }
-    // Wait for visible chip / file count evidence (input-only success forbidden)
-    const accepted = await waitForAttachmentAcceptedLive(page, { timeoutMs: 30_000 });
+    // Wait for visible chip evidence (input-only success forbidden) — verify the SPECIFIC file (104.13).
+    const accepted = await waitForAttachmentAcceptedLive(page, { timeoutMs: 30_000, fileNames: [file.basename] });
     if (!accepted.ok) {
         return accepted;
     }
@@ -295,14 +306,80 @@ export async function clearComposerAttachmentsLive(page: Page): Promise<Attachme
     };
 }
 
+export interface AttachmentReadyResult {
+    ok: boolean;
+    matched: string[];
+    chipCount: number;
+    removeCount: number;
+    progressCount: number;
+}
+
+/**
+ * 104.13: in-page expression that verifies the SPECIFIC expected files appear in attachment
+ * chips (by filename / stem in chip text/attrs), not just that some chip count is non-zero —
+ * so a wrong/leftover chip can't false-confirm the upload. Self-contained for page.evaluate.
+ */
+export function buildAttachmentReadyExpression(fileNames: string[]): string {
+    return `(() => {
+        const expected = ${JSON.stringify((fileNames || []).map(String))};
+        const composer = document.querySelector('form:has(textarea), form:has([contenteditable="true"]), main form') || document.querySelector('main') || document.body;
+        const chipSelectors = [
+            '[data-testid*="attachment" i]',
+            '[data-testid*="file" i]',
+            '[aria-label*="attachment" i]',
+            '[aria-label*="file" i]',
+            'button[aria-label*="Remove file" i]',
+            'button[aria-label*="Remove attachment" i]',
+            '.group\\/file-tile'
+        ];
+        const promptNodes = new Set(Array.from(composer.querySelectorAll('textarea, [contenteditable="true"], [role="textbox"]')));
+        const candidates = Array.from(composer.querySelectorAll(chipSelectors.join(',')))
+            .filter(node => !Array.from(promptNodes).some(prompt => prompt.contains(node) || node.contains(prompt)));
+        const haystackFor = node => {
+            const parts = [];
+            let current = node;
+            for (let i = 0; current && i < 3; i += 1, current = current.parentElement) {
+                parts.push(current.textContent || '');
+                for (const attr of ['aria-label', 'title', 'data-testid']) parts.push(current.getAttribute?.(attr) || '');
+            }
+            return parts.join(' ').toLowerCase();
+        };
+        const haystacks = candidates.map(haystackFor);
+        const matched = expected.filter(name => {
+            const lower = String(name).toLowerCase();
+            const stem = lower.replace(/\\.[^.]+$/, '');
+            return haystacks.some(text => text.includes(lower) || (stem.length > 2 && text.includes(stem)));
+        });
+        const removeCount = candidates.filter(node => /remove (file|attachment)/i.test(node.getAttribute?.('aria-label') || node.textContent || '')).length;
+        const progressCount = composer.querySelectorAll('[role="progressbar"], [aria-label*="uploading" i], [aria-label*="processing" i], [data-testid*="upload-progress" i]').length;
+        return {
+            ok: progressCount === 0 && (matched.length === expected.length || (expected.length > 0 && removeCount >= expected.length)),
+            matched,
+            chipCount: candidates.length,
+            removeCount,
+            progressCount
+        };
+    })()`;
+}
+
 export async function waitForAttachmentAcceptedLive(
     page: Page,
-    opts: { timeoutMs?: number } = {},
+    opts: { timeoutMs?: number; fileNames?: string[] } = {},
 ): Promise<AttachmentRuntimeOutcome> {
     const usedFallbacks: string[] = [];
     const warnings: string[] = [];
     const deadline = Date.now() + (opts.timeoutMs ?? 30_000);
+    const expected = (opts.fileNames || []).map(String).filter(Boolean);
     while (Date.now() < deadline) {
+        // 104.13: when filenames are known, verify those specific files (not chip-count only).
+        if (expected.length) {
+            const ready = await page.evaluate(buildAttachmentReadyExpression(expected)).catch(() => null) as AttachmentReadyResult | null;
+            if (ready?.ok) {
+                return { ok: true, stage: 'attachment-verified', chipVisible: true, fileCount: ready.chipCount || expected.length, usedFallbacks, warnings };
+            }
+            await page.waitForTimeout(500).catch(() => undefined);
+            continue;
+        }
         let chipCount = 0;
         for (const sel of ATTACHMENT_CHIP_SELECTORS) {
             chipCount += await page.locator(sel).count().catch(() => 0);

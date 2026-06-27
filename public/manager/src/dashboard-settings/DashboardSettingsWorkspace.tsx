@@ -1,15 +1,20 @@
-import { Suspense, lazy, useEffect, type ReactNode } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { formatShortcut, MANAGER_SHORTCUT_ACTIONS } from '../manager-shortcuts';
 import { DashboardDeveloperSettingsSection } from './DashboardDeveloperSettingsSection';
 
 const LazyEmbedding = lazy(() => import('./DashboardEmbeddingSection').then(m => ({ default: m.DashboardEmbeddingSection })));
+const LazyTelegramHub = lazy(() => import('../settings/pages/TelegramHub'));
 import { HelpTopicButton } from '../help/HelpTopicButton';
 import type { HelpTopicId } from '../help/helpContent';
 import type { DashboardLocale, DashboardRegistryUi, DashboardShortcutAction } from '../types';
 import type { DashboardActivityTitleSupport } from './activity-title-support';
+import { SaveBar } from '../settings/components/SaveBar';
+import { createDirtyStore } from '../settings/dirty-store';
+import { createSettingsClient } from '../settings/settings-client';
+import type { DirtyStore, SaveHandler } from '../settings/types';
 
 type DashboardSettingsWorkspaceProps = {
-    activeSection: 'display' | 'activity' | 'developer' | 'embedding';
+    activeSection: 'display' | 'activity' | 'developer' | 'embedding' | 'telegramHub';
     ui: DashboardRegistryUi;
     titleSupport: DashboardActivityTitleSupport;
     onUiPatch: (patch: Partial<DashboardRegistryUi>) => void;
@@ -465,6 +470,88 @@ function TitleSupportSummary({ support, locale }: { support: DashboardActivityTi
     );
 }
 
+function useDirtyStore(): DirtyStore {
+    const ref = useRef<DirtyStore | null>(null);
+    if (ref.current === null) ref.current = createDirtyStore();
+    return ref.current;
+}
+
+function useDirtyFlag(store: DirtyStore): boolean {
+    return useSyncExternalStore(
+        useCallback((listener) => store.subscribe(listener), [store]),
+        useCallback(() => store.isDirty(), [store]),
+        useCallback(() => false, []),
+    );
+}
+
+function usePendingCount(store: DirtyStore): number {
+    return useSyncExternalStore(
+        useCallback((listener) => store.subscribe(listener), [store]),
+        useCallback(() => store.pending.size, [store]),
+        useCallback(() => 0, []),
+    );
+}
+
+function DashboardTelegramHubSection() {
+    const dirty = useDirtyStore();
+    const isDirty = useDirtyFlag(dirty);
+    const pendingCount = usePendingCount(dirty);
+    const client = useRef(createSettingsClient(0));
+    const saveHandlerRef = useRef<SaveHandler | null>(null);
+    const [saving, setSaving] = useState(false);
+    const [saveError, setSaveError] = useState<string | null>(null);
+
+    const registerSave = useCallback((handler: SaveHandler | null) => {
+        saveHandlerRef.current = handler;
+    }, []);
+
+    const onDiscard = useCallback(() => {
+        if (saving) return;
+        dirty.clear();
+        setSaveError(null);
+    }, [dirty, saving]);
+
+    const onSave = useCallback(async () => {
+        if (saving) return;
+        const handler = saveHandlerRef.current;
+        setSaveError(null);
+        if (!handler) {
+            dirty.clear();
+            return;
+        }
+        setSaving(true);
+        try {
+            await handler();
+        } catch (err) {
+            setSaveError(err instanceof Error ? err.message : String(err));
+        } finally {
+            setSaving(false);
+        }
+    }, [dirty, saving]);
+
+    return (
+        <section className="dashboard-settings-section">
+            <Suspense fallback={<div className="settings-loading">Loading Telegram hub...</div>}>
+                <LazyTelegramHub
+                    port={0}
+                    instanceUrl=""
+                    client={client.current}
+                    dirty={dirty}
+                    registerSave={registerSave}
+                />
+            </Suspense>
+            <SaveBar
+                isDirty={isDirty}
+                saving={saving}
+                pendingCount={pendingCount}
+                error={saveError}
+                onDiscard={onDiscard}
+                onSave={() => void onSave()}
+            />
+        </section>
+    );
+}
+
 export function DashboardSettingsWorkspace(props: DashboardSettingsWorkspaceProps) {
     const locale = normalizeDashboardLocale(props.ui.locale);
     const copy = COPY[locale];
@@ -573,6 +660,8 @@ export function DashboardSettingsWorkspace(props: DashboardSettingsWorkspaceProp
                 </section>
             ) : props.activeSection === 'developer' ? (
                 <DashboardDeveloperSettingsSection locale={locale} ui={props.ui} onUiPatch={props.onUiPatch} />
+            ) : props.activeSection === 'telegramHub' ? (
+                <DashboardTelegramHubSection />
             ) : (
                 <section className="dashboard-settings-section">
                     <header>

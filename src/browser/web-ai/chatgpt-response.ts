@@ -8,14 +8,17 @@
  */
 
 import type { ResponseCaptureResult } from './provider-adapter.js';
-import { ActionTranscript, captureTextBaseline } from '../primitives.js';
+import { ActionTranscript } from '../primitives.js';
+import { readTopLevelAssistantTexts, readTopLevelAssistantTextsFromLocators } from './chatgpt-response-dom.js';
+import { observeAssistantResponse, recoverAssistantResponse } from './chatgpt-response-observer.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { captureCopiedResponseText, CHATGPT_COPY_SELECTORS, preferCopiedText } from './copy-markdown.js';
 import { resolveActionTarget } from './self-heal.js';
+import { isPageDeathError } from './interstitial.js';
 import { createTraceContext, getSessionTrace, recordTraceStep } from './action-trace.js';
 import type { ResolveActionTargetResult, TargetCandidate } from './self-heal.js';
 import type { TraceContext, TraceStep } from './action-trace.js';
-import type { Locator, Page } from 'playwright-core';
+import type { Page } from 'playwright-core';
 
 export const ASSISTANT_TURN_SELECTORS = [
     '[data-message-author-role="assistant"]',
@@ -94,6 +97,11 @@ export interface CaptureOptions {
     allowCopyMarkdownFallback?: boolean;
     /** Polling interval in ms. */
     pollIntervalMs?: number;
+    /**
+     * 104.18: per-tick conversation-drift guard. Returns a reason string when the held tab has
+     * drifted to a different conversation (poll should bail), or null to keep polling.
+     */
+    driftCheck?: () => Promise<string | null>;
 }
 
 export async function readAssistantSnapshot(page: Page, minTurnIndex: number, promptText = ''): Promise<AssistantSnapshot> {
@@ -111,20 +119,14 @@ export async function readAssistantSnapshot(page: Page, minTurnIndex: number, pr
 }
 
 async function readAssistantTexts(page: Page): Promise<string[]> {
-    const baseline = await captureTextBaseline(page, ASSISTANT_TURN_SELECTORS);
-    if (baseline.texts.length) return baseline.texts.map(normalizeAssistantText).filter(Boolean);
-
-    const allTexts: string[] = [];
-    for (const selector of ASSISTANT_TURN_SELECTORS) {
-        const locators = await safeAll(page, selector);
-        for (const loc of locators) {
-            const raw = await loc.innerText().catch(() => '');
-            const normalized = normalizeAssistantText(raw);
-            if (normalized) allTexts.push(normalized);
-        }
-        if (allTexts.length > 0) break;
-    }
-    return allTexts;
+    // Descendant-dedup (catalog 106.13): prefer top-level assistant nodes so a nested
+    // match never double-counts its parent's text. page.evaluate first, locator fallback.
+    const viaEvaluate = await page.evaluate(readTopLevelAssistantTexts, ASSISTANT_TURN_SELECTORS)
+        .catch(() => [] as string[]);
+    const texts = viaEvaluate.length
+        ? viaEvaluate
+        : await readTopLevelAssistantTextsFromLocators(page, ASSISTANT_TURN_SELECTORS);
+    return texts.map(normalizeAssistantText).filter(Boolean);
 }
 
 export async function captureAssistantResponse(page: Page, options: CaptureOptions): Promise<ResponseCaptureResult> {
@@ -135,48 +137,87 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
     let stableSince: number | null = null;
     let stableText: string | undefined;
 
+    // 101 #2 early-wake: a MutationObserver wakes the loop as soon as the response settles.
+    // The poller stays authoritative — this only reduces latency (worst case = identical polling).
+    const observerBudgetMs = Math.min(Math.max(0, deadline - Date.now()), 120_000);
+    let observerWake: Promise<{ settled: true } | null> | null = observerBudgetMs > 1000
+        ? observeAssistantResponse(page, { baselineAssistantCount: options.minTurnIndex, timeoutMs: observerBudgetMs })
+        : null;
+
     while (Date.now() < deadline) {
-        const snap = await readAssistantSnapshot(page, options.minTurnIndex, options.promptText);
-        if (snap.canvasOpened) {
-            return withResolverTrace(stripUndefined({
-                ok: true,
-                canvas: { kind: 'opened', reason: 'ChatGPT routed answer into Canvas' },
-                answerText: snap.latestNewText,
-                usedFallbacks: transcript.usedFallbacks,
-                warnings: transcript.warnings,
-            }), resolverTrace);
-        }
-        if (!snap.streaming && snap.latestNewText) {
-            if (snap.latestNewText === stableText) {
-                const finished = await isResponseFinished(page);
-                const textLen = snap.latestNewText.length;
-                const adaptiveMs = finished ? 1000
-                    : textLen < 16 ? 8000
-                    : textLen < 40 ? 3000
-                    : textLen < 500 ? 2000
-                    : 3000;
-                if (stableSince !== null && Date.now() - stableSince >= adaptiveMs) {
-                    if (options.allowCopyMarkdownFallback) {
-                        const copyTarget = await resolveOptionalChatGptCopyTarget(page, resolverTrace);
-                        const copied = await captureCopiedResponseText(page, CHATGPT_COPY_SELECTORS, { copyTarget });
-                        const copiedText = preferCopiedText(snap.latestNewText, copied);
-                        if (copiedText) {
-                            transcript.fallback('copy-markdown');
-                            return withResolverTrace({ ok: true, answerText: normalizeAssistantText(copiedText), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+        try {
+            // 104.18: per-tick guard — if the held tab drifted to a different chat, stop polling the
+            // wrong thread and report it so the caller can rebind instead of timing out on stale DOM.
+            if (options.driftCheck) {
+                const driftReason = await options.driftCheck();
+                if (driftReason) {
+                    return withResolverTrace(stripUndefined({
+                        ok: false,
+                        drift: { status: 'conversation-mismatch', reason: driftReason },
+                        usedFallbacks: transcript.usedFallbacks,
+                        warnings: [...transcript.warnings, `conversation-drift:${driftReason}`],
+                    }), resolverTrace);
+                }
+            }
+            const snap = await readAssistantSnapshot(page, options.minTurnIndex, options.promptText);
+            if (snap.canvasOpened) {
+                return withResolverTrace(stripUndefined({
+                    ok: true,
+                    canvas: { kind: 'opened', reason: 'ChatGPT routed answer into Canvas' },
+                    answerText: snap.latestNewText,
+                    usedFallbacks: transcript.usedFallbacks,
+                    warnings: transcript.warnings,
+                }), resolverTrace);
+            }
+            if (!snap.streaming && snap.latestNewText) {
+                if (snap.latestNewText === stableText) {
+                    const finished = await isResponseFinished(page);
+                    const textLen = snap.latestNewText.length;
+                    const adaptiveMs = finished ? 1000
+                        : textLen < 16 ? 8000
+                        : textLen < 40 ? 3000
+                        : textLen < 500 ? 2000
+                        : 3000;
+                    if (stableSince !== null && Date.now() - stableSince >= adaptiveMs) {
+                        if (options.allowCopyMarkdownFallback) {
+                            const copyTarget = await resolveOptionalChatGptCopyTarget(page, resolverTrace);
+                            const copied = await captureCopiedResponseText(page, CHATGPT_COPY_SELECTORS, { copyTarget });
+                            const copiedText = preferCopiedText(snap.latestNewText, copied);
+                            if (copiedText) {
+                                transcript.fallback('copy-markdown');
+                                return withResolverTrace({ ok: true, answerText: normalizeAssistantText(copiedText), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+                            }
+                            transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
                         }
-                        transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
+                        return withResolverTrace({ ok: true, answerText: snap.latestNewText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
                     }
-                    return withResolverTrace({ ok: true, answerText: snap.latestNewText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+                } else {
+                    stableText = snap.latestNewText;
+                    stableSince = Date.now();
                 }
             } else {
-                stableText = snap.latestNewText;
-                stableSince = Date.now();
+                stableSince = null;
+                stableText = undefined;
             }
-        } else {
-            stableSince = null;
-            stableText = undefined;
+            if (observerWake) {
+                await Promise.race([wait(pollIntervalMs), observerWake]);
+                observerWake = null; // one-shot: wake once on settle, then poll normally
+            } else {
+                await wait(pollIntervalMs);
+            }
+        } catch (pollErr) {
+            // 104.18: a crashed/closed tab is recoverable — surface it as a typed result instead of
+            // throwing past the poll boundary, so the caller can relaunch + resume the session.
+            if (isPageDeathError(pollErr)) {
+                return withResolverTrace(stripUndefined({
+                    ok: false,
+                    drift: { status: 'tab-crashed', reason: String((pollErr as Error)?.message || pollErr), recoverable: true },
+                    usedFallbacks: transcript.usedFallbacks,
+                    warnings: [...transcript.warnings, 'tab-crashed-during-poll'],
+                }), resolverTrace);
+            }
+            throw pollErr;
         }
-        await wait(pollIntervalMs);
     }
 
     if (options.allowCopyMarkdownFallback && stableText) {
@@ -189,6 +230,20 @@ export async function captureAssistantResponse(page: Page, options: CaptureOptio
         }
         transcript.warn(`copy-markdown-fallback-unavailable:${copied.status || 'unknown'}`);
     }
+
+    // 101 #2 3rd-tier recovery (after the opt-in copy fallback): re-read the latest
+    // assistant turn once, recovering a final answer the poll loop missed (late DOM settle).
+    const recovered = await recoverAssistantResponse(page, {
+        baselineAssistantCount: options.minTurnIndex,
+        isFinalAnswer: (t) => !isPlaceholderAssistantText(t),
+        readStreaming: () => isStreaming(page),
+        readFinished: () => isResponseFinished(page),
+    });
+    if (recovered?.text && !recovered.streaming && (recovered.finished || recovered.responseStableMs > 0)) {
+        transcript.fallback('recovery');
+        return withResolverTrace({ ok: true, answerText: normalizeAssistantText(recovered.text), usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }, resolverTrace);
+    }
+
     return withResolverTrace(stripUndefined({ ok: false, answerText: stableText, usedFallbacks: transcript.usedFallbacks, warnings: transcript.warnings }), resolverTrace);
 }
 
@@ -307,11 +362,6 @@ async function isCanvasOpened(page: Page): Promise<boolean> {
         }
     }
     return false;
-}
-
-async function safeAll(page: Page, selector: string): Promise<Locator[]> {
-    try { return await page.locator(selector).all(); }
-    catch { return []; }
 }
 
 function wait(ms: number): Promise<void> {

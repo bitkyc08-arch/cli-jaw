@@ -290,7 +290,7 @@ function renderStep(step: ProcessStep): string {
             <span class="process-step-chevron">${ICONS.chevronRight}</span>
         </button>
         <div class="process-step-details collapsed" id="${detailId}">
-            <pre class="process-step-full" data-detail-lazy="true"></pre>
+            <pre class="process-step-full" data-detail-lazy="true"${(step.detailLength || 0) > 0 ? ' data-had-detail="true"' : ''}></pre>
         </div>
     </div>`;
 }
@@ -347,7 +347,13 @@ function toggleStepDetails(toggle: HTMLElement): void {
     const expanding = details.classList.contains('collapsed');
     if (expanding && pre?.dataset['detailLazy'] === 'true') {
         const detail = getStoredProcessStepDetail((wrapper as HTMLElement).dataset['stepId'] || '');
-        pre.textContent = detail || processStepMetaStore.get((wrapper as HTMLElement).dataset['stepId'] || '')?.preview || '';
+        const resolved = detail || processStepMetaStore.get((wrapper as HTMLElement).dataset['stepId'] || '')?.preview || '';
+        // If the step HAD detail (data-had-detail, set at render from detailLength) but
+        // both stores were released on recycle, show a hint instead of a blank <pre>.
+        // Steps that never had detail keep the empty box (nothing to show — no misleading).
+        pre.textContent = resolved || (pre.dataset['hadDetail'] === 'true'
+            ? '(detail released to save memory — scroll this message back into view to reload)'
+            : '');
         delete pre.dataset['detailLazy'];
     } else if (!expanding && pre && pre.textContent && pre.textContent.length > PROCESS_DETAIL_COLLAPSE_CLEAR_CHARS) {
         pre.textContent = '';
@@ -388,14 +394,24 @@ export function bindProcessBlockInteractions(root: HTMLElement): void {
         if (expandTrigger) {
             event.preventDefault();
             const block = expandTrigger.closest('.process-block') as HTMLElement | null;
-            const pb = block ? blockStatesByElement.get(block) : null;
-            if (pb && block) {
-                withProcessBlockLayoutMutation(block, () => {
-                    pb.expandedSteps = true;
-                    const inner = pb.element.querySelector('.process-steps-inner');
-                    if (inner) inner.innerHTML = renderSteps(pb.steps, true);
-                });
+            if (!block) return;
+            let pb = blockStatesByElement.get(block);
+            if (!pb) {
+                // Hydrated / virtual-scroll-recycled block: its live ProcessBlockState was
+                // GC'd, so it is absent from blockStatesByElement. Reconstruct the full step
+                // list from the persistent dataset.processStepIds + meta store (the elided
+                // middle rows are NOT in the DOM) and register it so repeat clicks cache-hit.
+                const steps = reconstructStepsFromBlock(block);
+                if (steps.length === 0) return;
+                pb = { element: block, steps, collapsed: block.classList.contains('collapsed') };
+                blockStatesByElement.set(block, pb);
             }
+            const state = pb;
+            withProcessBlockLayoutMutation(block, () => {
+                state.expandedSteps = true;
+                const inner = state.element.querySelector('.process-steps-inner');
+                if (inner) inner.innerHTML = renderSteps(state.steps, true);
+            });
             return;
         }
 
@@ -586,4 +602,40 @@ export function releaseProcessBlockDetails(rootOrState: HTMLElement | ProcessBlo
 
 export function processStepMetaFromStore(stepId: string): StoredProcessStepMeta | null {
     return processStepMetaStore.get(stepId) || null;
+}
+
+/** Rebuild the FULL step list for a block whose live ProcessBlockState was GC'd
+ *  (hydrated from history / recycled by virtual-scroll, hence absent from the
+ *  blockStatesByElement WeakMap). The elided middle steps of a long block are NOT
+ *  in the DOM, so recover from the persistent id list (dataset.processStepIds) +
+ *  meta store rather than scanning .process-step rows. Returns [] if the meta store
+ *  was released (caller then no-ops, preserving prior behavior). */
+export function reconstructStepsFromBlock(block: HTMLElement): ProcessStep[] {
+    const ids = (block.dataset['processStepIds'] || '').split(/\s+/).filter(Boolean);
+    const steps: ProcessStep[] = [];
+    for (const id of ids) {
+        const meta = processStepMetaStore.get(id);
+        if (!meta) continue;
+        steps.push({
+            id: meta.id,
+            type: meta.type,
+            icon: meta.icon,
+            rawIcon: meta.rawIcon,
+            label: meta.label,
+            isEmployee: meta.isEmployee,
+            detail: getStoredProcessStepDetail(id) || meta.preview || '',
+            detailPreview: meta.preview,
+            detailLength: meta.detailLength,
+            detailTruncated: meta.detailTruncated,
+            stepRef: meta.stepRef,
+            traceRunId: meta.traceRunId,
+            traceSeq: meta.traceSeq,
+            detailAvailable: meta.detailAvailable,
+            detailBytes: meta.detailBytes,
+            rawRetentionStatus: meta.rawRetentionStatus,
+            status: meta.status,
+            startTime: meta.startTime,
+        });
+    }
+    return steps;
 }

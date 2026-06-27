@@ -81,6 +81,7 @@ export function refineObjective(newObjective: string): GoalState | null {
     if (!trimmed || trimmed.length > MAX_GOAL_OBJECTIVE_CHARS) return null;
     goal.objective = trimmed;
     goal.goalMode = 'direct';
+    goal.agentPauseCount = 0;
     delete goal.planHint;
     goal.updatedAt = new Date().toISOString();
     writeJson(ACTIVE_PATH, goal);
@@ -99,6 +100,7 @@ export function updateGoal(summary: string, nextAction = '', evidence: string[] 
     };
     goal.checkpoints.push(cp);
     goal.lastCheckpoint = cp;
+    goal.agentPauseCount = 0;
     goal.updatedAt = new Date().toISOString();
     writeJson(ACTIVE_PATH, goal);
     return goal;
@@ -138,6 +140,7 @@ export function pauseGoal(opts?: { reason?: string | undefined; audit?: GoalPaus
     if (goal.status === 'paused' && opts?.audit) {
         if (opts.reason) goal.pauseReason = opts.reason;
         goal.pauseAudit = opts.audit;
+        goal.agentPauseCount = 0;
         goal.updatedAt = new Date().toISOString();
         writeJson(ACTIVE_PATH, goal);
         return goal;
@@ -146,6 +149,7 @@ export function pauseGoal(opts?: { reason?: string | undefined; audit?: GoalPaus
     goal.status = 'paused';
     if (opts?.reason) goal.pauseReason = opts.reason;
     if (opts?.audit) goal.pauseAudit = opts.audit;
+    goal.agentPauseCount = 0;
     goal.updatedAt = new Date().toISOString();
     writeJson(ACTIVE_PATH, goal);
     return goal;
@@ -155,6 +159,7 @@ export function resumeGoal(): GoalState | null {
     const goal = getActiveGoal();
     if (!goal || goal.status !== 'paused') return null;
     goal.status = 'active';
+    goal.agentPauseCount = 0;
     goal.updatedAt = new Date().toISOString();
     writeJson(ACTIVE_PATH, goal);
     return goal;

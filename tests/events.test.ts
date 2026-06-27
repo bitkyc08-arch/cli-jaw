@@ -258,6 +258,78 @@ test('claude input_json_delta buffer adds detail to tool label on block_stop', (
     assert.ok(ctx.toolLog[0].detail.includes('ls /tmp'), 'detail should contain command');
 });
 
+test('claude text_delta streams prose live and accumulates raw fullText (no bullet formatting)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Token-granular deltas splitting a single word mid-token.
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hel' } },
+    }, ctx, 'test');
+    assert.equal(ctx.claudeStreamedText, true, 'text_delta sets the per-message streamed flag');
+    assert.equal(ctx.fullText, 'Hel', 'first delta appended raw');
+    // Live drain #1 — the dispatcher pulls the pending chunk for broadcast.
+    assert.equal(extractOutputChunk('claude', { type: 'stream_event' }, ctx), 'Hel', 'claude drain returns first delta');
+    assert.equal(ctx.pendingOutputChunk, '', 'pending cleared after drain');
+
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'lo' } },
+    }, ctx, 'test');
+    assert.equal(extractOutputChunk('claude', { type: 'stream_event' }, ctx), 'lo', 'claude drain returns second delta');
+    // Critical: raw concatenation, NOT "Hel\n- lo" that the segment formatter would inject.
+    assert.equal(ctx.fullText, 'Hello', 'deltas concatenate raw without bullet injection');
+});
+
+test('claude final assistant block is skipped after text_delta stream (no doubling)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Realistic order: text block opens, streams, then the complete assistant arrives.
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } },
+    }, ctx, 'test');
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'Hello world' } },
+    }, ctx, 'test');
+    extractOutputChunk('claude', { type: 'stream_event' }, ctx); // live drain
+    assert.equal(ctx.fullText, 'Hello world');
+
+    // Final complete assistant repeats the whole text — must be skipped (260612 F-T4).
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Hello world' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, 'Hello world', 'complete block not re-appended (no doubling)');
+    assert.equal(ctx.claudeStreamedText, false, 'per-message flag reset for the next message');
+});
+
+test('claude falls back to complete assistant block when no text_delta streamed', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // No partial stream events (e.g. --include-partial-messages absent): only the complete assistant.
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Fallback text.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, 'Fallback text.', 'complete block surfaced when nothing streamed');
+    assert.ok(!ctx.claudeStreamedText, 'per-message flag stays falsy in the fallback path');
+});
+
+test('claude empty text_delta does not arm the doubling guard (fallback still fires)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // An all-empty text_delta must NOT set claudeStreamedText, else a real complete block is skipped.
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: '' } },
+    }, ctx, 'test');
+    assert.ok(!ctx.claudeStreamedText, 'empty delta must not arm the per-message flag');
+    // Complete assistant block must still be surfaced via fallback.
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'Real prose.' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, 'Real prose.', 'complete block appended when only empty deltas streamed');
+});
+
 test('extractFromEvent updates context for each CLI path', () => {
     const claudeCtx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
     extractFromEvent('claude', {

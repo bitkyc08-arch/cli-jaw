@@ -1,0 +1,9 @@
+{
+  "method": "google",
+  "planType": "Google AI Pro",
+  "authenticated": true,
+  "error": "schema_drift",
+  "message": "synthetic upstream error shape",
+  "models": null
+}
+

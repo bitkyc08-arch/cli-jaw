@@ -1,6 +1,7 @@
 /* Code composer dock: dense Claude-style input surface and command palette */
 
 .code-composer-dock {
+    flex: 0 0 auto;
     padding: 10px 14px 12px;
     border-top: 1px solid var(--border-default);
     background:

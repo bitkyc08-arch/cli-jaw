@@ -27,6 +27,8 @@ export interface ResponseCaptureResult {
     resolverTrace?: TraceStep[];
     usedFallbacks: string[];
     warnings: string[];
+    // 104.18: per-tick poll bail-out — the conversation drifted, or the tab crashed (recoverable).
+    drift?: { status: 'conversation-mismatch' | 'tab-crashed'; reason: string; recoverable?: boolean };
 }
 
 export interface WebAiProviderAdapter {
