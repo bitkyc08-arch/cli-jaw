@@ -32,6 +32,16 @@ export type AgyBootstrapAcceptanceMode =
   | 'missing'
   | 'not-applicable';
 
+export type AgyTranscriptMode =
+  | 'not-started'
+  | 'anchored'
+  | 'bootstrap-missing'
+  | 'fallback-missing'
+  | 'fallback-timeout'
+  | 'provider-error';
+
+export type AgyLastActivitySource = 'stdout' | 'stderr' | 'transcript' | 'none';
+
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
   fullText: string;
@@ -109,6 +119,9 @@ export interface SpawnContext {
   agyResumeOffset?: number;
   agyBytesReceived?: number;
   agyTranscriptActive?: boolean;
+  agyTranscriptMode?: AgyTranscriptMode;
+  agyTranscriptLastReason?: string;
+  agyLastActivitySource?: AgyLastActivitySource;
   agyBootstrapSentinel?: string;
   agyBootstrapHash?: string;
   agyBootstrapAccepted?: boolean;

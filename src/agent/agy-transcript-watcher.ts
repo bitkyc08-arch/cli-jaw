@@ -8,6 +8,7 @@ import {
     resolveAgyTranscriptPath,
 } from './agy-transcript.js';
 import { applyAgyBootstrapAcceptanceFromTranscriptLine } from './agy-bootstrap.js';
+import { classifyAgyTranscriptMode } from './agy-runtime.js';
 
 export type AgyTranscriptWatcherHandle = { stop: () => void };
 
@@ -134,6 +135,10 @@ export function startAgyTranscriptWatcher(options: {
     const minCreatedAtMs = startedAt - CURRENT_TURN_LOOKBACK_MS;
     let lastRetargetScanAt = 0;
 
+    const updateTranscriptMode = () => {
+        options.ctx.agyTranscriptMode = classifyAgyTranscriptMode(options.ctx);
+    };
+
     const resetBootstrapAcceptance = () => {
         options.ctx.agyBootstrapAccepted = false;
         options.ctx.agyBootstrapAcceptanceMode = options.ctx.agyBootstrapSentinel
@@ -146,6 +151,8 @@ export function startAgyTranscriptWatcher(options: {
         conversationId = null;
         offset = 0;
         resetBootstrapAcceptance();
+        options.ctx.agyTranscriptMode = 'not-started';
+        options.ctx.agyTranscriptLastReason = 'transcript-selection-reset';
         options.ctx.agyFinalPlannerSeen = false;
         options.ctx.agyFinalPlannerText = undefined;
         options.ctx.agyLastTranscriptError = undefined;
@@ -164,6 +171,8 @@ export function startAgyTranscriptWatcher(options: {
         );
         if (!effectiveResolved.ok || !effectiveResolved.transcriptPath) {
             if (!transcriptPath && Date.now() - startedAt > WAIT_PATH_MS) {
+                options.ctx.agyTranscriptMode = 'fallback-missing';
+                options.ctx.agyTranscriptLastReason = effectiveResolved.reason ?? 'transcript-path-unavailable';
                 console.warn(`[jaw:agy:transcript] gave up waiting (${effectiveResolved.reason ?? 'unknown'})`);
             }
             return;
@@ -173,6 +182,8 @@ export function startAgyTranscriptWatcher(options: {
         conversationId = effectiveResolved.conversationId ?? currentSessionId ?? null;
         offset = 0;
         resetBootstrapAcceptance();
+        options.ctx.agyTranscriptMode = 'not-started';
+        options.ctx.agyTranscriptLastReason = 'transcript-selected';
         options.ctx.agyFinalPlannerSeen = false;
         options.ctx.agyFinalPlannerText = undefined;
         options.ctx.agyLastTranscriptError = undefined;
@@ -194,6 +205,7 @@ export function startAgyTranscriptWatcher(options: {
             for (const line of delta.lines) {
                 applyAgyBootstrapAcceptanceFromTranscriptLine(options.ctx, line, minCreatedAtMs);
                 updateFinalPlannerFlag(options.ctx, line, minCreatedAtMs);
+                updateTranscriptMode();
                 applyTranscriptTool(
                     options.ctx,
                     line,
@@ -210,6 +222,8 @@ export function startAgyTranscriptWatcher(options: {
                 // Transcript growth = AGY is still working, regardless of row type
                 // (planner/thinking rows are dropped by the tool parser but still count).
                 options.ctx.agyTranscriptActive = true;
+                options.ctx.agyLastActivitySource = 'transcript';
+                updateTranscriptMode();
                 options.onActivity?.();
             }
         } catch (e) {
@@ -242,6 +256,7 @@ export function startAgyTranscriptWatcher(options: {
                 for (const line of delta.lines) {
                     applyAgyBootstrapAcceptanceFromTranscriptLine(options.ctx, line, minCreatedAtMs);
                     updateFinalPlannerFlag(options.ctx, line, minCreatedAtMs);
+                    updateTranscriptMode();
                     applyTranscriptTool(
                         options.ctx,
                         line,
