@@ -12,10 +12,41 @@ let _tui: any = null;
 let _interactive: any = null;
 let _initialized = false;
 
+/**
+ * Raised when the pre-built jawcode TUI bundles are absent from this build —
+ * e.g. an npm release published without the generated `dist/src/lib/tui/*.mjs`
+ * artifacts (see scripts/atomic-build.sh, which only copies them when present).
+ * Callers can catch this and fall back to `--simple` line mode instead of
+ * crashing with a raw ERR_MODULE_NOT_FOUND stack trace.
+ */
+export class JawcodeBundleMissingError extends Error {
+    readonly code = 'JAWCODE_BUNDLE_MISSING';
+    constructor(cause?: unknown) {
+        super(
+            'jawcode TUI assets are missing from this build (dist/src/lib/tui/*.mjs were not bundled). '
+            + 'Reinstall a complete release, or run `jaw chat --simple` for line mode.',
+            cause === undefined ? undefined : { cause },
+        );
+        this.name = 'JawcodeBundleMissingError';
+    }
+}
+
+function isModuleNotFound(err: unknown): boolean {
+    return !!err && typeof err === 'object'
+        && (err as { code?: unknown }).code === 'ERR_MODULE_NOT_FOUND';
+}
+
 export async function initJawcodeTui(): Promise<void> {
     if (_initialized) return;
-    await import('../../lib/tui/bun-shim.mjs');
-    _tui = await import('../../lib/tui/jawcode-tui-bundle.mjs');
+    try {
+        await import('../../lib/tui/bun-shim.mjs');
+        _tui = await import('../../lib/tui/jawcode-tui-bundle.mjs');
+    } catch (err) {
+        // Distinguish a missing bundle (broken/partial package) from genuine
+        // runtime errors so the caller can degrade gracefully to line mode.
+        if (isModuleNotFound(err)) throw new JawcodeBundleMissingError(err);
+        throw err;
+    }
     try {
         _interactive = await import('../../lib/tui/jawcode-interactive-bundle.mjs');
         await _interactive.initTheme?.(false);

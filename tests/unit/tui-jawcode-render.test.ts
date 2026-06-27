@@ -15,8 +15,13 @@ try {
     await initJawcodeTui();
 } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+    const code = (err as { code?: unknown })?.code;
     if (msg.includes('pi_natives')) nativeSkip = 'pi_natives native addon not built for this platform';
-    else if (msg.includes('jawcode-tui-bundle.mjs')) nativeSkip = 'jawcode TUI bundle not built in this checkout';
+    // A bundle-less build raises JawcodeBundleMissingError (or, on older builds, a
+    // raw ERR_MODULE_NOT_FOUND for bun-shim.mjs / the bundle). Treat all as skips.
+    else if (code === 'JAWCODE_BUNDLE_MISSING'
+        || msg.includes('jawcode-tui-bundle.mjs')
+        || msg.includes('bun-shim.mjs')) nativeSkip = 'jawcode TUI bundle not built in this checkout';
     else throw err;
 }
 

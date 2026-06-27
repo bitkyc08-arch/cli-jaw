@@ -220,9 +220,20 @@ if (values.simple) {
 } else {
     if (!ctx.isRaw) await initHighlight();   // interactive rich TUI only; --simple & --raw untouched
     // Initialize jawcode TUI components (async, once)
-    const { initJawcodeTui } = await import('../../src/cli/tui/jawcode-render.js');
+    const { initJawcodeTui, JawcodeBundleMissingError } = await import('../../src/cli/tui/jawcode-render.js');
     const { renderWelcome } = await import('../../src/cli/tui/jawcode-bridge.js');
-    await initJawcodeTui();
+    try {
+        await initJawcodeTui();
+    } catch (err) {
+        // A release published without the generated jawcode bundles would otherwise
+        // crash here with a raw ERR_MODULE_NOT_FOUND. Degrade to line mode instead.
+        if (err instanceof JawcodeBundleMissingError) {
+            process.stderr.write(`  ${err.message}\n  Falling back to --simple mode.\n`);
+            await runSimpleMode(ctx);
+            process.exit(0);
+        }
+        throw err;
+    }
     const welcomeOpts = {
         version: APP_VERSION,
         engine: ctx.label,

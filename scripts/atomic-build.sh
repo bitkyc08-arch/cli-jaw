@@ -44,6 +44,17 @@ if [ -f src/lib/tui/jawcode-tui-bundle.mjs ]; then
     elif [ "$NATIVE_TAG" = "darwin-arm64" ]; then
         echo "[atomic-build] warning: $NATIVE_FILE not found; jawcode TUI bundle will use fallback/no-native path" >&2
     fi
+else
+    # No pre-built bundle: the rich `jaw chat` TUI cannot run from this build and
+    # will fall back to `--simple` line mode at runtime. Surface it loudly here so
+    # a release is never published with a broken `jaw chat` by accident.
+    echo "[atomic-build] warning: src/lib/tui/jawcode-tui-bundle.mjs not found —" >&2
+    echo "[atomic-build]   rich 'jaw chat' TUI will be unavailable in this build" >&2
+    echo "[atomic-build]   (runtime falls back to '--simple' line mode)." >&2
+    if [ "${JAW_REQUIRE_TUI_BUNDLE:-0}" = "1" ]; then
+        echo "[atomic-build] error: JAW_REQUIRE_TUI_BUNDLE=1 set — refusing to build without the TUI bundle." >&2
+        exit 1
+    fi
 fi
 
 # Atomic swap with rollback on failure
