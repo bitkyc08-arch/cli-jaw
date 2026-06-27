@@ -275,7 +275,7 @@ cli-jaw/
 │   │   ├── policy.ts         ← getVisibleCommands, getTelegramMenuCommands (39L)
 │   │   └── help-renderer.ts  ← renderHelp list/detail mode (44L)
 │   ├── goal/                 ← Goal autonomy 시스템 (5 files, 559L)
-│   │   ├── heartbeat.ts      ← buildGoalContinuation (autonomy override) + shouldHeartbeatContinueGoal + getGoalContinuationPrompt + goal pause audit enforcement + Phase60 evidence-gate --attest self-advance instructions (194L)
+│   │   ├── heartbeat.ts      ← buildGoalContinuation (autonomy override) + shouldHeartbeatContinueGoal + getGoalContinuationPrompt + goal pause audit enforcement + Phase60 evidence-gate --attest self-advance instructions (196L)
 │   │   ├── pause-gate.ts     ← active + agentPauseCount 기반 derived pauseGate 상태 helper (26L)
 │   │   ├── runtime.ts        ← WorkflowRuntimeSnapshot + buildRuntimeSnapshot (goal + PABCD + worker registry 통합 스냅샷) (55L)
 │   │   ├── store.ts          ← GoalState CRUD (getActiveGoal, setGoal, updateGoal, completeGoal, cancelGoal, pauseGoal, resumeGoal, clearGoal, resetGoalStore, goalHasCompletionEvidence, getGoalHistory) (222L)
