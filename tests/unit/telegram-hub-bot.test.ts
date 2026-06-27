@@ -3,7 +3,17 @@
 // normalization and the start guard (GPT Pro B1: enabled+token+chatId required).
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { threadKey, canStartHub, canMutateHubRoute, getHubBotStatus, tracePrefix } from '../../src/manager/telegram-hub/hub-bot.ts';
+import {
+    threadKey,
+    canStartHub,
+    canMutateHubRoute,
+    getHubBotStatus,
+    tracePrefix,
+    buildHubMemberSettingsPatch,
+    handleHubCommand,
+    sendToTopic,
+    __topicTypingTest,
+} from '../../src/manager/telegram-hub/hub-bot.ts';
 import type { TelegramHubConfig } from '../../src/manager/telegram-hub/types.ts';
 
 const cfg = (o: Partial<TelegramHubConfig>): TelegramHubConfig =>
@@ -43,4 +53,40 @@ test('canMutateHubRoute allows private chats and preserves group admin gating', 
     assert.equal(canMutateHubRoute('group', true), true);
     assert.equal(canMutateHubRoute('supergroup', false), false);
     assert.equal(canMutateHubRoute('supergroup', true), true);
+});
+
+test('buildHubMemberSettingsPatch disables target bot, preserves allowlist, and sets callback', () => {
+    const patch = buildHubMemberSettingsPatch('8231528245', {
+        telegram: { enabled: true, allowedChatIds: [111] },
+        telegramHub: { mode: 'standalone' },
+    }, 'http://127.0.0.1:24576');
+    assert.deepEqual(patch, {
+        telegram: { enabled: false, allowedChatIds: [111, 8231528245] },
+        telegramHub: { mode: 'hub-member', hubCallbackUrl: 'http://127.0.0.1:24576' },
+    });
+});
+
+test('handleHubCommand /setthread invokes target hub-member ensure hook', async () => {
+    const calls: Array<{ port: number; chatId: string }> = [];
+    const result = await handleHubCommand(
+        'setthread',
+        ['3458'],
+        '8231528245',
+        '10815',
+        async () => true,
+        async (port, chatId) => {
+            calls.push({ port, chatId });
+            return { ok: true };
+        },
+    );
+    assert.equal(result, '✅ 이 토픽 → 인스턴스 3458 연결됨.');
+    assert.deepEqual(calls, [{ port: 3458, chatId: '8231528245' }]);
+});
+
+test('sendToTopic clears topic typing state before outbound delivery', async () => {
+    __topicTypingTest.start('8231528245', '10815');
+    assert.equal(__topicTypingTest.count(), 1);
+    const result = await sendToTopic('8231528245', '10815', { type: 'text', text: 'done' });
+    assert.deepEqual(result, { ok: false, error: 'hub bot not running' });
+    assert.equal(__topicTypingTest.count(), 0);
 });

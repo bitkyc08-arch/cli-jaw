@@ -216,7 +216,15 @@ Inbound (hub-bot):
   1. chatId must equal config.chatId
   2. Hub slash commands → handleHubCommand (no @mention gate)
   3. route = resolveRoute(chatId, threadId) — none → "미연결" (no defaultPort auto-route)
-  4. POST http://127.0.0.1:{port}/api/message { prompt, target, model?, systemPrompt? }  // P4 overrides from ThreadRoute
+  4. route hit → hub keeps sendChatAction('typing') alive for that topic/thread
+  5. POST http://127.0.0.1:{port}/api/message { prompt, target, model?, systemPrompt? }  // P4 overrides from ThreadRoute
+
+Target response:
+  1. /api/message marks hub-forwarded turns with replyViaTarget=true
+  2. pipeline/queue carry target, requestId, replyViaTarget into orchestrate_done
+  3. target instance installTelegramTargetReplyForwarder() calls canonical sendChannelOutput({ channel:'telegram', target })
+  4. hub-member telegramSendHandler relays to hub callback /api/dashboard/telegram-hub/outbound
+  5. hub sendToTopic() stops typing and sends into the original topic/thread
 
 Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic (P4: rich-message scaffold when available)
 ```
@@ -233,7 +241,7 @@ Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTop
 | Command | Auth | Behavior |
 | --- | --- | --- |
 | `/setthread` | read | 현재 topic 바인딩 표시 |
-| `/setthread <port>` | private chat owner or group admin | `(chatId, threadId) → port` upsert; port ∈ 3457–3506 |
+| `/setthread <port>` | private chat owner or group admin | `(chatId, threadId) → port` upsert + target hub-member settings ensure; port ∈ 3457–3506 |
 | `/setthread off` | private chat owner or group admin | 현재 topic route 삭제 |
 | `/threads` | read | 현재 hub chat의 전체 route 목록 |
 | `/hubhelp` | read | command help |
@@ -244,7 +252,7 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 
 | Method | Path | Body | Response |
 | --- | --- | --- | --- |
-| `GET` | `/` | — | `{ ok, config }` — token redacted |
+| `GET` | `/` | — | `{ ok, config, runtime }` — token redacted; `runtime = getHubBotStatus()` |
 | `PUT` | `/` | `{ enabled?, token?, chatId?, defaultPort? }` | patches registry; restarts hub bot |
 | `POST` | `/routes` | `ThreadRoute` | upsert route |
 | `DELETE` | `/routes/:chatId/:threadId` | — | remove route |
@@ -262,14 +270,18 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 - Forum supergroup topic mode: set `chatId` to the supergroup id (usually `-100...`).
 - Hub-member instances with a non-empty `telegram.allowedChatIds` allowlist must include this same hub `chatId`, because hub forwarding enters the instance through `/api/message` with a Telegram target.
 
-### Instance hub-member settings (manual today)
+### Instance hub-member settings (auto-ensured by `/setthread`)
 
 ```jsonc
 {
-  "telegram": { "enabled": false },
+  "telegram": { "enabled": false, "allowedChatIds": ["<hub chat id>"] },
   "telegramHub": { "mode": "hub-member", "hubCallbackUrl": "http://127.0.0.1:24576" }
 }
 ```
+
+- `telegram.enabled=false` prevents duplicate long-polling with the dashboard hub bot token.
+- `telegram.allowedChatIds` must include the bound hub chat id so explicit Telegram target validation passes.
+- `telegramHub.hubCallbackUrl` is loopback-only validated; the default manager port is `24576`.
 
 ---
 

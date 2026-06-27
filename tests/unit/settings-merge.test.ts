@@ -66,3 +66,9 @@ test('SM-007: jawCeo deep merge preserves saved voice settings siblings', () => 
     assert.equal(next.jawCeo.openaiApiKey, 'sk-new');
     assert.equal(next.jawCeo.other, 'keep');
 });
+
+test('SM-008: telegramHub deep merge preserves callback siblings', () => {
+    const current = { telegramHub: { mode: 'hub-member', hubCallbackUrl: 'http://127.0.0.1:24576' } };
+    const next = mergeSettingsPatch(current, { telegramHub: { mode: 'standalone' } });
+    assert.deepEqual(next.telegramHub, { mode: 'standalone', hubCallbackUrl: 'http://127.0.0.1:24576' });
+});

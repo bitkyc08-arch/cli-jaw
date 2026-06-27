@@ -25,24 +25,42 @@ test('TQ-002: busy path forwards target+chatId+requestId into enqueueMessage', (
     const busyEnd = gatewaySrc.indexOf('// ── idle');
     const busyBlock = gatewaySrc.slice(busyStart, busyEnd);
     assert.ok(
-        busyBlock.includes('enqueueMessage(trimmed, meta.origin, { target: meta.target, chatId: meta.chatId, requestId, scope })'),
-        'busy path should enqueue with target+chatId+requestId+scope metadata',
+        busyBlock.includes('target: meta.target')
+            && busyBlock.includes('chatId: meta.chatId')
+            && busyBlock.includes('requestId')
+            && busyBlock.includes('scope')
+            && busyBlock.includes('replyViaTarget: meta.replyViaTarget'),
+        'busy path should enqueue with target+chatId+requestId+scope+replyViaTarget metadata',
     );
 });
 
 test('TQ-003: orchestrate paths forward target+chatId+requestId for continue/reset/normal', () => {
     assert.ok(
-        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true })'),
-        'continue path should pass target+chatId+requestId + _skipInsert',
+        gatewaySrc.includes('orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true })'),
+        'continue path should pass target+chatId+requestId+replyViaTarget + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true })'),
-        'reset path should pass target+chatId+requestId + _skipInsert',
+        gatewaySrc.includes('orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true })'),
+        'reset path should pass target+chatId+requestId+replyViaTarget + _skipInsert',
     );
     assert.ok(
-        gatewaySrc.includes('orchestrate(trimmed, { origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true })'),
-        'normal path should pass target+chatId+requestId + _skipInsert',
+        gatewaySrc.includes('replyViaTarget: meta.replyViaTarget'),
+        'normal path should pass replyViaTarget + _skipInsert',
     );
+});
+
+test('TQ-003b: hub-forwarded /api/message marks replies for explicit target delivery', () => {
+    const commandSrc = readSource(join(__dirname, '../../src/routes/command.ts'), 'utf8');
+    const messageStart = commandSrc.indexOf("app.post('/api/message'");
+    const messageBlock = commandSrc.slice(messageStart, messageStart + 3500);
+    assert.ok(messageBlock.includes('replyViaTarget: Boolean(target)'), 'hub-forwarded requests should set replyViaTarget');
+    assert.ok(messageBlock.includes('chatId: target?.targetId'), 'hub-forwarded requests should carry chatId for scope/dedup');
+});
+
+test('TQ-003c: telegram target reply bridge sends orchestrate_done back through sendChannelOutput', () => {
+    assert.ok(botSrc.includes('installTelegramTargetReplyForwarder()'), 'telegram target reply bridge must be installed');
+    assert.ok(botSrc.includes('replyViaTarget') && botSrc.includes('orchestrate_done'), 'bridge must only handle hub-forwarded target replies');
+    assert.ok(botSrc.includes('sendChannelOutput({'), 'bridge must use canonical channel sender');
 });
 
 test('TQ-004: processQueue isolates queue by groupQueueKey', () => {

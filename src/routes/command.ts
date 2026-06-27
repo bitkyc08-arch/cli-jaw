@@ -112,7 +112,13 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         const target = (rawTarget ?? undefined) as RemoteTarget | undefined;
         // P4: per-topic overrides are only honored when the hub forwards a telegram target.
         const overrides = target ? sanitizeOverrides(req.body?.overrides) : undefined;
-        const submitMeta = stripUndefined({ origin: target ? 'telegram' as const : 'web' as const, target, overrides });
+        const submitMeta = stripUndefined({
+            origin: target ? 'telegram' as const : 'web' as const,
+            target,
+            chatId: target?.targetId,
+            overrides,
+            replyViaTarget: Boolean(target),
+        });
 
         // Slash command pre-processing: Telegram/Discord already do this,
         // but /api/message callers (REST, goal-continuation) bypass /api/command.

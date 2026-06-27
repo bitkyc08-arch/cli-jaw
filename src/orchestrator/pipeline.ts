@@ -228,6 +228,7 @@ export async function orchestrate(
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
+    const replyViaTarget = meta["replyViaTarget"] === true;
     const userText = String(prompt || '').trim();
 
     // --- drain pending worker results before normal processing ---
@@ -269,6 +270,7 @@ export async function orchestrate(
             chatId,
             target,
             requestId,
+            replyViaTarget,
         });
         return;
     }
@@ -576,6 +578,7 @@ export async function orchestrate(
         chatId,
         target,
         requestId,
+        replyViaTarget,
     });
 }
 
@@ -588,6 +591,7 @@ export async function orchestrateContinue(
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
+    const replyViaTarget = meta["replyViaTarget"] === true;
     const scope = 'default';
     const state = getState(scope);
 
@@ -606,6 +610,7 @@ export async function orchestrateContinue(
         chatId,
         target,
         requestId,
+        replyViaTarget,
     });
 }
 
@@ -618,6 +623,7 @@ export async function orchestrateReset(
     const chatId = meta["chatId"];
     const target = meta["target"];
     const requestId = meta["requestId"];
+    const replyViaTarget = meta["replyViaTarget"] === true;
     // --- cancel PABCD workers only — preserve main agent + message queue ---
     for (const w of getActiveWorkers()) {
         killAgentById(w.agentId);
@@ -642,6 +648,7 @@ export async function orchestrateReset(
             chatId,
             target,
             requestId,
+            replyViaTarget,
         });
         return;
     }
@@ -653,5 +660,6 @@ export async function orchestrateReset(
         chatId,
         target,
         requestId,
+        replyViaTarget,
     });
 }

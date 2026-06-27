@@ -24,7 +24,7 @@ import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { handleVoice } from './voice.js';
 import { registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
-import { registerSendTransport } from '../messaging/send.js';
+import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
@@ -56,6 +56,7 @@ let tgInitLock = false;
 let tg409RetryCount = 0;
 const TG_MAX_RETRIES = 3;
 let botUsername: string | null = null;
+let targetReplyForwarderInstalled = false;
 const telegramForwarderLifecycle = createForwarderLifecycle({
     addListener: addBroadcastListener,
     removeListener: removeBroadcastListener,
@@ -101,6 +102,27 @@ function detachTelegramForwarder() {
 
 function attachTelegramForwarder(bot: Bot) {
     telegramForwarderLifecycle.attach({ bot });
+}
+
+function installTelegramTargetReplyForwarder(): void {
+    if (targetReplyForwarderInstalled) return;
+    targetReplyForwarderInstalled = true;
+    addBroadcastListener((type, data) => {
+        if (type !== 'orchestrate_done' || data["origin"] !== 'telegram' || data["replyViaTarget"] !== true) return;
+        if (!data["text"]) return;
+        const target = data["target"] as RemoteTarget | undefined;
+        if (!target || target.channel !== 'telegram') return;
+        void sendChannelOutput({
+            channel: 'telegram',
+            type: 'text',
+            text: String(data["text"]),
+            target,
+        }).then((result) => {
+            if (!result.ok) console.error('[tg:target-reply]', result.error || 'send failed');
+        }).catch((err: unknown) => {
+            console.error('[tg:target-reply]', (err as Error).message);
+        });
+    });
 }
 
 // ─── Transport Contract Exports ─────────────────────
@@ -244,6 +266,7 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
 // Register transport at module load time
 registerTransport('telegram', { init: initTelegram, shutdown: shutdownTelegram });
 registerSendTransport('telegram', telegramSendHandler);
+installTelegramTargetReplyForwarder();
 
 function toTelegramCommandDescription(desc: string) {
     const text = String(desc || '').trim();

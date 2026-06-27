@@ -8,7 +8,7 @@
 import { Bot } from 'grammy';
 import { getHubConfig, resolveRoute, upsertRoute, removeRoute } from './routing-store.js';
 import type { TelegramHubConfig } from './types.js';
-import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
+import { DASHBOARD_DEFAULT_PORT, MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 
 let hubBot: Bot | null = null;
@@ -34,6 +34,17 @@ const MAX_RETRIES = 5;
 const FORWARD_TIMEOUT_MS = 15_000;
 const HUB_COMMANDS = new Set(['setthread', 'threads', 'hubhelp']); // P3 fills the handler bodies
 const TRACE_TEXT_LIMIT = 80;
+const TOPIC_TYPING_REFRESH_MS = 4_000;
+const TOPIC_TYPING_TIMEOUT_MS = 5 * 60_000;
+
+type TopicTypingTimer = {
+    interval: ReturnType<typeof setInterval>;
+    timeout: ReturnType<typeof setTimeout>;
+};
+type EnsureHubMemberResult = { ok: true } | { ok: false; error: string };
+type EnsureHubMemberFn = (port: number, chatId: string) => Promise<EnsureHubMemberResult>;
+
+const topicTypingTimers = new Map<string, TopicTypingTimer>();
 
 /** Map a raw message_thread_id to a route key. General topic (id<=1) → '1'. Exported for tests. */
 export function threadKey(thread?: number): string {
@@ -51,6 +62,102 @@ export function canMutateHubRoute(chatType: string | undefined, isGroupAdmin: bo
 
 export function tracePrefix(text: string): string {
     return text.replace(/\s+/g, ' ').trim().slice(0, TRACE_TEXT_LIMIT);
+}
+
+function topicTypingKey(chatId: string, threadId: string): string {
+    return `${chatId}:${threadId}`;
+}
+
+function threadOptions(threadId: string): { message_thread_id?: number } {
+    const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
+    return stripUndefined({ message_thread_id });
+}
+
+function stopTopicTyping(chatId: string, threadId: string): void {
+    const key = topicTypingKey(chatId, threadId);
+    const timers = topicTypingTimers.get(key);
+    if (!timers) return;
+    clearInterval(timers.interval);
+    clearTimeout(timers.timeout);
+    topicTypingTimers.delete(key);
+}
+
+function startTopicTyping(chatId: string, threadId: string): void {
+    stopTopicTyping(chatId, threadId);
+    const sendTyping = () => {
+        hubBot?.api.sendChatAction(chatId, 'typing', threadOptions(threadId)).catch(() => {});
+    };
+    sendTyping();
+    const key = topicTypingKey(chatId, threadId);
+    const interval = setInterval(sendTyping, TOPIC_TYPING_REFRESH_MS);
+    const timeout = setTimeout(() => stopTopicTyping(chatId, threadId), TOPIC_TYPING_TIMEOUT_MS);
+    topicTypingTimers.set(key, { interval, timeout });
+}
+
+export const __topicTypingTest = {
+    start: startTopicTyping,
+    stop: stopTopicTyping,
+    count: () => topicTypingTimers.size,
+};
+
+function chatIdSettingValue(chatId: string): string | number {
+    const numeric = Number(chatId);
+    return Number.isSafeInteger(numeric) ? numeric : chatId;
+}
+
+function readAllowedChatIds(settingsValue: unknown): Array<string | number> {
+    const telegram = settingsValue && typeof settingsValue === 'object'
+        ? (settingsValue as Record<string, unknown>)['telegram']
+        : undefined;
+    const allowed = telegram && typeof telegram === 'object'
+        ? (telegram as Record<string, unknown>)['allowedChatIds']
+        : undefined;
+    return Array.isArray(allowed) ? allowed.filter(v => typeof v === 'string' || typeof v === 'number') : [];
+}
+
+function currentHubCallbackUrl(): string {
+    const port = process.env["DASHBOARD_PORT"] || DASHBOARD_DEFAULT_PORT;
+    return `http://127.0.0.1:${port}`;
+}
+
+export function buildHubMemberSettingsPatch(chatId: string, currentSettings: unknown = {}, hubCallbackUrl = currentHubCallbackUrl()): Record<string, unknown> {
+    const allowed = readAllowedChatIds(currentSettings);
+    const chatValue = chatIdSettingValue(chatId);
+    const hasChat = allowed.some(v => String(v) === String(chatValue));
+    return {
+        telegram: {
+            enabled: false,
+            allowedChatIds: hasChat ? allowed : [...allowed, chatValue],
+        },
+        telegramHub: {
+            mode: 'hub-member',
+            hubCallbackUrl,
+        },
+    };
+}
+
+export async function ensureTargetHubMember(port: number, chatId: string, fetchImpl: typeof fetch = fetch): Promise<EnsureHubMemberResult> {
+    const base = `http://127.0.0.1:${port}`;
+    let currentSettings: unknown = {};
+    try {
+        const getRes = await fetchImpl(`${base}/api/settings`, { signal: AbortSignal.timeout(2_000) });
+        currentSettings = await getRes.json().catch(() => ({}));
+    } catch {
+        currentSettings = {};
+    }
+
+    try {
+        const putRes = await fetchImpl(`${base}/api/settings`, {
+            method: 'PUT',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(buildHubMemberSettingsPatch(chatId, currentSettings)),
+            signal: AbortSignal.timeout(3_000),
+        });
+        if (!putRes.ok) return { ok: false, error: `settings PUT ${putRes.status}` };
+        return { ok: true };
+    } catch (e) {
+        return { ok: false, error: (e as Error).message };
+    }
 }
 
 export function getHubBotStatus(): {
@@ -110,6 +217,7 @@ export async function handleHubCommand(
     chatId: string,
     threadId: string,
     isAdmin: () => Promise<boolean>,
+    ensureHubMember: EnsureHubMemberFn = async () => ({ ok: true }),
 ): Promise<string> {
     if (name === 'setthread') {
         const arg = (args[0] || '').toLowerCase();
@@ -124,7 +232,10 @@ export async function handleHubCommand(
         if (!Number.isInteger(port) || port < MANAGED_INSTANCE_PORT_FROM || port > MANAGED_INSTANCE_PORT_TO)
             return `포트는 ${MANAGED_INSTANCE_PORT_FROM}–${MANAGED_INSTANCE_PORT_TO} 범위여야 합니다.`;
         upsertRoute({ chatId, threadId, port, enabled: true });
-        return `✅ 이 토픽 → 인스턴스 ${port} 연결됨.`;
+        const ensured = await ensureHubMember(port, chatId);
+        return ensured.ok
+            ? `✅ 이 토픽 → 인스턴스 ${port} 연결됨.`
+            : `✅ 이 토픽 → 인스턴스 ${port} 연결됨.\n⚠️ 인스턴스 ${port} hub-member 자동 설정 실패: ${ensured.error}`;
     }
     if (name === 'threads') {
         const mine = getHubConfig().routes.filter(r => r.chatId === chatId);
@@ -175,7 +286,7 @@ export function createHubBot(token: string): Bot {
                         return canMutateHubRoute(ctx.chat.type, m.status === 'creator' || m.status === 'administrator');
                     } catch { return canMutateHubRoute(ctx.chat.type, false); }
                 };
-                const result = await handleHubCommand(name, args, chatId, threadId, isAdmin);
+                const result = await handleHubCommand(name, args, chatId, threadId, isAdmin, ensureTargetHubMember);
                 hubLastCommand = stripUndefined({
                     at: new Date().toISOString(),
                     name,
@@ -203,12 +314,15 @@ export function createHubBot(token: string): Bot {
             await ctx.reply('이 토픽은 인스턴스에 연결되지 않았습니다. /setthread <port> 로 연결하세요.');
             return;
         }
-        await ctx.replyWithChatAction('typing').catch(() => {});
+        startTopicTyping(chatId, threadId);
         const overrides = (route.model || route.systemPrompt)
             ? stripUndefined({ model: route.model, systemPrompt: route.systemPrompt })
             : undefined;
         const { syncText } = await forwardToInstance(route.port, text, chatId, threadId, overrides);
-        if (syncText) await ctx.reply(syncText); // slash sync result; prompt result arrives via /outbound
+        if (syncText) {
+            stopTopicTyping(chatId, threadId);
+            await ctx.reply(syncText);
+        } // slash sync result; prompt result arrives via /outbound
     });
 
     return bot;
@@ -220,6 +334,7 @@ export async function sendToTopic(
     threadId: string,
     payload: { type: string; text?: string; filePath?: string; caption?: string },
 ): Promise<{ ok: boolean; error?: string }> {
+    stopTopicTyping(chatId, threadId);
     if (!hubBot) return { ok: false, error: 'hub bot not running' };
     const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
     if (payload.type === 'text') {
