@@ -218,6 +218,8 @@ Inbound (hub-bot):
   3. route = resolveRoute(chatId, threadId) — none → "미연결" (no defaultPort auto-route)
   4. route hit → hub keeps sendChatAction('typing') alive for that topic/thread
   5. POST http://127.0.0.1:{port}/api/message { prompt, target, model?, systemPrompt? }  // P4 overrides from ThreadRoute
+     - private bot-topic chats use `target.peerKind='direct'`
+     - group/forum topics use `target.peerKind='group'`
 
 Target response:
   1. /api/message marks hub-forwarded turns with replyViaTarget=true
@@ -256,7 +258,7 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 | `PUT` | `/` | `{ enabled?, token?, chatId?, defaultPort? }` | patches registry; restarts hub bot |
 | `POST` | `/routes` | `ThreadRoute` | upsert route |
 | `DELETE` | `/routes/:chatId/:threadId` | — | remove route |
-| `POST` | `/outbound` | `{ chatId, threadId, type, text?, filePath?, caption? }` | instance → hub → topic relay |
+| `POST` | `/outbound` | `{ chatId, threadId, type, text?, filePath?, caption? }` | instance → hub → topic relay; requires bound hub chat and enabled `(chatId, threadId)` route |
 
 ### Dashboard settings UI (`TelegramHub.tsx`)
 

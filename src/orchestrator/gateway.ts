@@ -63,7 +63,7 @@ export function __resetSubmitDedupForTest(): void {
 function runDetached(
     task: Promise<unknown>,
     label: string,
-    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string },
+    meta: { origin: RuntimeOrigin; target?: RemoteTarget; chatId?: string | number; requestId?: string; replyViaTarget?: boolean },
 ) {
     task.catch((err: unknown) => {
         const msg = (err as Error)?.message || String(err);
@@ -74,6 +74,7 @@ function runDetached(
             target: meta.target,
             chatId: meta.chatId,
             requestId: meta.requestId,
+            replyViaTarget: meta.replyViaTarget,
             error: true,
         });
     });

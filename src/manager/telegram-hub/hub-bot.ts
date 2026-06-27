@@ -82,6 +82,14 @@ function stopTopicTyping(chatId: string, threadId: string): void {
     topicTypingTimers.delete(key);
 }
 
+function stopAllTopicTyping(): void {
+    for (const timers of topicTypingTimers.values()) {
+        clearInterval(timers.interval);
+        clearTimeout(timers.timeout);
+    }
+    topicTypingTimers.clear();
+}
+
 function startTopicTyping(chatId: string, threadId: string): void {
     stopTopicTyping(chatId, threadId);
     const sendTyping = () => {
@@ -97,6 +105,7 @@ function startTopicTyping(chatId: string, threadId: string): void {
 export const __topicTypingTest = {
     start: startTopicTyping,
     stop: stopTopicTyping,
+    clearAll: stopAllTopicTyping,
     count: () => topicTypingTimers.size,
 };
 
@@ -187,8 +196,8 @@ export async function reconcileHubBotWithConfig(): Promise<void> {
     if (!hubBot || hubToken !== cfg.token || hubChatId !== cfg.chatId) await startHubBot();
 }
 
-async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
-    const target = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: chatId, threadId };
+async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, peerKind: 'group' | 'direct', overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
+    const target = { channel: 'telegram', targetKind: 'channel', peerKind, targetId: chatId, threadId };
     try {
         const res = await fetch(`http://127.0.0.1:${port}/api/message`, {
             method: 'POST',
@@ -197,6 +206,10 @@ async function forwardToInstance(port: number, prompt: string, chatId: string, t
             signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
         });
         const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+        if (!res.ok || j['ok'] === false) {
+            const reason = String(j['error'] || j['reason'] || `HTTP ${res.status}`);
+            return { syncText: `⚠️ 인스턴스 ${port} 요청 실패: ${reason}` };
+        }
         // Slash commands return text synchronously; prompts reply later via /outbound.
         if (j['command'] && typeof j['text'] === 'string' && (j['text'] as string).trim()) {
             return { syncText: j['text'] as string };
@@ -231,11 +244,10 @@ export async function handleHubCommand(
         const port = Number(arg);
         if (!Number.isInteger(port) || port < MANAGED_INSTANCE_PORT_FROM || port > MANAGED_INSTANCE_PORT_TO)
             return `포트는 ${MANAGED_INSTANCE_PORT_FROM}–${MANAGED_INSTANCE_PORT_TO} 범위여야 합니다.`;
-        upsertRoute({ chatId, threadId, port, enabled: true });
         const ensured = await ensureHubMember(port, chatId);
-        return ensured.ok
-            ? `✅ 이 토픽 → 인스턴스 ${port} 연결됨.`
-            : `✅ 이 토픽 → 인스턴스 ${port} 연결됨.\n⚠️ 인스턴스 ${port} hub-member 자동 설정 실패: ${ensured.error}`;
+        if (!ensured.ok) return `⚠️ 인스턴스 ${port} hub-member 자동 설정 실패: ${ensured.error}\n라우팅은 활성화하지 않았습니다.`;
+        upsertRoute({ chatId, threadId, port, enabled: true });
+        return `✅ 이 토픽 → 인스턴스 ${port} 연결됨.`;
     }
     if (name === 'threads') {
         const mine = getHubConfig().routes.filter(r => r.chatId === chatId);
@@ -318,7 +330,8 @@ export function createHubBot(token: string): Bot {
         const overrides = (route.model || route.systemPrompt)
             ? stripUndefined({ model: route.model, systemPrompt: route.systemPrompt })
             : undefined;
-        const { syncText } = await forwardToInstance(route.port, text, chatId, threadId, overrides);
+        const peerKind = ctx.chat.type === 'private' ? 'direct' : 'group';
+        const { syncText } = await forwardToInstance(route.port, text, chatId, threadId, peerKind, overrides);
         if (syncText) {
             stopTopicTyping(chatId, threadId);
             await ctx.reply(syncText);
@@ -410,6 +423,7 @@ export async function startHubBot(): Promise<void> {
 }
 
 export async function stopHubBot(): Promise<void> {
+    stopAllTopicTyping();
     if (hubBot) {
         const b = hubBot;
         hubBot = null;

@@ -5,6 +5,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { normalizeTelegramHub } from '../../src/manager/registry.ts';
+import { readFileSync } from 'node:fs';
+
+const hubRoutesSrc = readFileSync(new URL('../../src/manager/routes/telegram-hub.ts', import.meta.url), 'utf8');
 
 test('normalizeTelegramHub(undefined) → safe defaults (migration safety)', () => {
     assert.deepEqual(normalizeTelegramHub(undefined), {
@@ -49,4 +52,13 @@ test('normalizeTelegramHub clamps invalid defaultPort to range start', () => {
 test('route enabled:false is preserved (so resolveRoute can skip it)', () => {
     const c = normalizeTelegramHub({ routes: [{ chatId: '-100', threadId: '5', port: 3458, enabled: false }] });
     assert.equal(c.routes[0]?.enabled, false);
+});
+
+test('hub outbound route requires an enabled configured thread route', () => {
+    const outboundStart = hubRoutesSrc.indexOf("router.post('/outbound'");
+    assert.ok(outboundStart >= 0, 'outbound route should exist');
+    const outboundBlock = hubRoutesSrc.slice(outboundStart, outboundStart + 2500);
+    assert.ok(hubRoutesSrc.includes('resolveRoute'), 'hub route module should import resolveRoute');
+    assert.ok(outboundBlock.includes('resolveRoute(chatId, threadId)'), 'outbound should check enabled route');
+    assert.ok(outboundBlock.includes("sendErr(res, 403, 'thread is not an enabled hub route')"), 'missing route should be rejected');
 });

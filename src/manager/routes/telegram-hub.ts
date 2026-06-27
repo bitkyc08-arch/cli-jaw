@@ -2,7 +2,7 @@
 // Dashboard binds 127.0.0.1 → loopback-only by default. Token is never returned
 // in plaintext (redact()); blank token on PUT keeps the stored token.
 import { Router, type Request, type Response, type NextFunction } from 'express';
-import { getHubConfig, setHubConfig, upsertRoute, removeRoute } from '../telegram-hub/routing-store.js';
+import { getHubConfig, setHubConfig, upsertRoute, removeRoute, resolveRoute } from '../telegram-hub/routing-store.js';
 import type { TelegramHubConfig, ThreadRoute } from '../telegram-hub/types.js';
 import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
 import { startHubBot, sendToTopic, getHubBotStatus, reconcileHubBotWithConfig } from '../telegram-hub/hub-bot.js';
@@ -92,6 +92,7 @@ export function createDashboardTelegramHubRouter(): Router {
         // Defense-in-depth: outbound may only target the bound hub chat (mirror of the
         // inbound bind-check), so a local process cannot relay to other chats the bot is in.
         if (chatId !== getHubConfig().chatId) return sendErr(res, 403, 'chatId is not the bound hub chat');
+        if (!resolveRoute(chatId, threadId)) return sendErr(res, 403, 'thread is not an enabled hub route');
         const type = String(b.type || 'text');
         if (!OUTBOUND_TYPES.has(type)) return sendErr(res, 400, 'invalid type');
         let filePath: string | undefined;

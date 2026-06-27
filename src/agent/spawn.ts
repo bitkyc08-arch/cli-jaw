@@ -109,9 +109,10 @@ function registerActiveProcess(agentLabel: string, child: ChildProcess): void {
 // replayed to the correct scope instead of defaulting to 'system'.
 export interface MainSessionMeta {
     origin: string;
-    target?: string;
+    target?: any;
     chatId?: string | number;
     requestId?: string;
+    replyViaTarget?: boolean;
     scopeId?: string;
     cli?: string;
     model?: string;
@@ -693,8 +694,9 @@ interface SpawnOpts {
     agentId?: string;
     sysPrompt?: string;
     origin?: string;
-    target?: string;
+    target?: any;
     requestId?: string;
+    replyViaTarget?: boolean;
     employeeSessionId?: string;
     employeeOutputLen?: number;
     chatId?: string | number;
@@ -784,6 +786,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             target: opts.target,
             chatId: opts.chatId,
             requestId: opts.requestId,
+            replyViaTarget: opts.replyViaTarget,
             scopeId: liveScope,
         }));
     }
@@ -896,6 +899,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             target: opts.target,
             chatId: opts.chatId,
             requestId: opts.requestId,
+            replyViaTarget: opts.replyViaTarget,
             scopeId: liveScope,
             cli,
             model: runtimeModel,

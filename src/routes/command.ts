@@ -16,13 +16,14 @@ import type { RemoteTarget } from '../messaging/types.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
- * Must be a telegram group channel with a string targetId and (optional) string threadId.
+ * Must be a telegram channel target with a string targetId and (optional) string threadId.
  * Combined with validateTarget (allowlist) + requireAuth (loopback) before trusting it.
  */
 export function isValidHubTarget(val: unknown): val is RemoteTarget {
     if (!val || typeof val !== 'object') return false;
     const o = val as Record<string, unknown>;
-    if (o['channel'] !== 'telegram' || o['targetKind'] !== 'channel' || o['peerKind'] !== 'group') return false;
+    if (o['channel'] !== 'telegram' || o['targetKind'] !== 'channel') return false;
+    if (o['peerKind'] !== 'group' && o['peerKind'] !== 'direct') return false;
     if (typeof o['targetId'] !== 'string' || !o['targetId']) return false;
     if (o['threadId'] != null && typeof o['threadId'] !== 'string') return false;
     return true;
@@ -129,7 +130,14 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                     const locale = resolveRequestLocale(req);
                     const cmdResult = await executeCommand(parsed, makeWebCommandCtx(req, locale));
                     if (cmdResult?.steerPrompt) {
-                        submitMessage(cmdResult.steerPrompt, submitMeta);
+                        const submit = submitMessage(cmdResult.steerPrompt, submitMeta);
+                        if (submit.action === 'rejected') {
+                            const status = (submit.reason === 'busy' || submit.reason === 'duplicate') ? 409 : 400;
+                            res.status(status).json({ ok: false, command: true, error: submit.reason, ...submit });
+                            return;
+                        }
+                        res.json({ ok: true, command: true, ...cmdResult, submit });
+                        return;
                     }
                     res.json({ ok: true, command: true, ...cmdResult });
                     return;

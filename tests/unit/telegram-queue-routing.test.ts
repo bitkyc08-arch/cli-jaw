@@ -63,6 +63,24 @@ test('TQ-003c: telegram target reply bridge sends orchestrate_done back through 
     assert.ok(botSrc.includes('sendChannelOutput({'), 'bridge must use canonical channel sender');
 });
 
+test('TQ-003d: gateway detached error broadcasts preserve replyViaTarget', () => {
+    const runStart = gatewaySrc.indexOf('function runDetached(');
+    const runEnd = gatewaySrc.indexOf('export function submitMessage', runStart);
+    assert.ok(runStart >= 0 && runEnd > runStart, 'runDetached block should be bounded');
+    const block = gatewaySrc.slice(runStart, runEnd);
+    assert.ok(block.includes('replyViaTarget?: boolean'), 'runDetached metadata should include replyViaTarget');
+    assert.ok(block.includes('replyViaTarget: meta.replyViaTarget'), 'error broadcast should preserve replyViaTarget');
+});
+
+test('TQ-003e: hub target validation allows private direct topic targets', () => {
+    const commandSrc = readSource(join(__dirname, '../../src/routes/command.ts'), 'utf8');
+    const fnStart = commandSrc.indexOf('export function isValidHubTarget');
+    const fnEnd = commandSrc.indexOf('/** P4:', fnStart);
+    assert.ok(fnStart >= 0 && fnEnd > fnStart, 'isValidHubTarget block should be bounded');
+    const block = commandSrc.slice(fnStart, fnEnd);
+    assert.ok(block.includes("o.peerKind !== 'group' && o.peerKind !== 'direct'"), 'direct peerKind should be accepted');
+});
+
 test('TQ-004: processQueue isolates queue by groupQueueKey', () => {
     const queueStart = queueSrc.indexOf('async function processQueue()');
     const queueBlock = queueSrc.slice(queueStart, queueStart + 3000);

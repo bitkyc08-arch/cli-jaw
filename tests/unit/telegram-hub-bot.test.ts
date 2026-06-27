@@ -85,6 +85,27 @@ test('handleHubCommand /setthread invokes target hub-member ensure hook', async 
     assert.deepEqual(calls, [{ port: 3458, chatId: '8231528245' }]);
 });
 
+test('handleHubCommand /setthread does not enable route when hub-member ensure fails', async () => {
+    const result = await handleHubCommand(
+        'setthread',
+        ['3458'],
+        '8231528245',
+        '10815',
+        async () => true,
+        async () => ({ ok: false, error: 'settings PUT 503' }),
+    );
+    assert.equal(result, '⚠️ 인스턴스 3458 hub-member 자동 설정 실패: settings PUT 503\n라우팅은 활성화하지 않았습니다.');
+});
+
+test('forwardToInstance surfaces target non-ok responses as sync topic errors', () => {
+    const start = hubBotSrc.indexOf('async function forwardToInstance(');
+    const end = hubBotSrc.indexOf('// P3: real hub-command handlers', start);
+    assert.ok(start >= 0 && end > start, 'forwardToInstance block must exist');
+    const block = hubBotSrc.slice(start, end);
+    assert.match(block, /!res\.ok\s*\|\|\s*j\['ok'\]\s*===\s*false/);
+    assert.match(block, /인스턴스 \$\{port\} 요청 실패/);
+});
+
 test('sendToTopic stops topic typing before outbound delivery', () => {
     const sendStart = hubBotSrc.indexOf('export async function sendToTopic(');
     const sendEnd = hubBotSrc.indexOf('/**\n * Start', sendStart);
@@ -104,5 +125,13 @@ test('sendToTopic clears topic typing state before outbound delivery', async () 
     assert.equal(__topicTypingTest.count(), 1);
     const result = await sendToTopic('8231528245', '10815', { type: 'text', text: 'done' });
     assert.deepEqual(result, { ok: false, error: 'hub bot not running' });
+    assert.equal(__topicTypingTest.count(), 0);
+});
+
+test('stopHubBot clears all topic typing timers', async () => {
+    __topicTypingTest.start('8231528245', '10815');
+    __topicTypingTest.start('8231528245', '10816');
+    assert.equal(__topicTypingTest.count(), 2);
+    __topicTypingTest.clearAll();
     assert.equal(__topicTypingTest.count(), 0);
 });

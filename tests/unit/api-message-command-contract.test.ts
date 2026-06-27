@@ -25,3 +25,14 @@ test('/api/message slash command errors fail closed instead of falling through t
     assert.match(catchBlock, /res\.status\(500\)\.json\(\{ ok: false, command: true, error \}\);/);
     assert.match(catchBlock, /return;/);
 });
+
+test('/api/message slash steerPrompt rejects visibly when submitMessage rejects', () => {
+    const block = routeBlock("app.post('/api/message'");
+    const steerStart = block.indexOf('if (cmdResult?.steerPrompt)');
+    const normalStart = block.indexOf('const result = submitMessage(trimmed');
+    assert.ok(steerStart >= 0 && normalStart > steerStart, 'steerPrompt branch should precede normal submit');
+    const steerBlock = block.slice(steerStart, normalStart);
+    assert.match(steerBlock, /const submit = submitMessage\(cmdResult\.steerPrompt, submitMeta\);/);
+    assert.match(steerBlock, /submit\.action === 'rejected'/);
+    assert.match(steerBlock, /res\.status\(status\)\.json\(\{ ok: false, command: true, error: submit\.reason, \.\.\.submit \}\);/);
+});

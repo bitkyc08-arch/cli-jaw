@@ -205,6 +205,7 @@ export async function drainPendingReplays(fallbackMeta: Record<string, any> = {}
             ...(slotMeta.target ? { target: slotMeta.target } : {}),
             ...(slotMeta.chatId != null ? { chatId: slotMeta.chatId } : {}),
             ...(slotMeta.requestId ? { requestId: slotMeta.requestId } : {}),
+            ...(slotMeta.replyViaTarget === true || fallbackMeta["replyViaTarget"] === true ? { replyViaTarget: true } : {}),
         };
         try {
             const replayText = buildWorkerReplayNotice(pr);
@@ -406,6 +407,10 @@ export async function orchestrate(
     const overrides = meta["overrides"] as { model?: string; systemPrompt?: string } | undefined;
     const { promise } = runSpawnAgent(prompt, {
         origin,
+        target,
+        chatId,
+        requestId,
+        replyViaTarget,
         _skipInsert: !!meta["_skipInsert"],
         _heartbeatAnchorId: meta["_heartbeatAnchorId"],
         ...(overrides?.model ? { model: overrides.model } : {}),
