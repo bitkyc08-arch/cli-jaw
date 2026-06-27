@@ -5,7 +5,7 @@
 ### あなた専用の AI エージェント。2 行でインストール。11 個の AI ランタイムをひとつのダッシュボードに。
 
 [![npm](https://img.shields.io/npm/v/cli-jaw)](https://npmjs.com/package/cli-jaw)
-[![Version](https://img.shields.io/badge/v2.2.2-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
+[![Version](https://img.shields.io/badge/v2.2.3-GA-brightgreen)](https://github.com/lidge-jun/cli-jaw/releases)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.7-blue)](https://typescriptlang.org)
 [![Node](https://img.shields.io/badge/node-%3E%3D22-blue)](https://nodejs.org)
 [![License](https://img.shields.io/badge/license-MIT-yellow)](LICENSE)

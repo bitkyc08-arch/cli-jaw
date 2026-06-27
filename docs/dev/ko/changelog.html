@@ -8,14 +8,83 @@
 <h1>변경 이력</h1>
 <p class="lead">CLI-JAW 2.0.0 GA 이후 릴리스 히스토리입니다.</p>
 
-<h2>미출시 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-31</span></h2>
-<h3>기능</h3>
+<h2>미출시 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-28</span></h2>
+<h3>수정</h3>
 <ul>
-<li><strong>인라인 미디어 렌더링</strong> — 채팅 메시지에서 이미지/동영상이 인라인으로 표시됩니다. 에이전트 응답의 이미지/비디오 경로가 직접 렌더링됩니다. 유저 첨부 파일도 채팅 버블에 인라인 표시. 이미지 클릭 시 라이트박스 모달, 더블클릭으로 브라우저에서 열기.</li>
-<li><strong>Goal continuation 강화</strong> — Goal 모드가 PABCD phase gate를 override합니다. Codex 스타일 completion audit (요구사항별 검증). Blocked audit는 3턴 연속 동일 blocker 필요. PABCD P/A/B phase에 "Goal mode EXCEPTION" 추가.</li>
-<li><strong>인터뷰 부정편향</strong> — 인터뷰 모드에서 모든 답변을 pressure-test합니다. 모호한 답변 시 clarity score 하락.</li>
-<li><strong>인터뷰 패널 UI</strong> — Ambiguity 바 고정폭, Known/Unknown 동적 비율, 접기 버튼 확대.</li>
+<li><strong>Manager UI 경계</strong> — Worker progress monitor가 인스턴스별 Jaw 사이드바에 더 이상 렌더링되지 않습니다. Code/CEO 런타임 관측은 전용 Code lane에만 남습니다.</li>
+<li><strong>Watchdog 진단</strong> — 턴이 멈출 때 idle/progress watchdog 종료 사유가 Telegram에 표시됩니다.</li>
 </ul>
+
+<h2>v2.2.3 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-27</span></h2>
+<h4>릴리스</h4>
+<ul>
+<li>GitHub OIDC Trusted Publishing과 데스크톱 asset 파이프라인을 포함한 stable npm <code>latest</code> 릴리스.</li>
+<li>v2.2.2 라인의 Telegram Hub P4 강화, AGY capability-probe 게이팅, goal pause gate 문서 동기화, release-gate CI 정렬을 포함합니다.</li>
+</ul>
+
+<h2>v2.2.2 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-25</span></h2>
+<h4>수정</h4>
+<ul>
+<li>Dashboard Notes: bare <code>.md</code> 파일명이 더 이상 Jawsidian 라우트로 자동 하이퍼링크되지 않습니다.</li>
+<li>Adaptive-fetch deadline 취소가 browser/CDP 단계까지 확장되었습니다.</li>
+</ul>
+<h4>기능</h4>
+<ul>
+<li><code>/skill:&lt;id&gt;</code> 슬래시 커맨드가 CLI/Web에서 활성 런타임 스킬을 노출합니다.</li>
+<li>개발자 문서 skills catalog가 live registry에서 재생성되었습니다.</li>
+</ul>
+
+<h2>v2.2.1 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-23</span></h2>
+<h4>기능</h4>
+<ul>
+<li>외부 JWC 런타임 헬퍼 (<code>jaw jwc install|doctor|clean</code>) — 선택 사항, npm/Electron에 번들되지 않음.</li>
+<li>Adaptive URL fetch (<code>jaw browser fetch</code>) P0 갭 종료: SSRF 가드, warm browser pool, BM25 필터, Camoufox stealth, yt-dlp reader.</li>
+<li><code>skills_ref/</code>에서 기본 스킬 자동 활성화 (search, goal, structured-renderers 등).</li>
+<li>Worker progress monitor API와 manager runtime-status bridge.</li>
+</ul>
+
+<h2>v2.2.0 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-22</span></h2>
+<h4>기능</h4>
+<ul>
+<li>통합 release branch 정책과 강화된 release-gate CI 계약.</li>
+<li>Strict TypeScript interop 경계를 테스트에 명시.</li>
+</ul>
+
+<h2>v2.1.5 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-15</span></h2>
+<h4>데스크톱</h4>
+<ul>
+<li>macOS/Windows/Linux CI matrix에서 Electron desktop shell 검증.</li>
+<li>서명되지 않은 desktop asset 배포 문서화; npm 패키지는 CLI 전용 유지.</li>
+</ul>
+
+<h2>v2.1.3 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-04</span></h2>
+<h4>기능</h4>
+<ul>
+<li>AGY (<code>agy</code>) top-level 런타임 — 설치된 바이너리가 지원할 때 <code>--model</code> passthrough.</li>
+<li>Kiro (<code>kiro-code</code>) 런타임 — <code>kiro-cli chat --no-interactive</code>와 v2 session store.</li>
+<li>Goal heartbeat, workflow scope 제어, manager polish.</li>
+<li>Electron native file-drop을 활성 workspace로 라우팅.</li>
+</ul>
+
+<h2>v2.1.2 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-30</span></h2>
+<h4>기능</h4>
+<ul>
+<li>orchestrator, telegram, manager, routes 전반의 strict TypeScript migration 정리.</li>
+<li>검증 evidence 없는 AI goal completion 차단 — blank-evidence bypass 제거.</li>
+<li>채팅 인라인 미디어 렌더링 (이미지/동영상, lightbox, <code>/media/:filename</code> route).</li>
+<li>Goal continuation이 audited completion flow로 PABCD phase gate를 override.</li>
+</ul>
+
+<h2>v2.1.1 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
+<h4>기능</h4>
+<ul>
+<li>Interview Known/Unknown tracker 접기 — 채팅을 가리지 않음.</li>
+<li>Electron Reload/Hard Reload가 main window를 올바르게 새로고침.</li>
+</ul>
+
+<h2>v2.1.0 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
+<p>2.0.x 라인에서 2.1 런타임 확장(Kiro/AGY/Pi parity)으로 이어지는 브리지 릴리스.</p>
+
 <h2>v2.0.17 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
 <h4>기능</h4>
 <ul>
