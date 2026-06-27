@@ -175,6 +175,11 @@ test('AGY-RT-010: AGY quiet completion is mapped to lifecycle success, not inter
     assert.match(spawnSrc, /getAgyQuietCompletionDelayMs\(ctx\)/);
 });
 
+test('AGY-RT-010b: watchdog callbacks register kill reasons for lifecycle diagnostics', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    assert.match(spawnSrc, /killReasons\.set\(child\.pid, reason\)/);
+});
+
 test('AGY-RT-011: AGY timeout suffix is stripped without masking timeout-only output', () => {
     assert.deepEqual(
         stripAgyTrailingTimeoutOutput('JAW_AGY_DONE\nError: timed out waiting for response\n'),

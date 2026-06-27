@@ -1585,6 +1585,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             console.log(`[jaw:watchdog] killing ${agentLabel} (pi) — ${reason}`);
             ctx.stallReason = reason;
             if (child.pid) {
+                killReasons.set(child.pid, reason);
                 killProcessTree(child.pid, 'SIGTERM');
                 const pid = child.pid;
                 setTimeout(() => {
@@ -2102,6 +2103,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         console.log(`[jaw:watchdog] killing ${agentLabel} — ${reason}`);
         ctx.stallReason = reason;
         if (child.pid) {
+            killReasons.set(child.pid, reason);
             killProcessTree(child.pid, 'SIGTERM');
             setTimeout(() => {
                 try { killProcessTree(child.pid!, 'SIGKILL'); } catch { /* already dead */ }
