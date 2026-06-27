@@ -16,10 +16,24 @@ let hubToken: string | null = null;
 let hubState: 'stopped' | 'starting' | 'polling' | 'error' = 'stopped';
 let hubError: string | null = null;
 let hubChatId: string | null = null;
+type HubTrace = {
+    at: string;
+    chatId?: string;
+    chatType?: string;
+    threadId?: string;
+    textPrefix?: string;
+    reason?: string;
+    name?: string;
+    resultPrefix?: string;
+};
+let hubLastUpdate: HubTrace | null = null;
+let hubLastIgnored: HubTrace | null = null;
+let hubLastCommand: HubTrace | null = null;
 let retries = 0;
 const MAX_RETRIES = 5;
 const FORWARD_TIMEOUT_MS = 15_000;
 const HUB_COMMANDS = new Set(['setthread', 'threads', 'hubhelp']); // P3 fills the handler bodies
+const TRACE_TEXT_LIMIT = 80;
 
 /** Map a raw message_thread_id to a route key. General topic (id<=1) → '1'. Exported for tests. */
 export function threadKey(thread?: number): string {
@@ -35,8 +49,26 @@ export function canMutateHubRoute(chatType: string | undefined, isGroupAdmin: bo
     return chatType === 'private' || isGroupAdmin;
 }
 
-export function getHubBotStatus(): { state: 'stopped' | 'starting' | 'polling' | 'error'; chatId?: string; error?: string } {
-    return stripUndefined({ state: hubState, chatId: hubChatId || undefined, error: hubError || undefined });
+export function tracePrefix(text: string): string {
+    return text.replace(/\s+/g, ' ').trim().slice(0, TRACE_TEXT_LIMIT);
+}
+
+export function getHubBotStatus(): {
+    state: 'stopped' | 'starting' | 'polling' | 'error';
+    chatId?: string;
+    error?: string;
+    lastUpdate?: HubTrace;
+    lastIgnored?: HubTrace;
+    lastCommand?: HubTrace;
+} {
+    return stripUndefined({
+        state: hubState,
+        chatId: hubChatId || undefined,
+        error: hubError || undefined,
+        lastUpdate: hubLastUpdate || undefined,
+        lastIgnored: hubLastIgnored || undefined,
+        lastCommand: hubLastCommand || undefined,
+    });
 }
 
 async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
@@ -103,9 +135,23 @@ export function createHubBot(token: string): Bot {
         if (!ctx.chat || !ctx.message) return;
         const cfg = getHubConfig();
         const chatId = String(ctx.chat.id);
-        if (!cfg.chatId || chatId !== cfg.chatId) return;          // only the bound hub chat
         const threadId = threadKey(ctx.message.message_thread_id);
         const text = ctx.message.text.trim();
+        hubLastUpdate = stripUndefined({
+            at: new Date().toISOString(),
+            chatId,
+            chatType: ctx.chat.type,
+            threadId,
+            textPrefix: tracePrefix(text),
+        });
+        if (!cfg.chatId || chatId !== cfg.chatId) {
+            hubLastIgnored = stripUndefined({
+                at: new Date().toISOString(),
+                chatId,
+                reason: cfg.chatId ? `chat mismatch; expected ${cfg.chatId}` : 'hub chatId is not configured',
+            });
+            return;          // only the bound hub chat
+        }
 
         // (a) hub-level slash interception — NO mention-gate on the hub bot (topic binding = auth).
         if (text.startsWith('/')) {
@@ -120,7 +166,23 @@ export function createHubBot(token: string): Bot {
                         return canMutateHubRoute(ctx.chat.type, m.status === 'creator' || m.status === 'administrator');
                     } catch { return canMutateHubRoute(ctx.chat.type, false); }
                 };
-                await ctx.reply(await handleHubCommand(name, args, chatId, threadId, isAdmin)); // grammY auto-threads
+                const result = await handleHubCommand(name, args, chatId, threadId, isAdmin);
+                hubLastCommand = stripUndefined({
+                    at: new Date().toISOString(),
+                    name,
+                    chatId,
+                    threadId,
+                    resultPrefix: tracePrefix(result),
+                });
+                await ctx.reply(result).catch((e) => {
+                    hubLastIgnored = stripUndefined({
+                        at: new Date().toISOString(),
+                        chatId,
+                        threadId,
+                        reason: `command reply failed: ${(e as Error).message}`,
+                    });
+                    console.error('[tg:hub] command reply failed:', (e as Error).message);
+                }); // grammY auto-threads
                 return;
             }
         }
