@@ -83,6 +83,19 @@ function sendDiagnostic(res: ServerResponse, status: number, reason: string): vo
     res.end(diagnosticHtml(reason));
 }
 
+function destroyQuietly(stream: Duplex): void {
+    if (!stream.destroyed) stream.destroy();
+}
+
+function writeThenDestroy(socket: Duplex, data: string): void {
+    if (socket.destroyed) return;
+    try {
+        socket.write(data, () => destroyQuietly(socket));
+    } catch {
+        destroyQuietly(socket);
+    }
+}
+
 export function previewPortForTargetPort(targetPort: number, range: PreviewOriginProxyRange): number {
     return range.previewFrom + (targetPort - range.targetFrom);
 }
@@ -264,8 +277,7 @@ export function createPreviewOriginProxyController(
     function handleUpgrade(req: IncomingMessage, socket: Duplex, head: Buffer, state: PreviewServerState): void {
         const validation = validateIncoming(req, state);
         if (!validation.ok) {
-            socket.write(`HTTP/1.1 ${validation.status} ${validation.reason}\r\nConnection: close\r\n\r\n`);
-            socket.destroy();
+            writeThenDestroy(socket, `HTTP/1.1 ${validation.status} ${validation.reason}\r\nConnection: close\r\n\r\n`);
             return;
         }
         let connected = false;
@@ -277,10 +289,24 @@ export function createPreviewOriginProxyController(
             socket.pipe(upstream).pipe(socket);
         });
         const connectTimer = setTimeout(() => upstream.destroy(new Error('preview websocket connect timeout')), timeoutMs);
-        upstream.on('close', () => clearTimeout(connectTimer));
+        socket.on('error', () => {
+            destroyQuietly(upstream);
+        });
+        socket.on('close', () => {
+            clearTimeout(connectTimer);
+            destroyQuietly(upstream);
+        });
+        upstream.on('close', () => {
+            clearTimeout(connectTimer);
+            destroyQuietly(socket);
+        });
         upstream.on('error', () => {
-            if (!connected) socket.write('HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
-            socket.destroy();
+            clearTimeout(connectTimer);
+            if (!connected) {
+                writeThenDestroy(socket, 'HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n');
+                return;
+            }
+            destroyQuietly(socket);
         });
     }
 
@@ -305,6 +331,10 @@ export function createPreviewOriginProxyController(
         server.on('connection', socket => {
             state.sockets.add(socket);
             socket.on('close', () => state.sockets.delete(socket));
+            socket.on('error', () => {
+                state.sockets.delete(socket);
+                destroyQuietly(socket);
+            });
         });
         server.on('upgrade', (req, socket, head) => handleUpgrade(req, socket, head, state));
         await new Promise<void>(resolve => {
