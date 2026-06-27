@@ -5,7 +5,7 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import { getHubConfig, setHubConfig, upsertRoute, removeRoute } from '../telegram-hub/routing-store.js';
 import type { TelegramHubConfig, ThreadRoute } from '../telegram-hub/types.js';
 import { MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
-import { startHubBot, sendToTopic, getHubBotStatus } from '../telegram-hub/hub-bot.js';
+import { startHubBot, sendToTopic, getHubBotStatus, reconcileHubBotWithConfig } from '../telegram-hub/hub-bot.js';
 import { assertSendFilePath } from '../../security/path-guards.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { settings } from '../../core/config.js';
@@ -37,7 +37,8 @@ export function createDashboardTelegramHubRouter(): Router {
     const router = Router();
     router.use(loopbackOnly);
 
-    router.get('/', (_req: Request, res: Response) => {
+    router.get('/', async (_req: Request, res: Response) => {
+        await reconcileHubBotWithConfig();
         res.json(hubResponse(getHubConfig()));
     });
 

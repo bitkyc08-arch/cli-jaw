@@ -71,6 +71,15 @@ export function getHubBotStatus(): {
     });
 }
 
+export async function reconcileHubBotWithConfig(): Promise<void> {
+    const cfg = getHubConfig();
+    if (!canStartHub(cfg)) {
+        if (hubState !== 'stopped') await stopHubBot();
+        return;
+    }
+    if (!hubBot || hubToken !== cfg.token || hubChatId !== cfg.chatId) await startHubBot();
+}
+
 async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
     const target = { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: chatId, threadId };
     try {
