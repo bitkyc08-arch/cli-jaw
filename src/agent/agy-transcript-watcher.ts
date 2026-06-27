@@ -7,6 +7,7 @@ import {
     resolveAgyTranscriptPathForCurrentTurn,
     resolveAgyTranscriptPath,
 } from './agy-transcript.js';
+import { applyAgyBootstrapAcceptanceFromTranscriptLine } from './agy-bootstrap.js';
 
 export type AgyTranscriptWatcherHandle = { stop: () => void };
 
@@ -133,10 +134,18 @@ export function startAgyTranscriptWatcher(options: {
     const minCreatedAtMs = startedAt - CURRENT_TURN_LOOKBACK_MS;
     let lastRetargetScanAt = 0;
 
+    const resetBootstrapAcceptance = () => {
+        options.ctx.agyBootstrapAccepted = false;
+        options.ctx.agyBootstrapAcceptanceMode = options.ctx.agyBootstrapSentinel
+            ? 'pending'
+            : 'not-applicable';
+    };
+
     const resetSelection = () => {
         transcriptPath = null;
         conversationId = null;
         offset = 0;
+        resetBootstrapAcceptance();
         options.ctx.agyFinalPlannerSeen = false;
         options.ctx.agyFinalPlannerText = undefined;
         options.ctx.agyLastTranscriptError = undefined;
@@ -163,6 +172,7 @@ export function startAgyTranscriptWatcher(options: {
         transcriptPath = effectiveResolved.transcriptPath;
         conversationId = effectiveResolved.conversationId ?? currentSessionId ?? null;
         offset = 0;
+        resetBootstrapAcceptance();
         options.ctx.agyFinalPlannerSeen = false;
         options.ctx.agyFinalPlannerText = undefined;
         options.ctx.agyLastTranscriptError = undefined;
@@ -182,6 +192,7 @@ export function startAgyTranscriptWatcher(options: {
             const delta = readTranscriptDelta(transcriptPath, offset);
             offset = delta.offset;
             for (const line of delta.lines) {
+                applyAgyBootstrapAcceptanceFromTranscriptLine(options.ctx, line, minCreatedAtMs);
                 updateFinalPlannerFlag(options.ctx, line, minCreatedAtMs);
                 applyTranscriptTool(
                     options.ctx,
@@ -229,6 +240,7 @@ export function startAgyTranscriptWatcher(options: {
             try {
                 const delta = readTranscriptDelta(transcriptPath, offset);
                 for (const line of delta.lines) {
+                    applyAgyBootstrapAcceptanceFromTranscriptLine(options.ctx, line, minCreatedAtMs);
                     updateFinalPlannerFlag(options.ctx, line, minCreatedAtMs);
                     applyTranscriptTool(
                         options.ctx,

@@ -26,6 +26,12 @@ export interface AgyTranscriptError {
   createdAtMs?: number;
 }
 
+export type AgyBootstrapAcceptanceMode =
+  | 'pending'
+  | 'accepted'
+  | 'missing'
+  | 'not-applicable';
+
 /** Context object created per spawnAgent() invocation. */
 export interface SpawnContext {
   fullText: string;
@@ -103,6 +109,10 @@ export interface SpawnContext {
   agyResumeOffset?: number;
   agyBytesReceived?: number;
   agyTranscriptActive?: boolean;
+  agyBootstrapSentinel?: string;
+  agyBootstrapHash?: string;
+  agyBootstrapAccepted?: boolean;
+  agyBootstrapAcceptanceMode?: AgyBootstrapAcceptanceMode;
   agyFinalPlannerSeen?: boolean;
   agyFinalPlannerText?: string | undefined;
   agyLastTranscriptError?: AgyTranscriptError | undefined;

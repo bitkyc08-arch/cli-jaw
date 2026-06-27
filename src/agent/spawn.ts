@@ -68,6 +68,7 @@ import {
     stripAgyResumeReplayPrefixes,
 } from './agy-runtime.js';
 import { detectAgyCapabilities } from './agy-capabilities.js';
+import { buildAgyBootstrapEnvelope, type AgyBootstrapEnvelope } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
 import { appendAssistantTextSegment, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import { listKiroConversationIdsForCwd } from './kiro-auth.js';
@@ -1032,12 +1033,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             cli === 'gemini' ? GEMINI_HISTORY_MAX_CHARS : 8000,
         )
         : '';
-    let promptForArgs = (cli === 'agy' || cli === 'cursor' || cli === 'kiro-code' || cli === 'gemini' || cli === 'grok' || cli === 'opencode' || (cli === 'ai-e' && effectiveProvider !== 'claude'))
+    let agyBootstrap: AgyBootstrapEnvelope | null = null;
+    let promptForArgs = (cli === 'cursor' || cli === 'kiro-code' || cli === 'gemini' || cli === 'grok' || cli === 'opencode' || (cli === 'ai-e' && effectiveProvider !== 'claude'))
         ? withHistoryPrompt(prompt, historyBlock)
         : prompt;
-    if (cli === 'agy' && sysPrompt) {
-        promptForArgs = `[Current cli-jaw task]\n${promptForArgs}\n\n---\n\n[Operational Context — cli-jaw Integration]\nThe following operational guidelines apply to this session. Follow these task rules and use the tools/commands described:\n\n${sysPrompt}`;
-    } else if ((cli === 'kiro-code' || (cli === 'ai-e' && effectiveProvider === 'kiro')) && sysPrompt) {
+    if ((cli === 'kiro-code' || (cli === 'ai-e' && effectiveProvider === 'kiro')) && sysPrompt) {
         promptForArgs = `[Operational Context — cli-jaw Integration]\nThe following operational guidelines apply to this session. Follow these task rules and use the tools/commands described:\n\n${sysPrompt}\n\n---\n\n${promptForArgs}`;
     }
     const agyResumeReplayPrefix = cli === 'agy' && isResume
@@ -1074,7 +1074,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         warnedAgyCapabilityFallbacks.add(agyBinaryForCapabilities);
         console.warn('[agy-capabilities] probe failed; using legacy emit-all argv compatibility');
     }
-    const argOptions = {
+    let argOptions = {
         fastMode: cfg.fastMode,
         sysPrompt,
         includeDirectories,
@@ -1085,14 +1085,16 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(agyPrintTimeout ? { agyPrintTimeout } : {}),
         ...(agyCapabilities ? { agyCapabilities } : {}),
     };
-    let args;
-    if (isResume) {
+    const buildCurrentArgs = (options: typeof argOptions): string[] => {
+        if (!isResume) {
+            return buildArgs(cli, runtimeModel, effort, promptForArgs, sysPrompt, permissions, options);
+        }
         const sid = resumeSessionId || '';
         console.log(`[jaw:resume] ${cli} session=${sid.slice(0, 12)}...`);
-        args = buildResumeArgs(cli, runtimeModel, effort, sid, promptForArgs, permissions, argOptions);
-    } else {
-        args = buildArgs(cli, runtimeModel, effort, promptForArgs, sysPrompt, permissions, argOptions);
-    }
+        return buildResumeArgs(cli, runtimeModel, effort, sid, promptForArgs, permissions, options);
+    };
+    let args: string[] = [];
+    if (cli !== 'agy') args = buildCurrentArgs(argOptions);
 
     const agentLabel = agentId || 'main';
     const traceAudience: 'public' | 'internal' = (opts.internal || isEmployee) ? 'internal' : 'public';
@@ -1125,6 +1127,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
         spawnCwd = tmpDir;
         console.log(`[jaw:${agentLabel}] Employee isolated → ${tmpDir}`);
+    }
+
+    if (cli === 'agy') {
+        agyBootstrap = buildAgyBootstrapEnvelope({
+            taskPrompt: prompt,
+            historyBlock,
+            workingDir: spawnCwd,
+            sessionId: resumeSessionId,
+            ...(sysPrompt ? { operationalContext: sysPrompt } : {}),
+        });
+        promptForArgs = agyBootstrap.prompt;
+        argOptions = { ...argOptions, workingDir: spawnCwd };
+        args = buildCurrentArgs(argOptions);
     }
 
     // ─── DIFF-A: Preflight — verify CLI binary exists before spawn ───
@@ -2029,6 +2044,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         geminiResultSeen: false,
         ...(opencodeSpawnAudit ? { opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> } : {}),
         ...(agyResumeOffset > 0 ? { agyResumeOffset, agyBytesReceived: 0 } : {}),
+        ...(cli === 'agy' ? {
+            ...(agyBootstrap ? {
+                agyBootstrapSentinel: agyBootstrap.sentinel,
+                agyBootstrapHash: agyBootstrap.hash,
+            } : {}),
+            agyBootstrapAccepted: false,
+            agyBootstrapAcceptanceMode: agyBootstrap ? 'pending' as const : 'not-applicable' as const,
+        } : {}),
         ...(kiroPlainText || cli === 'agy' || cli === 'pi' ? { liveOutputText: '' } : {}),
         ...(kiroPlainText ? { kiroLastVisibleAt: Date.now(), kiroHeartbeatSent: false } : {}),
     };
