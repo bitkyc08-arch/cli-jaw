@@ -122,7 +122,7 @@
 <tr><td>Claude</td><td><code>buildArgs(..., sysPrompt)</code></td><td>stdin：<code>withHistoryPrompt(prompt, historyBlock)</code></td></tr>
 <tr><td>Codex</td><td><code>AGENTS.md</code> 自动加载</td><td>stdin：<code>[User Message]</code> 块</td></tr>
 <tr><td>Gemini</td><td><code>GEMINI_SYSTEM_MD</code> 临时文件</td><td>参数级提示词</td></tr>
-<tr><td>AGY</td><td>无系统提示词标志</td><td><code>agy -p &lt;prompt&gt;</code></td></tr>
+<tr><td>AGY</td><td>无系统提示词标志；可选标志（如 <code>--model</code>）在发出前经 capability probe 检测</td><td><code>agy -p &lt;prompt&gt;</code></td></tr>
 <tr><td>Cursor</td><td><code>AGENTS.md</code> / <code>CLAUDE.md</code> 自动加载</td><td>参数级提示词</td></tr>
 <tr><td>Grok</td><td>CWD 指令文件</td><td><code>-p &lt;prompt&gt;</code></td></tr>
 <tr><td>Copilot</td><td>ACP + CWD 指令文件</td><td><code>session/prompt()</code></td></tr>

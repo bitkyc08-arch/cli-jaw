@@ -238,6 +238,10 @@ Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTop
 - Manager `TelegramHub.tsx` routes table shows per-topic `model` / `systemPrompt`.
 - Outbound relay may use `src/telegram/rich-message.ts` when Telegram rich payloads are available; otherwise HTML chunking fallback.
 
+### Watchdog diagnostics relay
+
+- When `src/agent/watchdog.ts` kills a stalled turn, kill diagnostics are preserved and surfaced back through the originating Telegram `target` (direct chat or forum topic) so operators see why the turn ended.
+
 ### Hub bot commands
 
 | Command | Auth | Behavior |

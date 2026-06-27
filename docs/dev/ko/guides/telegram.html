@@ -113,6 +113,9 @@ POST /api/channel/send  # Unified endpoint (preferred)</code></pre>
 <h2>Dashboard Telegram Hub (P0–P4)</h2>
 <p>포럼 토픽을 서로 다른 CLI-JAW 인스턴스로 라우팅합니다. Manager UI에서 <code>(chatId, threadId) → port</code> 매핑을 설정합니다. Hub 명령어: <code>/setthread</code>, <code>/threads</code>, <code>/hubhelp</code>. <strong>P4:</strong> Manager UI에서 토픽별 <code>model</code>/<code>systemPrompt</code> override. 자세한 hub-member relay 모델은 <code>structure/telegram.md</code>를 참조하세요.</p>
 
+<h2>Watchdog 진단</h2>
+<p>에이전트 턴이 idle/progress watchdog 임계값을 넘어 멈추면, 종료 진단이 원래 Telegram 채팅 또는 포럼 토픽으로 전달되어 운영자가 턴이 끝난 이유를 확인할 수 있습니다.</p>
+
 <h2>사용 가능한 명령어</h2>
 <p>CLI/Web/Telegram/Discord에 51개 슬래시 명령어가 등록되어 있습니다 (Telegram에서 37개 표시). workflow helper: <code>/plan</code>, <code>/interview</code>, <code>/review</code>, <code>/search</code>, <code>/goal</code>, <code>/orchestrate</code>, <code>/task</code>, <code>/fork</code>, <code>/gd</code>. CLI/Web 동적 <code>/skill:&lt;id&gt;</code>. 봇 전용 명령어:</p>
 <table>
