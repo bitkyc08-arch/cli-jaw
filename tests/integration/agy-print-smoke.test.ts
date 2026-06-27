@@ -1,10 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
 
 import { extractAgyConversationId } from '../../src/agent/agy-runtime.ts';
 import {
@@ -12,7 +11,6 @@ import {
     resolveAgyTranscriptPathForCurrentTurn,
 } from '../../src/agent/agy-transcript.ts';
 
-const execFileAsync = promisify(execFile);
 const SMOKE_TIMEOUT_MS = 180_000;
 
 type FileSnapshot = {
@@ -41,23 +39,41 @@ function redactDiagnostics(value: string): string {
 }
 
 async function runAgy(args: string[], cwd: string): Promise<{ stdout: string; stderr: string }> {
-    try {
-        const { stdout, stderr } = await execFileAsync('agy', args, {
+    return await new Promise((resolve, reject) => {
+        const child = spawn('agy', args, {
             cwd,
-            encoding: 'utf8',
-            timeout: SMOKE_TIMEOUT_MS,
-            maxBuffer: 1024 * 1024,
+            stdio: ['ignore', 'pipe', 'pipe'],
         });
-        return { stdout, stderr };
-    } catch (error) {
-        const err = error as Error & { stdout?: string; stderr?: string; code?: unknown };
-        throw new Error(redactDiagnostics([
-            `agy failed with code ${String(err.code ?? 'unknown')}`,
-            err.message,
-            err.stdout ? `stdout: ${err.stdout}` : '',
-            err.stderr ? `stderr: ${err.stderr}` : '',
-        ].filter(Boolean).join('\n')));
-    }
+        let stdout = '';
+        let stderr = '';
+        const timer = setTimeout(() => {
+            child.kill('SIGTERM');
+            setTimeout(() => child.kill('SIGKILL'), 2_000).unref();
+        }, SMOKE_TIMEOUT_MS);
+        timer.unref();
+        child.stdout.setEncoding('utf8');
+        child.stderr.setEncoding('utf8');
+        child.stdout.on('data', chunk => { stdout += chunk; });
+        child.stderr.on('data', chunk => { stderr += chunk; });
+        child.on('error', error => {
+            clearTimeout(timer);
+            reject(new Error(redactDiagnostics(`failed to start agy: ${error.message}`)));
+        });
+        child.on('close', (code, signal) => {
+            clearTimeout(timer);
+            if (code === 0) {
+                resolve({ stdout, stderr });
+                return;
+            }
+            reject(new Error(redactDiagnostics([
+                `agy failed with code ${String(code ?? 'unknown')}`,
+                signal ? `signal ${signal}` : '',
+                signal ? `spawn timeout after ${SMOKE_TIMEOUT_MS}ms may have killed the process` : '',
+                stdout ? `stdout: ${stdout}` : '',
+                stderr ? `stderr: ${stderr}` : '',
+            ].filter(Boolean).join('\n'))));
+        });
+    });
 }
 
 async function assertAgySmokeCapabilities(): Promise<void> {
