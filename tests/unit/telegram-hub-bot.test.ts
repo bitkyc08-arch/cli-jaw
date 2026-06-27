@@ -10,7 +10,7 @@ import {
     canMutateHubRoute,
     getHubBotStatus,
     tracePrefix,
-    buildHubMemberSettingsPatch,
+    buildLocalFirstSettingsPatch,
     handleHubCommand,
     sendToTopic,
     __topicTypingTest,
@@ -57,14 +57,14 @@ test('canMutateHubRoute allows private chats and preserves group admin gating', 
     assert.equal(canMutateHubRoute('supergroup', true), true);
 });
 
-test('buildHubMemberSettingsPatch disables target bot, preserves allowlist, and sets callback', () => {
-    const patch = buildHubMemberSettingsPatch('8231528245', {
+test('buildLocalFirstSettingsPatch enables target bot, preserves allowlist, and sets callback', () => {
+    const patch = buildLocalFirstSettingsPatch('8231528245', {
         telegram: { enabled: true, allowedChatIds: [111] },
-        telegramHub: { mode: 'standalone' },
+        telegramHub: { mode: 'hub-member' },
     }, 'http://127.0.0.1:24576');
     assert.deepEqual(patch, {
-        telegram: { enabled: false, allowedChatIds: [111, 8231528245] },
-        telegramHub: { mode: 'hub-member', hubCallbackUrl: 'http://127.0.0.1:24576' },
+        telegram: { enabled: true, allowedChatIds: [111, 8231528245], forwardAll: true, mentionOnly: true },
+        telegramHub: { mode: 'standalone', hubCallbackUrl: 'http://127.0.0.1:24576' },
     });
 });
 

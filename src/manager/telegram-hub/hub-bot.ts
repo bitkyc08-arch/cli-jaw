@@ -129,21 +129,25 @@ function currentHubCallbackUrl(): string {
     return `http://127.0.0.1:${port}`;
 }
 
-export function buildHubMemberSettingsPatch(chatId: string, currentSettings: unknown = {}, hubCallbackUrl = currentHubCallbackUrl()): Record<string, unknown> {
+export function buildLocalFirstSettingsPatch(chatId: string, currentSettings: unknown = {}, hubCallbackUrl = currentHubCallbackUrl()): Record<string, unknown> {
     const allowed = readAllowedChatIds(currentSettings);
     const chatValue = chatIdSettingValue(chatId);
     const hasChat = allowed.some(v => String(v) === String(chatValue));
     return {
         telegram: {
-            enabled: false,
+            enabled: true,
             allowedChatIds: hasChat ? allowed : [...allowed, chatValue],
+            forwardAll: true,
+            mentionOnly: true,
         },
         telegramHub: {
-            mode: 'hub-member',
+            mode: 'standalone',
             hubCallbackUrl,
         },
     };
 }
+
+export const buildHubMemberSettingsPatch = buildLocalFirstSettingsPatch;
 
 export async function ensureTargetHubMember(port: number, chatId: string, fetchImpl: typeof fetch = fetch): Promise<EnsureHubMemberResult> {
     const base = `http://127.0.0.1:${port}`;
@@ -159,7 +163,7 @@ export async function ensureTargetHubMember(port: number, chatId: string, fetchI
         const putRes = await fetchImpl(`${base}/api/settings`, {
             method: 'PUT',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify(buildHubMemberSettingsPatch(chatId, currentSettings)),
+            body: JSON.stringify(buildLocalFirstSettingsPatch(chatId, currentSettings)),
             signal: AbortSignal.timeout(3_000),
         });
         if (!putRes.ok) return { ok: false, error: `settings PUT ${putRes.status}` };
