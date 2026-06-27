@@ -111,7 +111,7 @@ SSE behavior:
 | `goal_cancel` | `{ ... }` | durable goal cancellation |
 | `goal_pause_detected` | `{ ... }` | pause 2-tap gate detection |
 | `goal_pause_gate_pending` | `{ goalId, reason }` | armed pause gate remains after a goal-continuation audit turn; no further automatic continuation is scheduled |
-| `goal_continuation` | `{ ... }` | goal continuation kick; **suppressed** while pause gate armed (`pause_gate_pending`) or goal not `active` |
+| `goal_continuation` | `{ ... }` | goal continuation kick; when pause gate is armed (`pause_gate_pending`), one audit/finalizer continuation may run, then further automatic continuation is suppressed if the gate remains armed |
 | `goal_continuation_failed` | `{ ... }` | goal continuation failure |
 | `goal_continuation_limit` | `{ ... }` | bounded continuation limit |
 | `schedule_wakeup` | `{ ... }` | ScheduleWakeup accepted |
@@ -480,8 +480,8 @@ Agent pause는 2-tap gate: 첫 `cli-jaw goal pause --agent --audit` → `agentPa
 
 | Surface | Behavior |
 | --- | --- |
-| `buildGoalContinuation()` | armed gate면 `shouldContinue: false`, `reason: "pause_gate_pending"` |
-| `lifecycle-handler.ts` | continuation turn 종료 시 gate still armed면 `goal_pause_gate_pending` broadcast, 다음 automatic continuation 미스케줄 |
+| `buildGoalContinuation()` | armed gate면 audit/finalizer prompt를 위해 `shouldContinue: true`, `reason: "pause_gate_pending"` |
+| `lifecycle-handler.ts` | `_isGoalContinuation` turn 종료 시 gate still armed면 `goal_pause_gate_pending` broadcast, 다음 automatic continuation 미스케줄 |
 
 ---
 
