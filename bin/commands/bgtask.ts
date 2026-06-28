@@ -13,7 +13,9 @@ if (shouldShowHelp(process.argv)) printAndExit(`
 
   Subcommands:
     add --preset web-ai --session <sessionId> [--prompt <template>] [--deadline <ISO>] [--stall-after-ms <ms>]
-                          Watch a native web-ai session; boss is re-invoked on completion
+                          Watch a NATIVE cli-jaw web-ai session; boss re-invoked on completion.
+                          For a standalone agbrowse session use the explicit generic form:
+                            --cmd '["agbrowse","web-ai","watch","<sessionId>"]'
     add --cmd '<json-argv>' [--kind <kind>] [--completion exit|'<json>'] [--prompt <template>] [--stall-after-ms <ms>]
                           Generic child task, e.g. --cmd '["gh","run","watch","123"]'
     list [--status running|complete|failed|cancelled|orphaned]

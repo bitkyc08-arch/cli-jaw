@@ -8,7 +8,7 @@ import { createSession, updateSessionStatus } from '../../src/browser/web-ai/ses
 import type { QuestionEnvelope } from '../../src/browser/web-ai/types.ts';
 import { createTask, getTask } from '../../src/bgtask/registry.ts';
 import { startTask, type BgTaskCapture } from '../../src/bgtask/runner.ts';
-import { webAiPreset } from '../../src/bgtask/presets.ts';
+import { webAiPreset, standaloneSessionGuidance } from '../../src/bgtask/presets.ts';
 import type { BgTaskSpec } from '../../src/bgtask/types.ts';
 
 function makeWebAiSession(): string {
@@ -104,4 +104,23 @@ test('webAiPreset accepts prompt override, throws for unknown session, no warnin
     const preset = await webAiPreset({ sessionId: sid, prompt: 'custom {{result}}' });
     assert.equal(preset.spec.promptTemplate, 'custom {{result}}');
     assert.equal(preset.warnings.length, 0, 'terminal session needs no watcher warning');
+});
+
+test('standaloneSessionGuidance gives actionable agbrowse guidance', () => {
+    const msg = standaloneSessionGuidance('sess-xyz');
+    // keeps the legacy substring so /session not found/ matchers stay valid
+    assert.match(msg, /session not found/);
+    assert.match(msg, /sess-xyz/);
+    assert.match(msg, /agbrowse/);
+    assert.match(msg, /--cmd/);
+    assert.match(msg, /\["agbrowse","web-ai","watch","sess-xyz"\]/);
+});
+
+test('webAiPreset rejects an unknown session WITH actionable agbrowse guidance', async () => {
+    await assert.rejects(
+        webAiPreset({ sessionId: 'standalone-123' }),
+        (err: Error) => /session not found/.test(err.message)
+            && /agbrowse/.test(err.message)
+            && /--cmd/.test(err.message),
+    );
 });

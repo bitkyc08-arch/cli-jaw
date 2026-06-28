@@ -8,6 +8,19 @@ import type { BgTaskSpec } from './types.js';
 
 const WEB_AI_DEFAULT_DEADLINE_MS = 2 * 60 * 60 * 1000; // 2h — covers Pro/DeepThink long runs
 
+/** Actionable guidance when a --preset web-ai session id is not a native cli-jaw
+ *  web-ai session. The preset cannot own a standalone agbrowse session — point the
+ *  user at the explicit generic form instead (40 web-ai/agbrowse bridge). The
+ *  message intentionally keeps the `web-ai session not found: <id>` prefix so
+ *  callers/tests that match /session not found/ stay valid. */
+export function standaloneSessionGuidance(sessionId: string): string {
+    return `web-ai session not found: ${sessionId}. `
+        + 'The --preset web-ai watcher only owns NATIVE cli-jaw web-ai sessions. '
+        + `If "${sessionId}" is a standalone agbrowse session, the preset cannot attach to it — `
+        + 'use the explicit generic form instead:\n'
+        + `  cli-jaw bgtask add --cmd '["agbrowse","web-ai","watch","${sessionId}"]' --prompt "..."`;
+}
+
 export interface WebAiPresetInput {
     sessionId: string;
     /** Boss prompt template override. Placeholders: {{result}} {{taskId}} {{status}} */
@@ -32,7 +45,7 @@ export async function webAiPreset(input: WebAiPresetInput): Promise<WebAiPresetR
 
     const session = await import('../browser/web-ai/session.js');
     const record = session.getSession(sessionId);
-    if (!record) throw new Error(`web-ai session not found: ${sessionId}`);
+    if (!record) throw new Error(standaloneSessionGuidance(sessionId));
 
     const warnings: string[] = [];
     const terminal = ['complete', 'timeout', 'error'].includes(String(record.status));
