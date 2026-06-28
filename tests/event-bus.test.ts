@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
     publish, subscribe, replaySince, hasReplayGap, currentSeq,
+    isPublicSseTopic,
     RING_SIZE, type BusEvent,
 } from '../src/core/event-bus.ts';
 import { broadcast } from '../src/core/bus.ts';
@@ -82,4 +83,14 @@ test('worker_run events use the existing worker topic replay path', () => {
     assert.equal(replayed.at(-1)?.topic, 'worker');
     assert.equal(replayed.at(-1)?.event, 'worker_run_progress');
     assert.equal(replayed.at(-1)?.data['safeSummary'], 'ok');
+});
+
+test('isPublicSseTopic excludes internal trace topic and includes public topics', () => {
+    // trace is internal-only (agent:claude-e:* diagnostics) — must never be public.
+    assert.equal(isPublicSseTopic('trace'), false);
+    // representative public topics stay public.
+    assert.equal(isPublicSseTopic('system'), true);
+    assert.equal(isPublicSseTopic('agent'), true);
+    assert.equal(isPublicSseTopic('worker'), true);
+    assert.equal(isPublicSseTopic('goal'), true);
 });

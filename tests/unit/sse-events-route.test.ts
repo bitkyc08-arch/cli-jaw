@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer, type Server } from 'node:http';
 import express, { type NextFunction, type Request, type Response } from 'express';
-import { registerEventsRoutes } from '../../src/routes/events.ts';
+import { registerEventsRoutes, getSseMetrics, exceedsBackpressureLimit, SSE_MAX_BUFFER_BYTES } from '../../src/routes/events.ts';
 import { broadcast } from '../../src/core/bus.ts';
 import { publish, currentSeq } from '../../src/core/event-bus.ts';
 
@@ -171,4 +171,60 @@ test('SSE streams safe worker_run events without raw output fields', async () =>
         assert.ok(!out.includes('raw output'));
         assert.ok(!out.includes('outputFile'));
     });
+});
+
+test('SSE does not leak internal trace-topic events to public /api/events', async () => {
+    await withServer(async baseUrl => {
+        const ac = new AbortController();
+        const res = await fetch(`${baseUrl}/api/events`, { signal: ac.signal });
+        assert.equal(res.status, 200);
+        assert.ok(res.body);
+
+        // Publish an internal trace event, then a public marker event after it.
+        // The public marker proves the stream is live; the trace payload must
+        // never appear in the buffered output.
+        setTimeout(() => {
+            publish('trace', 'agent_trace', { secretTraceField: 'LEAKED_TRACE_PAYLOAD' });
+            publish('system', 'system_notice', { afterTrace: true });
+        }, 50);
+
+        const out = await readUntil(res.body, buf => buf.includes('"afterTrace":true'));
+        ac.abort();
+
+        assert.ok(out.includes('"afterTrace":true'), `expected public event after trace, got: ${out}`);
+        assert.ok(!out.includes('LEAKED_TRACE_PAYLOAD'), `internal trace topic must not reach public SSE: ${out}`);
+        assert.ok(!out.includes('"topic":"trace"'), `trace topic must not be serialized publicly: ${out}`);
+    });
+});
+
+test('SSE metrics count dropped internal-topic events', async () => {
+    await withServer(async baseUrl => {
+        const before = getSseMetrics().droppedInternalTopicEvents;
+
+        const ac = new AbortController();
+        const res = await fetch(`${baseUrl}/api/events`, { signal: ac.signal });
+        assert.ok(res.body);
+
+        setTimeout(() => {
+            publish('trace', 'agent_trace', { x: 1 });
+            publish('system', 'system_notice', { metricsProbe: true });
+        }, 50);
+
+        await readUntil(res.body, buf => buf.includes('"metricsProbe":true'));
+        ac.abort();
+
+        assert.ok(
+            getSseMetrics().droppedInternalTopicEvents > before,
+            'droppedInternalTopicEvents should increase after an internal-topic publish',
+        );
+    });
+});
+
+test('exceedsBackpressureLimit applies the bounded buffer policy', () => {
+    assert.equal(exceedsBackpressureLimit(0), false);
+    assert.equal(exceedsBackpressureLimit(SSE_MAX_BUFFER_BYTES), false);
+    assert.equal(exceedsBackpressureLimit(SSE_MAX_BUFFER_BYTES + 1), true);
+    // explicit limit override
+    assert.equal(exceedsBackpressureLimit(11, 10), true);
+    assert.equal(exceedsBackpressureLimit(10, 10), false);
 });

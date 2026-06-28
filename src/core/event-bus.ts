@@ -27,6 +27,21 @@ export type EventTopic =
     | 'jwc'         // Code mode: jwc engine session updates (code_* events, acp-host)
     | 'system';     // system_notice, alert_escalation, fallback bucket
 
+// Public SSE topic allowlist — the single source of truth for which bus topics
+// may be serialized out through public SSE routes. `trace` is internal-only
+// (agent:claude-e:* diagnostics) and must NEVER reach a browser. Enforcing this
+// at the route boundary (not just by publisher convention) closes the leak even
+// if a future publisher emits `trace` by mistake (260628 phase 10 SSE safety).
+export const PUBLIC_SSE_TOPICS: ReadonlySet<EventTopic> = new Set<EventTopic>([
+    'agent', 'orchestrate', 'goal', 'workflow', 'memory', 'worker',
+    'message', 'queue', 'bgtask', 'heartbeat', 'schedule', 'session',
+    'settings', 'agents', 'jwc', 'system',
+]);
+
+export function isPublicSseTopic(topic: EventTopic): boolean {
+    return PUBLIC_SSE_TOPICS.has(topic);
+}
+
 export interface BusEvent {
     id: number;
     topic: EventTopic;

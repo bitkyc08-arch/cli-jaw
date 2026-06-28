@@ -5,13 +5,37 @@
 import type { Router, Request, Response, RequestHandler } from 'express';
 import {
     subscribe, replaySince, hasReplayGap, currentSeq,
-    MAX_SSE_LISTENERS, type BusEvent,
+    MAX_SSE_LISTENERS, isPublicSseTopic, type BusEvent,
 } from '../core/event-bus.js';
 
 const HEARTBEAT_MS = 15_000;
 let activeConnections = 0;
 
+// Close a client whose Node send buffer grows past this many bytes — a stalled
+// reader otherwise makes res.write() buffer frames in memory without bound
+// (260628 phase 10 SSE safety). 1 MB is large enough that a brief network stall
+// on a healthy client never trips it; only a truly stuck reader does.
+export const SSE_MAX_BUFFER_BYTES = 1_000_000;
+
+let droppedInternalTopicEvents = 0;
+let slowClientClosed = 0;
+let replayGapCount = 0;
+
 export function getActiveSseConnections(): number { return activeConnections; }
+
+export function getSseMetrics(): {
+    activeConnections: number;
+    droppedInternalTopicEvents: number;
+    slowClientClosed: number;
+    replayGapCount: number;
+} {
+    return { activeConnections, droppedInternalTopicEvents, slowClientClosed, replayGapCount };
+}
+
+// Pure helper so backpressure policy is unit-testable without a live socket.
+export function exceedsBackpressureLimit(writableLength: number, limit = SSE_MAX_BUFFER_BYTES): boolean {
+    return writableLength > limit;
+}
 
 function formatSse(entry: BusEvent, replay = false): string {
     return `id: ${entry.id}\ndata: ${JSON.stringify({ ...entry.data, topic: entry.topic, event: entry.event, ...(replay ? { sseReplay: true } : {}) })}\n\n`;
@@ -53,14 +77,43 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
         const lastId = parseLastEventId(req);
         if (lastId > 0) {
             if (lastId > currentSeq() || hasReplayGap(lastId)) {
+                replayGapCount++;
                 res.write(`data: ${JSON.stringify({ topic: 'system', event: 'replay_gap' })}\n\n`);
             }
-            for (const entry of replaySince(lastId)) res.write(formatSse(entry, true));
+            // Filter internal topics on replay too (defense in depth: the ring
+            // could hold a trace entry from a future/mistaken publisher).
+            for (const entry of replaySince(lastId)) {
+                if (!isPublicSseTopic(entry.topic)) { droppedInternalTopicEvents++; continue; }
+                res.write(formatSse(entry, true));
+            }
         }
 
-        // Live delivery
-        const unsub = subscribe((entry) => {
-            if (!res.writableEnded) res.write(formatSse(entry));
+        // close fires on both req and res for the same teardown — guard so
+        // activeConnections is decremented exactly once per connection. Declared
+        // before subscribe() because the backpressure close path below calls it.
+        let closed = false;
+        let hb: ReturnType<typeof setInterval> | undefined;
+        let unsub: (() => void) | undefined;
+        const cleanup = () => {
+            if (closed) return;
+            closed = true;
+            unsub?.();
+            if (hb) clearInterval(hb);
+            activeConnections--;
+            if (!res.writableEnded) res.end();
+        };
+
+        // Live delivery — enforce the public-topic allowlist so internal topics
+        // (e.g. `trace`) never serialize out, and apply bounded backpressure so a
+        // stalled client cannot grow the send buffer without limit.
+        unsub = subscribe((entry) => {
+            if (res.writableEnded) return;
+            if (!isPublicSseTopic(entry.topic)) { droppedInternalTopicEvents++; return; }
+            res.write(formatSse(entry));
+            if (exceedsBackpressureLimit(res.writableLength)) {
+                slowClientClosed++;
+                cleanup();
+            }
         });
 
         // Keep-alive ping. A DATA event, not an SSE comment: comments are
@@ -68,22 +121,11 @@ export function registerEventsRoutes(app: Router, requireAuth: RequestHandler): 
         // change, proxy restart) was indistinguishable from a quiet healthy
         // channel. The client staleness watchdog keys off this event
         // (260613 doc 40). No id: pings must not advance lastEventId.
-        const hb = setInterval(() => {
+        hb = setInterval(() => {
             if (!res.writableEnded) res.write(`data: ${JSON.stringify({ topic: 'system', event: 'ping' })}\n\n`);
         }, HEARTBEAT_MS);
         hb.unref();
 
-        // close fires on both req and res for the same teardown — guard so
-        // activeConnections is decremented exactly once per connection.
-        let closed = false;
-        const cleanup = () => {
-            if (closed) return;
-            closed = true;
-            unsub();
-            clearInterval(hb);
-            activeConnections--;
-            if (!res.writableEnded) res.end();
-        };
         req.on('close', cleanup);
         res.on('close', cleanup);
         res.on('error', cleanup);
