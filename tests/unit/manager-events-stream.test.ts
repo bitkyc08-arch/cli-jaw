@@ -88,3 +88,25 @@ test('MES-008: shared backpressure policy trips strictly above the limit', async
     assert.equal(exceedsBackpressureLimit(SSE_MAX_BUFFER_BYTES + 1, SSE_MAX_BUFFER_BYTES), true, 'above limit: drop');
     assert.equal(exceedsBackpressureLimit(0, SSE_MAX_BUFFER_BYTES), false, 'empty buffer: keep open');
 });
+
+// 260628 follow-up (work-phase 2): lock the load coalescing invariant. A
+// worker_settings_change must trigger ONLY a targeted refreshInstance — never a
+// full table reload — because the only 'instances' invalidation subscriber
+// ignores the handler's own sourceId. If a future edit breaks this match, the
+// per-event full reload returns. Measurement (warm ~2ms / fresh <30ms for 50
+// instances) showed no backend startup-ordering change is justified; this lock is
+// the work-phase deliverable. See 21_1_phase_wp2_load_decision.md.
+test('MES-009: settings-change stream coalesces to a targeted refresh (no full reload)', () => {
+    // The only full-reload subscriber ignores its own 'app' sourceId.
+    assert.ok(
+        appSrc.includes("useInvalidationSubscription('instances', () => void load(), 'app')"),
+        "the 'instances' full-reload subscription must keep ignoreSourceId='app'",
+    );
+    // The stream handler does a targeted row refresh and self-publishes with the
+    // matching sourceId, so the self-publish is ignored (no full load() per event).
+    const idx = appSrc.indexOf('useManagerEventStream((port)');
+    assert.ok(idx > 0, 'App must consume the manager event stream');
+    const block = appSrc.slice(idx, idx + 400);
+    assert.ok(block.includes('refreshInstance(port)'), 'must refresh only the changed row');
+    assert.ok(block.includes("sourceId: 'app'"), "self-publish sourceId must match the subscriber's ignoreSourceId");
+});
