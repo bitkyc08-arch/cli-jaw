@@ -12,6 +12,7 @@ import {
 import { defaultPreviewFromForManagerPort } from './preview-ports.js';
 import { scanDashboardInstances, scanSinglePort, scanPeerDashboards } from './scan.js';
 import { InstanceRegistry } from './instance-registry.js';
+import { createStageTimer } from './load-timing.js';
 import { installDashboardProxy } from './proxy.js';
 import { createPreviewOriginProxyController } from './preview-origin-proxy.js';
 import { DashboardLifecycleManager } from './lifecycle.js';
@@ -459,12 +460,17 @@ app.get('/api/dashboard/health', (_req, res) => {
 
 app.get('/api/dashboard/instances', async (req, res) => {
     try {
+        const timer = createStageTimer();
         const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
         const from = Number(req.query["from"] || loaded.registry.scan.from);
         const count = Number(req.query["count"] || loaded.registry.scan.count);
         const showHidden = req.query["showHidden"] === '1' || req.query["showHidden"] === 'true';
         const isDefaultRange = from === loaded.registry.scan.from && count === loaded.registry.scan.count;
         const wantsFresh = req.query["fresh"] === '1' || req.query["fresh"] === 'true';
+        const wantsTiming = req.query["debugTiming"] === '1' || req.query["debugTiming"] === 'true';
+        // Cached only when we serve the registry snapshot (default range, not fresh,
+        // and the background scan has already landed once).
+        const cached = isDefaultRange && !wantsFresh && instanceRegistry.isReady();
         let result: DashboardScanResult;
         if (!isDefaultRange) {
             // Custom range bypasses the cache (rare API path — default UI sends no from/count).
@@ -482,17 +488,34 @@ app.get('/api/dashboard/instances', async (req, res) => {
             // recordScanEvents/reconcile run in the registry's scan loop.
             result = await cachedFullScan();
         }
+        timer.mark('scan');
         const serviceStates = await serviceDetect({ from, to: from + count - 1 });
+        timer.mark('serviceDetect');
         const decorated = lifecycle.decorateScanResult(result, serviceStates);
+        timer.mark('decorate');
 
         let peerDashboards: DashboardInstance[] = [];
         try {
             const peers = await cachedPeerDashboards();
             peerDashboards = peers.map(peer => lifecycle.decorateInstance(peer, null, true));
         } catch { /* peer scan is best-effort */ }
+        timer.mark('peer');
 
         const applied = applyDashboardRegistry(attachPreviewSnapshot(decorated), loaded.registry, loaded.status, { showHidden });
-        res.json({ ...applied, peerDashboards, platform: process.platform });
+        // Phase 20: record per-stage load timing into the existing manager event
+        // buffer (served by /api/manager/events) so cold/warm cost is observable
+        // before any optimization. Default response shape is unchanged unless
+        // ?debugTiming=1 is passed.
+        const timing = timer.measure();
+        observability.publish({
+            kind: 'scan-timing',
+            route: '/api/dashboard/instances',
+            cached,
+            stages: timing.stages,
+            totalMs: timing.totalMs,
+            at: new Date().toISOString(),
+        });
+        res.json({ ...applied, peerDashboards, platform: process.platform, ...(wantsTiming ? { _loadTimingMs: timing } : {}) });
     } catch (error) {
         observability.publish({ kind: 'scan-failed', reason: (error as Error).message, at: new Date().toISOString() });
         res.status(500).json({ ok: false, error: (error as Error).message });
