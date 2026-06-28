@@ -104,6 +104,31 @@ test('processKiroStdoutChunk emits read tool events', () => {
     assert.equal(finalizeKiroFullText(ctx.fullText, ctx.kiroLineBuffer), 'Done.');
 });
 
+test('processKiroStdoutChunk does not stream read result text as assistant output across chunks', () => {
+    const ctx = { fullText: '', kiroDisplayedText: '' };
+    const first = processKiroStdoutChunk(ctx, [
+        '> 확인 후 답변하겠습니다.',
+        'Reading file: /tmp/secret.txt, from line 1 to 2 (using tool: read)',
+    ].join('\n') + '\n');
+    const leaked = processKiroStdoutChunk(ctx, [
+        'SECRET_LINE_1',
+        'SECRET_LINE_2',
+        '✓ Successfully read 26 bytes from /tmp/secret.txt',
+        '- Completed in 0.0s',
+        '> 완료했습니다.',
+    ].join('\n') + '\n');
+
+    const deltas = [...first, ...leaked]
+        .filter((event) => event.kind === 'assistant_delta')
+        .map((event) => event.text)
+        .join('');
+    const finalText = finalizeKiroFullText(ctx.fullText, ctx.kiroLineBuffer);
+    assert.equal(deltas.includes('SECRET_LINE'), false);
+    assert.equal(ctx.fullText.includes('SECRET_LINE'), false);
+    assert.equal(finalText.includes('SECRET_LINE'), false);
+    assert.equal(finalText, '확인 후 답변하겠습니다.\n\n완료했습니다.');
+});
+
 test('parseKiroAssistantText captures continuation lines after > lead', () => {
     const raw = [
         'I will run the following command: pwd (using tool: shell)',

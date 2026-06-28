@@ -177,6 +177,7 @@ export interface KiroStdoutContext {
     kiroToolSeq?: number;
     kiroActiveToolRef?: string | null;
     kiroActiveToolLabel?: string | null;
+    kiroAssistantOpen?: boolean;
 }
 
 function nextKiroToolRef(ctx: KiroStdoutContext): string {
@@ -258,6 +259,26 @@ function splitKiroCompositeLine(line: string): string[] {
     return segments.length > 0 ? segments : [line];
 }
 
+function appendKiroAssistantLine(ctx: KiroStdoutContext, line: string, maxBytes: number): void {
+    const prefix = ctx.fullText.length > 0 && !ctx.fullText.endsWith('\n') ? '\n' : '';
+    const addition = `${prefix}${line}\n`;
+    if (ctx.fullText.length < maxBytes) {
+        ctx.fullText += addition;
+    } else if (ctx.fullText.length < maxBytes + 100) {
+        ctx.fullText += addition.slice(0, maxBytes - ctx.fullText.length);
+    }
+}
+
+function isKiroToolOrMetaLine(trimmed: string): boolean {
+    return isKiroIgnoredLine(trimmed)
+        || KIRO_TOOL_DONE_RE.test(trimmed)
+        || KIRO_USING_TOOL_RE.test(trimmed)
+        || KIRO_TOOL_SUCCESS_RE.test(trimmed)
+        || /^I will run the following command:/i.test(trimmed)
+        || /^Reading file:/i.test(trimmed)
+        || /^Writing file:/i.test(trimmed);
+}
+
 export function flushKiroRemainingAssistantDelta(ctx: KiroStdoutContext): KiroStreamEvent[] {
     const parsed = finalizeKiroFullText(ctx.fullText, ctx.kiroLineBuffer);
     return emitKiroAssistantDelta(ctx, parsed);
@@ -327,24 +348,29 @@ export function processKiroStdoutChunk(
     const parts = pending.split(/\r?\n/);
     ctx.kiroLineBuffer = parts.pop() ?? '';
 
-    // Filter out jaw_runtime JSON lines before accumulating into fullText
-    const filteredParts = parts.filter(line => !isJawRuntimeLine(line.trim()));
-    const completeText = filteredParts.map(line => stripKiroAnsi(line)).join('\n');
-    if (completeText) {
-        const prefix = ctx.fullText.length > 0 && !ctx.fullText.endsWith('\n') ? '\n' : '';
-        const addition = `${prefix}${completeText}\n`;
-        if (ctx.fullText.length < maxBytes) {
-            ctx.fullText += addition;
-        } else if (ctx.fullText.length < maxBytes + 100) {
-            ctx.fullText += addition.slice(0, maxBytes - ctx.fullText.length);
-        }
-    }
-
     const events: KiroStreamEvent[] = [];
     for (const rawLine of parts) {
         const cleanLine = stripKiroAnsi(rawLine).trimEnd();
-        if (!cleanLine.trim()) continue;
+        const trimmed = cleanLine.trim();
+        if (isJawRuntimeLine(trimmed)) continue;
+        if (!trimmed) {
+            if (ctx.kiroAssistantOpen && !ctx.kiroActiveToolRef) {
+                appendKiroAssistantLine(ctx, '', maxBytes);
+            }
+            continue;
+        }
         for (const segment of splitKiroCompositeLine(cleanLine.trim())) {
+            const segmentTrimmed = segment.trim();
+            const isResponse = KIRO_RESPONSE_LINE_RE.test(segmentTrimmed);
+            const isToolOrMeta = isKiroToolOrMetaLine(segmentTrimmed);
+            if (isResponse) {
+                ctx.kiroAssistantOpen = true;
+                appendKiroAssistantLine(ctx, segmentTrimmed, maxBytes);
+            } else if (isToolOrMeta) {
+                ctx.kiroAssistantOpen = false;
+            } else if (ctx.kiroAssistantOpen && !ctx.kiroActiveToolRef) {
+                appendKiroAssistantLine(ctx, segmentTrimmed, maxBytes);
+            }
             events.push(...classifyKiroLine(segment, ctx));
         }
         events.push(...maybeKiroAssistantGrowth(ctx));
