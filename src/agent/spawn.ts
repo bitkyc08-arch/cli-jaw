@@ -2167,6 +2167,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             eventType: fieldString(asCliEventRecord(raw).type, '<no-type>'),
             raw,
         });
+        if (cli === 'grok' || (cli === 'ai-e' && ctx.effectiveProvider === 'grok')) {
+            ctx.stallWatchdog?.markProgress();
+        }
         // claude-e / ai-e Claude: intercept jaw_runtime events BEFORE discriminator
         if ((cli === 'claude-e' || cli === 'ai-e') && isJawRuntimeEvent(raw)) {
             const rtEvt = raw as Record<string, unknown>;
@@ -2237,6 +2240,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ctx.agyLastActivitySource = 'stdout';
             const rawText = agyUtf8!.write(chunk);
             if (!rawText) return;
+            ctx.stallWatchdog?.markProgress();
             // Defensive ANSI strip (belt-and-suspenders with NO_COLOR=1)
             const text = rawText.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
             if (ctx.fullText.length < 102_400) ctx.fullText += text;
@@ -2303,7 +2307,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         lastOpencodeIoAt = Date.now();
         const text = chunk.toString().trim();
         if (cli === 'agy') ctx.agyLastActivitySource = 'stderr';
-        if (kiroPlainText && text) ctx.stallWatchdog?.markProgress();
+        if ((kiroPlainText || cli === 'agy') && text) ctx.stallWatchdog?.markProgress();
         appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
         console.error(`[jaw:stderr:${agentLabel}] ${text}`);
         if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += text + '\n';

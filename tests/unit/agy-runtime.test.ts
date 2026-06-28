@@ -143,8 +143,17 @@ test('AGY-RT-008: AGY print timeout is a hard cap while cli-jaw watchdog owns pr
     assert.match(spawnSrc, /startAgyTranscriptWatcher\(\{[\s\S]*ctx,/);
 });
 
-test('AGY-RT-008b: Kiro plain-text stdout and stderr mark watchdog progress on raw activity', () => {
+test('AGY-RT-008b: AGY and Kiro raw stdout/stderr activity marks watchdog progress', () => {
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const agyStdoutStart = spawnSrc.indexOf('const rawText = agyUtf8!.write(chunk)');
+    assert.ok(agyStdoutStart >= 0, 'AGY stdout decoder block must exist');
+    const agyStdoutBlock = spawnSrc.slice(
+        agyStdoutStart,
+        spawnSrc.indexOf("if (kiroPlainText) {", agyStdoutStart),
+    );
+    assert.match(agyStdoutBlock, /const rawText = agyUtf8!\.write\(chunk\);/);
+    assert.match(agyStdoutBlock, /if \(!rawText\) return;\s*ctx\.stallWatchdog\?\.markProgress\(\);/);
+
     const kiroStdoutStart = spawnSrc.indexOf("if (kiroPlainText) {");
     assert.ok(kiroStdoutStart >= 0, 'Kiro stdout block must exist');
     const kiroStdoutBlock = spawnSrc.slice(
@@ -161,7 +170,7 @@ test('AGY-RT-008b: Kiro plain-text stdout and stderr mark watchdog progress on r
         stderrStart,
         spawnSrc.indexOf("child.on('close'", stderrStart),
     );
-    assert.match(stderrBlock, /if \(kiroPlainText && text\) ctx\.stallWatchdog\?\.markProgress\(\);/);
+    assert.match(stderrBlock, /if \(\(kiroPlainText \|\| cli === 'agy'\) && text\) ctx\.stallWatchdog\?\.markProgress\(\);/);
 });
 
 test('AGY-RT-009: AGY print runs can finish after quiet assistant output', () => {
