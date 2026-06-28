@@ -213,12 +213,13 @@ test('AG-006g-kiro: ai-e kiro uses text output, effort, and auto provider infere
     assert.equal(resolveAiEProvider(undefined, 'deepseek-3.2'), 'kiro');
 });
 
-test('AG-006g-kiro-effort: kiro-code fresh and resume forward supported effort', () => {
+test('AG-006g-kiro-effort: kiro-code maps xhigh to Kiro max on the wire', () => {
     const fresh = buildArgs('kiro-code', 'auto', 'xhigh', 'hi', '', 'auto');
     assert.ok(fresh.includes('--effort'));
-    assert.ok(fresh.includes('xhigh'));
+    assert.ok(fresh.includes('max'));
+    assert.ok(!fresh.includes('xhigh'));
 
-    const resumed = buildResumeArgs('kiro-code', 'auto', 'max', 'sess-1', 'hi', 'auto');
+    const resumed = buildResumeArgs('kiro-code', 'auto', 'xhigh', 'sess-1', 'hi', 'auto');
     assert.ok(resumed.includes('--effort'));
     assert.ok(resumed.includes('max'));
 });

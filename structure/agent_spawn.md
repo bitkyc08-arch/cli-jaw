@@ -19,7 +19,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | --- | ---: | --- |
 | `src/agent/spawn.ts` | 2476L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
 | `src/agent/lifecycle-handler.ts` | 1072L | child lifecycle, fallback, retry, queue resume, goal continuation |
-| `src/agent/args.ts` | 455L | CLI별 신규/재개 인자 생성 |
+| `src/agent/args.ts` | 465L | CLI별 신규/재개 인자 생성 |
 | `src/agent/pi-runtime.ts` | 460L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
 | `src/agent/kiro-runtime.ts` | 386L | kiro-code plain-text stdout parser (tool lines, assistant blocks, parallel tool merge, tail-buffer flush) |
 | `src/agent/kiro-auth.ts` | 230L | Kiro CLI data path resolution, session ID extraction from v2 sqlite store, conversation listing |

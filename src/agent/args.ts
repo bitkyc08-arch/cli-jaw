@@ -60,10 +60,11 @@ export function resolveAiEProvider(explicitProvider: string | null | undefined, 
     return 'claude';
 }
 
-const KIRO_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+const KIRO_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
 
 function kiroEffortArgs(effort: string): string[] {
-    return effort && KIRO_EFFORTS.has(effort) ? ['--effort', effort] : [];
+    if (!effort || !KIRO_EFFORTS.has(effort)) return [];
+    return ['--effort', effort === 'xhigh' ? 'max' : effort];
 }
 
 function buildAiEKiroArgs(model: string, effort: string, prompt: string, sessionId?: string): string[] {

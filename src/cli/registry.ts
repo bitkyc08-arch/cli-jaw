@@ -80,7 +80,7 @@ export const CLI_REGISTRY = {
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
-            kiro: ['low', 'medium', 'high', 'xhigh', 'max'],
+            kiro: ['low', 'medium', 'high', 'xhigh'],
         },
     },
     claude: {
@@ -175,8 +175,8 @@ export const CLI_REGISTRY = {
         binary: 'kiro-cli',
         defaultModel: 'auto',
         defaultEffort: 'medium',
-        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
-        effortNote: 'Kiro CLI forwards --effort to gateway fake-reasoning budget tags',
+        efforts: ['low', 'medium', 'high', 'xhigh'],
+        effortNote: 'Kiro CLI forwards --effort; cli-jaw maps xhigh to Kiro max on the wire',
         models: [
             'auto',
             'claude-fable-5',

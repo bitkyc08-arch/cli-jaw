@@ -34,6 +34,6 @@ test('frontend AGY fallback keeps legacy model select enabled', () => {
 test('frontend Kiro fallback exposes gateway effort choices', () => {
     const meta = getCliMeta('kiro-code');
     assert.ok(meta, 'kiro metadata missing');
-    assert.deepEqual(meta.efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
-    assert.match(meta.effortNote || '', /gateway fake-reasoning/);
+    assert.deepEqual(meta.efforts, ['low', 'medium', 'high', 'xhigh']);
+    assert.match(meta.effortNote || '', /xhigh to Kiro max/);
 });
