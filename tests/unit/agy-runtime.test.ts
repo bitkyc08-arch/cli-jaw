@@ -143,6 +143,27 @@ test('AGY-RT-008: AGY print timeout is a hard cap while cli-jaw watchdog owns pr
     assert.match(spawnSrc, /startAgyTranscriptWatcher\(\{[\s\S]*ctx,/);
 });
 
+test('AGY-RT-008b: Kiro plain-text stdout and stderr mark watchdog progress on raw activity', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const kiroStdoutStart = spawnSrc.indexOf("if (kiroPlainText) {");
+    assert.ok(kiroStdoutStart >= 0, 'Kiro stdout block must exist');
+    const kiroStdoutBlock = spawnSrc.slice(
+        kiroStdoutStart,
+        spawnSrc.indexOf('buffer += chunk.toString();', kiroStdoutStart),
+    );
+    assert.match(kiroStdoutBlock, /const text = kiroUtf8!\.write\(chunk\);/);
+    assert.match(kiroStdoutBlock, /if \(!text\) return;\s*ctx\.stallWatchdog\?\.markProgress\(\);/);
+    assert.match(kiroStdoutBlock, /appendTraceEvent\(\{[\s\S]*raw:\s*text/);
+
+    const stderrStart = spawnSrc.indexOf("child.stderr.on('data'");
+    assert.ok(stderrStart >= 0, 'stderr handler must exist');
+    const stderrBlock = spawnSrc.slice(
+        stderrStart,
+        spawnSrc.indexOf("child.on('close'", stderrStart),
+    );
+    assert.match(stderrBlock, /if \(kiroPlainText && text\) ctx\.stallWatchdog\?\.markProgress\(\);/);
+});
+
 test('AGY-RT-009: AGY print runs can finish after quiet assistant output', () => {
     assert.equal(shouldCompleteAgyPrintRun({
         outputTextStarted: true,

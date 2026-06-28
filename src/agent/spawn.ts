@@ -2280,6 +2280,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (kiroPlainText) {
             const text = kiroUtf8!.write(chunk);
             if (!text) return;
+            ctx.stallWatchdog?.markProgress();
             appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: text });
             const events = processKiroStdoutChunk(ctx, text);
             if (events.length) {
@@ -2302,6 +2303,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         lastOpencodeIoAt = Date.now();
         const text = chunk.toString().trim();
         if (cli === 'agy') ctx.agyLastActivitySource = 'stderr';
+        if (kiroPlainText && text) ctx.stallWatchdog?.markProgress();
         appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
         console.error(`[jaw:stderr:${agentLabel}] ${text}`);
         if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += text + '\n';
