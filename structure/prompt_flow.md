@@ -290,6 +290,7 @@ delegation rules 블록은 prompt 끝에 항상 붙는다.
 | Codex | `{workDir}/AGENTS.md` 자동 로드 | 새 세션일 때만 stdin에 `[User Message]` 블록 |
 | Codex App | app-server thread config | JSON-RPC `turn/start`로 prompt 전달 |
 | Cursor | project-root `AGENTS.md` / `CLAUDE.md` 자동 로드 | fresh run은 args 레벨 prompt (`withHistoryPrompt`)를 `cursor-agent -p --trust --output-format stream-json`으로 전달하고, resume은 `--resume <chatId>` + 현재 prompt |
+| Kiro (`kiro-code`) | fresh run에서만 cli-jaw operational context를 args prompt에 포함 | fresh run은 operational context + `withHistoryPrompt(prompt, historyBlock)`를 `kiro-cli chat --no-interactive`에 전달하고, resume은 `--resume-id <sessionId>` + 현재 prompt만 전달한다 |
 | Gemini | `GEMINI_SYSTEM_MD` tmpfile | args 레벨 prompt (`withHistoryPrompt`) |
 | Grok | cwd instruction files auto-discovery (`grok inspect` 기준) | args 레벨 prompt (`withHistoryPrompt`) via `-p`, no effort/system-prompt flags for `grok-build` |
 | OpenCode | args 빌드 시 sysPrompt 포함 | args 레벨 prompt (`withHistoryPrompt`) |

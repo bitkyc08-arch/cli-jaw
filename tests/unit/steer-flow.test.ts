@@ -109,7 +109,9 @@ test('SF-004: buildHistoryBlock filters stale worklog continue artifacts', () =>
     const src = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     const fnIdx = src.indexOf('function buildHistoryBlock');
     assert.ok(fnIdx > 0, 'buildHistoryBlock function should exist');
-    const fnBlock = src.slice(fnIdx, src.indexOf('function withHistoryPrompt'));
+    const fnEnd = src.indexOf('function isStaleWorklogHistoryArtifact', fnIdx);
+    assert.ok(fnEnd > fnIdx, 'buildHistoryBlock should end before stale artifact helper');
+    const fnBlock = src.slice(fnIdx, fnEnd);
 
     assert.ok(src.includes('function isStaleWorklogHistoryArtifact'), 'stale artifact helper should exist');
     assert.ok(fnBlock.includes('!isStaleWorklogHistoryArtifact(summary)'), 'compact marker summaries must be filtered');

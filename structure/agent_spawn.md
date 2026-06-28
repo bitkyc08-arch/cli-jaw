@@ -106,6 +106,8 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 ### Kiro-code branch
 
 - `kiro-cli chat --no-interactive` plain stdout 표면.
+- Fresh run은 cli-jaw operational context + `withHistoryPrompt()` bounded history를 args prompt에 포함한다.
+- Resume run은 `--resume-id <sessionId>`와 현재 prompt만 전달한다. Kiro native session이 이전 대화 상태를 이미 보유하므로 operational context/history를 매 턴 다시 붙이지 않는다.
 - `kiro-runtime.ts`가 tool line(`using tool:`), completion marker, `>` assistant block + continuation lines, parallel tool merge, tail-buffer flush를 파싱해 `agent_tool` + `agent_output`으로 브로드캐스트.
 - Live preview는 raw delta (`liveOutputText`, bullet inject 없음), session/finalize용 raw capture는 `fullText`, authoritative body는 `resolveSpawnOutputText()` (parsed Kiro 우선).
 - 동적 모델 목록은 `kiro-cli chat --list-models --format json` (`kiro-models.ts`).
@@ -131,6 +133,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `claude-e` | `claude-e run --jsonl --output-format stream-json --idle-timeout-ms 600000 --hard-timeout-ms 3600000` | `jaw_runtime` 이벤트 가로채기, resume `--resume <sessionId>` |
 | `agy` | `agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp>` | plain text stdout; optional flags are emitted only when `agy-capabilities.ts` detects support (`--model` observed in AGY 1.0.12); session id from stdout/log; resume `--conversation <id>` |
 | `cursor` | `cursor-agent -p --trust --output-format stream-json --model <resolvedModelId>` | effort는 full model id로 해석, `runtimeModel` session bucket |
+| `kiro-code` | `kiro-cli chat --no-interactive [--resume-id <id>]` | fresh: operational context + `withHistoryPrompt()`; resume: current prompt only |
 | `codex` | stdin에 `[User Message]` 블록 (fresh only) | — |
 | `gemini` | headless `-p`, model, stream JSON, `--skip-trust`, `--approval-mode yolo` | multi-directory workspace `--include-directories` |
 | `grok` | `-p`, optional `-m`, `--output-format streaming-json`, `--no-alt-screen` | trace backfill on exit, `ai-e` alias |

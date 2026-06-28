@@ -54,6 +54,7 @@ graph TD
 | **claude-e** | fresh run은 `stdin.write(historyBlock + prompt)`, resume은 helper `--resume` + 현재 prompt만 전달 | `claude-e` helper surface 우선, compatibility `claude-exec`와 legacy `jaw-claude-i` fallback. legacy 세션 bucket/event namespace는 `claude-i`라 standard Claude 세션과 분리 |
 | **codex** | `stdin.write(historyBlock + "\n\n[User Message]\n" + prompt)` | `spawn.ts` 표준 CLI 분기 |
 | **agy** | fresh run은 `withHistoryPrompt()`를 합쳐 `agy -p --log-file <tmp>`에 전달, resume은 `agy --conversation <sessionId> -p <prompt>` | 정확한 저장 세션 재개는 `--conversation`을 사용한다. `-c`/`--continue`는 최신 대화 재개라 bucket persistence에는 쓰지 않는다. print-mode stdout에는 resume hint가 없을 수 있어 per-run log에서 conversation id를 보강 추출한다. `--model`은 capability probe로 지원 확인 후 전달하고(AGY 1.0.12에서 관측), 별도 effort flag는 없다. AGY native context-file ingestion은 cli-jaw가 주입한 운영 맥락, transcript anchoring, quota UI, post-compaction retention 계약을 대신 보장하지 않는다 |
+| **kiro-code** | fresh run은 operational context + `withHistoryPrompt()`를 args prompt에 합쳐 전달, resume은 `--resume-id <sessionId>` + 현재 prompt만 전달 | Kiro native session이 이전 대화 상태를 저장하므로 resume turn에는 bounded history나 operational context를 다시 붙이지 않는다 |
 | **cursor / gemini / grok / opencode** | `args`에 포함, 히스토리는 `withHistoryPrompt()`로 합쳐 전달 | `spawn.ts` `buildArgs()` 경로. Cursor는 `cursor-agent -p --trust --output-format stream-json` + resolved model id, Grok는 `-p` + `--output-format streaming-json`, no effort/system prompt flags |
 | **copilot (ACP)** | `acp.prompt(acpPrompt)` | `spawn.ts` ACP 분기 |
 

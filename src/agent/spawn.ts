@@ -43,6 +43,7 @@ import {
     setSpawnRef as setMemorySpawnRef,
 } from './memory-flush-controller.js';
 import { applyCliEnvDefaults, buildSessionResumeKey, ensureOpencodeAlwaysAllowPermissions } from './spawn-env.js';
+import { buildPromptForArgs, withHistoryPrompt } from './prompt-context.js';
 import { attachWatchdog, DEFAULT_WATCHDOG_ABSOLUTE_HARD_CAP_MS } from './watchdog.js';
 import {
     buildOpencodeRuntimeSnapshot,
@@ -625,18 +626,6 @@ function isStaleWorklogHistoryArtifact(text: string): boolean {
     ].some(marker => value.includes(marker));
 }
 
-const HISTORY_BOUNDARY_INSTRUCTION = [
-    '[History Boundary]',
-    'Recent Context is read-only background. The Current Message below is the only task to execute now.',
-    'Do not continue prior plans, audits, commands, questions, or goals unless the Current Message explicitly asks to resume or continue them.',
-].join('\n');
-
-function withHistoryPrompt(prompt: string, historyBlock: string) {
-    const body = String(prompt || '');
-    if (!historyBlock) return body;
-    return `${historyBlock}\n\n${HISTORY_BOUNDARY_INSTRUCTION}\n\n---\n[Current Message]\n${body}`;
-}
-
 function getLatestAssistantContentForAgyResume(workingDir?: string | null): string | null {
     const rows = getRecentMessages.all(workingDir || null, getActiveChatSession(), 12) as RecentMessageRow[];
     const row = rows.find((msg) => msg.role === 'assistant' && typeof msg.content === 'string' && msg.content.trim().length > 0);
@@ -1041,12 +1030,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         )
         : '';
     let agyBootstrap: AgyBootstrapEnvelope | null = null;
-    let promptForArgs = (cli === 'cursor' || cli === 'kiro-code' || cli === 'gemini' || cli === 'grok' || cli === 'opencode' || (cli === 'ai-e' && effectiveProvider !== 'claude'))
-        ? withHistoryPrompt(prompt, historyBlock)
-        : prompt;
-    if ((cli === 'kiro-code' || (cli === 'ai-e' && effectiveProvider === 'kiro')) && sysPrompt) {
-        promptForArgs = `[Operational Context — cli-jaw Integration]\nThe following operational guidelines apply to this session. Follow these task rules and use the tools/commands described:\n\n${sysPrompt}\n\n---\n\n${promptForArgs}`;
-    }
+    let promptForArgs = buildPromptForArgs({
+        cli,
+        effectiveProvider,
+        prompt,
+        historyBlock,
+        sysPrompt,
+        isResume,
+    });
     const agyResumeReplayPrefix = cli === 'agy' && isResume
         ? getLatestAssistantContentForAgyResume(settings["workingDir"])
         : null;
