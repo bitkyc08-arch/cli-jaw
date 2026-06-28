@@ -48,7 +48,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
-            kiro: [],
+            kiro: ['low', 'medium', 'high', 'xhigh', 'max'],
         },
     },
     claude: {
@@ -120,8 +120,8 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     },
     'kiro-code': {
         label: 'Kiro',
-        efforts: [],
-        effortNote: 'Kiro CLI has no separate effort flag',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        effortNote: 'Kiro CLI forwards --effort to gateway fake-reasoning budget tags',
         models: [
             'auto',
             'claude-fable-5',

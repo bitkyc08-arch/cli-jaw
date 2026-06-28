@@ -64,7 +64,7 @@ export const CLI_META: Record<string, CliMeta> = {
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
-            kiro: [],
+            kiro: ['low', 'medium', 'high', 'xhigh', 'max'],
         },
     },
     claude: {
@@ -171,8 +171,8 @@ export const CLI_META: Record<string, CliMeta> = {
             'glm-5',
             'qwen3-coder-next',
         ],
-        efforts: [],
-        effortNote: 'Kiro CLI has no separate effort flag',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        effortNote: 'Kiro CLI forwards --effort to gateway fake-reasoning budget tags',
     },
     gemini: {
         label: 'Gemini',

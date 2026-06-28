@@ -106,7 +106,8 @@ test('Kiro registry exposes kiro-code as a top-level runtime', () => {
     assert.equal(CLI_REGISTRY['kiro-code'].binary, 'kiro-cli');
     assert.equal(CLI_REGISTRY['kiro-code'].defaultModel, 'auto');
     assert.ok(CLI_REGISTRY['kiro-code'].models.includes('claude-sonnet-4.6'));
-    assert.deepEqual(CLI_REGISTRY['kiro-code'].efforts, []);
+    assert.deepEqual(CLI_REGISTRY['kiro-code'].efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+    assert.deepEqual(CLI_REGISTRY['ai-e'].effortsByProvider?.kiro, ['low', 'medium', 'high', 'xhigh', 'max']);
     assert.equal(CLI_REGISTRY['ai-e'].providers.includes('kiro-code'), false);
 });
 

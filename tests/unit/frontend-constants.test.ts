@@ -30,3 +30,10 @@ test('frontend AGY fallback keeps legacy model select enabled', () => {
     assert.ok(meta.models.includes('gemini-3.5-flash'));
     assert.match(meta.effortNote || '', /no separate effort flag/);
 });
+
+test('frontend Kiro fallback exposes gateway effort choices', () => {
+    const meta = getCliMeta('kiro-code');
+    assert.ok(meta, 'kiro metadata missing');
+    assert.deepEqual(meta.efforts, ['low', 'medium', 'high', 'xhigh', 'max']);
+    assert.match(meta.effortNote || '', /gateway fake-reasoning/);
+});

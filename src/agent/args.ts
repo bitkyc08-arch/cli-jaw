@@ -60,9 +60,16 @@ export function resolveAiEProvider(explicitProvider: string | null | undefined, 
     return 'claude';
 }
 
-function buildAiEKiroArgs(model: string, prompt: string, sessionId?: string): string[] {
+const KIRO_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh', 'max']);
+
+function kiroEffortArgs(effort: string): string[] {
+    return effort && KIRO_EFFORTS.has(effort) ? ['--effort', effort] : [];
+}
+
+function buildAiEKiroArgs(model: string, effort: string, prompt: string, sessionId?: string): string[] {
     const args = ['kiro', 'p', '--output-format', 'text', '--timeout-ms', '600000'];
     if (model && model !== 'default') args.push('--model', model);
+    args.push(...kiroEffortArgs(effort));
     if (sessionId) args.push('--resume', sessionId);
     args.push(prompt || '');
     return args;
@@ -239,7 +246,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
                     ...(claudeExtraArgs.length ? ['--', ...claudeExtraArgs] : [])];
             }
             if (provider === 'kiro') {
-                return buildAiEKiroArgs(model, prompt || '');
+                return buildAiEKiroArgs(model, effort, prompt || '');
             }
 
             const promptModeArgs = [
@@ -289,6 +296,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
             return ['chat', '--no-interactive',
                 ...(autoPerm ? ['--trust-all-tools'] : []),
                 ...(model && model !== 'default' ? ['--model', model] : []),
+                ...kiroEffortArgs(effort),
                 prompt || ''];
         case 'gemini':
             return ['-p', prompt || '',
@@ -362,7 +370,7 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
         case 'ai-e': {
             const provider = resolveAiEProvider(options.aiEProvider, model);
             if (provider === 'kiro') {
-                return buildAiEKiroArgs(model, prompt || '', sessionId);
+                return buildAiEKiroArgs(model, effort, prompt || '', sessionId);
             }
             if (provider !== 'claude') {
                 // codex/grok/gemini/copilot: interactive mode with --resume
@@ -424,6 +432,7 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
                 '--resume-id', sessionId,
                 ...(autoPerm ? ['--trust-all-tools'] : []),
                 ...(model && model !== 'default' ? ['--model', model] : []),
+                ...kiroEffortArgs(effort),
                 prompt || ''];
         case 'gemini':
             return ['--resume', sessionId,

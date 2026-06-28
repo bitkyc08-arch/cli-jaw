@@ -202,13 +202,25 @@ test('AG-006g: ai-e resume injects resume flag for claude, codex, grok, and kiro
     assert.equal(kiroArgs.at(-1), 'follow up');
 });
 
-test('AG-006g-kiro: ai-e kiro uses text output and auto provider inference', () => {
-    const args = buildArgs('ai-e', 'auto', 'medium', 'hi', '', 'auto', { aiEProvider: 'kiro' });
+test('AG-006g-kiro: ai-e kiro uses text output, effort, and auto provider inference', () => {
+    const args = buildArgs('ai-e', 'auto', 'high', 'hi', '', 'auto', { aiEProvider: 'kiro' });
     assert.deepEqual(args.slice(0, 2), ['kiro', 'p']);
     assert.ok(args.includes('--output-format'));
     assert.ok(args.includes('text'));
+    assert.ok(args.includes('--effort'));
+    assert.ok(args.includes('high'));
     assert.equal(resolveAiEProvider('kiro', 'auto'), 'kiro');
     assert.equal(resolveAiEProvider(undefined, 'deepseek-3.2'), 'kiro');
+});
+
+test('AG-006g-kiro-effort: kiro-code fresh and resume forward supported effort', () => {
+    const fresh = buildArgs('kiro-code', 'auto', 'xhigh', 'hi', '', 'auto');
+    assert.ok(fresh.includes('--effort'));
+    assert.ok(fresh.includes('xhigh'));
+
+    const resumed = buildResumeArgs('kiro-code', 'auto', 'max', 'sess-1', 'hi', 'auto');
+    assert.ok(resumed.includes('--effort'));
+    assert.ok(resumed.includes('max'));
 });
 
 test('AG-006g2: ai-e non-Claude providers use p-mode argv prompt and never include AGY', () => {
@@ -224,6 +236,8 @@ test('AG-006g2: ai-e non-Claude providers use p-mode argv prompt and never inclu
         assert.equal(args[0], provider);
         if (provider === 'kiro') {
             assert.equal(args[1], 'p');
+            assert.ok(args.includes('--effort'));
+            assert.ok(args.includes('medium'));
         } else {
             assert.equal(args[1], '--output-format');
         }

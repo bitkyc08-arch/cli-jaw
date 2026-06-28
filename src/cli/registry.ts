@@ -80,7 +80,7 @@ export const CLI_REGISTRY = {
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
-            kiro: [],
+            kiro: ['low', 'medium', 'high', 'xhigh', 'max'],
         },
     },
     claude: {
@@ -174,9 +174,9 @@ export const CLI_REGISTRY = {
         label: 'Kiro',
         binary: 'kiro-cli',
         defaultModel: 'auto',
-        defaultEffort: '',
-        efforts: [],
-        effortNote: 'Kiro CLI has no separate effort flag',
+        defaultEffort: 'medium',
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
+        effortNote: 'Kiro CLI forwards --effort to gateway fake-reasoning budget tags',
         models: [
             'auto',
             'claude-fable-5',
