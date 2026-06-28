@@ -30,3 +30,13 @@ Fixture map:
 | `mixed-precise-binary.json` | synthetic-contract | Current snapshot-wide precision policy: any fractional quota makes the snapshot precise. |
 | `auth-or-upstream-error.json` | synthetic-contract | Error-shaped schema drift fails soft at parser scope. |
 
+## Live capture
+
+Run:
+
+```bash
+node scripts/capture-agy-quota-fixture.mjs
+```
+
+Review the redacted output before committing. Binary `remainingPercentage`
+fixtures must be treated as `Available` / `Exhausted`, not precise percent bars.

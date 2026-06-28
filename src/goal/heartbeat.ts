@@ -161,6 +161,7 @@ export function buildGoalContinuation(): GoalContinuationResult {
                 '- Dispatch a CLI sub-agent or jaw employee to challenge whether viable work remains. A viable path → continue working. No path confirmed → call `cli-jaw goal pause --agent --audit "<reviewer summary>"`.',
                 '',
                 'RULE: Do not leave this gate in a loop. Either second-tap pause with audit evidence, or make productive progress and log a checkpoint.',
+                'If the goal appears complete, do not mark it done here; re-check the evidence once, then second-tap pause for the user to finalize.',
               ]
             : []),
         '',
@@ -172,6 +173,7 @@ export function buildGoalContinuation(): GoalContinuationResult {
         '- If the independent reviewer confirms no reasonable path remains, run `cli-jaw goal pause --agent --audit "<independent reviewer summary>"`.',
         '- Plain `cli-jaw goal pause` is for manual user commands only; AI goal continuations must use the agent/audit form.',
         '- The completion command is reserved for explicit user-requested final completion — only when current evidence proves EVERY requirement satisfied and NO work remains.',
+        '- If completion seems proven but the user did not explicitly ask to finalize, pause with audit evidence instead of using `goal done`.',
         '',
         '--- When to stop ---',
         '- If you genuinely cannot proceed with current tools/capabilities (runtime auth, hardware access, human judgment on a business decision), finish what you can, complete the Stop/Pause Audit above, pause with the agent/audit form, and report what was completed vs what remains.',

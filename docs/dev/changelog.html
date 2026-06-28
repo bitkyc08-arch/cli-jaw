@@ -9,14 +9,83 @@
 <h1>Changelog</h1>
 <p class="lead">Release history since CLI-JAW 2.0.0 GA.</p>
 
-<h2>Unreleased <span style="color:var(--text-dim);font-size:14px;">— 2026-05-31</span></h2>
-<h3>Features</h3>
+<h2>Unreleased <span style="color:var(--text-dim);font-size:14px;">— 2026-06-28</span></h2>
+<h3>Fixes</h3>
 <ul>
-<li><strong>Inline media rendering</strong> — Images and videos in chat messages now render inline. Agent responses with image/video paths display directly. User attachments show thumbnails. Click any image for a lightbox modal; double-click or button to open in browser. <code>/media/:filename</code> Express route serves uploads.</li>
-<li><strong>Goal continuation hardening</strong> — Goal mode now overrides PABCD phase gates (no more stopping at each phase). Codex-style completion audit (requirement-by-requirement scrutiny) before <code>/goal done</code>. Blocked audit requires 3 consecutive turns of same blocker. PABCD P/A/B phases have "Goal mode EXCEPTION — IGNORE STOP" directives.</li>
-<li><strong>Interview negativity bias</strong> — Interview mode now pressure-tests every answer. Vague/hedging responses cause clarity scores to drop. Stays on same dimension until concrete detail is provided.</li>
-<li><strong>Interview panel UI</strong> — Ambiguity bars fixed-width, Known/Unknown sections dynamically sized, larger toggle button, full-width expansion.</li>
+<li><strong>Manager UI boundary</strong> — Worker progress monitor no longer renders inside per-instance Jaw sidebars; Code/CEO runtime observability stays in the dedicated Code lane only.</li>
+<li><strong>Watchdog diagnostics</strong> — Idle/progress watchdog kill reasons surface in Telegram when a turn stalls.</li>
 </ul>
+
+<h2>v2.2.3 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-27</span></h2>
+<h4>Release</h4>
+<ul>
+<li>Stable npm <code>latest</code> release with GitHub OIDC Trusted Publishing and desktop asset pipeline.</li>
+<li>Includes Telegram Hub P4 hardening, AGY capability-probe gating, goal pause gate docs parity, and release-gate CI alignment from the v2.2.2 line.</li>
+</ul>
+
+<h2>v2.2.2 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-25</span></h2>
+<h4>Fixes</h4>
+<ul>
+<li>Dashboard Notes: bare <code>.md</code> filenames no longer auto-hyperlink into Jawsidian routes.</li>
+<li>Adaptive-fetch deadline cancellation extended through browser/CDP stages.</li>
+</ul>
+<h4>Features</h4>
+<ul>
+<li><code>/skill:&lt;id&gt;</code> slash commands expose active runtime skills on CLI/Web.</li>
+<li>Developer docs skills catalog rebuilt from the live registry.</li>
+</ul>
+
+<h2>v2.2.1 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-23</span></h2>
+<h4>Features</h4>
+<ul>
+<li>External JWC runtime helper (<code>jaw jwc install|doctor|clean</code>) — optional, not bundled in npm/Electron.</li>
+<li>Adaptive URL fetch (<code>jaw browser fetch</code>) P0 gaps closed: SSRF guards, warm browser pool, BM25 filter, Camoufox stealth, yt-dlp reader.</li>
+<li>Default skill activation from <code>skills_ref/</code> (search, goal, structured-renderers, and peers).</li>
+<li>Worker progress monitor APIs and manager runtime-status bridge.</li>
+</ul>
+
+<h2>v2.2.0 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-22</span></h2>
+<h4>Features</h4>
+<ul>
+<li>Unified release branch policy and hardened release-gate CI contracts.</li>
+<li>Strict TypeScript interop boundaries marked in tests.</li>
+</ul>
+
+<h2>v2.1.5 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-15</span></h2>
+<h4>Desktop</h4>
+<ul>
+<li>Electron desktop shell validated across macOS/Windows/Linux CI matrix.</li>
+<li>Unsigned desktop asset distribution documented; npm package remains CLI-only.</li>
+</ul>
+
+<h2>v2.1.3 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-04</span></h2>
+<h4>Features</h4>
+<ul>
+<li>AGY (<code>agy</code>) top-level runtime with <code>--model</code> passthrough when the installed binary supports it.</li>
+<li>Kiro (<code>kiro-code</code>) runtime via <code>kiro-cli chat --no-interactive</code> with v2 session store.</li>
+<li>Goal heartbeat, workflow scope controls, and manager polish.</li>
+<li>Electron native file-drop routing into the active workspace.</li>
+</ul>
+
+<h2>v2.1.2 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-30</span></h2>
+<h4>Features</h4>
+<ul>
+<li>Strict TypeScript migration cleanup across orchestrator, telegram, manager, and routes.</li>
+<li>AI goal completion gated on verification evidence — no blank-evidence bypass.</li>
+<li>Inline media rendering in chat (images/videos, lightbox, <code>/media/:filename</code> route).</li>
+<li>Goal continuation overrides PABCD phase gates with audited completion flow.</li>
+</ul>
+
+<h2>v2.1.1 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
+<h4>Features</h4>
+<ul>
+<li>Interview Known/Unknown tracker collapses so it no longer buries the chat.</li>
+<li>Electron Reload/Hard Reload correctly reloads the main window.</li>
+</ul>
+
+<h2>v2.1.0 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
+<p>Bridge release from the 2.0.x line into the 2.1 runtime expansion (Kiro/AGY/Pi parity work begins in subsequent patches).</p>
+
 <h2>v2.0.17 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
 <h4>Features</h4>
 <ul>

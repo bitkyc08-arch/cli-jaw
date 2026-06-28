@@ -1,4 +1,5 @@
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
+import type { AgyTranscriptMode } from '../types/agent.js';
 
 export const AGY_TIMEOUT_PREFIX = 'Error: timed out waiting for response';
 export const AGY_COMPLETE_KILL_REASON = 'agy-complete';
@@ -32,6 +33,77 @@ export function resolveAgyEmptyCloseError(ctx: Pick<SpawnContext, 'fullText' | '
     const visibleText = String(ctx.liveOutputText || ctx.fullText || '').trim();
     if (visibleText) return null;
     return formatAgyTranscriptErrorMessage(ctx.agyLastTranscriptError);
+}
+
+function visibleAgyText(ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText'>): string {
+    return String(ctx.liveOutputText || ctx.fullText || '').trim();
+}
+
+export type { AgyTranscriptMode };
+
+export function classifyAgyTranscriptMode(ctx: Pick<SpawnContext,
+    'agyTranscriptActive' |
+    'agyBootstrapAcceptanceMode' |
+    'agyLastTranscriptError' |
+    'fullText' |
+    'liveOutputText'
+>): AgyTranscriptMode {
+    if (ctx.agyLastTranscriptError) return 'provider-error';
+    if (ctx.agyTranscriptActive) {
+        if (ctx.agyBootstrapAcceptanceMode === 'missing' || ctx.agyBootstrapAcceptanceMode === 'pending') {
+            return 'bootstrap-missing';
+        }
+        return 'anchored';
+    }
+    const visibleText = visibleAgyText(ctx);
+    if (!visibleText) return 'not-started';
+    if (hasAgyTimeoutMarker(visibleText)) return 'fallback-timeout';
+    return 'fallback-missing';
+}
+
+function sanitizeWatchdogValue(value: unknown, fallback = 'none'): string {
+    const sanitized = String(value || '')
+        .replace(/\s+/g, ' ')
+        .replace(/[\r\n\t]/g, ' ')
+        .trim();
+    return (sanitized || fallback).slice(0, 160);
+}
+
+function sanitizeWatchdogToolLabel(value: unknown): string {
+    const label = sanitizeWatchdogValue(value, 'tool');
+    if (/\[(?:Current cli-jaw task|Operational Context|Recent context|CLI-JAW AGY BOOTSTRAP)\]/i.test(label)) {
+        return 'transcript tool';
+    }
+    if (/CLI_JAW_BOOTSTRAP_SHA=|USER_REQUEST|SECRET|PROMPT/i.test(label)) {
+        return 'transcript tool';
+    }
+    return label;
+}
+
+export function formatAgyWatchdogContext(ctx: Pick<SpawnContext,
+    'stallReason' |
+    'agyTranscriptMode' |
+    'agyTranscriptLastReason' |
+    'agyLastActivitySource' |
+    'sessionId' |
+    'toolLog'
+>): string {
+    const lastTool = [...(ctx.toolLog || [])].reverse()
+        .find((tool) => typeof tool.label === 'string' && tool.label.trim());
+    const lines = [
+        '[AGY interrupted by watchdog]',
+        `reason=${sanitizeWatchdogValue(ctx.stallReason, 'unknown')}`,
+        `transcriptMode=${sanitizeWatchdogValue(ctx.agyTranscriptMode, 'not-started')}`,
+        `lastActivity=${sanitizeWatchdogValue(ctx.agyLastActivitySource, 'none')}`,
+        `sessionId=${sanitizeWatchdogValue(ctx.sessionId, 'none')}`,
+    ];
+    if (ctx.agyTranscriptLastReason) {
+        lines.push(`transcriptReason=${sanitizeWatchdogValue(ctx.agyTranscriptLastReason)}`);
+    }
+    if (lastTool) {
+        lines.push(`lastTool=${sanitizeWatchdogToolLabel(lastTool.label)} status=${sanitizeWatchdogValue(lastTool.status)}`);
+    }
+    return lines.join('\n');
 }
 
 export function stripAgyTrailingTimeoutOutput(text: string): { text: string; stripped: boolean } {

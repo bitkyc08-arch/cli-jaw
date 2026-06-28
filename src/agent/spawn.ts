@@ -58,7 +58,9 @@ import { jawRuntime } from './jwc-runtime.js';
 import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
+    classifyAgyTranscriptMode,
     extractAgyConversationId,
+    formatAgyWatchdogContext,
     resolveAgyEmptyCloseError,
     formatAgyTimeoutMessage,
     getAgyQuietCompletionDelayMs,
@@ -2050,9 +2052,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(opencodeSpawnAudit ? { opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> } : {}),
         ...(agyResumeOffset > 0 ? { agyResumeOffset, agyBytesReceived: 0 } : {}),
         ...(cli === 'agy' ? {
+            agyTranscriptMode: 'not-started' as const,
+            agyLastActivitySource: 'none' as const,
             ...(agyBootstrap ? {
                 agyBootstrapSentinel: agyBootstrap.sentinel,
                 agyBootstrapHash: agyBootstrap.hash,
+                metadata: { agyPromptSpill: agyBootstrap.spill },
             } : {}),
             agyBootstrapAccepted: false,
             agyBootstrapAcceptanceMode: agyBootstrap ? 'pending' as const : 'not-applicable' as const,
@@ -2101,6 +2106,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const stallWatchdog = attachWatchdog(child, agentLabel, (reason) => {
         console.log(`[jaw:watchdog] killing ${agentLabel} — ${reason}`);
         ctx.stallReason = reason;
+        if (cli === 'agy') {
+            ctx.agyTranscriptMode = classifyAgyTranscriptMode(ctx);
+            const agyWatchdogContext = formatAgyWatchdogContext(ctx);
+            ctx.stderrBuf = ctx.stderrBuf ? `${ctx.stderrBuf}\n${agyWatchdogContext}` : agyWatchdogContext;
+            pushTrace(ctx, agyWatchdogContext);
+        }
         if (child.pid) {
             killProcessTree(child.pid, 'SIGTERM');
             setTimeout(() => {
@@ -2156,6 +2167,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             eventType: fieldString(asCliEventRecord(raw).type, '<no-type>'),
             raw,
         });
+        if (cli === 'grok' || (cli === 'ai-e' && ctx.effectiveProvider === 'grok')) {
+            ctx.stallWatchdog?.markProgress();
+        }
         // claude-e / ai-e Claude: intercept jaw_runtime events BEFORE discriminator
         if ((cli === 'claude-e' || cli === 'ai-e') && isJawRuntimeEvent(raw)) {
             const rtEvt = raw as Record<string, unknown>;
@@ -2223,8 +2237,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         opts.lifecycle?.onActivity?.('stdout');
         lastOpencodeIoAt = Date.now();
         if (cli === 'agy') {
+            ctx.agyLastActivitySource = 'stdout';
             const rawText = agyUtf8!.write(chunk);
             if (!rawText) return;
+            ctx.stallWatchdog?.markProgress();
             // Defensive ANSI strip (belt-and-suspenders with NO_COLOR=1)
             const text = rawText.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
             if (ctx.fullText.length < 102_400) ctx.fullText += text;
@@ -2268,6 +2284,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (kiroPlainText) {
             const text = kiroUtf8!.write(chunk);
             if (!text) return;
+            ctx.stallWatchdog?.markProgress();
             appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: text });
             const events = processKiroStdoutChunk(ctx, text);
             if (events.length) {
@@ -2289,6 +2306,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         clearAgyQuietCompletionTimer();
         lastOpencodeIoAt = Date.now();
         const text = chunk.toString().trim();
+        if (cli === 'agy') ctx.agyLastActivitySource = 'stderr';
+        if ((kiroPlainText || cli === 'agy') && text) ctx.stallWatchdog?.markProgress();
         appendTraceEvent({ runId: ctx.traceRunId, source: 'stderr', eventType: 'stderr', raw: text });
         console.error(`[jaw:stderr:${agentLabel}] ${text}`);
         if (ctx.stderrBuf.length < 4000) ctx.stderrBuf += text + '\n';
@@ -2347,6 +2366,9 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         agyClosing = true;
         agyTranscriptWatcher?.stop();
+        if (cli === 'agy') {
+            ctx.agyTranscriptMode = classifyAgyTranscriptMode(ctx);
+        }
         if (cli === 'agy' && isResume && isAgyStaleSessionOutput(ctx.fullText)) {
             console.log(`[jaw:agy] stale session detected (Warning: conversation not found) — clearing bucket`);
             try {

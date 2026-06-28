@@ -54,7 +54,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 ---
 
-## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (707L)
+## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (730L)
 
 | Function | 역할 |
 | --- | --- |
@@ -120,13 +120,14 @@ initTelegram():
 
 ---
 
-## telegram/forwarder.ts — Telegram Forwarder (105L)
+## telegram/forwarder.ts — Telegram Forwarder (178L)
 
 | Function | 역할 |
 | --- | --- |
 | `createForwarderLifecycle()` | attach/detach 중복 등록 방지 |
 | `createTelegramForwarder()` | `agent_done`를 Telegram 채널로 forward |
 | `markdownToTelegramHtml()` | Markdown → Telegram HTML 변환 |
+| `chunkTelegramHtmlMessage()` | Telegram HTML tag token/balance 보존 분할 |
 | `chunkTelegramMessage()` | 4096자 단위 분할 |
 | `escapeHtmlTg()` | Telegram HTML escape |
 
@@ -237,6 +238,10 @@ Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTop
 - Hub `forwardToInstance()` passes overrides into instance ingest when route defines them.
 - Manager `TelegramHub.tsx` routes table shows per-topic `model` / `systemPrompt`.
 - Outbound relay may use `src/telegram/rich-message.ts` when Telegram rich payloads are available; otherwise HTML chunking fallback.
+
+### Watchdog diagnostics relay
+
+- When `src/agent/watchdog.ts` kills a stalled turn, kill diagnostics are preserved and surfaced back through the originating Telegram `target` (direct chat or forum topic) so operators see why the turn ended.
 
 ### Hub bot commands
 

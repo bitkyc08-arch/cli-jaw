@@ -16,14 +16,14 @@ const appSrc = readFileSync(join(root, 'public/manager/src/App.tsx'), 'utf8');
 test('MES-001: relay route exists with SSE headers', () => {
     const idx = serverSrc.indexOf("app.get('/api/manager/events/stream'");
     assert.ok(idx > 0, 'stream route must be registered');
-    const block = serverSrc.slice(idx, idx + 1200);
+    const block = serverSrc.slice(idx, idx + 2200);
     assert.ok(block.includes("'Content-Type', 'text/event-stream'"), 'must set SSE content type');
     assert.ok(block.includes("'Cache-Control', 'no-cache'"), 'must disable caching');
 });
 
 test('MES-002: relay forwards only worker_settings_change and cleans up on close', () => {
     const idx = serverSrc.indexOf("app.get('/api/manager/events/stream'");
-    const block = serverSrc.slice(idx, idx + 1200);
+    const block = serverSrc.slice(idx, idx + 2200);
     assert.ok(block.includes("entry.event !== 'worker_settings_change'"), 'must filter to worker_settings_change');
     assert.ok(block.includes("entry.topic !== 'worker'"), 'must filter to worker topic');
     assert.ok(block.includes("req.on('close'"), 'must handle client disconnect');
@@ -47,4 +47,66 @@ test('MES-004: App wires the stream to refreshInstance + invalidation', () => {
     const block = appSrc.slice(idx, idx + 400);
     assert.ok(block.includes('refreshInstance(port)'), 'must refresh the changed instance row');
     assert.ok(block.includes("topics: ['instances']"), 'must publish an instances invalidation');
+});
+
+// 260628 follow-up (work-phase 1): bounded-write hardening of the relay stream.
+test('MES-005: relay applies the shared bounded-write backpressure policy', () => {
+    const idx = serverSrc.indexOf("app.get('/api/manager/events/stream'");
+    const block = serverSrc.slice(idx, idx + 2200);
+    assert.ok(
+        block.includes('exceedsBackpressureLimit(res.writableLength'),
+        'must check the send buffer against the shared backpressure limit',
+    );
+    assert.ok(block.includes('SSE_MAX_BUFFER_BYTES'), 'must use the shared 1 MB limit constant');
+    assert.ok(block.includes('managerStreamSlowClientClosed++'), 'must count slow-client closes');
+});
+
+test('MES-006: relay cleanup is idempotent across req-close/res-error', () => {
+    const idx = serverSrc.indexOf("app.get('/api/manager/events/stream'");
+    const block = serverSrc.slice(idx, idx + 2200);
+    assert.ok(block.includes('if (closed) return;'), 'cleanup must short-circuit when already closed');
+    assert.ok(block.includes('closed = true;'), 'cleanup must set the closed guard');
+    assert.ok(block.includes("res.on('error'"), 'must also clean up on response error');
+});
+
+test('MES-007: slow-client metric is exported and policy is imported from the shared module', () => {
+    assert.ok(
+        serverSrc.includes('export function getManagerStreamMetrics'),
+        'must export getManagerStreamMetrics for observability',
+    );
+    assert.ok(
+        serverSrc.includes("from '../routes/events.js'") &&
+            serverSrc.includes('exceedsBackpressureLimit') &&
+            serverSrc.includes('SSE_MAX_BUFFER_BYTES'),
+        'must reuse the shared backpressure policy from routes/events.js',
+    );
+});
+
+test('MES-008: shared backpressure policy trips strictly above the limit', async () => {
+    const { exceedsBackpressureLimit, SSE_MAX_BUFFER_BYTES } = await import('../../src/routes/events.js');
+    assert.equal(exceedsBackpressureLimit(SSE_MAX_BUFFER_BYTES, SSE_MAX_BUFFER_BYTES), false, 'at limit: keep open');
+    assert.equal(exceedsBackpressureLimit(SSE_MAX_BUFFER_BYTES + 1, SSE_MAX_BUFFER_BYTES), true, 'above limit: drop');
+    assert.equal(exceedsBackpressureLimit(0, SSE_MAX_BUFFER_BYTES), false, 'empty buffer: keep open');
+});
+
+// 260628 follow-up (work-phase 2): lock the load coalescing invariant. A
+// worker_settings_change must trigger ONLY a targeted refreshInstance — never a
+// full table reload — because the only 'instances' invalidation subscriber
+// ignores the handler's own sourceId. If a future edit breaks this match, the
+// per-event full reload returns. Measurement (warm ~2ms / fresh <30ms for 50
+// instances) showed no backend startup-ordering change is justified; this lock is
+// the work-phase deliverable. See 21_1_phase_wp2_load_decision.md.
+test('MES-009: settings-change stream coalesces to a targeted refresh (no full reload)', () => {
+    // The only full-reload subscriber ignores its own 'app' sourceId.
+    assert.ok(
+        appSrc.includes("useInvalidationSubscription('instances', () => void load(), 'app')"),
+        "the 'instances' full-reload subscription must keep ignoreSourceId='app'",
+    );
+    // The stream handler does a targeted row refresh and self-publishes with the
+    // matching sourceId, so the self-publish is ignored (no full load() per event).
+    const idx = appSrc.indexOf('useManagerEventStream((port)');
+    assert.ok(idx > 0, 'App must consume the manager event stream');
+    const block = appSrc.slice(idx, idx + 400);
+    assert.ok(block.includes('refreshInstance(port)'), 'must refresh only the changed row');
+    assert.ok(block.includes("sourceId: 'app'"), "self-publish sourceId must match the subscriber's ignoreSourceId");
 });

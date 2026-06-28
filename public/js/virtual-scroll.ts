@@ -111,6 +111,29 @@ export class VirtualScroll {
     get active(): boolean { return this._active; }
     get count(): number { return this.items.length; }
 
+    /** Phase 30 measurement: snapshot of virtualization state for long-session /
+     *  huge-block observation. Pure read — no layout side effects. */
+    metrics(): {
+        virtualItemCount: number;
+        mountedRowCount: number;
+        firstVisibleIdx: number | null;
+        lastVisibleIdx: number | null;
+        firstVisibleId: string | null;
+        lastVisibleId: string | null;
+    } {
+        const idxs = [...this.mounted.keys()].sort((a, b) => a - b);
+        const first = idxs[0];
+        const last = idxs[idxs.length - 1];
+        return {
+            virtualItemCount: this.items.length,
+            mountedRowCount: this.mounted.size,
+            firstVisibleIdx: first ?? null,
+            lastVisibleIdx: last ?? null,
+            firstVisibleId: first !== undefined ? (this.items[first]?.id ?? null) : null,
+            lastVisibleId: last !== undefined ? (this.items[last]?.id ?? null) : null,
+        };
+    }
+
     private measureGap(): number {
         if (this.itemGap > 0) return this.itemGap;
         const probe = document.createElement('div');

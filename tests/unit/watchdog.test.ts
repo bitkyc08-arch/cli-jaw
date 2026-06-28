@@ -180,6 +180,30 @@ test('Claude rate_limit_event JSON counts as progress even when it contains 429 
     handle.stop();
 });
 
+test('generic watchdog does not treat punctuation-only tiny chunks as progress', async () => {
+    const child = fakeChild();
+    const startedAt = Date.now();
+    const stallPromise = new Promise<string>((resolve) => {
+        attachWatchdog(child, 'test', resolve, {
+            firstProgressMs: 1_000,
+            idleMs: 1_000,
+            absoluteMs: 45,
+            absoluteHardCapMs: 200,
+            checkIntervalMs: 5,
+        });
+    });
+
+    const progress = setInterval(() => {
+        child.stdout?.emit('data', Buffer.from('.'));
+    }, 5);
+    const reason = await stallPromise;
+    clearInterval(progress);
+    const elapsed = Date.now() - startedAt;
+
+    assert.match(reason, /absolute timeout/);
+    assert.ok(elapsed < 120, `tiny chunks should not extend generic watchdog deadline; elapsed=${elapsed}`);
+});
+
 test('stop prevents future stall callbacks', async () => {
     const child = fakeChild();
     let called = false;

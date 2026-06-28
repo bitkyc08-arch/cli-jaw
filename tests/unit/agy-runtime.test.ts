@@ -143,6 +143,36 @@ test('AGY-RT-008: AGY print timeout is a hard cap while cli-jaw watchdog owns pr
     assert.match(spawnSrc, /startAgyTranscriptWatcher\(\{[\s\S]*ctx,/);
 });
 
+test('AGY-RT-008b: AGY and Kiro raw stdout/stderr activity marks watchdog progress', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const agyStdoutStart = spawnSrc.indexOf('const rawText = agyUtf8!.write(chunk)');
+    assert.ok(agyStdoutStart >= 0, 'AGY stdout decoder block must exist');
+    const agyStdoutBlock = spawnSrc.slice(
+        agyStdoutStart,
+        spawnSrc.indexOf("if (kiroPlainText) {", agyStdoutStart),
+    );
+    assert.match(agyStdoutBlock, /const rawText = agyUtf8!\.write\(chunk\);/);
+    assert.match(agyStdoutBlock, /if \(!rawText\) return;\s*ctx\.stallWatchdog\?\.markProgress\(\);/);
+
+    const kiroStdoutStart = spawnSrc.indexOf("if (kiroPlainText) {");
+    assert.ok(kiroStdoutStart >= 0, 'Kiro stdout block must exist');
+    const kiroStdoutBlock = spawnSrc.slice(
+        kiroStdoutStart,
+        spawnSrc.indexOf('buffer += chunk.toString();', kiroStdoutStart),
+    );
+    assert.match(kiroStdoutBlock, /const text = kiroUtf8!\.write\(chunk\);/);
+    assert.match(kiroStdoutBlock, /if \(!text\) return;\s*ctx\.stallWatchdog\?\.markProgress\(\);/);
+    assert.match(kiroStdoutBlock, /appendTraceEvent\(\{[\s\S]*raw:\s*text/);
+
+    const stderrStart = spawnSrc.indexOf("child.stderr.on('data'");
+    assert.ok(stderrStart >= 0, 'stderr handler must exist');
+    const stderrBlock = spawnSrc.slice(
+        stderrStart,
+        spawnSrc.indexOf("child.on('close'", stderrStart),
+    );
+    assert.match(stderrBlock, /if \(\(kiroPlainText \|\| cli === 'agy'\) && text\) ctx\.stallWatchdog\?\.markProgress\(\);/);
+});
+
 test('AGY-RT-009: AGY print runs can finish after quiet assistant output', () => {
     assert.equal(shouldCompleteAgyPrintRun({
         outputTextStarted: true,
@@ -262,6 +292,17 @@ test('AGY-RT-012d: AGY prompt path uses bootstrap envelope after final spawn cwd
     assert.match(agyBootstrapBlock, /promptForArgs\s*=\s*agyBootstrap\.prompt/);
     assert.match(agyBootstrapBlock, /argOptions\s*=\s*\{\s*\.\.\.argOptions,\s*workingDir:\s*spawnCwd\s*\}/);
     assert.match(agyBootstrapBlock, /args\s*=\s*buildCurrentArgs\(argOptions\)/);
+});
+
+test('AGY-RT-012e: AGY prompt spill metadata is attached safely after bootstrap exists', () => {
+    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
+    const ctxIdx = spawnSrc.indexOf('const ctx: SpawnContext = {');
+    const lifecycleIdx = spawnSrc.indexOf('let geminiWatchdog', ctxIdx);
+    assert.ok(ctxIdx >= 0);
+    const ctxBlock = spawnSrc.slice(ctxIdx, lifecycleIdx);
+    assert.match(ctxBlock, /metadata:\s*\{\s*agyPromptSpill:\s*agyBootstrap\.spill\s*\}/);
+    assert.match(ctxBlock, /agyBootstrapSentinel:\s*agyBootstrap\.sentinel/);
+    assert.doesNotMatch(ctxBlock, /agyBootstrap\.prompt/);
 });
 
 test('AGY-RT-013: AGY resume replay prefix is stripped only when new output remains', () => {

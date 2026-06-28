@@ -8,14 +8,83 @@
 <h1>更新日志</h1>
 <p class="lead">CLI-JAW 2.0.0 正式版以来的发布历史。</p>
 
-<h2>未发布 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-31</span></h2>
-<h3>功能</h3>
+<h2>未发布 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-28</span></h2>
+<h3>修复</h3>
 <ul>
-<li><strong>内联媒体渲染</strong> — 聊天消息中的图片和视频现在内联显示。代理响应中的图片/视频路径直接渲染。用户附件在聊天气泡中内联显示。点击图片打开灯箱模态框，双击在浏览器中打开。</li>
-<li><strong>Goal continuation 强化</strong> — Goal模式现在覆盖PABCD阶段门控。Codex风格的完成审计（逐需求验证）。Blocked审计需要连续3轮相同阻塞。PABCD P/A/B阶段添加"Goal mode EXCEPTION"指令。</li>
-<li><strong>访谈负面偏差</strong> — 访谈模式现在对每个答案进行压力测试。模糊答案导致清晰度分数下降。</li>
-<li><strong>访谈面板UI</strong> — 模糊度条固定宽度，Known/Unknown动态比例，折叠按钮放大。</li>
+<li><strong>Manager UI 边界</strong> — Worker progress monitor 不再渲染在按实例的 Jaw 侧边栏内；Code/CEO 运行时观测仅保留在专用 Code lane。</li>
+<li><strong>Watchdog 诊断</strong> — 回合停滞时，idle/progress watchdog 终止原因会显示在 Telegram 中。</li>
 </ul>
+
+<h2>v2.2.3 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-27</span></h2>
+<h4>发布</h4>
+<ul>
+<li>稳定版 npm <code>latest</code> 发布，含 GitHub OIDC Trusted Publishing 与桌面资源流水线。</li>
+<li>包含 v2.2.2 线的 Telegram Hub P4 加固、AGY capability-probe 门控、goal pause gate 文档对齐与 release-gate CI 调整。</li>
+</ul>
+
+<h2>v2.2.2 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-25</span></h2>
+<h4>修复</h4>
+<ul>
+<li>Dashboard Notes：裸 <code>.md</code> 文件名不再自动超链接到 Jawsidian 路由。</li>
+<li>Adaptive-fetch 截止时间取消扩展至 browser/CDP 阶段。</li>
+</ul>
+<h4>新功能</h4>
+<ul>
+<li><code>/skill:&lt;id&gt;</code> 斜杠命令在 CLI/Web 暴露活跃运行时技能。</li>
+<li>开发者文档 skills 目录从 live registry 重建。</li>
+</ul>
+
+<h2>v2.2.1 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-23</span></h2>
+<h4>新功能</h4>
+<ul>
+<li>外部 JWC 运行时助手（<code>jaw jwc install|doctor|clean</code>）— 可选，不捆绑在 npm/Electron 中。</li>
+<li>Adaptive URL fetch（<code>jaw browser fetch</code>）P0 缺口关闭：SSRF 防护、warm browser pool、BM25 过滤、Camoufox stealth、yt-dlp reader。</li>
+<li>从 <code>skills_ref/</code> 默认激活技能（search、goal、structured-renderers 等）。</li>
+<li>Worker progress monitor API 与 manager runtime-status 桥接。</li>
+</ul>
+
+<h2>v2.2.0 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-22</span></h2>
+<h4>新功能</h4>
+<ul>
+<li>统一 release 分支策略与强化的 release-gate CI 契约。</li>
+<li>在测试中标注 strict TypeScript interop 边界。</li>
+</ul>
+
+<h2>v2.1.5 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-15</span></h2>
+<h4>桌面</h4>
+<ul>
+<li>在 macOS/Windows/Linux CI 矩阵中验证 Electron 桌面壳。</li>
+<li>记录未签名桌面资源分发；npm 包仍为 CLI 专用。</li>
+</ul>
+
+<h2>v2.1.3 <span style="color:var(--text-dim);font-size:14px;">— 2026-06-04</span></h2>
+<h4>新功能</h4>
+<ul>
+<li>AGY（<code>agy</code>）顶层运行时 — 已安装二进制支持时 <code>--model</code> 透传。</li>
+<li>Kiro（<code>kiro-code</code>）运行时 — <code>kiro-cli chat --no-interactive</code> 与 v2 session store。</li>
+<li>Goal heartbeat、workflow scope 控制与 manager 打磨。</li>
+<li>Electron 原生文件拖放路由到活跃工作区。</li>
+</ul>
+
+<h2>v2.1.2 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-30</span></h2>
+<h4>新功能</h4>
+<ul>
+<li>orchestrator、telegram、manager、routes 全线的 strict TypeScript 迁移清理。</li>
+<li>AI goal 完成需验证 evidence — 禁止空白 evidence 绕过。</li>
+<li>聊天内联媒体渲染（图片/视频、lightbox、<code>/media/:filename</code> 路由）。</li>
+<li>Goal continuation 以审计完成流覆盖 PABCD 阶段门控。</li>
+</ul>
+
+<h2>v2.1.1 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
+<h4>新功能</h4>
+<ul>
+<li>Interview Known/Unknown 追踪器可折叠，不再遮挡聊天。</li>
+<li>Electron Reload/Hard Reload 正确重载主窗口。</li>
+</ul>
+
+<h2>v2.1.0 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
+<p>从 2.0.x 线过渡到 2.1 运行时扩展（Kiro/AGY/Pi parity 在后续补丁中继续）。</p>
+
 <h2>v2.0.17 <span style="color:var(--text-dim);font-size:14px;">— 2026-05-29</span></h2>
 <h4>新功能</h4>
 <ul>

@@ -12,6 +12,7 @@ import {
 import { defaultPreviewFromForManagerPort } from './preview-ports.js';
 import { scanDashboardInstances, scanSinglePort, scanPeerDashboards } from './scan.js';
 import { InstanceRegistry } from './instance-registry.js';
+import { createStageTimer } from './load-timing.js';
 import { installDashboardProxy } from './proxy.js';
 import { createPreviewOriginProxyController } from './preview-origin-proxy.js';
 import { DashboardLifecycleManager } from './lifecycle.js';
@@ -53,6 +54,7 @@ import { VecStore, getVecDbPath, createProvider, syncAllInstances } from './memo
 import type { EmbeddingConfig } from './memory/embedding/index.js';
 import { addBroadcastListener } from '../core/bus.js';
 import { subscribe as subscribeManagerBus } from '../core/event-bus.js';
+import { exceedsBackpressureLimit, SSE_MAX_BUFFER_BYTES } from '../routes/events.js';
 import { resolveDashboardHome } from './dashboard-home.js';
 import { fetchWorkerAssistantTextById } from './worker-messages.js';
 import {
@@ -459,12 +461,17 @@ app.get('/api/dashboard/health', (_req, res) => {
 
 app.get('/api/dashboard/instances', async (req, res) => {
     try {
+        const timer = createStageTimer();
         const loaded = loadDashboardRegistry({ from: scanFrom, count: scanCount });
         const from = Number(req.query["from"] || loaded.registry.scan.from);
         const count = Number(req.query["count"] || loaded.registry.scan.count);
         const showHidden = req.query["showHidden"] === '1' || req.query["showHidden"] === 'true';
         const isDefaultRange = from === loaded.registry.scan.from && count === loaded.registry.scan.count;
         const wantsFresh = req.query["fresh"] === '1' || req.query["fresh"] === 'true';
+        const wantsTiming = req.query["debugTiming"] === '1' || req.query["debugTiming"] === 'true';
+        // Cached only when we serve the registry snapshot (default range, not fresh,
+        // and the background scan has already landed once).
+        const cached = isDefaultRange && !wantsFresh && instanceRegistry.isReady();
         let result: DashboardScanResult;
         if (!isDefaultRange) {
             // Custom range bypasses the cache (rare API path — default UI sends no from/count).
@@ -482,17 +489,34 @@ app.get('/api/dashboard/instances', async (req, res) => {
             // recordScanEvents/reconcile run in the registry's scan loop.
             result = await cachedFullScan();
         }
+        timer.mark('scan');
         const serviceStates = await serviceDetect({ from, to: from + count - 1 });
+        timer.mark('serviceDetect');
         const decorated = lifecycle.decorateScanResult(result, serviceStates);
+        timer.mark('decorate');
 
         let peerDashboards: DashboardInstance[] = [];
         try {
             const peers = await cachedPeerDashboards();
             peerDashboards = peers.map(peer => lifecycle.decorateInstance(peer, null, true));
         } catch { /* peer scan is best-effort */ }
+        timer.mark('peer');
 
         const applied = applyDashboardRegistry(attachPreviewSnapshot(decorated), loaded.registry, loaded.status, { showHidden });
-        res.json({ ...applied, peerDashboards, platform: process.platform });
+        // Phase 20: record per-stage load timing into the existing manager event
+        // buffer (served by /api/manager/events) so cold/warm cost is observable
+        // before any optimization. Default response shape is unchanged unless
+        // ?debugTiming=1 is passed.
+        const timing = timer.measure();
+        observability.publish({
+            kind: 'scan-timing',
+            route: '/api/dashboard/instances',
+            cached,
+            stages: timing.stages,
+            totalMs: timing.totalMs,
+            at: new Date().toISOString(),
+        });
+        res.json({ ...applied, peerDashboards, platform: process.platform, ...(wantsTiming ? { _loadTimingMs: timing } : {}) });
     } catch (error) {
         observability.publish({ kind: 'scan-failed', reason: (error as Error).message, at: new Date().toISOString() });
         res.status(500).json({ ok: false, error: (error as Error).message });
@@ -599,9 +623,20 @@ app.get('/api/manager/events', (req, res) => {
     res.json({ ok: true, events: observability.drain(since) });
 });
 
+// 260628 follow-up: count Manager-stream readers closed for exceeding the
+// bounded-write limit (observable parallel to getSseMetrics().slowClientClosed).
+let managerStreamSlowClientClosed = 0;
+export function getManagerStreamMetrics(): { slowClientClosed: number } {
+    return { slowClientClosed: managerStreamSlowClientClosed };
+}
+
 // #233: live relay of manager-process bus events (worker_settings_change) so
 // the manager UI refreshes instance metadata without waiting for a poll.
 // Same exposure level as /api/manager/events above (local dashboard, no auth).
+//
+// 260628 follow-up (work-phase 1): bounded-write hardening — port the proven
+// /api/events backpressure policy so a stalled reader cannot grow the send
+// buffer without limit, and make cleanup idempotent across req-close/res-error.
 app.get('/api/manager/events/stream', (req, res) => {
     res.setHeader('Content-Type', 'text/event-stream');
     res.setHeader('Cache-Control', 'no-cache');
@@ -609,14 +644,34 @@ app.get('/api/manager/events/stream', (req, res) => {
     res.flushHeaders?.();
     res.write(': connected\n\n');
 
-    const unsubscribe = subscribeManagerBus((entry) => {
+    // Guard so cleanup runs exactly once across the req-close + res-error paths.
+    let closed = false;
+    let ping: ReturnType<typeof setInterval> | undefined;
+    let unsubscribe: (() => void) | undefined;
+    const cleanup = () => {
+        if (closed) return;
+        closed = true;
+        if (ping) clearInterval(ping);
+        if (unsubscribe) unsubscribe();
+        if (!res.writableEnded) res.end();
+    };
+
+    unsubscribe = subscribeManagerBus((entry) => {
+        if (closed || res.writableEnded) return;
         if (entry.topic !== 'worker' || entry.event !== 'worker_settings_change') return;
-        try { res.write(`data: ${JSON.stringify({ topic: entry.topic, event: entry.event, data: entry.data })}\n\n`); } catch {}
+        try {
+            res.write(`data: ${JSON.stringify({ topic: entry.topic, event: entry.event, data: entry.data })}\n\n`);
+        } catch { cleanup(); return; }
+        // Bounded backpressure: drop a reader whose send buffer grows past the
+        // shared 1 MB limit (same policy as /api/events).
+        if (exceedsBackpressureLimit(res.writableLength, SSE_MAX_BUFFER_BYTES)) {
+            managerStreamSlowClientClosed++;
+            cleanup();
+        }
     });
-    const ping = setInterval(() => { try { res.write(': ping\n\n'); } catch {} }, 30_000);
+    ping = setInterval(() => { try { res.write(': ping\n\n'); } catch { cleanup(); } }, 30_000);
     ping.unref?.();
 
-    const cleanup = () => { clearInterval(ping); unsubscribe(); };
     req.on('close', cleanup);
     res.on('error', cleanup);
 });

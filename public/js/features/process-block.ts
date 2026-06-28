@@ -66,6 +66,32 @@ export interface StoredProcessStepMeta {
 const processDetailStore = new Map<string, { detail: string; originalLength: number; truncated: boolean }>();
 const processStepMetaStore = new Map<string, StoredProcessStepMeta>();
 
+// Phase 30 (virtual-scroll/process-block measurement): observe the memory-policy
+// hot paths without changing behavior. releaseProcessBlockDetails frees detail/meta
+// when a block is recycled/collapsed; reconstructStepsFromBlock rebuilds an elided
+// block from the persistent id list + meta store. These write-only counters make
+// long-session/huge-block activity observable (no behavior change).
+let releaseDetailsCalls = 0;
+let releaseDetailsIdsCleared = 0;
+let reconstructCalls = 0;
+let reconstructStepsBuilt = 0;
+
+export function getProcessBlockMetrics(): {
+    releaseDetailsCalls: number;
+    releaseDetailsIdsCleared: number;
+    reconstructCalls: number;
+    reconstructStepsBuilt: number;
+} {
+    return { releaseDetailsCalls, releaseDetailsIdsCleared, reconstructCalls, reconstructStepsBuilt };
+}
+
+export function resetProcessBlockMetrics(): void {
+    releaseDetailsCalls = 0;
+    releaseDetailsIdsCleared = 0;
+    reconstructCalls = 0;
+    reconstructStepsBuilt = 0;
+}
+
 function tickDuration(): void {
     const pb = _tickerBlock;
     if (!pb || pb.collapsed || pb.steps.length === 0) { stopBlockTicker(); return; }
@@ -575,6 +601,7 @@ export function collapseBlock(pb: ProcessBlockState): void {
 
 export function releaseProcessBlockDetails(rootOrState: HTMLElement | ProcessBlockState | null | undefined): void {
     if (!rootOrState) return;
+    releaseDetailsCalls++;
     const ids = new Set<string>();
     if ('steps' in rootOrState) {
         rootOrState.steps.forEach(step => ids.add(step.id));
@@ -598,6 +625,7 @@ export function releaseProcessBlockDetails(rootOrState: HTMLElement | ProcessBlo
         processDetailStore.delete(id);
         processStepMetaStore.delete(id);
     });
+    releaseDetailsIdsCleared += ids.size;
 }
 
 export function processStepMetaFromStore(stepId: string): StoredProcessStepMeta | null {
@@ -611,6 +639,7 @@ export function processStepMetaFromStore(stepId: string): StoredProcessStepMeta 
  *  meta store rather than scanning .process-step rows. Returns [] if the meta store
  *  was released (caller then no-ops, preserving prior behavior). */
 export function reconstructStepsFromBlock(block: HTMLElement): ProcessStep[] {
+    reconstructCalls++;
     const ids = (block.dataset['processStepIds'] || '').split(/\s+/).filter(Boolean);
     const steps: ProcessStep[] = [];
     for (const id of ids) {
@@ -637,5 +666,6 @@ export function reconstructStepsFromBlock(block: HTMLElement): ProcessStep[] {
             startTime: meta.startTime,
         });
     }
+    reconstructStepsBuilt += steps.length;
     return steps;
 }

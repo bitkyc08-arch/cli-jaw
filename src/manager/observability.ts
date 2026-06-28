@@ -18,6 +18,7 @@ export type ManagerEvent =
     | { kind: 'health-changed'; port: number; from: DashboardInstanceStatus; to: DashboardInstanceStatus; reason: string | null; at: string }
     | { kind: 'version-mismatch'; port: number; expected: string | null; seen: string; at: string }
     | { kind: 'port-collision'; port: number; pids: number[]; at: string }
+    | { kind: 'scan-timing'; route: string; cached: boolean; stages: Record<string, number>; totalMs: number; at: string }
     | { kind: 'reminder-delivery'; reminderId: string; status: string; error: string | null; at: string };
 
 export type Observability = {

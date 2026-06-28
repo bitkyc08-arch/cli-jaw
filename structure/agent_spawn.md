@@ -203,7 +203,7 @@ are persisted or displayed through trace helpers.
 | `goal/types.ts` | 42L | GoalState, GoalHistory, GoalCheckpoint, GoalBudget types |
 
 - `lifecycle-handler.ts`는 agent 종료 후 active goal이 있으면 `buildGoalContinuation()`으로 자동 재스폰 판단.
-- **Pause gate (P0 2026-06-27):** armed gate (`describeGoalPauseGate()`)이면 `buildGoalContinuation()` returns `shouldContinue: false`; audit turn 종료 시 `goal_pause_gate_pending` broadcast, 추가 automatic continuation 미스케줄. `agentPauseCount`는 productive goal events에서만 reset — assistant text alone does not clear gate.
+- **Pause gate (P0 2026-06-27):** armed gate (`describeGoalPauseGate()`)이면 `buildGoalContinuation()` returns `shouldContinue: true` with `reason: "pause_gate_pending"` for one audit/finalizer turn; if a goal-continuation turn exits with the gate still armed, `goal_pause_gate_pending` is broadcast and further automatic continuation is not scheduled. `agentPauseCount`는 productive goal events에서만 reset — assistant text alone does not clear gate.
 - `completeGoal()`은 `goalHasCompletionEvidence()`가 true일 때만 goal을 완료 처리 (verification evidence gate).
 - Goal continuation은 `GOAL_CONT_MAX_ATTEMPTS = 20` 회 제한, goal ID 변경 시 카운터 리셋.
 

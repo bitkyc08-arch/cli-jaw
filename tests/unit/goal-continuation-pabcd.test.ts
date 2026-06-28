@@ -119,6 +119,7 @@ test('goal continuation injects dev-skill audit prompt when agentPauseCount >= 1
         assert.match(res.prompt ?? '', /First attempt recorded/);
         assert.match(res.prompt ?? '', /This second audited call pauses the goal/);
         assert.match(res.prompt ?? '', /checkpoint clears the pending pause gate/);
+        assert.match(res.prompt ?? '', /do not mark it done here/);
         assert.match(res.prompt ?? '', /Requirement-by-requirement verification/);
         assert.match(res.prompt ?? '', /Dev skill compliance/);
         assert.match(res.prompt ?? '', /Independent reviewer/);
@@ -147,6 +148,7 @@ test('goal continuation does NOT inject audit prompt when agentPauseCount is 0',
         const res = buildGoalContinuation();
         assert.equal(res.shouldContinue, true);
         assert.doesNotMatch(res.prompt ?? '', /AGENT PAUSE GATE/);
+        assert.match(res.prompt ?? '', /pause with audit evidence instead of using `goal done`/);
     } finally {
         cleanup();
     }

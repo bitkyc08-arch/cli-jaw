@@ -132,6 +132,7 @@ test('worker progress monitor panel exposes current, previous, attention, and de
 });
 
 test('worker progress monitor remains Manager-local and separate from sessions/background tasks', () => {
+    const router = read('public/manager/src/SidebarRailRouter.tsx');
     const combined = [
         read('public/manager/src/workers/WorkerProgressMonitorPanel.tsx'),
         read('public/manager/src/workers/useWorkerProgress.ts'),
@@ -141,6 +142,7 @@ test('worker progress monitor remains Manager-local and separate from sessions/b
         read('public/manager/src/workers/worker-runs-client.ts'),
     ].join('\n');
 
+    assert.equal(router.includes('<WorkerProgressMonitorPanel />'), false, 'jaw instance sidebar must not render worker progress monitor for end users');
     assert.equal(combined.includes('selectedInstance'), false, 'monitor must not depend on selected child Jaw instance');
     assert.equal(combined.includes('CodeSession'), false, 'monitor must not model workers as Code sessions');
     assert.equal(combined.includes('/api/code'), false, 'monitor must not call Code session APIs');
