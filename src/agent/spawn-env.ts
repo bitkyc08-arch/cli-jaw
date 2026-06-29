@@ -23,7 +23,6 @@ const OPENCODE_ALLOW_PERMISSIONS = [
     'webfetch',
     'websearch',
 ] as const;
-}
 
 function prependPathDir(
     extraEnv: Record<string, string>,

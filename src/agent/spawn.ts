@@ -960,6 +960,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         } catch (e) {
             console.warn('[jaw:resume] stale bucket clear failed:', (e as Error).message);
         }
+        if (cli === 'opencode' && resumeKey !== (bucketResumeKey ?? null)) {
             console.log(`[jaw:resume] ${cli} resume key changed ${bucketResumeKey ?? 'none'} → ${resumeKey}; starting fresh session`);
         } else {
             console.log(`[jaw:resume] ${cli} model changed ${bucketModel} → ${runtimeModel}; starting fresh session`);

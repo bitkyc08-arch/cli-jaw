@@ -28,7 +28,6 @@ export function shouldResumeBucketSession(
     nowMs: number = Date.now(),
     effectiveProvider?: string | null,
 ): boolean {
-    }
     if (cli === 'copilot' && bucketModel) {
         return normalizeModelForCli(cli, requestedModel) === normalizeModelForCli(cli, bucketModel);
     }

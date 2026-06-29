@@ -8,7 +8,6 @@ export { summarizeToolInput, extractToolLabel, extractToolLabelsForTest, makeCla
 export { logEventSummary } from './summary.js';
 
 import type { SpawnContext, ToolEntry, CliEventRecord } from './types.js';
-import { asCliEventArray } from '../../types/cli-events.js';
 import { isClaudeLikeCli } from '../cli-helpers.js';
 import {
     syncLiveTools,

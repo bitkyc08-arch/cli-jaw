@@ -1,7 +1,6 @@
 // ─── Agent CLI Argument Builders ──────────────────────
 // Extracted from agent.js for 500-line compliance.
 
-import { existsSync } from 'node:fs';
 import os from 'node:os';
 import type { AgyCapabilities } from './agy-capabilities.js';
 import { resolveCursorModelVariant } from './cursor-runtime.js';
@@ -78,36 +77,6 @@ function normalizePathForDedupe(dir: string): string {
     return dir.trim().replace(/[\\/]+$/, '');
 }
 
-function windowsPathToWslPath(dir: string): string | null {
-    const match = /^([A-Za-z]):[\\/](.*)$/.exec(dir.trim());
-    if (!match) return null;
-    const [, driveRaw, restRaw] = match;
-    if (!driveRaw || restRaw === undefined) return null;
-    const drive = driveRaw.toLowerCase();
-    const rest = restRaw.replace(/\\/g, '/');
-    return `/mnt/${drive}/${rest}`;
-}
-
-function isWslRuntime(options: BuildArgOptions): boolean {
-    const platform = options.platform ?? process.platform;
-    if (platform !== 'linux') return false;
-    const env = options.env ?? process.env;
-    const release = options.release ?? os.release();
-    return Boolean(env['WSL_DISTRO_NAME'] || env['WSL_INTEROP'] || /microsoft|wsl/i.test(release));
-}
-
-function detectWslWindowsHome(options: BuildArgOptions): string[] {
-    if (!isWslRuntime(options)) return [];
-    const env = options.env ?? process.env;
-    const pathExists = options.pathExists ?? existsSync;
-    const candidates: string[] = [];
-    const userProfileEnv = env['USERPROFILE'];
-    const userProfile = userProfileEnv ? windowsPathToWslPath(userProfileEnv) : null;
-    if (userProfile) candidates.push(userProfile);
-    const user = env['USERNAME'] || env['USER'];
-    if (user) candidates.push(`/mnt/c/Users/${user}`);
-    return candidates.filter((dir) => pathExists(dir));
-}
 
 
 export function resolveAgyAddDirectories(options: BuildArgOptions = {}): string[] {

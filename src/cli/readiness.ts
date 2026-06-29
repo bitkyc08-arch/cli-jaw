@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process';
 import { detectAllCli } from '../core/config.js';
-import { readClaudeCreds, readCodexTokens, readGeminiAccount } from '../routes/quota.js';
+import { readClaudeCreds, readCodexTokens } from '../routes/quota.js';
 import { hasCopilotAuthSync } from '../../lib/quota-copilot.js';
 import { CLI_KEYS, DEFAULT_CLI } from './registry.js';
 import type { CliEngine } from '../types/cli-engine.js';
