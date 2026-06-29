@@ -263,6 +263,16 @@ test('getArgumentCompletionItems: model command includes default Codex spark cho
     assert.ok(items.some(i => i.name === 'gpt-5.3-codex-spark'));
 });
 
+test('getArgumentCompletionItems: employee model command uses dynamic Codex model choices', async () => {
+    const items = await getArgumentCompletionItems('employee', 'spark', 'cli', ['model', 'Control'], {});
+    assert.ok(items.some(i => i.name === 'gpt-5.3-codex-spark'));
+});
+
+test('getArgumentCompletionItems: employee cli command returns cli choices', async () => {
+    const items = await getArgumentCompletionItems('employee', 'cod', 'cli', ['cli'], {});
+    assert.ok(items.some(i => i.name === 'codex'));
+});
+
 test('getArgumentCompletionItems: unknown command returns empty', async () => {
     const items = await getArgumentCompletionItems('nonexistent', '', 'cli');
     assert.deepEqual(items, []);

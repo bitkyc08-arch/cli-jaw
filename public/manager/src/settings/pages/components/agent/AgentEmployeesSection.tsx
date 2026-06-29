@@ -72,7 +72,7 @@ export function AgentEmployeesSection({
                 <button
                     type="button"
                     className="settings-action settings-action-discard"
-                    onClick={() => onRosterChange([...roster, makeDefaultRuntimeEmployee(cliOptions)])}
+                    onClick={() => onRosterChange([...roster, makeDefaultRuntimeEmployee(cliOptions, cliMeta)])}
                 >
                     + Add employee
                 </button>

@@ -71,15 +71,27 @@ export function skillArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
     return [{ value: 'list', label: t('cmd.arg.skillList', {}, L) }, { value: 'reset', label: t('cmd.arg.skillReset', {}, L) }];
 }
 
-export function employeeArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
+export async function employeeArgumentCompletions(ctx: CompletionCtx, argv: string[] = []): Promise<SlashChoice[]> {
     const L = ctx?.locale || 'ko';
-    return [
+    const subcommands = [
         { value: 'list', label: t('cmd.arg.employeeList', {}, L) },
         { value: 'info', label: t('cmd.arg.employeeInfo', {}, L) },
         { value: 'model', label: t('cmd.arg.employeeModel', {}, L) },
         { value: 'cli', label: t('cmd.arg.employeeCli', {}, L) },
         { value: 'reset', label: t('cmd.arg.employeeReset', {}, L) },
     ];
+    const sub = String(argv[0] || '').trim().toLowerCase();
+    if (!sub) return subcommands;
+    if (sub === 'cli') {
+        return getCliChoicesFromContext(ctx).map(value => ({ value, label: 'cli' }));
+    }
+    if (sub === 'model') {
+        if (argv.length < 2) return [];
+        const modelChoicesByCli = await getModelChoicesByCli();
+        const allModels: string[] = (Object.values(modelChoicesByCli) as string[][]).flat();
+        return dedupeChoices(allModels.map(value => ({ value, label: 'model' })));
+    }
+    return subcommands;
 }
 
 export function browserArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {

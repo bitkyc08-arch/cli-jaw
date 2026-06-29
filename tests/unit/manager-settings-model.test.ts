@@ -153,12 +153,20 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
         join(__dirname, '../../public/manager/src/settings/pages/components/PerCliRow.tsx'),
         'utf8',
     );
+    const agentEmployeesSectionSource = readFileSync(
+        join(__dirname, '../../public/manager/src/settings/pages/components/agent/AgentEmployeesSection.tsx'),
+        'utf8',
+    );
     assert.ok(runtimeHeaderSource.includes('orderRuntimeCliOptions(cliOptions)'));
     assert.ok(runtimeHeaderSource.includes('orderedCliOptions.map'));
     assert.ok(runtimeHeaderSource.includes('collapsedAfter={orderedPrimaryCliCount}'));
     assert.ok(perCliRowSource.includes('settings-percli-note'));
     assert.ok(perCliRowSource.includes('meta.modelNote'));
     assert.ok(perCliRowSource.includes('meta.effortNote'));
+    assert.ok(
+        agentEmployeesSectionSource.includes('makeDefaultRuntimeEmployee(cliOptions, cliMeta)'),
+        'new runtime employees must use live CLI metadata for model defaults',
+    );
     assert.equal(metaFor('pi').label, 'Pi');
     assert.equal(PRIMARY_CLIS[0], 'pi');
 });

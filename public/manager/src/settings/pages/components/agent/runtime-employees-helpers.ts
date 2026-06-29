@@ -1,4 +1,5 @@
 import type { SettingsClient } from '../../../types';
+import type { CliMeta } from './agent-meta';
 
 export type RuntimeEmployeeSource = 'static' | 'db';
 
@@ -37,13 +38,17 @@ export function newRuntimeEmployeeId(): string {
     return `new:${Date.now().toString(36)}:${Math.random().toString(36).slice(2, 8)}`;
 }
 
-export function makeDefaultRuntimeEmployee(cliOptions: ReadonlyArray<string>): RuntimeEmployeeRecord {
+export function makeDefaultRuntimeEmployee(
+    cliOptions: ReadonlyArray<string>,
+    cliMeta?: Record<string, CliMeta> | null,
+): RuntimeEmployeeRecord {
     const cli = cliOptions[0] || 'claude';
+    const model = cliMeta?.[cli]?.models?.[0] || 'default';
     return {
         id: newRuntimeEmployeeId(),
         name: 'New Agent',
         cli,
-        model: 'default',
+        model,
         role: '',
         status: 'idle',
         source: 'db',
