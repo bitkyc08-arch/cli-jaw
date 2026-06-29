@@ -536,7 +536,6 @@ export async function steerAgent(newPrompt: string, source: string) {
 function makeCleanEnv(extraEnv: Record<string, string> = {}) {
     const env: NodeJS.ProcessEnv = { ...process.env };
     delete env["CLAUDE_CODE_SSE_PORT"];
-    delete env["GEMINI_SYSTEM_MD"];
     // Phase 8: strip boss-only dispatch token from employee spawns so employees
     // cannot authenticate against /api/orchestrate/dispatch even via localhost.
     // Detect employee spawn by the explicit JAW_EMPLOYEE_MODE flag; main spawns
@@ -656,13 +655,11 @@ import { AcpClient } from '../cli/acp-client.js';
 import { CodexAppClient } from './codex-app-client.js';
 import { extractFromCodexAppEvent } from './codex-app-events.js';
 
-import { shouldEmitHeartbeat, shouldResumeBucketSession, GEMINI_RESUME_TTL_MS } from './spawn/resume.js';
-export { shouldEmitHeartbeat, shouldResumeBucketSession, GEMINI_RESUME_TTL_MS };
+import { shouldEmitHeartbeat, shouldResumeBucketSession } from './spawn/resume.js';
+export { shouldEmitHeartbeat, shouldResumeBucketSession };
 import { createQueueController, FALLBACK_MAX_RETRIES } from './spawn/queue.js';
 export type { QueueController } from './spawn/queue.js';
 
-const GEMINI_HISTORY_MAX_SESSIONS = 4;
-const GEMINI_HISTORY_MAX_CHARS = 8000;
 
 export interface SpawnLifecycle {
     onActivity?: (source: string) => void;
@@ -963,9 +960,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         } catch (e) {
             console.warn('[jaw:resume] stale bucket clear failed:', (e as Error).message);
         }
-        if (cli === 'gemini') {
-            console.log(`[jaw:resume] ${cli} stale bucket rejected for model ${bucketModel ?? 'none'} → ${model}; starting fresh session`);
-        } else if (cli === 'opencode' && resumeKey !== (bucketResumeKey ?? null)) {
             console.log(`[jaw:resume] ${cli} resume key changed ${bucketResumeKey ?? 'none'} → ${resumeKey}; starting fresh session`);
         } else {
             console.log(`[jaw:resume] ${cli} model changed ${bucketModel} → ${runtimeModel}; starting fresh session`);
@@ -1025,8 +1019,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ? buildHistoryBlock(
             prompt,
             settings["workingDir"],
-            cli === 'gemini' ? GEMINI_HISTORY_MAX_SESSIONS : 10,
-            cli === 'gemini' ? GEMINI_HISTORY_MAX_CHARS : 8000,
+            10,
+            8000,
         )
         : '';
     let agyBootstrap: AgyBootstrapEnvelope | null = null;
@@ -1166,11 +1160,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'claude-e') console.log(`[jaw:${agentLabel}:args] ${JSON.stringify(args)}`);
     }
 
-    if (cli === 'gemini' && sysPrompt) {
-        const tmpSysFile = join(os.tmpdir(), `jaw-gemini-sys-${agentLabel}.md`);
-        fs.writeFileSync(tmpSysFile, sysPrompt);
-        spawnEnv["GEMINI_SYSTEM_MD"] = tmpSysFile;
-    }
 
     // ─── Copilot ACP branch ──────────────────────
     if (cli === 'copilot') {
@@ -1928,7 +1917,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         return { child, promise: resultPromise };
     }
 
-    // ─── Standard CLI branch (claude/codex/gemini/opencode) ──────
+    // ─── Standard CLI branch (claude/codex/opencode) ──────
     // DIFF-B: Windows needs shell:true only when falling back to .cmd shims.
     const spawnCommand = cli === 'opencode' && process.platform !== 'win32'
         ? (resolvedOpencodeBinary || detected.path || cli)
@@ -2039,7 +2028,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         parentLiveScope: parentLiveScopeForChild,
         traceRunId,
         traceAudience,
-        geminiResultSeen: false,
         ...(opencodeSpawnAudit ? { opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> } : {}),
         ...(agyResumeOffset > 0 ? { agyResumeOffset, agyBytesReceived: 0 } : {}),
         ...(cli === 'agy' ? {
@@ -2056,7 +2044,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(kiroPlainText || cli === 'agy' || cli === 'pi' ? { liveOutputText: '' } : {}),
         ...(kiroPlainText ? { kiroLastVisibleAt: Date.now(), kiroHeartbeatSent: false } : {}),
     };
-    let geminiWatchdog: ReturnType<typeof setTimeout> | null = null;
     let agyClosing = false;
     const scheduleAgyQuietCompletion = () => {
         if (cli !== 'agy') return;
@@ -2194,13 +2181,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         logEventSummary(agentLabel, dispatchCli, event, ctx);
         if (!ctx.sessionId) ctx.sessionId = extractSessionId(dispatchCli, event);
         extractFromEvent(dispatchCli, event, ctx, agentLabel, empTag);
-        // Gemini watchdog: AFTER extractFromEvent sets geminiResultSeen
-        if (dispatchCli === 'gemini' && ctx.geminiResultSeen && !geminiWatchdog) {
-            geminiWatchdog = setTimeout(() => {
-                console.warn(`[jaw:gemini-watchdog] ${agentLabel} — result seen but close not received after 10s, killing`);
-                try { child.kill('SIGTERM'); } catch { /* already dead */ }
-            }, 10000);
-        }
         // Sub-agent wait: keep stall timer alive
         if (ctx.hasActiveSubAgent) {
             opts.lifecycle?.onActivity?.('heartbeat');
@@ -2309,7 +2289,6 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         clearOpencodeIdleTimer();
         clearAgyQuietCompletionTimer();
         stallWatchdog.stop();
-        if (geminiWatchdog) { clearTimeout(geminiWatchdog); geminiWatchdog = null; }
         if (stdSettled) return;  // error handler already resolved
         // [I1] Flush residual NDJSON buffer — last event may lack trailing newline
         if (buffer.trim()) {
