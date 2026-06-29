@@ -4,6 +4,8 @@ import { getDefaultClaudeChoices, getDefaultClaudeModel } from './claude-models.
 import { CURSOR_EFFORT_CHOICES, CURSOR_REGISTRY_MODELS } from '../agent/cursor-runtime.js';
 import type { CliEngine } from '../types/cli-engine.js';
 
+export const CODEX_MODEL_CHOICES = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
+
 export const CLI_REGISTRY = {
     agy: {
         label: 'Antigravity',
@@ -44,14 +46,14 @@ export const CLI_REGISTRY = {
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         models: [
             ...getDefaultClaudeChoices(),
-            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex',
+            ...CODEX_MODEL_CHOICES,
             'grok-build', 'grok-composer-2.5-fast',
             'gpt-5-mini',
             'claude-sonnet-4.6',
         ],
         modelsByProvider: {
             claude: getDefaultClaudeChoices(),
-            codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
+            codex: CODEX_MODEL_CHOICES,
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini', 'claude-sonnet-4.6', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5'],
             kiro: [
@@ -103,7 +105,7 @@ export const CLI_REGISTRY = {
         defaultModel: 'gpt-5.5',
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'],
+        models: CODEX_MODEL_CHOICES,
     },
     'codex-app': {
         label: 'Codex App',
@@ -111,7 +113,7 @@ export const CLI_REGISTRY = {
         defaultModel: 'gpt-5.5',
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'],
+        models: CODEX_MODEL_CHOICES,
     },
     cursor: {
         label: 'Cursor',

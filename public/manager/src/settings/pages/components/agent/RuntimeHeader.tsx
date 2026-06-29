@@ -1,6 +1,6 @@
 import { SelectField, TextField } from '../../../fields';
 import { SettingsSection } from '../../page-shell';
-import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS } from './agent-meta';
+import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS, type CliMeta } from './agent-meta';
 
 type RuntimeHeaderProps = {
     cli: string;
@@ -13,6 +13,7 @@ type RuntimeHeaderProps = {
     effortOptions: ReadonlyArray<string>;
     workingDir: string;
     workingDirError: string | null;
+    cliMeta?: Record<string, CliMeta> | null;
     onCliChange(next: string): void;
     onProviderChange?(next: string): void;
     onModelChange(next: string): void;
@@ -31,6 +32,7 @@ export function RuntimeHeader({
     effortOptions,
     workingDir,
     workingDirError,
+    cliMeta,
     onCliChange,
     onProviderChange,
     onModelChange,
@@ -50,7 +52,7 @@ export function RuntimeHeader({
                     id="agent-cli"
                     label="Active CLI"
                     value={cli}
-                    options={orderedCliOptions.map((value) => ({ value, label: metaFor(value).label || value }))}
+                    options={orderedCliOptions.map((value) => ({ value, label: metaFor(value, cliMeta).label || value }))}
                     collapsedAfter={orderedPrimaryCliCount}
                     onChange={onCliChange}
                 />

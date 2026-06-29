@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
     CLI_REGISTRY,
     CLI_KEYS,
+    CODEX_MODEL_CHOICES,
     DEFAULT_CLI,
     buildDefaultPerCli,
     buildModelChoicesByCli,
@@ -128,6 +129,16 @@ test('ai-e registry exposes explicit provider selector metadata', () => {
     assert.ok(CLI_REGISTRY['ai-e'].modelsByProvider?.kiro.includes('auto'));
     assert.ok(CLI_REGISTRY['ai-e'].modelsByProvider?.codex.includes('gpt-5.4'));
     assert.ok(CLI_REGISTRY['ai-e'].modelsByProvider?.copilot.includes('gpt-5-mini'));
+});
+
+test('Codex registry defaults expose only the curated inactive ocx model set', () => {
+    assert.deepEqual(CODEX_MODEL_CHOICES, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark']);
+    assert.deepEqual(CLI_REGISTRY.codex.models, CODEX_MODEL_CHOICES);
+    assert.deepEqual(CLI_REGISTRY['codex-app'].models, CODEX_MODEL_CHOICES);
+    assert.deepEqual(CLI_REGISTRY['ai-e'].modelsByProvider?.codex, CODEX_MODEL_CHOICES);
+    assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.3-codex'), false);
+    assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.2-codex'), false);
+    assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.1-codex-mini'), false);
 });
 
 test('ai-e detection checks AI_E_BIN, local package candidates, then PATH', () => {

@@ -17,7 +17,7 @@ function makeCtx(overrides: Record<string, any> = {}) {
         perCli: {
             claude: { model: 'sonnet', effort: 'medium' },
             grok: { model: 'grok-build', effort: '' },
-            codex: { model: 'gpt-5.3-codex', effort: 'medium' },
+            codex: { model: 'gpt-5.3-codex-spark', effort: 'medium' },
         },
         memory: { enabled: true, flushEvery: 10, cli: '', model: '', retentionDays: 30 },
         ...overrides,
@@ -153,10 +153,10 @@ test('FC-006: /flush <cli> without model sets model to default', async () => {
 test('FC-007: /flush <model> picks first available matched CLI (codex before copilot)', async () => {
     await withIsolatedPath(['codex', 'copilot'], async () => {
         const ctx = makeCtx();
-        const result = await flushHandler(['gpt-5.3-codex'], ctx);
+        const result = await flushHandler(['gpt-5.4-mini'], ctx);
         assert.equal(result.ok, true);
         assert.equal(ctx.settings.memory.cli, 'codex');
-        assert.equal(ctx.settings.memory.model, 'gpt-5.3-codex');
+        assert.equal(ctx.settings.memory.model, 'gpt-5.4-mini');
     });
 });
 

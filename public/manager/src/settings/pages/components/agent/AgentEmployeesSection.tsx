@@ -1,5 +1,6 @@
 import { SettingsSection } from '../../page-shell';
 import { RuntimeEmployeeRow } from './RuntimeEmployeeRow';
+import type { CliMeta } from './agent-meta';
 import {
     makeDefaultRuntimeEmployee,
     runtimeEmployeeChangeSummary,
@@ -11,6 +12,7 @@ type AgentEmployeesSectionProps = {
     roster: RuntimeEmployeeRecord[];
     original: RuntimeEmployeeRecord[];
     cliOptions: ReadonlyArray<string>;
+    cliMeta?: Record<string, CliMeta> | null;
     loading?: boolean;
     error?: string | null;
     onRosterChange(next: RuntimeEmployeeRecord[]): void;
@@ -20,6 +22,7 @@ export function AgentEmployeesSection({
     roster,
     original,
     cliOptions,
+    cliMeta,
     loading,
     error,
     onRosterChange,
@@ -58,6 +61,7 @@ export function AgentEmployeesSection({
                             employee={employee}
                             index={idx}
                             cliOptions={cliOptions}
+                            cliMeta={cliMeta ?? null}
                             onChange={(patch) => updateRow(idx, patch)}
                             onRemove={() => removeRow(idx)}
                         />

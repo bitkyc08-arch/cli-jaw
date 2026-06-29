@@ -1,5 +1,5 @@
 import { SelectField, TextField } from '../../../fields';
-import { metaFor, optionList } from './agent-meta';
+import { metaFor, optionList, type CliMeta } from './agent-meta';
 import {
     isStaticEmployee,
     runtimeEmployeeError,
@@ -10,6 +10,7 @@ type RuntimeEmployeeRowProps = {
     employee: RuntimeEmployeeRecord;
     index: number;
     cliOptions: ReadonlyArray<string>;
+    cliMeta?: Record<string, CliMeta> | null;
     onChange(patch: Partial<RuntimeEmployeeRecord>): void;
     onRemove(): void;
 };
@@ -18,11 +19,12 @@ export function RuntimeEmployeeRow({
     employee,
     index,
     cliOptions,
+    cliMeta,
     onChange,
     onRemove,
 }: RuntimeEmployeeRowProps) {
     const locked = isStaticEmployee(employee);
-    const meta = metaFor(employee.cli);
+    const meta = metaFor(employee.cli, cliMeta);
     const modelOptions = optionList(meta.models, employee.model);
     const error = runtimeEmployeeError(employee);
     const cliChoices = Array.from(new Set([...cliOptions, employee.cli, 'claude'])).filter(Boolean);
@@ -47,9 +49,9 @@ export function RuntimeEmployeeRow({
                     label="CLI"
                     value={employee.cli}
                     disabled={locked}
-                    options={cliChoices.map((value) => ({ value, label: metaFor(value).label || value }))}
+                    options={cliChoices.map((value) => ({ value, label: metaFor(value, cliMeta).label || value }))}
                     onChange={(next) => {
-                        const nextModel = metaFor(next).models[0] || 'default';
+                        const nextModel = metaFor(next, cliMeta).models[0] || 'default';
                         onChange({ cli: next, model: nextModel });
                     }}
                 />

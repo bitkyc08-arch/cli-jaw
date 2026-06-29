@@ -25,10 +25,10 @@ test('parseCommand: bare "/" returns help command', () => {
 });
 
 test('parseCommand: known command is parsed correctly', () => {
-    const r = parseCommand('/model gpt-5.3-codex');
+    const r = parseCommand('/model gpt-5.3-codex-spark');
     assert.equal(r.type, 'known');
     assert.equal(r.cmd.name, 'model');
-    assert.deepEqual(r.args, ['gpt-5.3-codex']);
+    assert.deepEqual(r.args, ['gpt-5.3-codex-spark']);
 });
 
 test('parseCommand: compact command is parsed correctly', () => {
@@ -256,6 +256,11 @@ test('getArgumentCompletionItems: model labels use concrete provider instead of 
     const item = items.find(i => i.name === 'gpt-5.4');
     assert.ok(item);
     assert.notEqual(item.desc, 'ai-e');
+});
+
+test('getArgumentCompletionItems: model command includes default Codex spark choice', async () => {
+    const items = await getArgumentCompletionItems('model', 'spark', 'cli', [], {});
+    assert.ok(items.some(i => i.name === 'gpt-5.3-codex-spark'));
 });
 
 test('getArgumentCompletionItems: unknown command returns empty', async () => {

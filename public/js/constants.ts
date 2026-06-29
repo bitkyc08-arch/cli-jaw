@@ -29,14 +29,14 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         models: [
             'opus', 'sonnet', 'haiku',
-            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini',
+            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark',
             'gemini-3-flash-preview',
             'grok-build', 'grok-composer-2.5-fast',
             'gpt-5-mini',
         ],
         modelsByProvider: {
             claude: ['claude-fable-5', 'claude-opus-4-8', 'opus', 'sonnet', 'haiku'],
-            codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
+            codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'],
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini'],
@@ -93,12 +93,12 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     codex: {
         label: 'Codex',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.3-codex', 'gpt-5.3-codex-spark', 'gpt-5.2-codex', 'gpt-5.1-codex-max', 'gpt-5.1-codex-mini'],
+        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'],
     },
     'codex-app': {
         label: 'Codex App',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex', 'gpt-5.3-codex-spark'],
+        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'],
     },
     cursor: {
         label: 'Cursor',

@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { getCliMeta } from '../../public/js/constants.js';
 
+const DEFAULT_CODEX_MODELS = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
+
 test('frontend copilot meta exposes selectable efforts', () => {
     const meta = getCliMeta('copilot');
     assert.ok(meta, 'copilot metadata missing');
@@ -36,4 +38,16 @@ test('frontend Kiro fallback exposes gateway effort choices', () => {
     assert.ok(meta, 'kiro metadata missing');
     assert.deepEqual(meta.efforts, ['low', 'medium', 'high', 'xhigh']);
     assert.match(meta.effortNote || '', /xhigh to Kiro max/);
+});
+
+test('frontend Codex fallback shows only inactive ocx default models', () => {
+    const codex = getCliMeta('codex');
+    const codexApp = getCliMeta('codex-app');
+    const aiE = getCliMeta('ai-e');
+    assert.ok(codex, 'codex metadata missing');
+    assert.ok(codexApp, 'codex-app metadata missing');
+    assert.ok(aiE, 'ai-e metadata missing');
+    assert.deepEqual(codex.models, DEFAULT_CODEX_MODELS);
+    assert.deepEqual(codexApp.models, DEFAULT_CODEX_MODELS);
+    assert.deepEqual(aiE.modelsByProvider?.codex, DEFAULT_CODEX_MODELS);
 });

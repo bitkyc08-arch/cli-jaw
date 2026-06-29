@@ -12,8 +12,8 @@ import {
     usePageSnapshot,
 } from './page-shell';
 import { PerCliRow } from './components/PerCliRow';
-import { metaFor } from './components/agent/agent-meta';
-import type { PerCliEntry } from './components/agent/agent-meta';
+import { metaFor, normalizeCliMetaRegistry } from './components/agent/agent-meta';
+import type { CliMeta, PerCliEntry } from './components/agent/agent-meta';
 import type { PiSettingsView } from './components/pi-profile';
 import { expandPatch } from './path-utils';
 
@@ -58,6 +58,23 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
     const [codexCtx, setCodexCtx] = useState<{ contextWindowSize?: number; contextWindowCompactLimit?: number }>({});
     const [resetting, setResetting] = useState(false);
     const [resetError, setResetError] = useState<string | null>(null);
+    const [cliMeta, setCliMeta] = useState<Record<string, CliMeta> | null>(null);
+
+    const loadCliMeta = useCallback(async () => {
+        try {
+            const response = await client.get<{ data?: unknown } | Record<string, unknown>>('/api/cli-registry');
+            const data = response && typeof response === 'object' && 'data' in response
+                ? (response as { data?: unknown }).data
+                : response;
+            setCliMeta(normalizeCliMetaRegistry(data));
+        } catch {
+            setCliMeta(null);
+        }
+    }, [client]);
+
+    useEffect(() => {
+        void loadCliMeta();
+    }, [loadCliMeta]);
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
@@ -101,7 +118,8 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
         setPerCliDraft({ ...(fresh.perCli || {}) });
         setFallback([...(fresh.fallbackOrder || [])]);
         await refresh();
-    }, [client, dirty, refresh, setData]);
+        await loadCliMeta();
+    }, [client, dirty, loadCliMeta, refresh, setData]);
 
     useEffect(() => {
         if (!registerSave) return;
@@ -159,7 +177,7 @@ export default function ModelProvider({ port, client, dirty, registerSave }: Set
                         <PerCliRow
                             key={cli}
                             cli={cli}
-                            meta={metaFor(cli)}
+                            meta={metaFor(cli, cliMeta)}
                             original={perCliOriginal[cli] || {}}
                             value={perCliDraft[cli] || perCliOriginal[cli] || {}}
                             setValue={(next) => setPerCliDraft({ ...perCliDraft, [cli]: next })}
