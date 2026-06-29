@@ -132,7 +132,7 @@ test('batch dispatch route returns safe run summaries instead of full employee t
 
 test('dispatch route resolves virtual employees through shared dispatch target helper', () => {
     assert.ok(
-        orchestrateSrc.includes('function resolveDispatchTarget'),
+        orchestrateSrc.includes('async function resolveDispatchTarget'),
         'dispatch route should centralize employee/static/virtual target resolution',
     );
     assert.ok(
@@ -145,7 +145,15 @@ test('dispatch route resolves virtual employees through shared dispatch target h
     );
     assert.ok(
         orchestrateSrc.includes('resolveVirtualDefaults'),
-        'dispatch route should use registry defaults for virtual cli/model',
+        'dispatch route should use shared virtual cli/model defaults',
+    );
+    assert.ok(
+        orchestrateSrc.includes('await resolveCliDefaultModel(cli)'),
+        'virtual employee defaults must use the ocx-aware model resolver',
+    );
+    assert.ok(
+        orchestrateSrc.includes('await resolveDispatchTarget(req.body || {}, emps)'),
+        'single dispatch route must await async target resolution',
     );
 });
 
@@ -154,7 +162,7 @@ test('batch dispatch route accepts virtual employees', () => {
     assert.ok(batchStart >= 0, 'batch dispatch route should exist');
     const batchBlock = orchestrateSrc.slice(batchStart, batchStart + 8000);
 
-    assert.ok(batchBlock.includes('resolveDispatchTarget(item || {}, emps)'), 'batch route should use shared target resolver');
+    assert.ok(batchBlock.includes('await resolveDispatchTarget(item || {}, emps)'), 'batch route should use shared target resolver');
     assert.ok(batchBlock.includes('agentName: target.targetName'), 'batch results should label resolved target name');
     assert.ok(batchBlock.includes('emp: target.emp'), 'batch entries should execute resolved virtual/static/db row');
 });

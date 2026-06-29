@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { CODEX_MODEL_CHOICES } from './registry.js';
+import { CLI_REGISTRY, CODEX_MODEL_CHOICES } from './registry.js';
 
 type CachedOpenCodexModels = {
     fetchedAt: number;
@@ -30,6 +30,10 @@ function dedupeModels(models: string[]): string[] {
 
 function defaultCodexModels(): string[] {
     return [...CODEX_MODEL_CHOICES];
+}
+
+function isCodexCli(cli: string): boolean {
+    return cli === 'codex' || cli === 'codex-app';
 }
 
 async function readOpenCodexPort(): Promise<number | null> {
@@ -108,6 +112,13 @@ export async function resolveOpenCodexCodexModels(): Promise<string[]> {
     const resolved = models.length > 0 ? models : defaultCodexModels();
     cachedOpenCodexModels = { fetchedAt: now, models: resolved };
     return [...resolved];
+}
+
+export async function resolveCliDefaultModel(cli: string): Promise<string> {
+    const fallback = CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY]?.defaultModel || 'default';
+    if (!isCodexCli(cli)) return fallback;
+    const models = await resolveOpenCodexCodexModels();
+    return models[0] || fallback;
 }
 
 /** @internal exported for unit tests */

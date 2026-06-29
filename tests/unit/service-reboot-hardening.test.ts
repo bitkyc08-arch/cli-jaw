@@ -58,7 +58,7 @@ test('SRH-002b: dist sidecars resolve sibling bundled Node before PATH Node', ()
 test('SRH-003: server clears stale employee sessions before heartbeat and seeds employees first', () => {
     const src = readSource(SERVER, 'utf8');
     const clearIdx = src.indexOf('clearAllEmployeeSessions.run()');
-    const seedIdx = src.indexOf('const seeded = seedDefaultEmployees()');
+    const seedIdx = src.indexOf('const seeded = await seedDefaultEmployees()');
     const heartbeatIdx = src.indexOf('startHeartbeat();');
 
     assert.ok(clearIdx >= 0, 'startup must clear employee_sessions');

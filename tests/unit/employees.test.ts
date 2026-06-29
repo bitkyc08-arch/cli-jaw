@@ -119,6 +119,21 @@ test('employee cli/model updates clear stale employee session', () => {
     assert.match(src, /resetEmployeeSessions\(\)/);
 });
 
+test('employee create/reset defaults use ocx-aware model resolver', () => {
+    const routeSrc = fs.readFileSync(path.join(ROOT, 'src/routes/employees.ts'), 'utf8');
+    const coreSrc = fs.readFileSync(path.join(ROOT, 'src/core/employees.ts'), 'utf8');
+    assert.match(routeSrc, /import \{ resolveCliDefaultModel \} from '\.\.\/cli\/opencodex-models\.js'/);
+    assert.match(routeSrc, /app\.post\('\/api\/employees', requireAuth, async \(req, res\) =>/);
+    assert.match(routeSrc, /await resolveCliDefaultModel\(cli\)/);
+    assert.match(routeSrc, /app\.post\('\/api\/employees\/reset', requireAuth, async \(_req, res\) =>/);
+    assert.match(routeSrc, /await seedDefaultEmployees\(\{ reset: true, notify: true \}\)/);
+    assert.doesNotMatch(routeSrc, /CLI_REGISTRY\[cli/);
+    assert.match(coreSrc, /import \{ resolveCliDefaultModel \} from '\.\.\/cli\/opencodex-models\.js'/);
+    assert.match(coreSrc, /export async function seedDefaultEmployees/);
+    assert.match(coreSrc, /const defaultModel = await resolveCliDefaultModel\(cli\)/);
+    assert.doesNotMatch(coreSrc, /CLI_REGISTRY\[cli/);
+});
+
 test('dispatch clears mismatched employee resume key before attempting resume', () => {
     const src = fs.readFileSync(path.join(ROOT, 'src/orchestrator/distribute.ts'), 'utf8');
     assert.match(src, /clearStaleEmployeeSessionIfResumeKeyMismatch\(empId,\s*empSession/);

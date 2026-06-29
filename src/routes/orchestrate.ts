@@ -40,7 +40,7 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import { verifyBossToken } from '../core/boss-auth.js';
 import { buildVirtualEmployeeRow, resolveDispatchableEmployee, checkRuntimeHints, checkModelSupport } from '../core/employees.js';
 import type { EmployeeRow, SyntheticEmployeeRow } from '../core/employees.js';
-import { CLI_REGISTRY } from '../cli/registry.js';
+import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import { resolveMainCli } from '../core/main-session.js';
 import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
@@ -69,13 +69,12 @@ function requestText(value: unknown): string {
     return typeof value === 'string' ? value.trim() : '';
 }
 
-function resolveVirtualDefaults(cliValue: unknown, modelValue: unknown): { cli: string; model: string } {
+async function resolveVirtualDefaults(cliValue: unknown, modelValue: unknown): Promise<{ cli: string; model: string }> {
     const requestedCli = requestText(cliValue);
     const cli = requestedCli || resolveMainCli(null, settings, getSession() as { active_cli?: string | null } | null);
-    const registryEntry = CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY];
     return {
         cli,
-        model: requestText(modelValue) || registryEntry?.defaultModel || 'default',
+        model: requestText(modelValue) || await resolveCliDefaultModel(cli),
     };
 }
 
@@ -93,15 +92,15 @@ function resolveDispatchProjectRoot(dispatchCtx: ReturnType<typeof getCtx> | nul
         || process.cwd();
 }
 
-function resolveDispatchTarget(
+async function resolveDispatchTarget(
     input: Record<string, unknown>,
     emps: readonly EmployeeRow[],
-): {
+): Promise<{
     targetName: string;
     emp: EmployeeRow | SyntheticEmployeeRow;
     source: 'db' | 'static' | 'virtual';
     staticSpec: ReturnType<typeof resolveDispatchableEmployee> | null;
-} | { error: string } {
+} | { error: string }> {
     const agentName = requestText(input["agent"]);
     const virtualName = requestText(input["virtual"]);
     if ((agentName && virtualName) || (!agentName && !virtualName)) {
@@ -113,7 +112,7 @@ function resolveDispatchTarget(
             role: input["role"],
             cli: input["cli"],
             model: input["model"],
-        }, resolveVirtualDefaults(input["cli"], input["model"]));
+        }, await resolveVirtualDefaults(input["cli"], input["model"]));
         return { targetName: emp.name, emp, source: 'virtual', staticSpec: null };
     }
 
@@ -364,7 +363,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         }
 
         const emps = getEmployees.all() as EmployeeRow[];
-        const target = resolveDispatchTarget(req.body || {}, emps);
+        const target = await resolveDispatchTarget(req.body || {}, emps);
         if ('error' in target) {
             const status = target.error.startsWith('Employee not found:') ? 404 : 400;
             return fail(res, status, target.error);
@@ -628,7 +627,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 try { normalizeScope(resolveDispatchProjectRoot(dispatchCtx), scope); }
                 catch (e) { return fail(res, 400, (e as Error).message); }
             }
-            const target = resolveDispatchTarget(item || {}, emps);
+            const target = await resolveDispatchTarget(item || {}, emps);
             if ('error' in target) {
                 const status = target.error.startsWith('Employee not found:') ? 404 : 400;
                 return fail(res, status, `Invalid entry: ${target.error}`);

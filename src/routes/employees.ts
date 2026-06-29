@@ -5,7 +5,7 @@ import { ok } from '../http/response.js';
 import { broadcast } from '../core/bus.js';
 import { db, insertEmployee, deleteEmployee } from '../core/db.js';
 import { regenerateB } from '../prompt/builder.js';
-import { CLI_REGISTRY } from '../cli/registry.js';
+import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import {
     clearEmployeeSessionIfResumeKeyChanged,
     type EmployeeResumeKeyLike,
@@ -28,11 +28,11 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
     // so the frontend can round-trip edits through PUT.
     app.get('/api/employees', (_, res) => ok(res, listEmployees()));
 
-    app.post('/api/employees', requireAuth, (req, res) => {
+    app.post('/api/employees', requireAuth, async (req, res) => {
         const id = crypto.randomUUID();
         const { name = 'New Agent', cli = 'claude', model = 'default', role = '' } = req.body || {};
         const nextModel = (!model || model === 'default')
-            ? (CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY]?.defaultModel || 'default')
+            ? await resolveCliDefaultModel(cli)
             : model;
         insertEmployee.run(id, name, cli, nextModel, role);
         const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(id) as Record<string, any>;
@@ -116,8 +116,8 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
     });
 
     // Employee reset — delete all + re-seed 5 defaults
-    app.post('/api/employees/reset', requireAuth, (_req, res) => {
-        const { seeded } = seedDefaultEmployees({ reset: true, notify: true });
+    app.post('/api/employees/reset', requireAuth, async (_req, res) => {
+        const { seeded } = await seedDefaultEmployees({ reset: true, notify: true });
         res.json({ ok: true, seeded });
     });
 }

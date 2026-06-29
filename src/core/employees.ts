@@ -6,7 +6,7 @@ import { getEmployees, deleteEmployee, insertEmployee, db, clearEmployeeSession,
 import { settings } from './config.js';
 import { stripUndefined } from './strip-undefined.js';
 import { broadcast } from './bus.js';
-import { CLI_REGISTRY } from '../cli/registry.js';
+import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import { regenerateB } from '../prompt/builder.js';
 import type { CliEngine } from '../types/cli-engine.js';
 
@@ -371,7 +371,7 @@ export function listEmployees(): EmployeeListing[] {
     return [...staticOut, ...dbOut];
 }
 
-export function seedDefaultEmployees({ reset = false, notify = false } = {}) {
+export async function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     if (!db.open) return { seeded: 0, cli: settings["cli"], skipped: true };
     const existing = getEmployees.all() as EmployeeRow[];
     if (reset) {
@@ -382,7 +382,7 @@ export function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     }
 
     const cli = settings["cli"];
-    const defaultModel = CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY]?.defaultModel || 'default';
+    const defaultModel = await resolveCliDefaultModel(cli);
     for (const emp of DEFAULT_EMPLOYEES) {
         insertEmployee.run(crypto.randomUUID(), emp.name, cli, defaultModel, emp.role);
     }
