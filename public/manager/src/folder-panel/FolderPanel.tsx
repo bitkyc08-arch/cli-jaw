@@ -15,6 +15,7 @@ import { useGitWorktrees } from './use-git-worktrees';
 import { useFolderChord } from './use-folder-chord';
 import { useFolderSelection, type FolderDragSelection } from './use-folder-selection';
 import { useFolderVisibleRefresh } from './use-folder-visible-refresh';
+import { useFolderPreviewSync } from './use-folder-preview-sync';
 import { useFolderWorktreeOperations } from './use-folder-worktree-operations';
 import { useFolderMutations } from './use-folder-mutations';
 import { useFolderContextMenu } from './use-folder-context-menu';
@@ -55,7 +56,7 @@ export function FolderPanel(props: FolderPanelProps) {
     const [actionStatus, setActionStatus] = useState<string | null>(null);
     const [gitRefreshToken, setGitRefreshToken] = useState(0);
     const treeRef = useRef<HTMLDivElement | null>(null);
-    const restoredRootLoadRef = useRef<string | null>(null), syncedPreviewPathRef = useRef<string | null>(null);
+    const restoredRootLoadRef = useRef<string | null>(null);
     const { folderChordActive, startFolderChord, cancelFolderChord } = useFolderChord();
     const onPreviewFile = props.onPreviewFile;
     const selectedFilePath = props.selectedFilePath;
@@ -72,17 +73,13 @@ export function FolderPanel(props: FolderPanelProps) {
         selectedPaths: folderSelection.selectedPaths,
         selectOnlyPath: folderSelection.selectOnlyPath,
     });
-    useEffect(() => {
-        const selectedPath = props.selectedFilePath;
-        const previewPathChanged = selectedPath !== syncedPreviewPathRef.current;
-        if (previewPathChanged) syncedPreviewPathRef.current = selectedPath ?? null;
-        if (!previewPathChanged && folderSelection.selectedPath) return;
-        if (!selectedPath || !rootPath) return;
-        if (!isDescendantPath(rootPath, selectedPath)) return;
-        if (selectedPath === folderSelection.selectedPath) return;
-        if (!folderSelection.visiblePaths.includes(selectedPath)) return;
-        folderSelection.selectOnlyPath(selectedPath);
-    }, [folderSelection.selectedPath, folderSelection.selectOnlyPath, folderSelection.visiblePaths, props.selectedFilePath, rootPath]);
+    useFolderPreviewSync({
+        selectedFilePath: props.selectedFilePath,
+        rootPath,
+        selectedPath: folderSelection.selectedPath,
+        visiblePaths: folderSelection.visiblePaths,
+        selectOnlyPath: folderSelection.selectOnlyPath,
+    });
     useEffect(() => {
         props.onSessionStateChange?.(folderPanelSessionFromState({
             rootPath,
