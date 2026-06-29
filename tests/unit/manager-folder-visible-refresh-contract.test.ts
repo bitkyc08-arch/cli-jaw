@@ -23,3 +23,11 @@ test('FolderPanel visible refresh reports status without replacing action errors
     assert.ok(folderPanelSource.includes('visibleRefresh.refreshStatus'), 'coalesced refresh status must render through FolderPanel status');
     assert.ok(folderPanelSource.includes('!error'), 'refresh status must not hide errors');
 });
+
+test('FolderPanel visible refresh guards async state writes after unmount and drains the queue with the latest closure', () => {
+    assert.ok(refreshHookSource.includes('const mountedRef = useRef(true)'), 'refresh hook must track mount state for async state writes');
+    assert.ok(refreshHookSource.includes('return () => { mountedRef.current = false; };'), 'refresh hook must mark unmounted on cleanup');
+    assert.ok(refreshHookSource.includes('if (mountedRef.current) setIsRefreshing(false);'), 'in-flight refresh must not set state after unmount');
+    assert.ok(refreshHookSource.includes('void runRefreshRef.current(queuedRefresh.reason, queuedRefresh.options)'), 'queued refresh drain must reuse the latest refresh closure');
+    assert.ok(refreshHookSource.includes('if (queuedRefresh && mountedRef.current)'), 'queued refresh must not drain after unmount');
+});

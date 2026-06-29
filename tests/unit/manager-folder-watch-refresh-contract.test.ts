@@ -16,7 +16,7 @@ test('folder visible refresh preserves one queued refresh during active work', (
     assert.ok(refreshHookSource.includes('refreshingRef.current'), 'refresh hook must track active refresh work');
     assert.ok(refreshHookSource.includes('queuedRefreshRef'), 'refresh hook must retain one queued refresh request');
     assert.ok(refreshHookSource.includes('queued.options.extraPaths'), 'queued refresh must preserve affected visible paths');
-    assert.ok(refreshHookSource.includes('void runRefresh(queuedRefresh.reason, queuedRefresh.options)'), 'queued refresh must rerun through the same path');
+    assert.ok(refreshHookSource.includes('void runRefreshRef.current(queuedRefresh.reason, queuedRefresh.options)'), 'queued refresh must rerun through the latest refresh closure');
 });
 
 test('folder watch registration cleans up timers and native watchers', () => {
