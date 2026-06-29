@@ -52,6 +52,10 @@ test('Workbench repo root state preserves manual override until Follow Instance'
 });
 
 test('FolderPanel root changes do not reuse stale or manual Diff repo roots', () => {
+    const gitStatusBlock = folderPanelSource.slice(
+        folderPanelSource.indexOf('const gitStatus = useFolderGitStatus({'),
+        folderPanelSource.indexOf('const worktreeState = useGitWorktrees({'),
+    );
     assert.ok(
         routerSource.includes("repoRootPath={repoRootMode === 'instance' ? repoRootPath : null}"),
         'FolderPanel must ignore manual Diff repo overrides and auto-detect its own root',
@@ -60,10 +64,17 @@ test('FolderPanel root changes do not reuse stale or manual Diff repo roots', ()
         routerSource.includes('setRepoRootPath(null);'),
         'FolderPanel root changes must clear stale instance-follow repo roots before git status reload',
     );
+    assert.equal(
+        gitStatusBlock.includes('repoRoot'),
+        false,
+        'FolderPanel git status must resolve from the folder root instead of passing stale shared repo roots',
+    );
 });
 
 test('FolderPanel consumes shared selected file paths for visible-row synchronization', () => {
     assert.ok(folderPanelSource.includes('const selectedPath = props.selectedFilePath'), 'FolderPanel must read the shared preview file path');
+    assert.ok(folderPanelSource.includes('syncedPreviewPathRef'), 'FolderPanel must track preview-path sync separately from local row selection');
+    assert.ok(folderPanelSource.includes('if (!previewPathChanged && folderSelection.selectedPath) return;'), 'local row clicks must not be overwritten by an unchanged preview file path');
     assert.ok(folderPanelSource.includes('isDescendantPath(rootPath, selectedPath)'), 'FolderPanel must ignore selected files outside the current folder root');
     assert.ok(folderPanelSource.includes('folderSelection.visiblePaths.includes(selectedPath)'), 'FolderPanel must only select currently visible rows');
     assert.ok(folderPanelSource.includes('folderSelection.selectOnlyPath(selectedPath)'), 'FolderPanel must select the matching visible row');

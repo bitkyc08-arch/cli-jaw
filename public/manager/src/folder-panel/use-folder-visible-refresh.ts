@@ -57,6 +57,7 @@ export function useFolderVisibleRefresh(input: UseFolderVisibleRefreshInput) {
     const refreshingRef = useRef(false);
     const queuedRefreshRef = useRef<{ reason: FolderRefreshReason; options: FolderVisibleRefreshOptions } | null>(null);
     const watchTimerRef = useRef<number | null>(null);
+    const runRefreshRef = useRef<(reason: FolderRefreshReason, options?: FolderVisibleRefreshOptions) => Promise<void>>(async () => undefined);
 
     const clearWatchTimer = useCallback(() => {
         if (watchTimerRef.current === null) return;
@@ -112,13 +113,15 @@ export function useFolderVisibleRefresh(input: UseFolderVisibleRefreshInput) {
         await runRefresh(reason, options);
     }, [runRefresh]);
 
+    useEffect(() => { runRefreshRef.current = runRefresh; }, [runRefresh]);
+
     const scheduleWatchRefresh = useCallback(() => {
         clearWatchTimer();
         watchTimerRef.current = window.setTimeout(() => {
             watchTimerRef.current = null;
-            void runRefresh('watch');
+            void runRefreshRef.current('watch');
         }, WATCH_REFRESH_DELAY_MS);
-    }, [clearWatchTimer, runRefresh]);
+    }, [clearWatchTimer]);
 
     useEffect(() => {
         if (!source.watchDir || !source.onDirChange || rootPath === null) return;

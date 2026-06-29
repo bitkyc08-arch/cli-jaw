@@ -13,7 +13,8 @@ import { getGitWorktrees } from '../../../../../src/manager/git/worktree-service
 
 const READ_CAP = 512 * 1024;
 const DEPTH_LIMIT = 5;
-const MAX_WATCHERS = 4;
+const MAX_WATCHERS = 32;
+const WATCH_RECURSIVE = process.platform === 'darwin';
 
 const watchers = new Map<string, FSWatcher>();
 let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
@@ -346,7 +347,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
         if (watchers.has(resolved)) return { ok: true };
         if (watchers.size >= MAX_WATCHERS) return { ok: false, error: 'watcher limit reached' };
         try {
-            const w = watch(resolved, { recursive: false }, () => {
+            const w = watch(resolved, { recursive: WATCH_RECURSIVE }, () => {
                 const existing = debounceTimers.get(resolved);
                 if (existing) clearTimeout(existing);
                 debounceTimers.set(resolved, setTimeout(() => {

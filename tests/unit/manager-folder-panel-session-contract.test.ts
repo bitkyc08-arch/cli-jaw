@@ -30,6 +30,8 @@ test('FolderPanel restores session state while preserving real root reset bounda
     assert.ok(folderPanelSource.includes('setExpanded(new Set())'), 'openFolderRoot must still reset expanded state on true root changes');
     assert.ok(folderPanelSource.includes('setChildrenCache(new Map())'), 'openFolderRoot must still reset cached children on true root changes');
     assert.ok(folderPanelSource.includes('folderSelection.resetSelection()'), 'openFolderRoot/clear root paths must still reset selection');
+    assert.ok(folderPanelSource.includes('restoredRootLoadRef'), 'restored external roots must be reloaded through openFolderRoot at most once');
+    assert.ok(folderPanelSource.includes('entries.length > 0 || restoredRootLoadRef.current === externalRoot'), 'empty restored sessions must authorize and reload the external root');
 });
 
 test('SidebarRailRouter owns FolderPanel session above right-panel mode remounts', () => {
