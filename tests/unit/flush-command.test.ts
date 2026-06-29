@@ -16,7 +16,7 @@ function makeCtx(overrides: Record<string, any> = {}) {
         cli: 'claude',
         perCli: {
             claude: { model: 'sonnet', effort: 'medium' },
-            gemini: { model: 'gemini-2.5-pro', effort: '' },
+            grok: { model: 'grok-build', effort: '' },
             codex: { model: 'gpt-5.3-codex', effort: 'medium' },
         },
         memory: { enabled: true, flushEvery: 10, cli: '', model: '', retentionDays: 30 },
@@ -76,7 +76,7 @@ test('FC-001: /flush shows current flush model (ok=true)', async () => {
 });
 
 test('FC-001b: /flush shows custom flush model when set (ok=true)', async () => {
-    const ctx = makeCtx({ memory: { cli: 'gemini', model: 'gemini-2.5-flash', enabled: true, flushEvery: 10, retentionDays: 30 } });
+    const ctx = makeCtx({ memory: { cli: 'grok', model: 'grok-build', enabled: true, flushEvery: 10, retentionDays: 30 } });
     const result = await flushHandler([], ctx);
     assert.equal(result.ok, true);
     // When custom flush is set, NO "active" suffix
@@ -101,10 +101,10 @@ test('FC-002: /flush <custom-model> changes model or fails if CLI unavailable', 
 
 test('FC-003: /flush <cli> <model> changes both or reports unavailable', async () => {
     const ctx = makeCtx();
-    const result = await flushHandler(['gemini', 'gemini-2.5-flash'], ctx);
+    const result = await flushHandler(['grok', 'grok-build'], ctx);
     if (result.ok) {
-        assert.equal(ctx.settings.memory.cli, 'gemini');
-        assert.equal(ctx.settings.memory.model, 'gemini-2.5-flash');
+        assert.equal(ctx.settings.memory.cli, 'grok');
+        assert.equal(ctx.settings.memory.model, 'grok-build');
     } else {
         // CLI not installed → returns error (ok=false)
         assert.equal(result.ok, false);
@@ -114,7 +114,7 @@ test('FC-003: /flush <cli> <model> changes both or reports unavailable', async (
 // ─── FC-004: /flush off resets ───────────────────────
 
 test('FC-004: /flush off resets to active CLI/model', async () => {
-    const ctx = makeCtx({ memory: { cli: 'gemini', model: 'gemini-2.5-flash', enabled: true, flushEvery: 10, retentionDays: 30 } });
+    const ctx = makeCtx({ memory: { cli: 'grok', model: 'grok-build', enabled: true, flushEvery: 10, retentionDays: 30 } });
     const result = await flushHandler(['off'], ctx);
     assert.equal(result.ok, true);
     assert.equal(ctx.settings.memory.cli, '');
@@ -122,7 +122,7 @@ test('FC-004: /flush off resets to active CLI/model', async () => {
 });
 
 test('FC-004b: /flush reset also resets', async () => {
-    const ctx = makeCtx({ memory: { cli: 'gemini', model: 'gemini-2.5-flash', enabled: true, flushEvery: 10, retentionDays: 30 } });
+    const ctx = makeCtx({ memory: { cli: 'grok', model: 'grok-build', enabled: true, flushEvery: 10, retentionDays: 30 } });
     const result = await flushHandler(['reset'], ctx);
     assert.equal(result.ok, true);
     assert.equal(ctx.settings.memory.cli, '');

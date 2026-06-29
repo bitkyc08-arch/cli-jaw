@@ -439,8 +439,6 @@ test('AG-009f: spark detection is case-insensitive and matches substring', () =>
     }
 });
 
-});
-
 
 // ─── buildArgs: grok ─────────────────────────────────
 
