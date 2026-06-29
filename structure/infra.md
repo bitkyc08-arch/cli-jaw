@@ -188,7 +188,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 | Export | 역할 |
 | --- | --- |
-| `CLI_REGISTRY` | 13개 CLI 정의 (`pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `gemini`, `grok`, `kiro-code`, `opencode`, `copilot`; `label`, `binary`, `defaultModel`, `defaultEffort`, `efforts`, `models`, optional `effortNote`/provider metadata) |
+| `CLI_REGISTRY` | 12개 CLI 정의 (`pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `grok`, `kiro-code`, `opencode`, `copilot`; `label`, `binary`, `defaultModel`, `defaultEffort`, `efforts`, `models`, optional `effortNote`/provider metadata) |
 | `CLI_KEYS` | `Object.keys(CLI_REGISTRY)` — 순서 보장 배열 |
 | `DEFAULT_CLI` | 기본 CLI (`claude` 우선, 없으면 첫 항목) |
 | `buildDefaultPerCli()` | registry에서 기본 `perCli` 객체 빌드 |
@@ -240,13 +240,12 @@ CLI → 서버 API 호출 시 인증 토큰을 관리하는 경량 헬퍼. 포�
 | `ai-e` | `sonnet` | AI-E wrapper runtime |
 | `claude` | `claude-opus-4-8` | canonical choices include `opus`, `sonnet`, `sonnet[1m]`, `haiku`; legacy aliases normalize |
 | `claude-e` | `claude-opus-4-8` | helper-backed Claude E runtime |
-| `codex` | `gpt-5.5` | includes `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex*`, `gpt-5.2-codex`, `gpt-5.1-codex*` |
-| `codex-app` | `gpt-5.5` | Codex app-server runtime using Codex model choices |
+| `codex` | `gpt-5.5` | inactive ocx fallback shows only `gpt-5.5`, `gpt-5.4`, `gpt-5.4-mini`, `gpt-5.3-codex-spark`; when ocx health is ok, `/model` completions and `/api/cli-registry` expand from ocx `/v1/models` including routed models |
+| `codex-app` | `gpt-5.5` | Codex app-server runtime using the same inactive fallback / active ocx model choices as `codex` |
 | `cursor` | `composer-2.5` | uses `cursor-agent --model <resolvedModelId>`; effort resolves into model ids such as `composer-2.5-fast`, `gpt-5.5-medium-fast`, or `claude-opus-4-7-thinking-high-fast` |
-| `gemini` | `gemini-3-flash-preview` | includes `gemini-3.0-pro-preview`, `gemini-3.1-pro-preview`, `gemini-2.5-pro`, `gemini-2.5-flash` |
 | `grok` | `grok-build` | effort disabled because `grok-build` rejects `reasoningEffort`; auth/readiness via `grok models` |
 | `opencode` | `opencode-go/kimi-k2.6` | includes current opencode-go provider aliases such as `glm-5.1`, `kimi-k2.6`, `mimo-v2.5`, `minimax-m2.7`, `qwen3.6-plus`, `deepseek-v4-*` |
-| `copilot` | `claude-sonnet-4.6` | includes `gpt-5.5`, Claude 4.x aliases, `gpt-5.4*`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gemini-3-pro-preview` |
+| `copilot` | `claude-sonnet-4.6` | includes `gpt-5.5`, Claude 4.x aliases, `gpt-5.4*`, `gpt-5.3-codex`, `gpt-5.2-codex` |
 
 ---
 

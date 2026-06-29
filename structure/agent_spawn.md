@@ -65,7 +65,6 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `events/cursor.ts` | 196L | Cursor stream-json event adapter |
 | `events/acp.ts` | 219L | ACP `session/update` / subagent lifecycle mapping |
 | `events/opencode.ts` | 196L | OpenCode event adapter |
-| `events/gemini.ts` | 117L | Gemini event adapter |
 | `events/summary.ts` | 139L | logEventSummary helper |
 | `events/types.ts` | — | Type-only re-export boundary |
 
@@ -135,7 +134,6 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `cursor` | `cursor-agent -p --trust --output-format stream-json --model <resolvedModelId>` | effort는 full model id로 해석, `runtimeModel` session bucket |
 | `kiro-code` | `kiro-cli chat --no-interactive [--resume-id <id>]` | fresh: operational context + `withHistoryPrompt()`; resume: current prompt only |
 | `codex` | stdin에 `[User Message]` 블록 (fresh only) | — |
-| `gemini` | headless `-p`, model, stream JSON, `--skip-trust`, `--approval-mode yolo` | multi-directory workspace `--include-directories` |
 | `grok` | `-p`, optional `-m`, `--output-format streaming-json`, `--no-alt-screen` | trace backfill on exit, `ai-e` alias |
 | `opencode` | diagnostics + raw event buffer | — |
 
@@ -144,7 +142,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 - `persistMainSession()`는 `forceNew`, `employeeSessionId`, `!sessionId`, `isFallback`, 비정상 exit를 모두 차단.
 - 저장: `cli`, `sessionId`, `model`, `permissions`, `workingDir`, `effort`.
 - `shouldInvalidateResumeSession()`는 `code === 0`이면 무조건 false, 실패 시 generic + CLI별 matcher 검사.
-- Resume 무효화: `claude`, `claude-e`, `agy`, `codex`, `cursor`, `gemini`, `grok`, `opencode`, `copilot`, `kiro-code` 각각 분기.
+- Resume 무효화: `claude`, `claude-e`, `agy`, `codex`, `cursor`, `grok`, `opencode`, `copilot`, `kiro-code` 각각 분기.
 
 ---
 

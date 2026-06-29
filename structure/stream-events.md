@@ -330,12 +330,10 @@ Cursor CLI는 separate effort flag가 없으므로 `src/agent/cursor-runtime.ts`
 | event.type | jaw 처리 |
 | --- | --- |
 | `init` | model/session id 저장 |
-| `tool_use` | `🔧 {tool_name}` + command/detail + `stepRef=gemini:tool...` |
 | `tool_result` | `✅` 또는 `❌` + same `stepRef` |
 | `message` (assistant) | fullText 누적 |
 | `result` | duration/tool_calls/token stats 저장 |
 
-Gemini는 `tool_id`가 있으면 `gemini:toolid:{tool_id}`, 없으면 `gemini:tool:{tool_name}`를 쓴다.
 
 ---
 
@@ -496,7 +494,6 @@ Agent pause는 2-tap gate: 첫 `cli-jaw goal pause --agent --audit` → `agentPa
 | Codex | `codex:item:{item.id}` | `codex:item:abc123` |
 | Codex collab subagent | `codex:collab:{item.id}` | `codex:collab:collab-1` |
 | Cursor | `cursor:tool:{call_id}` | `cursor:tool:call-1` |
-| Gemini | `gemini:toolid:{tool_id}` 또는 `gemini:tool:{name}` | `gemini:toolid:42` |
 | OpenCode | `opencode:tool:{tool}` / `opencode:call:{callID}` | `opencode:call:task:0` |
 | ACP tool/task | `acp:callid:{toolCallId}` | `acp:callid:toolu_1` |
 | ACP subagent helper | `acp:subagent:{toolCallId}` / `acp:subagent:selection:{agentName}` | `acp:subagent:tool-1` |
