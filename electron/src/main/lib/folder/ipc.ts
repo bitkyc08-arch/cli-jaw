@@ -19,6 +19,23 @@ const WATCH_RECURSIVE = process.platform === 'darwin';
 const watchers = new Map<string, FSWatcher>();
 let debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+function clearDebounceTimer(resolved: string): void {
+    const existing = debounceTimers.get(resolved);
+    if (existing) {
+        clearTimeout(existing);
+        debounceTimers.delete(resolved);
+    }
+}
+
+function dropWatcher(resolved: string): void {
+    const w = watchers.get(resolved);
+    if (w) {
+        try { w.close(); } catch { /* ignore */ }
+        watchers.delete(resolved);
+    }
+    clearDebounceTimer(resolved);
+}
+
 const pickedRoots = new Set<string>();
 let approvedRootsSeed: Promise<void> | null = null;
 
@@ -358,6 +375,7 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
                     }
                 }, 500));
             });
+            w.on('error', () => { dropWatcher(resolved); });
             watchers.set(resolved, w);
             return { ok: true };
         } catch {
@@ -368,20 +386,13 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
     ipcMain.handle('folder:unwatchDir', async (event, dirPath: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         const resolved = resolve(dirPath);
-        const w = watchers.get(resolved);
-        if (w) {
-            w.close();
-            watchers.delete(resolved);
-        }
+        dropWatcher(resolved);
         return { ok: true };
     });
 }
 
 export function cleanupFolderWatchers(): void {
-    for (const [, w] of watchers) {
-        try { w.close(); } catch { /* ignore */ }
-    }
-    watchers.clear();
+    for (const resolved of Array.from(watchers.keys())) dropWatcher(resolved);
     for (const [, t] of debounceTimers) clearTimeout(t);
     debounceTimers = new Map();
 }

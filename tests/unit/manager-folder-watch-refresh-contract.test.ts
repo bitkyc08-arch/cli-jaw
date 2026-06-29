@@ -38,3 +38,15 @@ test('electron folder watcher covers nested project changes on macOS without exh
     assert.ok(folderIpcSource.includes("const WATCH_RECURSIVE = process.platform === 'darwin'"), 'recursive watch must be gated to macOS support');
     assert.ok(folderIpcSource.includes('watch(resolved, { recursive: WATCH_RECURSIVE }'), 'watchDir must subscribe recursively where supported');
 });
+
+test('electron folder unwatch and watcher errors clear pending debounce timers and drop dead watchers', () => {
+    assert.ok(folderIpcSource.includes('function clearDebounceTimer'), 'ipc must centralize per-root debounce timer cleanup');
+    assert.ok(folderIpcSource.includes('function dropWatcher'), 'ipc must centralize watcher teardown');
+    assert.ok(folderIpcSource.includes("w.on('error', () => { dropWatcher(resolved); })"), 'a runtime watch error must drop the dead watcher so re-watch can recover');
+    const unwatch = folderIpcSource.slice(
+        folderIpcSource.indexOf("ipcMain.handle('folder:unwatchDir'"),
+        folderIpcSource.indexOf('export function cleanupFolderWatchers'),
+    );
+    assert.ok(unwatch.includes('dropWatcher(resolved)'), 'unwatchDir must drop the watcher and its pending debounce timer');
+    assert.ok(!unwatch.includes('watchers.delete(resolved)') || unwatch.includes('dropWatcher(resolved)'), 'unwatchDir must not leave a stale debounce timer behind');
+});
