@@ -99,7 +99,7 @@ async function resolveDispatchTarget(
     targetName: string;
     emp: EmployeeRow | SyntheticEmployeeRow;
     source: 'db' | 'static' | 'virtual';
-    staticSpec: ReturnType<typeof resolveDispatchableEmployee> | null;
+    staticSpec: Awaited<ReturnType<typeof resolveDispatchableEmployee>> | null;
 } | { error: string }> {
     const agentName = requestText(input["agent"]);
     const virtualName = requestText(input["virtual"]);
@@ -117,12 +117,12 @@ async function resolveDispatchTarget(
     }
 
     let emp = findEmployee(emps as EmployeeRow[], { agent: agentName }) as EmployeeRow | SyntheticEmployeeRow | null;
-    let staticSpec: ReturnType<typeof resolveDispatchableEmployee> | null = null;
+    let staticSpec: Awaited<ReturnType<typeof resolveDispatchableEmployee>> | null = null;
     if (!emp) {
-        staticSpec = resolveDispatchableEmployee(agentName, emps);
+        staticSpec = await resolveDispatchableEmployee(agentName, emps);
         if (staticSpec) emp = staticSpec.row;
     } else {
-        staticSpec = resolveDispatchableEmployee(emp.name, emps);
+        staticSpec = await resolveDispatchableEmployee(emp.name, emps);
     }
     if (!emp) return { error: `Employee not found: ${agentName}` };
     return { targetName: agentName, emp, source: staticSpec?.source ?? 'db', staticSpec };

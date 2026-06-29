@@ -26,7 +26,7 @@ function parseStaticId(id: string): string | null {
 export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware): void {
     // Returns merged [static first, then DB]. Static entries carry `id: static:<name>`
     // so the frontend can round-trip edits through PUT.
-    app.get('/api/employees', (_, res) => ok(res, listEmployees()));
+    app.get('/api/employees', async (_, res) => ok(res, await listEmployees()));
 
     app.post('/api/employees', requireAuth, async (req, res) => {
         const id = crypto.randomUUID();
@@ -46,7 +46,7 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
         res.json({ ok: true, ...result });
     });
 
-    app.put('/api/employees/:id', requireAuth, (req, res) => {
+    app.put('/api/employees/:id', requireAuth, async (req, res) => {
         const updates = req.body || {};
         const employeeId = String(req.params["id"] || '');
         const staticSlug = parseStaticId(employeeId);
@@ -75,7 +75,7 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
             settings["staticEmployees"] = overrides;
             saveSettings(settings);
             clearEmployeeSessionIfResumeKeyChanged(employeeId, before, { cli: spec.cli, model: newModel });
-            const merged = listEmployees().find(e => e.id === employeeId);
+            const merged = (await listEmployees()).find(e => e.id === employeeId);
             if (merged) broadcast('agent_updated', merged as Record<string, any>);
             regenerateB();
             res.json(merged);

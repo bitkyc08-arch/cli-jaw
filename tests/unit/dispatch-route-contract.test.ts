@@ -155,6 +155,10 @@ test('dispatch route resolves virtual employees through shared dispatch target h
         orchestrateSrc.includes('await resolveDispatchTarget(req.body || {}, emps)'),
         'single dispatch route must await async target resolution',
     );
+    assert.ok(
+        orchestrateSrc.includes('staticSpec: Awaited<ReturnType<typeof resolveDispatchableEmployee>> | null'),
+        'static employee resolution type must unwrap async resolveDispatchableEmployee',
+    );
 });
 
 test('batch dispatch route accepts virtual employees', () => {

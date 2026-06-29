@@ -46,7 +46,7 @@ cli-jaw/
 │   │   ├── bus.ts            ← public SSE publish + 내부 리스너 fan-out (58L)
 │   │   ├── logger.ts         ← 로거 유틸 (27L)
 │   │   ├── i18n.ts           ← 서버사이드 번역 (90L)
-│   │   ├── employees.ts      ← Employee 시드/CRUD 공용 로직 + 정적(코드 정의) 직원(Control 등) 등록 + virtual synthetic row/preset helpers + DEFAULT_EMPLOYEES (392L)
+│   │   ├── employees.ts      ← Employee 시드/CRUD 공용 로직 + 정적(코드 정의) 직원(Control 등) 등록 + virtual synthetic row/preset helpers + DEFAULT_EMPLOYEES (401L)
 │   │   ├── main-session.ts   ← 메인 세션 authoritative CLI/clear-state helper + clearBossSessionOnly (187L)
 │   │   ├── message-summary.ts ← message preview/summary helper (44L)
 │   │   ├── path-expand.ts    ← shell-style path expansion helper (12L)
