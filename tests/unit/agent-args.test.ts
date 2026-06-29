@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
-import { formatAgyPrintTimeout, resolveAgyAddDirectories, resolveGeminiIncludeDirectories } from '../../src/agent/args.ts';
+import { formatAgyPrintTimeout, resolveAgyAddDirectories } from '../../src/agent/args.ts';
 import { buildAiERuntimeStatusMeta, buildArgs, buildResumeArgs, resolveAiEProvider, resolveSessionBucket, shouldResumeBucketSession } from '../../src/agent/spawn.ts';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -227,7 +227,6 @@ test('AG-006g-kiro-effort: kiro-code maps xhigh to Kiro max on the wire', () => 
 test('AG-006g2: ai-e non-Claude providers use p-mode argv prompt and never include AGY', () => {
     const cases = [
         ['codex', 'gpt-5.4'],
-        ['gemini', 'gemini-3.1-flash'],
         ['grok', 'grok-4'],
         ['copilot', 'gpt-5-mini'],
         ['kiro', 'auto'],
@@ -388,7 +387,6 @@ test('AG-009k: resolveSessionBucket — non-spark codex stays in codex bucket', 
 
 test('AG-009l: resolveSessionBucket — non-codex CLI returns cli unchanged', () => {
     assert.equal(resolveSessionBucket('claude', 'sonnet-spark-fake'), 'claude', 'spark check is codex-scoped');
-    assert.equal(resolveSessionBucket('gemini', 'gemini-3-flash'), 'gemini');
     assert.equal(resolveSessionBucket('grok', 'grok-build'), 'grok');
     assert.equal(resolveSessionBucket('pi', 'grok-composer-2.5-fast'), 'pi');
     assert.equal(resolveSessionBucket('opencode', 'anything'), 'opencode');
@@ -412,23 +410,8 @@ test('AG-009p: shouldResumeBucketSession — Copilot normalizes deprecated fast 
     assert.equal(shouldResumeBucketSession('copilot', 'claude-opus-4.6', 'claude-opus-4.6-fast'), true);
 });
 
-test('AG-009q: shouldResumeBucketSession — non-Copilot/non-OpenCode/non-Gemini CLIs keep current resume behavior', () => {
+test('AG-009q: shouldResumeBucketSession — non-Copilot/non-OpenCode CLIs keep current resume behavior', () => {
     assert.equal(shouldResumeBucketSession('claude', 'claude-opus-4-6', 'claude-sonnet-4-6'), true);
-});
-
-test('AG-009q2: shouldResumeBucketSession — Gemini resumes only matching fresh concrete model buckets', () => {
-    const now = Date.parse('2026-05-08T00:00:00Z');
-    assert.equal(shouldResumeBucketSession('gemini', 'gemini-2.5-pro', 'gemini-2.5-pro', null, null, now, now), true);
-    assert.equal(shouldResumeBucketSession('gemini', 'gemini-2.5-pro', 'gemini-2.5-flash', null, null, now, now), false);
-    assert.equal(shouldResumeBucketSession('gemini', 'default', 'gemini-2.5-pro', null, null, now, now), false);
-    assert.equal(shouldResumeBucketSession('gemini', 'default', 'default', null, null, now, now), false);
-});
-
-test('AG-009q3: shouldResumeBucketSession — Gemini expired or missing bucket timestamp forces fresh session', () => {
-    const now = Date.parse('2026-05-08T00:00:00Z');
-    const stale = now - (73 * 60 * 60 * 1000);
-    assert.equal(shouldResumeBucketSession('gemini', 'gemini-2.5-pro', 'gemini-2.5-pro', null, null, stale, now), false);
-    assert.equal(shouldResumeBucketSession('gemini', 'gemini-2.5-pro', 'gemini-2.5-pro', null, null, null, now), false);
 });
 
 test('AG-009r: shouldResumeBucketSession — OpenCode stale resume key forces fresh session', () => {
@@ -456,68 +439,8 @@ test('AG-009f: spark detection is case-insensitive and matches substring', () =>
     }
 });
 
-// ─── buildArgs: gemini ───────────────────────────────
-
-test('AG-010: gemini includes prompt payload via -p', () => {
-    const args = buildArgs('gemini', 'gemini-2.5-pro', '', 'hello world', '', 'safe');
-    const pIdx = args.indexOf('-p');
-    assert.ok(pIdx >= 0);
-    assert.equal(args[pIdx + 1], 'hello world');
 });
 
-test('AG-011: gemini with model includes -m', () => {
-    const args = buildArgs('gemini', 'gemini-2.5-pro', '', 'hi', '', 'safe');
-    assert.ok(args.includes('-m'));
-    assert.ok(args.includes('gemini-2.5-pro'));
-});
-
-test('AG-012: gemini default model excludes -m', () => {
-    const args = buildArgs('gemini', 'default', '', 'hi', '', 'safe');
-    assert.ok(!args.includes('-m'));
-});
-
-test('AG-012a: gemini fresh sessions include trusted full-home workspace access', () => {
-    const args = buildArgs('gemini', 'default', '', 'hi', '', 'auto', { homedir: '/home/jun' });
-    assert.ok(args.includes('--skip-trust'));
-    assert.ok(args.includes('--approval-mode'));
-    assert.ok(args.includes('yolo'));
-    const includeIdx = args.indexOf('--include-directories');
-    assert.ok(includeIdx >= 0);
-    assert.equal(args[includeIdx + 1], '/home/jun');
-    assert.ok(!args.includes('~'));
-    assert.ok(!args.includes('-y'));
-});
-
-test('AG-012b: gemini WSL sessions include Windows user home when available', () => {
-    const dirs = resolveGeminiIncludeDirectories({
-        homedir: '/home/jun',
-        platform: 'linux',
-        release: '5.15.90.1-microsoft-standard-WSL2',
-        env: { USER: 'jun' },
-        pathExists: (path) => path === '/mnt/c/Users/jun',
-    });
-    assert.deepEqual(dirs, ['/home/jun', '/mnt/c/Users/jun']);
-});
-
-test('AG-012c: gemini include directories are deduped and capped at five', () => {
-    const dirs = resolveGeminiIncludeDirectories({
-        homedir: '/home/jun/',
-        includeDirectories: ['/home/jun', '/a', '/b', '/c', '/d', '/e'],
-    });
-    assert.deepEqual(dirs, ['/home/jun', '/a', '/b', '/c', '/d']);
-});
-
-test('AG-012d: gemini configured include directories are passed as repeated flags', () => {
-    const args = buildArgs('gemini', 'default', '', 'hi', '', 'auto', {
-        homedir: '/home/jun',
-        includeDirectories: ['/mnt/c/Users/jun/Downloads'],
-    });
-    const pairs = args
-        .map((value, index) => [value, args[index + 1]] as const)
-        .filter(([value]) => value === '--include-directories')
-        .map(([, value]) => value);
-    assert.deepEqual(pairs, ['/home/jun', '/mnt/c/Users/jun/Downloads']);
-});
 
 // ─── buildArgs: grok ─────────────────────────────────
 
@@ -585,14 +508,6 @@ test('AG-015: codex resume includes session id', () => {
     assert.ok(args.includes('resume'));
 });
 
-test('AG-016: gemini resume includes --resume', () => {
-    const args = buildResumeArgs('gemini', 'default', '', 'sess-456', 'go', 'safe', { homedir: 'C:\\Users\\jun' });
-    assert.ok(args.includes('--resume'));
-    assert.ok(args.includes('sess-456'));
-    const includeIdx = args.indexOf('--include-directories');
-    assert.ok(includeIdx >= 0);
-    assert.equal(args[includeIdx + 1], 'C:\\Users\\jun');
-});
 
 test('AG-016b: grok resume uses --resume and still omits effort/system prompt flags', () => {
     const args = buildResumeArgs('grok', 'grok-build', 'max', 'grok-session-1', 'continue', 'auto', {

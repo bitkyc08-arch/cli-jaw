@@ -297,7 +297,7 @@ test('AGY-RT-012d: AGY prompt path uses bootstrap envelope after final spawn cwd
 test('AGY-RT-012e: AGY prompt spill metadata is attached safely after bootstrap exists', () => {
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     const ctxIdx = spawnSrc.indexOf('const ctx: SpawnContext = {');
-    const lifecycleIdx = spawnSrc.indexOf('let geminiWatchdog', ctxIdx);
+    const lifecycleIdx = spawnSrc.indexOf('let agyClosing', ctxIdx);
     assert.ok(ctxIdx >= 0);
     const ctxBlock = spawnSrc.slice(ctxIdx, lifecycleIdx);
     assert.match(ctxBlock, /metadata:\s*\{\s*agyPromptSpill:\s*agyBootstrap\.spill\s*\}/);
