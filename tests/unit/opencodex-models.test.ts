@@ -1,13 +1,38 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { buildModelChoicesByCli, CLI_REGISTRY, CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
-import { applyCodexModelsToChoices, resolveCliDefaultModel } from '../../src/cli/opencodex-models.ts';
+import {
+    applyCodexModelsToChoices,
+    resetOpenCodexModelCacheForTest,
+    resolveCliDefaultModel,
+} from '../../src/cli/opencodex-models.ts';
+
+async function withInactiveOpenCodexEnv<T>(fn: () => Promise<T>): Promise<T> {
+    const previousDir = process.env['CLI_JAW_OPENCODEX_DIR'];
+    const tmp = await mkdtemp(join(tmpdir(), 'jaw-ocx-inactive-'));
+    process.env['CLI_JAW_OPENCODEX_DIR'] = tmp;
+    resetOpenCodexModelCacheForTest();
+    try {
+        return await fn();
+    } finally {
+        resetOpenCodexModelCacheForTest();
+        if (previousDir === undefined) delete process.env['CLI_JAW_OPENCODEX_DIR'];
+        else process.env['CLI_JAW_OPENCODEX_DIR'] = previousDir;
+    }
+}
+
+test('opencodex runtime port path resolves CLI_JAW_OPENCODEX_DIR lazily', async () => {
+    const src = await readFile(new URL('../../src/cli/opencodex-models.ts', import.meta.url), 'utf8');
+    assert.match(src, /function openCodexRuntimePortPath\(\): string/);
+    assert.match(src, /readFile\(openCodexRuntimePortPath\(\), 'utf8'\)/);
+    assert.doesNotMatch(src, /const OPENCODEX_RUNTIME_PORT_PATH/);
+});
 
 test('applyCodexModelsToChoices keeps inactive ocx Codex defaults at four models', () => {
     const choices = applyCodexModelsToChoices(buildModelChoicesByCli(), CODEX_MODEL_CHOICES);
@@ -40,8 +65,10 @@ test('applyCodexModelsToChoices expands Codex choices with active ocx routed mod
 });
 
 test('resolveCliDefaultModel keeps inactive ocx Codex default at first fallback model', async () => {
-    assert.equal(await resolveCliDefaultModel('codex'), CODEX_MODEL_CHOICES[0]);
-    assert.equal(await resolveCliDefaultModel('claude'), CLI_REGISTRY.claude.defaultModel);
+    await withInactiveOpenCodexEnv(async () => {
+        assert.equal(await resolveCliDefaultModel('codex'), CODEX_MODEL_CHOICES[0]);
+        assert.equal(await resolveCliDefaultModel('claude'), CLI_REGISTRY.claude.defaultModel);
+    });
 });
 
 test('resolveCliDefaultModel uses the first active ocx routed model for Codex', async () => {

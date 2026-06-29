@@ -4,7 +4,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
+import { resetOpenCodexModelCacheForTest } from '../../src/cli/opencodex-models.ts';
 import {
     STATIC_EMPLOYEES,
     findStaticEmployee,
@@ -14,6 +17,20 @@ import {
 } from '../../src/core/employees.ts';
 
 const ROOT = process.cwd();
+
+async function withInactiveOpenCodex<T>(fn: () => Promise<T>): Promise<T> {
+    const previousDir = process.env['CLI_JAW_OPENCODEX_DIR'];
+    const testDir = fs.mkdtempSync(path.join(tmpdir(), 'jaw-ocx-inactive-'));
+    process.env['CLI_JAW_OPENCODEX_DIR'] = testDir;
+    resetOpenCodexModelCacheForTest();
+    try {
+        return await fn();
+    } finally {
+        resetOpenCodexModelCacheForTest();
+        if (previousDir === undefined) delete process.env['CLI_JAW_OPENCODEX_DIR'];
+        else process.env['CLI_JAW_OPENCODEX_DIR'] = previousDir;
+    }
+}
 
 test('P37-CU-001: Control static employee is defined with Codex + darwin hint', () => {
     const control = findStaticEmployee('Control');
@@ -55,12 +72,12 @@ test('P37-CU-005: checkRuntimeHints fails when requiresDarwin but platform is li
 });
 
 test('P37-CU-006: resolveDispatchableEmployee returns static row with synthetic id', async () => {
-    const res = await resolveDispatchableEmployee('Control', []);
+    const res = await withInactiveOpenCodex(() => resolveDispatchableEmployee('Control', []));
     assert.ok(res, 'Control must resolve from static employees');
     assert.equal(res!.source, 'static');
     assert.equal(res!.row.name, 'Control');
     assert.equal(res!.row.cli, 'codex');
-    assert.equal(res!.row.model, 'gpt-5.5');
+    assert.equal(res!.row.model, CODEX_MODEL_CHOICES[0]);
     assert.match(String(res!.row.id), /^static:/);
     assert.ok(res!.spec, 'spec must accompany static resolution');
 });

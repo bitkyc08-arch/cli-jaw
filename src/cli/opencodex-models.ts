@@ -8,8 +8,6 @@ type CachedOpenCodexModels = {
     models: string[];
 };
 
-const OPENCODEX_DIR = process.env['CLI_JAW_OPENCODEX_DIR'] || join(homedir(), '.opencodex');
-const OPENCODEX_RUNTIME_PORT_PATH = join(OPENCODEX_DIR, 'runtime-port.json');
 const CACHE_TTL_MS = 2_000;
 const HEALTH_TIMEOUT_MS = 350;
 const MODELS_TIMEOUT_MS = 900;
@@ -36,9 +34,17 @@ function isCodexCli(cli: string): boolean {
     return cli === 'codex' || cli === 'codex-app';
 }
 
+function openCodexDir(): string {
+    return process.env['CLI_JAW_OPENCODEX_DIR'] || join(homedir(), '.opencodex');
+}
+
+function openCodexRuntimePortPath(): string {
+    return join(openCodexDir(), 'runtime-port.json');
+}
+
 async function readOpenCodexPort(): Promise<number | null> {
     try {
-        const raw = JSON.parse(await readFile(OPENCODEX_RUNTIME_PORT_PATH, 'utf8')) as Record<string, unknown>;
+        const raw = JSON.parse(await readFile(openCodexRuntimePortPath(), 'utf8')) as Record<string, unknown>;
         const port = raw['port'];
         return Number.isInteger(port) && (port as number) > 0 && (port as number) <= 65535
             ? port as number
