@@ -3,7 +3,6 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { stripUndefined } from '../core/strip-undefined.js';
-import { fetchGeminiUsage, readGeminiAccount } from './quota.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -39,7 +38,6 @@ type AgyQuotaFamily = 'gem' | 'cla';
 
 function classifyAgyQuotaFamily(model: AntigravityModelQuota): AgyQuotaFamily | null {
     const haystack = `${model.label || ''} ${model.modelId || ''}`.toLowerCase();
-    if (haystack.includes('gemini')) return 'gem';
     if (
         haystack.includes('claude')
         || haystack.includes('opus')
@@ -148,30 +146,6 @@ export async function fetchAgyUsage(): Promise<QuotaRecord> {
     const snapshot = await runAntigravityUsageJson();
     if (snapshot?.models?.length) {
         return normalizeAntigravityUsageSnapshot(snapshot);
-    }
-
-    const geminiAccount = readGeminiAccount();
-    if (geminiAccount) {
-        const geminiUsage = await fetchGeminiUsage(geminiAccount);
-        if (geminiUsage && !geminiUsage.error && Array.isArray(geminiUsage.windows) && geminiUsage.windows.length > 0) {
-            return stripUndefined({
-                ...geminiUsage,
-                quotaCapable: true,
-                quotaSource: 'agy:google-cloud-code-api',
-                displayTier: 'Antigravity',
-                account: stripUndefined({
-                    type: 'antigravity.google',
-                    email: geminiUsage.account?.email,
-                }),
-                reverseEngineered: true,
-            });
-        }
-        if (geminiUsage?.authenticated === false) {
-            return stripUndefined({
-                ...buildAgyStatusOnly(),
-                authenticated: false,
-            });
-        }
     }
 
     return buildAgyStatusOnly();

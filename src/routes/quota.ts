@@ -6,34 +6,6 @@ import { join } from 'path';
 import { resolveHomePath } from '../core/path-expand.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 
-export interface GeminiQuotaBucket {
-    remainingFraction?: number;
-    resetTime?: string;
-    modelId?: string;
-}
-
-export interface GeminiQuotaWindow {
-    label: 'F' | 'P';
-    percent: number;
-    resetsAt?: string | null;
-    modelId: string;
-}
-
-interface GeminiOAuthCreds {
-    access_token?: string;
-    refresh_token?: string;
-    expiry_date?: number;
-    token_type?: string;
-    id_token?: string;
-}
-
-interface GeminiQuotaAccount {
-    token: string;
-    refreshToken?: string;
-    expiresAt?: number;
-    account: { email: string | null };
-}
-
 interface GrokSessionUsage {
     sourcePath: string;
     updatedAt: string;
@@ -63,52 +35,7 @@ interface ClaudeCreds {
     account: { type: string; tier: string | null };
 }
 
-const GEMINI_CODE_ASSIST_ENDPOINT = 'https://cloudcode-pa.googleapis.com/v1internal';
-const GEMINI_OAUTH_TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token';
-const GEMINI_TOKEN_EXPIRY_SKEW_MS = 60_000;
 const CLAUDE_CREDENTIALS_FILE = '.credentials.json';
-
-function clampPercent(value: number): number {
-    return Math.max(0, Math.min(100, value));
-}
-
-export function classifyGeminiQuotaTier(modelId: string): 'pro' | 'flash' | 'flash-lite' | null {
-    if (modelId.includes('flash-lite')) return 'flash-lite';
-    if (modelId.includes('pro')) return 'pro';
-    if (modelId.includes('flash')) return 'flash';
-    return null;
-}
-
-export function normalizeGeminiQuotaBuckets(buckets: GeminiQuotaBucket[]): GeminiQuotaWindow[] {
-    const selected = new Map<'flash' | 'pro', GeminiQuotaWindow & { remainingFraction: number }>();
-
-    for (const bucket of buckets) {
-        if (!bucket.modelId || bucket.remainingFraction == null) continue;
-        const tier = classifyGeminiQuotaTier(bucket.modelId);
-        if (tier !== 'flash' && tier !== 'pro') continue;
-
-        const remainingFraction = Math.max(0, Math.min(1, bucket.remainingFraction));
-        const percent = clampPercent(Math.round((1 - remainingFraction) * 100));
-        const existing = selected.get(tier);
-        if (existing && remainingFraction >= existing.remainingFraction) continue;
-
-        selected.set(tier, {
-            label: tier === 'pro' ? 'P' : 'F',
-            percent,
-            resetsAt: bucket.resetTime ?? null,
-            modelId: bucket.modelId,
-            remainingFraction,
-        });
-    }
-
-    const order: Array<'flash' | 'pro'> = ['flash', 'pro'];
-    return order.flatMap((tier) => {
-        const window = selected.get(tier);
-        if (!window) return [];
-        const { remainingFraction: _remainingFraction, ...publicWindow } = window;
-        return [publicWindow];
-    });
-}
 
 function expandClaudeConfigDir(configDir = process.env["CLAUDE_CONFIG_DIR"], homeDir = os.homedir()): string {
     if (configDir?.trim()) {
@@ -266,27 +193,6 @@ export async function fetchCodexUsage(tokens: CodexTokensLike | null | undefined
         }
         return { account, windows, raw: data };
     } catch { return { error: true }; }
-}
-
-// Cross-platform: reads Gemini OAuth creds from ~/.gemini/oauth_creds.json.
-// Returns null if file doesn't exist (= not authenticated).
-export function readGeminiAccount() {
-    try {
-        const credsPath = join(os.homedir(), '.gemini', 'oauth_creds.json');
-        const creds = JSON.parse(fs.readFileSync(credsPath, 'utf8')) as GeminiOAuthCreds;
-        const token = typeof creds.access_token === 'string' ? creds.access_token : '';
-        const idTokenPayload = typeof creds.id_token === 'string' ? creds.id_token.split('.')[1] : undefined;
-        if (token && idTokenPayload) {
-            const payload = JSON.parse(Buffer.from(idTokenPayload, 'base64url').toString());
-            return stripUndefined({
-                token,
-                refreshToken: typeof creds.refresh_token === 'string' ? creds.refresh_token : undefined,
-                expiresAt: typeof creds.expiry_date === 'number' ? creds.expiry_date : undefined,
-                account: { email: payload.email ?? null },
-            });
-        }
-    } catch { /* expected: gemini creds may not exist */ }
-    return null;
 }
 
 function findLatestGrokSignalsFile(homeDir = os.homedir()): string | null {
@@ -447,82 +353,3 @@ export async function fetchGrokStatus(binary = 'grok') {
     });
 }
 
-async function refreshGeminiAccessToken(account: GeminiQuotaAccount): Promise<string | null> {
-    if (!account.refreshToken) return null;
-    const clientId = process.env["GEMINI_OAUTH_CLIENT_ID"];
-    const clientSecret = process.env["GEMINI_OAUTH_CLIENT_SECRET"];
-    if (!clientId || !clientSecret) return null;
-    const params = new URLSearchParams({
-        client_id: clientId,
-        client_secret: clientSecret,
-        refresh_token: account.refreshToken,
-        grant_type: 'refresh_token',
-    });
-    const resp = await fetch(GEMINI_OAUTH_TOKEN_ENDPOINT, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-        body: params.toString(),
-        signal: AbortSignal.timeout(8000),
-    });
-    if (!resp.ok) return null;
-    const data = await resp.json() as { access_token?: string };
-    return typeof data.access_token === 'string' ? data.access_token : null;
-}
-
-async function getGeminiAccessToken(account: GeminiQuotaAccount): Promise<string | null> {
-    const expiresAt = account.expiresAt ?? 0;
-    if (account.token && (!expiresAt || expiresAt - Date.now() > GEMINI_TOKEN_EXPIRY_SKEW_MS)) {
-        return account.token;
-    }
-    return refreshGeminiAccessToken(account);
-}
-
-async function geminiCodeAssistPost<T>(method: string, token: string, body: object): Promise<T> {
-    const resp = await fetch(`${GEMINI_CODE_ASSIST_ENDPOINT}:${method}`, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-        signal: AbortSignal.timeout(8000),
-    });
-    if (!resp.ok) {
-        if (resp.status === 401 || resp.status === 403) throw new Error('auth');
-        throw new Error(`status_${resp.status}`);
-    }
-    return resp.json() as Promise<T>;
-}
-
-export async function fetchGeminiUsage(account: GeminiQuotaAccount | null) {
-    if (!account) return null;
-    try {
-        const token = await getGeminiAccessToken(account);
-        if (!token) return { authenticated: false };
-        const metadata = {
-            ideType: 'IDE_UNSPECIFIED',
-            platform: 'PLATFORM_UNSPECIFIED',
-            pluginType: 'GEMINI',
-        };
-        const loadRes = await geminiCodeAssistPost<{
-            cloudaicompanionProject?: string;
-        }>('loadCodeAssist', token, {
-            metadata,
-        });
-        const project = loadRes.cloudaicompanionProject;
-        if (!project) return { account: account.account, windows: [] };
-        const quota = await geminiCodeAssistPost<{ buckets?: GeminiQuotaBucket[] }>(
-            'retrieveUserQuota',
-            token,
-            { project },
-        );
-        return {
-            account: account.account,
-            windows: normalizeGeminiQuotaBuckets(quota.buckets ?? []),
-            raw: quota,
-        };
-    } catch (e: unknown) {
-        if ((e as Error).message === 'auth') return { authenticated: false };
-        return { account: account.account, windows: [], error: true };
-    }
-}

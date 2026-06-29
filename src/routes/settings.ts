@@ -13,7 +13,7 @@ import {
     loadUnifiedMcp, saveUnifiedMcp, syncToAll, initMcpConfig,
 } from '../../lib/mcp-sync.js';
 import { CLI_REGISTRY, CLI_KEYS } from '../cli/registry.js';
-import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, readGeminiAccount, fetchGeminiUsage, fetchGrokStatus } from './quota.js';
+import { readClaudeCreds, readCodexTokens, fetchClaudeUsage, fetchCodexUsage, fetchGrokStatus } from './quota.js';
 import { fetchCursorUsage } from './quota-cursor-dashboard.js';
 import { fetchAgyUsage } from './quota-agy-reverse.js';
 import { fetchKiroUsage } from './quota-kiro-reverse.js';
@@ -354,11 +354,9 @@ export function registerSettingsRoutes(
     app.get('/api/quota', async (_, res) => {
         const claudeCreds = readClaudeCreds();
         const codexTokens = readCodexTokens();
-        const geminiAccount = readGeminiAccount();
-        const [claudeResult, codexResult, geminiResult, copilotResult, cursorQuota, agyQuota, kiroQuota, opencodeQuota] = await Promise.all([
+        const [claudeResult, codexResult, copilotResult, cursorQuota, agyQuota, kiroQuota, opencodeQuota] = await Promise.all([
             fetchClaudeUsage(claudeCreds),
             fetchCodexUsage(codexTokens),
-            fetchGeminiUsage(geminiAccount),
             fetchCopilotQuota(),
             fetchCursorUsage(),
             fetchAgyUsage(),
@@ -371,7 +369,6 @@ export function registerSettingsRoutes(
 
         const claudeQuota = classify(claudeResult, !!claudeCreds);
         const codexQuota = classify(codexResult, !!codexTokens);
-        const geminiQuota = classify(geminiResult, !!geminiAccount);
         const grokQuota = await fetchGrokStatus();
         const copilotQuota = copilotResult ?? { authenticated: false };
         const opencodeQuotaResolved = opencodeQuota ?? buildStatusOnlyQuota({
@@ -382,7 +379,6 @@ export function registerSettingsRoutes(
         const providerQuota: Record<string, unknown> = {
             claude: claudeQuota,
             codex: codexQuota,
-            gemini: geminiQuota,
             grok: grokQuota,
             copilot: copilotQuota,
             kiro: kiroQuota,
@@ -413,7 +409,6 @@ export function registerSettingsRoutes(
             }),
             cursor: cursorQuota,
             'kiro-code': kiroQuota,
-            gemini: geminiQuota,
             grok: grokQuota,
             opencode: opencodeQuotaResolved,
             copilot: copilotQuota,
