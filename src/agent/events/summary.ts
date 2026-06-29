@@ -100,27 +100,6 @@ export function logEventSummary(agentLabel: string, cli: string, event: CliEvent
         }
     }
 
-    // [P2-3.9] Gemini-specific logEventSummary
-    if (cli === 'gemini') {
-        if (event.type === 'init') {
-            logLine(`[${agentLabel}] gemini init model=${event.model || '?'}`, ctx);
-            return;
-        }
-        if (event.type === 'tool_use') {
-            logLine(`[${agentLabel}] 🔧 ${event.tool_name || 'tool'}${event.parameters?.command ? `: ${String(event.parameters.command).slice(0, 120)}` : ''}`, ctx);
-            return;
-        }
-        if (event.type === 'tool_result') {
-            logLine(`[${agentLabel}] tool ${event.status || 'done'}: ${(event.tool_name || '')}`, ctx);
-            return;
-        }
-        if (event.type === 'result') {
-            const dur = ((event.stats?.duration_ms || 0) / 1000).toFixed(1);
-            const calls = event.stats?.tool_calls ?? 0;
-            logLine(`[${agentLabel}] result: ${calls} tool calls / ${dur}s`, ctx);
-            return;
-        }
-    }
 
     if (cli === 'grok') {
         if (event.type === 'text') {
