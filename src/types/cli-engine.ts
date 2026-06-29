@@ -24,7 +24,6 @@ export type CliEngine =
     | 'codex-app'
     | 'copilot'
     | 'cursor'
-    | 'gemini'
     | 'grok'
     | 'jwc'
     | 'kiro-code'
@@ -47,7 +46,6 @@ export const CLI_ENGINES = [
     'codex-app',
     'copilot',
     'cursor',
-    'gemini',
     'grok',
     'jwc',
     'kiro-code',

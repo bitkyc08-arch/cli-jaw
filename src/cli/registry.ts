@@ -38,14 +38,13 @@ export const CLI_REGISTRY = {
         label: 'AI-E',
         binary: 'ai-e',
         defaultProvider: 'claude',
-        providers: ['claude', 'codex', 'gemini', 'grok', 'copilot', 'kiro'],
+        providers: ['claude', 'codex', 'grok', 'copilot', 'kiro'],
         defaultModel: getDefaultClaudeModel(),
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         models: [
             ...getDefaultClaudeChoices(),
             'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex',
-            'gemini-3-flash-preview', 'gemini-2.5-pro',
             'grok-build', 'grok-composer-2.5-fast',
             'gpt-5-mini',
             'claude-sonnet-4.6',
@@ -53,7 +52,6 @@ export const CLI_REGISTRY = {
         modelsByProvider: {
             claude: getDefaultClaudeChoices(),
             codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
-            gemini: ['gemini-3-flash-preview', 'gemini-2.5-pro'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini', 'claude-sonnet-4.6', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.5'],
             kiro: [
@@ -77,7 +75,6 @@ export const CLI_REGISTRY = {
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
             codex: ['low', 'medium', 'high', 'xhigh'],
-            gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
             kiro: ['low', 'medium', 'high', 'xhigh'],
@@ -125,14 +122,6 @@ export const CLI_REGISTRY = {
         efforts: [...CURSOR_EFFORT_CHOICES],
         effortNote: 'Cursor effort resolves to model IDs; cli-jaw never passes --effort',
         models: [...CURSOR_REGISTRY_MODELS],
-    },
-    gemini: {
-        label: 'Gemini',
-        binary: 'gemini',
-        defaultModel: 'gemini-3-flash-preview',
-        defaultEffort: '',
-        efforts: [],
-        models: ['gemini-3.0-pro-preview', 'gemini-3.1-pro-preview', 'gemini-2.5-pro', 'gemini-3-flash-preview', 'gemini-2.5-flash'],
     },
     grok: {
         label: 'Grok',
@@ -233,7 +222,6 @@ export const CLI_REGISTRY = {
             'gpt-5.1-codex',
             'gpt-4.1',
             'gpt-5-mini',
-            'gemini-3-pro-preview',
         ],
     },
 };

@@ -155,14 +155,6 @@ export function setMainMetaHandler(fn: (meta: MainSessionMetaRef | null) => void
     _setCurrentMainMeta = fn;
 }
 
-function isForcedGeminiProModel(model: string): boolean {
-    const normalized = model.trim().toLowerCase();
-    return normalized !== ''
-        && normalized !== 'default'
-        && normalized !== 'auto'
-        && normalized.includes('pro');
-}
-
 function lifecycleRuntimeCli(cli: string, provider?: string): string {
     if (cli !== 'ai-e') return cli;
     return provider === 'claude' ? 'claude-e' : (provider || cli);
@@ -363,7 +355,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         console.log(`[jaw:session] saved ${cli} session=${persistedSessionId.slice(0, 12)}...${wasKilled ? ' (post-kill)' : ''}`);
     }
 
-    // ─── Phase 54-A: Proactive compact by turn count (Codex/Gemini) ───
+    // ─── Phase 54-A: Proactive compact by turn count ───
     // Non-Claude CLIs lack compact events. Suggest at 25 turns; force refresh at 35.
     if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
@@ -395,7 +387,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     // Force a fresh session on next spawn to avoid stale resume.
     if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
-        if ((runtimeCli === 'codex' || runtimeCli === 'opencode' || runtimeCli === 'gemini' || runtimeCli === 'grok' || runtimeCli === 'agy') && turns > 15) {
+        if ((runtimeCli === 'codex' || runtimeCli === 'opencode' || runtimeCli === 'grok' || runtimeCli === 'agy') && turns > 15) {
             console.log(`[jaw:compact] ${cli} exited after ${turns} turns — clearing session bucket for fresh start`);
             try {
                 const bucket = resolveSessionBucket(cli, model, effectiveProvider);
@@ -657,77 +649,6 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
             resolve({ text: '', code: 1 });
             if (mainManaged && !opts.internal) processQueue();
-            return;
-        }
-
-        // ─── Gemini resumed capacity failure: clear stale vendor session and retry once ───
-        if (
-            runtimeCli === 'gemini'
-            && isModelCapacity
-            && isResume
-            && !opts.internal
-            && !opts._isFallback
-            && !opts._isCapacityFallback
-        ) {
-            const bucket = resolveSessionBucket(cli, model, effectiveProvider);
-            if (bucket) clearSessionBucket.run(bucket);
-            console.log(`[jaw:gemini] resumed session capacity exhausted — cleared ${bucket || 'gemini'} bucket and retrying without resume`);
-            broadcast('agent_fallback', {
-                from: cli,
-                to: cli,
-                reason: `${errMsg} (retry without stale Gemini resume)`,
-                model,
-                fallbackModel: model,
-                ...empTag,
-            }, isEmployee ? 'internal' : 'public');
-            finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
-            const { promise: retryP } = _spawnAgent(prompt, {
-                ...opts,
-                _skipResume: true,
-                _isCapacityFallback: true,
-                _skipInsert: true,
-                _skipSessionPersist: true,
-            }) as { promise: Promise<{ text: string; code: number }> };
-            retryP.then(resolve).catch(() => {
-                broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg} (Gemini fresh-session retry failed)`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
-                resolve({ text: '', code: 1 });
-                if (mainManaged && !opts.internal) processQueue();
-            });
-            return;
-        }
-
-        // ─── Gemini model capacity: one-request Auto fallback, preserving configured model ───
-        if (
-            runtimeCli === 'gemini'
-            && isModelCapacity
-            && isForcedGeminiProModel(model)
-            && !opts.internal
-            && !opts._isFallback
-            && !opts._isCapacityFallback
-        ) {
-            console.log(`[jaw:gemini] ${model} capacity exhausted — retrying current request with Auto`);
-            broadcast('agent_fallback', {
-                from: cli,
-                to: cli,
-                reason: `${errMsg} (Auto fallback for this request only)`,
-                model,
-                fallbackModel: 'default',
-                ...empTag,
-            }, isEmployee ? 'internal' : 'public');
-            finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
-            const { promise: retryP } = _spawnAgent(prompt, {
-                ...opts,
-                model: 'default',
-                _skipResume: true,
-                _isCapacityFallback: true,
-                _skipInsert: true,
-                _skipSessionPersist: true,
-            }) as { promise: Promise<{ text: string; code: number }> };
-            retryP.then(resolve).catch(() => {
-                broadcast('agent_done', { ...runTag(ctx), text: `❌ ${errMsg} (Auto fallback failed)`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
-                resolve({ text: '', code: 1 });
-                if (mainManaged && !opts.internal) processQueue();
-            });
             return;
         }
 

@@ -76,7 +76,6 @@ export interface SpawnContext {
   metadata?: Record<string, unknown>;
   finishReason?: string;
   pendingOutputChunk?: string;
-  geminiDeltaActive?: boolean;
   grokThoughtBuf?: string;
   grokCurrentThoughtRef?: string;
   grokThoughtSeq?: number;
@@ -100,8 +99,6 @@ export interface SpawnContext {
   cursorToolCallIds?: Set<string>;
   acpSubagentToolCallIds?: Set<string>;
   acpSubagentLabels?: Map<string, string>;
-  // Gemini watchdog flag (set on 'result' event, triggers kill timer in spawn.ts)
-  geminiResultSeen?: boolean;
   // Claude-specific stream buffers (set by events.ts extractFromEvent)
   claudeThinkingBuf?: string;
   claudeInputJsonBuf?: string;

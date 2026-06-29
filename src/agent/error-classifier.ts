@@ -20,11 +20,7 @@ export function classifyExitError(
     diagnosticText = '',
 ): ErrorClassification {
     const combined = `${stderrBuf}\n${diagnosticText}`;
-    const isModelCapacity = cli === 'gemini'
-        && (
-            combined.includes('MODEL_CAPACITY_EXHAUSTED')
-            || combined.includes('No capacity available for model')
-        );
+    const isModelCapacity = false;
     const rawIs429 = /\b429\b/.test(combined)
         || combined.includes('RESOURCE_EXHAUSTED')
         || combined.includes('Too Many Requests');

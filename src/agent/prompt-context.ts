@@ -15,7 +15,6 @@ export function withHistoryPrompt(prompt: string, historyBlock: string): string 
 function isArgvPromptRuntime(cli: string, effectiveProvider?: string | null): boolean {
     return cli === 'cursor'
         || cli === 'kiro-code'
-        || cli === 'gemini'
         || cli === 'grok'
         || cli === 'opencode'
         || (cli === 'ai-e' && effectiveProvider !== 'claude');
