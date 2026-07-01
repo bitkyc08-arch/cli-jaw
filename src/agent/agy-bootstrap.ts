@@ -121,10 +121,9 @@ export function buildAgyBootstrapEnvelope(input: {
         ].join('\n')
         : '';
     const historySection = historyBlock ? `[Recent context / history]\n${historyBlock}` : '';
-    const requiredSegments = [
-        { id: 'bootstrap' as const, text: bootstrap },
-        { id: 'current-task' as const, text: currentTask },
-    ];
+    const bootstrapSegment = { id: 'bootstrap' as const, text: bootstrap };
+    const currentTaskSegment = { id: 'current-task' as const, text: currentTask };
+    const requiredSegments = [bootstrapSegment, currentTaskSegment];
     let optionalSegments = [
         { id: 'operational-context' as const, text: operationalSection },
         { id: 'history' as const, text: historySection },
@@ -137,7 +136,7 @@ export function buildAgyBootstrapEnvelope(input: {
     const truncated: AgyPromptSegmentId[] = [];
     const omitted: AgyPromptSegmentId[] = [];
     const orderSegments = (optional: typeof optionalSegments) => order === 'context-first'
-        ? [requiredSegments[0], ...optional, requiredSegments[1]]
+        ? [bootstrapSegment, ...optional, currentTaskSegment]
         : [...requiredSegments, ...optional];
     const joinPrompt = () => orderSegments(optionalSegments)
         .filter((segment) => segment.text)
