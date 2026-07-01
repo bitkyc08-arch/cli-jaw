@@ -1,7 +1,7 @@
 // ─── Telegram Bot ────────────────────────────────────
 
 import https from 'node:https';
-import nodeFetch from 'node-fetch';
+import nodeFetch, { type RequestInit } from 'node-fetch';
 import { Bot, type Context } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
@@ -370,7 +370,10 @@ async function _initTelegramInner() {
     const ipv4Fetch = (url: string, init: Record<string, unknown> = {}): Promise<unknown> => {
         const body = init["body"];
         if (requiresStreamingFetchBody(body)) {
-            return nodeFetch(url, { ...init, agent: ipv4Agent } as any) as Promise<unknown>;
+            return nodeFetch(url, {
+                ...(init as RequestInit),
+                agent: ipv4Agent,
+            });
         }
         return new Promise((resolve, reject) => {
             const u = new URL(url);
