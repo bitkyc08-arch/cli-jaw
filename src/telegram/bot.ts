@@ -1,12 +1,15 @@
 // ─── Telegram Bot ────────────────────────────────────
 
 import https from 'node:https';
+import nodeFetch from 'node-fetch';
 import { Bot, type Context } from 'grammy';
 import { sequentialize } from '@grammyjs/runner';
 import { addBroadcastListener, removeBroadcastListener } from '../core/bus.js';
 import { settings } from '../core/config.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import { resolveHubCallback } from './hub-callback.js';
+import { requiresStreamingFetchBody } from './fetch-body.js';
+import { StatusUpdateBuffer } from './status-update-buffer.js';
 import { t, normalizeLocale } from '../core/i18n.js';
 import { isResetIntent } from '../orchestrator/pipeline.js';
 import { submitMessage } from '../orchestrator/gateway.js';
@@ -365,6 +368,10 @@ async function _initTelegramInner() {
 
     const ipv4Agent = new https.Agent({ family: 4 });
     const ipv4Fetch = (url: string, init: Record<string, unknown> = {}): Promise<unknown> => {
+        const body = init["body"];
+        if (requiresStreamingFetchBody(body)) {
+            return nodeFetch(url, { ...init, agent: ipv4Agent } as any) as Promise<unknown>;
+        }
         return new Promise((resolve, reject) => {
             const u = new URL(url);
             const headersInit = init["headers"];
@@ -386,7 +393,6 @@ async function _initTelegramInner() {
                 }));
             });
             req.on('error', reject);
-            const body = init["body"];
             if (body) req.write(typeof body === 'string' ? body : JSON.stringify(body));
             req.end();
         });
@@ -482,11 +488,11 @@ async function _initTelegramInner() {
         let statusMsgCreatePromise: Promise<number | null> | null = null;
         let statusUpdateTimer: ReturnType<typeof setTimeout> | null = null;
         let statusUpdateRunning = false;
-        let pendingStatusText = '';
+        const statusUpdateBuffer = new StatusUpdateBuffer();
         let toolLines: string[] = [];
 
         const flushStatusUpdate = async () => {
-            const display = pendingStatusText;
+            const display = statusUpdateBuffer.take();
             if (!display) return;
 
             if (!statusMsgId) {
@@ -520,7 +526,7 @@ async function _initTelegramInner() {
                 } finally {
                     statusUpdateRunning = false;
                     // If pending text changed while updating, flush once more.
-                    if (pendingStatusText && !statusUpdateTimer) scheduleStatusUpdate();
+                    if (statusUpdateBuffer.hasPending() && !statusUpdateTimer) scheduleStatusUpdate();
                 }
             }, 180);
         };
@@ -530,7 +536,7 @@ async function _initTelegramInner() {
             if (toolLines[toolLines.length - 1] === line) return;
             toolLines.push(line);
             if (toolLines.length > 24) toolLines = toolLines.slice(-24);
-            pendingStatusText = toolLines.slice(-5).join('\n');
+            statusUpdateBuffer.set(toolLines.slice(-5).join('\n'));
             scheduleStatusUpdate();
         };
 
