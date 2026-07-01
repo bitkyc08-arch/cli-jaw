@@ -141,7 +141,7 @@ test('SF-004b: resume argv CLIs keep enriched promptForArgs for agy and compact 
     );
 });
 
-test('SF-004c: agy front-loads current task before operational context', () => {
+test('SF-004c: agy passes configured prompt order to the bootstrap envelope', () => {
     const src = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     const agyBranchIdx = src.indexOf("if (cli === 'agy') {");
     const preflightIdx = src.indexOf('// ─── DIFF-A: Preflight', agyBranchIdx);
@@ -152,6 +152,7 @@ test('SF-004c: agy front-loads current task before operational context', () => {
     assert.ok(agyBranch.includes('buildAgyBootstrapEnvelope({'), 'agy branch should use the bootstrap envelope builder');
     assert.ok(agyBranch.includes('taskPrompt: prompt'), 'agy bootstrap should receive the current task prompt');
     assert.ok(agyBranch.includes('operationalContext: sysPrompt'), 'agy bootstrap should receive operational context separately');
+    assert.ok(agyBranch.includes('order: resolveAgyPromptOrder(cfg.promptOrder)'), 'agy bootstrap should receive the configured prompt order');
     assert.ok(agyBranch.includes('promptForArgs = agyBootstrap.prompt'), 'agy args prompt should be the ordered bootstrap prompt');
 });
 

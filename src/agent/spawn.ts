@@ -71,7 +71,11 @@ import {
     stripAgyResumeReplayPrefixes,
 } from './agy-runtime.js';
 import { detectAgyCapabilities } from './agy-capabilities.js';
-import { buildAgyBootstrapEnvelope, type AgyBootstrapEnvelope } from './agy-bootstrap.js';
+import {
+    buildAgyBootstrapEnvelope,
+    resolveAgyPromptOrder,
+    type AgyBootstrapEnvelope,
+} from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
 import { appendAssistantTextSegment, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import { listKiroConversationIdsForCwd } from './kiro-auth.js';
@@ -1142,6 +1146,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             historyBlock,
             workingDir: spawnCwd,
             sessionId: resumeSessionId,
+            order: resolveAgyPromptOrder(cfg.promptOrder),
             ...(sysPrompt ? { operationalContext: sysPrompt } : {}),
         });
         promptForArgs = agyBootstrap.prompt;
