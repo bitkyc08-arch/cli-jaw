@@ -15,7 +15,7 @@ const REL_NOTE_PATH_RE_G = /(?:^|[\s([{"'`])([A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+
 const TRAILING_PUNCT_RE = /[.,!?:;]+$/;
 const LOCAL_FILE_HREF_RE = /^(?:~\/|\/(?:Users|home|tmp|var|opt|private)\/)/;
 // Mirrors DocPanel EXT_LANG keys exactly (drift guarded by tests/unit/preview-doc-links.test.ts).
-const DOC_PANEL_CODE_RE = /\.(ts|tsx|js|jsx|py|rs|go|java|cpp|c|css|html|xml|json|yaml|yml|sh|bash|sql)$/i;
+const DOC_PANEL_CODE_RE = /\.(ts|tsx|js|jsx|py|rs|go|java|cpp|c|css|html|htm|xml|json|yaml|yml|sh|bash|sql)$/i;
 const DOC_PANEL_MARKDOWN_RE = /\.(md|mdx)$/i;
 
 let notesRootCache: string | null | undefined;

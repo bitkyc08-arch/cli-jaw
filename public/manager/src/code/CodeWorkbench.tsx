@@ -61,6 +61,7 @@ type CodeWorkbenchProps = {
     onUseModel: (provider: string, model: string) => void | Promise<void>;
     onUseForNewSessions: (provider: string, model: string) => void | Promise<void>;
     onWorkingDirChange: (path: string | null) => void;
+    onOpenLocalFile?: ((path: string) => void) | undefined;
     workspaceFrozen: boolean;
     onPickWorkingDir: () => Promise<string | null>;
 };
@@ -94,7 +95,7 @@ export function CodeWorkbench(props: CodeWorkbenchProps) {
                     {props.transportState === 'reconnecting' ? 'Live updates reconnecting…' : 'Live updates disconnected — retrying.'}
                 </section>
             )}
-            <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} />
+            <CodeTranscript messages={props.messages} sending={props.sending} workingDir={props.codeWorkingDir} transcriptRef={props.transcriptRef} onOpenLocalFile={props.onOpenLocalFile} />
             <CodePermissionQueue permissions={props.permissions} onAnswer={props.onPermissionAnswer} />
             <div className="code-composer-dock">
                 <div className="code-composer-surface" aria-label="Code composer controls">

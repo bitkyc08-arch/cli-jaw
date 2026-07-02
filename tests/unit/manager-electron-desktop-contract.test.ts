@@ -437,7 +437,12 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(browserPanel.includes('attachWebviewEvents'), 'browser panel must attach navigation/crash handlers per webview, not only to the currently active tab');
     assert.ok(browserPanel.includes("getDesktop()?.browser?.onOpenUrl"), 'browser panel must accept Electron popup/new-window requests and route them into tabs');
     assert.ok(router.includes('rightPreviewFilePath'), 'router must keep the selected file path for document preview');
+    assert.ok(router.includes('function expandDesktopHomePath(path: string): string'), 'right panel doc opens must normalize tilde paths before Electron file reads');
+    assert.ok(router.includes("getDesktop()?.getHomePath?.()?.replace(/\\/+$/, '')"), 'tilde expansion must use the Electron home-path bridge');
     assert.ok(router.includes("panelLayout.dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'doc', slot: 'bottom' })"), 'selecting a file must open document preview in a folder/file split view');
+    assert.ok(router.includes('onOpenLocalFile={handleRightPreviewFile}'), 'Code mode local file links must open the shared right DocPanel');
+    assert.ok(doc.includes('function HtmlPreview'), 'document preview must render local HTML files in the right panel');
+    assert.ok(doc.includes('sandbox=""'), 'HTML preview must not grant scripts or same-origin privileges');
     assert.ok(folder.includes('onPreviewFile'), 'folder panel must expose file selection to the preview panel');
     assert.ok(folder.includes('const onPreviewFile = props.onPreviewFile;'), 'clicking a file in Folders must open it in preview through the selection hook');
     assert.ok(folder.includes('onRootChange'), 'folder panel must report manual root changes back to the owning right sidebar');

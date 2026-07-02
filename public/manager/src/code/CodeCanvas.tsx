@@ -35,9 +35,10 @@ type CodeCanvasProps = {
     port: number;
     workingDir: string;
     onWorkingDirChange?: (path: string | null) => void;
+    onOpenLocalFile?: (path: string) => void;
 };
 
-export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasProps) {
+export function CodeCanvas({ port, workingDir, onWorkingDirChange, onOpenLocalFile }: CodeCanvasProps) {
     const client = useMemo(() => createCodeSessionClient(port), [port]);
     const [codeWorkingDir, setCodeWorkingDir] = useState(workingDir);
     const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -588,6 +589,7 @@ export function CodeCanvas({ port, workingDir, onWorkingDirChange }: CodeCanvasP
                 setActivePopup(null);
             }}
             onWorkingDirChange={handleWorkingDirChange}
+            onOpenLocalFile={onOpenLocalFile}
             workspaceFrozen={workspaceFrozen}
             onPickWorkingDir={handlePickWorkspace}
         />

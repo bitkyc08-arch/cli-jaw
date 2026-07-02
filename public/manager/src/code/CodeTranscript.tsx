@@ -9,6 +9,7 @@ type CodeTranscriptProps = {
     sending: boolean;
     workingDir: string;
     transcriptRef: RefObject<HTMLDivElement | null>;
+    onOpenLocalFile?: ((path: string) => void) | undefined;
 };
 
 function renderToolContent(content: ToolContent, index: number) {
@@ -107,7 +108,7 @@ function estimateTranscriptRowSize(msg: TranscriptEntry | undefined): number {
     return 56 + Math.min(420, msg.text.length / 6);
 }
 
-function renderCodeMessage(msg: TranscriptEntry, i: number) {
+function renderCodeMessage(msg: TranscriptEntry, i: number, onOpenLocalFile?: ((path: string) => void) | undefined) {
     return (
         <div key={i} className={`code-message code-message-${msg.role}`}>
             {msg.role === 'tool' ? (() => {
@@ -165,7 +166,7 @@ function renderCodeMessage(msg: TranscriptEntry, i: number) {
                     <div className="code-message-text">
                         {msg.role === 'assistant' ? (
                             <Suspense fallback={<span>{msg.text}</span>}>
-                                <MarkdownRenderer markdown={msg.text} tableMode="linear" />
+                                <MarkdownRenderer markdown={msg.text} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />
                             </Suspense>
                         ) : msg.text}
                     </div>
@@ -184,7 +185,7 @@ function renderSendingMessage() {
     );
 }
 
-export function CodeTranscript({ messages, sending, workingDir, transcriptRef }: CodeTranscriptProps) {
+export function CodeTranscript({ messages, sending, workingDir, transcriptRef, onOpenLocalFile }: CodeTranscriptProps) {
     const showSending = sending && messages[messages.length - 1]?.role !== 'assistant';
     const rowCount = messages.length + (showSending ? 1 : 0);
     const getItemKey = useCallback((index: number): string | number => {
@@ -248,7 +249,7 @@ export function CodeTranscript({ messages, sending, workingDir, transcriptRef }:
                                 data-code-transcript-idx={virtualItem.index}
                                 style={{ transform: `translateY(${virtualItem.start}px)` }}
                             >
-                                {msg ? renderCodeMessage(msg, virtualItem.index) : renderSendingMessage()}
+                                {msg ? renderCodeMessage(msg, virtualItem.index, onOpenLocalFile) : renderSendingMessage()}
                             </div>
                         );
                     })}
