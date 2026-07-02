@@ -25,6 +25,30 @@ export async function initJawcodeTui(): Promise<void> {
     _initialized = true;
 }
 
+function isOptionalJawcodeTuiLoadError(err: unknown): boolean {
+    const maybeError = err as { code?: unknown; message?: unknown };
+    const code = typeof maybeError.code === 'string' ? maybeError.code : '';
+    const message = typeof maybeError.message === 'string' ? maybeError.message : String(err);
+    if (message.includes('pi_natives')) return true;
+    if (code !== 'ERR_MODULE_NOT_FOUND') return false;
+    return message.includes('/lib/tui/bun-shim.mjs')
+        || message.includes('/lib/tui/jawcode-tui-bundle.mjs')
+        || message.includes('/lib/tui/jawcode-interactive-bundle.mjs');
+}
+
+export async function tryInitJawcodeTui(): Promise<boolean> {
+    try {
+        await initJawcodeTui();
+        return true;
+    } catch (err) {
+        if (!isOptionalJawcodeTuiLoadError(err)) throw err;
+        _tui = null;
+        _interactive = null;
+        _initialized = false;
+        return false;
+    }
+}
+
 function ensureInit(): void {
     if (!_initialized) throw new Error('Call initJawcodeTui() before using jawcode render functions');
 }
