@@ -66,7 +66,7 @@ test('EMP-008: getEmployeePromptV2 adds compact skill and role contracts', () =>
     assert.ok(v2.includes('Skill Loading Contract'), 'v2 should include on-demand skill loading guidance');
     assert.ok(v2.includes('Role Contract'), 'v2 should include role contract');
     assert.ok(v2.includes('dev-frontend'), 'frontend role guide should be named');
-    assert.match(v2, /dev-frontend.*Production-grade frontend/,
+    assert.match(v2, /dev-frontend.*MUST USE for any frontend/,
         'role guide should include the skill metadata description, not only the path');
     assert.ok(!v2.includes('## Development Guide (Common)'), 'dev guide body should not be inlined');
 });

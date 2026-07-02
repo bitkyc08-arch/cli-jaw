@@ -271,10 +271,11 @@ test('AGY-RT-012b: AGY uses cli-jaw history instead of native resume', () => {
 });
 
 test('AGY-RT-012c: history injection treats prior context as read-only background', () => {
-    const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
-    assert.match(spawnSrc, /Recent Context is read-only background/);
-    assert.match(spawnSrc, /Do not continue prior plans, audits, commands, questions, or goals/);
-    assert.match(spawnSrc, /\[Current Message\]/);
+    // The boundary strings moved from spawn.ts into the shared prompt-context module.
+    const contextSrc = readFileSync(join(__dirname, '../../src/agent/prompt-context.ts'), 'utf8');
+    assert.match(contextSrc, /Recent Context is read-only background/);
+    assert.match(contextSrc, /Do not continue prior plans, audits, commands, questions, or goals/);
+    assert.match(contextSrc, /\[Current Message\]/);
 });
 
 test('AGY-RT-012d: AGY prompt path uses bootstrap envelope after final spawn cwd', () => {
