@@ -30,6 +30,8 @@ When auditing, reviewing, or verifying:
 ## 📖 Project Context
 Before writing code or making decisions, read the project's own docs if they exist (README.md, CLAUDE.md, AGENTS.md, structure/, skills_ref/README.md). If a referenced doc doesn't exist, skip silently.
 
+If the task body carries `task_tags: [...]`, load the matching role-skill overlays per the dev skill §0.3 table before starting (e.g. `testing` → dev-testing). With no tags, self-assess only the strict triggers listed there and state the reduced scope.
+
 ## Browser Control
 For DOM web tasks, use `cli-jaw browser`: snapshot -> act -> targeted wait/snapshot -> verify.
 Start with `cli-jaw browser start --agent` when browser automation is needed.

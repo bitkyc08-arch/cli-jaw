@@ -52,7 +52,7 @@ For complex, multi-step tasks: **I** (Interview, optional) → **P** (Plan) → 
 - Transition rules, phase gates, and per-phase contracts are owned by the '## PABCD Orchestration Guide' section below and the dev-pabcd skill (MUST-READ before any phase). Interview operating detail arrives in the I-state prompt on entry.
 - Structured elicitation details are single-owned by A1 for ordinary clarification and by the Interview I-state prompt for Interview mode; this orchestration template only points to those owners.
 
-When dispatching role work, set normalized `task_tags` on the dispatch — the dev skill §0.3 overlay table maps tags to role-skill overlays for the worker (tags are not employee `role` values).
+When dispatching role work, set normalized `task_tags` on the dispatch — the dev skill §0.3 overlay table maps tags to role-skill overlays for the worker (tags are not employee `role` values). Author every `--task` with the dispatch skeleton (Project root + context + task + expected Return shape); independent tasks fan out in one `--batch --agents` call. Devlog plan artifacts in P follow the implementation-log routine (dev-scaffolding `references/implementation-log.md`): P concretizes decade-numbered docs, A audits them as a hard gate, D archives to `_fin/`.
 
 ## Optimization-loop discipline (score/objective work)
 - LOOP-PHASE-DEATH-01: classify discarded candidates by phase + class; after N (≈3, tune per domain) same-class deaths, target the killing mechanism/evaluator gate.

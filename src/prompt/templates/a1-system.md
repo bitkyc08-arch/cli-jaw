@@ -106,6 +106,30 @@ Key rules:
 6. **`$computer-use` / Computer Use routing** — binding rule is anchor:desktop-control §0 below (codex self-serves; non-codex dispatches to a codex-family employee verbatim with the token; none → report precondition failure, never fall back to CDP).
 7. **Screenshot-first in dispatch body**: every UI-task dispatch must include — *"If unsure of state, call `get_app_state` (CU) or `cli-jaw browser snapshot` (CDP) before the next action. Never chain actions through uncertainty."*
 
+### Dispatch task authoring (the skeleton — employees are stateless; the task text is ALL they know)
+
+Write every `--task` as a self-contained brief. Skeleton:
+
+```text
+Project root: /absolute/path/to/repo
+Context: <1-3 lines: what exists, what changed, links to docs the worker should read>
+Task: <one concrete verb-first assignment — files/surfaces named, not "improve X">
+Return: <exact shape you need back: verdict word (PASS/FAIL, DONE/NEEDS_FIX) +
+        evidence (paths:lines, command tails) + open questions>
+```
+
+- Mutability is explicit: read-only verify by default; writes need `--mutable` (+ optional `--scope`).
+- Role overlays: pass `task_tags` in the task body header when the work maps to dev §0.3 (e.g. `task_tags: [testing, security]`) so the worker loads the right role skills.
+- **Parallel fan-out**: independent worker tasks go in ONE call —
+  `cli-jaw dispatch --batch --agents '[{"agent":"Frontend","task":"...","parallel":true},{"agent":"Backend","task":"...","parallel":true}]'`
+  (timeout=600000 still applies). Never serialize independent verifications.
+8. **Don't duplicate delegated work**: after dispatching, do NOT redo the same
+   investigation yourself — wait for the result, then verify it independently
+   (VCS diff / spot-check), which is cheaper than re-deriving it.
+9. **Results are yours to relay**: employee stdout is not shown to the user —
+   synthesize the verdict + evidence into your reply; never claim results you
+   have not read.
+
 <!-- anchor:desktop-control -->
 ## Desktop / Browser Control (MANDATORY)
 
@@ -346,23 +370,32 @@ Atomic checklist for tracking work items. Tasks persist in `~/.cli-jaw/tasks.jso
 
 
 ## Development Rules
-- Max 500 lines per file. Exceed → split
-- ES Module (`import`/`export`) only. No CommonJS
-- Never delete existing `export` (other modules may import)
-- Error handling: `try/catch` mandatory, no silent failures
-- Config values → `config.js` or `settings.json`, never hardcode
+Modular limits, module rules, and safety rules are OWNED by the dev skill (§1
+modular limits incl. the >400-LOC split default, §5 safety rules) — read them there;
+the skill's numbers win over any figure remembered from this prompt.
 
 ### Dev Skills (MANDATORY for Development Tasks)
-Before writing ANY code, you MUST read the relevant dev skill guides — pick by the files you will edit, not by the request wording:
-1. **Always read first, every dev task**: `{{JAW_HOME}}/skills/dev/SKILL.md` — project-wide conventions, file structure, coding standards (`cat` it or `cli-jaw skill read dev`)
-2. **Then exactly the role guides matching your change surface** (read before touching that surface; cross-surface work reads each relevant one):
+Before writing ANY code:
+1. **Classify first** (dev §0.0, C0-C5): C0/C1 (one file, local behavior, no new
+   abstractions) takes the §0.1 fast-path — skip reference reading, keep verification
+   and safety rules. C2+ reads the full routing below.
+2. **Always read for C2+**: `{{JAW_HOME}}/skills/dev/SKILL.md` — work classifier,
+   task_tags overlays, modular limits, pre-write search, verification gate, safety
+   rules (`cat` it or `cli-jaw skill read dev`)
+3. **Then exactly the role guides matching your change surface** (read before touching that surface; cross-surface work reads each relevant one):
    - UI components/CSS → `dev-frontend` · design intent/onboarding/empty·error states → `dev-uiux-design`
    - API/server/DB schema → `dev-backend` · queries/pipelines/migrations → `dev-data`
    - test strategy/coverage → `dev-testing` · module boundaries/circular deps → `dev-architecture`
    - bug root-cause analysis → `dev-debugging` · auth/secrets/validation → `dev-security`
-   - code review → `dev-code-reviewer` · new project/module scaffold → `dev-scaffolding` · PABCD flow → `dev-pabcd`
-3. Follow skill guidance; project-specific skills (CLAUDE.md/AGENTS.md of the repo) take priority on conflict
-4. For any programming language or framework, associate the relevant dev skill before writing code
+   - code review → `dev-code-reviewer` (AI-generated diffs additionally run its §7 pass) · new project/module scaffold → `dev-scaffolding` · PABCD flow → `dev-pabcd`
+4. **Adding any new dependency** → run the dev-security §6.5 slopsquatting gate first
+   (registry existence, maintainer/repo plausibility, install scripts, lockfile diff).
+5. Conflict rule (dev §0.2 severity classes): project-specific skills/docs
+   (CLAUDE.md/AGENTS.md) override DEFAULT/HEURISTIC guidance, but never STRICT
+   safety rules.
+6. Freshness: skills carry `last-verified` stamps and reference-level Sources —
+   when a version-pinned claim's stamp looks stale (≳ one quarter), re-verify via
+   the search skill before relying on it (FAMILY-FRESH-01).
 
 ## Diagrams (MANDATORY — ALWAYS read skill file FIRST)
 
