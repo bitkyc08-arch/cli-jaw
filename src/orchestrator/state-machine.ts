@@ -396,6 +396,20 @@ Then suggest: "Ready for planning. Run \`cli-jaw orchestrate P\` to proceed."
 
 The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\` (→ Planning).
 
+## Loop Archetype & Option Teaching
+
+- **INTERVIEW-CLASSIFY-01**: before suggesting P, settle the loop archetype — does a
+  verifier define *done* (spec-satisfaction), or only *better* (open-ended optimization:
+  scores, win rates, benchmarks)? Record it as a known fact. Optimization work must plan
+  instrumentation + an explore-and-select scheme in P — never a bare repair loop.
+- **INTERVIEW-TEACH-01**: teach the decision space, don't only narrow it — a user cannot
+  choose among options they have never seen. Present researched options with a
+  per-option trade-off at every load-bearing altitude (stack, architecture,
+  algorithm/strategy, data structure, evaluation method), including one atypical option.
+- **INTERVIEW-DIVERGE-01**: when a load-bearing choice is genuinely uncertain and a
+  spike is cheap, offer \`BOTH (parallel spike, select by evidence)\` — a BOTH answer
+  becomes an explore-and-select work-phase with the comparison verifier in the loop-spec.
+
 ## Loop / Multi-Pass Tasks
 
 If the user's request contains "loop" / "루프" (or clearly describes work too large for one PABCD cycle), treat it as a MULTI-PASS task:
@@ -413,6 +427,7 @@ Steps:
 1. Read project docs, dev skills, and relevant code. If anything is unclear, return to Interview (\`cli-jaw orchestrate I\`) — do NOT ask questions in P.
 2. Write the complete plan internally:
    - Diff-level precision: exact file paths (NEW/MODIFY/DELETE), before/after diffs for MODIFY, complete content for NEW.
+   - Loop-spec header (C2+): Loop archetype (from Interview) · Trigger · Goal · Non-goals · Verifier (the command/gate and what it measures, not only pass/fail) · Stop condition · Memory artifact · Expected terminal states (DONE|NOOP|BLOCKED|NEEDS_HUMAN|BUDGET_EXHAUSTED) · Escalation. For open-ended optimization add the divergence plan (descriptor axes, candidate/archetype assignments, deterministic selection rule, telemetry schema); if the verifier only reports win/lose or a bare score, instrumentation is B's first work item — before any candidate.
    - Save to a devlog plan file using Jawdev decade numbering (see dev-pabcd skill).
    - For a loop / multi-pass task: pre-plan the FULL work-phase slice map up front and scaffold per-phase stub docs (10_phase1, 20_phase2, ...). The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
 3. Present to the user in chat:
@@ -582,6 +597,11 @@ Then perform two reflections:
 - Which acceptance criteria need sharpening?
 - Which constraints were missing?
 - What would change if we revised the ontology?
+
+**PESSIMIST** ("Is the direction still right?" — LOOP-PESSIMIST-01, loop/multi-pass work):
+- What did NOT improve this cycle, and which hypothesis died?
+- One sentence: what evidence would show the current direction is wrong? The next P must quote this.
+- D → IDLE → P is a context/bias-flush boundary: the next cycle resumes from disk artifacts (worklog, devlog, death log), not transcript momentum. Report the honest terminal state — a budget/time stop is BUDGET_EXHAUSTED with best-so-far evidence, never "완료".
 
 Present findings to user. Then:
 - If significant issues: "Seed를 개선하려면: \`cli-jaw orchestrate I\`"
