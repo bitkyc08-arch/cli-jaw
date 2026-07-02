@@ -88,6 +88,21 @@ export function useFolderGitStatus(input: UseFolderGitStatusInput): FolderPanelG
                     setState(stateFromStatus(result.status));
                     return;
                 }
+                if (repoRoot && /repo root mismatch/i.test(result.error)) {
+                    const healed = await loadFolderGitStatus(rootPath, {
+                        includeIgnored: true,
+                        includeUntracked: true,
+                    });
+                    if (cancelled) return;
+                    if (healed.ok) {
+                        setState(stateFromStatus(healed.status));
+                        return;
+                    }
+                    setState(healed.quiet
+                        ? EMPTY_FOLDER_GIT_STATE
+                        : { ...EMPTY_FOLDER_GIT_STATE, error: healed.error });
+                    return;
+                }
                 setState(result.quiet
                     ? EMPTY_FOLDER_GIT_STATE
                     : { ...EMPTY_FOLDER_GIT_STATE, error: result.error });

@@ -12,13 +12,13 @@ import { t } from '../core/i18n.js';
 import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
 
-function findByName(name: string): EmployeeListing | null {
-    return listEmployees().find(e => e.name.toLowerCase() === name.toLowerCase()) ?? null;
+async function findByName(name: string): Promise<EmployeeListing | null> {
+    return (await listEmployees()).find(e => e.name.toLowerCase() === name.toLowerCase()) ?? null;
 }
 
-function updateField(
+async function updateField(
     emp: EmployeeListing, field: 'model' | 'cli', value: string,
-): { ok: boolean; error?: string } {
+): Promise<{ ok: boolean; error?: string }> {
     if (emp.source === 'static') {
         if (field === 'cli') return { ok: false, error: 'static employees cannot change CLI' };
         const overrides = (settings['staticEmployees'] as Record<string, { model?: string }>) || {};
@@ -30,7 +30,7 @@ function updateField(
         db.prepare(`UPDATE employees SET ${field} = ? WHERE id = ?`).run(value, emp.id);
         if (emp.id) clearEmployeeSession.run(emp.id);
     }
-    const updated = findByName(emp.name);
+    const updated = await findByName(emp.name);
     if (updated) broadcast('agent_updated', updated as unknown as Record<string, unknown>);
     regenerateB();
     return { ok: true };
@@ -41,7 +41,7 @@ export async function employeeHandler(args: string[], ctx: CliCommandContext): P
     const sub = (args[0] || '').toLowerCase();
 
     if (!sub || sub === 'list') {
-        const list = listEmployees();
+        const list = await listEmployees();
         if (!list.length) return { ok: true, text: t('cmd.employee.empty', {}, L) };
         const lines = list.map(e => {
             const tag = e.source === 'static' ? ' _(static)_' : '';
@@ -53,7 +53,7 @@ export async function employeeHandler(args: string[], ctx: CliCommandContext): P
     if (sub === 'info') {
         const name = args.slice(1).join(' ').trim();
         if (!name) return { ok: false, text: t('cmd.employee.infoUsage', {}, L) };
-        const emp = findByName(name);
+        const emp = await findByName(name);
         if (!emp) return { ok: false, text: t('cmd.employee.notFound', { name }, L) };
         const lines = [
             `**${emp.name}** (${emp.source})`,
@@ -70,9 +70,9 @@ export async function employeeHandler(args: string[], ctx: CliCommandContext): P
         const name = args[1]?.trim();
         const model = args.slice(2).join(' ').trim();
         if (!name || !model) return { ok: false, text: t('cmd.employee.modelUsage', {}, L) };
-        const emp = findByName(name);
+        const emp = await findByName(name);
         if (!emp) return { ok: false, text: t('cmd.employee.notFound', { name }, L) };
-        const result = updateField(emp, 'model', model);
+        const result = await updateField(emp, 'model', model);
         if (!result.ok) return { ok: false, text: result.error! };
         return { ok: true, text: t('cmd.employee.modelChanged', { name: emp.name, model }, L) };
     }
@@ -84,9 +84,9 @@ export async function employeeHandler(args: string[], ctx: CliCommandContext): P
         if (!CLI_KEYS.includes(cli as typeof CLI_KEYS[number])) {
             return { ok: false, text: t('cmd.employee.cliUnknown', { cli, available: CLI_KEYS.join(', ') }, L) };
         }
-        const emp = findByName(name);
+        const emp = await findByName(name);
         if (!emp) return { ok: false, text: t('cmd.employee.notFound', { name }, L) };
-        const result = updateField(emp, 'cli', cli);
+        const result = await updateField(emp, 'cli', cli);
         if (!result.ok) return { ok: false, text: result.error! };
         return { ok: true, text: t('cmd.employee.cliChanged', { name: emp.name, cli }, L) };
     }

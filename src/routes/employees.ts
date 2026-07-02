@@ -5,7 +5,7 @@ import { ok } from '../http/response.js';
 import { broadcast } from '../core/bus.js';
 import { db, insertEmployee, deleteEmployee } from '../core/db.js';
 import { regenerateB } from '../prompt/builder.js';
-import { CLI_REGISTRY } from '../cli/registry.js';
+import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import {
     clearEmployeeSessionIfResumeKeyChanged,
     type EmployeeResumeKeyLike,
@@ -26,13 +26,13 @@ function parseStaticId(id: string): string | null {
 export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware): void {
     // Returns merged [static first, then DB]. Static entries carry `id: static:<name>`
     // so the frontend can round-trip edits through PUT.
-    app.get('/api/employees', (_, res) => ok(res, listEmployees()));
+    app.get('/api/employees', async (_, res) => ok(res, await listEmployees()));
 
-    app.post('/api/employees', requireAuth, (req, res) => {
+    app.post('/api/employees', requireAuth, async (req, res) => {
         const id = crypto.randomUUID();
         const { name = 'New Agent', cli = 'claude', model = 'default', role = '' } = req.body || {};
         const nextModel = (!model || model === 'default')
-            ? (CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY]?.defaultModel || 'default')
+            ? await resolveCliDefaultModel(cli)
             : model;
         insertEmployee.run(id, name, cli, nextModel, role);
         const emp = db.prepare('SELECT * FROM employees WHERE id = ?').get(id) as Record<string, any>;
@@ -46,7 +46,7 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
         res.json({ ok: true, ...result });
     });
 
-    app.put('/api/employees/:id', requireAuth, (req, res) => {
+    app.put('/api/employees/:id', requireAuth, async (req, res) => {
         const updates = req.body || {};
         const employeeId = String(req.params["id"] || '');
         const staticSlug = parseStaticId(employeeId);
@@ -75,7 +75,7 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
             settings["staticEmployees"] = overrides;
             saveSettings(settings);
             clearEmployeeSessionIfResumeKeyChanged(employeeId, before, { cli: spec.cli, model: newModel });
-            const merged = listEmployees().find(e => e.id === employeeId);
+            const merged = (await listEmployees()).find(e => e.id === employeeId);
             if (merged) broadcast('agent_updated', merged as Record<string, any>);
             regenerateB();
             res.json(merged);
@@ -116,8 +116,8 @@ export function registerEmployeeRoutes(app: Express, requireAuth: AuthMiddleware
     });
 
     // Employee reset — delete all + re-seed 5 defaults
-    app.post('/api/employees/reset', requireAuth, (_req, res) => {
-        const { seeded } = seedDefaultEmployees({ reset: true, notify: true });
+    app.post('/api/employees/reset', requireAuth, async (_req, res) => {
+        const { seeded } = await seedDefaultEmployees({ reset: true, notify: true });
         res.json({ ok: true, seeded });
     });
 }

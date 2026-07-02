@@ -38,7 +38,7 @@ function uniqueLines(raw: string): string[] {
     return out;
 }
 
-const BUN_DEPRIO_CLIS = new Set(['claude', 'codex', 'gemini', 'copilot', 'opencode']);
+const BUN_DEPRIO_CLIS = new Set(['claude', 'codex', 'copilot', 'opencode']);
 
 function normalizedPath(filePath: string): string {
     return path.normalize(filePath);

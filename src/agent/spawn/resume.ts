@@ -28,14 +28,6 @@ export function shouldResumeBucketSession(
     nowMs: number = Date.now(),
     effectiveProvider?: string | null,
 ): boolean {
-    if (cli === 'gemini') {
-        if (!bucketModel) return false;
-        if (isExpiredBucket(bucketUpdatedAt, GEMINI_RESUME_TTL_MS, nowMs)) return false;
-        const requested = normalizeGeminiResumeModel(requestedModel);
-        const bucket = normalizeGeminiResumeModel(bucketModel);
-        if (!requested || !bucket) return false;
-        return requested === bucket;
-    }
     if (cli === 'copilot' && bucketModel) {
         return normalizeModelForCli(cli, requestedModel) === normalizeModelForCli(cli, bucketModel);
     }
@@ -58,14 +50,8 @@ export function shouldResumeBucketSession(
     return true;
 }
 
-export const GEMINI_RESUME_TTL_MS = 72 * 60 * 60 * 1000;
 export const AGY_RESUME_TTL_MS = 72 * 60 * 60 * 1000;
 
-function normalizeGeminiResumeModel(model: string | null | undefined): string {
-    const normalized = String(model || '').trim().toLowerCase();
-    if (!normalized || normalized === 'default' || normalized === 'auto') return '';
-    return normalized;
-}
 
 function parseBucketUpdatedAt(value: string | number | null | undefined): number | null {
     if (typeof value === 'number' && Number.isFinite(value)) {

@@ -6,6 +6,7 @@ import { splitAgentSaveBundle } from '../../public/manager/src/settings/pages/Ag
 import { expandPatch } from '../../public/manager/src/settings/pages/path-utils';
 import {
     buildRuntimeEmployeeDiff,
+    makeDefaultRuntimeEmployee,
     runtimeEmployeeChangeSummary,
     unwrapRuntimeEmployees,
     type RuntimeEmployeeRecord,
@@ -97,6 +98,35 @@ test('runtime employee summary counts added, updated, and removed rows', () => {
     ];
     const summary = runtimeEmployeeChangeSummary([staticEmployee, dbEmployee], next);
     assert.deepEqual(summary, { added: 1, updated: 1, removed: 1 });
+});
+
+test('new runtime employee defaults to first live CLI metadata model', () => {
+    const row = makeDefaultRuntimeEmployee(['codex'], {
+        codex: {
+            label: 'Codex',
+            models: ['gpt-5.5', 'kiro/claude-opus-4.8', 'opencode-go/kimi-k2.7-code'],
+            efforts: ['low', 'medium', 'high', 'xhigh'],
+        },
+    });
+    assert.equal(row.cli, 'codex');
+    assert.equal(row.model, 'gpt-5.5');
+});
+
+test('new runtime employee can default to active ocx routed metadata model', () => {
+    const row = makeDefaultRuntimeEmployee(['codex'], {
+        codex: {
+            label: 'Codex',
+            models: ['kiro/claude-opus-4.8', 'gpt-5.5'],
+            efforts: ['low', 'medium', 'high', 'xhigh'],
+        },
+    });
+    assert.equal(row.model, 'kiro/claude-opus-4.8');
+});
+
+test('new runtime employee keeps default model when live CLI metadata is absent', () => {
+    const row = makeDefaultRuntimeEmployee(['codex'], null);
+    assert.equal(row.cli, 'codex');
+    assert.equal(row.model, 'default');
 });
 
 test('runtimeEmployees dirty key is valid only when rows are valid', () => {

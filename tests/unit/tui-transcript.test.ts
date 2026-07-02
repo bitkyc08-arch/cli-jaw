@@ -315,3 +315,89 @@ test('user item with paste (display differs from submit)', () => {
         assert.equal(item.submitText.includes('\n'), true);
     }
 });
+
+test('streaming thinking settles when answer text starts (jawcode 083.5 parity)', () => {
+    const state = createTranscriptState();
+    appendUserItem(state, 'hello', 'hello');
+    appendThinkingTurnText(state, 'Working through the problem', 'main');
+    const thinkingBefore = state.items[1]!;
+    assert.equal(thinkingBefore.type, 'thinking');
+    if (thinkingBefore.type === 'thinking') assert.equal(thinkingBefore.streaming, true);
+
+    appendAssistantTurnText(state, 'First answer token', 'main');
+
+    assert.equal(state.items.map((item) => item.type).join(','), 'user,thinking,assistant');
+    const thinking = state.items[1]!;
+    assert.equal(thinking.type, 'thinking');
+    if (thinking.type === 'thinking') {
+        assert.equal(thinking.streaming, false, 'thinking must settle once the stream moves past it');
+    }
+    const assistant = state.items[2]!;
+    assert.equal(assistant.type, 'assistant');
+    if (assistant.type === 'assistant') assert.equal(assistant.streaming, true);
+});
+
+test('thinking after settle starts a new block instead of reopening the settled one', () => {
+    const state = createTranscriptState();
+    appendUserItem(state, 'hello', 'hello');
+    appendThinkingTurnText(state, 'Plan A', 'main');
+    appendAssistantTurnText(state, 'answer chunk', 'main');
+    appendThinkingTurnText(state, 'Plan B', 'main');
+
+    const thinkingItems = state.items.filter((item) => item.type === 'thinking');
+    assert.equal(thinkingItems.length, 2);
+    if (thinkingItems[0]!.type === 'thinking' && thinkingItems[1]!.type === 'thinking') {
+        assert.equal(thinkingItems[0]!.text, 'Plan A');
+        assert.equal(thinkingItems[0]!.streaming, false);
+        assert.equal(thinkingItems[1]!.text, 'Plan B');
+    }
+});
+
+test('answer text does not settle stepRef thinking rows owned by tool events', async () => {
+    const state = createTranscriptState();
+    appendUserItem(state, 'run', 'run');
+    const { appendThinkingItem } = await import('../../src/cli/tui/transcript.ts');
+    appendThinkingItem(state, 'tool-driven reasoning', { stepRef: 'think-1', streaming: true, collapsed: true });
+    appendAssistantTurnText(state, 'answer', 'main');
+
+    const stepThinking = state.items.find((item) => item.type === 'thinking' && item.stepRef === 'think-1');
+    assert.ok(stepThinking);
+    if (stepThinking && stepThinking.type === 'thinking') {
+        assert.equal(stepThinking.streaming, true, 'stepRef thinking is finalized by its own tool-event lifecycle');
+    }
+});
+
+test('streaming assistant settles when a tool row interrupts the segment', async () => {
+    const state = createTranscriptState();
+    appendUserItem(state, 'run', 'run');
+    appendAssistantTurnText(state, 'running tools now', 'main');
+    appendToolItem(state, '🔧 Bash pwd', { status: 'done', stepRef: 't-1' });
+
+    const assistant = state.items[1]!;
+    assert.equal(assistant.type, 'assistant');
+    if (assistant.type === 'assistant') {
+        assert.equal(assistant.streaming, false, 'tool event must settle the answer segment (no lingering cursor)');
+    }
+
+    assert.equal(appendAssistantTurnText(state, 'after tools', 'main'), true);
+    const tail = state.items[state.items.length - 1]!;
+    assert.equal(tail.type, 'assistant');
+    if (tail.type === 'assistant') {
+        assert.equal(tail.text, 'after tools');
+        assert.equal(tail.streaming, true, 'post-tool text starts a fresh streaming segment');
+    }
+});
+
+test('running live tool settles the streaming assistant tail too', async () => {
+    const { upsertLiveToolItem } = await import('../../src/cli/tui/transcript.ts');
+    const state = createTranscriptState();
+    appendUserItem(state, 'run', 'run');
+    appendAssistantTurnText(state, 'kicking off ten tools', 'main');
+    upsertLiveToolItem(state, { icon: '🔧', label: 'pwd', detail: '', status: 'running', agentId: 'main', stepRef: 'live-1', toolType: 'tool' });
+
+    const assistant = state.items[1]!;
+    assert.equal(assistant.type, 'assistant');
+    if (assistant.type === 'assistant') {
+        assert.equal(assistant.streaming, false, 'cursor must not linger while tools run in the live lane');
+    }
+});

@@ -2,11 +2,11 @@
 // Extracted from handlers.ts for 500-line compliance.
 
 import { CLI_KEYS, buildModelChoicesByCli } from './registry.js';
+import { applyCodexModelsToChoices, resolveOpenCodexCodexModels } from './opencodex-models.js';
 import { t } from '../core/i18n.js';
 import type { CompletionCtx, SlashChoice } from './types.js';
 
 const DEFAULT_CLI_CHOICES = [...CLI_KEYS];
-const MODEL_CHOICES_BY_CLI = buildModelChoicesByCli();
 const MODEL_LABEL_SKIP_CLIS = new Set(['ai-e']);
 
 function toChoiceKey(value: unknown) {
@@ -30,8 +30,12 @@ function getCliChoicesFromContext(ctx: CompletionCtx): string[] {
     return keys.length ? keys : DEFAULT_CLI_CHOICES;
 }
 
-function getModelChoicesFromContext(ctx: CompletionCtx): string[] {
-    const fromCatalog = (Object.values(MODEL_CHOICES_BY_CLI) as string[][]).flat();
+async function getModelChoicesByCli(): Promise<Record<string, string[]>> {
+    return applyCodexModelsToChoices(buildModelChoicesByCli(), await resolveOpenCodexCodexModels());
+}
+
+function getModelChoicesFromContext(ctx: CompletionCtx, modelChoicesByCli: Record<string, string[]>): string[] {
+    const fromCatalog = (Object.values(modelChoicesByCli) as string[][]).flat();
     const perCli = (ctx?.settings?.perCli || {}) as Record<string, { model?: string } | undefined>;
     const fromSettings = Object.values(perCli)
         .map((v) => v?.model)
@@ -42,14 +46,15 @@ function getModelChoicesFromContext(ctx: CompletionCtx): string[] {
     return dedupeChoices(merged.map((value) => ({ value }))).map((c) => c.value);
 }
 
-export function modelArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
+export async function modelArgumentCompletions(ctx: CompletionCtx): Promise<SlashChoice[]> {
+    const modelChoicesByCli = await getModelChoicesByCli();
     const cliByModel = new Map<string, string>();
-    for (const [cli, models] of Object.entries(MODEL_CHOICES_BY_CLI)) {
+    for (const [cli, models] of Object.entries(modelChoicesByCli)) {
         if (MODEL_LABEL_SKIP_CLIS.has(cli)) continue;
         for (const m of models as string[]) cliByModel.set(toChoiceKey(m), cli);
     }
 
-    return getModelChoicesFromContext(ctx)
+    return getModelChoicesFromContext(ctx, modelChoicesByCli)
         .map((value) => ({
             value,
             label: cliByModel.get(toChoiceKey(value)) || 'custom',
@@ -66,15 +71,27 @@ export function skillArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
     return [{ value: 'list', label: t('cmd.arg.skillList', {}, L) }, { value: 'reset', label: t('cmd.arg.skillReset', {}, L) }];
 }
 
-export function employeeArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
+export async function employeeArgumentCompletions(ctx: CompletionCtx, argv: string[] = []): Promise<SlashChoice[]> {
     const L = ctx?.locale || 'ko';
-    return [
+    const subcommands = [
         { value: 'list', label: t('cmd.arg.employeeList', {}, L) },
         { value: 'info', label: t('cmd.arg.employeeInfo', {}, L) },
         { value: 'model', label: t('cmd.arg.employeeModel', {}, L) },
         { value: 'cli', label: t('cmd.arg.employeeCli', {}, L) },
         { value: 'reset', label: t('cmd.arg.employeeReset', {}, L) },
     ];
+    const sub = String(argv[0] || '').trim().toLowerCase();
+    if (!sub) return subcommands;
+    if (sub === 'cli') {
+        return getCliChoicesFromContext(ctx).map(value => ({ value, label: 'cli' }));
+    }
+    if (sub === 'model') {
+        if (argv.length < 2) return [];
+        const modelChoicesByCli = await getModelChoicesByCli();
+        const allModels: string[] = (Object.values(modelChoicesByCli) as string[][]).flat();
+        return dedupeChoices(allModels.map(value => ({ value, label: 'model' })));
+    }
+    return subcommands;
 }
 
 export function browserArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
@@ -91,10 +108,11 @@ export function fallbackArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
     ];
 }
 
-export function flushArgumentCompletions(ctx: CompletionCtx): SlashChoice[] {
+export async function flushArgumentCompletions(ctx: CompletionCtx): Promise<SlashChoice[]> {
     const L = ctx?.locale || 'ko';
     const clis = Object.keys(ctx?.settings?.perCli || {});
-    const allModels: string[] = (Object.values(MODEL_CHOICES_BY_CLI) as string[][]).flat();
+    const modelChoicesByCli = await getModelChoicesByCli();
+    const allModels: string[] = (Object.values(modelChoicesByCli) as string[][]).flat();
     return dedupeChoices([
         ...clis.map(c => ({ value: c, label: 'cli' })),
         ...allModels.map(m => ({ value: m, label: 'model' })),

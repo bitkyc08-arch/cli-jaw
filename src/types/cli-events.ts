@@ -147,7 +147,7 @@ export function assertNever(value: never): never {
 
 export function discriminate(cli: string, raw: unknown): CliEvent | null {
   if (!isCliEventRecord(raw)) return null;
-  if (cli === 'claude' || cli === 'claude-e' || cli === 'codex' || cli === 'cursor' || cli === 'gemini' || cli === 'grok' || cli === 'opencode' || cli === 'copilot') {
+  if (cli === 'claude' || cli === 'claude-e' || cli === 'codex' || cli === 'cursor' || cli === 'grok' || cli === 'opencode' || cli === 'copilot') {
     return { ...raw, cli };
   }
   return null;

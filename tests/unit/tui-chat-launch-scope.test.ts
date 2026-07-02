@@ -38,7 +38,7 @@ test('fullscreen welcome remains in the launch prelude instead of pre-render std
 });
 
 test('fullscreen scrollback commit uses queue+render pattern with transactional mark', () => {
-    const commitStart = frameSource.indexOf('queueCommitLines(lines: string[]): void');
+    const commitStart = frameSource.indexOf('queueCommitLines(lines: string[]): boolean');
     const commitEnd = frameSource.indexOf('lastCommitFlushedCount(): number', commitStart);
     const commitBlock = frameSource.slice(commitStart, commitEnd);
 

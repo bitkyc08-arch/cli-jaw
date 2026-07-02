@@ -5,6 +5,7 @@ import {
     initJawcodeTui,
     isInitialized,
     renderMarkdownJawcode,
+    tryInitJawcodeTui,
 } from '../../src/cli/tui/jawcode-render.ts';
 
 // The jawcode TUI renderer loads the pi_natives native addon. On hosts where the
@@ -53,4 +54,15 @@ test('renderMarkdownJawcode can be called repeatedly after one initialization', 
     const first = renderMarkdownJawcode('plain text', 80);
     const second = renderMarkdownJawcode('plain text', 80);
     assert.deepEqual(second, first);
+});
+
+test('tryInitJawcodeTui treats missing optional jawcode renderer as disabled', async () => {
+    const initialized = await tryInitJawcodeTui();
+    if (nativeSkip) {
+        assert.equal(initialized, false);
+        assert.equal(isInitialized(), false);
+    } else {
+        assert.equal(initialized, true);
+        assert.equal(isInitialized(), true);
+    }
 });

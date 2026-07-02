@@ -185,7 +185,6 @@ kiro                 # AWS Kiro（AWS 账户免费层）
 claude auth login    # Anthropic Claude Pro 或更高
 codex login          # OpenAI ChatGPT Pro 或更高
 cursor-agent login   # Cursor
-gemini               # Google Gemini Advanced
 grok login --oauth   # xAI Grok / Grok Heavy
 ```
 
@@ -201,7 +200,6 @@ grok login --oauth   # xAI Grok / Grok Heavy
  ✅ Claude CLI      installed
  ✅ Codex CLI       installed
  ✅ Cursor CLI      installed
- ⚠️ Gemini CLI      not found (optional)
  ✅ OpenCode CLI    installed
  ✅ Copilot CLI     installed
  ✅ Database        jaw.db OK
@@ -324,7 +322,6 @@ jaw worker status Backend
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro 或更高订阅 |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro 或更高订阅 |
 | **Cursor** | `composer-2.5` | `cursor-agent login` 或 `CURSOR_API_KEY` | Cursor 订阅；quota 为 auth/status-only |
-| **Gemini** | `gemini-3-flash-preview` | `gemini` | Gemini Advanced 订阅 |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok 订阅；配额仅限认证/状态 |
 | **Kiro** | registry-selected | `kiro` | AWS Kiro 免费层 |
 | **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | 有免费模型 |

@@ -177,7 +177,7 @@ docker compose up -d       # → http://localhost:3457
 
 ## What is CLI-JAW?
 
-CLI-JAW is an open-source platform that unifies the AI coding CLIs you already use — Pi, Claude, Claude E, AI-E, Antigravity, Codex, Codex App, Cursor, Gemini, Grok, Kiro, OpenCode, and Copilot — into **one assistant with one memory and one dashboard**.
+CLI-JAW is an open-source platform that unifies the AI coding CLIs you already use — Pi, Claude, Claude E, AI-E, Antigravity, Codex, Codex App, Cursor, Grok, Kiro, OpenCode, and Copilot — into **one assistant with one memory and one dashboard**.
 
 Your main CLI (the “Boss”) calls the others as “employees.” You stop copy-pasting between apps and start giving orders from a single place.
 
@@ -207,7 +207,6 @@ kiro                 # AWS Kiro (free tier with AWS account)
 claude auth login    # Anthropic Claude Pro or higher
 codex login          # OpenAI ChatGPT Pro or higher
 cursor-agent login   # Cursor
-gemini               # Google Gemini Advanced
 grok login --oauth   # xAI Grok / Grok Heavy
 ```
 
@@ -223,7 +222,6 @@ Check everything at once: `jaw doctor`
  ✅ Claude CLI      installed
  ✅ Codex CLI       installed
  ✅ Cursor CLI      installed
- ⚠️ Gemini CLI      not found (optional)
  ✅ OpenCode CLI    installed
  ✅ Copilot CLI     installed
  ✅ Database        jaw.db OK
@@ -379,7 +377,6 @@ No per-token API billing. Route through subscriptions you already pay for.
 | **Codex** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Codex App** | `gpt-5.5` | `codex login` | ChatGPT Pro subscription or higher |
 | **Cursor** | `composer-2.5` | `cursor-agent login` or `CURSOR_API_KEY` | Cursor subscription; quota is auth/status-only |
-| **Gemini** | `gemini-3-flash-preview` | `gemini` | Gemini Advanced subscription |
 | **Grok** | `grok-build` | `grok login --oauth` | Grok subscription; quota is auth/status-only |
 | **Kiro** | registry-selected | `kiro` | AWS Kiro free tier; `kiro-cli chat --no-interactive` runtime |
 | **OpenCode** | `opencode-go/kimi-k2.6` | `opencode` | Free models available |
@@ -508,7 +505,7 @@ Voice input works on Web (mic button), Telegram (voice messages), and Discord. P
 
 ```bash
 jaw mcp install @anthropic/context7
-# → syncs to Claude, Codex, Gemini, Kiro, OpenCode, Copilot, and Antigravity config files simultaneously
+# → syncs to Claude, Codex, Kiro, OpenCode, Copilot, and Antigravity config files simultaneously
 ```
 
 No more editing several different JSON files. Install once, every MCP-aware engine gets it. Grok CLI is a standard runtime here, but it is not counted as MCP-sync capable until Grok exposes a compatible config surface. Antigravity MCP sync is a separate config target from the `agy` runtime registry entry.

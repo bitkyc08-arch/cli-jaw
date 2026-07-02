@@ -1,4 +1,5 @@
 import { Children, createElement, isValidElement, useMemo } from 'react';
+import type { MouseEvent } from 'react';
 import type { ComponentProps, CSSProperties, ReactNode } from 'react';
 import ReactMarkdown from 'react-markdown';
 import type { Components } from 'react-markdown';
@@ -24,6 +25,7 @@ type MarkdownRendererProps = {
     outgoing?: NotesNoteLinkRef[] | undefined;
     notes?: readonly NotesNoteMetadata[] | undefined;
     onWikiLinkNavigate?: ((path: string) => void) | undefined;
+    onLocalFileOpen?: ((path: string) => void) | undefined;
     tableMode?: 'semantic' | 'linear' | undefined;
 };
 
@@ -114,6 +116,77 @@ function languageFromCodeNode(node: ReactNode): string {
 }
 
 const NOOP_NAVIGATE = (_path: string): void => {};
+const LOCAL_FILE_PATH_RE_G = /(?:~\/[^\s)`\]"'<>]+|\/(?:Users|home|tmp|var|opt|private)\/[^\s)`\]"'<>]+)/g;
+const TRAILING_PATH_PUNCT_RE = /[.,!?:;]+$/;
+
+function isLocalFilePathCandidate(path: string): boolean {
+    return path.startsWith('~/') || /^\/(?:Users|home|tmp|var|opt|private)\//.test(path);
+}
+
+function localPathLabel(path: string): string {
+    const basename = path.split('/').pop() || path;
+    return /\.\w{1,10}$/.test(basename) ? basename : path;
+}
+
+function splitTextWithLocalFileLinks(
+    text: string,
+    onLocalFileOpen: ((path: string) => void) | undefined,
+    keyPrefix: string,
+): ReactNode[] {
+    if (!text || !onLocalFileOpen) return [text];
+    LOCAL_FILE_PATH_RE_G.lastIndex = 0;
+    const out: ReactNode[] = [];
+    let cursor = 0;
+    let index = 0;
+    let match: RegExpExecArray | null;
+    while ((match = LOCAL_FILE_PATH_RE_G.exec(text)) !== null) {
+        const raw = match[0];
+        const clean = raw.replace(TRAILING_PATH_PUNCT_RE, '');
+        if (!isLocalFilePathCandidate(clean)) continue;
+        if (match.index > cursor) out.push(text.slice(cursor, match.index));
+        const trailing = raw.slice(clean.length);
+        out.push(
+            createElement(
+                'button',
+                {
+                    key: `${keyPrefix}-lf-${index++}`,
+                    type: 'button',
+                    className: 'markdown-local-file-link',
+                    title: clean,
+                    onClick: (event: MouseEvent<HTMLButtonElement>) => {
+                        event.preventDefault();
+                        onLocalFileOpen(clean);
+                    },
+                },
+                localPathLabel(clean),
+            ),
+        );
+        if (trailing) out.push(trailing);
+        cursor = match.index + raw.length;
+    }
+    if (cursor === 0) return [text];
+    if (cursor < text.length) out.push(text.slice(cursor));
+    return out;
+}
+
+function splitChildrenWithLocalFileLinks(
+    children: ReactNode,
+    onLocalFileOpen: ((path: string) => void) | undefined,
+    keyPrefix: string,
+): ReactNode {
+    if (!onLocalFileOpen) return children;
+    const out: ReactNode[] = [];
+    let stringIndex = 0;
+    Children.forEach(children, (child, i) => {
+        if (typeof child === 'string') {
+            const segments = splitTextWithLocalFileLinks(child, onLocalFileOpen, `${keyPrefix}-${stringIndex++}-${i}`);
+            for (const seg of segments) out.push(seg);
+            return;
+        }
+        out.push(child);
+    });
+    return out;
+}
 
 export function MarkdownRenderer(props: MarkdownRendererProps) {
     const renderedMarkdown = useMemo(
@@ -128,15 +201,20 @@ export function MarkdownRenderer(props: MarkdownRendererProps) {
         onNavigate: props.onWikiLinkNavigate ?? NOOP_NAVIGATE,
     }), [props.outgoing, props.notes, props.onWikiLinkNavigate]);
 
+    const inlineTransform = (children: ReactNode, keyPrefix: string): ReactNode => {
+        const withWikiLinks = splitChildrenWithWikiLinks(children, wikiCtx, keyPrefix);
+        return splitChildrenWithLocalFileLinks(withWikiLinks, props.onLocalFileOpen, keyPrefix);
+    };
+
     const wikiTransform = (tag: WikiContainerTag) => (containerProps: WikiContainerProps) => {
         const { children, node: _node, className, id, style } = containerProps;
-        const transformed = splitChildrenWithWikiLinks(children, wikiCtx, tag);
+        const transformed = inlineTransform(children, tag);
         return createElement(tag, { className, id, style }, transformed);
     };
 
     const linearCellTransform = (tag: 'td' | 'th') => (cellProps: LinearTableCellProps) => {
         const { children, node: _node, className, style, align } = cellProps;
-        const transformed = splitChildrenWithWikiLinks(children, wikiCtx, tag);
+        const transformed = inlineTransform(children, tag);
         return (
             <span
                 className={mergeClassName(`markdown-linear-table-cell markdown-linear-table-${tag}`, className)}

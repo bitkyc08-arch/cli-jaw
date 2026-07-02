@@ -107,7 +107,7 @@ if (isBatch) {
         });
         const { body, nonJsonError } = await readJsonResponse<BatchDispatchBody>(res, 'batch dispatch endpoint');
         if (nonJsonError || !body.ok) {
-            console.error(`❌ ${body.error || `Failed: ${res.status}`}`);
+            printNonOkResponse(body, res.status);
             process.exit(1);
         }
         if (json) {
@@ -150,7 +150,7 @@ type WorkerProgressResponseBody = { ok?: boolean; progress?: WorkerProgressSnaps
 type DispatchResultBody = {
     state?: string; result?: { status?: string; text?: string; tools?: DispatchToolEntry[] } | string;
     tools?: DispatchToolEntry[]; progress?: WorkerProgressSnapshotBody | null; progressUpdatedAt?: number | null;
-    error?: string; runId?: string; agentId?: string;
+    error?: string; message?: string; hint?: string; runId?: string; agentId?: string;
     worker?: { agentId?: string; runId?: string; employeeName?: string; startedAt?: number };
     existing?: { agentId?: string; runId?: string };
     orchestration?: {
@@ -158,7 +158,7 @@ type DispatchResultBody = {
     };
 };
 type BatchDispatchBody = {
-    ok?: boolean; results?: BatchDispatchResultSummary[]; error?: string;
+    ok?: boolean; results?: BatchDispatchResultSummary[]; error?: string; message?: string; hint?: string;
 };
 
 function sleep(ms: number): Promise<void> {
@@ -389,6 +389,12 @@ function printFetchErrorWithRecovery(message: string): void {
     console.error(`  target:  cli-jaw worker status "${targetName}"`);
 }
 
+function printNonOkResponse(body: { error?: string; message?: string; hint?: string }, status: number): void {
+    console.error(`❌ ${body.error || `Failed: ${status}`} (${BASE})`);
+    if (body.message) console.error(`  message: ${body.message}`);
+    if (body.hint) console.error(`  hint: ${body.hint}`);
+}
+
 function printPollErrorWithRecovery(e: DispatchPollError): void {
     console.error(`❌ ${e.message}`);
     console.error(`  agentId:  ${e.agentId}`);
@@ -471,7 +477,7 @@ try {
     if (!res.ok) {
         if (res.status === 409) {
             const pollAgentId = body?.worker?.agentId || body?.existing?.agentId || (agent ? await resolveAgentId(agent) : null);
-            if (!pollAgentId) { console.error(`❌ ${body.error || `Failed: ${res.status}`}`); process.exit(1); }
+            if (!pollAgentId) { printNonOkResponse(body, res.status); process.exit(1); }
             const pollRunId = body?.worker?.runId || body?.existing?.runId;
             if (!json && !quiet) {
                 console.error(`⏳ ${targetName} is already running (agentId: ${pollAgentId}${pollRunId ? `, runId: ${pollRunId}` : ''}), polling worker result...`);
@@ -482,7 +488,7 @@ try {
             else printDispatchResult(targetName, polled, liveProgress ? { skipProcess: true } : {});
             process.exit(dispatchExitCode(polled));
         }
-        console.error(`❌ ${body.error || `Failed: ${res.status}`}`);
+        printNonOkResponse(body, res.status);
         process.exit(1);
     }
     if (json) printJsonResult(body);

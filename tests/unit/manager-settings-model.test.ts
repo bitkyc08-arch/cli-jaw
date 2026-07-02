@@ -15,7 +15,7 @@ import { CLI_REGISTRY } from '../../src/cli/registry.ts';
 import { createDirtyStore } from '../../public/manager/src/settings/dirty-store';
 import { expandPatch } from '../../public/manager/src/settings/pages/path-utils';
 import { buildResetOverridesPatch, orderModelCliKeys } from '../../public/manager/src/settings/pages/ModelProvider';
-import { metaFor, orderRuntimeCliOptions, PRIMARY_CLIS, runtimeModelFor } from '../../public/manager/src/settings/pages/components/agent/agent-meta';
+import { metaFor, normalizeCliMetaRegistry, orderRuntimeCliOptions, PRIMARY_CLIS, runtimeModelFor } from '../../public/manager/src/settings/pages/components/agent/agent-meta';
 import { piModelOptions } from '../../public/manager/src/settings/pages/components/pi-profile';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -120,7 +120,7 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     const source = readFileSync('public/manager/src/settings/pages/ModelProvider.tsx', 'utf8');
     assert.ok(source.includes("from './components/agent/agent-meta'"));
     assert.ok(source.includes('Model defaults'));
-    assert.equal(metaFor('codex').models.includes('gpt-5.5'), true);
+    assert.deepEqual(metaFor('codex').models, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark']);
     assert.equal(metaFor('agy').label, 'Antigravity');
     assert.equal(metaFor('agy').models.includes('gemini-3.5-flash'), true);
     assert.match(metaFor('agy').modelNote || '', /probes the installed binary/);
@@ -153,14 +153,47 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
         join(__dirname, '../../public/manager/src/settings/pages/components/PerCliRow.tsx'),
         'utf8',
     );
+    const agentEmployeesSectionSource = readFileSync(
+        join(__dirname, '../../public/manager/src/settings/pages/components/agent/AgentEmployeesSection.tsx'),
+        'utf8',
+    );
     assert.ok(runtimeHeaderSource.includes('orderRuntimeCliOptions(cliOptions)'));
     assert.ok(runtimeHeaderSource.includes('orderedCliOptions.map'));
     assert.ok(runtimeHeaderSource.includes('collapsedAfter={orderedPrimaryCliCount}'));
     assert.ok(perCliRowSource.includes('settings-percli-note'));
     assert.ok(perCliRowSource.includes('meta.modelNote'));
     assert.ok(perCliRowSource.includes('meta.effortNote'));
+    assert.ok(
+        agentEmployeesSectionSource.includes('makeDefaultRuntimeEmployee(cliOptions, cliMeta)'),
+        'new runtime employees must use live CLI metadata for model defaults',
+    );
     assert.equal(metaFor('pi').label, 'Pi');
     assert.equal(PRIMARY_CLIS[0], 'pi');
+});
+
+test('Manager live CLI metadata overrides static Codex model fallback', () => {
+    const registry = normalizeCliMetaRegistry({
+        codex: {
+            label: 'Codex',
+            models: [
+                'gpt-5.5',
+                'gpt-5.4',
+                'gpt-5.4-mini',
+                'gpt-5.3-codex-spark',
+                'kiro/claude-opus-4.8',
+                'opencode-go/kimi-k2.7-code',
+            ],
+            efforts: ['low', 'medium', 'high', 'xhigh'],
+        },
+    });
+    assert.deepEqual(metaFor('codex', registry).models, [
+        'gpt-5.5',
+        'gpt-5.4',
+        'gpt-5.4-mini',
+        'gpt-5.3-codex-spark',
+        'kiro/claude-opus-4.8',
+        'opencode-go/kimi-k2.7-code',
+    ]);
 });
 
 test('Pi model defaults render first and use discovered models for dropdown options', () => {

@@ -2,12 +2,11 @@
 // Extracted from handlers.ts for 500-line compliance.
 
 import { CLI_KEYS, buildModelChoicesByCli } from './registry.js';
+import { applyCodexModelsToChoices, resolveOpenCodexCodexModels } from './opencodex-models.js';
 import { t } from '../core/i18n.js';
 import { detectCli, settings } from '../core/config.js';
 import type { CliCommandContext } from './command-context.js';
 import type { SlashResult } from './types.js';
-
-const MODEL_CHOICES_BY_CLI = buildModelChoicesByCli();
 
 async function safeCall<T>(
     fn: (() => Promise<T> | T) | undefined | null,
@@ -380,7 +379,8 @@ export async function flushHandler(args: string[], ctx: CliCommandContext): Prom
             newModel = modelName;
         } else {
             const matchedClis: string[] = [];
-            for (const [cli, models] of Object.entries(MODEL_CHOICES_BY_CLI)) {
+            const modelChoicesByCli = applyCodexModelsToChoices(buildModelChoicesByCli(), await resolveOpenCodexCodexModels());
+            for (const [cli, models] of Object.entries(modelChoicesByCli)) {
                 if (cli === 'ai-e') continue;
                 if ((models as string[]).some(m => m.toLowerCase() === modelKey)) {
                     matchedClis.push(cli);

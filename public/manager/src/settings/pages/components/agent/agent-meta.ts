@@ -26,6 +26,8 @@ export type ActiveOverride = {
     effort?: string;
 };
 
+const CODEX_MODELS: ReadonlyArray<string> = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
+
 export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'jwc', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
 
 export const CLI_META: Record<string, CliMeta> = {
@@ -48,11 +50,11 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'AI-E',
         defaultProvider: 'claude',
         providers: ['claude', 'codex', 'gemini', 'grok', 'copilot', 'kiro'],
-        models: ['opus', 'sonnet', 'haiku', 'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gemini-3-flash-preview', 'grok-build', 'grok-composer-2.5-fast', 'gpt-5-mini'],
+        models: ['opus', 'sonnet', 'haiku', ...CODEX_MODELS, 'gemini-3-flash-preview', 'grok-build', 'grok-composer-2.5-fast', 'gpt-5-mini'],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         modelsByProvider: {
             claude: ['claude-fable-5', 'claude-opus-4-8', 'opus', 'sonnet', 'haiku'],
-            codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini'],
+            codex: CODEX_MODELS,
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini'],
@@ -64,7 +66,7 @@ export const CLI_META: Record<string, CliMeta> = {
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
-            kiro: [],
+            kiro: ['low', 'medium', 'high', 'xhigh'],
         },
     },
     claude: {
@@ -126,12 +128,12 @@ export const CLI_META: Record<string, CliMeta> = {
     },
     codex: {
         label: 'Codex',
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
+        models: CODEX_MODELS,
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     'codex-app': {
         label: 'Codex App',
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex'],
+        models: CODEX_MODELS,
         efforts: ['low', 'medium', 'high', 'xhigh'],
     },
     cursor: {
@@ -171,8 +173,8 @@ export const CLI_META: Record<string, CliMeta> = {
             'glm-5',
             'qwen3-coder-next',
         ],
-        efforts: [],
-        effortNote: 'Kiro CLI has no separate effort flag',
+        efforts: ['low', 'medium', 'high', 'xhigh'],
+        effortNote: 'Kiro CLI forwards --effort; cli-jaw maps xhigh to Kiro max on the wire',
     },
     gemini: {
         label: 'Gemini',
@@ -197,8 +199,42 @@ export const CLI_META: Record<string, CliMeta> = {
     },
 };
 
-export function metaFor(cli: string): CliMeta {
-    return CLI_META[cli] || { label: cli, models: [], efforts: [] };
+function stringArray(value: unknown): string[] {
+    return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+}
+
+function stringArrayRecord(value: unknown): Record<string, string[]> | undefined {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+    const out: Record<string, string[]> = {};
+    for (const [key, raw] of Object.entries(value as Record<string, unknown>)) out[key] = stringArray(raw);
+    return out;
+}
+
+export function normalizeCliMetaRegistry(raw: unknown): Record<string, CliMeta> {
+    if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return {};
+    const out: Record<string, CliMeta> = {};
+    for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+        if (!value || typeof value !== 'object' || Array.isArray(value)) continue;
+        const record = value as Record<string, unknown>;
+        const modelsByProvider = stringArrayRecord(record['modelsByProvider']);
+        const effortsByProvider = stringArrayRecord(record['effortsByProvider']);
+        out[key] = {
+            label: typeof record['label'] === 'string' ? record['label'] : key,
+            models: stringArray(record['models']),
+            efforts: stringArray(record['efforts']),
+            ...(typeof record['defaultProvider'] === 'string' ? { defaultProvider: record['defaultProvider'] } : {}),
+            ...(record['providers'] ? { providers: stringArray(record['providers']) } : {}),
+            ...(modelsByProvider ? { modelsByProvider } : {}),
+            ...(effortsByProvider ? { effortsByProvider } : {}),
+            ...(typeof record['effortNote'] === 'string' ? { effortNote: record['effortNote'] } : {}),
+            ...(typeof record['modelNote'] === 'string' ? { modelNote: record['modelNote'] } : {}),
+        };
+    }
+    return out;
+}
+
+export function metaFor(cli: string, registry?: Record<string, CliMeta> | null): CliMeta {
+    return registry?.[cli] || CLI_META[cli] || { label: cli, models: [], efforts: [] };
 }
 
 export function orderRuntimeCliOptions(cliOptions: ReadonlyArray<string>): string[] {

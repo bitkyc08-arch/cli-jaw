@@ -19,7 +19,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | --- | ---: | --- |
 | `src/agent/spawn.ts` | 2476L | spawn/ACP/Pi RPC/stream/DB/broadcast + queue drain 핵심 |
 | `src/agent/lifecycle-handler.ts` | 1072L | child lifecycle, fallback, retry, queue resume, goal continuation |
-| `src/agent/args.ts` | 455L | CLI별 신규/재개 인자 생성 |
+| `src/agent/args.ts` | 465L | CLI별 신규/재개 인자 생성 |
 | `src/agent/pi-runtime.ts` | 460L | Pi profile normalization, isolated `PI_CODING_AGENT_DIR` config generation, model discovery, JSONL RPC parser/spawner |
 | `src/agent/kiro-runtime.ts` | 386L | kiro-code plain-text stdout parser (tool lines, assistant blocks, parallel tool merge, tail-buffer flush) |
 | `src/agent/kiro-auth.ts` | 230L | Kiro CLI data path resolution, session ID extraction from v2 sqlite store, conversation listing |
@@ -65,7 +65,6 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `events/cursor.ts` | 196L | Cursor stream-json event adapter |
 | `events/acp.ts` | 219L | ACP `session/update` / subagent lifecycle mapping |
 | `events/opencode.ts` | 196L | OpenCode event adapter |
-| `events/gemini.ts` | 117L | Gemini event adapter |
 | `events/summary.ts` | 139L | logEventSummary helper |
 | `events/types.ts` | — | Type-only re-export boundary |
 
@@ -106,6 +105,8 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 ### Kiro-code branch
 
 - `kiro-cli chat --no-interactive` plain stdout 표면.
+- Fresh run은 cli-jaw operational context + `withHistoryPrompt()` bounded history를 args prompt에 포함한다.
+- Resume run은 `--resume-id <sessionId>`와 현재 prompt만 전달한다. Kiro native session이 이전 대화 상태를 이미 보유하므로 operational context/history를 매 턴 다시 붙이지 않는다.
 - `kiro-runtime.ts`가 tool line(`using tool:`), completion marker, `>` assistant block + continuation lines, parallel tool merge, tail-buffer flush를 파싱해 `agent_tool` + `agent_output`으로 브로드캐스트.
 - Live preview는 raw delta (`liveOutputText`, bullet inject 없음), session/finalize용 raw capture는 `fullText`, authoritative body는 `resolveSpawnOutputText()` (parsed Kiro 우선).
 - 동적 모델 목록은 `kiro-cli chat --list-models --format json` (`kiro-models.ts`).
@@ -131,8 +132,8 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `claude-e` | `claude-e run --jsonl --output-format stream-json --idle-timeout-ms 600000 --hard-timeout-ms 3600000` | `jaw_runtime` 이벤트 가로채기, resume `--resume <sessionId>` |
 | `agy` | `agy -p <prompt> [--model <id>] --print-timeout 10m --log-file <tmp>` | plain text stdout; optional flags are emitted only when `agy-capabilities.ts` detects support (`--model` observed in AGY 1.0.12); session id from stdout/log; resume `--conversation <id>` |
 | `cursor` | `cursor-agent -p --trust --output-format stream-json --model <resolvedModelId>` | effort는 full model id로 해석, `runtimeModel` session bucket |
+| `kiro-code` | `kiro-cli chat --no-interactive [--resume-id <id>]` | fresh: operational context + `withHistoryPrompt()`; resume: current prompt only |
 | `codex` | stdin에 `[User Message]` 블록 (fresh only) | — |
-| `gemini` | headless `-p`, model, stream JSON, `--skip-trust`, `--approval-mode yolo` | multi-directory workspace `--include-directories` |
 | `grok` | `-p`, optional `-m`, `--output-format streaming-json`, `--no-alt-screen` | trace backfill on exit, `ai-e` alias |
 | `opencode` | diagnostics + raw event buffer | — |
 
@@ -141,7 +142,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 - `persistMainSession()`는 `forceNew`, `employeeSessionId`, `!sessionId`, `isFallback`, 비정상 exit를 모두 차단.
 - 저장: `cli`, `sessionId`, `model`, `permissions`, `workingDir`, `effort`.
 - `shouldInvalidateResumeSession()`는 `code === 0`이면 무조건 false, 실패 시 generic + CLI별 matcher 검사.
-- Resume 무효화: `claude`, `claude-e`, `agy`, `codex`, `cursor`, `gemini`, `grok`, `opencode`, `copilot`, `kiro-code` 각각 분기.
+- Resume 무효화: `claude`, `claude-e`, `agy`, `codex`, `cursor`, `grok`, `opencode`, `copilot`, `kiro-code` 각각 분기.
 
 ---
 

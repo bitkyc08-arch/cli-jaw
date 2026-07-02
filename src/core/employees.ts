@@ -6,7 +6,7 @@ import { getEmployees, deleteEmployee, insertEmployee, db, clearEmployeeSession,
 import { settings } from './config.js';
 import { stripUndefined } from './strip-undefined.js';
 import { broadcast } from './bus.js';
-import { CLI_REGISTRY } from '../cli/registry.js';
+import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import { regenerateB } from '../prompt/builder.js';
 import type { CliEngine } from '../types/cli-engine.js';
 
@@ -289,14 +289,21 @@ export function checkModelSupport(
     return { fail: [], warn: [] };
 }
 
+async function resolveStaticEmployeeModel(
+    spec: StaticEmployee,
+    override?: { model?: string },
+): Promise<string> {
+    return override?.model ?? spec.model ?? await resolveCliDefaultModel(spec.cli);
+}
+
 /**
  * Resolve an employee name to a dispatchable row-shape used by worker-registry
  * and runSingleAgent. DB rows win; static entries produce a synthetic id.
  */
-export function resolveDispatchableEmployee(
+export async function resolveDispatchableEmployee(
     name: string,
     dbRows: readonly EmployeeRow[] = getEmployees.all() as EmployeeRow[],
-): { row: EmployeeRow | SyntheticEmployeeRow; source: 'db' | 'static'; spec: StaticEmployee | null } | null {
+): Promise<{ row: EmployeeRow | SyntheticEmployeeRow; source: 'db' | 'static'; spec: StaticEmployee | null } | null> {
     const needle = name.trim().toLowerCase();
     for (const r of dbRows) {
         if ((r.name ?? '').toLowerCase() === needle) {
@@ -306,12 +313,13 @@ export function resolveDispatchableEmployee(
     const spec = findStaticEmployee(name);
     if (!spec) return null;
     const override = (settings["staticEmployees"] as Record<string, { model?: string }> | undefined)?.[spec.name];
+    const model = await resolveStaticEmployeeModel(spec, override);
     return {
         row: {
             id: `static:${spec.name.toLowerCase()}`,
             name: spec.name,
             cli: spec.cli,
-            model: override?.model ?? spec.model ?? 'default',
+            model,
             role: spec.description,
             status: 'idle',
         },
@@ -324,7 +332,7 @@ export function resolveDispatchableEmployee(
  * Return DB employees merged with STATIC_EMPLOYEES by case-insensitive name.
  * DB rows take precedence when names collide; static entries only fill gaps.
  */
-export function listEmployees(): EmployeeListing[] {
+export async function listEmployees(): Promise<EmployeeListing[]> {
     type Row = { id: string; name: string; cli: string; model: string | null; role: string | null };
     const dbRows = getEmployees.all() as Row[];
     const seen = new Set<string>();
@@ -335,13 +343,14 @@ export function listEmployees(): EmployeeListing[] {
     // Static employees first (rendered at top of UI list, CLI-locked, model editable).
     for (const s of STATIC_EMPLOYEES) {
         const override = overrides[s.name];
+        const model = await resolveStaticEmployeeModel(s, override);
         staticOut.push(stripUndefined({
             // Use synthetic id matching resolveDispatchableEmployee so the frontend
             // can round-trip PUT /api/employees/:id to the override storage.
             id: `static:${s.name.toLowerCase()}`,
             name: s.name,
             cli: s.cli,
-            model: override?.model ?? s.model ?? 'default',
+            model,
             role: s.description,
             source: 'static',
             runtimeHints: s.runtimeHints,
@@ -371,7 +380,7 @@ export function listEmployees(): EmployeeListing[] {
     return [...staticOut, ...dbOut];
 }
 
-export function seedDefaultEmployees({ reset = false, notify = false } = {}) {
+export async function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     if (!db.open) return { seeded: 0, cli: settings["cli"], skipped: true };
     const existing = getEmployees.all() as EmployeeRow[];
     if (reset) {
@@ -382,7 +391,7 @@ export function seedDefaultEmployees({ reset = false, notify = false } = {}) {
     }
 
     const cli = settings["cli"];
-    const defaultModel = CLI_REGISTRY[cli as keyof typeof CLI_REGISTRY]?.defaultModel || 'default';
+    const defaultModel = await resolveCliDefaultModel(cli);
     for (const emp of DEFAULT_EMPLOYEES) {
         insertEmployee.run(crypto.randomUUID(), emp.name, cli, defaultModel, emp.role);
     }

@@ -4,7 +4,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
+import { resetOpenCodexModelCacheForTest } from '../../src/cli/opencodex-models.ts';
 import {
     STATIC_EMPLOYEES,
     findStaticEmployee,
@@ -14,6 +17,20 @@ import {
 } from '../../src/core/employees.ts';
 
 const ROOT = process.cwd();
+
+async function withInactiveOpenCodex<T>(fn: () => Promise<T>): Promise<T> {
+    const previousDir = process.env['CLI_JAW_OPENCODEX_DIR'];
+    const testDir = fs.mkdtempSync(path.join(tmpdir(), 'jaw-ocx-inactive-'));
+    process.env['CLI_JAW_OPENCODEX_DIR'] = testDir;
+    resetOpenCodexModelCacheForTest();
+    try {
+        return await fn();
+    } finally {
+        resetOpenCodexModelCacheForTest();
+        if (previousDir === undefined) delete process.env['CLI_JAW_OPENCODEX_DIR'];
+        else process.env['CLI_JAW_OPENCODEX_DIR'] = previousDir;
+    }
+}
 
 test('P37-CU-001: Control static employee is defined with Codex + darwin hint', () => {
     const control = findStaticEmployee('Control');
@@ -54,17 +71,18 @@ test('P37-CU-005: checkRuntimeHints fails when requiresDarwin but platform is li
     assert.match(result.fail.join('\n'), /darwin|macOS|linux/i);
 });
 
-test('P37-CU-006: resolveDispatchableEmployee returns static row with synthetic id', () => {
-    const res = resolveDispatchableEmployee('Control', []);
+test('P37-CU-006: resolveDispatchableEmployee returns static row with synthetic id', async () => {
+    const res = await withInactiveOpenCodex(() => resolveDispatchableEmployee('Control', []));
     assert.ok(res, 'Control must resolve from static employees');
     assert.equal(res!.source, 'static');
     assert.equal(res!.row.name, 'Control');
     assert.equal(res!.row.cli, 'codex');
+    assert.equal(res!.row.model, CODEX_MODEL_CHOICES[0]);
     assert.match(String(res!.row.id), /^static:/);
     assert.ok(res!.spec, 'spec must accompany static resolution');
 });
 
-test('P37-CU-007: DB row wins over static when names collide', () => {
+test('P37-CU-007: DB row wins over static when names collide', async () => {
     const dbRows = [{
         id: 'db-row-123',
         name: 'Control',
@@ -72,15 +90,15 @@ test('P37-CU-007: DB row wins over static when names collide', () => {
         model: 'sonnet',
         role: 'overridden by user',
     }];
-    const res = resolveDispatchableEmployee('Control', dbRows);
+    const res = await resolveDispatchableEmployee('Control', dbRows);
     assert.ok(res);
     assert.equal(res!.source, 'db');
     assert.equal(res!.row.id, 'db-row-123');
     assert.equal(res!.row.cli, 'claude');
 });
 
-test('P37-CU-008: unknown employee returns null', () => {
-    const res = resolveDispatchableEmployee('Nonexistent', []);
+test('P37-CU-008: unknown employee returns null', async () => {
+    const res = await resolveDispatchableEmployee('Nonexistent', []);
     assert.equal(res, null);
 });
 
@@ -117,6 +135,39 @@ test('employee cli/model updates clear stale employee session', () => {
     assert.match(src, /clearEmployeeSessionIfResumeKeyChanged\(employeeId, before, emp\)/);
     assert.match(src, /\/api\/employees\/sessions\/reset/);
     assert.match(src, /resetEmployeeSessions\(\)/);
+});
+
+test('employee create/reset defaults use ocx-aware model resolver', () => {
+    const routeSrc = fs.readFileSync(path.join(ROOT, 'src/routes/employees.ts'), 'utf8');
+    const coreSrc = fs.readFileSync(path.join(ROOT, 'src/core/employees.ts'), 'utf8');
+    assert.match(routeSrc, /import \{ resolveCliDefaultModel \} from '\.\.\/cli\/opencodex-models\.js'/);
+    assert.match(routeSrc, /app\.post\('\/api\/employees', requireAuth, async \(req, res\) =>/);
+    assert.match(routeSrc, /await resolveCliDefaultModel\(cli\)/);
+    assert.match(routeSrc, /app\.post\('\/api\/employees\/reset', requireAuth, async \(_req, res\) =>/);
+    assert.match(routeSrc, /await seedDefaultEmployees\(\{ reset: true, notify: true \}\)/);
+    assert.match(routeSrc, /app\.put\('\/api\/employees\/:id', requireAuth, async \(req, res\) =>/);
+    assert.doesNotMatch(routeSrc, /CLI_REGISTRY\[cli/);
+    assert.match(coreSrc, /import \{ resolveCliDefaultModel \} from '\.\.\/cli\/opencodex-models\.js'/);
+    assert.match(coreSrc, /export async function seedDefaultEmployees/);
+    assert.match(coreSrc, /const defaultModel = await resolveCliDefaultModel\(cli\)/);
+    assert.doesNotMatch(coreSrc, /CLI_REGISTRY\[cli/);
+});
+
+test('static employee list/dispatch fallbacks use ocx-aware model resolver', () => {
+    const routeSrc = fs.readFileSync(path.join(ROOT, 'src/routes/employees.ts'), 'utf8');
+    const coreSrc = fs.readFileSync(path.join(ROOT, 'src/core/employees.ts'), 'utf8');
+    const cliSrc = fs.readFileSync(path.join(ROOT, 'src/cli/employee-handler.ts'), 'utf8');
+    const orcSrc = fs.readFileSync(path.join(ROOT, 'src/routes/orchestrate.ts'), 'utf8');
+    assert.match(coreSrc, /async function resolveStaticEmployeeModel/);
+    assert.match(coreSrc, /override\?\.model \?\? spec\.model \?\? await resolveCliDefaultModel\(spec\.cli\)/);
+    assert.match(coreSrc, /export async function resolveDispatchableEmployee/);
+    assert.match(coreSrc, /export async function listEmployees/);
+    assert.match(routeSrc, /app\.get\('\/api\/employees', async \(_, res\) => ok\(res, await listEmployees\(\)\)\)/);
+    assert.match(cliSrc, /const list = await listEmployees\(\)/);
+    assert.match(cliSrc, /async function findByName/);
+    assert.match(cliSrc, /async function updateField/);
+    assert.match(orcSrc, /staticSpec: Awaited<ReturnType<typeof resolveDispatchableEmployee>> \| null/);
+    assert.match(orcSrc, /await resolveDispatchableEmployee\(agentName, emps\)/);
 });
 
 test('dispatch clears mismatched employee resume key before attempting resume', () => {

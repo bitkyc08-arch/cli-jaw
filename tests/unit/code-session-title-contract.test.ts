@@ -15,8 +15,8 @@ test('code transcript linearizes assistant markdown tables without changing Note
     const notesPreview = read('public/manager/src/notes/MarkdownPreview.tsx');
 
     assert.ok(
-        transcript.includes('<MarkdownRenderer markdown={msg.text} tableMode="linear" />'),
-        'Code assistant transcript must opt into linear markdown tables',
+        transcript.includes('<MarkdownRenderer markdown={msg.text} tableMode="linear" onLocalFileOpen={onOpenLocalFile} />'),
+        'Code assistant transcript must opt into linear markdown tables and local-file routing',
     );
     assert.ok(
         css.includes('.code-message-text .markdown-linear-table'),
@@ -67,6 +67,8 @@ test('code transcript virtualizes rows only inside Code mode', () => {
         'Code CSS must own virtual row positioning');
     assert.ok(workbench.includes('<CodeTranscript'),
         'CodeTranscript must stay mounted through the Code workbench boundary');
+    assert.ok(workbench.includes('onOpenLocalFile={props.onOpenLocalFile}'),
+        'CodeWorkbench must thread local-file opens into the transcript renderer');
     assert.equal(jawMode.includes('useCodeTranscriptVirtualRows'), false,
         'Jaw mode public/js entry must not import Code transcript virtualization');
 });

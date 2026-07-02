@@ -58,9 +58,27 @@ export function appendToActiveAssistant(state: TranscriptState, chunk: string): 
 
 export function appendAssistantTurnText(state: TranscriptState, chunk: string, agentId?: string): boolean {
     if (!chunk) return false;
+    settleThinkingForAnswer(state, agentId);
     if (appendToActiveAssistant(state, chunk)) return true;
     startAssistantItem(state, agentId);
     return appendToActiveAssistant(state, chunk);
+}
+
+// jawcode parity (083.5): a live thinking tail settles into its collapsed
+// summary the moment the stream moves past it — i.e. when answer text starts.
+// stepRef-driven thinking rows have their own tool-event lifecycle and are
+// finalized by commitThinkingItemOnce instead.
+export function settleThinkingForAnswer(state: TranscriptState, agentId?: string): boolean {
+    let changed = false;
+    for (let i = state.items.length - 1; i >= 0; i--) {
+        const item = state.items[i]!;
+        if (item.type === 'user') break;
+        if (item.type !== 'thinking' || !item.streaming || item.stepRef) continue;
+        if (agentId && item.agentId && item.agentId !== agentId) continue;
+        item.streaming = false;
+        changed = true;
+    }
+    return changed;
 }
 
 function canAppendToThinking(item: TranscriptItem | undefined, agentId?: string): item is Extract<TranscriptItem, { type: 'thinking' }> {
@@ -163,7 +181,19 @@ export function assistantTextSinceLastUser(state: TranscriptState): string {
     return chunks.join('');
 }
 
+// jawcode parity (083.1/083.3 segment split): a tool event interrupts the
+// answer segment — the streaming assistant tail settles (loses its cursor)
+// and any answer text after the tools starts a new assistant item.
+export function settleAssistantForTool(state: TranscriptState, agentId?: string): boolean {
+    const last = state.items[state.items.length - 1];
+    if (!last || last.type !== 'assistant' || !last.streaming) return false;
+    if (agentId && last.agentId && last.agentId !== agentId) return false;
+    last.streaming = false;
+    return true;
+}
+
 export function appendToolItem(state: TranscriptState, text: string, opts?: { agentId?: string; detail?: string; stepRef?: string; status?: 'running' | 'done' | 'error' }): void {
+    settleAssistantForTool(state, opts?.agentId);
     if (opts?.stepRef) {
         const existing = state.items.find((item) => item.type === 'tool' && item.stepRef === opts.stepRef);
         if (existing?.type === 'tool') {
@@ -227,6 +257,7 @@ export function commitThinkingItemOnce(state: TranscriptState, input: ToolEventI
 }
 
 export function upsertLiveToolItem(state: TranscriptState, input: ToolEventInput): LiveToolItem {
+    settleAssistantForTool(state, input.agentId);
     const key = makeToolEventKey(input);
     const now = Date.now();
     const existing = state.liveTools.find(item => item.key === key);
@@ -319,8 +350,14 @@ export function collapsePreviousTools(state: TranscriptState): void {
     }
 }
 
-export function toggleToolExpansion(state: TranscriptState): boolean {
-    const expandableItems = state.items.filter(i => i.type === 'tool' || i.type === 'thinking');
+// fromIndex: items before it are committed to native scrollback — their
+// pixels are frozen, so toggling them would only desync the live cell
+// heights from what the terminal actually shows (jawcode parity: committed
+// components are ineligible for the live expansion toggle).
+export function toggleToolExpansion(state: TranscriptState, fromIndex = 0): boolean {
+    const expandableItems = state.items
+        .slice(Math.max(0, fromIndex))
+        .filter(i => i.type === 'tool' || i.type === 'thinking');
     const hasLiveTools = state.liveTools.length > 0;
     if (expandableItems.length === 0 && !hasLiveTools) return false;
     const shouldExpand = expandableItems.some(i => i.collapsed !== false) || (hasLiveTools && !state.liveToolsExpanded);

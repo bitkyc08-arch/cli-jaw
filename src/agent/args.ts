@@ -1,13 +1,11 @@
 // ─── Agent CLI Argument Builders ──────────────────────
 // Extracted from agent.js for 500-line compliance.
 
-import { existsSync } from 'node:fs';
 import os from 'node:os';
 import type { AgyCapabilities } from './agy-capabilities.js';
 import { resolveCursorModelVariant } from './cursor-runtime.js';
 
 const isCodexSparkModel = (model: string) => !!model && /spark/i.test(model);
-const GEMINI_MAX_INCLUDE_DIRECTORIES = 5;
 export const AGY_MAX_ADD_DIRECTORIES = 8;
 export const AGY_PRINT_TIMEOUT = '10m';
 
@@ -20,7 +18,7 @@ export function formatAgyPrintTimeout(ms: number): string {
 // CLI's settings via --settings (the claude analogue of codex's service_tier="fast").
 // Gated on options.fastMode, which is sourced from perCli.<cli>.fastMode in spawn.ts.
 const CLAUDE_FAST_MODE_SETTINGS = '{"fastMode":true}';
-const AI_E_PROVIDERS = ['claude', 'codex', 'gemini', 'grok', 'copilot', 'kiro'] as const;
+const AI_E_PROVIDERS = ['claude', 'codex', 'grok', 'copilot', 'kiro'] as const;
 export type AiEProvider = typeof AI_E_PROVIDERS[number];
 
 type BuildArgOptions = {
@@ -46,7 +44,6 @@ export function resolveAiEProvider(explicitProvider: string | null | undefined, 
     }
     const value = model || '';
     if (!value || value === 'default') return 'claude';
-    if (value.startsWith('gemini-')) return 'gemini';
     if (value.startsWith('grok-')) return 'grok';
     if (value.startsWith('copilot-') || value.includes('github')) return 'copilot';
     if (value.startsWith('gpt-') || value.includes('codex')) return 'codex';
@@ -60,9 +57,17 @@ export function resolveAiEProvider(explicitProvider: string | null | undefined, 
     return 'claude';
 }
 
-function buildAiEKiroArgs(model: string, prompt: string, sessionId?: string): string[] {
+const KIRO_EFFORTS = new Set(['low', 'medium', 'high', 'xhigh']);
+
+function kiroEffortArgs(effort: string): string[] {
+    if (!effort || !KIRO_EFFORTS.has(effort)) return [];
+    return ['--effort', effort === 'xhigh' ? 'max' : effort];
+}
+
+function buildAiEKiroArgs(model: string, effort: string, prompt: string, sessionId?: string): string[] {
     const args = ['kiro', 'p', '--output-format', 'text', '--timeout-ms', '600000'];
     if (model && model !== 'default') args.push('--model', model);
+    args.push(...kiroEffortArgs(effort));
     if (sessionId) args.push('--resume', sessionId);
     args.push(prompt || '');
     return args;
@@ -72,59 +77,7 @@ function normalizePathForDedupe(dir: string): string {
     return dir.trim().replace(/[\\/]+$/, '');
 }
 
-function windowsPathToWslPath(dir: string): string | null {
-    const match = /^([A-Za-z]):[\\/](.*)$/.exec(dir.trim());
-    if (!match) return null;
-    const [, driveRaw, restRaw] = match;
-    if (!driveRaw || restRaw === undefined) return null;
-    const drive = driveRaw.toLowerCase();
-    const rest = restRaw.replace(/\\/g, '/');
-    return `/mnt/${drive}/${rest}`;
-}
 
-function isWslRuntime(options: BuildArgOptions): boolean {
-    const platform = options.platform ?? process.platform;
-    if (platform !== 'linux') return false;
-    const env = options.env ?? process.env;
-    const release = options.release ?? os.release();
-    return Boolean(env['WSL_DISTRO_NAME'] || env['WSL_INTEROP'] || /microsoft|wsl/i.test(release));
-}
-
-function detectWslWindowsHome(options: BuildArgOptions): string[] {
-    if (!isWslRuntime(options)) return [];
-    const env = options.env ?? process.env;
-    const pathExists = options.pathExists ?? existsSync;
-    const candidates: string[] = [];
-    const userProfileEnv = env['USERPROFILE'];
-    const userProfile = userProfileEnv ? windowsPathToWslPath(userProfileEnv) : null;
-    if (userProfile) candidates.push(userProfile);
-    const user = env['USERNAME'] || env['USER'];
-    if (user) candidates.push(`/mnt/c/Users/${user}`);
-    return candidates.filter((dir) => pathExists(dir));
-}
-
-export function resolveGeminiIncludeDirectories(options: BuildArgOptions = {}): string[] {
-    const dirs = [
-        options.homedir ?? os.homedir(),
-        ...detectWslWindowsHome(options),
-        ...(options.includeDirectories ?? []),
-    ];
-    const seen = new Set<string>();
-    const resolved: string[] = [];
-    for (const dir of dirs) {
-        const normalized = normalizePathForDedupe(dir || '');
-        if (!normalized || seen.has(normalized)) continue;
-        seen.add(normalized);
-        resolved.push(normalized);
-        if (resolved.length >= GEMINI_MAX_INCLUDE_DIRECTORIES) break;
-    }
-    return resolved;
-}
-
-function geminiIncludeDirectoryArgs(options: BuildArgOptions): string[] {
-    return resolveGeminiIncludeDirectories(options)
-        .flatMap((dir) => ['--include-directories', dir]);
-}
 
 export function resolveAgyAddDirectories(options: BuildArgOptions = {}): string[] {
     const dirs = [
@@ -239,7 +192,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
                     ...(claudeExtraArgs.length ? ['--', ...claudeExtraArgs] : [])];
             }
             if (provider === 'kiro') {
-                return buildAiEKiroArgs(model, prompt || '');
+                return buildAiEKiroArgs(model, effort, prompt || '');
             }
 
             const promptModeArgs = [
@@ -248,7 +201,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
                 '--timeout-ms', '600000',
             ];
             if (model && model !== 'default') promptModeArgs.push('--model', model);
-            if (effort && effort !== 'medium' && provider !== 'gemini' && provider !== 'grok') {
+            if (effort && effort !== 'medium' && provider !== 'grok') {
                 promptModeArgs.push('--effort', effort);
             }
             promptModeArgs.push(prompt || '');
@@ -289,14 +242,8 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
             return ['chat', '--no-interactive',
                 ...(autoPerm ? ['--trust-all-tools'] : []),
                 ...(model && model !== 'default' ? ['--model', model] : []),
+                ...kiroEffortArgs(effort),
                 prompt || ''];
-        case 'gemini':
-            return ['-p', prompt || '',
-                ...(model && model !== 'default' ? ['-m', model] : []),
-                '--skip-trust',
-                '--approval-mode', 'yolo',
-                ...geminiIncludeDirectoryArgs(options),
-                '-o', 'stream-json'];
         case 'grok':
             return ['-p', prompt || '',
                 ...(model && model !== 'default' ? ['-m', model] : []),
@@ -362,17 +309,17 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
         case 'ai-e': {
             const provider = resolveAiEProvider(options.aiEProvider, model);
             if (provider === 'kiro') {
-                return buildAiEKiroArgs(model, prompt || '', sessionId);
+                return buildAiEKiroArgs(model, effort, prompt || '', sessionId);
             }
             if (provider !== 'claude') {
-                // codex/grok/gemini/copilot: interactive mode with --resume
+                // codex/grok/copilot: interactive mode with --resume
                 const resumeArgs = [
                     provider,
                     '--output-format', 'stream-json',
                     '--timeout-ms', '600000',
                 ];
                 if (model && model !== 'default') resumeArgs.push('--model', model);
-                if (effort && effort !== 'medium' && provider !== 'gemini' && provider !== 'grok') {
+                if (effort && effort !== 'medium' && provider !== 'grok') {
                     resumeArgs.push('--effort', effort);
                 }
                 if (sessionId) resumeArgs.push('--resume', sessionId);
@@ -424,15 +371,8 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
                 '--resume-id', sessionId,
                 ...(autoPerm ? ['--trust-all-tools'] : []),
                 ...(model && model !== 'default' ? ['--model', model] : []),
+                ...kiroEffortArgs(effort),
                 prompt || ''];
-        case 'gemini':
-            return ['--resume', sessionId,
-                '-p', prompt || '',
-                ...(model && model !== 'default' ? ['-m', model] : []),
-                '--skip-trust',
-                '--approval-mode', 'yolo',
-                ...geminiIncludeDirectoryArgs(options),
-                '-o', 'stream-json'];
         case 'grok':
             return ['-p', prompt || '',
                 ...(sessionId ? ['--resume', sessionId] : []),

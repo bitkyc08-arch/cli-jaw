@@ -34,10 +34,14 @@ export const PHASE_INSTRUCTIONS: Record<number, string> = {
      - List edge cases you can identify from the code you read
      - Record in the worklog. Do NOT coordinate with other agents.`,
     2: `[Plan Audit — single-employee scope] Audit the plan you were given. You are the single reviewer — do NOT dispatch other auditors.
+     Red-team mindset: assume the plan has a hidden flaw. Your job is to find logical contradictions, convention violations, and integration risks — not cosmetic or documentation issues.
      - Read each target file referenced in the plan and check whether the diff applies cleanly (line anchors, surrounding context)
      - Check imports in the diff against the file's existing imports
+     - Hunt for contradictions: does the plan promise behavior that conflicts with existing code contracts, types, or runtime assumptions?
+     - Convention check: does the plan violate established patterns in the surrounding codebase (naming, error handling, module boundaries)?
+     - Skip cosmetic issues: do NOT report line counts, doc formatting, comment style, or trivial naming unless they cause a real bug
      - Note any API signatures you cannot verify with the local code (mark as "unverifiable — needs boss follow-up") — do NOT web-search unless the plan explicitly names a new external library
-     - Produce a final verdict: PASS (safe to implement) or FAIL (list itemized issues with file:line refs)
+     - Produce a final verdict: PASS (safe to implement) or FAIL (list itemized issues with file:line refs). Prioritize by severity: logic bugs > contract violations > integration risks > style
      - Record audit results in the worklog.`,
     3: `[Development — single-employee scope] Write the code yourself. No delegation.
      - Apply the diff from the plan to each target file

@@ -4,6 +4,8 @@ export class AnsiTerminalModel {
     private col = 0;
     private scrollTop = 0;
     private scrollBottom: number;
+    /** Lines that left the screen through a top-anchored scroll region (terminal scrollback). */
+    readonly scrollback: string[] = [];
 
     constructor(private columns: number, private rows: number) {
         this.lines = new Array(rows).fill('');
@@ -111,6 +113,9 @@ export class AnsiTerminalModel {
 
     private lineFeed(): void {
         if (this.row === this.scrollBottom) {
+            // Region top at row 1 → the departing line enters scrollback
+            // (Ghostty PR #9907 semantics); top > 1 silently discards it.
+            if (this.scrollTop === 0) this.scrollback.push(this.lines[0] ?? '');
             for (let r = this.scrollTop; r < this.scrollBottom; r += 1) {
                 this.lines[r] = this.lines[r + 1] ?? '';
             }

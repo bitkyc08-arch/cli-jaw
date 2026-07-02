@@ -13,10 +13,12 @@ import { FlushAgentSection } from './components/agent/FlushAgentSection';
 import { AgentEmployeesSection } from './components/agent/AgentEmployeesSection';
 import {
     metaFor,
+    normalizeCliMetaRegistry,
     optionList,
     runtimeEffortFor,
     runtimeModelFor,
     type ActiveOverride,
+    type CliMeta,
     type PerCliEntry,
 } from './components/agent/agent-meta';
 import {
@@ -75,6 +77,19 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     const [employeeDraft, setEmployeeDraft] = useState<RuntimeEmployeeRecord[]>([]);
     const [employeeLoading, setEmployeeLoading] = useState(true);
     const [employeeError, setEmployeeError] = useState<string | null>(null);
+    const [cliMeta, setCliMeta] = useState<Record<string, CliMeta> | null>(null);
+
+    const loadCliMeta = useCallback(async () => {
+        try {
+            const response = await client.get<{ data?: unknown } | Record<string, unknown>>('/api/cli-registry');
+            const data = response && typeof response === 'object' && 'data' in response
+                ? (response as { data?: unknown }).data
+                : response;
+            setCliMeta(normalizeCliMetaRegistry(data));
+        } catch {
+            setCliMeta(null);
+        }
+    }, [client]);
 
     const loadFlush = useCallback(async () => {
         setFlushLoading(true);
@@ -107,24 +122,26 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     }, [client]);
 
     useEffect(() => {
+        void loadCliMeta();
         void loadFlush();
         void loadEmployees();
-    }, [loadEmployees, loadFlush]);
+    }, [loadCliMeta, loadEmployees, loadFlush]);
 
     useEffect(() => {
         if (state.kind !== 'ready') return;
         const cliKeys = Object.keys(state.data.perCli || {});
         const cli = state.data.cli || cliKeys[0] || '';
         const permissions = parsePermissionsValue(state.data.permissions);
+        const meta = metaFor(cli, cliMeta);
         setDraft({
             cli,
-            provider: state.data.perCli?.[cli]?.provider || metaFor(cli).defaultProvider || '',
+            provider: state.data.perCli?.[cli]?.provider || meta.defaultProvider || '',
             model: runtimeModelFor(cli, state.data.perCli, state.data.activeOverrides),
             effort: runtimeEffortFor(cli, state.data.perCli, state.data.activeOverrides),
             workingDir: state.data.workingDir || '',
             permissions: permissions.mode === 'custom' ? permissions.tokens : 'auto',
         });
-    }, [state]);
+    }, [cliMeta, state]);
 
     useEffect(() => {
         return () => {
@@ -153,9 +170,10 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
         dirty.clear();
         if (freshSettings) setData(freshSettings as AgentSnapshot);
         await refresh();
+        await loadCliMeta();
         await loadFlush();
         await loadEmployees();
-    }, [client, dirty, employeeDraft, employeeOriginal, loadEmployees, loadFlush, refresh, setData]);
+    }, [client, dirty, employeeDraft, employeeOriginal, loadCliMeta, loadEmployees, loadFlush, refresh, setData]);
 
     useEffect(() => {
         if (!registerSave) return;
@@ -167,7 +185,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
     const perCli = settingsData.perCli || {};
     const activeOverrides = settingsData.activeOverrides || {};
     const cliOptions = useMemo(() => Object.keys(perCli), [perCli]);
-    const activeMeta = metaFor(draft.cli);
+    const activeMeta = metaFor(draft.cli, cliMeta);
     const activeProvider = draft.provider || activeMeta.defaultProvider || activeMeta.providers?.[0] || '';
     const isPiRuntime = draft.cli === 'pi';
     const hasProviders = !isPiRuntime && (activeMeta.providers?.length ?? 0) > 0;
@@ -212,11 +230,13 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                 effortOptions={activeEffortOptions}
                 workingDir={draft.workingDir}
                 workingDirError={workingDirError}
+                cliMeta={cliMeta}
                 onCliChange={(next) => {
+                    const nextMeta = metaFor(next, cliMeta);
                     const nextDraft = {
                         ...draft,
                         cli: next,
-                        provider: perCli[next]?.provider || metaFor(next).defaultProvider || '',
+                        provider: perCli[next]?.provider || nextMeta.defaultProvider || '',
                         model: runtimeModelFor(next, perCli, activeOverrides),
                         effort: runtimeEffortFor(next, perCli, activeOverrides),
                     };
@@ -287,11 +307,12 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                 flushCli={flushDraft.cli || ''}
                 flushModel={flushDraft.model || ''}
                 cliOptions={cliOptions}
-                modelOptions={optionList(metaFor(flushDraft.cli || draft.cli).models, flushDraft.model || '')}
+                cliMeta={cliMeta}
+                modelOptions={optionList(metaFor(flushDraft.cli || draft.cli, cliMeta).models, flushDraft.model || '')}
                 loading={flushLoading}
                 error={flushError}
                 onFlushCliChange={(next) => {
-                    const model = next ? metaFor(next).models[0] || '' : '';
+                    const model = next ? metaFor(next, cliMeta).models[0] || '' : '';
                     setFlushDraft({ cli: next, model });
                     setEntry('flushCli', { value: next, original: flushOriginal.cli || '', valid: true });
                     setEntry('flushModel', { value: model, original: flushOriginal.model || '', valid: true });
@@ -305,6 +326,7 @@ export default function Agent({ port, client, dirty, registerSave }: SettingsPag
                 roster={employeeDraft}
                 original={employeeOriginal}
                 cliOptions={cliOptions}
+                cliMeta={cliMeta}
                 loading={employeeLoading}
                 error={employeeError}
                 onRosterChange={(next) => {

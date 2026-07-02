@@ -217,34 +217,6 @@ export function extractToolLabels(cli: string, event: CliEventRecord, ctx: Spawn
         }
     }
 
-    if (cli === 'gemini') {
-        if (event.type === 'tool_use') {
-            const detail = event.parameters?.command || summarizeToolInput(event.tool_name || '', event.parameters || {}, 0);
-            const suffix = event.parameters?.command ? `: ${buildPreview(event.parameters.command, 40)}` : '';
-            const ref = event.tool_id
-                ? `gemini:toolid:${event.tool_id}`
-                : `gemini:tool:${event.tool_name || 'tool'}`;
-            labels.push({ icon: '🔧', label: `${event.tool_name || 'tool'}${suffix}`, toolType: 'tool', detail, stepRef: ref });
-        }
-        if (event.type === 'tool_result') {
-            const ref = event.tool_id
-                ? `gemini:toolid:${event.tool_id}`
-                : `gemini:tool:${event.tool_name || 'tool'}`;
-            const matchingUse = ctx?.toolLog
-                ? [...ctx.toolLog].reverse().find((t: ToolEntry) => t.stepRef === ref)
-                : null;
-            const resultLabel = matchingUse?.label || event.tool_name || event.status || 'done';
-            const resultDetail = matchingUse?.detail || (event.output ? buildPreview(event.output, 200) : '');
-            labels.push({
-                icon: event.status === 'success' ? '✅' : '❌',
-                label: resultLabel,
-                toolType: 'tool',
-                stepRef: ref,
-                status: event.status === 'success' ? 'done' : 'error',
-                ...(resultDetail ? { detail: resultDetail } : {}),
-            });
-        }
-    }
 
     if (cli === 'opencode') {
         const isTaskToolUse = event.type === 'tool_use' && event.part?.tool === 'task';

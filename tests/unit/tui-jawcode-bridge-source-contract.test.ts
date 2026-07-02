@@ -58,3 +58,21 @@ test('renderWelcome clips long project rows to the terminal width', () => {
         if (rowsDesc) Object.defineProperty(process.stdout, 'rows', rowsDesc);
     }
 });
+
+test('status bar left segment stays readable on its cyan background', async () => {
+    const { renderStatusBar } = await import('../../src/cli/tui/jawcode-bridge.ts');
+    const row = renderStatusBar({
+        model: 'claude-fable-5',
+        engine: 'jwc',
+        engineAccent: '\x1b[36m',
+        state: 'idle',
+        cwd: '/tmp/project',
+        port: 3457,
+    });
+    const segStart = row.indexOf('\x1b[46m\x1b[30m');
+    assert.ok(segStart >= 0, 'left segment must open with cyan background + black foreground');
+    const segBody = row.slice(segStart, row.indexOf('claude-fable-5') + 'claude-fable-5'.length);
+    assert.equal(segBody.includes('\x1b[0m'), false, 'no full reset before the model name — it would drop the segment background');
+    assert.equal(segBody.includes('\x1b[36m'), false, 'no cyan foreground inside the cyan segment (unreadable in dark mode)');
+    assert.equal(segBody.includes('\x1b[38;'), false, 'no theme foreground colors inside the segment');
+});

@@ -110,7 +110,7 @@ test('prioritizeCliCandidates moves native Claude before nvm/npm and bun shims',
 
 test('prioritizeCliCandidates moves bun shims behind managed node bins for npm-managed agent CLIs', () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-cli-detect-home-'));
-    for (const cli of ['codex', 'gemini', 'copilot', 'opencode']) {
+    for (const cli of ['codex', 'copilot', 'opencode']) {
         const bunPath = path.join(home, '.bun', 'bin', cli);
         const nvmPath = path.join(home, '.nvm', 'versions', 'node', 'v22.18.0', 'bin', cli);
         const result = prioritizeCliCandidates(cli, [bunPath, nvmPath], home);

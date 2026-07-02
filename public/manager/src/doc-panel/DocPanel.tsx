@@ -9,7 +9,7 @@ import './doc-panel.css';
 const EXT_LANG: Record<string, string> = {
     ts: 'typescript', tsx: 'typescript', js: 'javascript', jsx: 'javascript',
     py: 'python', rs: 'rust', go: 'go', java: 'java', cpp: 'cpp', c: 'cpp',
-    css: 'css', html: 'html', xml: 'xml', json: 'json',
+    css: 'css', html: 'html', htm: 'html', xml: 'xml', json: 'json',
     yaml: 'yaml', yml: 'yaml', sh: 'bash', bash: 'bash', sql: 'sql',
 };
 
@@ -20,6 +20,10 @@ function getFileLanguage(filePath: string): string | null {
 
 function isMarkdown(filePath: string): boolean {
     return /\.(md|mdx)$/i.test(filePath);
+}
+
+function isHtml(filePath: string): boolean {
+    return /\.html?$/i.test(filePath);
 }
 
 function getFileBridge(): Pick<FolderBridgeApi, 'readFile' | 'getDefaultRoot'> | null {
@@ -34,16 +38,59 @@ function getDisplayFileName(filePath: string): string {
     return filePath.split(/[\\/]/).pop() || filePath;
 }
 
-function DocContent(props: { filePath: string; content: string; raw: boolean }) {
+function htmlPreviewSrcDoc(content: string): string {
+    const csp = [
+        "default-src 'none'",
+        "img-src data: blob:",
+        "style-src 'unsafe-inline' data:",
+        "font-src data:",
+        "script-src 'none'",
+        "connect-src 'none'",
+        "object-src 'none'",
+        "base-uri 'none'",
+        "form-action 'none'",
+        "frame-src 'none'",
+    ].join('; ');
+    return [
+        '<!doctype html>',
+        '<html>',
+        '<head>',
+        `<meta http-equiv="Content-Security-Policy" content="${csp}">`,
+        '<meta charset="utf-8">',
+        '<style>html,body{margin:0;min-height:100%;}body{font-family:system-ui,sans-serif;}</style>',
+        '</head>',
+        '<body>',
+        content,
+        '</body>',
+        '</html>',
+    ].join('');
+}
+
+function HtmlPreview(props: { content: string; title: string }) {
+    return (
+        <iframe
+            className="doc-html-preview"
+            title={props.title}
+            sandbox=""
+            referrerPolicy="no-referrer"
+            srcDoc={htmlPreviewSrcDoc(props.content)}
+        />
+    );
+}
+
+function DocContent(props: { filePath: string; content: string; raw: boolean; onOpenLocalFile?: ((path: string) => void) | undefined }) {
     if (props.raw) {
         return <pre className="doc-pre"><code>{props.content}</code></pre>;
     }
     if (isMarkdown(props.filePath)) {
         return (
             <article className="notes-preview doc-markdown">
-                <MarkdownRenderer markdown={props.content} />
+                <MarkdownRenderer markdown={props.content} onLocalFileOpen={props.onOpenLocalFile} />
             </article>
         );
+    }
+    if (isHtml(props.filePath)) {
+        return <HtmlPreview content={props.content} title={`Rendered preview of ${getDisplayFileName(props.filePath)}`} />;
     }
     const lang = getFileLanguage(props.filePath);
     if (lang) {
@@ -52,7 +99,7 @@ function DocContent(props: { filePath: string; content: string; raw: boolean }) 
     return <pre className="doc-pre"><code>{props.content}</code></pre>;
 }
 
-export function DocPanel(props: { filePath?: string | undefined }) {
+export function DocPanel(props: { filePath?: string | undefined; onOpenLocalFile?: ((path: string) => void) | undefined }) {
     const bridge = getFileBridge();
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const contentBodyRef = useRef<HTMLDivElement | null>(null);
@@ -260,7 +307,7 @@ export function DocPanel(props: { filePath?: string | undefined }) {
                 }}
             >
                 <div className="doc-content-body" ref={contentBodyRef}>
-                    <DocContent filePath={props.filePath} content={content} raw={raw} />
+                    <DocContent filePath={props.filePath} content={content} raw={raw} onOpenLocalFile={props.onOpenLocalFile} />
                 </div>
             </div>
         </div>

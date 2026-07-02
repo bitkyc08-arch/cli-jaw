@@ -1,6 +1,6 @@
 import { execFileSync } from 'child_process';
 import { detectAllCli } from '../core/config.js';
-import { readClaudeCreds, readCodexTokens, readGeminiAccount } from '../routes/quota.js';
+import { readClaudeCreds, readCodexTokens } from '../routes/quota.js';
 import { hasCopilotAuthSync } from '../../lib/quota-copilot.js';
 import { CLI_KEYS, DEFAULT_CLI } from './registry.js';
 import type { CliEngine } from '../types/cli-engine.js';
@@ -93,12 +93,6 @@ export function getCliReadiness(): CliReadiness[] {
                 }
                 break;
             }
-            case 'gemini': {
-                const gem = readGeminiAccount();
-                authenticated = !!gem?.account?.email;
-                source = authenticated ? 'oauth_creds.json' : 'none';
-                break;
-            }
             case 'grok': {
                 try {
                     const out = execFileSync(info.path || 'grok', ['models'], {
@@ -151,7 +145,7 @@ export function getCliReadiness(): CliReadiness[] {
     return results;
 }
 
-const DEFAULT_ORDER: readonly CliEngine[] = ['pi', 'claude', 'claude-e', 'agy', 'codex', 'codex-app', 'cursor', 'kiro-code', 'copilot', 'gemini', 'grok', 'opencode', 'ai-e'];
+const DEFAULT_ORDER: readonly CliEngine[] = ['pi', 'claude', 'claude-e', 'agy', 'codex', 'codex-app', 'cursor', 'kiro-code', 'copilot', 'grok', 'opencode', 'ai-e'];
 
 export function pickFirstReadyCli(order: readonly CliEngine[] = DEFAULT_ORDER): CliEngine {
     const readiness = getCliReadiness();

@@ -57,9 +57,6 @@ function getDefaultEmployeeModel(cli: string, models: string[]): string {
         if (models.includes('claude-opus-4-8')) return 'claude-opus-4-8';
         if (models.includes('opus')) return 'opus';
     }
-    if (cli === 'codex' || cli === 'codex-app') {
-        if (models.includes('gpt-5.5')) return 'gpt-5.5';
-    }
     return models[0] || 'default';
 }
 

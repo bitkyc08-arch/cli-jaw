@@ -24,12 +24,23 @@ test('DocPanel toolbar exposes Raw, Path, and Copy actions', () => {
     assert.ok(panel.includes('title="Copy file content"'), 'Copy action must copy file content');
     assert.ok(panel.includes("{copiedAction === 'path' ? 'Copied' : 'Path'}"), 'Path button must show independent copy feedback');
     assert.ok(panel.includes("{copiedAction === 'content' ? 'Copied' : 'Copy'}"), 'Copy button must show independent copy feedback');
-    assert.ok(panel.includes('<DocContent filePath={props.filePath} content={content} raw={raw} />'), 'Raw state must control document rendering');
+    assert.ok(panel.includes('<DocContent filePath={props.filePath} content={content} raw={raw} onOpenLocalFile={props.onOpenLocalFile} />'), 'Raw state must control document rendering while preserving local-file routing');
+    assert.ok(panel.includes('function HtmlPreview'), 'DocPanel must render HTML through a dedicated preview component');
+    assert.ok(panel.includes('sandbox=""'), 'HTML preview iframe must run without sandbox permissions');
+    assert.ok(panel.includes("\"script-src 'none'\""), 'HTML preview CSP must block scripts');
+    assert.ok(panel.includes("'<!doctype html>'"), 'HTML preview must build a controlled document wrapper before untrusted bytes');
+    assert.ok(panel.includes("'<head>'"), 'HTML preview wrapper must own the head element');
+    assert.ok(panel.includes("'<body>',\n        content,"), 'untrusted HTML must be appended only after the controlled CSP head');
+    assert.equal(panel.includes("content.replace(/<head"), false, 'HTML preview must not regex-insert CSP into attacker-controlled head-like text');
+    assert.ok(panel.includes('srcDoc={htmlPreviewSrcDoc(props.content)}'), 'HTML preview must use the sanitized preview document wrapper');
+    assert.ok(panel.includes('function isHtml(filePath: string)'), 'DocPanel must classify local HTML files separately from source-code rendering');
+    assert.ok(panel.includes("htm: 'html'"), 'DocPanel must treat .htm as HTML-capable');
     assert.equal(panel.includes('document.querySelector'), false, 'DocPanel toolbar must not mutate button text through global DOM queries');
     assert.equal(panel.includes('navigator.clipboard.writeText'), false, 'DocPanel toolbar must route clipboard writes through copyText');
 
     assert.ok(css.includes('.doc-toolbar-actions'), 'DocPanel CSS must style the action group');
     assert.ok(css.includes('.doc-toolbar-button'), 'DocPanel CSS must style the three action buttons');
     assert.ok(css.includes('.doc-toolbar-button.is-active'), 'DocPanel CSS must visibly mark Raw when active');
+    assert.ok(css.includes('.doc-html-preview'), 'DocPanel CSS must size the HTML iframe preview');
     assert.equal(css.includes('.doc-copy-path'), false, 'obsolete single Path button class must be removed');
 });

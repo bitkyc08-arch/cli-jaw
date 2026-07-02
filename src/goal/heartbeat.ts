@@ -90,6 +90,12 @@ export function buildGoalContinuation(): GoalContinuationResult {
         'MULTI-PHASE LOOP: if the goal is a multi-pass / "loop" task and work-phases remain after a completed PABCD cycle (state is IDLE), start the next work-phase with `cli-jaw orchestrate P`. Do not treat one completed cycle as the whole goal.',
         '',
         '**Quality Gates**: no placeholder evidence (todo, tbd, stub, fake pass); artifact paths required in all validation summaries.',
+        '',
+        // PABCD turns get the full discipline via the orchestration.md template;
+        // this compact line covers non-PABCD score-goal turns only (prompt budget).
+        ...(!pabcdActive
+            ? ['**Optimization-loop (score goals)**: classify each candidate (parameter-tweak | branch-toggle | state-space-redesign | evaluator-change); 3 same-class discards → target the evaluation gate next (LOOP-PHASE-DEATH-01); P quotes the previous D conclusion; candidates from domain-state evidence, not code parameters; an optimistic local proxy is never sole acceptance evidence. Full: dev-pabcd §10, dev-testing §9.5.']
+            : []),
         ...(goal.goalMode === 'plan'
             ? [
                 '',

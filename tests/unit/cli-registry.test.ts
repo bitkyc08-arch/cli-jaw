@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import {
     CLI_REGISTRY,
     CLI_KEYS,
+    CODEX_MODEL_CHOICES,
     DEFAULT_CLI,
     buildDefaultPerCli,
     buildModelChoicesByCli,
@@ -16,8 +17,8 @@ const __dirname = dirname(__filename);
 
 // ─── Structure validation ────────────────────────────
 
-test('CLI_KEYS contains exactly 14 known entries', () => {
-    assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'gemini', 'grok', 'jwc', 'kiro-code', 'opencode', 'pi']);
+test('CLI_KEYS contains exactly 13 known entries', () => {
+    assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'grok', 'jwc', 'kiro-code', 'opencode', 'pi']);
 });
 
 test('DEFAULT_CLI is claude', () => {
@@ -48,8 +49,7 @@ test('every CLI defaultModel is included in its models list', () => {
     }
 });
 
-test('registry defaults for gemini and opencode are updated', () => {
-    assert.equal(CLI_REGISTRY.gemini.defaultModel, 'gemini-3-flash-preview');
+test('registry defaults for opencode are updated', () => {
     assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode-go/kimi-k2.6');
 });
 
@@ -106,7 +106,8 @@ test('Kiro registry exposes kiro-code as a top-level runtime', () => {
     assert.equal(CLI_REGISTRY['kiro-code'].binary, 'kiro-cli');
     assert.equal(CLI_REGISTRY['kiro-code'].defaultModel, 'auto');
     assert.ok(CLI_REGISTRY['kiro-code'].models.includes('claude-sonnet-4.6'));
-    assert.deepEqual(CLI_REGISTRY['kiro-code'].efforts, []);
+    assert.deepEqual(CLI_REGISTRY['kiro-code'].efforts, ['low', 'medium', 'high', 'xhigh']);
+    assert.deepEqual(CLI_REGISTRY['ai-e'].effortsByProvider?.kiro, ['low', 'medium', 'high', 'xhigh']);
     assert.equal(CLI_REGISTRY['ai-e'].providers.includes('kiro-code'), false);
 });
 
@@ -124,10 +125,20 @@ test('Cursor registry exposes Cursor as a top-level runtime, not an ai-e provide
 
 test('ai-e registry exposes explicit provider selector metadata', () => {
     assert.equal(CLI_REGISTRY['ai-e'].defaultProvider, 'claude');
-    assert.deepEqual(CLI_REGISTRY['ai-e'].providers, ['claude', 'codex', 'gemini', 'grok', 'copilot', 'kiro']);
+    assert.deepEqual(CLI_REGISTRY['ai-e'].providers, ['claude', 'codex', 'grok', 'copilot', 'kiro']);
     assert.ok(CLI_REGISTRY['ai-e'].modelsByProvider?.kiro.includes('auto'));
     assert.ok(CLI_REGISTRY['ai-e'].modelsByProvider?.codex.includes('gpt-5.4'));
     assert.ok(CLI_REGISTRY['ai-e'].modelsByProvider?.copilot.includes('gpt-5-mini'));
+});
+
+test('Codex registry defaults expose only the curated inactive ocx model set', () => {
+    assert.deepEqual(CODEX_MODEL_CHOICES, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark']);
+    assert.deepEqual(CLI_REGISTRY.codex.models, CODEX_MODEL_CHOICES);
+    assert.deepEqual(CLI_REGISTRY['codex-app'].models, CODEX_MODEL_CHOICES);
+    assert.deepEqual(CLI_REGISTRY['ai-e'].modelsByProvider?.codex, CODEX_MODEL_CHOICES);
+    assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.3-codex'), false);
+    assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.2-codex'), false);
+    assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.1-codex-mini'), false);
 });
 
 test('ai-e detection checks AI_E_BIN, local package candidates, then PATH', () => {

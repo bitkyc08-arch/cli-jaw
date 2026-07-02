@@ -42,3 +42,18 @@ test('FCC-003: employees use Opus 4.8 as Claude default on CLI switch', () => {
     assert.ok(employeesSrc.includes("if (models.includes('claude-opus-4-8')) return 'claude-opus-4-8';"));
     assert.ok(employeesSrc.includes('updateEmployee(id, { cli, model: nextModel });'));
 });
+
+test('FCC-004: employees Codex default follows live model order on CLI switch', () => {
+    const defaultHelper = employeesSrc.slice(
+        employeesSrc.indexOf('function getDefaultEmployeeModel'),
+        employeesSrc.indexOf('export async function loadEmployees'),
+    );
+    assert.ok(defaultHelper.includes("return models[0] || 'default';"),
+        'Codex/Codex App should fall through to the first live MODEL_MAP entry');
+    assert.ok(!defaultHelper.includes("cli === 'codex'"),
+        'getDefaultEmployeeModel must not special-case Codex');
+    assert.ok(!defaultHelper.includes("cli === 'codex-app'"),
+        'getDefaultEmployeeModel must not special-case Codex App');
+    assert.ok(!defaultHelper.includes("if (models.includes('gpt-5.5')) return 'gpt-5.5';"),
+        'stale gpt-5.5 override must not return ahead of active ocx ordering');
+});

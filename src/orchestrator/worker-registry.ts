@@ -77,7 +77,8 @@ export class WorkerBusyError extends Error {
 export interface WorkerEmployeeRef { id: string; name?: string }
 
 function createWorkerRunId(agentId: string): string {
-    return `wr_${agentId}_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
+    const safeAgentId = agentId.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 80) || 'agent';
+    return `wr_${safeAgentId}_${Date.now().toString(36)}_${randomUUID().slice(0, 8)}`;
 }
 
 export function claimWorker(emp: WorkerEmployeeRef, task: string, replayMeta?: WorkerReplayMeta): WorkerSlot {

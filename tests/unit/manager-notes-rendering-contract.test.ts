@@ -113,6 +113,10 @@ test('MarkdownRenderer wires math, sanitize, safe links, and block routing', () 
     assert.ok(renderer.includes('notes: props.notes'), 'MarkdownRenderer must pass vault notes into wikilink fallback context');
     assert.ok(renderer.includes('splitPreviewFrontmatter(props.markdown).body'), 'MarkdownRenderer must strip leading YAML frontmatter before rendering');
     assert.ok(renderer.includes('splitChildrenWithWikiLinks'), 'MarkdownRenderer must transform only supported text children for wikilinks');
+    assert.ok(renderer.includes('onLocalFileOpen?: ((path: string) => void) | undefined'), 'MarkdownRenderer must expose local-file links as an opt-in callback');
+    assert.ok(renderer.includes('splitChildrenWithLocalFileLinks'), 'MarkdownRenderer must local-linkify only after normal wikilink handling');
+    assert.ok(renderer.includes("className: 'markdown-local-file-link'"), 'local file links must render as styled buttons, not unsafe file:// anchors');
+    assert.ok(renderer.includes('onLocalFileOpen(clean)'), 'local file link activation must call the caller-owned open handler');
     assert.ok(renderer.includes("tableMode?: 'semantic' | 'linear' | undefined"), 'MarkdownRenderer must expose an opt-in table rendering mode');
     assert.ok(renderer.includes("if (props.tableMode === 'linear')"), 'linear table rendering must be opt-in only');
     assert.ok(renderer.includes("td: wikiTransform('td')"), 'default semantic table cells must keep Notes wikilink behavior');
@@ -126,6 +130,7 @@ test('MarkdownRenderer wires math, sanitize, safe links, and block routing', () 
     assert.ok(renderer.includes('countLinearTableColumns'), 'linear tables must derive a shared column count for grid alignment');
     assert.ok(renderer.includes('linearTableGridTemplate'), 'linear tables must provide a shared grid template for header/body alignment');
     assert.ok(renderer.includes("'--markdown-linear-table-grid'"), 'linear table grid template must be passed as a CSS custom property');
+    assert.equal(read('public/manager/src/notes/MarkdownPreview.tsx').includes('onLocalFileOpen'), false, 'Notes preview must not open arbitrary local files');
 });
 
 test('preview strips leading YAML frontmatter without losing body wikilinks', () => {

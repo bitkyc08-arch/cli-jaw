@@ -32,7 +32,9 @@ test('fullscreen tool renderer uses transcript status and detail fields', () => 
 test('fullscreen completed tool expansion is full-sweep and newline-safe', () => {
     // Tool detail expansion was extracted from fullscreen-mode into renderToolBlock;
     // fullscreen-mode delegates and the bridge owns the newline-safe full sweep + row cap.
-    assert.match(source, /toggleToolExpansion\(ctx\.store\.transcript\)/);
+    // Ctrl-O is scoped to the uncommitted tail: committed items' pixels are
+    // frozen in native scrollback (jawcode parity).
+    assert.match(source, /toggleToolExpansion\(ctx\.store\.transcript, viewport\.currentFrontier\(\)\.itemIndex\)/);
     assert.match(source, /const toolDetail = item\.detail \?\? parsed\.detail/);
     assert.match(source, /renderToolBlock\(parsed\.label, toolDetail, state, \{/);
     assert.match(source, /collapsed: item\.collapsed/);
@@ -57,4 +59,19 @@ test('fullscreen mouse tracking is opt-in for copy-friendly native scrollback', 
     assert.match(source, /if \(isMouseTrackingEnabled\(ctx\)\) screen\.enableMouse\(\);\s*else screen\.disableMouse\(\);/);
     assert.doesNotMatch(source, /ctx\.tuiConfig\['mouseTracking'\] !== false/);
     assert.doesNotMatch(source, /screen\.enter\(\);\s*screen\.enableMouse\(\);/);
+});
+
+test('scrollback commit gate stays allStable — mid-stream commits corrupt the frame', () => {
+    // Attempted 2026-07-02 and reverted: committing the settled prefix while
+    // the tail streams requires jawcode's overflow-floor/tombstone machinery
+    // (packages/tui/src/tui.ts), which this port's frame.ts does not have.
+    assert.match(source, /const allStable = stablePrefixIndex === ctx\.store\.transcript\.items\.length/);
+    assert.match(source, /hasTranscriptItems && !overlayOpen && allStable\s*\n?\s*\? viewport\.peekStableCommitRows/);
+});
+
+test('preview frontier applies only when the commit queue accepted the rows', () => {
+    // Unsupported lanes (zellij/dumb) refuse queueCommitLines; hiding the
+    // prefix anyway would drop those rows from both scrollback and the frame.
+    assert.match(source, /const queued = commit \? screen\.queueCommitLines\(commit\.rows\) : false/);
+    assert.match(source, /const renderViewport = commit && queued\s*\n?\s*\? viewport\.withPreviewFrontier\(commit\.frontier\)/);
 });

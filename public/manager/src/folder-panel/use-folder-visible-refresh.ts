@@ -57,6 +57,12 @@ export function useFolderVisibleRefresh(input: UseFolderVisibleRefreshInput) {
     const refreshingRef = useRef(false);
     const queuedRefreshRef = useRef<{ reason: FolderRefreshReason; options: FolderVisibleRefreshOptions } | null>(null);
     const watchTimerRef = useRef<number | null>(null);
+    const runRefreshRef = useRef<(reason: FolderRefreshReason, options?: FolderVisibleRefreshOptions) => Promise<void>>(async () => undefined);
+    const mountedRef = useRef(true);
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
 
     const clearWatchTimer = useCallback(() => {
         if (watchTimerRef.current === null) return;
@@ -82,8 +88,10 @@ export function useFolderVisibleRefresh(input: UseFolderVisibleRefreshInput) {
             return;
         }
         refreshingRef.current = true;
-        setIsRefreshing(true);
-        setRefreshStatus(reason === 'watch' ? 'Refreshing changed files...' : 'Refreshing folder...');
+        if (mountedRef.current) {
+            setIsRefreshing(true);
+            setRefreshStatus(reason === 'watch' ? 'Refreshing changed files...' : 'Refreshing folder...');
+        }
         try {
             const expandedPaths = Array.from(new Set([...Array.from(expanded), ...(options.extraPaths ?? [])]))
                 .slice(0, MAX_EXPANDED_REFRESH_BRANCHES);
@@ -92,16 +100,19 @@ export function useFolderVisibleRefresh(input: UseFolderVisibleRefreshInput) {
             bumpGitRefresh();
             onGitRefresh?.();
             refreshWorktrees();
+            if (!mountedRef.current) return;
             const skippedCount = Math.max(0, expanded.size - expandedPaths.length);
             setRefreshStatus(skippedCount > 0
                 ? `${reasonLabel(reason)}; ${skippedCount} collapsed/overflow branches skipped`
                 : reasonLabel(reason));
         } finally {
             refreshingRef.current = false;
-            setIsRefreshing(false);
+            if (mountedRef.current) setIsRefreshing(false);
             const queuedRefresh = queuedRefreshRef.current;
             queuedRefreshRef.current = null;
-            if (queuedRefresh) void runRefresh(queuedRefresh.reason, queuedRefresh.options);
+            if (queuedRefresh && mountedRef.current) {
+                void runRefreshRef.current(queuedRefresh.reason, queuedRefresh.options);
+            }
         }
     }, [bumpGitRefresh, expanded, loadChildren, loadDir, onGitRefresh, refreshWorktrees, rootPath]);
 
@@ -112,13 +123,15 @@ export function useFolderVisibleRefresh(input: UseFolderVisibleRefreshInput) {
         await runRefresh(reason, options);
     }, [runRefresh]);
 
+    useEffect(() => { runRefreshRef.current = runRefresh; }, [runRefresh]);
+
     const scheduleWatchRefresh = useCallback(() => {
         clearWatchTimer();
         watchTimerRef.current = window.setTimeout(() => {
             watchTimerRef.current = null;
-            void runRefresh('watch');
+            void runRefreshRef.current('watch');
         }, WATCH_REFRESH_DELAY_MS);
-    }, [clearWatchTimer, runRefresh]);
+    }, [clearWatchTimer]);
 
     useEffect(() => {
         if (!source.watchDir || !source.onDirChange || rootPath === null) return;

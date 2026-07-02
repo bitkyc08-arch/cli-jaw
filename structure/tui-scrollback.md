@@ -23,6 +23,15 @@ User sends message → AI responds → response completes → all items stable
 → next frame excludes committed rows (no duplication)
 ```
 
+**Mid-stream commits are deliberately disabled** (attempted 2026-07-02,
+reverted same day): committing the settled prefix while the tail streams
+(jawcode 083.9 P3/P4) corrupted the visible frame — DECSTBM commit scrolls
+interleaved with per-token differential repaints require jawcode's
+overflow-floor/tombstone/viewport-top machinery, which this port's simpler
+`frame.ts` does not implement. Re-enabling requires porting that machinery
+first (see jawcode `packages/tui/src/tui.ts` `#restoreOverflowFloor`,
+`#scrollOutCommittedRows`, prepared-line caches).
+
 ## Terminal Protocol
 
 The commit uses a **sub-region per-line scroll** — the fill area (blank padding at screen top) is used as a history lane:
@@ -65,7 +74,9 @@ Logical frontier survives width reflow (unlike physical row counts).
 
 | Guard | Purpose |
 |-------|---------|
-| `allStable` | Only commit when ALL items are stable (not streaming) |
+| `allStable` | Only commit when ALL items are stable (not streaming) — see mid-stream note above |
+| Stale-row defer | Flush waits until the scroll-out rows are blank in the frame model (`commitScrollOutRowsAreBlank`) — layout-shift frames (e.g. launch anchor release) would otherwise push stale pixels into scrollback; retried next frame |
+| Queue-gated preview | `withPreviewFrontier` applies only when `queueCommitLines` accepted the rows — refused lanes (zellij/dumb, resize) keep rows on the virtual lane |
 | `fillRows >= 2` | Sub-region requires DECSTBM minimum 2 rows |
 | `hasNativeCommit` | Ban CSI 3J after first commit (preserve scrollback) |
 | `overlayOpen` | Block commits during help/palette/settings |
@@ -84,7 +95,7 @@ Logical frontier survives width reflow (unlike physical row counts).
 ## Known Limitations
 
 - **5 fewer transcript rows**: MIN_HISTORY_LANE=5 reserves space for the history lane
-- **No streaming commits**: commits only fire when all items are stable (after full response)
+- **No streaming commits**: commits only fire when all items are stable (after full response); the growing answer stays in the live zone until the turn ends
 - **Terminal compatibility**: designed for Ghostty 1.3+; unsupported terminals silently skip commits
 - **No commit during overlays**: help/palette/settings screens block commits
 

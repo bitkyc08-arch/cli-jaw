@@ -594,7 +594,7 @@ server.listen(PORT, bindHost, async () => {
     initAlertDelivery();
 
     // ─── Seed default employees if none exist ────────
-    const seeded = seedDefaultEmployees();
+    const seeded = await seedDefaultEmployees();
     if (seeded.seeded > 0) {
         console.log(`  Agents: seeded ${seeded.seeded} default employees (CLI: ${seeded.cli})`);
     }

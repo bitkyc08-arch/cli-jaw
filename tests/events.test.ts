@@ -93,13 +93,12 @@ test('claude system compact events emit compacting and boundary labels', () => {
 test('extractSessionId handles all supported CLIs', () => {
     assert.equal(extractSessionId('claude', { type: 'system', session_id: 'claude-1' }), 'claude-1');
     assert.equal(extractSessionId('codex', { type: 'thread.started', thread_id: 'thread-1' }), 'thread-1');
-    assert.equal(extractSessionId('gemini', { type: 'init', session_id: 'gemini-1' }), 'gemini-1');
     assert.equal(extractSessionId('grok', { type: 'end', sessionId: 'grok-1' }), 'grok-1');
     assert.equal(extractSessionId('opencode', { sessionID: 'oc-1' }), 'oc-1');
     assert.equal(extractSessionId('unknown', { type: 'x' }), null);
 });
 
-test('tool label extraction fixture matrix covers codex, gemini, and opencode variants', () => {
+test('tool label extraction fixture matrix covers codex and opencode variants', () => {
     const fixtureCases = [
         {
             name: 'claude stream thinking (block_start — buffered, no immediate label)',
@@ -136,24 +135,6 @@ test('tool label extraction fixture matrix covers codex, gemini, and opencode va
             cli: 'codex',
             fixture: 'codex-reasoning.json',
             expected: [{ icon: '💭', label: 'Plan isolate regression', toolType: 'thinking', detail: 'Plan isolate regression' }],
-        },
-        {
-            name: 'gemini tool use',
-            cli: 'gemini',
-            fixture: 'gemini-tool-use.json',
-            expected: [{ icon: '🔧', label: 'shell: npm run lint', toolType: 'tool', detail: 'npm run lint', stepRef: 'gemini:toolid:run_shell_command_123' }],
-        },
-        {
-            name: 'gemini tool result success',
-            cli: 'gemini',
-            fixture: 'gemini-tool-result-success.json',
-            expected: [{ icon: '✅', label: 'success', toolType: 'tool', stepRef: 'gemini:toolid:run_shell_command_123', status: 'done' }],
-        },
-        {
-            name: 'gemini tool result error',
-            cli: 'gemini',
-            fixture: 'gemini-tool-result-error.json',
-            expected: [{ icon: '❌', label: 'error', toolType: 'tool', stepRef: 'gemini:toolid:run_shell_command_123', status: 'error' }],
         },
         {
             name: 'opencode tool use',
@@ -364,19 +345,6 @@ test('extractFromEvent updates context for each CLI path', () => {
     assert.equal(codexCtx.fullText, 'done');
     assert.deepEqual(codexCtx.tokens, { input_tokens: 10, output_tokens: 20, cached_input_tokens: 0 });
 
-    const geminiCtx = { toolLog: [], fullText: '' };
-    extractFromEvent('gemini', {
-        type: 'message',
-        role: 'assistant',
-        content: 'gemini answer',
-    }, geminiCtx, 'gemini-agent');
-    extractFromEvent('gemini', {
-        type: 'result',
-        stats: { duration_ms: 987, tool_calls: 2 },
-    }, geminiCtx, 'gemini-agent');
-    assert.equal(geminiCtx.fullText, 'gemini answer');
-    assert.equal(geminiCtx.duration, 987);
-    assert.equal(geminiCtx.turns, 2);
 
     const opencodeCtx = { toolLog: [], fullText: '' };
     extractFromEvent('opencode', {
@@ -398,8 +366,6 @@ test('extractFromEvent updates context for each CLI path', () => {
 });
 
 test('extractToolLabel keeps backward compatibility and claude keys are deterministic', () => {
-    const first = extractToolLabel('gemini', { type: 'tool_result', status: 'failed' });
-    assert.deepEqual(first, { icon: '❌', label: 'failed', toolType: 'tool', stepRef: 'gemini:tool:tool', status: 'error' });
 
     const keyFromIndex = makeClaudeToolKeyForTest(
         { type: 'stream_event', event: { index: 3 } },
@@ -460,20 +426,6 @@ test('P2-3.6: Codex turn.completed stores cached_input_tokens', () => {
     assert.deepEqual(ctx.tokens, { input_tokens: 100, output_tokens: 50, cached_input_tokens: 30 });
 });
 
-test('P2-3.7: Gemini init stores model', () => {
-    const ctx = { toolLog: [], fullText: '' };
-    extractFromEvent('gemini', { type: 'init', model: 'gemini-3-flash-preview' }, ctx, 'gemini');
-    assert.equal(ctx.model, 'gemini-3-flash-preview');
-});
-
-test('P2-3.8: Gemini delta message pushes trace', () => {
-    const ctx = { toolLog: [], fullText: '', traceLog: [] };
-    extractFromEvent('gemini', {
-        type: 'message', role: 'assistant', content: 'partial', delta: true,
-    }, ctx, 'gemini');
-    assert.equal(ctx.fullText, 'partial');
-    assert.ok(ctx.traceLog.some(l => l.includes('gemini delta text')));
-});
 
 test('P2-3.10: OpenCode step_start stores model', () => {
     const ctx = { toolLog: [], fullText: '', traceLog: [] };
@@ -1097,11 +1049,7 @@ test('21.3: OpenCode task tool is marked as subagent and absorbs same callID too
     assert.equal(ctx.toolLog[0].status, 'done');
 });
 
-test('extractOutputChunk returns live assistant text for gemini, opencode final step, and codex', () => {
-    assert.equal(
-        extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'hello', delta: true }),
-        'hello',
-    );
+test('extractOutputChunk returns live assistant text for opencode final step and codex', () => {
     const opencodeCtx = { pendingOutputChunk: '' };
     extractFromEvent('opencode', { type: 'text', part: { text: 'world' } }, opencodeCtx, 'oc');
     assert.equal(
@@ -1354,41 +1302,6 @@ test('grok trace backfill marks explicit failed result metadata as error', () =>
 });
 
 test('assistant output segments use a single markdown line break boundary', () => {
-    const geminiCtx = { toolLog: [], fullText: '', traceLog: [] };
-    const firstGemini = { type: 'message', role: 'assistant', content: 'a답변', delta: true };
-    const secondGemini = { type: 'message', role: 'assistant', content: 'b답변', delta: true };
-
-    extractFromEvent('gemini', firstGemini, geminiCtx, 'gemini');
-    assert.equal(extractOutputChunk('gemini', firstGemini, geminiCtx), 'a답변');
-    extractFromEvent('gemini', secondGemini, geminiCtx, 'gemini');
-    assert.equal(extractOutputChunk('gemini', secondGemini, geminiCtx), 'b답변');
-    assert.equal(geminiCtx.fullText, 'a답변b답변');
-
-    const koreanCtx = { toolLog: [], fullText: '', traceLog: [] };
-    const firstKorean = { type: 'message', role: 'assistant', content: '정', delta: true };
-    const secondKorean = { type: 'message', role: 'assistant', content: '확도', delta: true };
-    extractFromEvent('gemini', firstKorean, koreanCtx, 'gemini');
-    assert.equal(extractOutputChunk('gemini', firstKorean, koreanCtx), '정');
-    extractFromEvent('gemini', secondKorean, koreanCtx, 'gemini');
-    assert.equal(extractOutputChunk('gemini', secondKorean, koreanCtx), '확도');
-    assert.equal(koreanCtx.fullText, '정확도');
-
-    const splitCtx = { toolLog: [], fullText: '', traceLog: [] };
-    const firstSplit = { type: 'message', role: 'assistant', content: 'BETA /tmp/cli', delta: true };
-    const secondSplit = { type: 'message', role: 'assistant', content: '-jaw', delta: true };
-    extractFromEvent('gemini', firstSplit, splitCtx, 'gemini');
-    assert.equal(extractOutputChunk('gemini', firstSplit, splitCtx), 'BETA /tmp/cli');
-    extractFromEvent('gemini', secondSplit, splitCtx, 'gemini');
-    assert.equal(extractOutputChunk('gemini', secondSplit, splitCtx), '-jaw');
-    assert.equal(splitCtx.fullText, 'BETA /tmp/cli-jaw');
-
-    const boundaryCtx = { toolLog: [], fullText: '', traceLog: [] };
-    extractFromEvent('gemini', { type: 'message', role: 'assistant', content: 'I will check.', delta: true }, boundaryCtx, 'gemini');
-    extractFromEvent('gemini', { type: 'tool_use', tool_name: 'run_shell_command', tool_id: 't1', parameters: { command: 'pwd' } }, boundaryCtx, 'gemini');
-    extractFromEvent('gemini', { type: 'tool_result', tool_id: 't1', status: 'success', output: '/tmp' }, boundaryCtx, 'gemini');
-    extractFromEvent('gemini', { type: 'message', role: 'assistant', content: 'Done.', delta: true }, boundaryCtx, 'gemini');
-    assert.equal(boundaryCtx.fullText, 'I will check.\n- Done.');
-
     const codexCtx = { toolLog: [], fullText: '', seenToolKeys: new Set() };
     extractFromEvent('codex', { type: 'item.completed', item: { type: 'agent_message', id: 'm1', text: 'first' } }, codexCtx, 'codex');
     assert.equal(extractOutputChunk('codex', {}, codexCtx), 'first');
@@ -1809,98 +1722,6 @@ test('opencode marks unresolved bash exec as done when the step finishes cleanly
 
     assert.equal(ctx.toolLog[0].status, 'done');
     assert.equal(ctx.toolLog[0].icon, '✅');
-});
-
-// ─── #107 Gemini thought/thinking filtering ───
-
-test('#107: extractOutputChunk skips Gemini thought events', () => {
-    // Standalone thought event type (future Gemini CLI)
-    assert.equal(
-        extractOutputChunk('gemini', { type: 'thought', content: 'internal reasoning' }),
-        '',
-    );
-    // Message event with thought flag
-    assert.equal(
-        extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'thinking...', thought: true }),
-        '',
-    );
-    // Normal message still works
-    assert.equal(
-        extractOutputChunk('gemini', { type: 'message', role: 'assistant', content: 'hello' }),
-        'hello',
-    );
-});
-
-test('#107: extractOutputChunk filters thought parts from array content', () => {
-    const event = readFixture('gemini-message-with-thought.json');
-    const chunk = extractOutputChunk('gemini', event);
-    assert.equal(chunk, 'The current directory is /home/user.');
-    assert.ok(!chunk.includes('thought'));
-});
-
-test('#107: extractFromEvent skips Gemini thought events from fullText', () => {
-    const ctx = { toolLog: [], fullText: '', traceLog: [] };
-
-    // Thought event should not accumulate
-    extractFromEvent('gemini', {
-        type: 'thought',
-        content: 'Let me reason about this...',
-    }, ctx, 'gemini');
-    assert.equal(ctx.fullText, '');
-    assert.ok(ctx.traceLog.some(l => l.includes('thought (hidden)')));
-
-    // Message with thought=true should not accumulate
-    extractFromEvent('gemini', {
-        type: 'message',
-        role: 'assistant',
-        content: 'internal thinking',
-        thought: true,
-    }, ctx, 'gemini');
-    assert.equal(ctx.fullText, '');
-
-    // Normal message should still accumulate
-    extractFromEvent('gemini', {
-        type: 'message',
-        role: 'assistant',
-        content: 'final answer',
-        delta: true,
-    }, ctx, 'gemini');
-    assert.equal(ctx.fullText, 'final answer');
-});
-
-test('#107: extractFromEvent filters thought parts from array content', () => {
-    const ctx = { toolLog: [], fullText: '', traceLog: [] };
-    const event = readFixture('gemini-message-with-thought.json');
-    extractFromEvent('gemini', event, ctx, 'gemini');
-    assert.equal(ctx.fullText, 'The current directory is /home/user.');
-    assert.ok(!ctx.fullText.includes('should check'));
-});
-
-test('#121: Gemini thoughts can be surfaced as thinking steps without entering fullText', () => {
-    const thoughtCtx = { toolLog: [], fullText: '', traceLog: [], showReasoning: true };
-    extractFromEvent('gemini', {
-        type: 'thought',
-        content: 'I should inspect the repository first.',
-    }, thoughtCtx, 'gemini');
-    assert.equal(thoughtCtx.fullText, '');
-    assert.equal(thoughtCtx.toolLog.length, 1);
-    assert.equal(thoughtCtx.toolLog[0].toolType, 'thinking');
-    assert.equal(thoughtCtx.toolLog[0].detail, 'I should inspect the repository first.');
-    assert.ok(thoughtCtx.traceLog.some(l => l.includes('thought (visible)')));
-
-    const hiddenCtx = { toolLog: [], fullText: '', traceLog: [], showReasoning: false };
-    extractFromEvent('gemini', readFixture('gemini-message-with-thought.json'), hiddenCtx, 'gemini');
-    assert.equal(hiddenCtx.fullText, 'The current directory is /home/user.');
-    assert.equal(hiddenCtx.toolLog.length, 0);
-});
-
-test('#107: extractOutputChunk handles null elements in content array', () => {
-    const chunk = extractOutputChunk('gemini', {
-        type: 'message',
-        role: 'assistant',
-        content: [null, { type: 'text', text: 'safe' }, undefined, { type: 'thought', thought: 'hidden' }],
-    });
-    assert.equal(chunk, 'safe');
 });
 
 test('claude-e streaming does not duplicate output in liveRun', async () => {
