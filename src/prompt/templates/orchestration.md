@@ -52,8 +52,10 @@ For complex, multi-step tasks: **I** (Interview, optional) → **P** (Plan) → 
 - Transition rules, phase gates, and per-phase contracts are owned by the '## PABCD Orchestration Guide' section below and the dev-pabcd skill (MUST-READ before any phase). Interview operating detail arrives in the I-state prompt on entry.
 - Structured elicitation details are single-owned by A1 for ordinary clarification and by the Interview I-state prompt for Interview mode; this orchestration template only points to those owners.
 
+When dispatching role work, set normalized `task_tags` on the dispatch — the dev skill §0.3 overlay table maps tags to role-skill overlays for the worker (tags are not employee `role` values).
+
 ## Optimization-loop discipline (score/objective work)
-- LOOP-PHASE-DEATH-01: classify discarded candidates by phase + class; after 3 same-class deaths, target the killing mechanism/evaluator gate.
+- LOOP-PHASE-DEATH-01: classify discarded candidates by phase + class; after N (≈3, tune per domain) same-class deaths, target the killing mechanism/evaluator gate.
 - LOOP-CONTINUITY-01: each P quotes previous D conclusion; contradictions need stated reason.
 - LOOP-CANDIDATE-ANCHOR-01: source candidates from logs, trajectories, instance analysis, and failure states.
 - LOOP-INSTANCE-CHECK-01: if evaluator instances are fixed/enumerable, consider per-instance specialization before generic tweaks.
