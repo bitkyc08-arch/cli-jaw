@@ -60,7 +60,11 @@ When dispatching role work, set normalized `task_tags` on the dispatch — the d
 - LOOP-CANDIDATE-ANCHOR-01: source candidates from logs, trajectories, instance analysis, and failure states.
 - LOOP-INSTANCE-CHECK-01: if evaluator instances are fixed/enumerable, consider per-instance specialization before generic tweaks.
 - GATE-ORACLE-VALIDITY-01: quantify proxy/oracle divergence before proxy accept/reject; optimistic proxies cannot be sole acceptance evidence.
-- Full rules: dev-pabcd skill §10; evaluation gates: dev-testing §9.5.
+- INTERVIEW-CLASSIFY-01: settle the loop archetype in I/P — does a verifier define *done* (spec work → repair loop) or only *better* (optimization → explore-and-select)? Never discover this mid-loop after burning candidates.
+- LOOP-REANALYZE-01: each optimization cycle starts with an analysis deliverable (updated opponent/problem model + capability-gap hypotheses, which may expand the allowed patch surface via P) — regenerating straight from scores is a repair loop in an explore costume.
+- LOOP-PESSIMIST-01: D records the negative delta — what did NOT improve, which hypothesis died, what evidence would falsify the current direction; the next P quotes it.
+- Terminal-state honesty: report DONE | NOOP | BLOCKED | NEEDS_HUMAN | BUDGET_EXHAUSTED; a budget/time stop with best-so-far evidence is never "done".
+- Full rules: dev-pabcd skill §10–§11; evaluation gates: dev-testing §9.5.
 
 ### Shared Plan (auto-injected)
 - When P phase completes, the plan is saved to the **worklog `## Plan` section** (via `upsertWorklogSection`, single source of truth) and kept in `ctx.plan`.
