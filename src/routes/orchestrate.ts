@@ -423,7 +423,15 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 });
                 return;
             }
-            throw err;
+            console.error('[orchestrate] worker claim failed:', err);
+            const message = (err as Error)?.message || String(err);
+            res.status(500).json({
+                ok: false,
+                error: 'worker_claim_failed',
+                message,
+                hint: 'Run-id/registry failure before spawn — see server log.',
+            });
+            return;
         }
 
         // Detect client abort: hook the RESPONSE's 'close' (not request's) and
@@ -649,14 +657,16 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         validateParallelSafety(agentPhases);
         const parallelResolved = new Map(agentPhases.map((ap, i) => [i, ap.parallel]));
 
-        const runOne = async (entry: BatchEntry): Promise<{ agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string }> => {
+        const runOne = async (entry: BatchEntry): Promise<{ agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string; message?: string }> => {
             let slot;
             try { slot = claimWorker(entry.emp, entry.task, replayMeta); }
             catch (err) {
                 if (err instanceof WorkerBusyError) {
                     return { agent: entry.agentName, ok: false, error: `worker_busy: ${entry.agentName} is already running` };
                 }
-                throw err;
+                console.error('[orchestrate] worker claim failed:', err);
+                const message = (err as Error)?.message || String(err);
+                return { agent: entry.agentName, ok: false, error: 'worker_claim_failed', message };
             }
             try {
                 let enrichedTask = entry.task;
