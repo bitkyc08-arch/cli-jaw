@@ -99,9 +99,11 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
                 const detailWidth = Math.max(10, width - visualWidth(detailPrefix) - visualWidth(c.reset));
                 const wrappedRows = wrapPlainLines(item.text, detailWidth).slice(-6);
                 const detailRows = wrappedRows.length > 0 ? wrappedRows : [''];
+                // jawcode parity: the live thinking tail has no cursor glyph —
+                // the single stream cursor belongs to the assistant answer tail.
                 return [
                     ...labelRows,
-                    `${gutter}${c.dim}\x1b[3mThinking${c.reset} ${c.cyan}▍${c.reset}`,
+                    `${gutter}${c.dim}\x1b[3mThinking${c.reset}${c.dim}…${c.reset}`,
                     ...detailRows.map(line => `${detailPrefix}${clipTextToCols(line, detailWidth)}${c.reset}`),
                 ];
             }
@@ -157,7 +159,7 @@ export function renderTranscriptItem(item: TranscriptItem, width: number): strin
 }
 
 
-function computeStablePrefixIndex(items: TranscriptItem[]): number {
+export function computeStablePrefixIndex(items: TranscriptItem[]): number {
     for (let i = 0; i < items.length; i++) {
         const item = items[i]!;
         if (item.type === 'assistant' && item.streaming) return i;
@@ -448,15 +450,25 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const stablePrefixIndex = hasTranscriptItems
             ? computeStablePrefixIndex(ctx.store.transcript.items) : 0;
 
-        // Only commit when ALL items are stable (turn fully complete, not streaming)
+        // Only commit when ALL items are stable (turn fully complete, not
+        // streaming). Mid-stream commits (jawcode 083.9 P3) are NOT safe with
+        // this Screen: interleaving DECSTBM commit scrolls with per-token
+        // differential repaints corrupts the frame — jawcode needs its
+        // overflow-floor/tombstone machinery for that, which this port does
+        // not have. Do not relax this gate without porting that machinery.
         const allStable = stablePrefixIndex === ctx.store.transcript.items.length;
         const commit = hasTranscriptItems && !overlayOpen && allStable
             ? viewport.peekStableCommitRows(transcriptHeight, stablePrefixIndex)
             : null;
 
-        if (commit) screen.queueCommitLines(commit.rows);
+        const queued = commit ? screen.queueCommitLines(commit.rows) : false;
 
-        const renderViewport = commit
+        // Preview-hide the committed prefix ONLY when the commit was actually
+        // accepted into the flush queue. On unsupported history lanes
+        // (zellij, TERM=dumb) queueCommitLines refuses — hiding the rows then
+        // would make them vanish entirely (not in scrollback, not in frame);
+        // they must stay on the virtual lane instead.
+        const renderViewport = commit && queued
             ? viewport.withPreviewFrontier(commit.frontier)
             : viewport;
 
@@ -465,6 +477,13 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const flushed = screen.lastCommitFlushedCount();
         if (flushed > 0 && commit) {
             viewport.markCommittedFrontier(commit.frontier);
+        } else if (queued && screen.lastCommitDeferredByStaleRows()) {
+            // Flush was deferred because the top rows still held last-frame
+            // pixels (e.g. the anchor-release frame). The repaint that just
+            // ran blanked the region — retry next frame so the commit
+            // converges. Geometry/lane refusals (tiny terminal, zellij) do
+            // NOT retry: a 16ms loop cannot change those.
+            scheduler.request();
         }
 
     });
@@ -545,7 +564,9 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         for (const token of tokens.flatMap(splitKeyInput)) {
             const action = classifyKeyAction(token);
             if (action === 'ctrl-o') {
-                if (toggleToolExpansion(ctx.store.transcript)) scheduler.request();
+                // Committed items' pixels are frozen in native scrollback —
+                // scope the toggle to the uncommitted tail (jawcode parity).
+                if (toggleToolExpansion(ctx.store.transcript, viewport.currentFrontier().itemIndex)) scheduler.request();
                 continue;
             }
             if (action === 'ctrl-l') {
@@ -595,9 +616,9 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
 
     ctx.ws.on('message', (data) => {
         handleWsMessage(ctx, data);
-        if (ctx.streaming && viewport.isFollowingTail()) {
-            viewport.followTail(true, currentRegions(ctx).transcript.height);
-        }
+        // No per-message followTail re-anchor here: setItems() already keeps the
+        // tail anchored while following, and re-anchoring with the unadjusted
+        // region height (no live-tool/history-lane reserve) caused scroll jitter.
         scheduler.request();
     });
 

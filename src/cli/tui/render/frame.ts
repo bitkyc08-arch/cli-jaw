@@ -100,6 +100,7 @@ export class Screen {
     private hasNativeCommit = false;
     private pendingCommitLines: string[] = [];
     private lastFlushed = 0;
+    private lastDeferredByStaleRows = false;
 
     get active(): boolean {
         return this.inlineActive;
@@ -182,9 +183,26 @@ export class Screen {
             this.launchClearPending = false;
         }
 
-        // Flush pending scrollback commits (sub-region, non-destructive)
+        // Flush pending scrollback commits (sub-region, non-destructive).
+        // Deferred when the rows the commit scroll would push out still hold
+        // pixels from the previous frame layout (e.g. the launch-anchored
+        // welcome on the frame that releases the anchor): the flush runs
+        // BEFORE the diff repaint, so scrolling those rows out would push the
+        // stale pixels into scrollback, interleaving them with committed
+        // lines. Skipping leaves the frontier unadvanced; the scheduler
+        // re-queues the same commit next frame, after the repaint blanked the
+        // region. (Physical committed-lane residue is invisible to prevLines —
+        // fill rows stay '' in the frame model — so residue still flushes.)
         this.lastFlushed = 0;
-        if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2) {
+        this.lastDeferredByStaleRows = false;
+        if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2
+            && !this.commitScrollOutRowsAreBlank(this.pendingCommitLines.length, Math.min(normalized.fillRows, height))) {
+            // Defer: the repaint below blanks the region; the caller may retry
+            // next frame (this is the only defer reason worth a retry — other
+            // skips are geometry/lane constraints that a retry cannot change).
+            this.lastDeferredByStaleRows = true;
+        }
+        if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2 && !this.lastDeferredByStaleRows) {
             const liveZoneTop = Math.min(normalized.fillRows, height);
             buf += `\x1b[1;${liveZoneTop}r`;
             buf += `\x1b[${liveZoneTop};1H`;
@@ -324,18 +342,43 @@ export class Screen {
         this.lastHeight = height;
     }
 
-    queueCommitLines(lines: string[]): void {
-        if (!this.inlineActive || lines.length === 0) return;
-        if (this.needsResizeRepaint()) return;
-        if (detectHistoryLaneMode() !== 'standard') return;
+    /**
+     * The commit scroll pushes the top `count` rows of the 1..liveZoneTop
+     * region into scrollback. Those rows must not hold last-frame pixels
+     * (prevLines is the painted frame model; committed-lane residue is not in
+     * it, fill rows read as ''). A fresh screen (nothing painted yet, e.g.
+     * right after the launch clear in this same render pass) is blank.
+     */
+    private commitScrollOutRowsAreBlank(count: number, liveZoneTop: number): boolean {
+        if (this.prevLines.length === 0) return true;
+        const pushed = Math.min(count, liveZoneTop);
+        for (let i = 0; i < pushed; i++) {
+            const row = this.prevLines[i] ?? '';
+            if (row.replace(/\x1b\[[0-9;]*m/g, '').trim() !== '') return false;
+        }
+        return true;
+    }
+
+    /** Returns true when the lines were accepted into the pending commit queue. */
+    queueCommitLines(lines: string[]): boolean {
+        if (!this.inlineActive || lines.length === 0) return false;
+        if (this.needsResizeRepaint()) return false;
+        if (detectHistoryLaneMode() !== 'standard') return false;
         const width = Math.max(1, process.stdout.columns || 80);
         this.pendingCommitLines.push(...lines.map(line => normalizeFrameRow(line, width)));
+        return true;
     }
 
     lastCommitFlushedCount(): number {
         const n = this.lastFlushed;
         this.lastFlushed = 0;
         return n;
+    }
+
+    /** True when the last render deferred a flush because the scroll-out rows
+     *  still held last-frame pixels — the one defer reason a retry resolves. */
+    lastCommitDeferredByStaleRows(): boolean {
+        return this.lastDeferredByStaleRows;
     }
 
     forceRedraw(): void {

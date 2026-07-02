@@ -150,3 +150,20 @@ test('clearLiveToolItems clears only live state', () => {
     assert.equal(s.liveTools.length, 0);
     assert.equal(s.items.length, 1);
 });
+
+test('toggleToolExpansion(fromIndex) leaves committed items untouched', async () => {
+    const { createTranscriptState, appendToolItem, toggleToolExpansion } = await import('../../src/cli/tui/transcript.ts');
+    const state = createTranscriptState();
+    appendToolItem(state, 'committed tool', { status: 'done', stepRef: 'c-1' });
+    appendToolItem(state, 'live tool', { status: 'done', stepRef: 'l-1' });
+
+    assert.equal(toggleToolExpansion(state, 1), true);
+    const committed = state.items[0]!;
+    const live = state.items[1]!;
+    if (committed.type === 'tool' && live.type === 'tool') {
+        assert.equal(committed.collapsed, true, 'committed item must keep its frozen collapsed state');
+        assert.equal(live.collapsed, false, 'uncommitted item expands');
+    }
+
+    assert.equal(toggleToolExpansion(state, state.items.length), false, 'nothing to toggle past the frontier without live tools');
+});

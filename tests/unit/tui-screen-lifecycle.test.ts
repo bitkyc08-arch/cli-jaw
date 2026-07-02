@@ -586,3 +586,78 @@ test('Screen defers native scrollback commits while geometry is dirty', () => {
         if (rowsDesc) Object.defineProperty(process.stdout, 'rows', rowsDesc);
     }
 });
+
+test('commit flush defers on the anchor-release frame so stale welcome pixels never enter scrollback', () => {
+    const envSnapshot = clearMuxEnv();
+    const term = new AnsiTerminalModel(80, 24);
+    const origWrite = process.stdout.write.bind(process.stdout);
+    const colsDesc = Object.getOwnPropertyDescriptor(process.stdout, 'columns');
+    const rowsDesc = Object.getOwnPropertyDescriptor(process.stdout, 'rows');
+    Object.defineProperty(process.stdout, 'columns', { value: 80, configurable: true });
+    Object.defineProperty(process.stdout, 'rows', { value: 24, configurable: true });
+    process.stdout.write = ((chunk: string | Uint8Array) => {
+        term.write(typeof chunk === 'string' ? chunk : Buffer.from(chunk).toString('utf8'));
+        return true;
+    }) as typeof process.stdout.write;
+    try {
+        const screen = new Screen();
+        screen.enter();
+
+        // Frame A — launch anchor: welcome pixels occupy the top rows.
+        const welcome = ['WELCOME-1', 'WELCOME-2', 'WELCOME-3'];
+        screen.render({ rows: [...welcome, VIEWPORT_FILL, 'footer', 'composer'] });
+
+        // Frame B — anchor released: commit queued in the same frame that
+        // repaints the layout (live frame already excludes the committed rows,
+        // mirroring withPreviewFrontier). The flush must defer: the rows the
+        // commit scroll would push out still hold the frame-A welcome pixels.
+        const commitRows = [...welcome, 'you: hi', 'answer done'];
+        const liveFrame = { rows: [VIEWPORT_FILL, 'live tail…', 'footer', 'composer'] };
+        assert.equal(screen.queueCommitLines(commitRows), true);
+        screen.render(liveFrame);
+        assert.equal(screen.lastCommitFlushedCount(), 0, 'flush must defer on the layout-shift frame');
+        assert.equal(term.scrollback.filter(line => line.includes('WELCOME')).length, 0,
+            'no stale welcome pixels may be scrolled into scrollback');
+
+        // Frame C — same layout, region now blank: the re-queued commit flushes.
+        assert.equal(screen.queueCommitLines(commitRows), true);
+        screen.render(liveFrame);
+        assert.equal(screen.lastCommitFlushedCount(), commitRows.length, 'deferred commit flushes on the next frame');
+
+        // Committed lines live in the top history lane exactly once, in order;
+        // scrollback holds only the blank fill rows they displaced — never
+        // stale welcome pixels or duplicates.
+        assert.equal(term.scrollback.map(line => line.trim()).filter(Boolean).length, 0,
+            `scrollback picked up stale pixels: ${JSON.stringify(term.scrollback)}`);
+        for (const row of commitRows) {
+            assert.equal(term.countVisible(row), 1, `history lane must show "${row}" exactly once`);
+        }
+        const visible = term.visibleText();
+        assert.ok(visible.indexOf('WELCOME-1') < visible.indexOf('you: hi'), 'lane preserves commit order');
+        assert.equal(term.countVisible('live tail…'), 1, 'live region intact');
+    } finally {
+        process.stdout.write = origWrite;
+        if (colsDesc) Object.defineProperty(process.stdout, 'columns', colsDesc);
+        if (rowsDesc) Object.defineProperty(process.stdout, 'rows', rowsDesc);
+        restoreMuxEnv(envSnapshot);
+    }
+});
+
+test('unsupported history lane refuses commit queueing so callers keep rows on the virtual lane', () => {
+    const envSnapshot = snapshotMuxEnv();
+    process.env.ZELLIJ = '1';
+    const origWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (() => true) as typeof process.stdout.write;
+    try {
+        const screen = new Screen();
+        screen.enter();
+        screen.render({ rows: [VIEWPORT_FILL, 'body', 'footer'] });
+        assert.equal(screen.queueCommitLines(['row-1', 'row-2']), false,
+            'zellij lane must refuse the queue — callers use this to skip the preview frontier');
+        screen.render({ rows: [VIEWPORT_FILL, 'body', 'footer'] });
+        assert.equal(screen.lastCommitFlushedCount(), 0);
+    } finally {
+        process.stdout.write = origWrite;
+        restoreMuxEnv(envSnapshot);
+    }
+});

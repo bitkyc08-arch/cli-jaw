@@ -623,3 +623,44 @@ test('fullscreen reused viewport rerenders after terminal width shrinks', () => 
         assert.match(expanded[regions.help.y - 1] ?? '', /shortcuts/);
     });
 });
+
+test('streaming render carries exactly one cursor glyph, on the assistant tail only', async () => {
+    const { computeStablePrefixIndex } = await import('../../bin/commands/tui/fullscreen-mode.ts');
+    const state = createTuiStore().transcript;
+    appendUserItem(state, 'hello', 'hello');
+    appendThinkingTurnText(state, 'reasoning tail line', 'main');
+    appendAssistantTurnText(state, 'streaming answer text', 'main');
+
+    const thinkingItem = state.items[1]!;
+    const assistantItem = state.items[2]!;
+    const thinkingRows = renderTranscriptItem(thinkingItem, 80).join('\n');
+    const assistantRows = renderTranscriptItem(assistantItem, 80).join('\n');
+
+    assert.equal(thinkingRows.includes('▍'), false, 'thinking rows must never render a stream cursor');
+    assert.equal((assistantRows.match(/▍/g) ?? []).length, 1, 'streaming assistant tail carries the single cursor');
+
+    // settled thinking no longer blocks the stable prefix while the answer streams
+    assert.equal(computeStablePrefixIndex(state.items), 2);
+});
+
+test('Viewport primitive: peekStableCommitRows honors a stable prefix bound', () => {
+    // Primitive capability only — the fullscreen scheduler deliberately gates
+    // commits behind allStable (mid-stream commits corrupt the frame; see
+    // tui-fullscreen-source-contract). This pins the prefix-bound semantics
+    // of the Viewport API itself.
+    const viewport = new Viewport();
+    viewport.setWidth(40);
+    const state = createTuiStore().transcript;
+    appendUserItem(state, 'question', 'question');
+    appendThinkingTurnText(state, 'settled reasoning', 'main');
+    for (let i = 0; i < 12; i++) appendAssistantTurnText(state, `answer line ${i}\n`, 'main');
+
+    const transcriptHeight = 6;
+    viewport.setItems(state.items, (item) => renderTranscriptItem(item, 40), transcriptHeight);
+
+    // streaming tail (assistant) is item index 2; stable prefix is [user, settled thinking]
+    const commit = viewport.peekStableCommitRows(transcriptHeight, 2);
+    assert.ok(commit, 'prefix-bounded commit rows must be computable');
+    assert.ok(commit!.rows.length > 0);
+    assert.equal(commit!.frontier.itemIndex, 2, 'frontier stops before the streaming assistant tail');
+});

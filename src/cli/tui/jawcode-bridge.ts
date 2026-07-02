@@ -235,24 +235,26 @@ export function renderStatusBar(segments: {
     port?: number | undefined;
     orchPhase?: string | undefined;
 }): string {
-    const theme = getTheme();
     const icon = (() => { try { const { sharkIcon } = require('./icons.js'); return sharkIcon(); } catch { return '🦈'; } })();
     const parts: string[] = [];
     const cols = process.stdout.columns || 80;
+    // Segment-safe styles: the left segment renders on the cyan status
+    // background (renderSegment sets 46;30), so parts must not repaint the
+    // foreground with theme colors (cyan-on-cyan in dark mode) and must not
+    // emit \x1b[0m, which would drop the background mid-segment. Only
+    // intensity toggles (1/2 … 22) are safe here.
     const style = {
-        accent: (text: string) => theme ? theme.fg('accent', text) : `\x1b[36m${text}\x1b[0m`,
-        muted: (text: string) => theme ? theme.fg('muted', text) : `\x1b[2m${text}\x1b[0m`,
-        warning: (text: string) => theme ? theme.fg('warning', text) : `\x1b[33m${text}\x1b[0m`,
-        bold: (text: string) => theme ? theme.bold(text) : `\x1b[1m${text}\x1b[0m`,
+        strong: (text: string) => `\x1b[1m${text}\x1b[22m`,
+        soft: (text: string) => `\x1b[2m${text}\x1b[22m`,
     };
-    if (segments.model) parts.push(style.accent(segments.model));
-    parts.push(`${segments.engineAccent}${style.bold(`${icon} ${segments.engine}`)}`);
-    parts.push(segments.state === 'idle' ? style.muted(segments.state) : style.accent(segments.state));
-    if (segments.elapsed) parts.push(style.muted(segments.elapsed));
-    if (segments.bgtask && segments.bgtask > 0) parts.push(style.warning(`⏳${segments.bgtask}`));
-    if (segments.orchPhase) parts.push(style.accent(`📋${segments.orchPhase.toUpperCase()}`));
-    if (segments.gitBranch) parts.push(style.muted(`ⴲ ${segments.gitBranch}`));
-    if (segments.cwd) parts.push(style.muted(`📁 ${segments.cwd}`));
+    if (segments.model) parts.push(style.strong(segments.model));
+    parts.push(style.strong(`${icon} ${segments.engine}`));
+    parts.push(segments.state === 'idle' ? style.soft(segments.state) : style.strong(segments.state));
+    if (segments.elapsed) parts.push(style.soft(segments.elapsed));
+    if (segments.bgtask && segments.bgtask > 0) parts.push(style.strong(`⏳${segments.bgtask}`));
+    if (segments.orchPhase) parts.push(style.strong(`📋${segments.orchPhase.toUpperCase()}`));
+    if (segments.gitBranch) parts.push(style.soft(`ⴲ ${segments.gitBranch}`));
+    if (segments.cwd) parts.push(style.soft(`📁 ${segments.cwd}`));
     while (widthOf(parts.join(' · ')) > Math.max(10, cols - 24) && parts.length > 3) {
         parts.splice(-1, 1);
     }
