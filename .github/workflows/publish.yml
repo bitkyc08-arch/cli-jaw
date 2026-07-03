@@ -137,6 +137,18 @@ jobs:
             esac
           fi
 
+          if [ "$EVENT_NAME" != "workflow_dispatch" ] && [ "$GITHUB_REF_NAME" = "main" ]; then
+            case "$version" in
+              *-*)
+                skip_publish="true"
+                skip_reason="main branch prerelease sync"
+                dry_run="true"
+                create_release="false"
+                echo "::notice::Skipping npm publish for main branch prerelease sync: $version"
+                ;;
+            esac
+          fi
+
           if [ "$tag" = "preview" ] && [ "$skip_publish" != "true" ]; then
             case "$version" in
               *-preview.*) ;;
@@ -147,7 +159,7 @@ jobs:
             esac
           fi
 
-          if [ "$tag" = "latest" ]; then
+          if [ "$tag" = "latest" ] && [ "$skip_publish" != "true" ]; then
             case "$version" in
               *-*)
                 echo "::error::latest publishes cannot use a prerelease version; got $version";

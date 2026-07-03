@@ -65,5 +65,7 @@ test('PSC-005: ref skill catalog stays a lookup instruction, never a listing', (
 test('PSC-006: A-1 template stays under its size budget', () => {
     // 32,558 chars before the slim; regression guard so sections do not
     // silently regrow inline instead of pointing at skills.
-    assert.ok(a1Src.length <= 31000, `a1-system.md is ${a1Src.length} chars — over the 31,000 budget`);
+    // Budget raised 31,000 → 35,000 for the critical-stance block and
+    // exclusions-first dispatch constraint (4d8c54cc, 43c2a4f2).
+    assert.ok(a1Src.length <= 35000, `a1-system.md is ${a1Src.length} chars — over the 35,000 budget`);
 });

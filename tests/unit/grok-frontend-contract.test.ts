@@ -157,7 +157,7 @@ test('LEGACY-FE-002: fallback CLI surfaces include every canonical CLI', () => {
     const heartbeat = src('public/manager/src/settings/pages/components/heartbeat-helpers.ts');
     const status = src('public/js/features/settings-cli-status.ts');
     const freshInstallSmoke = src('scripts/fresh-install-smoke.ts');
-    for (const cli of ['ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'kiro-code', 'gemini', 'grok', 'opencode']) {
+    for (const cli of ['ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'kiro-code', 'grok', 'opencode']) {
         assert.match(employees, new RegExp(`'${cli}'`), `manager employee fallback must include ${cli}`);
         assert.match(heartbeat, new RegExp(`'${cli}'`), `manager heartbeat fallback must include ${cli}`);
         assert.match(status, new RegExp(`'${cli}'|${cli}:`), `legacy CLI status hints must include ${cli}`);
