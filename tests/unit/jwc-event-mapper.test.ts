@@ -56,3 +56,34 @@ test('jwc agent_end does not duplicate already streamed final text', () => {
         clearAllBroadcastListeners();
     }
 });
+
+// ─── WP4b (devlog 260703 doc 13): agent_tool carries the authoritative run start ───
+
+test('jwc tool broadcasts carry startedAt from the context runStartedAt', () => {
+    const events: Array<{ type: string; data: Record<string, unknown> }> = [];
+    clearAllBroadcastListeners();
+    addBroadcastListener((type, data) => events.push({ type, data }));
+
+    const startedAt = 1_700_000_000_000;
+    const ctx = { cwd: '/tmp/unit', sessionId: 's1', runStartedAt: startedAt };
+    try {
+        mapAgentEventToBus({
+            type: 'tool_execution_start', toolCallId: 'tc1', toolName: 'bash', args: { command: 'ls' },
+        }, ctx);
+        mapAgentEventToBus({
+            type: 'tool_execution_update', toolCallId: 'tc1', toolName: 'bash', args: { command: 'ls' },
+        }, ctx);
+        mapAgentEventToBus({
+            type: 'tool_execution_end', toolCallId: 'tc1', toolName: 'bash', isError: false,
+        }, ctx);
+
+        const tools = events.filter((event) => event.type === 'agent_tool');
+        assert.equal(tools.length, 3);
+        for (const tool of tools) {
+            assert.equal(tool.data['startedAt'], startedAt, 'every agent_tool must carry the run start');
+        }
+        assert.equal(tools[2]?.data['status'], 'done');
+    } finally {
+        clearAllBroadcastListeners();
+    }
+});

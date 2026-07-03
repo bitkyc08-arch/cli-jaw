@@ -91,10 +91,14 @@ class JawRuntime {
     /** Live-run scope of the turn in flight; the event subscription reads this so
      *  streamed text/tools accumulate into the right scope for persistence. */
     #liveScope: string | undefined;
+    /** Wall-clock start of the turn in flight — rides on agent_tool broadcasts as
+     *  the authoritative elapsed-timer origin (WP4b, devlog 260703 doc 13). */
+    #runStartedAt: number | undefined;
 
     /** Bind the live-run scope of the next turn (set by the spawn branch). */
     setLiveScope(scope: string | undefined): void {
         this.#liveScope = scope;
+        this.#runStartedAt = scope ? Date.now() : undefined;
     }
 
     async abort(): Promise<void> {
@@ -142,7 +146,7 @@ class JawRuntime {
             ...(this.#thinkingLevel ? { thinkingLevel: this.#thinkingLevel } : {}),
         });
         const unsubscribe = session.subscribe(event =>
-            mapAgentEventToBus(event, { cwd, sessionId: cwd, liveScope: this.#liveScope }),
+            mapAgentEventToBus(event, { cwd, sessionId: cwd, liveScope: this.#liveScope, runStartedAt: this.#runStartedAt }),
         );
         this.#slot = { session, cwd, unsubscribe };
         return this.#slot;

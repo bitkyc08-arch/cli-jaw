@@ -42,6 +42,9 @@ export interface JwcEventContext {
     /** Live-run scope to accumulate text/tools into, so the spawn branch can
      *  persist the final assistant message + tool log after the turn (110.4 §3). */
     liveScope?: string | undefined;
+    /** Turn start (ms) — rides on agent_tool broadcasts so the web UI elapsed timer
+     *  has an authoritative origin instead of client arrival time (WP4b). */
+    runStartedAt?: number | undefined;
 }
 
 function toolLabel(name: string | undefined, args: unknown): { label: string; detail: string } {
@@ -110,12 +113,12 @@ export function mapAgentEventToBus(event: JwcAgentEvent, ctx: JwcEventContext): 
 
         case 'tool_execution_start': {
             const { label, detail } = toolLabel(event.toolName, event.args);
-            broadcast('agent_tool', { ...base, stepRef: event.toolCallId, label, detail, status: 'running', toolType: event.toolName });
+            broadcast('agent_tool', { ...base, stepRef: event.toolCallId, label, detail, status: 'running', toolType: event.toolName, startedAt: ctx.runStartedAt });
             break;
         }
         case 'tool_execution_update': {
             const { label, detail } = toolLabel(event.toolName, event.args);
-            broadcast('agent_tool', { ...base, stepRef: event.toolCallId, label, detail, status: 'running', toolType: event.toolName });
+            broadcast('agent_tool', { ...base, stepRef: event.toolCallId, label, detail, status: 'running', toolType: event.toolName, startedAt: ctx.runStartedAt });
             break;
         }
         case 'tool_execution_end': {
@@ -126,7 +129,7 @@ export function mapAgentEventToBus(event: JwcAgentEvent, ctx: JwcEventContext): 
             if (ctx.liveScope) {
                 appendLiveRunTool(ctx.liveScope, { icon: 'tool', label, status, toolType: event.toolName });
             }
-            broadcast('agent_tool', { ...base, stepRef: event.toolCallId, label, status, toolType: event.toolName });
+            broadcast('agent_tool', { ...base, stepRef: event.toolCallId, label, status, toolType: event.toolName, startedAt: ctx.runStartedAt });
             break;
         }
 
