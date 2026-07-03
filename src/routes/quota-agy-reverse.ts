@@ -38,6 +38,7 @@ type AgyQuotaFamily = 'gem' | 'cla';
 
 function classifyAgyQuotaFamily(model: AntigravityModelQuota): AgyQuotaFamily | null {
     const haystack = `${model.label || ''} ${model.modelId || ''}`.toLowerCase();
+    if (haystack.includes('gemini')) return 'gem';
     if (
         haystack.includes('claude')
         || haystack.includes('opus')
