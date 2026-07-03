@@ -47,7 +47,8 @@ test('DTH-003: server keep-alive outlives pollers and worker polls skip the rate
 test('DTH-004: delayed worker replays carry an explicit marker', () => {
     assert.ok(pipelineSrc.includes('buildWorkerReplayNotice(pr)'),
         'late replay prompt text should be delegated to the bounded notice builder');
-    assert.ok(replayNoticeSrc.includes('[worker-replay agent=${input.agentId}'),
+    // WP7: agentId is length-capped into a local before interpolation.
+    assert.ok(replayNoticeSrc.includes('[worker-replay agent=${agentId}'),
         'late re-injections must be recognizable — the boss may have already compensated (doc 08 §2.3)');
     assert.ok(replayNoticeSrc.includes('run=${input.runId}'),
         'late re-injections must carry run identity for explicit recovery');
