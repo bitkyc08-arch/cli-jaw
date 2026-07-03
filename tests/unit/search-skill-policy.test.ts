@@ -158,9 +158,9 @@ test('SSP-012: common dev skill points external current evidence to search', { s
     const devSkill = fs.readFileSync(devSkillPath, 'utf8');
 
     assert.match(devSkill, /External\/current evidence/);
-    assert.match(devSkill, /current versions, release notes, CVEs, package\/source checks, provider\s+behavior/);
+    assert.match(devSkill, /current versions, release notes, CVEs, package\/source checks, or provider\s+behavior/);
     assert.match(devSkill, /read the active `search` skill/);
-    assert.match(devSkill, /query-rewrite, source-fetch, and evidence-status rules/);
+    assert.match(devSkill, /query-rewrite, source-fetch, and\s+evidence-status rules/);
     assert.doesNotMatch(devSkill, /\/Users\/jun\/\.cli-jaw-\d+/);
 });
 

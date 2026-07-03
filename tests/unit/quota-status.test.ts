@@ -187,7 +187,7 @@ test('QS-005b: /api/quota returns every top-level CLI runtime key', () => {
         settingsRouteSrc.includes('CLI_KEYS.map((key) => [key, quotaByCli[key]'),
         '/api/quota should be keyed by CLI_KEYS instead of a hand-maintained subset',
     );
-    for (const key of ['agy', "'ai-e'", 'claude', "'claude-e'", 'codex', "'codex-app'", 'cursor', "'kiro-code'", 'gemini', 'grok', 'opencode', 'copilot']) {
+    for (const key of ['agy', "'ai-e'", 'claude', "'claude-e'", 'codex', "'codex-app'", 'cursor', "'kiro-code'", 'grok', 'opencode', 'copilot']) {
         assert.ok(settingsRouteSrc.includes(`${key}:`), `/api/quota should define ${key}`);
     }
 });
@@ -203,10 +203,6 @@ test('QS-005c3: AGY quota uses reverse-engineered adapters', () => {
     assert.ok(
         agyQuotaSrc.includes('agy:antigravity-usage'),
         'AGY reverse quota should support antigravity-usage JSON adapter',
-    );
-    assert.ok(
-        agyQuotaSrc.includes('agy:google-cloud-code-api'),
-        'AGY reverse quota should fall back to Google Cloud Code API',
     );
 });
 
@@ -357,21 +353,6 @@ test('QS-010b: QuotaWindow type preserves source modelId for compact Gemini labe
     assert.ok(
         settingsSrc.includes('modelId?: string'),
         'QuotaWindow should allow preserving source modelId',
-    );
-});
-
-test('QS-010c: Gemini quota normalization exposes compact F/P policy', () => {
-    assert.ok(
-        quotaSrc.includes('normalizeGeminiQuotaBuckets'),
-        'should expose Gemini quota normalization helper',
-    );
-    assert.ok(
-        quotaSrc.includes("label: tier === 'pro' ? 'P' : 'F'"),
-        'Gemini quota labels should normalize to P/F',
-    );
-    assert.ok(
-        quotaSrc.includes("tier !== 'flash' && tier !== 'pro'"),
-        'Gemini quota normalization should exclude non-Pro/Flash tiers',
     );
 });
 

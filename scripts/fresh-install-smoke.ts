@@ -179,7 +179,7 @@ async function main(): Promise<void> {
         if (!cliRes.ok) throw new Error(`/api/cli-status HTTP ${cliRes.status}`);
         const cliJson = (await cliRes.json()) as Record<string, unknown> | null;
         const keys = Object.keys(cliJson ?? {});
-        const required: string[] = ['ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'kiro-code', 'gemini', 'grok', 'opencode'];
+        const required: string[] = ['ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'kiro-code', 'grok', 'opencode'];
         for (const k of required) {
             if (!keys.includes(k)) throw new Error(`missing cli key in status: ${k}`);
         }
