@@ -7,7 +7,9 @@ import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
-import { getState, getCtx, setState, resetState, canTransition, resetAllStaleStates, parseWorkerVerdict } from '../orchestrator/state-machine.js';
+import { getState, getCtx, setState, resetState, canTransition, resetAllStaleStates, parseWorkerVerdict, aggregateBatchVerdicts } from '../orchestrator/state-machine.js';
+import type { WorkerVerdict } from '../orchestrator/state-machine.js';
+import { normalizeTaskTags } from '../prompt/builder.js';
 import { parsePhaseAttestationObject } from '../orchestrator/attestation.js';
 import { resetFriction } from '../orchestrator/friction.js';
 import { buildSeedFromEvidence, renderSeedBlock } from '../orchestrator/seed.js';
@@ -326,6 +328,9 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         }
         const { task: rawTask, phase, mutable, scope } = req.body || {};
         const wait = req.body?.wait !== false;
+        // 260703 dispatch affordance: forward task_tags (dev §0.3 overlays) —
+        // documented for months but never extracted from the body until now.
+        const taskTags = normalizeTaskTags(req.body?.task_tags);
         const task = typeof rawTask === 'string' ? rawTask.trim() : '';
         if (!task) return fail(res, 400, 'Missing task');
         const allowWrite = mutable === true;
@@ -478,6 +483,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 phaseProfile: [resolvedPhase],
                 mutable: allowWrite,
                 scope: scope || null,
+                task_tags: taskTags,
             };
             // Phase 57: Pass worklog path so the worker can append progress entries.
             const worklog = dispatchCtx?.worklogPath ? { path: dispatchCtx.worklogPath } : {};
@@ -565,6 +571,20 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 }
                 return;
             }
+            if (!reply) {
+                // 260703 (Opus review FINDING 3): single wait:false parity with
+                // async batch — proactively drain so an --async caller's result
+                // does not wait for an organic idle event. A blocking CLI poller
+                // keeps the boss busy, so the isAgentBusy() guard skips this
+                // path for normal polled dispatches (no double delivery).
+                if (!isAgentBusy()) {
+                    queueMicrotask(() => {
+                        drainPendingReplays({ origin: 'system' })
+                            .catch(err => console.error('[dispatch:async-drain]', (err as Error).message));
+                    });
+                }
+                return;
+            }
             // Only clear replay flag after response is actually flushed to client.
             if (reply) {
                 res.on('finish', () => markWorkerReplayed(slot.agentId));
@@ -637,6 +657,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             parallel: boolean;
             affectedFiles: string[];
             resolvedPhase: number;
+            taskTags: string[];
         }
 
         const entries: BatchEntry[] = [];
@@ -662,6 +683,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 scope, parallel: item?.parallel === true,
                 affectedFiles: Array.isArray(item?.affected_files) ? item.affected_files.map(String) : [],
                 resolvedPhase,
+                taskTags: normalizeTaskTags(item?.task_tags),
             });
         }
 
@@ -673,17 +695,30 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         validateParallelSafety(agentPhases);
         const parallelResolved = new Map(agentPhases.map((ap, i) => [i, ap.parallel]));
 
-        const runOne = async (entry: BatchEntry): Promise<{ agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string; message?: string }> => {
-            let slot;
-            try { slot = claimWorker(entry.emp, entry.task, replayMeta); }
-            catch (err) {
+        // 260703 dispatch affordance: pre-claim all slots before execution —
+        // fail-fast WorkerBusyError parity with single dispatch, and the
+        // wait:false 202 body carries real runIds (A-phase audit resolution 1).
+        // Claims are per-agentId independent; one busy agent never blocks the rest.
+        // DELIBERATE semantics (Opus review FINDING 1): a batch reserves EVERY
+        // named agent for its whole lifetime — sequential entries hold their
+        // slot (worker_busy to outside dispatches) while parallel peers run.
+        const batchWait = req.body?.wait !== false;
+        interface ClaimedEntry { entry: BatchEntry; slot: ReturnType<typeof claimWorker> | null; claimError?: string }
+        const claimedEntries: ClaimedEntry[] = entries.map((entry) => {
+            try {
+                return { entry, slot: claimWorker(entry.emp, entry.task, replayMeta) };
+            } catch (err) {
                 if (err instanceof WorkerBusyError) {
-                    return { agent: entry.agentName, ok: false, error: `worker_busy: ${entry.agentName} is already running` };
+                    return { entry, slot: null, claimError: `worker_busy: ${entry.agentName} is already running` };
                 }
                 console.error('[orchestrate] worker claim failed:', err);
-                const message = (err as Error)?.message || String(err);
-                return { agent: entry.agentName, ok: false, error: 'worker_claim_failed', message };
+                return { entry, slot: null, claimError: `worker_claim_failed: ${(err as Error)?.message || String(err)}` };
             }
+        });
+
+        type BatchResult = { agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string; message?: string; verdict?: WorkerVerdict };
+
+        const runOne = async (entry: BatchEntry, slot: NonNullable<ClaimedEntry['slot']>): Promise<BatchResult> => {
             try {
                 let enrichedTask = entry.task;
                 if (dispatchCtx?.plan) {
@@ -700,6 +735,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                     currentPhase: entry.resolvedPhase, currentPhaseIdx: 0,
                     phaseProfile: [entry.resolvedPhase],
                     mutable: entry.allowWrite, scope: entry.scope,
+                    task_tags: entry.taskTags,
                 };
                 const worklog = dispatchCtx?.worklogPath ? { path: dispatchCtx.worklogPath } : {};
                 const result = await runSingleAgent(ap, entry.emp, worklog, 1, { origin: 'api', projectDirs: dispatchCtx?.projectDirs }, []);
@@ -709,6 +745,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 finishWorker(slot.agentId, text, resultTools);
                 recordDispatch();
                 const run = getWorkerRunRecord(slot.runId);
+                const verdict = parseWorkerVerdict(text);
                 return {
                     agent: entry.agentName,
                     ok: true,
@@ -717,6 +754,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                     preview: previewText(text, 600) || '',
                     recoveryCommand: `cli-jaw worker read ${slot.runId} --tail 120`,
                     outputBytes: run?.outputBytes || 0,
+                    ...(verdict ? { verdict } : {}),
                 };
             } catch (err: unknown) {
                 const msg = previewText((err as Error)?.message || String(err), 600) || 'unknown error';
@@ -732,21 +770,98 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             }
         };
 
-        const parallelEntries = entries.filter((_, i) => parallelResolved.get(i));
-        const sequentialEntries = entries.filter((_, i) => !parallelResolved.get(i));
-
-        const results: { agent: string; ok: boolean; runId?: string; status?: string; preview?: string; recoveryCommand?: string; outputBytes?: number; error?: string }[] = [];
-        if (parallelEntries.length > 0) {
-            const settled = await Promise.allSettled(parallelEntries.map(e => runOne(e)));
-            for (const s of settled) {
-                results.push(s.status === 'fulfilled' ? s.value : { agent: '?', ok: false, error: String((s as PromiseRejectedResult).reason) });
+        const executeBatch = async (): Promise<BatchResult[]> => {
+            const results: BatchResult[] = [];
+            for (const c of claimedEntries) {
+                if (!c.slot) results.push({ agent: c.entry.agentName, ok: false, error: c.claimError || 'worker_claim_failed' });
             }
-        }
-        for (const entry of sequentialEntries) {
-            results.push(await runOne(entry));
+            const runnable = claimedEntries
+                .map((c, i) => ({ c, parallel: parallelResolved.get(i) === true }))
+                .filter((x): x is { c: ClaimedEntry & { slot: NonNullable<ClaimedEntry['slot']> }; parallel: boolean } => x.c.slot !== null);
+            const parallelRunnable = runnable.filter(x => x.parallel);
+            const sequentialRunnable = runnable.filter(x => !x.parallel);
+            if (parallelRunnable.length > 0) {
+                const settled = await Promise.allSettled(parallelRunnable.map(x => runOne(x.c.entry, x.c.slot)));
+                for (const s of settled) {
+                    results.push(s.status === 'fulfilled' ? s.value : { agent: '?', ok: false, error: String((s as PromiseRejectedResult).reason) });
+                }
+            }
+            for (const x of sequentialRunnable) {
+                results.push(await runOne(x.c.entry, x.c.slot));
+            }
+            return results;
+        };
+
+        // Phase 58 parity for batch (260703): aggregate worker verdicts
+        // conservatively and persist gate status with the same race guard as
+        // single dispatch — previously batch results earned no A/B gate credit.
+        const persistBatchVerdict = (results: BatchResult[]) => {
+            let aggregate = aggregateBatchVerdicts(currentOrcState, results.map(r => r.verdict ?? null));
+            // 260703 Opus correctness review (FINDING 2): an execution failure
+            // (worker crash or busy claim) must not be absorbed into a POSITIVE
+            // gate verdict — one surviving auditor's PASS beside a dead peer
+            // leaves the gate pending. Negative aggregates stay (conservative).
+            const anyExecutionFailure = results.some(r => !r.ok);
+            if (anyExecutionFailure && (aggregate === 'pass' || aggregate === 'done')) aggregate = null;
+            const stateAtCompletion = getState(dispatchScope);
+            let statusPersisted = false;
+            let persistedField: 'auditStatus' | 'verificationStatus' | null = null;
+            if (aggregate && dispatchCtx && stateAtCompletion === currentOrcState) {
+                const freshCtx = getCtx(dispatchScope) || dispatchCtx;
+                if (currentOrcState === 'A' && (aggregate === 'pass' || aggregate === 'fail')) {
+                    setState('A', { ...freshCtx, auditStatus: aggregate }, dispatchScope);
+                    statusPersisted = true;
+                    persistedField = 'auditStatus';
+                } else if (currentOrcState === 'B' && (aggregate === 'done' || aggregate === 'needs_fix')) {
+                    setState('B', { ...freshCtx, verificationStatus: aggregate }, dispatchScope);
+                    statusPersisted = true;
+                    persistedField = 'verificationStatus';
+                }
+            }
+            return {
+                verdict: aggregate,
+                currentState: currentOrcState,
+                stateAtCompletion,
+                ctxPresent: Boolean(dispatchCtx),
+                statusPersisted,
+                persistedField,
+                anyExecutionFailure,
+            };
+        };
+
+        if (!batchWait) {
+            // 202 + detached execution. Async batch results still reach the boss:
+            // finishWorker marks pendingReplay unconditionally, and the proactive
+            // drain below mirrors the single-dispatch disconnect branch (audit
+            // resolution 2) so delivery does not wait for an organic idle event.
+            res.status(202).json({
+                ok: true,
+                state: 'running',
+                workers: claimedEntries.map(c => c.slot
+                    ? { agent: c.entry.agentName, accepted: true, agentId: c.slot.agentId, runId: c.slot.runId }
+                    : { agent: c.entry.agentName, accepted: false, error: c.claimError || 'worker_claim_failed' }),
+            });
+            void (async () => {
+                try {
+                    const results = await executeBatch();
+                    persistBatchVerdict(results);
+                } catch (err) {
+                    console.error('[orchestrate:batch-async]', (err as Error)?.message || String(err));
+                } finally {
+                    if (!isAgentBusy()) {
+                        queueMicrotask(() => {
+                            drainPendingReplays({ origin: 'system' })
+                                .catch(err => console.error('[orchestrate:batch-drain]', (err as Error).message));
+                        });
+                    }
+                }
+            })();
+            return;
         }
 
-        res.json({ ok: true, results });
+        const results = await executeBatch();
+        const orchestration = persistBatchVerdict(results);
+        res.json({ ok: true, results, orchestration });
     });
 
     app.get('/api/orchestrate/worker-runs', requireAuth, (_req, res) => {

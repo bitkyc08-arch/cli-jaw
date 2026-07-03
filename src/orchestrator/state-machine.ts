@@ -460,9 +460,11 @@ FIRST: The approved plan is auto-injected at the top of every \`cli-jaw dispatch
 task body under \`## Approved Plan\`. Do NOT tell the worker to read any file —
 just write the audit task itself.
 
-Run this command now:
-\`\`\`bash
-cli-jaw dispatch --agent "Backend" --task "Project root: <absolute path to the current working repository from pwd -P>
+Write the audit brief to a file with your file tool (no shell quoting), using a
+FRESH unique path per dispatch — e.g. \`/tmp/jaw-audit-<epoch>.md\`; never reuse
+a brief path (a re-dispatch could clobber an in-flight read):
+\`\`\`text
+Project root: <absolute path to the current working repository from pwd -P>
 
 ⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder.
 
@@ -476,10 +478,18 @@ Audit the PLAN (not code). Verify:
 2) Function signatures match actual code.
 3) No copy-paste integration risks.
 
-Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files."
+Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files.
 \`\`\`
 
-The result is returned via stdout. Review it:
+Then dispatch it (async — returns a runId immediately; a completion NOTICE with
+a short preview re-enters your context as [PLAN AUDIT — Employee Results]):
+\`\`\`bash
+cli-jaw dispatch --agent "Backend" --task-file /tmp/jaw-audit-<epoch>.md --async
+\`\`\`
+
+When the notice arrives, ALWAYS read the full report before judging —
+\`cli-jaw worker read <runId> --tail 120\` (the notice preview is truncated;
+never decide PASS/FAIL from it):
 - If FAIL: fix the plan and re-dispatch.
 - If PASS: report results to the user.
 
@@ -504,10 +514,12 @@ Steps:
 1. Read the approved plan: the orchestrator injects it into Boss prompts and dispatch tasks under \`## Approved Plan\`.
    Before any numeric, path, resource-id, date, limit, or destructive action, compare your intended value against the Approved Plan.
 2. Implement ALL changes yourself — create/modify/delete files as specified in the plan.
-3. After YOU finish implementing, dispatch a verification employee:
+3. After YOU finish implementing, write the verification brief to a file with
+   your file tool (no shell quoting), using a FRESH unique path per dispatch —
+   e.g. \`/tmp/jaw-verify-<epoch>.md\` (never reuse a brief path):
 
-\`\`\`bash
-cli-jaw dispatch --agent "Backend" --task "Project root: <absolute path to the current working repository from pwd -P>
+\`\`\`text
+Project root: <absolute path to the current working repository from pwd -P>
 
 ⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder.
 
@@ -522,10 +534,18 @@ Verify:
 3) Imports resolve.
 4) No integration conflicts.
 
-Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only."
+Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only.
 \`\`\`
 
-Review the stdout result:
+Then dispatch it (async — returns a runId immediately; a completion NOTICE with
+a short preview re-enters your context as [IMPLEMENTATION REVIEW — Employee Results]):
+\`\`\`bash
+cli-jaw dispatch --agent "Backend" --task-file /tmp/jaw-verify-<epoch>.md --async
+\`\`\`
+
+When the notice arrives, ALWAYS read the full report before judging —
+\`cli-jaw worker read <runId> --tail 120\` (the notice preview is truncated;
+never decide DONE/NEEDS_FIX from it):
 - NEEDS_FIX: YOU fix the issues yourself, then re-dispatch verification.
 - DONE: Report results to the user.
 
@@ -708,5 +728,26 @@ export function parseWorkerVerdict(text: string): WorkerVerdict | null {
   if (/\bDONE\b/.test(text)) return 'done';
   if (/\bPASS\b/.test(text)) return 'pass';
   if (/\bFAIL\b/.test(text)) return 'fail';
+  return null;
+}
+
+// Conservative aggregation of batch worker verdicts (260703 dispatch affordance):
+// A-state consumes pass/fail (any fail dominates); B-state consumes done/needs_fix
+// (any needs_fix dominates). Cross-state verdicts and verdict-less batches are a
+// no-op — the gate stays 'pending' and the boss re-dispatches or decides.
+export function aggregateBatchVerdicts(
+  state: OrcStateName,
+  verdicts: ReadonlyArray<WorkerVerdict | null>,
+): WorkerVerdict | null {
+  if (state === 'A') {
+    if (verdicts.includes('fail')) return 'fail';
+    if (verdicts.includes('pass')) return 'pass';
+    return null;
+  }
+  if (state === 'B') {
+    if (verdicts.includes('needs_fix')) return 'needs_fix';
+    if (verdicts.includes('done')) return 'done';
+    return null;
+  }
   return null;
 }
