@@ -82,6 +82,9 @@ export interface OrcContext {
     unknown: string[];
     assessment?: DimensionAssessment;
     history?: Array<{ round: number; question: string; answer: string }>;
+    catalogMode?: 'active' | 'completed' | 'skipped';
+    catalogStage?: 1 | 2 | 3;
+    catalogSelections?: Record<string, unknown>;
   };
   // ─── Seed (P2-1) ────────────────────────────────
   seedSpec?: Seed;
@@ -278,6 +281,11 @@ export function getPrefix(state: OrcStateName, source: 'user' | 'worker' = 'user
     if (closerReady) {
       prefix += '\n[Perspective: SEED_CLOSER — drive toward closure, confirm all assumptions]';
     }
+    if (ctx?.interview?.catalogMode === 'active') {
+      const stage = ctx.interview.catalogStage || 1;
+      const stageLabels: Record<number, string> = { 1: 'DESIGN/UX', 2: 'DOMAIN', 3: 'DERIVED' };
+      prefix += `\n[Catalog Discovery Stage ${stage}: ${stageLabels[stage] || 'UNKNOWN'} — design-first barrier active]`;
+    }
     return prefix;
   }
   if (state === 'P') {
@@ -409,6 +417,20 @@ The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\`
 - **INTERVIEW-DIVERGE-01**: when a load-bearing choice is genuinely uncertain and a
   spike is cheap, offer \`BOTH (parallel spike, select by evidence)\` — a BOTH answer
   becomes an explore-and-select work-phase with the comparison verifier in the loop-spec.
+
+## Catalog Discovery Sub-Mode (INTERVIEW-CATALOG-01)
+
+When the user names a vague domain but no features ("사주 앱 만들고 싶어", "앱 만들고 싶어"),
+enter catalog_discovery. Load the option ontology from \`skills_ref/dev-pabcd/references/catalog-discovery.yaml\`.
+
+**Hard barrier — design/UX LEADS (CATALOG-DESIGN-FIRST-01).** Iterate \`axis_order\` ascending by \`stage\`. Do NOT present a stage until every \`required\` entry of all earlier stages is answered:
+- Stage 1 (design): all 6 dials (mood/lightness/density/shape/typography/motion) via Product-Personality-Selection. Present \`question_options\` with trade-offs, then ask.
+- Stage 2 (domain): app type selection.
+- Stage 3 (derived): surface via \`derived_from\` + \`auto_activate_rules\` keyword scan on the user's initial request. Never dump a flat list.
+
+Configurator: compile selections + resolved \`implies[]\` into PRD sections / MVP cut by \`cost_class\` / risk register (every \`risk_class: high\`) / PABCD plan seed.
+
+Entry heuristic: concrete feature/goal → standard Clarification; vague domain → Catalog Discovery.
 
 ## Loop / Multi-Pass Tasks
 
