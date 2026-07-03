@@ -94,21 +94,18 @@ export class Screen {
     private cursorRow = 0;
     private fullRedrawPending = false;
     private resizeRedrawPending = false;
-    private lastFillRows = 0;
-    private committedScreenRows = 0;
     /**
-     * 260703 F4 — 1-based bottom row of the on-screen committed block; 0 = the
-     * block hugs the current fill bottom (legacy). Set at flush time. When the
-     * frontier hides committed items the frame shrinks and the fill REGROWS
-     * past the block; scroll-outs must then key off the block bottom, not the
-     * raw fill, or they push the blank rows above the block into scrollback —
-     * blank bands between turns (port of jawcode c109b78).
+     * 260704 WP6b-v2 (port of jawcode 8baafbc) — the committed block is
+     * TOP-ANCHORED, glued to the scrollback seam at rows 1..B. This count IS
+     * the block geometry: content-only rows, never a blank above or inside.
+     * The old bottom-anchored lane (block parked at the fill bottom under
+     * blank rows, tracked via committedBottomRow) was retired upstream after
+     * every blank-gap regression traced back to its region-top blanks.
      */
-    private committedBottomRow = 0;
+    private committedScreenRows = 0;
     private lastWidth = 0;
     private lastHeight = 0;
     private launchClearPending = false;
-    private scrollbackProtected = false;
     private hasNativeCommit = false;
     private pendingCommitLines: string[] = [];
     private lastFlushed = 0;
@@ -126,13 +123,10 @@ export class Screen {
         this.cursorRow = 0;
         this.fullRedrawPending = false;
         this.resizeRedrawPending = false;
-        this.lastFillRows = 0;
         this.committedScreenRows = 0;
-        this.committedBottomRow = 0;
         this.lastWidth = 0;
         this.lastHeight = 0;
         this.launchClearPending = true;
-        this.scrollbackProtected = false;
     }
 
     exit(): void {
@@ -147,13 +141,10 @@ export class Screen {
         this.cursorRow = 0;
         this.fullRedrawPending = false;
         this.resizeRedrawPending = false;
-        this.lastFillRows = 0;
         this.committedScreenRows = 0;
-        this.committedBottomRow = 0;
         this.lastWidth = 0;
         this.lastHeight = 0;
         this.launchClearPending = false;
-        this.scrollbackProtected = false;
     }
 
     needsResizeRepaint(): boolean {
@@ -194,120 +185,117 @@ export class Screen {
             buf += buildLaunchClearSequence();
             this.cursorRow = 0;
             this.committedScreenRows = 0;
-            this.committedBottomRow = 0;
             this.launchClearPending = false;
         }
 
-        // Flush pending scrollback commits (sub-region, non-destructive).
-        // Deferred when the rows the commit scroll would push out still hold
-        // pixels from the previous frame layout (e.g. the launch-anchored
-        // welcome on the frame that releases the anchor): the flush runs
-        // BEFORE the diff repaint, so scrolling those rows out would push the
-        // stale pixels into scrollback, interleaving them with committed
-        // lines. Skipping leaves the frontier unadvanced; the scheduler
-        // re-queues the same commit next frame, after the repaint blanked the
-        // region. (Physical committed-lane residue is invisible to prevLines —
-        // fill rows stay '' in the frame model — so residue still flushes.)
+        // Flush pending scrollback commits — 260704 WP6b-v2 port (jawcode
+        // 8baafbc): the committed block is TOP-ANCHORED, glued to the
+        // scrollback seam at rows 1..B. Commits either write DIRECTLY into the
+        // blank fill row below the block (no scroll — blanks never move, so no
+        // blank can ever cross the seam) or, once the block saturates the
+        // fill, scroll region 1..B up by one so the OLDEST committed row
+        // (content, never blank) enters the scrollback and the new line lands
+        // on the freed bottom row. This retires the bottom-anchored insert
+        // geometry whose region-top blank rows stamped the blank bands into
+        // history (user repro 260704).
+        // Deferred when the direct-write target rows still hold pixels from
+        // the previous frame layout (e.g. the launch-anchored welcome on the
+        // frame that releases the anchor): the flush runs BEFORE the diff
+        // repaint, and the diff would 2K our fresh committed rows (model says
+        // those rows are blank fill). Skipping leaves the frontier unadvanced;
+        // the scheduler re-queues the same commit next frame, after the
+        // repaint blanked the region. (Physical committed-lane residue at rows
+        // 1..B is invisible to prevLines — fill rows stay '' in the frame
+        // model — so residue is never re-diffed.)
         this.lastFlushed = 0;
         this.lastDeferredByStaleRows = false;
-        const parkedBottom = this.committedBottomRow > 0 && this.committedScreenRows > 0
-            ? Math.min(this.committedBottomRow, Math.min(normalized.fillRows, height))
-            : 0;
-        const flushZoneTop = parkedBottom >= 2 ? parkedBottom : Math.min(normalized.fillRows, height);
-        if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2
-            && !this.commitScrollOutRowsAreBlank(this.pendingCommitLines.length, flushZoneTop)) {
+        const fillRows = Math.min(normalized.fillRows, height);
+        const blockRows = Math.min(this.committedScreenRows, fillRows);
+        if (this.pendingCommitLines.length > 0 && fillRows >= 2
+            && !this.commitTargetRowsAreBlank(this.pendingCommitLines.length, blockRows, fillRows)) {
             // Defer: the repaint below blanks the region; the caller may retry
             // next frame (this is the only defer reason worth a retry — other
             // skips are geometry/lane constraints that a retry cannot change).
             this.lastDeferredByStaleRows = true;
         }
-        if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2 && !this.lastDeferredByStaleRows) {
-            // 260703 F4: while a committed block is parked above a regrown fill
-            // (frontier hid its items → shorter frame → taller fill), insert
-            // DIRECTLY below the block so the committed region stays contiguous
-            // — inserting at the raw fill bottom would leave blank rows inside
-            // the history region that later scroll-outs stamp into scrollback.
-            const liveZoneTop = flushZoneTop;
-            buf += `\x1b[1;${liveZoneTop}r`;
-            buf += `\x1b[${liveZoneTop};1H`;
+        if (this.pendingCommitLines.length > 0 && fillRows >= 2 && !this.lastDeferredByStaleRows) {
+            let b = blockRows;
             for (const line of this.pendingCommitLines) {
-                buf += '\r\n\x1b[2K' + line;
+                if (b < fillRows) {
+                    // Blank fill row below the block: write in place, no scroll.
+                    buf += `\x1b[${b + 1};1H\x1b[2K` + line;
+                    b++;
+                } else {
+                    // Saturated: rows 1..B are all content — scroll the oldest
+                    // row across the seam, write on the freed bottom row.
+                    buf += `\x1b[1;${b}r\x1b[${b};1H\r\n\x1b[2K` + line + '\x1b[r';
+                }
             }
-            buf += '\x1b[r\x1b[H';
+            buf += '\x1b[H';
             this.cursorRow = 0;
-            this.committedScreenRows = Math.min(
-                this.committedScreenRows + this.pendingCommitLines.length,
-                liveZoneTop
-            );
-            this.committedBottomRow = liveZoneTop;
+            this.committedScreenRows = b;
             this.lastFlushed = this.pendingCommitLines.length;
             this.hasNativeCommit = true;
-            this.scrollbackProtected = true;
         }
         this.pendingCommitLines = [];
 
         if (!this.resizeRedrawPending && this.committedScreenRows > 0) {
-            // 260703 F4: scroll the HISTORY REGION, whose bottom is the parked
-            // committed block's end — not the raw fill bottom. While the fill
-            // is taller than the block (regrowth between turns) growth is
-            // absorbed by painting the gap; only once the fill drops below the
-            // block bottom does the block scroll, content-only, into
-            // scrollback (blank rows above it can never precede it).
-            const historyBottom = this.committedBottomRow > 0
-                ? Math.min(this.committedBottomRow, height)
-                : this.lastFillRows;
+            // 260704 WP6b-v2: the committed block is top-anchored at rows 1..B
+            // (content-only, no blanks above by construction). When the fill
+            // drops below B, the overflow scrolls out through the region top —
+            // only committed content ever crosses the seam.
+            const historyBottom = Math.min(this.committedScreenRows, height);
             if (normalized.fillRows < historyBottom) {
-                // Blank rows sitting ABOVE the committed block inside the
-                // history region (unsaturated flush, e.g. 1 committed row in a
-                // 5-row fill) must never reach the scrollback — DELETE them in
-                // place (DL shifts the block up, opens blanks at the region
-                // bottom, pushes nothing out); only actual committed content
-                // scrolls out through the region top (audit trace: overlay
-                // open drops fill to 0 and stamped 4 blanks before the row).
                 const shrink = historyBottom - normalized.fillRows;
-                const blanksAbove = Math.max(0, historyBottom - this.committedScreenRows);
-                const deleteCount = Math.min(shrink, blanksAbove);
-                const scrollCount = shrink - deleteCount;
-                if (deleteCount > 0 && historyBottom >= 2) {
-                    buf += `\x1b[1;${historyBottom}r\x1b[1;1H\x1b[${deleteCount}M\x1b[r`;
-                    buf += `\x1b[${Math.min(height - 1, Math.max(0, this.cursorRow)) + 1};1H`;
-                }
-                if (scrollCount > 0) {
-                    buf += this.buildShrinkScrollOut(scrollCount, historyBottom - deleteCount);
-                }
+                buf += this.buildShrinkScrollOut(shrink, historyBottom);
                 this.committedScreenRows = Math.min(this.committedScreenRows, normalized.fillRows);
-                this.committedBottomRow = this.committedScreenRows > 0 ? normalized.fillRows : 0;
             }
         }
 
         if (this.resizeRedrawPending) {
             const mode = this.resizeRepaintMode(widthChanged, heightChanged);
-            if (mode === 'viewport-only') {
-                if (normalized.fillRows < this.lastFillRows) {
-                    this.committedScreenRows = Math.min(this.committedScreenRows, normalized.fillRows);
+            // 260704 WP6b-v2: any repaint below rewrites rows 1..height with
+            // frame content (blank fill over the block's rows), so the
+            // top-anchored committed block must cross the seam FIRST —
+            // content-only, region [1..B]; no blank can precede it. The old
+            // geometry pushed the whole [1..fillBottom] region here, stamping
+            // the blank rows above the parked block into scrollback on every
+            // resize (blank-band user repro 260704); viewport-only repaints
+            // erased the block outright without flushing it (content loss).
+            if (this.committedScreenRows > 0) {
+                let flushRows = Math.min(this.committedScreenRows, height);
+                // On a height shrink outside a multiplexer, the terminal has
+                // ALREADY pushed the top (oldHeight − newHeight) rows into its
+                // scrollback (cursor-anchored shrink) — under the top-anchored
+                // geometry those are exactly the oldest committed rows, in
+                // order. ADOPT them instead of re-emitting a second copy
+                // (jawcode 8baafbc pixel adoption; duplication user repro
+                // 260704: partial `╭─ You` copies after window shrinks).
+                // Width changes don't gate this: the push is a height effect
+                // (adversarial finding 1 — width+height shrink duplicated the
+                // block AND stamped trailing blanks). The NET height delta is
+                // the right count even across coalesced shrink→grow events:
+                // mainstream terminals PULL rows back from scrollback on grow,
+                // so only the net-shrunk rows remain pushed.
+                if (heightChanged && !isMultiplexerSession()
+                    && this.lastHeight > 0 && height < this.lastHeight) {
+                    flushRows = Math.max(0, flushRows - (this.lastHeight - height));
                 }
-                buf += buildViewportRepaintSequence(lines, height);
-            } else {
-                if (this.scrollbackProtected && this.committedScreenRows > 0 && this.lastFillRows > 0) {
-                    const flushBottom = this.committedBottomRow > 0
-                        ? Math.min(this.committedBottomRow, height) : this.lastFillRows;
-                    buf += this.buildShrinkScrollOut(flushBottom, flushBottom);
-                }
+                if (flushRows > 0) buf += this.buildShrinkScrollOut(flushRows, flushRows);
                 this.committedScreenRows = 0;
-                this.committedBottomRow = 0;
-                buf += buildFullClearSequence(mode === 'discard-scrollback');
-                buf += buildViewportRepaintSequence(lines, height);
             }
+            if (mode !== 'viewport-only') {
+                buf += buildFullClearSequence(mode === 'discard-scrollback');
+            }
+            buf += buildViewportRepaintSequence(lines, height);
             this.cursorRow = Math.max(0, Math.min(lines.length, height) - 1);
             this.fullRedrawPending = false;
             this.resizeRedrawPending = false;
         } else if (this.fullRedrawPending || this.prevLines.length === 0) {
-            if (this.fullRedrawPending && this.committedScreenRows > 0 && this.lastFillRows > 0) {
-                const flushBottom = this.committedBottomRow > 0
-                    ? Math.min(this.committedBottomRow, height) : this.lastFillRows;
-                buf += this.buildShrinkScrollOut(flushBottom, flushBottom);
+            if (this.fullRedrawPending && this.committedScreenRows > 0) {
+                const flushRows = Math.min(this.committedScreenRows, height);
+                buf += this.buildShrinkScrollOut(flushRows, flushRows);
                 this.committedScreenRows = 0;
-                this.committedBottomRow = 0;
             }
             if (this.fullRedrawPending && this.prevLines.length > 0 && this.cursorRow > 0) {
                 buf += `\x1b[${this.cursorRow}A`;
@@ -397,7 +385,6 @@ export class Screen {
         }
         process.stdout.write(buf);
         this.prevLines = [...lines];
-        this.lastFillRows = normalized.fillRows;
         this.lastWidth = width;
         this.lastHeight = height;
     }
@@ -425,16 +412,18 @@ export class Screen {
     }
 
     /**
-     * The commit scroll pushes the top `count` rows of the 1..liveZoneTop
-     * region into scrollback. Those rows must not hold last-frame pixels
-     * (prevLines is the painted frame model; committed-lane residue is not in
-     * it, fill rows read as ''). A fresh screen (nothing painted yet, e.g.
+     * The commit flush writes directly into rows [fromRow+1 .. fromRow+count]
+     * (1-based; capped at the fill bottom). Those target rows must not hold
+     * last-frame pixels (prevLines is the painted frame model; committed-lane
+     * residue at rows 1..B is not in it, fill rows read as '') — the diff pass
+     * after the flush would 2K a fresh committed row wherever the model still
+     * shows previous-frame content. A fresh screen (nothing painted yet, e.g.
      * right after the launch clear in this same render pass) is blank.
      */
-    private commitScrollOutRowsAreBlank(count: number, liveZoneTop: number): boolean {
+    private commitTargetRowsAreBlank(count: number, fromRow: number, fillRows: number): boolean {
         if (this.prevLines.length === 0) return true;
-        const pushed = Math.min(count, liveZoneTop);
-        for (let i = 0; i < pushed; i++) {
+        const end = Math.min(fromRow + count, fillRows);
+        for (let i = fromRow; i < end; i++) {
             const row = this.prevLines[i] ?? '';
             if (row.replace(/\x1b\[[0-9;]*m/g, '').trim() !== '') return false;
         }
@@ -446,6 +435,15 @@ export class Screen {
         if (!this.inlineActive || lines.length === 0) return false;
         if (this.needsResizeRepaint()) return false;
         if (detectHistoryLaneMode() !== 'standard') return false;
+        // No fill-capacity preflight here (adversarial finding 3, assessed
+        // benign): when the fill lane is under 2 rows the render skips the
+        // flush and the frontier stays unmarked, so the caller re-derives the
+        // same rows next frame. The preview-hidden rows are exactly the rows
+        // beyond the visible window (peekStableCommitRows only commits the
+        // overflow), and scroll-up renders through the REAL viewport — so the
+        // one-frame optimistic hide is never user-visible. A capacity check
+        // against the LAST frame's fill would wrongly refuse the anchor-release
+        // commit, whose previous frame legitimately has fillRows = 0.
         const width = Math.max(1, process.stdout.columns || 80);
         this.pendingCommitLines.push(...lines.map(line => normalizeFrameRow(line, width)));
         return true;
@@ -475,6 +473,13 @@ export class Screen {
     resetViewport(): void {
         if (!this.inlineActive) return;
         let buf = '\x1b[?2026h';
+        // The erase loop below wipes every physical row — the top-anchored
+        // committed block at rows 1..B must cross the seam first (content-only)
+        // or its pixels evaporate without ever reaching the scrollback.
+        if (this.committedScreenRows > 0) {
+            const flushRows = Math.min(this.committedScreenRows, process.stdout.rows || 24);
+            buf += this.buildShrinkScrollOut(flushRows, flushRows);
+        }
         if (this.prevLines.length > 0) {
             if (this.cursorRow > 0) buf += `\x1b[${this.cursorRow}A`;
             buf += '\r';
@@ -489,13 +494,10 @@ export class Screen {
         process.stdout.write(buf);
         this.prevLines = [];
         this.cursorRow = 0;
-        this.lastFillRows = 0;
         this.committedScreenRows = 0;
-        this.committedBottomRow = 0;
         this.lastWidth = 0;
         this.lastHeight = 0;
         this.launchClearPending = false;
-        this.scrollbackProtected = false;
         this.fullRedrawPending = true;
         this.resizeRedrawPending = false;
     }
