@@ -76,7 +76,9 @@ test('SI-006: Standard CLI close handler tags interrupted output', () => {
     const cliCloseIdx = spawnSrc.indexOf("child.on('close'");
     assert.ok(cliCloseIdx > 0, 'Standard CLI close handler should exist');
 
-    const cliCloseBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 10000);
+    // Window must span the whole close handler; the agy close-path finalization
+    // (finalizeAgyFallbackText) sits before the steer tagging and grew the handler.
+    const cliCloseBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 14000);
 
     assert.ok(
         cliCloseBlock.includes("stdKillReason === 'steer'") || cliCloseBlock.includes('wasSteer'),
@@ -117,7 +119,7 @@ test('SI-STRUCT: ACP and CLI exit handlers have symmetric steer logic', () => {
     assert.ok(acpExitIdx < cliCloseIdx, 'ACP exit should come before CLI close in source');
 
     const acpBlock = spawnSrc.slice(acpExitIdx, acpExitIdx + 7000);
-    const cliBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 10000);
+    const cliBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 14000);
 
     for (const pattern of [
         'wasSteer',
