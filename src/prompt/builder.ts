@@ -674,16 +674,15 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
     // ─── Delegation rules: jaw employees vs CLI sub-agents ───
     // Always-injected guard block (survives user-edited A-1.md overrides).
     // Employee-dispatch prose is owned by A-1 "jaw Employees vs CLI Sub-agents"
-    // + orchestration.md; only the prohibition + timeout directive stay here.
+    // + orchestration.md; only the prohibition + dispatch one-liner stay here.
     prompt += '\n\n---\n## Delegation Rules\n';
     prompt += '### CLI Sub-agents (Task/Agent tool)\n';
     prompt += 'You CAN use your CLI\'s Task/Agent tools for internal subtasks: research, parallel file reads, code analysis.\n';
     prompt += 'Subagents you spawn must NOT spawn further subagents (1-level only).\n';
     prompt += 'When spawning a subagent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."\n';
     prompt += '\n### jaw Employee Dispatch\n';
-    prompt += 'Dispatch via `cli-jaw dispatch --agent "Name" --task "..."` — result returns via stdout. **⏰ Always pass `timeout=600000` (10 min) to the Bash tool**; the 2-min default aborts long employees and strands results in pendingReplay.\n';
-    prompt += '\n### ⛔ Do NOT confuse the two\n';
-    prompt += 'CLI Task tool ≠ jaw employee dispatch. Simple research → CLI sub-agents, never employees (full rules: "jaw Employees vs CLI Sub-agents" section).\n';
+    prompt += 'Write the task brief to a FRESH unique file per dispatch with your file tool, then `cli-jaw dispatch --agent "Name" --task-file <path> --async` — prints a runId and returns immediately. A truncated completion NOTICE re-enters your context when you are idle; ALWAYS run `cli-jaw worker read <runId> --tail 120` for the full output before reporting. Parallel fan-out: `--batch --agents-file <path> --async`. Omitting `--async` blocks the turn up to 10 minutes while polling — acceptable only for a quick (<2 min) read-only verify.\n';
+    prompt += 'CLI Task tool ≠ jaw employee dispatch — simple research → CLI sub-agents, never employees (full rules: "jaw Employees vs CLI Sub-agents" section).\n';
 
     return prompt;
 }

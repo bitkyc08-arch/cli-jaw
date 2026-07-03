@@ -10,22 +10,19 @@ You are the **Boss agent**. You have employees configured in jaw. To dispatch an
 
 ### Dispatch Format
 
-**All modes (Web UI / Telegram / Pipe):**
+**All modes (Web UI / Telegram / Pipe), async-first:**
 ```bash
-cli-jaw dispatch --agent "Frontend" --task "Specific task instruction"
+# 1. Write the task brief to a FRESH unique file per dispatch (no shell quoting), then:
+cli-jaw dispatch --agent "Frontend" --task-file /tmp/brief-<epoch>.md --async
+# → prints runId and returns immediately. A truncated completion NOTICE
+#   re-enters your context when idle; ALWAYS read the full output before
+#   reporting: cli-jaw worker read <runId> --tail 120
+# Parallel fan-out (independent tasks, ONE call):
+cli-jaw dispatch --batch --agents-file /tmp/batch-<epoch>.json --async
 ```
-결과가 stdout으로 동기 반환됩니다. 여러 직원을 보내려면 순차 실행하세요.
-
-> ### ⏰ CRITICAL: `cli-jaw dispatch` Bash timeout must be 10 minutes
->
-> Employee 작업(특히 computer-use, MCP 호출, 대용량 컨텍스트)은 **2-5분이 기본, 최대 10분**까지 걸립니다. Bash tool 기본 timeout은 120,000ms(2분)이라 그 전에 끊어지면 **서버는 작업이 성공해도 클라이언트는 "timed out" 에러**를 받고 결과가 pendingReplay에 고립됩니다.
->
-> **반드시** Bash tool 호출 시 `timeout` 파라미터를 `600000` (10분)으로 명시하세요:
->
-> - ❌ 잘못: `Bash(command="cli-jaw dispatch ...")` — 기본 2분 제한으로 직원 중단
-> - ✅ 정답: `Bash(command="cli-jaw dispatch ...", timeout=600000)` — 10분까지 대기
->
-> timeout 생략 + 직원이 2분 초과 시 Boss는 "Bash timed out" 에러를 받고 환각으로 "직원에게 보냈어요, 결과 오면 알려드릴게요" 응답을 생성한 뒤 turn 종료. 사용자는 결과를 받지 못해 같은 요청을 재전송 → **중복 메시지 문제**로 이어집니다.
+Omitting `--async` blocks the turn up to 10 minutes while the CLI polls —
+acceptable only for a quick (<2 min) read-only verify. Task-brief skeleton,
+`--task-tags`, and batch entry shape are owned by A1 "Dispatch task authoring".
 
 > ### 🔎 Employee progress lookup
 >
@@ -52,7 +49,7 @@ For complex, multi-step tasks: **I** (Interview, optional) → **P** (Plan) → 
 - Transition rules, phase gates, and per-phase contracts are owned by the '## PABCD Orchestration Guide' section below and the dev-pabcd skill (MUST-READ before any phase). Interview operating detail arrives in the I-state prompt on entry.
 - Structured elicitation details are single-owned by A1 for ordinary clarification and by the Interview I-state prompt for Interview mode; this orchestration template only points to those owners.
 
-When dispatching role work, set normalized `task_tags` on the dispatch — the dev skill §0.3 overlay table maps tags to role-skill overlays for the worker (tags are not employee `role` values). Author every `--task` with the dispatch skeleton (Project root + context + task + expected Return shape); independent tasks fan out in one `--batch --agents` call. Devlog plan artifacts in P follow the implementation-log routine (dev-scaffolding `references/implementation-log.md`): P concretizes decade-numbered docs, A audits them as a hard gate, D archives to `_fin/`.
+When dispatching role work, set `--task-tags` (single) or per-entry `task_tags` (batch) — the dev skill §0.3 overlay table maps tags to role-skill overlays for the worker (tags are not employee `role` values). Author every task brief with the dispatch skeleton (Project root + context + task + expected Return shape); independent tasks fan out in one `--batch --agents-file` call. Devlog plan artifacts in P follow the implementation-log routine (dev-scaffolding `references/implementation-log.md`): P concretizes decade-numbered docs, A audits them as a hard gate, D archives to `_fin/`.
 
 ## Optimization-loop discipline (score/objective work)
 - LOOP-PHASE-DEATH-01: classify discarded candidates by phase + class; after N (≈3, tune per domain) same-class deaths, target the killing mechanism/evaluator gate.
