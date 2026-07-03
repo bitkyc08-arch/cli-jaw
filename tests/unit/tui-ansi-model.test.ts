@@ -39,3 +39,14 @@ test('2J clears the visible screen but keeps scrollback; 3J erases scrollback to
     term.write('\x1b[3J');
     assert.equal(term.scrollback.length, 0);
 });
+
+test('DL deletes lines within the region without touching scrollback', () => {
+    const term = new AnsiTerminalModel(20, 5);
+    term.write('r1\r\nr2\r\nr3\r\nr4\r\nr5');
+    term.write('\x1b[1;4r');
+    term.write('\x1b[1;1H');
+    term.write('\x1b[2M');
+    term.write('\x1b[r');
+    assert.equal(term.scrollback.length, 0);
+    assert.deepEqual(term.visibleText().split('\n'), ['r3', 'r4', '', '', 'r5']);
+});

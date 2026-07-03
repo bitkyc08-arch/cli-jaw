@@ -72,6 +72,7 @@ export class AnsiTerminalModel {
         else if (command === 'J') this.eraseDisplay(n);
         else if (command === 'K' && n === 2) this.lines[this.row] = '';
         else if (command === 'r') this.setScrollRegion(params);
+        else if (command === 'M') this.deleteLines(n);
         return end;
     }
 
@@ -98,6 +99,19 @@ export class AnsiTerminalModel {
         if (bottom <= top) return;
         this.scrollTop = top;
         this.scrollBottom = bottom;
+    }
+
+    /** DL — delete n lines at the cursor row within the scroll region. Rows
+     *  below shift up, blanks open at the region bottom; NOTHING enters
+     *  scrollback (unlike a region-top-1 scroll). */
+    private deleteLines(n: number): void {
+        if (this.row < this.scrollTop || this.row > this.scrollBottom) return;
+        for (let k = 0; k < n; k += 1) {
+            for (let r = this.row; r < this.scrollBottom; r += 1) {
+                this.lines[r] = this.lines[r + 1] ?? '';
+            }
+            this.lines[this.scrollBottom] = '';
+        }
     }
 
     private eraseDisplay(mode: number): void {

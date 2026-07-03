@@ -1,8 +1,11 @@
 /**
  * Inline frame buffer + differential rendering (no alt-screen).
  * Renders on the main screen buffer. Launch deliberately clears visible and
- * saved pre-existing terminal lines so `jaw chat` starts like a fresh terminal;
- * cmux/multiplexer-aware preservation applies to post-launch repaint/resize.
+ * saved pre-existing terminal lines so `jaw chat` starts like a fresh terminal
+ * — EXCEPT in a foreign multiplexer (tmux/GNU screen), whose pane scrollback
+ * belongs to the user and is never 3J'd (260703 F1/F2; cmux is first-party and
+ * keeps the fresh-terminal contract). Multiplexer-aware preservation applies
+ * to post-launch repaint/resize as before.
  * Uses synchronized output (CSI 2026) for flicker-free updates.
  */
 
@@ -93,6 +96,15 @@ export class Screen {
     private resizeRedrawPending = false;
     private lastFillRows = 0;
     private committedScreenRows = 0;
+    /**
+     * 260703 F4 — 1-based bottom row of the on-screen committed block; 0 = the
+     * block hugs the current fill bottom (legacy). Set at flush time. When the
+     * frontier hides committed items the frame shrinks and the fill REGROWS
+     * past the block; scroll-outs must then key off the block bottom, not the
+     * raw fill, or they push the blank rows above the block into scrollback —
+     * blank bands between turns (port of jawcode c109b78).
+     */
+    private committedBottomRow = 0;
     private lastWidth = 0;
     private lastHeight = 0;
     private launchClearPending = false;
@@ -116,6 +128,7 @@ export class Screen {
         this.resizeRedrawPending = false;
         this.lastFillRows = 0;
         this.committedScreenRows = 0;
+        this.committedBottomRow = 0;
         this.lastWidth = 0;
         this.lastHeight = 0;
         this.launchClearPending = true;
@@ -136,6 +149,7 @@ export class Screen {
         this.resizeRedrawPending = false;
         this.lastFillRows = 0;
         this.committedScreenRows = 0;
+        this.committedBottomRow = 0;
         this.lastWidth = 0;
         this.lastHeight = 0;
         this.launchClearPending = false;
@@ -180,6 +194,7 @@ export class Screen {
             buf += buildLaunchClearSequence();
             this.cursorRow = 0;
             this.committedScreenRows = 0;
+            this.committedBottomRow = 0;
             this.launchClearPending = false;
         }
 
@@ -195,15 +210,24 @@ export class Screen {
         // fill rows stay '' in the frame model — so residue still flushes.)
         this.lastFlushed = 0;
         this.lastDeferredByStaleRows = false;
+        const parkedBottom = this.committedBottomRow > 0 && this.committedScreenRows > 0
+            ? Math.min(this.committedBottomRow, Math.min(normalized.fillRows, height))
+            : 0;
+        const flushZoneTop = parkedBottom >= 2 ? parkedBottom : Math.min(normalized.fillRows, height);
         if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2
-            && !this.commitScrollOutRowsAreBlank(this.pendingCommitLines.length, Math.min(normalized.fillRows, height))) {
+            && !this.commitScrollOutRowsAreBlank(this.pendingCommitLines.length, flushZoneTop)) {
             // Defer: the repaint below blanks the region; the caller may retry
             // next frame (this is the only defer reason worth a retry — other
             // skips are geometry/lane constraints that a retry cannot change).
             this.lastDeferredByStaleRows = true;
         }
         if (this.pendingCommitLines.length > 0 && normalized.fillRows >= 2 && !this.lastDeferredByStaleRows) {
-            const liveZoneTop = Math.min(normalized.fillRows, height);
+            // 260703 F4: while a committed block is parked above a regrown fill
+            // (frontier hid its items → shorter frame → taller fill), insert
+            // DIRECTLY below the block so the committed region stays contiguous
+            // — inserting at the raw fill bottom would leave blank rows inside
+            // the history region that later scroll-outs stamp into scrollback.
+            const liveZoneTop = flushZoneTop;
             buf += `\x1b[1;${liveZoneTop}r`;
             buf += `\x1b[${liveZoneTop};1H`;
             for (const line of this.pendingCommitLines) {
@@ -215,15 +239,45 @@ export class Screen {
                 this.committedScreenRows + this.pendingCommitLines.length,
                 liveZoneTop
             );
+            this.committedBottomRow = liveZoneTop;
             this.lastFlushed = this.pendingCommitLines.length;
             this.hasNativeCommit = true;
             this.scrollbackProtected = true;
         }
         this.pendingCommitLines = [];
 
-        if (!this.resizeRedrawPending && this.committedScreenRows > 0 && normalized.fillRows < this.lastFillRows) {
-            buf += buildScrollOutSequence(this.lastFillRows - normalized.fillRows, this.lastFillRows, { row: this.cursorRow, col: 0 });
-            this.committedScreenRows = Math.min(this.committedScreenRows, normalized.fillRows);
+        if (!this.resizeRedrawPending && this.committedScreenRows > 0) {
+            // 260703 F4: scroll the HISTORY REGION, whose bottom is the parked
+            // committed block's end — not the raw fill bottom. While the fill
+            // is taller than the block (regrowth between turns) growth is
+            // absorbed by painting the gap; only once the fill drops below the
+            // block bottom does the block scroll, content-only, into
+            // scrollback (blank rows above it can never precede it).
+            const historyBottom = this.committedBottomRow > 0
+                ? Math.min(this.committedBottomRow, height)
+                : this.lastFillRows;
+            if (normalized.fillRows < historyBottom) {
+                // Blank rows sitting ABOVE the committed block inside the
+                // history region (unsaturated flush, e.g. 1 committed row in a
+                // 5-row fill) must never reach the scrollback — DELETE them in
+                // place (DL shifts the block up, opens blanks at the region
+                // bottom, pushes nothing out); only actual committed content
+                // scrolls out through the region top (audit trace: overlay
+                // open drops fill to 0 and stamped 4 blanks before the row).
+                const shrink = historyBottom - normalized.fillRows;
+                const blanksAbove = Math.max(0, historyBottom - this.committedScreenRows);
+                const deleteCount = Math.min(shrink, blanksAbove);
+                const scrollCount = shrink - deleteCount;
+                if (deleteCount > 0 && historyBottom >= 2) {
+                    buf += `\x1b[1;${historyBottom}r\x1b[1;1H\x1b[${deleteCount}M\x1b[r`;
+                    buf += `\x1b[${Math.min(height - 1, Math.max(0, this.cursorRow)) + 1};1H`;
+                }
+                if (scrollCount > 0) {
+                    buf += this.buildShrinkScrollOut(scrollCount, historyBottom - deleteCount);
+                }
+                this.committedScreenRows = Math.min(this.committedScreenRows, normalized.fillRows);
+                this.committedBottomRow = this.committedScreenRows > 0 ? normalized.fillRows : 0;
+            }
         }
 
         if (this.resizeRedrawPending) {
@@ -235,9 +289,12 @@ export class Screen {
                 buf += buildViewportRepaintSequence(lines, height);
             } else {
                 if (this.scrollbackProtected && this.committedScreenRows > 0 && this.lastFillRows > 0) {
-                    buf += buildScrollOutSequence(this.lastFillRows, this.lastFillRows, { row: this.cursorRow, col: 0 });
+                    const flushBottom = this.committedBottomRow > 0
+                        ? Math.min(this.committedBottomRow, height) : this.lastFillRows;
+                    buf += this.buildShrinkScrollOut(flushBottom, flushBottom);
                 }
                 this.committedScreenRows = 0;
+                this.committedBottomRow = 0;
                 buf += buildFullClearSequence(mode === 'discard-scrollback');
                 buf += buildViewportRepaintSequence(lines, height);
             }
@@ -246,8 +303,11 @@ export class Screen {
             this.resizeRedrawPending = false;
         } else if (this.fullRedrawPending || this.prevLines.length === 0) {
             if (this.fullRedrawPending && this.committedScreenRows > 0 && this.lastFillRows > 0) {
-                buf += buildScrollOutSequence(this.lastFillRows, this.lastFillRows, { row: this.cursorRow, col: 0 });
+                const flushBottom = this.committedBottomRow > 0
+                    ? Math.min(this.committedBottomRow, height) : this.lastFillRows;
+                buf += this.buildShrinkScrollOut(flushBottom, flushBottom);
                 this.committedScreenRows = 0;
+                this.committedBottomRow = 0;
             }
             if (this.fullRedrawPending && this.prevLines.length > 0 && this.cursorRow > 0) {
                 buf += `\x1b[${this.cursorRow}A`;
@@ -343,6 +403,28 @@ export class Screen {
     }
 
     /**
+     * 260703 F3 — DECSTBM ignores a 1-row region (`CSI 1;1r` is a silent
+     * no-op on real terminals; empirically verified against @xterm/headless
+     * in the jawcode sibling repo), so the LAST committed row could never be
+     * scrolled out and the next diff overwrote it. Widen to [1..2] (count is
+     * necessarily 1 — a 1-row region cannot owe more) and rotate the painted
+     * mirror the same way the physical rows shift: row 2 moves up to row 1,
+     * row 2 opens blank — the same-pass diff then maps every row correctly.
+     */
+    private buildShrinkScrollOut(count: number, regionBottom: number): string {
+        if (count <= 0 || regionBottom < 1) return '';
+        if (regionBottom > 1) {
+            return buildScrollOutSequence(count, regionBottom, { row: this.cursorRow, col: 0 });
+        }
+        const out = buildScrollOutSequence(1, 2, { row: this.cursorRow, col: 0 });
+        if (this.prevLines.length > 1) {
+            this.prevLines[0] = this.prevLines[1] ?? '';
+            this.prevLines[1] = '';
+        }
+        return out;
+    }
+
+    /**
      * The commit scroll pushes the top `count` rows of the 1..liveZoneTop
      * region into scrollback. Those rows must not hold last-frame pixels
      * (prevLines is the painted frame model; committed-lane residue is not in
@@ -409,6 +491,7 @@ export class Screen {
         this.cursorRow = 0;
         this.lastFillRows = 0;
         this.committedScreenRows = 0;
+        this.committedBottomRow = 0;
         this.lastWidth = 0;
         this.lastHeight = 0;
         this.launchClearPending = false;
@@ -427,8 +510,11 @@ export class Screen {
 
     private resizeRepaintMode(widthChanged: boolean, heightChanged: boolean): 'discard-scrollback' | 'visible-clear' | 'viewport-only' {
         if (!widthChanged && !heightChanged) return 'viewport-only';
-        if (!this.hasNativeCommit) return 'discard-scrollback';
         const mux = isMultiplexerSession();
+        // 260703 F2: a resize before the first native commit may discard OUR
+        // saved lines — but never a tmux/screen pane's history (same ownership
+        // rule as the launch clear; cmux keeps the discard contract).
+        if (!this.hasNativeCommit) return isForeignMultiplexer() ? 'visible-clear' : 'discard-scrollback';
         if (!mux) return 'visible-clear';
         return widthChanged ? 'visible-clear' : 'viewport-only';
     }
@@ -449,7 +535,10 @@ function buildFullClearSequence(includeSavedLines: boolean): string {
 }
 
 function buildLaunchClearSequence(): string {
-    return buildFullClearSequence(true);
+    // 260703 F1: a tmux/screen pane's scrollback belongs to the USER —
+    // launching jaw must not 3J it away. Plain terminals and first-party cmux
+    // keep the fresh-terminal launch behavior (see isForeignMultiplexer).
+    return buildFullClearSequence(!isForeignMultiplexer());
 }
 
 function isMultiplexerSession(env: Record<string, string | undefined> = process.env): boolean {
@@ -463,6 +552,17 @@ function isMultiplexerSession(env: Record<string, string | undefined> = process.
         || term.startsWith('tmux')
         || term.startsWith('screen')
     );
+}
+
+/**
+ * 260703 F1/F2 — scrollback OWNERSHIP split: tmux/GNU-screen panes belong to
+ * the USER (shared, navigable history), so jaw must never 3J them. cmux is
+ * first-party: its panes are dedicated jaw surfaces and the existing contract
+ * (launch/pre-commit resize clear "like a fresh terminal") stays.
+ */
+function isForeignMultiplexer(env: Record<string, string | undefined> = process.env): boolean {
+    const term = (env['TERM'] ?? '').toLowerCase();
+    return Boolean(env['TMUX'] || env['STY'] || term.startsWith('tmux') || term.startsWith('screen'));
 }
 
 function detectHistoryLaneMode(env: Record<string, string | undefined> = process.env): 'standard' | 'unsupported' {
