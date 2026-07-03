@@ -7,6 +7,7 @@ import {
     finalizeAssistant, finalizeStreamingAssistants, assistantTextSinceLastUser,
     appendStatusItem, appendToolItem, clearEphemeralStatus, appendThinkingTurnText, appendThinkingItem,
     upsertLiveToolItem, commitToolItemOnce, commitThinkingItemOnce, commitRemainingLiveToolItems,
+    resetTurnToolDedup,
     isThinkingToolEvent,
 } from '../../../src/cli/tui/transcript.js';
 import { captureFileSet, diffFileSets, getDiffStat, getUnifiedDiff, getIdeCli, openDiffInIde } from '../../../src/ide/diff.js';
@@ -117,6 +118,7 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                     }
                 }
                 commitRemainingLiveToolItems(transcript, event.raw['error'] ? 'error' : 'done');
+                resetTurnToolDedup(transcript);
                 if (ctx.isRaw) {
                     console.log(`  ${c.dim}${raw}${c.reset}`);
                 } else if (ctx.streaming) {
@@ -128,6 +130,18 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                             appendAssistantTurnText(transcript, event.text, event.agentId);
                         } else if (event.text.startsWith(existingText) && event.text.length > existingText.length) {
                             appendAssistantTurnText(transcript, event.text.slice(existingText.length), event.agentId);
+                        } else if (!event.text.startsWith(existingText) && !existingText.includes(event.text.trim())) {
+                            // 260703 CJ-WP3: the server final is canonical. A
+                            // reordered/renormalized final was silently DROPPED
+                            // (prefix-only reconciliation) — losing the answer
+                            // tail. Append the full final instead; bounded
+                            // redundancy beats silent loss.
+                            appendAssistantTurnText(transcript, `\n${event.text}`, event.agentId);
+                            if (!isFullscreen(ctx)) {
+                                // Classic mode streams to stdout directly — the
+                                // transcript append alone would be invisible.
+                                process.stdout.write(`\n${event.text}\n`);
+                            }
                         }
                     }
                     finalizeStreamingAssistants(transcript);

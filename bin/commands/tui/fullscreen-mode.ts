@@ -566,8 +566,20 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
             if (action === 'ctrl-o') {
                 // Committed items' pixels are frozen in native scrollback —
                 // scope the toggle to the uncommitted tail (jawcode parity).
-                if (toggleToolExpansion(ctx.store.transcript, viewport.currentFrontier().itemIndex)) scheduler.request();
-                continue;
+                // 260703 CJ-WP3: consume the key only when something actually
+                // toggled AND no overlay is open; otherwise FALL THROUGH to
+                // handleKeyInput so the bgtask-overlay binding (shadowed here
+                // before) still works in fullscreen — and an open overlay no
+                // longer flips hidden transcript items underneath itself.
+                const nonBgtaskOverlayOpen = ctx.store.overlay.helpOpen || ctx.store.overlay.paletteOpen
+                    || ctx.store.overlay.selector.open || ctx.store.overlay.settingsOpen;
+                if (nonBgtaskOverlayOpen) continue; // consumed: input-handler's help branch
+                // dismisses-without-return and would double-open bgtask (B-verify).
+                if (!ctx.store.overlay.bgtaskOpen
+                    && toggleToolExpansion(ctx.store.transcript, viewport.currentFrontier().itemIndex)) {
+                    scheduler.request();
+                    continue;
+                }
             }
             if (action === 'ctrl-l') {
                 // Model selector — dispatch /model command

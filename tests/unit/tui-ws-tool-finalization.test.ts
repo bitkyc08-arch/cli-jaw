@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { handleWsMessage } from '../../bin/commands/tui/ws-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
+import { appendUserItem } from '../../src/cli/tui/transcript.ts';
 import { renderStatusBar } from '../../src/cli/tui/jawcode-bridge.ts';
 import { stopSpinner } from '../../src/cli/tui/spinner.ts';
 
@@ -164,3 +165,79 @@ test('agent_done error drains remaining live tools as error rows', () => {
     }
 });
 
+
+// ── 260703 CJ-WP3 regressions (devlog _plan/260703_tui_scrollback_hardening/20) ──
+
+test('agent_done toolLog replay does not duplicate a stepRef-less tool committed live', () => {
+    const ctx = makeCtx();
+    try {
+        handleWsMessage(ctx, msg({ type: 'agent_tool', icon: '🔧', label: 'Bash', detail: 'short', status: 'running' }));
+        handleWsMessage(ctx, msg({ type: 'agent_tool', icon: '🔧', label: 'Bash', detail: 'short', status: 'done' }));
+        handleWsMessage(ctx, msg({
+            type: 'agent_done',
+            text: 'Done.',
+            toolLog: [{ icon: '🔧', label: 'Bash', detail: 'richer final output', status: 'done' }],
+        }));
+
+        const tools = committedTools(ctx);
+        assert.equal(tools.length, 1, `duplicated stepRef-less tool rows: ${tools.length}`);
+        const tool = tools[0]!;
+        if (tool.type === 'tool') {
+            assert.equal(tool.detail, 'richer final output');
+            assert.equal(tool.status, 'done');
+        }
+    } finally {
+        cleanupCtx(ctx);
+    }
+});
+
+test('stepRef-less fallback dedup is per turn — the same label commits fresh next turn', () => {
+    const ctx = makeCtx();
+    try {
+        handleWsMessage(ctx, msg({ type: 'agent_tool', icon: '🔧', label: 'Bash', detail: 'turn1', status: 'done' }));
+        appendUserItem(ctx.store.transcript, 'next question', 'next question');
+        handleWsMessage(ctx, msg({ type: 'agent_tool', icon: '🔧', label: 'Bash', detail: 'turn2', status: 'done' }));
+
+        const tools = committedTools(ctx);
+        assert.equal(tools.length, 2, 'second-turn tool row was wrongly deduped');
+    } finally {
+        cleanupCtx(ctx);
+    }
+});
+
+test('agent_done appends a reordered/renormalized final text instead of dropping it', () => {
+    const ctx = makeCtx();
+    try {
+        handleWsMessage(ctx, msg({ type: 'agent_output', text: 'streamed draft' }));
+        // Final is NOT a prefix-extension and NOT contained in the stream —
+        // previously dropped silently, losing the canonical answer.
+        handleWsMessage(ctx, msg({ type: 'agent_done', text: 'Rewritten canonical answer.' }));
+        assert.deepEqual(assistantTexts(ctx), ['streamed draft\nRewritten canonical answer.']);
+
+        // Contained final (renormalized superset stream) must NOT duplicate.
+        appendUserItem(ctx.store.transcript, 'q2', 'q2');
+        handleWsMessage(ctx, msg({ type: 'agent_output', text: 'full answer text\n' }));
+        handleWsMessage(ctx, msg({ type: 'agent_done', text: 'full answer text' }));
+        const texts = assistantTexts(ctx);
+        assert.equal(texts.filter(t => t.includes('full answer text')).length, 1, `duplicated final: ${JSON.stringify(texts)}`);
+    } finally {
+        cleanupCtx(ctx);
+    }
+});
+
+test('stepRef-less dedup resets at agent_done — a /retry-shaped run (no user item) commits fresh rows', () => {
+    const ctx = makeCtx();
+    try {
+        handleWsMessage(ctx, msg({ type: 'agent_tool', icon: '🔧', label: 'Bash', detail: 'run1', status: 'done' }));
+        handleWsMessage(ctx, msg({ type: 'agent_done', text: 'first.', toolLog: [] }));
+        // /retry: a new run starts WITHOUT appendUserItem.
+        handleWsMessage(ctx, msg({ type: 'agent_tool', icon: '🔧', label: 'Bash', detail: 'run2', status: 'done' }));
+
+        const tools = committedTools(ctx);
+        assert.equal(tools.length, 2, 'retried run tool row was wrongly deduped');
+        const last = tools[tools.length - 1]!;
+        if (last.type === 'tool') assert.equal(last.detail, 'run2');
+    } finally {
+        cleanupCtx(ctx);
+    }
+});

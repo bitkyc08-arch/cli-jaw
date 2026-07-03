@@ -11,6 +11,12 @@ export interface TranscriptState {
     liveTools: LiveToolItem[];
     liveToolsExpanded: boolean;
     committedToolRefs: Set<string>;
+    /** 260703 CJ-WP3 — per-turn dedup for stepRef-LESS tool commits (key =
+     *  `fallback:agentId:label`). agent-done replays the whole toolLog, and a
+     *  stepRef-less tool already committed live was re-appended (the live
+     *  entry that used to absorb the key was consumed). Cleared per user turn:
+     *  the same label must commit fresh next turn. */
+    committedFallbackKeys: Set<string>;
 }
 
 export interface LiveToolItem {
@@ -36,10 +42,13 @@ export interface ToolEventInput {
 }
 
 export function createTranscriptState(): TranscriptState {
-    return { items: [], liveTools: [], liveToolsExpanded: false, committedToolRefs: new Set() };
+    return { items: [], liveTools: [], liveToolsExpanded: false, committedToolRefs: new Set(), committedFallbackKeys: new Set() };
 }
 
 export function appendUserItem(state: TranscriptState, displayText: string, submitText: string): void {
+    // New user turn — stepRef-less fallback keys are turn-scoped (the same
+    // tool label must commit fresh rows in later turns).
+    state.committedFallbackKeys.clear();
     state.items.push({ type: 'user', displayText, submitText, timestamp: Date.now() });
 }
 
@@ -290,6 +299,26 @@ export function commitToolItemOnce(state: TranscriptState, input: ToolEventInput
     const liveIndex = state.liveTools.findIndex(item => item.key === key);
     const live = liveIndex >= 0 ? state.liveTools[liveIndex] : null;
     if (liveIndex >= 0) state.liveTools.splice(liveIndex, 1);
+    if (!input.stepRef && state.committedFallbackKeys.has(key)) {
+        // Already committed this turn (agent-done toolLog replay): update the
+        // last matching stepRef-less row in place — mirroring the stepRef
+        // update path and the live-lane upsert that merges the same key.
+        if (commitOpts?.updateCommitted) {
+            for (let i = state.items.length - 1; i >= 0; i--) {
+                const item = state.items[i]!;
+                if (item.type !== 'tool' || item.stepRef || item.text !== input.label) continue;
+                if ((item.agentId ?? 'main') !== (input.agentId ?? 'main')) continue;
+                if (input.detail) item.detail = input.detail;
+                if (input.status) {
+                    item.status = input.status;
+                    item.collapsed = input.status !== 'running';
+                }
+                item.timestamp = Date.now();
+                break;
+            }
+        }
+        return false;
+    }
     if (input.stepRef && state.committedToolRefs.has(input.stepRef)) {
         if (commitOpts?.updateCommitted && input.detail) {
             appendToolItem(state, input.label, {
@@ -302,6 +331,7 @@ export function commitToolItemOnce(state: TranscriptState, input: ToolEventInput
         return false;
     }
     if (input.stepRef) state.committedToolRefs.add(input.stepRef);
+    else state.committedFallbackKeys.add(key);
 
     const detail = input.detail || live?.detail || '';
     const opts: Parameters<typeof appendToolItem>[2] = { detail, status: input.status };
@@ -309,6 +339,15 @@ export function commitToolItemOnce(state: TranscriptState, input: ToolEventInput
     if (input.stepRef) opts.stepRef = input.stepRef;
     appendToolItem(state, input.label, opts);
     return true;
+}
+
+/** 260703 CJ-WP3 — end-of-run reset: stepRef-less fallback dedup is scoped to
+ *  ONE agent run. Cleared here (agent-done, after the toolLog replay) rather
+ *  than only at user submits: /retry and external-message turns start runs
+ *  WITHOUT a user item, and a stale key would suppress their fresh tool rows
+ *  (B-verify High finding). */
+export function resetTurnToolDedup(state: TranscriptState): void {
+    state.committedFallbackKeys.clear();
 }
 
 export function commitRemainingLiveToolItems(state: TranscriptState, status: ToolEventInput['status'] = 'done'): number {
