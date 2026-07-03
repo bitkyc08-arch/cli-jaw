@@ -6,8 +6,14 @@ import { dirname, join } from 'node:path';
 import {
     AGY_COMPLETE_KILL_REASON,
     AGY_FALLBACK_QUIET_COMPLETION_MS,
+    AGY_FULLTEXT_MAX_CHARS,
+    AGY_FULLTEXT_TRUNCATION_NOTICE,
+    AGY_LIVE_DISPLAY_MAX_CHARS,
     AGY_PRINT_QUIET_COMPLETION_MS,
+    appendAgyFullText,
+    describeAgyFinalSource,
     extractAgyConversationId,
+    finalizeAgyFallbackText,
     formatAgyTimeoutMessage,
     formatAgyTranscriptErrorMessage,
     getAgyQuietCompletionDelayMs,
@@ -16,11 +22,13 @@ import {
     normalizeAgyCloseText,
     resolveAgyEmptyCloseError,
     shouldCompleteAgyPrintRun,
+    shouldFreezeAgyLiveDisplay,
     stripAgyPromptEchoPrefix,
     stripAgyResumeReplayPrefix,
     stripAgyResumeReplayPrefixes,
     stripAgyTrailingTimeoutOutput,
 } from '../../src/agent/agy-runtime.ts';
+import { resolveSpawnOutputText } from '../../src/agent/events/helpers.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -113,7 +121,7 @@ test('AGY-RT-007: AGY stdout strips ANSI before persistence and sanitized trace 
     const spawnSrc = readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
     assert.match(spawnSrc, /rawText\s*=\s*agyUtf8!\.write\(chunk\)/);
     assert.match(spawnSrc, /rawText\.replace\(\/\\x1B/);
-    assert.match(spawnSrc, /ctx\.fullText\s*\+=\s*text/);
+    assert.match(spawnSrc, /appendAgyFullText\(ctx,\s*text\)/);
     const agyStdoutStart = spawnSrc.indexOf('const rawText = agyUtf8!.write(chunk)');
     assert.ok(agyStdoutStart >= 0, 'AGY stdout decoder block must exist');
     const agyStdoutBlock = spawnSrc.slice(
@@ -475,4 +483,113 @@ test('AGY-RT-016: AGY unresolved transcript provider error is finalized before s
     assert.match(spawnSrc, /ctx\.fullText\s*=\s*''/);
     assert.match(spawnSrc, /ctx\.liveOutputText\s*=\s*''/);
     assert.match(spawnSrc, /appendTraceEvent\(\{[\s\S]*eventType:\s*'runtime_error'[\s\S]*agyTranscriptErrorMessage/);
+});
+
+test('AGY-RT-017: appendAgyFullText accumulates past the old 102,400 silent cap', () => {
+    const ctx = { fullText: '', agyFullTextTruncated: undefined as boolean | undefined };
+    const chunk = 'x'.repeat(60_000);
+    appendAgyFullText(ctx, chunk);
+    appendAgyFullText(ctx, chunk);
+    assert.equal(ctx.fullText.length, 120_000, 'must keep the full 120 KB (old cap silently stopped at 102,400)');
+    assert.equal(ctx.agyFullTextTruncated, undefined);
+});
+
+test('AGY-RT-018: appendAgyFullText slices at AGY_FULLTEXT_MAX_CHARS, flags, then no-ops', () => {
+    const ctx = { fullText: 'y'.repeat(AGY_FULLTEXT_MAX_CHARS - 10), agyFullTextTruncated: undefined as boolean | undefined };
+    appendAgyFullText(ctx, 'z'.repeat(100));
+    assert.equal(ctx.fullText.length, AGY_FULLTEXT_MAX_CHARS);
+    assert.equal(ctx.agyFullTextTruncated, true);
+    appendAgyFullText(ctx, 'more');
+    assert.equal(ctx.fullText.length, AGY_FULLTEXT_MAX_CHARS, 'appends after the flag must be no-ops');
+});
+
+test('AGY-RT-019: live display freeze requires visible output first (quiet completion stays eligible)', () => {
+    const oversized = 'a'.repeat(AGY_LIVE_DISPLAY_MAX_CHARS + 1);
+    assert.equal(
+        shouldFreezeAgyLiveDisplay({ outputTextStarted: false, fullText: oversized }),
+        false,
+        'first oversized chunk must still run the display path so outputTextStarted gets set',
+    );
+    assert.equal(shouldFreezeAgyLiveDisplay({ outputTextStarted: true, fullText: oversized }), true);
+    assert.equal(shouldFreezeAgyLiveDisplay({ outputTextStarted: true, fullText: 'short' }), false);
+});
+
+test('AGY-RT-020: finalizeAgyFallbackText promotes the full body past a frozen live candidate', () => {
+    const fullBody = `intro\n${'b'.repeat(300_000)}\nfinal conclusion`;
+    const ctx = {
+        fullText: fullBody,
+        liveOutputText: fullBody.slice(0, 1_000),
+        agyFinalPlannerSeen: undefined as boolean | undefined,
+        agyFullTextTruncated: undefined as boolean | undefined,
+    };
+    assert.equal(finalizeAgyFallbackText(ctx, fullBody), true);
+    assert.equal(ctx.liveOutputText, fullBody);
+    // End-to-end: the agent_done resolver prefers display candidates; the promoted
+    // live candidate must deliver the full body (regression: frozen 1 KB masked it).
+    assert.equal(resolveSpawnOutputText(ctx), fullBody.trim());
+});
+
+test('AGY-RT-021: finalizeAgyFallbackText appends the truncation notice to both candidates', () => {
+    const ctx = {
+        fullText: 'body',
+        liveOutputText: 'body',
+        agyFinalPlannerSeen: undefined as boolean | undefined,
+        agyFullTextTruncated: true,
+    };
+    assert.equal(finalizeAgyFallbackText(ctx, 'body'), true);
+    assert.ok(ctx.fullText.endsWith(AGY_FULLTEXT_TRUNCATION_NOTICE));
+    assert.ok(ctx.liveOutputText.endsWith(AGY_FULLTEXT_TRUNCATION_NOTICE));
+
+    const noLive = {
+        fullText: 'body',
+        liveOutputText: undefined as string | undefined,
+        agyFinalPlannerSeen: undefined as boolean | undefined,
+        agyFullTextTruncated: true,
+    };
+    assert.equal(finalizeAgyFallbackText(noLive, 'body'), true);
+    assert.ok(noLive.fullText.endsWith(AGY_FULLTEXT_TRUNCATION_NOTICE));
+    assert.equal(noLive.liveOutputText, undefined);
+
+    // agy initializes liveOutputText to '' (spawn.ts) — distinct from undefined: the
+    // empty string is a live candidate, so it gets promoted first and then noticed.
+    const emptyLive = {
+        fullText: 'body',
+        liveOutputText: '' as string | undefined,
+        agyFinalPlannerSeen: undefined as boolean | undefined,
+        agyFullTextTruncated: true,
+    };
+    assert.equal(finalizeAgyFallbackText(emptyLive, 'body'), true);
+    assert.equal(emptyLive.liveOutputText, `body${AGY_FULLTEXT_TRUNCATION_NOTICE}`);
+    assert.ok(emptyLive.fullText.endsWith(AGY_FULLTEXT_TRUNCATION_NOTICE));
+});
+
+test('AGY-RT-022: finalizeAgyFallbackText no-ops for transcript-anchored or untouched runs', () => {
+    const planner = {
+        fullText: 'planner final',
+        liveOutputText: 'short',
+        agyFinalPlannerSeen: true,
+        agyFullTextTruncated: true,
+    };
+    assert.equal(finalizeAgyFallbackText(planner, 'anything longer than short'), false);
+    assert.equal(planner.liveOutputText, 'short');
+    assert.equal(planner.fullText, 'planner final');
+
+    const untouched = {
+        fullText: 'same',
+        liveOutputText: 'same body already longer',
+        agyFinalPlannerSeen: undefined as boolean | undefined,
+        agyFullTextTruncated: undefined as boolean | undefined,
+    };
+    assert.equal(finalizeAgyFallbackText(untouched, 'same'), false);
+});
+
+test('AGY-RT-023: describeAgyFinalSource reports mode and truncation for diagnosability', () => {
+    assert.equal(
+        describeAgyFinalSource({ agyFinalPlannerSeen: true, agyFinalPlannerText: 'x', agyFullTextTruncated: undefined, fullText: 'x' }),
+        '[jaw:agy:final] source=transcript chars=1 truncated=0',
+    );
+    assert.equal(
+        describeAgyFinalSource({ agyFinalPlannerSeen: undefined, agyFinalPlannerText: undefined, agyFullTextTruncated: true, fullText: 'abc' }),
+        '[jaw:agy:final] source=stdout-fallback chars=3 truncated=1',
+    );
 });

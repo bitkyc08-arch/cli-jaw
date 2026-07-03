@@ -59,14 +59,18 @@ import { jawRuntime } from './jwc-runtime.js';
 import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
+    appendAgyFullText,
     classifyAgyTranscriptMode,
+    describeAgyFinalSource,
     extractAgyConversationId,
+    finalizeAgyFallbackText,
     formatAgyWatchdogContext,
     resolveAgyEmptyCloseError,
     formatAgyTimeoutMessage,
     getAgyQuietCompletionDelayMs,
     isAgyStaleSessionOutput,
     normalizeAgyCloseText,
+    shouldFreezeAgyLiveDisplay,
     stripAgyPromptEchoPrefix,
     stripAgyResumeReplayPrefix,
     stripAgyResumeReplayPrefixes,
@@ -2215,8 +2219,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             ctx.stallWatchdog?.markProgress();
             // Defensive ANSI strip (belt-and-suspenders with NO_COLOR=1)
             const text = rawText.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
-            if (ctx.fullText.length < 102_400) ctx.fullText += text;
-            else if (ctx.fullText.length < 102_500) ctx.fullText += text.slice(0, 102_400 - ctx.fullText.length);
+            appendAgyFullText(ctx, text);
             if (!ctx.sessionId) ctx.sessionId = extractAgyConversationId(ctx.fullText);
             if (ctx.agyResumeOffset && ctx.agyResumeOffset > 0) {
                 ctx.agyBytesReceived = (ctx.agyBytesReceived ?? 0) + text.length;
@@ -2229,6 +2232,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.outputTextStarted = true;
                 appendTraceEvent({ runId: ctx.traceRunId, source: 'cli_raw', eventType: 'plain_text', raw: newText });
                 broadcastAgentOutput(ctx, agentLabel, cli, newText, empTag, traceAudience);
+                scheduleAgyQuietCompletion();
+                return;
+            }
+            if (shouldFreezeAgyLiveDisplay(ctx)) {
+                // Display frozen past AGY_LIVE_DISPLAY_MAX_CHARS; the close path
+                // promotes the full text into the live candidate (finalizeAgyFallbackText).
                 scheduleAgyQuietCompletion();
                 return;
             }
@@ -2300,7 +2309,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'opencode') flushOpenCodeBuffers(ctx, agentLabel, empTag);
         if (agyUtf8) {
             const remaining = agyUtf8.end();
-            if (remaining) ctx.fullText += remaining;
+            if (remaining) appendAgyFullText(ctx, remaining);
         }
         if (kiroUtf8) {
             const remaining = kiroUtf8.end();
@@ -2436,6 +2445,19 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         const agyTranscriptErrorMessage = cli === 'agy' && !agyTimedOut
             ? resolveAgyEmptyCloseError(ctx)
             : null;
+        if (cli === 'agy' && !agyTimedOut && !agyTranscriptErrorMessage) {
+            // Mirror the per-chunk display derivation ORDER (replay → echo → tracker →
+            // normalize). The close-path strips above run echo-before-replay and can
+            // leave a prompt echo in resumed output; every strip is a prefix-stripper
+            // that no-ops when the prefix is already gone, so re-running them in
+            // per-chunk order is idempotent and safe.
+            const promotedBase = isResume
+                ? stripAgyResumeReplayPrefixes(ctx.fullText, agyResumeReplayPrefixes).text
+                : ctx.fullText;
+            const promotedEcho = stripAgyPromptEchoPrefix(promotedBase, promptForArgs).text;
+            finalizeAgyFallbackText(ctx, normalizeAssistantDisplayText(stripInterviewTracker(promotedEcho)));
+        }
+        if (cli === 'agy') pushTrace(ctx, describeAgyFinalSource(ctx));
         const effectiveExitCode = agyCompletedByQuietOutput && !agyTranscriptErrorMessage
             ? 0
             : agyTranscriptErrorMessage

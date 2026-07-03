@@ -126,6 +126,8 @@ export interface SpawnContext {
   agyFinalPlannerSeen?: boolean;
   agyFinalPlannerText?: string | undefined;
   agyLastTranscriptError?: AgyTranscriptError | undefined;
+  /** Set when agy stdout accumulation hit AGY_FULLTEXT_MAX_CHARS (explicit, not silent). */
+  agyFullTextTruncated?: boolean;
   kiroDisplayedText?: string;
   kiroLineBuffer?: string;
   kiroToolSeq?: number;

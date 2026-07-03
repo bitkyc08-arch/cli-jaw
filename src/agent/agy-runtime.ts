@@ -5,6 +5,13 @@ export const AGY_TIMEOUT_PREFIX = 'Error: timed out waiting for response';
 export const AGY_COMPLETE_KILL_REASON = 'agy-complete';
 export const AGY_PRINT_QUIET_COMPLETION_MS = 5_000;
 export const AGY_FALLBACK_QUIET_COMPLETION_MS = 20_000;
+/** Safety bound for agy stdout accumulation. Far above any real answer; replaces the
+ * silent 102,400 cap that shortened stdout-fallback final answers. */
+export const AGY_FULLTEXT_MAX_CHARS = 8_388_608;
+/** Live prefix-diff display freezes past this bound (per-chunk cost guard);
+ * accumulation continues to AGY_FULLTEXT_MAX_CHARS and is promoted at close. */
+export const AGY_LIVE_DISPLAY_MAX_CHARS = 262_144;
+export const AGY_FULLTEXT_TRUNCATION_NOTICE = '\n\n[jaw:agy] stdout capture truncated at 8 MiB safety bound';
 const AGY_CONVERSATION_ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const AGY_CONVERSATION_ID_RE = new RegExp(
     `(?:\\bagy\\s+)?--conversation(?:=|\\s+)(${AGY_CONVERSATION_ID})\\b|\\b(?:conversation=|Created conversation\\s+)(${AGY_CONVERSATION_ID})\\b`,
@@ -37,6 +44,60 @@ export function resolveAgyEmptyCloseError(ctx: Pick<SpawnContext, 'fullText' | '
 
 function visibleAgyText(ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText'>): string {
     return String(ctx.liveOutputText || ctx.fullText || '').trim();
+}
+
+export function appendAgyFullText(
+    ctx: Pick<SpawnContext, 'fullText' | 'agyFullTextTruncated'>,
+    text: string,
+): void {
+    if (ctx.agyFullTextTruncated) return;
+    const remaining = AGY_FULLTEXT_MAX_CHARS - ctx.fullText.length;
+    if (text.length <= remaining) {
+        ctx.fullText += text;
+        return;
+    }
+    ctx.fullText += text.slice(0, Math.max(0, remaining));
+    ctx.agyFullTextTruncated = true;
+}
+
+/** Freeze live display only after visible output exists — a first oversized chunk must
+ * still flow through the display path so outputTextStarted/liveOutputText are set and
+ * quiet completion (shouldCompleteAgyPrintRun) stays eligible. */
+export function shouldFreezeAgyLiveDisplay(
+    ctx: Pick<SpawnContext, 'outputTextStarted' | 'fullText'>,
+): boolean {
+    return Boolean(ctx.outputTextStarted) && ctx.fullText.length > AGY_LIVE_DISPLAY_MAX_CHARS;
+}
+
+/** Close-path finalization for the stdout-fallback path: promote the full cleaned text
+ * into the live candidate (the output resolver prefers display candidates over raw
+ * fullText, so a frozen short liveOutputText would otherwise mask the full body), then
+ * append the explicit truncation notice to both final-text candidates. fullDisplayText
+ * is the display-normalized form of ctx.fullText, derived by the caller with the same
+ * strip order as the per-chunk display path. Returns true when anything was applied. */
+export function finalizeAgyFallbackText(
+    ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText' | 'agyFinalPlannerSeen' | 'agyFullTextTruncated'>,
+    fullDisplayText: string,
+): boolean {
+    if (ctx.agyFinalPlannerSeen) return false;
+    let applied = false;
+    if (ctx.liveOutputText !== undefined && fullDisplayText.length > ctx.liveOutputText.length) {
+        ctx.liveOutputText = fullDisplayText;
+        applied = true;
+    }
+    if (ctx.agyFullTextTruncated && ctx.fullText) {
+        ctx.fullText += AGY_FULLTEXT_TRUNCATION_NOTICE;
+        if (ctx.liveOutputText) ctx.liveOutputText += AGY_FULLTEXT_TRUNCATION_NOTICE;
+        applied = true;
+    }
+    return applied;
+}
+
+export function describeAgyFinalSource(
+    ctx: Pick<SpawnContext, 'agyFinalPlannerSeen' | 'agyFinalPlannerText' | 'agyFullTextTruncated' | 'fullText'>,
+): string {
+    const source = ctx.agyFinalPlannerSeen && ctx.agyFinalPlannerText ? 'transcript' : 'stdout-fallback';
+    return `[jaw:agy:final] source=${source} chars=${ctx.fullText.length} truncated=${ctx.agyFullTextTruncated ? 1 : 0}`;
 }
 
 export type { AgyTranscriptMode };
