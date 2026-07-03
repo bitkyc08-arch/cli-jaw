@@ -35,3 +35,5 @@ devlog/_plan/*/_ref_*/
 
 # local/private planning workspace; devlog is a tracked submodule pointer
 devlog/
+.codegraph/
+.codexclaw/
