@@ -12,6 +12,7 @@ import { loadLocales } from '../../src/core/i18n.js';
 import { consumePasteProtocol, getComposerDisplayText, setBracketedPaste } from '../../src/cli/tui/composer.js';
 import { cleanupScrollRegion, resolveShellLayout, setupScrollRegion } from '../../src/cli/tui/shell.js';
 import { createTuiStore } from '../../src/cli/tui/store.js';
+import { setVerboseRenderMode } from '../../src/cli/tui/transcript.js';
 import { isGitRepo, detectIde } from '../../src/ide/diff.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 
@@ -34,6 +35,7 @@ if (shouldShowHelp(process.argv)) printAndExit(`
     --theme <name>  TUI color theme: dark | light (default: dark, or settings tui.theme)
     --fullscreen    Alt-screen TUI (default for TTY terminals)
     --classic       Force line-mode TUI (opt-out from fullscreen)
+    --verbose       Render every tool/thinking block permanently expanded (this session only)
 `);
 import { APP_VERSION, getServerUrl, getWsUrl } from '../../src/core/config.js';
 import { c, cliColor, cliLabel, hrLine, getRows, ESC_WAIT_MS, formatFooter, type TuiContext } from './tui/types.js';
@@ -84,6 +86,7 @@ const { values } = parseArgs({
         theme: { type: 'string' },
         fullscreen: { type: 'boolean', default: false },
         classic: { type: 'boolean', default: false },
+        verbose: { type: 'boolean', default: false },
     },
     strict: false,
 });
@@ -213,6 +216,12 @@ const ctx: TuiContext = {
 };
 ctx.footer = formatFooter(ctx.label, ctx.accent, 'idle');
 ctx.promptPrefix = `  ${ctx.accent}\u276F${c.reset} `;
+
+if (values.verbose) {
+    // --verbose: session-scoped render-mode override (jawcode 91bfb40 parity, not persisted).
+    setVerboseRenderMode(true);
+    ctx.store.transcript.liveToolsExpanded = true;
+}
 
 // ─── Mode branch ─────────────────────────────
 if (values.simple) {

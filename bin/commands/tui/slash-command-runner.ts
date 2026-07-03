@@ -5,7 +5,7 @@ import { executeCommand, getArgumentCompletionItems } from '../../../src/cli/com
 import type { ArgumentCompletionItem } from '../../../src/cli/commands.js';
 import type { ParsedSlashCommand } from '../../../src/cli/types.js';
 import { setBracketedPaste } from '../../../src/cli/tui/composer.js';
-import { appendCommandItem } from '../../../src/cli/tui/transcript.js';
+import { appendCommandItem, isVerboseRenderMode } from '../../../src/cli/tui/transcript.js';
 import { cleanupScrollRegion, resolveShellLayout, setupScrollRegion } from '../../../src/cli/tui/shell.js';
 import { getIdeCli } from '../../../src/ide/diff.js';
 import { c, getRows, hrLine, renderCommandText, type TuiContext } from './types.js';
@@ -30,7 +30,7 @@ function appendFullscreenFeedback(ctx: TuiContext, text: string, opts?: { comman
 function clearFullscreenTranscript(ctx: TuiContext): void {
     ctx.store.transcript.items.length = 0;
     ctx.store.transcript.liveTools.length = 0;
-    ctx.store.transcript.liveToolsExpanded = false;
+    ctx.store.transcript.liveToolsExpanded = isVerboseRenderMode();
     ctx.store.transcript.committedToolRefs.clear();
     ctx.requestFrame?.();
 }

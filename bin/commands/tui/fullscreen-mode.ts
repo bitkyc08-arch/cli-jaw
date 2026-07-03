@@ -578,6 +578,9 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
                     || ctx.store.overlay.selector.open || ctx.store.overlay.settingsOpen;
                 if (nonBgtaskOverlayOpen) continue; // consumed: input-handler's help branch
                 // dismisses-without-return and would double-open bgtask (B-verify).
+                // Verbose render mode: toggleToolExpansion returns false (fold
+                // toggles are commit-mode-only, jawcode 753ea63 parity), so
+                // ctrl+o falls through to the bgtask-overlay binding below.
                 if (!ctx.store.overlay.bgtaskOpen
                     && toggleToolExpansion(ctx.store.transcript, viewport.currentFrontier().itemIndex)) {
                     scheduler.request();

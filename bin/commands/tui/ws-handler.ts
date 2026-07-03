@@ -227,7 +227,8 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                                 ...(event.agentId ? { agentId: event.agentId } : {}),
                                 ...(event.stepRef ? { stepRef: event.stepRef } : {}),
                                 streaming: true,
-                                collapsed: true,
+                                // collapsed omitted — appendThinkingItem's default honors
+                                // verbose render mode (settles expanded there).
                             });
                         } else {
                             commitThinkingItemOnce(transcript, event, { updateCommitted: true });
