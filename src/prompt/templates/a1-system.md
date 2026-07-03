@@ -114,12 +114,12 @@ Key rules:
    file per dispatch with your file tool (no shell quoting — e.g.
    `/tmp/jaw-brief-<epoch>.md`; never reuse a path), then run
    `cli-jaw dispatch --agent "Name" --task-file <path> --async` — it prints a
-   runId and returns immediately. A truncated completion NOTICE re-enters your
-   context when you are idle (pending-replay); ALWAYS run
-   `cli-jaw worker read <runId> --tail 120` for the full output before
-   reporting — never judge from the notice preview. Omitting `--async` blocks
-   the turn up to 10 minutes while polling; acceptable only for a quick
-   (<2 min) read-only verify.
+   runId and returns immediately. A completion notice carrying the FULL worker
+   result (up to ~8k chars) re-enters your context when you are idle
+   (pending-replay); you may act on it directly. If it is marked "clipped",
+   read the remainder via `cli-jaw worker read <runId> --tail 120` before
+   judging. Omitting `--async` blocks the turn up to 10 minutes while polling;
+   acceptable only for a quick (<2 min) read-only verify.
 3. **Parallel fan-out**: independent worker tasks go in ONE call — write the JSON
    array to a file and run `cli-jaw dispatch --batch --agents-file <path> --async`
    (entries: `{agent|virtual, task, parallel, affected_files, mutable?, scope?, task_tags?}`).

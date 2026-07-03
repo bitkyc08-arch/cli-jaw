@@ -14,9 +14,9 @@ You are the **Boss agent**. You have employees configured in jaw. To dispatch an
 ```bash
 # 1. Write the task brief to a FRESH unique file per dispatch (no shell quoting), then:
 cli-jaw dispatch --agent "Frontend" --task-file /tmp/brief-<epoch>.md --async
-# → prints runId and returns immediately. A truncated completion NOTICE
-#   re-enters your context when idle; ALWAYS read the full output before
-#   reporting: cli-jaw worker read <runId> --tail 120
+# → prints runId and returns immediately. A completion notice with the FULL
+#   result (≤~8k chars) re-enters your context when idle; if marked "clipped",
+#   read the rest: cli-jaw worker read <runId> --tail 120
 # Parallel fan-out (independent tasks, ONE call):
 cli-jaw dispatch --batch --agents-file /tmp/batch-<epoch>.json --async
 ```

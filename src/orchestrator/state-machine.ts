@@ -481,15 +481,15 @@ Audit the PLAN (not code). Verify:
 Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files.
 \`\`\`
 
-Then dispatch it (async — returns a runId immediately; a completion NOTICE with
-a short preview re-enters your context as [PLAN AUDIT — Employee Results]):
+Then dispatch it (async — returns a runId immediately; the audit result
+re-enters your context in full as [PLAN AUDIT — Employee Results], up to ~8k
+chars):
 \`\`\`bash
 cli-jaw dispatch --agent "Backend" --task-file /tmp/jaw-audit-<epoch>.md --async
 \`\`\`
 
-When the notice arrives, ALWAYS read the full report before judging —
-\`cli-jaw worker read <runId> --tail 120\` (the notice preview is truncated;
-never decide PASS/FAIL from it):
+When the result arrives, judge it directly; only if it is marked "clipped",
+read the remainder first (\`cli-jaw worker read <runId> --tail 120\`):
 - If FAIL: fix the plan and re-dispatch.
 - If PASS: report results to the user.
 
@@ -537,15 +537,15 @@ Verify:
 Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only.
 \`\`\`
 
-Then dispatch it (async — returns a runId immediately; a completion NOTICE with
-a short preview re-enters your context as [IMPLEMENTATION REVIEW — Employee Results]):
+Then dispatch it (async — returns a runId immediately; the verification result
+re-enters your context in full as [IMPLEMENTATION REVIEW — Employee Results],
+up to ~8k chars):
 \`\`\`bash
 cli-jaw dispatch --agent "Backend" --task-file /tmp/jaw-verify-<epoch>.md --async
 \`\`\`
 
-When the notice arrives, ALWAYS read the full report before judging —
-\`cli-jaw worker read <runId> --tail 120\` (the notice preview is truncated;
-never decide DONE/NEEDS_FIX from it):
+When the result arrives, judge it directly; only if it is marked "clipped",
+read the remainder first (\`cli-jaw worker read <runId> --tail 120\`):
 - NEEDS_FIX: YOU fix the issues yourself, then re-dispatch verification.
 - DONE: Report results to the user.
 

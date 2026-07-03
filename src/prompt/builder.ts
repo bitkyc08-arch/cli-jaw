@@ -681,7 +681,7 @@ It defines phase contracts, dispatch pitfalls (delegation trap, context drift, p
     prompt += 'Subagents you spawn must NOT spawn further subagents (1-level only).\n';
     prompt += 'When spawning a subagent, include: "Do NOT use Agent, subagent, or delegation tools. Do all work directly."\n';
     prompt += '\n### jaw Employee Dispatch\n';
-    prompt += 'Write the task brief to a FRESH unique file per dispatch with your file tool, then `cli-jaw dispatch --agent "Name" --task-file <path> --async` — prints a runId and returns immediately. A truncated completion NOTICE re-enters your context when you are idle; ALWAYS run `cli-jaw worker read <runId> --tail 120` for the full output before reporting. Parallel fan-out: `--batch --agents-file <path> --async`. Omitting `--async` blocks the turn up to 10 minutes while polling — acceptable only for a quick (<2 min) read-only verify.\n';
+    prompt += 'Write the task brief to a FRESH unique file per dispatch with your file tool, then `cli-jaw dispatch --agent "Name" --task-file <path> --async` — prints a runId and returns immediately. A completion notice carrying the FULL result (up to ~8k chars) re-enters your context when you are idle; if it says "clipped", read the rest via `cli-jaw worker read <runId> --tail 120`. Parallel fan-out: `--batch --agents-file <path> --async`. Omitting `--async` blocks the turn up to 10 minutes while polling — acceptable only for a quick (<2 min) read-only verify.\n';
     prompt += 'CLI Task tool ≠ jaw employee dispatch — simple research → CLI sub-agents, never employees (full rules: "jaw Employees vs CLI Sub-agents" section).\n';
 
     return prompt;
