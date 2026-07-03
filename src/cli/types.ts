@@ -177,6 +177,11 @@ export interface SlashCommand {
     args?: string;
     category?: string;
     interfaces: readonly string[];
+    /** Explicit per-interface capability override ('full' | 'readonly' |
+     *  'hidden' | 'blocked'). Wins over the interfaces-derived map in
+     *  command-contract/catalog.ts AND over interfaces for completion/help
+     *  visibility — execution dispatch still gates on `interfaces` only. */
+    capability?: Readonly<Record<string, string>>;
     hidden?: boolean;
     workflow?: WorkflowCommandMeta;
     helpDetailKey?: string;

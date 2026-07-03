@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { handleKeyInput } from '../../bin/commands/tui/input-handler.ts';
+import { handleKeyInput, flushPendingEscape } from '../../bin/commands/tui/input-handler.ts';
 import type { TuiContext } from '../../bin/commands/tui/types.ts';
 import { appendTextToComposer, getComposerDisplayText } from '../../src/cli/tui/composer.ts';
 import { createTuiStore } from '../../src/cli/tui/store.ts';
@@ -124,6 +124,86 @@ test('fullscreen stop shortcut records status instead of printing into the frame
     const last = ctx.store.transcript.items.at(-1);
     assert.equal(last?.type, 'status');
     if (last?.type === 'status') assert.match(last.text, /stopped/);
+});
+
+// ── 260703 tui_steer_esc_rca: ESC/Ctrl+C must stop a streaming turn even
+// with the composer open (typing mid-stream used to turn both into a no-op
+// resp. full-TUI exit). Composer draft must survive the stop. ──
+
+test('ESC stops a streaming turn even while the composer is open, preserving the draft', () => {
+    const sent: string[] = [];
+    const ctx = makeCtx(sent);
+    let frames = 0;
+    ctx.requestFrame = () => { frames += 1; };
+    ctx.streaming = true;
+    ctx.inputActive = true;  // user started typing a steer draft mid-stream
+    appendTextToComposer(ctx.store.composer, 'steer draft');
+
+    const { writes } = captureStdout(() => flushPendingEscape(ctx));
+
+    assert.equal(writes, '');
+    assert.deepEqual(sent.map(item => JSON.parse(item)), [{ type: 'stop' }]);
+    assert.equal(ctx.inputActive, true);
+    assert.equal(getComposerDisplayText(ctx.store.composer), 'steer draft');
+    const last = ctx.store.transcript.items.at(-1);
+    assert.equal(last?.type, 'status');
+    if (last?.type === 'status') assert.match(last.text, /stopped/);
+});
+
+test('ESC stops a streaming turn even while a slash command is in flight', () => {
+    const sent: string[] = [];
+    const ctx = makeCtx(sent);
+    ctx.requestFrame = () => { /* noop */ };
+    ctx.streaming = true;
+    ctx.inputActive = false;
+    ctx.commandRunning = true;  // e.g. /steer awaiting the server
+
+    captureStdout(() => flushPendingEscape(ctx));
+
+    assert.deepEqual(sent.map(item => JSON.parse(item)), [{ type: 'stop' }]);
+});
+
+test('ESC during a slash command with no stream stays blocked', () => {
+    const sent: string[] = [];
+    const ctx = makeCtx(sent);
+    ctx.streaming = false;
+    ctx.inputActive = false;
+    ctx.commandRunning = true;
+
+    captureStdout(() => flushPendingEscape(ctx));
+
+    assert.deepEqual(sent, []);
+});
+
+test('ESC with composer open and no stream stays a no-op (no accidental stop)', () => {
+    const sent: string[] = [];
+    const ctx = makeCtx(sent);
+    ctx.streaming = false;
+    ctx.inputActive = true;
+    appendTextToComposer(ctx.store.composer, 'draft');
+
+    captureStdout(() => flushPendingEscape(ctx));
+
+    assert.deepEqual(sent, []);
+    assert.equal(getComposerDisplayText(ctx.store.composer), 'draft');
+});
+
+test('Ctrl+C stops a streaming turn with composer open instead of exiting the TUI', () => {
+    const sent: string[] = [];
+    const ctx = makeCtx(sent);
+    ctx.requestFrame = () => { /* noop */ };
+    ctx.streaming = true;
+    ctx.inputActive = true;
+    appendTextToComposer(ctx.store.composer, 'steer draft');
+
+    // If the old exit branch were taken this would call process.exit(0) and
+    // kill the test run — surviving the call is part of the assertion.
+    const { writes } = captureStdout(() => handleKeyInput(ctx, '\x03'));
+
+    assert.equal(writes, '');
+    assert.deepEqual(sent.map(item => JSON.parse(item)), [{ type: 'stop' }]);
+    assert.equal(ctx.inputActive, true);
+    assert.equal(getComposerDisplayText(ctx.store.composer), 'steer draft');
 });
 
 test('fullscreen known slash command does not submit as an agent message or user row', async () => {

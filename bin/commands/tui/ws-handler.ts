@@ -291,10 +291,15 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
             }
 
             case 'queue-update':
+                // Cache the item snapshot for /queue \u2014 including the empty
+                // update, or drained items would ghost in the cache.
+                ctx.queueItems = Array.isArray(event.raw['queued'])
+                    ? event.raw['queued'] as Array<{ id: string; prompt: string; source?: string; ts?: number }>
+                    : [];
                 if (event.pending > 0) {
-                    appendStatusItem(transcript, `${event.pending}\uAC1C \uB300\uAE30 \uC911`);
+                    appendStatusItem(transcript, `${event.pending}\uAC1C \uB300\uAE30 \uC911 \u00B7 /queue`);
                     if (!isFullscreen(ctx)) {
-                        process.stdout.write(`\r  ${c.yellow}\u23F3 ${event.pending}\uAC1C \uB300\uAE30 \uC911${c.reset}          \r`);
+                        process.stdout.write(`\r  ${c.yellow}\u23F3 ${event.pending}\uAC1C \uB300\uAE30 \uC911 \u00B7 /queue${c.reset}          \r`);
                     } else {
                         ctx.requestFrame?.();
                     }
@@ -354,11 +359,52 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                         }
                         break;
                     }
+                    // Steer/retry/schedule lifecycle — these explain why the
+                    // current stream just died or restarted; the Web UI renders
+                    // them but the TUI used to drop them silently
+                    // (devlog 260703 tui_steer_esc_rca doc 30 §A3).
+                    case 'steer_started': {
+                        const promptPreview = String(event.raw['prompt'] || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+                        const message = `↳ steer (${event.raw['origin'] || 'web'}): ${promptPreview}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.yellow}${message}${c.reset}`);
+                        break;
+                    }
+                    case 'agent_retry': {
+                        const delay = Number(event.raw['delay'] ?? 0);
+                        const reason = String(event.raw['reason'] || '429');
+                        const message = `⟳ ${event.raw['cli'] || 'agent'} ${reason}${delay > 0 ? ` — retry in ${delay}s` : ' — retrying'}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.dim}${message}${c.reset}`);
+                        break;
+                    }
+                    case 'schedule_wakeup': {
+                        const message = `⏰ wakeup in ${event.raw['delaySeconds']}s — ${event.raw['reason'] || ''}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.dim}${message}${c.reset}`);
+                        break;
+                    }
+                    case 'schedule_wakeup_failed': {
+                        const message = `⚠ wakeup failed — ${event.raw['reason'] || ''}: ${event.raw['error'] || ''}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.yellow}${message}${c.reset}`);
+                        break;
+                    }
                     case 'goal_done':
                     case 'goal_continuation':
                     case 'goal_pause_detected':
-                        if (!isFullscreen(ctx)) console.log(`\n  ${c.dim}🎯 Goal: ${String(event.raw['type']).replace('goal_', '')}${event.raw['reason'] || event.raw['source'] ? ` — ${event.raw['reason'] || event.raw['source']}` : ''}${c.reset}`);
+                    case 'goal_pause_gate_pending':
+                    case 'goal_continuation_limit':
+                    case 'goal_continuation_failed':
+                    case 'goal_done_rejected':
+                    case 'goal_cancel': {
+                        const detail = event.raw['reason'] || event.raw['source'] || event.raw['error']
+                            || (event.raw['attempts'] !== undefined ? `${event.raw['attempts']} attempts` : '');
+                        const message = `🎯 Goal: ${String(event.raw['type']).replace('goal_', '')}${detail ? ` — ${detail}` : ''}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.dim}${message}${c.reset}`);
                         break;
+                    }
                     case 'memory_status':
                         if (event.raw['text'] && !isFullscreen(ctx)) console.log(`\n  ${c.dim}🧠 ${event.raw['text']}${c.reset}`);
                         break;

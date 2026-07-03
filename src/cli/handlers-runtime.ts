@@ -255,6 +255,13 @@ export async function steerHandler(args: string[], ctx: CliCommandContext): Prom
     return { ok: true, type: 'success', text: t('cmd.steer.started', {}, L) };
 }
 
+export async function queueHandler(): Promise<SlashResult> {
+    // Fallback only: the interactive listing/actions live in the TUI intercept
+    // (bin/commands/tui/queue-command.ts) — a non-intercepting surface just
+    // gets usage. Web manages the queue via the pending-queue row buttons.
+    return { ok: true, text: 'Usage: /queue [steer|drop <n>] — interactive in the chat TUI (jaw chat)' };
+}
+
 export async function forwardHandler(args: string[], ctx: CliCommandContext): Promise<SlashResult> {
     const iface = ctx.interface || 'cli';
     const remote = iface === 'discord' ? 'discord'

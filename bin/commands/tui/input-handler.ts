@@ -80,17 +80,30 @@ export function flushPendingEscape(ctx: TuiContext): void {
         redrawPromptLine(ctx);
         return;
     }
-    if (!ctx.inputActive) {
-        if (ctx.commandRunning) return;
-        ctx.ws.send(JSON.stringify({ type: 'stop' }));
-        ctx.inputActive = true;
-        if (isFullscreen(ctx)) {
-            appendFullscreenStatus(ctx, 'stopped');
-        } else {
-            console.log(`\n  ${c.yellow}\u25A0 stopped${c.reset}`);
-            openPromptBlock(ctx);
-        }
+    // Stop on ESC whenever a turn is streaming, even if the composer is open \u2014
+    // typing mid-stream flips inputActive and used to turn ESC into a no-op
+    // (devlog/_plan/260703_tui_steer_esc_rca/20_esc_stop.md). Composer text is
+    // preserved so an interrupted steer draft is not lost.
+    if (!ctx.inputActive || ctx.streaming) {
+        // A live stream must stay stoppable even while a slash command is in
+        // flight (e.g. /steer awaits up to 45s server-side) — only block the
+        // stop when there is no stream to stop.
+        if (ctx.commandRunning && !ctx.streaming) return;
+        sendStopForStreaming(ctx);
     }
+}
+
+function sendStopForStreaming(ctx: TuiContext): void {
+    const composerWasOpen = ctx.inputActive;
+    ctx.ws.send(JSON.stringify({ type: 'stop' }));
+    ctx.inputActive = true;
+    if (isFullscreen(ctx)) {
+        appendFullscreenStatus(ctx, 'stopped');
+        return;
+    }
+    console.log(`\n  ${c.yellow}\u25A0 stopped${c.reset}`);
+    if (composerWasOpen) redrawPromptLine(ctx);
+    else openPromptBlock(ctx);
 }
 
 export function handleKeyInput(ctx: TuiContext, rawKey: string): void {
@@ -433,16 +446,12 @@ export function handleKeyInput(ctx: TuiContext, rawKey: string): void {
         backspaceComposer(composer);
         redrawInputWithAutocomplete(ctx);
     } else if (action === 'ctrl-c') {
-        if (!ctx.inputActive) {
-            if (ctx.commandRunning) return;
-            ctx.ws.send(JSON.stringify({ type: 'stop' }));
-            ctx.inputActive = true;
-            if (isFullscreen(ctx)) {
-                appendFullscreenStatus(ctx, 'stopped');
-            } else {
-                console.log(`\n  ${c.yellow}\u25A0 stopped${c.reset}`);
-                openPromptBlock(ctx);
-            }
+        // While a turn is streaming, Ctrl+C stops the agent (same as ESC) even
+        // with the composer open \u2014 it used to exit the whole TUI in that state.
+        // Exit stays on Ctrl+C when idle.
+        if (!ctx.inputActive || ctx.streaming) {
+            if (ctx.commandRunning && !ctx.streaming) return;
+            sendStopForStreaming(ctx);
         } else {
             cleanupScrollRegion(resolveShellLayout(process.stdout.columns || 80, getRows(), panes));
             console.log(`\n  ${c.dim}Bye! \uD83E\uDD88${c.reset}\n`);

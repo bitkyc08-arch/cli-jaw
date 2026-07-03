@@ -9,7 +9,8 @@ import { parseCommand, executeCommand } from '../../../src/cli/commands.js';
 import type { ParsedSlashCommand } from '../../../src/cli/types.js';
 import { captureFileSet, diffFileSets, openDiffInIde, getIdeCli } from '../../../src/ide/diff.js';
 import { c, renderCommandText, type TuiContext } from './types.js';
-import { makeCliCommandCtx } from './api.js';
+import { makeCliCommandCtx, apiJson } from './api.js';
+import { runQueueCommand } from './queue-command.js';
 
 export async function runSimpleMode(ctx: TuiContext): Promise<void> {
     const { ws } = ctx;
@@ -18,6 +19,41 @@ export async function runSimpleMode(ctx: TuiContext): Promise<void> {
     let streaming = false;
 
     async function handleSlashCommand(parsed: ParsedSlashCommand) {
+        // /steer must run in the server process (registry excludes 'cli' —
+        // process boundary). Forward the raw text to POST /api/message, same
+        // as the full TUI (slash-command-runner.ts runSteerViaServer).
+        if (parsed?.type === 'known' && parsed.name === 'steer') {
+            if (!parsed.args.length) {
+                console.log(`  ${c.red}Usage: /steer <prompt>${c.reset}`);
+                rl.prompt();
+                return;
+            }
+            try {
+                const resp = await apiJson<{ ok?: boolean; text?: string; error?: string }>(
+                    ctx, '/api/message',
+                    { method: 'POST', body: { prompt: parsed.rawText || `/steer ${parsed.args.join(' ')}` } },
+                    45_000,
+                );
+                if (resp.ok === false) console.log(`  ${c.red}${resp.text || resp.error || 'steer failed'}${c.reset}`);
+                else console.log(`  ${renderCommandText(resp.text || 'steering…')}`);
+            } catch (err) {
+                console.log(`  ${c.red}${(err as Error).message}${c.reset}`);
+            }
+            rl.prompt();
+            return;
+        }
+        // /queue: same shared executor as the full TUI.
+        if (parsed?.type === 'known' && parsed.name === 'queue') {
+            try {
+                const result = await runQueueCommand(ctx, parsed.args);
+                if (result.ok) console.log(`  ${renderCommandText(result.text)}`);
+                else console.log(`  ${c.red}${result.text}${c.reset}`);
+            } catch (err) {
+                console.log(`  ${c.red}${(err as Error).message}${c.reset}`);
+            }
+            rl.prompt();
+            return;
+        }
         try {
             const result = await executeCommand(parsed, makeCliCommandCtx(ctx));
             if (result?.code === 'clear_screen') console.clear();

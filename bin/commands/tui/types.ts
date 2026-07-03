@@ -116,6 +116,12 @@ export interface TuiContext {
     streamState: 'idle' | 'responding' | 'tool';
     bgtaskCount: number;
     bgtaskTasks: Array<{ id: string; kind: string; startedAt: string | null }>;
+    /** Live queued-message snapshot (from queue_update events; /queue refreshes
+     *  it from GET /api/orchestrate/snapshot, the authoritative source). */
+    queueItems?: Array<{ id: string; prompt: string; source?: string; ts?: number }>;
+    /** Ids as numbered by the most recent /queue listing — actions resolve
+     *  <n> against this pinned order, not the live cache (renumber race). */
+    queueListIds?: string[];
     turnStartedAt: number;
     streamSink: StreamSink | null;
     commandRunning: boolean;
