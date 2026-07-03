@@ -6,7 +6,7 @@ import { loadSettings, getServerUrl } from '../../src/core/config.js';
 import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { errString, isConnRefused } from '../_http-client.js';
-import { unwrapEmployeeSummaries } from './dispatch-helpers.js';
+import { unwrapEmployeeSummaries, readTaskFile, parseTaskTagsFlag } from './dispatch-helpers.js';
 import { printBatchDispatchSummary, type BatchDispatchResultSummary } from './dispatch-batch-summary.js';
 import {
     displayShellCommand,
@@ -16,31 +16,39 @@ import {
 if (shouldShowHelp(process.argv)) printAndExit(`
   jaw dispatch — send task to an employee agent
 
-  Usage: jaw dispatch --agent "Name" --task "instruction" [--watch] [--quiet]
+  Usage: jaw dispatch --agent "Name" (--task "instruction" | --task-file <path>) [--async] [--quiet]
          jaw dispatch --virtual "security" --task "audit this change" [--role "security"]
-         jaw dispatch --batch --agents '<JSON array>'
+         jaw dispatch --batch (--agents '<JSON array>' | --agents-file <path>) [--async]
   Options:
-    --agent <name>    Employee name (must match settings.json employees)
-    --virtual <name>  Ephemeral virtual employee name or role preset (security, testing)
-    --role <text>     Virtual role preset or freeform role prompt
-    --cli <name>      CLI for virtual employee (default: current CLI)
-    --model <name>    Model for virtual employee (default: registry default for CLI)
-    --task <text>     Task instruction to send
-    --mutable         Allow employee to write/modify files (default: read-only)
-    --scope <path>    Restrict writes to a subdirectory (optional, requires --mutable)
-    --watch           Print live sanitized employee progress until completion (default for human output)
-    --quiet           Suppress live progress summaries
-    --json            JSON output; suppresses human progress lines
+    --agent <name>      Employee name (must match settings.json employees)
+    --virtual <name>    Ephemeral virtual employee name or role preset (security, testing)
+    --role <text>       Virtual role preset or freeform role prompt
+    --cli <name>        CLI for virtual employee (default: current CLI)
+    --model <name>      Model for virtual employee (default: registry default for CLI)
+    --task <text>       Task instruction to send
+    --task-file <path>  Read the task instruction from a file (recommended for
+                        multi-line briefs — no shell quoting; max 1MB)
+    --task-tags <csv>   Methodology overlays forwarded as task_tags (e.g. "tdd,security")
+    --mutable           Allow employee to write/modify files (default: read-only)
+    --scope <path>      Restrict writes to a subdirectory (optional, requires --mutable)
+    --async             Do not wait for the result: print runId + recovery commands
+                        and exit. Recommended for work that may exceed 2 minutes —
+                        omitting it blocks up to 10 minutes while polling.
+                        Retrieve later: cli-jaw worker status/read <runId>
+    --watch             Print live sanitized employee progress until completion (default for human output)
+    --quiet             Suppress live progress summaries
+    --json              JSON output; suppresses human progress lines
   Batch mode:
-    --batch           Enable batch parallel dispatch
-    --agents <json>   JSON array of {agent|virtual, task, role?, cli?, model?, parallel?, mutable?, scope?, affected_files?}
+    --batch             Enable batch parallel dispatch
+    --agents <json>     JSON array of {agent|virtual, task, role?, cli?, model?, parallel?, mutable?, scope?, affected_files?, task_tags?}
+    --agents-file <path> Read the JSON array from a file (no shell quoting)
   Result is returned via stdout. Employee names are case-sensitive.
 
   Examples:
     jaw dispatch --agent "Frontend" --task "Fix CSS bug in header"
-    jaw dispatch --agent "Backend" --task "Add rate limiting to /api/chat"
+    jaw dispatch --agent "Backend" --task-file /tmp/brief.md --task-tags "tdd" --async
     jaw dispatch --virtual "security" --task "Review this branch for auth and secret leaks" --watch
-    jaw dispatch --batch --agents '[{"agent":"Frontend","task":"verify CSS","parallel":true},{"agent":"Backend","task":"verify API","parallel":true}]'
+    jaw dispatch --batch --agents-file /tmp/batch.json --async
 `);
 
 loadSettings();
@@ -62,7 +70,7 @@ const portIdx = process.argv.indexOf('--port');
 const PORT = (portIdx !== -1 && process.argv[portIdx + 1]) ? process.argv[portIdx + 1] : undefined;
 const BASE = getServerUrl(PORT);
 
-type BatchAgentRequest = { agent?: string; virtual?: string; role?: string; cli?: string; model?: string; task: string; parallel?: boolean; mutable?: boolean; scope?: string; affected_files?: string[] };
+type BatchAgentRequest = { agent?: string; virtual?: string; role?: string; cli?: string; model?: string; task: string; parallel?: boolean; mutable?: boolean; scope?: string; affected_files?: string[]; task_tags?: string[] };
 
 function getFlag(name: string): string | undefined {
     const idx = process.argv.indexOf(name);
@@ -75,17 +83,49 @@ const virtual = getFlag('--virtual');
 const role = getFlag('--role');
 const cli = getFlag('--cli');
 const model = getFlag('--model');
-const task = getFlag('--task');
+const inlineTask = getFlag('--task');
+const taskFile = getFlag('--task-file');
+const taskTags = parseTaskTagsFlag(getFlag('--task-tags'));
+const isAsync = process.argv.includes('--async');
 const mutable = process.argv.includes('--mutable');
 const scope = getFlag('--scope');
 const quiet = process.argv.includes('--quiet');
 const json = process.argv.includes('--json');
 const isBatch = process.argv.includes('--batch');
-const batchAgentsRaw = getFlag('--agents');
+const inlineAgentsRaw = getFlag('--agents');
+const agentsFile = getFlag('--agents-file');
+
+// 260703 dispatch affordance: file-based briefs remove shell-quoting failures.
+if (inlineTask && taskFile) {
+    console.error('❌ Pass either --task or --task-file, not both.');
+    process.exit(1);
+}
+if (inlineAgentsRaw && agentsFile) {
+    console.error('❌ Pass either --agents or --agents-file, not both.');
+    process.exit(1);
+}
+let task = inlineTask;
+if (taskFile) {
+    const r = readTaskFile(taskFile);
+    if (!r.ok || !r.content) {
+        console.error(`❌ ${r.error || 'task file read failed'}`);
+        process.exit(1);
+    }
+    task = r.content;
+}
+let batchAgentsRaw = inlineAgentsRaw;
+if (agentsFile) {
+    const r = readTaskFile(agentsFile);
+    if (!r.ok || !r.content) {
+        console.error(`❌ ${r.error || 'agents file read failed'}`);
+        process.exit(1);
+    }
+    batchAgentsRaw = r.content;
+}
 
 if (isBatch) {
     if (!batchAgentsRaw) {
-        console.error('Usage: jaw dispatch --batch --agents \'[{"agent":"Name","task":"..."}]\'');
+        console.error('Usage: jaw dispatch --batch (--agents \'[{"agent":"Name","task":"..."}]\' | --agents-file <path>)');
         process.exit(1);
     }
     let batchAgents: BatchAgentRequest[];
@@ -103,12 +143,25 @@ if (isBatch) {
         const res = await cliFetch(`${BASE}/api/orchestrate/dispatch/batch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'X-Jaw-Boss-Token': bossToken },
-            body: JSON.stringify({ agents: batchAgents }),
+            // --async sends wait:false → server pre-claims slots, answers 202
+            // with runIds, and executes detached (results via worker status/read
+            // or the boss's pending-replay drain).
+            body: JSON.stringify({ agents: batchAgents, ...(isAsync ? { wait: false } : {}) }),
         });
         const { body, nonJsonError } = await readJsonResponse<BatchDispatchBody>(res, 'batch dispatch endpoint');
         if (nonJsonError || !body.ok) {
             printNonOkResponse(body, res.status);
             process.exit(1);
+        }
+        if (res.status === 202) {
+            const workers = body.workers || [];
+            const allAccepted = workers.length > 0 && workers.every(w => w.accepted);
+            if (json) {
+                console.log(JSON.stringify(body));
+                process.exit(allAccepted ? 0 : 1);
+            }
+            printBatchAsyncWorkers(workers);
+            process.exit(allAccepted ? 0 : 1);
         }
         if (json) {
             console.log(JSON.stringify(body));
@@ -123,13 +176,14 @@ if (isBatch) {
 }
 
 if ((!agent && !virtual) || (agent && virtual) || !task) {
-    console.error('Usage: jaw dispatch (--agent <name> | --virtual <name>) --task <task>');
-    console.error('  --agent   Employee name (e.g., Frontend, Backend, Data, Docs)');
-    console.error('  --virtual Ephemeral virtual employee name or role preset (security, testing)');
-    console.error('  --role    Virtual role preset or freeform role prompt');
-    console.error('  --cli     CLI for virtual employee (default: current CLI)');
-    console.error('  --model   Model for virtual employee (default: registry default for CLI)');
-    console.error('  --task    Task description to assign');
+    console.error('Usage: jaw dispatch (--agent <name> | --virtual <name>) (--task <task> | --task-file <path>)');
+    console.error('  --agent     Employee name (e.g., Frontend, Backend, Data, Docs)');
+    console.error('  --virtual   Ephemeral virtual employee name or role preset (security, testing)');
+    console.error('  --role      Virtual role preset or freeform role prompt');
+    console.error('  --cli       CLI for virtual employee (default: current CLI)');
+    console.error('  --model     Model for virtual employee (default: registry default for CLI)');
+    console.error('  --task      Task description to assign');
+    console.error('  --task-file Read the task description from a file (no shell quoting)');
     process.exit(1);
 }
 
@@ -157,9 +211,27 @@ type DispatchResultBody = {
         verdict?: string; statusPersisted?: boolean; persistedField?: string; currentState?: string; ctxPresent?: boolean;
     };
 };
+type BatchAsyncWorker = { agent: string; accepted: boolean; agentId?: string; runId?: string; error?: string };
 type BatchDispatchBody = {
     ok?: boolean; results?: BatchDispatchResultSummary[]; error?: string; message?: string; hint?: string;
+    state?: string; workers?: BatchAsyncWorker[];
 };
+
+// 202 workers-shape printer (--async batch). printBatchDispatchSummary consumes
+// completed results (ok/status/preview) and cannot render pre-claimed slots.
+function printBatchAsyncWorkers(workers: BatchAsyncWorker[]): void {
+    const accepted = workers.filter(w => w.accepted).length;
+    console.log(`🚀 Batch accepted — ${accepted}/${workers.length} workers running (async)`);
+    for (const w of workers) {
+        if (w.accepted && w.runId) {
+            console.log(`  ✅ ${w.agent} — runId: ${w.runId}`);
+            console.log(`     status: cli-jaw worker status ${w.runId}`);
+            console.log(`     output: cli-jaw worker read ${w.runId} --tail 80`);
+        } else {
+            console.log(`  ❌ ${w.agent} — ${w.error || 'not accepted'}`);
+        }
+    }
+}
 
 function sleep(ms: number): Promise<void> {
     return new Promise(resolve => setTimeout(resolve, ms));
@@ -427,6 +499,7 @@ try {
                     task,
                     mutable,
                     scope,
+                    ...(taskTags.length ? { task_tags: taskTags } : {}),
                     ...(role ? { role } : {}),
                     ...(cli ? { cli } : {}),
                     ...(model ? { model } : {}),
@@ -465,6 +538,22 @@ try {
         process.exit(1);
     }
     if (res.status === 202) {
+        // --async: worker is claimed and running server-side — print the handle
+        // and return the turn instead of blocking up to 10 minutes.
+        if (isAsync) {
+            if (json) { printJsonResult(body); process.exit(0); }
+            console.log(`🚀 ${targetName} dispatched (async)`);
+            const w = body.worker;
+            if (w?.runId) {
+                console.log(`  runId: ${w.runId}`);
+                console.log(`  status: cli-jaw worker status ${w.runId}`);
+                console.log(`  output: cli-jaw worker read ${w.runId} --tail 80`);
+            } else {
+                // Defensive: a 202 without worker metadata still leaves a handle.
+                console.log(`  status: cli-jaw worker status "${targetName}"`);
+            }
+            process.exit(0);
+        }
         const pollAgentId = body?.worker?.agentId || (agent ? await resolveAgentId(agent) : null);
         if (!pollAgentId) { console.error('❌ dispatch started but worker id was not returned'); process.exit(1); }
         const pollRunId = body?.worker?.runId;
@@ -479,6 +568,17 @@ try {
             const pollAgentId = body?.worker?.agentId || body?.existing?.agentId || (agent ? await resolveAgentId(agent) : null);
             if (!pollAgentId) { printNonOkResponse(body, res.status); process.exit(1); }
             const pollRunId = body?.worker?.runId || body?.existing?.runId;
+            if (isAsync) {
+                // Do not fall into the 10-minute poll on --async: report the
+                // in-flight worker and exit non-zero so the caller can decide.
+                if (json) { printJsonResult(body); process.exit(1); }
+                console.error(`⏳ ${targetName} is already running (agentId: ${pollAgentId}${pollRunId ? `, runId: ${pollRunId}` : ''})`);
+                if (pollRunId) {
+                    console.error(`  status: cli-jaw worker status ${pollRunId}`);
+                    console.error(`  output: cli-jaw worker read ${pollRunId} --tail 80`);
+                }
+                process.exit(1);
+            }
             if (!json && !quiet) {
                 console.error(`⏳ ${targetName} is already running (agentId: ${pollAgentId}${pollRunId ? `, runId: ${pollRunId}` : ''}), polling worker result...`);
             }
