@@ -78,7 +78,7 @@ import {
 import { detectAgyCapabilities } from './agy-capabilities.js';
 import { buildAgyBootstrapEnvelope, type AgyBootstrapEnvelope } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
-import { appendAssistantTextSegment, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
+import { appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import { listKiroConversationIdsForCwd } from './kiro-auth.js';
 import {
     captureKiroSessionIdAfterExit,
@@ -263,7 +263,7 @@ function emitKiroStreamEvents(
         }
         if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
         appendParentLiveRunTool(ctx, tool);
-        broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag }, traceAudience);
+        emitAgentTool(ctx, agentLabel, tool, empTag);
     }
 }
 
@@ -1232,6 +1232,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             hasClaudeStreamEvents: false, sessionId: null as string | null, cost: null as number | null,
             turns: null as number | null, duration: null as number | null, tokens: null, stderrBuf: '',
             thinkingBuf: '',
+            runStartedAt: Date.now(),
             liveScope: effectiveLiveScope,
             parentLiveScope: parentLiveScopeForChild,
             traceRunId,
@@ -1251,7 +1252,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.toolLog.push(tool);
                 if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                 appendParentLiveRunTool(ctx, tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag }, traceAudience);
+                emitAgentTool(ctx, agentLabel, tool, empTag);
             }
             ctx.thinkingBuf = '';
         }
@@ -1285,7 +1286,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     ctx.toolLog.push(parsedTool);
                     if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                     appendParentLiveRunTool(ctx, parsedTool);
-                    broadcast('agent_tool', { agentId: agentLabel, ...parsedTool, ...empTag }, traceAudience);
+                    emitAgentTool(ctx, agentLabel, parsedTool, empTag);
                     // Reset heartbeat gate on actually visible broadcast (not 💭)
                     lastVisibleBroadcastTs = Date.now();
                     heartbeatSent = false;
@@ -1314,7 +1315,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.toolLog.push(parsed.tool);
                 if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                 appendParentLiveRunTool(ctx, parsed.tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool, ...empTag }, traceAudience);
+                emitAgentTool(ctx, agentLabel, parsed.tool, empTag);
             }
         });
 
@@ -1329,7 +1330,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.toolLog.push(parsed.tool);
                 if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                 appendParentLiveRunTool(ctx, parsed.tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...parsed.tool, ...empTag }, traceAudience);
+                emitAgentTool(ctx, agentLabel, parsed.tool, empTag);
             }
         });
 
@@ -1346,12 +1347,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 heartbeatSent = true;
                 const elapsed = Math.round((Date.now() - lastVisibleBroadcastTs) / 1000);
                 console.log(`  ⏳ agent active (no visible event for ${elapsed}s)`);
-                broadcast('agent_tool', {
-                    agentId: agentLabel,
+                emitAgentTool(ctx, agentLabel, {
                     icon: '⏳',
                     label: 'working... (no visible progress)',
-                    ...empTag,
-                }, traceAudience);
+                }, empTag);
             }
         });
 
@@ -1520,7 +1519,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.toolLog.push(tool);
                 if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                 appendParentLiveRunTool(ctx, tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag }, traceAudience);
+                emitAgentTool(ctx, agentLabel, tool, empTag);
             }
             ctx.thinkingBuf = '';
         }
@@ -1561,7 +1560,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     ctx.toolLog.push(tool);
                     if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                     appendParentLiveRunTool(ctx, tool);
-                    broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag }, traceAudience);
+                    emitAgentTool(ctx, agentLabel, tool, empTag);
                     return;
                 }
                 if (event.kind === 'session') {
@@ -1697,6 +1696,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             hasClaudeStreamEvents: false, sessionId: null as string | null, cost: null as number | null,
             turns: null as number | null, duration: null as number | null, tokens: null, stderrBuf: '',
             thinkingBuf: '',
+            runStartedAt: Date.now(),
             liveScope: effectiveLiveScope,
             parentLiveScope: parentLiveScopeForChild,
             traceRunId,
@@ -1715,7 +1715,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 ctx.toolLog.push(tool);
                 if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                 appendParentLiveRunTool(ctx, tool);
-                broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag }, traceAudience);
+                emitAgentTool(ctx, agentLabel, tool, empTag);
             }
             ctx.thinkingBuf = '';
         }
@@ -1748,7 +1748,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                     ctx.toolLog.push(parsedTool);
                     if (ctx.liveScope) replaceLiveRunTools(ctx.liveScope, ctx.toolLog);
                     appendParentLiveRunTool(ctx, parsedTool);
-                    broadcast('agent_tool', { agentId: agentLabel, ...parsedTool, ...empTag }, traceAudience);
+                    emitAgentTool(ctx, agentLabel, parsedTool, empTag);
                     lastVisibleBroadcastTs = Date.now();
                     heartbeatSent = false;
                 }
@@ -1785,12 +1785,10 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 heartbeatSent = true;
                 const elapsed = Math.round((Date.now() - lastVisibleBroadcastTs) / 1000);
                 console.log(`  ⏳ agent active (no visible event for ${elapsed}s)`);
-                broadcast('agent_tool', {
-                    agentId: agentLabel,
+                emitAgentTool(ctx, agentLabel, {
                     icon: '⏳',
                     label: 'working... (no visible progress)',
-                    ...empTag,
-                }, traceAudience);
+                }, empTag);
             }
         });
 
@@ -2117,11 +2115,11 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             cli,
             empTag,
             traceAudience,
-            onEmit: (emitCtx, tool, label, _cliName, tag, audience) => {
+            onEmit: (emitCtx, tool, label, _cliName, tag, _audience) => {
                 stampTraceTool(tool, emitCtx, tool.toolType || 'tool');
                 if (emitCtx.liveScope) replaceLiveRunTools(emitCtx.liveScope, emitCtx.toolLog);
                 appendParentLiveRunTool(emitCtx, tool);
-                broadcast('agent_tool', { agentId: label, ...tool, ...tag }, audience);
+                emitAgentTool(emitCtx, label, tool, tag);
                 scheduleAgyQuietCompletion();
             },
             onActivity: () => {
