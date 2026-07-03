@@ -67,7 +67,9 @@ test('SF-002: exit handler saves interrupted content to DB via insertMessageWith
 
     const cliCloseIdx = spawnSrc.indexOf("child.on('close'");
     assert.ok(cliCloseIdx > 0);
-    const cliBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 10000);
+    // The CLI close handler has grown past 10k chars (agy/kiro buffer flushes);
+    // keep a bounded window so the delegation still has to live in this handler.
+    const cliBlock = spawnSrc.slice(cliCloseIdx, cliCloseIdx + 20000);
     assert.ok(cliBlock.includes('handleAgentExit'), 'CLI close should delegate to handleAgentExit');
 });
 

@@ -57,9 +57,14 @@ test('internal status and tool broadcasts are guarded from public WebSocket clie
         lifecycleSrc.includes('if (!opts.internal') && lifecycleSrc.includes("broadcast('agent_status'"),
         'final done/error status must be suppressed for internal runs',
     );
+    assert.equal(
+        (spawnSrc.match(/broadcast\('agent_tool'/g) || []).length,
+        0,
+        'spawn.ts must route agent_tool through emitAgentTool, not direct broadcasts',
+    );
     assert.ok(
-        spawnSrc.includes("broadcast('agent_tool', { agentId: agentLabel, ...tool, ...empTag }, traceAudience)"),
-        'ACP tool broadcasts must use traceAudience',
+        spawnSrc.includes('emitAgentTool(ctx, agentLabel, tool, empTag)'),
+        'ACP tool broadcasts must go through the trace-stamped helper',
     );
     const emitSrc = eventsHelpersSrc || eventsSrc;
     assert.ok(

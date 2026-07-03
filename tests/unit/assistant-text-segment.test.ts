@@ -95,7 +95,7 @@ test('resolveSpawnOutputText prefers normalized display text over longer raw esc
 
 test('plain-text runtime display branches normalize escaped newlines before broadcast', () => {
     const spawnSrc = readFileSync('src/agent/spawn.ts', 'utf8');
-    assert.match(spawnSrc, /import \{ appendAssistantTextSegment, normalizeAssistantDisplayText, pushTrace \} from '\.\/events\/helpers\.js';/);
+    assert.match(spawnSrc, /import \{ appendAssistantTextSegment, (?:emitAgentTool, )?normalizeAssistantDisplayText, pushTrace \} from '\.\/events\/helpers\.js';/);
     assert.match(spawnSrc, /const segment = normalizeAssistantDisplayText\(event\.text\)/);
     assert.match(spawnSrc, /const displayDelta = normalizeAssistantDisplayText\(delta\)/);
     assert.match(spawnSrc, /const newText = normalizeAssistantDisplayText\(/);
