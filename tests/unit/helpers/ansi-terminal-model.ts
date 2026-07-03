@@ -88,13 +88,26 @@ export class AnsiTerminalModel {
             this.scrollBottom = this.rows - 1;
             return;
         }
-        this.scrollTop = Math.max(0, Math.min(this.rows - 1, params[0] - 1));
-        this.scrollBottom = Math.max(this.scrollTop, Math.min(this.rows - 1, params[1] - 1));
+        const top = Math.max(0, Math.min(this.rows - 1, params[0] - 1));
+        const bottom = Math.max(0, Math.min(this.rows - 1, params[1] - 1));
+        // DECSTBM requires bottom > top: real terminals silently IGNORE a
+        // 1-row (or inverted) region — empirically verified against
+        // @xterm/headless in the jawcode sibling repo (CSI 1;1r is a no-op,
+        // the \r\n just moves the cursor and nothing enters scrollback).
+        // Accepting it here masked exactly that product bug.
+        if (bottom <= top) return;
+        this.scrollTop = top;
+        this.scrollBottom = bottom;
     }
 
     private eraseDisplay(mode: number): void {
         if (mode === 2 || mode === 3) {
             this.lines = new Array(this.rows).fill('');
+            // 3J erases the SAVED lines (terminal scrollback); 2J only the
+            // visible screen. Modeling both as visible-only made scrollback
+            // wipes (launch clear, discard-scrollback resize) invisible to
+            // assertions.
+            if (mode === 3) this.scrollback.length = 0;
             return;
         }
         if (mode === 0) {
