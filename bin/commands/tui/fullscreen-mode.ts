@@ -453,14 +453,16 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const stablePrefixIndex = hasTranscriptItems
             ? computeStablePrefixIndex(ctx.store.transcript.items) : 0;
 
-        // Only commit when ALL items are stable (turn fully complete, not
-        // streaming). Mid-stream commits (jawcode 083.9 P3) are NOT safe with
-        // this Screen: interleaving DECSTBM commit scrolls with per-token
-        // differential repaints corrupts the frame — jawcode needs its
-        // overflow-floor/tombstone machinery for that, which this port does
-        // not have. Do not relax this gate without porting that machinery.
-        const allStable = stablePrefixIndex === ctx.store.transcript.items.length;
-        const commit = hasTranscriptItems && !overlayOpen && allStable
+        // 260704 WP6b-v2: commit the STABLE PREFIX as it forms (jawcode
+        // b0a3290 commit-on-completion), so finished blocks ride up through
+        // the scrollback seam mid-turn instead of squeezing inside a
+        // fixed-height window. Safe under the top-anchored commit lane: the
+        // flush writes only into model-blank fill rows (the diff pass never
+        // targets them) and saturated scrolls move only the content block
+        // [1..B] — per-token repaints and commits touch disjoint rows. The
+        // old allStable gate existed for the retired bottom-anchored insert
+        // geometry, whose region scroll shifted live rows under the diff.
+        const commit = hasTranscriptItems && !overlayOpen
             ? viewport.peekStableCommitRows(transcriptHeight, stablePrefixIndex)
             : null;
 
