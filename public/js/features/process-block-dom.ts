@@ -2,6 +2,7 @@ import { ICONS } from '../icons.js';
 import {
     getStoredProcessStepDetail,
     processStepMetaFromStore,
+    registerProcessBlockState,
     releaseProcessBlockDetails,
     type ProcessBlockState,
     type ProcessStep,
@@ -98,7 +99,11 @@ export function currentProcessBlockFromDom(agentMsg: HTMLElement): ProcessBlockS
     const steps = Array.from(block.querySelectorAll<HTMLElement>('.process-step'))
         .map(processStepFromDom)
         .filter((step): step is ProcessStep => Boolean(step));
-    return { element: block, steps, collapsed: block.classList.contains('collapsed') };
+    const state: ProcessBlockState = { element: block, steps, collapsed: block.classList.contains('collapsed') };
+    // Register so the click handler can sync pb.collapsed / drive the ticker for
+    // hydrated live blocks too (WP3 — DOM-reconstructed states were unregistered).
+    registerProcessBlockState(state);
+    return state;
 }
 
 function processStepToToolLog(step: ProcessStep, finalize = false): ToolLogEntry {

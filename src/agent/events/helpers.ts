@@ -49,7 +49,7 @@ export function emitAgentTool(
     tool: object,
     empTag: Record<string, unknown>,
 ): void {
-    const payload = { agentId: agentLabel, ...tool, ...empTag };
+    const payload = { agentId: agentLabel, ...tool, ...empTag, startedAt: ctx.runStartedAt };
     if (agentLabel && empTag["isEmployee"] === true) {
         updateWorkerTools(agentLabel, ctx.toolLog);
     }

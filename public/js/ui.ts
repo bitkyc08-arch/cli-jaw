@@ -116,7 +116,7 @@ export function showLiveToolActivity(label: string): void {
     scrollToBottom();
 }
 
-export function showProcessStep(step: ProcessStep): void {
+export function showProcessStep(step: ProcessStep, runStartedAt?: number): void {
     removeSkeleton();
     let agentDiv = currentAgentDivForActiveRun();
     if (!agentDiv) {
@@ -134,6 +134,9 @@ export function showProcessStep(step: ProcessStep): void {
             removeAgentToolBlocks(agentDiv);
             state.currentProcessBlock = createProcessBlock(body);
         }
+    }
+    if (runStartedAt && state.currentProcessBlock && !state.currentProcessBlock.startedAt) {
+        state.currentProcessBlock.startedAt = runStartedAt;
     }
     if (state.currentProcessBlock) {
         const rawIcon = step.rawIcon || step.icon;
@@ -156,6 +159,7 @@ export function showProcessStep(step: ProcessStep): void {
                     detailPreview,
                     label: step.label || match.label,
                     status: resolvedStatus,
+                    startTime: match.startTime,
                 });
                 scrollToBottom();
                 return;
@@ -176,6 +180,7 @@ export function showProcessStep(step: ProcessStep): void {
                         status: resolvedStatus,
                         detail: detailPreview,
                         detailPreview,
+                        startTime: existingDone.startTime,
                     });
                     scrollToBottom();
                     return;
@@ -198,6 +203,7 @@ export function showProcessStep(step: ProcessStep): void {
                     detail: detailPreview,
                     detailPreview,
                     label: step.label || existingRunning.label,
+                    startTime: existingRunning.startTime,
                 });
                 scrollToBottom();
                 return;
@@ -223,6 +229,7 @@ export function showProcessStep(step: ProcessStep): void {
                 detail: detailPreview,
                 detailPreview,
                 label: step.label || identityMatch.label,
+                startTime: identityMatch.startTime,
             });
             scrollToBottom();
             return;
@@ -386,6 +393,7 @@ export function hydrateActiveRun(snapshot?: ActiveRunSnapshot | null): void {
             removeAgentToolBlocks(state.currentAgentDiv);
             state.currentProcessBlock = createProcessBlock(body);
         }
+        if (snapshot.startedAt) state.currentProcessBlock.startedAt = snapshot.startedAt;
         mergeHydratedProcessSteps(state.currentProcessBlock, toProcessSteps(snapshotToolLog, snapshot.startedAt));
     } else {
         state.currentProcessBlock = currentProcessBlockFromDom(state.currentAgentDiv);

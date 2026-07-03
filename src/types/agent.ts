@@ -55,6 +55,9 @@ export interface SpawnContext {
    *  incl tool_use) — that would false-skip a tool-only turn whose prose arrives
    *  only in the complete assistant event. */
   claudeStreamedText?: boolean;
+  /** Wall-clock run start; rides on agent_tool broadcasts so the web UI's elapsed
+   * timer has one authoritative origin (WP3, zero-seconds bug). */
+  runStartedAt?: number;
   /** Stream-target offset where the current message's raw text deltas began —
    * consumed by the complete-block reconcile in handleClaudeEvent. */
   claudeStreamedTextStart?: number | undefined;

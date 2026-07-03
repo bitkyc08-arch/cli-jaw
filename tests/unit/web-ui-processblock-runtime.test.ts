@@ -453,3 +453,97 @@ test('finalizeAgent serializes merged process state before virtual-scroll promot
         'VS appendItem must receive already-merged durable tool log JSON',
     );
 });
+
+// ── WP3: zero-seconds timer — authoritative run-start ──
+
+test('WP3: showProcessStep adopts the server run-start as the block elapsed origin', async () => {
+    setupWebUiDom();
+    const ui = await import('../../public/js/ui.ts');
+    const { state } = await import('../../public/js/state.ts');
+    const runStartedAt = Date.now() - 90_000; // run began 90s ago on the server
+
+    ui.showProcessStep({
+        id: 'step-a', type: 'tool', icon: '🔧', label: 'Read',
+        status: 'running', startTime: Date.now(),
+    }, runStartedAt);
+
+    assert.ok(state.currentProcessBlock, 'live block exists');
+    assert.equal(state.currentProcessBlock?.startedAt, runStartedAt, 'block adopts server run-start');
+
+    // A later step must not overwrite the adopted origin.
+    ui.showProcessStep({
+        id: 'step-b', type: 'tool', icon: '🔧', label: 'Grep',
+        status: 'running', startTime: Date.now(),
+    }, Date.now());
+    assert.equal(state.currentProcessBlock?.startedAt, runStartedAt, 'first run-start wins');
+});
+
+test('WP3: hydrateActiveRun stamps snapshot.startedAt on the block', async () => {
+    setupWebUiDom();
+    const ui = await import('../../public/js/ui.ts');
+    const { state } = await import('../../public/js/state.ts');
+    const startedAt = Date.now() - 45_000;
+
+    ui.hydrateActiveRun({
+        running: true, cli: 'codex', text: 'working', startedAt,
+        toolLog: [{ toolType: 'tool', label: 'Read', detail: 'started', status: 'running', stepRef: 't1' }],
+    });
+
+    assert.equal(state.currentProcessBlock?.startedAt, startedAt, 'hydrated block carries run-start');
+});
+
+test('WP3: live done-update preserves the matched step startTime (no reset to now)', async () => {
+    setupWebUiDom();
+    const ui = await import('../../public/js/ui.ts');
+    const { state } = await import('../../public/js/state.ts');
+    const oldStart = Date.now() - 60_000;
+
+    ui.showProcessStep({
+        id: 'step-1', type: 'tool', icon: '🔧', label: 'Read',
+        status: 'running', startTime: oldStart, stepRef: 'ref-1',
+    });
+    ui.showProcessStep({
+        id: 'step-2', type: 'tool', icon: '✅', label: 'Read',
+        status: 'done', startTime: Date.now(), stepRef: 'ref-1',
+    });
+
+    const steps = state.currentProcessBlock?.steps || [];
+    assert.equal(steps.length, 1, 'done update replaced the running step');
+    assert.equal(steps[0]?.startTime, oldStart, 'original startTime preserved through the merge');
+    assert.equal(steps[0]?.status, 'done');
+});
+
+test('WP3: summary click syncs pb.collapsed so the ticker can run', async () => {
+    setupWebUiDom();
+    const ui = await import('../../public/js/ui.ts');
+    const { state } = await import('../../public/js/state.ts');
+
+    ui.showProcessStep({
+        id: 'step-c', type: 'tool', icon: '🔧', label: 'Bash',
+        status: 'running', startTime: Date.now() - 5_000,
+    });
+    const pb = state.currentProcessBlock;
+    assert.ok(pb, 'live block exists');
+    assert.equal(pb?.collapsed, true, 'live block starts collapsed');
+
+    const container = document.getElementById('chatMessages') as HTMLElement;
+    bindProcessBlockInteractions(container);
+    const summary = pb!.element.querySelector('.process-summary') as HTMLElement;
+    assert.ok(summary, 'summary exists');
+    summary.dispatchEvent(new window.Event('click', { bubbles: true }));
+
+    assert.equal(pb?.collapsed, false, 'expand click syncs state');
+    assert.equal(pb?.element.classList.contains('collapsed'), false, 'DOM matches');
+
+    summary.dispatchEvent(new window.Event('click', { bubbles: true }));
+    assert.equal(pb?.collapsed, true, 'collapse click re-syncs state');
+});
+
+test('WP3: server plumbing — emitAgentTool carries ctx.runStartedAt and ws passes it through', () => {
+    const helpersSrc = readFileSync(new URL('../../src/agent/events/helpers.ts', import.meta.url), 'utf8');
+    assert.match(helpersSrc, /startedAt:\s*ctx\.runStartedAt/, 'agent_tool payload carries run start');
+    const wsSrc = readFileSync(new URL('../../public/js/ws.ts', import.meta.url), 'utf8');
+    assert.match(wsSrc, /msg\.startedAt === 'number' && msg\.startedAt > 0 \? msg\.startedAt : undefined/, 'ws forwards startedAt to showProcessStep');
+    const spawnSrc = readFileSync(new URL('../../src/agent/spawn.ts', import.meta.url), 'utf8');
+    assert.match(spawnSrc, /runStartedAt:\s*Date\.now\(\)/, 'spawn stamps run start on ctx');
+});
