@@ -65,6 +65,25 @@ test('AGY-BS-002: AGY envelope orders bootstrap, current task, operational conte
     assert.match(envelope.prompt, /session=fresh/);
 });
 
+test('AGY-BS-002b: context-first keeps bootstrap first and current task last', () => {
+    const envelope = buildAgyBootstrapEnvelope({
+        taskPrompt: 'current task',
+        operationalContext: 'operational rules',
+        historyBlock: 'old context',
+        workingDir: '/repo',
+        order: 'context-first',
+    });
+    const bootstrapIdx = envelope.prompt.indexOf('[CLI-JAW AGY BOOTSTRAP]');
+    const operationalIdx = envelope.prompt.indexOf('[Operational Context — cli-jaw Integration]');
+    const historyIdx = envelope.prompt.indexOf('[Recent context / history]');
+    const taskIdx = envelope.prompt.indexOf('[Current cli-jaw task]');
+
+    assert.ok(bootstrapIdx >= 0);
+    assert.ok(operationalIdx > bootstrapIdx);
+    assert.ok(historyIdx > operationalIdx);
+    assert.ok(taskIdx > historyIdx);
+});
+
 test('AGY-BS-003: AGY bootstrap hash changes when session id changes', () => {
     const base = {
         taskPrompt: 'task',
