@@ -230,6 +230,8 @@ export function renderStatusBar(segments: {
     state: string;
     elapsed?: string | undefined;
     bgtask?: number | undefined;
+    /** jawcode attention latch — appends `!` to the bgtask badge. */
+    bgtaskAttention?: boolean | undefined;
     gitBranch?: string | undefined;
     cwd?: string | undefined;
     port?: number | undefined;
@@ -251,7 +253,9 @@ export function renderStatusBar(segments: {
     parts.push(style.strong(`${icon} ${segments.engine}`));
     parts.push(segments.state === 'idle' ? style.soft(segments.state) : style.strong(segments.state));
     if (segments.elapsed) parts.push(style.soft(segments.elapsed));
-    if (segments.bgtask && segments.bgtask > 0) parts.push(style.strong(`⏳${segments.bgtask}`));
+    // jawcode compact-badge attention suffix: `⏳2!` until the panel is opened.
+    if (segments.bgtask && segments.bgtask > 0) parts.push(style.strong(`⏳${segments.bgtask}${segments.bgtaskAttention ? '!' : ''}`));
+    else if (segments.bgtaskAttention) parts.push(style.strong('⏳!'));
     if (segments.orchPhase) parts.push(style.strong(`📋${segments.orchPhase.toUpperCase()}`));
     if (segments.gitBranch) parts.push(style.soft(`ⴲ ${segments.gitBranch}`));
     if (segments.cwd) parts.push(style.soft(`📁 ${segments.cwd}`));

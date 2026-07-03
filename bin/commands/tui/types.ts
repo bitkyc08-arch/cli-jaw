@@ -66,12 +66,15 @@ export function formatFooter(
     state: 'idle' | 'responding' | 'tool',
     elapsedMs?: number,
     bgtaskCount?: number,
+    bgtaskAttention?: boolean,
 ): string {
     const stateLabel = state === 'responding' ? 'responding…' : state === 'tool' ? 'working…' : 'idle';
     const stateColored = state === 'idle' ? `${c.dim}${stateLabel}${c.reset}` : `${accent}${stateLabel}${c.reset}`;
     const elapsed = elapsedMs && elapsedMs > 0 ? `  ${c.dim}${(elapsedMs / 1000).toFixed(1)}s${c.reset}` : '';
-    // Server-owned background tasks (bgtask) — magenta to stay distinct from the queue.
-    const bgtask = bgtaskCount && bgtaskCount > 0 ? `  ${c.magenta}\u23F3${bgtaskCount}${c.reset}` : '';
+    // Server-owned background tasks (bgtask) — magenta to stay distinct from the
+    // queue; `!` is the jawcode attention suffix (failed task, panel unopened).
+    const bgtask = bgtaskCount && bgtaskCount > 0 ? `  ${c.magenta}\u23F3${bgtaskCount}${bgtaskAttention ? '!' : ''}${c.reset}`
+        : bgtaskAttention ? `  ${c.magenta}\u23F3!${c.reset}` : '';
     const sep = `${c.dim} │ ${c.reset}`;
     return `  ${accent}${c.bold}${label}${c.reset}${sep}${stateColored}${elapsed}${bgtask}${sep}${c.dim}/quit  /clear${c.reset}`;
 }
@@ -81,12 +84,12 @@ export function formatFooterFull(
     label: string,
     accent: string,
     state: 'idle' | 'responding' | 'tool',
-    opts: { elapsedMs?: number | undefined; bgtaskCount?: number | undefined; model?: string | undefined; cwd?: string | undefined },
+    opts: { elapsedMs?: number | undefined; bgtaskCount?: number | undefined; bgtaskAttention?: boolean | undefined; model?: string | undefined; cwd?: string | undefined },
 ): string {
     const stateLabel = state === 'responding' ? 'responding…' : state === 'tool' ? 'working…' : 'idle';
     const stateColored = state === 'idle' ? `${c.dim}${stateLabel}${c.reset}` : `${accent}${stateLabel}${c.reset}`;
     const elapsed = opts.elapsedMs && opts.elapsedMs > 0 ? ` ${c.dim}${(opts.elapsedMs / 1000).toFixed(1)}s${c.reset}` : '';
-    const bgtask = opts.bgtaskCount && opts.bgtaskCount > 0 ? ` ${c.magenta}⏳${opts.bgtaskCount}${c.reset}` : '';
+    const bgtask = opts.bgtaskCount && opts.bgtaskCount > 0 ? ` ${c.magenta}⏳${opts.bgtaskCount}${opts.bgtaskAttention ? '!' : ''}${c.reset}` : opts.bgtaskAttention ? ` ${c.magenta}⏳!${c.reset}` : '';
     const sep = `${c.dim} │ ${c.reset}`;
     const modelSeg = opts.model ? `${c.cyan}${opts.model}${c.reset} ` : '';
     const pathSeg = opts.cwd ? `${sep}${c.dim}📁 ${opts.cwd.replace(process.env['HOME'] || '', '~')}${c.reset}` : '';
@@ -116,6 +119,12 @@ export interface TuiContext {
     streamState: 'idle' | 'responding' | 'tool';
     bgtaskCount: number;
     bgtaskTasks: Array<{ id: string; kind: string; startedAt: string | null }>;
+    /** jawcode attention latch: set when a bgtask ends failed/cancelled/orphaned,
+     *  renders a `!` on the status-bar badge, cleared when Ctrl+O opens. */
+    bgtaskAttention?: boolean;
+    /** Last fetched overlay rows (incl. terminal tasks + ago hints) — the
+     *  fullscreen frame composer paints from this, not the running-only snapshot. */
+    bgtaskOverlayItems?: Array<{ id: string; kind: string; status: string; elapsed: string; ago?: string; sortKey?: number }>;
     /** Live queued-message snapshot (from queue_update events; /queue refreshes
      *  it from GET /api/orchestrate/snapshot, the authoritative source). */
     queueItems?: Array<{ id: string; prompt: string; source?: string; ts?: number }>;

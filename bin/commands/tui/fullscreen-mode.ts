@@ -406,9 +406,12 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
                 sel.title, sel.subtitle, sel.filter, sel.filteredItems, sel.selected,
             );
         } else if (ov.bgtaskOpen) {
+            // Prefer the fetched overlay cache (has terminal rows + ago hints);
+            // the ws snapshot only carries running tasks.
             composeBgtaskOntoFrame(
                 frameRows, cols, frameRows.length, c.dim, c.reset,
-                ctx.bgtaskTasks.map((t) => ({ id: t.id, kind: t.kind, status: 'running', elapsed: '' })),
+                ctx.bgtaskOverlayItems
+                    ?? ctx.bgtaskTasks.map((t) => ({ id: t.id, kind: t.kind, status: 'running', elapsed: '' })),
             );
         }
     }

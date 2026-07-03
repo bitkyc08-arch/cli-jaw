@@ -3,7 +3,7 @@
  */
 import {
     clearOverlayBox, renderHelpOverlay, renderCommandPalette, renderChoiceSelector,
-    renderBgtaskOverlay, type BgtaskOverlayItem,
+    renderBgtaskOverlay, formatBgtaskDuration, type BgtaskOverlayItem,
     clearAutocomplete, closeAutocomplete, resolveAutocompleteState,
     applyResolvedAutocompleteState, renderAutocomplete, popupTotalRows,
     makeSelectionKey, resetAutocompleteState,
@@ -168,11 +168,22 @@ export function refreshChoiceSelector(ctx: TuiContext): void {
     ctx.overlayBoxHeight = renderChoiceSelector(selectorRenderOpts(ctx));
 }
 
+function parseBgtaskTs(value: string | null | undefined): number {
+    if (!value) return Number.NaN;
+    return Date.parse(`${value.replace(' ', 'T')}Z`);
+}
+
 function bgtaskElapsed(startedAt: string | null): string {
-    const start = Date.parse(startedAt ? `${startedAt.replace(' ', 'T')}Z` : '');
+    const start = parseBgtaskTs(startedAt);
     if (!Number.isFinite(start)) return '';
-    const sec = Math.max(0, Math.floor((Date.now() - start) / 1000));
-    return sec < 60 ? `${sec}s` : sec < 3600 ? `${Math.floor(sec / 60)}m` : `${Math.floor(sec / 3600)}h${Math.floor((sec % 3600) / 60)}m`;
+    return formatBgtaskDuration(Math.max(0, Date.now() - start));
+}
+
+/** "2m30s ago" hint for terminal rows (jawcode footer-panel style). */
+function bgtaskAgo(completedAt: string | null | undefined): string {
+    const done = parseBgtaskTs(completedAt);
+    if (!Number.isFinite(done)) return '';
+    return `${formatBgtaskDuration(Math.max(0, Date.now() - done))} ago`;
 }
 
 /** Ctrl+O — server-owned background tasks (bgtask). Fetches fresh state so the
@@ -182,25 +193,42 @@ export async function openBgtaskOverlay(ctx: TuiContext): Promise<void> {
     const ov = ctx.store.overlay;
     ov.bgtaskOpen = true;
     closeAutocompleteForCtx(ctx);
+    // jawcode attention latch: opening the panel means the user saw the failure —
+    // drop the `!` badge from the status bar (devlog doc 40).
+    if (ctx.bgtaskAttention) {
+        ctx.bgtaskAttention = false;
+        rebuildFooter(ctx);
+    }
     let items: BgtaskOverlayItem[] = ctx.bgtaskTasks.map((t) => ({
         id: t.id, kind: t.kind, status: 'running', elapsed: bgtaskElapsed(t.startedAt),
+        sortKey: parseBgtaskTs(t.startedAt) || 0,
     }));
     try {
         const res = await fetch(`${ctx.apiUrl}/api/bgtask?limit=10`);
         if (res.ok) {
-            const body = await res.json() as { tasks?: Array<{ id: string; kind: string; status: string; startedAt: string | null }> };
+            const body = await res.json() as { tasks?: Array<{ id: string; kind: string; status: string; startedAt: string | null; completedAt?: string | null }> };
             if (Array.isArray(body.tasks)) {
                 items = body.tasks
                     .filter((t) => t.status === 'running' || t.status === 'complete' || t.status === 'failed' || t.status === 'cancelled' || t.status === 'orphaned')
                     .slice(0, 10)
-                    .map((t) => ({
-                        id: t.id, kind: t.kind, status: t.status,
-                        elapsed: t.status === 'running' ? bgtaskElapsed(t.startedAt) : '',
-                    }));
+                    .map((t) => {
+                        const running = t.status === 'running';
+                        const ago = running ? '' : bgtaskAgo(t.completedAt);
+                        const sortKey = parseBgtaskTs(running ? t.startedAt : (t.completedAt ?? t.startedAt)) || 0;
+                        return {
+                            id: t.id, kind: t.kind, status: t.status,
+                            elapsed: running ? bgtaskElapsed(t.startedAt) : '',
+                            ...(ago ? { ago } : {}),
+                            sortKey,
+                        };
+                    });
             }
         }
     } catch { /* fall back to ws snapshot */ }
     if (!ov.bgtaskOpen) return; // dismissed while fetching
+    // Shared with the fullscreen frame composer — it paints from this cache
+    // instead of the running-only ws snapshot (which has no terminal rows).
+    ctx.bgtaskOverlayItems = items;
     if (ctx.displayMode === 'fullscreen') {
         ctx.requestFrame?.();
         return;

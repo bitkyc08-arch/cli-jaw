@@ -19,7 +19,7 @@ import { colorizeDiff } from '../../../src/cli/tui/diffview.js';
 import { normalizeTuiWsEvent } from '../../../src/cli/tui/events.js';
 import { c, type TuiContext } from './types.js';
 import { openPromptBlock, rebuildFooter } from './renderer.js';
-import { dismissOverlay } from './overlays.js';
+import { dismissOverlay, openBgtaskOverlay } from './overlays.js';
 import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
 
 function isFullscreen(ctx: TuiContext): boolean {
@@ -279,14 +279,26 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 const changed = msg['changed'] as { id: string; kind: string; status: string } | null;
                 if (changed && changed.status !== 'running' && !ctx.isRaw) {
                     const ok = changed.status === 'complete';
-                    const mark = ok ? `${c.green}\u2713` : `${c.red}\u2717`;
-                    appendStatusItem(transcript, `bgtask ${changed.kind} ${changed.status}`);
+                    // jawcode attention latch \u2014 the status-bar badge grows a `!`
+                    // until the user opens the Ctrl+O panel (devlog doc 40).
+                    if (!ok) ctx.bgtaskAttention = true;
+                    // jawcode unicode glyph set: \u2714 complete \u00b7 \u23f9 cancelled \u00b7 \u2718 failed/orphaned
+                    const mark = ok ? `${c.green}\u2714` : changed.status === 'cancelled' ? `${c.red}\u23f9` : `${c.red}\u2718`;
+                    appendStatusItem(transcript, `bgtask ${changed.kind} ${changed.status} \u00b7 Ctrl+O`);
                     if (!isFullscreen(ctx)) {
-                        process.stdout.write(`\r\x1b[2K  ${mark} bgtask ${changed.kind} ${changed.status}${c.reset}\n`);
+                        process.stdout.write(`\r\x1b[2K  ${mark} bgtask ${changed.kind} ${changed.status}${c.dim} \u00b7 Ctrl+O${c.reset}\n`);
                     }
                 }
                 rebuildFooter(ctx); // refresh the magenta count segment immediately
                 if (isFullscreen(ctx)) ctx.requestFrame?.();
+                // Open fullscreen panel paints from ctx.bgtaskOverlayItems,
+                // which only openBgtaskOverlay refreshes — refetch so the panel
+                // doesn't keep showing a finished task as running (adversarial
+                // review, devlog doc 40). Classic mode keeps snapshot-at-open
+                // semantics: repainting a shrinking box would leave residue.
+                if (ctx.store.overlay.bgtaskOpen && isFullscreen(ctx)) {
+                    void openBgtaskOverlay(ctx).catch(() => { /* keep last snapshot */ });
+                }
                 break;
             }
 
