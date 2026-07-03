@@ -3,6 +3,7 @@ import type { AuthMiddleware } from './types.js';
 import { fail } from '../http/response.js';
 import { isAgentBusy, messageQueue, getQueuedMessageSnapshotForScope, removeQueuedMessage, killActiveAgent, waitForProcessEnd, getCurrentMainMeta, getSteerWaitMsForActiveAgent, setQueueHold, clearQueueHold, setSteerInProgress, isSteerInProgress } from '../agent/spawn.js';
 import { getLiveRun } from '../agent/live-run-state.js';
+import { countToolTraceRows, listToolEntriesForRun } from '../trace/store.js';
 import { orchestrate, orchestrateContinue, orchestrateReset, isResetIntent, isContinueIntent, drainPendingReplays } from '../orchestrator/pipeline.js';
 import { getSession, insertMessage } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
@@ -43,7 +44,7 @@ import type { EmployeeRow, SyntheticEmployeeRow } from '../core/employees.js';
 import { resolveCliDefaultModel } from '../cli/opencodex-models.js';
 import { resolveMainCli } from '../core/main-session.js';
 import { getHeartbeatRuntimeState } from '../memory/heartbeat.js';
-import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
+import { sanitizeToolLogForDurableStorage, isToolLogOverflowMarker } from '../shared/tool-log-sanitize.js';
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { validateDispatchTask } from '../workflows/employee-boundary.js';
 import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbox.js';
@@ -57,12 +58,27 @@ function getRuntimeSnapshot() {
     };
 }
 
+// WP4 (devlog 260703 doc 12): the RAM toolLog is a capped cache (160 newest) that
+// dies with the process; trace_events is authoritative. When RAM is empty or behind,
+// rebuild the boss tools from the durable rows (bounded newest-N read) and keep the
+// RAM-only isEmployee mirrors, then reapply the standard sanitize caps.
 function getSafeLiveRun(scope: string) {
     const liveRun = getLiveRun(scope);
-    return {
-        ...liveRun,
-        toolLog: sanitizeToolLogForDurableStorage(liveRun.toolLog),
-    };
+    let toolLog = sanitizeToolLogForDurableStorage(liveRun.toolLog);
+    if (liveRun.running && liveRun.traceRunId) {
+        const bossCount = toolLog.filter(t => t.isEmployee !== true && !isToolLogOverflowMarker(t)).length;
+        const ramBehind = toolLog.length === 0
+            || toolLog.some(isToolLogOverflowMarker)
+            || countToolTraceRows(liveRun.traceRunId) > bossCount;
+        if (ramBehind) {
+            const boss = listToolEntriesForRun(liveRun.traceRunId);
+            if (boss.length > bossCount) {
+                const mirrors = toolLog.filter(t => t.isEmployee === true);
+                toolLog = sanitizeToolLogForDurableStorage([...boss, ...mirrors]);
+            }
+        }
+    }
+    return { ...liveRun, toolLog };
 }
 
 function requestText(value: unknown): string {

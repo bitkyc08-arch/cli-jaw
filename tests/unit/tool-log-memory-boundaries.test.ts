@@ -31,7 +31,10 @@ test('message and orchestrate snapshot API boundaries sanitize before res.json',
     assert.ok(server.includes('resolveToolLog(row["id"], row["tool_log"]'), 'main read resolves tool_log via Option D boundary');
     assert.ok(server.includes('return sanitizeSerializedToolLog(blobToolLog)'), 'resolveToolLog blob fallback still sanitizes');
     assert.ok(orchestrate.includes('function getSafeLiveRun(scope: string)'));
-    assert.ok(orchestrate.includes('toolLog: sanitizeToolLogForDurableStorage(liveRun.toolLog)'));
+    // WP4 (devlog 260703 doc 12): the RAM log is sanitized on entry, and the
+    // trace-hydration fallback re-sanitizes the merged rebuild before res.json.
+    assert.ok(orchestrate.includes('let toolLog = sanitizeToolLogForDurableStorage(liveRun.toolLog)'));
+    assert.ok(orchestrate.includes('toolLog = sanitizeToolLogForDurableStorage([...boss, ...mirrors])'));
     assert.ok(orchestrate.includes('activeRun: getSafeLiveRun(scope)'));
 });
 
