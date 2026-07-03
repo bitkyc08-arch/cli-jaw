@@ -68,19 +68,20 @@ export function renderToolLine(_icon: string, label: string, detail: string, sta
     const foldedHint = detailLines.length > 1
         ? `: ${firstDetail} … +${detailLines.length - 1} lines`
         : firstDetail ? `: ${firstDetail}` : '';
+    // Header rows always use the folded hint (first line … +K lines) — raw
+    // multi-line detail in a header becomes one unbounded logical row (the
+    // frame flattens newlines to spaces). jawcode 036d1ab preview-cap parity;
+    // expanded blocks print their detail rows separately in renderToolBlock.
     if (!theme) {
         const stateIcon = state === 'done' ? '\x1b[32m✔\x1b[0m' : state === 'error' ? '\x1b[31m✖\x1b[0m' : '\x1b[36m⏳\x1b[0m';
-        const detailText = state === 'pending' || state === 'error'
-            ? (detail ? `: ${detail}` : '')
-            : foldedHint;
-        return `  ${stateIcon} ${label}${detailText}`;
+        return `  ${stateIcon} ${label}${foldedHint}`;
     }
     const stateIcon = state === 'done' ? theme.fg('success', '✔') : state === 'error' ? theme.fg('error', '✖') : theme.fg('accent', '⏳');
     const depth = opts?.depth || 0;
     const treePre = depth > 0 ? `${'  '.repeat(depth - 1)}${opts?.isLast ? '└─ ' : '├─ '}` : '';
     const elapsedStr = opts?.elapsed ? ` ${theme.fg('muted', opts.elapsed)}` : '';
-    const collapsedHint = state === 'done' && foldedHint ? theme.fg('muted', foldedHint) : '';
-    return `  ${treePre}${stateIcon} ${theme.bold(label)}${detail && state !== 'done' ? theme.fg('muted', `: ${detail}`) : collapsedHint}${elapsedStr}`;
+    const hint = foldedHint ? theme.fg('muted', foldedHint) : '';
+    return `  ${treePre}${stateIcon} ${theme.bold(label)}${hint}${elapsedStr}`;
 }
 
 /**
