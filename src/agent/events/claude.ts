@@ -1,6 +1,7 @@
 // Claude CLI event adapter (claude, claude-e, ai-e)
 
 import { fieldString } from '../../types/cli-events.js';
+import { updateTraceToolRow, getTraceEvent } from '../../trace/store.js';
 import type { CliEventRecord } from './types.js';
 import type { SpawnContext, ToolEntry } from './types.js';
 import {
@@ -281,7 +282,36 @@ export function handleClaudeEvent(
                             : resultText;
                     }
                     syncLiveTools(ctx);
+                    updateTraceToolRow(existing);
                     emitAgentTool(ctx, agentLabel, existing, empTag);
+                } else {
+                    // RAM cap evicted the placeholder — converge the durable row via
+                    // the stamp-time index so trace state still reaches final
+                    // status (WP4, devlog 260703 doc 12 item 3).
+                    const pointer = ctx.toolTraceIndex?.get(`claude:tooluse:${block.tool_use_id}`);
+                    if (pointer) {
+                        let base: Partial<ToolEntry> = {};
+                        const row = getTraceEvent(pointer.traceRunId, pointer.traceSeq);
+                        if (row?.raw) {
+                            try { base = JSON.parse(row.raw) as Partial<ToolEntry>; } catch { /* keep minimal base */ }
+                        }
+                        const resultText = extractText(block.content);
+                        const merged: ToolEntry = {
+                            toolType: 'tool',
+                            label: 'tool',
+                            ...base,
+                            icon: block["is_error"] ? '❌' : '✅',
+                            status: block["is_error"] ? 'error' : 'done',
+                            traceRunId: pointer.traceRunId,
+                            traceSeq: pointer.traceSeq,
+                        };
+                        if (resultText && !merged.detail) {
+                            merged.detail = resultText.length > 500
+                                ? resultText.slice(0, 497) + '...'
+                                : resultText;
+                        }
+                        updateTraceToolRow(merged);
+                    }
                 }
             }
         }

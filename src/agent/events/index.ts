@@ -18,6 +18,7 @@ import {
     appendAssistantRawText,
 } from './helpers.js';
 import { handleClaudeEvent, handleClaudeRateLimitEvent, finalizeClaudeRateLimitOnResult } from './claude.js';
+import { updateTraceToolRow } from '../../trace/store.js';
 import { handleCodexEvent } from './codex.js';
 import { handleCursorEvent } from './cursor.js';
 import { handleGrokEvent } from './grok.js';
@@ -251,6 +252,7 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
                         if (existing) {
                             existing.detail = detail;
                             syncLiveTools(ctx);
+                            updateTraceToolRow(existing);
                             // Re-broadcast with detail
                             emitAgentTool(ctx, agentLabel, existing, empTag);
                         }
@@ -310,11 +312,23 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
                 (t: ToolEntry) => t.stepRef === toolLabel.stepRef && t.status === 'running'
             );
             if (runIdx !== -1) {
+                // Carry the trace pointer onto the replacement: a fresh object would
+                // get stamped as a DUPLICATE row while the original row stays
+                // 'running' forever (WP4, devlog 260703 doc 12 item 2).
+                const prior = ctx.toolLog[runIdx];
+                if (prior?.traceRunId && prior.traceSeq) {
+                    toolLabel.traceRunId = prior.traceRunId;
+                    toolLabel.traceSeq = prior.traceSeq;
+                    if (prior.detailAvailable !== undefined) toolLabel.detailAvailable = prior.detailAvailable;
+                    if (prior.detailBytes !== undefined) toolLabel.detailBytes = prior.detailBytes;
+                    if (prior.rawRetentionStatus !== undefined) toolLabel.rawRetentionStatus = prior.rawRetentionStatus;
+                }
                 ctx.toolLog[runIdx] = toolLabel;
                 if (cli === 'opencode' && ctx.opencodePendingToolRefs) {
                     ctx.opencodePendingToolRefs = ctx.opencodePendingToolRefs.filter(ref => ref !== toolLabel.stepRef);
                 }
                 syncLiveTools(ctx);
+                updateTraceToolRow(toolLabel);
                 emitAgentTool(ctx, agentLabel, toolLabel, empTag);
                 continue;
             }

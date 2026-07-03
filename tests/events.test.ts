@@ -14,6 +14,7 @@ import {
     makeClaudeToolKeyForTest,
 } from '../src/agent/events.ts';
 import { parseGrokChatHistoryToolEntries } from '../src/agent/grok-trace-backfill.ts';
+import { startTraceRun, countToolTraceRows, listToolEntriesForRun } from '../src/trace/store.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1922,4 +1923,61 @@ test('claude reconcile is skipped when the complete block has no text (streamed 
     assert.equal(ctx.fullText, 'streamed prose', 'truncation must not run without canonical text');
     assert.ok(!ctx.claudeStreamedText, 'per-message flag still resets');
     assert.equal(ctx.claudeStreamedTextStart, undefined, 'anchor still resets');
+});
+
+// ─── WP4 (devlog 260703 doc 12): durable tool-row convergence via event flow ───
+
+test('WP4: codex running→done replacement carries the trace pointer and converges one row', () => {
+    const runId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false, traceRunId: runId, traceAudience: 'public' };
+
+    extractFromEvent('codex', {
+        type: 'item.started',
+        item: { type: 'command_execution', id: 'it1', command: 'ls -la' },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].status, 'running');
+    const stampedSeq = ctx.toolLog[0].traceSeq;
+    assert.equal(ctx.toolLog[0].traceRunId, runId);
+    assert.ok(stampedSeq >= 1);
+
+    extractFromEvent('codex', {
+        type: 'item.completed',
+        item: { type: 'command_execution', id: 'it1', command: 'ls -la', exit_code: 0 },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1, 'done label must replace the running entry');
+    assert.equal(ctx.toolLog[0].status, 'done');
+    assert.equal(ctx.toolLog[0].traceRunId, runId, 'replacement must inherit the trace pointer');
+    assert.equal(ctx.toolLog[0].traceSeq, stampedSeq);
+
+    assert.equal(countToolTraceRows(runId), 1, 'no duplicate row for the replacement');
+    const rows = listToolEntriesForRun(runId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, 'done', 'durable row must converge to final status');
+});
+
+test('WP4: claude tool_result converges the trace row even after RAM eviction', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false, traceRunId: runId, traceAudience: 'public' };
+
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_start', content_block: { type: 'tool_use', id: 'tu_1', name: 'Bash' } },
+    }, ctx, 'test');
+    assert.equal(ctx.toolLog.length, 1);
+    assert.equal(ctx.toolLog[0].traceRunId, runId);
+
+    // Simulate the RAM cap evicting the placeholder before the result arrives.
+    ctx.toolLog.length = 0;
+
+    extractFromEvent('claude', {
+        type: 'user',
+        message: { content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: [{ type: 'text', text: 'ok' }] }] },
+    }, ctx, 'test');
+
+    const rows = listToolEntriesForRun(runId);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].status, 'done', 'evicted placeholder must still converge via toolTraceIndex');
+    assert.equal(rows[0].icon, '✅');
+    assert.equal(rows[0].detail, 'ok');
 });
