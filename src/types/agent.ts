@@ -2,6 +2,7 @@
 // Shared type definitions for agent spawn context objects.
 
 import type { WatchdogHandle } from '../agent/watchdog.js';
+import type { TracePointer } from '../trace/types.js';
 
 export interface ToolEntry {
   icon: string;
@@ -77,6 +78,10 @@ export interface SpawnContext {
   _parentSyncedCount?: number;
   traceRunId?: string;
   traceAudience?: 'public' | 'internal';
+  /** stepRef → trace pointer, populated at stamp time, so completion handlers can
+   *  converge the durable tool row even after the RAM cap evicted the entry
+   *  (WP4, devlog 260703 doc 12). */
+  toolTraceIndex?: Map<string, TracePointer>;
   // Phase 3: model/metadata storage
   model?: string;
   metadata?: Record<string, unknown>;

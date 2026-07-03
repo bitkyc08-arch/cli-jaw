@@ -1,13 +1,18 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import nodeFs from 'node:fs';
+import nodePath from 'node:path';
 import {
     appendTraceEvent,
+    countToolTraceRows,
     finalizeTraceRun,
     getTraceEvent,
     getTraceRun,
+    listToolEntriesForRun,
     listTraceEvents,
     stampTraceTool,
     startTraceRun,
+    updateTraceToolRow,
 } from '../../src/trace/store.ts';
 import type { ToolEntry } from '../../src/types/agent.ts';
 
@@ -59,4 +64,62 @@ test('internal trace tool pointers are stored but not marked as detail-available
     assert.equal(tool.traceRunId, runId);
     assert.equal(tool.detailAvailable, false);
     assert.equal(tool.rawRetentionStatus, 'internal');
+});
+
+// ─── WP4 (devlog 260703 doc 12): tool-row convergence + live-run hydration ───
+
+test('tool rows converge in place and hydrate with synthesized pointers', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const tool: ToolEntry = { icon: '🔧', label: 'Bash', toolType: 'tool', status: 'running', stepRef: 'claude:tooluse:tu_a' };
+    stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' }, 'tool');
+    assert.equal(countToolTraceRows(runId), 1);
+
+    tool.status = 'done';
+    tool.icon = '✅';
+    tool.detail = 'exit 0';
+    updateTraceToolRow(tool);
+
+    assert.equal(countToolTraceRows(runId), 1, 'update must converge the row, not append');
+    const entries = listToolEntriesForRun(runId);
+    assert.equal(entries.length, 1);
+    assert.equal(entries[0]?.status, 'done');
+    assert.equal(entries[0]?.icon, '✅');
+    assert.equal(entries[0]?.detail, 'exit 0');
+    assert.equal(entries[0]?.traceRunId, runId);
+    assert.equal(entries[0]?.traceSeq, tool.traceSeq);
+    assert.equal(entries[0]?.detailAvailable, true);
+});
+
+test('updateTraceToolRow unlinks the stale spill file when the payload shrinks inline', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    const tool: ToolEntry = { icon: '🔧', label: 'big', toolType: 'tool', detail: 'x'.repeat(140_000) };
+    stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' }, 'tool');
+    assert.ok(tool.traceSeq);
+
+    const before = getTraceEvent(runId, tool.traceSeq!);
+    assert.equal(before?.retention_status, 'spilled');
+    assert.ok(before?.raw_path, 'oversized payload must spill to disk');
+    const spillAbs = nodePath.join(process.env['CLI_JAW_HOME'] || '', before!.raw_path!);
+    assert.ok(nodeFs.existsSync(spillAbs), 'spill file exists before update');
+
+    tool.detail = 'small';
+    updateTraceToolRow(tool);
+
+    const after = getTraceEvent(runId, tool.traceSeq!);
+    assert.equal(after?.retention_status, 'available');
+    assert.ok(!after?.raw_path, 'shrunk payload stores inline');
+    assert.ok(after?.raw.includes('small'));
+    assert.ok(!nodeFs.existsSync(spillAbs), 'stale spill file must be unlinked');
+});
+
+test('listToolEntriesForRun keeps the NEWEST rows when over the limit', () => {
+    const runId = startTraceRun({ cli: 'claude', audience: 'public' });
+    for (let i = 1; i <= 5; i++) {
+        const tool: ToolEntry = { icon: '🔧', label: `tool-${i}`, toolType: 'tool' };
+        stampTraceTool(tool, { traceRunId: runId, traceAudience: 'public' }, 'tool');
+    }
+    const entries = listToolEntriesForRun(runId, 3);
+    assert.equal(entries.length, 3);
+    assert.deepEqual(entries.map(e => e.label), ['tool-3', 'tool-4', 'tool-5']);
+    assert.deepEqual(entries.map(e => e.traceSeq), [3, 4, 5]);
 });

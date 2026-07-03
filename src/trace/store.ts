@@ -60,6 +60,18 @@ const listToolEventsForRunStmt = db.prepare(`
     SELECT seq, event_type, raw_json, raw_path
     FROM trace_events WHERE run_id = ? AND source = 'tool' ORDER BY seq ASC LIMIT ?
 `);
+// WP4 (devlog 260703 doc 12): live-run hydration reads the NEWEST tool rows and the
+// snapshot gate counts them; update-in-place converges a row to the tool's final state.
+const listToolEventsDescStmt = db.prepare(`
+    SELECT seq, raw_json, raw_path, bytes, retention_status
+    FROM trace_events WHERE run_id = ? AND source = 'tool' ORDER BY seq DESC LIMIT ?
+`);
+const countToolEventsStmt = db.prepare(
+    "SELECT COUNT(*) AS c FROM trace_events WHERE run_id = ? AND source = 'tool'");
+const updateEventStmt = db.prepare(`
+    UPDATE trace_events SET preview = ?, raw_json = ?, raw_path = ?, bytes = ?, retention_status = ?
+    WHERE run_id = ? AND seq = ? AND source = 'tool'
+`);
 const interruptStaleStmt = db.prepare(`
     UPDATE trace_runs SET status = 'interrupted', finished_at = ?, error = COALESCE(error, 'process exited before finalization')
     WHERE status = 'running'
@@ -137,7 +149,74 @@ export function stampTraceTool(tool: ToolEntry, ctx: TraceCarrier, eventType = '
         detailAvailable: exposed && pointer.detailAvailable, detailBytes: pointer.detailBytes,
         rawRetentionStatus: exposed ? pointer.rawRetentionStatus : 'internal',
     });
+    // Completion handlers resolve tools by stepRef in ctx.toolLog; once the RAM cap
+    // evicts the entry that lookup misses forever. The per-run index lets them still
+    // converge the durable row (WP4 item 3).
+    if (tool.stepRef) {
+        const carrier = ctx as TraceCarrier & { toolTraceIndex?: Map<string, TracePointer> };
+        if (!carrier.toolTraceIndex) carrier.toolTraceIndex = new Map();
+        carrier.toolTraceIndex.set(tool.stepRef, pointer);
+    }
     return tool;
+}
+
+/** Re-persist a mutated ToolEntry over its existing `source='tool'` row so the durable
+ *  card converges to final status/detail. Tool rows are card projections (they already
+ *  round-trip via traceToolEventToEntry), not an append-only event log — in-place
+ *  convergence keeps every hydration consumer fold-free. trace_runs.byte_count stays
+ *  approximate on updates by design. */
+export function updateTraceToolRow(tool: ToolEntry): void {
+    const runId = tool.traceRunId || '';
+    const seq = Number(tool.traceSeq);
+    if (!TRACE_ID_RE.test(runId) || !Number.isInteger(seq) || seq < 1) return;
+    try {
+        const prior = getEventStmt.get(runId, seq) as TraceEventRow | undefined;
+        if (!prior || prior.source !== 'tool') return;
+        const payload = stringifyTraceValue(tool);
+        const bytes = Buffer.byteLength(payload, 'utf8');
+        const stored = persistPayload(runId, seq, payload);
+        const preview = `${tool.toolType || 'tool'}: ${tool.label || 'tool'}`;
+        updateEventStmt.run(preview, stored.rawJson, stored.rawPath, bytes, stored.status, runId, seq);
+        // Spill hygiene: pruneOrphanTraceDirs only sweeps whole-run dirs, so a row
+        // whose payload moved back inline must unlink its stale per-row spill file.
+        if (prior.raw_path && prior.raw_path !== stored.rawPath) {
+            const stale = safeRawPath(prior.raw_path);
+            if (stale && fs.existsSync(stale)) fs.rmSync(stale, { force: true });
+        }
+    } catch (error) {
+        console.error('[trace] tool row update failed:', error instanceof Error ? error.message : String(error));
+    }
+}
+
+/** Count of durable tool rows for a run — the cheap "is RAM behind?" gate for
+ *  live-run snapshot hydration (satisfied by the (run_id, seq) index). */
+export function countToolTraceRows(runId: string): number {
+    if (!TRACE_ID_RE.test(runId)) return 0;
+    const row = countToolEventsStmt.get(runId) as { c?: number } | undefined;
+    return Number(row?.c || 0);
+}
+
+/** Rebuild the newest tool cards of a LIVE run from trace_events. Bounded newest-N
+ *  read (live DB showed runs with 7k+ tool rows / 18MB — never read a whole run per
+ *  snapshot request). Row pointers are synthesized from row metadata: tool payloads
+ *  were stamped before pointer assignment, so raw JSON lacks them. */
+export function listToolEntriesForRun(runId: string, limit = 400): ToolEntry[] {
+    if (!TRACE_ID_RE.test(runId)) return [];
+    const safeLimit = Math.max(1, Math.min(1000, Math.floor(limit)));
+    const rows = listToolEventsDescStmt.all(runId, safeLimit) as {
+        seq: number; raw_json: string | null; raw_path: string | null;
+        bytes?: number; retention_status?: TraceRetentionStatus;
+    }[];
+    const out: ToolEntry[] = [];
+    for (const ev of rows.reverse()) {
+        const tool = traceToolEventToEntry(ev);
+        if (!tool) continue;
+        const hydrated: ToolEntry = { ...tool, traceRunId: runId, traceSeq: ev.seq, detailAvailable: true };
+        if (ev.bytes != null) hydrated.detailBytes = ev.bytes;
+        if (ev.retention_status) hydrated.rawRetentionStatus = ev.retention_status;
+        out.push(hydrated);
+    }
+    return out;
 }
 export function stampTraceToolEntries(ctx: TraceCarrier & { toolLog?: ToolEntry[] }): void {
     if (!ctx.traceRunId || !Array.isArray(ctx.toolLog)) return;

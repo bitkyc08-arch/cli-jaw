@@ -79,6 +79,13 @@ function omittedCountOf(entry: unknown): number {
     return m ? Number(m[1]) : 0;
 }
 
+/** True when the entry is a synthetic head overflow marker from a prior sanitize
+ *  pass — the live-run snapshot uses it as an "RAM log is capped" signal (WP4,
+ *  devlog 260703 doc 12). */
+export function isToolLogOverflowMarker(entry: unknown): boolean {
+    return omittedCountOf(entry) > 0;
+}
+
 function boundedNumber(value: unknown, max: number): number | undefined {
     const n = Number(value);
     if (!Number.isFinite(n) || n < 0) return undefined;
