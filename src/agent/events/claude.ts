@@ -216,10 +216,32 @@ export function handleClaudeEvent(
             const segment = appendClaudeISnapshotText(ctx, evt);
             ctx.pendingOutputChunk = (ctx.pendingOutputChunk || '') + segment;
         } else if (ctx.claudeStreamedText) {
-            // text_delta already streamed this prose live (index.ts stream_event);
-            // re-appending the complete block would double it (260612 audit 07 F-T4).
-            // Reset the per-message flag so the next assistant message starts clean.
+            // Reconcile the raw-streamed region with the canonical complete block via
+            // the segment formatter: restores the '\n- ' boundary between
+            // tool-separated messages (codex/claude-e parity) without re-appending
+            // (260612 audit 07 F-T4 no-doubling — replace, never append) and without
+            // mid-token corruption (the canonical block is complete text, not a token).
+            const hasCanonicalText = evt.message.content.some(
+                (block) => block.type === 'text' && block.text,
+            );
+            if (ctx.claudeStreamedTextStart !== undefined && hasCanonicalText) {
+                const useLive = ctx.liveOutputText !== undefined;
+                const target = useLive ? ctx.liveOutputText! : ctx.fullText;
+                if (ctx.claudeStreamedTextStart <= target.length) {
+                    const truncated = target.slice(0, ctx.claudeStreamedTextStart);
+                    if (useLive) ctx.liveOutputText = truncated;
+                    else ctx.fullText = truncated;
+                    // Re-derive so the formatter's first-output branch keeps a plain
+                    // first message unbulleted.
+                    ctx.outputTextStarted = truncated.trim().length > 0;
+                    for (const block of evt.message.content) {
+                        if (block.type === 'text') appendAssistantTextSegment(ctx, block.text);
+                    }
+                }
+            }
+            // Reset the per-message state so the next assistant message starts clean.
             ctx.claudeStreamedText = false;
+            ctx.claudeStreamedTextStart = undefined;
         } else {
             // Fallback: no partial text stream seen (e.g. --include-partial-messages
             // absent) → surface the complete assistant text block here.

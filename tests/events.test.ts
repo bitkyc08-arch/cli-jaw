@@ -284,6 +284,100 @@ test('claude final assistant block is skipped after text_delta stream (no doubli
     assert.equal(ctx.claudeStreamedText, false, 'per-message flag reset for the next message');
 });
 
+test('claude message-boundary reconcile restores segment separators between tool-separated messages', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    const delta = (text) => extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
+    }, ctx, 'test');
+    const complete = (text) => extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text }] },
+    }, ctx, 'test');
+
+    // Message 1: bullet item streamed in token-granular deltas, then canonical block.
+    delta('- ㅇ');
+    delta('ㅇ');
+    complete('- ㅇㅇ');
+    assert.equal(ctx.fullText, '- ㅇㅇ', 'single message reconcile is value-identical');
+
+    // (tool events happen here — they never touch fullText)
+
+    // Message 2: raw append alone would produce '- ㅇㅇ- ㅇㅇ' (the reported bug);
+    // the complete-block reconcile must restore the '\n' boundary like codex/claude-e.
+    delta('- ㅇㅇ');
+    complete('- ㅇㅇ');
+    assert.equal(ctx.fullText, '- ㅇㅇ\n- ㅇㅇ', 'boundary between messages restored');
+});
+
+test('claude plain-text messages get codex-parity segment bullets at the boundary', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    const delta = (text) => extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
+    }, ctx, 'test');
+    const complete = (text) => extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text }] },
+    }, ctx, 'test');
+
+    delta('hello');
+    complete('hello');
+    assert.equal(ctx.fullText, 'hello', 'first plain message stays unbulleted');
+
+    delta('world');
+    complete('world');
+    // Matches the codex segment convention (first\n- second).
+    assert.equal(ctx.fullText, 'hello\n- world', 'later message gets the segment boundary');
+});
+
+test('claude within-message newlines survive reconcile (live-capture fixture)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // Real deltas captured from claude stream-json on 2026-07-03: ["-", " one\n- two\n- three"]
+    for (const text of ['-', ' one\n- two\n- three']) {
+        extractFromEvent('claude', {
+            type: 'stream_event',
+            event: { type: 'content_block_delta', delta: { type: 'text_delta', text } },
+        }, ctx, 'test');
+    }
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: '- one\n- two\n- three' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '- one\n- two\n- three', 'canonical newlines intact, no doubling');
+});
+
+test('claude streamed text is retained when the complete block never arrives', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'partial ans' } },
+    }, ctx, 'test');
+    // Interrupt/kill: no assistant event. Raw streamed text must survive.
+    assert.equal(ctx.fullText, 'partial ans');
+    assert.equal(ctx.claudeStreamedTextStart, 0, 'anchor recorded for the open message');
+});
+
+test('claude-e stream_event text_delta passthrough never raw-appends (snapshot path stays canonical)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    // The claude-e wrapper passes stream_event lines through; the plain-claude raw
+    // appender must ignore them or the snapshot diff would double text.
+    extractFromEvent('claude-e', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'stray delta' } },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, '', 'claude-e delta must not touch fullText');
+    assert.ok(!ctx.claudeStreamedText, 'claude-e delta must not arm the plain-claude guard');
+    assert.equal(ctx.claudeStreamedTextStart, undefined, 'no reconcile anchor for claude-e');
+
+    // The canonical snapshot then produces exactly one body.
+    extractFromEvent('claude-e', {
+        type: 'assistant',
+        message: { content: [{ type: 'text', text: 'canonical body' }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, 'canonical body', 'snapshot path unaffected, single body');
+});
+
 test('claude falls back to complete assistant block when no text_delta streamed', () => {
     const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
     // No partial stream events (e.g. --include-partial-messages absent): only the complete assistant.
@@ -1800,4 +1894,32 @@ test('events.ts facade exports exactly the 12 public symbols', () => {
         'summarizeToolInput',
     ].sort();
     assert.deepEqual(allExports, expected, `events.ts must export exactly 12 symbols, got: ${allExports.join(', ')}`);
+});
+
+test('args invariant: only plain claude passes --include-partial-messages', async () => {
+    const { buildArgs, buildResumeArgs } = await import('../src/agent/args.ts');
+    const claudeArgs = buildArgs('claude', 'claude-sonnet-5', 'medium', 'p', 's');
+    const claudeEArgs = buildArgs('claude-e', 'claude-sonnet-5', 'medium', 'p', 's');
+    assert.ok(claudeArgs.includes('--include-partial-messages'), 'plain claude streams partial messages');
+    assert.ok(!claudeEArgs.includes('--include-partial-messages'), 'claude-e must not stream partial messages');
+    const claudeResume = buildResumeArgs('claude', 'claude-sonnet-5', 'medium', 'sid', 'p');
+    const claudeEResume = buildResumeArgs('claude-e', 'claude-sonnet-5', 'medium', 'sid', 'p');
+    assert.ok(claudeResume.includes('--include-partial-messages'), 'plain claude resume keeps the flag');
+    assert.ok(!claudeEResume.includes('--include-partial-messages'), 'claude-e resume must not gain the flag');
+});
+
+test('claude reconcile is skipped when the complete block has no text (streamed text survives)', () => {
+    const ctx = { toolLog: [], fullText: '', seenToolKeys: new Set(), hasClaudeStreamEvents: false };
+    extractFromEvent('claude', {
+        type: 'stream_event',
+        event: { type: 'content_block_delta', delta: { type: 'text_delta', text: 'streamed prose' } },
+    }, ctx, 'test');
+    // Degenerate complete block with no text content must not delete the streamed text.
+    extractFromEvent('claude', {
+        type: 'assistant',
+        message: { content: [{ type: 'tool_use', id: 't1', name: 'Read', input: {} }] },
+    }, ctx, 'test');
+    assert.equal(ctx.fullText, 'streamed prose', 'truncation must not run without canonical text');
+    assert.ok(!ctx.claudeStreamedText, 'per-message flag still resets');
+    assert.equal(ctx.claudeStreamedTextStart, undefined, 'anchor still resets');
 });

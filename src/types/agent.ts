@@ -55,6 +55,9 @@ export interface SpawnContext {
    *  incl tool_use) — that would false-skip a tool-only turn whose prose arrives
    *  only in the complete assistant event. */
   claudeStreamedText?: boolean;
+  /** Stream-target offset where the current message's raw text deltas began —
+   * consumed by the complete-block reconcile in handleClaudeEvent. */
+  claudeStreamedTextStart?: number | undefined;
   sessionId: string | null;
   cost: number | null;
   turns: number | null;

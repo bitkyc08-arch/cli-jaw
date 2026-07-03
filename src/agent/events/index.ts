@@ -150,8 +150,16 @@ export function extractFromEvent(cli: string, event: CliEventRecord, ctx: SpawnC
         // between segments and would corrupt mid-token deltas. Set per-message
         // claudeStreamedText so handleClaudeEvent skips the duplicate complete-block
         // append (and resets it) without false-skipping a tool-only turn.
-        if (inner?.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
-            const seg = appendAssistantRawText(ctx, inner.delta.text || '');
+        // Scoped to plain `claude`: the claude-e wrapper passes stream_event lines
+        // through, and a raw-appended claude-e delta would corrupt its snapshot path.
+        // claudeStreamedTextStart anchors the complete-block reconcile that restores
+        // segment boundaries between tool-separated messages (handleClaudeEvent).
+        if (cli === 'claude' && inner?.type === 'content_block_delta' && inner.delta?.type === 'text_delta') {
+            const deltaText = inner.delta.text || '';
+            if (deltaText && !ctx.claudeStreamedText && ctx.claudeStreamedTextStart === undefined) {
+                ctx.claudeStreamedTextStart = (ctx.liveOutputText ?? ctx.fullText).length;
+            }
+            const seg = appendAssistantRawText(ctx, deltaText);
             if (seg) {
                 // Arm the per-message guard only when real text flowed: an all-empty
                 // text_delta run must NOT skip the complete-block fallback (else its
