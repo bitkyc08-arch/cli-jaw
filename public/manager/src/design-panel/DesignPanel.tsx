@@ -153,8 +153,11 @@ export function DesignPanel(props: DesignPanelProps) {
                 `Brief: ${paths.promptPath} — read it first; it holds the page requirements.`,
                 '',
                 'Update artifact.html in place (direct file write or `jaw design files ... write --stdin`).',
+                'Write allowlist inside the page directory: artifact.html, prompt.md, page.json, assets/*.',
+                "Preview is CSP-locked (script-src 'none'): produce STATIC self-contained HTML/CSS — no <script>, no external CDN references; inline styles/SVG only.",
                 'A before-snapshot was already taken; restore points live under the page snapshots/ directory.',
                 'Do not write anywhere else; the user reviews the result live in the Manager Design tab.',
+                'If the design skill is active, follow its "Design run request" agent contract.',
             ].join('\n')))
             .then(result => {
                 setStatusMessage(result.ok

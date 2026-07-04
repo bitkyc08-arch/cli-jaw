@@ -214,6 +214,9 @@ cli-jaw browser type e5 "hello" --submit
 - Prefer the smallest state check that answers the next question: snapshot for ref/DOM truth, screenshot only when visual layout matters, console/network only for debugging.
 - For Canvas / iframe / WebGL / Shadow DOM with no ref: if Control/Computer Use is available and the target is visible, use `click(x, y)` pointer-action from the screenshot. `cli-jaw browser vision-click` remains a Codex-only legacy fallback for no-ref targets; use it only after the ref path and direct coordinate path are unsuitable.
 
+### A.1 Embedded Manager Browser (user-shared pages only)
+Default browser work uses the Chrome CDP path above. The Electron Manager ALSO has an embedded browser (right-sidebar Browser tab): when the user clicks "Share with Agent" there, an `[Embedded Browser]` entry appears in your runtime-context with a target id and exact curl commands — `/screenshot` (PNG path), `/snapshot` (bounded AX tree), `/act` (click/type/scroll/key; requires the user's separate "Allow agent actions" opt-in, stated in the entry). Use those exact commands; never guess ports/ids. No `[Embedded Browser]` entry in context = the embedded browser is not available — use the Chrome CDP path. Details: active `browser` skill § Embedded Manager Browser.
+
 ### B. Computer Use path — `mcp__computer_use__.*` (macOS, codex-only)
 For desktop apps and non-DOM UI. Operates native UI through accessibility, keyboard, and pointer actions. Do not promise that a visible cursor overlay will appear.
 
@@ -234,6 +237,7 @@ For desktop apps and non-DOM UI. Operates native UI through accessibility, keybo
 | Global hotkey | CU | keyboard-action |
 | User-given pixel coordinate | CU | pointer-action |
 | Canvas / iframe / Shadow DOM target | CDP or CU fallback | pointer-action / pointer-action+vision |
+| Page the user shared via Manager "Share with Agent" | Embedded Browser endpoints (A.1) | screenshot / snapshot / act |
 
 ### B.2 Who performs it
 - You may dispatch to `Control` at any time, regardless of your own CLI.
