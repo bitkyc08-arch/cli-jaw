@@ -246,6 +246,20 @@ export type DashboardRegistryUi = {
     diffBaseRef: string;
     diffIncludeUntracked: boolean;
     rightFolderRootPath: string | null;
+    // Desktop panel layout (right-sidebar open-tab model + bottom panel).
+    // Optional: written by the Electron manager frontend; the web UI ignores
+    // them. Normalization preserves and bounds them (see normalizePanelLayoutUi).
+    panelLayoutVersion?: number;
+    rightPanelOpen?: boolean;
+    rightPanelWidth?: number;
+    rightSidebarOpenTabs?: Array<Record<string, unknown>>;
+    rightSidebarActiveTabId?: string | null;
+    rightSidebarNextOrdinalByKind?: Record<string, number>;
+    fileFolderLayout?: { mode: string; splitRatio: number; lastSplitRatio: number };
+    bottomPanelOpen?: boolean;
+    bottomPanelHeight?: number;
+    bottomPanelTabs?: string[];
+    bottomPanelActiveTab?: string | null;
 };
 
 export type DashboardRegistryInstance = {

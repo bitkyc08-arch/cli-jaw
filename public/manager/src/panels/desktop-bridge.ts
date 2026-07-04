@@ -114,6 +114,7 @@ export type GitBridgeApi = {
 export type FolderBridgeApi = {
     getDefaultRoot: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     pickFolder: () => Promise<{ ok: boolean; path?: string; error?: string }>;
+    pickFile?: () => Promise<{ ok: boolean; path?: string; error?: string }>;
     authorizeRoot?: (rootPath: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
     registerGitWorktreeRoot?: (folderPanelRoot: string, repoRoot: string | undefined, worktreePath: string) => Promise<{ ok: boolean; path?: string; error?: string }>;
     listDir: (dirPath: string, depth?: number) => Promise<{ ok: boolean; entries?: Array<{ name: string; path: string; kind: 'file' | 'directory'; size: number }>; error?: string }>;
@@ -173,8 +174,95 @@ export type TrayRemindersBridgeApi = {
     openDashboard?: (() => void) | undefined;
 };
 
+export type BrowserWebviewTabState = {
+    tabId: string;
+    webContentsId: number;
+    url: string;
+    title: string;
+    loading: boolean;
+    canGoBack: boolean;
+    canGoForward: boolean;
+    devToolsOpen?: boolean;
+    devToolsTargetId?: string;
+    sharedWithAgent?: boolean;
+    /** v4: agent may drive click/type/scroll on this tab (stronger opt-in than share). */
+    actionsEnabled?: boolean;
+    /** v5: native element inspect mode is active on this tab. */
+    inspecting?: boolean;
+    crashed?: boolean;
+    error?: string;
+};
+
+/** v5: element resolved from the native inspect pick (CDP DOM/AX domains). */
+export type BrowserPickedElement = {
+    selector: string;
+    tagName: string;
+    role: string | null;
+    name: string | null;
+    text: string | null;
+    bounds: { x: number; y: number; width: number; height: number } | null;
+};
+
+/** v5: bounded accessibility snapshot node. */
+export type BrowserDomSnapshotNode = {
+    tag: string;
+    role: string | null;
+    name: string | null;
+    text: string | null;
+    selector: string;
+    bounds: { x: number; y: number; width: number; height: number } | null;
+};
+
+/** v4: interactive action payload dispatched through CDP Input domain. */
+export type BrowserActPayload =
+    | { kind: 'click'; x: number; y: number }
+    | { kind: 'type'; text: string }
+    | { kind: 'scroll'; x: number; y: number; deltaY: number }
+    | { kind: 'key'; key: string };
+
+export type BrowserWebviewCommand =
+    | { kind: 'navigate'; tabId: string; url: string }
+    | { kind: 'reload'; tabId: string; ignoreCache?: boolean }
+    | { kind: 'goBack'; tabId: string }
+    | { kind: 'goForward'; tabId: string }
+    | { kind: 'stop'; tabId: string };
+
+export type BrowserWebviewNativeAction =
+    | { kind: 'openExternal'; tabId: string }
+    | { kind: 'openDevTools'; tabId: string; mode?: 'right' | 'bottom' | 'detach' }
+    | { kind: 'closeDevTools'; tabId: string }
+    | { kind: 'captureScreenshot'; tabId: string }
+    | { kind: 'inspectElement'; tabId: string; x: number; y: number }
+    | { kind: 'setSharedWithAgent'; tabId: string; shared: boolean }
+    // v5 native inspect + snapshot
+    | { kind: 'startInspect'; tabId: string }
+    | { kind: 'stopInspect'; tabId: string }
+    | { kind: 'getDomSnapshot'; tabId: string }
+    // v4 interactive actions
+    | { kind: 'setActionsEnabled'; tabId: string; enabled: boolean }
+    | { kind: 'act'; tabId: string; act: BrowserActPayload };
+
+export type BrowserWebviewScreenshot = {
+    tabId: string;
+    url: string;
+    title: string;
+    capturedAt: string;
+    width: number;
+    height: number;
+    dataUrl: string;
+};
+
 export type BrowserBridgeApi = {
     onOpenUrl: (cb: (payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => void) => () => void;
+    // Embedded webview target bridge (030 v1). Optional so older shell builds
+    // without the bridge keep working; callers must guard.
+    registerWebview?: (input: { tabId: string; webContentsId: number }) => Promise<{ ok: boolean; state?: BrowserWebviewTabState; error?: string }>;
+    unregisterWebview?: (input: { tabId: string; webContentsId?: number }) => Promise<{ ok: boolean; error?: string }>;
+    controlWebview?: (command: BrowserWebviewCommand) => Promise<{ ok: boolean; state?: BrowserWebviewTabState; error?: string }>;
+    performWebviewAction?: (action: BrowserWebviewNativeAction) => Promise<{ ok: boolean; state?: BrowserWebviewTabState; screenshot?: BrowserWebviewScreenshot; snapshot?: BrowserDomSnapshotNode[]; error?: string }>;
+    getWebviewTabs?: () => Promise<{ ok: boolean; tabs?: BrowserWebviewTabState[]; error?: string }>;
+    onWebviewState?: (cb: (state: BrowserWebviewTabState) => void) => () => void;
+    onElementPicked?: (cb: (payload: { tabId: string; element: BrowserPickedElement }) => void) => () => void;
 };
 
 export type ClipboardBridgeApi = {

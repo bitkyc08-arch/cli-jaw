@@ -364,6 +364,20 @@ export function FolderPanel(props: FolderPanelProps) {
             folderSelection.moveKeyboardSelection(event.key === 'ArrowDown' ? 'down' : 'up', event.shiftKey);
             return;
         }
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            if (entry.kind === 'directory' && !expanded.has(entry.path)) {
+                toggleEntryExpansion(entry);
+            }
+            return;
+        }
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            if (entry.kind === 'directory' && expanded.has(entry.path)) {
+                toggleEntryExpansion(entry);
+            }
+            return;
+        }
         const action = folderShortcutAction(event, { chordActive: folderChordActive });
         if (action) {
             event.preventDefault();
@@ -386,7 +400,7 @@ export function FolderPanel(props: FolderPanelProps) {
             event.preventDefault();
             selectEntry(entry);
         }
-    }, [cancelFolderChord, copyEntryPath, copySelectedPath, folderChordActive, folderSelection, revealEntryPath, revealSelectedPath, selectEntry, startFolderChord, toggleEntryExpansion]);
+    }, [cancelFolderChord, copyEntryPath, copySelectedPath, expanded, folderChordActive, folderSelection, revealEntryPath, revealSelectedPath, selectEntry, startFolderChord, toggleEntryExpansion]);
 
     useEffect(() => {
         const focusedPath = folderSelection.selection.focusedPath;

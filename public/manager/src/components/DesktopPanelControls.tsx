@@ -65,7 +65,7 @@ export function DesktopPanelControls() {
                     if (rightOpen) {
                         panelActions.toggleRightPanel();
                     } else {
-                        panelActions.openRightPanel('folder');
+                        panelActions.focusOrCreateFirstRightSidebarTab('files');
                     }
                 }}
                 aria-label="Toggle right panel"

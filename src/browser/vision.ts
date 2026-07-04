@@ -23,6 +23,8 @@ type VisionCoordinates = {
     provider: 'codex';
 };
 
+const CODEXCLAW_PLUGIN_DISABLE_CONFIG = 'plugins."codexclaw@personal".enabled=false';
+
 function isRecord(value: unknown): value is JsonRecord {
     return Boolean(value && typeof value === 'object' && !Array.isArray(value));
 }
@@ -85,6 +87,7 @@ function codexVision(screenshotPath: string, target: string): Promise<VisionCoor
     return new Promise((resolve, reject) => {
         const args = [
             'exec', '-i', screenshotPath, '--json',
+            '-c', CODEXCLAW_PLUGIN_DISABLE_CONFIG,
             '--dangerously-bypass-approvals-and-sandbox',
             '--skip-git-repo-check',
             prompt,
