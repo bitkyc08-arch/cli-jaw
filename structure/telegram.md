@@ -229,7 +229,7 @@ Target response:
   4. hub-member telegramSendHandler relays to hub callback /api/dashboard/telegram-hub/outbound
   5. hub sendToTopic() stops typing and sends into the original topic/thread
 
-Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic (P4: rich-message scaffold when available)
+Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic (rich-first: sendTelegramMarkdown)
 ```
 
 ### P4 — per-topic model and system prompt
@@ -237,7 +237,7 @@ Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTop
 - `ThreadRoute` optional fields: `model`, `systemPrompt` (`src/manager/telegram-hub/types.ts`).
 - Hub `forwardToInstance()` passes overrides into instance ingest when route defines them.
 - Manager `TelegramHub.tsx` routes table shows per-topic `model` / `systemPrompt`.
-- Outbound relay may use `src/telegram/rich-message.ts` when Telegram rich payloads are available; otherwise HTML chunking fallback.
+- Outbound text is rich-first by default: `src/telegram/rich-message.ts` `sendTelegramMarkdown()` sends raw markdown via Bot API 10.1 `sendRichMessage` (32000-char chunks, grammy ≥1.44), falling back per chunk to `parse_mode:'HTML'` (4096 re-chunk) then tag-stripped plaintext. Same helper serves `telegramSendHandler`, tg replies (`tgOrchestrate`/queue), `createTelegramForwarder`, and hub `sendToTopic`.
 
 ### Watchdog diagnostics relay
 
