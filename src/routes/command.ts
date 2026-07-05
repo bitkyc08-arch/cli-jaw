@@ -113,12 +113,18 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         const target = (rawTarget ?? undefined) as RemoteTarget | undefined;
         // P4: per-topic overrides are only honored when the hub forwards a telegram target.
         const overrides = target ? sanitizeOverrides(req.body?.overrides) : undefined;
+        // external: caller-declared "not the visible web chat input" marker
+        // (manager relay, preview iframe relay, scripts). The web UI's SSE
+        // new_message handler renders externally-injected user bubbles live
+        // instead of waiting for a history reload (devlog 260705).
+        const external = req.body?.external === true ? true : undefined;
         const submitMeta = stripUndefined({
             origin: target ? 'telegram' as const : 'web' as const,
             target,
             chatId: target?.targetId,
             overrides,
             replyViaTarget: Boolean(target),
+            external,
         });
 
         // Slash command pre-processing: Telegram/Discord already do this,
@@ -157,5 +163,29 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             return;
         }
         res.json({ ok: true, ...result });
+    });
+
+    // Hub elicitation callback relay: hub forwards elic:Q:O taps to the instance.
+    app.post('/api/elicitation/callback', requireAuth, async (req, res) => {
+        const chatId = typeof req.body?.chatId === 'string' ? req.body.chatId : '';
+        const callbackData = typeof req.body?.callbackData === 'string' ? req.body.callbackData : '';
+        if (!chatId || !callbackData) {
+            res.status(400).json({ ok: false, error: 'chatId and callbackData required' });
+            return;
+        }
+        const { handleElicitationCallback } = await import('../telegram/elicitation-buttons.js');
+        const result = handleElicitationCallback(chatId, callbackData);
+        if (result.kind === 'complete') {
+            const target = req.body?.target;
+            const submit = submitMessage(result.combinedAnswer, stripUndefined({
+                origin: 'telegram' as const,
+                target,
+                chatId,
+                replyViaTarget: Boolean(target),
+            }));
+            res.json({ ok: true, kind: 'complete', ack: result.ack, submit });
+            return;
+        }
+        res.json({ ok: true, kind: result.kind, ack: result.kind === 'progress' ? result.ack : undefined });
     });
 }

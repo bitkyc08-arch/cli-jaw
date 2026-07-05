@@ -123,6 +123,18 @@ function installTelegramTargetReplyForwarder(): void {
             target,
         }).then((result) => {
             if (!result.ok) console.error('[tg:target-reply]', result.error || 'send failed');
+            // Forward elicitation keyboards through hub if present.
+            const specs = data["elicitationSpecs"];
+            const raw = Array.isArray(specs) ? specs[0] : undefined;
+            if (typeof raw === 'string' && raw) {
+                const keyboards = startPendingElicitation(String(target.targetId || ''), raw);
+                for (const kb of keyboards ?? []) {
+                    void sendChannelOutput({
+                        channel: 'telegram', type: 'keyboard',
+                        text: kb.text, reply_markup: kb.reply_markup, target,
+                    }).catch(() => {});
+                }
+            }
         }).catch((err: unknown) => {
             console.error('[tg:target-reply]', (err as Error).message);
         });
@@ -216,7 +228,7 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
                 headers: { 'content-type': 'application/json' },
                 body: JSON.stringify(stripUndefined({
                     chatId: req.target.targetId, threadId: req.target.threadId,
-                    type: req.type, text: req.text, filePath: req.filePath, caption: req.caption,
+                    type: req.type, text: req.text, filePath: req.filePath, caption: req.caption, reply_markup: req.reply_markup,
                 })),
                 signal: AbortSignal.timeout(15_000),
             });
@@ -249,6 +261,16 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
         // legacy HTML→plaintext chain as per-chunk fallback inside the helper.
         await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({ message_thread_id: messageThreadId }));
         return { ok: true, chat_id: chatId, type: 'text' };
+    }
+
+    if (req.type === 'keyboard') {
+        const text = req.text?.trim();
+        if (!text || !req.reply_markup) return { ok: false, error: 'text and reply_markup required for keyboard type' };
+        await bot.api.sendMessage(chatId, text, stripUndefined({
+            message_thread_id: messageThreadId,
+            reply_markup: req.reply_markup as import("@grammyjs/types").InlineKeyboardMarkup,
+        }));
+        return { ok: true, chat_id: chatId, type: 'keyboard' };
     }
 
     // File types
