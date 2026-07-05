@@ -94,14 +94,14 @@ export interface WorkflowArtifactAction {
         | 'reinsert'
         | 'send-as-chat'
         | 'start-pabcd'
-        | 'save-jawdev'
+        | 'save-devlog'
         | 'export-project-file'
         | 'preview-audit';
     requiresConfirmation?: boolean;
 }
 
 export interface WorkflowArtifactStorage {
-    mode: 'chat' | 'jaw-home-cache' | 'pabcd-worklog' | 'jawdev-devlog' | 'memory' | 'project-file';
+    mode: 'chat' | 'jaw-home-cache' | 'pabcd-worklog' | 'devlog' | 'memory' | 'project-file';
     path?: string;
     projectKey?: string;
     retentionDays?: number;

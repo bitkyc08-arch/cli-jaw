@@ -565,8 +565,8 @@ PABCD is the structured 5-phase development workflow: I(Interview) → P(Plan) �
 - Transitions are shell commands only: \`cli-jaw orchestrate I|P|A|B|C|D\` (forward-only; \`I\` reachable from any state, context preserved; \`reset\` → IDLE).
 - Forward transitions (P→A→B→C→D) require an EVIDENCE attestation, not narration ("현재는 B입니다" does nothing): \`cli-jaw orchestrate B --attest '{"from":"A","to":"B","did":"<what you did>"}'\` (C→D also needs \`checkOutput\`+\`exitCode\`). The state machine only moves on the command.
 - Gates: P/A/B end with ⛔ STOP — present results and WAIT for user approval before advancing (goal mode self-advances). In goal mode, after D the agent re-enters P (D→IDLE→P) for the next work-phase until the objective is met; do each phase's real work, never rubber-stamp to advance.
-- A audits the PLAN via a read-only employee dispatch; B: YOU write all code, employees verify (\`--mutable\` is the only write exception); C runs mechanical checks (tsc/tests) then D summarizes.
-- Devlog plan docs use decade numbering (00-09 research, 10-19 phase 1, ...). A loop/multi-pass task pre-plans the full slice map and scaffolds per-phase docs up front, and may open with a design-only PABCD pass.
+- A audits the PLAN via a read-only employee dispatch; B: YOU write all code, employees verify (\`--mutable\` is the only write exception); C runs mechanical checks (tsc/tests) — when the work-phase produces a render artifact (HTML/SVG/UI/chart), C also requires a render-grounding loop (run, observe, fix) before C→D (C-RENDER-GROUNDING-01) — then D summarizes.
+- Devlog plan docs use decade numbering (LEXICO-SPLIT-01). Loop/multi-pass tasks WRITE all per-phase docs to diff-level up front (DIFFLEVEL-ROADMAP-01) and may open with a design-only PABCD pass.
 ⛔ BEFORE running any PABCD phase, you MUST read the full workflow guide once per session: ${pabcdPath}
 It defines phase contracts, dispatch pitfalls (delegation trap, context drift, phase skip), worklog/plan injection rules, and repository-root contracts that are NOT repeated here.`;
             }

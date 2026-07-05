@@ -408,8 +408,10 @@ The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\`
 
 - **INTERVIEW-CLASSIFY-01**: before suggesting P, settle the loop archetype — does a
   verifier define *done* (spec-satisfaction), or only *better* (open-ended optimization:
-  scores, win rates, benchmarks)? Record it as a known fact. Optimization work must plan
-  instrumentation + an explore-and-select scheme in P — never a bare repair loop.
+  scores, win rates, benchmarks)? Record it as a known fact. Also settle the **unit
+  residence** (UNIT-RESIDENCE-01): which implementation unit (\`devlog/_plan/YYMMDD_slug/\`)
+  this work belongs to, existing or new. Optimization work must plan instrumentation +
+  an explore-and-select scheme in P — never a bare repair loop.
 - **INTERVIEW-TEACH-01**: teach the decision space, don't only narrow it — a user cannot
   choose among options they have never seen. Present researched options with a
   per-option trade-off at every load-bearing altitude (stack, architecture,
@@ -436,8 +438,8 @@ Entry heuristic: concrete feature/goal → standard Clarification; vague domain 
 
 If the user's request contains "loop" / "루프" (or clearly describes work too large for one PABCD cycle), treat it as a MULTI-PASS task:
 - Assume PABCD will run several full cycles — one per work-phase.
-- An Interview output may be a devlog scaffold: the work-phase decomposition (slice map) and per-phase stub docs using decade numbering (10_phase1, 20_phase2, ...), so the structure is agreed before P.
-- A loop may open with a design-only PABCD pass (Phase 0): a code-free whole-system design/documentation cycle that runs before the first implementation work-phase. Note this possibility to the user when the task warrants it.`,
+- An Interview output settles the unit residence (UNIT-RESIDENCE-01) and produces the work-phase decomposition (slice map). P then WRITES all per-phase decade docs to diff-level (DIFFLEVEL-ROADMAP-01) — scaffolding empty stubs is not pre-planning.
+- A loop may open with a design-only PABCD pass (Phase 0): a code-free whole-system design/documentation cycle that produces the difflevel roadmap before the first implementation work-phase. Note this possibility to the user when the task warrants it.`,
 
   P: `[PABCD — P: PLANNING]
 
@@ -450,8 +452,8 @@ Steps:
 2. Write the complete plan internally:
    - Diff-level precision: exact file paths (NEW/MODIFY/DELETE), before/after diffs for MODIFY, complete content for NEW.
    - Loop-spec header (C2+): Loop archetype (from Interview) · Trigger · Goal · Non-goals · Verifier (the command/gate and what it measures, not only pass/fail) · Stop condition · Memory artifact · Expected terminal states (DONE|NOOP|BLOCKED|NEEDS_HUMAN|BUDGET_EXHAUSTED) · Escalation. For open-ended optimization add the divergence plan (descriptor axes, candidate/archetype assignments, deterministic selection rule, telemetry schema); if the verifier only reports win/lose or a bare score, instrumentation is B's first work item — before any candidate.
-   - Save to a devlog plan file using Jawdev decade numbering (see dev-pabcd skill).
-   - For a loop / multi-pass task: pre-plan the FULL work-phase slice map up front and scaffold per-phase stub docs (10_phase1, 20_phase2, ...). The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
+   - Save to a devlog plan file using decade numbering (see dev-pabcd skill, LEXICO-SPLIT-01).
+   - For a loop / multi-pass task: pre-plan the FULL work-phase slice map and WRITE all per-phase decade docs (10_phase1, 20_phase2, ...) to diff-level up front (DIFFLEVEL-ROADMAP-01) — scaffolding empty stubs is not pre-planning. The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
 3. Present to the user in chat:
    - Part 1: Easy, non-developer explanation of what will change and why (≤5 sentences).
    - A Mermaid/SVG diagram showing the file change map.
@@ -587,6 +589,21 @@ You are now in Check mode. Perform verification in order:
 3. Verify all files saved and consistent.
 If Stage 1 fails → report and suggest \`cli-jaw orchestrate B\` (code fix).
 
+**Stage 1.5: Render Grounding (when applicable)**
+If any changed file is a render artifact (HTML, SVG, layout CSS, canvas/chart JS,
+JSX/TSX layout component): RUN the artifact in its execution environment (headless
+screenshot for web, SVG→PNG, execute script), OBSERVE the output (read it back —
+a produced-but-unread screenshot is not observation), FIX and re-observe if broken.
+One clean observation is enough. Static parse passing does not satisfy this — well-formed
+is not correct. Defaults: 1280×720 viewport; drive stateful artifacts until first
+interactive state change. C2-C3: record observation in the attestation \`did\`;
+C4: also persist the screenshot to the devlog.
+
+**Stage 1.75: SoT Sync (DEFAULT, SOT-SYNC-01)**
+If \`structure/\`, \`architecture.md\`, or INDEX/context docs exist in the repo, patch
+them to reflect the changes made in B — SoT and code must never diverge silently.
+If the repo has no SoT doc, note the recommendation to create one in the D summary.
+
 **Stage 2: Scrutiny (based on change scope)**
 
 IF 1-2 files changed:
@@ -672,6 +689,8 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 export interface TransitionResult {
   ok: boolean;
   reason?: string;
+  /** Soft-warning advisory (C-RENDER-GROUNDING-01): present only when ok===true. */
+  advisory?: string;
 }
 
 /**

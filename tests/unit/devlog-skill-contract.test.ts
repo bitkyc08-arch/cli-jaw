@@ -17,7 +17,7 @@ function read(path: string): string {
     return fs.readFileSync(path, 'utf8');
 }
 
-test('JDS-001: dev-scaffolding documents decade-range Jawdev phase filenames', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
+test('DLC-001: dev-scaffolding documents decade-range lexicographic phase filenames', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
     const skill = read(devScaffoldingPath);
 
     assert.match(skill, /decade-range/i);
@@ -30,7 +30,7 @@ test('JDS-001: dev-scaffolding documents decade-range Jawdev phase filenames', {
     assert.match(skill, /scan siblings and choose the next unused prefix/);
 });
 
-test('JDS-002: common dev and PABCD skills propagate the Jawdev naming contract', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
+test('DLC-002: common dev and PABCD skills propagate the devlog naming contract', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
     const dev = read(devPath);
     const devPabcd = read(devPabcdPath);
 
@@ -43,7 +43,7 @@ test('JDS-002: common dev and PABCD skills propagate the Jawdev naming contract'
     assert.match(devPabcd, /PLAN\.md/);
 });
 
-test('JDS-003: devlog local AGENTS file enforces decade-range phase document naming', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
+test('DLC-003: devlog local AGENTS file enforces decade-range phase document naming', { skip: !hasRequiredDocs && 'skills_ref/devlog submodules not checked out' }, () => {
     const devlogAgents = read(devlogAgentsPath);
 
     assert.match(devlogAgents, /## Phase Document Naming.*decade/);
@@ -51,4 +51,3 @@ test('JDS-003: devlog local AGENTS file enforces decade-range phase document nam
     assert.match(devlogAgents, /bare semantic filenames/);
     assert.match(devlogAgents, /pick the next unused prefix/);
 });
-
