@@ -16,6 +16,16 @@ import { JAW_HOME, SKILLS_DIR } from '../../src/core/config.js';
 import { isDiscoverableSkillDirName } from '../../lib/mcp/skills-utils.js';
 
 const CODEX_SKILLS = join(homedir(), '.codex', 'skills');
+const REF_DIR = join(JAW_HOME, 'skills_ref');
+
+type RegistrySkill = {
+    category?: string;
+    description?: string;
+    desc_en?: string;
+    desc_ko?: string;
+    superseded_by?: string;
+    status?: string;
+};
 
 // ─── ANSI ────────────────────────────────────
 const c = {
@@ -41,6 +51,41 @@ function listSkills() {
         });
 }
 
+function readRefRegistry(): Record<string, RegistrySkill> {
+    try {
+        const parsed = JSON.parse(readFileSync(join(REF_DIR, 'registry.json'), 'utf8'));
+        return parsed?.skills && typeof parsed.skills === 'object' ? parsed.skills : {};
+    } catch {
+        return {};
+    }
+}
+
+function registryHint(meta?: RegistrySkill): string {
+    if (!meta) return '';
+    const hints: string[] = [];
+    if (meta.status === 'claude-specific') hints.push('[claude-specific]');
+    if (meta.superseded_by) hints.push(`→ superseded by ${meta.superseded_by}`);
+    return hints.length ? `  ${c.dim}${hints.join(' ')}${c.reset}` : '';
+}
+
+function listInactiveRefSkills() {
+    const active = new Set(listSkills().map(s => s.name));
+    const registry = readRefRegistry();
+    return Object.entries(registry)
+        .filter(([name]) => !active.has(name) && existsSync(join(REF_DIR, name, 'SKILL.md')))
+        .map(([name, meta]) => ({
+            name,
+            meta,
+            category: meta.category || 'uncategorized',
+            desc: meta.description || meta.desc_en || meta.desc_ko || '',
+        }))
+        .sort((a, b) =>
+            a.category.localeCompare(b.category)
+            || Number(Boolean(a.meta.superseded_by)) - Number(Boolean(b.meta.superseded_by))
+            || a.name.localeCompare(b.name),
+        );
+}
+
 function installFromCodex(name: string) {
     const src = join(CODEX_SKILLS, name);
     const dst = join(SKILLS_DIR, name);
@@ -51,7 +96,6 @@ function installFromCodex(name: string) {
 }
 
 function installFromRef(name: string) {
-    const REF_DIR = join(JAW_HOME, 'skills_ref');
     const src = join(REF_DIR, name);
     const dst = join(SKILLS_DIR, name);
     if (existsSync(dst)) return { status: 'exists', path: dst };
@@ -63,7 +107,7 @@ function installFromRef(name: string) {
 function resolveSkillReadPath(name: string): { path: string; source: 'active' | 'skills_ref' } | null {
     const activePath = join(SKILLS_DIR, name, 'SKILL.md');
     if (existsSync(activePath)) return { path: activePath, source: 'active' };
-    const refPath = join(JAW_HOME, 'skills_ref', name, 'SKILL.md');
+    const refPath = join(REF_DIR, name, 'SKILL.md');
     if (existsSync(refPath)) return { path: refPath, source: 'skills_ref' };
     return null;
 }
@@ -180,6 +224,13 @@ switch (sub) {
         if (resolved.source === 'skills_ref') {
             console.log(`  ${c.dim}source: skills_ref fallback${c.reset}`);
         }
+        const registryMeta = readRefRegistry()[arg];
+        if (registryMeta?.superseded_by) {
+            console.log(`  ${c.dim}superseded_by: ${registryMeta.superseded_by}${c.reset}`);
+        }
+        if (registryMeta?.status) {
+            console.log(`  ${c.dim}status: ${registryMeta.status}${c.reset}`);
+        }
         console.log('');
         console.log(readFileSync(resolved.path, 'utf8'));
         break;
@@ -187,6 +238,25 @@ switch (sub) {
 
     case 'list':
     case undefined: {
+        if (process.argv.includes('--inactive')) {
+            const inactive = listInactiveRefSkills();
+            console.log(`\n  ${c.bold}📦 Inactive Ref Skills${c.reset} (${inactive.length})\n`);
+            if (!inactive.length) {
+                console.log(`  ${c.dim}(none)${c.reset}`);
+            } else {
+                let currentCategory = '';
+                for (const s of inactive) {
+                    if (s.category !== currentCategory) {
+                        currentCategory = s.category;
+                        console.log(`  ${c.bold}${currentCategory}${c.reset}`);
+                    }
+                    console.log(`    ${c.cyan}•${c.reset} ${c.bold}${s.name}${c.reset}${s.desc ? `  ${c.dim}${s.desc}${c.reset}` : ''}${registryHint(s.meta)}`);
+                }
+            }
+            console.log(`\n  ${c.dim}cli-jaw skill install <name>  — 스킬 설치${c.reset}`);
+            console.log(`  ${c.dim}cli-jaw skill info <name>     — 상세 보기${c.reset}\n`);
+            break;
+        }
         const skills = listSkills();
         console.log(`\n  ${c.bold}🧰 Installed Skills${c.reset} (${skills.length})\n`);
         if (!skills.length) {
