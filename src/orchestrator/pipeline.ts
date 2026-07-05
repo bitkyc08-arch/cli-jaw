@@ -40,6 +40,7 @@ import { parsePhaseAttestation, stripPhaseAttestation, detectNoStateNarration } 
 import { scanStructuredFence } from '../shared/structured-fence.js';
 import {
     parseElicitationSpec,
+    extractElicitationSpecs,
     renderPlainElicitationSpec,
 } from '../shared/elicitation-spec.js';
 // scope is globally 'default' — resolveOrcScope/findActiveScope no longer needed here
@@ -67,6 +68,18 @@ export function isRemoteElicitationBlockedOrigin(origin: unknown): boolean {
 export function buildRemoteChannelElicitationGuard(origin: unknown): string {
     const channel = String(origin || '').trim().toLowerCase();
     if (!isRemoteElicitationBlockedOrigin(channel)) return '';
+    if (channel === 'telegram') {
+        // Telegram renders single_select elicitation as inline keyboard buttons
+        // (src/telegram/elicitation-buttons.ts); other structured fences stay flattened.
+        return [
+            '## Remote Channel Capability Override',
+            'Current origin is telegram.',
+            'Telegram renders single_select ```elicitation fences as inline keyboard buttons.',
+            'You MAY output at most one ```elicitation fence per turn when a structured choice question helps; use single_select questions only, each with 8 options or fewer.',
+            'Do not output ```choice-buttons or ```search-results fences; multi_select and rank_priorities elicitation will be flattened to plain numbered text.',
+            'For search results, write a concise numbered plain-text list instead of a Web UI fence.',
+        ].join('\n');
+    }
     return [
         '## Remote Channel Capability Override',
         `Current origin is ${channel}.`,
@@ -571,8 +584,13 @@ export async function orchestrate(
     }
 
     // Final safety strip: shared sanitizer regardless of state
+    let elicitationSpecs: string[] = [];
     if (typeof result["text"] === 'string') {
         result["text"] = stripInterviewTracker(result["text"]);
+        // Extract raw specs BEFORE flattening so telegram can render inline keyboards.
+        if (origin === 'telegram') {
+            elicitationSpecs = extractElicitationSpecs(result["text"]);
+        }
         result["text"] = normalizeRemoteChannelElicitationOutput(result["text"], origin);
     }
 
@@ -584,6 +602,7 @@ export async function orchestrate(
         target,
         requestId,
         replyViaTarget,
+        ...(elicitationSpecs.length > 0 ? { elicitationSpecs } : {}),
     });
 }
 

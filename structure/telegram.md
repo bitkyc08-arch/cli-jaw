@@ -41,11 +41,12 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 ### Remote channel structured elicitation guard
 
 - 21 Elicitation은 Web UI main DOM 전용 상호작용이다.
-- Telegram/Discord origin은 `src/orchestrator/pipeline.ts`에서 per-turn prompt guard를 받아 `elicitation` / `choice-buttons` / `search-results` fenced block 출력을 금지한다.
+- Discord/CLI origin은 `src/orchestrator/pipeline.ts`에서 per-turn prompt guard를 받아 `elicitation` / `choice-buttons` / `search-results` fenced block 출력을 금지한다.
+- **Telegram origin은 single_select `elicitation` fence 1개를 허용한다** — guard가 "inline keyboard로 렌더된다"고 안내하고, pipeline이 평문화 전에 raw spec을 추출해 `orchestrate_done`에 `elicitationSpecs`로 싣는다. `src/telegram/elicitation-buttons.ts`가 질문별 inline keyboard 메시지를 만들고(`elic:<q>:<o>` callback_data, 옵션 ≤8), `bot.callbackQuery(/^elic:/)`가 답을 수집해 전 질문 완료 시 결합 답변을 `tgOrchestrate`로 재주입한다. pending 세션은 chatId당 1개, TTL 10분, 일반 텍스트 입력 시 폐기(단 `/command`는 유지). multi_select/rank_priorities 혼합 spec은 기존 plain text fallback 그대로.
 - A1 system prompt는 이 채널별 규칙 때문에 수정하지 않는다. prompt-cache 안정성을 유지하기 위해 origin-aware guard는 user prompt 조립 경로에서만 붙는다.
 - 모델이 그래도 remote 응답에 `elicitation` / `choice-buttons` fence를 출력하면 `orchestrate_done` broadcast 직전에 plain text numbered question fallback으로 변환한다.
 - 모델이 remote 응답에 `search-results` fence를 출력하면 raw JSON fence를 그대로 보내지 않고 일반 텍스트 검색 결과 목록 또는 경고 fallback으로 변환한다.
-- 현재 Telegram `callback_query` / inline keyboard와 Discord message components는 구현하지 않는다. native remote buttons는 후속 별도 기능이다.
+- Discord message components는 구현하지 않는다. Discord native buttons는 후속 별도 기능이다.
 
 ### `core/runtime-settings.ts`
 

@@ -43,8 +43,13 @@ export {
 } from './forwarder.js';
 
 // Re-exported from collect.ts (extracted in Phase B)
-import { orchestrateAndCollect } from '../orchestrator/collect.js';
+import { orchestrateAndCollect, orchestrateAndCollectData } from '../orchestrator/collect.js';
 export { orchestrateAndCollect };
+import {
+    startPendingElicitation,
+    handleElicitationCallback,
+    discardPendingElicitation,
+} from './elicitation-buttons.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -423,7 +428,28 @@ async function _initTelegramInner() {
     bot.command('start', (ctx) => ctx.reply(t('tg.connected', {}, currentLocale())));
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat?.id ?? ''}</code>`, { parse_mode: 'HTML' }));
 
+    // Inline-keyboard elicitation answers (single_select fences → buttons).
+    bot.callbackQuery(/^elic:/, async (ctx) => {
+        const cbChatId = ctx.chat?.id;
+        if (!cbChatId) { await ctx.answerCallbackQuery().catch(() => { }); return; }
+        const result = handleElicitationCallback(String(cbChatId), ctx.callbackQuery.data ?? '');
+        if (result.kind === 'stale') {
+            await ctx.answerCallbackQuery({ text: t('tg.elicitationExpired', {}, currentLocale()) }).catch(() => { });
+            return;
+        }
+        await ctx.answerCallbackQuery({ text: result.ack }).catch(() => { });
+        // Best-effort: freeze the tapped question's keyboard so the choice reads as taken.
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => { });
+        if (result.kind === 'complete') {
+            await tgOrchestrate(ctx, result.combinedAnswer, result.combinedAnswer);
+        }
+    });
+
     async function tgOrchestrate(ctx: Context, prompt: string, displayMsg: string) {
+        const chatId = ctx.chat?.id;
+        if (!ctx.chat) return;
+        const chat = ctx.chat;
+        const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, chatId }));
         // Reproduce grammy ctx.reply's auto-injected routing (context.js: thread/business/DM-topic)
         // so the rich-first send helper lands replies exactly where ctx.reply would.
         const replyOptsOf = (c: Context): RichSendOpts => stripUndefined({
@@ -431,10 +457,17 @@ async function _initTelegramInner() {
             message_thread_id: c.msg?.is_topic_message ? c.msg.message_thread_id : undefined,
             direct_messages_topic_id: c.msg?.direct_messages_topic?.topic_id,
         });
-        const chatId = ctx.chat?.id;
-        if (!ctx.chat) return;
-        const chat = ctx.chat;
-        const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, chatId }));
+        // Single_select elicitation fences arrive as raw specs on orchestrate_done;
+        // render the first one as inline-keyboard messages after the text body.
+        const sendElicitationKeyboards = async (targetChatId: number | string, specs: unknown) => {
+            const raw = Array.isArray(specs) ? specs[0] : undefined;
+            if (typeof raw !== 'string' || !raw) return;
+            const keyboards = startPendingElicitation(String(targetChatId), raw);
+            for (const kb of keyboards ?? []) {
+                await ctx.api.sendMessage(targetChatId, kb.text, { ...replyOptsOf(ctx), reply_markup: kb.reply_markup })
+                    .catch(() => { });
+            }
+        };
 
         if (result.action === 'queued') {
             console.log(`[tg:queue] agent busy, queued (${result.pending} pending)`);
@@ -445,7 +478,9 @@ async function _initTelegramInner() {
             const queueHandler = (type: string, data: Record<string, unknown>) => {
                 if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'telegram' && data["requestId"] === requestId) {
                     removeBroadcastListener(queueHandler);
-                    sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx)).catch(() => { });
+                    sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx))
+                        .then(() => sendElicitationKeyboards(chat.id, data["elicitationSpecs"]))
+                        .catch(() => { });
                 }
             };
             addBroadcastListener(queueHandler);
@@ -549,7 +584,7 @@ async function _initTelegramInner() {
         if (toolHandler) addBroadcastListener(toolHandler);
 
         try {
-            const result = await orchestrateAndCollect(prompt, { origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true }) as string;
+            const { text: result, data: doneData } = await orchestrateAndCollectData(prompt, { origin: 'telegram', chatId: chat.id, requestId: submitRequestId, _skipInsert: true });
             clearInterval(typingInterval);
             if (statusUpdateTimer) {
                 clearTimeout(statusUpdateTimer);
@@ -560,6 +595,7 @@ async function _initTelegramInner() {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
             await sendTelegramMarkdown(ctx.api, chat.id, result, replyOptsOf(ctx));
+            await sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]);
             console.log(`[tg:out] ${chat.id}: ${result.slice(0, 80)}`);
         } catch (err: unknown) {
             clearInterval(typingInterval);
@@ -614,6 +650,10 @@ async function _initTelegramInner() {
             return;
         }
         console.log(`[tg:in] ${ctx.chat?.id}: ${text.slice(0, 80)}`);
+
+        // Typed reply supersedes any pending elicitation buttons (placed after the
+        // /command branch so slash commands do not discard the pending session).
+        discardPendingElicitation(String(ctx.chat.id));
 
         // Reset intent: use submitMessage gateway for consistency
         if (isResetIntent(text)) {

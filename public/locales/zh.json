@@ -790,5 +790,6 @@
     "help.keyboardShortcuts.subcmd.1": "/help — 显示完整命令列表",
     "help.keyboardShortcuts.subcmd.2": "/help <command> — 显示特定命令的详细帮助",
     "help.keyboardShortcuts.subcmd.3": "/commands — 打开命令面板（别名: /cmd）",
-    "bgtask.title": "后台任务"
+    "bgtask.title": "后台任务",
+    "tg.elicitationExpired": "选择会话已过期，请用文字回复。"
 }

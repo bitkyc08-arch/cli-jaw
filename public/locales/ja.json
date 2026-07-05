@@ -790,5 +790,6 @@
     "help.keyboardShortcuts.subcmd.1": "/help — 全コマンド一覧を表示します",
     "help.keyboardShortcuts.subcmd.2": "/help <command> — 特定コマンドの詳細ヘルプを表示します",
     "help.keyboardShortcuts.subcmd.3": "/commands — コマンドパレットを開きます（エイリアス: /cmd）",
-    "bgtask.title": "バックグラウンド"
+    "bgtask.title": "バックグラウンド",
+    "tg.elicitationExpired": "選択セッションの有効期限が切れました。テキストで返信してください。"
 }
