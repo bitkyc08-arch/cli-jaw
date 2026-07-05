@@ -39,6 +39,14 @@
 .jaw-ceo-workbench-launcher.is-error .jaw-ceo-workbench-button {
     border-color: color-mix(in srgb, var(--status-error) 48%, var(--segment-border));
 }
+.jaw-ceo-workbench-launcher.is-disabled .jaw-ceo-workbench-button,
+.jaw-ceo-workbench-launcher.is-disabled .jaw-ceo-workbench-icon {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+.jaw-ceo-workbench-launcher.is-disabled .jaw-ceo-avatar {
+    color: var(--text-secondary);
+}
 .jaw-ceo-avatar {
     width: 24px;
     height: 24px;

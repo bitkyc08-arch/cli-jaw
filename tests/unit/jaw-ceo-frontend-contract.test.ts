@@ -33,6 +33,8 @@ test('jaw-ceo frontend installs workbench launcher outside instance groups', () 
     assert.ok(app.includes('useJawCeoDashboardBridge('), 'App must delegate Jaw CEO dashboard wiring to the bridge');
     assert.ok(bridge.includes('useJawCeo('), 'bridge must own the Jaw CEO dashboard hook');
     assert.ok(bridge.includes('<JawCeoWorkbenchButton'), 'bridge must render the Workbench CEO launcher');
+    assert.ok(bridge.includes('const workbenchControlsHidden = true'), 'CEO workbench controls must stay hidden while the launcher is parked');
+    assert.ok(bridge.includes('workbenchControlsHidden ? null : ('), 'bridge must remove the CEO launcher from the Workbench while parked');
     assert.ok(router.includes('<JawCeoConsole'), 'router must render the CEO console in the right panel or sidePanel slot');
     assert.ok(router.includes('jawCeoWorkbenchButton?: ReactNode'), 'router must accept a CEO Workbench button slot');
     assert.ok(workbench.includes('modeActions?: ReactNode'), 'Workbench must expose a tab-bar action slot');
@@ -42,6 +44,17 @@ test('jaw-ceo frontend installs workbench launcher outside instance groups', () 
     assert.equal(groups.includes('ceoWatchedPorts'), false, 'instance groups must not pass CEO watch state by default');
     assert.equal(row.includes('instance-row-ceo-flags'), false, 'instance rows must not show default CEO flags');
     assert.ok(main.includes('./jaw-ceo/jaw-ceo.css'), 'manager entry must load Jaw CEO CSS');
+});
+
+test('jaw-ceo workbench launcher can disable CEO ready and microphone controls', () => {
+    const launcher = read('public/manager/src/jaw-ceo/JawCeoWorkbenchButton.tsx');
+    const css = read('public/manager/src/jaw-ceo/jaw-ceo.css');
+
+    assert.ok(launcher.includes('disabled?: boolean'), 'launcher must accept a disabled prop');
+    assert.ok(launcher.includes("const status = disabled ? 'off'"), 'disabled CEO ready status must render as off');
+    assert.ok(launcher.includes('disabled={disabled}'), 'CEO button must be disabled');
+    assert.ok(launcher.includes('disabled={disabled || props.busy}'), 'microphone button must be disabled with the CEO control');
+    assert.ok(css.includes('.jaw-ceo-workbench-launcher.is-disabled'), 'disabled launcher must have visible styling');
 });
 
 test('jaw-ceo frontend API keeps completions server-owned', () => {

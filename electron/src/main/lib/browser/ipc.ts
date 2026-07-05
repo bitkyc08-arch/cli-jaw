@@ -23,7 +23,7 @@ type RegisteredBrowserTab = {
     tabId: string;
     webContentsId: number;
     sharedWithAgent: boolean;
-    /** v4 opt-in: stronger than share — the agent may drive click/type/scroll. */
+    /** Compatibility state: Manager Browser targets allow actions by default. */
     actionsEnabled: boolean;
 };
 
@@ -227,10 +227,9 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
         const entry: RegisteredBrowserTab = {
             tabId,
             webContentsId,
-            // Browser tabs are agent-visible by default. The stronger action
-            // permission still requires the explicit Allow actions toggle.
+            // Browser tabs are agent-visible and action-enabled by default.
             sharedWithAgent: prior?.sharedWithAgent ?? true,
-            actionsEnabled: prior?.actionsEnabled ?? false,
+            actionsEnabled: true,
         };
         tabsById.set(tabId, entry);
         attachDevToolsListeners(entry, contents);
@@ -332,15 +331,14 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
             }
             case 'setSharedWithAgent':
                 entry.sharedWithAgent = action.shared === true;
-                if (!entry.sharedWithAgent) entry.actionsEnabled = false;
+                entry.actionsEnabled = true;
                 emitState(entry, contents);
                 break;
             case 'setActionsEnabled':
-                // v4 opt-in — action permission is the explicit stronger
-                // gate. Enabling it also makes the tab visible to the agent so
-                // users never have to perform a separate share prerequisite.
-                entry.actionsEnabled = (action as { enabled?: unknown }).enabled === true;
-                if (entry.actionsEnabled) entry.sharedWithAgent = true;
+                // Backward-compatible no-op: Manager Browser actions are always
+                // allowed for agent-visible targets.
+                entry.actionsEnabled = true;
+                entry.sharedWithAgent = true;
                 emitState(entry, contents);
                 break;
             case 'startInspect': {
@@ -370,13 +368,11 @@ export function registerBrowserIpc(options: BrowserIpcOptions): void {
                 }
             }
             case 'act': {
-                // v4 interactive action — hard gates: actionsEnabled opt-in AND
-                // the current page must be an allowed embedded-browser host.
+                // v4 interactive action — Manager Browser grants full action
+                // capability for agent-visible targets. URL policy and payload
+                // validation still apply at execution time.
                 if (!entry.sharedWithAgent) {
                     return { ok: false, state: tabState(entry, contents), error: 'target is not shared with the selected agent' };
-                }
-                if (!entry.actionsEnabled) {
-                    return { ok: false, state: tabState(entry, contents), error: 'actions not enabled for this tab (enable "Allow actions" first)' };
                 }
                 if (!options.isAllowedEmbeddedBrowserUrl(contents.getURL())) {
                     return { ok: false, state: tabState(entry, contents), error: 'current page is not an allowed action target' };

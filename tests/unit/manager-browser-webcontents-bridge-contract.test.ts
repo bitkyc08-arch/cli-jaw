@@ -58,21 +58,22 @@ test('preload invokes the browser:* webview IPC channels', () => {
     assert.ok(preloadSource.includes('headers.set(DESKTOP_IDENTITY.header, DESKTOP_IDENTITY.token)'), 'preload must send the token value, not only a spoofable marker');
 });
 
-test('BrowserPanel prefers native CDP inspect and exposes action opt-in controls', () => {
+test('BrowserPanel prefers native CDP inspect and exposes full-permission actions without an action toggle', () => {
     assert.ok(panelSource.includes('nativeInspectAvailable'), 'native inspect capability must be detected');
     assert.ok(panelSource.includes("kind: 'startInspect'"), 'inspect button starts native CDP inspect when available');
     assert.ok(panelSource.includes("kind: 'stopInspect'"), 'inspect button stops native CDP inspect when active');
-    assert.ok(panelSource.includes("kind: 'setActionsEnabled'"), 'toolbar can toggle action permission');
     assert.ok(panelSource.includes("kind: 'act'"), 'picked element click uses the native act bridge');
-    assert.ok(panelSource.includes('Allow agent actions'), 'action opt-in button has user-visible tooltip/copy');
+    assert.equal(panelSource.includes("kind: 'setActionsEnabled'"), false, 'BrowserPanel must not require an action permission toggle');
+    assert.equal(panelSource.includes('Allow agent actions'), false, 'action opt-in button/copy must be removed');
+    assert.ok(panelSource.includes('{pickedElement.bounds &&'), 'picked element click appears whenever bounds exist');
 });
 
-test('embedded target sync relays snapshot and re-checks act opt-in before execution', () => {
-    assert.ok(targetSyncSource.includes('actionsEnabled: tab.actionsEnabled === true'), 'shared target push includes action opt-in');
+test('embedded target sync relays snapshot and act without action opt-in checks', () => {
+    assert.ok(targetSyncSource.includes('actionsEnabled: true'), 'shared target push advertises full action permission');
     assert.ok(targetSyncSource.includes("command.kind === 'snapshot'"), 'renderer command relay handles snapshot commands');
     assert.ok(targetSyncSource.includes("kind: 'getDomSnapshot'"), 'snapshot commands use the native bridge');
     assert.ok(targetSyncSource.includes("command.kind === 'act'"), 'renderer command relay handles act commands');
-    assert.ok(targetSyncSource.includes('if (!target.actionsEnabled)'), 'renderer re-checks action opt-in before executing act');
+    assert.equal(targetSyncSource.includes('if (!target.actionsEnabled)'), false, 'renderer must not block act on action opt-in');
     assert.ok(targetSyncSource.includes("kind: 'act', tabId: targetId, act"), 'act commands use the native bridge');
     assert.ok(targetSyncSource.includes('settleToken: command.settleToken'), 'command results include the lease settle token');
 });
@@ -128,7 +129,7 @@ test('BrowserPanel toolbar buttons expose CSS hover tooltips', () => {
         'Add a comment',
         'Open DevTools',
         'Inspect element',
-        'Share with Agent',
+        'Agent visibility',
         'More browser actions',
     ]) {
         assert.ok(panelSource.includes(`data-tooltip="${label}"`), `tooltip exists for ${label}`);

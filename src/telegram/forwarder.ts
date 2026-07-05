@@ -96,6 +96,7 @@ function isUserSafeWatchdogDiagnostic(text: string) {
  * Ensures attach/detach idempotency so re-init does not leak listeners.
  */
 import type { Bot } from 'grammy';
+import { sendTelegramMarkdown } from './rich-message.js';
 
 type BroadcastForwarder = (type: string, data: Record<string, unknown>) => void | Promise<void>;
 
@@ -163,16 +164,7 @@ export function createTelegramForwarder({
         const preview = String(data["text"]).slice(0, 200).replace(/\n/g, ' ');
         log({ chatId, preview });
 
-        const html = markdownToTelegramHtml(String(data["text"]));
-        const chunks = chunkTelegramMessage(html);
-        for (const chunk of chunks) {
-            Promise.resolve(
-                bot.api.sendMessage(chatId, `${prefix}${chunk}`, { parse_mode: 'HTML' as const })
-            ).catch(() =>
-                Promise.resolve(
-                    bot.api.sendMessage(chatId, `${prefix}${chunk.replace(/<[^>]+>/g, '')}`)
-                ).catch(() => { })
-            );
-        }
+        // Rich-first default; helper falls back to HTML then plaintext per chunk.
+        sendTelegramMarkdown(bot.api, chatId, String(data["text"]), { prefix }).catch(() => { });
     };
 }

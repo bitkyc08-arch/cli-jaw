@@ -146,7 +146,7 @@
     "eventsource": "^3.0.7",
     "express": "^5.2.1",
     "fast-glob": "^3.3.3",
-    "grammy": "^1.40.0",
+    "grammy": "^1.44.0",
     "helmet": "^8.1.0",
     "highlight.js": "^11.11.1",
     "katex": "^0.16.44",

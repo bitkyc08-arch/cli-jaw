@@ -28,19 +28,19 @@ async function collectSharedTargets(): Promise<SharedTargetPayload[] | null> {
             title: tab.title,
             devToolsOpen: tab.devToolsOpen === true,
             sharedWithAgent: true as const,
-            actionsEnabled: tab.actionsEnabled === true,
+            actionsEnabled: true,
         }));
 }
 
 /**
  * 030 v2/v2.1/v3 renderer relay.
  *
- * - v2: pushes shared targets to the manager's read-only registry.
- * - v2.1: reconciles the shares into the SELECTED instance's runtime-context
- *   (share = "send to the currently selected instance's agent"); switching
+ * - v2: pushes agent-visible targets to the manager's read-only registry.
+ * - v2.1: reconciles visible targets into the SELECTED instance's runtime-context
+ *   (visibility = "send to the currently selected instance's agent"); switching
  *   instances cleans the previous instance up with an empty push.
  * - v3: long-polls the manager's command queue and executes screenshot
- *   commands via the Electron bridge, but only for still-shared targets.
+ *   commands via the Electron bridge, but only for still-visible targets.
  */
 export function useEmbeddedBrowserTargetSync(active: boolean, selectedPort: number | null): void {
     const timerRef = useRef<number | null>(null);
@@ -99,7 +99,7 @@ export function useEmbeddedBrowserTargetSync(active: boolean, selectedPort: numb
             if (!browserBridge?.performWebviewAction) return { ok: false, error: 'bridge unavailable' };
             const shared = (await collectSharedTargets().catch(() => null)) ?? [];
             const target = shared.find(t => t.targetId === command.targetId);
-            if (!target) return { ok: false, error: 'target is no longer shared' };
+            if (!target) return { ok: false, error: 'target is no longer available in Manager Browser' };
             const targetId = command.targetId;
             if (command.kind === 'screenshot') {
                 const result = await browserBridge.performWebviewAction({ kind: 'captureScreenshot', tabId: targetId });
@@ -112,9 +112,6 @@ export function useEmbeddedBrowserTargetSync(active: boolean, selectedPort: numb
                 return { ok: false, error: result?.error ?? 'snapshot failed' };
             }
             if (command.kind === 'act') {
-                // Re-check the action opt-in at execution time (defence in depth
-                // against a stale server registry).
-                if (!target.actionsEnabled) return { ok: false, error: 'actions not enabled for this tab' };
                 const act = command.act as { kind: 'click' | 'type' | 'scroll' | 'key' } | undefined;
                 if (!act) return { ok: false, error: 'act payload missing' };
                 const result = await browserBridge.performWebviewAction({ kind: 'act', tabId: targetId, act: act as never });
@@ -168,8 +165,8 @@ export function useEmbeddedBrowserTargetSync(active: boolean, selectedPort: numb
             unsubscribe();
             window.clearInterval(interval);
             if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-            // Withdraw shares from the instance this effect was serving;
-            // otherwise they linger in its runtime-context until the TTL.
+            // Withdraw targets from the instance this effect was serving;
+            // otherwise targets linger in its runtime-context until the TTL.
             // On an effect re-run the next push() re-delivers to the new port.
             const port = lastInstancePortRef.current;
             lastInstancePortRef.current = null;

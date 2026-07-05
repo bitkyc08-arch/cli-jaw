@@ -5,6 +5,7 @@ import {
   parsePhaseAttestationObject,
   stripPhaseAttestation,
   checkAttestationGate,
+  checkRenderGroundingAdvisory,
   detectNoStateNarration,
 } from '../../src/orchestrator/attestation.ts';
 
@@ -149,4 +150,56 @@ test('ATT-NOSTATE-002: negatives — explaining PABCD, not asserting current pha
   assert.equal(detectNoStateNarration('The plan covers phases of work.'), false);
   assert.equal(detectNoStateNarration('```\ncli-jaw orchestrate P  # enter planning\n```'), false);
   assert.equal(detectNoStateNarration(''), false);
+});
+
+// ─── render-grounding advisory (C-RENDER-GROUNDING-01) ─
+
+test('ATT-RENDER-001: advisory fires when did mentions html without observation vocabulary', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'created index.html with chart layout', checkOutput: 'tsc clean' })!;
+  const adv = checkRenderGroundingAdvisory(att);
+  assert.ok(adv, 'should produce advisory');
+  assert.match(adv!, /C-RENDER-GROUNDING-01/);
+});
+
+test('ATT-RENDER-002: no advisory when observation vocabulary is present', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'created index.html, screenshot confirmed layout renders correctly at 1280x720', checkOutput: 'tsc clean' })!;
+  assert.equal(checkRenderGroundingAdvisory(att), null);
+});
+
+test('ATT-RENDER-003: no advisory when no render-artifact types mentioned', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'refactored database query in user-service.ts', checkOutput: 'tsc clean; 49/49 pass' })!;
+  assert.equal(checkRenderGroundingAdvisory(att), null);
+});
+
+test('ATT-RENDER-004: advisory suppressed by render-not-applicable keyword', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'updated .html template (server-side only, render-not-applicable)', checkOutput: 'tsc clean' })!;
+  assert.equal(checkRenderGroundingAdvisory(att), null);
+});
+
+test('ATT-RENDER-005: advisory fires for svg/css/canvas/chart/jsx/tsx artifact mentions', () => {
+  for (const keyword of ['.svg', '.css', 'canvas', 'chart', '.jsx', '.tsx']) {
+    const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: `modified ${keyword} layout file`, checkOutput: 'tsc clean' })!;
+    const adv = checkRenderGroundingAdvisory(att);
+    assert.ok(adv, `should fire for ${keyword}`);
+  }
+});
+
+test('ATT-RENDER-006: observation vocabulary in checkOutput also suppresses advisory', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'built chart component', checkOutput: 'tsc clean; headless browser screenshot taken, layout verified' })!;
+  assert.equal(checkRenderGroundingAdvisory(att), null);
+});
+
+test('ATT-RENDER-007: C→D gate result includes advisory but remains ok:true', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'built dashboard.html with data visualization', checkOutput: 'tsc clean; all tests pass' })!;
+  const result = checkAttestationGate('C', 'D', att);
+  assert.equal(result.ok, true, 'gate must pass');
+  assert.ok(result.advisory, 'advisory should be present');
+  assert.match(result.advisory!, /C-RENDER-GROUNDING-01/);
+});
+
+test('ATT-RENDER-008: C→D gate result has no advisory for non-render work', () => {
+  const att = parsePhaseAttestationObject({ from: 'C', to: 'D', did: 'refactored auth middleware, added rate limiting', checkOutput: 'tsc clean; 49/49 pass' })!;
+  const result = checkAttestationGate('C', 'D', att);
+  assert.equal(result.ok, true);
+  assert.equal(result.advisory, undefined, 'no advisory for non-render work');
 });

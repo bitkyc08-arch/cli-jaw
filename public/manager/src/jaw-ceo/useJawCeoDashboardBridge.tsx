@@ -37,7 +37,8 @@ export function useJawCeoDashboardBridge(args: {
         onSpokenCompletion: (completionKey) => { void ceo.ackCompletion(completionKey); },
     });
     const voiceActive = voice.status === 'active' || voice.status === 'connecting' || voice.status === 'silent';
-    const workbenchButton = (
+    const workbenchControlsHidden = true;
+    const workbenchButton = workbenchControlsHidden ? null : (
         <JawCeoWorkbenchButton
             open={open}
             voiceStatus={voice.status}

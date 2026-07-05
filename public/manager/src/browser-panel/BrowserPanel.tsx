@@ -40,11 +40,6 @@ function MoreIcon() {
     return <svg {...iconProps(2)}><path d="M4 8h.01M8 8h.01M12 8h.01" /></svg>;
 }
 
-function ActionsIcon() {
-    // cursor/hand-click glyph for "allow agent actions"
-    return <svg {...iconProps()}><path d="M6 3v6" /><path d="M6 9c0-1 .8-1.5 1.5-1.5S9 8 9 9v0c0-1 .8-1.5 1.5-1.5S12 8 12 9v3.5a2.5 2.5 0 0 1-2.5 2.5H8a2.5 2.5 0 0 1-2-1l-2-2.6c-.5-.7.5-1.7 1.3-1.2L6 11" /></svg>;
-}
-
 type ElectronWebviewElement = HTMLElement & {
     src: string;
     reload: () => void;
@@ -364,7 +359,6 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
     const activeRegistrationId = registrationIdFor(activeTab.id);
     const activeBridgeState = bridgeStates[activeRegistrationId] ?? null;
     const nativeInspecting = activeBridgeState?.inspecting === true;
-    const actionsEnabled = activeBridgeState?.actionsEnabled === true;
 
     const panelInstanceId = useRef<symbol>(Symbol('browser-panel'));
     /** regId -> guest webContentsId for this panel's live registrations. */
@@ -755,13 +749,13 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
     const handleShareToggle = useCallback(() => {
         const shared = activeBridgeState?.sharedWithAgent === true;
         if (!shared && props.selectedInstancePort == null) {
-            updateTab(activeTabId, { error: 'Select an instance before sharing this browser target.' });
+            updateTab(activeTabId, { error: 'Select an instance before making this browser target visible to the agent.' });
             return;
         }
         void performNativeAction({ kind: 'setSharedWithAgent', tabId: activeRegistrationId, shared: !shared })
             .then(result => {
-                if (!result?.ok) reportActionError(result?.error ?? 'Share state unavailable');
-                else updateTab(activeTabId, { status: !shared ? `Shared with instance ${props.selectedInstancePort}` : 'Browser target share stopped.', error: null });
+                if (!result?.ok) reportActionError(result?.error ?? 'Agent visibility unavailable');
+                else updateTab(activeTabId, { status: !shared ? `Visible to instance ${props.selectedInstancePort}` : 'Browser target hidden from agent.', error: null });
             });
     }, [activeBridgeState?.sharedWithAgent, activeRegistrationId, activeTabId, performNativeAction, props.selectedInstancePort, reportActionError, updateTab]);
 
@@ -782,12 +776,6 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
         }
         setInspectPickActive(current => !current);
     }, [activeRegistrationId, nativeInspectAvailable, nativeInspecting, performNativeAction, reportActionError]);
-
-    // v4: opt-in to let the agent (and this panel) drive click/type/scroll.
-    const handleActionsToggle = useCallback(() => {
-        void performNativeAction({ kind: 'setActionsEnabled', tabId: activeRegistrationId, enabled: !actionsEnabled })
-            .then(result => { if (!result?.ok) reportActionError(result?.error ?? 'Cannot change action permission'); });
-    }, [actionsEnabled, activeRegistrationId, performNativeAction, reportActionError]);
 
     // v4: click the picked element (dispatches a real CDP click at its center).
     const handleClickPickedElement = useCallback(() => {
@@ -1060,8 +1048,7 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
                         <button type="button" className={`browser-action-btn${commentMode ? ' is-active' : ''}`} aria-label="Add a comment" aria-pressed={commentMode} data-tooltip="Add a comment" onClick={handleCommentToggle}><CommentIcon /></button>
                         <button type="button" className={`browser-action-btn${activeBridgeState?.devToolsOpen ? ' is-active' : ''}`} aria-label="Open DevTools" aria-pressed={activeBridgeState?.devToolsOpen === true} data-tooltip="Open DevTools" disabled={!bridgeAvailable} onClick={handleDevTools}><DevToolsIcon /></button>
                         <button type="button" className={`browser-action-btn${(inspectPickActive || nativeInspecting) ? ' is-active' : ''}`} aria-label="Inspect element" aria-pressed={inspectPickActive || nativeInspecting} data-tooltip="Inspect element" disabled={!bridgeAvailable} onClick={handleInspectToggle}><InspectIcon /></button>
-                        <button type="button" className={`browser-action-btn${actionsEnabled ? ' is-active is-actions' : ''}`} aria-label="Allow agent actions" aria-pressed={actionsEnabled} data-tooltip="Allow agent actions (click/type/scroll)" disabled={!bridgeAvailable} onClick={handleActionsToggle}><ActionsIcon /></button>
-                        <button type="button" className={`browser-action-btn${activeBridgeState?.sharedWithAgent ? ' is-active is-shared' : ''}`} aria-label="Share with Agent" aria-pressed={activeBridgeState?.sharedWithAgent === true} data-tooltip="Share with Agent" disabled={!bridgeAvailable} onClick={handleShareToggle}><ShareIcon /></button>
+                        <button type="button" className={`browser-action-btn${activeBridgeState?.sharedWithAgent ? ' is-active is-shared' : ''}`} aria-label="Agent visibility" aria-pressed={activeBridgeState?.sharedWithAgent === true} data-tooltip="Agent visibility" disabled={!bridgeAvailable} onClick={handleShareToggle}><ShareIcon /></button>
                         <div className="browser-more-wrap" ref={moreMenuRef}>
                             <button type="button" className="browser-action-btn" aria-label="More browser actions" aria-haspopup="menu" aria-expanded={moreMenuOpen} data-tooltip="More browser actions" onClick={() => setMoreMenuOpen(v => !v)}><MoreIcon /></button>
                             {moreMenuOpen && (
@@ -1136,7 +1123,7 @@ export function BrowserPanel(props: BrowserPanelProps = {}) {
                                         {(pickedElement.role || pickedElement.name) && (
                                             <span className="browser-picked-ax">{pickedElement.role}{pickedElement.name ? ` · ${pickedElement.name}` : ''}</span>
                                         )}
-                                        {actionsEnabled && pickedElement.bounds && (
+                                        {pickedElement.bounds && (
                                             <button type="button" className="browser-picked-click" onClick={handleClickPickedElement}>Click element</button>
                                         )}
                                     </div>

@@ -1077,6 +1077,8 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 setState(getState(scope), { ...afterCtx, pendingAttestation: null }, scope);
             }
         }
-        res.json({ ok: true, state: getState(scope), current, target: t, force, userInitiated, ctxPresent: Boolean(currentCtx) });
+        // C-RENDER-GROUNDING-01: surface the gate's soft advisory (ok:true path) so the
+        // agent actually sees it — an advisory left only on the GateResult is invisible.
+        res.json({ ok: true, state: getState(scope), current, target: t, force, userInitiated, ctxPresent: Boolean(currentCtx), ...(gate.advisory ? { advisory: gate.advisory } : {}) });
     });
 }

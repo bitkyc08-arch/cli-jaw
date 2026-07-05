@@ -29,11 +29,10 @@ import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import {
     escapeHtmlTg,
-    markdownToTelegramHtml,
-    chunkTelegramMessage,
     createForwarderLifecycle,
     createTelegramForwarder,
 } from './forwarder.js';
+import { sendTelegramMarkdown, type RichSendOpts } from './rich-message.js';
 
 export {
     escapeHtmlTg,
@@ -241,16 +240,9 @@ async function telegramSendHandler(req: ChannelSendRequest): Promise<{ ok: boole
     if (req.type === 'text') {
         const text = req.text?.trim();
         if (!text) return { ok: false, error: 'text required' };
-        const { markdownToTelegramHtml, chunkTelegramMessage } = await import('./forwarder.js');
-        const html = markdownToTelegramHtml(text);
-        const chunks = chunkTelegramMessage(html);
-        for (const chunk of chunks) {
-            try {
-                await bot.api.sendMessage(chatId, chunk, stripUndefined({ parse_mode: 'HTML', message_thread_id: messageThreadId }));
-            } catch {
-                await bot.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id: messageThreadId }));
-            }
-        }
+        // Rich-first default (Bot API 10.1): raw markdown via sendRichMessage, with the
+        // legacy HTML→plaintext chain as per-chunk fallback inside the helper.
+        await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({ message_thread_id: messageThreadId }));
         return { ok: true, chat_id: chatId, type: 'text' };
     }
 
@@ -432,6 +424,13 @@ async function _initTelegramInner() {
     bot.command('id', (ctx) => ctx.reply(`Chat ID: <code>${ctx.chat?.id ?? ''}</code>`, { parse_mode: 'HTML' }));
 
     async function tgOrchestrate(ctx: Context, prompt: string, displayMsg: string) {
+        // Reproduce grammy ctx.reply's auto-injected routing (context.js: thread/business/DM-topic)
+        // so the rich-first send helper lands replies exactly where ctx.reply would.
+        const replyOptsOf = (c: Context): RichSendOpts => stripUndefined({
+            business_connection_id: c.businessConnectionId,
+            message_thread_id: c.msg?.is_topic_message ? c.msg.message_thread_id : undefined,
+            direct_messages_topic_id: c.msg?.direct_messages_topic?.topic_id,
+        });
         const chatId = ctx.chat?.id;
         if (!ctx.chat) return;
         const chat = ctx.chat;
@@ -446,12 +445,7 @@ async function _initTelegramInner() {
             const queueHandler = (type: string, data: Record<string, unknown>) => {
                 if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'telegram' && data["requestId"] === requestId) {
                     removeBroadcastListener(queueHandler);
-                    const html = markdownToTelegramHtml(String(data["text"]));
-                    const chunks = chunkTelegramMessage(html);
-                    for (const chunk of chunks) {
-                        ctx.reply(chunk, { parse_mode: 'HTML' })
-                            .catch(() => ctx.reply(chunk.replace(/<[^>]+>/g, '')).catch(() => { }));
-                    }
+                    sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx)).catch(() => { });
                 }
             };
             addBroadcastListener(queueHandler);
@@ -565,15 +559,7 @@ async function _initTelegramInner() {
             if (statusMsgId) {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
-            const html = markdownToTelegramHtml(result);
-            const chunks = chunkTelegramMessage(html);
-            for (const chunk of chunks) {
-                try {
-                    await ctx.reply(chunk, { parse_mode: 'HTML' });
-                } catch {
-                    await ctx.reply(chunk.replace(/<[^>]+>/g, ''));
-                }
-            }
+            await sendTelegramMarkdown(ctx.api, chat.id, result, replyOptsOf(ctx));
             console.log(`[tg:out] ${chat.id}: ${result.slice(0, 80)}`);
         } catch (err: unknown) {
             clearInterval(typingInterval);

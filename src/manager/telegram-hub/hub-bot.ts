@@ -355,12 +355,9 @@ export async function sendToTopic(
     if (!hubBot) return { ok: false, error: 'hub bot not running' };
     const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
     if (payload.type === 'text') {
-        const { markdownToTelegramHtml, chunkTelegramMessage } = await import('../../telegram/forwarder.js');
-        const { sendRichOrHtml } = await import('../../telegram/rich-message.js');   // P4: rich when available, else HTML
-        for (const chunk of chunkTelegramMessage(markdownToTelegramHtml(payload.text || ''))) {
-            await sendRichOrHtml(hubBot, chatId, chunk, stripUndefined({ message_thread_id }))
-                .catch(() => hubBot!.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id })));
-        }
+        // Rich-first default (Bot API 10.1); helper falls back HTML → plaintext per chunk.
+        const { sendTelegramMarkdown } = await import('../../telegram/rich-message.js');
+        await sendTelegramMarkdown(hubBot.api, chatId, payload.text || '', stripUndefined({ message_thread_id }));
         return { ok: true };
     }
     const { sendTelegramFile } = await import('../../telegram/telegram-file.js');

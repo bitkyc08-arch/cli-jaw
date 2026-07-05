@@ -6,7 +6,7 @@
  * - DevTools opens from the main side and falls back to detached for webview guests
  * - screenshot uses capturePage; legacy point-inspect uses inspectElement
  * - CDP-native inspect/snapshot/actions never use page-side script evaluation
- * - action dispatch requires actionsEnabled and auto-shares when actions are enabled
+ * - action dispatch is allowed for agent-visible tabs; URL/payload gates remain
  * - main index wires registerBrowserIpc and marks owned webview guests
  */
 import test from 'node:test';
@@ -59,13 +59,15 @@ test('CDP adapter uses native Overlay, DOM/AX, and Input domains', () => {
     assert.ok(cdpSource.includes('Page.getLayoutMetrics'), 'act coordinates must be checked against the visible viewport');
 });
 
-test('act IPC auto-shares on action opt-in and gates act by opt-in, URL policy, and strict payload parsing', () => {
-    assert.ok(ipcSource.includes("case 'setActionsEnabled'"), 'action opt-in is a distinct IPC action');
+test('act IPC defaults to full actions and gates act by visibility, URL policy, and strict payload parsing', () => {
+    assert.ok(ipcSource.includes("case 'setActionsEnabled'"), 'legacy action toggle remains as a compatibility no-op');
     assert.ok(ipcSource.includes('sharedWithAgent: prior?.sharedWithAgent ?? true'), 'new browser tabs are shared with the agent by default');
-    assert.ok(ipcSource.includes('if (entry.actionsEnabled) entry.sharedWithAgent = true'), 'turning on action permission auto-shares the target');
+    assert.ok(ipcSource.includes('actionsEnabled: true'), 'new browser tabs have actions enabled by default');
+    assert.ok(ipcSource.includes('entry.sharedWithAgent = true'), 'legacy action toggle keeps the target visible');
     assert.equal(ipcSource.includes('share this browser target before enabling actions'), false, 'actions should not require a separate share prerequisite');
     assert.ok(ipcSource.includes('if (!entry.sharedWithAgent)'), 'act requires the tab to remain shared');
-    assert.ok(ipcSource.includes('if (!entry.actionsEnabled)'), 'act requires explicit action opt-in');
+    assert.equal(ipcSource.includes('if (!entry.actionsEnabled)'), false, 'act must not require an explicit action opt-in');
+    assert.equal(ipcSource.includes('actions not enabled for this tab'), false, 'no action-disabled error remains');
     assert.ok(ipcSource.includes('current page is not an allowed action target'), 'act re-checks URL policy at execution time');
     assert.ok(ipcSource.includes('parseActPayload'), 'act payload is parsed at the IPC boundary');
     assert.ok(ipcSource.includes('keysEqual'), 'act payload rejects unknown fields');

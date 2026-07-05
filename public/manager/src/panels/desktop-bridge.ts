@@ -185,7 +185,7 @@ export type BrowserWebviewTabState = {
     devToolsOpen?: boolean;
     devToolsTargetId?: string;
     sharedWithAgent?: boolean;
-    /** v4: agent may drive click/type/scroll on this tab (stronger opt-in than share). */
+    /** v4 compatibility flag: Manager Browser actions are allowed by default. */
     actionsEnabled?: boolean;
     /** v5: native element inspect mode is active on this tab. */
     inspecting?: boolean;
@@ -238,7 +238,7 @@ export type BrowserWebviewNativeAction =
     | { kind: 'startInspect'; tabId: string }
     | { kind: 'stopInspect'; tabId: string }
     | { kind: 'getDomSnapshot'; tabId: string }
-    // v4 interactive actions
+    // v4 interactive actions; setActionsEnabled remains for older renderers.
     | { kind: 'setActionsEnabled'; tabId: string; enabled: boolean }
     | { kind: 'act'; tabId: string; act: BrowserActPayload };
 

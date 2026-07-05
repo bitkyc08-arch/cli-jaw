@@ -23,3 +23,10 @@ test('PBP-003: employee prompt uses --agent for automated browser sessions', () 
 test('PBP-004: employee prompt forbids visible test browser for debug inspection', () => {
     assert.match(employee, /Do NOT open a visible test browser/i);
 });
+
+test('PBP-005: a1 embedded Manager Browser prompt documents default action permission', () => {
+    assert.match(a1System, /Embedded Manager Browser \(agent-visible pages\)/);
+    assert.match(a1System, /Actions are already allowed/);
+    assert.doesNotMatch(a1System, /Allow agent actions/);
+    assert.doesNotMatch(a1System, /requires the user's separate/);
+});

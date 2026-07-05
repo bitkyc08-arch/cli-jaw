@@ -6,8 +6,8 @@
  * - it NEVER uses Runtime.evaluate or any script-execution path (030 ban)
  * - element inspect uses Overlay.setInspectMode + inspectNodeRequested
  * - interactive actions dispatch through the Input domain
- * - the IPC layer gates `act` on actionsEnabled + an allowed URL, and validates
- *   the act payload
+ * - the IPC layer allows `act` for agent-visible tabs, gates by allowed URL, and
+ *   validates the act payload
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -47,11 +47,12 @@ test('CDP adapter only enables the allowed native domains', () => {
     assert.ok(cdpSource.includes('Input.insertText') || cdpSource.includes('Input.dispatchKeyEvent'), 'input key/type dispatch');
 });
 
-test('IPC act is gated on actionsEnabled AND an allowed URL, with validation', () => {
-    assert.ok(ipcSource.includes('entry.actionsEnabled'), 'act requires the per-tab opt-in');
+test('IPC act is full-permission for visible tabs and still gates URL + payload', () => {
+    assert.equal(ipcSource.includes('if (!entry.actionsEnabled)'), false, 'act must not require a per-tab action opt-in');
+    assert.equal(ipcSource.includes('actions not enabled for this tab'), false, 'action-disabled error must not remain');
     assert.ok(ipcSource.includes('isAllowedEmbeddedBrowserUrl(contents.getURL())'), 'act requires an allowed current page');
     assert.ok(ipcSource.includes('parseActPayload') || ipcSource.includes('normalizeActPayload'), 'act payload is validated');
-    assert.ok(ipcSource.includes("case 'setActionsEnabled'"), 'actions opt-in is a first-class action');
+    assert.ok(ipcSource.includes("case 'setActionsEnabled'"), 'legacy actions toggle remains accepted for compatibility');
 });
 
 test('CDP session detaches on webContents destruction', () => {
