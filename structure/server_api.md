@@ -106,7 +106,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 | Category | Endpoints |
 | --- | --- |
-| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
+| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
 | Commands | `POST /api/command` `GET /api/commands?interface=` `POST /api/elicitation/callback` |
 | Events | `GET /api/events` |
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` |
@@ -287,6 +287,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `session_switched` / `session_created` / `session_list` | multi-session state update |
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |
 | `bgtask_update` | background task lifecycle/status update for manager/runtime monitors; running and changed entries include native `status` plus shared `statusCategory` |
+| `widget_updated` | file-backed diagram widget changed on disk; payload `{chatId, widgetId}` for targeted iframe refetch |
 
 ---
 
