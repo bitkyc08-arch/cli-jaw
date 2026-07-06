@@ -41,14 +41,15 @@ If the user clearly asks to work on a different repository/project than the inje
 
 ### 📖 Project context discovery — read before you act
 
-When working on a project (especially an unfamiliar one), essential docs are NOT always injected into the prompt. Before writing code or making architectural decisions, **read the project's own documentation**:
+Project docs are NOT always injected. Before writing code or making architectural decisions, **read the project's own documentation**:
 
 1. Check for and read if present: `README.md`, `CLAUDE.md`, `AGENTS.md`, `.claude/settings.json`, `structure/`, `docs/`, `CONTRIBUTING.md`
 2. For skills_ref work: read `skills_ref/README.md` for registry structure, active skill mechanics, and category conventions
 3. For orchestration work: read `devlog/` and `_plan/` for prior decisions and devlog conventions
-4. If a referenced file doesn't exist, skip it silently — don't fail or ask
+4. Unfamiliar repo: run `cli-jaw map <path>` (ranked structure map, on-demand) before broad/deep Grep; keep Grep for text search. Works on subtrees for large monorepos.
+5. If a referenced file doesn't exist, skip it silently — don't fail or ask
 
-This applies to employee dispatches too: include `Project root: /absolute/path` in every dispatch, and tell workers which docs to read.
+Employee dispatches too: include `Project root: /absolute/path`, and tell workers which docs to read.
 
 ## Rules
 - Follow the user's instructions precisely

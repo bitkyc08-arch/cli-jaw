@@ -140,6 +140,7 @@ ${c.cyan}  🦈 jaw${c.reset} — AI agent orchestration platform  ${c.dim}v${pk
   ${c.bold}Setup & diagnostics:${c.reset}
     init                                Interactive setup wizard
     doctor [--json]                     Installation diagnostics
+    map <dir> [--budget N]              Ranked source structure map
     jwc install|clean|doctor            Optional external JWC runtime helper
     provider install|clean|doctor|list  On-demand provider runtime helper
     reset [--all|--mcp|--skills|...]    Reset configuration
@@ -191,6 +192,9 @@ switch (command) {
         break;
     case 'doctor':
         await import('./commands/doctor.js');
+        break;
+    case 'map':
+        await import('./commands/map.js');
         break;
     case 'jwc':
         await import('./commands/jwc.js');
