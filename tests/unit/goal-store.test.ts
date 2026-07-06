@@ -1,12 +1,18 @@
 import { describe, test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import {
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+process.env.CLI_JAW_HOME = mkdtempSync(join(tmpdir(), 'cli-jaw-goal-store-'));
+
+const {
     getActiveGoal, getGoalHistory, setGoal, updateGoal,
     completeGoal, cancelGoal, pauseGoal, resumeGoal, refineObjective,
     clearGoal, resetGoalStore, MAX_GOAL_OBJECTIVE_CHARS, MAX_GOAL_PLAN_HINT_CHARS,
     getAgentPauseCount, incrementAgentPauseCount, resetAgentPauseCount,
-} from '../../src/goal/store.ts';
-import { GOAL_PLAN_PENDING_OBJECTIVE } from '../../src/goal/types.ts';
+} = await import('../../src/goal/store.ts');
+const { GOAL_PLAN_PENDING_OBJECTIVE } = await import('../../src/goal/types.ts');
 
 beforeEach(() => { resetGoalStore(); });
 

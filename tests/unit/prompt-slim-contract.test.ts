@@ -67,5 +67,7 @@ test('PSC-006: A-1 template stays under its size budget', () => {
     // silently regrow inline instead of pointing at skills.
     // Budget raised 31,000 → 35,000 for the critical-stance block and
     // exclusions-first dispatch constraint (4d8c54cc, 43c2a4f2).
-    assert.ok(a1Src.length <= 35000, `a1-system.md is ${a1Src.length} chars — over the 35,000 budget`);
+    // Budget raised 35,000 → 36,000 for diagram-file default delivery
+    // additions (260707 diagram-file storage + inlay).
+    assert.ok(a1Src.length <= 36000, `a1-system.md is ${a1Src.length} chars — over the 36,000 budget`);
 });
