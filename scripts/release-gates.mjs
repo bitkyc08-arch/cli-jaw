@@ -365,6 +365,12 @@ const GATES = {
     'doc-drift': {
         description: 'structure docs match live inventory (docs:check TS extractors + legacy bash checks)',
         check() {
+            // CI runners produce platform-dependent file/line inventories
+            // (no public/dist, different tracked-file set) that this gate
+            // cannot reconcile; it stays a local/pre-release discipline gate.
+            if (process.env.CI) {
+                return { ok: true, detail: 'skipped on CI (local/pre-release gate only)' };
+            }
             const steps = [
                 { name: 'docs:check', cmd: 'npm', args: ['run', 'docs:check', '--silent'], timeout: 120_000 },
                 { name: 'check-doc-drift.sh', cmd: 'bash', args: ['structure/check-doc-drift.sh'], timeout: 120_000 },
