@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { JAW_HOME } from '../core/config.js';
+import { log } from '../core/logger.js';
 
 export type ContextHookScope = 'main' | 'heartbeat';
 
@@ -281,7 +282,7 @@ export function buildPrePromptContextHook(
     if (options.log !== false) {
         const included = reports.filter(item => item.status === 'included').length;
         const skipped = reports.length - included;
-        console.log(`[jaw:hook:pre-prompt] scope=${scoped.scope}${scoped.job ? ` job=${scoped.job}` : ''} sources=${included}/${reports.length} chars=${block.length} skipped=${skipped} durationMs=${report.durationMs.toFixed(1)}`);
+        log.info(`[jaw:hook:pre-prompt] scope=${scoped.scope}${scoped.job ? ` job=${scoped.job}` : ''} sources=${included}/${reports.length} chars=${block.length} skipped=${skipped} durationMs=${report.durationMs.toFixed(1)}`);
     }
     return { block, report };
 }

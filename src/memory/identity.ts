@@ -8,6 +8,7 @@ import fs from 'fs';
 import { join } from 'path';
 import { getAdvancedMemoryDir } from './shared.js';
 import { reindexIntegratedMemoryFile } from './indexing.js';
+import { log } from '../core/logger.js';
 
 const SOUL_RELPATH = join('shared', 'soul.md');
 
@@ -40,7 +41,7 @@ export function readSoul(): string {
  */
 export function applySoulUpdate(update: SoulUpdate): SoulUpdateResult {
     if (update.confidence === 'medium') {
-        console.log(`[identity] medium-confidence soul update logged: ${update.content.slice(0, 80)}`);
+        log.info(`[identity] medium-confidence soul update logged: ${update.content.slice(0, 80)}`);
         const candidatesPath = join(getAdvancedMemoryDir(), 'shared', 'soul-candidates.log');
         const entry = `[${new Date().toISOString()}] (${update.section}) ${update.content}\n`;
         fs.appendFileSync(candidatesPath, entry);
@@ -78,7 +79,7 @@ export function applySoulUpdate(update: SoulUpdate): SoulUpdateResult {
 
     newSoul = newSoul.replace(/updated_at: .+/, `updated_at: ${new Date().toISOString()}`);
     fs.writeFileSync(getSoulPath(), newSoul);
-    console.log(`[identity] soul updated (${update.action}): ${update.content.slice(0, 80)}`);
+    log.info(`[identity] soul updated (${update.action}): ${update.content.slice(0, 80)}`);
 
     try { reindexIntegratedMemoryFile(getSoulPath()); } catch { /* best effort */ }
 

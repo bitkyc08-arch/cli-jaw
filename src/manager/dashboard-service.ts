@@ -116,7 +116,7 @@ export async function permDashboard(port: number, from: number, count: number): 
         mkdirSync(dirname(path), { recursive: true });
         writeFileSync(path, generateDashboardPlist(port, from, count));
         const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
-        try { execFileSync('/bin/launchctl', ['bootout', `gui/${uid}/${LABEL_LAUNCHD}`], { stdio: 'pipe' }); } catch {}
+        try { execFileSync('/bin/launchctl', ['bootout', `gui/${uid}/${LABEL_LAUNCHD}`], { stdio: 'pipe' }); } catch {} // best-effort: bootout may fail when service not yet registered
         execFileSync('/bin/launchctl', ['bootstrap', `gui/${uid}`, path], { stdio: 'pipe' });
         console.log(`✅ Dashboard registered as ${LABEL_LAUNCHD}`);
         console.log(`   Plist: ${path}`);
@@ -139,7 +139,7 @@ export async function unpermDashboard(jsonOut = false): Promise<void> {
     if (backend === 'launchd') {
         const { execFileSync } = await import('node:child_process');
         const uid = typeof process.getuid === 'function' ? process.getuid() : 501;
-        try { execFileSync('/bin/launchctl', ['bootout', `gui/${uid}/${LABEL_LAUNCHD}`], { stdio: 'pipe' }); } catch {}
+        try { execFileSync('/bin/launchctl', ['bootout', `gui/${uid}/${LABEL_LAUNCHD}`], { stdio: 'pipe' }); } catch {} // best-effort: bootout may fail when service not yet registered
         const path = plistPath();
         if (existsSync(path)) unlinkSync(path);
         if (jsonOut) console.log(JSON.stringify({ ok: true, action: 'unset', backend }));
@@ -148,7 +148,7 @@ export async function unpermDashboard(jsonOut = false): Promise<void> {
     }
     if (backend === 'systemd') {
         const { execFileSync } = await import('node:child_process');
-        try { execFileSync('systemctl', ['--user', 'disable', '--now', LABEL_SYSTEMD], { stdio: 'pipe' }); } catch {}
+        try { execFileSync('systemctl', ['--user', 'disable', '--now', LABEL_SYSTEMD], { stdio: 'pipe' }); } catch {} // best-effort: disable may fail when unit not registered
         const path = unitPath();
         if (existsSync(path)) unlinkSync(path);
         execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'pipe' });
@@ -174,7 +174,7 @@ export async function dashboardServiceStatus(jsonOut = false): Promise<void> {
                 loaded = true;
                 const m = out.match(/pid\s*=\s*(\d+)/);
                 if (m) pid = Number(m[1]);
-            } catch {}
+            } catch {} // best-effort: launchctl print fails when not loaded
         }
         if (jsonOut) {
             console.log(JSON.stringify({ backend, label: LABEL_LAUNCHD, registered, loaded, pid }));
@@ -197,7 +197,7 @@ export async function dashboardServiceStatus(jsonOut = false): Promise<void> {
                 active = out.includes('ActiveState=active');
                 const m = out.match(/MainPID=(\d+)/);
                 if (m && Number(m[1]) > 0) pid = Number(m[1]);
-            } catch {}
+            } catch {} // best-effort: systemctl show fails when unit missing
         }
         if (jsonOut) {
             console.log(JSON.stringify({ backend, label: LABEL_SYSTEMD, registered, active, pid }));

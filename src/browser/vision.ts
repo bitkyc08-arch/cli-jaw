@@ -192,7 +192,7 @@ export async function visionClick(port: number, target: string, opts: VisionClic
 
     // 5. Verify (optional snapshot)
     let snap = null;
-    try { snap = await snapshot(port, { interactive: true }); } catch { }
+    try { snap = await snapshot(port, { interactive: true }); } catch { } // best-effort: post-click snapshot is diagnostic only
 
     return {
         success: true,

@@ -87,7 +87,7 @@ function installPypi(pkg: string) {
             exec(`uv tool install ${pkg}`);
         } catch {
             // uv tool install might fail if already installed, try upgrade
-            try { exec(`uv tool upgrade ${pkg}`); } catch { }
+            try { exec(`uv tool upgrade ${pkg}`); } catch { } // best-effort: upgrade may no-op when already current
         }
     } else {
         console.log(`  ${c.yellow}📦 pip install ${pkg}${c.reset}`);

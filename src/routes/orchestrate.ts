@@ -51,6 +51,7 @@ import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { validateDispatchTask } from '../workflows/employee-boundary.js';
 import { normalizeScope, postDispatchDiffCheck } from '../workflows/scope-sandbox.js';
 import { recordDispatch } from '../goal-run/controller.js';
+import { log } from '../core/logger.js';
 
 function getRuntimeSnapshot() {
     return {
@@ -158,7 +159,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             await orchestrateReset({ origin: 'web' });
             res.json({ ok: true });
         } catch (err) {
-            console.error('[orchestrate:reset] error', err);
+            log.error('[orchestrate:reset] error', err);
             res.status(500).json({ ok: false, error: String(err) });
         }
     });
@@ -290,7 +291,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         try {
             insertMessage.run('user', prompt, origin, '', settings["workingDir"] || null, getActiveChatSession());
         } catch (err) {
-            console.warn('[steer:insert]', (err as Error).message);
+            log.warn('[steer:insert]', (err as Error).message);
         }
         broadcast('steer_started', stripUndefined({ prompt, steerWaitMs, ...steerMeta, scope }));
         broadcast('new_message', stripUndefined({ role: 'user', content: prompt, source: origin, fromQueue: true, target, chatId, requestId }));
@@ -310,7 +311,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 await task;
             } catch (err) {
                 const message = (err as Error).message;
-                console.error('[steer:orchestrate]', message);
+                log.error('[steer:orchestrate]', message);
                 broadcast('orchestrate_done', stripUndefined({ text: `[error] ${message}`, error: true, ...steerMeta }));
             } finally {
                 setSteerInProgress(false);
@@ -323,7 +324,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
         // Employees do not have this token (stripped in spawn.ts makeCleanEnv).
         const bossToken = String(req.headers['x-jaw-boss-token'] || '');
         if (!verifyBossToken(bossToken)) {
-            console.warn(`[dispatch:deny] ip=${req.ip} ua=${String(req.headers['user-agent'] || '').slice(0, 80)}`);
+            log.warn(`[dispatch:deny] ip=${req.ip} ua=${String(req.headers['user-agent'] || '').slice(0, 80)}`);
             return fail(res, 403, 'Dispatch requires boss-scoped token. Employees cannot dispatch.');
         }
         const { task: rawTask, phase, mutable, scope } = req.body || {};
@@ -407,7 +408,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 return fail(res, 412, `Model not supported: ${modelChecks.fail.join('; ')}`);
             }
             for (const w of modelChecks.warn) {
-                console.warn(`[orchestrate] model warn: ${w}`);
+                log.warn(`[orchestrate] model warn: ${w}`);
             }
         }
 
@@ -444,7 +445,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 });
                 return;
             }
-            console.error('[orchestrate] worker claim failed:', err);
+            log.error('[orchestrate] worker claim failed:', err);
             const message = (err as Error)?.message || String(err);
             res.status(500).json({
                 ok: false,
@@ -558,7 +559,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             } catch { /* non-fatal */ }
 
             if (clientDisconnected) {
-                console.warn(`[dispatch] client disconnected — keeping pendingReplay for ${slot.agentId}`);
+                log.warn(`[dispatch] client disconnected — keeping pendingReplay for ${slot.agentId}`);
                 // Proactive drain: if Boss died before receiving the result, user input
                 // would otherwise stall forever. Trigger drainPendingReplays so the result
                 // is fed back via a fresh Boss session without waiting for the next user
@@ -566,7 +567,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 if (!isAgentBusy()) {
                     queueMicrotask(() => {
                         drainPendingReplays({ origin: 'system' })
-                            .catch(err => console.error('[dispatch:drain]', (err as Error).message));
+                            .catch(err => log.error('[dispatch:drain]', (err as Error).message));
                     });
                 }
                 return;
@@ -580,7 +581,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 if (!isAgentBusy()) {
                     queueMicrotask(() => {
                         drainPendingReplays({ origin: 'system' })
-                            .catch(err => console.error('[dispatch:async-drain]', (err as Error).message));
+                            .catch(err => log.error('[dispatch:async-drain]', (err as Error).message));
                     });
                 }
                 return;
@@ -711,7 +712,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                 if (err instanceof WorkerBusyError) {
                     return { entry, slot: null, claimError: `worker_busy: ${entry.agentName} is already running` };
                 }
-                console.error('[orchestrate] worker claim failed:', err);
+                log.error('[orchestrate] worker claim failed:', err);
                 return { entry, slot: null, claimError: `worker_claim_failed: ${(err as Error)?.message || String(err)}` };
             }
         });
@@ -846,12 +847,12 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
                     const results = await executeBatch();
                     persistBatchVerdict(results);
                 } catch (err) {
-                    console.error('[orchestrate:batch-async]', (err as Error)?.message || String(err));
+                    log.error('[orchestrate:batch-async]', (err as Error)?.message || String(err));
                 } finally {
                     if (!isAgentBusy()) {
                         queueMicrotask(() => {
                             drainPendingReplays({ origin: 'system' })
-                                .catch(err => console.error('[orchestrate:batch-drain]', (err as Error).message));
+                                .catch(err => log.error('[orchestrate:batch-drain]', (err as Error).message));
                         });
                     }
                 }
@@ -986,7 +987,7 @@ export function registerOrchestrateRoutes(app: Express, requireAuth: AuthMiddlew
             try {
                 const { drainPending } = await import('../memory/heartbeat.js');
                 await drainPending();
-            } catch {}
+            } catch {} // best-effort: heartbeat drain must not block the D transition
         } else {
             let initCtx;
             if (t === 'P') {

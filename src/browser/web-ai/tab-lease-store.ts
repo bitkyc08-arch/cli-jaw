@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, openSync, readFileSync, closeSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { JAW_HOME } from '../../core/config.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { closeTab, listTabs } from '../connection.js';
@@ -100,10 +101,6 @@ function lockPath(): string {
 
 function nowIso(): string {
     return new Date().toISOString();
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function hasErrorCode(error: unknown, code: string): boolean {

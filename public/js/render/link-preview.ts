@@ -1,4 +1,5 @@
 import { API_BASE } from '../api.js';
+import { escapeHtml } from './html.js';
 
 type LinkPreviewData = {
     title?: string;
@@ -23,11 +24,6 @@ let inFlight = 0;
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function isPrivateHost(hostname: string): boolean {

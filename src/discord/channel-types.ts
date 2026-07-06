@@ -27,3 +27,24 @@ export interface DiscordThreadLikeChannel {
 export function isSendableChannel(channel: unknown): channel is DiscordSendableChannel {
     return !!channel && typeof (channel as { send?: unknown }).send === 'function';
 }
+
+function isChannelObject(channel: unknown): channel is Record<string, unknown> {
+    return !!channel && typeof channel === 'object';
+}
+
+export function asChannelWith<K extends string>(channel: unknown, key: K): (Record<K, unknown> & object) | null {
+    return isChannelObject(channel) && key in channel ? channel as Record<K, unknown> & object : null;
+}
+
+export function asSendable(channel: unknown): DiscordSendableChannel | null {
+    return isSendableChannel(channel) ? channel : null;
+}
+
+export function asTypingChannel(channel: unknown): DiscordTypingChannel | null {
+    const narrowed = asChannelWith(channel, 'sendTyping');
+    return narrowed && typeof narrowed.sendTyping === 'function' ? narrowed as DiscordTypingChannel : null;
+}
+
+export function asThreadLike(channel: unknown): DiscordThreadLikeChannel | null {
+    return asChannelWith(channel, 'parentId') as DiscordThreadLikeChannel | null;
+}

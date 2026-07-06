@@ -14,6 +14,7 @@ import { resolveAiEProvider } from '../agent/args.js';
 import { writeFileSync, readFileSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { log } from './logger.js';
 
 function syncJwcConfigDefault(currentSettings: Record<string, any>): void {
     try {
@@ -183,7 +184,7 @@ export async function applyRuntimeSettingsPatch(
                 ensureWorkingDirSkillsLinks(settings["workingDir"], { onConflict: 'skip', includeClaude: true, allowReplaceManaged: true });
                 syncToAll(loadUnifiedMcp());
                 regenerateB();
-                console.log(`[jaw:workingDir] artifacts regenerated for ${settings["workingDir"]}`);
+                log.info(`[jaw:workingDir] artifacts regenerated for ${settings["workingDir"]}`);
             } catch (e: unknown) {
                 console.error('[jaw:workingDir]', (e as Error).message);
             }

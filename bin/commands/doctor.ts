@@ -424,7 +424,7 @@ if (process.platform === 'darwin') {
             // Auto-open System Preferences
             try {
                 execSync('open "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"', { stdio: 'pipe' });
-            } catch { }
+            } catch { } // best-effort: opening System Preferences can fail on headless/CI
             throw new Error('WARN: 접근성 권한 필요 → 시스템 설정을 열었습니다. Terminal을 추가해주세요');
         }
     });

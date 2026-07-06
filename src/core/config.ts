@@ -13,6 +13,7 @@ export { detectAllCli, detectCli, getClaudeExecHelperCandidates, getClaudeIHelpe
 // ─── Version (single source of truth: package.json) ──
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { log } from './logger.js';
 
 function findPackageJson(): string {
     let dir = dirname(fileURLToPath(import.meta.url));
@@ -154,14 +155,14 @@ export function runMigration(projectDir: string) {
             const dst = DB_PATH + ext;
             if (fs.existsSync(src)) fs.renameSync(src, dst);
         }
-        console.log('[migrate] claw.db → jaw.db');
+        log.info('[migrate] claw.db → jaw.db');
     }
 
     const legacySettings = join(projectDir, 'settings.json');
     const legacyDb = join(projectDir, 'jaw.db');
     if (fs.existsSync(legacySettings) && !fs.existsSync(SETTINGS_PATH)) {
         fs.copyFileSync(legacySettings, SETTINGS_PATH);
-        console.log('[migrate] settings.json → ~/.cli-jaw/');
+        log.info('[migrate] settings.json → ~/.cli-jaw/');
     }
     if (fs.existsSync(legacyDb) && !fs.existsSync(DB_PATH)) {
         fs.copyFileSync(legacyDb, DB_PATH);
@@ -169,7 +170,7 @@ export function runMigration(projectDir: string) {
             const src = legacyDb + ext;
             if (fs.existsSync(src)) fs.copyFileSync(src, DB_PATH + ext);
         }
-        console.log('[migrate] jaw.db → ~/.cli-jaw/');
+        log.info('[migrate] jaw.db → ~/.cli-jaw/');
     }
     fs.writeFileSync(MIGRATION_MARKER, JSON.stringify({ migratedAt: new Date().toISOString() }));
 }

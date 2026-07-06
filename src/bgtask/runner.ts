@@ -17,6 +17,7 @@ import {
     type BgTaskSpec,
 } from './types.js';
 import { getTask, markTerminal, markCancelled, setTaskPid } from './registry.js';
+import { log } from '../core/logger.js';
 
 /** Raw capture persisted as the result column on terminal transition.
  * The notifier's resultExtractor turns this into the final {{result}} text. */
@@ -266,7 +267,7 @@ function armStallTimer(handle: RunnerHandle, row: BgTaskRow, capture: () => Pick
         }
         handle.child?.kill('SIGKILL');
         if (row.spec.respawn === true && !handle.respawned) {
-            console.warn(`[bgtask:${row.id}] stalled ${stallAfterMs}ms — respawning once`);
+            log.warn(`[bgtask:${row.id}] stalled ${stallAfterMs}ms — respawning once`);
             cleanupHandle(handle);
             activeRunners.delete(row.id);
             handle.finished = true;
@@ -311,7 +312,7 @@ function finishTask(taskId: string, status: 'complete' | 'failed', capture: BgTa
     try {
         onTerminal(taskId);
     } catch (err) {
-        console.error(`[bgtask:${taskId}] onTerminal callback failed:`, (err as Error).message);
+        log.error(`[bgtask:${taskId}] onTerminal callback failed:`, (err as Error).message);
     }
 }
 

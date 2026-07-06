@@ -4,6 +4,7 @@
 import fs from 'fs';
 import { join } from 'path';
 import { JAW_HOME } from '../core/config.js';
+import { log } from '../core/logger.js';
 
 // ─── Write Lock (prevents race condition in parallel agent writes) ──
 const writeLocks = new Map<string, Promise<void>>();
@@ -13,7 +14,7 @@ function withWriteLock(filePath: string, fn: () => void): Promise<void> {
     const next = prev.then(() => {
         fn();
     }).catch(e => {
-        console.error(`[worklog:lock] write error for ${filePath}:`, (e as Error).message);
+        log.error(`[worklog:lock] write error for ${filePath}:`, (e as Error).message);
     });
     writeLocks.set(filePath, next);
     return next;
@@ -68,7 +69,7 @@ export function createWorklog(prompt: string, taskAnchor?: string) {
     try { fs.unlinkSync(LATEST_LINK); } catch { /* first run */ }
     fs.symlinkSync(path, LATEST_LINK);
 
-    console.log(`[worklog] created: ${filename}`);
+    log.info(`[worklog] created: ${filename}`);
     return { path, filename };
 }
 

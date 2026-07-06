@@ -499,7 +499,7 @@ export async function orchestrateHandler(args: string[], ctx: CliCommandContext)
         try {
             const { drainPending } = await import('../memory/heartbeat.js');
             await drainPending();
-        } catch {}
+        } catch {} // best-effort: heartbeat drain must not block D transition
         return { ok: true, text: '✅ State → D (Done) → IDLE' };
     }
 

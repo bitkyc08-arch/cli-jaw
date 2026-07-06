@@ -334,7 +334,7 @@ export function createDashboardMemoryRouter(opts: DashboardMemoryRouterOptions):
                         instDb?.close();
                     }
                 }
-            } catch {}
+            } catch {} // best-effort: chunk-count scan degrades to 0 when instances unreachable
             const status = getEmbeddingState({
                 settings: embConfig,
                 vecStore: vec,

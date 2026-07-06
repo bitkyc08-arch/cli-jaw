@@ -17,6 +17,7 @@ import { getEmployeeMcpToolSummary } from '../agent/mcp-passthrough.js';
 import { buildInjectionBlock as buildRuntimeContextBlock } from './runtime-context.js';
 import { buildPrePromptContextHook } from './context-hooks.js';
 import { invalidateSkillCommandsCache, registerSkillLoader } from '../core/skill-cache.js';
+import { log } from '../core/logger.js';
 
 const promptCache = new Map();
 
@@ -354,7 +355,7 @@ export function initPromptFiles() {
                 // User hasn't edited → safe to update
                 fs.writeFileSync(A1_PATH, a1Content);
                 fs.writeFileSync(hashPath, currentHash);
-                console.log('[prompt] A-1.md updated to new version');
+                log.info('[prompt] A-1.md updated to new version');
             } else {
                 // User edited — preserve their changes, but advance hash baseline.
                 // Safe-append new anchor blocks the user hasn't opted in to yet.
@@ -362,22 +363,22 @@ export function initPromptFiles() {
                 const appendedDesktop = ensureDesktopControlAnchor(userText, a1Content);
                 if (appendedDesktop) {
                     userText = appendedDesktop;
-                    console.log('[prompt] A-1.md: appended desktop-control anchor (user edits preserved)');
+                    log.info('[prompt] A-1.md: appended desktop-control anchor (user edits preserved)');
                 }
                 const appendedConnector = ensureDashboardConnectorAnchor(userText, a1Content);
                 if (appendedConnector) {
                     userText = appendedConnector;
-                    console.log('[prompt] A-1.md: appended dashboard-connector-intent anchor (user edits preserved)');
+                    log.info('[prompt] A-1.md: appended dashboard-connector-intent anchor (user edits preserved)');
                 }
                 const appendedSessionPoll = ensureSessionPollAnchor(userText, a1Content);
                 if (appendedSessionPoll) {
                     userText = appendedSessionPoll;
-                    console.log('[prompt] A-1.md: appended session-poll anchor (user edits preserved)');
+                    log.info('[prompt] A-1.md: appended session-poll anchor (user edits preserved)');
                 }
                 if (appendedDesktop || appendedConnector || appendedSessionPoll) {
                     fs.writeFileSync(A1_PATH, userText);
                 } else {
-                    console.log('[prompt] A-1.md has user edits — preserved');
+                    log.info('[prompt] A-1.md has user edits — preserved');
                 }
                 fs.writeFileSync(hashPath, currentHash);
             }
@@ -399,10 +400,10 @@ export function initPromptFiles() {
         if (action === 'adopt-current-template') {
             fs.writeFileSync(A1_PATH, a1Content);
             fs.writeFileSync(hashPath, currentHash);
-            console.log('[prompt] A-1.md migrated from known stock template');
+            log.info('[prompt] A-1.md migrated from known stock template');
         } else {
             fs.writeFileSync(hashPath, currentHash);
-            console.log('[prompt] A-1.md preserved (customized legacy file)');
+            log.info('[prompt] A-1.md preserved (customized legacy file)');
         }
     }
 
@@ -437,7 +438,7 @@ export function loadRecentMemories() {
             if (charCount >= CHAR_BUDGET) break;
         }
         if (entries.length) {
-            console.log(`[memory] session memory loaded: ${entries.length} entries, ${charCount} chars`);
+            log.info(`[memory] session memory loaded: ${entries.length} entries, ${charCount} chars`);
         }
         return entries.length
             ? '\n\n---\n## Recent Session Memories\n' + entries.map(e => '- ' + e.split('\n')[0]).join('\n')
@@ -459,10 +460,10 @@ function appendLegacyMemoryContext(prompt: string) {
             const memories = loadRecentMemories();
             if (memories) {
                 next += memories;
-                console.log(`[memory] injected (msg ${memoryFlushCounter}, every ${injectInterval})`);
+                log.info(`[memory] injected (msg ${memoryFlushCounter}, every ${injectInterval})`);
             }
         } else {
-            console.log(`[memory] skipped injection (msg ${memoryFlushCounter}/${threshold}, interval ${injectInterval})`);
+            log.info(`[memory] skipped injection (msg ${memoryFlushCounter}/${threshold}, interval ${injectInterval})`);
         }
     } catch {
         const memories = loadRecentMemories();
@@ -478,7 +479,7 @@ function appendLegacyMemoryContext(prompt: string) {
                     ? coreMem.slice(0, 1500) + '\n...(use `cli-jaw memory read MEMORY.md` for full)'
                     : coreMem;
                 next += '\n\n---\n## Core Memory\n' + truncated;
-                console.log(`[memory] MEMORY.md loaded: ${truncated.length} chars`);
+                log.info(`[memory] MEMORY.md loaded: ${truncated.length} chars`);
             }
         }
     } catch { /* memory not ready */ }
@@ -795,7 +796,7 @@ export function getEmployeePromptV2(
             const patch = loadTemplate(staticSpec.systemPromptPatchFile);
             if (patch) prompt += `\n\n${patch}`;
         } catch (e) {
-            console.warn(`[prompt] ${staticSpec.name} system patch load failed:`, (e as Error).message);
+            log.warn(`[prompt] ${staticSpec.name} system patch load failed:`, (e as Error).message);
         }
     }
 
@@ -938,8 +939,8 @@ export function regenerateB() {
     try {
         const wd = settings["workingDir"] || os.homedir();
         fs.writeFileSync(join(wd, 'AGENTS.md'), fullPrompt);
-        console.log(`[prompt] AGENTS.md generated at ${wd}`);
+        log.info(`[prompt] AGENTS.md generated at ${wd}`);
     } catch (e: unknown) {
-        console.error(`[prompt] AGENTS.md generation failed:`, (e as Error).message);
+        log.error(`[prompt] AGENTS.md generation failed:`, (e as Error).message);
     }
 }

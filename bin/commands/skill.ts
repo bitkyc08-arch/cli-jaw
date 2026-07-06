@@ -46,7 +46,7 @@ function listSkills() {
                 const content = readFileSync(skillMd, 'utf8');
                 const match = content.match(/description:\s*(.+)/i);
                 if (match) desc = match[1]!.trim();
-            } catch { }
+            } catch { } // best-effort: unreadable SKILL.md shows empty description
             return { name: d.name, desc };
         });
 }

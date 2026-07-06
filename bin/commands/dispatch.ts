@@ -3,6 +3,7 @@
 // Dispatches a jaw employee via the server API (pipe-mode compatible).
 
 import { loadSettings, getServerUrl } from '../../src/core/config.js';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { errString, isConnRefused } from '../_http-client.js';
@@ -231,10 +232,6 @@ function printBatchAsyncWorkers(workers: BatchAsyncWorker[]): void {
             console.log(`  ❌ ${w.agent} — ${w.error || 'not accepted'}`);
         }
     }
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function responsePreview(raw: string): string {

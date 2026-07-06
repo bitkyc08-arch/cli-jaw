@@ -13,6 +13,7 @@ import { t } from '../core/i18n.js';
 import { validateTarget } from '../messaging/send.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import { log } from '../core/logger.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -62,7 +63,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             const result = await executeCommand(parsed, makeWebCommandCtx(req, locale as string));
             res.json(result);
         } catch (err: unknown) {
-            console.error('[cmd:error]', err);
+            log.error('[cmd:error]', err);
             const locale = resolveRequestLocale(req, req.body?.locale);
             res.status(500).json({
                 ok: false,
@@ -149,7 +150,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                     return;
                 } catch (err: unknown) {
                     const error = (err as Error).message;
-                    console.error('[api/message:cmd]', error);
+                    log.error('[api/message:cmd]', error);
                     res.status(500).json({ ok: false, command: true, error });
                     return;
                 }

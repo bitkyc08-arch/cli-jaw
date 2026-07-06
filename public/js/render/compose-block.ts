@@ -1,3 +1,5 @@
+import { escapeHtml } from './html.js';
+
 type ComposeKind = 'email' | 'message' | 'document' | 'other';
 
 type ComposeVariant = {
@@ -28,11 +30,6 @@ let delegatedDocument: Document | null = null;
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function asText(value: unknown, max: number): string {

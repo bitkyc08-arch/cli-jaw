@@ -1,3 +1,5 @@
+import { escapeHtml } from './html.js';
+
 type RawSearchResult = {
     title?: unknown;
     url?: unknown;
@@ -26,11 +28,6 @@ const MAX_TEXT = 240;
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function clampText(value: unknown, max = MAX_TEXT): string {

@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import { db } from '../core/db.js';
 import { broadcast } from '../core/bus.js';
 import { normalizeBgTaskStatus } from '../shared/runtime-observability.js';
+import { log } from '../core/logger.js';
 import {
     dedupKeyForSpec,
     type BgTaskRow,
@@ -109,7 +110,7 @@ function emitBgtaskUpdate(changedId?: string): void {
                 : null,
         });
     } catch (err) {
-        console.error('[bgtask] broadcast failed:', (err as Error).message);
+        log.error('[bgtask] broadcast failed:', (err as Error).message);
     }
 }
 

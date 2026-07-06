@@ -10,6 +10,7 @@ import type { BgTaskCapture } from './runner.js';
 import { BGTASK_DEFAULT_MAX_RESULT_CHARS, type BgTaskRow } from './types.js';
 import { submitMessage } from '../orchestrator/gateway.js';
 import type { RuntimeOrigin, RemoteTarget } from '../messaging/types.js';
+import { log } from '../core/logger.js';
 
 const COMMAND_EXTRACTOR_TIMEOUT_MS = 30_000;
 
@@ -58,7 +59,7 @@ export async function notifyTask(taskId: string, deps: Partial<NotifierDeps> = {
         ...(meta.chatId !== undefined ? { chatId: meta.chatId } : {}),
     });
     if (res.action === 'rejected' && res.reason !== 'duplicate') {
-        console.error(`[bgtask:${taskId}] notify rejected: ${res.reason}`);
+        log.error(`[bgtask:${taskId}] notify rejected: ${res.reason}`);
         return false;
     }
     markNotified(taskId);

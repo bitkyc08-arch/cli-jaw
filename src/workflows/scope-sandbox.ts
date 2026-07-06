@@ -20,6 +20,7 @@ function isPathWithin(child: string, parent: string): boolean {
 }
 
 function listGitChangedFiles(projectRoot: string): string[] {
+    // Runs only after scoped dispatch/checkpoint actions, not in the steady request hot path.
     const outputs = [
         execSync('git diff --name-only', { cwd: projectRoot }).toString(),
         execSync('git diff --cached --name-only', { cwd: projectRoot }).toString(),

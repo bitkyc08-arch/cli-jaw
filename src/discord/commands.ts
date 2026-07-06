@@ -12,16 +12,17 @@ import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { bumpSessionOwnershipGeneration } from '../agent/session-persistence.js';
 import { clearMainSessionState, resetSessionPreservingHistory } from '../core/main-session.js';
 import { getVisibleCommands } from '../command-contract/policy.js';
-import type { DiscordSendableChannel } from './channel-types.js';
+import { asSendable } from './channel-types.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
+import { log } from '../core/logger.js';
 
 export async function registerDiscordSlashCommands(client: Client) {
     if (!settings["discord"]?.guildId) {
-        console.warn('[discord] guildId not set — skipping slash command registration');
+        log.warn('[discord] guildId not set — skipping slash command registration');
         return;
     }
     if (!client.application?.id) {
-        console.warn('[discord] application id not available — skipping slash commands');
+        log.warn('[discord] application id not available — skipping slash commands');
         return;
     }
 
@@ -42,9 +43,9 @@ export async function registerDiscordSlashCommands(client: Client) {
             Routes.applicationGuildCommands(client.application.id, settings["discord"].guildId),
             { body: commands },
         );
-        console.log(`[discord] registered ${commands.length} guild-scoped slash commands`);
+        log.info(`[discord] registered ${commands.length} guild-scoped slash commands`);
     } catch (e) {
-        console.error('[discord:commands]', (e as Error).message);
+        log.error('[discord:commands]', (e as Error).message);
     }
 }
 
@@ -83,8 +84,8 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
 
     if (result?.steerPrompt) {
         await interaction.editReply(result.text || 'Redirecting...');
-        const channel = interaction.channel;
-        if (channel && 'send' in channel) {
+        const channel = asSendable(interaction.channel);
+        if (channel) {
             const { orchestrateAndCollect } = await import('../orchestrator/collect.js');
             const { setLastActiveTarget } = await import('../messaging/runtime.js');
             const peerKind = interaction.guildId ? 'channel' as const : 'direct' as const;
@@ -103,10 +104,10 @@ export async function handleDiscordSlashCommand(interaction: ChatInputCommandInt
                 }));
                 const chunks = chunkDiscordMessage(text);
                 for (const chunk of chunks) {
-                    await (channel as unknown as DiscordSendableChannel).send(chunk);
+                    await channel.send(chunk);
                 }
             } catch (err: unknown) {
-                await (channel as unknown as DiscordSendableChannel).send(`❌ ${(err as Error).message}`).catch(() => { });
+                await channel.send(`❌ ${(err as Error).message}`).catch(() => { });
             }
         }
         return;

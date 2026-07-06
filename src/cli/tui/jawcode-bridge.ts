@@ -3,6 +3,7 @@
  * Replaces the old ANSI hardcoding adapter with real Component.render() calls.
  */
 import { initJawcodeTui, isInitialized, getInteractive, renderMarkdownJawcode } from './jawcode-render.js';
+import { sharkIcon } from './icons.js';
 import { renderJawWelcome } from './welcome-jaw.js';
 
 export interface JawcodeAdapterState {
@@ -238,7 +239,7 @@ export function renderStatusBar(segments: {
     port?: number | undefined;
     orchPhase?: string | undefined;
 }): string {
-    const icon = (() => { try { const { sharkIcon } = require('./icons.js'); return sharkIcon(); } catch { return '🦈'; } })();
+    const icon = sharkIcon();
     const parts: string[] = [];
     const cols = process.stdout.columns || 80;
     // Segment-safe styles: the left segment renders on the cyan status

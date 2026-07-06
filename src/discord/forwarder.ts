@@ -3,7 +3,8 @@
 
 import type { Client } from 'discord.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import type { DiscordSendableChannel } from './channel-types.js';
+import { asSendable } from './channel-types.js';
+import { log } from '../core/logger.js';
 
 export function chunkDiscordMessage(text: string, limit = 2000): string[] {
     if (text.length <= limit) return [text];
@@ -34,14 +35,15 @@ export function createDiscordForwarder(opts: {
         if (!target?.targetId || !opts.client) return;
         try {
             const channel = await opts.client.channels.fetch(target.targetId);
-            if (!channel || !('send' in channel)) return;
+            const sendable = asSendable(channel);
+            if (!sendable) return;
             const chunks = chunkDiscordMessage(`${opts.prefix || ''}${text}`);
             for (const chunk of chunks) {
-                await (channel as unknown as DiscordSendableChannel).send(chunk);
+                await sendable.send(chunk);
             }
             opts.log?.({ channelId: target.targetId, preview: text.slice(0, 60) });
         } catch (e) {
-            console.error('[discord:forward]', (e as Error).message);
+            log.error('[discord:forward]', (e as Error).message);
         }
     };
 }

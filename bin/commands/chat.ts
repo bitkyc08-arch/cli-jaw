@@ -168,7 +168,7 @@ const chatCwd = resolveChatCwd(settingsSnapshot, info.workingDir);
 const isGit = isGitRepo(chatCwd);
 let gitBranch = '';
 if (isGit) {
-    try { gitBranch = spawnSync('git', ['branch', '--show-current'], { cwd: chatCwd, encoding: 'utf8' }).stdout?.trim() || ''; } catch {}
+    try { gitBranch = spawnSync('git', ['branch', '--show-current'], { cwd: chatCwd, encoding: 'utf8' }).stdout?.trim() || ''; } catch {} // best-effort: git branch label is cosmetic
 }
 const detectedIde = detectIde();
 

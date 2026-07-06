@@ -106,6 +106,8 @@ function scanText(src, filename = 'inline.ts') {
     let any = 0;
     let debt = 0;
     let allow = 0;
+    let nonNull = 0;
+    let unknownCast = 0;
     function visit(node) {
         if (isAnyKeyword(node)) {
             const marker = leadingMarkerOnLine(src, node.getStart(sf));
@@ -113,10 +115,17 @@ function scanText(src, filename = 'inline.ts') {
             else if (marker === 'allow') allow++;
             else any++;
         }
+        if (node.kind === ts.SyntaxKind.NonNullExpression) nonNull++;
+        // `expr as unknown as T` — outer AsExpression whose inner expression is `as unknown`
+        if (ts.isAsExpression(node)
+            && ts.isAsExpression(node.expression)
+            && node.expression.type.kind === ts.SyntaxKind.UnknownKeyword) {
+            unknownCast++;
+        }
         ts.forEachChild(node, visit);
     }
     visit(sf);
-    return { any, debt, allow };
+    return { any, debt, allow, nonNull, unknownCast };
 }
 
 function scanFile(file) {
@@ -125,12 +134,14 @@ function scanFile(file) {
 }
 
 function countDir(absDir) {
-    const result = { any: 0, debt: 0, allow: 0 };
+    const result = { any: 0, debt: 0, allow: 0, nonNull: 0, unknownCast: 0 };
     for (const file of filesForPath(absDir)) {
         const r = scanFile(file);
         result.any += r.any;
         result.debt += r.debt;
         result.allow += r.allow;
+        result.nonNull += r.nonNull;
+        result.unknownCast += r.unknownCast;
     }
     return result;
 }
@@ -224,6 +235,19 @@ function main() {
     console.log('');
 
     console.log('## strict-baseline typecheck gates');
+
+    // Warn-only radar (WP4 4.5): non-null assertions and `as unknown as` double
+    // casts are tracked for visibility, not gated. Promote to the frozen
+    // baseline table once counts stabilize.
+    console.log('## escape-hatch radar (warn-only, not gated)');
+    console.log('| dir | non-null ! | as-unknown-as |');
+    console.log('|-----|-----------:|--------------:|');
+    for (const dir of TRACKED_DIRS) {
+        const l = live[dir];
+        console.log(`| ${dir} | ${l.nonNull} | ${l.unknownCast} |`);
+    }
+    console.log('');
+
     const rootTypecheck = runTypecheck(['tsc', '--noEmit']);
     console.log(`root: ${rootTypecheck.ok ? 'ok' : `fail (${rootTypecheck.status ?? 'unknown'})`}`);
     if (!rootTypecheck.ok) regressions.push(`root typecheck failed:\n${rootTypecheck.output}`);

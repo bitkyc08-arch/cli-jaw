@@ -67,14 +67,26 @@ function readClaudeOAuthPayload(raw: string, source: ClaudeCredsSource): ClaudeC
 }
 
 function readClaudeCredsFromKeychain(): ClaudeCreds | null {
+    const now = Date.now();
+    if (claudeKeychainCredsCache && now - claudeKeychainCredsCache.ts < CLAUDE_KEYCHAIN_CACHE_TTL_MS) {
+        return claudeKeychainCredsCache.creds;
+    }
     try {
         const raw = execSync(
             'security find-generic-password -s "Claude Code-credentials" -w',
             { timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] }
         ).toString().trim();
-        return readClaudeOAuthPayload(raw, 'macos-keychain');
-    } catch { return null; }
+        const creds = readClaudeOAuthPayload(raw, 'macos-keychain');
+        claudeKeychainCredsCache = { creds, ts: now };
+        return creds;
+    } catch {
+        claudeKeychainCredsCache = { creds: null, ts: now };
+        return null;
+    }
 }
+
+const CLAUDE_KEYCHAIN_CACHE_TTL_MS = 60_000;
+let claudeKeychainCredsCache: { creds: ClaudeCreds | null; ts: number } | null = null;
 
 function readClaudeCredsFromFile(): ClaudeCreds | null {
     try {
@@ -352,4 +364,3 @@ export async function fetchGrokStatus(binary = 'grok') {
         sessionUsage: readLatestGrokSessionUsage() ?? undefined,
     });
 }
-
