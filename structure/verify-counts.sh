@@ -268,7 +268,7 @@ if [[ -n "${d_pub_total:-}" ]]; then
 fi
 
 # public/ file count (source/assets only; exclude Vite build output)
-a_pub_files=$(find public -type f ! -path 'public/dist/*' ! -path 'public/public/dist/*' | wc -l | tr -d ' ')
+a_pub_files=$(find public -type f ! -path 'public/dist/*' ! -path 'public/public/dist/*' ! -name '.DS_Store' | wc -l | tr -d ' ')
 d_pub_files=$( (rg '^├── public/.*[0-9]+ files' "$DOC" || true) | head -1 | rg -o '[0-9]+ files' | head -1 | rg -o '[0-9]+' || true)
 if [[ -n "${d_pub_files:-}" ]]; then
   if [[ "$a_pub_files" == "$d_pub_files" ]]; then
