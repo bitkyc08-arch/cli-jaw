@@ -338,7 +338,7 @@ if [[ -n "${d_bin_cmds:-}" ]]; then
 fi
 
 # public/dist build output
-a_pub_dist=$(find public/dist -type f | wc -l | tr -d ' ')
+a_pub_dist=$(find public/dist -type f 2>/dev/null | wc -l | tr -d ' ')
 d_pub_dist=$( (rg -n 'public/dist build output [0-9]+ files' "$DOC" || true) | head -1 | rg -o 'build output [0-9]+ files' | rg -o '[0-9]+' | head -1 || true)
 if [[ -n "${d_pub_dist:-}" ]]; then
   if [[ "$a_pub_dist" == "$d_pub_dist" ]]; then
