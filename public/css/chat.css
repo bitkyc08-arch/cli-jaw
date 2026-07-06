@@ -207,7 +207,6 @@
     z-index: 1;
     animation: revealUp 0.4s var(--ease-out-expo) 0.2s both;
     contain: layout style paint;
-    will-change: scroll-position;
     overflow-anchor: none;
 }
 
@@ -437,6 +436,23 @@
     max-width: 80%;
     animation: msgEnterSystem 0.2s ease-out;
 }
+
+/* Goal-continuation boundary: keeps .msg-user boundary semantics but renders
+   as a slim centered marker instead of a full user bubble (devlog 260705). */
+.msg-goal-boundary {
+    background: transparent;
+    border: 1px dashed color-mix(in oklch, var(--accent) 35%, var(--border));
+    align-self: center;
+    max-width: 60%;
+    font-size: var(--text-xs);
+    color: var(--text-dim);
+    padding: var(--space-1) var(--space-3);
+    animation: msgEnterSystem 0.2s ease-out;
+}
+.msg-goal-boundary .msg-label,
+.msg-goal-boundary .user-icon,
+.msg-goal-boundary .msg-actions { display: none; }
+.msg-goal-boundary::after { content: none; }
 
 /* ── Message Hover Glow Bar ── */
 .msg-user::after {

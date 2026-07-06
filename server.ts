@@ -67,6 +67,7 @@ import {
     ensureDirs, runMigration,
 } from './src/core/config.js';
 import { startSettingsWatch } from './src/core/settings-watch.js';
+import { startWidgetWatcher } from './src/core/widget-watcher.js';
 import {
     db, getLatestAssistantMessage, closeDb,
     clearAllEmployeeSessions,
@@ -133,6 +134,7 @@ process.env["PATH"] = buildServicePath(process.env["PATH"] || '');
 // ─── Init ────────────────────────────────────────────
 
 ensureDirs();
+const stopWidgetWatcher = startWidgetWatcher();
 fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
 runMigration(projectRoot);
 loadSettings();
@@ -449,6 +451,7 @@ const shutdown = async (sig: string) => {
     } catch { /* non-fatal */ }
     stopHeartbeat();
     closeHeartbeatWatcher();
+    stopWidgetWatcher();
     clearInterval(rateLimitSweepInterval);
     try { stopAllBgTasks(); } catch { /* non-fatal */ }
     killAllAgents('shutdown');

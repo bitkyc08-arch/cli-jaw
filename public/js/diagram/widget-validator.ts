@@ -36,12 +36,26 @@ export interface ValidationResult {
   warnings: string[];
 }
 
-export function validateWidgetHtml(html: string): ValidationResult {
+const DEFAULT_MAX_BYTES = 524_288;
+
+function htmlByteLength(html: string): number {
+  return new TextEncoder().encode(html).length;
+}
+
+function formatMaxBytes(maxBytes: number): string {
+  if (maxBytes === DEFAULT_MAX_BYTES) return '512KB';
+  if (maxBytes % 1_048_576 === 0) return `${maxBytes / 1_048_576}MB`;
+  if (maxBytes % 1024 === 0) return `${maxBytes / 1024}KB`;
+  return `${maxBytes} bytes`;
+}
+
+export function validateWidgetHtml(html: string, opts: { maxBytes?: number } = {}): ValidationResult {
   const warnings: string[] = [];
+  const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
 
   // 1. Size cap (redundant with activateWidgets but defense-in-depth)
-  if (html.length > 524_288) {
-    return { valid: false, reason: 'Payload too large (>512KB)', warnings };
+  if (htmlByteLength(html) > maxBytes) {
+    return { valid: false, reason: `Payload too large (>${formatMaxBytes(maxBytes)})`, warnings };
   }
 
   // 2. External URL validation — only allowlisted CDN domains

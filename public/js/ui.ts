@@ -494,11 +494,14 @@ export function finalizeAgent(text: string, toolLog?: ToolLogEntry[]): void {
             const div = state.currentAgentDiv;
             clearMermaidTransientState(div);
             div.querySelectorAll('.diagram-widget').forEach(widget => {
-                const encoded = (widget as HTMLElement).dataset['widgetHtml'];
-                if (!encoded) return;
+                const widgetEl = widget as HTMLElement;
+                const encoded = widgetEl.dataset['widgetHtml'];
+                const widgetId = widgetEl.dataset['widgetId'];
+                if (!encoded && !widgetId) return;
                 const pending = document.createElement('div');
                 pending.className = 'diagram-widget-pending';
-                pending.dataset['diagramHtml'] = encoded;
+                if (widgetId) pending.dataset['widgetId'] = widgetId;
+                else if (encoded) pending.dataset['diagramHtml'] = encoded;
                 widget.replaceWith(pending);
             });
             if (durableToolLogJson) {

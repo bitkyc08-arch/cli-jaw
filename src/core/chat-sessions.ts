@@ -5,6 +5,7 @@
 import { db } from './db.js';
 import { randomUUID } from 'node:crypto';
 import { broadcast } from './bus.js';
+import { removeWidgetDir } from './widget-watcher.js';
 
 export type ChatSessionRow = {
     id: string;
@@ -64,6 +65,7 @@ export function deleteChatSession(sessionId: string): boolean {
     if (sessionId === 'default') return false;
     const result = deleteStmt.run(sessionId);
     if (result.changes > 0) {
+        removeWidgetDir(sessionId);
         // If deleting the active session, switch back to default
         if (getActiveChatSession() === sessionId) {
             setActiveChatSession('default');

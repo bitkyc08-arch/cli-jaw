@@ -601,6 +601,10 @@ function buildHistoryBlock(currentPrompt: string, workingDir?: string | null, ma
         const row = recent[i];
         if (!row) continue;
         if (row.cli === 'goal_boundary') break;
+        // Goal-continuation boundary rows are chat-timeline markers only
+        // (devlog 260705_web_live_update_boundary) — the actual continuation
+        // prompt is injected at spawn, so replaying the marker is noise.
+        if (row.cli === 'goal_continuation') continue;
         const role = String(row.role || '');
         const content = String(row.content || '').trim();
 

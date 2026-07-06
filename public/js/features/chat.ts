@@ -36,7 +36,7 @@ interface CommandResult {
     recovery?: UnknownCommandRecovery;
 }
 interface MessageResult { queued?: boolean; pending?: number; continued?: boolean; noPendingContinue?: boolean; error?: string; queuedId?: string; }
-type MessagePostResult = { ok: boolean; status: number; data: MessageResult };
+type MessagePostResult = { ok: boolean; status: number; data: MessageResult; viaRelay?: boolean };
 type PreviewSendRelayResult = MessagePostResult & {
     type?: unknown;
     requestId?: unknown;
@@ -85,6 +85,7 @@ function sendPreviewMessageViaParent(prompt: string): Promise<MessagePostResult 
                 ok: !!data.ok,
                 status: Number.isInteger(data.status) ? data.status : (data.ok ? 200 : 502),
                 data: data.data || (data.error ? { error: data.error } : {}),
+                viaRelay: true,
             });
         };
         const timeout = window.setTimeout(() => settle(null), PREVIEW_SEND_RELAY_TIMEOUT_MS);
@@ -335,6 +336,13 @@ export async function sendMessage(source: SendSource = 'enter'): Promise<void> {
                 // bubble when the message actually starts running.
                 const { updateQueueBadge } = await import('../ui.js');
                 updateQueueBadge(data.pending || 1);
+            } else if (result.viaRelay) {
+                // Preview relay: the manager POSTs with external:true, so the
+                // SSE new_message handler renders this bubble. Rendering here
+                // too would duplicate it (devlog 260705).
+                upsertMessage({ role: 'user', content: text, timestamp: Date.now() });
+                if (data.continued) addSystemMsg(t('chat.continue'));
+                reconcileChatBottomAfterLayout(true);
             } else if (data.noPendingContinue) {
                 // No system copy here: orchestrateContinue() emits the single
                 // user-facing no-pending response through orchestrate_done.

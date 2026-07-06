@@ -419,7 +419,9 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         const response = await fetch(`http://127.0.0.1:${targetPort}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            // external: relayed from the manager, not the worker's own chat
+            // input — the worker's web UI must live-render this user turn.
+            body: JSON.stringify({ prompt, external: true }),
         });
         const data = await response.json().catch(() => null) as unknown;
         return {
@@ -593,7 +595,8 @@ app.post('/api/dashboard/instances/:port/message', async (req, res) => {
         const response = await fetch(`http://127.0.0.1:${portValue}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            // external: dashboard relay — see sendWorkerMessage above.
+            body: JSON.stringify({ prompt, external: true }),
         });
         const data = await response.json().catch(() => ({ error: `worker returned ${response.status}` })) as unknown;
         res.status(response.status).json(data);

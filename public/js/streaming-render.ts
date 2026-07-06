@@ -18,6 +18,17 @@ export interface StreamState {
 const FULL_RENDER_THRESHOLD = 2000;
 const THROTTLE_MS = 80;  // ~12fps — was 32ms (30fps), reduced to avoid blocking input
 
+// Adaptive throttle (devlog 260705_frontend_perf H4): each live render re-parses
+// the FULL accumulated text (marked + sanitize), so per-render cost grows with
+// message length. Stretch the interval as the text grows to keep total work
+// near-linear: 80ms under 2k chars, up to 400ms past ~50k chars.
+const THROTTLE_MAX_MS = 400;
+function throttleMsFor(textLength: number): number {
+    if (textLength <= FULL_RENDER_THRESHOLD) return THROTTLE_MS;
+    const scaled = THROTTLE_MS * (textLength / FULL_RENDER_THRESHOLD);
+    return Math.min(THROTTLE_MAX_MS, Math.round(scaled));
+}
+
 export function createStreamRenderer(el: HTMLElement): StreamState {
     return {
         chunks: [], fullText: '', textDirty: false,
@@ -57,7 +68,7 @@ export function appendChunk(ss: StreamState, chunk: string): void {
             if (ss.isFinalized) return;
             const now = performance.now();
             const text = getFullText(ss);
-            if (text.length < FULL_RENDER_THRESHOLD || now - ss.lastRenderTime > THROTTLE_MS) {
+            if (text.length < FULL_RENDER_THRESHOLD || now - ss.lastRenderTime > throttleMsFor(text.length)) {
                 ss.element.innerHTML = renderMarkdown(text, true) +
                     '<span class="stream-cursor" aria-hidden="true"></span>';
                 ss.lastRenderTime = now;

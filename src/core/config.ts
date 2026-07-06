@@ -37,6 +37,7 @@ export const DB_PATH = join(JAW_HOME, 'jaw.db');
 export const SETTINGS_PATH = join(JAW_HOME, 'settings.json');
 export const HEARTBEAT_JOBS_PATH = join(JAW_HOME, 'heartbeat.json');
 export const UPLOADS_DIR = join(JAW_HOME, 'uploads');
+export const WIDGETS_DIR = join(JAW_HOME, 'widgets');
 export const MIGRATION_MARKER = join(JAW_HOME, '.migrated-v1');
 export const SKILLS_DIR = join(JAW_HOME, 'skills');
 export const SKILLS_REF_DIR = join(JAW_HOME, 'skills_ref');
@@ -137,6 +138,7 @@ export function normalizeProjectDirs(dirs: unknown): string[] | null {
 export function ensureDirs() {
     fs.mkdirSync(PROMPTS_DIR, { recursive: true });
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    fs.mkdirSync(WIDGETS_DIR, { recursive: true });
     fs.mkdirSync(SKILLS_DIR, { recursive: true });
     fs.mkdirSync(SKILLS_REF_DIR, { recursive: true });
 }

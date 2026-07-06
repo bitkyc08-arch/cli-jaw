@@ -43,6 +43,7 @@ export function inferTopic(type: string): EventTopic {
     if (type.startsWith('schedule_')) return 'schedule';
     if (type === 'clear' || type.startsWith('session_')) return 'session';
     if (type === 'settings_change') return 'settings';
+    if (type === 'widget_updated') return 'widget';
     return 'system';
 }
 

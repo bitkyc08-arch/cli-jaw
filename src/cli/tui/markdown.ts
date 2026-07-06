@@ -68,7 +68,7 @@ function renderBlocks(tokens: Token[], gutter: string, width: number): string {
                     } else {
                         out += c.text.split('\n').map(l => gutter + l).join('\n') + '\n';
                     }
-                } else if (lang === 'chart-json' || lang === 'diagram-html' || lang === 'mermaid') {
+                } else if (lang === 'chart-json' || lang === 'diagram-html' || lang === 'diagram-file' || lang === 'mermaid') {
                     out += gutter + paint('code.fence', `[${lang} — open in Web UI]`) + '\n';
                 } else {
                     const body = highlightCode(c.text, c.lang || undefined)

@@ -538,14 +538,17 @@ async function bootstrap(): Promise<void> {
     await initI18n();
     const langSel = document.getElementById('langSelect') as HTMLSelectElement | null;
     if (langSel) langSel.value = getLang();
-    await loadCliRegistry();
-    bindPerCliControlEvents();
     initHelpDialog();
     initChatSearch();
     initMediaLightbox();
     document.getElementById('chatSearchTrigger')?.addEventListener('click', toggleChatSearch);
     initAttentionBadge();
+    // Connect early (devlog 260705_frontend_perf H5): channel-up drives
+    // loadMessages(), which only needs i18n + the badge/help listeners above —
+    // the CLI-registry fetch below used to serially delay first history paint.
     connect();
+    await loadCliRegistry();
+    bindPerCliControlEvents();
     initDragDrop();
     initAutoResize();
     await loadCommands();
@@ -566,8 +569,16 @@ async function bootstrap(): Promise<void> {
     initGestures();
     try { sessionStorage.removeItem(STALE_BUNDLE_RELOAD_KEY); } catch {}
 
-    // Phase 127-F2: prewarm Mermaid at idle so first diagram renders fast
-    prewarmMermaid();
+    // Phase 127-F2: prewarm Mermaid at idle so first diagram renders fast.
+    // 260705_frontend_perf M6: check AFTER history has had a chance to load
+    // (channel-up → loadMessages is async) and only prewarm when the DOM
+    // actually contains a diagram candidate — otherwise skip the chunk fetch.
+    // renderMermaidBlocks still lazy-loads on demand if a diagram streams in.
+    setTimeout(() => {
+        if (document.querySelector('.mermaid-pending, [data-mermaid-code-raw], .diagram-widget-pending')) {
+            prewarmMermaid();
+        }
+    }, 3000);
 
     // Register Service Worker (production only — Vite HMR handles dev; skip embedded dashboard preview iframes)
     if ('serviceWorker' in navigator && !import.meta.env.DEV && !isEmbeddedPreviewFrame()) {

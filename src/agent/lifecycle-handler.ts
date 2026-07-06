@@ -38,6 +38,23 @@ let _goalContAttempts = 0;
 let _goalContGoalId: string | null = null;
 export function resetGoalContAttempts(): void { _goalContAttempts = 0; _goalContGoalId = null; }
 
+// Goal continuations spawn with _skipInsert (the full continuation prompt is
+// internal), so without this row the chat timeline has no user-turn boundary
+// between work-phases. That broke reconnect hydration: the client's
+// latestAgentDivForActiveRun() heuristic ("last .msg-agent with no following
+// user message") re-attached new tool steps onto the PREVIOUS assistant bubble
+// (devlog 260705_web_live_update_boundary). A short durable user row gives
+// both live SSE and /api/messages reloads a real message boundary.
+function insertGoalContinuationBoundary(label: string): void {
+    const content = `🎯 ${label}`;
+    try {
+        insertMessage.run('user', content, 'goal_continuation', '', settings['workingDir'] || null, getActiveChatSession());
+        broadcast('new_message', { role: 'user', content, source: 'goal', cli: 'goal_continuation' });
+    } catch (err) {
+        console.warn('[jaw:goal] boundary insert failed:', (err as Error).message);
+    }
+}
+
 const _goalTimers = new Map<string, ReturnType<typeof setTimeout>>();
 export function clearGoalTimers(): void {
     for (const t of _goalTimers.values()) clearTimeout(t);
@@ -64,6 +81,7 @@ export function kickGoalContinuation(): boolean {
         broadcast('goal_continuation', { reason: 'manual_kick', attempt: 1 });
         const existingCont = _goalTimers.get(contGoalId);
         if (existingCont) clearTimeout(existingCont);
+        insertGoalContinuationBoundary('Goal continue (manual)');
         const { promise: contP } = _spawnAgent(goalCont.prompt!, {
             _isGoalContinuation: true,
             _skipInsert: true,
@@ -929,6 +947,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     return;
                 }
                 console.log(`[jaw:wakeup] firing delayed resume (${wakeupReason})`);
+                insertGoalContinuationBoundary(`Goal resume (${wakeupReason})`);
                 const { promise: wakeP } = _spawnAgent(wakeupPrompt, {
                     _skipInsert: true,
                 });
@@ -986,6 +1005,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                     const contPrompt = goalDoneRejected
                         ? `[goal-gate] Your previous \`/goal done\` was REJECTED: the latest checkpoint had no verification evidence. Before declaring done again, run \`cli-jaw goal update "<summary>" --evidence "<test result / changed file>"\` with concrete evidence, and metacognitively confirm every part of the objective is truly finished.\n\n${goalCont.prompt!}`
                         : goalCont.prompt!;
+                    insertGoalContinuationBoundary(`Goal continue (${_goalContAttempts}/${GOAL_CONT_MAX_ATTEMPTS})`);
                     const { promise: contP } = _spawnAgent(contPrompt, {
                         ...opts,
                         _isGoalContinuation: true,

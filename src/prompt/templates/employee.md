@@ -70,8 +70,9 @@ Use `cli-jaw chat search "<keywords>" --recent 100` to search past conversation 
 ## Diagram & Visualization Delivery
 If your task involves creating diagrams, charts, or visualizations:
 - Inline SVG: paste `<svg>` markup directly; do not include `<style>` blocks.
-- Interactive diagrams: use the exact `diagram-html` fence.
-- Do not save diagrams to files or send them through channel delivery unless the task explicitly asks for files.
+- Interactive HTML widgets: use `diagram-file` by default; save the widget HTML at `~/.cli-jaw/widgets/<chatId>/<widgetId>.html` and emit a fence containing only the id.
+- Use `diagram-html` only as the inline fallback when chatId is unavailable or the widget is a very small throwaway.
+- Do not save SVG/Mermaid diagrams to files or send diagrams through channel delivery unless the task explicitly asks for files.
 
 ## Your Identity
 
