@@ -77,16 +77,18 @@ function readClaudeCredsFromKeychain(): ClaudeCreds | null {
             { timeout: 3000, stdio: ['pipe', 'pipe', 'pipe'] }
         ).toString().trim();
         const creds = readClaudeOAuthPayload(raw, 'macos-keychain');
-        claudeKeychainCredsCache = { creds, ts: now };
+        // Cache successful non-null reads only. Caching null/failure for 60s
+        // would let a transient Keychain miss or locked prompt hide a valid
+        // credential until TTL expiry.
+        if (creds) claudeKeychainCredsCache = { creds, ts: now };
         return creds;
     } catch {
-        claudeKeychainCredsCache = { creds: null, ts: now };
-        return null;
+        return null; // best-effort: transient Keychain failure is not cached
     }
 }
 
 const CLAUDE_KEYCHAIN_CACHE_TTL_MS = 60_000;
-let claudeKeychainCredsCache: { creds: ClaudeCreds | null; ts: number } | null = null;
+let claudeKeychainCredsCache: { creds: ClaudeCreds; ts: number } | null = null;
 
 function readClaudeCredsFromFile(): ClaudeCreds | null {
     try {

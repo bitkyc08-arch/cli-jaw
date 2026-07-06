@@ -212,7 +212,7 @@ cli-jaw/
 │   │   ├── hub-callback.ts   ← hub-member callback URL SSRF guard (19L)
 │   │   └── telegram-file.ts  ← Telegram 파일 전송 + 재시도 + 사이즈 검증 (149L)
 │   ├── discord/              ← Discord 인터페이스 (6 files)
-│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 (410L)
+│   │   ├── bot.ts            ← Discord 봇 + transport 등록 + message/attachment 핸들러 (413L)
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (118L)
 │   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (87L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (50L) ✨
@@ -254,7 +254,7 @@ cli-jaw/
 │   │   ├── settings.ts       ← settings/prompt/project pick/git summary/heartbeat-md/MCP/registry/status/quota/copilot + Pi profile register/model discovery 라우트 + CLI_KEYS 기반 quota parity/status-only metadata (428L)
 │   │   ├── messaging.ts      ← upload/file-open/voice/telegram/channel/discord send 라우트 (266L)
 │   │   ├── avatar.ts         ← Agent/User 아바타 이미지 업로드/서빙/삭제 + settings.json 메타 저장 + safeResolveUnder 경로 보호 (147L)
-│   │   ├── quota.ts          ← Copilot/Claude/Codex/Gemini/OpenCode quota helper readers + Claude 429 cache (366L)
+│   │   ├── quota.ts          ← Copilot/Claude/Codex/Gemini/OpenCode quota helper readers + Claude 429 cache (368L)
 │   │   ├── quota-kiro-reverse.ts ← Kiro/CodeWhisperer quota reader (239L)
 │   │   ├── quota-agy-reverse.ts ← AGY reverse quota reader (153L)
 │   │   ├── quota-cursor-dashboard.ts ← Cursor dashboard quota reader (203L)

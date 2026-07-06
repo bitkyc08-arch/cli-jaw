@@ -236,7 +236,7 @@ Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTop
 ### Hub elicitation callbacks
 
 - Hub mode also owns an inline keyboard handler: `src/manager/telegram-hub/hub-bot.ts` registers `bot.callbackQuery(/^elic:/)`, resolves `(chatId, threadId)` to the mapped instance, and forwards `{ chatId, callbackData, target }` to `http://127.0.0.1:{port}/api/elicitation/callback`.
-- The target instance route `POST /api/elicitation/callback` calls `handleElicitationCallback()`. Progress replies only acknowledge the tapped option; complete replies re-submit the combined answer through `/api/message`'s normal orchestration gateway with `origin:'telegram'` and `replyViaTarget:true`.
+- The target instance route `POST /api/elicitation/callback` calls `handleElicitationCallback()`. Progress replies only acknowledge the tapped option; complete replies re-submit the combined answer by calling `submitMessage(result.combinedAnswer, { origin:'telegram', target, chatId, replyViaTarget: Boolean(target) })` directly (not via the `/api/message` HTTP route).
 - The standalone handler and hub handler both clear the tapped message keyboard after acknowledgement so the selected answer reads as committed.
 
 ### P4 — per-topic model and system prompt

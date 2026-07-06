@@ -8,7 +8,7 @@ aliases: [CLI-JAW Commands, slash commands registry, commands.md]
 
 # src/cli/ — Slash Command Registry & Dispatcher
 
-> `commands.ts`(602L) + `handlers.ts`(448L) + `handlers-runtime.ts`(507L) + `handlers-completions.ts`(103L) + `handlers-workflows.ts`(505L) + `handlers-search.ts`(34L) + `handlers-skill-invoke.ts`(36L) + `api-auth.ts`(45L) + `command-context.ts`(144L) + `registry.ts`(264L) + `acp-client.ts`(382L) + `claude-models.ts`(84L) + `compact.ts`(143L)
+> `commands.ts`(621L) + `handlers.ts`(448L) + `handlers-runtime.ts`(507L) + `handlers-completions.ts`(103L) + `handlers-workflows.ts`(505L) + `handlers-search.ts`(34L) + `handlers-skill-invoke.ts`(36L) + `api-auth.ts`(45L) + `command-context.ts`(144L) + `registry.ts`(254L) + `acp-client.ts`(382L) + `claude-models.ts`(84L) + `compact.ts`(143L)
 > slash registry는 52개 커맨드이며 non-hidden은 51개다(`/file`만 hidden). interface별 가시성은 CLI 50 / Web 44 / Telegram 37 / Discord 37이고, root cmdline에는 workflow/interactive hidden set을 제외한 28개가 보인다. root CLI는 `bin/cli-jaw.ts` 기준 `provider`/`design`/`hooks`를 포함한 dynamic import branch를 가진다. `chat search`, `browser web-ai`, `dashboard memory`, `dashboard chat search`처럼 grouped subcommand까지 포함하면 28개 user-facing surface로 문서화한다. helper까지 포함한 `bin/commands/*.ts` top-level 파일은 33개다. `browser web-ai`는 `browser-web-ai.ts`, `dashboard memory`는 `dashboard-memory.ts`, dashboard chat federation은 `dashboard-chat.ts`, task root command는 `task.ts`, JWC external runtime helper는 `jwc.ts`, dispatch unwrap 보조는 `dispatch-helpers.ts`, batch summary 보조는 `dispatch-batch-summary.ts`로 분리되어 있다.
 > 모델/CLI 선택은 `registry.ts` 단일 소스를 따른다. 현재 registry 런타임은 `pi`, `agy`, `ai-e`, `claude`, `claude-e`, `codex`, `codex-app`, `cursor`, `grok`, `jwc`, `kiro-code`, `opencode`, `copilot` 13개다.
 
@@ -49,9 +49,9 @@ effort, fast, context, tools, redraw, retry, export, resume, hotkeys
 
 ### 인터페이스 가시성
 
-| Interface | Visible | 비고 |
+| Interface | Visible (`interfaces` 기준) | 비고 |
 | --- | ---: | --- |
-| `cli` | 50 | `file` hidden, `steer` 미지원 |
+| `cli` | 50 | `file` hidden. `steer`는 `interfaces`에서 `cli` 제외(프로세스 경계, STR-001)라 이 카운트에는 빠지지만 `capability.cli:'full'`로 CLI 완성/도움말에는 노출되고 `/api/message`로 forward됨 |
 | `web` | 44 | `commands`, `settings`, `quit`, `file`, `ide`, `hotkeys` 미지원 |
 | `telegram` | 37 | remote-safe command set |
 | `discord` | 37 | remote-safe command set |

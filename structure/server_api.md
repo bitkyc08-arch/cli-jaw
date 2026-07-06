@@ -30,9 +30,9 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
 | `src/routes/settings.ts` | 430L | 23 | settings/prompt/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
-| `src/routes/browser.ts` | 488L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
+| `src/routes/browser.ts` | 489L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
-| `src/routes/orchestrate.ts` | 911L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
+| `src/routes/orchestrate.ts` | 1085L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
 | `src/routes/goal.ts` | 183L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
 | `src/routes/goal-run.ts` | 83L | 3 | bounded goal-run state/preflight/start-pause-resume-stop |
 | `src/routes/messaging.ts` | 259L | 6 | upload/file-open/voice/telegram/channel/discord send |

@@ -129,7 +129,10 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 removeBroadcastListener(queueHandler);
                 const chunks = chunkDiscordMessage(data["text"]);
                 const channel = asSendable(msg.channel);
-                if (!channel) return;
+                if (!channel) {
+                    log.warn('[discord:queue-send] channel not sendable, dropping queued reply', { channelId: msg.channelId });
+                    return;
+                }
                 for (const chunk of chunks) {
                     await channel.send(chunk).catch((e: Error) => {
                         log.error('[discord:queue-send]', e.message);
