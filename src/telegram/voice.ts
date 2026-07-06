@@ -23,8 +23,8 @@ export async function handleVoice(
             kind: 'voice',
             maxBytes: TELEGRAM_DOWNLOAD_LIMITS.voice,
             fileSize: voice.file_size,
-        })) as Record<string, any>;
-        const filePath = saveUpload(dlResult["buffer"], `voice${dlResult["ext"] || '.ogg'}`);
+        }));
+        const filePath = saveUpload(dlResult.buffer, `voice${dlResult.ext || '.ogg'}`);
 
         const stt = await transcribeVoice(filePath, 'audio/ogg');
         console.log(`[tg:voice] STT (${stt.engine}): ${stt.elapsed.toFixed(1)}s → "${stt.text.slice(0, 60)}"`);

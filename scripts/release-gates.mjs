@@ -362,6 +362,32 @@ const GATES = {
             }
         },
     },
+    'doc-drift': {
+        description: 'structure docs match live inventory (docs:check TS extractors + legacy bash checks)',
+        check() {
+            const steps = [
+                { name: 'docs:check', cmd: 'npm', args: ['run', 'docs:check', '--silent'], timeout: 120_000 },
+                { name: 'check-doc-drift.sh', cmd: 'bash', args: ['structure/check-doc-drift.sh'], timeout: 120_000 },
+            ];
+            for (const s of steps) {
+                const r = run(s.cmd, s.args, { timeout: s.timeout });
+                if (r.status !== 0) {
+                    return { ok: false, detail: `${s.name} failed:\n${(r.stdout || r.stderr || '').slice(-1500)}` };
+                }
+            }
+            return { ok: true, detail: 'docs:check + check-doc-drift.sh clean' };
+        },
+    },
+    'strict-baseline': {
+        description: 'any-count ratchet: live counts must not exceed docs/migration/strict-baseline.md',
+        check() {
+            const r = run('node', ['scripts/check-strict-baseline.mjs'], { timeout: 120_000 });
+            if (r.status !== 0) {
+                return { ok: false, detail: `strict baseline regressed:\n${(r.stdout || r.stderr || '').slice(-1200)}` };
+            }
+            return { ok: true, detail: 'live any/debt/allow counts within frozen baseline' };
+        },
+    },
 };
 
 function printResult(name, result) {

@@ -128,7 +128,7 @@ Support labels must stay aligned with agbrowse:
 | Browser runtime lifecycle | `src/browser/runtime-diagnostics.ts`, `src/browser/runtime-orphans.ts`, `src/browser/tab-lifecycle.ts`, `src/browser/web-ai/session*.ts` | browser docs should mention runtime doctor/orphan cleanup, persistent tab lifecycle, and web-ai session reattach. |
 | Render helper split | `public/js/render.ts`, `public/js/render/*` | Frontend docs should describe `render.ts` as a 17L stable façade and keep markdown/sanitize/Mermaid/SVG/file-link/post-render ownership under `public/js/render/`. |
 | Diagram overlay styling | `public/css/diagram.css`, `public/js/render/sanitize.ts`, `public/js/render/svg-actions.ts` | Inline SVG overlay clones preserve semantic diagram classes via `.diagram-svg-overlay`; docs should not treat `diagram.css` as Mermaid-only. |
-| Release gates | `scripts/release-gates.mjs`, `package.json` | `gate:all` now owns named docs/parity gates in addition to typecheck/tests. |
+| Release gates | `scripts/release-gates.mjs`, `package.json` | `gate:all` runs all 14 named gates (`typecheck`, `tests`, `truth-table-fresh`, `mcp-scope-frozen`, `no-experimental-in-readme-ready-section`, `no-cloud-claims`, `observe-actions-fixtures`, `observation-bundle-fixtures`, `browser-primitives-catalog`, `action-memory-safe-replay`, `model-adapter-frozen`, `workflow-common-layer-no-sdk`, `doc-drift`, `strict-baseline`); each is npm-addressable as `gate:<name>`. |
 | Manager notes search | `src/manager/notes/search.ts`, `src/manager/notes/routes.ts`, `public/manager/src/notes/NotesSearchSidebar.tsx` | Manager notes docs should describe ripgrep-backed markdown search, `/api/dashboard/notes/search`, sidebar-mode abortable frontend search, and typed search errors. |
 | Manager reminders parity | `src/manager/reminders/*`, `public/manager/src/dashboard-reminders/*` | Manager docs should describe dashboard reminders API, matrix buckets, top-priority strip, detail popover, drag/drop bucket moves, and reminder notification scheduler. |
 | WYSIWYG wikilink fallback | `public/manager/src/notes/wysiwyg/milkdown-wikilink-plugin.ts`, `public/manager/src/notes/wiki-link-rendering.ts` | WYSIWYG docs should mention `outgoingLinks` lookup plus `vaultIndex.notes` client-side fallback before backend index refresh; preview resolver parity remains tracked as a follow-up. |
@@ -194,11 +194,12 @@ Support labels must stay aligned with agbrowse:
 
 | 스크립트 | 용도 |
 |----------|------|
-| `check-doc-drift.sh` | `commands.md` / `server_api.md` / websocket events / `str_func.md` 드리프트 검사 |
+| `check-doc-drift.sh` | `commands.md` / `server_api.md` / websocket events / `str_func.md` 드리프트 검사 (legacy bash; commands/routes 검사는 `scripts/docs/check-docs.mts`가 AST 기반으로 이중화) |
+| `scripts/docs/*.mts` | AST 기반 inventory 추출기 (`extract-commands`, `extract-routes`) + `npm run docs:check` live 비교 게이트 |
 | `verify-counts.sh` | `str_func.md`의 라인 카운트가 실제 소스와 일치하는지 검증 |
-| `audit-fin-status.sh` | `_fin/` 디렉토리의 완료 상태 감사 |
+| `audit-fin-status.sh` | `_fin/` 완료 상태 감사. 기본 stdout-only (read-only); 리포트 파일은 `--write-report`, 매니페스트 없는 전체 스캔은 `--full-scan` |
 | `normalize-status.ts` | `_fin` 상태 정규화 헬퍼 (frontmatter / legacy) |
-| `status-scope.json` | `_fin` 감사/이동 스코프 매니페스트 |
+| `status-scope.json` | `_fin` 감사/이동 스코프 매니페스트 (canonical 위치: `structure/status-scope.json`) |
 
 ---
 

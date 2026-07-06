@@ -597,7 +597,8 @@ npm run build          # tsc → dist/
 npm run build:frontend # vite → public/dist/
 npm run dev            # tsx server.ts (hot-reload)
 npm test               # programmatic node:test driver (tests/run.mts, isolation:'process')
-npm run gate:all       # named release/docs parity gates
+npm run gate:all       # named release/docs parity gates (incl. doc-drift + strict-baseline)
+npm run docs:check     # AST commands/routes inventory vs structure docs
 bash structure/check-doc-drift.sh
 ```
 

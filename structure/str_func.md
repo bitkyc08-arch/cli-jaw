@@ -216,7 +216,7 @@ cli-jaw/
 │   │   ├── commands.ts       ← Discord slash command 등록 + 핸들러 (117L)
 │   │   ├── send-only-client.ts ← Discord send-only client (webhook/DM fallback) (87L) ✨
 │   │   ├── channel-types.ts  ← Discord channel type helpers (29L) ✨
-│   │   ├── forwarder.ts      ← Discord 포워딩 헬퍼 (escape, chunk) (46L)
+│   │   ├── forwarder.ts      ← Discord 포워딩 헬퍼 (escape, chunk) (47L)
 │   │   └── discord-file.ts   ← Discord 파일 전송 (57L)
 │   ├── browser/              ← Chrome CDP 제어 + web-ai 자동화 + adaptive-fetch
 │   │   ├── connection.ts     ← Chrome 탐지/launch/CDP 연결 + readiness polling + retry + headless + runtime diagnostics/orphan cleanup + activePort/active-tab 상태 관리 (824L)
