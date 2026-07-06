@@ -20,7 +20,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 | Module | Lines | Routes | 역할 |
 | --- | ---: | ---: | --- |
 | `server.ts` | 635L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
-| `src/routes/static.ts` | 30L | 2 | root HTML + `/media/:filename` upload media serve |
+| `src/routes/static.ts` | 70L | 3 | root HTML + `/media/:filename` upload media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
 | `src/routes/system.ts` | 57L | 4 | health/session/runtime/auth-token |
 | `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
 | `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
