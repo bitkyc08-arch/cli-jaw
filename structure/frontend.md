@@ -48,8 +48,8 @@ public/
 | `public/` source/assets (generated 제외) | 434 | `public/dist/*`, `public/public/dist/*` 모두 제외 |
 | `public/js/` root | 19 | TypeScript ES modules |
 | `public/js/diagram/` | 3 | SVG/iframe diagram pipeline |
-| `public/js/render/` | 18 | markdown/KaTeX/Mermaid/SVG/file-link/post-render/structured card renderer 책임 분리 |
-| `public/js/features/` | 52 | settings 분해 + help/attention/orchestrate scope + process-step-match + preview shortcut/invalidate bridge + MCP registry + chat-search + workflow-event-adapter + media-lightbox + elicitation-state + Pi settings + project git header status 포함 |
+| `public/js/render/` | 20 | markdown/KaTeX/Mermaid/SVG/file-link/post-render/structured card renderer 책임 분리 |
+| `public/js/features/` | 55 | settings 분해 + help/attention/orchestrate scope + process-step-match + preview shortcut/invalidate bridge + MCP registry + chat-search + workflow-event-adapter + media-lightbox + elicitation-state + Pi settings + project git header status 포함 |
 | `public/manager/src/` | 304 | React 19 manager dashboard |
 | `public/css/` | 12 | theme/layout/chat/markdown/tool UI/diagram/trace drawer/workflow cockpit/chat-search |
 | `public/locales/` | 4 | `ko.json`, `en.json`, `ja.json`, `zh.json` |
@@ -366,6 +366,18 @@ Regression context: `devlog/_plan/260627_process_block_blank_expand/`.
 3. 열기: `.open` 클래스 추가
 4. 닫기: `.open` 제거 + Esc 키
 5. CSS: `public/css/modals.css`
+
+### Imperative DOM islands (sanitize 경계)
+
+메인 Web UI는 vanilla 구조라 `innerHTML` 직접 조립 지점이 많다(2026-07-06 기준 약 169곳;
+최다 소유자는 `features/settings-mcp.ts`, `features/process-block.ts`, `features/settings-core.ts`,
+`features/settings-cli-status.ts`, `features/memory.ts`). 규약:
+
+- HTML escape의 단일 소유자는 `public/js/render/html.ts`의 `escapeHtml()`이다. 새 로컬
+  `escapeHtml` 복제를 만들지 말고 import한다.
+- interpolation(`${...}`)이 들어가는 `innerHTML` 템플릿은 반드시 `escapeHtml()` 또는
+  `render/sanitize.ts` 경로를 거친다. 서버/유저 설정 문자열을 렌더링하는 settings-* 계열이
+  최우선 검토 대상이다.
 
 ### Manager Dashboard
 

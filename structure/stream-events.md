@@ -53,7 +53,7 @@ SSE behavior:
 | Replay cursor | `Last-Event-ID` header or `?lastEventId=` query |
 | Ring buffer | `src/core/event-bus.ts` `RING_SIZE = 1000` |
 | Listener cap | `MAX_SSE_LISTENERS = 256`, overflow returns `503 { error: "SSE_CAPACITY" }` |
-| Heartbeat | comment ping every 15 seconds |
+| Heartbeat | `data: {"topic":"system","event":"ping"}` every 15 seconds; no `id`, so it does not advance replay cursors |
 | Replay gap | `data: {"topic":"system","event":"replay_gap"}` |
 | Client fallback | `public/js/event-channel.ts` fires unavailable once when SSE errors before first open, then `public/js/ws.ts` uses legacy WebSocket fallback |
 | Transient drop UX | `public/js/ws.ts` waits `CHANNEL_DOWN_TOAST_GRACE_MS = 8000` before showing a disconnected system message; fast SSE reconnects stay silent |
@@ -68,7 +68,9 @@ SSE behavior:
 
 `src/core/bus.ts`의 `broadcast(type, data, audience = 'public')`가 단일 fan-out 지점이다. Current server의 public Web delivery는 SSE-only이며, `src/routes/events.ts`의 `formatSse()`가 `{ ...entry.data, topic, event }`를 `data:` JSON payload로 쓴다. 내부 listener(`addBroadcastListener`)는 public/internal 여부와 무관하게 호출된다. Legacy WebSocket payload shape `{ type, ...payload }`는 client/TUI fallback이 pre-X-01 server에 붙을 때만 의미가 있다.
 
-### 현재 코드에서 실제 emit되는 이벤트 (47종)
+### `broadcast()` public events
+
+아래 표는 2026-07-06 code read 기준 `broadcast(type, data)` 또는 `broadcast(..., 'public')`로 public SSE bus에 들어갈 수 있는 event inventory다. Hard count는 Phase 2 generated hook으로 대체 예정이라 여기서는 수동 숫자를 고정하지 않는다.
 
 | Type | 대표 payload | 발행 위치 / 용도 |
 | --- | --- | --- |
@@ -76,20 +78,11 @@ SSE behavior:
 | `agent_tool` | `{ agentId, icon, label, toolType?, detail?, stepRef?, status?, isEmployee? }` | `agent/events.ts`, `spawn.ts`; CLI/ACP tool, thinking, search, subagent step |
 | `agent_output` | `{ agentId, cli, text, isEmployee? }` | `spawn.ts`; live preview chunk, including AGY plain stdout |
 | `agent_done` | `{ text, toolLog?, error?, origin?, isEmployee? }` | `lifecycle-handler.ts`, `spawn.ts`, `server.ts`; authoritative final/error |
-| `agent:claude-e:runtime_started` | `{ runId, seq, version? }` | `claude-e-runtime.ts`; native helper run started |
-| `agent:claude-e:spawned` | `{ runId, pid }` | `claude-e-runtime.ts`; underlying Claude process spawned |
-| `agent:claude-e:session` | `{ runId, sessionId, transcriptPath? }` | `claude-e-runtime.ts`; helper discovered Claude session/transcript |
-| `agent:claude-e:prompt_injected` | `{ runId }` | `claude-e-runtime.ts`; prompt was written into the PTY session |
-| `agent:claude-e:stop` | `{ runId, transcriptPath? }` | `claude-e-runtime.ts`; stop signal observed |
-| `agent:claude-e:stop_failure` | `{ runId, error? }` | `claude-e-runtime.ts`; stop/cleanup failed |
-| `agent:claude-e:interrupted` | `{ runId, sessionId?, resumable? }` | `claude-e-runtime.ts`; graceful SIGINT interrupt and resume metadata |
-| `agent:claude-e:cleanup` | `{ runId, event, escalated? }` | `claude-e-runtime.ts`; cleanup start/done lifecycle |
-| `agent:claude-e:error` | `{ runId, message?, exitCode? }` | `claude-e-runtime.ts`; helper/runtime error |
 | `agent_retry` | `{ cli, delay, reason, attempt?, maxRetries?, isEmployee? }` | 429/transient retry 안내. Main runs use exponential backoff up to 3 attempts; employee transient retries use a shorter backoff up to 2 attempts. |
 | `agent_fallback` | `{ from, to, reason, isEmployee? }` | fallback CLI 전환 안내 |
 | `agent_smoke` | `{ cli, confidence, reason, agentId, isEmployee? }` | smoke response auto-continue 안내 |
 | `queue_update` | `{ pending }` | `spawn.ts`; message queue 길이 |
-| `new_message` | `{ role, content, source, cli?, fromQueue? }` | `spawn.ts`, `orchestrator/gateway.ts`, `routes/orchestrate.ts`; remote/queued user bubble |
+| `new_message` | `{ role, content, source, cli?, fromQueue?, external? }` | `spawn.ts`, `orchestrator/gateway.ts`, `routes/orchestrate.ts`, `lifecycle-handler.ts` (goal boundary, `source:'goal'`); remote/queued/externally-relayed user bubble — web UI live-renders `telegram|discord|bgtask|cli|goal`, `external:true`, `fromQueue:true` |
 | `orchestrate_done` | `{ text, error?, origin?, chatId?, target?, requestId? }` | `orchestrator/pipeline.ts`, `gateway.ts`, `spawn.ts`; orchestration/queued result |
 | `orc_state` | `{ state, title?, scope?, taskAnchor?, resolvedSelection? }` | `orchestrator/state-machine.ts`; PABCD 상태 |
 | `clear` | `{}` | `server.ts`, `core/main-session.ts`; UI clear |
@@ -124,6 +117,36 @@ SSE behavior:
 | `worker_run_attention` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, attention }` | `orchestrator/worker-run-store.ts`; safe attention metadata |
 | `worker_run_done` / `worker_run_failed` / `worker_run_cancelled` | `{ runId, agentId, employeeName, status, statusCategory, outputBytes, seq, completedAt, safeSummary? }` | `orchestrator/worker-run-store.ts`; completion event; raw output path/content excluded |
 
+### Direct topic `publish()` events
+
+이 이벤트들은 `broadcast()`를 거치지 않고 `src/core/event-bus.ts`의 `publish(topic, event, data)`로 직접 SSE bus에 들어간다. Public allowlist는 topic 단위이며 `jwc`는 public, `trace`는 internal-only다.
+
+| Topic | Event | 대표 payload | 발행 위치 / 용도 |
+| --- | --- | --- | --- |
+| `jwc` | `code_child_exit` | `{ code }` | `src/code-mode/acp-host.ts`; ACP child exit |
+| `jwc` | `code_<sessionUpdate>` | `{ sessionId, update }` | `src/code-mode/acp-host.ts`; ACP `session/update` sanitized public lane |
+| `jwc` | `code_permission_request` | `{ id, sessionId, ... }` | `src/code-mode/acp-host.ts`; Code mode permission prompt |
+| `jwc` | `code_session_created` / `code_session_loaded` / `code_session_forked` / `code_session_error` / `code_session_closed` | `{ sessionId, ... }` | `src/code-mode/acp-host.ts`; Code mode session lifecycle |
+| `jwc` | `code_turn_done` | `{ sessionId, stopReason }` | `src/code-mode/acp-host.ts`; Code mode turn completion |
+| `jwc` | `code_compaction` / `code_retry` | `{ phase, ... }` | `src/agent/jwc-event-mapper.ts`; JWC compaction/retry status |
+| `worker` | `instance-status-changed` / `worker_settings_change` | worker diff/settings metadata | manager-side worker cache invalidation and settings change bridge |
+
+### Internal-only `trace` events
+
+`agent:claude-e:*` events are emitted through `broadcast(..., 'internal')`; `inferTopic()` maps them to `trace`, and `GET /api/events` drops non-public topics at the route boundary.
+
+| Type | 대표 payload | 발행 위치 / 용도 |
+| --- | --- | --- |
+| `agent:claude-e:runtime_started` | `{ runId, seq, version? }` | `claude-e-runtime.ts`; native helper run started |
+| `agent:claude-e:spawned` | `{ runId, pid }` | `claude-e-runtime.ts`; underlying Claude process spawned |
+| `agent:claude-e:session` | `{ runId, sessionId, transcriptPath? }` | `claude-e-runtime.ts`; helper discovered Claude session/transcript |
+| `agent:claude-e:prompt_injected` | `{ runId }` | `claude-e-runtime.ts`; prompt was written into the PTY session |
+| `agent:claude-e:stop` | `{ runId, transcriptPath? }` | `claude-e-runtime.ts`; stop signal observed |
+| `agent:claude-e:stop_failure` | `{ runId, error? }` | `claude-e-runtime.ts`; stop/cleanup failed |
+| `agent:claude-e:interrupted` | `{ runId, sessionId?, resumable? }` | `claude-e-runtime.ts`; graceful SIGINT interrupt and resume metadata |
+| `agent:claude-e:cleanup` | `{ runId, event, escalated? }` | `claude-e-runtime.ts`; cleanup start/done lifecycle |
+| `agent:claude-e:error` | `{ runId, message?, exitCode? }` | `claude-e-runtime.ts`; helper/runtime error |
+
 Worker run events, delayed replay notices, and batch dispatch summaries are safe metadata surfaces. They may carry bounded previews and recovery commands, but they do not embed raw employee stdout; raw worker output remains an explicit `/api/orchestrate/worker-runs/:runId/output` / `cli-jaw worker read <runId>` read path.
 
 `bgtask_update` frames stay on topic `bgtask` and expose `running[]` plus `changed`; both entries keep native bgtask `status` and add shared `statusCategory`. Worker runs and bgtasks do not share storage, but Manager can compare their status buckets without reimplementing per-surface mappings.
@@ -139,7 +162,7 @@ Worker run events, delayed replay notices, and batch dispatch summaries are safe
 | `worker_stalled` / `worker_disconnected` / `worker_timeout` | `public/js/ws.ts`에서 disconnected/timeout/stalled handler로 처리하고, manager server는 worker-SSE bridge/cache로 별도 추적한다. 현재/이전 worker progress API는 UI hydration용 safe `attention` metadata도 제공한다 |
 | `worker_run_*` | safe SSE/replay와 `/api/orchestrate/worker-runs*` read API용 backend contract다. Manager Worker Runs 패널은 기존 frontend worker progress EventSource bridge로 이 이벤트를 refresh invalidation으로 소비하고, raw output은 명시 클릭 시 `/output` route로만 읽는다 |
 | `system_notice` | SSE public emit은 되지만 `public/js/ws.ts` 직접 분기는 없다 |
-| `agent:claude-e:*` | native helper lifecycle/status telemetry. 현재 Web UI 직접 분기는 없고, trace/internal listener와 외부 observer용이다 |
+| `agent:claude-e:*` | native helper lifecycle/status telemetry. `trace` topic internal-only라 public SSE/Web UI에는 serialize되지 않고 internal listeners/trace observers만 본다 |
 | `goal_pause_detected` / `goal_pause_gate_pending` | lifecycle/goal heartbeat가 pause 2-tap gate 상태를 broadcast. `goal_pause_gate_pending`은 armed gate가 남은 채 goal-continuation audit turn이 끝났고 **추가 automatic continuation이 스케줄되지 않음**을 뜻함(P0 2026-06-27). Main Web UI `ws.ts`에는 전용 handler 없음 — Manager / `GET /api/goal` / CLI 관측 |
 
 ### Web UI에 legacy 분기만 남은 타입

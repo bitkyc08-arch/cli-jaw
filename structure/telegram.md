@@ -55,7 +55,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 ---
 
-## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (730L)
+## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (778L)
 
 | Function | 역할 |
 | --- | --- |
@@ -79,10 +79,10 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 `settings.telegramHub.mode === 'hub-member'`이고 `req.target.channel === 'telegram'`이면 인스턴스 자체 봇 대신 Dashboard hub callback으로 relay:
 
 ```text
-telegramSendHandler (hub-member):
+  telegramSendHandler (hub-member):
   base = resolveHubCallback(settings.telegramHub.hubCallbackUrl)  // src/telegram/hub-callback.ts
   POST {base}/api/dashboard/telegram-hub/outbound
-    body { chatId, threadId, type, text?, filePath?, caption? }
+    body { chatId, threadId, type, text?, filePath?, caption?, reply_markup? }
 ```
 
 - `resolveHubCallback()` — loopback `http:` only; https·credentials·non-loopback → `http://127.0.0.1:24576` fallback
@@ -110,7 +110,7 @@ initTelegram():
 - photo/document handler는 Telegram file download → `saveUpload()` → `buildMediaPrompt()` → `tgOrchestrate()`로 이어진다
 - voice handler는 `telegram/voice.ts` → guarded `downloadTelegramFile()` → `lib/stt.ts` → `tgOrchestrate()`로 이어진다
 - inbound photo/document downloads pass media-specific size hints to `downloadTelegramFile()` before files are saved.
-- 현재 `callback_query`/inline keyboard callback handler는 `src/telegram/*`에 없다
+- standalone inline keyboard handler는 `bot.callbackQuery(/^elic:/)`가 `handleElicitationCallback()`을 호출하고, 모든 질문 완료 시 combined answer를 `tgOrchestrate()`로 재주입한다.
 - `applySettings()`는 `bumpSessionOwnershipGeneration()` 이후 `applyRuntimeSettingsPatch()`를 호출한다
 - `markChatActive()`는 `allowedChatIds` 자동 저장과 `lastActive/latestSeen` 갱신을 같이 처리한다
 - transport/send transport 등록은 모듈 로드 시점에 즉시 일어난다
@@ -233,6 +233,12 @@ Target response:
 Outbound: hub-member → POST /api/dashboard/telegram-hub/outbound → sendToTopic (rich-first: sendTelegramMarkdown)
 ```
 
+### Hub elicitation callbacks
+
+- Hub mode also owns an inline keyboard handler: `src/manager/telegram-hub/hub-bot.ts` registers `bot.callbackQuery(/^elic:/)`, resolves `(chatId, threadId)` to the mapped instance, and forwards `{ chatId, callbackData, target }` to `http://127.0.0.1:{port}/api/elicitation/callback`.
+- The target instance route `POST /api/elicitation/callback` calls `handleElicitationCallback()`. Progress replies only acknowledge the tapped option; complete replies re-submit the combined answer through `/api/message`'s normal orchestration gateway with `origin:'telegram'` and `replyViaTarget:true`.
+- The standalone handler and hub handler both clear the tapped message keyboard after acknowledgement so the selected answer reads as committed.
+
 ### P4 — per-topic model and system prompt
 
 - `ThreadRoute` optional fields: `model`, `systemPrompt` (`src/manager/telegram-hub/types.ts`).
@@ -264,7 +270,7 @@ Mounted at `/api/dashboard/telegram-hub` (`loopbackOnly` middleware).
 | `PUT` | `/` | `{ enabled?, token?, chatId?, defaultPort? }` | patches registry; restarts hub bot |
 | `POST` | `/routes` | `ThreadRoute` | upsert route |
 | `DELETE` | `/routes/:chatId/:threadId` | — | remove route |
-| `POST` | `/outbound` | `{ chatId, threadId, type, text?, filePath?, caption? }` | instance → hub → topic relay; requires bound hub chat and enabled `(chatId, threadId)` route |
+| `POST` | `/outbound` | `{ chatId, threadId, type, text?, filePath?, caption?, reply_markup? }` where `type:'keyboard'` permits Telegram `reply_markup` | instance → hub → topic relay; requires bound hub chat and enabled `(chatId, threadId)` route |
 
 ### Dashboard settings UI (`TelegramHub.tsx`)
 

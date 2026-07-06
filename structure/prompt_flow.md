@@ -83,10 +83,13 @@ graph TD
 2. `A-2.md`
 3. memory injection (advanced or legacy fallback)
 4. orchestration section
-5. heartbeat jobs section
-6. skills section
-7. vision-click hint
-8. delegation rules
+5. Dev Work Classification contract
+6. heartbeat jobs section
+7. skills section
+8. vision-click hint
+9. runtime context + pre-prompt context hooks (`forDisk: false` only)
+10. Bounded Local Search Contract
+11. delegation rules
 
 이전 버전에 있던 timestamp stamp(`YYMMDD-HH:MMAM/PM.`) 주입은 현재 `getSystemPrompt()`에서 제거됐다.
 

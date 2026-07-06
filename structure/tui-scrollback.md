@@ -14,7 +14,7 @@ cli-jaw fullscreen TUI renders on the **primary screen buffer** (no alt-screen).
 ## How It Works
 
 ```
-User sends message → AI responds → response completes → all items stable
+User sends message → AI responds → stable transcript prefix forms
 → peekStableCommitRows() returns rows to commit
 → queueCommitLines() queues them
 → render() flushes via sub-region DECSTBM scroll inside synchronized output
@@ -23,14 +23,12 @@ User sends message → AI responds → response completes → all items stable
 → next frame excludes committed rows (no duplication)
 ```
 
-**Mid-stream commits are deliberately disabled** (attempted 2026-07-02,
-reverted same day): committing the settled prefix while the tail streams
-(jawcode 083.9 P3/P4) corrupted the visible frame — DECSTBM commit scrolls
-interleaved with per-token differential repaints require jawcode's
-overflow-floor/tombstone/viewport-top machinery, which this port's simpler
-`frame.ts` does not implement. Re-enabling requires porting that machinery
-first (see jawcode `packages/tui/src/tui.ts` `#restoreOverflowFloor`,
-`#scrollOutCommittedRows`, prepared-line caches).
+**Mid-stream stable-prefix commits are enabled.** The scheduler computes
+`computeStablePrefixIndex()` and commits only the already-stable prefix while the
+tail may still stream. The top-anchored history lane writes only into
+model-blank fill rows, so per-token diff repaint and commit flush target
+disjoint rows. Preview hiding is queue-gated: if `queueCommitLines()` refuses the
+lane, rows stay visible on the virtual lane instead of disappearing.
 
 ## Terminal Protocol
 
@@ -74,7 +72,7 @@ Logical frontier survives width reflow (unlike physical row counts).
 
 | Guard | Purpose |
 |-------|---------|
-| `allStable` | Only commit when ALL items are stable (not streaming) — see mid-stream note above |
+| Stable prefix | Commit only items before `computeStablePrefixIndex()`; the streaming tail remains in the live viewport |
 | Stale-row defer | Flush waits until the scroll-out rows are blank in the frame model (`commitScrollOutRowsAreBlank`) — layout-shift frames (e.g. launch anchor release) would otherwise push stale pixels into scrollback; retried next frame |
 | Queue-gated preview | `withPreviewFrontier` applies only when `queueCommitLines` accepted the rows — refused lanes (zellij/dumb, resize) keep rows on the virtual lane |
 | `fillRows >= 2` | Sub-region requires DECSTBM minimum 2 rows |

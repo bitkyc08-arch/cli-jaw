@@ -1,6 +1,10 @@
 # Type Safety Status
 
-Last updated: 2026-06-10
+Last updated: 2026-07-06
+
+> Live source of truth: `docs/migration/strict-baseline.md` + `node scripts/check-strict-baseline.mjs`
+> (ratchet gate). This document is narrative context only — do not hand-maintain counts here.
+> 2026-07-06 status: baseline gate is **failing** — `src.any live=95 > baseline=93` (+2 regression).
 
 ## TypeScript Gate
 
@@ -48,7 +52,7 @@ Current broad scan:
 rg -n "as any|: any|any\\[\\]|Record<string, any>|Promise<any>|Array<any>|<any>" src bin public/js public/manager/src --glob "*.ts" --glob "*.tsx"
 ```
 
-Result on 2026-06-10: 85 matches across application/runtime surfaces. This is not a compile failure, but it is no longer accurate to claim only a handful of casts remain.
+Result on 2026-07-06: 100 matches across application/runtime surfaces (was 85 on 2026-06-10 — trending up; see strict-baseline gate). This is not a compile failure, but it is no longer accurate to claim only a handful of casts remain.
 
 Top current hotspots by file:
 

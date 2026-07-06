@@ -478,7 +478,7 @@ Computer Use lets you control any macOS app — Finder, Safari, System Settings,
 📱 Telegram ←→ 🦈 CLI-JAW ←→ 🤖 AI Engines
 ```
 
-Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/photo upload, slash commands (51 registered; workflow helpers include `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; dynamic `/skill:<id>` on CLI/Web), forum-topic routing and **Dashboard Telegram Hub** (`/setthread`, `/threads`, `/hubhelp`, per-topic model/systemPrompt overrides in Manager UI), scheduled task delivery via `every`/`cron` heartbeat jobs.
+Text chat, voice messages (auto-transcribed via STT — speech-to-text), file/photo upload, slash commands (52 registered, 51 visible; workflow helpers include `/plan`, `/interview`, `/review`, `/search`, `/goal`, `/orchestrate`, `/task`, `/fork`, `/gd`; dynamic `/skill:<id>` on CLI/Web), forum-topic routing and **Dashboard Telegram Hub** (`/setthread`, `/threads`, `/hubhelp`, per-topic model/systemPrompt overrides in Manager UI), scheduled task delivery via `every`/`cron` heartbeat jobs.
 
 <details>
 <summary>Setup (3 steps)</summary>

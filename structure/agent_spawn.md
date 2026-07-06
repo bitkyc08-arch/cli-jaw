@@ -112,7 +112,8 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 - 동적 모델 목록은 `kiro-cli chat --list-models --format json` (`kiro-models.ts`).
 - Quota는 `quota-kiro-reverse.ts` (CodeWhisperer GetUsageLimits) 경로.
 - Session ID는 stdout regex 또는 v2 sqlite store에서 추출 (`kiro-auth.ts`).
-- Resume은 `--resume <sessionId>` 또는 `--conversation <id>` 인자.
+- Resume 인자는 런타임별로 분리된다. Native `kiro-code`는 resume turn에서 `kiro-cli chat --no-interactive --resume-id <sessionId> ...`를 사용한다.
+- `ai-e`의 Kiro provider branch는 `ai-e kiro p ... --resume <sessionId>`를 사용한다. 이 path는 native `kiro-code`의 `--resume-id`와 혼동하면 안 된다.
 
 ### Pi RPC branch
 
@@ -299,7 +300,7 @@ orchestrate(prompt, meta)
 | `getEmployeePromptV2(emp, role, phase)` | v2 employee prompt (phase/role-aware skill) |
 | `regenerateB()` | B 프롬프트 + workspace `AGENTS.md` 재생성 |
 
-- promptCache 키: `emp:role:phase:workingDir` 4-segment.
+- promptCache 키: `empId/name:cli:role:phase:workingDir:mutability:scope:taskTags:mcpHash`. CLI별 employee prompt, mutable/read-only override, scope, task tag attachment, MCP tool summary changes가 모두 cache invalidation에 들어간다.
 - Boss prompt는 `cli-jaw dispatch --agent ... --task ...` 경로만 설명.
 - Employee prompt는 CLI 자체 sub-agent(Task/Agent tool)를 내부 병렬화 용도로 허용.
 

@@ -38,10 +38,13 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 4. `MEMORY.md` 코어 메모리
 5. forDisk 전용 `## Core Memory` 보강 — `loadProfileSummary(600)` + `buildTaskSnapshot('current session context', 1500)` 결과를 추가 (advanced memory가 준비된 경우에만)
 6. 직원이 있을 때 orchestration prompt + PABCD guide
-7. 활성 heartbeat job이 있을 때 heartbeat 섹션 (`heartbeat.json` 기준)
-8. active skills + reference skills 섹션
-9. Codex 활성 CLI일 때 vision-click legacy fallback hint
-10. delegation rules
+7. `Dev Work Classification (contract)` — C0-C5 분류와 C4 promotion/verification floor
+8. 활성 heartbeat job이 있을 때 heartbeat 섹션 (`heartbeat.json` 기준)
+9. active skills + reference skills 섹션
+10. Codex 활성 CLI일 때 vision-click legacy fallback hint
+11. forDisk가 아닐 때 runtime context + pre-prompt context hooks
+12. `Bounded Local Search Contract`
+13. delegation rules
 
 이전 버전에 있던 timestamp stamp는 현재 `getSystemPrompt()`에서 제거됐다.
 
