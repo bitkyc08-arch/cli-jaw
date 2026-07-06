@@ -316,3 +316,4 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Memory federation | `GET /api/dashboard/memory/instances` `GET /api/dashboard/memory/search` `GET /api/dashboard/memory/read` `GET /api/dashboard/memory/chat/search` |
 | Memory embedding | `GET /api/dashboard/memory/embed-config` `POST /api/dashboard/memory/embed-config` `POST /api/dashboard/memory/reindex` `GET /api/dashboard/memory/embed-state` `GET /api/dashboard/memory/embed-estimate` `GET /api/dashboard/memory/reindex-stream` (SSE) |
 | Jaw CEO (manager) | `/api/jaw-ceo/*` (same sub-router as core server) |
+
