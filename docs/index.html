@@ -4,717 +4,1354 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLI-JAW 2.x — All Your AI Subscriptions. One Assistant.</title>
+    <title>CLI-JAW 2.x: All Your AI Subscriptions. One Assistant.</title>
     <meta name="description"
-        content="All your AI subscriptions. One assistant. CLI-JAW routes Claude, ChatGPT, Codex, Cursor, Gemini, Grok, Kiro, OpenCode, Copilot, and more through native subscriptions — manager dashboard, Kanban board, Notes workspace, Employee system, 200+ reference skills, and 7+ surfaces.">
+        content="All your AI subscriptions. One assistant. CLI-JAW routes Claude, ChatGPT, Codex, Cursor, Gemini, Grok, Kiro, OpenCode, Copilot, and more through native subscriptions. Includes a manager dashboard, Kanban board, Notes workspace, Employee system, 200+ reference skills, and 7+ surfaces.">
+    <meta property="og:title" content="CLI-JAW 2.x: All Your AI Subscriptions. One Assistant.">
+    <meta property="og:description"
+        content="All your AI subscriptions. One assistant. Route the AI coding subscriptions you already use through one local control plane.">
+    <meta property="og:type" content="website">
+    <meta property="og:image" content="https://lidge-jun.github.io/cli-jaw/assets/og-card.jpg">
+    <meta property="og:url" content="https://lidge-jun.github.io/cli-jaw/">
+    <meta name="twitter:card" content="summary_large_image">
+    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&family=Outfit:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap"
         rel="stylesheet">
     <style>
-        /* ── Reset & Base ── */
+        :root {
+            color-scheme: dark;
+            --bg: #0b0b0e;
+            --surface: #131318;
+            --surface-2: #18181f;
+            --border: rgba(255, 255, 255, 0.08);
+            --border-strong: rgba(255, 255, 255, 0.16);
+            --text: #ececf1;
+            --dim: #9494a6;
+            --accent: #22d3ee;
+            --accent-soft: rgba(34, 211, 238, 0.1);
+            --font-body: "Outfit", sans-serif;
+            --font-mono: "JetBrains Mono", monospace;
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+        }
+
         *,
         *::before,
         *::after {
-            margin: 0;
-            padding: 0;
             box-sizing: border-box;
-        }
-
-        :root {
-            --bg: #06060b;
-            --surface: #0d0d15;
-            --surface2: #12121e;
-            --border: #1a1a2e;
-            --text: #e4e4ef;
-            --text-dim: #6e6e8a;
-            --accent: #22d3ee;
-            --accent2: #06b6d4;
-            --accent-glow: rgba(34, 211, 238, 0.15);
-            --accent-glow2: rgba(34, 211, 238, 0.06);
-            --green: #4ade80;
-            --font-display: 'Chakra Petch', monospace;
-            --font-body: 'Outfit', sans-serif;
-            --font-mono: 'JetBrains Mono', monospace;
         }
 
         html {
             scroll-behavior: smooth;
+            background: var(--bg);
         }
 
         body {
-            font-family: var(--font-body);
+            margin: 0;
+            min-width: 320px;
+            overflow-x: hidden;
             background: var(--bg);
             color: var(--text);
+            font-family: var(--font-body);
+            font-size: 17px;
             line-height: 1.6;
-            overflow-x: hidden;
+            letter-spacing: 0;
+            text-rendering: optimizeLegibility;
         }
 
-        /* ── Grid Background ── */
-        body::before {
-            content: '';
+        img,
+        video,
+        svg {
+            display: block;
+            max-width: 100%;
+        }
+
+        img {
+            height: auto;
+        }
+
+        button,
+        summary,
+        a {
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        button,
+        summary {
+            font: inherit;
+        }
+
+        a {
+            color: inherit;
+        }
+
+        :focus-visible {
+            outline: 2px solid var(--accent);
+            outline-offset: 3px;
+        }
+
+        ::selection {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .skip-link {
             position: fixed;
-            inset: 0;
-            background-image:
-                linear-gradient(rgba(34, 211, 238, 0.03) 1px, transparent 1px),
-                linear-gradient(90deg, rgba(34, 211, 238, 0.03) 1px, transparent 1px);
-            background-size: 60px 60px;
-            pointer-events: none;
-            z-index: 0;
+            top: 10px;
+            left: 50%;
+            z-index: 200;
+            padding: 10px 16px;
+            border-radius: 9999px;
+            background: var(--accent);
+            color: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 13px;
+            font-weight: 600;
+            text-decoration: none;
+            transform: translate(-50%, -180%);
         }
 
-        /* ── Utility ── */
+        .skip-link:focus {
+            transform: translate(-50%, 0);
+        }
+
         .container {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: 0 24px;
             position: relative;
-            z-index: 1;
+            width: min(100% - 48px, 1200px);
+            margin-inline: auto;
         }
 
         .section {
-            padding: 100px 0;
-            position: relative;
+            padding: 96px 0;
         }
 
-        .section-label {
-            font-family: var(--font-mono);
-            font-size: 12px;
-            letter-spacing: 4px;
-            text-transform: uppercase;
+        .section-rule {
+            border-top: 1px solid var(--border);
+        }
+
+        .kicker,
+        .eyebrow {
+            margin: 0 0 12px;
             color: var(--accent);
-            margin-bottom: 12px;
-            display: block;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.4;
+            text-transform: uppercase;
+        }
+
+        .eyebrow {
+            font-family: var(--font-mono);
+            font-weight: 500;
+            text-transform: none;
         }
 
         .section-title {
-            font-family: var(--font-display);
-            font-size: clamp(28px, 4vw, 42px);
-            font-weight: 700;
-            margin-bottom: 16px;
-            line-height: 1.2;
+            max-width: 760px;
+            margin: 0;
+            font-size: clamp(2rem, 4.5vw, 3.65rem);
+            font-weight: 600;
+            line-height: 1.06;
+            letter-spacing: 0;
+            text-wrap: balance;
         }
 
         .section-desc {
-            color: var(--text-dim);
-            font-size: 16px;
-            max-width: 600px;
-            margin-bottom: 48px;
+            max-width: 690px;
+            margin: 18px 0 44px;
+            color: var(--dim);
+            font-size: 17px;
+            line-height: 1.65;
+            text-wrap: balance;
         }
 
-        /* ── Reveal Animation ── */
+        .icon {
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+            fill: none;
+            stroke: currentColor;
+            stroke-width: 1.8;
+            stroke-linecap: round;
+            stroke-linejoin: round;
+        }
+
+        .icon-sm {
+            width: 17px;
+            height: 17px;
+            flex-basis: 17px;
+        }
+
         .reveal {
             opacity: 0;
-            transform: translateY(30px);
-            transition: opacity 0.7s ease, transform 0.7s ease;
+            transform: translateY(12px);
+            transition: opacity 560ms ease, transform 560ms ease;
         }
 
-        .reveal.visible {
+        .reveal.is-visible {
             opacity: 1;
             transform: translateY(0);
         }
 
-        /* ═══════════════════════════════════════
-   HERO
-   ═══════════════════════════════════════ */
-        .hero {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            text-align: center;
-            padding: 60px 24px;
-            position: relative;
-        }
-
-        /* Radial glow behind hero */
-        .hero::before {
-            content: '';
-            position: absolute;
-            top: 20%;
+        /* Floating navigation: the page's only glass layer. */
+        .site-nav {
+            position: fixed;
+            top: 16px;
             left: 50%;
-            transform: translateX(-50%);
-            width: 800px;
-            height: 500px;
-            background: radial-gradient(ellipse, var(--accent-glow) 0%, transparent 70%);
-            pointer-events: none;
-        }
-
-        /* Block Art */
-        .block-art {
+            z-index: 100;
             display: flex;
-            gap: 12px;
-            align-items: flex-end;
-            margin-bottom: 32px;
+            width: min(calc(100% - 32px), 1180px);
+            min-height: 58px;
+            align-items: center;
+            justify-content: space-between;
+            gap: 24px;
+            padding: 8px 10px 8px 18px;
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
+            transform: translateX(-50%);
+            transition: background-color 220ms ease, opacity 220ms ease;
         }
 
-        .block-art .letter {
-            display: grid;
-            gap: 2px;
+        .site-nav.pill-at-top {
+            background-color: rgba(19, 19, 24, 0.72);
+            opacity: 0.98;
+        }
+
+        .site-nav.pill-scrolled {
+            background-color: rgba(19, 19, 24, 0.92);
             opacity: 1;
-            animation: heroFloat 3s ease-in-out infinite;
+            -webkit-backdrop-filter: blur(14px) saturate(1.25);
+            backdrop-filter: blur(14px) saturate(1.25);
         }
 
-        .block-art .letter:nth-child(1) {
-            animation-delay: 0s;
+        .nav-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            color: var(--text);
+            font-size: 15px;
+            font-weight: 700;
+            text-decoration: none;
+            white-space: nowrap;
         }
 
-        .block-art .letter:nth-child(2) {
-            animation-delay: 0.2s;
+        .nav-brand-mark {
+            display: grid;
+            width: 28px;
+            height: 28px;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
         }
 
-        .block-art .letter:nth-child(3) {
-            animation-delay: 0.4s;
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 6px;
         }
 
-        .block-art .letter:nth-child(4) {
-            animation-delay: 0.6s;
+        .nav-link {
+            display: inline-flex;
+            min-height: 40px;
+            align-items: center;
+            gap: 7px;
+            padding: 0 13px;
+            border-radius: 9999px;
+            color: var(--dim);
+            font-size: 14px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: background-color 180ms ease, color 180ms ease;
         }
 
-        .block-art .letter:nth-child(5) {
-            animation-delay: 0.8s;
+        .nav-link:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: var(--text);
         }
 
-        .block-art .letter:nth-child(6) {
-            animation-delay: 1.0s;
+        .nav-link.nav-github {
+            background: var(--accent);
+            color: var(--bg);
+            font-weight: 700;
         }
 
-        @keyframes heroFloat {
+        .nav-link.nav-github:hover {
+            background: #67e8f9;
+            color: var(--bg);
+        }
 
-            0%,
-            100% {
+        .nav-mobile-start {
+            display: none;
+            color: var(--text);
+        }
+
+        /* Hero */
+        .hero {
+            position: relative;
+            display: flex;
+            min-height: min(820px, calc(100dvh - 48px));
+            align-items: center;
+            overflow: hidden;
+            padding: 110px 0 50px;
+            background-color: var(--bg);
+        }
+
+        .hero-backdrop,
+        .hero-shade {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        .hero-backdrop {
+            object-fit: cover;
+            object-position: center;
+        }
+
+        .hero-shade {
+            background: rgba(11, 11, 14, 0.62);
+        }
+
+        .hero-shade::after {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, transparent 48%, #0b0b0e 100%);
+            content: "";
+        }
+
+        .hero-grid {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.75fr);
+            gap: clamp(32px, 4vw, 52px);
+            align-items: center;
+        }
+
+        .hero-copy {
+            min-width: 0;
+        }
+
+        .hero-title {
+            max-width: 790px;
+            margin: 0;
+            font-size: clamp(3.25rem, 4.45vw, 4rem);
+            font-weight: 300;
+            line-height: 0.98;
+            letter-spacing: 0;
+            text-wrap: balance;
+        }
+
+        .hero-line {
+            display: block;
+            opacity: 0;
+            transform: translateY(14px);
+            animation: headline-in 680ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+        }
+
+        .hero-line + .hero-line {
+            margin-top: 10px;
+            animation-delay: 120ms;
+        }
+
+        .hero-answer {
+            position: relative;
+            display: inline-block;
+            padding-bottom: 10px;
+            font-weight: 600;
+        }
+
+        .hero-answer::after {
+            position: absolute;
+            right: 0;
+            bottom: 0;
+            left: 0;
+            height: 4px;
+            border-radius: 9999px;
+            background: var(--accent);
+            content: "";
+        }
+
+        @keyframes headline-in {
+            to {
+                opacity: 1;
                 transform: translateY(0);
             }
-
-            50% {
-                transform: translateY(-6px);
-            }
-        }
-
-        .block-art .b {
-            width: clamp(8px, 1.5vw, 14px);
-            height: clamp(8px, 1.5vw, 14px);
-            border-radius: 2px;
-        }
-
-        .block-art .b.on {
-            background: var(--accent);
-            box-shadow: 0 0 8px var(--accent-glow), inset -1px -1px 0 rgba(0, 0, 0, 0.2), inset 1px 1px 0 rgba(255, 255, 255, 0.2);
-        }
-
-        .block-art .b.off {
-            background: transparent;
-        }
-
-        .hero-tagline {
-            font-family: var(--font-display);
-            font-size: clamp(18px, 3vw, 28px);
-            font-weight: 600;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, var(--text) 40%, var(--accent));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
         }
 
         .hero-sub {
-            color: var(--text-dim);
-            font-size: 16px;
-            margin-bottom: 40px;
-            letter-spacing: 2px;
+            max-width: 620px;
+            margin: 28px 0 0;
+            color: #c6c6d0;
+            font-size: clamp(1.05rem, 2vw, 1.2rem);
+            line-height: 1.55;
+            text-wrap: balance;
         }
 
-        .hero-cta {
-            display: flex;
-            gap: 16px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 14px 28px;
-            border-radius: 8px;
-            font-family: var(--font-mono);
-            font-size: 14px;
-            text-decoration: none;
-            border: none;
-            cursor: pointer;
-            transition: all 0.25s ease;
-        }
-
-        .btn-primary {
-            background: linear-gradient(135deg, var(--accent2), var(--accent));
-            color: var(--bg);
-            font-weight: 600;
-            box-shadow: 0 4px 24px var(--accent-glow);
-        }
-
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 32px rgba(34, 211, 238, 0.3);
-        }
-
-        .btn-ghost {
-            background: transparent;
+        .hero-install-label {
+            margin: 28px 0 8px;
             color: var(--text);
-            border: 1px solid var(--border);
+            font-size: 14px;
         }
 
-        .btn-ghost:hover {
-            border-color: var(--accent);
+        .hero-install-label strong {
             color: var(--accent);
-        }
-
-        .btn-windows {
-            background: transparent;
-            color: var(--text);
-            border: 1px solid rgba(0, 150, 255, 0.4);
-            animation: winPulse 2.5s ease-in-out infinite;
-        }
-
-        .btn-windows:hover {
-            border-color: #0096ff;
-            color: #0096ff;
-            box-shadow: 0 0 20px rgba(0, 150, 255, 0.2);
-        }
-
-        @keyframes winPulse {
-
-            0%,
-            100% {
-                border-color: rgba(0, 150, 255, 0.4);
-            }
-
-            50% {
-                border-color: rgba(0, 150, 255, 0.8);
-            }
-        }
-
-        .hero-badges {
-            margin-top: 32px;
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            justify-content: center;
-        }
-
-        .hero-badges img {
-            height: 22px;
-        }
-
-        /* ── Scroll indicator ── */
-        .scroll-hint {
-            position: absolute;
-            bottom: 40px;
-            left: 50%;
-            transform: translateX(-50%);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 8px;
-            color: var(--text-dim);
-            font-size: 11px;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            animation: scrollBounce 2s ease-in-out infinite;
-        }
-
-        .scroll-hint::after {
-            content: '';
-            width: 1px;
-            height: 30px;
-            background: linear-gradient(to bottom, var(--accent), transparent);
-        }
-
-        @keyframes scrollBounce {
-
-            0%,
-            100% {
-                transform: translateX(-50%) translateY(0);
-            }
-
-            50% {
-                transform: translateX(-50%) translateY(8px);
-            }
-        }
-
-        /* ═══════════════════════════════════════
-   DEMO VIDEO
-   ═══════════════════════════════════════ */
-        .demo-section {
-            padding: 60px 0 100px;
-        }
-
-        .demo-wrapper {
-            border-radius: 16px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px var(--accent-glow2);
-            position: relative;
-        }
-
-        .demo-wrapper::before {
-            content: '● ● ●';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            padding: 10px 16px;
-            background: var(--surface);
-            font-size: 10px;
-            letter-spacing: 6px;
-            color: var(--text-dim);
-            z-index: 2;
-            border-bottom: 1px solid var(--border);
-        }
-
-        .demo-wrapper video {
-            width: 100%;
-            display: block;
-            margin-top: 34px;
-        }
-
-        /* ═══════════════════════════════════════
-   MANAGER DASHBOARD
-   ═══════════════════════════════════════ */
-        .dashboard-showcase {
-            padding: 40px 0 100px;
-        }
-
-        .dashboard-shell {
-            display: grid;
-            grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.45fr);
-            gap: 28px;
-            align-items: center;
-        }
-
-        .dashboard-frame {
-            border: 1px solid rgba(34, 211, 238, 0.22);
-            border-radius: 16px;
-            overflow: hidden;
-            background: var(--surface);
-            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.5), 0 0 50px var(--accent-glow2);
-        }
-
-        .dashboard-frame img {
-            display: block;
-            width: 100%;
-        }
-
-        .dashboard-copy {
-            display: grid;
-            gap: 16px;
-        }
-
-        .dashboard-copy h2 {
-            font-family: var(--font-display);
-            font-size: clamp(26px, 4vw, 44px);
-            line-height: 1.1;
-        }
-
-        .dashboard-copy p {
-            color: var(--text-dim);
-            font-size: 15px;
-        }
-
-        .dashboard-points {
-            display: grid;
-            gap: 10px;
-            list-style: none;
-        }
-
-        .dashboard-points li {
-            border-left: 2px solid var(--accent);
-            padding-left: 12px;
-            color: var(--text);
-            font-size: 14px;
-        }
-
-        /* ═══════════════════════════════════════
-   ENGINES
-   ═══════════════════════════════════════ */
-        .engines-grid {
-            display: grid;
-            grid-template-columns: repeat(5, 1fr);
-            gap: 16px;
-        }
-
-        .engine-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 28px 20px;
-            text-align: center;
-            transition: all 0.3s ease;
-            position: relative;
-            overflow: hidden;
-        }
-
-        .engine-card::before {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            height: 2px;
-            background: linear-gradient(90deg, transparent, var(--accent), transparent);
-            opacity: 0;
-            transition: opacity 0.3s;
-        }
-
-        .engine-card:hover {
-            transform: translateY(-4px);
-            border-color: rgba(34, 211, 238, 0.3);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-        }
-
-        .engine-card:hover::before {
-            opacity: 1;
-        }
-
-        .engine-icon {
-            width: 32px;
-            height: 32px;
-            margin: 0 auto 12px;
-            display: block;
-        }
-
-        .engine-icon svg {
-            width: 32px;
-            height: 32px;
-        }
-
-        .engine-name {
-            font-family: var(--font-display);
-            font-size: 16px;
             font-weight: 600;
-            margin-bottom: 4px;
-        }
-
-        .engine-model {
-            font-family: var(--font-mono);
-            font-size: 11px;
-            color: var(--text-dim);
-        }
-
-        .engine-badge {
-            display: inline-block;
-            margin-top: 8px;
-            padding: 2px 8px;
-            border-radius: 4px;
-            font-size: 10px;
-            font-weight: 600;
-        }
-
-        .badge-free {
-            background: rgba(74, 222, 128, 0.15);
-            color: var(--green);
-        }
-
-        .badge-paid {
-            background: rgba(34, 211, 238, 0.1);
-            color: var(--accent);
-        }
-
-        .fallback-line {
-            text-align: center;
-            margin-top: 24px;
-            color: var(--text-dim);
-            font-size: 14px;
-        }
-
-        .fallback-line span {
-            color: var(--accent);
-        }
-
-        /* ═══════════════════════════════════════
-   FEATURES
-   ═══════════════════════════════════════ */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 20px;
-        }
-
-        .feature-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 32px 24px;
-            transition: all 0.3s ease;
-        }
-
-        .feature-card:hover {
-            border-color: rgba(34, 211, 238, 0.2);
-            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.3);
-        }
-
-        .feature-icon {
-            width: 3px;
-            height: 24px;
-            background: var(--accent);
-            border-radius: 2px;
-            margin-bottom: 16px;
-            display: block;
-        }
-
-        .feature-title {
-            font-family: var(--font-display);
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .feature-desc {
-            color: var(--text-dim);
-            font-size: 14px;
-            line-height: 1.6;
-        }
-
-        /* ═══════════════════════════════════════
-   SCREENSHOTS
-   ═══════════════════════════════════════ */
-        .screenshots-tabs {
-            display: flex;
-            gap: 4px;
-            margin-bottom: 24px;
-            background: var(--surface);
-            border-radius: 8px;
-            padding: 4px;
-            width: fit-content;
-        }
-
-        .tab-btn {
-            padding: 10px 20px;
-            border: none;
-            background: transparent;
-            color: var(--text-dim);
-            font-family: var(--font-body);
-            font-size: 14px;
-            cursor: pointer;
-            border-radius: 6px;
-            transition: all 0.2s;
-        }
-
-        .tab-btn.active {
-            background: var(--accent);
-            color: var(--bg);
-            font-weight: 600;
-        }
-
-        .tab-btn:hover:not(.active) {
-            color: var(--text);
-        }
-
-        .screenshot-panel {
-            display: none;
-            border-radius: 12px;
-            overflow: hidden;
-            border: 1px solid var(--border);
-            box-shadow: 0 12px 40px rgba(0, 0, 0, 0.4);
-        }
-
-        .screenshot-panel.active {
-            display: block;
-        }
-
-        .screenshot-panel img {
-            width: 100%;
-            display: block;
-        }
-
-        /* ═══════════════════════════════════════
-   QUICK START
-   ═══════════════════════════════════════ */
-        .quickstart-steps {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 24px;
-        }
-
-        .step-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 32px 24px;
-            position: relative;
-        }
-
-        .step-num {
-            position: absolute;
-            top: -14px;
-            left: 24px;
-            background: var(--accent);
-            color: var(--bg);
-            font-family: var(--font-display);
-            font-weight: 700;
-            font-size: 14px;
-            width: 28px;
-            height: 28px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .step-title {
-            font-family: var(--font-display);
-            font-size: 16px;
-            font-weight: 600;
-            margin-bottom: 12px;
-            margin-top: 4px;
         }
 
         .code-block {
-            background: var(--bg);
+            overflow-x: auto;
             border: 1px solid var(--border);
-            border-radius: 8px;
-            padding: 16px;
+            border-radius: var(--radius-sm);
+            background: var(--bg);
+            color: var(--accent);
             font-family: var(--font-mono);
             font-size: 13px;
-            color: var(--accent);
-            overflow-x: auto;
             line-height: 1.8;
+            scrollbar-width: thin;
+            white-space: nowrap;
         }
 
         .code-block .dim {
-            color: var(--text-dim);
+            color: var(--dim);
         }
 
-        /* ═══════════════════════════════════════
-   FOOTER
-   ═══════════════════════════════════════ */
-        .footer {
+        .hero-code {
+            display: inline-block;
+            min-width: min(100%, 390px);
+            padding: 14px 18px;
+            background: rgba(11, 11, 14, 0.88);
+        }
+
+        .hero-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .button {
+            display: inline-flex;
+            min-height: 46px;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 0 18px;
+            border: 1px solid transparent;
+            border-radius: 9999px;
+            font-size: 15px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+        }
+
+        .button-primary {
+            background: var(--accent);
+            color: var(--bg);
+        }
+
+        .button-primary:hover {
+            background: #67e8f9;
+        }
+
+        .button-ghost {
+            border-color: var(--border-strong);
+            background: rgba(11, 11, 14, 0.44);
+            color: var(--text);
+        }
+
+        .button-ghost:hover {
+            border-color: var(--accent);
+            background: var(--surface);
+        }
+
+        .hero-quiet-links {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 18px;
+            margin-top: 14px;
+        }
+
+        .quiet-link {
+            color: #c6c6d0;
+            font-size: 14px;
+            text-decoration-color: rgba(198, 198, 208, 0.45);
+            text-underline-offset: 4px;
+        }
+
+        .quiet-link:hover {
+            color: var(--accent);
+            text-decoration-color: var(--accent);
+        }
+
+        .provider-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+            margin-top: 24px;
+        }
+
+        .provider-chip {
+            display: inline-flex;
+            min-height: 32px;
+            align-items: center;
+            gap: 7px;
+            padding: 0 11px;
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            background: var(--surface);
+            color: #c6c6d0;
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .provider-chip svg {
+            width: 15px;
+            height: 15px;
+            flex: 0 0 15px;
+        }
+
+        .hero-stage {
+            min-width: 0;
+        }
+
+        .terminal-window {
+            overflow: hidden;
+            border: 1px solid var(--border-strong);
+            border-radius: var(--radius-lg);
+            background: var(--surface);
+            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4);
+        }
+
+        .terminal-titlebar {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            min-height: 44px;
+            align-items: center;
+            padding: 0 15px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-2);
+        }
+
+        .terminal-dots {
+            display: flex;
+            gap: 7px;
+        }
+
+        .terminal-dot {
+            width: 9px;
+            height: 9px;
+            border-radius: 50%;
+            background: #60606c;
+        }
+
+        .terminal-name {
+            color: var(--dim);
+            font-family: var(--font-mono);
+            font-size: 11px;
+        }
+
+        .terminal-body {
+            padding: clamp(18px, 3vw, 28px);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.7;
+        }
+
+        .terminal-command {
+            margin: 0 0 20px;
+            color: var(--text);
+            font-size: 13px;
+        }
+
+        .terminal-prompt,
+        .terminal-ready,
+        .terminal-time {
+            color: var(--accent);
+        }
+
+        .provider-status {
+            display: grid;
+            gap: 7px;
+            margin: 0;
+        }
+
+        .provider-status-row {
+            display: grid;
+            grid-template-columns: minmax(78px, 1fr) minmax(68px, 0.8fr) auto;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .provider-status-row dt,
+        .provider-status-row dd {
+            margin: 0;
+        }
+
+        .provider-status-row dd:first-of-type {
+            color: var(--dim);
+        }
+
+        .terminal-log {
+            margin: 20px 0 0;
+            padding-top: 17px;
             border-top: 1px solid var(--border);
-            padding: 60px 0;
+            color: var(--dim);
+        }
+
+        .terminal-log strong {
+            color: var(--text);
+            font-weight: 500;
+        }
+
+        .hero-badges {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin-top: 18px;
+            opacity: 0.85;
+        }
+
+        .hero-badges img {
+            height: 20px;
+            width: auto;
+        }
+
+        /* Manager showcase */
+        .manager-showcase {
+            padding: 40px 0 96px;
+        }
+
+        .manager-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.65fr);
+            gap: clamp(34px, 6vw, 76px);
+            align-items: center;
+        }
+
+        .screenshot-frame {
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--surface);
+            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+        }
+
+        .screenshot-frame img {
+            width: 100%;
+        }
+
+        .manager-copy h2 {
+            margin: 0;
+            font-size: clamp(2rem, 4vw, 3.3rem);
+            font-weight: 600;
+            line-height: 1.06;
+            text-wrap: balance;
+        }
+
+        .manager-copy > p:not(.eyebrow) {
+            margin: 18px 0 24px;
+            color: var(--dim);
+            font-size: 16px;
+        }
+
+        .manager-points {
+            display: grid;
+            margin: 0;
+            padding: 0;
+            list-style: none;
+        }
+
+        .manager-points li {
+            padding: 10px 0;
+            border-top: 1px solid var(--border);
+            color: #c6c6d0;
+            font-size: 14px;
+        }
+
+        .manager-points li::before {
+            margin-right: 9px;
+            color: var(--accent);
+            content: "+";
+            font-family: var(--font-mono);
+        }
+
+        /* Demo */
+        .demo-section {
+            padding: 96px 0;
+        }
+
+        .demo-heading {
+            display: flex;
+            align-items: end;
+            justify-content: space-between;
+            gap: 24px;
+            margin-bottom: 28px;
+        }
+
+        .demo-shell {
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--surface);
+        }
+
+        .demo-media {
+            aspect-ratio: 1662 / 1080;
+            background: #0f0f13;
+        }
+
+        .demo-bar {
+            display: flex;
+            min-height: 42px;
+            align-items: center;
+            gap: 7px;
+            padding: 0 15px;
+            border-bottom: 1px solid var(--border);
+            background: var(--surface-2);
+        }
+
+        .demo-bar span {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #60606c;
+        }
+
+        .demo-shell video {
+            width: 100%;
+            height: 100%;
+            background: #0f0f13;
+            object-fit: cover;
+        }
+
+        /* Engines */
+        .engines-grid {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 12px;
+        }
+
+        .engine-card {
+            min-width: 0;
+            padding: 24px 16px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+            text-align: center;
+            transition: border-color 180ms ease, background-color 180ms ease;
+        }
+
+        .engine-card:hover {
+            border-color: var(--border-strong);
+            background: var(--surface-2);
+        }
+
+        .engine-mark {
+            display: grid;
+            width: 36px;
+            height: 36px;
+            margin: 0 auto 13px;
+            place-items: center;
+        }
+
+        .engine-mark svg {
+            width: 30px;
+            height: 30px;
+        }
+
+        .engine-name {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .engine-model {
+            min-height: 34px;
+            margin-top: 4px;
+            overflow-wrap: anywhere;
+            color: var(--dim);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            line-height: 1.5;
+        }
+
+        .engine-badge {
+            display: inline-flex;
+            min-height: 24px;
+            align-items: center;
+            margin-top: 10px;
+            padding: 0 9px;
+            border-radius: 9999px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 10px;
+            font-weight: 600;
+        }
+
+        .fallback-line {
+            margin: 24px 0 0;
+            color: var(--dim);
+            font-size: 14px;
             text-align: center;
         }
 
-        .footer-logo {
-            font-family: var(--font-display);
-            font-size: 20px;
-            font-weight: 700;
+        .fallback-line strong {
             color: var(--accent);
-            margin-bottom: 16px;
+            font-weight: 500;
+        }
+
+        /* Feature bento */
+        .feature-marquee {
+            display: grid;
+            grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
+            gap: 14px;
+        }
+
+        .feature-dominant,
+        .feature-large {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--surface);
+        }
+
+        .feature-dominant {
+            display: flex;
+            min-height: 590px;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .feature-dominant-copy {
+            padding: 28px 28px 24px;
+        }
+
+        .feature-dominant-image {
+            margin-top: auto;
+            overflow: hidden;
+            border-top: 1px solid var(--border);
+            background: #e7e7e9;
+        }
+
+        .feature-dominant-image img {
+            width: 100%;
+        }
+
+        .feature-stack {
+            display: grid;
+            grid-template-rows: repeat(3, minmax(0, 1fr));
+            gap: 14px;
+        }
+
+        .feature-large {
+            display: grid;
+            grid-template-columns: 42px minmax(0, 1fr);
+            gap: 16px;
+            align-content: start;
+            padding: 24px;
+        }
+
+        .feature-icon-box {
+            display: grid;
+            width: 42px;
+            height: 42px;
+            place-items: center;
+            border-radius: var(--radius-sm);
+            background: var(--accent-soft);
+            color: var(--accent);
+        }
+
+        .feature-title {
+            margin: 0 0 7px;
+            font-size: 19px;
+            font-weight: 600;
+            line-height: 1.2;
+            text-wrap: balance;
+        }
+
+        .feature-desc {
+            margin: 0;
+            color: var(--dim);
+            font-size: 14px;
+            line-height: 1.58;
+        }
+
+        .feature-desc code,
+        .detail-item code,
+        .platform-copy code,
+        .beginner-copy code {
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 0.9em;
+        }
+
+        .feature-list {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            margin-top: 14px;
+            border-top: 1px solid var(--border);
+            border-left: 1px solid var(--border);
+        }
+
+        .feature-row {
+            display: grid;
+            min-width: 0;
+            grid-template-columns: 34px minmax(0, 1fr);
+            gap: 14px;
+            padding: 22px;
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+            background: var(--surface);
+        }
+
+        .feature-row .feature-icon-box {
+            width: 34px;
+            height: 34px;
+            border-radius: 6px;
+        }
+
+        .feature-row .icon {
+            width: 18px;
+            height: 18px;
+        }
+
+        .feature-row .feature-title {
+            font-size: 16px;
+        }
+
+        /* PABCD */
+        .phase-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin: 34px 0 20px;
+        }
+
+        .phase-chip {
+            display: inline-flex;
+            min-height: 38px;
+            align-items: center;
+            gap: 9px;
+            padding: 0 13px 0 8px;
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            background: var(--surface);
+            color: #c6c6d0;
+            font-size: 13px;
+        }
+
+        .phase-letter {
+            display: grid;
+            width: 24px;
+            height: 24px;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+        }
+
+        .orchestration-layout {
+            display: grid;
+            grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
+            gap: 36px;
+            align-items: start;
+        }
+
+        .orchestration-log {
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+        }
+
+        .orchestration-log .terminal-titlebar {
+            min-height: 40px;
+        }
+
+        .log-lines {
+            display: grid;
+            gap: 8px;
+            padding: 24px;
+            font-family: var(--font-mono);
+            font-size: 12px;
+            line-height: 1.65;
+        }
+
+        .log-line {
+            display: grid;
+            grid-template-columns: 70px minmax(0, 1fr);
+            gap: 12px;
+        }
+
+        .log-line time {
+            color: var(--dim);
+        }
+
+        .log-phase {
+            color: var(--accent);
+        }
+
+        .pabcd-details {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            border-top: 1px solid var(--border);
+            border-left: 1px solid var(--border);
+        }
+
+        .detail-item {
+            padding: 20px;
+            border-right: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .detail-item h3 {
+            margin: 0 0 7px;
+            font-size: 15px;
+            font-weight: 600;
+        }
+
+        .detail-item p {
+            margin: 0;
+            color: var(--dim);
+            font-size: 13px;
+            line-height: 1.55;
+        }
+
+        /* Platform */
+        .platform-strip {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 28px;
+        }
+
+        .platform-chip {
+            display: inline-flex;
+            min-height: 36px;
+            align-items: center;
+            padding: 0 13px;
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            background: var(--surface);
+            color: #c6c6d0;
+            font-family: var(--font-mono);
+            font-size: 12px;
+        }
+
+        .platform-blocks {
+            display: grid;
+            gap: 14px;
+        }
+
+        .platform-block {
+            display: grid;
+            grid-template-columns: minmax(0, 0.8fr) minmax(360px, 1.2fr);
+            gap: 36px;
+            align-items: center;
+            padding: 30px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+        }
+
+        .platform-copy h3 {
+            margin: 0 0 10px;
+            font-size: 21px;
+            font-weight: 600;
+            line-height: 1.2;
+            text-wrap: balance;
+        }
+
+        .platform-copy p {
+            margin: 0 0 15px;
+            color: var(--dim);
+            font-size: 14px;
+        }
+
+        .platform-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 7px;
+        }
+
+        .platform-tag {
+            padding: 4px 8px;
+            border-radius: 4px;
+            background: var(--accent-soft);
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 10px;
+        }
+
+        .platform-block .code-block {
+            padding: 17px 18px;
+        }
+
+        /* Interface tabs */
+        .tabs-wrap {
+            overflow: hidden;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            background: var(--surface);
+        }
+
+        .tab-list {
+            display: flex;
+            gap: 2px;
+            overflow-x: auto;
+            padding: 6px;
+            border-bottom: 1px solid var(--border);
+            scrollbar-width: thin;
+        }
+
+        .tab-button {
+            flex: 0 0 auto;
+            min-height: 40px;
+            padding: 0 15px;
+            border: 0;
+            border-radius: var(--radius-sm);
+            background: transparent;
+            color: var(--dim);
+            cursor: pointer;
+            font-size: 14px;
+            transition: background-color 180ms ease, color 180ms ease;
+        }
+
+        .tab-button:hover {
+            background: rgba(255, 255, 255, 0.04);
+            color: var(--text);
+        }
+
+        .tab-button[aria-selected="true"] {
+            background: var(--accent);
+            color: var(--bg);
+            font-weight: 600;
+        }
+
+        .tab-panel {
+            min-height: 480px;
+            background: #0e0e12;
+        }
+
+        .tab-panel[hidden] {
+            display: none;
+        }
+
+        .tab-panel img {
+            width: 100%;
+        }
+
+        .tab-panel.is-narrow {
+            display: grid;
+            place-items: center;
+            padding: 24px;
+        }
+
+        .tab-panel.is-narrow[hidden] {
+            display: none;
+        }
+
+        .tab-panel.is-narrow img {
+            max-width: 400px;
+        }
+
+        /* Quickstart */
+        .quickstart-slab {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            overflow: hidden;
+            margin-top: 42px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+        }
+
+        .quick-step {
+            min-width: 0;
+            padding: 26px;
+        }
+
+        .quick-step + .quick-step {
+            border-left: 1px solid var(--border);
+        }
+
+        .step-heading {
+            display: flex;
+            align-items: center;
+            gap: 11px;
+            margin-bottom: 17px;
+        }
+
+        .step-number {
+            display: grid;
+            width: 28px;
+            height: 28px;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .step-title {
+            font-size: 17px;
+            font-weight: 600;
+        }
+
+        .quick-step .code-block {
+            min-height: 111px;
+            padding: 14px;
+            font-size: 12px;
+        }
+
+        .beginner {
+            margin-top: 18px;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--surface);
+        }
+
+        .beginner summary {
+            display: flex;
+            min-height: 58px;
+            align-items: center;
+            gap: 11px;
+            padding: 0 20px;
+            color: #c6c6d0;
+            cursor: pointer;
+            font-family: var(--font-mono);
+            font-size: 13px;
+            list-style: none;
+        }
+
+        .beginner summary::-webkit-details-marker {
+            display: none;
+        }
+
+        .beginner summary::after {
+            margin-left: auto;
+            color: var(--accent);
+            content: "+";
+            font-size: 18px;
+        }
+
+        .beginner[open] summary::after {
+            content: "−";
+        }
+
+        .beginner[open] summary {
+            border-bottom: 1px solid var(--border);
+        }
+
+        .beginner-content {
+            padding: 28px;
+        }
+
+        .beginner-content h3 {
+            margin: 0 0 22px;
+            font-size: 21px;
+            font-weight: 600;
+        }
+
+        .beginner-steps {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0;
+        }
+
+        .beginner-step {
+            min-width: 0;
+            padding: 0 22px;
+        }
+
+        .beginner-step:first-child {
+            padding-left: 0;
+        }
+
+        .beginner-step:last-child {
+            padding-right: 0;
+        }
+
+        .beginner-step + .beginner-step {
+            border-left: 1px solid var(--border);
+        }
+
+        .beginner-label {
+            margin: 0 0 10px;
+            color: var(--accent);
+            font-family: var(--font-mono);
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .beginner-copy {
+            margin: 0;
+            color: var(--dim);
+            font-size: 14px;
+        }
+
+        .beginner-copy strong {
+            color: var(--text);
+        }
+
+        .beginner-step .code-block {
+            margin-top: 10px;
+            padding: 13px;
+            font-size: 11px;
+        }
+
+        .beginner-note {
+            margin: 9px 0 0;
+            color: var(--dim);
+            font-size: 12px;
+        }
+
+        .beginner-note strong {
+            color: var(--accent);
+        }
+
+        /* Footer */
+        .footer {
+            padding: 48px 0;
+            border-top: 1px solid var(--border);
+        }
+
+        .footer-row {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            gap: 24px;
+            align-items: center;
+        }
+
+        .footer-brand {
+            font-size: 16px;
+            font-weight: 700;
         }
 
         .footer-links {
             display: flex;
-            gap: 24px;
+            flex-wrap: wrap;
+            gap: 20px;
             justify-content: center;
-            margin-bottom: 24px;
         }
 
         .footer-links a {
-            color: var(--text-dim);
-            text-decoration: none;
+            color: var(--dim);
             font-size: 14px;
-            transition: color 0.2s;
+            text-decoration: none;
         }
 
         .footer-links a:hover {
@@ -722,789 +1359,1017 @@
         }
 
         .footer-copy {
-            color: var(--text-dim);
-            font-size: 12px;
-        }
-
-        /* ═══════════════════════════════════════
-   PLATFORM
-   ═══════════════════════════════════════ */
-        .platform-strip {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 16px;
-            justify-content: center;
-            margin-bottom: 48px;
-        }
-
-        .platform-chip {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 40px;
+            margin: 0;
+            color: var(--dim);
             font-family: var(--font-mono);
-            font-size: 13px;
-            color: var(--text);
-            transition: all 0.25s;
+            font-size: 11px;
+            text-align: right;
         }
 
-        .platform-chip:hover {
-            border-color: var(--accent);
-            box-shadow: 0 0 16px var(--accent-glow);
-            transform: translateY(-2px);
-        }
-
-        .platform-chip .chip-icon {
-            font-size: 18px;
-        }
-
-        .docker-block {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 32px;
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 32px;
-            align-items: center;
-        }
-
-        .docker-info h3 {
-            font-family: var(--font-display);
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 12px;
-        }
-
-        .docker-info p {
-            color: var(--text-dim);
-            font-size: 14px;
-            line-height: 1.6;
-            margin-bottom: 16px;
-        }
-
-        .docker-tag {
-            display: inline-block;
-            padding: 4px 10px;
-            background: rgba(34, 211, 238, 0.1);
-            border-radius: 4px;
-            font-family: var(--font-mono);
-            font-size: 12px;
-            color: var(--accent);
-        }
-
-        @media (max-width: 600px) {
-            .docker-block {
-                grid-template-columns: 1fr;
+        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+            .site-nav.pill-at-top,
+            .site-nav.pill-scrolled {
+                background-color: #131318;
             }
         }
 
-        /* ═══════════════════════════════════════
-   RESPONSIVE
-   ═══════════════════════════════════════ */
+        @media (prefers-reduced-transparency: reduce) {
+            .site-nav.pill-at-top,
+            .site-nav.pill-scrolled {
+                background-color: #131318;
+                -webkit-backdrop-filter: none;
+                backdrop-filter: none;
+            }
+        }
+
+        @media (prefers-contrast: more) {
+            :root {
+                --border: rgba(255, 255, 255, 0.25);
+                --border-strong: rgba(255, 255, 255, 0.42);
+                --dim: #b9b9c7;
+            }
+
+            .site-nav.pill-at-top,
+            .site-nav.pill-scrolled {
+                background-color: #131318;
+            }
+        }
+
+        @media (max-width: 1020px) {
+            .hero {
+                min-height: auto;
+                padding: 102px 0 38px;
+            }
+
+            .hero-grid,
+            .manager-layout,
+            .orchestration-layout {
+                grid-template-columns: 1fr;
+            }
+
+            .hero-grid {
+                gap: 28px;
+            }
+
+            .hero-title {
+                max-width: 780px;
+                font-size: clamp(3rem, 7vw, 4rem);
+            }
+
+            .hero-sub {
+                margin-top: 20px;
+            }
+
+            .hero-install-label {
+                margin-top: 18px;
+            }
+
+            .hero-code {
+                padding-block: 10px;
+                line-height: 1.65;
+            }
+
+            .hero-actions {
+                margin-top: 14px;
+            }
+
+            .hero-quiet-links {
+                margin-top: 10px;
+            }
+
+            .provider-chips,
+            .hero-badges {
+                flex-wrap: nowrap;
+                overflow-x: auto;
+                scrollbar-width: thin;
+            }
+
+            .provider-chips {
+                margin-top: 14px;
+            }
+
+            .provider-chip,
+            .hero-badges img {
+                flex: 0 0 auto;
+            }
+
+            .hero-badges {
+                margin-top: 10px;
+            }
+
+            .hero-badges img {
+                height: 18px;
+            }
+
+            .terminal-titlebar {
+                min-height: 38px;
+            }
+
+            .terminal-body {
+                padding: 18px;
+                font-size: 11px;
+                line-height: 1.5;
+            }
+
+            .terminal-command {
+                margin-bottom: 12px;
+                font-size: 12px;
+            }
+
+            .provider-status {
+                gap: 5px;
+            }
+
+            .terminal-log {
+                margin-top: 12px;
+                padding-top: 12px;
+            }
+
+            .hero-stage {
+                max-width: 760px;
+            }
+
+            .manager-copy {
+                max-width: 760px;
+            }
+
+            .feature-marquee {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-dominant {
+                min-height: 0;
+            }
+
+            .feature-stack {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                grid-template-rows: auto;
+            }
+
+            .feature-large:last-child {
+                grid-column: 1 / -1;
+            }
+
+            .platform-block {
+                grid-template-columns: 1fr;
+                gap: 24px;
+            }
+
+            .beginner-steps {
+                grid-template-columns: 1fr;
+                gap: 20px;
+            }
+
+            .beginner-step,
+            .beginner-step:first-child,
+            .beginner-step:last-child {
+                padding: 0;
+            }
+
+            .beginner-step + .beginner-step {
+                padding-top: 20px;
+                border-top: 1px solid var(--border);
+                border-left: 0;
+            }
+        }
+
         @media (max-width: 900px) {
             .engines-grid {
-                grid-template-columns: repeat(3, 1fr);
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .features-grid {
-                grid-template-columns: repeat(2, 1fr);
+            .engine-card:last-child {
+                grid-column: 1 / -1;
             }
 
-            .quickstart-steps {
+            .quickstart-slab {
                 grid-template-columns: 1fr;
             }
 
-            .dashboard-shell {
+            .quick-step + .quick-step {
+                border-top: 1px solid var(--border);
+                border-left: 0;
+            }
+
+            .quick-step .code-block {
+                min-height: 0;
+            }
+
+            .footer-row {
                 grid-template-columns: 1fr;
-            }
-        }
-
-        @media (max-width: 600px) {
-            .engines-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-
-            .features-grid {
-                grid-template-columns: 1fr;
-            }
-
-            .section {
-                padding: 60px 0;
-            }
-
-            .screenshots-tabs {
-                flex-wrap: wrap;
-                width: 100%;
-            }
-
-            .tab-btn {
-                flex: 1;
-                min-width: 80px;
                 text-align: center;
-                font-size: 12px;
-                padding: 8px 12px;
+            }
+
+            .footer-copy {
+                text-align: center;
             }
         }
 
-        /* ── PABCD Pipeline ── */
-        .pabcd-pipeline {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 0;
-            margin: 48px 0 40px;
-            flex-wrap: wrap;
+        @media (min-width: 721px) and (max-width: 900px) {
+            .engine-card:last-child {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr) auto;
+                grid-template-areas:
+                    "mark name badge"
+                    "mark model badge";
+                column-gap: 16px;
+                align-items: center;
+                padding: 18px 24px;
+                text-align: left;
+            }
+
+            .engine-card:last-child .engine-mark {
+                grid-area: mark;
+                margin: 0;
+            }
+
+            .engine-card:last-child .engine-name {
+                grid-area: name;
+            }
+
+            .engine-card:last-child .engine-model {
+                grid-area: model;
+                min-height: 0;
+                margin-top: 0;
+            }
+
+            .engine-card:last-child .engine-badge {
+                grid-area: badge;
+                margin-top: 0;
+            }
         }
 
-        .pabcd-phase {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 28px 24px 20px;
-            text-align: center;
-            min-width: 140px;
-            transition: all 0.4s ease;
-            position: relative;
-        }
+        @media (max-width: 720px) {
+            .container {
+                width: min(100% - 32px, 1200px);
+            }
 
-        .pabcd-phase:hover {
-            border-color: var(--accent);
-            box-shadow: 0 0 30px var(--accent-glow);
-            transform: translateY(-4px);
-        }
+            .section,
+            .demo-section {
+                padding: 72px 0;
+            }
 
-        .phase-icon {
-            font-family: var(--font-display);
-            font-size: 24px;
-            font-weight: 700;
-            color: var(--accent);
-            margin-bottom: 8px;
-            width: 40px;
-            height: 40px;
-            line-height: 40px;
-            text-align: center;
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            margin: 0 auto 8px;
-        }
+            .site-nav {
+                top: 10px;
+                width: calc(100% - 20px);
+                min-height: 54px;
+                gap: 8px;
+                padding: 6px 7px 6px 13px;
+            }
 
-        .phase-name {
-            font-family: var(--font-display);
-            font-size: 18px;
-            font-weight: 700;
-            color: var(--accent);
-            margin-bottom: 6px;
-        }
+            .nav-brand {
+                gap: 7px;
+                font-size: 13px;
+            }
 
-        .phase-desc {
-            font-size: 12px;
-            color: var(--text-dim);
-            line-height: 1.5;
-            max-width: 150px;
-            margin: 0 auto;
-        }
+            .nav-brand-mark {
+                width: 25px;
+                height: 25px;
+                font-size: 10px;
+            }
 
-        .pabcd-arrow {
-            font-family: var(--font-mono);
-            font-size: 24px;
-            color: var(--accent2);
-            padding: 0 8px;
-            opacity: 0.6;
-        }
+            .nav-actions {
+                gap: 2px;
+            }
 
-        .pabcd-details {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-            gap: 20px;
-            margin-top: 40px;
-        }
+            .nav-docs {
+                display: none;
+            }
 
-        .pabcd-detail-card {
-            background: var(--surface);
-            border: 1px solid var(--border);
-            border-radius: 12px;
-            padding: 24px;
-            transition: border-color 0.3s;
-        }
+            .nav-mobile-start {
+                display: inline-flex;
+            }
 
-        .pabcd-detail-card:hover {
-            border-color: var(--accent);
-        }
+            .nav-link {
+                min-height: 38px;
+                padding: 0 9px;
+                font-size: 12px;
+            }
 
-        .pabcd-detail-card h3 {
-            font-family: var(--font-display);
-            font-size: 15px;
-            margin-bottom: 8px;
-            color: var(--text);
-        }
+            .nav-link .icon {
+                display: none;
+            }
 
-        .pabcd-detail-card p {
-            font-size: 13px;
-            color: var(--text-dim);
-            line-height: 1.6;
-        }
+            .hero {
+                padding: 82px 0 24px;
+            }
 
-        .pabcd-detail-card code {
-            font-family: var(--font-mono);
-            font-size: 12px;
-            background: var(--surface2);
-            padding: 2px 6px;
-            border-radius: 4px;
-            color: var(--accent);
-        }
+            .hero-shade {
+                background: rgba(11, 11, 14, 0.68);
+            }
 
-        @media (max-width: 768px) {
-            .pabcd-pipeline {
-                flex-direction: column;
+            .hero-title {
+                font-size: 2.25rem;
+                line-height: 0.98;
+            }
+
+            .hero-line + .hero-line {
+                margin-top: 8px;
+            }
+
+            .hero-sub {
+                margin-top: 14px;
+                font-size: 14px;
+                line-height: 1.45;
+            }
+
+            .hero-install-label {
+                margin-top: 14px;
+                font-size: 12px;
+            }
+
+            .hero-actions {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+            }
+
+            .hero-quiet-links {
+                gap: 8px 14px;
+                margin-top: 8px;
+            }
+
+            .quiet-link {
+                font-size: 12px;
+            }
+
+            .provider-chip {
+                min-height: 26px;
+                gap: 4px;
+                padding: 0 5px;
+                font-size: 8px;
+            }
+
+            .provider-chips {
                 gap: 4px;
             }
 
-            .pabcd-arrow {
-                transform: rotate(90deg);
-                padding: 4px 0;
+            .provider-chip svg {
+                width: 12px;
+                height: 12px;
+                flex-basis: 12px;
             }
 
-            .pabcd-phase {
-                min-width: 200px;
+            .hero-grid {
+                gap: 16px;
+            }
+
+            .terminal-window {
+                border-radius: var(--radius-md);
+            }
+
+            .terminal-body {
+                padding: 12px 14px;
+                font-size: 9px;
+                line-height: 1.45;
+            }
+
+            .terminal-command {
+                margin-bottom: 9px;
+                font-size: 10px;
+            }
+
+            .provider-status-row {
+                grid-template-columns: minmax(70px, 1fr) minmax(60px, 0.8fr) auto;
+                gap: 7px;
+            }
+
+            .terminal-log {
+                margin-top: 9px;
+                padding-top: 9px;
+                white-space: nowrap;
+            }
+
+            .hero-badges img {
+                height: 18px;
+            }
+
+            .hero-badges {
+                flex-wrap: wrap;
+                overflow-x: visible;
+            }
+
+            .manager-showcase {
+                padding: 12px 0 72px;
+            }
+
+            .demo-heading {
+                display: block;
+            }
+
+            .feature-stack,
+            .feature-list,
+            .pabcd-details {
+                grid-template-columns: 1fr;
+            }
+
+            .feature-large:last-child {
+                grid-column: auto;
+            }
+
+            .feature-dominant-copy,
+            .feature-large,
+            .feature-row,
+            .platform-block,
+            .beginner-content {
+                padding: 20px;
+            }
+
+            .orchestration-layout {
+                gap: 22px;
+            }
+
+            .log-lines {
+                padding: 18px;
+                font-size: 10px;
+            }
+
+            .log-line {
+                grid-template-columns: 58px minmax(0, 1fr);
+                gap: 8px;
+            }
+
+            .tab-panel {
+                display: grid;
+                width: 100%;
+                height: clamp(300px, 82vw, 340px);
+                min-height: clamp(300px, 82vw, 340px);
+                place-items: center;
+                overflow: hidden;
+            }
+
+            .tab-panel img {
+                width: auto;
+                max-width: 100%;
+                max-height: 100%;
+                object-fit: contain;
+            }
+        }
+
+        @media (max-width: 560px) {
+            .engines-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .engine-card:last-child {
+                grid-column: auto;
+            }
+
+            .manager-copy h2,
+            .section-title {
+                font-size: 2.2rem;
+            }
+
+            #engines .section-title {
+                font-size: 1.65rem;
+            }
+
+            .phase-chips {
+                display: grid;
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+
+            .phase-chip:last-child {
+                grid-column: 1 / -1;
+            }
+
+            .platform-block .code-block,
+            .hero-code {
+                font-size: 11px;
+            }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            html {
+                scroll-behavior: auto;
+            }
+
+            *,
+            *::before,
+            *::after {
+                scroll-behavior: auto !important;
+                animation-duration: 0.01ms !important;
+                animation-iteration-count: 1 !important;
+                transition-duration: 0.01ms !important;
+            }
+
+            .hero-line,
+            .reveal {
+                opacity: 1;
+                transform: none;
             }
         }
     </style>
 </head>
 
 <body>
+    <a class="skip-link" href="#main-content">Skip to content</a>
 
-    <!-- ═══════════════ TOP NAV ═══════════════ -->
-    <nav style="position:fixed;top:0;left:0;right:0;z-index:100;display:flex;align-items:center;justify-content:space-between;padding:10px 24px;background:rgba(6,6,11,0.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);">
-        <a href="./" style="color:var(--accent);font-family:var(--font-display);font-weight:700;font-size:16px;text-decoration:none;letter-spacing:1px;">CLI-JAW</a>
-        <div style="display:flex;gap:16px;align-items:center;">
-            <a href="dev/" style="color:var(--text);font-size:13px;text-decoration:none;font-weight:500;">📖 Docs</a>
-            <a href="https://github.com/lidge-jun/cli-jaw" target="_blank" style="color:var(--text-dim);font-size:13px;text-decoration:none;">GitHub</a>
-            <a href="#quickstart" style="color:var(--accent);font-size:13px;text-decoration:none;font-weight:600;">Get Started</a>
-        </div>
-    </nav>
-
-    <!-- ═══════════════ HERO ═══════════════ -->
-    <section class="hero" style="padding-top:60px;">
-        <div class="block-art" id="blockArt"></div>
-        <h1 class="hero-tagline">All Your AI Subscriptions. One Assistant.</h1>
-        <p class="hero-sub">Claude Max · ChatGPT Pro · Copilot · Gemini — routed through OAuth. No per-token billing.</p>
-        <p style="color:var(--text-dim); font-size:14px; margin-bottom:12px; letter-spacing:1px;">Get your personal AI
-            assistant in <span style="color:var(--accent); font-weight:600;">2 lines</span></p>
-        <div class="hero-install">
-            <div class="code-block" style="display:inline-block; text-align:left; padding:16px 32px;">
-                <span class="dim">$</span> npm install -g cli-jaw<br>
-                <span class="dim">$</span> jaw dashboard
-            </div>
-        </div>
-        <div class="hero-cta" style="margin-top:20px; max-width:440px;">
-            <a href="#quickstart" class="btn btn-primary" style="flex:1; justify-content:center;">
-                Get Started
+    <nav class="site-nav pill-at-top" aria-label="Primary navigation">
+        <a class="nav-brand" href="./" aria-label="CLI-JAW home">
+            <span class="nav-brand-mark" aria-hidden="true">J</span>
+            <span>CLI-JAW</span>
+        </a>
+        <div class="nav-actions">
+            <a class="nav-link nav-docs" href="dev/">
+                <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z"/></svg>
+                Docs
             </a>
-            <a href="https://github.com/lidge-jun/cli-jaw" class="btn btn-ghost" target="_blank"
-                style="flex:1; justify-content:center;">
+            <a class="nav-link nav-mobile-start" href="#quickstart">Get Started</a>
+            <a class="nav-link nav-github" href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">
+                <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3.3-.4 6.8-1.6 6.8-7A5.4 5.4 0 0 0 19.4 4 5 5 0 0 0 19.3.5S18.2.1 15 1.8a13.4 13.4 0 0 0-7 0C4.8.1 3.7.5 3.7.5A5 5 0 0 0 3.6 4a5.4 5.4 0 0 0-1.4 3.7c0 5.4 3.5 6.6 6.8 7A4.8 4.8 0 0 0 8 18v4"/><path d="M8 19c-3 .9-3-1.5-4-2"/></svg>
                 GitHub
             </a>
         </div>
-        <div class="hero-cta" style="margin-top:12px; max-width:440px;">
-            <a href="dev/" class="btn btn-ghost" style="flex:1; justify-content:center; border-color:var(--accent);">
-                📖 Documentation
-            </a>
-            <a href="windows.html" class="btn btn-windows" style="flex:1; justify-content:center;">
-                Windows?
-            </a>
-            <a href="#quickstart" class="btn btn-ghost"
-                style="flex:1; justify-content:center; border-color:rgba(255,255,255,0.2);"
-                onclick="setTimeout(function(){document.getElementById('brewFree').style.display='block'},400)">
-                What is Terminal?
-            </a>
-        </div>
-        <div class="hero-badges">
-            <img src="https://img.shields.io/badge/tests-3700%2B-brightgreen" alt="Tests">
-            <img src="https://img.shields.io/npm/v/cli-jaw" alt="npm">
-            <img src="https://img.shields.io/badge/TypeScript-6.0-blue" alt="TypeScript">
-            <img src="https://img.shields.io/badge/node-%3E%3D22.4-blue" alt="Node">
-            <img src="https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&logoColor=white" alt="Docker">
-            <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20WSL%20%7C%20Docker-lightgrey"
-                alt="Platforms">
-        </div>
-        <div class="scroll-hint">Scroll</div>
-    </section>
+    </nav>
 
-    <!-- ═══════════════ MANAGER DASHBOARD ═══════════════ -->
-    <section class="dashboard-showcase">
-        <div class="container dashboard-shell reveal">
-            <div class="dashboard-frame">
-                <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard showing instance navigator, live preview, and runtime settings">
-            </div>
-            <div class="dashboard-copy">
-                <span class="section-label">// manager</span>
-                <h2>One control plane for every local AI session.</h2>
-                <p>The manager dashboard tracks running JAW homes, previews Web UIs, manages employees, and gives you Kanban boards and Notes — all without leaving the browser.</p>
-                <ul class="dashboard-points">
-                    <li>Instance navigator with active, running, and offline groups.</li>
-                    <li>Live preview proxy with Preview-on, Refresh, and Open controls.</li>
-                    <li>Kanban board — drag-and-drop task tracking per home.</li>
-                    <li>Settings workspace for CLI, model, effort, permissions, employees, and skills.</li>
-                    <li>Notes workspace — markdown folders, split preview, KaTeX, Mermaid, and code blocks.</li>
-                    <li>Employee dispatch panel — send tasks to specialist agents in one click.</li>
-                </ul>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════════ DEMO ═══════════════ -->
-    <section class="demo-section">
-        <div class="container reveal">
-            <span class="section-label">// demo</span>
-            <h2 class="section-title">See It in Action</h2>
-            <div class="demo-wrapper">
-                <video src="https://github.com/user-attachments/assets/a7cf17c9-bfb3-44f0-b7fd-d001a39643fd" autoplay
-                    loop muted playsinline></video>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════════ AI RUNTIME SURFACES ═══════════════ -->
-    <section class="section" id="engines">
-        <div class="container reveal">
-            <span class="section-label">// engines</span>
-            <h2 class="section-title">Your subscriptions, unified</h2>
-            <p class="section-desc">Route through the AI subscriptions you already pay for. OAuth login, no API keys, no per-token billing. Even one engine is enough. Additional runtime surfaces such as Grok CLI and Codex App appear in settings when installed; MCP sync remains limited to supported MCP-aware engines.</p>
-            <div class="engines-grid">
-                <div class="engine-card">
-                    <span class="engine-icon"><svg viewBox="0 0 24 24" width="32" height="32" xmlns="http://www.w3.org/2000/svg"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757" fill-rule="nonzero"/></svg></span>
-                    <div class="engine-name">Claude</div>
-                    <div class="engine-model">claude-opus-4-8</div>
-                    <span class="engine-badge badge-paid">Paid</span>
-                </div>
-                <div class="engine-card">
-                    <span class="engine-icon"><svg viewBox="0 0 24 24" width="32" height="32" xmlns="http://www.w3.org/2000/svg" fill="#e4e4ef"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg></span>
-                    <div class="engine-name">Codex</div>
-                    <div class="engine-model">gpt-5.5</div>
-                    <span class="engine-badge badge-paid">Paid</span>
-                </div>
-                <div class="engine-card">
-                    <span class="engine-icon"><svg viewBox="0 0 24 24" width="32" height="32" xmlns="http://www.w3.org/2000/svg"><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="#3186FF"/></svg></span>
-                    <div class="engine-name">Gemini</div>
-                    <div class="engine-model">gemini-3-flash-preview</div>
-                    <span class="engine-badge badge-paid">Paid</span>
-                </div>
-                <div class="engine-card">
-                    <span class="engine-icon"><svg viewBox="0 0 24 24" width="32" height="32" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span>
-                    <div class="engine-name">OpenCode</div>
-                    <div class="engine-model">opencode-go/kimi-k2.6</div>
-                    <span class="engine-badge badge-free">Free</span>
-                </div>
-                <div class="engine-card">
-                    <span class="engine-icon"><svg viewBox="0 0 24 24" width="32" height="32" xmlns="http://www.w3.org/2000/svg" fill="#e4e4ef"><path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></svg></span>
-                    <div class="engine-name">Copilot</div>
-                    <div class="engine-model">claude-sonnet-4.6</div>
-                    <span class="engine-badge badge-free">Free</span>
-                </div>
-            </div>
-            <p class="fallback-line">Engine down? → <span>Next one picks up automatically.</span> OpenCode wildcard: connect any model endpoint.</p>
-        </div>
-    </section>
-
-    <!-- ═══════════════ FEATURES ═══════════════ -->
-    <section class="section" id="features">
-        <div class="container reveal">
-            <span class="section-label">// features</span>
-            <h2 class="section-title">What you get</h2>
-            <p class="section-desc">Not a chatbot wrapper. A full-stack assistant with real infrastructure.
-            </p>
-            <div class="features-grid">
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Manager dashboard</div>
-                    <p class="feature-desc">Track local instances, preview live Web UIs, switch themes, inspect runtime settings, and manage employees from one browser workspace.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">PABCD orchestration</div>
-                    <p class="feature-desc">DB-persisted 5-phase FSM — Plan, Audit, Build, Check, Done. Workers
-                        are read-only. You approve every phase.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Notes workspace</div>
-                    <p class="feature-desc">Dashboard-local markdown vault with folders, rename and move, dirty markers, split preview, KaTeX, Mermaid, and highlighted code blocks.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">3-layer memory</div>
-                    <p class="feature-desc">History Block (session context) + Memory Flush (episodes, daily logs) + Soul and Task Snapshot (identity, semantic recall). SQLite FTS5 search.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Browser automation</div>
-                    <p class="feature-desc">Chrome CDP, vision-click, DOM reference for ChatGPT/Grok/Gemini, Computer Use via Codex App, diagram skill for interactive visualizations.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Kanban board</div>
-                    <p class="feature-desc">Drag-and-drop task tracking built into the dashboard. Columns, card creation, and reordering — per home, zero setup.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Employee system</div>
-                    <p class="feature-desc">Dispatch specialist agents — Frontend, Backend, Research, Docs — each with its own CLI and model. Boss orchestrates, workers verify.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">200+ reference skills</div>
-                    <p class="feature-desc">Office docs (PDF, DOCX, XLSX, PPTX, HWP), GitHub, Notion, image generation, video rendering, Telegram media — activated from the reference catalog as needed.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Telegram + Discord</div>
-                    <p class="feature-desc">Chat from your phone. Voice messages with multi-provider STT. Files, photos, slash commands, scheduled task results.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">MCP — install once</div>
-                    <p class="feature-desc">Install MCP tools once and sync supported MCP-aware engines. Grok CLI runs as a standard runtime without claiming MCP sync.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">7+ surfaces</div>
-                    <p class="feature-desc">Root CLI, terminal TUI, Web PWA, Electron desktop, Manager dashboard, Telegram, and Discord. Web/TUI live updates use the SSE-first <code>GET /api/events</code> channel with legacy WebSocket fallback only for older servers. Desktop releases bundle a Node.js sidecar so the app and terminal shim can run without a global npm install.</p>
-                </div>
-                <div class="feature-card">
-                    <span class="feature-icon"></span>
-                    <div class="feature-title">Heartbeat system</div>
-                    <p class="feature-desc">Cron and interval jobs that run while you sleep. Morning check-ins, recurring reports, scheduled tasks — results forwarded to your channel.</p>
-                </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════════ PABCD ORCHESTRATION ═══════════════ -->
-    <section class="section" id="pabcd">
-        <div class="container reveal">
-            <span class="section-label">// orchestration</span>
-            <h2 class="section-title">PABCD — AI That Plans Before It Builds</h2>
-            <p class="section-desc">A DB-persisted finite state machine that enforces planning, auditing, and
-                verification. No cowboy coding — every phase requires your approval.</p>
-
-            <div class="pabcd-pipeline">
-                <div class="pabcd-phase" data-phase="P">
-                    <div class="phase-icon">P</div>
-                    <div class="phase-name">Plan</div>
-                    <div class="phase-desc">Diff-level implementation plan. Stops for your review.</div>
-                </div>
-                <div class="pabcd-arrow">→</div>
-                <div class="pabcd-phase" data-phase="A">
-                    <div class="phase-icon">A</div>
-                    <div class="phase-name">Audit</div>
-                    <div class="phase-desc">Read-only worker verifies feasibility. No files touched.</div>
-                </div>
-                <div class="pabcd-arrow">→</div>
-                <div class="pabcd-phase" data-phase="B">
-                    <div class="phase-icon">B</div>
-                    <div class="phase-name">Build</div>
-                    <div class="phase-desc">Boss implements. Worker verifies. Self-heals on failure.</div>
-                </div>
-                <div class="pabcd-arrow">→</div>
-                <div class="pabcd-phase" data-phase="C">
-                    <div class="phase-icon">C</div>
-                    <div class="phase-name">Check</div>
-                    <div class="phase-desc">Final verification — type-check, docs, consistency.</div>
-                </div>
-                <div class="pabcd-arrow">→</div>
-                <div class="pabcd-phase" data-phase="D">
-                    <div class="phase-icon">D</div>
-                    <div class="phase-name">Done</div>
-                    <div class="phase-desc">Summary of all changes. Returns to idle.</div>
-                </div>
-            </div>
-
-            <div class="pabcd-details">
-                <div class="pabcd-detail-card">
-                    <h3>Workers are read-only</h3>
-                    <p>Audit and verification workers <strong>cannot modify files</strong>. They inspect, report, and
-                        recommend — but never touch your code.</p>
-                </div>
-                <div class="pabcd-detail-card">
-                    <h3>Hard stop at every phase</h3>
-                    <p>The AI cannot self-advance. You review and approve each transition. No runaway agents, no
-                        surprise changes.</p>
-                </div>
-                <div class="pabcd-detail-card">
-                    <h3>DB-persisted state</h3>
-                    <p>State survives server restarts. CLI and Web UI share the same FSM — resume from any
-                        interface.</p>
-                </div>
-                <div class="pabcd-detail-card">
-                    <h3>Parallel-safe dispatch</h3>
-                    <p>Independent subtasks run concurrently via <code>Promise.all</code> with automatic file-overlap
-                        detection and sequential fallback.</p>
-                </div>
-            </div>
-
-            <div class="code-block" style="max-width:600px; margin:32px auto 0;">
-                <span class="dim"># Activate orchestration</span><br>
-                jaw orchestrate<br>
-                <span class="dim"># → P: Planning... (writes plan, waits for approval)</span><br>
-                <span class="dim"># → A: Audit... (worker verifies plan)</span><br>
-                <span class="dim"># → B: Build... (implements + verifies)</span><br>
-                <span class="dim"># → C: Check → D: Done</span>
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════════ PLATFORM ═══════════════ -->
-    <section class="section" id="platform">
-        <div class="container reveal">
-            <span class="section-label">// platform</span>
-            <h2 class="section-title">Runs Everywhere</h2>
-            <p class="section-desc">If your OS has a CLI, CLI-JAW works there. No exceptions.</p>
-            <div class="platform-strip">
-                <div class="platform-chip">macOS</div>
-                <div class="platform-chip">Linux</div>
-                <div class="platform-chip">WSL</div>
-                <div class="platform-chip">Electron desktop</div>
-                <div class="platform-chip">Docker</div>
-                <div class="platform-chip">Cloud VMs</div>
-                <div class="platform-chip">CI/CD</div>
-            </div>
-            <div class="docker-block">
-                <div class="docker-info">
-                    <h3>Desktop app — npm-free packaged runtime</h3>
-                    <p>Download the DMG, NSIS installer, or AppImage from GitHub Releases. Packaged builds include the CLI-JAW server, Node.js 22 sidecar, frontend assets, production dependencies, and a bundled <code>jaw</code> shim.</p>
-                    <span class="docker-tag">macOS DMG</span>
-                    <span class="docker-tag">Windows NSIS</span>
-                    <span class="docker-tag">Linux AppImage</span>
-                </div>
-                <div class="code-block">
-                    <span class="dim"># End-user flow</span><br>
-                    Download from GitHub Releases<br>
-                    Open CLI-JAW Desktop<br>
-                    Accept "Install CLI command"<br>
-                    jaw dashboard<br><br>
-                    <span class="dim"># Developer build</span><br>
-                    npm run electron:dist:mac
-                </div>
-            </div>
-            <div class="docker-block">
-                <div class="docker-info">
-                    <h3>Docker — container isolation</h3>
-                    <p>Run CLI-JAW in a Docker container for security isolation. AI agents cannot access host files.
-                        Non-root user, Chromium sandbox enabled by default.</p>
-                    <span class="docker-tag">Dockerfile</span>
-                    <span class="docker-tag">Dockerfile.dev</span>
-                    <span class="docker-tag">docker-compose.yml</span>
-                </div>
-                <div class="code-block">
-                    <span class="dim"># Quick start</span><br>
-                    docker compose up -d<br>
-                    <span class="dim"># → http://localhost:3457</span><br><br>
-                    <span class="dim"># Or build manually</span><br>
-                    docker build -t cli-jaw .<br>
-                    docker run -d -p 3457:3457 cli-jaw
-                </div>
-            </div>
-
-        </div>
-    </section>
-
-    <!-- ═══════════════ SCREENSHOTS ═══════════════ -->
-    <section class="section" id="screenshots">
-        <div class="container reveal">
-            <span class="section-label">// interfaces</span>
-            <h2 class="section-title">7+ surfaces to connect</h2>
-            <p class="section-desc">Root CLI, Manager dashboard, Web PWA, Electron desktop, Terminal TUI, Telegram, or Discord. Same assistant, same memory, same skills.</p>
-            <div class="screenshots-tabs">
-                <button class="tab-btn active" onclick="showTab('dashboard')">Dashboard</button>
-                <button class="tab-btn" onclick="showTab('notes')">Notes</button>
-                <button class="tab-btn" onclick="showTab('web')">Chat</button>
-                <button class="tab-btn" onclick="showTab('terminal')">Terminal</button>
-                <button class="tab-btn" onclick="showTab('telegram')">Telegram</button>
-                <button class="tab-btn" onclick="showTab('orchestration')">PABCD</button>
-            </div>
-            <div class="screenshot-panel active" id="tab-dashboard">
-                <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard">
-            </div>
-            <div class="screenshot-panel" id="tab-notes">
-                <img src="screenshots/notes-workspace.png" alt="CLI-JAW Notes workspace with markdown split preview">
-            </div>
-            <div class="screenshot-panel" id="tab-web">
-                <img src="screenshots/web-ui.png" alt="CLI-JAW Web UI">
-            </div>
-            <div class="screenshot-panel" id="tab-terminal">
-                <img src="screenshots/terminal-cli.png" alt="CLI-JAW Terminal">
-            </div>
-            <div class="screenshot-panel" id="tab-telegram">
-                <img src="screenshots/telegram-bot.png" alt="CLI-JAW Telegram Bot"
-                    style="max-width: 400px; margin: 0 auto;">
-            </div>
-            <div class="screenshot-panel" id="tab-orchestration">
-                <img src="screenshots/orchestration-log.png" alt="CLI-JAW Orchestration">
-            </div>
-        </div>
-    </section>
-
-    <!-- ═══════════════ QUICK START ═══════════════ -->
-    <section class="section" id="quickstart">
-        <div class="container reveal">
-            <span class="section-label">// quickstart</span>
-            <h2 class="section-title">Up and Running in 30 Seconds</h2>
-            <div class="quickstart-steps">
-                <div class="step-card">
-                    <div class="step-num">1</div>
-                    <div class="step-title">Install</div>
-                    <div class="code-block">
-                        npm install -g cli-jaw
+    <main id="main-content">
+        <section class="hero" aria-labelledby="hero-title">
+            <img class="hero-backdrop" src="assets/hero-backdrop.jpg" alt="" width="1536" height="1024" loading="eager" fetchpriority="high" aria-hidden="true">
+            <div class="hero-shade" aria-hidden="true"></div>
+            <div class="container hero-grid">
+                <div class="hero-copy">
+                    <p class="eyebrow">// system-level AI assistant</p>
+                    <h1 class="hero-title" id="hero-title">
+                        <span class="hero-line">All Your AI Subscriptions.</span>
+                        <span class="hero-line"><span class="hero-answer">One Assistant.</span></span>
+                    </h1>
+                    <p class="hero-sub">Claude Max · ChatGPT Pro · Copilot · Gemini, routed through OAuth. No per-token billing.</p>
+                    <p class="hero-install-label">Get your personal AI assistant in <strong>2 lines</strong></p>
+                    <div class="code-block hero-code" aria-label="Install CLI-JAW">
+                        <span class="dim">$</span> npm install -g cli-jaw<br>
+                        <span class="dim">$</span> jaw dashboard
+                    </div>
+                    <div class="hero-actions">
+                        <a class="button button-primary" href="#quickstart">
+                            Get Started
+                            <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
+                        </a>
+                        <a class="button button-ghost" href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">
+                            View on GitHub
+                        </a>
+                    </div>
+                    <div class="hero-quiet-links" aria-label="More resources">
+                        <a class="quiet-link" href="dev/">Documentation</a>
+                        <a class="quiet-link" href="windows.html">Windows?</a>
+                        <a class="quiet-link" href="#quickstart" data-open-beginner>What is Terminal?</a>
+                    </div>
+                    <div class="provider-chips" aria-label="Supported providers">
+                        <span class="provider-chip">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757"/></svg>
+                            Claude
+                        </span>
+                        <span class="provider-chip">
+                            <svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>
+                            Codex
+                        </span>
+                        <span class="provider-chip">
+                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="#3186FF"/></svg>
+                            Gemini
+                        </span>
+                        <span class="provider-chip">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                            OpenCode
+                        </span>
+                        <span class="provider-chip">
+                            <svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></svg>
+                            Copilot
+                        </span>
+                        <span class="provider-chip">Grok</span>
                     </div>
                 </div>
-                <div class="step-card">
-                    <div class="step-num">2</div>
-                    <div class="step-title">Authenticate</div>
-                    <div class="code-block">
-                        <span class="dim"># pick any one</span><br>
-                        copilot login<br>
-                        claude auth login<br>
-                        codex login<br>
-                        gemini login
+
+                <div class="hero-stage">
+                    <div class="terminal-window" aria-label="CLI-JAW provider status terminal">
+                        <div class="terminal-titlebar">
+                            <div class="terminal-dots" aria-hidden="true"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span></div>
+                            <span class="terminal-name">jaw · local</span>
+                            <span></span>
+                        </div>
+                        <div class="terminal-body">
+                            <p class="terminal-command"><span class="terminal-prompt">$</span> jaw dashboard</p>
+                            <dl class="provider-status">
+                                <div class="provider-status-row"><dt>Claude</dt><dd>anthropic</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Codex</dt><dd>openai</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Gemini</dt><dd>google</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>OpenCode</dt><dd>free</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Copilot</dt><dd>github</dd><dd class="terminal-ready">Ready</dd></div>
+                            </dl>
+                            <p class="terminal-log"><span class="terminal-time">09:41:07</span> routing <strong>task-42</strong> to Claude · fallback chain armed</p>
+                        </div>
                     </div>
-                </div>
-                <div class="step-card">
-                    <div class="step-num">3</div>
-                    <div class="step-title">Launch</div>
-                    <div class="code-block">
-                        jaw dashboard<br>
-                        <span class="dim"># → http://localhost:24576</span>
+                    <div class="hero-badges" aria-label="Project badges">
+                        <img src="https://img.shields.io/badge/tests-3700%2B-brightgreen" alt="Tests: 3700 plus" width="84" height="20">
+                        <img src="https://img.shields.io/npm/v/cli-jaw" alt="CLI-JAW npm version" width="80" height="20">
+                        <img src="https://img.shields.io/badge/TypeScript-6.0-blue" alt="TypeScript 6.0" width="96" height="20">
+                        <img src="https://img.shields.io/badge/node-%3E%3D22.4-blue" alt="Node 22.4 or newer" width="90" height="20">
+                        <img src="https://img.shields.io/badge/Docker-supported-2496ED?logo=docker&amp;logoColor=white" alt="Docker supported" width="131" height="20">
+                        <img src="https://img.shields.io/badge/platforms-macOS%20%7C%20Linux%20%7C%20WSL%20%7C%20Docker-lightgrey" alt="Platforms: macOS, Linux, WSL, and Docker" width="244" height="20">
                     </div>
                 </div>
             </div>
+        </section>
 
-            <!-- One-click install for beginners -->
-            <div style="margin-top:32px; text-align:center;">
-                <button
-                    onclick="document.getElementById('brewFree').style.display = document.getElementById('brewFree').style.display === 'none' ? 'block' : 'none'"
-                    style="background:transparent; border:1px solid var(--border); color:var(--text-dim); font-family:var(--font-mono); font-size:13px; padding:10px 24px; border-radius:8px; cursor:pointer; transition:all 0.25s;"
-                    onmouseover="this.style.borderColor='var(--accent)'; this.style.color='var(--accent)'"
-                    onmouseout="this.style.borderColor='var(--border)'; this.style.color='var(--text-dim)'">
-                    New to the terminal? — one-click install
-                </button>
-            </div>
-
-            <div id="brewFree"
-                style="display:none; margin-top:24px; background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:32px; text-align:left;">
-
-                <h3
-                    style="font-family:var(--font-display); font-size:18px; font-weight:600; margin-bottom:20px; color:var(--text);">
-                    macOS — step by step
-                </h3>
-
-                <!-- Step 1: Open Terminal -->
-                <div style="margin-bottom:20px;">
-                    <div
-                        style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
-                        Step 1 — Open Terminal</div>
-                    <p style="color:var(--text-dim); font-size:14px; line-height:1.8;">
-                        Open <strong style="color:var(--text);">Finder</strong> → <strong
-                            style="color:var(--text);">Applications</strong> → <strong
-                            style="color:var(--text);">Utilities</strong> → <strong
-                            style="color:var(--text);">Terminal.app</strong><br>
-                        <span style="font-size:13px;">(or press <code
-                                style="font-family:var(--font-mono); color:var(--accent); background:var(--bg); padding:2px 6px; border-radius:4px;">⌘ Space</code>
-                            and type <code
-                                style="font-family:var(--font-mono); color:var(--accent); background:var(--bg); padding:2px 6px; border-radius:4px;">Terminal</code>)</span>
-                    </p>
+        <section class="manager-showcase" aria-labelledby="manager-title">
+            <div class="container manager-layout">
+                <div class="screenshot-frame">
+                    <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard showing instance navigator, live preview, and runtime settings" width="3022" height="1526" loading="lazy">
                 </div>
-
-                <!-- Step 2: Paste -->
-                <div style="margin-bottom:20px;">
-                    <div
-                        style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
-                        Step 2 — Paste & hit Enter</div>
-                    <div class="code-block" style="font-size:13px;">
-                        curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash
-                    </div>
-                    <p style="color:var(--text-dim); font-size:13px; margin-top:8px;">This installs Node.js + CLI-JAW
-                        automatically. Wait until it finishes.</p>
-                </div>
-
-                <!-- Step 3: Auth + Launch -->
-                <div>
-                    <div
-                        style="font-family:var(--font-mono); font-size:11px; color:var(--accent); letter-spacing:2px; text-transform:uppercase; margin-bottom:8px;">
-                        Step 3 — Login & Launch</div>
-                    <div class="code-block" style="font-size:13px;">
-                        <span class="dim"># pick any one</span><br>
-                        copilot login<br>
-                        claude auth login<br>
-                        codex login<br>
-                        gemini login<br><br>
-                        jaw dashboard
-                    </div>
-                    <p style="color:var(--text-dim); font-size:13px; margin-top:8px;">
-                        Open <strong style="color:var(--accent);">http://localhost:24576</strong> for the manager dashboard. Agent chat UI stays on <strong style="color:var(--accent);">http://localhost:3457</strong> when you run <code>jaw serve</code>.
-                    </p>
+                <div class="manager-copy">
+                    <p class="eyebrow">// manager</p>
+                    <h2 id="manager-title">One control plane for every local AI session.</h2>
+                    <p>The manager dashboard tracks running JAW homes, previews Web UIs, manages employees, and gives you Kanban boards and Notes, all without leaving the browser.</p>
+                    <ul class="manager-points">
+                        <li>Instance navigator with active, running, and offline groups.</li>
+                        <li>Live preview proxy with Preview-on, Refresh, and Open controls.</li>
+                        <li>Kanban board with drag-and-drop task tracking per home.</li>
+                        <li>Settings for CLI, model, effort, permissions, employees, and skills.</li>
+                        <li>Notes with folders, split preview, KaTeX, Mermaid, and code blocks.</li>
+                        <li>One-click task dispatch to specialist employee agents.</li>
+                    </ul>
                 </div>
             </div>
-        </div>
-    </section>
+        </section>
 
-    <!-- ═══════════════ FOOTER ═══════════════ -->
+        <section class="demo-section section-rule" aria-labelledby="demo-title">
+            <div class="container reveal">
+                <div class="demo-heading">
+                    <div>
+                        <p class="eyebrow">// demo</p>
+                        <h2 class="section-title" id="demo-title">See It in Action</h2>
+                    </div>
+                </div>
+                <div class="demo-shell">
+                    <div class="demo-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+                    <div class="demo-media">
+                        <video src="https://github.com/user-attachments/assets/a7cf17c9-bfb3-44f0-b7fd-d001a39643fd" width="1662" height="1080" autoplay loop muted playsinline preload="metadata" title="CLI-JAW product demonstration"></video>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-rule" id="engines" aria-labelledby="engines-title">
+            <div class="container reveal">
+                <p class="kicker">Runtimes</p>
+                <h2 class="section-title" id="engines-title">Your subscriptions, unified</h2>
+                <p class="section-desc">Route through the AI subscriptions you already pay for. OAuth login, no API keys, no per-token billing. Even one engine is enough. Additional runtime surfaces such as Grok CLI and Codex App appear in settings when installed; MCP sync remains limited to supported MCP-aware engines.</p>
+                <div class="engines-grid">
+                    <article class="engine-card">
+                        <span class="engine-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757"/></svg></span>
+                        <div class="engine-name">Claude</div>
+                        <div class="engine-model">claude-opus-4-8</div>
+                        <span class="engine-badge">Paid</span>
+                    </article>
+                    <article class="engine-card">
+                        <span class="engine-mark"><svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg></span>
+                        <div class="engine-name">Codex</div>
+                        <div class="engine-model">gpt-5.5</div>
+                        <span class="engine-badge">Paid</span>
+                    </article>
+                    <article class="engine-card">
+                        <span class="engine-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="#3186FF"/></svg></span>
+                        <div class="engine-name">Gemini</div>
+                        <div class="engine-model">gemini-3-flash-preview</div>
+                        <span class="engine-badge">Paid</span>
+                    </article>
+                    <article class="engine-card">
+                        <span class="engine-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span>
+                        <div class="engine-name">OpenCode</div>
+                        <div class="engine-model">opencode-go/kimi-k2.6</div>
+                        <span class="engine-badge">Free</span>
+                    </article>
+                    <article class="engine-card">
+                        <span class="engine-mark"><svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></svg></span>
+                        <div class="engine-name">Copilot</div>
+                        <div class="engine-model">claude-sonnet-4.6</div>
+                        <span class="engine-badge">Free</span>
+                    </article>
+                </div>
+                <p class="fallback-line">Engine down? Next one picks up automatically. <strong>OpenCode wildcard:</strong> connect any model endpoint.</p>
+            </div>
+        </section>
+
+        <section class="section section-rule" id="features" aria-labelledby="features-title">
+            <div class="container reveal">
+                <p class="kicker">Infrastructure</p>
+                <h2 class="section-title" id="features-title">What you get</h2>
+                <p class="section-desc">Not a chatbot wrapper. A full-stack assistant with real infrastructure.</p>
+
+                <div class="feature-marquee">
+                    <article class="feature-dominant">
+                        <div class="feature-dominant-copy">
+                            <div class="feature-icon-box" aria-hidden="true">
+                                <svg class="icon" viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                            </div>
+                            <h3 class="feature-title">Manager dashboard</h3>
+                            <p class="feature-desc">Track local instances, preview live Web UIs, switch themes, inspect runtime settings, and manage employees from one browser workspace.</p>
+                        </div>
+                        <div class="feature-dominant-image">
+                            <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard with instance navigation and live preview" width="3022" height="1526" loading="lazy">
+                        </div>
+                    </article>
+                    <div class="feature-stack">
+                        <article class="feature-large">
+                            <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><path d="m17 15 3 3-3 3"/></svg></div>
+                            <div><h3 class="feature-title">PABCD orchestration</h3><p class="feature-desc">DB-persisted 5-phase FSM: Plan, Audit, Build, Check, Done. Workers are read-only. You approve every phase.</p></div>
+                        </article>
+                        <article class="feature-large">
+                            <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v1a4 4 0 0 0-2 7.5A4 4 0 0 0 10 20h2"/><path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1 2 7.5A4 4 0 0 1 14 20h-2"/><path d="M12 2v20"/><path d="M8 9h4"/><path d="M12 14h4"/></svg></div>
+                            <div><h3 class="feature-title">3-layer memory</h3><p class="feature-desc">History Block (session context) + Memory Flush (episodes, daily logs) + Soul and Task Snapshot (identity, semantic recall). SQLite FTS5 search.</p></div>
+                        </article>
+                        <article class="feature-large">
+                            <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+                            <div><h3 class="feature-title">Employee system</h3><p class="feature-desc">Dispatch specialist agents: Frontend, Backend, Research, Docs, each with its own CLI and model. Boss orchestrates, workers verify.</p></div>
+                        </article>
+                    </div>
+                </div>
+
+                <div class="feature-list">
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg></div>
+                        <div><h3 class="feature-title">Notes workspace</h3><p class="feature-desc">Dashboard-local markdown vault with folders, rename and move, dirty markers, split preview, KaTeX, Mermaid, and highlighted code blocks.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2 6-6 2 2-6 6-2Z"/></svg></div>
+                        <div><h3 class="feature-title">Browser automation</h3><p class="feature-desc">Chrome CDP, vision-click, DOM reference for ChatGPT/Grok/Gemini, Computer Use via Codex App, and a diagram skill for interactive visualizations.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><rect width="6" height="14" x="3" y="5" rx="1"/><rect width="6" height="10" x="15" y="9" rx="1"/><path d="M9 12h6"/><path d="m12 9 3 3-3 3"/></svg></div>
+                        <div><h3 class="feature-title">Kanban board</h3><p class="feature-desc">Drag-and-drop task tracking built into the dashboard. Columns, card creation, and reordering per home, with zero setup.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m7.8 16.2-2.9 2.9"/><path d="M6 12H2"/><path d="M7.8 7.8 4.9 4.9"/><circle cx="12" cy="12" r="3"/></svg></div>
+                        <div><h3 class="feature-title">200+ reference skills</h3><p class="feature-desc">Office docs (PDF, DOCX, XLSX, PPTX, HWP), GitHub, Notion, image generation, video rendering, and Telegram media, activated from the reference catalog as needed.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg></div>
+                        <div><h3 class="feature-title">Telegram + Discord</h3><p class="feature-desc">Chat from your phone. Voice messages with multi-provider STT. Files, photos, slash commands, and scheduled task results.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v6"/><path d="m16 6-4 2-4-2"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M9 17h6"/></svg></div>
+                        <div><h3 class="feature-title">MCP: install once</h3><p class="feature-desc">Install MCP tools once and sync supported MCP-aware engines. Grok CLI runs as a standard runtime without claiming MCP sync.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></div>
+                        <div><h3 class="feature-title">7+ surfaces</h3><p class="feature-desc">Root CLI, terminal TUI, Web PWA, Electron desktop, Manager dashboard, Telegram, and Discord. Web/TUI live updates use the SSE-first <code>GET /api/events</code> channel with legacy WebSocket fallback only for older servers. Desktop releases bundle a Node.js sidecar so the app and terminal shim can run without a global npm install.</p></div>
+                    </article>
+                    <article class="feature-row">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 3 2 6"/><path d="m19 3 3 3"/></svg></div>
+                        <div><h3 class="feature-title">Heartbeat system</h3><p class="feature-desc">Cron and interval jobs that run while you sleep. Morning check-ins, recurring reports, and scheduled tasks, with results forwarded to your channel.</p></div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-rule" id="pabcd" aria-labelledby="pabcd-title">
+            <div class="container reveal">
+                <p class="kicker">Orchestration</p>
+                <h2 class="section-title" id="pabcd-title">PABCD: AI That Plans Before It Builds</h2>
+                <p class="section-desc">A DB-persisted finite state machine that enforces planning, auditing, and verification. No cowboy coding: every phase requires your approval.</p>
+                <div class="phase-chips" aria-label="PABCD phases">
+                    <span class="phase-chip"><span class="phase-letter">P</span>Plan</span>
+                    <span class="phase-chip"><span class="phase-letter">A</span>Audit</span>
+                    <span class="phase-chip"><span class="phase-letter">B</span>Build</span>
+                    <span class="phase-chip"><span class="phase-letter">C</span>Check</span>
+                    <span class="phase-chip"><span class="phase-letter">D</span>Done</span>
+                </div>
+                <div class="orchestration-layout">
+                    <div class="orchestration-log" aria-label="PABCD run log">
+                        <div class="terminal-titlebar">
+                            <div class="terminal-dots" aria-hidden="true"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span></div>
+                            <span class="terminal-name">orchestration.log</span>
+                            <span></span>
+                        </div>
+                        <div class="log-lines">
+                            <div class="log-line"><time>09:41:02</time><span><span class="terminal-prompt">$</span> jaw orchestrate</span></div>
+                            <div class="log-line"><time>09:41:03</time><span><span class="log-phase">P → Plan</span> diff-level implementation plan; waiting for approval</span></div>
+                            <div class="log-line"><time>09:42:18</time><span><span class="log-phase">A → Audit</span> read-only worker verifies feasibility</span></div>
+                            <div class="log-line"><time>09:43:11</time><span><span class="log-phase">B → Build</span> boss implements + worker verifies</span></div>
+                            <div class="log-line"><time>09:47:46</time><span><span class="log-phase">C → Check</span> type-check, docs, consistency</span></div>
+                            <div class="log-line"><time>09:48:09</time><span><span class="log-phase">D → Done</span> summary written; returned to idle</span></div>
+                        </div>
+                    </div>
+                    <div class="pabcd-details">
+                        <article class="detail-item"><h3>Workers are read-only</h3><p>Audit and verification workers <strong>cannot modify files</strong>. They inspect, report, and recommend, but never touch your code.</p></article>
+                        <article class="detail-item"><h3>Hard stop at every phase</h3><p>The AI cannot self-advance. You review and approve each transition. No runaway agents, no surprise changes.</p></article>
+                        <article class="detail-item"><h3>DB-persisted state</h3><p>State survives server restarts. CLI and Web UI share the same FSM, so you can resume from any interface.</p></article>
+                        <article class="detail-item"><h3>Parallel-safe dispatch</h3><p>Independent subtasks run concurrently via <code>Promise.all</code> with automatic file-overlap detection and sequential fallback.</p></article>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-rule" id="platform" aria-labelledby="platform-title">
+            <div class="container reveal">
+                <p class="kicker">Platform</p>
+                <h2 class="section-title" id="platform-title">Runs Everywhere</h2>
+                <p class="section-desc">If your OS has a CLI, CLI-JAW works there. No exceptions.</p>
+                <div class="platform-strip" aria-label="Supported platforms">
+                    <span class="platform-chip">macOS</span>
+                    <span class="platform-chip">Linux</span>
+                    <span class="platform-chip">WSL</span>
+                    <span class="platform-chip">Electron desktop</span>
+                    <span class="platform-chip">Docker</span>
+                    <span class="platform-chip">Cloud VMs</span>
+                    <span class="platform-chip">CI/CD</span>
+                </div>
+                <div class="platform-blocks">
+                    <article class="platform-block">
+                        <div class="platform-copy">
+                            <h3>Desktop app: npm-free packaged runtime</h3>
+                            <p>Download the DMG, NSIS installer, or AppImage from GitHub Releases. Packaged builds include the CLI-JAW server, Node.js 22 sidecar, frontend assets, production dependencies, and a bundled <code>jaw</code> shim.</p>
+                            <div class="platform-tags"><span class="platform-tag">macOS DMG</span><span class="platform-tag">Windows NSIS</span><span class="platform-tag">Linux AppImage</span></div>
+                        </div>
+                        <div class="code-block">
+                            <span class="dim"># End-user flow</span><br>
+                            Download from GitHub Releases<br>
+                            Open CLI-JAW Desktop<br>
+                            Accept "Install CLI command"<br>
+                            jaw dashboard<br><br>
+                            <span class="dim"># Developer build</span><br>
+                            npm run electron:dist:mac
+                        </div>
+                    </article>
+                    <article class="platform-block">
+                        <div class="platform-copy">
+                            <h3>Docker: container isolation</h3>
+                            <p>Run CLI-JAW in a Docker container for security isolation. AI agents cannot access host files. Non-root user, Chromium sandbox enabled by default.</p>
+                            <div class="platform-tags"><span class="platform-tag">Dockerfile</span><span class="platform-tag">Dockerfile.dev</span><span class="platform-tag">docker-compose.yml</span></div>
+                        </div>
+                        <div class="code-block">
+                            <span class="dim"># Quick start</span><br>
+                            docker compose up -d<br>
+                            <span class="dim"># → http://localhost:3457</span><br><br>
+                            <span class="dim"># Or build manually</span><br>
+                            docker build -t cli-jaw .<br>
+                            docker run -d -p 3457:3457 cli-jaw
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-rule" id="screenshots" aria-labelledby="screenshots-title">
+            <div class="container reveal">
+                <p class="kicker">Interfaces</p>
+                <h2 class="section-title" id="screenshots-title">7+ surfaces to connect</h2>
+                <p class="section-desc">Root CLI, Manager dashboard, Web PWA, Electron desktop, Terminal TUI, Telegram, or Discord. Same assistant, same memory, same skills.</p>
+                <div class="tabs-wrap">
+                    <div class="tab-list" role="tablist" aria-label="CLI-JAW interface screenshots">
+                        <button class="tab-button" id="tab-dashboard" role="tab" type="button" aria-selected="true" aria-controls="panel-dashboard" tabindex="0">Dashboard</button>
+                        <button class="tab-button" id="tab-notes" role="tab" type="button" aria-selected="false" aria-controls="panel-notes" tabindex="-1">Notes</button>
+                        <button class="tab-button" id="tab-web" role="tab" type="button" aria-selected="false" aria-controls="panel-web" tabindex="-1">Chat</button>
+                        <button class="tab-button" id="tab-terminal" role="tab" type="button" aria-selected="false" aria-controls="panel-terminal" tabindex="-1">Terminal</button>
+                        <button class="tab-button" id="tab-telegram" role="tab" type="button" aria-selected="false" aria-controls="panel-telegram" tabindex="-1">Telegram</button>
+                        <button class="tab-button" id="tab-orchestration" role="tab" type="button" aria-selected="false" aria-controls="panel-orchestration" tabindex="-1">PABCD</button>
+                    </div>
+                    <div class="tab-panel" id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
+                        <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard" width="3022" height="1526" loading="lazy">
+                    </div>
+                    <div class="tab-panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
+                        <img src="screenshots/notes-wysiwyg.png" alt="CLI-JAW Notes workspace with WYSIWYG markdown editing" width="2556" height="1548" loading="lazy">
+                    </div>
+                    <div class="tab-panel" id="panel-web" role="tabpanel" aria-labelledby="tab-web" hidden>
+                        <img src="screenshots/web-ui.png" alt="CLI-JAW Web UI" width="1320" height="1194" loading="lazy">
+                    </div>
+                    <div class="tab-panel" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden>
+                        <img src="screenshots/terminal-cli.png" alt="CLI-JAW Terminal" width="561" height="273" loading="lazy">
+                    </div>
+                    <div class="tab-panel is-narrow" id="panel-telegram" role="tabpanel" aria-labelledby="tab-telegram" hidden>
+                        <img src="screenshots/telegram-bot.png" alt="CLI-JAW Telegram Bot" width="1290" height="2796" loading="lazy">
+                    </div>
+                    <div class="tab-panel" id="panel-orchestration" role="tabpanel" aria-labelledby="tab-orchestration" hidden>
+                        <img src="screenshots/orchestration-log.png" alt="CLI-JAW Orchestration" width="844" height="436" loading="lazy">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section section-rule" id="quickstart" aria-labelledby="quickstart-title">
+            <div class="container reveal">
+                <p class="kicker">Quickstart</p>
+                <h2 class="section-title" id="quickstart-title">Up and Running in 30 Seconds</h2>
+                <div class="quickstart-slab">
+                    <article class="quick-step">
+                        <div class="step-heading"><span class="step-number">1</span><span class="step-title">Install</span></div>
+                        <div class="code-block">npm install -g cli-jaw</div>
+                    </article>
+                    <article class="quick-step">
+                        <div class="step-heading"><span class="step-number">2</span><span class="step-title">Authenticate</span></div>
+                        <div class="code-block"><span class="dim"># pick any one</span><br>copilot login<br>claude auth login<br>codex login<br>gemini login</div>
+                    </article>
+                    <article class="quick-step">
+                        <div class="step-heading"><span class="step-number">3</span><span class="step-title">Launch</span></div>
+                        <div class="code-block">jaw dashboard<br><span class="dim"># → http://localhost:24576</span></div>
+                    </article>
+                </div>
+
+                <details class="beginner" id="terminal-help">
+                    <summary>
+                        <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
+                        New to the terminal? One-click install
+                    </summary>
+                    <div class="beginner-content">
+                        <h3>macOS: step by step</h3>
+                        <div class="beginner-steps">
+                            <article class="beginner-step">
+                                <p class="beginner-label">Step 1: Open Terminal</p>
+                                <p class="beginner-copy">Open <strong>Finder</strong> → <strong>Applications</strong> → <strong>Utilities</strong> → <strong>Terminal.app</strong><br>(or press <code>⌘ Space</code> and type <code>Terminal</code>)</p>
+                            </article>
+                            <article class="beginner-step">
+                                <p class="beginner-label">Step 2: Paste and hit Enter</p>
+                                <div class="code-block">curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash</div>
+                                <p class="beginner-note">This installs Node.js + CLI-JAW automatically. Wait until it finishes.</p>
+                            </article>
+                            <article class="beginner-step">
+                                <p class="beginner-label">Step 3: Login and Launch</p>
+                                <div class="code-block"><span class="dim"># pick any one</span><br>copilot login<br>claude auth login<br>codex login<br>gemini login<br><br>jaw dashboard</div>
+                                <p class="beginner-note">Open <strong>http://localhost:24576</strong> for the manager dashboard. Agent chat UI stays on <strong>http://localhost:3457</strong> when you run <code>jaw serve</code>.</p>
+                            </article>
+                        </div>
+                    </div>
+                </details>
+            </div>
+        </section>
+    </main>
+
     <footer class="footer">
-        <div class="container">
-            <div class="footer-logo">CLI-JAW</div>
+        <div class="container footer-row">
+            <div class="footer-brand">CLI-JAW</div>
             <div class="footer-links">
-                <a href="https://github.com/lidge-jun/cli-jaw" target="_blank">GitHub</a>
-                <a href="https://npmjs.com/package/cli-jaw" target="_blank">npm</a>
+                <a href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">GitHub</a>
+                <a href="https://npmjs.com/package/cli-jaw" target="_blank" rel="noreferrer">npm</a>
                 <a href="dev/">Docs</a>
-                <a href="https://github.com/lidge-jun/cli-jaw/issues" target="_blank">Issues</a>
+                <a href="https://github.com/lidge-jun/cli-jaw/issues" target="_blank" rel="noreferrer">Issues</a>
             </div>
             <p class="footer-copy">MIT License</p>
         </div>
     </footer>
 
     <script>
-        // ── Block Art Generator ──
-        const font = {
-            C: [[0, 1, 1, 1, 1, 1], [1, 1, 0, 0, 0, 1], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 1], [0, 1, 1, 1, 1, 1]],
-            L: [[1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 0, 0, 0, 0], [1, 1, 1, 1, 1, 1]],
-            I: [[1, 1, 1, 1], [0, 1, 1, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 1, 1, 0], [0, 1, 1, 0], [1, 1, 1, 1]],
-            J: [[0, 0, 1, 1, 1, 1], [0, 0, 0, 1, 1, 0], [0, 0, 0, 1, 1, 0], [0, 0, 0, 1, 1, 0], [1, 0, 0, 1, 1, 0], [1, 1, 0, 1, 1, 0], [0, 1, 1, 1, 0, 0]],
-            A: [[0, 0, 1, 1, 0, 0], [0, 1, 1, 1, 1, 0], [1, 1, 0, 0, 1, 1], [1, 1, 0, 0, 1, 1], [1, 1, 1, 1, 1, 1], [1, 1, 0, 0, 1, 1], [1, 1, 0, 0, 1, 1]],
-            W: [[1, 1, 0, 0, 0, 1, 1], [1, 1, 0, 0, 0, 1, 1], [1, 1, 0, 0, 0, 1, 1], [1, 1, 0, 1, 0, 1, 1], [1, 1, 0, 1, 0, 1, 1], [1, 1, 1, 1, 1, 1, 1], [0, 1, 1, 0, 1, 1, 0]],
-        };
-        const art = document.getElementById('blockArt');
-        for (const ch of 'CLIJAW') {
-            const m = font[ch], cols = m[0].length;
-            const el = document.createElement('div');
-            el.className = 'letter';
-            el.style.gridTemplateColumns = `repeat(${cols}, clamp(8px, 1.5vw, 14px))`;
-            el.style.gridTemplateRows = `repeat(7, clamp(8px, 1.5vw, 14px))`;
-            for (let r = 0; r < 7; r++)
-                for (let c = 0; c < cols; c++) {
-                    const b = document.createElement('div');
-                    b.className = `b ${m[r][c] ? 'on' : 'off'}`;
-                    el.appendChild(b);
-                }
-            art.appendChild(el);
-        }
+        (() => {
+            const nav = document.querySelector('.site-nav');
+            const syncNav = () => {
+                const scrolled = window.scrollY > 20;
+                nav.classList.toggle('pill-at-top', !scrolled);
+                nav.classList.toggle('pill-scrolled', scrolled);
+            };
+            syncNav();
+            window.addEventListener('scroll', syncNav, { passive: true });
 
-        // ── Scroll Reveal ──
-        const reveals = document.querySelectorAll('.reveal');
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('visible'); observer.unobserve(e.target); } });
-        }, { threshold: 0.15 });
-        reveals.forEach(el => observer.observe(el));
+            const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+            const demoVideo = document.querySelector('.demo-shell video');
+            if (reducedMotion) {
+                demoVideo.autoplay = false;
+                demoVideo.removeAttribute('autoplay');
+                demoVideo.pause();
+                demoVideo.controls = true;
+            }
 
-        // ── Tab Switching ──
-        function showTab(id) {
-            document.querySelectorAll('.screenshot-panel').forEach(p => p.classList.remove('active'));
-            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            document.getElementById('tab-' + id).classList.add('active');
-            event.target.classList.add('active');
-        }
+            const reveals = document.querySelectorAll('.reveal');
+            if (reducedMotion || !('IntersectionObserver' in window)) {
+                reveals.forEach((element) => element.classList.add('is-visible'));
+            } else {
+                const observer = new IntersectionObserver((entries) => {
+                    entries.forEach((entry) => {
+                        if (!entry.isIntersecting) return;
+                        entry.target.classList.add('is-visible');
+                        observer.unobserve(entry.target);
+                    });
+                }, { threshold: 0.08 });
+                reveals.forEach((element) => observer.observe(element));
+            }
+
+            const tabList = document.querySelector('[role="tablist"]');
+            const tabs = Array.from(tabList.querySelectorAll('[role="tab"]'));
+            const activateTab = (tab, moveFocus = false) => {
+                tabs.forEach((candidate) => {
+                    const selected = candidate === tab;
+                    candidate.setAttribute('aria-selected', String(selected));
+                    candidate.tabIndex = selected ? 0 : -1;
+                    document.getElementById(candidate.getAttribute('aria-controls')).hidden = !selected;
+                });
+                if (moveFocus) tab.focus();
+            };
+
+            tabs.forEach((tab, index) => {
+                tab.addEventListener('click', () => activateTab(tab));
+                tab.addEventListener('keydown', (keyboardEvent) => {
+                    let nextIndex = index;
+                    if (keyboardEvent.key === 'ArrowRight') nextIndex = (index + 1) % tabs.length;
+                    else if (keyboardEvent.key === 'ArrowLeft') nextIndex = (index - 1 + tabs.length) % tabs.length;
+                    else if (keyboardEvent.key === 'Home') nextIndex = 0;
+                    else if (keyboardEvent.key === 'End') nextIndex = tabs.length - 1;
+                    else return;
+                    keyboardEvent.preventDefault();
+                    activateTab(tabs[nextIndex], true);
+                });
+            });
+
+            const beginner = document.getElementById('terminal-help');
+            document.querySelector('[data-open-beginner]').addEventListener('click', () => {
+                beginner.open = true;
+            });
+        })();
     </script>
 </body>
 
