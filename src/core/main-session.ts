@@ -87,7 +87,7 @@ export function syncMainSessionToSettings(prevCli: string | null = null): MainSe
     const session = getSession() as MainSessionRecord;
     const row = buildSelectedSessionRow(settings, session, prevCli);
     if (prevCli && row.cli !== prevCli && session?.session_id) {
-        console.log(`[jaw:session] invalidated — CLI changed ${prevCli} → ${row.cli}`);
+        log.info(`[jaw:session] invalidated — CLI changed ${prevCli} → ${row.cli}`);
     }
     writeMainSessionRow(row);
     return row;
@@ -136,6 +136,7 @@ export function resetSessionPreservingHistory(): MainSessionRow {
 // Compact handler stores here; next spawnAgent() prepends and clears.
 
 import { getMemory, upsertMemory, deleteMemory } from './db.js';
+import { log } from './logger.js';
 
 const BOOTSTRAP_KEY = '__bootstrap_prompt';
 const BOOTSTRAP_SOURCE = '__system_bootstrap';

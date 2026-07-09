@@ -35,11 +35,11 @@ test('FolderPanel restores session state while preserving real root reset bounda
 });
 
 test('SidebarRailRouter owns FolderPanel session above right-panel mode remounts', () => {
-    assert.ok(sidebarRouterSource.includes('useState<FolderPanelSessionState | null>'), 'SidebarRailRouter must own folderPanelSession');
-    assert.ok(sidebarRouterSource.includes('sessionState={folderPanelSession}'), 'FolderPanel must receive the router-owned session');
-    assert.ok(sidebarRouterSource.includes('onSessionStateChange={onFolderPanelSessionChange}'), 'FolderPanel must publish snapshots to the router');
-    assert.ok(sidebarRouterSource.includes('setFolderPanelSession(current =>'), 'router must guard session state when effective root changes');
-    assert.ok(sidebarRouterSource.includes('current?.rootPath === props.dashboardSettingsUi.rightFolderRootPath'), 'settings hydration must not restore a session from a different root');
+    assert.ok(sidebarRouterSource.includes('useState<Record<string, FolderPanelSessionState | null>>'), 'SidebarRailRouter must own FolderPanel sessions per Files tab');
+    assert.ok(sidebarRouterSource.includes('sessionState={ctx.folderSessions[tab.id] ?? null}'), 'FolderPanel must receive the router-owned session for its tab');
+    assert.ok(sidebarRouterSource.includes('onSessionStateChange={state => ctx.onFolderSessionChange(tab.id, state)}'), 'FolderPanel must publish snapshots to the router by tab id');
+    assert.ok(sidebarRouterSource.includes('setFolderSessions(current => (current[tabId] ? { ...current, [tabId]: null } : current))'), 'router must guard session state when a tab root changes');
+    assert.ok(sidebarRouterSource.includes('const folderRoot = files.folderRootPath ?? ctx.fallbackFolderRootPath'), 'settings hydration must be only a fallback for tabs without their own root');
 });
 
 test('useFolderSelection can restore a serialized selection without changing current actions', () => {

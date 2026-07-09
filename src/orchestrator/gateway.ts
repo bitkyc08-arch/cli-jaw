@@ -82,7 +82,7 @@ function runDetached(
 
 export function submitMessage(
     text: string,
-    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean },
+    meta: { origin: RuntimeOrigin; displayText?: string; skipOrchestrate?: boolean; target?: RemoteTarget; chatId?: string | number; overrides?: { model?: string; systemPrompt?: string }; replyViaTarget?: boolean; external?: boolean },
 ): SubmitResult {
     const trimmed = text.trim();
     if (!trimmed) return { action: 'rejected', reason: 'empty' };
@@ -107,7 +107,7 @@ export function submitMessage(
     if (getState(scope) === 'IDLE' && isContinueIntent(trimmed)) {
         if (isAgentBusy()) return { action: 'rejected', reason: 'busy' };
         insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, getActiveChatSession());
-        broadcast('new_message', { role: 'user', content: display, source: meta.origin });
+        broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined }));
         if (!meta.skipOrchestrate) {
             runDetached(
                 orchestrateContinue({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
@@ -121,7 +121,7 @@ export function submitMessage(
     // ── reset intent ──
     if (isResetIntent(trimmed)) {
         insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, getActiveChatSession());
-        broadcast('new_message', { role: 'user', content: display, source: meta.origin });
+        broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined }));
         if (!meta.skipOrchestrate) {
             runDetached(
                 orchestrateReset({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, replyViaTarget: meta.replyViaTarget, _skipInsert: true }),
@@ -146,7 +146,7 @@ export function submitMessage(
 
     // ── idle → start immediately ──
     insertMessage.run('user', display, meta.origin, '', settings["workingDir"] || null, getActiveChatSession());
-    broadcast('new_message', { role: 'user', content: display, source: meta.origin });
+    broadcast('new_message', stripUndefined({ role: 'user', content: display, source: meta.origin, external: meta.external ? true : undefined }));
     if (!meta.skipOrchestrate) {
         runDetached(
             orchestrate(trimmed, stripUndefined({ origin: meta.origin, target: meta.target, chatId: meta.chatId, requestId, _skipInsert: true, overrides: meta.overrides, replyViaTarget: meta.replyViaTarget })),

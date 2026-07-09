@@ -1,3 +1,5 @@
+import { escapeHtml } from './html.js';
+
 type DataframeType = 'string' | 'number' | 'boolean' | 'date' | 'json';
 
 export type DataframeSpec = {
@@ -28,11 +30,6 @@ let delegatedDocument: Document | null = null;
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function clampText(value: unknown, max = MAX_CELL): string {

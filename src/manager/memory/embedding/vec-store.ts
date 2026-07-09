@@ -186,7 +186,7 @@ export class VecStore {
     let dbSizeBytes = 0;
     try {
       dbSizeBytes = statSync(this.dbPath).size;
-    } catch {}
+    } catch {} // best-effort: size stat is informational
     return { totalChunks: countRow.cnt, instances: instRow.cnt, dbSizeBytes };
   }
 

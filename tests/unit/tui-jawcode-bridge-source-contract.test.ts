@@ -10,8 +10,6 @@ test('renderToolLine preserves one-line completed tool detail and folds multilin
     assert.match(source, /const detailLines = detail\.split\('\\n'\)/);
     assert.match(source, /const firstDetail = detailLines\[0\]/);
     assert.match(source, /\$\{firstDetail\} … \+\$\{detailLines\.length - 1\} lines/);
-    assert.match(source, /state === 'pending' \|\| state === 'error'/);
-    assert.match(source, /state === 'done' && foldedHint/);
 
     const singleLine = renderToolLine('🔧', 'Bash', 'npm test', 'done');
     assert.match(singleLine, /npm test/);
@@ -20,6 +18,19 @@ test('renderToolLine preserves one-line completed tool detail and folds multilin
     assert.match(multiLine, /npm test/);
     assert.match(multiLine, /\+1 lines/);
     assert.doesNotMatch(multiLine, /second line/);
+});
+
+test('renderToolLine folds multiline detail in every state — headers never carry raw newlines (jawcode 036d1ab parity)', () => {
+    for (const state of ['pending', 'error'] as const) {
+        const multiLine = renderToolLine('🔧', 'Bash', 'first line\nsecond line\nthird line', state);
+        assert.doesNotMatch(multiLine, /\n/, `${state} header must be a single row`);
+        assert.match(multiLine, /first line/);
+        assert.match(multiLine, /\+2 lines/);
+        assert.doesNotMatch(multiLine, /second line/);
+
+        const singleLine = renderToolLine('🔧', 'Bash', 'npm test', state);
+        assert.match(singleLine, /: npm test/);
+    }
 });
 
 test('renderToolLine does not duplicate event emoji before the tool label', () => {

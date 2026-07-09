@@ -24,6 +24,7 @@ import { extractOpenAiApiKey, hasInvalidOpenAiApiKeyInput } from '../jaw-ceo/ope
 import { getSecurityAuditLog } from '../security/security-audit-log.js';
 import { pickFolderNative } from '../core/folder-picker.js';
 import { getProjectGitSummary } from '../project-git-summary.js';
+import { log } from '../core/logger.js';
 import {
     listPiModels,
     normalizePiProfile,
@@ -271,7 +272,7 @@ export function registerSettingsRoutes(
             const syncResults = syncToAll(config);
             res.json({ ok: true, results, synced: syncResults });
         } catch (e: unknown) {
-            console.error('[mcp:install]', e);
+            log.error('[mcp:install]', e);
             res.status(500).json({ error: (e as Error).message });
         }
     });
@@ -289,7 +290,7 @@ export function registerSettingsRoutes(
                 synced: results,
             });
         } catch (e: unknown) {
-            console.error('[mcp:reset]', e);
+            log.error('[mcp:reset]', e);
             res.status(500).json({ error: (e as Error).message });
         }
     });

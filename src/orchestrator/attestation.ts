@@ -102,6 +102,8 @@ export function stripPhaseAttestation(text: string): string {
 export interface GateResult {
   ok: boolean;
   reason?: string;
+  /** Soft-warning advisory text. Present only when ok===true and something looks off. */
+  advisory?: string;
 }
 
 /**
@@ -147,8 +149,45 @@ export function checkAttestationGate(
         reason: `C → D requires a passing check, but the attestation reports exitCode ${att.exitCode}. Fix the failure (orchestrate B) before advancing.`,
       };
     }
+    // Render-grounding soft warning (C-RENDER-GROUNDING-01): when the did/checkOutput
+    // mentions render-artifact file types but lacks observation vocabulary, emit an
+    // advisory. The gate remains a pass — this is a warning, never a block.
+    const advisory = checkRenderGroundingAdvisory(att);
+    if (advisory) {
+      return { ok: true, advisory };
+    }
   }
   return { ok: true };
+}
+
+// ─── Render-grounding soft warning (C-RENDER-GROUNDING-01) ──────
+// When a C→D attestation's did/checkOutput text mentions render-artifact file types
+// (html, svg, css, canvas, chart, jsx, tsx, animation) but lacks render-observation
+// vocabulary (screenshot, render, observed, headless, viewport, render-not-applicable),
+// emit an advisory warning. The gate result always remains ok:true.
+
+/** File-type keywords that indicate a render artifact was likely involved. */
+const RENDER_ARTIFACT_PATTERN = /(?:\b|\.)(html|svg|css|jsx|tsx|canvas|chart|animation)\b|\b(ui|game)\b/i;
+
+/** Observation vocabulary that indicates the agent actually ran and observed the artifact. */
+const RENDER_OBSERVATION_PATTERN = /\b(screenshot|render|rendered|observed|headless|viewport|render-not-applicable|visual|browser|puppeteer|playwright|pdftoppm|opened|displayed|inspected)\b/i;
+
+/**
+ * Returns advisory text when a C→D attestation mentions render-artifact file types
+ * without corresponding render-observation vocabulary. Returns null when no warning
+ * is warranted (either no render artifacts mentioned, or observation is present).
+ */
+export function checkRenderGroundingAdvisory(att: PhaseAttestation): string | null {
+  const combined = `${att.did} ${att.checkOutput || ''}`;
+  if (!RENDER_ARTIFACT_PATTERN.test(combined)) return null;
+  if (RENDER_OBSERVATION_PATTERN.test(combined)) return null;
+  return (
+    '[C-RENDER-GROUNDING-01 advisory] The attestation mentions render-artifact types ' +
+    '(html/svg/css/canvas/chart/jsx/tsx) but does not reference a render observation ' +
+    '(screenshot/render/observed/headless/viewport). If this work-phase produced a ' +
+    'visual artifact, consider running and observing it before advancing. ' +
+    'If render grounding does not apply, mention "render-not-applicable" in the did.'
+  );
 }
 
 // ─── No-state narration detector ─────────────────────

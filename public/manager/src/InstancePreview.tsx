@@ -18,9 +18,19 @@ type InstancePreviewProps = {
     onOpenDocFromPreview?: (absolutePath: string) => void;
     onPreviewDroppedFiles?: (files: File[]) => void;
     docPanelCapable?: boolean;
+    previewInsertTextRequest?: PreviewInsertTextRequest | null;
+    onPreviewInsertTextResult?: (id: string, result: PreviewInsertTextResult) => void;
 };
 
 const PREVIEW_IFRAME_SANDBOX = 'allow-forms allow-modals allow-popups allow-popups-to-escape-sandbox allow-same-origin allow-scripts allow-downloads';
+
+export type PreviewInsertTextRequest = {
+    id: string;
+    port: number;
+    text: string;
+};
+
+export type PreviewInsertTextResult = { ok: true } | { ok: false; error: string };
 
 type PreviewOpenNotesMessage = {
     type?: unknown;
@@ -240,6 +250,7 @@ function extractDroppedFiles(data: PreviewDroppedFilesMessage | null): File[] {
 export function InstancePreview(props: InstancePreviewProps) {
     const iframeRef = useRef<HTMLIFrameElement | null>(null);
     const loadedSrcRef = useRef<string | null>(null);
+    const handledInsertRequestRef = useRef<string | null>(null);
     const [pathDropStatus, setPathDropStatus] = useState<string | null>(null);
     const [folderDragActive, setFolderDragActive] = useState(false);
     const state = buildPreviewState(
@@ -258,6 +269,30 @@ export function InstancePreview(props: InstancePreviewProps) {
         if (loadedSrcRef.current !== state.src) return;
         postPreviewTheme(iframeRef.current, state.src, props.theme);
     }, [props.enabled, props.theme, state.canPreview, state.src]);
+
+    useEffect(() => {
+        const request = props.previewInsertTextRequest;
+        if (!request || handledInsertRequestRef.current === request.id) return;
+        handledInsertRequestRef.current = request.id;
+        const finish = (result: PreviewInsertTextResult): void => {
+            props.onPreviewInsertTextResult?.(request.id, result);
+        };
+        if (!props.instance?.ok || props.instance.port !== request.port) {
+            finish({ ok: false, error: 'selected instance preview is not mounted' });
+            return;
+        }
+        if (!props.enabled || !state.canPreview || !state.src) {
+            finish({ ok: false, error: disabledReason || 'selected instance preview is unavailable' });
+            return;
+        }
+        if (loadedSrcRef.current !== state.src) {
+            finish({ ok: false, error: 'selected instance preview is still loading' });
+            return;
+        }
+        void postPreviewInsertText(iframeRef.current, state.src, request.text)
+            .then(finish)
+            .catch(error => finish({ ok: false, error: (error as Error).message }));
+    }, [disabledReason, props.enabled, props.instance, props.onPreviewInsertTextResult, props.previewInsertTextRequest, state.canPreview, state.src]);
 
     const handleFolderPathDrop = useCallback(async (event: React.DragEvent): Promise<void> => {
         if (!hasFolderPanelDragPayload(event.dataTransfer)) return;

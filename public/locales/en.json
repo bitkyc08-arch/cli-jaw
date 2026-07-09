@@ -801,5 +801,6 @@
     "help.keyboardShortcuts.subcmd.1": "/help — Show full command list",
     "help.keyboardShortcuts.subcmd.2": "/help <command> — Show detailed help for a specific command",
     "help.keyboardShortcuts.subcmd.3": "/commands — Open command palette (alias: /cmd)",
-    "bgtask.title": "Background"
+    "bgtask.title": "Background",
+    "tg.elicitationExpired": "Selection expired. Please reply with text."
 }

@@ -15,6 +15,7 @@ import { loadRecoverable, markTerminal } from './registry.js';
 import { startTask, isTaskRunnerActive } from './runner.js';
 import { notifyTask, type NotifierDeps } from './notifier.js';
 import type { BgTaskRow } from './types.js';
+import { log } from '../core/logger.js';
 
 export interface RecoverSummary {
     resumedProbes: number;
@@ -56,7 +57,7 @@ export async function recoverBgTasks(
     };
     const onTerminal = (taskId: string): void => {
         notifyTask(taskId, deps).catch((err: Error) => {
-            console.error(`[bgtask:${taskId}] recovery notify failed:`, err.message);
+            log.error(`[bgtask:${taskId}] recovery notify failed:`, err.message);
         });
     };
 
@@ -64,7 +65,7 @@ export async function recoverBgTasks(
     try {
         rows = loadRecoverable();
     } catch (err) {
-        console.error('[bgtask] recovery load failed:', (err as Error).message);
+        log.error('[bgtask] recovery load failed:', (err as Error).message);
         return summary;
     }
 
@@ -92,19 +93,19 @@ export async function recoverBgTasks(
             } else if (alive) {
                 const ageMs = row.createdAt ? Date.now() - sqliteTimestampMs(row.createdAt) : Infinity;
                 if (ageMs > 30 * 60_000) {
-                    try { if (row.pid) process.kill(row.pid, 'SIGTERM'); } catch {}
+                    try { if (row.pid) process.kill(row.pid, 'SIGTERM'); } catch {} // best-effort: process may already be gone
                     const capture = JSON.stringify({
                         stdoutTail: [], stderrTail: [],
                         reason: `orphaned child killed after ${Math.round(ageMs / 60_000)}min`,
                     });
                     if (markTerminal(row.id, 'failed', capture)) onTerminal(row.id);
                     summary.failedLost += 1;
-                    console.warn(`[bgtask:${row.id}] killed orphan (pid ${row.pid}, age ${Math.round(ageMs / 60_000)}min)`);
+                    log.warn(`[bgtask:${row.id}] killed orphan (pid ${row.pid}, age ${Math.round(ageMs / 60_000)}min)`);
                 } else {
                     // Keep the row recoverable: clearing pid/status here prevents
                     // later restarts from enforcing the grace-window cleanup.
                     summary.orphaned += 1;
-                    console.warn(`[bgtask:${row.id}] orphaned — pid ${row.pid} alive, will kill after 30min`);
+                    log.warn(`[bgtask:${row.id}] orphaned — pid ${row.pid} alive, will kill after 30min`);
                 }
             } else if (row.spec.respawn === true) {
                 startTask(row, onTerminal);
@@ -118,14 +119,14 @@ export async function recoverBgTasks(
                 summary.failedLost += 1;
             }
         } catch (err) {
-            console.error(`[bgtask:${row.id}] recovery failed:`, (err as Error).message);
+            log.error(`[bgtask:${row.id}] recovery failed:`, (err as Error).message);
         }
     }
 
     const total = summary.resumedProbes + summary.respawnedChildren + summary.failedLost
         + summary.orphaned + summary.renotified;
     if (total > 0) {
-        console.log(`[bgtask] recovery: ${summary.resumedProbes} probes resumed, `
+        log.info(`[bgtask] recovery: ${summary.resumedProbes} probes resumed, `
             + `${summary.respawnedChildren} children respawned, ${summary.failedLost} lost→failed, `
             + `${summary.orphaned} orphaned, ${summary.renotified} re-notified`);
     }

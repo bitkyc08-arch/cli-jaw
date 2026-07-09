@@ -1,4 +1,5 @@
 import { getArgumentCompletionItems, getCompletionItems } from '../commands.js';
+import { clipTextToCols, visualWidth } from './renderers.js';
 import type { OverlayItem } from '../types.js';
 
 export interface AutocompleteState {
@@ -273,9 +274,15 @@ export function layoutCenteredBox(
     return { boxWidth, boxHeight, startRow, startCol, innerW };
 }
 
+// ANSI-aware pad/clip: inner lines carry color escapes (bgtask rows, dim
+// hints) — clipping by string length cut visible text mid-word and leaked an
+// unclosed escape into the box border (adversarial review, devlog doc 40).
+// clipTextToCols passes CSI sequences through and appends a reset when any
+// ANSI was seen; visualWidth ignores escapes and counts wide glyphs as 2.
 function padInner(text: string, innerW: number): string {
-    if (text.length >= innerW) return text.slice(0, innerW);
-    return text + ' '.repeat(innerW - text.length);
+    const width = visualWidth(text);
+    if (width > innerW) return clipTextToCols(text, innerW);
+    return text + ' '.repeat(innerW - width);
 }
 
 /** Paint a bordered box into alt-screen frame rows (no cursor motion). */
@@ -294,7 +301,9 @@ export function paintCenteredBox(
         const absRow = spec.startRow + relRow - 1;
         if (absRow < 1 || absRow > rows) return;
         const leftPad = ' '.repeat(spec.startCol - 1);
-        frameRows[absRow - 1] = (leftPad + segment).slice(0, cols);
+        // ANSI-safe clip: a raw slice counted escape bytes as columns and cut
+        // the right border off colored rows (adversarial review, doc 40).
+        frameRows[absRow - 1] = clipTextToCols(leftPad + segment, cols);
     };
 
     setRow(1, `┌${topInner}${'─'.repeat(Math.max(0, spec.innerW - topInner.length))}┐`);
@@ -412,22 +421,83 @@ export interface BgtaskOverlayItem {
     kind: string;
     status: string;
     elapsed: string;
+    /** "2m30s ago" hint for terminal rows (jawcode footer-panel style). */
+    ago?: string;
+    /** Epoch ms used for the recent-first sort within a rank. */
+    sortKey?: number;
 }
 
+/** jawcode utils/format.ts formatDuration semantics: 123ms \u00B7 1.5s \u00B7 30m15s \u00B7 2h30m \u00B7 3d2h. */
+export function formatBgtaskDuration(ms: number): string {
+    const SEC = 1000, MIN = 60_000, HOUR = 3_600_000, DAY = 86_400_000;
+    if (ms < SEC) return `${Math.max(0, Math.round(ms))}ms`;
+    if (ms < MIN) return `${(ms / SEC).toFixed(1)}s`;
+    if (ms < HOUR) {
+        const mins = Math.floor(ms / MIN);
+        const secs = Math.floor((ms % MIN) / SEC);
+        return secs > 0 ? `${mins}m${secs}s` : `${mins}m`;
+    }
+    if (ms < DAY) {
+        const hours = Math.floor(ms / HOUR);
+        const mins = Math.floor((ms % HOUR) / MIN);
+        return mins > 0 ? `${hours}h${mins}m` : `${hours}h`;
+    }
+    const days = Math.floor(ms / DAY);
+    const hours = Math.floor((ms % DAY) / HOUR);
+    return hours > 0 ? `${days}d${hours}h` : `${days}d`;
+}
+
+const BGTASK_ATTENTION_STATUSES = new Set(['failed', 'cancelled', 'orphaned']);
+
+/** jawcode background-row-model sort: attention rows first, then running,
+ *  then the rest; most recent first within the same rank. */
+export function sortBgtaskItems(items: BgtaskOverlayItem[]): BgtaskOverlayItem[] {
+    const rank = (it: BgtaskOverlayItem): number =>
+        BGTASK_ATTENTION_STATUSES.has(it.status) ? 0 : it.status === 'running' ? 1 : 2;
+    return [...items].sort((a, b) => rank(a) - rank(b) || (b.sortKey ?? 0) - (a.sortKey ?? 0));
+}
+
+export interface BgtaskOverlayColors {
+    accent: string;
+    success: string;
+    error: string;
+    warning: string;
+}
+
+const BGTASK_DEFAULT_COLORS: BgtaskOverlayColors = {
+    accent: '\x1b[36m',
+    success: '\x1b[32m',
+    error: '\x1b[31m',
+    warning: '\x1b[33m',
+};
+
+// jawcode footer-panel row style: `{icon} {kind} {label} \u00B7 {hint}` with the
+// unicode symbol preset (\u2714 \u2718 \u23F9 \u26A0 \u27F3) and ` \u00B7 ` separators; attention rows
+// (failed/orphaned) carry warning color and sort first (devlog doc 40).
 export function buildBgtaskInnerLines(
     dimCode: string,
     resetCode: string,
     items: BgtaskOverlayItem[],
+    colors: BgtaskOverlayColors = BGTASK_DEFAULT_COLORS,
 ): string[] {
     const lines: string[] = [];
     if (items.length === 0) {
         lines.push(`  ${dimCode}No background tasks${resetCode}`);
     } else {
-        for (const it of items.slice(0, 10)) {
-            const marker = it.status === 'running' ? '\u23F3'
-                : it.status === 'complete' ? '\u2713'
-                    : it.status === 'cancelled' ? '\u2205' : '\u2717';
-            lines.push(`  ${marker} ${it.kind.padEnd(10).slice(0, 10)} ${it.id.slice(3, 11).padEnd(9)}${dimCode}${it.status.padEnd(9)}${it.elapsed}${resetCode}`);
+        for (const it of sortBgtaskItems(items).slice(0, 10)) {
+            const icon = it.status === 'running' ? `${colors.accent}\u27F3${resetCode}`
+                : it.status === 'complete' ? `${colors.success}\u2714${resetCode}`
+                    : it.status === 'cancelled' ? `${colors.error}\u23F9${resetCode}`
+                        : it.status === 'orphaned' ? `${colors.warning}\u26A0${resetCode}`
+                            : `${colors.error}\u2718${resetCode}`;
+            const kindCol = it.kind.padEnd(7).slice(0, 7);
+            const label = it.id.slice(3, 11);
+            const attention = it.status === 'failed' || it.status === 'orphaned';
+            const labelStyled = attention ? `${colors.warning}${label}${resetCode}` : label;
+            const hint = it.status === 'running'
+                ? (it.elapsed ? ` ${dimCode}\u00B7 ${it.elapsed}${resetCode}` : '')
+                : ` ${dimCode}\u00B7 ${it.status}${it.ago ? ` \u00B7 ${it.ago}` : ''}${resetCode}`;
+            lines.push(`  ${icon} ${kindCol} ${labelStyled}${hint}`);
         }
         if (items.length > 10) lines.push(`  ${dimCode}... +${items.length - 10} more (cli-jaw bgtask list)${resetCode}`);
     }

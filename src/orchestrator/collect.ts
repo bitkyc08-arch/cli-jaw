@@ -10,11 +10,18 @@ import {
 } from './pipeline.js';
 import { t } from '../core/i18n.js';
 
-export function orchestrateAndCollect(
+export interface CollectedOrchestrateResult {
+    text: string;
+    data: Record<string, any>;
+}
+
+/** Like orchestrateAndCollect, but resolves the full orchestrate_done payload
+ *  (e.g. elicitationSpecs for telegram inline keyboards) alongside the text. */
+export function orchestrateAndCollectData(
     prompt: string,
     meta: Record<string, any> = {},
     locale: string = 'ko',
-): Promise<string> {
+): Promise<CollectedOrchestrateResult> {
     return new Promise((resolve) => {
         let collected = '';
         let timeout: ReturnType<typeof setTimeout>;
@@ -24,7 +31,7 @@ export function orchestrateAndCollect(
             clearTimeout(timeout);
             timeout = setTimeout(() => {
                 removeBroadcastListener(handler);
-                resolve(collected || t('tg.timeout', {}, locale));
+                resolve({ text: collected || t('tg.timeout', {}, locale), data: {} });
             }, IDLE_TIMEOUT);
         }
 
@@ -47,7 +54,7 @@ export function orchestrateAndCollect(
                 if (!meta?.["requestId"] && meta?.["chatId"] && data?.["chatId"] && data["chatId"] !== meta["chatId"]) return;
                 clearTimeout(timeout);
                 removeBroadcastListener(handler);
-                resolve(data["text"] || collected || t('tg.noResponse', {}, locale));
+                resolve({ text: data["text"] || collected || t('tg.noResponse', {}, locale), data });
             }
         };
         addBroadcastListener(handler);
@@ -59,8 +66,16 @@ export function orchestrateAndCollect(
         Promise.resolve(run).catch(err => {
             clearTimeout(timeout);
             removeBroadcastListener(handler);
-            resolve(`❌ ${err.message}`);
+            resolve({ text: `❌ ${err.message}`, data: {} });
         });
         resetTimeout();
     });
+}
+
+export async function orchestrateAndCollect(
+    prompt: string,
+    meta: Record<string, any> = {},
+    locale: string = 'ko',
+): Promise<string> {
+    return (await orchestrateAndCollectData(prompt, meta, locale)).text;
 }

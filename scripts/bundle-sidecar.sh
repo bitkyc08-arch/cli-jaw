@@ -80,6 +80,9 @@ rm -rf "$SIDECAR_DIR/node_modules/es-toolkit" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/lodash" 2>/dev/null || true
 rm -rf "$SIDECAR_DIR/node_modules/web-streams-polyfill" 2>/dev/null || true
 
+echo "Removing stale .bin symlinks after dependency pruning..."
+find "$SIDECAR_DIR/node_modules/.bin" -type l ! -exec test -e {} \; -print -delete 2>/dev/null || true
+
 NODE_BIN="$SIDECAR_DIR/node"
 if [[ "$PLATFORM" == "win32" ]]; then
   NODE_BIN="$SIDECAR_DIR/node.exe"

@@ -334,7 +334,7 @@ function renderStep(step: ProcessStep): string {
 function renderOmittedStepSummary(count: number): string {
     // Clickable: reveals the elided middle (data is in pb.steps). Default-collapsed for
     // DOM/memory safety; expanding is an explicit opt-in (devlog 260620 Phase 4).
-    return `<button type="button" class="process-step process-step-omitted" data-expand-steps>
+    return `<button type="button" class="process-step process-step-omitted" data-expand-steps data-omitted-count="${count}">
         <span class="process-step-snippet">Show ${count} hidden tool step${count === 1 ? '' : 's'}</span>
     </button>`;
 }
@@ -545,13 +545,56 @@ export function createProcessBlock(parentEl: HTMLElement): ProcessBlockState {
     return state;
 }
 
+// Incremental append support for the elided regime (devlog 260705_frontend_perf H2).
+// Past PROCESS_BLOCK_MAX_RENDERED_STEPS the tail window shifts on EVERY append, so a
+// full renderSteps() per event was O(steps^2) over a long run. Instead: append the new
+// tail step, evict the one step that exits the tail window (kept if running/error, the
+// same exception visibleStepIndexes makes), and patch the omitted-button count.
+function updateOmittedButtonCount(btn: HTMLElement, count: number): void {
+    btn.setAttribute('data-omitted-count', String(count));
+    const snippet = btn.querySelector('.process-step-snippet');
+    if (snippet) snippet.textContent = `Show ${count} hidden tool step${count === 1 ? '' : 's'}`;
+}
+
+function evictExitingTailStep(pb: ProcessBlockState, inner: Element): void {
+    const len = pb.steps.length;
+    const exitIdx = len - 1 - PROCESS_BLOCK_TAIL_STEPS;
+    if (exitIdx < PROCESS_BLOCK_HEAD_STEPS) return;
+    const exiting = pb.steps[exitIdx];
+    if (!exiting || exiting.status === 'running' || exiting.status === 'error') return;
+    const el = inner.querySelector(`[data-step-id="${exiting.id}"]`);
+    if (!el) return; // already elided (e.g. mid-list step evicted earlier)
+    const prev = el.previousElementSibling as HTMLElement | null;
+    if (prev && prev.hasAttribute('data-expand-steps')) {
+        updateOmittedButtonCount(prev, Number(prev.getAttribute('data-omitted-count') || '0') + 1);
+        el.remove();
+    } else {
+        // Exiting step is not adjacent to an omitted segment (a kept-visible
+        // running/error step precedes it) — start a new omitted segment here.
+        const temp = document.createElement('div');
+        temp.innerHTML = renderOmittedStepSummary(1);
+        const marker = temp.firstElementChild;
+        if (marker) el.replaceWith(marker);
+    }
+}
+
 export function addStep(pb: ProcessBlockState, step: ProcessStep): void {
     const compactStep = compactProcessStepForStorage(step);
     pb.steps.push(compactStep);
     const inner = pb.element.querySelector('.process-steps-inner');
     if (inner) {
-        if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS) inner.innerHTML = renderSteps(pb.steps, pb.expandedSteps);
-        else inner.insertAdjacentHTML('beforeend', renderStep(compactStep));
+        if (pb.steps.length === PROCESS_BLOCK_MAX_RENDERED_STEPS + 1 && !pb.expandedSteps) {
+            // First append past the cap: one full render establishes the
+            // head / omitted-button / tail structure the incremental path patches.
+            inner.innerHTML = renderSteps(pb.steps, pb.expandedSteps);
+        } else if (pb.steps.length > PROCESS_BLOCK_MAX_RENDERED_STEPS && !pb.expandedSteps) {
+            inner.insertAdjacentHTML('beforeend', renderStep(compactStep));
+            evictExitingTailStep(pb, inner);
+        } else {
+            // Short block, or user-expanded long block: plain append keeps
+            // every step visible (no elision to maintain).
+            inner.insertAdjacentHTML('beforeend', renderStep(compactStep));
+        }
     }
     updateProcessBlockDetailIndex(pb);
     updateSummary(pb);

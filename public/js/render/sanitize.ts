@@ -10,6 +10,11 @@ function purifier() {
 // and external url() references (resource loading / cookie exfiltration).
 // Internal fragment refs like url(#gradient) are preserved via negative lookahead.
 function sanitizeCssInStyleTags(html: string): string {
+    // Fast path: no <style> tag → nothing to strip. Avoids a full div
+    // innerHTML parse + serialize round-trip on every markdown render
+    // (devlog 260705_frontend_perf M2). False positives (literal "<style"
+    // in text) just take the slow path harmlessly.
+    if (!/<style/i.test(html)) return html;
     const div = document.createElement('div');
     div.innerHTML = html;
     for (const style of div.querySelectorAll('style')) {
@@ -59,6 +64,7 @@ export function sanitizeHtml(html: string): string {
                    'data-compose-block-kind', 'data-compose-block-spec', 'data-compose-block-hydrated',
                    'data-dataframe-kind', 'data-dataframe-spec', 'data-dataframe-hydrated',
                    'data-chart-json-kind', 'data-chart-json-spec', 'data-chart-json-hydrated',
+                   'data-widget-id',
                    'href', 'xlink:href', 'dominant-baseline'],
     });
     return sanitizeCssInStyleTags(clean);

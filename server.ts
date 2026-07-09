@@ -67,6 +67,7 @@ import {
     ensureDirs, runMigration,
 } from './src/core/config.js';
 import { startSettingsWatch } from './src/core/settings-watch.js';
+import { startWidgetWatcher } from './src/core/widget-watcher.js';
 import {
     db, getLatestAssistantMessage, closeDb,
     clearAllEmployeeSessions,
@@ -133,6 +134,7 @@ process.env["PATH"] = buildServicePath(process.env["PATH"] || '');
 // ─── Init ────────────────────────────────────────────
 
 ensureDirs();
+const stopWidgetWatcher = startWidgetWatcher();
 fs.mkdirSync(join(projectRoot, 'public'), { recursive: true });
 runMigration(projectRoot);
 loadSettings();
@@ -280,12 +282,13 @@ function requireAuth(req: express.Request, res: express.Response, next: express.
 
 // ─── Rate Limiting (in-memory, API only, 120/min) ─────────────
 const rateLimitMap = new Map();
-setInterval(() => {
+const rateLimitSweepInterval = setInterval(() => {
     const now = Date.now();
     for (const [ip, w] of rateLimitMap) {
         if (now - w.start > 120_000) rateLimitMap.delete(ip);
     }
 }, 600_000);
+rateLimitSweepInterval.unref();
 app.use((req, res, next) => {
     // Do not throttle HTML/CSS/JS/image/favicon requests.
     // A single page load can fan out into many static asset requests and
@@ -448,6 +451,8 @@ const shutdown = async (sig: string) => {
     } catch { /* non-fatal */ }
     stopHeartbeat();
     closeHeartbeatWatcher();
+    stopWidgetWatcher();
+    clearInterval(rateLimitSweepInterval);
     try { stopAllBgTasks(); } catch { /* non-fatal */ }
     killAllAgents('shutdown');
 
@@ -490,7 +495,7 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', (err) => {
     console.error('[server] FATAL uncaughtException:', err);
-    try { closeDb(); } catch {}
+    try { closeDb(); } catch {} // best-effort: DB close during fatal exit
     process.exit(1);
 });
 

@@ -168,6 +168,18 @@ export function registerFolderIpc(getWindow: () => BrowserWindow | null): void {
         return authorizeFolderRoot(result.filePaths[0]);
     });
 
+    ipcMain.handle('folder:pickFile', async (event) => {
+        if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
+        const win = getWindow();
+        if (!win) return { ok: false, error: 'no window' };
+        const result = await dialog.showOpenDialog(win, {
+            properties: ['openFile'],
+            defaultPath: homedir(),
+        });
+        if (result.canceled || !result.filePaths[0]) return { ok: false, error: 'cancelled' };
+        return authorizeReadableFile(result.filePaths[0]);
+    });
+
     ipcMain.handle('folder:authorizeRoot', async (event, rootPath: string) => {
         if (!isAllowedSender(event)) return { ok: false, error: 'unauthorized' };
         if (typeof rootPath !== 'string' || rootPath.trim().length === 0) return { ok: false, error: 'path required' };

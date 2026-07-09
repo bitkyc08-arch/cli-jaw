@@ -24,22 +24,27 @@ export function JawCeoWorkbenchButton(props: {
     voiceStatus: JawCeoVoiceStatus;
     busy: boolean;
     error: string | null;
+    disabled?: boolean;
     onOpenConsole: () => void;
     onToggleVoice: () => void;
 }) {
-    const active = props.voiceStatus === 'active' || props.voiceStatus === 'connecting' || props.voiceStatus === 'silent';
-    const status = props.error ? 'error' : voiceLabel(props.voiceStatus);
-    const title = props.error
+    const disabled = props.disabled === true;
+    const active = !disabled && (props.voiceStatus === 'active' || props.voiceStatus === 'connecting' || props.voiceStatus === 'silent');
+    const status = disabled ? 'off' : props.error ? 'error' : voiceLabel(props.voiceStatus);
+    const title = disabled
+        ? 'Jaw CEO is disabled.'
+        : props.error
         ? `Jaw CEO error: ${props.error}`
         : `Open Jaw CEO. Single chat session, voice ${voiceLabel(props.voiceStatus)}.`;
 
     return (
-        <div className={`jaw-ceo-workbench-launcher${props.open ? ' is-open' : ''}${active ? ' is-active' : ''}${props.error ? ' is-error' : ''}`} aria-label="Jaw CEO launcher">
+        <div className={`jaw-ceo-workbench-launcher${props.open ? ' is-open' : ''}${active ? ' is-active' : ''}${props.error && !disabled ? ' is-error' : ''}${disabled ? ' is-disabled' : ''}`} aria-label="Jaw CEO launcher">
             <button
                 type="button"
                 className="jaw-ceo-workbench-button"
                 aria-expanded={props.open}
                 title={title}
+                disabled={disabled}
                 onClick={props.onOpenConsole}
             >
                 <span className={`jaw-ceo-avatar status-${props.voiceStatus}`} aria-hidden="true">CEO</span>
@@ -51,7 +56,7 @@ export function JawCeoWorkbenchButton(props: {
                 className="jaw-ceo-workbench-icon"
                 aria-label={active ? 'Stop Jaw CEO voice' : 'Start Jaw CEO voice'}
                 title={active ? 'Stop voice' : 'Start voice'}
-                disabled={props.busy}
+                disabled={disabled || props.busy}
                 onClick={props.onToggleVoice}
             >
                 <MicIcon />

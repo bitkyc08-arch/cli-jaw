@@ -18,6 +18,7 @@ import {
 import { instanceId } from '../core/instance.js';
 import { applySoulUpdate, type SoulSection } from './identity.js';
 import { reindexIntegratedMemoryFile } from './indexing.js';
+import { log } from '../core/logger.js';
 
 type ReflectionTarget =
     | 'profile.md'
@@ -374,6 +375,6 @@ export function cleanupStaleEpisodes(opts: { retentionDays?: number } = {}): num
             moved++;
         }
     }
-    if (moved > 0) console.log(`[memory] archived ${moved} stale episodes`);
+    if (moved > 0) log.info(`[memory] archived ${moved} stale episodes`);
     return moved;
 }

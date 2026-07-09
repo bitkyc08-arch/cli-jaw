@@ -30,17 +30,19 @@ test('dispatch helper returns an empty list for malformed employee payloads', ()
 test('dispatch CLI resolves agent id from /api/employees only for watch or worker-busy polling', () => {
     // 260613 60: every dispatch is wait:false now — 202 + poll is the single
     // result path for both watch and quiet modes.
-    const watchIdx = dispatchSrc.indexOf('if (res.status === 202)');
+    const dispatchResponseIdx = dispatchSrc.indexOf("readJsonResponse<DispatchResultBody>(res, 'dispatch endpoint')");
+    assert.ok(dispatchResponseIdx >= 0, 'dispatch.ts should parse the dispatch endpoint response before status handling');
+    const watchIdx = dispatchSrc.indexOf('if (res.status === 202)', dispatchResponseIdx);
     assert.ok(watchIdx >= 0, '202 path should handle the async dispatch response');
-
-    const nonOkIdx = dispatchSrc.indexOf('if (!res.ok)', watchIdx);
+    const nonOkIdx = dispatchSrc.indexOf('if (!res.ok)', dispatchResponseIdx);
     assert.ok(nonOkIdx >= 0, 'dispatch.ts should handle non-ok dispatch responses');
-    const nonOkBlock = dispatchSrc.slice(nonOkIdx, nonOkIdx + 2000);
+    const nonOkBlock = dispatchSrc.slice(nonOkIdx, nonOkIdx + 2400);
 
-    const status409Idx = nonOkBlock.indexOf('if (res.status === 409)');
-    const resolveIdx = nonOkBlock.indexOf('await resolveAgentId(agent)');
-    assert.ok(status409Idx >= 0, 'non-ok path should branch on HTTP 409 before polling');
-    assert.ok(resolveIdx > status409Idx, 'resolveAgentId should only run inside the 409 branch');
+    assert.ok(nonOkBlock.includes('if (res.status === 409)'), 'non-ok path should branch on HTTP 409 before polling');
+    assert.ok(
+        nonOkBlock.includes('body?.worker?.agentId || body?.existing?.agentId || (agent ? await resolveAgentId(agent) : null)'),
+        '409 worker-busy polling should prefer server-returned worker/existing ids before /api/employees fallback',
+    );
     const watchBlock = dispatchSrc.slice(watchIdx, dispatchSrc.indexOf('if (!res.ok)', watchIdx));
     assert.ok(
         watchBlock.includes("body?.worker?.agentId || (agent ? await resolveAgentId(agent) : null)"),

@@ -412,18 +412,33 @@ function clearMainLiveRunOnStop(reason: string): void {
     clearLiveRun(scope);
 }
 
+/**
+ * jwc turns run in-process (no ChildProcess), so the SIGTERM/SIGKILL paths
+ * below never touch them — abort the resident runtime session explicitly or
+ * /api/stop is a no-op while jwc streams (devlog 260703 tui_steer_esc_rca).
+ */
+function abortInProcessRuntimeOnStop(reason: string): boolean {
+    if (reason !== 'api' && reason !== 'user' && reason !== 'steer') return false;
+    if (!jawRuntime.busy) return false;
+    jawRuntime.abort().catch((err: unknown) => {
+        console.warn('[jaw:stop] jwc abort failed', (err as Error)?.message || err);
+    });
+    return true;
+}
+
 export function killActiveAgent(reason = 'user') {
     const hadTimer = queueCtrl.isRetryPending();
     const cancelledPendingMain = cancelPendingMainSpawn ? (cancelPendingMainSpawn(reason), true) : false;
     clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
     clearMainLiveRunOnStop(reason);
+    const abortedInProcess = abortInProcessRuntimeOnStop(reason);
     // Fix A: 사용자 stop은 큐도 폐기. steer/internal kill은 큐 보존.
     // Fix C2: worker registry 도 비워서 hasBlockingWorkers/hasPendingWorkerReplays가 즉시 false.
     if (reason === 'api' || reason === 'user') {
         queueCtrl.purgeQueueOnStop(reason);
         clearWorkerSlotsOnStop(reason);
     }
-    if (!activeProcess) return hadTimer || cancelledPendingMain;  // timer/gated spawn 취소도 "killed" 취급
+    if (!activeProcess) return hadTimer || cancelledPendingMain || abortedInProcess;  // timer/gated spawn/jwc abort 취소도 "killed" 취급
     const policy = getKillPolicy(reason);
     console.log(`[jaw:kill] reason=${reason} cli=${getActiveMainCli() || 'unknown'} signal=${policy.signal} escalationMs=${policy.escalationMs}`);
     if (activeProcess.pid) killReasons.set(activeProcess.pid, reason);
@@ -463,6 +478,7 @@ export function killAllAgents(reason = 'user') {
     const cancelledPendingMain = cancelPendingMainSpawn ? (cancelPendingMainSpawn(reason), true) : false;
     clearRetryTimer(false);  // stop 의도: 큐 재개 안 함
     clearMainLiveRunOnStop(reason);
+    const abortedInProcess = abortInProcessRuntimeOnStop(reason);
     // Fix A: 사용자 stop은 큐도 폐기. Fix C2: worker 슬롯도 비움.
     if (reason === 'api' || reason === 'user') {
         queueCtrl.purgeQueueOnStop(reason);
@@ -505,7 +521,7 @@ export function killAllAgents(reason = 'user') {
         activeProcess = null;
         activeProcesses.clear();
     }
-    return killed > 0 || !!activeProcess || hadTimer || cancelledPendingMain;
+    return killed > 0 || !!activeProcess || hadTimer || cancelledPendingMain || abortedInProcess;
 }
 
 export function waitForProcessEnd(timeoutMs = 3000) {
@@ -585,6 +601,10 @@ function buildHistoryBlock(currentPrompt: string, workingDir?: string | null, ma
         const row = recent[i];
         if (!row) continue;
         if (row.cli === 'goal_boundary') break;
+        // Goal-continuation boundary rows are chat-timeline markers only
+        // (devlog 260705_web_live_update_boundary) — the actual continuation
+        // prompt is injected at spawn, so replaying the marker is noise.
+        if (row.cli === 'goal_continuation') continue;
         const role = String(row.role || '');
         const content = String(row.content || '').trim();
 

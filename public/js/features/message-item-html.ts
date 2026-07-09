@@ -27,8 +27,10 @@ export function buildLazyVirtualMessageItem(m: MessageItem, index: number): Virt
     const toolAttr = rawToolLog ? ` data-tool-log="${rawToolLog}"` : '';
     const contentHtml = `<div class="msg-content lazy-pending" data-raw="${escapeHtml(rawContent)}"></div>`;
     const actions = renderMessageActionsHtml();
+    // Keep .msg-user for boundary semantics; modifier slims the visual (see chat-messages.ts).
+    const goalBoundaryClass = role === 'user' && m.cli === 'goal_continuation' ? ' msg-goal-boundary' : '';
     const html = role === 'agent'
         ? `<div class="msg msg-agent" ${sourceAttrs}><div class="agent-icon" aria-hidden="true">${getAgentIcon(m.cli)}</div><div class="agent-body"${toolAttr}>${contentHtml}${actions}</div></div>`
-        : `<div class="msg msg-${role}" ${sourceAttrs}><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
+        : `<div class="msg msg-${role}${goalBoundaryClass}" ${sourceAttrs}><div class="user-body"><div class="msg-label">${label}</div>${contentHtml}${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div></div>`;
     return { id: generateId(), html, height: 80, rehydratesProcessDetails: Boolean(rawToolLog) };
 }

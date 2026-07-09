@@ -38,6 +38,12 @@ test('dispatch route supports async wait:false progress start', () => {
 
     assert.ok(routeBlock.includes('const wait = req.body?.wait !== false'), 'dispatch route should parse wait:false');
     assert.ok(routeBlock.includes('void runDispatch(false)'), 'wait:false should start worker asynchronously');
+    // Opus review FINDING 3: single wait:false must proactively drain on
+    // completion (parity with async batch), not wait for an organic idle event.
+    assert.ok(
+        routeBlock.match(/if \(!reply\) \{[\s\S]*?drainPendingReplays/),
+        'single wait:false completion must trigger a proactive drainPendingReplays',
+    );
     assert.ok(routeBlock.includes('res.status(202).json'), 'wait:false should return 202');
     assert.ok(routeBlock.includes('worker: {'), 'wait:false should include worker metadata');
     assert.ok(routeBlock.includes('runId: slot.runId'), 'wait:false should include runId metadata');
@@ -265,6 +271,99 @@ test('dispatch route auto-injects full ctx.plan without truncation or file refer
     assert.ok(
         routeBlock.includes('dispatchCtx?.plan'),
         'dispatch route must still guard the prepend on dispatchCtx?.plan',
+    );
+});
+
+test('dispatch routes forward task_tags end-to-end (260703 dispatch affordance)', () => {
+    const singleStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch'");
+    const singleBlock = orchestrateSrc.slice(singleStart, singleStart + 16000);
+    assert.ok(
+        singleBlock.includes('normalizeTaskTags(req.body?.task_tags)'),
+        'single dispatch must extract task_tags from the request body',
+    );
+    assert.ok(
+        singleBlock.includes('task_tags: taskTags'),
+        'single dispatch ap must carry the extracted task_tags',
+    );
+
+    const batchStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch/batch'");
+    assert.ok(batchStart >= 0, 'batch dispatch route should exist');
+    const batchBlock = orchestrateSrc.slice(batchStart, batchStart + 20000);
+    assert.ok(
+        batchBlock.includes('normalizeTaskTags(item?.task_tags)'),
+        'batch dispatch must extract per-entry task_tags',
+    );
+    assert.ok(
+        batchBlock.includes('task_tags: entry.taskTags'),
+        'batch ap must carry the entry task_tags',
+    );
+});
+
+test('batch dispatch pre-claims slots and supports wait:false 202 (260703)', () => {
+    const batchStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch/batch'");
+    const batchBlock = orchestrateSrc.slice(batchStart, batchStart + 20000);
+
+    assert.ok(
+        batchBlock.includes('const batchWait = req.body?.wait !== false'),
+        'batch route must parse wait:false',
+    );
+    // Pre-claim: claims happen in the claimedEntries map, before executeBatch —
+    // the 202 body must carry real runIds (fail-fast WorkerBusyError parity).
+    const claimIdx = batchBlock.indexOf('claimedEntries');
+    const executeIdx = batchBlock.indexOf('const executeBatch');
+    assert.ok(claimIdx >= 0 && executeIdx > claimIdx, 'slots must be claimed before execution is defined');
+    assert.ok(
+        batchBlock.includes('res.status(202)'),
+        'wait:false must answer 202 before execution',
+    );
+    assert.ok(
+        batchBlock.match(/202[\s\S]*runId: c\.slot\.runId/),
+        '202 body must carry pre-claimed runIds',
+    );
+    // Proactive drain mirrors the single-dispatch disconnect branch.
+    const drainIdx = batchBlock.indexOf('drainPendingReplays', batchBlock.indexOf('res.status(202)'));
+    assert.ok(drainIdx >= 0, 'detached batch execution must trigger a proactive drainPendingReplays');
+});
+
+test('batch dispatch aggregates verdicts and persists gate status (260703)', () => {
+    const batchStart = orchestrateSrc.indexOf("app.post('/api/orchestrate/dispatch/batch'");
+    const batchBlock = orchestrateSrc.slice(batchStart, batchStart + 20000);
+
+    assert.ok(
+        batchBlock.includes('aggregateBatchVerdicts(currentOrcState'),
+        'batch route must aggregate worker verdicts via the pure function',
+    );
+    assert.ok(
+        batchBlock.includes('parseWorkerVerdict(text)'),
+        'batch runOne must parse each worker verdict',
+    );
+    // Same race guard as single dispatch (Phase 58).
+    assert.ok(
+        batchBlock.includes('stateAtCompletion === currentOrcState'),
+        'batch persistence must keep the state-race guard',
+    );
+    assert.ok(
+        batchBlock.includes('auditStatus: aggregate') && batchBlock.includes('verificationStatus: aggregate'),
+        'batch persistence must write auditStatus (A) / verificationStatus (B)',
+    );
+    // Opus correctness review FINDING 2: a crashed/busy worker (ok:false) must
+    // never be absorbed into a POSITIVE gate verdict.
+    assert.ok(
+        batchBlock.includes('anyExecutionFailure') &&
+        batchBlock.match(/anyExecutionFailure\s*&&\s*\(aggregate === 'pass' \|\| aggregate === 'done'\)/),
+        'a positive aggregate must be suppressed when any batch worker failed to execute',
+    );
+    assert.ok(
+        batchBlock.includes('res.json({ ok: true, results, orchestration })'),
+        'synchronous batch response must include orchestration diagnostics',
+    );
+});
+
+test('dead buildPlanPrompt stays deleted from distribute.ts (260703)', () => {
+    const distributeSrc = readSource(join(projectRoot, 'src/orchestrator/distribute.ts'), 'utf8');
+    assert.ok(
+        !distributeSrc.includes('buildPlanPrompt'),
+        'buildPlanPrompt was dead code carrying an abandoned subtasks schema — must not return',
     );
 });
 

@@ -456,5 +456,5 @@ export async function mcpHandler(args: string[], ctx: CliCommandContext): Promis
 }
 
 // Re-exports for backward compatibility
-export { memoryHandler, browserHandler, promptHandler, quitHandler, fileHandler, steerHandler, forwardHandler, fallbackHandler, flushHandler, ideHandler, orchestrateHandler } from './handlers-runtime.js';
+export { memoryHandler, browserHandler, promptHandler, quitHandler, fileHandler, steerHandler, queueHandler, forwardHandler, fallbackHandler, flushHandler, ideHandler, orchestrateHandler } from './handlers-runtime.js';
 export { modelArgumentCompletions, cliArgumentCompletions, skillArgumentCompletions, employeeArgumentCompletions, browserArgumentCompletions, fallbackArgumentCompletions, flushArgumentCompletions } from './handlers-completions.js';

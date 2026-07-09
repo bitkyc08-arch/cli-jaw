@@ -29,17 +29,26 @@ test('remote channel elicitation guard is absent for web and heartbeat origins',
     assert.equal(buildRemoteChannelElicitationGuard('heartbeat'), '');
 });
 
-test('remote channel elicitation guard forbids structured fences for Telegram and Discord', () => {
-    for (const origin of ['telegram', 'discord']) {
-        const guard = buildRemoteChannelElicitationGuard(origin);
+test('remote channel elicitation guard forbids structured fences for Discord', () => {
+    const guard = buildRemoteChannelElicitationGuard('discord');
 
-        assert.match(guard, new RegExp(`Current origin is ${origin}`));
-        assert.match(guard, /Do not output standalone ```elicitation/);
-        assert.match(guard, /```choice-buttons/);
-        assert.match(guard, /```search-results/);
-        assert.match(guard, /numbered options/);
-        assert.match(guard, /search results/);
-    }
+    assert.match(guard, /Current origin is discord/);
+    assert.match(guard, /Do not output standalone ```elicitation/);
+    assert.match(guard, /```choice-buttons/);
+    assert.match(guard, /```search-results/);
+    assert.match(guard, /numbered options/);
+    assert.match(guard, /search results/);
+});
+
+test('telegram guard allows a single single_select elicitation fence for inline keyboards', () => {
+    const guard = buildRemoteChannelElicitationGuard('telegram');
+
+    assert.match(guard, /Current origin is telegram/);
+    assert.match(guard, /inline keyboard buttons/);
+    assert.match(guard, /MAY output at most one ```elicitation fence/);
+    assert.match(guard, /single_select questions only/);
+    assert.match(guard, /Do not output ```choice-buttons or ```search-results/);
+    assert.match(guard, /flattened to plain numbered text/);
 });
 
 test('orchestrate appends the remote guard after PABCD prompt assembly only for remote origins', async () => {

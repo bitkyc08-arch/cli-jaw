@@ -20,10 +20,14 @@ export function schedulePostRender(): void {
         postRenderTimer = null;
         postRenderRAF = requestAnimationFrame(() => {
             postRenderRAF = null;
-            renderMermaidBlocks();
-            rehighlightAll();
-            bindDiagramZoom();
             const msgContainer = document.getElementById('chatMessages');
+            // Cheap guards (devlog 260705_frontend_perf M1): these three walk
+            // the whole container; skip when no candidate nodes exist. The
+            // hydrate* calls below stay unconditional — each is already a
+            // scoped selector scan and their call shape is a renderer contract.
+            if (!msgContainer || msgContainer.querySelector('.mermaid-pending, [data-mermaid-code-raw]')) renderMermaidBlocks();
+            if (!msgContainer || msgContainer.querySelector('.code-block pre code, .code-block-wrapper pre code')) rehighlightAll();
+            if (!msgContainer || msgContainer.querySelector('.diagram-zoom-btn, .mermaid-zoom-btn')) bindDiagramZoom();
             if (msgContainer) {
                 hydrateElicitationBlocks(msgContainer);
                 hydrateSearchResultsBlocks(msgContainer);

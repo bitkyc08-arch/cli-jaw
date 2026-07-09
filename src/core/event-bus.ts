@@ -23,6 +23,7 @@ export type EventTopic =
     | 'session'     // clear, session_reset/switched/created/list
     | 'settings'    // settings_change
     | 'agents'      // agent_added, agent_updated, agent_deleted
+    | 'widget'      // widget_updated
     | 'trace'       // internal-only (agent:claude-e:*) — never SSE-public
     | 'jwc'         // Code mode: jwc engine session updates (code_* events, acp-host)
     | 'system';     // system_notice, alert_escalation, fallback bucket
@@ -35,7 +36,7 @@ export type EventTopic =
 export const PUBLIC_SSE_TOPICS: ReadonlySet<EventTopic> = new Set<EventTopic>([
     'agent', 'orchestrate', 'goal', 'workflow', 'memory', 'worker',
     'message', 'queue', 'bgtask', 'heartbeat', 'schedule', 'session',
-    'settings', 'agents', 'jwc', 'system',
+    'settings', 'agents', 'widget', 'jwc', 'system',
 ]);
 
 export function isPublicSseTopic(topic: EventTopic): boolean {

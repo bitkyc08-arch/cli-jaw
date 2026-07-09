@@ -105,10 +105,66 @@ function isTextInputElement(element: Element): element is HTMLInputElement {
     return ['text', 'search', 'url', 'tel', 'email', 'password'].includes(element.type);
 }
 
+function editableTargetFromElement(element: Element | null): HTMLInputElement | HTMLTextAreaElement | HTMLElement | null {
+    if (!element) return null;
+    if (element instanceof HTMLTextAreaElement) return element;
+    if (isTextInputElement(element)) return element;
+    const editable = element.closest('[contenteditable="true"]');
+    return editable instanceof HTMLElement ? editable : null;
+}
+
+function editableTargetAcceptsInput(target: HTMLInputElement | HTMLTextAreaElement | HTMLElement): boolean {
+    if (target instanceof HTMLTextAreaElement || target instanceof HTMLInputElement) {
+        return !target.disabled && !target.readOnly;
+    }
+    return target.isContentEditable;
+}
+
+function isVisibleEditableTarget(target: HTMLInputElement | HTMLTextAreaElement | HTMLElement): boolean {
+    if (!editableTargetAcceptsInput(target)) return false;
+    if (target === document.activeElement) return true;
+    const style = window.getComputedStyle(target);
+    if (style.display === 'none' || style.visibility === 'hidden' || style.visibility === 'collapse') return false;
+    const rect = target.getBoundingClientRect();
+    return rect.width > 0 && rect.height > 0;
+}
+
+function findPreviewInsertTarget(): HTMLInputElement | HTMLTextAreaElement | HTMLElement | null {
+    const activeTarget = editableTargetFromElement(document.activeElement);
+    if (activeTarget && isVisibleEditableTarget(activeTarget)) return activeTarget;
+
+    const selectors = [
+        '#chatInput',
+        'textarea.chat-input',
+        'textarea[data-chat-input="true"]',
+        'textarea[aria-label*="chat" i]',
+        'textarea[placeholder*="message" i]',
+        'textarea[placeholder*="메시지" i]',
+        'textarea[placeholder*="입력" i]',
+        'textarea',
+        'input[type="text"]',
+        'input[type="search"]',
+        'input:not([type])',
+        '[contenteditable="true"]',
+    ];
+    const seen = new Set<Element>();
+    for (const selector of selectors) {
+        for (const element of document.querySelectorAll(selector)) {
+            if (seen.has(element)) continue;
+            seen.add(element);
+            const target = editableTargetFromElement(element);
+            if (target && isVisibleEditableTarget(target)) return target;
+        }
+    }
+    return null;
+}
+
 function insertIntoEditable(target: Element, text: string): boolean {
     if (target instanceof HTMLTextAreaElement || isTextInputElement(target)) {
-        const start = target.selectionStart ?? target.value.length;
-        const end = target.selectionEnd ?? start;
+        if (!editableTargetAcceptsInput(target)) return false;
+        const hasFocus = document.activeElement === target;
+        const start = hasFocus ? (target.selectionStart ?? target.value.length) : target.value.length;
+        const end = hasFocus ? (target.selectionEnd ?? start) : start;
         target.setRangeText(text, start, end, 'end');
         target.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
         target.focus();
@@ -116,17 +172,25 @@ function insertIntoEditable(target: Element, text: string): boolean {
     }
     const editable = target.closest('[contenteditable="true"]');
     if (!(editable instanceof HTMLElement)) return false;
+    if (!editableTargetAcceptsInput(editable)) return false;
     const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return false;
-    const range = selection.getRangeAt(0);
-    if (!editable.contains(range.commonAncestorContainer)) return false;
+    let range: Range | null = null;
+    if (selection && selection.rangeCount > 0) {
+        const selectedRange = selection.getRangeAt(0);
+        if (editable.contains(selectedRange.commonAncestorContainer)) range = selectedRange;
+    }
+    if (!range) {
+        range = document.createRange();
+        range.selectNodeContents(editable);
+        range.collapse(false);
+    }
     range.deleteContents();
     const node = document.createTextNode(text);
     range.insertNode(node);
     range.setStartAfter(node);
     range.setEndAfter(node);
-    selection.removeAllRanges();
-    selection.addRange(range);
+    selection?.removeAllRanges();
+    selection?.addRange(range);
     editable.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: text }));
     editable.focus();
     return true;
@@ -150,8 +214,8 @@ export function ensurePreviewInsertTextListener(): void {
             reply(false, 'invalid insert request');
             return;
         }
-        const active = document.activeElement;
-        if (!active || !insertIntoEditable(active, text)) {
+        const target = findPreviewInsertTarget();
+        if (!target || !insertIntoEditable(target, text)) {
             reply(false, 'no editable target');
             return;
         }

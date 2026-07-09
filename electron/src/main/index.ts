@@ -3,6 +3,7 @@ import type { MenuItemConstructorOptions } from 'electron';
 import { fileURLToPath, URL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createServer } from 'node:net';
+import { randomBytes } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import { findJawBinary, spawnJawDashboard, gracefulShutdown } from './lib/jaw-spawn.js';
 import { promptInstallCli } from './lib/install-cli.js';
@@ -42,6 +43,7 @@ import { startAppMetricsCollector, type MetricsCollectorHandle } from './lib/app
 import { registerTerminalIpc, cleanupTerminals } from './lib/terminal/index.js';
 import { registerDiffIpc } from './lib/git/ipc.js';
 import { registerFolderIpc, cleanupFolderWatchers } from './lib/folder/ipc.js';
+import { registerBrowserIpc, markOwnedEmbeddedBrowserWebContents } from './lib/browser/ipc.js';
 import { registerClipboardIpc } from './lib/clipboard/ipc.js';
 import { registerPermissionDiagnosticsIpc } from './lib/permission-diagnostics/ipc.js';
 import { registerWindowIpc } from './lib/window/ipc.js';
@@ -180,6 +182,7 @@ type DesktopKeyboardInput = {
 const ringBuffer = new RingBuffer(1024 * 1024);
 let managerProcess: ChildProcess | null = null;
 let mainWindow: BrowserWindow | null = null;
+let rendererCrashReloads: number[] = [];
 let pendingDeepLinkUrl: string | null = null;
 let restartTimestamps: number[] = [];
 let crashLoopStopped = false;
@@ -202,6 +205,9 @@ const __dirname = dirname(__filename);
 const PRELOAD_PATH = join(__dirname, '..', 'preload', 'index.js');
 const DESKTOP_USER_AGENT_TOKEN = 'cli-jaw-desktop';
 const EMBEDDED_BROWSER_PARTITION = 'persist:cli-jaw-browser';
+const ELECTRON_RENDERER_TOKEN = randomBytes(32).toString('hex');
+
+process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN = ELECTRON_RENDERER_TOKEN;
 
 // #229: the webview tag sets a clean per-webview UA, but service workers and other
 // background requests in the partition fall back to the session UA, which carries the
@@ -536,6 +542,12 @@ async function bootstrap(): Promise<void> {
   registerTerminalIpc(() => mainWindow);
   registerDiffIpc();
   registerFolderIpc(() => mainWindow);
+  registerBrowserIpc({
+    getManagerWindow: () => mainWindow,
+    normalizeEmbeddedBrowserUrl: normalizeAllowedEmbeddedBrowserUrl,
+    isAllowedEmbeddedBrowserUrl,
+    openExternalNavigation,
+  });
   registerClipboardIpc();
   registerPermissionDiagnosticsIpc();
   registerWindowIpc();
@@ -728,12 +740,15 @@ function embeddedBrowserDisposition(disposition: string): 'current-tab' | 'new-t
   return disposition === 'default' ? 'current-tab' : 'new-tab';
 }
 
-function sendEmbeddedBrowserOpenUrl(raw: string, disposition: string): void {
+function sendEmbeddedBrowserOpenUrl(raw: string, disposition: string, sourceWebContentsId?: number): void {
   const url = normalizeAllowedEmbeddedBrowserUrl(raw);
   if (!url || !mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('browser:open-url', {
     url,
     disposition: embeddedBrowserDisposition(disposition),
+    // Which guest requested the popup: lets the owning BrowserPanel handle it
+    // instead of whichever panel currently holds handler priority.
+    ...(typeof sourceWebContentsId === 'number' ? { sourceWebContentsId } : {}),
   });
 }
 
@@ -753,7 +768,7 @@ function hardenEmbeddedBrowserWebContents(contents: Electron.WebContents): void 
   if (contents.getType() !== 'webview') return;
   installDesktopShortcutForwarder(contents);
   contents.setWindowOpenHandler(({ url, disposition }) => {
-    sendEmbeddedBrowserOpenUrl(url, disposition);
+    sendEmbeddedBrowserOpenUrl(url, disposition, contents.id);
     return { action: 'deny' };
   });
   contents.on('will-navigate', (event, url) => {
@@ -775,6 +790,9 @@ function registerGlobalWebContentsHardening(): void {
   webContentsHardeningRegistered = true;
   app.on('web-contents-created', (_event, contents) => {
     hardenEmbeddedBrowserWebContents(contents);
+    if (contents.getType() === 'webview') {
+      markOwnedEmbeddedBrowserWebContents(contents);
+    }
   });
 }
 
@@ -1065,7 +1083,10 @@ async function spawnAndWait(): Promise<void> {
   managerProcess = spawnJawDashboard(found.path, {
     port: managerPort,
     ringBuffer,
-    env: previewSpawnEnvForManager(managerPort),
+    env: {
+      ...previewSpawnEnvForManager(managerPort),
+      CLI_JAW_ELECTRON_RENDERER_TOKEN: ELECTRON_RENDERER_TOKEN,
+    },
   });
 
   managerProcess.on('exit', handleManagerExit);
@@ -1218,6 +1239,29 @@ async function createWindow(): Promise<void> {
   });
   registerGlobalWebContentsHardening();
   installDesktopShortcutForwarder(mainWindow.webContents);
+
+  // The Manager renderer must never die into a permanently blank window
+  // (observed with embedded-browser webview attach in packaged builds).
+  // Log the reason and reload, with a small budget so a hard crash loop
+  // cannot spin forever.
+  mainWindow.webContents.on('render-process-gone', (_event, details) => {
+    ringBuffer.append(`[manager renderer gone] reason=${details.reason} exitCode=${details.exitCode}\n`);
+    if (details.reason === 'clean-exit' || details.reason === 'killed') return;
+    const now = Date.now();
+    rendererCrashReloads = rendererCrashReloads.filter(at => now - at < 60_000);
+    if (rendererCrashReloads.length >= 3) {
+      ringBuffer.append('[manager renderer gone] reload budget exhausted; leaving window for inspection\n');
+      return;
+    }
+    rendererCrashReloads.push(now);
+    const win = mainWindow;
+    if (win && !win.isDestroyed()) {
+      setTimeout(() => {
+        if (win.isDestroyed()) return;
+        win.webContents.reload();
+      }, 250);
+    }
+  });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     openExternalNavigation(url);

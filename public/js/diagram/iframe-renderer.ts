@@ -6,6 +6,7 @@ import { ICONS } from '../icons.js';
 import { validateWidgetHtml } from './widget-validator.js';
 import { isChatNearBottom, reconcileChatBottomAfterLayout } from '../features/chat-scroll.js';
 import { copyText } from '../features/copy-text.js';
+import { API_BASE, getAuthToken } from '../api.js';
 
 // ── Action Button Helpers ──
 function createDiagramCopyBtn(): HTMLButtonElement {
@@ -65,6 +66,38 @@ const registeredIframes = new Set<Window>();
 const iframeNonces = new Map<Window, string>();
 
 const widgetLifecycleCleanups = new WeakMap<HTMLElement, () => void>();
+const INLINE_WIDGET_MAX_BYTES = 524_288;
+const FILE_WIDGET_MAX_BYTES = 2_097_152;
+const ACTIVE_CHAT_CACHE_MS = 30_000;
+let activeChatIdCache: { id: string; expiresAt: number } | null = null;
+
+window.addEventListener('session_switched', () => {
+  activeChatIdCache = null;
+});
+
+async function authFetch(path: string, opts: RequestInit = {}): Promise<Response> {
+  const token = await getAuthToken();
+  const headers = new Headers(opts.headers || {});
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+  return fetch(`${API_BASE}${path}`, { ...opts, headers });
+}
+
+async function resolveActiveChatId(force = false): Promise<string | null> {
+  const now = Date.now();
+  if (!force && activeChatIdCache && activeChatIdCache.expiresAt > now) return activeChatIdCache.id;
+  try {
+    const res = await authFetch('/api/chat-sessions');
+    if (!res.ok) return null;
+    const json = await res.json() as { ok?: boolean; data?: { active?: unknown }; active?: unknown };
+    const active = json.data?.active ?? json.active;
+    if (typeof active !== 'string' || !active) return null;
+    activeChatIdCache = { id: active, expiresAt: now + ACTIVE_CHAT_CACHE_MS };
+    return active;
+  } catch (err) {
+    console.warn('[jaw-diagram] Failed to resolve active chat session:', (err as Error).message);
+    return null;
+  }
+}
 
 function cleanupWidgetOwner(owner: HTMLElement): void {
   const cleanup = widgetLifecycleCleanups.get(owner);
@@ -394,11 +427,16 @@ export function createWidgetIframe(htmlCode: string): { iframe: HTMLIFrameElemen
 export function activateWidgets(container?: HTMLElement): void {
   const root = container || document;
   root.querySelectorAll('.diagram-widget-pending').forEach(el => {
-    const encoded = (el as HTMLElement).dataset['diagramHtml'];
-    if (!encoded) return;
+    const pending = el as HTMLElement;
+    const encoded = pending.dataset['diagramHtml'];
+    if (!encoded) {
+      const widgetId = pending.dataset['widgetId'];
+      if (widgetId && pending.dataset['widgetPending'] !== '1') void activateFileWidget(pending, widgetId);
+      return;
+    }
     let htmlCode: string;
     try {
-      htmlCode = decodeWidgetHtml(encoded);
+      htmlCode = decodeWidgetHtml(encoded, INLINE_WIDGET_MAX_BYTES);
     } catch {
       el.replaceWith(Object.assign(document.createElement('div'), {
         className: 'diagram-error',
@@ -408,45 +446,147 @@ export function activateWidgets(container?: HTMLElement): void {
       return;
     }
 
-    // Validate widget HTML before iframe injection
-    const validation = validateWidgetHtml(htmlCode);
-    if (!validation.valid) {
-      el.replaceWith(Object.assign(document.createElement('div'), {
-        className: 'diagram-error',
-        textContent: `Widget blocked: ${validation.reason}`,
-        role: 'alert',
-      }));
+    renderWidgetIframe(pending, htmlCode, encoded);
+  });
+}
+
+async function activateFileWidget(el: HTMLElement, widgetId: string): Promise<void> {
+  if (el.dataset['widgetLoading'] === '1') return;
+  el.dataset['widgetLoading'] = '1';
+  delete el.dataset['widgetPending'];
+  try {
+    const chatId = await resolveActiveChatId();
+    if (!chatId) {
+      showWidgetFilePending(el, widgetId, 'widget file pending');
       return;
     }
-    if (validation.warnings.length) {
-      console.warn('[jaw-diagram] Widget warnings:', validation.warnings);
+
+    let res = await authFetch(`/api/widgets/${encodeURIComponent(chatId)}/${encodeURIComponent(widgetId)}`);
+    if (res.status === 404) {
+      activeChatIdCache = null;
+      const freshChatId = await resolveActiveChatId(true);
+      if (freshChatId && freshChatId !== chatId) {
+        res = await authFetch(`/api/widgets/${encodeURIComponent(freshChatId)}/${encodeURIComponent(widgetId)}`);
+      }
     }
 
-    const wrapper = document.createElement('div');
-    wrapper.className = 'diagram-container diagram-widget';
-    // Preserve source for theme-change reload
-    wrapper.dataset['widgetHtml'] = encoded;
+    if (res.status === 404) {
+      showWidgetFilePending(el, widgetId, 'widget file pending');
+      return;
+    }
+    if (!res.ok) {
+      showWidgetFilePending(el, widgetId, 'widget file pending');
+      return;
+    }
 
-    wrapper.appendChild(createDiagramZoomBtn());
-    wrapper.appendChild(createDiagramSaveBtn());
-    wrapper.appendChild(createDiagramCopyBtn());
-    const { iframe, nonce } = createWidgetIframe(htmlCode);
-    wrapper.appendChild(iframe);
-    bindWidgetZoom(wrapper);
+    const htmlCode = await res.text();
+    const encoded = encodeWidgetHtml(htmlCode);
+    renderWidgetIframe(el, htmlCode, encoded, widgetId, FILE_WIDGET_MAX_BYTES);
+  } catch (err) {
+    console.warn('[jaw-diagram] Failed to load widget file:', (err as Error).message);
+    showWidgetFilePending(el, widgetId, 'widget file pending');
+  }
+}
 
-    el.replaceWith(wrapper);
+export async function refreshFileWidget(chatId: string, widgetId: string): Promise<void> {
+  if (!chatId || !widgetId) return;
+  const activeChatId = await resolveActiveChatId();
+  if (activeChatId !== chatId) return;
 
-    attachWidgetIframeLifecycle({
-      iframe,
-      nonce,
-      owner: wrapper,
-      onTimeout: () => {
-        wrapper.innerHTML = `<div class="diagram-error" role="alert">
-          Widget failed to load within 10 seconds.
-        </div>`;
-        console.warn('[jaw-diagram] Widget timeout — iframe deregistered');
-      },
-    });
+  const targets = [...document.querySelectorAll<HTMLElement>('[data-widget-id]')]
+    .filter(el => el.dataset['widgetId'] === widgetId
+      && (el.classList.contains('diagram-widget') || el.classList.contains('diagram-widget-pending')));
+  if (!targets.length) return;
+
+  await Promise.all(targets.map(async (target) => {
+    if (target.dataset['widgetLoading'] === '1') return;
+    target.dataset['widgetLoading'] = '1';
+    try {
+      const res = await authFetch(`/api/widgets/${encodeURIComponent(chatId)}/${encodeURIComponent(widgetId)}`);
+      if (res.status === 404) {
+        showWidgetFilePending(target, widgetId, 'widget file pending');
+        return;
+      }
+      if (!res.ok) {
+        delete target.dataset['widgetLoading'];
+        return;
+      }
+      const htmlCode = await res.text();
+      const encoded = encodeWidgetHtml(htmlCode);
+      renderWidgetIframe(target, htmlCode, encoded, widgetId, FILE_WIDGET_MAX_BYTES);
+    } catch (err) {
+      delete target.dataset['widgetLoading'];
+      console.warn('[jaw-diagram] Failed to refresh widget file:', (err as Error).message);
+    }
+  }));
+}
+
+function showWidgetFilePending(el: HTMLElement, widgetId: string, message: string): void {
+  delete el.dataset['widgetLoading'];
+  el.dataset['widgetPending'] = '1';
+  el.className = 'diagram-widget-pending diagram-widget-file-pending';
+  el.dataset['widgetId'] = widgetId;
+  el.setAttribute('role', 'status');
+  el.setAttribute('aria-label', 'Widget file pending');
+  el.innerHTML = '';
+  const label = document.createElement('span');
+  label.textContent = message;
+  const retry = document.createElement('button');
+  retry.type = 'button';
+  retry.className = 'diagram-widget-retry';
+  retry.textContent = 'Retry';
+  retry.addEventListener('click', () => {
+    delete el.dataset['widgetPending'];
+    void activateFileWidget(el, widgetId);
+  });
+  el.append(label, retry);
+}
+
+function renderWidgetIframe(
+  pending: HTMLElement,
+  htmlCode: string,
+  encoded: string,
+  widgetId?: string,
+  maxBytes = INLINE_WIDGET_MAX_BYTES,
+): void {
+  const validation = validateWidgetHtml(htmlCode, { maxBytes });
+  if (!validation.valid) {
+    pending.replaceWith(Object.assign(document.createElement('div'), {
+      className: 'diagram-error',
+      textContent: `Widget blocked: ${validation.reason}`,
+      role: 'alert',
+    }));
+    return;
+  }
+  if (validation.warnings.length) {
+    console.warn('[jaw-diagram] Widget warnings:', validation.warnings);
+  }
+
+  const wrapper = document.createElement('div');
+  wrapper.className = 'diagram-container diagram-widget';
+  // Preserve source for theme-change reload and virtual-scroll reactivation.
+  wrapper.dataset['widgetHtml'] = encoded;
+  if (widgetId) wrapper.dataset['widgetId'] = widgetId;
+
+  wrapper.appendChild(createDiagramZoomBtn());
+  wrapper.appendChild(createDiagramSaveBtn());
+  wrapper.appendChild(createDiagramCopyBtn());
+  const { iframe, nonce } = createWidgetIframe(htmlCode);
+  wrapper.appendChild(iframe);
+  bindWidgetZoom(wrapper);
+
+  pending.replaceWith(wrapper);
+
+  attachWidgetIframeLifecycle({
+    iframe,
+    nonce,
+    owner: wrapper,
+    onTimeout: () => {
+      wrapper.innerHTML = `<div class="diagram-error" role="alert">
+        Widget failed to load within 10 seconds.
+      </div>`;
+      console.warn('[jaw-diagram] Widget timeout — iframe deregistered');
+    },
   });
 }
 
@@ -457,20 +597,26 @@ function bindWidgetZoom(container: HTMLElement): void {
   btn.addEventListener('click', () => {
     const encoded = container.dataset['widgetHtml'];
     if (!encoded) return;
-    openWidgetOverlay(encoded);
+    const maxBytes = container.dataset['widgetId'] ? FILE_WIDGET_MAX_BYTES : INLINE_WIDGET_MAX_BYTES;
+    openWidgetOverlay(encoded, maxBytes);
   });
 }
 
-function decodeWidgetHtml(encoded: string): string {
-  if (encoded.length > 524_288) throw new Error('Widget payload too large');
-  return decodeURIComponent(escape(atob(encoded)));
+function encodeWidgetHtml(htmlCode: string): string {
+  return btoa(unescape(encodeURIComponent(htmlCode)));
 }
 
-function openWidgetOverlay(encoded: string): void {
+function decodeWidgetHtml(encoded: string, maxBytes = INLINE_WIDGET_MAX_BYTES): string {
+  const htmlCode = decodeURIComponent(escape(atob(encoded)));
+  if (new TextEncoder().encode(htmlCode).length > maxBytes) throw new Error('Widget payload too large');
+  return htmlCode;
+}
+
+function openWidgetOverlay(encoded: string, maxBytes = INLINE_WIDGET_MAX_BYTES): void {
   const previousFocus = document.activeElement as HTMLElement | null;
   let htmlCode: string;
   try {
-    htmlCode = decodeWidgetHtml(encoded);
+    htmlCode = decodeWidgetHtml(encoded, maxBytes);
   } catch {
     htmlCode = '';
   }
@@ -511,7 +657,7 @@ function openWidgetOverlay(encoded: string): void {
     }
   };
 
-  const validation = htmlCode ? validateWidgetHtml(htmlCode) : { valid: false, reason: 'Failed to decode widget content', warnings: [] };
+  const validation = htmlCode ? validateWidgetHtml(htmlCode, { maxBytes }) : { valid: false, reason: 'Failed to decode widget content', warnings: [] };
   if (!validation.valid) {
     content.innerHTML = `<div class="diagram-error" role="alert">Widget blocked: ${validation.reason}</div>`;
   } else {
@@ -588,11 +734,13 @@ function throttledResize(source: Window, height: number): void {
 // Also recreates iframes so baked-in chart colors update with new theme.
 export function broadcastThemeToIframes(): void {
   document.querySelectorAll('.diagram-widget').forEach(container => {
-    const encoded = (container as HTMLElement).dataset['widgetHtml'];
+    const containerEl = container as HTMLElement;
+    const encoded = containerEl.dataset['widgetHtml'];
     if (!encoded) return;
+    const maxBytes = containerEl.dataset['widgetId'] ? FILE_WIDGET_MAX_BYTES : INLINE_WIDGET_MAX_BYTES;
     let htmlCode: string;
     try {
-      htmlCode = decodeWidgetHtml(encoded);
+      htmlCode = decodeWidgetHtml(encoded, maxBytes);
     } catch { return; }
 
     // Deregister old iframe
@@ -603,7 +751,7 @@ export function broadcastThemeToIframes(): void {
     }
 
     // Bump generation to invalidate pending timeouts from activateWidgets
-    const cEl = container as HTMLElement;
+    const cEl = containerEl;
     cEl.dataset['gen'] = String((Number(cEl.dataset['gen'] || '0') || 0) + 1);
 
     // Recreate with fresh theme tokens
@@ -613,8 +761,8 @@ export function broadcastThemeToIframes(): void {
     container.appendChild(createDiagramSaveBtn());
     container.appendChild(createDiagramCopyBtn());
     container.appendChild(iframe);
-    bindWidgetZoom(container as HTMLElement);
-    attachWidgetIframeLifecycle({ iframe, nonce, owner: container as HTMLElement });
+    bindWidgetZoom(containerEl);
+    attachWidgetIframeLifecycle({ iframe, nonce, owner: containerEl });
   });
 }
 

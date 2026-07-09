@@ -12,13 +12,25 @@ export class AnsiTerminalModel {
         this.scrollBottom = rows - 1;
     }
 
-    resize(columns: number, rows: number): void {
+    resize(columns: number, rows: number, opts?: { nativePush?: boolean }): void {
         this.columns = columns;
         if (rows < this.rows) {
+            // Real terminals (xterm/iTerm2/Terminal.app/kitty) keep the cursor
+            // (bottom) visible on a height shrink and push the top rows into
+            // scrollback; the default here discards them (legacy tests).
+            if (opts?.nativePush) this.scrollback.push(...this.lines.slice(0, this.rows - rows));
             this.lines = this.lines.slice(this.rows - rows);
         } else if (rows > this.rows) {
-            this.lines = [...new Array(rows - this.rows).fill(''), ...this.lines];
-            this.row += rows - this.rows;
+            const grow = rows - this.rows;
+            if (opts?.nativePush) {
+                // Realistic grow: mainstream terminals PULL the newest
+                // scrollback rows back onto the screen top, in order.
+                const pulled = this.scrollback.splice(Math.max(0, this.scrollback.length - grow), grow);
+                this.lines = [...new Array(grow - pulled.length).fill(''), ...pulled, ...this.lines];
+            } else {
+                this.lines = [...new Array(grow).fill(''), ...this.lines];
+            }
+            this.row += grow;
         }
         this.rows = rows;
         this.row = Math.max(0, Math.min(this.rows - 1, this.row));

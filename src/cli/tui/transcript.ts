@@ -58,6 +58,26 @@ export function startAssistantItem(state: TranscriptState, agentId?: string): vo
     state.items.push(item);
 }
 
+/** 260704 — session-scoped verbose render mode (jawcode 91bfb40/753ea63
+ *  parity): every tool/thinking block renders permanently expanded — no
+ *  minimize when the next tool starts, and the fold toggles become
+ *  commit-mode-only. Runtime override set at launch (--verbose), not
+ *  persisted. */
+let verboseRenderMode = false;
+
+export function setVerboseRenderMode(on: boolean): void {
+    verboseRenderMode = on;
+}
+
+export function isVerboseRenderMode(): boolean {
+    return verboseRenderMode;
+}
+
+/** Collapsed state a block settles into when its run completes. */
+function settledCollapsed(): boolean {
+    return !verboseRenderMode;
+}
+
 export function appendToActiveAssistant(state: TranscriptState, chunk: string): boolean {
     const last = state.items[state.items.length - 1];
     if (!last || last.type !== 'assistant' || !last.streaming) return false;
@@ -130,7 +150,7 @@ export function appendThinkingItem(state: TranscriptState, text: string, opts?: 
         text,
         streaming: opts?.streaming ?? false,
         timestamp: Date.now(),
-        collapsed: opts?.collapsed ?? true,
+        collapsed: opts?.collapsed ?? settledCollapsed(),
     };
     if (opts?.agentId) item.agentId = opts.agentId;
     if (opts?.stepRef) item.stepRef = opts.stepRef;
@@ -149,7 +169,7 @@ export function appendThinkingTurnText(state: TranscriptState, chunk: string, ag
             return true;
         }
     }
-    return appendThinkingItem(state, chunk, { ...(agentId ? { agentId } : {}), streaming: true, collapsed: true });
+    return appendThinkingItem(state, chunk, { ...(agentId ? { agentId } : {}), streaming: true, collapsed: settledCollapsed() });
 }
 
 export function finalizeAssistant(state: TranscriptState, fallbackText?: string): boolean {
@@ -210,7 +230,7 @@ export function appendToolItem(state: TranscriptState, text: string, opts?: { ag
             existing.timestamp = Date.now();
             if (opts.status) {
                 existing.status = opts.status;
-                existing.collapsed = opts.status !== 'running';
+                existing.collapsed = settledCollapsed() && opts.status !== 'running';
             }
             if (opts.agentId) existing.agentId = opts.agentId;
             if (opts.detail) existing.detail = opts.detail;
@@ -222,7 +242,7 @@ export function appendToolItem(state: TranscriptState, text: string, opts?: { ag
         type: 'tool',
         text,
         timestamp: Date.now(),
-        collapsed: opts?.status ? opts.status !== 'running' : false,
+        collapsed: settledCollapsed() && (opts?.status ? opts.status !== 'running' : false),
     };
     if (opts?.agentId) item.agentId = opts.agentId;
     if (opts?.detail) item.detail = opts.detail;
@@ -251,7 +271,7 @@ export function commitThinkingItemOnce(state: TranscriptState, input: ToolEventI
                 ...(input.agentId ? { agentId: input.agentId } : {}),
                 stepRef: input.stepRef,
                 streaming: false,
-                collapsed: true,
+                collapsed: settledCollapsed(),
             });
         }
         return false;
@@ -261,7 +281,7 @@ export function commitThinkingItemOnce(state: TranscriptState, input: ToolEventI
         ...(input.agentId ? { agentId: input.agentId } : {}),
         ...(input.stepRef ? { stepRef: input.stepRef } : {}),
         streaming: false,
-        collapsed: true,
+        collapsed: settledCollapsed(),
     });
 }
 
@@ -311,7 +331,7 @@ export function commitToolItemOnce(state: TranscriptState, input: ToolEventInput
                 if (input.detail) item.detail = input.detail;
                 if (input.status) {
                     item.status = input.status;
-                    item.collapsed = input.status !== 'running';
+                    item.collapsed = settledCollapsed() && input.status !== 'running';
                 }
                 item.timestamp = Date.now();
                 break;
@@ -366,14 +386,14 @@ export function commitRemainingLiveToolItems(state: TranscriptState, status: Too
         }
     }
     state.liveTools.length = 0;
-    state.liveToolsExpanded = false;
+    state.liveToolsExpanded = verboseRenderMode;
     return committed;
 }
 
 export function clearLiveToolItems(state: TranscriptState): LiveToolItem[] {
     const items = [...state.liveTools];
     state.liveTools.length = 0;
-    state.liveToolsExpanded = false;
+    state.liveToolsExpanded = verboseRenderMode;
     return items;
 }
 
@@ -382,6 +402,7 @@ export function listLiveToolItems(state: TranscriptState): LiveToolItem[] {
 }
 
 export function collapsePreviousTools(state: TranscriptState): void {
+    if (verboseRenderMode) return;
     for (let i = state.items.length - 1; i >= 0; i--) {
         const item = state.items[i]!;
         if (item.type === 'tool' && !item.collapsed) item.collapsed = true;
@@ -394,6 +415,7 @@ export function collapsePreviousTools(state: TranscriptState): void {
 // heights from what the terminal actually shows (jawcode parity: committed
 // components are ineligible for the live expansion toggle).
 export function toggleToolExpansion(state: TranscriptState, fromIndex = 0): boolean {
+    if (verboseRenderMode) return false;
     const expandableItems = state.items
         .slice(Math.max(0, fromIndex))
         .filter(i => i.type === 'tool' || i.type === 'thinking');
@@ -406,6 +428,7 @@ export function toggleToolExpansion(state: TranscriptState, fromIndex = 0): bool
 }
 
 export function toggleLatestToolExpansion(state: TranscriptState): boolean {
+    if (verboseRenderMode) return false;
     for (let i = state.items.length - 1; i >= 0; i--) {
         const item = state.items[i]!;
         if (item.type !== 'tool') continue;

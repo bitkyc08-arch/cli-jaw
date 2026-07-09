@@ -5,12 +5,13 @@ import { executeCommand, getArgumentCompletionItems } from '../../../src/cli/com
 import type { ArgumentCompletionItem } from '../../../src/cli/commands.js';
 import type { ParsedSlashCommand } from '../../../src/cli/types.js';
 import { setBracketedPaste } from '../../../src/cli/tui/composer.js';
-import { appendCommandItem } from '../../../src/cli/tui/transcript.js';
+import { appendCommandItem, isVerboseRenderMode } from '../../../src/cli/tui/transcript.js';
 import { cleanupScrollRegion, resolveShellLayout, setupScrollRegion } from '../../../src/cli/tui/shell.js';
 import { getIdeCli } from '../../../src/ide/diff.js';
 import { c, getRows, hrLine, renderCommandText, type TuiContext } from './types.js';
 import { rebuildFooter, openPromptBlock } from './renderer.js';
-import { refreshInfo, makeCliCommandCtx } from './api.js';
+import { refreshInfo, makeCliCommandCtx, apiJson } from './api.js';
+import { runQueueCommand } from './queue-command.js';
 import {
     closeAutocompleteForCtx,
     openChoiceSelector,
@@ -29,7 +30,7 @@ function appendFullscreenFeedback(ctx: TuiContext, text: string, opts?: { comman
 function clearFullscreenTranscript(ctx: TuiContext): void {
     ctx.store.transcript.items.length = 0;
     ctx.store.transcript.liveTools.length = 0;
-    ctx.store.transcript.liveToolsExpanded = false;
+    ctx.store.transcript.liveToolsExpanded = isVerboseRenderMode();
     ctx.store.transcript.committedToolRefs.clear();
     ctx.requestFrame?.();
 }
@@ -62,9 +63,87 @@ function openArgumentSelector(
     ctx.inputActive = true;
 }
 
+// /steer must run in the SERVER process where the active agent lives — the
+// command registry excludes the 'cli' interface on purpose (process boundary,
+// tests/unit/steer-command.test.ts STR-001) and a local executeCommand would
+// see an empty spawn state. Forward the raw text to POST /api/message so
+// src/routes/command.ts executes steerHandler server-side, and surface the
+// handler's feedback text here (the SSE channel discards POST responses).
+async function runSteerViaServer(ctx: TuiContext, parsed: ParsedSlashCommand & { type: 'known' }): Promise<void> {
+    const feedback = (text: string, ok: boolean) => {
+        if (ctx.displayMode === 'fullscreen') appendFullscreenFeedback(ctx, text, { commandName: 'steer', ok });
+        else if (ok) console.log(`  ${renderCommandText(text)}`);
+        else console.log(`  ${c.red}${text}${c.reset}`);
+    };
+    const restoreInput = () => {
+        ctx.commandRunning = false;
+        ctx.inputActive = true;
+        openPromptBlock(ctx);
+    };
+    if (!parsed.args.length) {
+        feedback('Usage: /steer <prompt>', false);
+        restoreInput();
+        return;
+    }
+    const prompt = parsed.rawText || `/steer ${parsed.args.join(' ')}`;
+    try {
+        // claude-e steers wait up to 30s for the old turn to die — keep the
+        // HTTP timeout above getSteerWaitMsForActiveAgent's worst case.
+        const resp = await apiJson<{ ok?: boolean; text?: string; error?: string }>(
+            ctx, '/api/message', { method: 'POST', body: { prompt } }, 45_000,
+        );
+        if (resp.ok === false) {
+            feedback(resp.text || resp.error || 'steer failed', false);
+            restoreInput();
+            return;
+        }
+        feedback(resp.text || 'steering…', true);
+        // The steered turn is starting: keep the stream shortcuts (ESC stop)
+        // armed instead of reopening the prompt as if idle.
+        ctx.commandRunning = false;
+        ctx.inputActive = false;
+        ctx.requestFrame?.();
+    } catch (err) {
+        feedback((err as Error).message, false);
+        restoreInput();
+    }
+}
+
 export async function runSlashCommand(ctx: TuiContext, parsed: ParsedSlashCommand): Promise<void> {
     if (!parsed) return;
     const panes = ctx.store.panes;
+
+    if (parsed.type === 'known' && parsed.name === 'steer') {
+        await runSteerViaServer(ctx, parsed);
+        return;
+    }
+
+    // /queue: interactive listing + steer/drop against the server queue routes
+    // (shared executor with simple-mode; registry handler is usage-only).
+    if (parsed.type === 'known' && parsed.name === 'queue') {
+        try {
+            const result = await runQueueCommand(ctx, parsed.args);
+            if (ctx.displayMode === 'fullscreen') appendFullscreenFeedback(ctx, result.text, { commandName: 'queue', ok: result.ok });
+            else if (result.ok) console.log(`  ${renderCommandText(result.text)}`);
+            else console.log(`  ${c.red}${result.text}${c.reset}`);
+            ctx.commandRunning = false;
+            if (result.steered) {
+                // A steered turn is starting — keep ESC-stop armed.
+                ctx.inputActive = false;
+                ctx.requestFrame?.();
+            } else {
+                ctx.inputActive = true;
+                openPromptBlock(ctx);
+            }
+        } catch (err) {
+            if (ctx.displayMode === 'fullscreen') appendFullscreenFeedback(ctx, (err as Error).message, { commandName: 'queue', ok: false });
+            else console.log(`  ${c.red}${(err as Error).message}${c.reset}`);
+            ctx.commandRunning = false;
+            ctx.inputActive = true;
+            openPromptBlock(ctx);
+        }
+        return;
+    }
 
     if (parsed.type === 'known' && parsed.name === 'help') {
         openHelpOverlay(ctx);
@@ -187,7 +266,10 @@ export async function runSlashCommand(ctx: TuiContext, parsed: ParsedSlashComman
         if (result?.code === 'retry') {
             const last = ctx.store.transcript.items.filter(i => i.type === 'user').pop();
             if (last && 'submitText' in last) {
-                ctx.ws.send(JSON.stringify({ type: 'message', text: last.submitText }));
+                // 'send_message' is the only outbound chat type the transport
+                // adapter maps (channel.ts) — the old 'message' type was
+                // silently dropped over SSE, breaking /retry.
+                ctx.ws.send(JSON.stringify({ type: 'send_message', text: last.submitText }));
             }
         }
         if (result?.code === 'show_help') {

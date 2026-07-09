@@ -215,14 +215,19 @@ export function scrollToBottom(force = false): void {
     ensureScrollTracking();
     if (!force && !userNearBottom) return;
     if (force) markFollowingBottom();
-    const vs = getVirtualScroll();
-    if (vs.active) {
-        vs.scrollToBottom();
-        return;
-    }
     if (scrollRAF) return;
     scrollRAF = requestAnimationFrame(() => {
         scrollRAF = null;
+        // Re-read VS state inside the frame: activation can flip between
+        // schedule and fire (threshold promotion). One rAF gate batches BOTH
+        // paths — streaming emits scrollToBottom per chunk/tool event, and the
+        // VS branch used to run virtualizer.scrollToIndex + scrollTop reads
+        // synchronously per call (devlog 260705_frontend_perf H1).
+        const vs = getVirtualScroll();
+        if (vs.active) {
+            vs.scrollToBottom();
+            return;
+        }
         const c = document.getElementById('chatMessages');
         if (c) c.scrollTop = c.scrollHeight;
     });

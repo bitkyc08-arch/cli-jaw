@@ -3,6 +3,7 @@ import { join, dirname } from 'path';
 import { createHash } from 'crypto';
 import { JAW_HOME } from '../core/config.js';
 import { instanceId } from '../core/instance.js';
+import { log } from '../core/logger.js';
 
 export type BootstrapOptions = {
     importCore?: boolean;
@@ -238,13 +239,13 @@ export function withMigrationLock<T>(fn: () => T) {
             let ownerPid = NaN;
             try { ownerPid = parseInt(fs.readFileSync(lockPath, 'utf8').trim(), 10); } catch { /* unreadable */ }
             if (Number.isFinite(ownerPid) && isProcessAlive(ownerPid)) {
-                console.warn(`[jaw:migration-lock] lock held by live PID ${ownerPid}, proceeding without lock`);
+                log.warn(`[jaw:migration-lock] lock held by live PID ${ownerPid}, proceeding without lock`);
                 return fn();
             }
             // Stale lock — remove and retry
             try {
                 fs.unlinkSync(lockPath);
-                console.warn(`[jaw:migration-lock] removed stale lock${Number.isFinite(ownerPid) ? ` (PID ${ownerPid})` : ''}`);
+                log.warn(`[jaw:migration-lock] removed stale lock${Number.isFinite(ownerPid) ? ` (PID ${ownerPid})` : ''}`);
             } catch (unlinkErr: unknown) {
                 if ((unlinkErr as NodeJS.ErrnoException)?.code !== 'ENOENT') throw unlinkErr;
             }
@@ -252,7 +253,7 @@ export function withMigrationLock<T>(fn: () => T) {
     }
 
     if (fd == null) {
-        console.warn('[jaw:migration-lock] could not acquire lock, proceeding without');
+        log.warn('[jaw:migration-lock] could not acquire lock, proceeding without');
         return fn();
     }
 

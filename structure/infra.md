@@ -20,7 +20,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | 항목 | 현재 값 |
 | --- | --- |
 | package | `cli-jaw` |
-| version | `2.1.5` |
+| version | `2.2.4` |
 | type | `module` |
 | Node engine | `>=22.4.0` |
 | bin | `cli-jaw` → `dist/bin/cli-jaw.js`, `jaw` → `dist/bin/cli-jaw.js` |
@@ -547,7 +547,7 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 
 ---
 
-## src/routes/ — API registration cluster (13 files, 1714L)
+## src/routes/ — API registration cluster (36 files, 6700L)
 
 `server.ts`는 이제 보안 미들웨어와 base routes만 유지하고, 실제 API surface는 이 디렉터리의 registrar/helper로 나눈다.
 
@@ -568,7 +568,7 @@ Copilot 할당량 조회 + 인증 토큰 관리. env → file cache → `gh auth
 | `quota.ts` | `/api/quota` helper readers imported by `settings.ts` (direct provider usage where supported, wrapper runtime delegation for `ai-e`/`claude-e`/`codex-app`, reverse-engineered AGY Gem/Cla windows when `antigravity-usage --json` is available, and status-only metadata for Cursor/Grok/OpenCode or CLIs without quota windows) |
 
 핵심 포인트:
-- `server.ts`는 `register*Routes(app, requireAuth, ...)` 호출만 남기고 629L 글루 레이어로 유지된다. 현재 mutation endpoint 53개는 모두 `requireAuth` 미들웨어를 거쳐 인증 없는 상태 변경을 차단한다.
+- `server.ts`는 `register*Routes(app, requireAuth, ...)` 호출만 남기고 635L 글루 레이어로 유지된다. 현재 mutation endpoint는 모두 `requireAuth` 미들웨어를 거쳐 인증 없는 상태 변경을 차단한다.
 - `settings.ts`가 `/api/quota`를 소유하며, `quota.ts`는 route registrar가 아니라 helper module이다.
 - `messaging.ts`가 `assertSendFilePath()`와 `execFileSync()` 기반 file open/send 보안을 담당한다.
 

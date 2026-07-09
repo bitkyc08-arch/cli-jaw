@@ -13,6 +13,7 @@ export { detectAllCli, detectCli, getClaudeExecHelperCandidates, getClaudeIHelpe
 // ─── Version (single source of truth: package.json) ──
 import { dirname } from 'path';
 import { fileURLToPath } from 'url';
+import { log } from './logger.js';
 
 function findPackageJson(): string {
     let dir = dirname(fileURLToPath(import.meta.url));
@@ -36,6 +37,7 @@ export const DB_PATH = join(JAW_HOME, 'jaw.db');
 export const SETTINGS_PATH = join(JAW_HOME, 'settings.json');
 export const HEARTBEAT_JOBS_PATH = join(JAW_HOME, 'heartbeat.json');
 export const UPLOADS_DIR = join(JAW_HOME, 'uploads');
+export const WIDGETS_DIR = join(JAW_HOME, 'widgets');
 export const MIGRATION_MARKER = join(JAW_HOME, '.migrated-v1');
 export const SKILLS_DIR = join(JAW_HOME, 'skills');
 export const SKILLS_REF_DIR = join(JAW_HOME, 'skills_ref');
@@ -136,6 +138,7 @@ export function normalizeProjectDirs(dirs: unknown): string[] | null {
 export function ensureDirs() {
     fs.mkdirSync(PROMPTS_DIR, { recursive: true });
     fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+    fs.mkdirSync(WIDGETS_DIR, { recursive: true });
     fs.mkdirSync(SKILLS_DIR, { recursive: true });
     fs.mkdirSync(SKILLS_REF_DIR, { recursive: true });
 }
@@ -154,14 +157,14 @@ export function runMigration(projectDir: string) {
             const dst = DB_PATH + ext;
             if (fs.existsSync(src)) fs.renameSync(src, dst);
         }
-        console.log('[migrate] claw.db → jaw.db');
+        log.info('[migrate] claw.db → jaw.db');
     }
 
     const legacySettings = join(projectDir, 'settings.json');
     const legacyDb = join(projectDir, 'jaw.db');
     if (fs.existsSync(legacySettings) && !fs.existsSync(SETTINGS_PATH)) {
         fs.copyFileSync(legacySettings, SETTINGS_PATH);
-        console.log('[migrate] settings.json → ~/.cli-jaw/');
+        log.info('[migrate] settings.json → ~/.cli-jaw/');
     }
     if (fs.existsSync(legacyDb) && !fs.existsSync(DB_PATH)) {
         fs.copyFileSync(legacyDb, DB_PATH);
@@ -169,7 +172,7 @@ export function runMigration(projectDir: string) {
             const src = legacyDb + ext;
             if (fs.existsSync(src)) fs.copyFileSync(src, DB_PATH + ext);
         }
-        console.log('[migrate] jaw.db → ~/.cli-jaw/');
+        log.info('[migrate] jaw.db → ~/.cli-jaw/');
     }
     fs.writeFileSync(MIGRATION_MARKER, JSON.stringify({ migratedAt: new Date().toISOString() }));
 }

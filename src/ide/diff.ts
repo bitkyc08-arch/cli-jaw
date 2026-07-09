@@ -207,7 +207,7 @@ export function openDiffInIde(
         }
     } finally {
         setTimeout(() => {
-            try { rmSync(tmpDir, { recursive: true, force: true }); } catch { }
+            try { rmSync(tmpDir, { recursive: true, force: true }); } catch { } // best-effort: temp dir cleanup
         }, 10_000);
     }
 }

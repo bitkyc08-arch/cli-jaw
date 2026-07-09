@@ -46,7 +46,10 @@ test('fullscreen scrollback commit uses queue+render pattern with transactional 
     assert.ok(commitBlock.includes('pendingCommitLines'), 'commit queues lines for render-internal flush');
     assert.ok(frameSource.includes('lastCommitFlushedCount'), 'screen reports flushed count for transactional mark');
     assert.ok(frameSource.includes('hasNativeCommit'), 'screen tracks native commit state');
-    assert.ok(frameSource.includes('normalized.fillRows >= 2'), 'render flushes only when fill lane >= 2');
+    assert.ok(frameSource.includes('fillRows >= 2'), 'render flushes only when fill lane >= 2');
+    // 260704 WP6b-v2: top-anchored commit lane — flush defers on stale
+    // direct-write target rows instead of region-top scroll-out rows.
+    assert.ok(frameSource.includes('commitTargetRowsAreBlank'), 'flush defers on stale direct-write target rows');
 });
 
 test('fullscreen resize uses JWC-like clear before transcript and protects history afterward', () => {
@@ -58,7 +61,10 @@ test('fullscreen resize uses JWC-like clear before transcript and protects histo
     assert.ok(frameSource.includes('geometryChanged(width: number, height: number): boolean'));
     assert.ok(frameSource.includes('forceResizeRedraw(): void'));
     assert.ok(frameSource.includes('hasNativeCommit'));
-    assert.ok(frameSource.includes('scrollbackProtected'));
+    // 260704 WP6b-v2: the resize path flushes the top-anchored committed block
+    // content-only (region [1..B]) before any clear/repaint — the
+    // scrollbackProtected flag retired with the bottom-anchored geometry.
+    assert.ok(frameSource.includes('this.committedScreenRows > 0'), 'resize path flushes the committed block before repaint');
     assert.ok(frameSource.includes("resizeRepaintMode(widthChanged: boolean, heightChanged: boolean): 'discard-scrollback' | 'visible-clear' | 'viewport-only'"));
     assert.ok(frameSource.includes('buildViewportRepaintSequence'));
     assert.ok(frameSource.includes("buildFullClearSequence(mode === 'discard-scrollback')"));

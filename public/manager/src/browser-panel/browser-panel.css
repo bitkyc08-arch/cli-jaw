@@ -155,6 +155,36 @@
     background: var(--bg-hover);
     border-color: var(--border-strong);
 }
+.browser-toolbar [data-tooltip] {
+    position: relative;
+}
+.browser-toolbar [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 7px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 160;
+    max-width: 220px;
+    padding: 5px 7px;
+    border: 1px solid var(--border-strong);
+    border-radius: 5px;
+    background: var(--bg-raised);
+    color: var(--text-base);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+    font-size: 11px;
+    line-height: 1.2;
+    white-space: nowrap;
+    pointer-events: none;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 80ms ease, visibility 80ms ease;
+}
+.browser-toolbar [data-tooltip]:hover::after,
+.browser-toolbar [data-tooltip]:focus-visible::after {
+    opacity: 1;
+    visibility: visible;
+}
 .browser-status {
     flex-shrink: 0;
     padding: 5px 8px;
@@ -241,4 +271,279 @@
 .browser-external-open:focus-visible {
     background: var(--bg-hover);
     border-color: var(--border-strong);
+}
+
+/* ==========================================================================
+   030 v1: toolbar actions, screenshot review, comment composer, inspect pick
+   ========================================================================== */
+
+.browser-action-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 0 0 auto;
+}
+.browser-action-btn {
+    all: unset;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 6px;
+    color: var(--text-dim);
+    cursor: pointer;
+}
+.browser-action-btn:hover,
+.browser-action-btn:focus-visible {
+    background: var(--bg-hover);
+    color: var(--text-base);
+}
+.browser-action-btn:focus-visible {
+    outline: 2px solid var(--focus-ring);
+    outline-offset: -1px;
+}
+.browser-action-btn.is-active {
+    background: var(--bg-raised);
+    color: var(--text-base);
+}
+.browser-action-btn.is-shared {
+    color: var(--accent, #7aa2ff);
+}
+.browser-action-btn:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.browser-more-wrap {
+    position: relative;
+    flex: 0 0 auto;
+}
+.browser-more-menu {
+    position: absolute;
+    top: 30px;
+    right: 0;
+    min-width: 170px;
+    padding: 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 8px;
+    background: var(--bg-raised);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+    z-index: 140;
+}
+.browser-more-item {
+    all: unset;
+    box-sizing: border-box;
+    display: block;
+    width: 100%;
+    padding: 7px 10px;
+    border-radius: 6px;
+    color: var(--text-base);
+    font-size: 12px;
+    cursor: pointer;
+}
+.browser-more-item:hover,
+.browser-more-item:focus-visible {
+    background: var(--bg-hover);
+}
+
+/* Transparent click-catcher for element inspect picking */
+.browser-inspect-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 30;
+    cursor: crosshair;
+    background: rgba(122, 162, 255, 0.06);
+}
+.browser-inspect-marker {
+    position: absolute;
+    width: 96px;
+    height: 56px;
+    transform: translate(-50%, -50%);
+    border: 1px solid rgba(66, 133, 244, 0.92);
+    border-radius: 4px;
+    background: rgba(66, 133, 244, 0.3);
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.48), 0 8px 22px rgba(15, 23, 42, 0.2);
+    pointer-events: none;
+}
+.browser-inspect-marker::before,
+.browser-inspect-marker::after {
+    content: "";
+    position: absolute;
+    background: rgba(66, 133, 244, 0.82);
+}
+.browser-inspect-marker::before {
+    left: 50%;
+    top: -7px;
+    width: 1px;
+    height: calc(100% + 14px);
+}
+.browser-inspect-marker::after {
+    left: -7px;
+    top: 50%;
+    width: calc(100% + 14px);
+    height: 1px;
+}
+.browser-picked-marker {
+    position: absolute;
+    z-index: 35;
+    width: 18px;
+    height: 18px;
+    transform: translate(-50%, -50%);
+    border: 2px solid rgba(66, 133, 244, 0.95);
+    border-radius: 999px;
+    background: rgba(66, 133, 244, 0.32);
+    box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.55), 0 6px 18px rgba(15, 23, 42, 0.22);
+    pointer-events: none;
+}
+
+/* Floating comment composer over the viewport */
+.browser-comment-composer {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    width: min(320px, calc(100% - 24px));
+    padding: 10px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--bg-raised);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.browser-comment-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+    font-size: 11px;
+    color: var(--text-dim);
+}
+.browser-comment-title {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+}
+.browser-comment-anchor,
+.browser-comment-shot {
+    flex: 0 0 auto;
+}
+.browser-comment-input {
+    box-sizing: border-box;
+    width: 100%;
+    min-height: 64px;
+    resize: vertical;
+    padding: 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    background: var(--bg-panel);
+    color: var(--text-base);
+    font-size: 12px;
+}
+.browser-comment-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+.browser-comment-save,
+.browser-comment-cancel,
+.browser-screenshot-btn {
+    all: unset;
+    box-sizing: border-box;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: var(--text-base);
+    background: var(--bg-hover);
+    cursor: pointer;
+}
+.browser-comment-save:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+.browser-comment-save:hover:not(:disabled),
+.browser-comment-cancel:hover,
+.browser-screenshot-btn:hover {
+    background: var(--bg-raised);
+}
+
+/* Screenshot capture review card */
+.browser-screenshot-review {
+    position: absolute;
+    right: 12px;
+    bottom: 12px;
+    width: min(280px, calc(100% - 24px));
+    padding: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--bg-raised);
+    box-shadow: 0 14px 36px rgba(0, 0, 0, 0.32);
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.browser-screenshot-image {
+    width: 100%;
+    height: auto;
+    border-radius: 6px;
+    border: 1px solid var(--border-subtle);
+}
+.browser-screenshot-meta {
+    font-size: 11px;
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.browser-screenshot-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+/* v4/v5: picked element block + actions-enabled state */
+.browser-action-btn.is-actions {
+    color: #f6b26b;
+}
+.browser-picked-element {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    padding: 6px 8px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 6px;
+    background: var(--bg-panel);
+    font-size: 11px;
+}
+.browser-picked-selector {
+    font-family: var(--mono, ui-monospace, monospace);
+    color: #6fa8dc;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 60%;
+    white-space: nowrap;
+}
+.browser-picked-ax {
+    color: var(--text-dim);
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.browser-picked-click {
+    all: unset;
+    margin-left: auto;
+    cursor: pointer;
+    padding: 3px 8px;
+    border-radius: 5px;
+    background: color-mix(in srgb, #f6b26b 22%, transparent);
+    color: #f6b26b;
+    font-size: 11px;
+}
+.browser-picked-click:hover {
+    background: color-mix(in srgb, #f6b26b 34%, transparent);
 }

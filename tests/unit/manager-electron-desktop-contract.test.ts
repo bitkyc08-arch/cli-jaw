@@ -288,7 +288,7 @@ test('manager desktop panel toggles are Electron-only and do not open sidebars o
     assert.ok(controls.includes('aria-label="Toggle terminal panel"'), 'DesktopPanelControls must expose the bottom terminal panel toggle');
     assert.ok(controls.includes("panelActions.openBottomTab('terminal')"), 'bottom panel toggle must open the terminal tab when closed');
     assert.ok(controls.includes('aria-label="Toggle right panel"'), 'DesktopPanelControls must expose the right panel toggle');
-    assert.ok(controls.includes("panelActions.openRightPanel('folder')"), 'right panel toggle must open the folder panel when closed');
+    assert.ok(controls.includes("panelActions.focusOrCreateFirstRightSidebarTab('files')"), 'right panel toggle must open/focus the Files tab when closed');
     assert.ok(
         router.includes("const isElectron = currentManagerSurface() === 'electron'") && router.includes('const desktopPanelsAvailable = isElectron'),
         'SidebarRailRouter must suppress persisted desktop panel state on web',
@@ -323,16 +323,16 @@ test('Electron panel shortcuts open usable panels when closed', () => {
         'toggleBottomPanel shortcut must open a terminal tab when the bottom panel is closed',
     );
     assert.ok(
-        provider.includes("else {\n                        dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'folder', slot: 'top' });"),
-        'toggleRightPanel shortcut must open the folder panel when the right panel has no active mode',
+        provider.includes("dispatch({ type: 'FOCUS_OR_CREATE_FIRST_RIGHT_SIDEBAR_TAB', kind: 'files' })"),
+        'toggleRightPanel shortcut must open/focus the Files tab when the right panel has no open tabs',
     );
     assert.ok(
-        provider.includes("dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'folder', slot: 'top' })"),
-        'usePanelActions.toggleRightPanel must also open a folder panel from the closed/no-mode state',
+        provider.includes("dispatch({ type: 'FOCUS_OR_CREATE_FIRST_RIGHT_SIDEBAR_TAB', kind: 'diff' })"),
+        'openDiff shortcut must focus-or-create the Diff tab',
     );
     assert.ok(
-        provider.includes("if (next.topMode !== null && next.topMode === next.bottomMode) next.bottomMode = null;"),
-        'right panel hydration/open must collapse duplicate top and bottom modes into one usable panel',
+        !provider.includes('OPEN_RIGHT_PANEL') && !provider.includes('SOLO_RIGHT_SUB'),
+        'legacy two-slot right panel actions must stay removed',
     );
     const compact = read('public/manager/src/manager-p0-1-1.css');
     assert.equal(
@@ -361,19 +361,18 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     const workspace = read('public/manager/src/components/WorkspaceLayout.tsx');
     const browserCss = read('public/manager/src/browser-panel/browser-panel.css');
 
-    assert.ok(types.includes("RightPanelMode = 'folder' | 'doc' | 'diff' | 'browser' | 'ceo'"), 'right panel modes must include folders, document preview, diff, browser, and ceo');
-    assert.ok(types.includes("['folder', 'doc', 'diff', 'browser', 'ceo']"), 'right panel mode order must match the toolbar order');
-    assert.ok(types.includes('RIGHT_SPLIT_MIN_RATIO = 0.3'), 'right panel split must not allow a slot to collapse into an unusable 20% strip');
-    assert.ok(types.includes('RIGHT_SPLIT_MAX_RATIO = 0.7'), 'right panel split must reserve usable height for both slots');
-    assert.ok(provider.includes("{ type: 'SOLO_RIGHT_SUB'; slot: 'top' | 'bottom' }"), 'layout reducer must expose a first-class solo action for split slots');
-    assert.ok(provider.includes("case 'SOLO_RIGHT_SUB'"), 'layout reducer must support promoting a split slot to a single full-height panel');
-    assert.ok(provider.includes('next.topMode = next.bottomMode'), 'closing the top split slot must promote the remaining bottom slot into the full-height top slot');
-    assert.ok(sidebar.includes('RIGHT_PANEL_TOOLBAR_MODES'), 'RightSidebar must render a mode toolbar');
-    assert.ok(sidebar.includes('RIGHT_SPLIT_SLOT_MIN_HEIGHT'), 'split slots must have a stable minimum height instead of relying only on fractional rows');
-    assert.ok(sidebar.includes('right-panel-mode-button'), 'right sidebar mode controls must be compact icon buttons');
-    assert.ok(sidebar.includes("aria-label={MODE_LABELS[mode]}"), 'icon buttons must keep accessible names');
-    assert.ok(sidebar.includes("dispatch({ type: 'SET_RIGHT_BOTTOM_MODE', mode: null })"), 'toolbar buttons must collapse split state into a single visible panel');
-    assert.ok(sidebar.includes("dispatch({ type: 'OPEN_RIGHT_PANEL', mode, slot: 'top' })"), 'toolbar buttons must switch the visible top panel');
+    assert.ok(types.includes("RightSidebarTabKind = 'files' | 'diff' | 'browser' | 'design'"), 'right sidebar tab kinds must be files, diff, browser, and design (CEO hidden)');
+    assert.ok(types.includes("['files', 'diff', 'browser', 'design']"), 'tab kind order must match the launcher/tab order');
+    assert.ok(types.includes('FILE_FOLDER_FOLDER_ONLY_THRESHOLD = 0.12'), 'Files split must snap to folder-only below the threshold');
+    assert.ok(types.includes('FILE_FOLDER_FILE_ONLY_THRESHOLD = 0.88'), 'Files split must snap to file-only above the threshold');
+    assert.ok(!provider.includes('SOLO_RIGHT_SUB') && !provider.includes('SET_RIGHT_BOTTOM_MODE'), 'legacy two-slot reducer surface must stay removed');
+    assert.ok(provider.includes('focusOrCreateFirstRightSidebarTab'), 'launcher semantics must focus the first open tab of a kind or create it');
+    assert.ok(provider.includes('createRightSidebarTab'), 'the plus menu must create new module instances');
+    assert.ok(sidebar.includes('right-launcher-button'), 'right sidebar must render icon launcher buttons');
+    assert.ok(sidebar.includes('right-sidebar-tab-strip'), 'right sidebar must render the open tab strip');
+    assert.ok(sidebar.includes("aria-label={RIGHT_SIDEBAR_TAB_TITLES[kind]}"), 'launcher icon buttons must keep accessible names');
+    assert.ok(sidebar.includes("dispatch({ type: 'FOCUS_OR_CREATE_FIRST_RIGHT_SIDEBAR_TAB', kind })"), 'launcher buttons must focus-or-create the first tab of the kind');
+    assert.ok(sidebar.includes("dispatch({ type: 'CREATE_RIGHT_SIDEBAR_TAB', kind })"), 'the plus menu must create a new module instance');
     assert.ok(sidebar.includes('const widthRef = useRef(rp.width);'), 'right sidebar resize must accumulate drag deltas outside React render timing');
     assert.ok(sidebar.includes('widthRef.current = width;'), 'right sidebar width ref must update immediately during drag');
     assert.ok(resizer.includes('onDeltaRef.current(delta)'), 'PanelResizer must call the latest delta handler without re-registering native listeners mid-drag');
@@ -387,26 +386,20 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(css.includes('.right-panel {\n    grid-area: right;\n    position: relative;'), 'right panel must establish a positioning context for an edge-straddling resize hit area');
     assert.ok(css.includes('overflow: visible;'), 'right panel must not clip the resize hit area outside its left edge');
     assert.ok(layoutCss.includes('.manager-workspace.is-right-panel-open .right-panel {\n    display: flex;\n    flex-direction: row;\n    min-height: 0;\n    overflow: visible;'), 'open right panel layout must preserve the outside resize hit area');
-    assert.ok(sidebar.includes("const CONTENT_OWNED_RIGHT_CHROME: RightPanelMode[] = ['browser', 'ceo']"), 'single right-side Browser and CEO panels must be able to own their own chrome');
-    assert.ok(sidebar.includes('const slotOwnsChrome = !isSplit && CONTENT_OWNED_RIGHT_CHROME.includes(mode);'), 'right-side Browser chrome ownership must only apply outside split mode');
-    assert.ok(sidebar.includes("right-sub-panel${slotOwnsChrome ? ' has-content-owned-chrome' : ''}"), 'right-side Browser panels must expose a chrome-owned styling hook');
-    assert.ok(sidebar.includes('{!slotOwnsChrome && ('), 'right-side Browser panels must hide the duplicate Browser sub-header in single-panel mode');
-    assert.ok(sidebar.includes('right-sub-title'), 'split panels must show visible slot labels instead of screen-reader-only labels');
-    assert.ok(sidebar.includes('right-sub-actions'), 'split panels must expose visible slot actions');
-    assert.ok(sidebar.includes('renderHeaderAction'), 'right sidebar must allow mode-specific header actions in the title row');
-    assert.ok(sidebar.includes('{props.renderHeaderAction?.(mode, slot)}'), 'mode header actions must render between title and close controls');
+    assert.ok(!sidebar.includes('renderHeaderAction'), 'legacy per-slot header actions must stay removed from the tab chrome');
+    assert.ok(sidebar.includes('right-files-toolbar'), 'Files tab must render a one-line toolbar (breadcrumb, load/open, folder toggle)');
+    assert.ok(sidebar.includes('right-breadcrumb'), 'Files toolbar must render the active file breadcrumb');
     assert.ok(router.includes('primaryProjectDir = props.selectedInstance?.projectDirs?.[0]?.trim() || null'), 'folder load shortcut must deterministically use the first selected instance project dir');
-    assert.ok(router.includes('right-sub-load-folder'), 'folder load shortcut must render in the right sidebar Folders header actions');
-    assert.ok(router.includes('불러오기'), 'folder load shortcut must use the approved Korean label');
-    assert.ok(router.includes('disabled={!primaryProjectDir || rightFolderRootPath === primaryProjectDir}'), 'folder load shortcut must disable when no project dir exists or the folder is already loaded');
+    assert.ok(sidebar.includes('right-files-load-folder'), 'folder load shortcut must render in the Files toolbar');
+    assert.ok(sidebar.includes('불러오기'), 'folder load shortcut must use the approved Korean label');
+    assert.ok(router.includes('onLoadProjectFolder={handleLoadPrimaryProjectDir}'), 'router must wire the Files-tab scoped project folder action');
+    assert.ok(router.includes('loadProjectFolderDisabled={!primaryProjectDir'), 'folder load shortcut must disable when no project dir exists');
     assert.equal(folderToolbar.includes('불러오기'), false, 'folder load shortcut must not be placed in the lower FolderPanel toolbar row');
-    assert.ok(css.includes('.right-sub-load-folder'), 'folder load shortcut must have compact header styling');
-    assert.ok(sidebar.includes('<div className="right-sub-header">'), 'non-browser and split panels must keep visible headers so close controls remain reachable');
-    assert.ok(sidebar.includes("aria-label={`Show only ${label}`}"), 'split panels must expose explicit tree/document only controls');
-    assert.ok(sidebar.includes("dispatch({ type: 'SOLO_RIGHT_SUB', slot })"), 'split-only controls must promote a slot to a single panel');
-    assert.ok(sidebar.includes("aria-label={`Close ${label}`}"), 'each right sidebar slot must keep an explicit close control in split and single modes');
-    assert.ok(sidebar.includes('key={`${slot}-${mode}`}'), 'switching modes must remount the visible panel instead of leaving stale content painted');
-    assert.ok(router.includes("case 'browser': return <Suspense fallback={fallback}><BrowserPanel /></Suspense>;"), 'right sidebar must be able to render the browser panel');
+    assert.ok(css.includes('.right-files-load-folder'), 'folder load shortcut must have compact toolbar styling');
+    assert.ok(sidebar.includes('right-sidebar-tab-close'), 'each open tab must keep an explicit close control');
+    assert.ok(sidebar.includes('key={activeTab.id}'), 'switching tabs must remount the visible panel instead of leaving stale content painted');
+    assert.ok(router.includes("case 'browser': return <Suspense fallback={fallback}><BrowserPanel"), 'right sidebar must be able to render the browser panel');
+    assert.ok(router.includes('singlePage'), 'sidebar Browser modules must render one page per module tab');
     assert.ok(browserPanel.includes('function isUrlAllowed(target: string, desktop: boolean): boolean'), 'browser panel URL policy must be desktop-aware');
     assert.ok(browserPanel.includes('if (desktop) return true;'), 'Electron browser webview must allow local/private preview URLs after http/https validation');
     assert.ok(browserPanel.includes('isRestrictedBrowserHost(parsed.hostname)'), 'web UI browser policy must continue blocking local/private hosts');
@@ -436,18 +429,18 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(browserPanel.includes("webview.addEventListener('render-process-gone'"), 'browser panel must detect crashed/killed webview renderers using Electron current API');
     assert.ok(browserPanel.includes('attachWebviewEvents'), 'browser panel must attach navigation/crash handlers per webview, not only to the currently active tab');
     assert.ok(browserPanel.includes("getDesktop()?.browser?.onOpenUrl"), 'browser panel must accept Electron popup/new-window requests and route them into tabs');
-    assert.ok(router.includes('rightPreviewFilePath'), 'router must keep the selected file path for document preview');
+    assert.ok(router.includes('files.activeFilePath'), 'router must read the per-tab active file path for document preview');
     assert.ok(router.includes('function expandDesktopHomePath(path: string): string'), 'right panel doc opens must normalize tilde paths before Electron file reads');
     assert.ok(router.includes("getDesktop()?.getHomePath?.()?.replace(/\\/+$/, '')"), 'tilde expansion must use the Electron home-path bridge');
-    assert.ok(router.includes("panelLayout.dispatch({ type: 'OPEN_RIGHT_PANEL', mode: 'doc', slot: 'bottom' })"), 'selecting a file must open document preview in a folder/file split view');
+    assert.ok(router.includes("panelLayout.dispatch({ type: 'OPEN_FILE_IN_FILES_TAB', path: previewPath })"), 'selecting a file must open it in the Files tab file pane');
     assert.ok(router.includes('onOpenLocalFile={handleRightPreviewFile}'), 'Code mode local file links must open the shared right DocPanel');
     assert.ok(doc.includes('function HtmlPreview'), 'document preview must render local HTML files in the right panel');
     assert.ok(doc.includes('sandbox=""'), 'HTML preview must not grant scripts or same-origin privileges');
     assert.ok(folder.includes('onPreviewFile'), 'folder panel must expose file selection to the preview panel');
     assert.ok(folder.includes('const onPreviewFile = props.onPreviewFile;'), 'clicking a file in Folders must open it in preview through the selection hook');
     assert.ok(folder.includes('onRootChange'), 'folder panel must report manual root changes back to the owning right sidebar');
-    assert.ok(router.includes('setFolderRootPath'), 'right sidebar must own and update the FolderPanel root prop');
-    assert.ok(router.includes('onRootChange={onFolderRootChange}'), 'manual Open Folder must replace stale dropped-folder roots');
+    assert.ok(router.includes('SET_FILES_TAB_ROOT'), 'the owning Files tab must persist its own folder root');
+    assert.ok(router.includes('onRootChange={path => ctx.onTabRootChange(tab.id, path)}'), 'manual Open Folder must update the owning Files tab root');
     assert.ok(folderSources.includes('getInitialRoot'), 'folder panel source must expose explicit initial root policy');
     assert.ok(folderSources.includes('getInitialRoot: async () => null'), 'Electron FolderPanel must start empty instead of opening an implicit root');
     assert.equal(folderSources.includes('bridge.getDefaultRoot()'), false, 'Electron FolderPanel source must not call getDefaultRoot on initial render');
@@ -455,11 +448,11 @@ test('Electron right sidebar exposes icon panel switcher and document preview pa
     assert.ok(folderToolbar.includes('Open Folder'), 'empty FolderPanel toolbar must expose an explicit Open Folder action');
     assert.ok(folderSources.includes('createNotesVaultFolderSource'), 'folder panel must expose a web notes-vault fallback source');
     assert.ok(doc.includes('Open Folders and select a file'), 'empty document preview must explain how to view a file');
-    assert.ok(css.includes('.right-panel-toolbar'), 'right sidebar icon toolbar must be styled');
+    assert.ok(css.includes('.right-launcher-row'), 'right sidebar launcher row must be styled');
     assert.equal(jawCeoCss.includes('@media (max-width: 767px) {\n    .jaw-ceo-console {\n    .jaw-ceo-workbench-button'), false, 'jaw ceo mobile CSS must not leave an open nested selector that swallows following panel CSS');
-    assert.ok(css.includes('.right-panel-mode-button.is-active'), 'active right sidebar icon must have visible state');
-    assert.ok(css.includes('.right-sub-title'), 'split header labels must be visible and styled');
-    assert.ok(css.includes('.right-sub-action'), 'split slot only/close actions must be styled as usable controls');
+    assert.ok(css.includes('.right-launcher-button.is-active'), 'active launcher icon must have visible state');
+    assert.ok(css.includes('.right-sidebar-tab.is-active'), 'active open tab must have visible state');
+    assert.ok(css.includes('.right-sidebar-tab-close'), 'tab close controls must be styled as usable controls');
     assert.ok(css.includes('.right-panel-body.is-single-panel > .right-sub-panel'), 'single right panels must consume the full sidebar height');
     assert.ok(css.includes('.right-sub-panel.has-content-owned-chrome > .right-sub-content'), 'right-side chrome-owned panels must give all vertical space to their own content chrome');
     assert.ok(css.includes('flex: 1 1 0;'), 'single right panel content must not collapse to header height');
@@ -498,9 +491,9 @@ test('Electron diff panel resolves selected instance roots and exposes configura
     const diffCss = read('public/manager/src/diff-panel/diff-panel.css');
 
     assert.ok(router.includes('<DiffPanel'), 'router must render DiffPanel');
-    assert.ok(router.includes('selectedInstance={selectedInstance}'), 'router must pass selected instance roots into DiffPanel');
-    assert.ok(router.includes('settings={dashboardSettingsUi}'), 'router must pass saved diff settings into DiffPanel');
-    assert.ok(router.includes('onSettingsPatch={onDashboardSettingsPatch}'), 'router must pass diff settings patch callback into DiffPanel');
+    assert.ok(router.includes('selectedInstance={ctx.selectedInstance}'), 'router must pass selected instance roots into DiffPanel');
+    assert.ok(router.includes('settings={ctx.dashboardSettingsUi}'), 'router must pass saved diff settings into DiffPanel');
+    assert.ok(router.includes('onSettingsPatch={ctx.onDashboardSettingsPatch}'), 'router must pass diff settings patch callback into DiffPanel');
     assert.ok(diffRoots.includes('settings.diffRootPolicy'), 'diff root helper must honor saved root policy');
     assert.ok(diffRoots.includes('settings.diffPinnedRootByPort'), 'diff root helper must include pinned per-instance repo roots');
     assert.ok(diffRoots.includes('settings.diffRecentRepoRoots'), 'diff root helper must include recent picked repo roots');
@@ -594,7 +587,7 @@ test('Electron terminal uses xterm plus a PTY backend and representative shortcu
     assert.ok(bottomTabBar.includes('type="button"\n                        className="bottom-tab-close"'), 'bottom panel close control must be a real button, not a hidden nested role span');
     assert.ok(panelCss.includes('.bottom-tab-item'), 'bottom panel tab wrappers must be styled');
     assert.ok(panelCss.includes('.bottom-tab-close:hover'), 'bottom panel close controls must be visibly styled');
-    assert.ok(!panelCss.includes('opacity: 0;'), 'bottom panel close controls must not be hidden until hover');
+    assert.ok(!/\.bottom-tab-close\s*\{[^}]*opacity:\s*0/s.test(panelCss), 'bottom panel close controls must not be hidden until hover');
     assert.ok(terminalMain.includes("import { spawn as spawnPty } from 'node-pty'"), 'Electron terminal backend must use node-pty instead of pipe-backed child_process.spawn');
     assert.ok(terminalMain.includes("const pty = spawnPty(shell, ['-l']"), 'terminal sessions must be created as login PTYs');
     assert.ok(terminalMain.includes('session.pty.write(data)'), 'terminal writes must go to the PTY');
@@ -661,7 +654,7 @@ test('Electron bottom terminal and browser panels avoid duplicate generic chrome
     assert.ok(router.includes('panelLayout.state.bottomPanel.tabs.length > 0 ? <BottomPanel'), 'SidebarRailRouter must keep BottomPanel mounted while collapsed if tabs still exist');
     assert.equal(router.includes('bottomPanelOpen && panelLayout.state.bottomPanel.tabs.length > 0'), false, 'SidebarRailRouter must not gate BottomPanel mounting on bottomPanelOpen');
     assert.ok(router.includes('<TerminalPanel onCollapse={controls.onCollapse} onEmptySessions={controls.onCloseTab} />'), 'TerminalPanel must receive collapse and empty-session callbacks from BottomPanel');
-    assert.ok(router.includes('<BrowserPanel onCollapse={controls.onCollapse} />'), 'BrowserPanel must receive collapse callback only in bottom-panel context');
+    assert.ok(router.includes('<BrowserPanel onCollapse={controls.onCollapse} selectedInstancePort={selectedInstancePort} onInsertCommentIntoPreview={onInsertCommentIntoPreview} />'), 'BrowserPanel must receive collapse callback and preview insert relay only in bottom-panel context');
     assert.ok(terminal.includes('onEmptySessions?: () => void'), 'TerminalPanel must expose an empty-session callback for closing the bottom tab after the last PTY exits');
     assert.ok(terminal.includes('notifyEmptySessionsSoon'), 'TerminalPanel must notify after both user-close and process-exit remove the last session');
     assert.ok(terminal.includes('terminal-collapse-button'), 'Terminal collapse control must live in the terminal session tab row');

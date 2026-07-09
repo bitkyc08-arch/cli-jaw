@@ -70,7 +70,12 @@ function walkMarkdown(baseDir: string): string[] {
 }
 
 function manifestCandidates(root: string): string[] {
-  const manifestPath = resolve(root, "devlog", "structure", "status-scope.json");
+  // Canonical location is structure/status-scope.json; the old devlog/structure/
+  // path is a legacy fallback (matches audit-fin-status.sh resolution order).
+  let manifestPath = resolve(root, "structure", "status-scope.json");
+  if (!existsSync(manifestPath)) {
+    manifestPath = resolve(root, "devlog", "structure", "status-scope.json");
+  }
   if (!existsSync(manifestPath)) return [];
 
   try {

@@ -121,7 +121,6 @@ body {
         grid-template-columns 0.2s cubic-bezier(0.4, 0, 0.2, 1),
         background-color 200ms ease,
         color 200ms ease;
-    will-change: grid-template-columns;
 }
 
 :lang(zh),

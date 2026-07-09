@@ -406,9 +406,12 @@ export function composeFrame(ctx: TuiContext, viewport: Viewport): Frame {
                 sel.title, sel.subtitle, sel.filter, sel.filteredItems, sel.selected,
             );
         } else if (ov.bgtaskOpen) {
+            // Prefer the fetched overlay cache (has terminal rows + ago hints);
+            // the ws snapshot only carries running tasks.
             composeBgtaskOntoFrame(
                 frameRows, cols, frameRows.length, c.dim, c.reset,
-                ctx.bgtaskTasks.map((t) => ({ id: t.id, kind: t.kind, status: 'running', elapsed: '' })),
+                ctx.bgtaskOverlayItems
+                    ?? ctx.bgtaskTasks.map((t) => ({ id: t.id, kind: t.kind, status: 'running', elapsed: '' })),
             );
         }
     }
@@ -450,14 +453,16 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
         const stablePrefixIndex = hasTranscriptItems
             ? computeStablePrefixIndex(ctx.store.transcript.items) : 0;
 
-        // Only commit when ALL items are stable (turn fully complete, not
-        // streaming). Mid-stream commits (jawcode 083.9 P3) are NOT safe with
-        // this Screen: interleaving DECSTBM commit scrolls with per-token
-        // differential repaints corrupts the frame — jawcode needs its
-        // overflow-floor/tombstone machinery for that, which this port does
-        // not have. Do not relax this gate without porting that machinery.
-        const allStable = stablePrefixIndex === ctx.store.transcript.items.length;
-        const commit = hasTranscriptItems && !overlayOpen && allStable
+        // 260704 WP6b-v2: commit the STABLE PREFIX as it forms (jawcode
+        // b0a3290 commit-on-completion), so finished blocks ride up through
+        // the scrollback seam mid-turn instead of squeezing inside a
+        // fixed-height window. Safe under the top-anchored commit lane: the
+        // flush writes only into model-blank fill rows (the diff pass never
+        // targets them) and saturated scrolls move only the content block
+        // [1..B] — per-token repaints and commits touch disjoint rows. The
+        // old allStable gate existed for the retired bottom-anchored insert
+        // geometry, whose region scroll shifted live rows under the diff.
+        const commit = hasTranscriptItems && !overlayOpen
             ? viewport.peekStableCommitRows(transcriptHeight, stablePrefixIndex)
             : null;
 
@@ -575,6 +580,9 @@ export async function runFullscreenMode(ctx: TuiContext): Promise<void> {
                     || ctx.store.overlay.selector.open || ctx.store.overlay.settingsOpen;
                 if (nonBgtaskOverlayOpen) continue; // consumed: input-handler's help branch
                 // dismisses-without-return and would double-open bgtask (B-verify).
+                // Verbose render mode: toggleToolExpansion returns false (fold
+                // toggles are commit-mode-only, jawcode 753ea63 parity), so
+                // ctrl+o falls through to the bgtask-overlay binding below.
                 if (!ctx.store.overlay.bgtaskOpen
                     && toggleToolExpansion(ctx.store.transcript, viewport.currentFrontier().itemIndex)) {
                     scheduler.request();

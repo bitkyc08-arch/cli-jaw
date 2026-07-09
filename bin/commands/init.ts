@@ -82,7 +82,7 @@ if (settingsExist && !values.force) {
     process.exit(1);
 }
 if (settingsExist) {
-    try { settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); } catch { }
+    try { settings = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8')); } catch { } // best-effort: corrupt settings falls back to defaults
 }
 
 const rl = createInterface({ input: process.stdin, output: process.stdout });

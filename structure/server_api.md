@@ -9,7 +9,7 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 # server.ts — Glue + Route Registration (635L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 232개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 231개다.
+> 현재 라이브 surface는 총 234개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 233개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -19,20 +19,20 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 | Module | Lines | Routes | 역할 |
 | --- | ---: | ---: | --- |
-| `server.ts` | 593L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
-| `src/routes/static.ts` | 30L | 2 | root HTML + `/media/:filename` upload media serve |
+| `server.ts` | 635L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
+| `src/routes/static.ts` | 70L | 3 | root HTML + `/media/:filename` upload media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
 | `src/routes/system.ts` | 57L | 4 | health/session/runtime/auth-token |
 | `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
-| `src/routes/command.ts` | 108L | 3 | slash command execution, command palette, normal message submit |
+| `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
 | `src/routes/instance.ts` | 53L | 3 | instance lock GET/POST/DELETE |
 | `src/routes/chat-sessions.ts` | 30L | 3 | session list/create/switch |
 | `src/routes/task.ts` | 59L | 2 | agent-native task list/action API |
 | `src/routes/events.ts` | 82L | 1 | `/api/events` data-only SSE event channel |
 | `src/routes/settings.ts` | 430L | 23 | settings/prompt/project pick/git summary/heartbeat-md/MCP/CLI registry/quota/copilot/Pi profile registration |
 | `src/routes/memory.ts` | 191L | 13 | memory runtime + KV memory + memory files |
-| `src/routes/browser.ts` | 488L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
+| `src/routes/browser.ts` | 489L | 43 | browser primitive/tab/debug/doctor/cleanup routes + adaptive fetch + web-ai render/send/poll/watch/sessions/capabilities/code/context routes |
 | `src/routes/jaw-memory.ts` | 352L | 12 | jaw memory search/read/save/context/list/init/reflect/flush/soul/soul-activate/bootstrap |
-| `src/routes/orchestrate.ts` | 911L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
+| `src/routes/orchestrate.ts` | 1085L | 18 | reset/state/workers/worker-progress/worker-runs/snapshot/queue cancel/hold/queue steer async accept/dispatch/batch dispatch/worker result/state PUT |
 | `src/routes/goal.ts` | 183L | 3 | durable goal state get/history/set-update-complete-cancel-pause-resume-clear-reset |
 | `src/routes/goal-run.ts` | 83L | 3 | bounded goal-run state/preflight/start-pause-resume-stop |
 | `src/routes/messaging.ts` | 259L | 6 | upload/file-open/voice/telegram/channel/discord send |
@@ -87,7 +87,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `GET` | `/api/auth/token` | same-origin/CLI용 Bearer token bootstrap |
 | `POST` | `/api/command` | slash command 실행 |
 | `GET` | `/api/commands` | 인터페이스별 command palette 데이터 |
-| `POST` | `/api/message` | 일반 프롬프트 제출. Optional `target: RemoteTarget` when Dashboard hub forwards a forum topic message (`origin:'telegram'`). Shape validated by `isValidHubTarget` + `validateTarget`. |
+| `POST` | `/api/message` | 일반 프롬프트 제출. Optional `target: RemoteTarget` when Dashboard hub forwards a forum topic message (`origin:'telegram'`). Shape validated by `isValidHubTarget` + `validateTarget`. Optional `external: true` — manager/preview relay 등 외부 주입 표시; `new_message` broadcast에 실려 web UI가 유저 말풍선을 라이브 렌더 (devlog 260705). |
+| `POST` | `/api/elicitation/callback` | Telegram Hub inline-keyboard `elic:*` callback relay. Hub bot forwards the tap to the mapped worker; worker completes `handleElicitationCallback()` and re-submits the combined answer via `submitMessage()` when all answers are collected. |
 | `POST` | `/api/stop` | 현재 실행 중 agent 모두 종료 |
 | `POST` | `/api/clear` | UI-only clear broadcast, DB 메시지는 유지 |
 | `POST` | `/api/session/reset` | 메시지 삭제 + session reset |
@@ -105,8 +106,8 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 | Category | Endpoints |
 | --- | --- |
-| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
-| Commands | `POST /api/command` `GET /api/commands?interface=` |
+| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
+| Commands | `POST /api/command` `GET /api/commands?interface=` `POST /api/elicitation/callback` |
 | Events | `GET /api/events` |
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` |
 | Instance Lock | `GET /api/instance/lock` `POST /api/instance/lock` `DELETE /api/instance/lock` |
@@ -136,7 +137,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 232개 route handler 기준이다. 이 중 API 엔드포인트는 231개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 234개 route handler 기준이다. 이 중 API 엔드포인트는 233개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
@@ -176,9 +177,15 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 ### `/api/command`
 
-- body `text`를 500자까지 자른 뒤 `parseCommand()`로 해석한다.
+- body `text`를 `WEB_COMMAND_TEXT_LIMIT`(30,000자)까지 자른 뒤 `parseCommand()`로 해석한다.
 - locale은 body/query/Accept-Language/settings 순으로 정해지고 `Content-Language`가 세팅된다.
 - command가 아니면 `400 { code: 'not_command' }`.
+
+### `/api/elicitation/callback`
+
+- Dashboard Telegram Hub의 `bot.callbackQuery(/^elic:/)`가 mapped instance로 `POST /api/elicitation/callback`을 호출한다.
+- body `{ chatId, callbackData, target? }`를 받아 `handleElicitationCallback(chatId, callbackData)`로 pending single-select 답변을 갱신한다.
+- 모든 질문이 완료되면 combined answer를 `submitMessage(..., { origin:'telegram', target, chatId, replyViaTarget })`로 다시 주입하고 `{ ok:true, kind:'complete', ack, submit }`을 반환한다.
 
 ### `/api/goal` — action-based POST
 
@@ -219,6 +226,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 - `agy`는 `src/routes/quota-agy-reverse.ts`의 `fetchAgyUsage()`를 통해 Antigravity quota snapshot을 읽는다.
 - `antigravity-usage --json`이 `remainingPercentage`를 정밀 소수점 대신 `0`/`1`로만 반환하면 AGY window는 `precision: "binary"`와 `status: "available" | "exhausted"`를 포함한다. backend의 `percent`는 호환 필드일 뿐이며, UI는 exact percent bar 대신 `Available` / `Exhausted` 상태 텍스트를 표시해야 한다. upstream이 다시 정밀 퍼센트를 주면 기존 fractional path가 그대로 사용된다.
 - `cursor`는 `src/routes/quota-cursor-dashboard.ts`의 `fetchCursorUsage()`를 통해 dashboard session/usage를 읽는다.
+- `grok`은 `~/.grok/auth.json`의 OIDC `key`를 우선 읽고 `https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig` gRPC-web 응답으로 SuperGrok weekly usage pool window를 만든다. 실패하면 legacy `cli-chat-proxy.grok.com/v1/billing` monthly credits window로 fallback한다.
 - `kiro-code`는 `src/routes/quota-kiro-reverse.ts`의 `fetchKiroUsage()`를 통해 CodeWhisperer `GetUsageLimits` API를 reverse-engineer 호출한다.
 
 ### `/api/project/git-summary`
@@ -280,29 +288,32 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `session_switched` / `session_created` / `session_list` | multi-session state update |
 | `schedule_wakeup` / `schedule_wakeup_failed` | ScheduleWakeup continuation scheduling lifecycle |
 | `bgtask_update` | background task lifecycle/status update for manager/runtime monitors; running and changed entries include native `status` plus shared `statusCategory` |
+| `widget_updated` | file-backed diagram widget changed on disk; payload `{chatId, widgetId}` for targeted iframe refetch |
 
 ---
 
 ## Manager Dashboard Server Surface
 
-`jaw dashboard serve`가 띄우는 별도 manager 서버(`src/manager/server.ts`, 919L)는 core `server.ts` route count에 포함하지 않는다. Manager instance state는 `src/manager/instance-registry.ts`(120L)가 cached scan + diff event source로 제공한다. Manager React UI는 `/api/manager/events`, `/api/dashboard/instances`, `/i/:port/api/messages/latest` 계열 HTTP polling으로 상태를 읽고, manager server는 `src/manager/worker-events.ts` + `src/manager/worker-sse-client.ts`를 통해 각 worker instance의 `GET /api/events`를 server-side로 구독해 latest-message cache를 갱신한다. #233부터 worker의 `settings:settings_change`(cli/model/projectDirs 변경)는 `worker_settings_change`로 재발행되어 `GET /api/manager/events/stream`(SSE)으로 manager UI에 live 전달되고, UI(`useManagerEventStream`)는 해당 instance row를 즉시 재조회한다. Code mode의 goal/PABCD/background/worker monitors는 child Jaw instance가 아니라 manager-local `src/manager/routes/runtime-monitor.ts`를 통해 `/api/manager/runtime-status`, `/api/bgtask`, `/api/orchestrate/worker-progress` JSON API를 직접 읽는다. #260 이후 per-instance Jaw sidebar에는 worker progress monitor가 렌더링되지 않고, Code/CEO runtime observability lane에서만 표시된다. `/api/bgtask`의 `preset: "web-ai"` path는 native web-ai watcher가 진행하는 session id를 `session-status` probe로 관찰하고 `session-answer` extractor로 완료 결과를 전달한다. 이 bridge는 BrowserPanel tab state나 Code session transcript ownership으로 승격하지 않는다. `background_tasks.notified_at` 변경도 `bgtask_update`를 발행하므로 Manager monitor는 completion transition 뒤 별도 reload 없이 notification handoff 상태를 재조회할 수 있다.
+`jaw dashboard serve`가 띄우는 별도 manager 서버(`src/manager/server.ts`, 992L)는 core `server.ts` route count에 포함하지 않는다. Manager instance state는 `src/manager/instance-registry.ts`(120L)가 cached scan + diff event source로 제공한다. Manager React UI는 `/api/manager/events`, `/api/dashboard/instances`, `/i/:port/api/messages/latest` 계열 HTTP polling으로 상태를 읽고, manager server는 `src/manager/worker-events.ts` + `src/manager/worker-sse-client.ts`를 통해 각 worker instance의 `GET /api/events`를 server-side로 구독해 latest-message cache를 갱신한다. #233부터 worker의 `settings:settings_change`(cli/model/projectDirs 변경)는 `worker_settings_change`로 재발행되어 `GET /api/manager/events/stream`(SSE)으로 manager UI에 live 전달되고, UI(`useManagerEventStream`)는 해당 instance row를 즉시 재조회한다. Code mode의 goal/PABCD/background/worker monitors는 child Jaw instance가 아니라 manager-local `src/manager/routes/runtime-monitor.ts`를 통해 `/api/manager/runtime-status`, `/api/bgtask`, `/api/orchestrate/worker-progress` JSON API를 직접 읽는다. #260 이후 per-instance Jaw sidebar에는 worker progress monitor가 렌더링되지 않고, Code/CEO runtime observability lane에서만 표시된다. `/api/bgtask`의 `preset: "web-ai"` path는 native web-ai watcher가 진행하는 session id를 `session-status` probe로 관찰하고 `session-answer` extractor로 완료 결과를 전달한다. 이 bridge는 BrowserPanel tab state나 Code session transcript ownership으로 승격하지 않는다. `background_tasks.notified_at` 변경도 `bgtask_update`를 발행하므로 Manager monitor는 completion transition 뒤 별도 reload 없이 notification handoff 상태를 재조회할 수 있다.
 
 | Surface | Endpoints |
 | --- | --- |
-| Manager health/scan | `GET /api/dashboard/health` `GET /api/dashboard/instances` `GET /api/dashboard/instances/:port` `POST /api/dashboard/instances/:port/message` |
+| Manager health/scan | `GET /api/dashboard/health` `GET /api/dashboard/instances` `GET /api/dashboard/instances/:port` `POST /api/dashboard/instances/:port/message` `POST /api/dashboard/instances/:port/project/pick` |
 | Manager events/logs | `GET /api/manager/events` `GET /api/manager/events/stream` (SSE) `GET /api/manager/health-history/:port` `GET /api/manager/instance-logs/:port` |
 | Runtime monitors | `GET /api/manager/runtime-status` `GET/POST /api/bgtask` `GET/DELETE /api/bgtask/:id` `GET /api/orchestrate/worker-progress` `GET /api/orchestrate/worker-progress/:agentId` |
 | Registry | `GET /api/dashboard/registry` `PATCH /api/dashboard/registry` |
 | Lifecycle | `POST /api/dashboard/lifecycle/:action` (start/stop/restart/perm/unperm) |
 | Process control | `GET /api/dashboard/process-control` `POST /api/dashboard/process-control/adopt` `POST /api/dashboard/process-control/stop-managed` `POST /api/dashboard/process-control/force-release` |
 | Desktop/Electron | `GET /api/dashboard/desktop-status` `GET/POST /api/dashboard/electron-metrics` |
+| Design workspace | `GET /api/dashboard/design/version` `GET/POST /api/dashboard/design/pages` `POST /api/dashboard/design/pages/rescan` `GET/PATCH /api/dashboard/design/pages/:pageId` `GET/PUT /api/dashboard/design/pages/:pageId/files/{*filePath}` `GET /api/dashboard/design/pages/:pageId/local-paths` `POST /api/dashboard/design/pages/:pageId/rescan` `POST /api/dashboard/design/pages/:pageId/export` `GET/POST /api/dashboard/design/pages/:pageId/snapshots` `POST /api/dashboard/design/pages/:pageId/snapshots/:snapshotId/restore` `GET /api/dashboard/design/catalog` `GET /api/dashboard/design/pages/:pageId/preview` |
+| Embedded browser | `POST/GET /api/manager/embedded-browser/targets` `POST /api/dashboard/instances/:port/embedded-browser/targets` `POST /api/manager/embedded-browser/:targetId/screenshot` `POST /api/manager/embedded-browser/:targetId/snapshot` `POST /api/manager/embedded-browser/:targetId/act` `GET /api/manager/embedded-browser/commands` `POST /api/manager/embedded-browser/commands/:id/result` |
 | Notes | `GET /api/dashboard/notes/auth/status` `POST /api/dashboard/notes/ws-token` `GET /api/dashboard/notes/history/status` `POST /api/dashboard/notes/history/init` `GET /api/dashboard/notes/history` `GET /api/dashboard/notes/history/show` `GET /api/dashboard/notes/history/diff` `POST /api/dashboard/notes/history/flush` `GET /api/dashboard/notes/plugins` `GET /api/dashboard/notes/plugins/:id/asset/*` `GET /api/dashboard/notes/version` `POST /api/dashboard/notes/asset` `POST /api/dashboard/notes/asset/remote` `GET /api/dashboard/notes/asset` `GET /api/dashboard/notes/info` `GET /api/dashboard/notes/tree` `GET /api/dashboard/notes/templates` `GET /api/dashboard/notes/template` `GET /api/dashboard/notes/snippets` `GET /api/dashboard/notes/snippets/file` `PUT /api/dashboard/notes/snippets/toggle` `PUT /api/dashboard/notes/theme` `PUT /api/dashboard/notes/plugins/:id/toggle` `GET /api/dashboard/notes/search` `GET /api/dashboard/notes/index` `GET /api/dashboard/notes/capabilities` `GET/POST/PUT /api/dashboard/notes/file` `POST /api/dashboard/notes/folder` `POST /api/dashboard/notes/rename` `POST /api/dashboard/notes/trash` |
 | Board | `GET/POST/PATCH/DELETE /api/dashboard/board/tasks` `POST /api/dashboard/board/tasks/from-message` |
 | Schedule | `GET/POST/PATCH/DELETE /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | Reminders | `GET /api/dashboard/reminders` `POST /api/dashboard/reminders` `POST /api/dashboard/reminders/from-message` `PATCH /api/dashboard/reminders/:id` |
 | Telegram Hub | `GET/PUT /api/dashboard/telegram-hub` `POST /api/dashboard/telegram-hub/routes` `DELETE /api/dashboard/telegram-hub/routes/:chatId/:threadId` `POST /api/dashboard/telegram-hub/outbound` (loopback-only) |
 | Connector | `POST /api/dashboard/connector/board` `PATCH /api/dashboard/connector/board/:id` `POST /api/dashboard/connector/reminders` `PATCH /api/dashboard/connector/reminders/:id` `POST /api/dashboard/connector/notes` `GET /api/dashboard/connector/audit` |
-| Git diff/status/worktrees | `POST /api/dashboard/git/repo-candidates` `POST /api/dashboard/git/diff-summary` `POST /api/dashboard/git/file-diff` `POST /api/dashboard/git/status-map` `POST /api/dashboard/git/worktrees` `POST /api/dashboard/git/worktree-operation-preview` `POST /api/dashboard/git/worktree-operation` |
+| Git diff/status/worktrees | `POST /api/dashboard/git/repo-candidates` `POST /api/dashboard/git/diff-summary` `POST /api/dashboard/git/file-diff` `POST /api/dashboard/git/status-map` `POST /api/dashboard/git/scm-snapshot` `POST /api/dashboard/git/scm-operation` `POST /api/dashboard/git/worktrees` `POST /api/dashboard/git/worktree-operation-preview` `POST /api/dashboard/git/worktree-operation` |
 | Memory federation | `GET /api/dashboard/memory/instances` `GET /api/dashboard/memory/search` `GET /api/dashboard/memory/read` `GET /api/dashboard/memory/chat/search` |
 | Memory embedding | `GET /api/dashboard/memory/embed-config` `POST /api/dashboard/memory/embed-config` `POST /api/dashboard/memory/reindex` `GET /api/dashboard/memory/embed-state` `GET /api/dashboard/memory/embed-estimate` `GET /api/dashboard/memory/reindex-stream` (SSE) |
 | Jaw CEO (manager) | `/api/jaw-ceo/*` (same sub-router as core server) |

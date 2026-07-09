@@ -4,6 +4,7 @@
 
 import { settings, saveSettings } from '../core/config.js';
 import type { MessengerChannel, RemoteTarget } from './types.js';
+import { log } from '../core/logger.js';
 
 // ─── Transport Registry (push-based, no circular imports) ─────
 
@@ -72,7 +73,7 @@ function persistTargetsNow() {
     if (!settings["messaging"]) settings["messaging"] = { lastActive: {}, latestSeen: {} };
     settings["messaging"].lastActive = Object.fromEntries(lastActiveTargets);
     settings["messaging"].latestSeen = Object.fromEntries(latestSeenTargets);
-    try { saveSettings(settings); } catch (e) { console.warn('[messaging:persist]', (e as Error).message); }
+    try { saveSettings(settings); } catch (e) { log.warn('[messaging:persist]', (e as Error).message); }
 }
 
 /** Check if a target has the minimum required shape */
@@ -111,7 +112,7 @@ export async function initActiveMessagingRuntime() {
     if (transport) {
         await transport.init();
     } else {
-        console.log(`[messaging] no transport registered for ${channel}`);
+        log.info(`[messaging] no transport registered for ${channel}`);
     }
 }
 
@@ -120,7 +121,7 @@ export async function shutdownMessagingRuntime() {
         try {
             await transport.shutdown();
         } catch (e) {
-            console.warn(`[messaging] ${name} shutdown error:`, (e as Error).message);
+            log.warn(`[messaging] ${name} shutdown error:`, (e as Error).message);
         }
     }
 }

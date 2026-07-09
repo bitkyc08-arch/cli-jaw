@@ -38,10 +38,13 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 4. `MEMORY.md` 코어 메모리
 5. forDisk 전용 `## Core Memory` 보강 — `loadProfileSummary(600)` + `buildTaskSnapshot('current session context', 1500)` 결과를 추가 (advanced memory가 준비된 경우에만)
 6. 직원이 있을 때 orchestration prompt + PABCD guide
-7. 활성 heartbeat job이 있을 때 heartbeat 섹션 (`heartbeat.json` 기준)
-8. active skills + reference skills 섹션
-9. Codex 활성 CLI일 때 vision-click legacy fallback hint
-10. delegation rules
+7. `Dev Work Classification (contract)` — C0-C5 분류와 C4 promotion/verification floor
+8. 활성 heartbeat job이 있을 때 heartbeat 섹션 (`heartbeat.json` 기준)
+9. active skills + reference skills 섹션
+10. Codex 활성 CLI일 때 vision-click legacy fallback hint
+11. forDisk가 아닐 때 runtime context + pre-prompt context hooks
+12. `Bounded Local Search Contract`
+13. delegation rules
 
 이전 버전에 있던 timestamp stamp는 현재 `getSystemPrompt()`에서 제거됐다.
 
@@ -76,9 +79,9 @@ aliases: [B prompt cache, CLI-JAW B prompt, regenerated prompt]
 - 둘 중 하나만 있어도 `Skills System` 섹션이 생성된다
 - `skills_ref`는 public/reference skill surface다. private local runtime skills such as `k-writing` (Korean promotional/content writing; retired label: `k-thread-gen`) and `lecture-stt` can be deployed under active `{{JAW_HOME}}/skills/` without being registered in `skills_ref/registry.json`. Korean promotional/content writing routes through active `k-writing`, not free-form prose or the retired label.
 - The active `search` skill is the default search backend. Korean/source-sensitive search guidance rewrites the request into focused queries, treats search results as URL candidates, verifies original pages with fetch/open, and uses `agbrowse research plan` only as optional query-planning help.
-- dev skill은 TS-first strict-compatible 기본값과 Jawdev convention discovery/source-of-truth proposal 규칙을 포함한다.
+- dev skill은 TS-first strict-compatible 기본값과 devlog convention discovery/source-of-truth proposal 규칙을 포함한다.
 - dev skill은 기존 `structure/`, `devlog/`, `docs/`, `plans/` 같은 SOT/log가 있으면 broad change 전에 먼저 읽도록 지시한다.
-- dev-scaffolding은 기존 repo convention 우선, `structure/`/`devlog/` 생성은 승인 기반으로 다룬다. Jawdev 방식은 phase별 문서 분리와 diff-level plan 파일 저장을 기본으로 설명한다.
+- dev-scaffolding은 기존 repo convention 우선, `structure/`/`devlog/` 생성은 승인 기반으로 다룬다. Implementation-unit devlog 방식은 phase별 문서 분리와 diff-level plan 파일 저장을 기본으로 설명한다.
 
 ### Vision Click
 

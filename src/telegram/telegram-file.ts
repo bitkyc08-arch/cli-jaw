@@ -1,6 +1,7 @@
 import { InputFile, type Bot } from 'grammy';
 import fs from 'node:fs';
 import { stripUndefined } from '../core/strip-undefined.js';
+import { log } from '../core/logger.js';
 
 interface TelegramApiErrorLike {
     error_code?: number;
@@ -108,7 +109,7 @@ export async function sendTelegramFile(
             const transient = isTransient(err);
             if (!transient || attempt === MAX_RETRIES) {
                 const sc = transient ? classifyUpstreamError(err) : (e.error_code || e.statusCode || 500);
-                console.error(`[telegram:file] failed after ${attempt} attempt(s):`, e.message);
+                log.error(`[telegram:file] failed after ${attempt} attempt(s):`, e.message);
                 return stripUndefined({
                     ok: false, attempts: attempt,
                     error: e.message || 'unknown error',
@@ -120,7 +121,7 @@ export async function sendTelegramFile(
             const retryAfterMs = getRetryAfterMs(err);
             // If upstream demands more than MAX_DELAY_MS, bail immediately
             if (retryAfterMs > MAX_DELAY_MS) {
-                console.error(`[telegram:file] retry_after ${retryAfterMs}ms exceeds cap, giving up`);
+                log.error(`[telegram:file] retry_after ${retryAfterMs}ms exceeds cap, giving up`);
                 return stripUndefined({
                     ok: false, attempts: attempt,
                     error: `retry_after too large: ${retryAfterMs}ms`,
@@ -132,7 +133,7 @@ export async function sendTelegramFile(
             const delay = Math.max(retryAfterMs, BASE_DELAY_MS * Math.pow(2, attempt - 1));
             totalWaited += delay;
             if (totalWaited >= MAX_TOTAL_WAIT_MS) {
-                console.error(`[telegram:file] total wait ${totalWaited}ms exceeds cap, giving up`);
+                log.error(`[telegram:file] total wait ${totalWaited}ms exceeds cap, giving up`);
                 return {
                     ok: false, attempts: attempt,
                     error: `total retry wait exceeded ${MAX_TOTAL_WAIT_MS}ms`,
@@ -140,7 +141,7 @@ export async function sendTelegramFile(
                 };
             }
 
-            console.warn(`[telegram:retry] attempt ${attempt}/${MAX_RETRIES} failed (${e.error_code || 'network'}), retrying in ${delay}ms...`);
+            log.warn(`[telegram:retry] attempt ${attempt}/${MAX_RETRIES} failed (${e.error_code || 'network'}), retrying in ${delay}ms...`);
             await new Promise(r => setTimeout(r, delay));
         }
     }

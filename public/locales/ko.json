@@ -801,5 +801,6 @@
     "help.keyboardShortcuts.subcmd.1": "/help — 전체 명령어 목록을 표시합니다",
     "help.keyboardShortcuts.subcmd.2": "/help <command> — 특정 명령어의 상세 도움말을 표시합니다",
     "help.keyboardShortcuts.subcmd.3": "/commands — 명령 팔레트를 엽니다 (별칭: /cmd)",
-    "bgtask.title": "백그라운드"
+    "bgtask.title": "백그라운드",
+    "tg.elicitationExpired": "선택 세션이 만료되었습니다. 텍스트로 답해주세요."
 }

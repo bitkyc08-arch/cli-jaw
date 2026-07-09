@@ -64,7 +64,7 @@ test('buildLocalFirstSettingsPatch enables target bot, preserves allowlist, and 
     }, 'http://127.0.0.1:24576');
     assert.deepEqual(patch, {
         telegram: { enabled: true, allowedChatIds: [111, 8231528245], forwardAll: true, mentionOnly: true },
-        telegramHub: { mode: 'standalone', hubCallbackUrl: 'http://127.0.0.1:24576' },
+        telegramHub: { mode: 'hub-member', hubCallbackUrl: 'http://127.0.0.1:24576' },
     });
 });
 
