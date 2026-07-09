@@ -213,7 +213,11 @@ jobs:
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
           const rawPack = JSON.parse(fs.readFileSync('/tmp/pack.json', 'utf8'));
-          const pack = Array.isArray(rawPack) ? rawPack[0] : rawPack;
+          const pack = Array.isArray(rawPack)
+            ? rawPack[0]
+            : rawPack?.files
+              ? rawPack
+              : Object.values(rawPack ?? {})[0];
           if (!pack?.files) {
             console.error(`unexpected npm pack --json shape:\n${JSON.stringify(rawPack, null, 2).slice(0, 2000)}`);
             process.exit(1);
