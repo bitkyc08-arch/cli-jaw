@@ -212,7 +212,12 @@ jobs:
           npm pack --dry-run --json > /tmp/pack.json
           node --input-type=module <<'NODE'
           import fs from 'node:fs';
-          const pack = JSON.parse(fs.readFileSync('/tmp/pack.json', 'utf8'))[0];
+          const rawPack = JSON.parse(fs.readFileSync('/tmp/pack.json', 'utf8'));
+          const pack = Array.isArray(rawPack) ? rawPack[0] : rawPack;
+          if (!pack?.files) {
+            console.error(`unexpected npm pack --json shape:\n${JSON.stringify(rawPack, null, 2).slice(0, 2000)}`);
+            process.exit(1);
+          }
           const forbidden = pack.files
             .map(file => file.path)
             .filter(path => /(^|\/)(devlog|skills_ref|officecli|node_modules)(\/|$)|\.node$/.test(path));
