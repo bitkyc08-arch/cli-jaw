@@ -14,7 +14,7 @@ import { t, normalizeLocale } from '../core/i18n.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
 import { handleDiscordSlashCommand, registerDiscordSlashCommands } from './commands.js';
-import { createDiscordForwarder, chunkDiscordMessage } from './forwarder.js';
+import { createDiscordForwarder, chunkDiscordMessage, relayDiscordImages } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import type { Attachment, Message } from 'discord.js';
@@ -138,6 +138,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                         log.error('[discord:queue-send]', e.message);
                     });
                 }
+                await relayDiscordImages(msg.client, target, String(data["text"]));
             }
         };
         addBroadcastListener(queueHandler);
@@ -174,6 +175,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
         for (const chunk of chunks) {
             await channel.send(chunk);
         }
+        await relayDiscordImages(msg.client, target, text);
         log.info(`[discord:out] ${msg.channelId}: ${text.slice(0, 80)}`);
     } catch (err: unknown) {
         log.error('[discord:error]', err);

@@ -1,5 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { addBroadcastListener, broadcast, removeBroadcastListener } from '../src/core/bus.ts';
+import { drainLogRing } from '../src/core/logger.ts';
 import {
     chunkTelegramMessage,
     createForwarderLifecycle,
@@ -10,17 +15,31 @@ import {
 
 function createBotSpy({ failHtmlOnce = false } = {}) {
     const sent = [];
+    const photos = [];
+    const events = [];
+    let resolvePhoto!: () => void;
+    const photoSent = new Promise<void>((resolve) => { resolvePhoto = resolve; });
     let failed = false;
     return {
         sent,
+        photos,
+        events,
+        photoSent,
         bot: {
             api: {
                 async sendMessage(chatId, text, opts) {
+                    events.push('text');
                     sent.push({ chatId, text, opts });
                     if (failHtmlOnce && !failed && opts?.parse_mode === 'HTML') {
                         failed = true;
                         throw new Error('invalid html');
                     }
+                    return { ok: true };
+                },
+                async sendPhoto(chatId, file, opts) {
+                    events.push('photo');
+                    photos.push({ chatId, file, opts });
+                    resolvePhoto();
                     return { ok: true };
                 },
             },
@@ -147,6 +166,67 @@ test('forwarder does nothing when type is not agent_done or chatId is missing', 
     await flush();
 
     assert.equal(sent.length, 0);
+});
+
+test('image relay activation: agent_done broadcast sends text then sendPhoto', { timeout: 2000 }, async () => {
+    assert.ok(process.env["CLI_JAW_HOME"], 'tests/run.mts must provide isolated CLI_JAW_HOME');
+    const uploadDir = path.join(process.env["CLI_JAW_HOME"]!, 'uploads');
+    fs.mkdirSync(uploadDir, { recursive: true });
+    const imagePath = path.join(uploadDir, 'relay-activation.png');
+    fs.writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const { bot, photos, events, photoSent } = createBotSpy();
+    const forward = createTelegramForwarder({
+        bot,
+        getLastChatId: () => 123,
+        getLastTarget: () => ({
+            channel: 'telegram',
+            targetKind: 'channel',
+            peerKind: 'group',
+            targetId: '123',
+            threadId: '42',
+        }),
+    });
+    addBroadcastListener(forward);
+    try {
+        broadcast('agent_done', {
+            origin: 'web',
+            text: `ready\n![generated](${imagePath})`,
+        });
+        await photoSent;
+        assert.deepEqual(events, ['text', 'photo']);
+        assert.equal(photos.length, 1);
+        assert.equal(photos[0].chatId, '123');
+        assert.equal(photos[0].opts?.message_thread_id, 42);
+    } finally {
+        removeBroadcastListener(forward);
+        fs.rmSync(imagePath, { force: true });
+    }
+});
+
+test('image relay guard skips and logs a path outside allowed roots', async () => {
+    const outsideDir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-relay-denied-'));
+    const imagePath = path.join(outsideDir, 'denied.png');
+    fs.writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const { bot, sent, photos } = createBotSpy();
+    const before = drainLogRing().length;
+    const forward = createTelegramForwarder({ bot, getLastChatId: () => 123 });
+    try {
+        const returnValue = forward('agent_done', {
+            origin: 'web',
+            text: `ready\n![denied](${imagePath})`,
+        });
+        assert.equal(returnValue, undefined, 'forwarder keeps a synchronous listener signature');
+        await flush();
+        assert.equal(sent.length, 1, 'text remains available');
+        assert.equal(photos.length, 0, 'guarded image is not sent');
+        assert.ok(
+            drainLogRing().slice(before).some((entry) =>
+                entry.level === 'warn' && entry.text.includes('[tg:image-relay] skipped')),
+            'guard rejection must leave a warning',
+        );
+    } finally {
+        fs.rmSync(outsideDir, { recursive: true, force: true });
+    }
 });
 
 test('markdownToTelegramHtml converts markdown while preserving escaped html', () => {

@@ -6,10 +6,10 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 > 📚 [INDEX](INDEX.md) · [체크리스트 ↗](AGENTS.md) · [커맨드 ↗](commands.md) · **서버 API**
 
-# server.ts — Glue + Route Registration (635L)
+# server.ts — Glue + Route Registration (640L)
 
 > Express/SSE bootstrap + localhost/LAN opt-in 보안 가드 + `src/routes/*` registrar + mounted sub-router 등록.
-> 현재 라이브 surface는 총 234개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 233개다.
+> 현재 라이브 surface는 총 235개 route handler이며, 이 중 `/`를 제외한 API 엔드포인트는 234개다.
 > mutation route(`POST`/`PUT`/`DELETE`)는 모두 `requireAuth`를 거친다. 단, `requireAuth()`는 loopback 요청을 토큰 없이 통과시키고, `lanAllowed()`가 true일 때 private IP도 LAN bypass로 통과시킨다.
 > `GET /api/auth/token`은 Bearer bootstrap 전용이며 `Sec-Fetch-Site`가 `same-origin` 또는 `none`이 아닐 때 `403`을 반환한다.
 
@@ -19,8 +19,8 @@ aliases: [CLI-JAW Server API, server.ts reference, server_api]
 
 | Module | Lines | Routes | 역할 |
 | --- | ---: | ---: | --- |
-| `server.ts` | 635L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
-| `src/routes/static.ts` | 70L | 3 | root HTML + `/media/:filename` upload media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
+| `server.ts` | 640L | mount glue | Helmet/CORS/Host/rate-limit/SSE bootstrap + static middleware + route/sub-router registration |
+| `src/routes/static.ts` | 137L | 4 | root HTML + `/media/:filename` upload media serve + guarded `/api/image` local media serve + `/api/widgets/:chatId/:widgetId` inert widget file serve |
 | `src/routes/system.ts` | 57L | 4 | health/session/runtime/auth-token |
 | `src/routes/messages.ts` | 107L | 4 | message list/count/search/latest |
 | `src/routes/command.ts` | 191L | 4 | slash command execution, command palette, normal message submit, Telegram elicitation callback relay |
@@ -93,6 +93,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `POST` | `/api/clear` | UI-only clear broadcast, DB 메시지는 유지 |
 | `POST` | `/api/session/reset` | 메시지 삭제 + session reset |
 | `GET` | `/media/:filename` | 미디어 파일 서빙 |
+| `GET` | `/api/image?path=<absolute path>` | `requireAuth` + `assertSendFilePath()` realpath guard로 JAW_HOME/workingDir/projectDirs 아래 이미지·비디오를 서빙. PNG/JPEG/GIF/WebP/MP4/WebM/MOV/OGG만 허용하고 SVG는 제외한다. 잘못된 입력·확장자는 `400`, 허용 루트 밖은 `403`, 미해결 경로·디렉터리는 `404`; 성공 응답은 `no-store` + `nosniff`. |
 | `GET` | `/api/instance/lock` | 인스턴스 잠금 상태 조회 |
 | `POST` | `/api/instance/lock` | 인스턴스 잠금 (stopAll 보호) |
 | `DELETE` | `/api/instance/lock` | 인스턴스 잠금 해제 |
@@ -106,7 +107,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 
 | Category | Endpoints |
 | --- | --- |
-| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
+| Core/Auth | `GET /api/health` `GET /api/session` `GET /api/messages` `GET /api/messages/count` `GET /api/messages/search` `GET /api/messages/latest` `GET /api/runtime` `GET /api/auth/token` `GET /media/:filename` `GET /api/image` `GET /api/widgets/:chatId/:widgetId` `POST /api/message` `POST /api/stop` `POST /api/clear` `POST /api/session/reset` |
 | Commands | `POST /api/command` `GET /api/commands?interface=` `POST /api/elicitation/callback` |
 | Events | `GET /api/events` |
 | Chat Sessions | `GET /api/chat-sessions` `POST /api/chat-sessions` `POST /api/chat-sessions/:id/switch` |
@@ -137,7 +138,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Dashboard Schedule | `GET /api/dashboard/schedule/work` `POST /api/dashboard/schedule/work` `PATCH /api/dashboard/schedule/work/:id` `DELETE /api/dashboard/schedule/work/:id` `POST /api/dashboard/schedule/work/:id/dispatch` |
 | i18n | `GET /api/i18n/languages` `GET /api/i18n/:lang` |
 
-> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 234개 route handler 기준이다. 이 중 API 엔드포인트는 233개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
+> 실제 코드(`server.ts` + `src/routes/*.ts` + mounted runtime/security/Jaw CEO/dashboard sub-router)에서 추출한 총 235개 route handler 기준이다. 이 중 API 엔드포인트는 234개이고, 나머지 1개는 `/` 엔트리이다. Browser API 43개는 `src/routes/browser.ts`에서 등록된다. Jaw CEO 20개는 `src/routes/jaw-ceo.ts`에서 sub-router로 등록된다.
 
 ---
 
@@ -164,7 +165,10 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | Skills | `assertSkillId()` |
 | Upload / avatar | `decodeFilenameSafe()` |
 | Telegram / channel send | `assertSendFilePath()` |
+| Local inline media (`GET /api/image`) | `assertSendFilePath()` canonical realpath boundary + explicit media-extension allowlist (SVG 제외) |
 | Avatar image serve | `safeResolveUnder(UPLOADS_DIR, basename(...))` |
+
+- `/api/image`는 `path`가 단일 절대경로인지 먼저 검사한 뒤 guard를 실행한다. 존재하지 않아 canonicalize할 수 없는 경로는 `404`, JAW_HOME/workingDir/projectDirs 밖 또는 symlink 탈출은 `403`이며, guard 통과 뒤에도 allowlist와 regular-file 검사를 거친다.
 
 ### 기타
 

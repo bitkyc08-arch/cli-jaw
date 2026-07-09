@@ -6,9 +6,9 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 > 📚 [INDEX](INDEX.md) · [에이전트 실행 ↗](agent_spawn.md) · [인프라 ↗](infra.md) · **텔레그램 & 하트비트**
 
-# Telegram & Heartbeat — telegram/bot.ts · telegram/forwarder.ts · telegram/telegram-file.ts · telegram/voice.ts · telegram/hub-callback.ts · messaging/runtime.ts · messaging/send.ts · messaging/thread-target.ts · manager/telegram-hub/* · memory/heartbeat.ts · memory/heartbeat-schedule.ts
+# Telegram & Heartbeat — telegram/bot.ts · telegram/forwarder.ts · telegram/telegram-file.ts · discord/forwarder.ts · messaging/runtime.ts · messaging/send.ts · messaging/thread-target.ts · messaging/extract-images.ts · manager/telegram-hub/* · memory/heartbeat.ts · memory/heartbeat-schedule.ts
 
-> Telegram transport (standalone + hub-member) + Dashboard forum-topic hub + shared messaging runtime + forwarder lifecycle + origin filtering + voice STT
+> Telegram transport (standalone + hub-member) + Dashboard forum-topic hub + shared messaging runtime + text/image forwarder lifecycle + origin filtering + voice STT
 > 현재 Telegram/Discord는 `src/messaging/`을 공유하며, settings restart는 `core/runtime-settings.ts`에서 한 번에 처리된다
 > v5 Update: `forwardAll` 토글은 Telegram/Discord 각각의 channel setting으로 분리됨
 > v6 Update: forum **topic-aware** programmatic send (P0) + Dashboard **Telegram Hub** — one bot, many topics → many instances (P0–P4; per-topic `model`/`systemPrompt` overrides)
@@ -38,6 +38,13 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 - 실제 topic id는 `n > 1`일 때만 전달
 - 사용처: `telegram/bot.ts` `telegramSendHandler`, legacy `/api/telegram/send`, hub `sendToTopic`
 
+### `src/messaging/extract-images.ts` (36L)
+
+- `extractLocalImagePaths(markdown)`는 remark AST의 실제 image node만 문서 순서대로 읽는다. code fence 안의 image 문법은 대상이 아니다.
+- 절대 로컬 PNG/JPG/JPEG/GIF/WebP만 받고 HTTP(S), data, protocol-relative, relative, `/media/`, `/api/`, SVG/비디오 경로는 제외한다.
+- 동일 경로를 중복 제거한 뒤 최대 4개까지 반환한다.
+- 이 helper는 Markdown 후보 추출만 소유한다. `relayTelegramImages()`와 `relayDiscordImages()`가 각 후보를 `assertSendFilePath()`로 canonicalize해 JAW_HOME/workingDir/projectDirs 밖 경로를 경고 후 건너뛰고, 통과한 파일만 기존 채널 file-send transport로 전달한다.
+
 ### Remote channel structured elicitation guard
 
 - 21 Elicitation은 Web UI main DOM 전용 상호작용이다.
@@ -55,7 +62,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 
 ---
 
-## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (778L)
+## telegram/bot.ts — Telegram Bot + Forwarder Lifecycle + Voice + Hub-member relay (795L)
 
 | Function | 역할 |
 | --- | --- |
@@ -73,6 +80,7 @@ aliases: [Telegram and Heartbeat, CLI-JAW Telegram, messaging runtime]
 - `registerSendTransport('telegram', telegramSendHandler)` 경로가 `threadIdNumber(req.target)`로 `message_thread_id`를 text/file send에 전달한다
 - Interactive `ctx.reply`는 grammY가 자동으로 thread를 유지하므로 handler 경로와 분리된다
 - `telegram-file.ts` `sendTelegramFile(..., { threadId })`도 동일 semantics
+- Markdown image relay도 `validateFileSize(path, 'photo')`와 `sendTelegramFile(..., 'photo', { threadId })`를 재사용하므로 기존 20MB gate, retry/error 결과, forum topic routing을 그대로 따른다
 
 ### Hub-member outbound relay (P2b)
 
@@ -111,6 +119,7 @@ initTelegram():
 - voice handler는 `telegram/voice.ts` → guarded `downloadTelegramFile()` → `lib/stt.ts` → `tgOrchestrate()`로 이어진다
 - inbound photo/document downloads pass media-specific size hints to `downloadTelegramFile()` before files are saved.
 - standalone inline keyboard handler는 `bot.callbackQuery(/^elic:/)`가 `handleElicitationCallback()`을 호출하고, 모든 질문 완료 시 combined answer를 `tgOrchestrate()`로 재주입한다.
+- Telegram-origin `tgOrchestrate()` 응답은 queue 완료와 direct result 경로 모두 text를 먼저 보낸 뒤 같은 `responseTarget`으로 허용된 로컬 이미지를 photo relay한다. global forwarder의 origin skip으로 중복 전송하지 않는다.
 - `applySettings()`는 `bumpSessionOwnershipGeneration()` 이후 `applyRuntimeSettingsPatch()`를 호출한다
 - `markChatActive()`는 `allowedChatIds` 자동 저장과 `lastActive/latestSeen` 갱신을 같이 처리한다
 - transport/send transport 등록은 모듈 로드 시점에 즉시 일어난다
@@ -121,12 +130,13 @@ initTelegram():
 
 ---
 
-## telegram/forwarder.ts — Telegram Forwarder (178L)
+## telegram/forwarder.ts — Telegram Forwarder (236L)
 
 | Function | 역할 |
 | --- | --- |
 | `createForwarderLifecycle()` | attach/detach 중복 등록 방지 |
 | `createTelegramForwarder()` | `agent_done`를 Telegram 채널로 forward |
+| `relayTelegramImages()` | Markdown의 허용된 로컬 이미지 후보를 realpath guard + size gate 후 photo로 전송 |
 | `markdownToTelegramHtml()` | Markdown → Telegram HTML 변환 |
 | `chunkTelegramHtmlMessage()` | Telegram HTML tag token/balance 보존 분할 |
 | `chunkTelegramMessage()` | 4096자 단위 분할 |
@@ -137,7 +147,24 @@ initTelegram():
 - `shouldSkip(data)`로 Telegram-origin 결과를 제외한다
 - `broadcast` listener는 named handler 기준으로 제거된다
 - `forwardAll`이 꺼져 있으면 bot 메시지는 받고, agent_done forward는 하지 않는다
-- outbound 텍스트는 Telegram HTML로 변환한 뒤 4096자 청크로 보낸다
+- outbound 텍스트는 Telegram HTML로 변환한 뒤 4096자 청크로 보내고, 전송 시도 뒤 추출된 이미지를 순서대로 photo relay한다
+- `getLastTarget()`이 Telegram target을 반환하면 chat id와 `message_thread_id`를 함께 보존하고, 없으면 기존 `getLastChatId()` fallback을 사용한다
+
+---
+
+## discord/forwarder.ts — Discord Forwarder (82L)
+
+| Function | 역할 |
+| --- | --- |
+| `chunkDiscordMessage()` | 2000자 제한에 맞춰 줄바꿈 우선 분할 |
+| `relayDiscordImages()` | Markdown의 허용된 로컬 이미지 후보를 realpath guard 후 `sendDiscordFile()` attachment로 전송 |
+| `createDiscordForwarder()` | `agent_done` text chunk 전송 뒤 이미지 attachment relay |
+
+### 핵심 포인트
+
+- global forwarder는 error 결과와 `shouldSkip(data)`가 거르는 Discord-origin 결과를 제외하고, `forwardAll !== false`일 때 last active Discord target으로 text → attachment 순서로 보낸다.
+- Discord-origin `dcOrchestrate()`는 queue 완료와 direct result 경로에서 text chunk를 먼저 보낸 뒤 `relayDiscordImages()`를 호출한다. global origin skip과 분리되어 원래 채널 reply에도 이미지가 붙는다.
+- attachment 전송은 새 채널 API를 만들지 않고 기존 `sendDiscordFile()`의 target resolution/text-channel check와 `{ ok, error }` 결과를 재사용한다. guard/전송 실패 이미지는 warn 후 건너뛰며 text 응답은 유지된다.
 
 ---
 
@@ -166,7 +193,7 @@ bot.ts on("message:voice"):
 
 ---
 
-## telegram/telegram-file.ts — Telegram File Send (133L)
+## telegram/telegram-file.ts — Telegram File Send (149L)
 
 | Export | 역할 |
 | --- | --- |
