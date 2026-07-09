@@ -5,7 +5,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readClaudeCreds, getClaudeCredentialsPath, readLatestGrokSessionUsage } from '../../src/routes/quota.ts';
+import { readClaudeCreds, getClaudeCredentialsPath, readLatestGrokSessionUsage, parseGrokCreditsGrpcWeb } from '../../src/routes/quota.ts';
 
 // Read source for structural verification
 const quotaSrc = readSource(
@@ -112,10 +112,18 @@ test('QS-004: readGeminiAccount has cross-platform documentation', () => {
     );
 });
 
-test('QS-004b: Grok quota contract is auth/status only with best-effort session usage', () => {
+test('QS-004b: Grok quota prefers ~/.grok weekly credits before legacy billing fallback', () => {
     assert.ok(
-        quotaSrc.includes("quotaSource: hasBilling ? 'progrok:billing-api' : 'not-exposed-by-grok-cli'"),
-        'Grok quota should use progrok billing when available and otherwise stay explicit status-only metadata',
+        quotaSrc.includes("'.grok'") && quotaSrc.includes("'auth.json'") && quotaSrc.includes('grok:auth-json-oidc'),
+        'Grok quota should read the current Grok CLI OIDC auth file before legacy progrok auth',
+    );
+    assert.ok(
+        quotaSrc.includes('GrokBuildBilling/GetGrokCreditsConfig') && quotaSrc.includes('application/grpc-web+proto'),
+        'Grok quota should call the weekly credits gRPC-web endpoint',
+    );
+    assert.ok(
+        quotaSrc.includes("periodLabel: 'weekly'") && quotaSrc.includes("periodLabel: 'monthly'"),
+        'Grok quota should expose weekly credits and keep monthly legacy fallback labels',
     );
     assert.ok(
         quotaSrc.includes("displayTier: billing?.tier || 'Grok'"),
@@ -125,6 +133,17 @@ test('QS-004b: Grok quota contract is auth/status only with best-effort session 
         quotaSrc.includes('readLatestGrokSessionUsage'),
         'Grok session usage reader should be best-effort and separate from quota',
     );
+});
+
+test('QS-004b2: parseGrokCreditsGrpcWeb handles zero-use weekly usage period frames', () => {
+    const raw = Buffer.from(
+        '00000000480a4612001a00220c08b0ada9d20610a8bf9784012a0c08b0a2ced20610a8bf978401421e0802120c08b0ada9d20610a8bf9784011a0c08b0a2ced20610a8bf978401580162006801800000',
+        'hex',
+    );
+    const parsed = parseGrokCreditsGrpcWeb(raw, new Date('2026-07-09T00:00:00.000Z'));
+    assert.equal(parsed?.periodLabel, 'weekly');
+    assert.equal(parsed?.percent, 0);
+    assert.equal(parsed?.periodEnd, '2026-07-12T13:05:52.000Z');
 });
 
 test('QS-004c: readLatestGrokSessionUsage reads newest signals.json without fake quota windows', () => {

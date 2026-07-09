@@ -278,12 +278,16 @@ interface GrokBillingData {
     percent: number;
     limitUsd: number;
     usedUsd: number;
+    periodLabel: string;
+    periodStart?: string | null;
     periodEnd: string;
     email: string | null;
+    source: string;
 }
 
 const GROK_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing';
 const GROK_USER_URL = 'https://cli-chat-proxy.grok.com/v1/user';
+const GROK_WEB_CREDITS_URL = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig';
 
 function grokTierFromLimit(val: number): string {
     if (val >= 150_000) return 'SuperGrok Heavy';
@@ -291,43 +295,216 @@ function grokTierFromLimit(val: number): string {
     return `SuperGrok (${val} val)`;
 }
 
-function readProgrokToken(): string | null {
+interface GrokTokenCandidate {
+    token: string;
+    source: string;
+    email?: string | null;
+}
+
+function readGrokTokenCandidates(homeDir = os.homedir()): GrokTokenCandidate[] {
+    const candidates: GrokTokenCandidate[] = [];
     try {
-        const authPath = join(os.homedir(), '.progrok', 'auth.json');
+        const authPath = join(homeDir, '.grok', 'auth.json');
+        const data = JSON.parse(fs.readFileSync(authPath, 'utf8')) as Record<string, unknown>;
+        const entries = Object.entries(data)
+            .filter(([, entry]) => entry && typeof entry === 'object' && typeof (entry as Record<string, unknown>)['key'] === 'string')
+            .map(([scope, entry]) => {
+                const obj = entry as Record<string, unknown>;
+                return {
+                    token: obj['key'] as string,
+                    source: scope.startsWith('https://auth.x.ai::') ? 'grok:auth-json-oidc' : 'grok:auth-json',
+                    email: typeof obj['email'] === 'string' ? obj['email'] as string : null,
+                    priority: scope.startsWith('https://auth.x.ai::') ? 0 : 1,
+                };
+            })
+            .sort((a, b) => a.priority - b.priority);
+        for (const entry of entries) candidates.push({ token: entry.token, source: entry.source, email: entry.email });
+    } catch { /* best effort */ }
+    try {
+        const authPath = join(homeDir, '.progrok', 'auth.json');
         const data = JSON.parse(fs.readFileSync(authPath, 'utf8')) as { accessToken?: string };
-        return typeof data.accessToken === 'string' ? data.accessToken : null;
-    } catch { return null; }
+        if (typeof data.accessToken === 'string' && data.accessToken.trim()) {
+            candidates.push({ token: data.accessToken, source: 'progrok:auth-json', email: null });
+        }
+    } catch { /* best effort */ }
+    const seen = new Set<string>();
+    return candidates.filter((candidate) => {
+        if (!candidate.token || seen.has(candidate.token)) return false;
+        seen.add(candidate.token);
+        return true;
+    });
+}
+
+interface ProtoField {
+    path: number[];
+    wireType: number;
+    value: number;
+    order: number;
+}
+
+function readGrpcWebPayloads(buf: Buffer): Buffer[] {
+    const frames: Buffer[] = [];
+    let offset = 0;
+    while (offset + 5 <= buf.length) {
+        const flags = buf[offset] ?? 0;
+        const len = buf.readUInt32BE(offset + 1);
+        const start = offset + 5;
+        const end = start + len;
+        if (end > buf.length) return [];
+        if ((flags & 0x80) === 0) frames.push(buf.subarray(start, end));
+        offset = end;
+    }
+    if (frames.length) return frames;
+    const first = buf[0] ?? 0;
+    const wireType = first & 0x07;
+    return first >> 3 > 0 && [0, 1, 2, 5].includes(wireType) ? [buf] : [];
+}
+
+function scanProtoFields(buf: Buffer, path: number[] = [], depth = 0, order = { value: 0 }): ProtoField[] {
+    if (depth > 8) return [];
+    const fields: ProtoField[] = [];
+    let offset = 0;
+    const readVarint = (): number | null => {
+        let result = 0;
+        let shift = 0;
+        while (offset < buf.length && shift < 53) {
+            const byte = buf[offset++] ?? 0;
+            result += (byte & 0x7f) * (2 ** shift);
+            if ((byte & 0x80) === 0) return result;
+            shift += 7;
+        }
+        return null;
+    };
+    while (offset < buf.length) {
+        const tag = readVarint();
+        if (tag == null || tag === 0) break;
+        const fieldNumber = tag >> 3;
+        const wireType = tag & 0x07;
+        const fieldPath = [...path, fieldNumber];
+        if (wireType === 0) {
+            const value = readVarint();
+            if (value == null) break;
+            fields.push({ path: fieldPath, wireType, value, order: order.value++ });
+        } else if (wireType === 1) {
+            if (offset + 8 > buf.length) break;
+            offset += 8;
+        } else if (wireType === 2) {
+            const len = readVarint();
+            if (len == null || offset + len > buf.length) break;
+            const child = buf.subarray(offset, offset + len);
+            offset += len;
+            fields.push(...scanProtoFields(child, fieldPath, depth + 1, order));
+        } else if (wireType === 5) {
+            if (offset + 4 > buf.length) break;
+            fields.push({ path: fieldPath, wireType, value: buf.readFloatLE(offset), order: order.value++ });
+            offset += 4;
+        } else {
+            break;
+        }
+    }
+    return fields;
+}
+
+export function parseGrokCreditsGrpcWeb(buf: Buffer, now = new Date()): Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null {
+    const fields = readGrpcWebPayloads(buf).flatMap((payload) => scanProtoFields(payload));
+    const percentField = fields
+        .filter((field) => field.wireType === 5 && field.path.at(-1) === 1 && Number.isFinite(field.value) && field.value >= 0 && field.value <= 100)
+        .sort((a, b) => (a.path.length - b.path.length) || (a.order - b.order))[0];
+    const futureResets = fields
+        .filter((field) => field.wireType === 0 && field.value >= 1_700_000_000 && field.value <= 2_100_000_000)
+        .map((field) => ({ field, date: new Date(field.value * 1000) }))
+        .filter((entry) => entry.date > now)
+        .sort((a, b) => {
+            const aPreferred = a.field.path.join('.') === '1.5.1' ? 0 : 1;
+            const bPreferred = b.field.path.join('.') === '1.5.1' ? 0 : 1;
+            return (aPreferred - bPreferred) || (a.date.getTime() - b.date.getTime());
+        });
+    const reset = futureResets[0]?.date;
+    const hasUsagePeriod = fields.some((field) =>
+        field.wireType === 0 && (field.path.slice(0, 2).join('.') === '1.6' || (field.path.join('.') === '1.8.1' && (field.value === 1 || field.value === 2)))
+    );
+    const percent = percentField?.value ?? (reset && hasUsagePeriod ? 0 : null);
+    if (percent == null || !reset) return null;
+    return {
+        percent: Math.round(percent),
+        periodEnd: reset.toISOString(),
+        periodLabel: 'weekly',
+        source: 'grok:grok-build-billing-grpc-web',
+    };
+}
+
+async function fetchGrokWeeklyCredits(token: string): Promise<Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null> {
+    const resp = await fetch(GROK_WEB_CREDITS_URL, {
+        method: 'POST',
+        headers: {
+            'Authorization': `Bearer ${token}`,
+            'X-XAI-Token-Auth': 'xai-grok-cli',
+            'Origin': 'https://grok.com',
+            'Referer': 'https://grok.com/?_s=usage',
+            'Accept': 'application/grpc-web+proto',
+            'Content-Type': 'application/grpc-web+proto',
+            'x-grpc-web': '1',
+            'x-user-agent': 'connect-es/2.1.1',
+        },
+        body: Buffer.from([0, 0, 0, 0, 0]),
+        signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) return null;
+    return parseGrokCreditsGrpcWeb(Buffer.from(await resp.arrayBuffer()));
 }
 
 async function fetchGrokBilling(): Promise<GrokBillingData | null> {
-    const token = readProgrokToken();
-    if (!token) return null;
+    const tokens = readGrokTokenCandidates();
+    if (!tokens.length) return null;
     try {
-        const headers = { Authorization: `Bearer ${token}` };
-        const [billingRes, userRes] = await Promise.allSettled([
-            fetch(GROK_BILLING_URL, { headers, signal: AbortSignal.timeout(8000) }),
-            fetch(GROK_USER_URL, { headers, signal: AbortSignal.timeout(5000) }),
-        ]);
-        if (billingRes.status !== 'fulfilled' || !billingRes.value.ok) return null;
-        const billing = (await billingRes.value.json() as {
-            config: { monthlyLimit: { val: number }; used: { val: number }; billingPeriodEnd: string };
-        }).config;
-        const limit = billing.monthlyLimit.val;
-        const used = billing.used.val;
-        let email: string | null = null;
-        if (userRes.status === 'fulfilled' && userRes.value.ok) {
-            const user = await userRes.value.json() as { email?: string };
-            email = user.email ?? null;
+        for (const candidate of tokens) {
+            const weekly = await fetchGrokWeeklyCredits(candidate.token);
+            if (weekly) {
+                return {
+                    tier: 'SuperGrok',
+                    limit: 100,
+                    used: weekly.percent,
+                    percent: weekly.percent,
+                    limitUsd: 0,
+                    usedUsd: 0,
+                    periodLabel: weekly.periodLabel,
+                    periodEnd: weekly.periodEnd,
+                    email: candidate.email ?? null,
+                    source: weekly.source,
+                };
+            }
         }
-        return {
-            tier: grokTierFromLimit(limit),
-            limit, used,
-            percent: limit > 0 ? Math.round((used / limit) * 100) : 0,
-            limitUsd: limit / 100,
-            usedUsd: used / 100,
-            periodEnd: billing.billingPeriodEnd,
-            email,
-        };
+        for (const candidate of tokens) {
+            const headers = { Authorization: `Bearer ${candidate.token}` };
+            const [billingRes, userRes] = await Promise.allSettled([
+                fetch(GROK_BILLING_URL, { headers, signal: AbortSignal.timeout(8000) }),
+                fetch(GROK_USER_URL, { headers, signal: AbortSignal.timeout(5000) }),
+            ]);
+            if (billingRes.status !== 'fulfilled' || !billingRes.value.ok) continue;
+            const billing = (await billingRes.value.json() as {
+                config: { monthlyLimit: { val: number }; used: { val: number }; billingPeriodStart?: string; billingPeriodEnd: string };
+            }).config;
+            const limit = billing.monthlyLimit.val;
+            const used = billing.used.val;
+            let email: string | null = candidate.email ?? null;
+            if (userRes.status === 'fulfilled' && userRes.value.ok) {
+                const user = await userRes.value.json() as { email?: string };
+                email = user.email ?? email;
+            }
+            return {
+                tier: grokTierFromLimit(limit),
+                limit, used,
+                percent: limit > 0 ? Math.round((used / limit) * 100) : 0,
+                limitUsd: limit / 100,
+                usedUsd: used / 100,
+                periodLabel: 'monthly',
+                periodStart: billing.billingPeriodStart ?? null,
+                periodEnd: billing.billingPeriodEnd,
+                email,
+                source: candidate.source === 'progrok:auth-json' ? 'progrok:billing-api' : 'grok:cli-chat-proxy-billing-api',
+            };
+        }
+        return null;
     } catch { return null; }
 }
 
@@ -348,7 +525,7 @@ export async function fetchGrokStatus(binary = 'grok') {
     return stripUndefined({
         authenticated: authenticated || hasBilling,
         quotaCapable: hasBilling,
-        quotaSource: hasBilling ? 'progrok:billing-api' : 'not-exposed-by-grok-cli',
+        quotaSource: hasBilling ? billing!.source : 'not-exposed-by-grok-cli',
         sessionUsageCapable: true,
         displayTier: billing?.tier || 'Grok',
         account: {
@@ -358,7 +535,7 @@ export async function fetchGrokStatus(binary = 'grok') {
         },
         source,
         windows: hasBilling ? [{
-            label: 'monthly',
+            label: billing!.periodLabel,
             percent: billing!.percent,
             resetsAt: billing!.periodEnd,
         }] : [],
