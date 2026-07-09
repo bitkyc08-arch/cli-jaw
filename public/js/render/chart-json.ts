@@ -1,3 +1,5 @@
+import { escapeHtml } from './html.js';
+
 type ChartType = 'bar' | 'line' | 'pie';
 
 export type ChartJsonSpec = {
@@ -15,11 +17,6 @@ const COLORS = ['#2563eb', '#16a34a', '#dc2626', '#9333ea', '#ca8a04', '#0891b2'
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 function clampText(value: unknown, max: number): string {

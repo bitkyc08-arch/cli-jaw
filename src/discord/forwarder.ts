@@ -3,7 +3,8 @@
 
 import type { Client } from 'discord.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import type { DiscordSendableChannel } from './channel-types.js';
+import { asSendable } from './channel-types.js';
+import { log } from '../core/logger.js';
 
 export function chunkDiscordMessage(text: string, limit = 2000): string[] {
     if (text.length <= limit) return [text];
@@ -22,25 +23,27 @@ export function chunkDiscordMessage(text: string, limit = 2000): string[] {
 export function createDiscordForwarder(opts: {
     client: Client;
     getLastTarget: () => RemoteTarget | null;
-    shouldSkip?: (data: Record<string, any>) => boolean;
+    shouldSkip?: (data: Record<string, unknown>) => boolean;
     log?: (info: { channelId: string; preview: string }) => void;
     prefix?: string;
 }) {
-    return async (type: string, data: Record<string, any>) => {
-        if (type !== 'agent_done' || !data?.["text"] || data["error"]) return;
+    return async (type: string, data: Record<string, unknown>) => {
+        const text = data?.["text"];
+        if (type !== 'agent_done' || typeof text !== 'string' || !text || data["error"]) return;
         if (opts.shouldSkip?.(data)) return;
         const target = opts.getLastTarget();
         if (!target?.targetId || !opts.client) return;
         try {
             const channel = await opts.client.channels.fetch(target.targetId);
-            if (!channel || !('send' in channel)) return;
-            const chunks = chunkDiscordMessage(`${opts.prefix || ''}${data["text"]}`);
+            const sendable = asSendable(channel);
+            if (!sendable) return;
+            const chunks = chunkDiscordMessage(`${opts.prefix || ''}${text}`);
             for (const chunk of chunks) {
-                await (channel as unknown as DiscordSendableChannel).send(chunk);
+                await sendable.send(chunk);
             }
-            opts.log?.({ channelId: target.targetId, preview: data["text"].slice(0, 60) });
+            opts.log?.({ channelId: target.targetId, preview: text.slice(0, 60) });
         } catch (e) {
-            console.error('[discord:forward]', (e as Error).message);
+            log.error('[discord:forward]', (e as Error).message);
         }
     };
 }

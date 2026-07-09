@@ -22,18 +22,18 @@ test('diagram-html widgets create zoom, save, and copy controls', () => {
         'initial widget activation must bind widget-specific zoom handling');
     assert.ok(iframeSrc.includes('container.appendChild(createDiagramZoomBtn())'),
         'theme reload must restore the widget zoom button');
-    assert.ok(iframeSrc.includes('bindWidgetZoom(container as HTMLElement)'),
+    assert.ok(iframeSrc.includes('bindWidgetZoom(containerEl)'),
         'theme reload must re-bind widget-specific zoom handling');
 });
 
 test('diagram-html widget overlay recreates iframe from encoded source', () => {
     const idx = iframeSrc.indexOf('function openWidgetOverlay');
     assert.ok(idx >= 0, 'openWidgetOverlay must exist');
-    const block = iframeSrc.slice(idx, idx + 3400);
+    const block = iframeSrc.slice(idx, idx + 4300);
 
-    assert.ok(block.includes('decodeWidgetHtml(encoded)'),
+    assert.ok(block.includes('decodeWidgetHtml(encoded, maxBytes)'),
         'overlay must decode the stored widget source');
-    assert.ok(block.includes('validateWidgetHtml(htmlCode)'),
+    assert.ok(block.includes('validateWidgetHtml(htmlCode, { maxBytes })'),
         'overlay must validate source before iframe creation');
     assert.ok(block.includes('createWidgetIframe(htmlCode)'),
         'overlay must create a fresh sandboxed iframe');

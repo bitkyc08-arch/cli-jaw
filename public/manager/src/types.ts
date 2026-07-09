@@ -316,9 +316,20 @@ export type DashboardRegistryUi = {
     panelLayoutVersion?: number | undefined;
     rightPanelOpen?: boolean | undefined;
     rightPanelWidth?: number | undefined;
+    /** @deprecated Legacy two-slot field. Kept for hydration migration only. */
     rightPanelTopMode?: string | null | undefined;
+    /** @deprecated Legacy two-slot field. Kept for hydration migration only. */
     rightPanelBottomMode?: string | null | undefined;
+    /** @deprecated Legacy two-slot vertical split ratio. Dropped on migration. */
     rightPanelSplitRatio?: number | undefined;
+    // New right sidebar tab model (020)
+    rightSidebarOpenTabs?: Array<{ id: string; kind: string; title: string; specificName?: string; sourceLabel?: string; ordinal?: number; pinned?: boolean; design?: { pageId?: string | null; projectKey?: string | null; zoom?: number } }> | undefined;
+    rightSidebarActiveTabId?: string | null | undefined;
+    rightSidebarNextOrdinalByKind?: Record<string, number> | undefined;
+    /** @deprecated Legacy singleton-tab field. Readable for migration only; no longer written. */
+    rightSidebarLastActiveByKind?: Record<string, string> | undefined;
+    // Files tab inner layout (010)
+    fileFolderLayout?: { mode: string; splitRatio: number; lastSplitRatio: number } | undefined;
     bottomPanelOpen?: boolean | undefined;
     bottomPanelHeight?: number | undefined;
     bottomPanelTabs?: string[] | undefined;

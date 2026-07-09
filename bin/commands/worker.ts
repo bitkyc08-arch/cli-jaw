@@ -2,6 +2,7 @@
 // bin/commands/worker.ts — inspect employee worker progress.
 
 import { loadSettings, getServerUrl } from '../../src/core/config.js';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { cliFetch, getCliAuthToken } from '../../src/cli/api-auth.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
 import { errString, isConnRefused } from '../_http-client.js';
@@ -127,10 +128,6 @@ interface WorkerRunOutputBody {
     ok?: boolean;
     output?: WorkerOutputRead;
     error?: string;
-}
-
-function sleep(ms: number): Promise<void> {
-    return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 function flagValue(name: string): string | undefined {

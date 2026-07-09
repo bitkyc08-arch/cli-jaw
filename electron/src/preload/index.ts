@@ -5,6 +5,7 @@ const DESKTOP_IDENTITY = {
   name: 'cli-jaw-desktop',
   electron: true,
   header: 'X-CLI-Jaw-Electron',
+  token: process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN ?? '',
 } as const;
 
 function isSameOrigin(input: RequestInfo | URL): boolean {
@@ -23,14 +24,24 @@ function installDesktopFetchHeader(): void {
     if (!isSameOrigin(input)) return nativeFetch(input, init);
 
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-    headers.set(DESKTOP_IDENTITY.header, '1');
+    if (DESKTOP_IDENTITY.token) headers.set(DESKTOP_IDENTITY.header, DESKTOP_IDENTITY.token);
     return nativeFetch(input, { ...init, headers });
   };
 }
 
 function markDesktopDocument(): void {
   try {
-    document.documentElement.dataset.cliJawDesktop = 'true';
+    const root = document?.documentElement;
+    if (root) {
+      root.dataset.cliJawDesktop = 'true';
+      return;
+    }
+    // Guest webviews can run this preload before documentElement exists.
+    document?.addEventListener?.('DOMContentLoaded', () => {
+      try {
+        document.documentElement.dataset.cliJawDesktop = 'true';
+      } catch { /* ignore */ }
+    }, { once: true });
   } catch (err) {
     console.warn('[cli-jaw-desktop] failed to mark desktop document', err);
   }
@@ -86,6 +97,7 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
   folder: {
     getDefaultRoot: () => ipcRenderer.invoke('folder:getDefaultRoot'),
     pickFolder: () => ipcRenderer.invoke('folder:pick'),
+    pickFile: () => ipcRenderer.invoke('folder:pickFile'),
     authorizeRoot: (rootPath: string) => ipcRenderer.invoke('folder:authorizeRoot', rootPath),
     registerGitWorktreeRoot: (folderPanelRoot: string, repoRoot: string | undefined, worktreePath: string) =>
       ipcRenderer.invoke('folder:registerGitWorktreeRoot', folderPanelRoot, repoRoot, worktreePath),
@@ -140,6 +152,21 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
       const handler = (_e: unknown, payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => cb(payload);
       ipcRenderer.on('browser:open-url', handler);
       return () => { ipcRenderer.removeListener('browser:open-url', handler); };
+    },
+    registerWebview: (input: { tabId: string; webContentsId: number }) => ipcRenderer.invoke('browser:register-webview', input),
+    unregisterWebview: (input: { tabId: string; webContentsId?: number }) => ipcRenderer.invoke('browser:unregister-webview', input),
+    controlWebview: (command: unknown) => ipcRenderer.invoke('browser:control-webview', command),
+    performWebviewAction: (action: unknown) => ipcRenderer.invoke('browser:perform-webview-action', action),
+    getWebviewTabs: () => ipcRenderer.invoke('browser:get-webview-tabs'),
+    onElementPicked: (cb: (payload: unknown) => void) => {
+      const handler = (_event: unknown, payload: unknown) => cb(payload);
+      ipcRenderer.on('browser:element-picked', handler);
+      return () => { ipcRenderer.removeListener('browser:element-picked', handler); };
+    },
+    onWebviewState: (cb: (state: unknown) => void) => {
+      const handler = (_event: unknown, state: unknown) => cb(state);
+      ipcRenderer.on('browser:webview-state', handler);
+      return () => { ipcRenderer.removeListener('browser:webview-state', handler); };
     },
   },
   reloadWindow: () => ipcRenderer.invoke('window:reload'),

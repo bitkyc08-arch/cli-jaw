@@ -5,6 +5,7 @@
 import os from 'os';
 import fs from 'fs';
 import { join } from 'path';
+import { log } from './logger.js';
 
 const CODEX_CONFIG = join(os.homedir(), '.codex', 'config.toml');
 
@@ -55,7 +56,7 @@ export function syncCodexContextWindow(cfg: ContextWindowConfig): void {
     // Clean up double blank lines
     const result = filtered.join('\n').replace(/\n{3,}/g, '\n\n');
     fs.writeFileSync(CODEX_CONFIG, result);
-    console.log(`[codex-config] context window ${cfg.enabled ? `ON (${windowVal}/${compactVal})` : 'OFF'}`);
+    log.info(`[codex-config] context window ${cfg.enabled ? `ON (${windowVal}/${compactVal})` : 'OFF'}`);
 }
 
 /**

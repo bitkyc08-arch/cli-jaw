@@ -10,14 +10,14 @@ const workbenchTypesSource = readFileSync('public/manager/src/workbench/workbenc
 const workbenchStateSource = readFileSync('public/manager/src/workbench/useWorkbenchResourceState.ts', 'utf8');
 
 test('right sidebar router passes shared workbench state into DiffPanel', () => {
-    assert.ok(routerSource.includes('folderRootPath={folderRootPath}'), 'DiffPanel must receive the right sidebar folder root');
-    assert.ok(routerSource.includes('repoRootPath={repoRootPath}'), 'DiffPanel must receive the shared repo root');
-    assert.ok(routerSource.includes('repoRootMode={repoRootMode}'), 'DiffPanel must receive shared manual/follow repo mode');
-    assert.ok(routerSource.includes('selectedFilePath={previewFilePath}'), 'DiffPanel must receive the right sidebar selected file');
-    assert.ok(routerSource.includes('onRepoRootChange={onRepoRootChange}'), 'DiffPanel must update only the shared repo root');
-    assert.ok(routerSource.includes('onFollowInstanceRepoRoot={onFollowInstanceRepoRoot}'), 'DiffPanel must be able to resume instance-following mode');
-    assert.ok(routerSource.includes('onPreviewFile={onPreviewFile}'), 'DiffPanel must be able to update the shared preview file');
-    assert.ok(routerSource.includes('onGitRefresh={onGitRefresh}'), 'DiffPanel must be able to refresh shared git decorations after SCM actions');
+    assert.ok(routerSource.includes('folderRootPath={files.folderRootPath ?? ctx.fallbackFolderRootPath}'), 'DiffPanel must receive the active Files tab folder root with registry fallback');
+    assert.ok(routerSource.includes('repoRootPath={files.repoRootPath ?? null}'), 'DiffPanel must receive the active Files tab repo root');
+    assert.ok(routerSource.includes("repoRootMode={files.repoRootMode ?? 'instance'}"), 'DiffPanel must receive active Files tab manual/follow repo mode');
+    assert.ok(routerSource.includes('selectedFilePath={files.activeFilePath ?? null}'), 'DiffPanel must receive the active Files tab selected file');
+    assert.ok(routerSource.includes('onRepoRootChange={(path, mode) => { if (refTab) ctx.onTabRepoRootChange(refTab.id, path, mode); }}'), 'DiffPanel must update only the active Files tab repo root');
+    assert.ok(routerSource.includes('onFollowInstanceRepoRoot={path => ctx.onFollowInstanceRepoRoot(refTab?.id ?? null, path)}'), 'DiffPanel must be able to resume instance-following mode for the active Files tab');
+    assert.ok(routerSource.includes('onPreviewFile={ctx.onOpenFileGlobal}'), 'DiffPanel file clicks must open/focus a Files tab and update its preview file');
+    assert.ok(routerSource.includes('onGitRefresh={ctx.onGitRefresh}'), 'DiffPanel must be able to refresh shared git decorations after SCM actions');
     assert.ok(!routerSource.includes('onFolderRootChange={onFolderRootChange}'), 'DiffPanel must not receive the FolderPanel root mutator');
 });
 
@@ -58,12 +58,12 @@ test('FolderPanel root changes do not reuse stale or manual Diff repo roots', ()
         folderPanelSource.indexOf('const worktreeState = useGitWorktrees({'),
     );
     assert.ok(
-        routerSource.includes("repoRootPath={repoRootMode === 'instance' ? repoRootPath : null}"),
+        routerSource.includes("repoRootPath={repoRootMode === 'instance' ? files.repoRootPath ?? null : null}"),
         'FolderPanel must ignore manual Diff repo overrides and auto-detect its own root',
     );
     assert.ok(
-        routerSource.includes('setRepoRootPath(null);'),
-        'FolderPanel root changes must clear stale instance-follow repo roots before git status reload',
+        routerSource.includes("panelLayout.dispatch({ type: 'SET_FILES_TAB_ROOT', tabId, path })"),
+        'FolderPanel root changes must update the active Files tab root rather than shared legacy root state',
     );
     assert.equal(
         gitStatusBlock.includes('repoRoot'),

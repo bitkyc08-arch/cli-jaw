@@ -43,7 +43,7 @@ aliases: [Frontend Modernization Audit, cli-jaw frontend analysis, modernization
 - `public/js/`는 root가 15개, `js/diagram/`이 3개, `js/features/`가 31개다.
 - `public/manager/`는 28개 파일의 React Manager 대시보드 source다.
 - `public/css/`는 9개, `public/locales/`는 2개, `public/assets/providers/`는 14개, `public/assets/fonts/`는 2개, `public/icons/`는 3개다.
-- 핵심 runtime만 봐도 `main.ts 508L`, `ui.ts 808L`, `render.ts 1099L`, `ws.ts 458L`, `virtual-scroll.ts 500L`, `state.ts 87L`, `process-block.ts 232L`, `tool-ui.ts 116L`, `manager/src/App.tsx 373L`다.
+- 핵심 runtime 크기(2026-07-06 재측정): `main.ts 628L`, `ui.ts 561L`, `render.ts 18L`(façade로 축소, 실제 렌더링은 `render/` 모듈로 분해됨), `ws.ts 1144L`, `virtual-scroll.ts 646L`, `state.ts 105L`, `features/process-block.ts 740L`, `features/settings-core.ts 648L`, `manager/src/App.tsx 499L`.
 
 ### 이미 현대화된 영역
 
@@ -82,7 +82,7 @@ aliases: [Frontend Modernization Audit, cli-jaw frontend analysis, modernization
 
 ### 4. 예전 코드 크기 숫자는 낡았다
 
-이전 문서의 코드 크기 가정은 현재 트리와 맞지 않는다. 핵심 runtime만 봐도 `render.ts 1099L`, `ui.ts 808L`, `main.ts 508L`, `virtual-scroll.ts 500L`, `ws.ts 458L`이고, `state.ts`는 87L이며 `currentProcessBlock`까지 포함한다.
+이전 문서의 코드 크기 가정은 현재 트리와 맞지 않는다. 2026-07-06 기준 `render.ts`는 18L façade로 이미 분해 완료됐고, 현재의 대형 파일은 `ws.ts 1144L`, `features/process-block.ts 740L`, `features/settings-core.ts 648L`, `virtual-scroll.ts 646L`, `main.ts 628L`이다.
 
 ### 5. 프레임워크/상태 라이브러리 도입 논리는 메인 UI 기준 여전히 비추천이다
 
@@ -90,7 +90,7 @@ aliases: [Frontend Modernization Audit, cli-jaw frontend analysis, modernization
 
 ### 6. 하지만 추가 분해 후보는 분명하다
 
-프레임워크 rewrite가 필요 없다는 말과, 모든 파일 크기가 건강하다는 말은 다르다. 특히 `render.ts 1099L`, `ui.ts 808L`, `main.ts 508L`, `tool-ui.css 548L`는 이미 repo의 500L 가이드를 넘는다. 다음 현대화는 메인 UI React 도입이 아니라 책임 단위 분해다.
+프레임워크 rewrite가 필요 없다는 말과, 모든 파일 크기가 건강하다는 말은 다르다. `render.ts` 분해는 완료됐고(18L façade), 현재 500L 가이드를 넘는 파일은 `ws.ts 1144L`, `features/process-block.ts 740L`, `features/settings-core.ts 648L`, `virtual-scroll.ts 646L`, `main.ts 628L`, `ui.ts 561L`, `tool-ui.css 550L`다. 다음 현대화는 메인 UI React 도입이 아니라 이 목록의 책임 단위 분해다.
 
 ### 7. Avatar/WS/VS/help/attention은 이제 “실험”이 아니라 기본 런타임이다
 
@@ -105,6 +105,6 @@ avatar image upload, VS DOM reuse, reconnect dedup, help dialog, attention badge
 | ❌ 여전히 비추천 | 2건 | 메인 UI framework rewrite, 전역 상태 라이브러리 |
 | ✅ 이미 구현됨 | 11건 | Vite, React Manager, strict frontend typecheck, virtual scroll, 플리커링 완화, IndexedDB, 제스처/mobile, PWA, avatar, help/attention, WS snapshot |
 | 🔄 문서 갱신 완료 | 4건 | 파일 수, generated output 수, line count, React 적용 범위 |
-| 🛠 다음 현대화 후보 | 4건 | `render.ts`, `ui.ts`, `main.ts`, `tool-ui.css` 책임 분리 |
+| 🛠 다음 현대화 후보 | 5건 | `ws.ts`, `features/process-block.ts`, `features/settings-core.ts`, `virtual-scroll.ts`, `main.ts` 책임 분리 (`render.ts`는 분해 완료) |
 
-> 핵심 인사이트: 현재 `public/`은 “작은 vanilla 프로젝트”가 아니라, Vanilla 메인 UI와 React Manager가 공존하는 Vite 기반 UI다. 따라서 남은 과제는 메인 UI 프레임워크 교체가 아니라, 중복 dist tree 정리와 `render.ts`/`ui.ts`/`main.ts`/`tool-ui.css` 책임 분해다.
+> 핵심 인사이트: 현재 `public/`은 “작은 vanilla 프로젝트”가 아니라, Vanilla 메인 UI와 React Manager가 공존하는 Vite 기반 UI다. 따라서 남은 과제는 메인 UI 프레임워크 교체가 아니라, `ws.ts`/`process-block.ts`/`settings-core.ts`/`virtual-scroll.ts`/`main.ts` 책임 분해다.

@@ -19,7 +19,7 @@ import { colorizeDiff } from '../../../src/cli/tui/diffview.js';
 import { normalizeTuiWsEvent } from '../../../src/cli/tui/events.js';
 import { c, type TuiContext } from './types.js';
 import { openPromptBlock, rebuildFooter } from './renderer.js';
-import { dismissOverlay } from './overlays.js';
+import { dismissOverlay, openBgtaskOverlay } from './overlays.js';
 import { startSpinner, stopSpinner } from '../../../src/cli/tui/spinner.js';
 
 function isFullscreen(ctx: TuiContext): boolean {
@@ -227,7 +227,8 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                                 ...(event.agentId ? { agentId: event.agentId } : {}),
                                 ...(event.stepRef ? { stepRef: event.stepRef } : {}),
                                 streaming: true,
-                                collapsed: true,
+                                // collapsed omitted — appendThinkingItem's default honors
+                                // verbose render mode (settles expanded there).
                             });
                         } else {
                             commitThinkingItemOnce(transcript, event, { updateCommitted: true });
@@ -279,22 +280,39 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                 const changed = msg['changed'] as { id: string; kind: string; status: string } | null;
                 if (changed && changed.status !== 'running' && !ctx.isRaw) {
                     const ok = changed.status === 'complete';
-                    const mark = ok ? `${c.green}\u2713` : `${c.red}\u2717`;
-                    appendStatusItem(transcript, `bgtask ${changed.kind} ${changed.status}`);
+                    // jawcode attention latch \u2014 the status-bar badge grows a `!`
+                    // until the user opens the Ctrl+O panel (devlog doc 40).
+                    if (!ok) ctx.bgtaskAttention = true;
+                    // jawcode unicode glyph set: \u2714 complete \u00b7 \u23f9 cancelled \u00b7 \u2718 failed/orphaned
+                    const mark = ok ? `${c.green}\u2714` : changed.status === 'cancelled' ? `${c.red}\u23f9` : `${c.red}\u2718`;
+                    appendStatusItem(transcript, `bgtask ${changed.kind} ${changed.status} \u00b7 Ctrl+O`);
                     if (!isFullscreen(ctx)) {
-                        process.stdout.write(`\r\x1b[2K  ${mark} bgtask ${changed.kind} ${changed.status}${c.reset}\n`);
+                        process.stdout.write(`\r\x1b[2K  ${mark} bgtask ${changed.kind} ${changed.status}${c.dim} \u00b7 Ctrl+O${c.reset}\n`);
                     }
                 }
                 rebuildFooter(ctx); // refresh the magenta count segment immediately
                 if (isFullscreen(ctx)) ctx.requestFrame?.();
+                // Open fullscreen panel paints from ctx.bgtaskOverlayItems,
+                // which only openBgtaskOverlay refreshes — refetch so the panel
+                // doesn't keep showing a finished task as running (adversarial
+                // review, devlog doc 40). Classic mode keeps snapshot-at-open
+                // semantics: repainting a shrinking box would leave residue.
+                if (ctx.store.overlay.bgtaskOpen && isFullscreen(ctx)) {
+                    void openBgtaskOverlay(ctx).catch(() => { /* keep last snapshot */ });
+                }
                 break;
             }
 
             case 'queue-update':
+                // Cache the item snapshot for /queue \u2014 including the empty
+                // update, or drained items would ghost in the cache.
+                ctx.queueItems = Array.isArray(event.raw['queued'])
+                    ? event.raw['queued'] as Array<{ id: string; prompt: string; source?: string; ts?: number }>
+                    : [];
                 if (event.pending > 0) {
-                    appendStatusItem(transcript, `${event.pending}\uAC1C \uB300\uAE30 \uC911`);
+                    appendStatusItem(transcript, `${event.pending}\uAC1C \uB300\uAE30 \uC911 \u00B7 /queue`);
                     if (!isFullscreen(ctx)) {
-                        process.stdout.write(`\r  ${c.yellow}\u23F3 ${event.pending}\uAC1C \uB300\uAE30 \uC911${c.reset}          \r`);
+                        process.stdout.write(`\r  ${c.yellow}\u23F3 ${event.pending}\uAC1C \uB300\uAE30 \uC911 \u00B7 /queue${c.reset}          \r`);
                     } else {
                         ctx.requestFrame?.();
                     }
@@ -354,11 +372,52 @@ export function handleWsMessage(ctx: TuiContext, data: WebSocket.Data): void {
                         }
                         break;
                     }
+                    // Steer/retry/schedule lifecycle — these explain why the
+                    // current stream just died or restarted; the Web UI renders
+                    // them but the TUI used to drop them silently
+                    // (devlog 260703 tui_steer_esc_rca doc 30 §A3).
+                    case 'steer_started': {
+                        const promptPreview = String(event.raw['prompt'] || '').replace(/\s+/g, ' ').trim().slice(0, 60);
+                        const message = `↳ steer (${event.raw['origin'] || 'web'}): ${promptPreview}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.yellow}${message}${c.reset}`);
+                        break;
+                    }
+                    case 'agent_retry': {
+                        const delay = Number(event.raw['delay'] ?? 0);
+                        const reason = String(event.raw['reason'] || '429');
+                        const message = `⟳ ${event.raw['cli'] || 'agent'} ${reason}${delay > 0 ? ` — retry in ${delay}s` : ' — retrying'}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.dim}${message}${c.reset}`);
+                        break;
+                    }
+                    case 'schedule_wakeup': {
+                        const message = `⏰ wakeup in ${event.raw['delaySeconds']}s — ${event.raw['reason'] || ''}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.dim}${message}${c.reset}`);
+                        break;
+                    }
+                    case 'schedule_wakeup_failed': {
+                        const message = `⚠ wakeup failed — ${event.raw['reason'] || ''}: ${event.raw['error'] || ''}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.yellow}${message}${c.reset}`);
+                        break;
+                    }
                     case 'goal_done':
                     case 'goal_continuation':
                     case 'goal_pause_detected':
-                        if (!isFullscreen(ctx)) console.log(`\n  ${c.dim}🎯 Goal: ${String(event.raw['type']).replace('goal_', '')}${event.raw['reason'] || event.raw['source'] ? ` — ${event.raw['reason'] || event.raw['source']}` : ''}${c.reset}`);
+                    case 'goal_pause_gate_pending':
+                    case 'goal_continuation_limit':
+                    case 'goal_continuation_failed':
+                    case 'goal_done_rejected':
+                    case 'goal_cancel': {
+                        const detail = event.raw['reason'] || event.raw['source'] || event.raw['error']
+                            || (event.raw['attempts'] !== undefined ? `${event.raw['attempts']} attempts` : '');
+                        const message = `🎯 Goal: ${String(event.raw['type']).replace('goal_', '')}${detail ? ` — ${detail}` : ''}`;
+                        if (isFullscreen(ctx)) appendFullscreenStatus(ctx, message);
+                        else console.log(`\n  ${c.dim}${message}${c.reset}`);
                         break;
+                    }
                     case 'memory_status':
                         if (event.raw['text'] && !isFullscreen(ctx)) console.log(`\n  ${c.dim}🧠 ${event.raw['text']}${c.reset}`);
                         break;

@@ -12,10 +12,14 @@ REPORT_FILE="$FIN_DIR/_status_audit.md"
 
 STRICT=false
 MOVE_PLANNING=false
+WRITE_REPORT=false
+FULL_SCAN=false
 for arg in "$@"; do
   case "$arg" in
     --strict)        STRICT=true ;;
     --move-planning) MOVE_PLANNING=true ;;
+    --write-report)  WRITE_REPORT=true ;;
+    --full-scan)     FULL_SCAN=true ;;
   esac
 done
 
@@ -114,9 +118,14 @@ if [[ ! -d "$FIN_DIR" ]]; then
   exit 1
 fi
 
-# File source: prefer the explicit allowlist in devlog/structure/status-scope.json
-# (current Issue #68/69 shape: { writable: [...] }) if available, else fall back to find.
-SCOPE_FILE="devlog/structure/status-scope.json"
+# File source: prefer the explicit allowlist in structure/status-scope.json
+# (Issue #68/69 shape: { writable: [...] }). The old devlog/structure/ path is
+# kept as a legacy fallback. A full _fin scan (4800+ files, slow) only runs
+# with --full-scan; otherwise a missing manifest fails fast.
+SCOPE_FILE="structure/status-scope.json"
+if [[ ! -f "$SCOPE_FILE" && -f "devlog/structure/status-scope.json" ]]; then
+  SCOPE_FILE="devlog/structure/status-scope.json"
+fi
 USED_SCOPE=false
 if [[ -f "$SCOPE_FILE" ]]; then
   while IFS= read -r -d '' file; do
@@ -144,6 +153,11 @@ if [[ -f "$SCOPE_FILE" ]]; then
 fi
 
 if ! $USED_SCOPE; then
+  if ! $FULL_SCAN; then
+    echo "ERROR: status-scope manifest not found at structure/status-scope.json." >&2
+    echo "       Run with --full-scan to scan all of devlog/_fin (slow)." >&2
+    exit 1
+  fi
   # Fallback: scan all markdown files under _fin/ while skipping archived reference bundles.
   while IFS= read -r file; do
     [[ -z "$file" ]] && continue
@@ -153,12 +167,13 @@ if ! $USED_SCOPE; then
     ! -path '*/front_repo/*' ! -path '*/rag/*' | LC_ALL=C sort)
 fi
 
-# ── Write report ────────────────────────────────────────────────────
-{
+# ── Report (stdout always; file only with --write-report) ───────────
+render_report() {
   printf '# Status Audit Report\n\n'
   printf '| class | source | raw_status | unchecked | file |\n'
   printf '|---|---|---|---|---|\n'
-  for row in "${ROWS[@]}"; do
+  # ${ROWS[@]+...} guards the empty-array unbound-variable trap on macOS bash 3.2
+  for row in ${ROWS[@]+"${ROWS[@]}"}; do
     c="$(printf '%s' "$row" | cut -d$'\t' -f1)"
     s="$(printf '%s' "$row" | cut -d$'\t' -f2)"
     r="$(printf '%s' "$row" | cut -d$'\t' -f3)"
@@ -169,13 +184,17 @@ fi
   printf '\n---\n'
   printf 'planning/active/blocked: %d | unknown: %d | non_canonical: %d\n' \
     "$COUNT_PLANNING" "$COUNT_UNKNOWN" "$COUNT_NON_CANONICAL"
-} > "$REPORT_FILE"
-
-cat "$REPORT_FILE"
+}
+if $WRITE_REPORT; then
+  render_report > "$REPORT_FILE"
+  cat "$REPORT_FILE"
+else
+  render_report
+fi
 
 # ── --move-planning (only planning/active/blocked) ──────────────────
 if $MOVE_PLANNING; then
-  for row in "${ROWS[@]}"; do
+  for row in ${ROWS[@]+"${ROWS[@]}"}; do
     c="$(printf '%s' "$row" | cut -d$'\t' -f1)"
     f="$(printf '%s' "$row" | cut -d$'\t' -f5)"
     case "$c" in

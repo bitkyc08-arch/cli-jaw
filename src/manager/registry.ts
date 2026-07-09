@@ -377,7 +377,82 @@ function normalizeUi(value: unknown): DashboardRegistryUi {
         diffBaseRef: readString(input["diffBaseRef"]) ?? fallback.diffBaseRef,
         diffIncludeUntracked: typeof input["diffIncludeUntracked"] === 'boolean' ? input["diffIncludeUntracked"] : fallback.diffIncludeUntracked,
         rightFolderRootPath: readString(input["rightFolderRootPath"]) ?? fallback.rightFolderRootPath,
+        ...normalizePanelLayoutUi(input),
     };
+}
+
+const PANEL_TAB_KINDS = new Set(['files', 'diff', 'browser', 'design']);
+const MAX_PANEL_TABS = 32;
+
+/**
+ * Preserve (with bounds) the desktop panel-layout fields written by the
+ * Electron manager frontend. Without this passthrough the whitelist above
+ * silently drops the right-sidebar tab model on every registry write, so tab
+ * state never survives a manager restart.
+ */
+function normalizePanelLayoutUi(input: Record<string, unknown>): Partial<DashboardRegistryUi> {
+    const out: Partial<DashboardRegistryUi> = {};
+    if (typeof input["panelLayoutVersion"] === 'number' && Number.isInteger(input["panelLayoutVersion"])) {
+        out.panelLayoutVersion = input["panelLayoutVersion"];
+    }
+    if (typeof input["rightPanelOpen"] === 'boolean') out.rightPanelOpen = input["rightPanelOpen"];
+    if (typeof input["rightPanelWidth"] === 'number' && Number.isFinite(input["rightPanelWidth"])) {
+        out.rightPanelWidth = Math.min(10000, Math.max(100, Math.round(input["rightPanelWidth"])));
+    }
+    if (Array.isArray(input["rightSidebarOpenTabs"])) {
+        const tabs: Array<Record<string, unknown>> = [];
+        for (const raw of input["rightSidebarOpenTabs"]) {
+            if (!isRecord(raw)) continue;
+            if (typeof raw["id"] !== 'string' || !PANEL_TAB_KINDS.has(String(raw["kind"]))) continue;
+            const tab: Record<string, unknown> = {
+                id: raw["id"].slice(0, 200),
+                kind: raw["kind"],
+                title: typeof raw["title"] === 'string' ? raw["title"].slice(0, 200) : '',
+            };
+            if (typeof raw["specificName"] === 'string') tab["specificName"] = raw["specificName"].slice(0, 200);
+            if (typeof raw["sourceLabel"] === 'string') tab["sourceLabel"] = raw["sourceLabel"].slice(0, 2000);
+            if (typeof raw["ordinal"] === 'number' && Number.isInteger(raw["ordinal"])) tab["ordinal"] = raw["ordinal"];
+            if (raw["pinned"] === true) tab["pinned"] = true;
+            for (const slot of ['files', 'browser', 'design'] as const) {
+                if (isRecord(raw[slot])) tab[slot] = raw[slot];
+            }
+            tabs.push(tab);
+            if (tabs.length >= MAX_PANEL_TABS) break;
+        }
+        out.rightSidebarOpenTabs = tabs;
+    }
+    if (typeof input["rightSidebarActiveTabId"] === 'string' || input["rightSidebarActiveTabId"] === null) {
+        out.rightSidebarActiveTabId = input["rightSidebarActiveTabId"];
+    }
+    if (isRecord(input["rightSidebarNextOrdinalByKind"])) {
+        const next: Record<string, number> = {};
+        for (const [key, value] of Object.entries(input["rightSidebarNextOrdinalByKind"])) {
+            if (PANEL_TAB_KINDS.has(key) && typeof value === 'number' && Number.isInteger(value) && value > 0) next[key] = value;
+        }
+        out.rightSidebarNextOrdinalByKind = next;
+    }
+    const layout = input["fileFolderLayout"];
+    if (isRecord(layout)
+        && (layout["mode"] === 'split' || layout["mode"] === 'folder-only' || layout["mode"] === 'file-only')
+        && typeof layout["splitRatio"] === 'number' && Number.isFinite(layout["splitRatio"])
+        && typeof layout["lastSplitRatio"] === 'number' && Number.isFinite(layout["lastSplitRatio"])) {
+        out.fileFolderLayout = {
+            mode: layout["mode"],
+            splitRatio: Math.max(0, Math.min(1, layout["splitRatio"])),
+            lastSplitRatio: Math.max(0, Math.min(1, layout["lastSplitRatio"])),
+        };
+    }
+    if (typeof input["bottomPanelOpen"] === 'boolean') out.bottomPanelOpen = input["bottomPanelOpen"];
+    if (typeof input["bottomPanelHeight"] === 'number' && Number.isFinite(input["bottomPanelHeight"])) {
+        out.bottomPanelHeight = Math.min(2000, Math.max(100, Math.round(input["bottomPanelHeight"])));
+    }
+    if (Array.isArray(input["bottomPanelTabs"])) {
+        out.bottomPanelTabs = input["bottomPanelTabs"].filter((tab): tab is string => typeof tab === 'string').slice(0, 8);
+    }
+    if (typeof input["bottomPanelActiveTab"] === 'string' || input["bottomPanelActiveTab"] === null) {
+        out.bottomPanelActiveTab = input["bottomPanelActiveTab"];
+    }
+    return out;
 }
 
 function normalizeInstance(value: unknown): DashboardRegistryInstance {

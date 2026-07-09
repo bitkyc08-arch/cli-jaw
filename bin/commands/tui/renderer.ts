@@ -67,6 +67,7 @@ export function rebuildFooter(ctx: TuiContext): void {
         state: stateStr,
         elapsed: elapsed && elapsed > 0 ? `${(elapsed / 1000).toFixed(1)}s` : undefined,
         bgtask: ctx.bgtaskCount,
+        bgtaskAttention: ctx.bgtaskAttention,
         gitBranch: ctx.isGit ? (ctx.gitBranch || 'agent') : undefined,
         cwd: projectDisplay || ctx.info?.workingDir,
         port: ctx.serverPort,

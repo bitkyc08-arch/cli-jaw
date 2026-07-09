@@ -8,7 +8,7 @@ export function getPreferredLocale(): string {
             const saved = localStorage.getItem(key);
             if (saved) return saved;
         }
-    } catch { }
+    } catch { } // best-effort: localStorage may be unavailable (private mode)
     return navigator.language || 'ko';
 }
 
@@ -19,7 +19,7 @@ export function syncStoredLocale(locale: string): void {
         for (const key of LOCALE_KEYS) {
             localStorage.setItem(key, value);
         }
-    } catch { }
+    } catch { } // best-effort: localStorage may be unavailable (private mode)
 }
 
 // ── Translation Map ──

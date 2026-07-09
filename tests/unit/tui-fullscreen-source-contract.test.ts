@@ -61,12 +61,15 @@ test('fullscreen mouse tracking is opt-in for copy-friendly native scrollback', 
     assert.doesNotMatch(source, /screen\.enter\(\);\s*screen\.enableMouse\(\);/);
 });
 
-test('scrollback commit gate stays allStable — mid-stream commits corrupt the frame', () => {
-    // Attempted 2026-07-02 and reverted: committing the settled prefix while
-    // the tail streams requires jawcode's overflow-floor/tombstone machinery
-    // (packages/tui/src/tui.ts), which this port's frame.ts does not have.
-    assert.match(source, /const allStable = stablePrefixIndex === ctx\.store\.transcript\.items\.length/);
-    assert.match(source, /hasTranscriptItems && !overlayOpen && allStable\s*\n?\s*\? viewport\.peekStableCommitRows/);
+test('scrollback commit lane is stable-prefix under the top-anchored geometry', () => {
+    // 260704 WP6b-v2: the old allStable gate (2026-07-02 revert) guarded the
+    // retired bottom-anchored insert geometry, whose region scroll shifted
+    // live rows under the diff. The top-anchored lane writes only into
+    // model-blank fill rows, so the settled prefix commits while the tail
+    // streams (jawcode b0a3290 commit-on-completion) — finished blocks ride
+    // up through the scrollback seam mid-turn.
+    assert.doesNotMatch(source, /const allStable =/);
+    assert.match(source, /hasTranscriptItems && !overlayOpen\s*\n?\s*\? viewport\.peekStableCommitRows\(transcriptHeight, stablePrefixIndex\)/);
 });
 
 test('preview frontier applies only when the commit queue accepted the rows', () => {

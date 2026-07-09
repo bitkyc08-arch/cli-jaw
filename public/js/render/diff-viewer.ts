@@ -1,10 +1,7 @@
+import { escapeHtml } from './html.js';
+
 const DIFF_PATTERN = /^---\s+\S+\n\+\+\+\s+\S+\n@@\s/m;
 const MAX_LINES = 800;
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
 
 export function isUnifiedDiff(text: string): boolean {
     return DIFF_PATTERN.test(text.trim());

@@ -3,6 +3,7 @@
  * Replaces the old ANSI hardcoding adapter with real Component.render() calls.
  */
 import { initJawcodeTui, isInitialized, getInteractive, renderMarkdownJawcode } from './jawcode-render.js';
+import { sharkIcon } from './icons.js';
 import { renderJawWelcome } from './welcome-jaw.js';
 
 export interface JawcodeAdapterState {
@@ -68,19 +69,20 @@ export function renderToolLine(_icon: string, label: string, detail: string, sta
     const foldedHint = detailLines.length > 1
         ? `: ${firstDetail} … +${detailLines.length - 1} lines`
         : firstDetail ? `: ${firstDetail}` : '';
+    // Header rows always use the folded hint (first line … +K lines) — raw
+    // multi-line detail in a header becomes one unbounded logical row (the
+    // frame flattens newlines to spaces). jawcode 036d1ab preview-cap parity;
+    // expanded blocks print their detail rows separately in renderToolBlock.
     if (!theme) {
         const stateIcon = state === 'done' ? '\x1b[32m✔\x1b[0m' : state === 'error' ? '\x1b[31m✖\x1b[0m' : '\x1b[36m⏳\x1b[0m';
-        const detailText = state === 'pending' || state === 'error'
-            ? (detail ? `: ${detail}` : '')
-            : foldedHint;
-        return `  ${stateIcon} ${label}${detailText}`;
+        return `  ${stateIcon} ${label}${foldedHint}`;
     }
     const stateIcon = state === 'done' ? theme.fg('success', '✔') : state === 'error' ? theme.fg('error', '✖') : theme.fg('accent', '⏳');
     const depth = opts?.depth || 0;
     const treePre = depth > 0 ? `${'  '.repeat(depth - 1)}${opts?.isLast ? '└─ ' : '├─ '}` : '';
     const elapsedStr = opts?.elapsed ? ` ${theme.fg('muted', opts.elapsed)}` : '';
-    const collapsedHint = state === 'done' && foldedHint ? theme.fg('muted', foldedHint) : '';
-    return `  ${treePre}${stateIcon} ${theme.bold(label)}${detail && state !== 'done' ? theme.fg('muted', `: ${detail}`) : collapsedHint}${elapsedStr}`;
+    const hint = foldedHint ? theme.fg('muted', foldedHint) : '';
+    return `  ${treePre}${stateIcon} ${theme.bold(label)}${hint}${elapsedStr}`;
 }
 
 /**
@@ -230,12 +232,14 @@ export function renderStatusBar(segments: {
     state: string;
     elapsed?: string | undefined;
     bgtask?: number | undefined;
+    /** jawcode attention latch — appends `!` to the bgtask badge. */
+    bgtaskAttention?: boolean | undefined;
     gitBranch?: string | undefined;
     cwd?: string | undefined;
     port?: number | undefined;
     orchPhase?: string | undefined;
 }): string {
-    const icon = (() => { try { const { sharkIcon } = require('./icons.js'); return sharkIcon(); } catch { return '🦈'; } })();
+    const icon = sharkIcon();
     const parts: string[] = [];
     const cols = process.stdout.columns || 80;
     // Segment-safe styles: the left segment renders on the cyan status
@@ -251,7 +255,9 @@ export function renderStatusBar(segments: {
     parts.push(style.strong(`${icon} ${segments.engine}`));
     parts.push(segments.state === 'idle' ? style.soft(segments.state) : style.strong(segments.state));
     if (segments.elapsed) parts.push(style.soft(segments.elapsed));
-    if (segments.bgtask && segments.bgtask > 0) parts.push(style.strong(`⏳${segments.bgtask}`));
+    // jawcode compact-badge attention suffix: `⏳2!` until the panel is opened.
+    if (segments.bgtask && segments.bgtask > 0) parts.push(style.strong(`⏳${segments.bgtask}${segments.bgtaskAttention ? '!' : ''}`));
+    else if (segments.bgtaskAttention) parts.push(style.strong('⏳!'));
     if (segments.orchPhase) parts.push(style.strong(`📋${segments.orchPhase.toUpperCase()}`));
     if (segments.gitBranch) parts.push(style.soft(`ⴲ ${segments.gitBranch}`));
     if (segments.cwd) parts.push(style.soft(`📁 ${segments.cwd}`));

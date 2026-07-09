@@ -1,19 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
-import { parseCommand, executeCommand } from '../../src/cli/commands.ts';
-import { buildGoalContinuation } from '../../src/goal/heartbeat.ts';
-import {
+process.env.CLI_JAW_HOME = mkdtempSync(join(tmpdir(), 'cli-jaw-goal-pause-loop-'));
+
+const { parseCommand, executeCommand } = await import('../../src/cli/commands.ts');
+const { buildGoalContinuation } = await import('../../src/goal/heartbeat.ts');
+const {
     getActiveGoal,
     getAgentPauseCount,
     incrementAgentPauseCount,
     resetGoalStore,
     setGoal,
     updateGoal,
-} from '../../src/goal/store.ts';
-import { describeGoalPauseGate } from '../../src/goal/pause-gate.ts';
-import { clearAllWorkers } from '../../src/orchestrator/worker-registry.ts';
-import { resetState } from '../../src/orchestrator/state-machine.ts';
+} = await import('../../src/goal/store.ts');
+const { describeGoalPauseGate } = await import('../../src/goal/pause-gate.ts');
+const { clearAllWorkers } = await import('../../src/orchestrator/worker-registry.ts');
+const { resetState } = await import('../../src/orchestrator/state-machine.ts');
 
 async function runGoalCommand(command: string) {
     const parsed = parseCommand(command);

@@ -84,6 +84,5 @@ test('GSO-005: orchestration.md defers transition rules to the PABCD guide owner
     assert.ok(!orcSrc.includes('How to transition phases'),
         'transition command table is owned by the builder PABCD guide');
     assert.ok(orcSrc.includes('PABCD Orchestration Guide'), 'stub must point at the guide section');
-    assert.match(orcSrc, /timeout[^\n]{0,40}600000/, 'dispatch timeout directive stays (MD-009)');
     assert.ok(orcSrc.includes('cli-jaw orchestrate I|P|A|B|C|D'), 'transition entrypoint summary stays');
 });

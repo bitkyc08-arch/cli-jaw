@@ -63,8 +63,8 @@ test('ORC-STATE-013: route clears single-use pendingAttestation after a successf
 
 test('ORC-STATE-005: state route success response also includes transition diagnostics', () => {
     assert.ok(
-        routeSrc.includes('res.json({ ok: true, state: getState(scope), current, target: t, force, userInitiated, ctxPresent: Boolean(currentCtx) })'),
-        'successful state transition should include current/target/force/userInitiated/ctxPresent diagnostics',
+        routeSrc.includes('res.json({ ok: true, state: getState(scope), current, target: t, force, userInitiated, ctxPresent: Boolean(currentCtx), ...(gate.advisory ? { advisory: gate.advisory } : {}) })'),
+        'successful state transition should include current/target/force/userInitiated/ctxPresent diagnostics and surface gate advisory when present',
     );
 });
 

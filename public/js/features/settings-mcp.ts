@@ -43,7 +43,7 @@ export async function loadMcpServers(): Promise<void> {
             return `<div style="padding:2px 0">• <b>${escapeHtml(n)}</b> <span style="opacity:.6">${detail}</span>${tagHtml}</div>`;
         }).join('');
         updateBundleLabel(countBundleCandidates(d.servers));
-    } catch { }
+    } catch { } // best-effort: MCP list render is non-critical UI
 }
 
 function updateBundleLabel(n: number): void {

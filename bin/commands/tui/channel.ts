@@ -11,6 +11,7 @@
 import WebSocket from 'ws';
 import { EventSource } from 'eventsource';
 import { getServerUrl, getWsUrl } from '../../../src/core/config.js';
+import { authHeaders, getCliAuthToken } from '../../../src/cli/api-auth.js';
 
 export type ChannelData = string | Buffer;
 
@@ -23,10 +24,22 @@ export interface ChatChannel {
     close(): void;
 }
 
-function connectSse(port: string | number): Promise<ChatChannel> {
+async function connectSse(port: string | number): Promise<ChatChannel> {
     const apiUrl = getServerUrl(port);
+    // Prime the token cache before the EventSource opens — connectChannel runs
+    // before any other API call at TUI startup, and authHeaders() reads the
+    // cache synchronously. Loopback needs no token; failures resolve to ''.
+    await getCliAuthToken(apiUrl);
     return new Promise((resolve, reject) => {
-        const es = new EventSource(`${apiUrl}/api/events`);
+        // Custom fetch injects the CLI auth token — EventSource cannot set
+        // headers natively, and GET /api/events sits behind requireAuth for
+        // non-loopback clients.
+        const es = new EventSource(`${apiUrl}/api/events`, {
+            fetch: (input, init) => fetch(input, {
+                ...init,
+                headers: { ...(init?.headers as Record<string, string> | undefined), ...authHeaders() },
+            }),
+        });
         const messageCbs: Array<(data: ChannelData) => void> = [];
         const closeCbs: Array<() => void> = [];
         let opened = false;
@@ -70,14 +83,17 @@ function connectSse(port: string | number): Promise<ChatChannel> {
             send(payload: string) {
                 let msg: { type?: string; text?: unknown };
                 try { msg = JSON.parse(payload) as { type?: string; text?: unknown }; } catch { return; }
+                // authHeaders() is evaluated per-send: the token cache is
+                // filled by getCliAuthToken during TUI startup (refreshInfo),
+                // so non-loopback connections stop silently 401ing here.
                 if (msg.type === 'send_message' && typeof msg.text === 'string' && msg.text.trim()) {
                     void fetch(`${apiUrl}/api/message`, {
                         method: 'POST',
-                        headers: { 'content-type': 'application/json' },
+                        headers: { 'content-type': 'application/json', ...authHeaders() },
                         body: JSON.stringify({ prompt: msg.text }),
                     }).catch(() => { /* server reports failures via agent_done events */ });
                 } else if (msg.type === 'stop') {
-                    void fetch(`${apiUrl}/api/stop`, { method: 'POST' }).catch(() => { });
+                    void fetch(`${apiUrl}/api/stop`, { method: 'POST', headers: authHeaders() }).catch(() => { });
                 }
             },
             on(event: 'message' | 'close', cb: ((data: ChannelData) => void) | (() => void)) {

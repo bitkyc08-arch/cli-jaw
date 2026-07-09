@@ -19,6 +19,7 @@ export function formatAgyPrintTimeout(ms: number): string {
 // Gated on options.fastMode, which is sourced from perCli.<cli>.fastMode in spawn.ts.
 const CLAUDE_FAST_MODE_SETTINGS = '{"fastMode":true}';
 const AI_E_PROVIDERS = ['claude', 'codex', 'grok', 'copilot', 'kiro'] as const;
+const CODEXCLAW_PLUGIN_DISABLE_CONFIG = 'plugins."codexclaw@personal".enabled=false';
 export type AiEProvider = typeof AI_E_PROVIDERS[number];
 
 type BuildArgOptions = {
@@ -223,6 +224,7 @@ export function buildArgs(cli: string, model: string, effort: string, prompt: st
             ] : [];
             return ['exec',
                 ...(model && model !== 'default' ? ['-m', model] : []),
+                '-c', CODEXCLAW_PLUGIN_DISABLE_CONFIG,
                 ...reasoningArgs,
                 ...sparkContextArgs,
                 '-c', `service_tier="${options.fastMode ? 'fast' : 'default'}"`,
@@ -346,6 +348,7 @@ export function buildResumeArgs(cli: string, model: string, effort: string, sess
             const spark = isCodexSparkModel(model);
             return ['exec', 'resume',
                 ...(model && model !== 'default' ? ['--model', model] : []),
+                '-c', CODEXCLAW_PLUGIN_DISABLE_CONFIG,
                 ...(spark ? [] : ['-c', 'model_reasoning_summary="detailed"']),
                 ...(spark ? [] : ['-c', 'hide_agent_reasoning=false']),
                 ...(spark ? [] : ['-c', 'show_raw_agent_reasoning=true']),

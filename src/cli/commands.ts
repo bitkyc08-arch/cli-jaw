@@ -9,7 +9,7 @@ import {
     thoughtHandler,
     clearHandler, purgeHandler, resetHandler, versionHandler, mcpHandler, memoryHandler,
     browserHandler, promptHandler, quitHandler, fileHandler, fallbackHandler,
-    steerHandler, flushHandler, forwardHandler, ideHandler, orchestrateHandler,
+    steerHandler, queueHandler, flushHandler, forwardHandler, ideHandler, orchestrateHandler,
     compactHandler,
     modelArgumentCompletions, cliArgumentCompletions, skillArgumentCompletions,
     employeeArgumentCompletions, browserArgumentCompletions, fallbackArgumentCompletions,
@@ -207,9 +207,7 @@ async function helpHandler(args: string[], ctx: CliCommandContext): Promise<Slas
         return { ok: true, type: 'info', text: lines.join('\n') };
     }
 
-    const available = sortCommands(COMMANDS.filter(c =>
-        c.interfaces.includes(iface) && !c.hidden
-    ));
+    const available = sortCommands(COMMANDS.filter(c => isVisibleOnSurface(c, iface)));
     const byCategory = new Map<string, SlashCommand[]>();
     for (const cmd of available) {
         const cat = cmd.category || 'tools';
@@ -232,6 +230,20 @@ async function helpHandler(args: string[], ctx: CliCommandContext): Promise<Slas
 }
 
 // ─── COMMANDS Registry ───────────────────────────────
+
+/**
+ * Completion/help visibility: an explicit per-command capability map (same
+ * precedence rule as command-contract/catalog.ts) wins over the interfaces
+ * array. Lets a server-executed command the TUI forwards (e.g. /steer) surface
+ * in CLI completion while executeCommand's `interfaces` gate keeps refusing
+ * local execution — the process boundary is the gate, not invisibility.
+ */
+function isVisibleOnSurface(cmd: SlashCommand, iface: string): boolean {
+    if (cmd.hidden) return false;
+    const cap = cmd.capability?.[iface];
+    if (cap !== undefined) return cap !== 'hidden' && cap !== 'blocked';
+    return cmd.interfaces.includes(iface);
+}
 
 export const COMMANDS: SlashCommand[] = [
     { name: 'help', aliases: ['h'], descKey: 'cmd.help.desc', tgDescKey: 'cmd.help.tg_desc', desc: 'Command list', args: '[command]', category: 'session', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: helpHandler },
@@ -267,7 +279,14 @@ export const COMMANDS: SlashCommand[] = [
     { name: 'prompt', descKey: 'cmd.prompt.desc', desc: 'View system prompt', category: 'tools', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: promptHandler },
     { name: 'quit', aliases: ['q', 'exit'], descKey: 'cmd.quit.desc', desc: 'Quit process', category: 'cli', interfaces: ['cli'], handler: quitHandler },
     { name: 'file', descKey: 'cmd.file.desc', desc: 'Attach file', args: '<path> [caption]', category: 'cli', interfaces: ['cli'], hidden: true, handler: fileHandler },
-    { name: 'steer', descKey: 'cmd.steer.desc', tgDescKey: 'cmd.steer.tg_desc', desc: 'Interrupt agent and redirect', args: '<prompt>', category: 'session', interfaces: ['web', 'telegram', 'discord'], handler: steerHandler },
+    // steer: interfaces excludes 'cli' on purpose (process boundary — STR-001);
+    // the TUI/simple-mode intercept forwards it to POST /api/message. The
+    // explicit capability map surfaces it in CLI completion/help anyway.
+    { name: 'steer', descKey: 'cmd.steer.desc', tgDescKey: 'cmd.steer.tg_desc', desc: 'Interrupt agent and redirect', args: '<prompt>', category: 'session', interfaces: ['web', 'telegram', 'discord'], capability: { cli: 'full', web: 'full', telegram: 'full', discord: 'full', cmdline: 'hidden' }, handler: steerHandler },
+    // queue: TUI-only surface — the real work happens in the TUI intercept
+    // (bin/commands/tui/queue-command.ts) against the existing
+    // /api/orchestrate/queue/:id routes; this handler is the usage fallback.
+    { name: 'queue', descKey: '', desc: 'List/manage queued messages', args: '[steer|drop <n>]', category: 'session', interfaces: ['cli'], capability: { cli: 'full', web: 'hidden', telegram: 'hidden', discord: 'hidden', cmdline: 'hidden' }, handler: queueHandler },
     { name: 'ide', descKey: 'cmd.ide.desc', desc: 'IDE diff view', args: '[pop|on|off]', category: 'tools', interfaces: ['cli'], handler: ideHandler },
     { name: 'orchestrate', aliases: ['pabcd'], descKey: '', desc: 'Enter PABCD orchestration', args: '[I|P|A|B|C|D|status|reset] [--attest <json>]', category: 'tools', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: orchestrateHandler },
     { name: 'project', aliases: ['proj'], descKey: '', desc: 'Manage project workspace directories', args: '[set|reset|clear|list] [paths...]', category: 'tools', interfaces: ['cli', 'web', 'telegram', 'discord'], handler: projectHandler },
@@ -416,7 +435,7 @@ export function getCompletionItems(partial: string, iface: string = 'cli', local
     type CompletionSource = { name: string; desc: string; args: string; category: string; workflow?: SlashCommand['workflow'] };
 
     const builtinItems: CompletionSource[] = COMMANDS
-        .filter(c => c.interfaces.includes(iface) && !c.hidden)
+        .filter(c => isVisibleOnSurface(c, iface))
         .map(cmd => ({
             name: cmd.name,
             desc: (cmd.descKey ? t(cmd.descKey, {}, locale) : cmd.desc) || '',

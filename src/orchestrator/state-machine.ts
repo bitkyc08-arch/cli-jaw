@@ -82,6 +82,9 @@ export interface OrcContext {
     unknown: string[];
     assessment?: DimensionAssessment;
     history?: Array<{ round: number; question: string; answer: string }>;
+    catalogMode?: 'active' | 'completed' | 'skipped';
+    catalogStage?: 1 | 2 | 3;
+    catalogSelections?: Record<string, unknown>;
   };
   // ─── Seed (P2-1) ────────────────────────────────
   seedSpec?: Seed;
@@ -278,6 +281,11 @@ export function getPrefix(state: OrcStateName, source: 'user' | 'worker' = 'user
     if (closerReady) {
       prefix += '\n[Perspective: SEED_CLOSER — drive toward closure, confirm all assumptions]';
     }
+    if (ctx?.interview?.catalogMode === 'active') {
+      const stage = ctx.interview.catalogStage || 1;
+      const stageLabels: Record<number, string> = { 1: 'DESIGN/UX', 2: 'DOMAIN', 3: 'DERIVED' };
+      prefix += `\n[Catalog Discovery Stage ${stage}: ${stageLabels[stage] || 'UNKNOWN'} — design-first barrier active]`;
+    }
     return prefix;
   }
   if (state === 'P') {
@@ -400,8 +408,10 @@ The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\`
 
 - **INTERVIEW-CLASSIFY-01**: before suggesting P, settle the loop archetype — does a
   verifier define *done* (spec-satisfaction), or only *better* (open-ended optimization:
-  scores, win rates, benchmarks)? Record it as a known fact. Optimization work must plan
-  instrumentation + an explore-and-select scheme in P — never a bare repair loop.
+  scores, win rates, benchmarks)? Record it as a known fact. Also settle the **unit
+  residence** (UNIT-RESIDENCE-01): which implementation unit (\`devlog/_plan/YYMMDD_slug/\`)
+  this work belongs to, existing or new. Optimization work must plan instrumentation +
+  an explore-and-select scheme in P — never a bare repair loop.
 - **INTERVIEW-TEACH-01**: teach the decision space, don't only narrow it — a user cannot
   choose among options they have never seen. Present researched options with a
   per-option trade-off at every load-bearing altitude (stack, architecture,
@@ -410,12 +420,26 @@ The user can exit anytime: \`orchestrate reset\` (→ IDLE) or \`orchestrate P\`
   spike is cheap, offer \`BOTH (parallel spike, select by evidence)\` — a BOTH answer
   becomes an explore-and-select work-phase with the comparison verifier in the loop-spec.
 
+## Catalog Discovery Sub-Mode (INTERVIEW-CATALOG-01)
+
+When the user names a vague domain but no features ("사주 앱 만들고 싶어", "앱 만들고 싶어"),
+enter catalog_discovery. Load the option ontology from \`skills_ref/dev-pabcd/references/catalog-discovery.yaml\`.
+
+**Hard barrier — design/UX LEADS (CATALOG-DESIGN-FIRST-01).** Iterate \`axis_order\` ascending by \`stage\`. Do NOT present a stage until every \`required\` entry of all earlier stages is answered:
+- Stage 1 (design): all 6 dials (mood/lightness/density/shape/typography/motion) via Product-Personality-Selection. Present \`question_options\` with trade-offs, then ask.
+- Stage 2 (domain): app type selection.
+- Stage 3 (derived): surface via \`derived_from\` + \`auto_activate_rules\` keyword scan on the user's initial request. Never dump a flat list.
+
+Configurator: compile selections + resolved \`implies[]\` into PRD sections / MVP cut by \`cost_class\` / risk register (every \`risk_class: high\`) / PABCD plan seed.
+
+Entry heuristic: concrete feature/goal → standard Clarification; vague domain → Catalog Discovery.
+
 ## Loop / Multi-Pass Tasks
 
 If the user's request contains "loop" / "루프" (or clearly describes work too large for one PABCD cycle), treat it as a MULTI-PASS task:
 - Assume PABCD will run several full cycles — one per work-phase.
-- An Interview output may be a devlog scaffold: the work-phase decomposition (slice map) and per-phase stub docs using decade numbering (10_phase1, 20_phase2, ...), so the structure is agreed before P.
-- A loop may open with a design-only PABCD pass (Phase 0): a code-free whole-system design/documentation cycle that runs before the first implementation work-phase. Note this possibility to the user when the task warrants it.`,
+- An Interview output settles the unit residence (UNIT-RESIDENCE-01) and produces the work-phase decomposition (slice map). P then WRITES all per-phase decade docs to diff-level (DIFFLEVEL-ROADMAP-01) — scaffolding empty stubs is not pre-planning.
+- A loop may open with a design-only PABCD pass (Phase 0): a code-free whole-system design/documentation cycle that produces the difflevel roadmap before the first implementation work-phase. Note this possibility to the user when the task warrants it.`,
 
   P: `[PABCD — P: PLANNING]
 
@@ -428,8 +452,8 @@ Steps:
 2. Write the complete plan internally:
    - Diff-level precision: exact file paths (NEW/MODIFY/DELETE), before/after diffs for MODIFY, complete content for NEW.
    - Loop-spec header (C2+): Loop archetype (from Interview) · Trigger · Goal · Non-goals · Verifier (the command/gate and what it measures, not only pass/fail) · Stop condition · Memory artifact · Expected terminal states (DONE|NOOP|BLOCKED|NEEDS_HUMAN|BUDGET_EXHAUSTED) · Escalation. For open-ended optimization add the divergence plan (descriptor axes, candidate/archetype assignments, deterministic selection rule, telemetry schema); if the verifier only reports win/lose or a bare score, instrumentation is B's first work item — before any candidate.
-   - Save to a devlog plan file using Jawdev decade numbering (see dev-pabcd skill).
-   - For a loop / multi-pass task: pre-plan the FULL work-phase slice map up front and scaffold per-phase stub docs (10_phase1, 20_phase2, ...). The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
+   - Save to a devlog plan file using decade numbering (see dev-pabcd skill, LEXICO-SPLIT-01).
+   - For a loop / multi-pass task: pre-plan the FULL work-phase slice map and WRITE all per-phase decade docs (10_phase1, 20_phase2, ...) to diff-level up front (DIFFLEVEL-ROADMAP-01) — scaffolding empty stubs is not pre-planning. The first pass MAY be a design-only PABCD pass (Phase 0) whose build output is documentation/architecture, not code.
 3. Present to the user in chat:
    - Part 1: Easy, non-developer explanation of what will change and why (≤5 sentences).
    - A Mermaid/SVG diagram showing the file change map.
@@ -460,9 +484,11 @@ FIRST: The approved plan is auto-injected at the top of every \`cli-jaw dispatch
 task body under \`## Approved Plan\`. Do NOT tell the worker to read any file —
 just write the audit task itself.
 
-Run this command now:
-\`\`\`bash
-cli-jaw dispatch --agent "Backend" --task "Project root: <absolute path to the current working repository from pwd -P>
+Write the audit brief to a file with your file tool (no shell quoting), using a
+FRESH unique path per dispatch — e.g. \`/tmp/jaw-audit-<epoch>.md\`; never reuse
+a brief path (a re-dispatch could clobber an in-flight read):
+\`\`\`text
+Project root: <absolute path to the current working repository from pwd -P>
 
 ⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are an auditor, not a builder.
 
@@ -476,10 +502,18 @@ Audit the PLAN (not code). Verify:
 2) Function signatures match actual code.
 3) No copy-paste integration risks.
 
-Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files."
+Report PASS or FAIL with itemized issues. ⛔ REPEAT: Do NOT touch any files.
 \`\`\`
 
-The result is returned via stdout. Review it:
+Then dispatch it (async — returns a runId immediately; the audit result
+re-enters your context in full as [PLAN AUDIT — Employee Results], up to ~8k
+chars):
+\`\`\`bash
+cli-jaw dispatch --agent "Backend" --task-file /tmp/jaw-audit-<epoch>.md --async
+\`\`\`
+
+When the result arrives, judge it directly; only if it is marked "clipped",
+read the remainder first (\`cli-jaw worker read <runId> --tail 120\`):
 - If FAIL: fix the plan and re-dispatch.
 - If PASS: report results to the user.
 
@@ -504,10 +538,12 @@ Steps:
 1. Read the approved plan: the orchestrator injects it into Boss prompts and dispatch tasks under \`## Approved Plan\`.
    Before any numeric, path, resource-id, date, limit, or destructive action, compare your intended value against the Approved Plan.
 2. Implement ALL changes yourself — create/modify/delete files as specified in the plan.
-3. After YOU finish implementing, dispatch a verification employee:
+3. After YOU finish implementing, write the verification brief to a file with
+   your file tool (no shell quoting), using a FRESH unique path per dispatch —
+   e.g. \`/tmp/jaw-verify-<epoch>.md\` (never reuse a brief path):
 
-\`\`\`bash
-cli-jaw dispatch --agent "Backend" --task "Project root: <absolute path to the current working repository from pwd -P>
+\`\`\`text
+Project root: <absolute path to the current working repository from pwd -P>
 
 ⛔ READ-ONLY: Do NOT create, modify, or delete ANY files. You are a verifier, not a builder.
 
@@ -522,10 +558,18 @@ Verify:
 3) Imports resolve.
 4) No integration conflicts.
 
-Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only."
+Report DONE or NEEDS_FIX. ⛔ Do NOT touch any files — READ and REPORT only.
 \`\`\`
 
-Review the stdout result:
+Then dispatch it (async — returns a runId immediately; the verification result
+re-enters your context in full as [IMPLEMENTATION REVIEW — Employee Results],
+up to ~8k chars):
+\`\`\`bash
+cli-jaw dispatch --agent "Backend" --task-file /tmp/jaw-verify-<epoch>.md --async
+\`\`\`
+
+When the result arrives, judge it directly; only if it is marked "clipped",
+read the remainder first (\`cli-jaw worker read <runId> --tail 120\`):
 - NEEDS_FIX: YOU fix the issues yourself, then re-dispatch verification.
 - DONE: Report results to the user.
 
@@ -544,6 +588,21 @@ You are now in Check mode. Perform verification in order:
 2. Run tests if they exist.
 3. Verify all files saved and consistent.
 If Stage 1 fails → report and suggest \`cli-jaw orchestrate B\` (code fix).
+
+**Stage 1.5: Render Grounding (when applicable)**
+If any changed file is a render artifact (HTML, SVG, layout CSS, canvas/chart JS,
+JSX/TSX layout component): RUN the artifact in its execution environment (headless
+screenshot for web, SVG→PNG, execute script), OBSERVE the output (read it back —
+a produced-but-unread screenshot is not observation), FIX and re-observe if broken.
+One clean observation is enough. Static parse passing does not satisfy this — well-formed
+is not correct. Defaults: 1280×720 viewport; drive stateful artifacts until first
+interactive state change. C2-C3: record observation in the attestation \`did\`;
+C4: also persist the screenshot to the devlog.
+
+**Stage 1.75: SoT Sync (DEFAULT, SOT-SYNC-01)**
+If \`structure/\`, \`architecture.md\`, or INDEX/context docs exist in the repo, patch
+them to reflect the changes made in B — SoT and code must never diverge silently.
+If the repo has no SoT doc, note the recommendation to create one in the D summary.
 
 **Stage 2: Scrutiny (based on change scope)**
 
@@ -630,6 +689,8 @@ const VALID_TRANSITIONS: Record<string, string[]> = {
 export interface TransitionResult {
   ok: boolean;
   reason?: string;
+  /** Soft-warning advisory (C-RENDER-GROUNDING-01): present only when ok===true. */
+  advisory?: string;
 }
 
 /**
@@ -708,5 +769,26 @@ export function parseWorkerVerdict(text: string): WorkerVerdict | null {
   if (/\bDONE\b/.test(text)) return 'done';
   if (/\bPASS\b/.test(text)) return 'pass';
   if (/\bFAIL\b/.test(text)) return 'fail';
+  return null;
+}
+
+// Conservative aggregation of batch worker verdicts (260703 dispatch affordance):
+// A-state consumes pass/fail (any fail dominates); B-state consumes done/needs_fix
+// (any needs_fix dominates). Cross-state verdicts and verdict-less batches are a
+// no-op — the gate stays 'pending' and the boss re-dispatches or decides.
+export function aggregateBatchVerdicts(
+  state: OrcStateName,
+  verdicts: ReadonlyArray<WorkerVerdict | null>,
+): WorkerVerdict | null {
+  if (state === 'A') {
+    if (verdicts.includes('fail')) return 'fail';
+    if (verdicts.includes('pass')) return 'pass';
+    return null;
+  }
+  if (state === 'B') {
+    if (verdicts.includes('needs_fix')) return 'needs_fix';
+    if (verdicts.includes('done')) return 'done';
+    return null;
+  }
   return null;
 }

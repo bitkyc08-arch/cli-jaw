@@ -35,10 +35,10 @@ function positionShark(roadmap: HTMLElement, shark: HTMLElement, phase: string):
         const dotRect = dot.getBoundingClientRect();
         const nextRect = nextDot.getBoundingClientRect();
         const mid = (dotRect.right + nextRect.left) / 2;
-        shark.style.left = (mid - barRect.left - sharkW / 2) + 'px';
+        shark.style.transform = `translateX(${mid - barRect.left - sharkW / 2}px)`;
     } else {
         const dotRect = dot.getBoundingClientRect();
-        shark.style.left = (dotRect.left - barRect.left + dotRect.width / 2 - sharkW / 2) + 'px';
+        shark.style.transform = `translateX(${dotRect.left - barRect.left + dotRect.width / 2 - sharkW / 2}px)`;
     }
 }
 
@@ -83,6 +83,7 @@ interface WsMessage {
     title?: string;
     isEmployee?: boolean;
     fromQueue?: boolean;
+    external?: boolean;
     reason?: HeartbeatRuntimeState['reason'];
     policy?: HeartbeatRuntimeState['policy'];
     jobId?: string;
@@ -904,6 +905,14 @@ function connectLegacyWebSocket(): void {
 }
 
 function wireEventChannel(): void {
+    subscribe('widget', 'widget_updated', (data) => {
+        const chatId = data['chatId'];
+        const widgetId = data['widgetId'];
+        if (typeof chatId !== 'string' || typeof widgetId !== 'string') return;
+        import('./diagram/iframe-renderer.js')
+            .then(m => m.refreshFileWidget(chatId, widgetId))
+            .catch(err => console.warn('[widget] refresh failed:', (err as Error).message));
+    });
     subscribe('*', null, (data) => {
         const msg = { ...data, type: data['event'] } as unknown as WsMessage;
         handleServerEvent(msg);
@@ -914,28 +923,12 @@ function wireEventChannel(): void {
 }
 
 function handleServerEvent(msg: WsMessage): void {
-    if (msg.type === 'agent_status') {
-        if (!msg.running && isRecentSteer()) return;
-        if (msg.running && isRecentSteer()) clearSteer();
-        if (msg.running !== undefined) {
-            setStatus(msg.running ? 'running' : 'idle');
-        } else {
-            setStatus(msg.status || 'idle');
-        }
-        // Track per-agent phase for badge rendering
-        if (msg.agentId && msg.phase) {
-            agentPhaseState[msg.agentId] = { phase: msg.phase, phaseLabel: msg.phaseLabel || '' };
-            import('./features/employees.js').then(m => m.loadEmployees());
-        }
-    } else if (msg.type === 'bgtask_update') {
-        import('./features/bgtask-badge.js').then(m => m.applyBgtaskUpdate(msg)).catch(() => {});
-    } else if (msg.type === 'queue_update') {
-        updateQueueBadge(msg.pending || 0);
-        if (Array.isArray(msg.queued)) {
-            renderPendingQueue(msg.queued);
-        }
-        syncOrchestrateSnapshot('queue_update').catch(() => { /* snapshot not critical — UI recovers on next event */ });
-    } else if (msg.type === 'agent_tool') {
+    // Hot-path first (devlog 260705_frontend_perf M5): agent_tool/agent_output
+    // arrive many times per second during streaming — they head the chain so
+    // each event pays 1-2 string compares instead of walking cold branches.
+    // Textual order agent_tool < agent_output < agent_retry is a test contract
+    // (web-sse-replay-idempotency slices between those markers).
+    if (msg.type === 'agent_tool') {
         if (isRecentSteer()) return;
         const toolRunId = typeof msg.traceRunId === 'string' && msg.traceRunId ? msg.traceRunId : null;
         const toolSeq = positiveSeq(msg.traceSeq);
@@ -999,6 +992,27 @@ function handleServerEvent(msg: WsMessage): void {
             liveAppliedTextLen = msg.textLen;
         }
         appendAgentText(outputText);
+    } else if (msg.type === 'agent_status') {
+        if (!msg.running && isRecentSteer()) return;
+        if (msg.running && isRecentSteer()) clearSteer();
+        if (msg.running !== undefined) {
+            setStatus(msg.running ? 'running' : 'idle');
+        } else {
+            setStatus(msg.status || 'idle');
+        }
+        // Track per-agent phase for badge rendering
+        if (msg.agentId && msg.phase) {
+            agentPhaseState[msg.agentId] = { phase: msg.phase, phaseLabel: msg.phaseLabel || '' };
+            import('./features/employees.js').then(m => m.loadEmployees());
+        }
+    } else if (msg.type === 'bgtask_update') {
+        import('./features/bgtask-badge.js').then(m => m.applyBgtaskUpdate(msg)).catch(() => {});
+    } else if (msg.type === 'queue_update') {
+        updateQueueBadge(msg.pending || 0);
+        if (Array.isArray(msg.queued)) {
+            renderPendingQueue(msg.queued);
+        }
+        syncOrchestrateSnapshot('queue_update').catch(() => { /* snapshot not critical — UI recovers on next event */ });
     } else if (msg.type === 'agent_retry') {
         const retryDelay = Number(msg.delay ?? 0);
         const retryReasonValue = (msg as WsMessage & { reason?: unknown }).reason;
@@ -1074,7 +1088,7 @@ function handleServerEvent(msg: WsMessage): void {
         markRunFinalized(null); // killed run — drop its replayed stream too
         finalizeAgent('');
         setStatus('steering');
-    } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.source === 'bgtask' || msg.fromQueue === true)) {
+    } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.source === 'bgtask' || msg.source === 'cli' || msg.source === 'goal' || msg.external === true || msg.fromQueue === true)) {
         const newMessageRole = msg.role === 'assistant' ? 'agent' : (msg.role || 'user');
         const newMessageContent = msg.content || '';
         const newMessageCli = msg.cli;

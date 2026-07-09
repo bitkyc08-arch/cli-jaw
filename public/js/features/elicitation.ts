@@ -7,6 +7,7 @@ import {
     type NormalizedQuestion,
     type NormalizedSpec,
 } from './elicitation-state.js';
+import { escapeHtml } from '../render/html.js';
 
 type ElicitationKind = 'elicitation' | 'choice-buttons';
 
@@ -34,11 +35,6 @@ let blockSequence = 0;
 
 function escapeAttr(value: string): string {
     return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-function escapeHtml(value: string): string {
-    return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 export function renderElicitationPlaceholder(raw: string, kind: ElicitationKind): string {

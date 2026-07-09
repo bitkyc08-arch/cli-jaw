@@ -461,7 +461,7 @@ function runClaudeNativeInstall(_cmd: string): void {
             stdio: 'pipe', timeout: 180000, env,
         });
     } finally {
-        try { fs.unlinkSync(tmpScript); } catch {}
+        try { fs.unlinkSync(tmpScript); } catch {} // best-effort: temp script cleanup
     }
 }
 
@@ -484,7 +484,7 @@ function runGrokNativeInstall(): void {
             env,
         });
     } finally {
-        try { fs.unlinkSync(tmpScript); } catch {}
+        try { fs.unlinkSync(tmpScript); } catch {} // best-effort: temp script cleanup
     }
 }
 
@@ -854,7 +854,7 @@ function runSkillDepInstall(install: (typeof SKILL_DEPS)[number]['install'], env
             execFileSync(install.shell, [tmpScript], { stdio: 'pipe', timeout: 120000, env });
         }
     } finally {
-        try { fs.unlinkSync(tmpScript); } catch {}
+        try { fs.unlinkSync(tmpScript); } catch {} // best-effort: temp script cleanup
     }
 }
 

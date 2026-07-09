@@ -320,6 +320,7 @@ test('AG-009b: codex forces model_reasoning_summary="detailed" so UI receives re
     const args = buildArgs('codex', 'default', '', 'x', '', 'auto');
     const cIdxs = args.reduce<number[]>((acc, v, i) => (v === '-c' ? [...acc, i] : acc), []);
     const cVals = cIdxs.map(i => args[i + 1]);
+    assert.ok(cVals.includes('plugins."codexclaw@personal".enabled=false'), 'codex exec must disable codexclaw only for this invocation');
     assert.ok(cVals.includes('model_reasoning_summary="detailed"'), 'must inject reasoning summary override');
     assert.ok(cVals.includes('hide_agent_reasoning=false'), 'must keep reasoning visible');
     assert.ok(cVals.includes('show_raw_agent_reasoning=true'), 'must request raw reasoning when available');
@@ -329,6 +330,7 @@ test('AG-009c: codex resume also injects reasoning summary override', () => {
     const args = buildResumeArgs('codex', 'default', '', 'sess-xyz', 'continue', 'auto');
     const cIdxs = args.reduce<number[]>((acc, v, i) => (v === '-c' ? [...acc, i] : acc), []);
     const cVals = cIdxs.map(i => args[i + 1]);
+    assert.ok(cVals.includes('plugins."codexclaw@personal".enabled=false'), 'codex exec resume must disable codexclaw only for this invocation');
     assert.ok(cVals.includes('model_reasoning_summary="detailed"'), 'resume must also force detailed');
     assert.ok(cVals.includes('show_raw_agent_reasoning=true'), 'resume must also request raw reasoning');
 });

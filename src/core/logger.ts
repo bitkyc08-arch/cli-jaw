@@ -9,8 +9,16 @@ export type LogEntry = { ts: string; level: LogLevel; text: string };
 const LOG_RING_MAX = 200;
 const logRing: LogEntry[] = [];
 
+function safeStringify(value: unknown): string {
+    try {
+        return JSON.stringify(value) ?? String(value);
+    } catch {
+        return String(value); // best-effort: circular/BigInt values degrade to toString
+    }
+}
+
 function pushRing(level: LogLevel, args: unknown[]): void {
-    const text = args.map(a => typeof a === 'string' ? a : JSON.stringify(a)).join(' ');
+    const text = args.map(a => typeof a === 'string' ? a : safeStringify(a)).join(' ');
     logRing.push({ ts: new Date().toISOString(), level, text });
     while (logRing.length > LOG_RING_MAX) logRing.shift();
 }

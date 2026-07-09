@@ -10,7 +10,7 @@ import { assertSendFilePath } from '../../security/path-guards.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
 import { settings } from '../../core/config.js';
 
-const OUTBOUND_TYPES = new Set(['text', 'voice', 'photo', 'document']);
+const OUTBOUND_TYPES = new Set(['text', 'voice', 'photo', 'document', 'keyboard']);
 
 /** GPT Pro fix: hub routes (config CRUD + outbound send) are loopback-only, defense-in-depth
  *  beyond the dashboard's 127.0.0.1 bind. Trust the socket peer, never X-Forwarded-For. */
@@ -96,7 +96,7 @@ export function createDashboardTelegramHubRouter(): Router {
         const type = String(b.type || 'text');
         if (!OUTBOUND_TYPES.has(type)) return sendErr(res, 400, 'invalid type');
         let filePath: string | undefined;
-        if (type !== 'text') {
+        if (type !== 'text' && type !== 'keyboard') {
             if (typeof b.filePath !== 'string' || !b.filePath.trim()) return sendErr(res, 400, 'filePath required for file types');
             try {
                 filePath = assertSendFilePath(b.filePath, settings["workingDir"] || undefined, settings["projectDirs"] || null);
@@ -106,7 +106,8 @@ export function createDashboardTelegramHubRouter(): Router {
         }
         const text = typeof b.text === 'string' ? b.text : undefined;
         const caption = typeof b.caption === 'string' ? b.caption.slice(0, 1024) : undefined;
-        const r = await sendToTopic(chatId, threadId, stripUndefined({ type, text, filePath, caption }));
+        const reply_markup = type === 'keyboard' && b.reply_markup && typeof b.reply_markup === 'object' ? b.reply_markup : undefined;
+        const r = await sendToTopic(chatId, threadId, stripUndefined({ type, text, filePath, caption, reply_markup }));
         res.status(r.ok ? 200 : 502).json(stripUndefined({ ok: r.ok, error: r.error }));
     });
 

@@ -10,6 +10,9 @@ import { getHubConfig, resolveRoute, upsertRoute, removeRoute } from './routing-
 import type { TelegramHubConfig } from './types.js';
 import { DASHBOARD_DEFAULT_PORT, MANAGED_INSTANCE_PORT_FROM, MANAGED_INSTANCE_PORT_TO } from '../constants.js';
 import { stripUndefined } from '../../core/strip-undefined.js';
+import { getTelegramMenuCommands } from '../../command-contract/policy.js';
+import { downloadTelegramFile, buildMediaPrompt, TELEGRAM_DOWNLOAD_LIMITS } from '../../../lib/upload.js';
+import { saveUpload } from '../../agent/spawn.js';
 
 let hubBot: Bot | null = null;
 let hubToken: string | null = null;
@@ -141,7 +144,7 @@ export function buildLocalFirstSettingsPatch(chatId: string, currentSettings: un
             mentionOnly: true,
         },
         telegramHub: {
-            mode: 'standalone',
+            mode: 'hub-member',
             hubCallbackUrl,
         },
     };
@@ -198,6 +201,18 @@ export async function reconcileHubBotWithConfig(): Promise<void> {
         return;
     }
     if (!hubBot || hubToken !== cfg.token || hubChatId !== cfg.chatId) await startHubBot();
+}
+
+/** Quick health check: returns true if the instance responds to /api/dashboard/health. */
+export async function isInstanceAlive(port: number): Promise<boolean> {
+    try {
+        const res = await fetch(`http://127.0.0.1:${port}/api/dashboard/health`, {
+            signal: AbortSignal.timeout(2_000),
+        });
+        return res.ok;
+    } catch {
+        return false;
+    }
 }
 
 async function forwardToInstance(port: number, prompt: string, chatId: string, threadId: string, peerKind: 'group' | 'direct', overrides?: { model?: string; systemPrompt?: string }): Promise<{ syncText?: string }> {
@@ -261,6 +276,25 @@ export async function handleHubCommand(
     }
     if (name === 'hubhelp') return '/setthread <port> · /setthread off · /threads';
     return '알 수 없는 허브 명령입니다.';
+}
+
+/** Register slash commands on the hub bot: hub-specific + instance commands. */
+function syncHubCommands(bot: Bot): void {
+    const hubCmds = [
+        { command: "setthread", description: "Bind this topic to an instance port" },
+        { command: "threads", description: "List all topic-instance bindings" },
+        { command: "hubhelp", description: "Show hub commands" },
+    ];
+    const instanceCmds = getTelegramMenuCommands()
+        .map((c: { name: string; desc?: string }) => ({
+            command: c.name,
+            description: (c.desc || "Run command").slice(0, 256),
+        }));
+    const cmds = [...hubCmds, ...instanceCmds];
+    Promise.all([
+        bot.api.setMyCommands(cmds),
+        bot.api.setMyCommands(cmds, { language_code: "ko" }),
+    ]).catch(e => console.warn("[tg:hub:commands] setMyCommands failed:", (e as Error).message));
 }
 
 export function createHubBot(token: string): Bot {
@@ -342,6 +376,96 @@ export function createHubBot(token: string): Bot {
         } // slash sync result; prompt result arrives via /outbound
     });
 
+
+    // Elicitation callback relay: forward elic:* button taps to the mapped instance.
+    bot.callbackQuery(/^elic:/, async (ctx) => {
+        const chatId = ctx.chat?.id ? String(ctx.chat.id) : '';
+        const threadId = threadKey(ctx.callbackQuery?.message?.message_thread_id);
+        const cfg = getHubConfig();
+        if (!chatId || chatId !== cfg.chatId) {
+            await ctx.answerCallbackQuery().catch(() => {});
+            return;
+        }
+        const route = resolveRoute(chatId, threadId);
+        if (!route) {
+            await ctx.answerCallbackQuery({ text: 'Topic not connected' }).catch(() => {});
+            return;
+        }
+        // Forward callback data to the instance for elicitation processing.
+        const data = ctx.callbackQuery.data ?? '';
+        try {
+            const res = await fetch(`http://127.0.0.1:${route.port}/api/elicitation/callback`, {
+                method: 'POST',
+                headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({
+                    chatId,
+                    callbackData: data,
+                    target: { channel: 'telegram', targetKind: 'channel', peerKind: 'group', targetId: chatId, threadId },
+                }),
+                signal: AbortSignal.timeout(FORWARD_TIMEOUT_MS),
+            });
+            const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+            const ack = typeof j['ack'] === 'string' ? j['ack'] : (j['ok'] ? 'OK' : '');
+            await ctx.answerCallbackQuery(ack ? { text: ack } : undefined).catch(() => {});
+        } catch {
+            await ctx.answerCallbackQuery({ text: 'Instance error' }).catch(() => {});
+        }
+        // Clear the keyboard after tap so the choice reads as taken.
+        await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    });
+
+
+    // Media inbound: download file, save locally, forward as text prompt to instance.
+    async function handleHubMedia(
+        ctx: import("grammy").Context,
+        fileId: string,
+        kind: "photo" | "document" | "voice",
+        fileName: string,
+        fileSize: number | undefined,
+    ): Promise<void> {
+        const chatId = ctx.chat?.id ? String(ctx.chat.id) : '';
+        const threadId = threadKey(ctx.message?.message_thread_id);
+        const caption = String((ctx.message as unknown as Record<string, unknown>)?.["caption"] || '');
+        const cfg = getHubConfig();
+        if (!chatId || chatId !== cfg.chatId) return;
+        const route = resolveRoute(chatId, threadId);
+        if (!route) {
+            await ctx.reply('This topic is not connected. Use /setthread <port>.').catch(() => {});
+            return;
+        }
+        startTopicTyping(chatId, threadId);
+        try {
+            const dl = await downloadTelegramFile(fileId, cfg.token, stripUndefined({
+                kind, maxBytes: TELEGRAM_DOWNLOAD_LIMITS[kind] || TELEGRAM_DOWNLOAD_LIMITS.document,
+                fileSize,
+            })) as Record<string, unknown>;
+            const filePath = saveUpload(dl["buffer"] as Buffer, fileName || `${kind}${dl["ext"] || ''}`);
+            const prompt = buildMediaPrompt(filePath, caption);
+            const peerKind = ctx.chat?.type === 'private' ? 'direct' : 'group';
+            const { syncText } = await forwardToInstance(route.port, prompt, chatId, threadId, peerKind as 'group' | 'direct');
+            stopTopicTyping(chatId, threadId);
+            if (syncText) await ctx.reply(syncText).catch(() => {});
+        } catch (e) {
+            stopTopicTyping(chatId, threadId);
+            await ctx.reply(`Media processing failed: ${(e as Error).message}`).catch(() => {});
+        }
+    }
+
+    bot.on('message:photo', async (ctx) => {
+        const photos = ctx.message.photo;
+        const largest = photos[photos.length - 1]!;
+        await handleHubMedia(ctx, largest.file_id, 'photo', `photo${Date.now()}.jpg`, largest.file_size);
+    });
+
+    bot.on('message:document', async (ctx) => {
+        const doc = ctx.message.document;
+        await handleHubMedia(ctx, doc.file_id, 'document', doc.file_name || 'document', doc.file_size);
+    });
+
+    bot.on('message:voice', async (ctx) => {
+        const voice = ctx.message.voice;
+        await handleHubMedia(ctx, voice.file_id, 'voice', `voice${Date.now()}.ogg`, voice.file_size);
+    });
     return bot;
 }
 
@@ -349,18 +473,22 @@ export function createHubBot(token: string): Bot {
 export async function sendToTopic(
     chatId: string,
     threadId: string,
-    payload: { type: string; text?: string; filePath?: string; caption?: string },
+    payload: { type: string; text?: string; filePath?: string; caption?: string; reply_markup?: unknown },
 ): Promise<{ ok: boolean; error?: string }> {
     stopTopicTyping(chatId, threadId);
     if (!hubBot) return { ok: false, error: 'hub bot not running' };
     const message_thread_id = Number(threadId) > 1 ? Number(threadId) : undefined;
     if (payload.type === 'text') {
-        const { markdownToTelegramHtml, chunkTelegramMessage } = await import('../../telegram/forwarder.js');
-        const { sendRichOrHtml } = await import('../../telegram/rich-message.js');   // P4: rich when available, else HTML
-        for (const chunk of chunkTelegramMessage(markdownToTelegramHtml(payload.text || ''))) {
-            await sendRichOrHtml(hubBot, chatId, chunk, stripUndefined({ message_thread_id }))
-                .catch(() => hubBot!.api.sendMessage(chatId, chunk.replace(/<[^>]+>/g, ''), stripUndefined({ message_thread_id })));
-        }
+        // Rich-first default (Bot API 10.1); helper falls back HTML → plaintext per chunk.
+        const { sendTelegramMarkdown } = await import('../../telegram/rich-message.js');
+        await sendTelegramMarkdown(hubBot.api, chatId, payload.text || '', stripUndefined({ message_thread_id }));
+        return { ok: true };
+    }
+    if (payload.type === 'keyboard' && payload.text && payload.reply_markup) {
+        await hubBot.api.sendMessage(chatId, payload.text, stripUndefined({
+            message_thread_id,
+            reply_markup: payload.reply_markup as import("@grammyjs/types").InlineKeyboardMarkup,
+        }));
         return { ok: true };
     }
     const { sendTelegramFile } = await import('../../telegram/telegram-file.js');
@@ -403,6 +531,7 @@ export async function startHubBot(): Promise<void> {
             hubState = 'polling';
             hubError = null;
             console.log(`[tg:hub] @${info.username} polling chat=${cfg.chatId}`);
+            syncHubCommands(bot);
             // best-effort forum check (non-blocking); private bot-topic chats are valid
             // hub targets but are not forum supergroups.
             if (!cfg.chatId.startsWith('-100')) return;

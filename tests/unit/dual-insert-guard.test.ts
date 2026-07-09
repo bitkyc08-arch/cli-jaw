@@ -86,7 +86,7 @@ test('DI-005: pipeline PABCD spawn includes _skipInsert', () => {
 // ─── DI-006: bot.ts tgOrchestrate → orchestrateAndCollect with _skipInsert ───
 
 test('DI-006: tgOrchestrate passes _skipInsert: true to orchestrateAndCollect', () => {
-    const collectCall = botSrc.match(/orchestrateAndCollect\(prompt,\s*\{[^}]+\}\)/);
+    const collectCall = botSrc.match(/orchestrateAndCollect(?:Data)?\(prompt,\s*\{[^}]+\}\)/);
     assert.ok(collectCall, 'orchestrateAndCollect call must exist in bot.ts');
     assert.ok(
         collectCall[0].includes('_skipInsert: true'),

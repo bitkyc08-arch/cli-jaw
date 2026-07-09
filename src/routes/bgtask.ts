@@ -12,12 +12,13 @@ import { webAiPreset } from '../bgtask/presets.js';
 import { validateBgTaskSpec, type BgTaskRow, type BgTaskSpec, type BgTaskStatus, type OriginMeta } from '../bgtask/types.js';
 import { normalizeBgTaskStatus, type RuntimeStatusCategory } from '../shared/runtime-observability.js';
 import { getCurrentMainMeta } from '../agent/spawn.js';
+import { log } from '../core/logger.js';
 
 const VALID_STATUSES = new Set(['running', 'complete', 'failed', 'cancelled', 'orphaned']);
 
 function onTerminal(taskId: string): void {
     notifyTask(taskId).catch((err: Error) => {
-        console.error(`[bgtask:${taskId}] notify failed:`, err.message);
+        log.error(`[bgtask:${taskId}] notify failed:`, err.message);
     });
 }
 

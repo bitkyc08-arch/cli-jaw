@@ -76,6 +76,7 @@ import { getLastExpansionTerms } from './keyword-expand.js';
 import { reindexAll, searchIndex, formatHits, reindexIndexCounts, reindexIntegratedMemoryFile } from './indexing.js';
 import { ensureAdvancedMemoryStructure, bootstrapAdvancedMemory, syncCoreProfile, scanSystemProfile } from './bootstrap.js';
 import { reflectRecentEpisodes, type ReflectionResult } from './reflect.js';
+import { log } from '../core/logger.js';
 
 // ---------- Public API ----------
 
@@ -310,7 +311,7 @@ export function ensureIntegratedMemoryReady() {
                 updated_at: new Date().toISOString(),
             });
             writeText(profilePath, fm + `# Profile\n\n${systemInfo}\n`);
-            console.log('[jaw:bootstrap] seeded profile from system scan (no legacy data found)');
+            log.info('[jaw:bootstrap] seeded profile from system scan (no legacy data found)');
         }
         const result = reindexAll(root);
         writeMeta({ bootstrapStatus: 'done', lastBootstrapAt: new Date().toISOString() });
@@ -339,7 +340,7 @@ export function getLastReflectedAt(): string | null {
         return raw.lastReflectedAt || null;
     } catch (err) {
         if (fs.existsSync(metaPath)) {
-            console.warn('[jaw:reflect-meta] failed to read', (err as Error).message);
+            log.warn('[jaw:reflect-meta] failed to read', (err as Error).message);
         }
         return null;
     }

@@ -47,6 +47,20 @@ function renderCodeBlock(text: string, lang?: string): string {
     return `<div class="code-block"><div class="code-header"><span class="code-lang">${langDisplay}</span><button class="code-copy-btn" type="button" aria-label="${escapeHtml(copyLabel)}">${escapeHtml(copyLabel)}</button></div><pre><code class="hljs${lang ? ` language-${escapeHtml(lang)}` : ''}">${highlighted}</code></pre></div>`;
 }
 
+function parseDiagramFileWidgetId(text: string): string {
+    const trimmed = text.trim();
+    if (!trimmed) return '';
+    if (trimmed.startsWith('{')) {
+        try {
+            const parsed = JSON.parse(trimmed) as { id?: unknown };
+            return typeof parsed.id === 'string' ? parsed.id.trim() : '';
+        } catch {
+            return '';
+        }
+    }
+    return trimmed;
+}
+
 function ensureMarked(): boolean {
     if (markedReady) return true;
 
@@ -70,6 +84,14 @@ function ensureMarked(): boolean {
         if (normalizedLang === 'diagram-html') {
             const encoded = btoa(unescape(encodeURIComponent(text)));
             return `<div class="diagram-widget-pending" data-diagram-html="${encoded}"
+                role="status" aria-label="Interactive widget loading">
+                <div class="diagram-spinner"></div>
+            </div>`;
+        }
+        if (normalizedLang === 'diagram-file') {
+            const widgetId = parseDiagramFileWidgetId(text);
+            if (!widgetId) return renderCodeBlock(text, lang);
+            return `<div class="diagram-widget-pending" data-widget-id="${escapeHtml(widgetId)}"
                 role="status" aria-label="Interactive widget loading">
                 <div class="diagram-spinner"></div>
             </div>`;

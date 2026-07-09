@@ -13,6 +13,7 @@ import { t } from '../core/i18n.js';
 import { validateTarget } from '../messaging/send.js';
 import { stripUndefined } from '../core/strip-undefined.js';
 import type { RemoteTarget } from '../messaging/types.js';
+import { log } from '../core/logger.js';
 
 /**
  * P2b: strict shape check for a hub-forwarded RemoteTarget on /api/message.
@@ -62,7 +63,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             const result = await executeCommand(parsed, makeWebCommandCtx(req, locale as string));
             res.json(result);
         } catch (err: unknown) {
-            console.error('[cmd:error]', err);
+            log.error('[cmd:error]', err);
             const locale = resolveRequestLocale(req, req.body?.locale);
             res.status(500).json({
                 ok: false,
@@ -113,12 +114,18 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
         const target = (rawTarget ?? undefined) as RemoteTarget | undefined;
         // P4: per-topic overrides are only honored when the hub forwards a telegram target.
         const overrides = target ? sanitizeOverrides(req.body?.overrides) : undefined;
+        // external: caller-declared "not the visible web chat input" marker
+        // (manager relay, preview iframe relay, scripts). The web UI's SSE
+        // new_message handler renders externally-injected user bubbles live
+        // instead of waiting for a history reload (devlog 260705).
+        const external = req.body?.external === true ? true : undefined;
         const submitMeta = stripUndefined({
             origin: target ? 'telegram' as const : 'web' as const,
             target,
             chatId: target?.targetId,
             overrides,
             replyViaTarget: Boolean(target),
+            external,
         });
 
         // Slash command pre-processing: Telegram/Discord already do this,
@@ -143,7 +150,7 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
                     return;
                 } catch (err: unknown) {
                     const error = (err as Error).message;
-                    console.error('[api/message:cmd]', error);
+                    log.error('[api/message:cmd]', error);
                     res.status(500).json({ ok: false, command: true, error });
                     return;
                 }
@@ -157,5 +164,29 @@ export function registerCommandRoutes(app: Router, requireAuth: RequestHandler):
             return;
         }
         res.json({ ok: true, ...result });
+    });
+
+    // Hub elicitation callback relay: hub forwards elic:Q:O taps to the instance.
+    app.post('/api/elicitation/callback', requireAuth, async (req, res) => {
+        const chatId = typeof req.body?.chatId === 'string' ? req.body.chatId : '';
+        const callbackData = typeof req.body?.callbackData === 'string' ? req.body.callbackData : '';
+        if (!chatId || !callbackData) {
+            res.status(400).json({ ok: false, error: 'chatId and callbackData required' });
+            return;
+        }
+        const { handleElicitationCallback } = await import('../telegram/elicitation-buttons.js');
+        const result = handleElicitationCallback(chatId, callbackData);
+        if (result.kind === 'complete') {
+            const target = req.body?.target;
+            const submit = submitMessage(result.combinedAnswer, stripUndefined({
+                origin: 'telegram' as const,
+                target,
+                chatId,
+                replyViaTarget: Boolean(target),
+            }));
+            res.json({ ok: true, kind: 'complete', ack: result.ack, submit });
+            return;
+        }
+        res.json({ ok: true, kind: result.kind, ack: result.kind === 'progress' ? result.ack : undefined });
     });
 }

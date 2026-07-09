@@ -10,6 +10,7 @@ import { IMAGE_MIMES } from '../../lib/mime-detect.js';
 import { settings, saveSettings, UPLOADS_DIR } from '../core/config.js';
 import { safeResolveUnder } from '../security/path-guards.js';
 import { decodeFilenameSafe } from '../security/decode.js';
+import { log } from '../core/logger.js';
 
 type AvatarTarget = 'agent' | 'user';
 type AvatarEntry = {
@@ -112,13 +113,13 @@ export function registerAvatarRoutes(app: Express, requireAuth: AuthMiddleware):
             const contentType = String(req.headers['content-type'] || '').toLowerCase();
             const filename = decodeFilenameSafe(req.headers['x-filename'] as string | undefined) || `${target}.png`;
             const bodyLen = Buffer.isBuffer(req.body) ? req.body.length : 0;
-            console.log(`[avatar:upload] target=${target} ct=${contentType} file=${filename} bodyLen=${bodyLen}`);
+            log.info(`[avatar:upload] target=${target} ct=${contentType} file=${filename} bodyLen=${bodyLen}`);
             validateUpload(contentType, filename, req.body);
             const filePath = saveUpload(req.body, filename, { allowedMimes: IMAGE_MIMES });
             saveAvatarImage(target, filePath);
             return ok(res, serializeAvatar(target));
         } catch (error: unknown) {
-            console.error('[avatar:upload] failed:', error instanceof Error ? error.message : error);
+            log.error('[avatar:upload] failed:', error instanceof Error ? error.message : error);
             const status = (error as { statusCode?: number })?.statusCode || 400;
             return fail(res, status, error instanceof Error ? error.message : 'avatar_upload_failed');
         }
@@ -133,7 +134,7 @@ export function registerAvatarRoutes(app: Express, requireAuth: AuthMiddleware):
 
     app.get('/api/avatar/:target/image', (req, res) => {
         const target = parseTarget(String(req.params.target || ''));
-        console.log(`[avatar:image] GET target=${target} params=${JSON.stringify(req.params)}`);
+        log.info(`[avatar:image] GET target=${target} params=${JSON.stringify(req.params)}`);
         if (!target) return fail(res, 400, 'invalid_avatar_target');
 
         const imagePath = resolveAvatarImage(target);

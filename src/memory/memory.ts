@@ -5,6 +5,7 @@ import { JAW_HOME } from '../core/config.js';
 import { join, resolve, relative } from 'path';
 import fs from 'fs';
 import { spawnSync } from 'child_process';
+import { log } from '../core/logger.js';
 
 export const MEMORY_DIR = join(JAW_HOME, 'memory');
 
@@ -61,7 +62,7 @@ export function search(query: string) {
         // Trim paths to relative
         return (proc.stdout || '').split(MEMORY_DIR + '/').join('');
     } catch (e) {
-        console.warn('[memory:search] grep failed', { error: (e as Error).message });
+        log.warn('[memory:search] grep failed', { error: (e as Error).message });
         return '(no results)';
     }
 }
@@ -110,7 +111,7 @@ export function save(filename: string, content: string) {
         }
         m.syncLegacyMarkdownShadowImport(filepath);
     }).catch(err => {
-        console.warn('[jaw:memory-save-sync]', (err as Error).message);
+        log.warn('[jaw:memory-save-sync]', (err as Error).message);
     });
     return filepath;
 }

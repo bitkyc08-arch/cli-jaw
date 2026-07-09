@@ -19,7 +19,7 @@ export async function clearSessionState(): Promise<void> {
             cli: settings["cli"] || 'claude',
             model: settings["model"] || '',
         });
-    } catch {}
+    } catch {} // best-effort: compact failure must not block session reset
     bumpSessionOwnershipGeneration();
     clearMainSessionState();
 }

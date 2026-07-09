@@ -61,32 +61,35 @@ test('MD-008: chat.ts absorbs 409 duplicate silently (no error toast)', () => {
     assert.match(sendBlock, /result\.status\s*===\s*409[\s\S]{0,120}['"]duplicate['"]/);
 });
 
-// ─── L3-b: Boss prompts direct Bash timeout=600000 ────
+// ─── L3-b: Boss prompts direct async dispatch + progress lookup ────
 
-test('MD-009: orchestration.md directs timeout=600000 for cli-jaw dispatch', () => {
+test('MD-009: orchestration.md directs async cli-jaw dispatch instead of blocking Bash timeouts', () => {
     const md = fs.readFileSync(join(srcRoot, 'prompt/templates/orchestration.md'), 'utf8');
-    assert.match(md, /timeout[^\n]{0,40}600000/);
     assert.match(md, /cli-jaw dispatch/);
+    assert.match(md, /--task-file .*--async/);
+    assert.match(md, /Omitting `--async` blocks the turn up to 10 minutes/);
 });
 
-test('MD-010: a1-system.md directs timeout=600000 for cli-jaw dispatch', () => {
+test('MD-010: a1-system.md directs async cli-jaw dispatch instead of blocking Bash timeouts', () => {
     const md = fs.readFileSync(join(srcRoot, 'prompt/templates/a1-system.md'), 'utf8');
-    assert.match(md, /timeout[^\n]{0,40}600000/);
+    assert.match(md, /cli-jaw dispatch --agent "Name" --task-file <path> --async/);
+    assert.match(md, /Omitting `--async` blocks the turn up to 10 minutes while polling/);
 });
 
 test('MD-010b: boss prompts expose worker progress lookup and running-only snapshot boundary', () => {
     const a1 = fs.readFileSync(join(srcRoot, 'prompt/templates/a1-system.md'), 'utf8');
     const orchestration = fs.readFileSync(join(srcRoot, 'prompt/templates/orchestration.md'), 'utf8');
     for (const md of [a1, orchestration]) {
-        assert.match(md, /cli-jaw worker status \[agent\] --port <port>/);
+        assert.match(md, /cli-jaw worker status \[agent(?:\|runId)?\] --port <port>/);
         assert.match(md, /cli-jaw worker watch \[agent\] --port <port>/);
         assert.match(md, /snapshot\.workers[^\n]{0,80}running-only/);
         assert.match(md, /worker-progress\.previous/);
     }
 });
 
-test('MD-011: builder.ts dynamic Delegation Rules block mentions 600000', () => {
+test('MD-011: builder.ts dynamic Delegation Rules block directs async dispatch with bounded blocking fallback', () => {
     const src = fs.readFileSync(join(srcRoot, 'prompt/builder.ts'), 'utf8');
     const block = src.slice(src.indexOf('jaw Employee Dispatch'), src.indexOf('Do NOT confuse'));
-    assert.match(block, /timeout[^\n]{0,40}600000/, 'delegation-rules block must direct timeout=600000');
+    assert.match(block, /--task-file <path> --async/, 'delegation-rules block must direct async task-file dispatch');
+    assert.match(block, /Omitting `--async` blocks the turn up to 10 minutes while polling/, 'delegation-rules block must document bounded blocking fallback');
 });

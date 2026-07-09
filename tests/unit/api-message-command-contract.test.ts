@@ -17,7 +17,8 @@ function routeBlock(route: string): string {
 
 test('/api/message slash command errors fail closed instead of falling through to agent prompt', () => {
     const block = routeBlock("app.post('/api/message'");
-    const catchStart = block.indexOf("console.error('[api/message:cmd]'");
+    // logger migration (WP4): the catch logs via log.error (level-aware wrapper over console.error)
+    const catchStart = block.indexOf("log.error('[api/message:cmd]'");
     const submitStart = block.indexOf('const result = submitMessage(trimmed');
     assert.ok(catchStart > 0, 'slash command catch block missing');
     assert.ok(submitStart > catchStart, 'normal message submit path should remain after slash handling');

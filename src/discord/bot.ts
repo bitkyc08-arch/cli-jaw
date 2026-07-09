@@ -18,7 +18,8 @@ import { createDiscordForwarder, chunkDiscordMessage } from './forwarder.js';
 import { sendDiscordFile } from './discord-file.js';
 import { getDiscordSendClient, sendDiscordFileRest, sendDiscordTextRest } from './send-only-client.js';
 import type { Attachment, Message } from 'discord.js';
-import type { DiscordSendableChannel, DiscordTypingChannel, DiscordThreadLikeChannel } from './channel-types.js';
+import { asSendable, asThreadLike, asTypingChannel } from './channel-types.js';
+import { log } from '../core/logger.js';
 
 // ─── State ───────────────────────────────────────────
 
@@ -41,7 +42,7 @@ function buildDiscordTarget(msg: Message): RemoteTarget {
         targetId: msg.channelId,
         threadId: msg.channel?.isThread?.() ? msg.channelId : undefined,
         guildId: msg.guildId ?? undefined,
-        parentTargetId: msg.channel?.isThread?.() ? ((msg.channel as DiscordThreadLikeChannel).parentId ?? undefined) : undefined,
+        parentTargetId: msg.channel?.isThread?.() ? (asThreadLike(msg.channel)?.parentId ?? undefined) : undefined,
     });
 }
 
@@ -115,7 +116,7 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     });
 
     if (result.action === 'queued') {
-        console.log(`[discord:queue] agent busy, queued (${result.pending} pending)`);
+        log.info(`[discord:queue] agent busy, queued (${result.pending} pending)`);
         await msg.reply(t('tg.queued', { count: result.pending }, currentLocale()));
 
         // Listen for queued result — correlate by requestId (request-level isolation)
@@ -127,9 +128,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
                 clearTimeout(queueTimeout);
                 removeBroadcastListener(queueHandler);
                 const chunks = chunkDiscordMessage(data["text"]);
+                const channel = asSendable(msg.channel);
+                if (!channel) {
+                    log.warn('[discord:queue-send] channel not sendable, dropping queued reply', { channelId: msg.channelId });
+                    return;
+                }
                 for (const chunk of chunks) {
-                    await (msg.channel as unknown as DiscordSendableChannel).send(chunk).catch((e: Error) => {
-                        console.error('[discord:queue-send]', e.message);
+                    await channel.send(chunk).catch((e: Error) => {
+                        log.error('[discord:queue-send]', e.message);
                     });
                 }
             }
@@ -148,14 +154,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
     markChannelActive(msg.channelId);
 
     // Typing indicator: start + periodic refresh (8s, Discord expires at 10s)
-    const typingChannel = msg.channel as unknown as DiscordTypingChannel;
-    typingChannel.sendTyping?.()
-        ?.then(() => console.log('[discord:typing] ✅ sent'))
-        ?.catch((e: Error) => console.log('[discord:typing] ❌', e.message));
+    const typingChannel = asTypingChannel(msg.channel);
+    typingChannel?.sendTyping?.()
+        ?.then(() => log.info('[discord:typing] ✅ sent'))
+        ?.catch((e: Error) => log.info('[discord:typing] ❌', e.message));
     const typingInterval = setInterval(() => {
-        typingChannel.sendTyping?.()
-            ?.then(() => console.log('[discord:typing] ✅ refresh'))
-            ?.catch((e: Error) => console.log('[discord:typing] ❌ refresh', e.message));
+        typingChannel?.sendTyping?.()
+            ?.then(() => log.info('[discord:typing] ✅ refresh'))
+            ?.catch((e: Error) => log.info('[discord:typing] ❌ refresh', e.message));
     }, 8000);
 
     try {
@@ -163,12 +169,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
             origin: 'discord', target, chatId, requestId: result.requestId, _skipInsert: true,
         }));
         const chunks = chunkDiscordMessage(text);
+        const channel = asSendable(msg.channel);
+        if (!channel) throw new Error('Discord channel is not text-based');
         for (const chunk of chunks) {
-            await (msg.channel as unknown as DiscordSendableChannel).send(chunk);
+            await channel.send(chunk);
         }
-        console.log(`[discord:out] ${msg.channelId}: ${text.slice(0, 80)}`);
+        log.info(`[discord:out] ${msg.channelId}: ${text.slice(0, 80)}`);
     } catch (err: unknown) {
-        console.error('[discord:error]', err);
+        log.error('[discord:error]', err);
         await msg.reply(`❌ Error: ${(err as Error).message}`).catch(() => { });
     } finally {
         clearInterval(typingInterval);
@@ -179,14 +187,14 @@ async function dcOrchestrate(msg: Message, prompt: string, displayMsg: string) {
 
 export async function initDiscord() {
     if (dcInitLock) {
-        console.warn('[discord] initDiscord already in progress, skipping');
+        log.warn('[discord] initDiscord already in progress, skipping');
         return;
     }
     dcInitLock = true;
     try {
     await shutdownDiscord();
     if (!settings["discord"]?.enabled || !settings["discord"]?.token) {
-        console.log('[discord] ⏭️  Discord pending (disabled or no token)');
+        log.info('[discord] ⏭️  Discord pending (disabled or no token)');
         return;
     }
 
@@ -203,8 +211,8 @@ export async function initDiscord() {
 
     // ── Error handler: disable Discord on network failure ──
     client.on(Events.Error, (err) => {
-        console.error(`[discord] ❌ Client error: ${err.message}`);
-        console.error('[discord] Disabling Discord for this session — restart to retry');
+        log.error(`[discord] ❌ Client error: ${err.message}`);
+        log.error('[discord] Disabling Discord for this session — restart to retry');
         shutdownDiscord().catch(() => { /* ignore */ });
     });
 
@@ -213,7 +221,7 @@ export async function initDiscord() {
         if (msg.author.id === client.user?.id) return; // never process own messages
         if (msg.author.bot && !settings["discord"].allowBots) return;
         if (settings["discord"].channelIds?.length) {
-            const parentId = (msg.channel as unknown as DiscordThreadLikeChannel)?.parentId;
+            const parentId = asThreadLike(msg.channel)?.parentId;
             if (!settings["discord"].channelIds.includes(msg.channelId)
                 && !(parentId && settings["discord"].channelIds.includes(parentId))) return;
         }
@@ -253,9 +261,9 @@ export async function initDiscord() {
                     await msg.reply(warning).catch(() => { });
                 }
 
-                dcOrchestrate(msg, prompt, fileLabel).catch(e => console.error('[discord:orchestrate]', (e as Error).message));
+                dcOrchestrate(msg, prompt, fileLabel).catch(e => log.error('[discord:orchestrate]', (e as Error).message));
             } catch (e) {
-                console.error('[discord:attachment]', (e as Error).message);
+                log.error('[discord:attachment]', (e as Error).message);
                 await msg.reply(`❌ ${(e as Error).message}`).catch(() => { });
             }
             return;
@@ -265,7 +273,7 @@ export async function initDiscord() {
         const text = normalizedText;
         if (!text) return;
 
-        console.log(`[discord:in] ${msg.channelId}: ${text.slice(0, 80)}`);
+        log.info(`[discord:in] ${msg.channelId}: ${text.slice(0, 80)}`);
 
         // Reset intent: use submitMessage gateway for consistency
         if (isResetIntent(text)) {
@@ -278,7 +286,7 @@ export async function initDiscord() {
             return;
         }
 
-        dcOrchestrate(msg, text, text).catch(e => console.error('[discord:orchestrate]', (e as Error).message));
+        dcOrchestrate(msg, text, text).catch(e => log.error('[discord:orchestrate]', (e as Error).message));
     });
 
     // ── Slash command handler ──
@@ -294,7 +302,7 @@ export async function initDiscord() {
             getLastTarget: () => getLastActiveTarget('discord'),
             shouldSkip: (data) => data["origin"] === 'discord',
             log: ({ channelId, preview }) => {
-                console.log(`[discord:forward] → ${channelId}: ${preview}...`);
+                log.info(`[discord:forward] → ${channelId}: ${preview}...`);
             },
         });
         forwarderHandler = fwd;
@@ -305,8 +313,8 @@ export async function initDiscord() {
     try {
         await client.login(settings["discord"].token);
     } catch (err) {
-        console.error(`[discord] ❌ Login failed (network?): ${(err as Error).message}`);
-        console.error('[discord] Disabling Discord for this session — restart to retry');
+        log.error(`[discord] ❌ Login failed (network?): ${(err as Error).message}`);
+        log.error('[discord] Disabling Discord for this session — restart to retry');
         if (forwarderHandler) {
             removeBroadcastListener(forwarderHandler);
             forwarderHandler = null;
@@ -315,7 +323,7 @@ export async function initDiscord() {
         return;
     }
     discordClient = client;
-    console.log(`[discord] ✅ Bot logged in as ${client.user?.tag || 'unknown'}`);
+    log.info(`[discord] ✅ Bot logged in as ${client.user?.tag || 'unknown'}`);
 
     // Register slash commands after login
     await registerDiscordSlashCommands(client);
@@ -334,10 +342,10 @@ export async function shutdownDiscord() {
     try {
         await old.destroy();
     } catch (e) {
-        console.warn('[discord:stop]', (e as Error).message);
+        log.warn('[discord:stop]', (e as Error).message);
         await new Promise(r => setTimeout(r, 2000));
     }
-    console.log('[discord] stopped');
+    log.info('[discord] stopped');
 }
 
 // ─── Send Handler ───────────────────────────────────
@@ -356,10 +364,11 @@ export async function discordSendHandler(req: ChannelSendRequest): Promise<{ ok:
             if (!text) return { ok: false, error: 'text required' };
             try {
                 const channel = await discordClient.channels.fetch(String(channelId));
-                if (!channel || !('send' in channel)) return { ok: false, error: 'Channel not text-based' };
+                const sendable = asSendable(channel);
+                if (!sendable) return { ok: false, error: 'Channel not text-based' };
                 const chunks = chunkDiscordMessage(text);
                 for (const chunk of chunks) {
-                    await (channel as unknown as DiscordSendableChannel).send(chunk);
+                    await sendable.send(chunk);
                 }
                 return { ok: true, channel_id: channelId, type: 'text' };
             } catch (e) {

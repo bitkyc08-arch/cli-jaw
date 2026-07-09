@@ -52,7 +52,7 @@ try {
                 const hb = asRecord(await hbRes.json());
                 const active = asArray<{ enabled?: boolean }>(hb["jobs"]).filter((j) => j.enabled).length;
                 console.log(`  Heartbeat: ${active} job${active !== 1 ? 's' : ''} active`);
-            } catch { }
+            } catch { } // best-effort: heartbeat probe optional when server is down
         }
     } else {
         console.log(`  ⚠️ Server responded with ${res.status}`);

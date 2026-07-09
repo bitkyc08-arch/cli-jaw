@@ -50,6 +50,8 @@ import { createDashboardGitRouter } from './routes/dashboard-git.js';
 import { createDashboardTelegramHubRouter } from './routes/telegram-hub.js';
 import { startHubBot } from './telegram-hub/hub-bot.js';
 import { registerManagerRuntimeMonitorRoutes } from './routes/runtime-monitor.js';
+import { registerEmbeddedBrowserRoutes } from './routes/embedded-browser.js';
+import { createDashboardDesignRouter } from './routes/dashboard-design.js';
 import { VecStore, getVecDbPath, createProvider, syncAllInstances } from './memory/embedding/index.js';
 import type { EmbeddingConfig } from './memory/embedding/index.js';
 import { addBroadcastListener } from '../core/bus.js';
@@ -244,6 +246,12 @@ app.use((req, res, next) => {
     // Legacy /i/:port proxy streams the raw request body upstream. express.json()
     // consumes the stream first and leaves POST /api/message hanging forever.
     if (/^\/i\/\d+(?:\/|$)/.test(req.path)) return next();
+    // Embedded-browser command results carry data-url screenshots far above
+    // 64kb; that route mounts its own bounded parser.
+    if (req.path.startsWith('/api/manager/embedded-browser/commands/')) return next();
+    // Design page file writes carry multi-megabyte artifact HTML; the design
+    // router mounts its own 8mb parser.
+    if (req.method === 'PUT' && /^\/api\/dashboard\/design\/pages\/[^/]+\/files\//.test(req.path)) return next();
     return dashboardJsonParser(req, res, next);
 });
 app.use('/api/dashboard/desktop-status', createDesktopStatusRouter());
@@ -255,6 +263,7 @@ const remindersStore = new RemindersStore();
 app.use('/api/dashboard/reminders', createDashboardRemindersRouter({ store: remindersStore }));
 app.use('/api/dashboard/connector', createDashboardConnectorRouter({ remindersStore }));
 app.use('/api/dashboard/telegram-hub', createDashboardTelegramHubRouter());
+app.use('/api/dashboard/design', createDashboardDesignRouter());
 void startHubBot();   // P2: start the Telegram hub bot if enabled+token+chatId are configured
 
 const dashboardHome = resolveDashboardHome();
@@ -410,7 +419,9 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
         const response = await fetch(`http://127.0.0.1:${targetPort}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            // external: relayed from the manager, not the worker's own chat
+            // input — the worker's web UI must live-render this user turn.
+            body: JSON.stringify({ prompt, external: true }),
         });
         const data = await response.json().catch(() => null) as unknown;
         return {
@@ -446,6 +457,7 @@ app.use('/api/jaw-ceo', createJawCeoRouter({
 registerCodeRoutes(app, (_req, _res, next) => next());
 registerEventsRoutes(app, (_req, _res, next) => next());
 registerManagerRuntimeMonitorRoutes(app, (_req, _res, next) => next());
+registerEmbeddedBrowserRoutes(app, (_req, _res, next) => next(), { scanFrom, scanCount, managerPort: port });
 
 app.get('/api/dashboard/health', (_req, res) => {
     res.json({
@@ -583,7 +595,8 @@ app.post('/api/dashboard/instances/:port/message', async (req, res) => {
         const response = await fetch(`http://127.0.0.1:${portValue}/api/message`, {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ prompt }),
+            // external: dashboard relay — see sendWorkerMessage above.
+            body: JSON.stringify({ prompt, external: true }),
         });
         const data = await response.json().catch(() => ({ error: `worker returned ${response.status}` })) as unknown;
         res.status(response.status).json(data);

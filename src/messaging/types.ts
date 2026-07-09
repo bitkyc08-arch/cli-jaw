@@ -22,6 +22,6 @@ export type RemoteInterface = MessengerChannel;
 
 export type RuntimeOrigin = 'web' | 'cli' | 'system' | 'bgtask' | MessengerChannel;
 
-export type OutboundType = 'text' | 'voice' | 'photo' | 'document';
+export type OutboundType = 'text' | 'voice' | 'photo' | 'document' | 'keyboard';
 
 // targetId is always string. Legacy number chatIds are String()-converted at ingest.
