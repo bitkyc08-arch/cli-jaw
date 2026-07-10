@@ -138,6 +138,8 @@ type LifecycleResolveResult = {
     tools?: ToolEntry[];
     smoke?: SmokeDetectionResult;
     diagnostic?: string;
+    agyCheckpointSeen?: boolean;
+    agyPlannerOnly?: boolean;
 };
 
 type SpawnAgentRef = (
@@ -193,6 +195,7 @@ export interface ExitContext {
     toolLog: ToolEntry[];
     traceLog: string[];
     stderrBuf: string;
+    metadata?: Record<string, unknown>;
     liveScope?: string | null;
     traceRunId?: string | null;
     liveOutputText?: string;
@@ -877,6 +880,10 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         sessionId: ctx.sessionId, cost: ctx.cost,
         tools: ctx.toolLog, smoke: smokeResult,
         diagnostic,
+        ...(typeof ctx.metadata?.['agyCheckpointSeen'] === 'boolean'
+            ? { agyCheckpointSeen: ctx.metadata['agyCheckpointSeen'] } : {}),
+        ...(typeof ctx.metadata?.['agyPlannerOnly'] === 'boolean'
+            ? { agyPlannerOnly: ctx.metadata['agyPlannerOnly'] } : {}),
         ...(params.outputLen ? { outputLen: params.outputLen } : {}),
     });
 

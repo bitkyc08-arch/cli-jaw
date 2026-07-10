@@ -65,6 +65,8 @@ import {
     describeAgyFinalSource,
     extractAgyConversationId,
     finalizeAgyFallbackText,
+    AGY_PLANNER_ONLY_NOTICE,
+    isAgyIntermediatePlannerText,
     formatAgyWatchdogContext,
     resolveAgyEmptyCloseError,
     formatAgyTimeoutMessage,
@@ -184,7 +186,12 @@ interface SessionBucketRow {
     updated_at?: string | number | null;
 }
 
-type SpawnPromiseResult = { text: string; code: number };
+type SpawnPromiseResult = {
+    text: string;
+    code: number;
+    agyCheckpointSeen?: boolean;
+    agyPlannerOnly?: boolean;
+};
 
 interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
@@ -2463,8 +2470,16 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 }
             }
             if (ctx.agyFinalPlannerSeen && ctx.agyFinalPlannerText) {
-                ctx.fullText = ctx.agyFinalPlannerText;
-                if (ctx.liveOutputText !== undefined) ctx.liveOutputText = ctx.agyFinalPlannerText;
+                if (isAgyIntermediatePlannerText(ctx.agyFinalPlannerText)) {
+                    ctx.fullText = AGY_PLANNER_ONLY_NOTICE;
+                    if (ctx.liveOutputText !== undefined) ctx.liveOutputText = AGY_PLANNER_ONLY_NOTICE;
+                    ctx.agyFinalPlannerSeen = false;
+                    ctx.agyFinalPlannerText = undefined;
+                    ctx.metadata = { ...ctx.metadata, agyPlannerOnly: true };
+                } else {
+                    ctx.fullText = ctx.agyFinalPlannerText;
+                    if (ctx.liveOutputText !== undefined) ctx.liveOutputText = ctx.agyFinalPlannerText;
+                }
             }
             const normalizedCloseText = normalizeAgyCloseText({
                 fullText: ctx.fullText,
@@ -2493,6 +2508,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             finalizeAgyFallbackText(ctx, normalizeAssistantDisplayText(stripInterviewTracker(promotedEcho)));
         }
         if (cli === 'agy') pushTrace(ctx, describeAgyFinalSource(ctx));
+        if (cli === 'agy') {
+            ctx.metadata = {
+                ...ctx.metadata,
+                agyCheckpointSeen: ctx.metadata?.['agyCheckpointSeen'] === true,
+                agyPlannerOnly: ctx.metadata?.['agyPlannerOnly'] === true
+                    && ctx.toolLog.length === 0
+                    && !ctx.agyFinalPlannerSeen,
+            };
+        }
         const effectiveExitCode = agyCompletedByQuietOutput && !agyTranscriptErrorMessage
             ? 0
             : agyTranscriptErrorMessage
