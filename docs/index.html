@@ -14,7 +14,8 @@
     <meta property="og:image" content="https://lidge-jun.github.io/cli-jaw/assets/og-card.jpg">
     <meta property="og:url" content="https://lidge-jun.github.io/cli-jaw/">
     <meta name="twitter:card" content="summary_large_image">
-    <link rel="icon" type="image/svg+xml" href="assets/favicon.svg">
+    <link rel="icon" type="image/png" href="assets/app-icon.png">
+    <link rel="apple-touch-icon" href="assets/app-icon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
@@ -226,19 +227,21 @@
             padding: 8px 10px 8px 18px;
             border: 1px solid var(--warm-border);
             border-radius: 9999px;
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 14px 40px rgba(0, 0, 0, 0.3);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), inset 0 -1px rgba(0, 0, 0, 0.24), 0 14px 40px rgba(0, 0, 0, 0.32);
+            -webkit-backdrop-filter: blur(20px) saturate(1.5);
+            backdrop-filter: blur(20px) saturate(1.5);
             transform: translateX(-50%);
             transition: background-color 220ms ease, opacity 220ms ease;
         }
 
         .site-nav.pill-at-top {
-            background: rgba(19, 19, 24, 0.76);
+            background: rgba(19, 19, 24, 0.52);
         }
 
         .site-nav.pill-scrolled {
-            background: rgba(19, 19, 24, 0.94);
-            -webkit-backdrop-filter: blur(14px) saturate(1.2);
-            backdrop-filter: blur(14px) saturate(1.2);
+            background: rgba(19, 19, 24, 0.78);
+            -webkit-backdrop-filter: blur(24px) saturate(1.6);
+            backdrop-filter: blur(24px) saturate(1.6);
         }
 
         .nav-brand,
@@ -257,14 +260,12 @@
         }
 
         .nav-brand-mark {
-            display: grid;
+            display: block;
             width: 28px;
             height: 28px;
-            place-items: center;
             border-radius: 50%;
-            background: var(--accent);
-            color: var(--bg);
-            font: 600 12px/1 var(--font-mono);
+            object-fit: cover;
+            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 12px rgba(34, 211, 238, 0.25);
         }
 
         .nav-actions {
@@ -325,12 +326,12 @@
         .hero-backdrop {
             z-index: -3;
             object-fit: cover;
-            object-position: 64% 32%;
+            object-position: 50% 30%;
         }
 
         .hero-shade {
             z-index: -2;
-            background: linear-gradient(90deg, rgba(11, 11, 14, 0.97) 0%, rgba(11, 11, 14, 0.84) 45%, rgba(11, 11, 14, 0.28) 78%, rgba(11, 11, 14, 0.7) 100%);
+            background: radial-gradient(ellipse 68% 78% at 50% 34%, rgba(11, 11, 14, 0.95) 0%, rgba(11, 11, 14, 0.82) 46%, rgba(11, 11, 14, 0.42) 74%, rgba(11, 11, 14, 0.6) 100%);
         }
 
         .hero-inner {
@@ -340,15 +341,17 @@
         .hero-copy {
             position: relative;
             z-index: 4;
-            width: min(61%, 870px);
+            width: min(100%, 720px);
+            margin: 0 auto;
+            text-align: center;
         }
 
         .hero-title {
-            max-width: 14ch;
+            max-width: none;
             margin: 0;
-            font-size: clamp(3rem, 4.65vw, 4rem);
+            font-size: clamp(2.4rem, 3.4vw, 3.25rem);
             font-weight: 300;
-            line-height: 0.98;
+            line-height: 1.04;
         }
 
         .hero-line {
@@ -382,23 +385,26 @@
 
         .hero-sub {
             max-width: 42ch;
-            margin: 28px 0 0;
+            margin: 24px auto 0;
             color: #c2c2ce;
-            font-size: clamp(1.05rem, 1.6vw, 1.3rem);
+            font-size: clamp(1rem, 1.4vw, 1.15rem);
             line-height: 1.55;
         }
 
         .hero-command {
             display: flex;
-            width: min(100%, 590px);
+            width: min(100%, 560px);
             align-items: center;
             justify-content: space-between;
             gap: 18px;
-            margin-top: 30px;
+            margin: 30px auto 0;
             padding: 15px 18px;
-            border: 1px solid var(--border-strong);
+            border: 1px solid rgba(255, 255, 255, 0.14);
             border-radius: var(--radius-sm);
-            background: rgba(11, 11, 14, 0.86);
+            background: rgba(13, 13, 18, 0.55);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 18px 44px rgba(0, 0, 0, 0.3);
+            -webkit-backdrop-filter: blur(16px) saturate(1.3);
+            backdrop-filter: blur(16px) saturate(1.3);
             color: #d8d8e1;
             font: 500 clamp(0.76rem, 1.1vw, 0.9rem)/1.5 var(--font-mono);
             overflow-wrap: anywhere;
@@ -418,6 +424,7 @@
         .hero-quiet-links {
             display: flex;
             align-items: center;
+            justify-content: center;
             flex-wrap: wrap;
         }
 
@@ -483,11 +490,11 @@
         /* Signature provider constellation, isolated from the copy column */
         .provider-constellation {
             position: absolute;
-            top: 104px;
-            right: 0;
+            top: 96px;
+            left: 0;
             z-index: 1;
-            width: 37%;
-            height: 530px;
+            width: 100%;
+            height: 580px;
             margin: 0;
             padding: 0;
             overflow: hidden;
@@ -508,14 +515,16 @@
             padding: 7px 11px;
             border: 1px solid rgba(255, 255, 255, 0.18);
             border-radius: 9999px;
-            background: rgba(27, 27, 34, 0.68);
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.22);
+            background:
+                linear-gradient(155deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.02) 45%, transparent 62%),
+                rgba(27, 27, 34, 0.52);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), inset 0 -1px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.24);
             color: #f4f4f7;
             font: 500 11px/1 var(--font-mono);
             white-space: nowrap;
             pointer-events: auto;
-            -webkit-backdrop-filter: blur(10px) saturate(1.15);
-            backdrop-filter: blur(10px) saturate(1.15);
+            -webkit-backdrop-filter: blur(14px) saturate(1.4);
+            backdrop-filter: blur(14px) saturate(1.4);
             animation: meteor-fall var(--duration) linear var(--delay) infinite;
             will-change: transform, opacity;
         }
@@ -526,20 +535,25 @@
         }
 
         /* Depth tiers: near chips are larger/brighter, far chips smaller/dimmer,
-           so lane crossings read as parallax instead of collision. */
-        .provider-star:nth-child(1) { --top: -36px; --left: 8%; --duration: 15s; --delay: -4s; --scale: 1; --peak: 0.95; }
-        .provider-star:nth-child(2) { --top: 22px; --left: 55%; --duration: 18s; --delay: -13s; --scale: 0.85; --peak: 0.75; }
-        .provider-star:nth-child(3) { --top: 72px; --left: 22%; --duration: 17s; --delay: -8s; --scale: 0.92; --peak: 0.85; }
-        .provider-star:nth-child(4) { --top: 118px; --left: 65%; --duration: 20s; --delay: -2s; --scale: 0.78; --peak: 0.65; }
-        .provider-star:nth-child(5) { --top: 178px; --left: 2%; --duration: 23s; --delay: -11s; --scale: 0.8; --peak: 0.7; }
-        .provider-star:nth-child(6) { --top: 206px; --left: 48%; --duration: 19s; --delay: -6s; --scale: 1; --peak: 0.95; }
-        .provider-star:nth-child(7) { --top: 254px; --left: 12%; --duration: 21s; --delay: -17s; --scale: 0.85; --peak: 0.75; }
-        .provider-star:nth-child(8) { --top: 302px; --left: 61%; --duration: 17s; --delay: -1s; --scale: 0.95; --peak: 0.9; }
-        .provider-star:nth-child(9) { --top: 350px; --left: 6%; --duration: 20s; --delay: -14s; --scale: 0.9; --peak: 0.8; }
-        .provider-star:nth-child(10) { --top: 400px; --left: 49%; --duration: 16s; --delay: -7s; --scale: 0.8; --peak: 0.7; }
-        .provider-star:nth-child(11) { --top: -8px; --left: 72%; --duration: 22s; --delay: -18s; --scale: 0.9; --peak: 0.8; }
-        .provider-star:nth-child(12) { --top: 137px; --left: 31%; --duration: 19s; --delay: -15s; --scale: 0.75; --peak: 0.62; }
-        .provider-star:nth-child(13) { --top: 328px; --left: 33%; --duration: 18s; --delay: -10s; --scale: 1; --peak: 0.95; }
+           so lane crossings read as parallax instead of collision.
+           Centered hero: chips live in the left (0-5%) and right (>=88%) edge
+           bands, clear of the 720px copy column at >=1280px viewports.
+           Each band shares ONE duration, and delays are phase-tuned so the
+           rendered gaps stay constant forever: chips in a band can never
+           collide, while the two bands drift at different speeds. */
+        .provider-star:nth-child(1) { --top: -28px; --left: 3%; --duration: 20s; --delay: -0.8s; --scale: 1; --peak: 0.95; }
+        .provider-star:nth-child(2) { --top: 66px; --left: 0%; --duration: 20s; --delay: -1s; --scale: 0.85; --peak: 0.75; }
+        .provider-star:nth-child(3) { --top: 26px; --left: 88%; --duration: 24s; --delay: -23.1s; --scale: 0.92; --peak: 0.85; }
+        .provider-star:nth-child(4) { --top: 158px; --left: 4%; --duration: 20s; --delay: -1.3s; --scale: 0.78; --peak: 0.65; }
+        .provider-star:nth-child(5) { --top: 128px; --left: 89%; --duration: 24s; --delay: -23.7s; --scale: 0.8; --peak: 0.7; }
+        .provider-star:nth-child(6) { --top: 250px; --left: 1%; --duration: 20s; --delay: -1.6s; --scale: 1; --peak: 0.95; }
+        .provider-star:nth-child(7) { --top: 232px; --left: 88%; --duration: 24s; --delay: -0.3s; --scale: 0.85; --peak: 0.75; }
+        .provider-star:nth-child(8) { --top: 330px; --left: 91%; --duration: 24s; --delay: -1s; --scale: 0.95; --peak: 0.9; }
+        .provider-star:nth-child(9) { --top: 344px; --left: 5%; --duration: 20s; --delay: -1.9s; --scale: 0.9; --peak: 0.8; }
+        .provider-star:nth-child(10) { --top: 436px; --left: 0%; --duration: 20s; --delay: -2.2s; --scale: 0.8; --peak: 0.7; }
+        .provider-star:nth-child(11) { --top: 428px; --left: 89%; --duration: 24s; --delay: -1.7s; --scale: 0.9; --peak: 0.8; }
+        .provider-star:nth-child(12) { --top: 522px; --left: 90%; --duration: 24s; --delay: -2.6s; --scale: 0.75; --peak: 0.62; }
+        .provider-star:nth-child(13) { --top: 518px; --left: 3%; --duration: 20s; --delay: -2.8s; --scale: 1; --peak: 0.95; }
 
         .brand-mark {
             display: grid;
@@ -619,8 +633,8 @@
             padding: 0 15px;
             border-bottom: 1px solid var(--border);
             background: rgba(35, 35, 42, 0.7);
-            -webkit-backdrop-filter: blur(12px) saturate(1.15);
-            backdrop-filter: blur(12px) saturate(1.15);
+            -webkit-backdrop-filter: blur(16px) saturate(1.3);
+            backdrop-filter: blur(16px) saturate(1.3);
         }
 
         .terminal-dots {
@@ -1466,18 +1480,45 @@
         @keyframes meteor-fall {
             0% {
                 opacity: 0;
-                transform: translate3d(24px, -100px, 0) rotate(-2deg) scale(var(--scale, 1));
+                transform: translate3d(24px, -80px, 0) rotate(-2deg) scale(var(--scale, 1));
             }
-            12% {
+            5% {
                 opacity: var(--peak, 0.95);
             }
-            72% {
-                opacity: calc(var(--peak, 0.95) - 0.15);
-            }
             100% {
-                opacity: 0;
-                transform: translate3d(-36px, 250px, 0) rotate(3deg) scale(var(--scale, 1));
+                opacity: var(--peak, 0.95);
+                transform: translate3d(-36px, var(--fall, 640px), 0) rotate(3deg) scale(var(--scale, 1));
             }
+        }
+
+        @media (max-width: 1279px) {
+            /* Below 1280px the copy column meets the edge bands, so the
+               constellation drops under the copy as a full-width field. */
+            .provider-constellation {
+                position: relative;
+                top: auto;
+                left: auto;
+                width: 100%;
+                height: 310px;
+                margin-top: 40px;
+                --fall: 400px;
+            }
+
+            /* One shared speed; delays place chips in interleaved phase slots
+               so near-lane chips keep constant vertical separation. */
+            .provider-star:nth-child(1) { --top: -20px; --left: 2%; --duration: 22s; --delay: -0.9s; }
+            .provider-star:nth-child(2) { --top: 12px; --left: 38%; --duration: 22s; --delay: -1.1s; }
+            .provider-star:nth-child(3) { --top: 2px; --left: 72%; --duration: 22s; --delay: -3.3s; }
+            .provider-star:nth-child(4) { --top: 68px; --left: 8%; --duration: 22s; --delay: -3.7s; }
+            .provider-star:nth-child(5) { --top: 82px; --left: 49%; --duration: 22s; --delay: -1.3s; }
+            .provider-star:nth-child(6) { --top: 126px; --left: 74%; --duration: 22s; --delay: -4.4s; }
+            .provider-star:nth-child(7) { --top: 149px; --left: 3%; --duration: 22s; --delay: -6.7s; }
+            .provider-star:nth-child(8) { --top: 174px; --left: 36%; --duration: 22s; --delay: -0.5s; }
+            .provider-star:nth-child(9) { --top: 212px; --left: 68%; --duration: 22s; --delay: -7.2s; }
+            .provider-star:nth-child(10) { --top: 238px; --left: 4%; --duration: 22s; --delay: -9.4s; }
+            .provider-star:nth-child(11) { --top: 225px; --left: 42%; --duration: 22s; --delay: -4.9s; }
+            .provider-star:nth-child(12) { --top: 83px; --left: 25%; --duration: 22s; --delay: -8s; }
+            .provider-star:nth-child(13) { --top: 154px; --left: 58%; --duration: 22s; --delay: -11.6s; }
         }
 
         @media (max-width: 1023px) {
@@ -1499,31 +1540,8 @@
             }
 
             .hero-title {
-                font-size: clamp(3rem, 7.5vw, 4rem);
+                font-size: clamp(2.3rem, 5.2vw, 2.9rem);
             }
-
-            .provider-constellation {
-                position: relative;
-                top: auto;
-                right: auto;
-                width: 100%;
-                height: 310px;
-                margin-top: 36px;
-            }
-
-            .provider-star:nth-child(1) { --top: -20px; --left: 2%; }
-            .provider-star:nth-child(2) { --top: 12px; --left: 38%; }
-            .provider-star:nth-child(3) { --top: 2px; --left: 72%; }
-            .provider-star:nth-child(4) { --top: 68px; --left: 8%; }
-            .provider-star:nth-child(5) { --top: 82px; --left: 49%; }
-            .provider-star:nth-child(6) { --top: 126px; --left: 74%; }
-            .provider-star:nth-child(7) { --top: 149px; --left: 3%; }
-            .provider-star:nth-child(8) { --top: 174px; --left: 36%; }
-            .provider-star:nth-child(9) { --top: 212px; --left: 68%; }
-            .provider-star:nth-child(10) { --top: 238px; --left: 4%; }
-            .provider-star:nth-child(11) { --top: 225px; --left: 42%; }
-            .provider-star:nth-child(12) { --top: 83px; --left: 25%; }
-            .provider-star:nth-child(13) { --top: 154px; --left: 58%; }
 
             .hero-product {
                 margin-top: 8px;
@@ -1603,8 +1621,8 @@
             }
 
             .hero-title {
-                max-width: 10ch;
-                font-size: clamp(2.7rem, 12.8vw, 4rem);
+                max-width: none;
+                font-size: clamp(2rem, 9.2vw, 2.6rem);
                 line-height: 1;
             }
 
@@ -1822,7 +1840,7 @@
             }
 
             .hero-title {
-                font-size: 2.65rem;
+                font-size: 1.95rem;
             }
 
             .platform-strip,
@@ -1838,6 +1856,7 @@
         @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
             .site-nav,
             .provider-star,
+            .hero-command,
             .terminal-titlebar,
             .hero-badges {
                 background: #1b1b21;
@@ -1849,6 +1868,7 @@
         @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
             .site-nav,
             .provider-star,
+            .hero-command,
             .terminal-titlebar,
             .hero-badges {
                 background: rgba(24, 24, 30, 0.97);
@@ -1906,7 +1926,7 @@
 
     <nav class="site-nav pill-at-top" aria-label="Primary navigation">
         <a class="nav-brand" href="./" aria-label="CLI-JAW home">
-            <span class="nav-brand-mark" aria-hidden="true">J</span>
+            <img class="nav-brand-mark" src="assets/app-icon.png" alt="" width="28" height="28" aria-hidden="true">
             <span>CLI-JAW</span>
         </a>
         <div class="nav-actions">
