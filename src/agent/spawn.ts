@@ -56,6 +56,7 @@ import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntime } from './jwc-runtime.js';
+import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
 import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
@@ -129,6 +130,7 @@ export interface MainSessionMeta {
     cli?: string;
     model?: string;
     effectiveProvider?: string;
+    policyVerdicts?: PolicyVerdict[];
 }
 let currentMainMeta: MainSessionMeta | null = null;
 export function getCurrentMainMeta(): MainSessionMeta | null {
@@ -857,7 +859,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         jawRuntime.setLiveScope(liveScope);
         const settleJwcTurn = (result: { text: string; code: number }): void => {
             const live = getLiveRun(liveScope);
-            const finalText = result.code === 0 ? live.text : result.text;
+            const rawFinalText = result.code === 0 ? live.text : result.text;
+            const finalText = applyOutputPolicy(rawFinalText, { scope: 'main' }).text;
             // Persist may throw (better-sqlite3 is sync: DB lock / schema). Cleanup MUST
             // still run or mainSpawnStarting sticks true and the jwc queue deadlocks.
             try {
@@ -1163,6 +1166,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         argOptions = { ...argOptions, workingDir: spawnCwd };
         args = buildCurrentArgs(argOptions);
     }
+
+    const policyVerdicts = runBeforeSpawnChecks({
+        cli,
+        promptChars: promptForArgs.length + (sysPrompt?.length || 0),
+        prompt: `${sysPrompt || ''}\n${promptForArgs}`,
+    });
+    if (policyVerdicts.length && currentMainMeta) currentMainMeta.policyVerdicts = policyVerdicts;
 
     // ─── DIFF-A: Preflight — verify CLI binary exists before spawn ───
     const detected = detectCli(cli);

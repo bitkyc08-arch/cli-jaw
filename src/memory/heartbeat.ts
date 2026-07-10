@@ -14,6 +14,7 @@ import { insertHeartbeatAnchor } from '../core/db.js';
 import { getState } from '../orchestrator/state-machine.js';
 import { getGoalContinuationPrompt } from '../goal/heartbeat.js';
 import { log } from '../core/logger.js';
+import { applyOutputPolicy, loadPolicyHooksConfig } from '../core/policy-hooks.js';
 import {
     describeHeartbeatSchedule,
     formatHeartbeatNow,
@@ -37,6 +38,10 @@ interface PendingHeartbeatJob {
     policy?: HeartbeatPendingPolicy;
 }
 const pendingJobs: PendingHeartbeatJob[] = [];
+
+export function isHeartbeatQuietOutput(result: string, extraMarkers: string[] = []): boolean {
+    return ['[SILENT]', ...extraMarkers].some(marker => marker.length > 0 && result.includes(marker));
+}
 
 function pendingSnapshot(reason?: HeartbeatPendingReason, policy?: HeartbeatPendingPolicy) {
     const deferredPending = pendingJobs.filter(item => item.policy === 'defer').length;
@@ -128,9 +133,12 @@ async function runHeartbeatJob(job: Record<string, any>) {
         const prompt = `[heartbeat:${job["name"]}] 현재 시간: ${now} (${timeZone})\n\nBefore responding, you MUST search memory (cli-jaw memory search) for recent conversation context, user preferences, and ongoing tasks. Use this context to ground your response.${goalSection}\n\n${job["prompt"] || '정기 점검입니다. 할 일 없으면 [SILENT]로 응답.'}`;
         log.info(`[heartbeat:${job["name"]}] tick (${describeHeartbeatSchedule(schedule)})`);
         const requestId = crypto.randomUUID();
-        const result: string = String(await orchestrateAndCollect(prompt, { origin: 'heartbeat', requestId }));
+        const rawResult: string = String(await orchestrateAndCollect(prompt, { origin: 'heartbeat', requestId }));
+        const result = applyOutputPolicy(rawResult, { scope: 'heartbeat', channel: 'active' }).text;
 
-        if (result.includes('[SILENT]')) {
+        const quietConfig = loadPolicyHooksConfig()?.flags?.heartbeatQuietOk;
+        const extraQuietMarkers = quietConfig?.enabled ? (quietConfig.markers || []) : [];
+        if (isHeartbeatQuietOutput(result, extraQuietMarkers)) {
             log.info(`[heartbeat:${job["name"]}] silent`);
             return;
         }

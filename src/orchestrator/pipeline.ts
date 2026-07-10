@@ -372,6 +372,9 @@ export async function orchestrate(
 
     // Inject heartbeat anchor for non-heartbeat user turns
     if (origin !== 'heartbeat' && !meta["_workerResult"] && !meta["_isSmokeContinuation"]) {
+        const { consumePendingReminder } = await import('../core/policy-flags.js');
+        const policyReminder = consumePendingReminder();
+        if (policyReminder) prompt = `${policyReminder}\n\n${prompt}`;
         type HeartbeatAnchorRow = { id?: number; created_at: number; delivered_at?: number | string | null; job_name: string; output: string };
         const anchor = getLatestUnconsumedAnchor.get(settings["workingDir"] || null) as HeartbeatAnchorRow | undefined;
         if (anchor) {

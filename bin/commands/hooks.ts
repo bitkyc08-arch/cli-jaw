@@ -2,6 +2,8 @@
 
 import { buildPrePromptContextHook, type ContextHookInput, type ContextHookScope } from '../../src/prompt/context-hooks.js';
 import { shouldShowHelp, printAndExit } from '../helpers/help.js';
+import { loadPolicyHooksConfig, policyConfigPath, POLICY_LIMITS } from '../../src/core/policy-hooks.js';
+import { inspectPolicyFlags } from '../../src/core/policy-flags.js';
 
 if (shouldShowHelp(process.argv)) printAndExit(`
   jaw hooks inspect — inspect read-only pre-prompt context injection
@@ -19,7 +21,16 @@ function valueAfter(flag: string): string | undefined {
 }
 
 const subcommand = process.argv[3] || 'inspect';
-if (subcommand !== 'inspect') {
+if (subcommand === 'policy') {
+    const result = { configPath: policyConfigPath(), config: loadPolicyHooksConfig(), limits: POLICY_LIMITS, flags: inspectPolicyFlags() };
+    if (process.argv.includes('--json')) console.log(JSON.stringify(result, null, 2));
+    else {
+        console.log(`Config: ${result.configPath}`);
+        console.log(`Status: ${result.config ? 'enabled' : 'not-configured-or-disabled'}`);
+        console.log(`Output rules: ${result.config?.output?.rules?.length || 0}/${POLICY_LIMITS.maxRules}`);
+        console.log(`Flags: ${JSON.stringify(result.flags)}`);
+    }
+} else if (subcommand !== 'inspect') {
     console.error(`Unknown hooks subcommand: ${subcommand}`);
     process.exitCode = 1;
 } else {

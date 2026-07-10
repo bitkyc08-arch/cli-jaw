@@ -167,6 +167,7 @@ Support labels must stay aligned with agbrowse:
 | Adaptive-fetch P0 hardening | `src/browser/adaptive-fetch/scheduler.ts`, `stage-types.ts`, `browser-escalation.ts` | Typed stage scheduler, SSRF on all transports, overall-deadline + in-flight `AbortSignal` cancellation, warm browser pool, BM25 filter, Camoufox/yt-dlp/Jina reader stack (34 files). |
 | Test runner (`tests/run.mts`) | `tests/run.mts`, `tests/setup/isolated-home.ts`, `package.json` | `npm test` / `test:all` use programmatic driver with `isolation:'process'` for subprocess DB isolation; replaces flat `tsx --test tests/**/*.test.ts` glob. |
 | Pre-prompt context hooks | `src/prompt/context-hooks.ts`, `bin/commands/hooks.ts`, `docs/dev/pre-prompt-context-hooks.md` | Bounded sources under `JAW_HOME`, scopes `main`/`heartbeat`, `freshSession` wired into spawn turn metadata. |
+| Runtime policy hooks | `src/core/policy-hooks.ts`, `src/core/policy-flags.ts`, `structure/prompt_flow.md` | Optional `policy-hooks.json`: afterOutput warn/block/redact seams (lifecycle/jwc/send/heartbeat), `record_pending`/quiet-marker event flags, beforeSpawn warn checks; inert without config. |
 | Web-AI session artifacts + agbrowse parity wave | `src/browser/web-ai/session-artifacts.ts`, `candidate-reconcile.ts`, `session-doctor.ts`, `tier-timeout.ts`, `watcher-lock.ts` | Artifact persistence, navigation-ready guard, capability-probe ladders, DR timeout activity requirement, tab-lease caps; web-ai module count 68→96. |
 
 ---

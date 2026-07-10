@@ -32,6 +32,8 @@ import {
 import { buildGoalContinuation } from '../goal/heartbeat.js';
 import { completeGoal, cancelGoal, getActiveGoal, goalHasCompletionEvidence } from '../goal/store.js';
 import { recordTurn } from '../goal-run/controller.js';
+import { applyOutputPolicy } from '../core/policy-hooks.js';
+import { evaluateRecordPending } from '../core/policy-flags.js';
 
 const GOAL_CONT_MAX_ATTEMPTS = 20;
 let _goalContAttempts = 0;
@@ -511,6 +513,8 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
 
         if (mainManaged && !opts.internal) {
+            finalContent = applyOutputPolicy(finalContent, { scope: 'main' }).text;
+            evaluateRecordPending(ctx.toolLog, finalContent);
             const structuredFence = scanStructuredFence(finalContent);
             if (structuredFence.status === 'incomplete') {
                 console.warn('[lifecycle] assistant output contains incomplete structured fence before durable insert', {

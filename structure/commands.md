@@ -103,7 +103,7 @@ JWC-only `Context` settings. Line-mode still returns the generic command result.
 | `browser web-ai` | `bin/commands/browser-web-ai.ts` | `render`, `status`, `send`, `poll`, `query`, `watch`, `watchers`, `sessions`, `sessions-prune`, `resume`, `reattach`, `notifications`, `capabilities`, `stop`, `diagnose`/`doctor`, `context-dry-run`, `context-render`, `code`, `code-extract`; vendor는 `chatgpt\|gemini\|grok`, code/code-extract는 ChatGPT 전용 |
 | `design` | `bin/commands/design.ts` | design workspace command surface |
 | `memory` | `bin/commands/memory.ts` | `search <query> [--chat]`, `read <file> [--lines N-M]`, `save <file> <content>`, `list`, `init`, `context <file> [--window N]`, `reflect [--sinceDays N]`, `flush`, `cleanup [--days N]` |
-| `hooks` | `bin/commands/hooks.ts` | pre-prompt context hooks management |
+| `hooks` | `bin/commands/hooks.ts` | pre-prompt context hooks management (+ `hooks policy`: runtime policy hooks/flags inspection) |
 | `launchd` | `bin/commands/launchd.ts` | `[--port PORT] [status\|unset\|cleanup]` |
 | `clone` | `bin/commands/clone.ts` | `<target-dir> [--from <source>] [--with-memory] [--link-ref]` |
 | `orchestrate` | `bin/commands/orchestrate.ts` | `[I\|P\|A\|B\|C\|D\|status\|reset] [--force] [--json] [--port <port>]` |

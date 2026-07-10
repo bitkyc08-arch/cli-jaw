@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import { startHeartbeatCronLoop } from '../../src/memory/heartbeat-schedule.ts';
+import { isHeartbeatQuietOutput } from '../../src/memory/heartbeat.ts';
 
 test('startHeartbeatCronLoop runs current minute immediately and arms next tick', () => {
     const events: string[] = [];
@@ -50,4 +51,10 @@ test('startHeartbeatCronLoop still arms next tick when runCurrent throws', () =>
     }, /boom/);
 
     assert.deepEqual(events, ['run', 'arm']);
+});
+
+test('heartbeat quiet output preserves SILENT and supports configured extra markers', () => {
+    assert.equal(isHeartbeatQuietOutput('done [SILENT]'), true);
+    assert.equal(isHeartbeatQuietOutput('HEARTBEAT_OK', ['HEARTBEAT_OK']), true);
+    assert.equal(isHeartbeatQuietOutput('ordinary output', ['HEARTBEAT_OK']), false);
 });
