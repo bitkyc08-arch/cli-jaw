@@ -55,6 +55,13 @@ export function evaluateRecordPending(toolLog: unknown, finalText: string, optio
     }
 }
 
+/** Set a deterministic recording obligation when a structured runner report requests it. */
+export function setRecordPending(evidence: string, options: PolicyOptions = {}): void {
+    const state = readFlags(options);
+    state.flags.record_pending = { set: true, evidence: evidence.slice(0, 400), setAt: new Date().toISOString() };
+    writeFlags(state, options);
+}
+
 export function consumePendingReminder(options: PolicyOptions = {}): string | null {
     const config = loadPolicyHooksConfig(options);
     const rule = config?.flags?.recordPending;

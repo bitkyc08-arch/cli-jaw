@@ -530,12 +530,18 @@ export interface HeartbeatJob {
     enabled?: boolean;
     prompt?: string;
     schedule?: unknown;
+    runner?: 'main' | 'employee' | 'script';
+    employee?: string;
+    command?: string[];
+    reportPolicy?: 'always' | 'anomaly_only' | 'silent';
 }
 export interface HeartbeatFile { jobs: HeartbeatJob[] }
 
 export function loadHeartbeatFile(): HeartbeatFile {
     try {
-        return JSON.parse(fs.readFileSync(HEARTBEAT_JOBS_PATH, 'utf8')) as HeartbeatFile;
+        const parsed = JSON.parse(fs.readFileSync(HEARTBEAT_JOBS_PATH, 'utf8')) as HeartbeatFile;
+        if (!Array.isArray(parsed.jobs)) return parsed;
+        return { ...parsed, jobs: parsed.jobs.map(normalizeHeartbeatJob) };
     } catch (error) {
         const err = error as NodeJS.ErrnoException;
         if (err?.code !== 'ENOENT') {
@@ -547,6 +553,23 @@ export function loadHeartbeatFile(): HeartbeatFile {
         }
         return { jobs: [] };
     }
+}
+
+function normalizeHeartbeatJob(job: HeartbeatJob): HeartbeatJob {
+    const runner = job.runner ?? 'main';
+    const validRunner = runner === 'main' || runner === 'employee' || runner === 'script';
+    const validEmployee = runner !== 'employee' || (typeof job.employee === 'string' && job.employee.trim().length > 0);
+    const validCommand = runner !== 'script' || (Array.isArray(job.command) && job.command.length > 0 && job.command.every(part => typeof part === 'string' && part.length > 0));
+    if (!validRunner || !validEmployee || !validCommand) {
+        console.warn(`[heartbeat:${job.name || job.id || 'unknown'}] invalid runner configuration; falling back to main`);
+        return { ...job, runner: 'main' };
+    }
+    const reportPolicy = job.reportPolicy ?? 'always';
+    if (reportPolicy !== 'always' && reportPolicy !== 'anomaly_only' && reportPolicy !== 'silent') {
+        console.warn(`[heartbeat:${job.name || job.id || 'unknown'}] invalid report policy; falling back to always`);
+        return { ...job, runner, reportPolicy: 'always' };
+    }
+    return { ...job, runner, reportPolicy };
 }
 
 export function saveHeartbeatFile(data: HeartbeatFile | Record<string, unknown>) {

@@ -89,5 +89,9 @@ test('policy wiring: heartbeat redacts before quiet gate and anchor persistence'
     const quiet = src.indexOf('isHeartbeatQuietOutput(result, extraQuietMarkers)', policy);
     const anchor = src.indexOf('insertHeartbeatAnchor.run(', quiet);
     assert.ok(policy >= 0 && quiet > policy && anchor > quiet);
-    assert.ok(src.slice(quiet, anchor).includes('text: result'));
+    // wp4 report gate delivers `formatted` (policy-redacted `result` -> report summary/prefix).
+    const between = src.slice(quiet, anchor);
+    assert.ok(between.includes('sendChannelOutput'));
+    assert.ok(between.includes('text: formatted'));
+    assert.ok(between.indexOf('parseHeartbeatReport(result)') < between.indexOf('sendChannelOutput'));
 });
