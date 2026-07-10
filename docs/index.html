@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CLI-JAW 2.x: All Your AI Subscriptions. One Assistant.</title>
     <meta name="description"
-        content="All your AI subscriptions. One assistant. CLI-JAW routes Claude, ChatGPT, Codex, Cursor, Gemini, Grok, Kiro, OpenCode, Copilot, and more through native subscriptions. Includes a manager dashboard, Kanban board, Notes workspace, Employee system, 200+ reference skills, and 7+ surfaces.">
+        content="All your AI subscriptions. One assistant. CLI-JAW routes Claude, ChatGPT, Codex, Cursor, Grok, Kiro, OpenCode, Copilot, and more through native subscriptions. Includes a manager dashboard, Kanban board, Notes workspace, Employee system, 200+ reference skills, and 7+ surfaces.">
     <meta property="og:title" content="CLI-JAW 2.x: All Your AI Subscriptions. One Assistant.">
     <meta property="og:description"
         content="All your AI subscriptions. One assistant. Route the AI coding subscriptions you already use through one local control plane.">
@@ -26,17 +26,21 @@
             --bg: #0b0b0e;
             --surface: #131318;
             --surface-2: #18181f;
-            --border: rgba(255, 255, 255, 0.08);
+            --surface-3: #101014;
+            --border: rgba(255, 255, 255, 0.09);
             --border-strong: rgba(255, 255, 255, 0.16);
+            --warm-border: rgba(214, 198, 180, 0.16);
+            --warm-soft: rgba(214, 198, 180, 0.055);
             --text: #ececf1;
-            --dim: #9494a6;
+            --dim: #9a9aaa;
             --accent: #22d3ee;
-            --accent-soft: rgba(34, 211, 238, 0.1);
+            --accent-soft: rgba(34, 211, 238, 0.11);
             --font-body: "Outfit", sans-serif;
             --font-mono: "JetBrains Mono", monospace;
             --radius-sm: 8px;
             --radius-md: 12px;
             --radius-lg: 16px;
+            --max-width: 1280px;
         }
 
         *,
@@ -75,18 +79,38 @@
         }
 
         button,
+        summary {
+            font: inherit;
+        }
+
+        button,
         summary,
         a {
             -webkit-tap-highlight-color: transparent;
         }
 
-        button,
-        summary {
-            font: inherit;
-        }
-
         a {
             color: inherit;
+            overflow-wrap: break-word;
+        }
+
+        code {
+            overflow-wrap: break-word;
+        }
+
+        h1,
+        h2,
+        h3,
+        h4,
+        .hero-sub,
+        .section-desc,
+        .feature-desc {
+            text-wrap: balance;
+        }
+
+        p,
+        li {
+            text-wrap: pretty;
         }
 
         :focus-visible {
@@ -108,9 +132,7 @@
             border-radius: 9999px;
             background: var(--accent);
             color: var(--bg);
-            font-family: var(--font-mono);
-            font-size: 13px;
-            font-weight: 600;
+            font: 600 13px/1 var(--font-mono);
             text-decoration: none;
             transform: translate(-50%, -180%);
         }
@@ -121,51 +143,44 @@
 
         .container {
             position: relative;
-            width: min(100% - 48px, 1200px);
+            width: min(100% - 48px, var(--max-width));
             margin-inline: auto;
         }
 
         .section {
-            padding: 96px 0;
+            padding: 104px 0;
         }
 
-        .section-rule {
+        .band {
             border-top: 1px solid var(--border);
+            background: var(--bg);
+        }
+
+        .band-alt {
+            background: var(--surface-3);
         }
 
         .kicker,
         .eyebrow {
             margin: 0 0 12px;
             color: var(--accent);
-            font-size: 12px;
-            font-weight: 600;
-            line-height: 1.4;
-            text-transform: uppercase;
-        }
-
-        .eyebrow {
-            font-family: var(--font-mono);
-            font-weight: 500;
-            text-transform: none;
+            font: 500 12px/1.4 var(--font-mono);
         }
 
         .section-title {
-            max-width: 760px;
+            max-width: 18ch;
             margin: 0;
-            font-size: clamp(2rem, 4.5vw, 3.65rem);
-            font-weight: 600;
-            line-height: 1.06;
-            letter-spacing: 0;
-            text-wrap: balance;
+            font-size: clamp(2.25rem, 4.8vw, 4.2rem);
+            font-weight: 500;
+            line-height: 1.02;
         }
 
         .section-desc {
-            max-width: 690px;
-            margin: 18px 0 44px;
+            max-width: 62ch;
+            margin: 20px 0 48px;
             color: var(--dim);
-            font-size: 17px;
+            font-size: clamp(1rem, 1.3vw, 1.16rem);
             line-height: 1.65;
-            text-wrap: balance;
         }
 
         .icon {
@@ -187,16 +202,16 @@
 
         .reveal {
             opacity: 0;
-            transform: translateY(12px);
+            transform: translateY(14px);
             transition: opacity 560ms ease, transform 560ms ease;
         }
 
         .reveal.is-visible {
             opacity: 1;
-            transform: translateY(0);
+            transform: none;
         }
 
-        /* Floating navigation: the page's only glass layer. */
+        /* Floating functional chrome */
         .site-nav {
             position: fixed;
             top: 16px;
@@ -207,32 +222,34 @@
             min-height: 58px;
             align-items: center;
             justify-content: space-between;
-            gap: 24px;
+            gap: 20px;
             padding: 8px 10px 8px 18px;
-            border: 1px solid var(--border);
+            border: 1px solid var(--warm-border);
             border-radius: 9999px;
-            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.24);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.08), 0 14px 40px rgba(0, 0, 0, 0.3);
             transform: translateX(-50%);
             transition: background-color 220ms ease, opacity 220ms ease;
         }
 
         .site-nav.pill-at-top {
-            background-color: rgba(19, 19, 24, 0.72);
-            opacity: 0.98;
+            background: rgba(19, 19, 24, 0.76);
         }
 
         .site-nav.pill-scrolled {
-            background-color: rgba(19, 19, 24, 0.92);
-            opacity: 1;
-            -webkit-backdrop-filter: blur(14px) saturate(1.25);
-            backdrop-filter: blur(14px) saturate(1.25);
+            background: rgba(19, 19, 24, 0.94);
+            -webkit-backdrop-filter: blur(14px) saturate(1.2);
+            backdrop-filter: blur(14px) saturate(1.2);
+        }
+
+        .nav-brand,
+        .nav-actions,
+        .nav-link {
+            display: flex;
+            align-items: center;
         }
 
         .nav-brand {
-            display: inline-flex;
-            align-items: center;
             gap: 10px;
-            color: var(--text);
             font-size: 15px;
             font-weight: 700;
             text-decoration: none;
@@ -247,23 +264,18 @@
             border-radius: 50%;
             background: var(--accent);
             color: var(--bg);
-            font-family: var(--font-mono);
-            font-size: 12px;
-            font-weight: 600;
+            font: 600 12px/1 var(--font-mono);
         }
 
         .nav-actions {
-            display: flex;
-            align-items: center;
-            gap: 6px;
+            gap: 4px;
         }
 
         .nav-link {
-            display: inline-flex;
             min-height: 40px;
-            align-items: center;
             gap: 7px;
             padding: 0 13px;
+            border: 0;
             border-radius: 9999px;
             color: var(--dim);
             font-size: 14px;
@@ -272,36 +284,34 @@
             transition: background-color 180ms ease, color 180ms ease;
         }
 
-        .nav-link:hover {
-            background-color: rgba(255, 255, 255, 0.05);
+        .nav-link:hover,
+        .nav-link:focus-visible {
+            background: rgba(255, 255, 255, 0.06);
             color: var(--text);
         }
 
-        .nav-link.nav-github {
-            background: var(--accent);
+        .nav-github {
+            background: var(--text);
             color: var(--bg);
-            font-weight: 700;
         }
 
-        .nav-link.nav-github:hover {
-            background: #67e8f9;
+        .nav-github:hover,
+        .nav-github:focus-visible {
+            background: var(--accent);
             color: var(--bg);
         }
 
         .nav-mobile-start {
             display: none;
-            color: var(--text);
         }
 
-        /* Hero */
+        /* Hero: media is the stage */
         .hero {
             position: relative;
-            display: flex;
-            min-height: min(820px, calc(100dvh - 48px));
-            align-items: center;
+            min-height: 1080px;
             overflow: hidden;
-            padding: 110px 0 50px;
-            background-color: var(--bg);
+            isolation: isolate;
+            border-bottom: 1px solid var(--border);
         }
 
         .hero-backdrop,
@@ -313,143 +323,126 @@
         }
 
         .hero-backdrop {
+            z-index: -3;
             object-fit: cover;
-            object-position: center;
+            object-position: 64% 32%;
         }
 
         .hero-shade {
-            background: rgba(11, 11, 14, 0.62);
+            z-index: -2;
+            background: linear-gradient(90deg, rgba(11, 11, 14, 0.97) 0%, rgba(11, 11, 14, 0.84) 45%, rgba(11, 11, 14, 0.28) 78%, rgba(11, 11, 14, 0.7) 100%);
         }
 
-        .hero-shade::after {
-            position: absolute;
-            inset: 0;
-            background: linear-gradient(180deg, transparent 48%, #0b0b0e 100%);
-            content: "";
-        }
-
-        .hero-grid {
-            display: grid;
-            grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.75fr);
-            gap: clamp(32px, 4vw, 52px);
-            align-items: center;
+        .hero-inner {
+            padding-top: 164px;
         }
 
         .hero-copy {
-            min-width: 0;
+            position: relative;
+            z-index: 4;
+            width: min(61%, 870px);
         }
 
         .hero-title {
-            max-width: 790px;
+            max-width: 14ch;
             margin: 0;
-            font-size: clamp(3.25rem, 4.45vw, 4rem);
+            font-size: clamp(3rem, 4.65vw, 4rem);
             font-weight: 300;
             line-height: 0.98;
-            letter-spacing: 0;
-            text-wrap: balance;
         }
 
         .hero-line {
             display: block;
             opacity: 0;
-            transform: translateY(14px);
-            animation: headline-in 680ms cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+            transform: translateY(18px);
+            animation: hero-in 700ms ease forwards;
         }
 
-        .hero-line + .hero-line {
+        .hero-line:nth-child(2) {
             margin-top: 10px;
-            animation-delay: 120ms;
+            animation-delay: 100ms;
         }
 
         .hero-answer {
             position: relative;
             display: inline-block;
-            padding-bottom: 10px;
             font-weight: 600;
         }
 
         .hero-answer::after {
             position: absolute;
             right: 0;
-            bottom: 0;
+            bottom: -9px;
             left: 0;
-            height: 4px;
-            border-radius: 9999px;
+            height: 3px;
+            border-radius: 2px;
             background: var(--accent);
             content: "";
         }
 
-        @keyframes headline-in {
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
         .hero-sub {
-            max-width: 620px;
+            max-width: 42ch;
             margin: 28px 0 0;
-            color: #c6c6d0;
-            font-size: clamp(1.05rem, 2vw, 1.2rem);
+            color: #c2c2ce;
+            font-size: clamp(1.05rem, 1.6vw, 1.3rem);
             line-height: 1.55;
-            text-wrap: balance;
         }
 
-        .hero-install-label {
-            margin: 28px 0 8px;
-            color: var(--text);
-            font-size: 14px;
-        }
-
-        .hero-install-label strong {
-            color: var(--accent);
-            font-weight: 600;
-        }
-
-        .code-block {
-            overflow-x: auto;
-            border: 1px solid var(--border);
+        .hero-command {
+            display: flex;
+            width: min(100%, 590px);
+            align-items: center;
+            justify-content: space-between;
+            gap: 18px;
+            margin-top: 30px;
+            padding: 15px 18px;
+            border: 1px solid var(--border-strong);
             border-radius: var(--radius-sm);
-            background: var(--bg);
+            background: rgba(11, 11, 14, 0.86);
+            color: #d8d8e1;
+            font: 500 clamp(0.76rem, 1.1vw, 0.9rem)/1.5 var(--font-mono);
+            overflow-wrap: anywhere;
+        }
+
+        .hero-command span {
             color: var(--accent);
-            font-family: var(--font-mono);
-            font-size: 13px;
-            line-height: 1.8;
-            scrollbar-width: thin;
+        }
+
+        .hero-command small {
+            color: var(--dim);
+            font: inherit;
             white-space: nowrap;
         }
 
-        .code-block .dim {
-            color: var(--dim);
-        }
-
-        .hero-code {
-            display: inline-block;
-            min-width: min(100%, 390px);
-            padding: 14px 18px;
-            background: rgba(11, 11, 14, 0.88);
+        .hero-actions,
+        .hero-quiet-links {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
         }
 
         .hero-actions {
-            display: flex;
-            flex-wrap: wrap;
             gap: 10px;
-            margin-top: 20px;
+            margin-top: 22px;
         }
 
         .button {
             display: inline-flex;
-            min-height: 46px;
+            min-height: 48px;
             align-items: center;
             justify-content: center;
-            gap: 8px;
+            gap: 9px;
             padding: 0 18px;
             border: 1px solid transparent;
-            border-radius: 9999px;
-            font-size: 15px;
+            border-radius: var(--radius-sm);
             font-weight: 600;
             text-decoration: none;
-            transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+            white-space: nowrap;
+            transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+        }
+
+        .button:hover {
+            transform: translateY(-2px);
         }
 
         .button-primary {
@@ -463,81 +456,171 @@
 
         .button-ghost {
             border-color: var(--border-strong);
-            background: rgba(11, 11, 14, 0.44);
+            background: rgba(11, 11, 14, 0.6);
             color: var(--text);
         }
 
         .button-ghost:hover {
-            border-color: var(--accent);
+            border-color: var(--warm-border);
             background: var(--surface);
         }
 
         .hero-quiet-links {
-            display: flex;
-            flex-wrap: wrap;
             gap: 18px;
-            margin-top: 14px;
+            margin-top: 18px;
         }
 
         .quiet-link {
-            color: #c6c6d0;
+            color: var(--dim);
             font-size: 14px;
-            text-decoration-color: rgba(198, 198, 208, 0.45);
             text-underline-offset: 4px;
         }
 
         .quiet-link:hover {
             color: var(--accent);
-            text-decoration-color: var(--accent);
         }
 
-        .provider-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 7px;
-            margin-top: 24px;
-        }
-
-        .provider-chip {
-            display: inline-flex;
-            min-height: 32px;
-            align-items: center;
-            gap: 7px;
-            padding: 0 11px;
-            border: 1px solid var(--border);
-            border-radius: 9999px;
-            background: var(--surface);
-            color: #c6c6d0;
-            font-family: var(--font-mono);
-            font-size: 11px;
-        }
-
-        .provider-chip svg {
-            width: 15px;
-            height: 15px;
-            flex: 0 0 15px;
-        }
-
-        .hero-stage {
-            min-width: 0;
-        }
-
-        .terminal-window {
+        /* Signature provider constellation, isolated from the copy column */
+        .provider-constellation {
+            position: absolute;
+            top: 104px;
+            right: 0;
+            z-index: 1;
+            width: 37%;
+            height: 530px;
+            margin: 0;
+            padding: 0;
             overflow: hidden;
-            border: 1px solid var(--border-strong);
-            border-radius: var(--radius-lg);
-            background: var(--surface);
-            box-shadow: 0 28px 80px rgba(0, 0, 0, 0.4);
+            list-style: none;
+            pointer-events: none;
+            -webkit-mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 88%, transparent);
+            mask-image: linear-gradient(to bottom, transparent, #000 10%, #000 88%, transparent);
+        }
+
+        .provider-star {
+            position: absolute;
+            top: var(--top);
+            left: var(--left);
+            display: inline-flex;
+            min-height: 34px;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 11px;
+            border: 1px solid rgba(255, 255, 255, 0.18);
+            border-radius: 9999px;
+            background: rgba(27, 27, 34, 0.68);
+            box-shadow: inset 0 1px rgba(255, 255, 255, 0.1), 0 8px 24px rgba(0, 0, 0, 0.22);
+            color: #f4f4f7;
+            font: 500 11px/1 var(--font-mono);
+            white-space: nowrap;
+            pointer-events: auto;
+            -webkit-backdrop-filter: blur(10px) saturate(1.15);
+            backdrop-filter: blur(10px) saturate(1.15);
+            animation: meteor-fall var(--duration) linear var(--delay) infinite;
+            will-change: transform, opacity;
+        }
+
+        .provider-star:hover {
+            animation-play-state: paused;
+            border-color: rgba(34, 211, 238, 0.5);
+        }
+
+        /* Depth tiers: near chips are larger/brighter, far chips smaller/dimmer,
+           so lane crossings read as parallax instead of collision. */
+        .provider-star:nth-child(1) { --top: -36px; --left: 8%; --duration: 15s; --delay: -4s; --scale: 1; --peak: 0.95; }
+        .provider-star:nth-child(2) { --top: 22px; --left: 55%; --duration: 18s; --delay: -13s; --scale: 0.85; --peak: 0.75; }
+        .provider-star:nth-child(3) { --top: 72px; --left: 22%; --duration: 17s; --delay: -8s; --scale: 0.92; --peak: 0.85; }
+        .provider-star:nth-child(4) { --top: 118px; --left: 65%; --duration: 20s; --delay: -2s; --scale: 0.78; --peak: 0.65; }
+        .provider-star:nth-child(5) { --top: 178px; --left: 2%; --duration: 23s; --delay: -11s; --scale: 0.8; --peak: 0.7; }
+        .provider-star:nth-child(6) { --top: 206px; --left: 48%; --duration: 19s; --delay: -6s; --scale: 1; --peak: 0.95; }
+        .provider-star:nth-child(7) { --top: 254px; --left: 12%; --duration: 21s; --delay: -17s; --scale: 0.85; --peak: 0.75; }
+        .provider-star:nth-child(8) { --top: 302px; --left: 61%; --duration: 17s; --delay: -1s; --scale: 0.95; --peak: 0.9; }
+        .provider-star:nth-child(9) { --top: 350px; --left: 6%; --duration: 20s; --delay: -14s; --scale: 0.9; --peak: 0.8; }
+        .provider-star:nth-child(10) { --top: 400px; --left: 49%; --duration: 16s; --delay: -7s; --scale: 0.8; --peak: 0.7; }
+        .provider-star:nth-child(11) { --top: -8px; --left: 72%; --duration: 22s; --delay: -18s; --scale: 0.9; --peak: 0.8; }
+        .provider-star:nth-child(12) { --top: 137px; --left: 31%; --duration: 19s; --delay: -15s; --scale: 0.75; --peak: 0.62; }
+        .provider-star:nth-child(13) { --top: 328px; --left: 33%; --duration: 18s; --delay: -10s; --scale: 1; --peak: 0.95; }
+
+        .brand-mark {
+            display: grid;
+            width: 22px;
+            height: 22px;
+            flex: 0 0 22px;
+            place-items: center;
+            color: var(--text);
+        }
+
+        .brand-mark svg {
+            width: 100%;
+            height: 100%;
+            fill: currentColor;
+        }
+
+        .brand-mark.claude {
+            color: #d97757;
+        }
+
+        .brand-mark.google {
+            color: #4285f4;
+        }
+
+        .brand-mono {
+            width: auto;
+            min-width: 24px;
+            font: 600 10px/1 var(--font-mono);
+            color: #d8d8e1;
+        }
+
+        .brand-mono.pi {
+            font-size: 20px;
+            font-weight: 500;
+        }
+
+        .brand-with-sup {
+            position: relative;
+        }
+
+        .brand-with-sup::after {
+            position: absolute;
+            top: -3px;
+            right: -7px;
+            display: grid;
+            width: 12px;
+            height: 12px;
+            place-items: center;
+            border-radius: 50%;
+            background: var(--accent);
+            color: var(--bg);
+            content: "E";
+            font: 700 7px/1 var(--font-mono);
+        }
+
+        .hero-product {
+            position: relative;
+            z-index: 5;
+            width: min(100%, 1040px);
+            margin: 88px auto 0;
+        }
+
+        .terminal-window,
+        .orchestration-log {
+            overflow: hidden;
+            border: 1px solid var(--warm-border);
+            border-radius: var(--radius-md);
+            background: #0d0d11;
+            box-shadow: 0 32px 80px rgba(0, 0, 0, 0.38);
         }
 
         .terminal-titlebar {
             display: grid;
+            min-height: 46px;
             grid-template-columns: 1fr auto 1fr;
-            min-height: 44px;
             align-items: center;
             padding: 0 15px;
             border-bottom: 1px solid var(--border);
-            background: var(--surface-2);
+            background: rgba(35, 35, 42, 0.7);
+            -webkit-backdrop-filter: blur(12px) saturate(1.15);
+            backdrop-filter: blur(12px) saturate(1.15);
         }
 
         .terminal-dots {
@@ -546,48 +629,55 @@
         }
 
         .terminal-dot {
-            width: 9px;
-            height: 9px;
+            width: 8px;
+            height: 8px;
             border-radius: 50%;
-            background: #60606c;
+            background: #6d6d78;
+        }
+
+        .terminal-dot:first-child {
+            background: #c48f70;
+        }
+
+        .terminal-dot:nth-child(2) {
+            background: #b8a672;
+        }
+
+        .terminal-dot:nth-child(3) {
+            background: #6fa994;
         }
 
         .terminal-name {
-            color: var(--dim);
-            font-family: var(--font-mono);
-            font-size: 11px;
+            color: #b5b5c0;
+            font: 500 11px/1 var(--font-mono);
         }
 
         .terminal-body {
-            padding: clamp(18px, 3vw, 28px);
-            font-family: var(--font-mono);
-            font-size: 12px;
-            line-height: 1.7;
+            padding: 24px 28px 27px;
+            font: 400 12px/1.6 var(--font-mono);
         }
 
-        .terminal-command {
-            margin: 0 0 20px;
-            color: var(--text);
-            font-size: 13px;
+        .terminal-command,
+        .terminal-log {
+            margin: 0;
         }
 
         .terminal-prompt,
         .terminal-ready,
-        .terminal-time {
+        .log-phase {
             color: var(--accent);
         }
 
         .provider-status {
-            display: grid;
-            gap: 7px;
-            margin: 0;
+            margin: 20px 0;
         }
 
         .provider-status-row {
             display: grid;
-            grid-template-columns: minmax(78px, 1fr) minmax(68px, 0.8fr) auto;
-            gap: 12px;
-            align-items: center;
+            grid-template-columns: 1.15fr 1fr auto;
+            gap: 20px;
+            padding: 7px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.045);
         }
 
         .provider-status-row dt,
@@ -595,97 +685,119 @@
             margin: 0;
         }
 
-        .provider-status-row dd:first-of-type {
+        .provider-status-row dd {
             color: var(--dim);
+        }
+
+        .provider-status-row .terminal-ready {
+            color: var(--accent);
         }
 
         .terminal-log {
-            margin: 20px 0 0;
-            padding-top: 17px;
-            border-top: 1px solid var(--border);
             color: var(--dim);
         }
 
-        .terminal-log strong {
-            color: var(--text);
-            font-weight: 500;
+        .terminal-time {
+            color: #c4aa92;
         }
 
         .hero-badges {
             display: flex;
+            width: fit-content;
+            max-width: 100%;
+            align-items: center;
+            justify-content: center;
             flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 18px;
-            opacity: 0.85;
+            gap: 7px;
+            margin: 14px auto 0;
+            padding: 8px 10px;
+            border: 1px solid var(--border);
+            border-radius: 9999px;
+            background: rgba(19, 19, 24, 0.74);
+            -webkit-backdrop-filter: blur(10px) saturate(1.1);
+            backdrop-filter: blur(10px) saturate(1.1);
         }
 
         .hero-badges img {
-            height: 20px;
             width: auto;
+            max-width: 100%;
+            height: 20px;
         }
 
-        /* Manager showcase */
+        /* Product showcase */
         .manager-showcase {
-            padding: 40px 0 96px;
+            padding: 92px 0 104px;
+            background: var(--surface-3);
         }
 
-        .manager-layout {
+        .manager-heading {
             display: grid;
-            grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.65fr);
-            gap: clamp(34px, 6vw, 76px);
-            align-items: center;
+            grid-template-columns: minmax(0, 1.35fr) minmax(280px, 0.65fr);
+            align-items: end;
+            gap: 64px;
+            margin-bottom: 44px;
         }
 
-        .screenshot-frame {
+        .manager-heading h2 {
+            max-width: 15ch;
+            margin: 0;
+            font-size: clamp(2.3rem, 4.8vw, 4.5rem);
+            font-weight: 500;
+            line-height: 1.02;
+        }
+
+        .manager-heading p {
+            max-width: 44ch;
+            margin: 0 0 7px;
+            color: var(--dim);
+        }
+
+        .screenshot-stage {
             overflow: hidden;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
+            border: 1px solid var(--warm-border);
+            border-radius: var(--radius-md);
             background: var(--surface);
-            box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+            box-shadow: 0 30px 80px rgba(0, 0, 0, 0.3);
         }
 
-        .screenshot-frame img {
+        .screenshot-stage img {
             width: 100%;
         }
 
-        .manager-copy h2 {
-            margin: 0;
-            font-size: clamp(2rem, 4vw, 3.3rem);
-            font-weight: 600;
-            line-height: 1.06;
-            text-wrap: balance;
+        .manager-rail {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            margin-top: 26px;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
         }
 
-        .manager-copy > p:not(.eyebrow) {
-            margin: 18px 0 24px;
-            color: var(--dim);
+        .manager-point {
+            min-width: 0;
+            padding: 24px;
+            border-right: 1px solid var(--border);
+        }
+
+        .manager-point:last-child {
+            border-right: 0;
+        }
+
+        .manager-point strong {
+            display: block;
+            margin-bottom: 7px;
             font-size: 16px;
         }
 
-        .manager-points {
-            display: grid;
-            margin: 0;
-            padding: 0;
-            list-style: none;
-        }
-
-        .manager-points li {
-            padding: 10px 0;
-            border-top: 1px solid var(--border);
-            color: #c6c6d0;
+        .manager-point span {
+            display: block;
+            color: var(--dim);
             font-size: 14px;
+            line-height: 1.55;
         }
 
-        .manager-points li::before {
-            margin-right: 9px;
-            color: var(--accent);
-            content: "+";
-            font-family: var(--font-mono);
-        }
-
-        /* Demo */
+        /* Demo media */
         .demo-section {
-            padding: 96px 0;
+            padding: 104px 0;
         }
 
         .demo-heading {
@@ -693,19 +805,29 @@
             align-items: end;
             justify-content: space-between;
             gap: 24px;
-            margin-bottom: 28px;
+            margin-bottom: 34px;
+        }
+
+        .demo-links {
+            display: flex;
+            gap: 18px;
+            color: var(--dim);
+            font-size: 14px;
+        }
+
+        .demo-links a {
+            text-underline-offset: 4px;
+        }
+
+        .demo-links a:hover {
+            color: var(--accent);
         }
 
         .demo-shell {
             overflow: hidden;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            background: var(--surface);
-        }
-
-        .demo-media {
-            aspect-ratio: 1662 / 1080;
-            background: #0f0f13;
+            border: 1px solid var(--warm-border);
+            border-radius: var(--radius-md);
+            background: #050506;
         }
 
         .demo-bar {
@@ -715,431 +837,436 @@
             gap: 7px;
             padding: 0 15px;
             border-bottom: 1px solid var(--border);
-            background: var(--surface-2);
+            background: var(--surface);
         }
 
         .demo-bar span {
             width: 8px;
             height: 8px;
             border-radius: 50%;
-            background: #60606c;
+            background: #666672;
         }
 
         .demo-shell video {
+            display: block;
             width: 100%;
-            height: 100%;
-            background: #0f0f13;
+            aspect-ratio: 1662 / 1080;
             object-fit: cover;
         }
 
-        /* Engines */
+        /* Provider runtime slab */
         .engines-grid {
             display: grid;
-            grid-template-columns: repeat(5, minmax(0, 1fr));
-            gap: 12px;
+            grid-auto-flow: dense;
+            grid-auto-rows: minmax(154px, auto);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
         }
 
         .engine-card {
+            position: relative;
+            display: flex;
             min-width: 0;
-            padding: 24px 16px;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 22px;
+            overflow: hidden;
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             background: var(--surface);
-            text-align: center;
-            transition: border-color 180ms ease, background-color 180ms ease;
         }
 
         .engine-card:hover {
-            border-color: var(--border-strong);
+            border-color: var(--warm-border);
             background: var(--surface-2);
         }
 
-        .engine-mark {
-            display: grid;
-            width: 36px;
-            height: 36px;
-            margin: 0 auto 13px;
-            place-items: center;
+        .engine-card.dominant {
+            grid-column: span 2;
+            grid-row: span 2;
+            padding: 30px;
+            background: var(--surface-2);
         }
 
-        .engine-mark svg {
+        .engine-head {
+            display: flex;
+            min-width: 0;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+        }
+
+        .engine-card .brand-mark {
             width: 30px;
             height: 30px;
+            flex-basis: 30px;
+        }
+
+        .engine-card .brand-mono {
+            width: auto;
+            min-width: 32px;
+            font-size: 11px;
+        }
+
+        .engine-card .brand-mono.pi {
+            font-size: 27px;
+        }
+
+        .engine-index {
+            color: #6f6f7e;
+            font: 500 10px/1 var(--font-mono);
         }
 
         .engine-name {
+            margin: 14px 0 3px;
             font-size: 17px;
             font-weight: 600;
         }
 
-        .engine-model {
-            min-height: 34px;
-            margin-top: 4px;
-            overflow-wrap: anywhere;
-            color: var(--dim);
-            font-family: var(--font-mono);
-            font-size: 10px;
-            line-height: 1.5;
-        }
-
-        .engine-badge {
-            display: inline-flex;
-            min-height: 24px;
-            align-items: center;
-            margin-top: 10px;
-            padding: 0 9px;
-            border-radius: 9999px;
-            background: var(--accent-soft);
-            color: var(--accent);
-            font-family: var(--font-mono);
-            font-size: 10px;
-            font-weight: 600;
-        }
-
-        .fallback-line {
-            margin: 24px 0 0;
-            color: var(--dim);
-            font-size: 14px;
-            text-align: center;
-        }
-
-        .fallback-line strong {
-            color: var(--accent);
+        .dominant .engine-name {
+            margin-top: 26px;
+            font-size: clamp(1.8rem, 3vw, 2.7rem);
             font-weight: 500;
         }
 
-        /* Feature bento */
-        .feature-marquee {
-            display: grid;
-            grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.75fr);
-            gap: 14px;
+        .engine-model,
+        .engine-auth {
+            min-width: 0;
+            overflow-wrap: anywhere;
+            font-family: var(--font-mono);
         }
 
-        .feature-dominant,
-        .feature-large {
+        .engine-model {
+            color: var(--accent);
+            font-size: 11px;
+        }
+
+        .engine-auth {
+            margin-top: 12px;
+            color: var(--dim);
+            font-size: 10px;
+            line-height: 1.45;
+        }
+
+        .engine-auth::before {
+            color: #c4aa92;
+            content: "auth  ";
+        }
+
+        .dominant .engine-auth {
+            max-width: 42ch;
+            font-size: 12px;
+        }
+
+        /* Features bento */
+        .feature-grid {
+            display: grid;
+            grid-auto-flow: dense;
+            grid-auto-rows: minmax(176px, auto);
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .feature-card {
+            display: flex;
+            min-width: 0;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px;
+            overflow: hidden;
             border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
+            border-radius: var(--radius-sm);
             background: var(--surface);
         }
 
-        .feature-dominant {
-            display: flex;
-            min-height: 590px;
-            flex-direction: column;
+        .feature-card.dominant {
+            grid-column: span 2;
+            grid-row: span 2;
+            padding: 0;
+        }
+
+        .feature-card.wide {
+            grid-column: span 2;
+        }
+
+        .feature-visual {
+            min-height: 220px;
             overflow: hidden;
+            border-bottom: 1px solid var(--border);
+            background: #f2f3f5;
         }
 
-        .feature-dominant-copy {
-            padding: 28px 28px 24px;
-        }
-
-        .feature-dominant-image {
-            margin-top: auto;
-            overflow: hidden;
-            border-top: 1px solid var(--border);
-            background: #e7e7e9;
-        }
-
-        .feature-dominant-image img {
+        .feature-visual img {
             width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: top left;
         }
 
-        .feature-stack {
-            display: grid;
-            grid-template-rows: repeat(3, minmax(0, 1fr));
-            gap: 14px;
-        }
-
-        .feature-large {
-            display: grid;
-            grid-template-columns: 42px minmax(0, 1fr);
-            gap: 16px;
-            align-content: start;
-            padding: 24px;
+        .feature-copy {
+            padding: 26px;
         }
 
         .feature-icon-box {
             display: grid;
-            width: 42px;
-            height: 42px;
+            width: 34px;
+            height: 34px;
             place-items: center;
+            margin-bottom: 24px;
             border-radius: var(--radius-sm);
             background: var(--accent-soft);
             color: var(--accent);
         }
 
-        .feature-title {
-            margin: 0 0 7px;
-            font-size: 19px;
-            font-weight: 600;
-            line-height: 1.2;
-            text-wrap: balance;
-        }
-
-        .feature-desc {
-            margin: 0;
-            color: var(--dim);
-            font-size: 14px;
-            line-height: 1.58;
-        }
-
-        .feature-desc code,
-        .detail-item code,
-        .platform-copy code,
-        .beginner-copy code {
-            color: var(--accent);
-            font-family: var(--font-mono);
-            font-size: 0.9em;
-        }
-
-        .feature-list {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            margin-top: 14px;
-            border-top: 1px solid var(--border);
-            border-left: 1px solid var(--border);
-        }
-
-        .feature-row {
-            display: grid;
-            min-width: 0;
-            grid-template-columns: 34px minmax(0, 1fr);
-            gap: 14px;
-            padding: 22px;
-            border-right: 1px solid var(--border);
-            border-bottom: 1px solid var(--border);
-            background: var(--surface);
-        }
-
-        .feature-row .feature-icon-box {
-            width: 34px;
-            height: 34px;
-            border-radius: 6px;
-        }
-
-        .feature-row .icon {
+        .feature-icon-box .icon {
             width: 18px;
             height: 18px;
         }
 
-        .feature-row .feature-title {
-            font-size: 16px;
+        .feature-title {
+            margin: 0;
+            font-size: 17px;
+            font-weight: 600;
         }
 
-        /* PABCD */
-        .phase-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin: 34px 0 20px;
+        .feature-desc {
+            max-width: 36ch;
+            margin: 8px 0 0;
+            color: var(--dim);
+            font-size: 14px;
+            line-height: 1.55;
         }
 
-        .phase-chip {
-            display: inline-flex;
-            min-height: 38px;
-            align-items: center;
-            gap: 9px;
-            padding: 0 13px 0 8px;
-            border: 1px solid var(--border);
-            border-radius: 9999px;
+        .wide .feature-desc {
+            max-width: 62ch;
+        }
+
+        /* PABCD phase rail */
+        .phase-rail {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            margin: 48px 0 40px;
+            padding: 0;
+            list-style: none;
+        }
+
+        .phase-step {
+            position: relative;
+            min-width: 0;
+            padding: 22px 20px 20px;
+            border-top: 1px solid var(--border-strong);
+            border-bottom: 1px solid var(--border-strong);
             background: var(--surface);
-            color: #c6c6d0;
-            font-size: 13px;
+        }
+
+        .phase-step:first-child {
+            border-left: 1px solid var(--border-strong);
+            border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+        }
+
+        .phase-step:last-child {
+            border-right: 1px solid var(--border-strong);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+        }
+
+        .phase-step + .phase-step {
+            border-left: 1px solid var(--border);
+        }
+
+        .phase-step:not(:last-child)::after {
+            position: absolute;
+            top: 50%;
+            right: -7px;
+            z-index: 2;
+            color: var(--accent);
+            content: "→";
+            font: 500 13px/1 var(--font-mono);
+            transform: translateY(-50%);
         }
 
         .phase-letter {
-            display: grid;
-            width: 24px;
-            height: 24px;
-            place-items: center;
-            border-radius: 50%;
-            background: var(--accent);
-            color: var(--bg);
-            font-family: var(--font-mono);
-            font-size: 11px;
+            display: block;
+            color: var(--accent);
+            font: 600 22px/1 var(--font-mono);
+        }
+
+        .phase-name {
+            display: block;
+            margin-top: 9px;
             font-weight: 600;
+        }
+
+        .phase-note {
+            display: block;
+            margin-top: 4px;
+            color: var(--dim);
+            font-size: 12px;
         }
 
         .orchestration-layout {
             display: grid;
-            grid-template-columns: minmax(0, 1.25fr) minmax(320px, 0.75fr);
-            gap: 36px;
-            align-items: start;
-        }
-
-        .orchestration-log {
-            overflow: hidden;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-md);
-            background: var(--surface);
-        }
-
-        .orchestration-log .terminal-titlebar {
-            min-height: 40px;
+            grid-template-columns: minmax(0, 1.35fr) minmax(310px, 0.65fr);
+            gap: 10px;
         }
 
         .log-lines {
-            display: grid;
-            gap: 8px;
-            padding: 24px;
-            font-family: var(--font-mono);
-            font-size: 12px;
-            line-height: 1.65;
+            padding: 22px 24px;
+            font: 400 11px/1.75 var(--font-mono);
         }
 
         .log-line {
             display: grid;
-            grid-template-columns: 70px minmax(0, 1fr);
+            grid-template-columns: 72px 1fr;
             gap: 12px;
+            padding: 3px 0;
         }
 
         .log-line time {
-            color: var(--dim);
-        }
-
-        .log-phase {
-            color: var(--accent);
+            color: #8f7968;
         }
 
         .pabcd-details {
             display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            border-top: 1px solid var(--border);
-            border-left: 1px solid var(--border);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--surface);
         }
 
         .detail-item {
-            padding: 20px;
-            border-right: 1px solid var(--border);
+            padding: 19px 21px;
             border-bottom: 1px solid var(--border);
         }
 
+        .detail-item:last-child {
+            border-bottom: 0;
+        }
+
+        .detail-item h3,
+        .detail-item p {
+            margin: 0;
+        }
+
         .detail-item h3 {
-            margin: 0 0 7px;
             font-size: 15px;
-            font-weight: 600;
         }
 
         .detail-item p {
-            margin: 0;
+            margin-top: 5px;
             color: var(--dim);
             font-size: 13px;
-            line-height: 1.55;
+            line-height: 1.5;
         }
 
-        /* Platform */
+        /* Platform compatibility band */
         .platform-strip {
             display: flex;
+            align-items: center;
             flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 28px;
+            gap: 0;
+            margin: 0 0 28px;
+            border-top: 1px solid var(--border);
+            border-bottom: 1px solid var(--border);
         }
 
         .platform-chip {
-            display: inline-flex;
-            min-height: 36px;
-            align-items: center;
-            padding: 0 13px;
-            border: 1px solid var(--border);
-            border-radius: 9999px;
-            background: var(--surface);
-            color: #c6c6d0;
-            font-family: var(--font-mono);
-            font-size: 12px;
+            padding: 15px 19px;
+            border-right: 1px solid var(--border);
+            color: #cfcfd8;
+            font: 500 12px/1 var(--font-mono);
         }
 
         .platform-blocks {
             display: grid;
-            gap: 14px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
         }
 
         .platform-block {
             display: grid;
-            grid-template-columns: minmax(0, 0.8fr) minmax(360px, 1.2fr);
-            gap: 36px;
-            align-items: center;
-            padding: 30px;
+            min-width: 0;
+            grid-template-rows: auto 1fr;
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             background: var(--surface);
         }
 
+        .platform-copy {
+            padding: 28px;
+        }
+
+        .platform-copy h3,
+        .platform-copy p {
+            margin: 0;
+        }
+
         .platform-copy h3 {
-            margin: 0 0 10px;
             font-size: 21px;
-            font-weight: 600;
-            line-height: 1.2;
-            text-wrap: balance;
         }
 
         .platform-copy p {
-            margin: 0 0 15px;
+            margin-top: 10px;
             color: var(--dim);
-            font-size: 14px;
+            font-size: 15px;
         }
 
-        .platform-tags {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 7px;
+        .code-block {
+            min-width: 0;
+            padding: 22px 24px;
+            border-top: 1px solid var(--border);
+            background: #0d0d11;
+            color: #d7d7e0;
+            font: 400 12px/1.7 var(--font-mono);
+            overflow-wrap: anywhere;
         }
 
-        .platform-tag {
-            padding: 4px 8px;
-            border-radius: 4px;
-            background: var(--accent-soft);
-            color: var(--accent);
-            font-family: var(--font-mono);
-            font-size: 10px;
+        .dim {
+            color: #777786;
         }
 
-        .platform-block .code-block {
-            padding: 17px 18px;
-        }
-
-        /* Interface tabs */
+        /* Screenshot tabs */
         .tabs-wrap {
             overflow: hidden;
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
+            border: 1px solid var(--warm-border);
+            border-radius: var(--radius-md);
             background: var(--surface);
         }
 
         .tab-list {
             display: flex;
             gap: 2px;
+            padding: 7px;
             overflow-x: auto;
-            padding: 6px;
             border-bottom: 1px solid var(--border);
+            background: var(--surface);
             scrollbar-width: thin;
         }
 
         .tab-button {
-            flex: 0 0 auto;
             min-height: 40px;
             padding: 0 15px;
             border: 0;
             border-radius: var(--radius-sm);
             background: transparent;
             color: var(--dim);
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
             cursor: pointer;
-            font-size: 14px;
-            transition: background-color 180ms ease, color 180ms ease;
         }
 
         .tab-button:hover {
-            background: rgba(255, 255, 255, 0.04);
+            background: rgba(255, 255, 255, 0.045);
             color: var(--text);
         }
 
         .tab-button[aria-selected="true"] {
             background: var(--accent);
             color: var(--bg);
-            font-weight: 600;
         }
 
         .tab-panel {
-            min-height: 480px;
+            min-height: 420px;
+            padding: 18px;
             background: #0e0e12;
         }
 
@@ -1149,106 +1276,79 @@
 
         .tab-panel img {
             width: 100%;
-        }
-
-        .tab-panel.is-narrow {
-            display: grid;
-            place-items: center;
-            padding: 24px;
-        }
-
-        .tab-panel.is-narrow[hidden] {
-            display: none;
+            max-height: 720px;
+            margin: auto;
+            object-fit: contain;
+            object-position: center top;
         }
 
         .tab-panel.is-narrow img {
-            max-width: 400px;
+            width: min(100%, 430px);
         }
 
-        /* Quickstart */
-        .quickstart-slab {
+        /* Quickstart terminal slab */
+        .quickstart-layout {
             display: grid;
-            grid-template-columns: repeat(3, minmax(0, 1fr));
-            overflow: hidden;
-            margin-top: 42px;
+            grid-template-columns: minmax(240px, 0.55fr) minmax(0, 1.45fr);
+            gap: 10px;
+            margin-top: 44px;
+        }
+
+        .quickstart-copy {
+            padding: 30px;
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             background: var(--surface);
         }
 
-        .quick-step {
-            min-width: 0;
-            padding: 26px;
+        .quickstart-copy p {
+            margin: 0;
+            color: var(--dim);
         }
 
-        .quick-step + .quick-step {
-            border-left: 1px solid var(--border);
+        .quickstart-copy strong {
+            display: block;
+            margin-bottom: 10px;
+            color: var(--text);
+            font-size: 20px;
         }
 
-        .step-heading {
-            display: flex;
-            align-items: center;
-            gap: 11px;
-            margin-bottom: 17px;
+        .quickstart-terminal {
+            overflow: hidden;
+            border: 1px solid var(--warm-border);
+            border-radius: var(--radius-sm);
+            background: #0d0d11;
         }
 
-        .step-number {
-            display: grid;
-            width: 28px;
-            height: 28px;
-            place-items: center;
-            border-radius: 50%;
-            background: var(--accent);
-            color: var(--bg);
-            font-family: var(--font-mono);
-            font-size: 12px;
-            font-weight: 600;
+        .quickstart-terminal .code-block {
+            border-top: 0;
+            font-size: clamp(0.72rem, 1.3vw, 0.84rem);
         }
 
-        .step-title {
-            font-size: 17px;
-            font-weight: 600;
-        }
-
-        .quick-step .code-block {
-            min-height: 111px;
-            padding: 14px;
-            font-size: 12px;
+        .cmd-note {
+            color: #7d7d8b;
         }
 
         .beginner {
             margin-top: 18px;
             border: 1px solid var(--border);
-            border-radius: var(--radius-md);
+            border-radius: var(--radius-sm);
             background: var(--surface);
         }
 
         .beginner summary {
             display: flex;
-            min-height: 58px;
+            min-height: 56px;
             align-items: center;
-            gap: 11px;
+            gap: 10px;
             padding: 0 20px;
-            color: #c6c6d0;
+            color: #d9d9e1;
             cursor: pointer;
-            font-family: var(--font-mono);
-            font-size: 13px;
-            list-style: none;
         }
 
+        .beginner summary::marker,
         .beginner summary::-webkit-details-marker {
             display: none;
-        }
-
-        .beginner summary::after {
-            margin-left: auto;
-            color: var(--accent);
-            content: "+";
-            font-size: 18px;
-        }
-
-        .beginner[open] summary::after {
-            content: "−";
         }
 
         .beginner[open] summary {
@@ -1256,380 +1356,227 @@
         }
 
         .beginner-content {
-            padding: 28px;
+            padding: 24px;
         }
 
         .beginner-content h3 {
-            margin: 0 0 22px;
-            font-size: 21px;
-            font-weight: 600;
+            margin: 0 0 18px;
         }
 
         .beginner-steps {
             display: grid;
             grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 0;
+            gap: 10px;
         }
 
         .beginner-step {
             min-width: 0;
-            padding: 0 22px;
-        }
-
-        .beginner-step:first-child {
-            padding-left: 0;
-        }
-
-        .beginner-step:last-child {
-            padding-right: 0;
-        }
-
-        .beginner-step + .beginner-step {
+            padding: 20px;
             border-left: 1px solid var(--border);
         }
 
-        .beginner-label {
-            margin: 0 0 10px;
-            color: var(--accent);
-            font-family: var(--font-mono);
-            font-size: 11px;
-            font-weight: 600;
-            text-transform: uppercase;
-        }
-
-        .beginner-copy {
+        .beginner-label,
+        .beginner-copy,
+        .beginner-note {
             margin: 0;
-            color: var(--dim);
-            font-size: 14px;
         }
 
-        .beginner-copy strong {
-            color: var(--text);
+        .beginner-label {
+            margin-bottom: 9px;
+            color: var(--accent);
+            font: 500 11px/1.4 var(--font-mono);
+        }
+
+        .beginner-copy,
+        .beginner-note {
+            color: var(--dim);
+            font-size: 13px;
         }
 
         .beginner-step .code-block {
-            margin-top: 10px;
-            padding: 13px;
-            font-size: 11px;
+            margin: 12px -20px;
+            padding: 16px 20px;
+            border-bottom: 1px solid var(--border);
+            font-size: 10px;
         }
 
-        .beginner-note {
-            margin: 9px 0 0;
-            color: var(--dim);
-            font-size: 12px;
-        }
-
-        .beginner-note strong {
-            color: var(--accent);
-        }
-
-        /* Footer */
+        /* Footer documentation map */
         .footer {
-            padding: 48px 0;
-            border-top: 1px solid var(--border);
+            padding: 64px 0 34px;
+            border-top: 1px solid var(--warm-border);
+            background: var(--surface-3);
         }
 
-        .footer-row {
+        .footer-top {
             display: grid;
-            grid-template-columns: 1fr auto 1fr;
-            gap: 24px;
-            align-items: center;
+            grid-template-columns: 1.2fr repeat(3, 0.8fr);
+            gap: 40px;
         }
 
         .footer-brand {
-            font-size: 16px;
-            font-weight: 700;
+            font-size: clamp(2rem, 4vw, 3.6rem);
+            font-weight: 600;
+            line-height: 1;
         }
 
-        .footer-links {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
+        .footer-statement {
+            max-width: 30ch;
+            margin: 16px 0 0;
+            color: var(--dim);
         }
 
-        .footer-links a {
+        .footer-col h3 {
+            margin: 0 0 13px;
+            color: #cfcfd8;
+            font: 500 11px/1 var(--font-mono);
+        }
+
+        .footer-col a {
+            display: block;
+            width: fit-content;
+            margin-top: 8px;
             color: var(--dim);
             font-size: 14px;
             text-decoration: none;
         }
 
-        .footer-links a:hover {
+        .footer-col a:hover {
             color: var(--accent);
         }
 
-        .footer-copy {
-            margin: 0;
-            color: var(--dim);
-            font-family: var(--font-mono);
-            font-size: 11px;
-            text-align: right;
+        .footer-bottom {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            margin-top: 52px;
+            padding-top: 22px;
+            border-top: 1px solid var(--border);
+            color: #737381;
+            font-size: 12px;
         }
 
-        @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-            .site-nav.pill-at-top,
-            .site-nav.pill-scrolled {
-                background-color: #131318;
+        @keyframes hero-in {
+            to {
+                opacity: 1;
+                transform: none;
             }
         }
 
-        @media (prefers-reduced-transparency: reduce) {
-            .site-nav.pill-at-top,
-            .site-nav.pill-scrolled {
-                background-color: #131318;
-                -webkit-backdrop-filter: none;
-                backdrop-filter: none;
+        @keyframes meteor-fall {
+            0% {
+                opacity: 0;
+                transform: translate3d(24px, -100px, 0) rotate(-2deg) scale(var(--scale, 1));
+            }
+            12% {
+                opacity: var(--peak, 0.95);
+            }
+            72% {
+                opacity: calc(var(--peak, 0.95) - 0.15);
+            }
+            100% {
+                opacity: 0;
+                transform: translate3d(-36px, 250px, 0) rotate(3deg) scale(var(--scale, 1));
             }
         }
 
-        @media (prefers-contrast: more) {
-            :root {
-                --border: rgba(255, 255, 255, 0.25);
-                --border-strong: rgba(255, 255, 255, 0.42);
-                --dim: #b9b9c7;
+        @media (max-width: 1023px) {
+            .section {
+                padding: 80px 0;
             }
 
-            .site-nav.pill-at-top,
-            .site-nav.pill-scrolled {
-                background-color: #131318;
-            }
-        }
-
-        @media (max-width: 1020px) {
             .hero {
                 min-height: auto;
-                padding: 102px 0 38px;
+                padding-bottom: 72px;
             }
 
-            .hero-grid,
-            .manager-layout,
-            .orchestration-layout {
-                grid-template-columns: 1fr;
+            .hero-inner {
+                padding-top: 142px;
             }
 
-            .hero-grid {
-                gap: 28px;
+            .hero-copy {
+                width: min(100%, 760px);
             }
 
             .hero-title {
-                max-width: 780px;
-                font-size: clamp(3rem, 7vw, 4rem);
+                font-size: clamp(3rem, 7.5vw, 4rem);
             }
 
-            .hero-sub {
-                margin-top: 20px;
+            .provider-constellation {
+                position: relative;
+                top: auto;
+                right: auto;
+                width: 100%;
+                height: 310px;
+                margin-top: 36px;
             }
 
-            .hero-install-label {
-                margin-top: 18px;
+            .provider-star:nth-child(1) { --top: -20px; --left: 2%; }
+            .provider-star:nth-child(2) { --top: 12px; --left: 38%; }
+            .provider-star:nth-child(3) { --top: 2px; --left: 72%; }
+            .provider-star:nth-child(4) { --top: 68px; --left: 8%; }
+            .provider-star:nth-child(5) { --top: 82px; --left: 49%; }
+            .provider-star:nth-child(6) { --top: 126px; --left: 74%; }
+            .provider-star:nth-child(7) { --top: 149px; --left: 3%; }
+            .provider-star:nth-child(8) { --top: 174px; --left: 36%; }
+            .provider-star:nth-child(9) { --top: 212px; --left: 68%; }
+            .provider-star:nth-child(10) { --top: 238px; --left: 4%; }
+            .provider-star:nth-child(11) { --top: 225px; --left: 42%; }
+            .provider-star:nth-child(12) { --top: 83px; --left: 25%; }
+            .provider-star:nth-child(13) { --top: 154px; --left: 58%; }
+
+            .hero-product {
+                margin-top: 8px;
             }
 
-            .hero-code {
-                padding-block: 10px;
-                line-height: 1.65;
-            }
-
-            .hero-actions {
-                margin-top: 14px;
-            }
-
-            .hero-quiet-links {
-                margin-top: 10px;
-            }
-
-            .provider-chips,
-            .hero-badges {
-                flex-wrap: nowrap;
-                overflow-x: auto;
-                scrollbar-width: thin;
-            }
-
-            .provider-chips {
-                margin-top: 14px;
-            }
-
-            .provider-chip,
-            .hero-badges img {
-                flex: 0 0 auto;
-            }
-
-            .hero-badges {
-                margin-top: 10px;
-            }
-
-            .hero-badges img {
-                height: 18px;
-            }
-
-            .terminal-titlebar {
-                min-height: 38px;
-            }
-
-            .terminal-body {
-                padding: 18px;
-                font-size: 11px;
-                line-height: 1.5;
-            }
-
-            .terminal-command {
-                margin-bottom: 12px;
-                font-size: 12px;
-            }
-
-            .provider-status {
-                gap: 5px;
-            }
-
-            .terminal-log {
-                margin-top: 12px;
-                padding-top: 12px;
-            }
-
-            .hero-stage {
-                max-width: 760px;
-            }
-
-            .manager-copy {
-                max-width: 760px;
-            }
-
-            .feature-marquee {
-                grid-template-columns: 1fr;
-            }
-
-            .feature-dominant {
-                min-height: 0;
-            }
-
-            .feature-stack {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-                grid-template-rows: auto;
-            }
-
-            .feature-large:last-child {
-                grid-column: 1 / -1;
-            }
-
-            .platform-block {
-                grid-template-columns: 1fr;
-                gap: 24px;
-            }
-
-            .beginner-steps {
+            .manager-heading {
                 grid-template-columns: 1fr;
                 gap: 20px;
             }
 
-            .beginner-step,
-            .beginner-step:first-child,
-            .beginner-step:last-child {
-                padding: 0;
-            }
-
-            .beginner-step + .beginner-step {
-                padding-top: 20px;
-                border-top: 1px solid var(--border);
-                border-left: 0;
-            }
-        }
-
-        @media (max-width: 900px) {
             .engines-grid {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .engine-card:last-child {
-                grid-column: 1 / -1;
+            .feature-grid {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .quickstart-slab {
+            .orchestration-layout {
                 grid-template-columns: 1fr;
             }
 
-            .quick-step + .quick-step {
-                border-top: 1px solid var(--border);
-                border-left: 0;
-            }
-
-            .quick-step .code-block {
-                min-height: 0;
-            }
-
-            .footer-row {
+            .platform-blocks {
                 grid-template-columns: 1fr;
-                text-align: center;
             }
 
-            .footer-copy {
-                text-align: center;
-            }
-        }
-
-        @media (min-width: 721px) and (max-width: 900px) {
-            .engine-card:last-child {
-                display: grid;
-                grid-template-columns: auto minmax(0, 1fr) auto;
-                grid-template-areas:
-                    "mark name badge"
-                    "mark model badge";
-                column-gap: 16px;
-                align-items: center;
-                padding: 18px 24px;
-                text-align: left;
+            .quickstart-layout {
+                grid-template-columns: 1fr;
             }
 
-            .engine-card:last-child .engine-mark {
-                grid-area: mark;
-                margin: 0;
+            .footer-top {
+                grid-template-columns: 1.2fr repeat(2, 0.8fr);
             }
 
-            .engine-card:last-child .engine-name {
-                grid-area: name;
-            }
-
-            .engine-card:last-child .engine-model {
-                grid-area: model;
-                min-height: 0;
-                margin-top: 0;
-            }
-
-            .engine-card:last-child .engine-badge {
-                grid-area: badge;
-                margin-top: 0;
+            .footer-col:last-child {
+                grid-column: 2;
             }
         }
 
-        @media (max-width: 720px) {
+        @media (max-width: 767px) {
             .container {
-                width: min(100% - 32px, 1200px);
+                width: min(100% - 32px, var(--max-width));
             }
 
-            .section,
-            .demo-section {
-                padding: 72px 0;
+            .section {
+                padding: 64px 0;
             }
 
             .site-nav {
                 top: 10px;
                 width: calc(100% - 20px);
                 min-height: 54px;
-                gap: 8px;
-                padding: 6px 7px 6px 13px;
-            }
-
-            .nav-brand {
-                gap: 7px;
-                font-size: 13px;
-            }
-
-            .nav-brand-mark {
-                width: 25px;
-                height: 25px;
-                font-size: 10px;
-            }
-
-            .nav-actions {
-                gap: 2px;
+                padding-left: 13px;
             }
 
             .nav-docs {
@@ -1637,204 +1584,274 @@
             }
 
             .nav-mobile-start {
-                display: inline-flex;
+                display: flex;
             }
 
-            .nav-link {
-                min-height: 38px;
-                padding: 0 9px;
-                font-size: 12px;
+            .nav-github {
+                width: 40px;
+                padding: 0;
+                justify-content: center;
+                font-size: 0;
             }
 
-            .nav-link .icon {
-                display: none;
+            .nav-github .icon {
+                margin: 0;
             }
 
-            .hero {
-                padding: 82px 0 24px;
-            }
-
-            .hero-shade {
-                background: rgba(11, 11, 14, 0.68);
+            .hero-inner {
+                padding-top: 116px;
             }
 
             .hero-title {
-                font-size: 2.25rem;
-                line-height: 0.98;
+                max-width: 10ch;
+                font-size: clamp(2.7rem, 12.8vw, 4rem);
+                line-height: 1;
             }
 
-            .hero-line + .hero-line {
-                margin-top: 8px;
+            .hero-line {
+                white-space: normal;
             }
 
             .hero-sub {
-                margin-top: 14px;
-                font-size: 14px;
-                line-height: 1.45;
+                max-width: 32ch;
+                font-size: 1.05rem;
             }
 
-            .hero-install-label {
-                margin-top: 14px;
-                font-size: 12px;
+            .hero-command {
+                display: block;
+                padding: 14px;
+                font-size: 11px;
             }
 
-            .hero-actions {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
+            .hero-command small {
+                display: block;
+                margin-top: 4px;
+                white-space: normal;
             }
 
-            .hero-quiet-links {
-                gap: 8px 14px;
-                margin-top: 8px;
+            .hero-actions .button {
+                flex: 1 1 150px;
             }
 
-            .quiet-link {
-                font-size: 12px;
+            .provider-constellation {
+                width: calc(100% + 8px);
+                height: 330px;
+                margin-left: -4px;
             }
 
-            .provider-chip {
-                min-height: 26px;
-                gap: 4px;
-                padding: 0 5px;
-                font-size: 8px;
+            .provider-star {
+                min-height: 31px;
+                gap: 6px;
+                padding: 6px 9px;
+                font-size: 9px;
             }
 
-            .provider-chips {
-                gap: 4px;
+            .provider-star .brand-mark {
+                width: 18px;
+                height: 18px;
+                flex-basis: 18px;
             }
 
-            .provider-chip svg {
-                width: 12px;
-                height: 12px;
-                flex-basis: 12px;
-            }
-
-            .hero-grid {
-                gap: 16px;
-            }
-
-            .terminal-window {
-                border-radius: var(--radius-md);
-            }
+            .provider-star:nth-child(1) { --left: 0%; }
+            .provider-star:nth-child(2) { --left: 36%; }
+            .provider-star:nth-child(3) { --left: 70%; }
+            .provider-star:nth-child(4) { --left: 1%; }
+            .provider-star:nth-child(5) { --left: 44%; }
+            .provider-star:nth-child(6) { --left: 67%; }
+            .provider-star:nth-child(7) { --left: 0%; }
+            .provider-star:nth-child(8) { --left: 30%; }
+            .provider-star:nth-child(9) { --left: 65%; }
+            .provider-star:nth-child(10) { --left: 0%; }
+            .provider-star:nth-child(11) { --left: 40%; }
+            .provider-star:nth-child(12) { --left: 20%; }
+            .provider-star:nth-child(13) { --left: 55%; }
 
             .terminal-body {
-                padding: 12px 14px;
-                font-size: 9px;
-                line-height: 1.45;
-            }
-
-            .terminal-command {
-                margin-bottom: 9px;
+                padding: 18px 15px 20px;
                 font-size: 10px;
             }
 
             .provider-status-row {
-                grid-template-columns: minmax(70px, 1fr) minmax(60px, 0.8fr) auto;
-                gap: 7px;
-            }
-
-            .terminal-log {
-                margin-top: 9px;
-                padding-top: 9px;
-                white-space: nowrap;
-            }
-
-            .hero-badges img {
-                height: 18px;
-            }
-
-            .hero-badges {
-                flex-wrap: wrap;
-                overflow-x: visible;
-            }
-
-            .manager-showcase {
-                padding: 12px 0 72px;
-            }
-
-            .demo-heading {
-                display: block;
-            }
-
-            .feature-stack,
-            .feature-list,
-            .pabcd-details {
-                grid-template-columns: 1fr;
-            }
-
-            .feature-large:last-child {
-                grid-column: auto;
-            }
-
-            .feature-dominant-copy,
-            .feature-large,
-            .feature-row,
-            .platform-block,
-            .beginner-content {
-                padding: 20px;
-            }
-
-            .orchestration-layout {
-                gap: 22px;
-            }
-
-            .log-lines {
-                padding: 18px;
-                font-size: 10px;
-            }
-
-            .log-line {
-                grid-template-columns: 58px minmax(0, 1fr);
+                grid-template-columns: 1fr auto;
                 gap: 8px;
             }
 
-            .tab-panel {
-                display: grid;
-                width: 100%;
-                height: clamp(300px, 82vw, 340px);
-                min-height: clamp(300px, 82vw, 340px);
-                place-items: center;
-                overflow: hidden;
+            .provider-status-row dd:nth-child(2) {
+                display: none;
             }
 
-            .tab-panel img {
-                width: auto;
-                max-width: 100%;
-                max-height: 100%;
-                object-fit: contain;
+            .hero-badges {
+                border-radius: var(--radius-md);
             }
-        }
 
-        @media (max-width: 560px) {
-            .engines-grid {
+            .manager-showcase {
+                padding: 64px 0;
+            }
+
+            .manager-rail {
                 grid-template-columns: 1fr;
             }
 
-            .engine-card:last-child {
-                grid-column: auto;
+            .manager-point {
+                border-right: 0;
+                border-bottom: 1px solid var(--border);
             }
 
-            .manager-copy h2,
-            .section-title {
-                font-size: 2.2rem;
+            .manager-point:last-child {
+                border-bottom: 0;
             }
 
-            #engines .section-title {
-                font-size: 1.65rem;
+            .demo-heading {
+                align-items: flex-start;
+                flex-direction: column;
             }
 
-            .phase-chips {
+            .engines-grid,
+            .feature-grid {
+                grid-template-columns: 1fr;
+                grid-auto-rows: auto;
+            }
+
+            .engine-card.dominant,
+            .feature-card.dominant,
+            .feature-card.wide {
+                grid-column: span 1;
+                grid-row: span 1;
+            }
+
+            .engine-card {
+                min-height: 154px;
+            }
+
+            .feature-visual {
+                min-height: 180px;
+            }
+
+            .phase-rail {
+                grid-template-columns: 1fr;
+            }
+
+            .phase-step,
+            .phase-step:first-child,
+            .phase-step:last-child {
+                border: 1px solid var(--border);
+                border-bottom: 0;
+                border-radius: 0;
+            }
+
+            .phase-step:first-child {
+                border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+            }
+
+            .phase-step:last-child {
+                border-bottom: 1px solid var(--border);
+                border-radius: 0 0 var(--radius-sm) var(--radius-sm);
+            }
+
+            .phase-step:not(:last-child)::after {
+                top: auto;
+                right: 20px;
+                bottom: -9px;
+                transform: rotate(90deg);
+            }
+
+            .log-lines {
+                padding: 18px 15px;
+                font-size: 9px;
+            }
+
+            .log-line {
+                grid-template-columns: 55px 1fr;
+                gap: 7px;
+            }
+
+            .platform-strip {
                 display: grid;
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
 
-            .phase-chip:last-child {
+            .platform-chip {
+                border-bottom: 1px solid var(--border);
+                font-size: 10px;
+            }
+
+            .platform-chip:nth-child(even) {
+                border-right: 0;
+            }
+
+            .tab-panel {
+                min-height: 230px;
+                padding: 8px;
+            }
+
+            .beginner-content {
+                padding: 18px;
+            }
+
+            .beginner-steps {
+                grid-template-columns: 1fr;
+            }
+
+            .beginner-step {
+                border-top: 1px solid var(--border);
+                border-left: 0;
+            }
+
+            .footer-top {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+                gap: 32px 20px;
+            }
+
+            .footer-intro {
                 grid-column: 1 / -1;
             }
 
-            .platform-block .code-block,
-            .hero-code {
-                font-size: 11px;
+            .footer-col:last-child {
+                grid-column: auto;
+            }
+
+            .footer-bottom {
+                align-items: flex-start;
+                flex-direction: column;
+            }
+        }
+
+        @media (max-width: 389px) {
+            .nav-brand span:last-child {
+                display: none;
+            }
+
+            .hero-title {
+                font-size: 2.65rem;
+            }
+
+            .platform-strip,
+            .footer-top {
+                grid-template-columns: 1fr;
+            }
+
+            .footer-intro {
+                grid-column: auto;
+            }
+        }
+
+        @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
+            .site-nav,
+            .provider-star,
+            .terminal-titlebar,
+            .hero-badges {
+                background: #1b1b21;
+                -webkit-backdrop-filter: none;
+                backdrop-filter: none;
+            }
+        }
+
+        @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+            .site-nav,
+            .provider-star,
+            .terminal-titlebar,
+            .hero-badges {
+                background: rgba(24, 24, 30, 0.97);
             }
         }
 
@@ -1853,9 +1870,14 @@
             }
 
             .hero-line,
-            .reveal {
+            .reveal,
+            .provider-star {
                 opacity: 1;
                 transform: none;
+            }
+
+            .provider-star {
+                animation: none !important;
             }
         }
     </style>
@@ -1863,6 +1885,24 @@
 
 <body>
     <a class="skip-link" href="#main-content">Skip to content</a>
+
+    <svg width="0" height="0" aria-hidden="true" focusable="false" style="position:absolute;overflow:hidden">
+        <symbol id="logo-claude" viewBox="0 0 24 24">
+            <path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z"/>
+        </symbol>
+        <symbol id="logo-openai" viewBox="0 0 24 24">
+            <path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/>
+        </symbol>
+        <symbol id="logo-cursor" viewBox="0 0 24 24">
+            <path d="M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23"/>
+        </symbol>
+        <symbol id="logo-opencode" viewBox="0 0 24 24">
+            <path d="M22 24H2V0h20zM17 4.8H7v14.4h10z"/>
+        </symbol>
+        <symbol id="logo-copilot" viewBox="0 0 24 24">
+            <path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/>
+        </symbol>
+    </svg>
 
     <nav class="site-nav pill-at-top" aria-label="Primary navigation">
         <a class="nav-brand" href="./" aria-label="CLI-JAW home">
@@ -1886,75 +1926,68 @@
         <section class="hero" aria-labelledby="hero-title">
             <img class="hero-backdrop" src="assets/hero-backdrop.jpg" alt="" width="1536" height="1024" loading="eager" fetchpriority="high" aria-hidden="true">
             <div class="hero-shade" aria-hidden="true"></div>
-            <div class="container hero-grid">
+            <div class="container hero-inner">
                 <div class="hero-copy">
-                    <p class="eyebrow">// system-level AI assistant</p>
+                    <p class="eyebrow">// local AI control plane</p>
                     <h1 class="hero-title" id="hero-title">
                         <span class="hero-line">All Your AI Subscriptions.</span>
                         <span class="hero-line"><span class="hero-answer">One Assistant.</span></span>
                     </h1>
-                    <p class="hero-sub">Claude Max · ChatGPT Pro · Copilot · Gemini, routed through OAuth. No per-token billing.</p>
-                    <p class="hero-install-label">Get your personal AI assistant in <strong>2 lines</strong></p>
-                    <div class="code-block hero-code" aria-label="Install CLI-JAW">
-                        <span class="dim">$</span> npm install -g cli-jaw<br>
-                        <span class="dim">$</span> jaw dashboard
+                    <p class="hero-sub">Route every coding subscription through one local system. Keep native OAuth, your preferred models, and your files on your machine.</p>
+                    <div class="hero-command" aria-label="Install and launch CLI-JAW">
+                        <div><span>$</span> npm install -g cli-jaw<br><span>$</span> jaw dashboard</div>
+                        <small>localhost:24576</small>
                     </div>
                     <div class="hero-actions">
                         <a class="button button-primary" href="#quickstart">
                             Get Started
                             <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="m13 6 6 6-6 6"/></svg>
                         </a>
-                        <a class="button button-ghost" href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">
-                            View on GitHub
-                        </a>
+                        <a class="button button-ghost" href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">View on GitHub</a>
                     </div>
                     <div class="hero-quiet-links" aria-label="More resources">
                         <a class="quiet-link" href="dev/">Documentation</a>
+                        <a class="quiet-link" href="clijaw-intro.html">Guided intro</a>
                         <a class="quiet-link" href="windows.html">Windows?</a>
                         <a class="quiet-link" href="#quickstart" data-open-beginner>What is Terminal?</a>
                     </div>
-                    <div class="provider-chips" aria-label="Supported providers">
-                        <span class="provider-chip">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757"/></svg>
-                            Claude
-                        </span>
-                        <span class="provider-chip">
-                            <svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg>
-                            Codex
-                        </span>
-                        <span class="provider-chip">
-                            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="#3186FF"/></svg>
-                            Gemini
-                        </span>
-                        <span class="provider-chip">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                            OpenCode
-                        </span>
-                        <span class="provider-chip">
-                            <svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></svg>
-                            Copilot
-                        </span>
-                        <span class="provider-chip">Grok</span>
-                    </div>
                 </div>
 
-                <div class="hero-stage">
+                <ul class="provider-constellation" aria-label="Thirteen supported AI runtime providers" aria-hidden="true">
+                    <li class="provider-star"><span class="brand-mark brand-mono pi">π</span>Pi</li>
+                    <li class="provider-star"><span class="brand-mark claude"><svg aria-hidden="true"><use href="#logo-claude"/></svg></span>Claude</li>
+                    <li class="provider-star"><span class="brand-mark claude brand-with-sup"><svg aria-hidden="true"><use href="#logo-claude"/></svg></span>Claude E</li>
+                    <li class="provider-star"><span class="brand-mark brand-mono">AI·E</span>AI-E</li>
+                    <li class="provider-star"><span class="brand-mark brand-mono">AGY</span>Antigravity</li>
+                    <li class="provider-star"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-openai"/></svg></span>Codex</li>
+                    <li class="provider-star"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-openai"/></svg></span>Codex App</li>
+                    <li class="provider-star"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-cursor"/></svg></span>Cursor</li>
+                    <li class="provider-star"><span class="brand-mark brand-mono">GROK</span>Grok</li>
+                    <li class="provider-star"><span class="brand-mark brand-mono">KIRO</span>Kiro</li>
+                    <li class="provider-star"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-opencode"/></svg></span>OpenCode</li>
+                    <li class="provider-star"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-copilot"/></svg></span>Copilot</li>
+                    <li class="provider-star"><span class="brand-mark brand-mono">JWC</span>JWC</li>
+                </ul>
+
+                <div class="hero-product">
                     <div class="terminal-window" aria-label="CLI-JAW provider status terminal">
                         <div class="terminal-titlebar">
                             <div class="terminal-dots" aria-hidden="true"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span></div>
-                            <span class="terminal-name">jaw · local</span>
+                            <span class="terminal-name">jaw / runtime registry</span>
                             <span></span>
                         </div>
                         <div class="terminal-body">
-                            <p class="terminal-command"><span class="terminal-prompt">$</span> jaw dashboard</p>
+                            <p class="terminal-command"><span class="terminal-prompt">$</span> jaw dashboard --status</p>
                             <dl class="provider-status">
-                                <div class="provider-status-row"><dt>Claude</dt><dd>anthropic</dd><dd class="terminal-ready">Ready</dd></div>
-                                <div class="provider-status-row"><dt>Codex</dt><dd>openai</dd><dd class="terminal-ready">Ready</dd></div>
-                                <div class="provider-status-row"><dt>Gemini</dt><dd>google</dd><dd class="terminal-ready">Ready</dd></div>
-                                <div class="provider-status-row"><dt>OpenCode</dt><dd>free</dd><dd class="terminal-ready">Ready</dd></div>
-                                <div class="provider-status-row"><dt>Copilot</dt><dd>github</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Claude E</dt><dd>claude-opus-4-8</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Codex App</dt><dd>gpt-5.5</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Pi</dt><dd>grok-composer-2.5-fast</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Cursor</dt><dd>composer-2.5</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>OpenCode</dt><dd>opencode-go/kimi-k2.6</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>Copilot</dt><dd>claude-sonnet-4.6</dd><dd class="terminal-ready">Ready</dd></div>
+                                <div class="provider-status-row"><dt>JWC</dt><dd>claude-sonnet-4-6</dd><dd class="terminal-ready">Ready</dd></div>
                             </dl>
-                            <p class="terminal-log"><span class="terminal-time">09:41:07</span> routing <strong>task-42</strong> to Claude · fallback chain armed</p>
+                            <p class="terminal-log"><span class="terminal-time">09:41:07</span> task-42 routed to Claude E; Codex App and Pi armed as fallback</p>
                         </div>
                     </div>
                     <div class="hero-badges" aria-label="Project badges">
@@ -1970,249 +2003,211 @@
         </section>
 
         <section class="manager-showcase" aria-labelledby="manager-title">
-            <div class="container manager-layout">
-                <div class="screenshot-frame">
+            <div class="container reveal">
+                <div class="manager-heading">
+                    <div>
+                        <p class="eyebrow">// manager</p>
+                        <h2 id="manager-title">One control plane for every local AI session.</h2>
+                    </div>
+                    <p>See every JAW home, open its live interface, manage employees, and keep work moving from one browser window.</p>
+                </div>
+                <div class="screenshot-stage">
                     <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard showing instance navigator, live preview, and runtime settings" width="3022" height="1526" loading="lazy">
                 </div>
-                <div class="manager-copy">
-                    <p class="eyebrow">// manager</p>
-                    <h2 id="manager-title">One control plane for every local AI session.</h2>
-                    <p>The manager dashboard tracks running JAW homes, previews Web UIs, manages employees, and gives you Kanban boards and Notes, all without leaving the browser.</p>
-                    <ul class="manager-points">
-                        <li>Instance navigator with active, running, and offline groups.</li>
-                        <li>Live preview proxy with Preview-on, Refresh, and Open controls.</li>
-                        <li>Kanban board with drag-and-drop task tracking per home.</li>
-                        <li>Settings for CLI, model, effort, permissions, employees, and skills.</li>
-                        <li>Notes with folders, split preview, KaTeX, Mermaid, and code blocks.</li>
-                        <li>One-click task dispatch to specialist employee agents.</li>
-                    </ul>
+                <div class="manager-rail">
+                    <div class="manager-point"><strong>Live instances</strong><span>Active, running, and offline homes with preview controls.</span></div>
+                    <div class="manager-point"><strong>Workspaces included</strong><span>Kanban and Notes stay attached to the home where work happens.</span></div>
+                    <div class="manager-point"><strong>Specialists on call</strong><span>Dispatch tasks to employees with their own CLI, model, and skills.</span></div>
                 </div>
             </div>
         </section>
 
-        <section class="demo-section section-rule" aria-labelledby="demo-title">
+        <section class="demo-section band" aria-labelledby="demo-title">
             <div class="container reveal">
                 <div class="demo-heading">
                     <div>
-                        <p class="eyebrow">// demo</p>
-                        <h2 class="section-title" id="demo-title">See It in Action</h2>
+                        <p class="eyebrow">// product in motion</p>
+                        <h2 class="section-title" id="demo-title">See the system work.</h2>
+                    </div>
+                    <div class="demo-links">
+                        <a href="clijaw-intro.html">Open guided intro</a>
+                        <a href="clijaw-intro.mp4">Watch full video</a>
                     </div>
                 </div>
                 <div class="demo-shell">
                     <div class="demo-bar" aria-hidden="true"><span></span><span></span><span></span></div>
-                    <div class="demo-media">
-                        <video src="https://github.com/user-attachments/assets/a7cf17c9-bfb3-44f0-b7fd-d001a39643fd" width="1662" height="1080" autoplay loop muted playsinline preload="metadata" title="CLI-JAW product demonstration"></video>
-                    </div>
+                    <video src="https://github.com/user-attachments/assets/a7cf17c9-bfb3-44f0-b7fd-d001a39643fd" width="1662" height="1080" autoplay loop muted playsinline preload="metadata" title="CLI-JAW product demonstration"></video>
                 </div>
             </div>
         </section>
 
-        <section class="section section-rule" id="engines" aria-labelledby="engines-title">
+        <section class="section band band-alt" id="engines" aria-labelledby="engines-title">
             <div class="container reveal">
-                <p class="kicker">Runtimes</p>
-                <h2 class="section-title" id="engines-title">Your subscriptions, unified</h2>
-                <p class="section-desc">Route through the AI subscriptions you already pay for. OAuth login, no API keys, no per-token billing. Even one engine is enough. Additional runtime surfaces such as Grok CLI and Codex App appear in settings when installed; MCP sync remains limited to supported MCP-aware engines.</p>
-                <div class="engines-grid">
-                    <article class="engine-card">
-                        <span class="engine-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z" fill="#D97757"/></svg></span>
-                        <div class="engine-name">Claude</div>
-                        <div class="engine-model">claude-opus-4-8</div>
-                        <span class="engine-badge">Paid</span>
+                <p class="kicker">13 runtime surfaces</p>
+                <h2 class="section-title" id="engines-title">Your subscriptions, composed as one system.</h2>
+                <p class="section-desc">Use one runtime or all thirteen. CLI-JAW keeps each provider's native authentication, model defaults, and fallback role visible.</p>
+                <div class="engines-grid" role="list" aria-label="Supported AI runtimes">
+                    <article class="engine-card dominant" role="listitem">
+                        <div class="engine-head"><span class="brand-mark brand-mono pi">π</span><span class="engine-index">01 / 13</span></div>
+                        <div><h3 class="engine-name">Pi</h3><div class="engine-model">grok-composer-2.5-fast</div><div class="engine-auth">Settings profile API key, local proxy, or PI_CODING_AGENT_BIN</div></div>
                     </article>
-                    <article class="engine-card">
-                        <span class="engine-mark"><svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M9.205 8.658v-2.26c0-.19.072-.333.238-.428l4.543-2.616c.619-.357 1.356-.523 2.117-.523 2.854 0 4.662 2.212 4.662 4.566 0 .167 0 .357-.024.547l-4.71-2.759a.797.797 0 00-.856 0l-5.97 3.473zm10.609 8.8V12.06c0-.333-.143-.57-.429-.737l-5.97-3.473 1.95-1.118a.433.433 0 01.476 0l4.543 2.617c1.309.76 2.189 2.378 2.189 3.948 0 1.808-1.07 3.473-2.76 4.163zM7.802 12.703l-1.95-1.142c-.167-.095-.239-.238-.239-.428V5.899c0-2.545 1.95-4.472 4.591-4.472 1 0 1.927.333 2.712.928L8.23 5.067c-.285.166-.428.404-.428.737v6.898zM12 15.128l-2.795-1.57v-3.33L12 8.658l2.795 1.57v3.33L12 15.128zm1.796 7.23c-1 0-1.927-.332-2.712-.927l4.686-2.712c.285-.166.428-.404.428-.737v-6.898l1.974 1.142c.167.095.238.238.238.428v5.233c0 2.545-1.974 4.472-4.614 4.472zm-5.637-5.303l-4.544-2.617c-1.308-.761-2.188-2.378-2.188-3.948A4.482 4.482 0 014.21 6.327v5.423c0 .333.143.571.428.738l5.947 3.449-1.95 1.118a.432.432 0 01-.476 0zm-.262 3.9c-2.688 0-4.662-2.021-4.662-4.519 0-.19.024-.38.047-.57l4.686 2.71c.286.167.571.167.856 0l5.97-3.448v2.26c0 .19-.07.333-.237.428l-4.543 2.616c-.619.357-1.356.523-2.117.523zm5.899 2.83a5.947 5.947 0 005.827-4.756C22.287 18.339 24 15.84 24 13.296c0-1.665-.713-3.282-1.998-4.448.119-.5.19-.999.19-1.498 0-3.401-2.759-5.947-5.946-5.947-.642 0-1.26.095-1.88.31A5.962 5.962 0 0010.205 0a5.947 5.947 0 00-5.827 4.757C1.713 5.447 0 7.945 0 10.49c0 1.666.713 3.283 1.998 4.448-.119.5-.19 1-.19 1.499 0 3.401 2.759 5.946 5.946 5.946.642 0 1.26-.095 1.88-.309a5.96 5.96 0 004.162 1.713z"/></svg></span>
-                        <div class="engine-name">Codex</div>
-                        <div class="engine-model">gpt-5.5</div>
-                        <span class="engine-badge">Paid</span>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark claude"><svg aria-hidden="true"><use href="#logo-claude"/></svg></span><span class="engine-index">02</span></div>
+                        <div><h3 class="engine-name">Claude</h3><div class="engine-model">claude-opus-4-8</div><div class="engine-auth">claude auth login</div></div>
                     </article>
-                    <article class="engine-card">
-                        <span class="engine-mark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z" fill="#3186FF"/></svg></span>
-                        <div class="engine-name">Gemini</div>
-                        <div class="engine-model">gemini-3-flash-preview</div>
-                        <span class="engine-badge">Paid</span>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark claude brand-with-sup"><svg aria-hidden="true"><use href="#logo-claude"/></svg></span><span class="engine-index">03</span></div>
+                        <div><h3 class="engine-name">Claude E</h3><div class="engine-model">claude-opus-4-8</div><div class="engine-auth">underlying claude auth login</div></div>
                     </article>
-                    <article class="engine-card">
-                        <span class="engine-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#22d3ee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></span>
-                        <div class="engine-name">OpenCode</div>
-                        <div class="engine-model">opencode-go/kimi-k2.6</div>
-                        <span class="engine-badge">Free</span>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark brand-mono">AI·E</span><span class="engine-index">04</span></div>
+                        <div><h3 class="engine-name">AI-E</h3><div class="engine-model">provider-selected</div><div class="engine-auth">selected provider auth</div></div>
                     </article>
-                    <article class="engine-card">
-                        <span class="engine-mark"><svg viewBox="0 0 24 24" fill="#ececf1" aria-hidden="true"><path d="M23.922 16.997C23.061 18.492 18.063 22.02 12 22.02 5.937 22.02.939 18.492.078 16.997A.641.641 0 0 1 0 16.741v-2.869a.883.883 0 0 1 .053-.22c.372-.935 1.347-2.292 2.605-2.656.167-.429.414-1.055.644-1.517a10.098 10.098 0 0 1-.052-1.086c0-1.331.282-2.499 1.132-3.368.397-.406.89-.717 1.474-.952C7.255 2.937 9.248 1.98 11.978 1.98c2.731 0 4.767.957 6.166 2.093.584.235 1.077.546 1.474.952.85.869 1.132 2.037 1.132 3.368 0 .368-.014.733-.052 1.086.23.462.477 1.088.644 1.517 1.258.364 2.233 1.721 2.605 2.656a.841.841 0 0 1 .053.22v2.869a.641.641 0 0 1-.078.256Zm-11.75-5.992h-.344a4.359 4.359 0 0 1-.355.508c-.77.947-1.918 1.492-3.508 1.492-1.725 0-2.989-.359-3.782-1.259a2.137 2.137 0 0 1-.085-.104L4 11.746v6.585c1.435.779 4.514 2.179 8 2.179 3.486 0 6.565-1.4 8-2.179v-6.585l-.098-.104s-.033.045-.085.104c-.793.9-2.057 1.259-3.782 1.259-1.59 0-2.738-.545-3.508-1.492a4.359 4.359 0 0 1-.355-.508Zm2.328 3.25c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm-5 0c.549 0 1 .451 1 1v2c0 .549-.451 1-1 1-.549 0-1-.451-1-1v-2c0-.549.451-1 1-1Zm3.313-6.185c.136 1.057.403 1.913.878 2.497.442.544 1.134.938 2.344.938 1.573 0 2.292-.337 2.657-.751.384-.435.558-1.15.558-2.361 0-1.14-.243-1.847-.705-2.319-.477-.488-1.319-.862-2.824-1.025-1.487-.161-2.192.138-2.533.529-.269.307-.437.808-.438 1.578v.021c0 .265.021.562.063.893Zm-1.626 0c.042-.331.063-.628.063-.894v-.02c-.001-.77-.169-1.271-.438-1.578-.341-.391-1.046-.69-2.533-.529-1.505.163-2.347.537-2.824 1.025-.462.472-.705 1.179-.705 2.319 0 1.211.175 1.926.558 2.361.365.414 1.084.751 2.657.751 1.21 0 1.902-.394 2.344-.938.475-.584.742-1.44.878-2.497Z"/></svg></span>
-                        <div class="engine-name">Copilot</div>
-                        <div class="engine-model">claude-sonnet-4.6</div>
-                        <span class="engine-badge">Free</span>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark brand-mono">AGY</span><span class="engine-index">05</span></div>
+                        <div><h3 class="engine-name">Antigravity</h3><div class="engine-model">AGY-selected</div><div class="engine-auth">checked by agy at runtime</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-openai"/></svg></span><span class="engine-index">06</span></div>
+                        <div><h3 class="engine-name">Codex</h3><div class="engine-model">gpt-5.5</div><div class="engine-auth">codex login</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-openai"/></svg></span><span class="engine-index">07</span></div>
+                        <div><h3 class="engine-name">Codex App</h3><div class="engine-model">gpt-5.5</div><div class="engine-auth">codex login</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-cursor"/></svg></span><span class="engine-index">08</span></div>
+                        <div><h3 class="engine-name">Cursor</h3><div class="engine-model">composer-2.5</div><div class="engine-auth">cursor-agent login or CURSOR_API_KEY</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark brand-mono">GROK</span><span class="engine-index">09</span></div>
+                        <div><h3 class="engine-name">Grok</h3><div class="engine-model">grok-build</div><div class="engine-auth">grok login --oauth</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark brand-mono">KIRO</span><span class="engine-index">10</span></div>
+                        <div><h3 class="engine-name">Kiro</h3><div class="engine-model">registry-selected</div><div class="engine-auth">kiro</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-opencode"/></svg></span><span class="engine-index">11</span></div>
+                        <div><h3 class="engine-name">OpenCode</h3><div class="engine-model">opencode-go/kimi-k2.6</div><div class="engine-auth">opencode</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark"><svg aria-hidden="true"><use href="#logo-copilot"/></svg></span><span class="engine-index">12</span></div>
+                        <div><h3 class="engine-name">Copilot</h3><div class="engine-model">claude-sonnet-4.6</div><div class="engine-auth">copilot login</div></div>
+                    </article>
+                    <article class="engine-card" role="listitem">
+                        <div class="engine-head"><span class="brand-mark brand-mono">JWC</span><span class="engine-index">13</span></div>
+                        <div><h3 class="engine-name">JWC</h3><div class="engine-model">claude-sonnet-4-6</div><div class="engine-auth">jaw jwc install</div></div>
                     </article>
                 </div>
-                <p class="fallback-line">Engine down? Next one picks up automatically. <strong>OpenCode wildcard:</strong> connect any model endpoint.</p>
             </div>
         </section>
 
-        <section class="section section-rule" id="features" aria-labelledby="features-title">
+        <section class="section band" id="features" aria-labelledby="features-title">
             <div class="container reveal">
-                <p class="kicker">Infrastructure</p>
-                <h2 class="section-title" id="features-title">What you get</h2>
-                <p class="section-desc">Not a chatbot wrapper. A full-stack assistant with real infrastructure.</p>
-
-                <div class="feature-marquee">
-                    <article class="feature-dominant">
-                        <div class="feature-dominant-copy">
-                            <div class="feature-icon-box" aria-hidden="true">
-                                <svg class="icon" viewBox="0 0 24 24"><rect width="18" height="14" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
-                            </div>
-                            <h3 class="feature-title">Manager dashboard</h3>
-                            <p class="feature-desc">Track local instances, preview live Web UIs, switch themes, inspect runtime settings, and manage employees from one browser workspace.</p>
-                        </div>
-                        <div class="feature-dominant-image">
-                            <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard with instance navigation and live preview" width="3022" height="1526" loading="lazy">
-                        </div>
+                <p class="kicker">Built into the control plane</p>
+                <h2 class="section-title" id="features-title">A local system, not another chat wrapper.</h2>
+                <p class="section-desc">The dashboard, orchestration layer, skills, memory, and messaging surfaces stay connected around the work itself.</p>
+                <div class="feature-grid">
+                    <article class="feature-card dominant">
+                        <div class="feature-visual"><img src="screenshots/dashboard-kanban.png" alt="CLI-JAW Kanban board with task columns and project cards" width="1918" height="1159" loading="lazy"></div>
+                        <div class="feature-copy"><h3 class="feature-title">Manager, Kanban, and Notes share one home</h3><p class="feature-desc">Track the task, inspect the live agent, and keep project knowledge beside it without switching products.</p></div>
                     </article>
-                    <div class="feature-stack">
-                        <article class="feature-large">
-                            <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M4 6h16"/><path d="M4 12h10"/><path d="M4 18h7"/><path d="m17 15 3 3-3 3"/></svg></div>
-                            <div><h3 class="feature-title">PABCD orchestration</h3><p class="feature-desc">DB-persisted 5-phase FSM: Plan, Audit, Build, Check, Done. Workers are read-only. You approve every phase.</p></div>
-                        </article>
-                        <article class="feature-large">
-                            <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v1a4 4 0 0 0-2 7.5A4 4 0 0 0 10 20h2"/><path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1 2 7.5A4 4 0 0 1 14 20h-2"/><path d="M12 2v20"/><path d="M8 9h4"/><path d="M12 14h4"/></svg></div>
-                            <div><h3 class="feature-title">3-layer memory</h3><p class="feature-desc">History Block (session context) + Memory Flush (episodes, daily logs) + Soul and Task Snapshot (identity, semantic recall). SQLite FTS5 search.</p></div>
-                        </article>
-                        <article class="feature-large">
-                            <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
-                            <div><h3 class="feature-title">Employee system</h3><p class="feature-desc">Dispatch specialist agents: Frontend, Backend, Research, Docs, each with its own CLI and model. Boss orchestrates, workers verify.</p></div>
-                        </article>
-                    </div>
-                </div>
-
-                <div class="feature-list">
-                    <article class="feature-row">
-                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg></div>
-                        <div><h3 class="feature-title">Notes workspace</h3><p class="feature-desc">Dashboard-local markdown vault with folders, rename and move, dirty markers, split preview, KaTeX, Mermaid, and highlighted code blocks.</p></div>
+                    <article class="feature-card">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2a4 4 0 0 0-4 4v1a4 4 0 0 0-2 7.5A4 4 0 0 0 10 20h2"/><path d="M12 2a4 4 0 0 1 4 4v1a4 4 0 0 1 2 7.5A4 4 0 0 1 14 20h-2"/><path d="M12 2v20"/></svg></div>
+                        <div><h3 class="feature-title">Persistent memory</h3><p class="feature-desc">Project, user, and session recall keep context available across runtime changes.</p></div>
                     </article>
-                    <article class="feature-row">
-                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2 6-6 2 2-6 6-2Z"/></svg></div>
-                        <div><h3 class="feature-title">Browser automation</h3><p class="feature-desc">Chrome CDP, vision-click, DOM reference for ChatGPT/Grok/Gemini, Computer Use via Codex App, and a diagram skill for interactive visualizations.</p></div>
+                    <article class="feature-card">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg></div>
+                        <div><h3 class="feature-title">Employees</h3><p class="feature-desc">Give specialist workers their own CLI, model, prompt, skills, and file scope.</p></div>
                     </article>
-                    <article class="feature-row">
-                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><rect width="6" height="14" x="3" y="5" rx="1"/><rect width="6" height="10" x="15" y="9" rx="1"/><path d="M9 12h6"/><path d="m12 9 3 3-3 3"/></svg></div>
-                        <div><h3 class="feature-title">Kanban board</h3><p class="feature-desc">Drag-and-drop task tracking built into the dashboard. Columns, card creation, and reordering per home, with zero setup.</p></div>
-                    </article>
-                    <article class="feature-row">
-                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v4"/><path d="m16.2 7.8 2.9-2.9"/><path d="M18 12h4"/><path d="m16.2 16.2 2.9 2.9"/><path d="M12 18v4"/><path d="m7.8 16.2-2.9 2.9"/><path d="M6 12H2"/><path d="M7.8 7.8 4.9 4.9"/><circle cx="12" cy="12" r="3"/></svg></div>
-                        <div><h3 class="feature-title">200+ reference skills</h3><p class="feature-desc">Office docs (PDF, DOCX, XLSX, PPTX, HWP), GitHub, Notion, image generation, video rendering, and Telegram media, activated from the reference catalog as needed.</p></div>
-                    </article>
-                    <article class="feature-row">
+                    <article class="feature-card wide">
                         <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/><path d="M8 9h8"/><path d="M8 13h5"/></svg></div>
-                        <div><h3 class="feature-title">Telegram + Discord</h3><p class="feature-desc">Chat from your phone. Voice messages with multi-provider STT. Files, photos, slash commands, and scheduled task results.</p></div>
+                        <div><h3 class="feature-title">Telegram, Discord, Web, terminal</h3><p class="feature-desc">Start from the desk, continue from your phone, and receive scheduled results on the channel where you already work.</p></div>
                     </article>
-                    <article class="feature-row">
-                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M12 2v6"/><path d="m16 6-4 2-4-2"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M8 13h.01"/><path d="M16 13h.01"/><path d="M9 17h6"/></svg></div>
-                        <div><h3 class="feature-title">MCP: install once</h3><p class="feature-desc">Install MCP tools once and sync supported MCP-aware engines. Grok CLI runs as a standard runtime without claiming MCP sync.</p></div>
+                    <article class="feature-card">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m16 8-2 6-6 2 2-6 6-2Z"/></svg></div>
+                        <div><h3 class="feature-title">Browser control</h3><p class="feature-desc">Use CDP, DOM references, visual targeting, and desktop Computer Use.</p></div>
                     </article>
-                    <article class="feature-row">
+                    <article class="feature-card">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M8 13h8"/></svg></div>
+                        <div><h3 class="feature-title">200+ skills</h3><p class="feature-desc">Activate focused workflows for code, documents, research, media, and integrations.</p></div>
+                    </article>
+                    <article class="feature-card">
+                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 3 2 6"/></svg></div>
+                        <div><h3 class="feature-title">Heartbeat jobs</h3><p class="feature-desc">Run recurring check-ins, reports, and bounded tasks on cron or intervals.</p></div>
+                    </article>
+                    <article class="feature-card">
                         <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg></div>
-                        <div><h3 class="feature-title">7+ surfaces</h3><p class="feature-desc">Root CLI, terminal TUI, Web PWA, Electron desktop, Manager dashboard, Telegram, and Discord. Web/TUI live updates use the SSE-first <code>GET /api/events</code> channel with legacy WebSocket fallback only for older servers. Desktop releases bundle a Node.js sidecar so the app and terminal shim can run without a global npm install.</p></div>
-                    </article>
-                    <article class="feature-row">
-                        <div class="feature-icon-box" aria-hidden="true"><svg class="icon" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/><path d="M5 3 2 6"/><path d="m19 3 3 3"/></svg></div>
-                        <div><h3 class="feature-title">Heartbeat system</h3><p class="feature-desc">Cron and interval jobs that run while you sleep. Morning check-ins, recurring reports, and scheduled tasks, with results forwarded to your channel.</p></div>
+                        <div><h3 class="feature-title">7+ connected surfaces</h3><p class="feature-desc">CLI, TUI, PWA, desktop, Manager, Telegram, and Discord share one event stream.</p></div>
                     </article>
                 </div>
             </div>
         </section>
 
-        <section class="section section-rule" id="pabcd" aria-labelledby="pabcd-title">
+        <section class="section band band-alt" id="pabcd" aria-labelledby="pabcd-title">
             <div class="container reveal">
                 <p class="kicker">Orchestration</p>
-                <h2 class="section-title" id="pabcd-title">PABCD: AI That Plans Before It Builds</h2>
-                <p class="section-desc">A DB-persisted finite state machine that enforces planning, auditing, and verification. No cowboy coding: every phase requires your approval.</p>
-                <div class="phase-chips" aria-label="PABCD phases">
-                    <span class="phase-chip"><span class="phase-letter">P</span>Plan</span>
-                    <span class="phase-chip"><span class="phase-letter">A</span>Audit</span>
-                    <span class="phase-chip"><span class="phase-letter">B</span>Build</span>
-                    <span class="phase-chip"><span class="phase-letter">C</span>Check</span>
-                    <span class="phase-chip"><span class="phase-letter">D</span>Done</span>
-                </div>
+                <h2 class="section-title" id="pabcd-title">PABCD makes the work inspectable.</h2>
+                <p class="section-desc">A persisted finite state machine separates intent, review, implementation, verification, and closure into explicit phases.</p>
+                <ol class="phase-rail" aria-label="PABCD workflow phases">
+                    <li class="phase-step"><span class="phase-letter">P</span><span class="phase-name">Plan</span><span class="phase-note">shape the work</span></li>
+                    <li class="phase-step"><span class="phase-letter">A</span><span class="phase-name">Audit</span><span class="phase-note">challenge assumptions</span></li>
+                    <li class="phase-step"><span class="phase-letter">B</span><span class="phase-name">Build</span><span class="phase-note">make the change</span></li>
+                    <li class="phase-step"><span class="phase-letter">C</span><span class="phase-name">Check</span><span class="phase-note">prove behavior</span></li>
+                    <li class="phase-step"><span class="phase-letter">D</span><span class="phase-name">Done</span><span class="phase-note">close with evidence</span></li>
+                </ol>
                 <div class="orchestration-layout">
                     <div class="orchestration-log" aria-label="PABCD run log">
                         <div class="terminal-titlebar">
                             <div class="terminal-dots" aria-hidden="true"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span></div>
-                            <span class="terminal-name">orchestration.log</span>
-                            <span></span>
+                            <span class="terminal-name">orchestration.log</span><span></span>
                         </div>
                         <div class="log-lines">
                             <div class="log-line"><time>09:41:02</time><span><span class="terminal-prompt">$</span> jaw orchestrate</span></div>
-                            <div class="log-line"><time>09:41:03</time><span><span class="log-phase">P → Plan</span> diff-level implementation plan; waiting for approval</span></div>
-                            <div class="log-line"><time>09:42:18</time><span><span class="log-phase">A → Audit</span> read-only worker verifies feasibility</span></div>
-                            <div class="log-line"><time>09:43:11</time><span><span class="log-phase">B → Build</span> boss implements + worker verifies</span></div>
-                            <div class="log-line"><time>09:47:46</time><span><span class="log-phase">C → Check</span> type-check, docs, consistency</span></div>
-                            <div class="log-line"><time>09:48:09</time><span><span class="log-phase">D → Done</span> summary written; returned to idle</span></div>
+                            <div class="log-line"><time>09:41:03</time><span><span class="log-phase">P → Plan</span> implementation plan recorded</span></div>
+                            <div class="log-line"><time>09:42:18</time><span><span class="log-phase">A → Audit</span> feasibility and risk checked</span></div>
+                            <div class="log-line"><time>09:43:11</time><span><span class="log-phase">B → Build</span> scoped implementation running</span></div>
+                            <div class="log-line"><time>09:47:46</time><span><span class="log-phase">C → Check</span> tests and consistency verified</span></div>
+                            <div class="log-line"><time>09:48:09</time><span><span class="log-phase">D → Done</span> evidence saved; state idle</span></div>
                         </div>
                     </div>
                     <div class="pabcd-details">
-                        <article class="detail-item"><h3>Workers are read-only</h3><p>Audit and verification workers <strong>cannot modify files</strong>. They inspect, report, and recommend, but never touch your code.</p></article>
-                        <article class="detail-item"><h3>Hard stop at every phase</h3><p>The AI cannot self-advance. You review and approve each transition. No runaway agents, no surprise changes.</p></article>
-                        <article class="detail-item"><h3>DB-persisted state</h3><p>State survives server restarts. CLI and Web UI share the same FSM, so you can resume from any interface.</p></article>
-                        <article class="detail-item"><h3>Parallel-safe dispatch</h3><p>Independent subtasks run concurrently via <code>Promise.all</code> with automatic file-overlap detection and sequential fallback.</p></article>
+                        <article class="detail-item"><h3>Human approval gates</h3><p>Forward transitions stay explicit, so intent remains visible.</p></article>
+                        <article class="detail-item"><h3>Persisted state</h3><p>Resume after restarts from CLI, Web, or Manager.</p></article>
+                        <article class="detail-item"><h3>Scoped workers</h3><p>Separate review and implementation roles by task.</p></article>
+                        <article class="detail-item"><h3>Evidence at closure</h3><p>Tests and change summaries travel with the result.</p></article>
                     </div>
                 </div>
             </div>
         </section>
 
-        <section class="section section-rule" id="platform" aria-labelledby="platform-title">
+        <section class="section band" id="platform" aria-labelledby="platform-title">
             <div class="container reveal">
                 <p class="kicker">Platform</p>
-                <h2 class="section-title" id="platform-title">Runs Everywhere</h2>
-                <p class="section-desc">If your OS has a CLI, CLI-JAW works there. No exceptions.</p>
+                <h2 class="section-title" id="platform-title">Local first. Portable by design.</h2>
+                <p class="section-desc">Run the same control plane on a laptop, packaged desktop app, container, cloud VM, or CI worker.</p>
                 <div class="platform-strip" aria-label="Supported platforms">
-                    <span class="platform-chip">macOS</span>
-                    <span class="platform-chip">Linux</span>
-                    <span class="platform-chip">WSL</span>
-                    <span class="platform-chip">Electron desktop</span>
-                    <span class="platform-chip">Docker</span>
-                    <span class="platform-chip">Cloud VMs</span>
-                    <span class="platform-chip">CI/CD</span>
+                    <span class="platform-chip">macOS</span><span class="platform-chip">Linux</span><span class="platform-chip">WSL</span><span class="platform-chip">Electron</span><span class="platform-chip">Docker</span><span class="platform-chip">Cloud VMs</span><span class="platform-chip">CI/CD</span>
                 </div>
                 <div class="platform-blocks">
                     <article class="platform-block">
-                        <div class="platform-copy">
-                            <h3>Desktop app: npm-free packaged runtime</h3>
-                            <p>Download the DMG, NSIS installer, or AppImage from GitHub Releases. Packaged builds include the CLI-JAW server, Node.js 22 sidecar, frontend assets, production dependencies, and a bundled <code>jaw</code> shim.</p>
-                            <div class="platform-tags"><span class="platform-tag">macOS DMG</span><span class="platform-tag">Windows NSIS</span><span class="platform-tag">Linux AppImage</span></div>
-                        </div>
-                        <div class="code-block">
-                            <span class="dim"># End-user flow</span><br>
-                            Download from GitHub Releases<br>
-                            Open CLI-JAW Desktop<br>
-                            Accept "Install CLI command"<br>
-                            jaw dashboard<br><br>
-                            <span class="dim"># Developer build</span><br>
-                            npm run electron:dist:mac
-                        </div>
+                        <div class="platform-copy"><h3>Desktop runtime, packaged</h3><p>DMG, NSIS, and AppImage releases include the server, Node.js sidecar, frontend, production dependencies, and a <code>jaw</code> command shim.</p></div>
+                        <div class="code-block"><span class="dim"># end-user flow</span><br>Download from GitHub Releases<br>Open CLI-JAW Desktop<br>Install CLI command<br>jaw dashboard</div>
                     </article>
                     <article class="platform-block">
-                        <div class="platform-copy">
-                            <h3>Docker: container isolation</h3>
-                            <p>Run CLI-JAW in a Docker container for security isolation. AI agents cannot access host files. Non-root user, Chromium sandbox enabled by default.</p>
-                            <div class="platform-tags"><span class="platform-tag">Dockerfile</span><span class="platform-tag">Dockerfile.dev</span><span class="platform-tag">docker-compose.yml</span></div>
-                        </div>
-                        <div class="code-block">
-                            <span class="dim"># Quick start</span><br>
-                            docker compose up -d<br>
-                            <span class="dim"># → http://localhost:3457</span><br><br>
-                            <span class="dim"># Or build manually</span><br>
-                            docker build -t cli-jaw .<br>
-                            docker run -d -p 3457:3457 cli-jaw
-                        </div>
+                        <div class="platform-copy"><h3>Container isolation</h3><p>Run as a non-root user with the Chromium sandbox enabled. The agent sees the mounted workspace, not the rest of the host.</p></div>
+                        <div class="code-block"><span class="dim"># quick start</span><br>docker compose up -d<br><span class="dim"># http://localhost:3457</span><br><br>docker build -t cli-jaw .</div>
                     </article>
                 </div>
             </div>
         </section>
 
-        <section class="section section-rule" id="screenshots" aria-labelledby="screenshots-title">
+        <section class="section band band-alt" id="screenshots" aria-labelledby="screenshots-title">
             <div class="container reveal">
                 <p class="kicker">Interfaces</p>
-                <h2 class="section-title" id="screenshots-title">7+ surfaces to connect</h2>
-                <p class="section-desc">Root CLI, Manager dashboard, Web PWA, Electron desktop, Terminal TUI, Telegram, or Discord. Same assistant, same memory, same skills.</p>
+                <h2 class="section-title" id="screenshots-title">The same assistant, wherever work finds you.</h2>
+                <p class="section-desc">Move between Manager, Notes, chat, terminal, Telegram, and orchestration without splitting memory or configuration.</p>
                 <div class="tabs-wrap">
                     <div class="tab-list" role="tablist" aria-label="CLI-JAW interface screenshots">
                         <button class="tab-button" id="tab-dashboard" role="tab" type="button" aria-selected="true" aria-controls="panel-dashboard" tabindex="0">Dashboard</button>
@@ -2222,69 +2217,35 @@
                         <button class="tab-button" id="tab-telegram" role="tab" type="button" aria-selected="false" aria-controls="panel-telegram" tabindex="-1">Telegram</button>
                         <button class="tab-button" id="tab-orchestration" role="tab" type="button" aria-selected="false" aria-controls="panel-orchestration" tabindex="-1">PABCD</button>
                     </div>
-                    <div class="tab-panel" id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard">
-                        <img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard" width="3022" height="1526" loading="lazy">
-                    </div>
-                    <div class="tab-panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" hidden>
-                        <img src="screenshots/notes-wysiwyg.png" alt="CLI-JAW Notes workspace with WYSIWYG markdown editing" width="2556" height="1548" loading="lazy">
-                    </div>
-                    <div class="tab-panel" id="panel-web" role="tabpanel" aria-labelledby="tab-web" hidden>
-                        <img src="screenshots/web-ui.png" alt="CLI-JAW Web UI" width="1320" height="1194" loading="lazy">
-                    </div>
-                    <div class="tab-panel" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden>
-                        <img src="screenshots/terminal-cli.png" alt="CLI-JAW Terminal" width="561" height="273" loading="lazy">
-                    </div>
-                    <div class="tab-panel is-narrow" id="panel-telegram" role="tabpanel" aria-labelledby="tab-telegram" hidden>
-                        <img src="screenshots/telegram-bot.png" alt="CLI-JAW Telegram Bot" width="1290" height="2796" loading="lazy">
-                    </div>
-                    <div class="tab-panel" id="panel-orchestration" role="tabpanel" aria-labelledby="tab-orchestration" hidden>
-                        <img src="screenshots/orchestration-log.png" alt="CLI-JAW Orchestration" width="844" height="436" loading="lazy">
-                    </div>
+                    <div class="tab-panel" id="panel-dashboard" role="tabpanel" aria-labelledby="tab-dashboard"><img src="screenshots/manager-dashboard-light.png" alt="CLI-JAW manager dashboard" width="3022" height="1526" loading="lazy"></div>
+                    <div class="tab-panel" id="panel-notes" role="tabpanel" aria-labelledby="tab-notes" hidden><img src="screenshots/notes-wysiwyg.png" alt="CLI-JAW Notes workspace with WYSIWYG markdown editing" width="2556" height="1548" loading="lazy"></div>
+                    <div class="tab-panel" id="panel-web" role="tabpanel" aria-labelledby="tab-web" hidden><img src="screenshots/web-ui.png" alt="CLI-JAW Web UI" width="1320" height="1194" loading="lazy"></div>
+                    <div class="tab-panel" id="panel-terminal" role="tabpanel" aria-labelledby="tab-terminal" hidden><img src="screenshots/terminal-cli.png" alt="CLI-JAW Terminal" width="561" height="273" loading="lazy"></div>
+                    <div class="tab-panel is-narrow" id="panel-telegram" role="tabpanel" aria-labelledby="tab-telegram" hidden><img src="screenshots/telegram-bot.png" alt="CLI-JAW Telegram Bot" width="1290" height="2796" loading="lazy"></div>
+                    <div class="tab-panel" id="panel-orchestration" role="tabpanel" aria-labelledby="tab-orchestration" hidden><img src="screenshots/orchestration-log.png" alt="CLI-JAW Orchestration log" width="844" height="436" loading="lazy"></div>
                 </div>
             </div>
         </section>
 
-        <section class="section section-rule" id="quickstart" aria-labelledby="quickstart-title">
+        <section class="section band" id="quickstart" aria-labelledby="quickstart-title">
             <div class="container reveal">
                 <p class="kicker">Quickstart</p>
-                <h2 class="section-title" id="quickstart-title">Up and Running in 30 Seconds</h2>
-                <div class="quickstart-slab">
-                    <article class="quick-step">
-                        <div class="step-heading"><span class="step-number">1</span><span class="step-title">Install</span></div>
-                        <div class="code-block">npm install -g cli-jaw</div>
-                    </article>
-                    <article class="quick-step">
-                        <div class="step-heading"><span class="step-number">2</span><span class="step-title">Authenticate</span></div>
-                        <div class="code-block"><span class="dim"># pick any one</span><br>copilot login<br>claude auth login<br>codex login<br>gemini login</div>
-                    </article>
-                    <article class="quick-step">
-                        <div class="step-heading"><span class="step-number">3</span><span class="step-title">Launch</span></div>
-                        <div class="code-block">jaw dashboard<br><span class="dim"># → http://localhost:24576</span></div>
-                    </article>
+                <h2 class="section-title" id="quickstart-title">Two commands to your local control plane.</h2>
+                <div class="quickstart-layout">
+                    <div class="quickstart-copy"><strong>Install once. Pick any runtime.</strong><p>Start with the subscription you already have. Add more providers later from the same settings surface.</p></div>
+                    <div class="quickstart-terminal">
+                        <div class="terminal-titlebar"><div class="terminal-dots" aria-hidden="true"><span class="terminal-dot"></span><span class="terminal-dot"></span><span class="terminal-dot"></span></div><span class="terminal-name">zsh</span><span></span></div>
+                        <div class="code-block"><span class="terminal-prompt">$</span> npm install -g cli-jaw<br><span class="terminal-prompt">$</span> jaw dashboard<br><span class="cmd-note"># authenticate one runtime: claude, codex, copilot, grok, cursor, or another installed CLI</span></div>
+                    </div>
                 </div>
-
                 <details class="beginner" id="terminal-help">
-                    <summary>
-                        <svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>
-                        New to the terminal? One-click install
-                    </summary>
+                    <summary><svg class="icon icon-sm" viewBox="0 0 24 24" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>New to the terminal? One-click install</summary>
                     <div class="beginner-content">
-                        <h3>macOS: step by step</h3>
+                        <h3>macOS, step by step</h3>
                         <div class="beginner-steps">
-                            <article class="beginner-step">
-                                <p class="beginner-label">Step 1: Open Terminal</p>
-                                <p class="beginner-copy">Open <strong>Finder</strong> → <strong>Applications</strong> → <strong>Utilities</strong> → <strong>Terminal.app</strong><br>(or press <code>⌘ Space</code> and type <code>Terminal</code>)</p>
-                            </article>
-                            <article class="beginner-step">
-                                <p class="beginner-label">Step 2: Paste and hit Enter</p>
-                                <div class="code-block">curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash</div>
-                                <p class="beginner-note">This installs Node.js + CLI-JAW automatically. Wait until it finishes.</p>
-                            </article>
-                            <article class="beginner-step">
-                                <p class="beginner-label">Step 3: Login and Launch</p>
-                                <div class="code-block"><span class="dim"># pick any one</span><br>copilot login<br>claude auth login<br>codex login<br>gemini login<br><br>jaw dashboard</div>
-                                <p class="beginner-note">Open <strong>http://localhost:24576</strong> for the manager dashboard. Agent chat UI stays on <strong>http://localhost:3457</strong> when you run <code>jaw serve</code>.</p>
-                            </article>
+                            <article class="beginner-step"><p class="beginner-label">01 / Open Terminal</p><p class="beginner-copy">Open Finder → Applications → Utilities → Terminal.app, or press <code>⌘ Space</code> and type <code>Terminal</code>.</p></article>
+                            <article class="beginner-step"><p class="beginner-label">02 / Install</p><div class="code-block">curl -fsSL https://raw.githubusercontent.com/lidge-jun/cli-jaw/main/scripts/install.sh | bash</div><p class="beginner-note">The installer sets up Node.js and CLI-JAW.</p></article>
+                            <article class="beginner-step"><p class="beginner-label">03 / Launch</p><div class="code-block">claude auth login<br>jaw dashboard</div><p class="beginner-note">Open <strong>http://localhost:24576</strong>. The agent Web UI uses <strong>http://localhost:3457</strong> with <code>jaw serve</code>.</p></article>
                         </div>
                     </div>
                 </details>
@@ -2293,15 +2254,14 @@
     </main>
 
     <footer class="footer">
-        <div class="container footer-row">
-            <div class="footer-brand">CLI-JAW</div>
-            <div class="footer-links">
-                <a href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">GitHub</a>
-                <a href="https://npmjs.com/package/cli-jaw" target="_blank" rel="noreferrer">npm</a>
-                <a href="dev/">Docs</a>
-                <a href="https://github.com/lidge-jun/cli-jaw/issues" target="_blank" rel="noreferrer">Issues</a>
+        <div class="container">
+            <div class="footer-top">
+                <div class="footer-intro"><div class="footer-brand">CLI-JAW</div><p class="footer-statement">Thirteen AI runtimes, one local assistant, and one place to see the work.</p></div>
+                <div class="footer-col"><h3>START</h3><a href="#quickstart">Quickstart</a><a href="clijaw-intro.html">Guided intro</a><a href="windows.html">Windows setup</a></div>
+                <div class="footer-col"><h3>BUILD</h3><a href="dev/">Documentation</a><a href="#engines">Runtimes</a><a href="#pabcd">PABCD</a></div>
+                <div class="footer-col"><h3>PROJECT</h3><a href="https://github.com/lidge-jun/cli-jaw" target="_blank" rel="noreferrer">GitHub</a><a href="https://npmjs.com/package/cli-jaw" target="_blank" rel="noreferrer">npm</a><a href="https://github.com/lidge-jun/cli-jaw/issues" target="_blank" rel="noreferrer">Issues</a></div>
             </div>
-            <p class="footer-copy">MIT License</p>
+            <div class="footer-bottom"><span>MIT License</span><span>Local-first, open source, provider-independent.</span></div>
         </div>
     </footer>
 
