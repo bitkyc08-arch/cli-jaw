@@ -2,7 +2,7 @@ import { readSource } from './source-normalize.js';
 // Discord forwarder tests — Phase 6 Bundle A
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -54,6 +54,40 @@ test('queue handler correlates by requestId for request-level isolation', () => 
         'queue handler should correlate by requestId');
     assert.ok(!botSrc.includes('data.target?.targetId === msg.channelId'),
         'queue handler should NOT use data.target?.targetId (not always present)');
+});
+
+test('Discord forwarder sends text before a guarded local image attachment', async () => {
+    const { createDiscordForwarder } = await import('../../src/discord/forwarder.js');
+    const jawHome = process.env["CLI_JAW_HOME"];
+    assert.ok(jawHome, 'tests/run.mts must provide isolated CLI_JAW_HOME');
+    const uploadDir = join(jawHome, 'uploads');
+    mkdirSync(uploadDir, { recursive: true });
+    const imagePath = join(uploadDir, 'discord-relay.png');
+    writeFileSync(imagePath, Buffer.from([0x89, 0x50, 0x4e, 0x47]));
+    const sent: unknown[] = [];
+    const channel = { send: async (payload: unknown) => { sent.push(payload); } };
+    const target = {
+        channel: 'discord' as const,
+        targetKind: 'channel' as const,
+        peerKind: 'channel' as const,
+        targetId: 'channel-1',
+    };
+    const client = { channels: { fetch: async () => channel } };
+    try {
+        const forward = createDiscordForwarder({
+            client: client as never,
+            getLastTarget: () => target,
+        });
+        await forward('agent_done', {
+            origin: 'web',
+            text: `ready\n![generated](${imagePath})`,
+        });
+        assert.equal(sent.length, 2);
+        assert.equal(typeof sent[0], 'string');
+        assert.equal((sent[1] as { files: unknown[] }).files.length, 1);
+    } finally {
+        rmSync(imagePath, { force: true });
+    }
 });
 
 // ─── orchestrateAndCollect receives chatId ──────────

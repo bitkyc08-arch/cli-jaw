@@ -132,7 +132,7 @@ test('ai-e registry exposes explicit provider selector metadata', () => {
 });
 
 test('Codex registry defaults expose only the curated inactive ocx model set', () => {
-    assert.deepEqual(CODEX_MODEL_CHOICES, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark']);
+    assert.deepEqual(CODEX_MODEL_CHOICES, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
     assert.deepEqual(CLI_REGISTRY.codex.models, CODEX_MODEL_CHOICES);
     assert.deepEqual(CLI_REGISTRY['codex-app'].models, CODEX_MODEL_CHOICES);
     assert.deepEqual(CLI_REGISTRY['ai-e'].modelsByProvider?.codex, CODEX_MODEL_CHOICES);
@@ -172,11 +172,14 @@ test('grok registry includes build and composer models with effort disabled', ()
 test('opencode registry exposes only the curated OpenCode Go models', () => {
     const models = CLI_REGISTRY.opencode.models;
     assert.deepEqual(models, [
+        'opencode-go/kimi-k2.7-code',
+        'opencode-go/glm-5.2',
         'opencode-go/glm-5.1',
         'opencode-go/kimi-k2.6',
         'opencode-go/mimo-v2.5-pro',
         'opencode-go/mimo-v2.5',
         'opencode-go/minimax-m2.7',
+        'opencode-go/qwen3.7-plus',
         'opencode-go/qwen3.6-plus',
         'opencode-go/deepseek-v4-pro',
         'opencode-go/deepseek-v4-flash',

@@ -26,7 +26,7 @@ export type ActiveOverride = {
     effort?: string;
 };
 
-const CODEX_MODELS: ReadonlyArray<string> = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
+const CODEX_MODELS: ReadonlyArray<string> = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 
 export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'jwc', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
 
@@ -42,7 +42,7 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'Pi',
         defaultProvider: 'progrok',
         providers: ['progrok'],
-        models: ['grok-composer-2.5-fast', 'grok-4.3'],
+        models: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         effortNote: 'Pi runs through --mode rpc. grok-composer-2.5-fast is the verified default; bare grok-composer-2.5 currently has no team access.',
     },
@@ -58,7 +58,7 @@ export const CLI_META: Record<string, CliMeta> = {
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini'],
-            kiro: ['auto', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
+            kiro: ['auto', 'claude-sonnet-5', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
         },
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -76,7 +76,7 @@ export const CLI_META: Record<string, CliMeta> = {
         // firstPartyNameToCanonical resolution; pinned IDs reach the API
         // verbatim for stable prompt-cache prefixes. The `[1m]` suffix is
         // parsed by Claude Code (stripped before send, enables 1M context
-        // on Fable 5 + Opus 4.8/4.7/4.6 + Sonnet 4.6). Mirrors getDefaultClaudeChoices()
+        // on Fable 5 + Sonnet 5 + Opus 4.8/4.7/4.6 + Sonnet 4.6). Mirrors getDefaultClaudeChoices()
         // in src/cli/claude-models.ts. Verified via Grok web research
         // 2026-05-01 (devlog/_plan/260501_claude_model_passthrough/).
         models: [
@@ -86,6 +86,8 @@ export const CLI_META: Record<string, CliMeta> = {
             'haiku',
             'claude-fable-5',
             'claude-fable-5[1m]',
+            'claude-sonnet-5',
+            'claude-sonnet-5[1m]',
             'claude-opus-4-8',
             'claude-opus-4-8[1m]',
             'claude-opus-4-7',
@@ -102,7 +104,7 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'Claude E',
         models: [
             'opus', 'sonnet', 'haiku',
-            'claude-fable-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
+            'claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-sonnet-4-6', 'claude-haiku-4-5',
         ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
@@ -110,11 +112,12 @@ export const CLI_META: Record<string, CliMeta> = {
         label: 'JWC',
         defaultProvider: 'anthropic',
         providers: ['anthropic'],
-        models: ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
+        models: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
         efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
         modelsByProvider: {
             anthropic: [
                 'claude-fable-5',
+                'claude-sonnet-5',
                 'claude-opus-4-8',
                 'claude-opus-4-7',
                 'claude-opus-4-6',
@@ -139,17 +142,17 @@ export const CLI_META: Record<string, CliMeta> = {
     cursor: {
         label: 'Cursor',
         models: [
-            'auto', 'composer-2.5', 'composer-2',
-            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano',
+            'auto', 'composer-2.5',
+            'gpt-5.5', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano',
             'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex',
             'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5.1',
-            'claude-fable-5', 'claude-fable-5-thinking',
+            'claude-sonnet-5', 'claude-fable-5', 'claude-fable-5-thinking',
             'claude-opus-4-8', 'claude-opus-4-8-thinking',
             'claude-opus-4-7', 'claude-opus-4-7-thinking',
             'claude-4.6-opus', 'claude-4.6-sonnet',
             'claude-4.5-opus-high', 'claude-4.5-sonnet', 'claude-4-sonnet',
-            'gemini-3.1-pro', 'gemini-3-flash', 'gemini-3.5-flash',
-            'grok-4.3', 'grok-build-0.1', 'gpt-5-mini', 'kimi-k2.5',
+            'gemini-3.1-pro', 'gemini-3-flash', 'gemini-3-pro', 'gemini-3.5-flash',
+            'grok-4.5', 'gpt-5-mini', 'glm-5.2', 'kimi-k2.7-code',
         ],
         efforts: ['none', 'none-fast', 'low', 'low-fast', 'medium', 'medium-fast', 'high', 'high-fast', 'xhigh', 'xhigh-fast', 'max', 'max-fast'],
         effortNote: 'Cursor effort resolves to model IDs; no separate --effort flag',
@@ -159,6 +162,7 @@ export const CLI_META: Record<string, CliMeta> = {
         models: [
             'auto',
             'claude-fable-5',
+            'claude-sonnet-5',
             'claude-opus-4.8',
             'claude-opus-4.7',
             'claude-opus-4.6',
@@ -189,7 +193,7 @@ export const CLI_META: Record<string, CliMeta> = {
     },
     opencode: {
         label: 'OpenCode',
-        models: ['opencode-go/kimi-k2.6', 'opencode-go/glm-5.1'],
+        models: ['opencode-go/kimi-k2.7-code', 'opencode-go/glm-5.2', 'opencode-go/glm-5.1', 'opencode-go/kimi-k2.6', 'opencode-go/mimo-v2.5-pro', 'opencode-go/mimo-v2.5', 'opencode-go/minimax-m2.7', 'opencode-go/qwen3.7-plus', 'opencode-go/qwen3.6-plus', 'opencode-go/deepseek-v4-pro', 'opencode-go/deepseek-v4-flash'],
         efforts: ['minimal', 'low', 'high', 'max'],
     },
     copilot: {

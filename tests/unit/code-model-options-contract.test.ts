@@ -67,10 +67,10 @@ test('code model options keep static fallback for missing or empty cache rows', 
         new Map([['cursor', []]]),
     );
 
-    assert.deepEqual(options.providers[0]?.models.slice(0, 3), ['composer-2.5', 'claude-sonnet-4-6', 'gpt-5.4']);
+    assert.deepEqual(options.providers[0]?.models.slice(0, 3), ['auto', 'claude-sonnet-5', 'composer-2.5']);
     assert.equal(options.providers[0]?.modelSource, 'static-fallback');
     assert.equal(options.defaultProvider, 'cursor');
-    assert.equal(options.defaultModel, 'composer-2.5');
+    assert.equal(options.defaultModel, 'auto');
 });
 
 test('code model usage order filters stale entries after catalog resolution', () => {

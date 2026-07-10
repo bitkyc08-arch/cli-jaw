@@ -29,18 +29,18 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         models: [
             'opus', 'sonnet', 'haiku',
-            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark',
+            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna',
             'gemini-3-flash-preview',
             'grok-build', 'grok-composer-2.5-fast',
             'gpt-5-mini',
         ],
         modelsByProvider: {
             claude: ['claude-fable-5', 'claude-opus-4-8', 'opus', 'sonnet', 'haiku'],
-            codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'],
+            codex: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
             gemini: ['gemini-3-flash-preview'],
             grok: ['grok-build', 'grok-composer-2.5-fast'],
             copilot: ['gpt-5-mini'],
-            kiro: ['auto', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
+            kiro: ['auto', 'claude-sonnet-5', 'claude-sonnet-4.6', 'deepseek-3.2', 'minimax-m2.5', 'glm-5', 'qwen3-coder-next'],
         },
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
@@ -57,7 +57,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         // Mirrors getDefaultClaudeChoices() in src/cli/claude-models.ts —
         // aliases first, then verified pinned full IDs (hyphen form). The
         // [1m] suffix activates Claude Code's 1M-context window (Fable 5,
-        // Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6).
+        // Sonnet 5, Opus 4.8, Opus 4.7, Opus 4.6, Sonnet 4.6).
         models: [
             'opus',
             'sonnet',
@@ -65,6 +65,8 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'haiku',
             'claude-fable-5',
             'claude-fable-5[1m]',
+            'claude-sonnet-5',
+            'claude-sonnet-5[1m]',
             'claude-opus-4-8',
             'claude-opus-4-8[1m]',
             'claude-opus-4-7',
@@ -84,6 +86,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
             'sonnet',
             'haiku',
             'claude-fable-5',
+            'claude-sonnet-5',
             'claude-opus-4-8',
             'claude-opus-4-7',
             'claude-sonnet-4-6',
@@ -93,29 +96,29 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     codex: {
         label: 'Codex',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'],
+        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     },
     'codex-app': {
         label: 'Codex App',
         efforts: ['low', 'medium', 'high', 'xhigh'],
-        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'],
+        models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     },
     cursor: {
         label: 'Cursor',
         efforts: ['none', 'none-fast', 'low', 'low-fast', 'medium', 'medium-fast', 'high', 'high-fast', 'xhigh', 'xhigh-fast', 'max', 'max-fast'],
         effortNote: 'Cursor effort resolves to model IDs; cli-jaw never passes --effort',
         models: [
-            'auto', 'composer-2.5', 'composer-2',
-            'gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano',
+            'auto', 'composer-2.5',
+            'gpt-5.5', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.4-nano',
             'gpt-5.3-codex', 'gpt-5.2', 'gpt-5.2-codex',
             'gpt-5.1-codex-max', 'gpt-5.1-codex-mini', 'gpt-5.1',
-            'claude-fable-5', 'claude-fable-5-thinking',
+            'claude-sonnet-5', 'claude-fable-5', 'claude-fable-5-thinking',
             'claude-opus-4-8', 'claude-opus-4-8-thinking',
             'claude-opus-4-7', 'claude-opus-4-7-thinking',
             'claude-4.6-opus', 'claude-4.6-sonnet',
             'claude-4.5-opus-high', 'claude-4.5-sonnet', 'claude-4-sonnet',
-            'gemini-3.1-pro', 'gemini-3-flash', 'gemini-3.5-flash',
-            'grok-4.3', 'grok-build-0.1', 'gpt-5-mini', 'kimi-k2.5',
+            'gemini-3.1-pro', 'gemini-3-flash', 'gemini-3-pro', 'gemini-3.5-flash',
+            'grok-4.5', 'gpt-5-mini', 'glm-5.2', 'kimi-k2.7-code',
         ],
     },
     'kiro-code': {
@@ -125,6 +128,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         models: [
             'auto',
             'claude-fable-5',
+            'claude-sonnet-5',
             'claude-opus-4.8',
             'claude-opus-4.7',
             'claude-opus-4.6',
@@ -155,11 +159,14 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         label: 'OpenCode',
         efforts: ['minimal', 'low', 'high', 'max'],
         models: [
+            'opencode-go/kimi-k2.7-code',
+            'opencode-go/glm-5.2',
             'opencode-go/glm-5.1',
             'opencode-go/kimi-k2.6',
             'opencode-go/mimo-v2.5-pro',
             'opencode-go/mimo-v2.5',
             'opencode-go/minimax-m2.7',
+            'opencode-go/qwen3.7-plus',
             'opencode-go/qwen3.6-plus',
             'opencode-go/deepseek-v4-pro',
             'opencode-go/deepseek-v4-flash',

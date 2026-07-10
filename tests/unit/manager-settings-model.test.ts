@@ -120,7 +120,7 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     const source = readFileSync('public/manager/src/settings/pages/ModelProvider.tsx', 'utf8');
     assert.ok(source.includes("from './components/agent/agent-meta'"));
     assert.ok(source.includes('Model defaults'));
-    assert.deepEqual(metaFor('codex').models, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark']);
+    assert.deepEqual(metaFor('codex').models, ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
     assert.equal(metaFor('agy').label, 'Antigravity');
     assert.equal(metaFor('agy').models.includes('gemini-3.5-flash'), true);
     assert.match(metaFor('agy').modelNote || '', /probes the installed binary/);
@@ -137,7 +137,7 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     const jwcMeta = metaFor('jwc');
     assert.equal(PRIMARY_CLIS.includes('jwc'), true);
     assert.equal(jwcMeta.label, 'JWC');
-    assert.deepEqual(jwcMeta.models, ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-4-6', 'claude-haiku-4-5']);
+    assert.deepEqual(jwcMeta.models, ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5']);
     assert.deepEqual(jwcMeta.efforts, CLI_REGISTRY.jwc.efforts);
     assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('jwc'), true);
     assert.equal(PRIMARY_CLIS.indexOf('jwc') < PRIMARY_CLIS.indexOf('agy'), true);

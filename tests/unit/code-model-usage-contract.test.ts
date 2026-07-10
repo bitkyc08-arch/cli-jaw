@@ -52,12 +52,12 @@ test('code model options sort configured default before MRU before static fallba
     const options = buildJwcModelOptions(
         ['openai-codex'],
         undefined,
-        'openai-codex/gpt-5.3-codex',
+        undefined,
         ['openai-codex/gpt-5.4-mini', 'openai-codex/gpt-5.4'],
     );
 
     assert.equal(options.defaultProvider, 'openai-codex');
-    assert.equal(options.defaultModel, 'gpt-5.3-codex');
+    assert.equal(options.defaultModel, 'gpt-5.5');
     assert.deepEqual(options.usageOrder, ['openai-codex/gpt-5.4-mini', 'openai-codex/gpt-5.4']);
-    assert.deepEqual(options.providers[0]?.models, ['gpt-5.3-codex', 'gpt-5.4-mini', 'gpt-5.4']);
+    assert.deepEqual(options.providers[0]?.models, ['gpt-5.4-mini', 'gpt-5.4', 'gpt-5.5', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
 });
