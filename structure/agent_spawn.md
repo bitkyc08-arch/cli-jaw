@@ -144,6 +144,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 - 저장: `cli`, `sessionId`, `model`, `permissions`, `workingDir`, `effort`.
 - `shouldInvalidateResumeSession()`는 `code === 0`이면 무조건 false, 실패 시 generic + CLI별 matcher 검사.
 - Resume 무효화: `claude`, `claude-e`, `agy`, `codex`, `cursor`, `grok`, `opencode`, `copilot`, `kiro-code` 각각 분기.
+- AGY guarded native resume (#261): 기본은 native resume OFF(DB history 유지). `perCli.agy.nativeResume: "guarded"` opt-in 시 `canGuardedAgyResume()`(`src/agent/spawn/resume.ts`) 전 가드 통과에서만 `--conversation` 재개 — capability probe, TTL 72h, model+cwd identity, `session_buckets.last_run_clean=1`(plannerOnly/checkpointSeen false), fresh-bootstrap 아님. stale conversation 출력 감지 시 bucket clear 후 fresh 경로로 1회 재시도. replay stripping은 무조건 유지.
 
 ---
 

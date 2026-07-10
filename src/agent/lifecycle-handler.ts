@@ -5,7 +5,7 @@ import fs from 'fs';
 import type { ChildProcess } from 'child_process';
 import { broadcast } from '../core/bus.js';
 import { settings, detectCli } from '../core/config.js';
-import { clearEmployeeSession, insertMessage, insertMessageWithTraceRun, updateSession, clearSessionBucket, markAnchorConsumed } from '../core/db.js';
+import { clearEmployeeSession, insertMessage, insertMessageWithTraceRun, updateSession, clearSessionBucket, markAnchorConsumed, updateSessionBucketLastRun } from '../core/db.js';
 import { getActiveChatSession } from '../core/chat-sessions.js';
 import { persistMainSession } from './session-persistence.js';
 import { resolveSessionBucket } from './args.js';
@@ -376,6 +376,17 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         outputLen: params.outputLen,
     })) {
         console.log(`[jaw:session] saved ${cli} session=${persistedSessionId.slice(0, 12)}...${wasKilled ? ' (post-kill)' : ''}`);
+    }
+    if (cli === 'agy' && persistedSessionId) {
+        const checkpointSeen = ctx.metadata?.['agyCheckpointSeen'] === true;
+        const plannerOnly = ctx.metadata?.['agyPlannerOnly'] === true;
+        const clean = code === 0 && !wasKilled && !ctx.stallReason && !plannerOnly && !checkpointSeen;
+        updateSessionBucketLastRun.run(
+            clean ? 1 : 0,
+            settings['workingDir'] || '',
+            JSON.stringify({ checkpointSeen, plannerOnly, exitCode: code, at: Date.now() }),
+            resolveSessionBucket(cli, model, effectiveProvider),
+        );
     }
 
     // ─── Phase 54-A: Proactive compact by turn count ───
