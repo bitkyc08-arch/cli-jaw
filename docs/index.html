@@ -212,36 +212,35 @@
             transform: none;
         }
 
-        /* Floating functional chrome */
+        /* Functional chrome */
         .site-nav {
             position: fixed;
-            top: 16px;
-            left: 50%;
+            top: 0;
+            right: 0;
+            left: 0;
             z-index: 100;
             display: flex;
-            width: min(calc(100% - 32px), 1180px);
-            min-height: 58px;
+            width: 100%;
+            min-height: 56px;
             align-items: center;
             justify-content: space-between;
             gap: 20px;
-            padding: 8px 10px 8px 18px;
-            border: 1px solid var(--warm-border);
-            border-radius: 9999px;
-            box-shadow: inset 0 1px rgba(255, 255, 255, 0.16), inset 0 -1px rgba(0, 0, 0, 0.24), 0 14px 40px rgba(0, 0, 0, 0.32);
-            -webkit-backdrop-filter: blur(20px) saturate(1.5);
-            backdrop-filter: blur(20px) saturate(1.5);
-            transform: translateX(-50%);
-            transition: background-color 220ms ease, opacity 220ms ease;
+            padding: 0 max(24px, calc((100% - 1180px) / 2 + 24px));
+            border: 0;
+            border-radius: 0;
+            background: transparent;
+            box-shadow: none;
+            transform: none;
+            transition: background-color 220ms ease;
         }
 
         .site-nav.pill-at-top {
-            background: rgba(19, 19, 24, 0.52);
+            background: transparent;
         }
 
         .site-nav.pill-scrolled {
-            background: rgba(19, 19, 24, 0.78);
-            -webkit-backdrop-filter: blur(24px) saturate(1.6);
-            backdrop-filter: blur(24px) saturate(1.6);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            background: rgba(11, 11, 14, 0.97);
         }
 
         .nav-brand,
@@ -253,16 +252,16 @@
 
         .nav-brand {
             gap: 10px;
-            font-size: 15px;
-            font-weight: 700;
+            font-size: 14.5px;
+            font-weight: 600;
             text-decoration: none;
             white-space: nowrap;
         }
 
         .nav-brand-mark {
             display: block;
-            width: 28px;
-            height: 28px;
+            width: 24px;
+            height: 24px;
             border-radius: 50%;
             object-fit: cover;
             box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 12px rgba(34, 211, 238, 0.25);
@@ -273,9 +272,9 @@
         }
 
         .nav-link {
-            min-height: 40px;
+            min-height: 36px;
             gap: 7px;
-            padding: 0 13px;
+            padding: 0 10px;
             border: 0;
             border-radius: 9999px;
             color: var(--dim);
@@ -287,13 +286,17 @@
 
         .nav-link:hover,
         .nav-link:focus-visible {
-            background: rgba(255, 255, 255, 0.06);
+            background: transparent;
             color: var(--text);
         }
 
         .nav-github {
+            min-height: 34px;
+            padding: 0 16px;
+            border-radius: 9999px;
             background: var(--text);
             color: var(--bg);
+            font-size: 13.5px;
         }
 
         .nav-github:hover,
@@ -335,7 +338,7 @@
         }
 
         .hero-inner {
-            padding-top: 164px;
+            padding-top: 140px;
         }
 
         .hero-copy {
@@ -435,13 +438,14 @@
 
         .button {
             display: inline-flex;
-            min-height: 48px;
+            min-height: 42px;
             align-items: center;
             justify-content: center;
             gap: 9px;
-            padding: 0 18px;
+            padding: 0 20px;
             border: 1px solid transparent;
-            border-radius: var(--radius-sm);
+            border-radius: 9999px;
+            font-size: 14.5px;
             font-weight: 600;
             text-decoration: none;
             white-space: nowrap;
@@ -1532,7 +1536,7 @@
             }
 
             .hero-inner {
-                padding-top: 142px;
+                padding-top: 120px;
             }
 
             .hero-copy {
@@ -1591,10 +1595,11 @@
             }
 
             .site-nav {
-                top: 10px;
-                width: calc(100% - 20px);
-                min-height: 54px;
-                padding-left: 13px;
+                top: 0;
+                width: 100%;
+                min-height: 52px;
+                padding-right: 16px;
+                padding-left: 16px;
             }
 
             .nav-docs {
@@ -1606,7 +1611,8 @@
             }
 
             .nav-github {
-                width: 40px;
+                width: 36px;
+                min-height: 36px;
                 padding: 0;
                 justify-content: center;
                 font-size: 0;
@@ -1617,7 +1623,7 @@
             }
 
             .hero-inner {
-                padding-top: 116px;
+                padding-top: 104px;
             }
 
             .hero-title {
@@ -1854,7 +1860,6 @@
         }
 
         @media (prefers-reduced-transparency: reduce), (prefers-contrast: more) {
-            .site-nav,
             .provider-star,
             .hero-command,
             .terminal-titlebar,
@@ -1866,7 +1871,6 @@
         }
 
         @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-            .site-nav,
             .provider-star,
             .hero-command,
             .terminal-titlebar,
@@ -1926,7 +1930,7 @@
 
     <nav class="site-nav pill-at-top" aria-label="Primary navigation">
         <a class="nav-brand" href="./" aria-label="CLI-JAW home">
-            <img class="nav-brand-mark" src="assets/app-icon.png" alt="" width="28" height="28" aria-hidden="true">
+            <img class="nav-brand-mark" src="assets/app-icon.png" alt="" width="24" height="24" aria-hidden="true">
             <span>CLI-JAW</span>
         </a>
         <div class="nav-actions">
