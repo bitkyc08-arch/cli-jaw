@@ -50,9 +50,9 @@ test('classic web and Manager preview both support STT keyboard fallback and ifr
     assert.ok(preview.includes("document.addEventListener('keydown', onKeyDown, true)"), 'Manager preview must capture shortcuts before parent chrome handlers');
     assert.ok(preview.includes('previewTargetOrigin(src, frame)'), 'Manager preview STT messages must target the iframe origin');
 
-    assert.ok(app.includes('usePreviewSttLifecycle(jawCeoBridge.voice)'), 'Manager App must install the preview STT lifecycle hook');
+    assert.ok(app.includes('usePreviewSttLifecycle(jawCeoBridge.voice, data)'), 'Manager App must install the preview STT lifecycle hook with scan-derived preview origins');
     assert.ok(lifecycle.includes("data?.type !== 'jaw-preview-stt-recording'"), 'Manager lifecycle hook must listen for child STT lifecycle messages');
-    assert.ok(lifecycle.includes('isLocalPreviewMessageOrigin(event.origin)'), 'Manager lifecycle hook must origin-check child STT lifecycle messages');
+    assert.ok(lifecycle.includes('isAllowedPreviewMessage(event, allowedOrigins)'), 'Manager lifecycle hook must allowlist child STT lifecycle message origins');
     assert.ok(lifecycle.includes('void voice.end()'), 'Manager lifecycle hook must release Jaw CEO realtime mic before preview STT starts');
     assert.ok(bridge.includes('voice,'), 'Jaw CEO dashboard bridge must expose the voice controller for STT coordination');
 });

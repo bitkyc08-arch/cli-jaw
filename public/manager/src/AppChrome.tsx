@@ -1,4 +1,4 @@
-import type { Dispatch, ReactNode, SetStateAction } from 'react';
+import { useMemo, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { CommandBar } from './components/CommandBar';
 import { CommandPalette } from './components/CommandPalette';
 import { ManagerShell } from './components/ManagerShell';
@@ -7,6 +7,7 @@ import { type HelpTopicId } from './help/helpContent';
 import { SidebarRailRouter } from './SidebarRailRouter';
 import { PanelLayoutProvider, type PanelLayoutState } from './panels/PanelLayoutProvider';
 import { ElectronMetricsPanel } from './electron-metrics';
+import { allowedPreviewMessageOrigins } from './preview-message-security';
 import { IframeBridge } from './sync/IframeBridge';
 import { VisibilityBridge } from './sync/VisibilityBridge';
 import { instanceLabel } from './instance-label';
@@ -103,9 +104,10 @@ type AppChromeProps = {
 };
 
 export function AppChrome(props: AppChromeProps) {
+    const previewMessageOrigins = useMemo(() => allowedPreviewMessageOrigins(props.data), [props.data]);
     return (
         <>
-            <IframeBridge />
+            <IframeBridge allowedOrigins={previewMessageOrigins} />
             <VisibilityBridge />
             <PanelLayoutProvider initialPanelState={props.panelInitialState} onStateChange={props.onPanelStateChange}>
             <ManagerShell

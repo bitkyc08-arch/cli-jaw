@@ -1,17 +1,21 @@
 import { useEffect } from 'react';
 import { actionForShortcutEvent } from './manager-shortcuts';
-import type { DashboardShortcutAction, DashboardShortcutKeymap } from './types';
+import { allowedPreviewMessageOrigins, isAllowedPreviewMessage } from './preview-message-security';
+import type { DashboardScanResult, DashboardShortcutAction, DashboardShortcutKeymap } from './types';
 
 type PreviewShortcutMessageArgs = {
     enabled: boolean;
+    data: DashboardScanResult | null;
     keymap: DashboardShortcutKeymap;
     onAction: (action: DashboardShortcutAction) => void;
 };
 
 export function usePreviewShortcutMessages(args: PreviewShortcutMessageArgs): void {
     useEffect(() => {
+        const allowedOrigins = allowedPreviewMessageOrigins(args.data);
         function onPreviewShortcut(event: MessageEvent): void {
             if (!args.enabled) return;
+            if (!isAllowedPreviewMessage(event, allowedOrigins)) return;
             const data = event.data as {
                 type?: unknown;
                 key?: unknown;

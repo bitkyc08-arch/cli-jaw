@@ -364,6 +364,7 @@ export function InstancePreview(props: InstancePreviewProps) {
         }
         window.addEventListener('message', onPreviewSend);
         function onPreviewOpenNotes(event: MessageEvent): void {
+            if (event.source !== iframeRef.current?.contentWindow) return;
             if (!state.src || !isExpectedPreviewMessage(event, state.src, iframeRef.current)) return;
             const data = event.data as PreviewOpenNotesMessage | null;
             if (!data || data.type !== 'jaw-preview-open-notes') return;

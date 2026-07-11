@@ -125,8 +125,8 @@ export function App() { if (readTrayRemindersMode(window.location.search) && REM
     const selectedInstance = useMemo(() => view.selectedPort == null ? filtered.find(instance => instance.ok) || null : instances.find(instance => instance.port === view.selectedPort) || null, [filtered, instances, view.selectedPort]);
     const activeJawCeoPort = selectedInstance?.port ?? view.selectedPort ?? null;
     const jawCeoBridge = useJawCeoDashboardBridge({ selectedPort: activeJawCeoPort, managerEvents: managerEvents.events, messageEvents: messageActivity.events, onOpenWorker: handleOpenJawCeoWorker });
-    usePreviewSttLifecycle(jawCeoBridge.voice);
-    usePreviewShortcutMessages({ enabled: view.dashboardShortcutsEnabled, keymap: view.dashboardShortcutKeymap, onAction: runManagerShortcut });
+    usePreviewSttLifecycle(jawCeoBridge.voice, data);
+    usePreviewShortcutMessages({ enabled: view.dashboardShortcutsEnabled, data, keymap: view.dashboardShortcutKeymap, onAction: runManagerShortcut });
     const activePreviewPort = view.activeDetailTab === 'preview' && view.sidebarMode === 'instances' ? (selectedInstance?.port ?? null) : null;
     const activityEvents = useMemo(() => {
         return [...managerEvents.events, ...messageActivity.events];
