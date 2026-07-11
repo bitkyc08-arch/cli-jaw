@@ -27,6 +27,10 @@ import {
 
 const DIAGNOSTIC_RING = 50;
 const TERMINAL_STATUSES = new Set(['done', 'error', 'continued', 'interrupted']);
+// bounded body retention inside the reducer itself — the 042 TurnStore owns
+// the real T2/T3 budgets; these caps only stop unbounded reducer growth
+const LIVE_BODY_RUNS = 16;
+const HYDRATED_BODY_TURNS = 1024;
 
 interface InternalState extends TurnStreamState {
     idempotency: IdempotencyState;
@@ -41,6 +45,7 @@ export function createTurnStreamState(scopeKey: string, sessionFilter: string | 
         turnStatus: {},
         bodies: {},
         liveBodies: {},
+        runToTurn: {},
         needsBackfill: false,
         diagnostics: { conflictCount: 0, droppedReplayCount: 0, recent: [] },
         idempotency: createIdempotencyState(),
@@ -91,6 +96,7 @@ interface RowDraft {
     rowOrder: RowKey[];
     turnStatus: Record<string, TurnTerminalStatus>;
     conflicts: string[];
+    joins: Array<[string, string]>;
 }
 
 /** Clone the row tables ONCE per action; rows within one action apply
@@ -101,6 +107,7 @@ function draftRows(state: InternalState): RowDraft {
         rowOrder: [...state.rowOrder],
         turnStatus: { ...state.turnStatus },
         conflicts: [],
+        joins: [],
     };
 }
 
@@ -126,6 +133,7 @@ function insertRowMut(draft: RowDraft, row: TurnSegment): void {
     if (row.type === 'turn_end' && TERMINAL_STATUSES.has(row.status)) {
         draft.turnStatus[row.turnId] = row.status as TurnTerminalStatus;
     }
+    if (row.detailRef) draft.joins.push([row.detailRef.traceRunId, row.turnId]);
 }
 
 function commitDraft(state: InternalState, draft: RowDraft): InternalState {
@@ -135,6 +143,11 @@ function commitDraft(state: InternalState, draft: RowDraft): InternalState {
         rowOrder: draft.rowOrder,
         turnStatus: draft.turnStatus,
     };
+    if (draft.joins.length) {
+        const runToTurn = { ...state.runToTurn };
+        for (const [runId, turnId] of draft.joins) runToTurn[runId] = turnId;
+        next = { ...next, runToTurn };
+    }
     for (const note of draft.conflicts) next = pushDiagnostic(next, 'conflict', note);
     return next;
 }
@@ -161,7 +174,7 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
                     ...next.liveBodies,
                     [action.traceRunId]: (next.liveBodies[action.traceRunId] ?? '') + result.appendText,
                 };
-                next = { ...next, liveBodies };
+                next = { ...next, liveBodies: capLiveBodies(liveBodies, action.traceRunId) };
             }
             return next;
         }
@@ -188,7 +201,7 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
             let next: InternalState = { ...s, idempotency: markRunFinalized(s.idempotency, action.traceRunId) };
             if (action.traceRunId) {
                 const liveBodies = { ...next.liveBodies, [action.traceRunId]: action.text };
-                next = { ...next, liveBodies };
+                next = { ...next, liveBodies: capLiveBodies(liveBodies, action.traceRunId) };
             }
             return next;
         }
@@ -198,10 +211,12 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
             for (const row of hydration.rows) insertRowMut(draft, row);
             let next = commitDraft(s, draft);
             const bodies = { ...next.bodies };
+            const runToTurn = { ...next.runToTurn };
             for (const [turnId, body] of Object.entries(hydration.bodies)) {
                 bodies[turnId] = mergeBody(bodies[turnId], body);
+                if (body.traceRunId) runToTurn[body.traceRunId] = turnId;
             }
-            return { ...next, bodies };
+            return { ...next, bodies: capBodies(bodies), runToTurn };
         }
         case 'backfill_merged':
             return s.needsBackfill ? { ...s, needsBackfill: false } : s;
@@ -227,6 +242,38 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
 /** Canonical serialization for convergence tests: independent of arrival
  *  order, includes ordered durable rows, terminal statuses, and bodies. */
 export function serializeState(state: TurnStreamState): string {
+    return serializeStateImpl(state);
+}
+
+/** Batch application: consecutive lifecycle actions share ONE row-table
+ *  clone, keeping bulk ingest (042 store fold) O(n log n) instead of O(n^2). */
+export function reduceBatch(state: TurnStreamState, actions: readonly TurnStreamAction[]): TurnStreamState {
+    let s = state;
+    let i = 0;
+    while (i < actions.length) {
+        const action = actions[i];
+        if (action.kind !== 'lifecycle') {
+            s = reduce(s, action);
+            i += 1;
+            continue;
+        }
+        const si = internal(s);
+        const draft = draftRows(si);
+        while (i < actions.length) {
+            const next = actions[i];
+            if (next.kind !== 'lifecycle') break;
+            const { topic: _topic, event: _event, sseReplay: _replay, ...row } = next.payload;
+            if (si.sessionFilter === null || row.sessionId === si.sessionFilter) {
+                insertRowMut(draft, row);
+            }
+            i += 1;
+        }
+        s = commitDraft(si, draft);
+    }
+    return s;
+}
+
+function serializeStateImpl(state: TurnStreamState): string {
     const rows = state.rowOrder.map(key => {
         const r = state.rows[key];
         return [r.turnId, r.turnSeq, r.segmentId, r.sessionId, r.createdAt, r.observedAt,
@@ -240,5 +287,36 @@ export function serializeState(state: TurnStreamState): string {
             const b = state.bodies[turnId];
             return [turnId, b.text, b.toolLog, b.provenance, b.traceRunId];
         });
-    return JSON.stringify({ scopeKey: state.scopeKey, rows, turnStatus, bodies, needsBackfill: state.needsBackfill });
+    const runToTurn = Object.keys(state.runToTurn).sort()
+        .map(runId => [runId, state.runToTurn[runId]]);
+    return JSON.stringify({ scopeKey: state.scopeKey, rows, turnStatus, bodies, runToTurn, needsBackfill: state.needsBackfill });
+}
+function capLiveBodies(liveBodies: Record<string, string>, keep: string | null): Record<string, string> {
+    const keys = Object.keys(liveBodies);
+    if (keys.length <= LIVE_BODY_RUNS) return liveBodies;
+    const next = { ...liveBodies };
+    for (const key of keys) {
+        if (Object.keys(next).length <= LIVE_BODY_RUNS) break;
+        if (key !== keep) delete next[key];
+    }
+    return next;
+}
+
+function capBodies(bodies: Record<string, import('./types.ts').HydratedTurnBody>): Record<string, import('./types.ts').HydratedTurnBody> {
+    const keys = Object.keys(bodies);
+    if (keys.length <= HYDRATED_BODY_TURNS) return bodies;
+    const next = { ...bodies };
+    for (const key of keys) {
+        if (Object.keys(next).length <= HYDRATED_BODY_TURNS) break;
+        delete next[key];
+    }
+    return next;
+}
+
+/** collect traceRunId→turnId joins from durable rows carrying detailRef */
+function joinFromRow(runToTurn: Record<string, string>, row: TurnSegment): Record<string, string> {
+    if (!row.detailRef) return runToTurn;
+    const runId = row.detailRef.traceRunId;
+    if (runToTurn[runId] === row.turnId) return runToTurn;
+    return { ...runToTurn, [runId]: row.turnId };
 }

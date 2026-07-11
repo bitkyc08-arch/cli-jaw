@@ -195,3 +195,12 @@ test('041: legacy body-channel ingress normalizers feed the reducer without the 
     }));
     assert.equal(after.liveBodies['run-N'], 'hello world');
 });
+
+test('041: liveBodies stay bounded across many runs, including agent_done finalize', () => {
+    let state = createTurnStreamState(SCOPE);
+    for (let i = 0; i < 40; i++) {
+        state = reduce(state, { kind: 'body_chunk', traceRunId: `bulk-run-${i}`, text: 'body', textLen: 4 });
+        state = reduce(state, { kind: 'agent_done', traceRunId: `bulk-run-${i}`, text: 'final' });
+    }
+    assert.ok(Object.keys(state.liveBodies).length <= 16, `liveBodies ring bounded: ${Object.keys(state.liveBodies).length}`);
+});

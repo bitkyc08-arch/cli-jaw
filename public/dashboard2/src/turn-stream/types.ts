@@ -76,6 +76,10 @@ export interface TurnStreamState {
     bodies: Record<string, HydratedTurnBody>;
     /** live streaming text keyed by traceRunId (no turn join yet) */
     liveBodies: Record<string, string>;
+    /** traceRunId → turnId join, built from message hydration (trace_run_id +
+     *  turn_id) and lifecycle detailRef rows; lets the live tail map a
+     *  streaming body to its turn */
+    runToTurn: Record<string, string>;
     needsBackfill: boolean;
     diagnostics: TurnStreamDiagnostics;
 }
