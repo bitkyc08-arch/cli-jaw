@@ -6,6 +6,8 @@ import {
     AGY_RESUME_TTL_MS,
     canGuardedAgyResume,
     resolveAgyNativeResume,
+    shouldClearHighTurnSessionBucket,
+    shouldUseTurnCountRefresh,
     type GuardedAgyResumeInput,
 } from '../../src/agent/spawn/resume.js';
 
@@ -60,4 +62,18 @@ test('AGY-NR-004: guarded stale fallback is one-shot and replay stripping stays 
     assert.equal((source.match(/_agyStaleFreshRetry: true/g) || []).length, 1);
     assert.match(source, /if \(isResume && agyResumeReplayPrefixes\.length > 0\)/);
     assert.match(source, /stripAgyResumeReplayPrefixes\(ctx\.fullText, agyResumeReplayPrefixes\)/);
+});
+
+test('AGY-NR-005: generic high-turn policies preserve AGY native conversations', () => {
+    assert.equal(shouldClearHighTurnSessionBucket('agy', 16), false);
+    assert.equal(shouldClearHighTurnSessionBucket('agy', 80), false);
+    assert.equal(shouldUseTurnCountRefresh('agy'), false);
+
+    assert.equal(shouldClearHighTurnSessionBucket('codex', 16), true);
+    assert.equal(shouldClearHighTurnSessionBucket('opencode', 16), true);
+    assert.equal(shouldClearHighTurnSessionBucket('grok', 16), true);
+    assert.equal(shouldClearHighTurnSessionBucket('codex', 15), false);
+    assert.equal(shouldUseTurnCountRefresh('codex'), true);
+    assert.equal(shouldUseTurnCountRefresh('claude'), false);
+    assert.equal(shouldUseTurnCountRefresh('claude-e'), false);
 });
