@@ -126,6 +126,7 @@ test('listToolEntriesForRun keeps the NEWEST rows when over the limit', () => {
     assert.deepEqual(entries.map(e => e.traceSeq), [3, 4, 5]);
 });
 
+test.describe('trace retention pruning', { concurrency: false }, () => {
 test('trace retention preserves message and detailRef runs while deleting an old orphan', () => {
     const messageRunId = startTraceRun({ cli: 'codex', audience: 'public' });
     const segmentRunId = startTraceRun({ cli: 'codex', audience: 'public' });
@@ -143,9 +144,9 @@ test('trace retention preserves message and detailRef runs while deleting an old
         VALUES ('assistant', 'retention fixture', ?, 'trace-retention-test')
     `).run(messageRunId);
     db.prepare(`
-        INSERT INTO turn_segments (turn_id, turn_seq, type, status, trace_run_id, trace_seq)
-        VALUES (?, 1, 'tool', 'done', ?, 1)
-    `).run(`turn-retention-${segmentRunId}`, segmentRunId);
+        INSERT INTO turn_segments (turn_id, turn_seq, created_at, type, status, trace_run_id, trace_seq)
+        VALUES (?, 1, ?, 'tool', 'done', ?, 1)
+    `).run(`turn-retention-${segmentRunId}`, Date.now(), segmentRunId);
 
     try {
         const result = pruneTraceEvents(7, 50_000);
@@ -174,6 +175,38 @@ test('trace retention preserves message and detailRef runs while deleting an old
     }
 });
 
+test('trace retention sweeps recent events orphaned by old run deletion without touching referenced runs', () => {
+    const foreignKeys = Number(db.pragma('foreign_keys', { simple: true }));
+    db.pragma('foreign_keys = OFF');
+    const orphanRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const protectedRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const oldStartedAt = Date.now() - 30 * 86_400_000;
+    appendTraceEvent({ runId: orphanRunId, source: 'tool', eventType: 'recent', raw: 'orphan event' });
+    appendTraceEvent({ runId: protectedRunId, source: 'tool', eventType: 'recent', raw: 'protected event' });
+    db.prepare('UPDATE trace_runs SET started_at = ? WHERE id IN (?, ?)')
+        .run(oldStartedAt, orphanRunId, protectedRunId);
+    const message = db.prepare(`
+        INSERT INTO messages (role, content, trace_run_id, session_id)
+        VALUES ('assistant', 'orphan sweep fixture', ?, 'trace-retention-test')
+    `).run(protectedRunId);
+
+    try {
+        const result = pruneTraceEvents(7, 50_000);
+
+        assert.equal(getTraceRun(orphanRunId), null, 'old unreferenced run is deleted');
+        assert.equal(listTraceEvents(orphanRunId).total, 0, 'recent event left by run pruning is swept');
+        assert.equal(getTraceEvent(orphanRunId, 1), null, 'orphan event cannot be read without its parent run');
+        assert.ok(getTraceRun(protectedRunId), 'referenced old run survives');
+        assert.equal(listTraceEvents(protectedRunId).total, 1, 'orphan sweep leaves referenced run events intact');
+        assert.equal(result.deletedRuns, 1);
+        assert.ok(result.deletedEvents >= 1, 'orphan event deletion is included in the prune result');
+    } finally {
+        db.prepare('DELETE FROM messages WHERE id = ?').run(Number(message.lastInsertRowid));
+        db.prepare('DELETE FROM trace_runs WHERE id = ?').run(protectedRunId);
+        db.pragma(`foreign_keys = ${foreignKeys ? 'ON' : 'OFF'}`);
+    }
+});
+
 test('maxRows trimming never removes events from referenced trace runs', () => {
     const protectedRunId = startTraceRun({ cli: 'codex', audience: 'public' });
     const orphanRunId = startTraceRun({ cli: 'codex', audience: 'public' });
@@ -192,4 +225,5 @@ test('maxRows trimming never removes events from referenced trace runs', () => {
         db.prepare('DELETE FROM messages WHERE id = ?').run(Number(message.lastInsertRowid));
         db.prepare('DELETE FROM trace_runs WHERE id IN (?, ?)').run(protectedRunId, orphanRunId);
     }
+});
 });

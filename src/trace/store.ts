@@ -87,6 +87,7 @@ const pruneRunsStmt = db.prepare(`
       AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.trace_run_id = trace_runs.id)
       AND NOT EXISTS (SELECT 1 FROM turn_segments WHERE turn_segments.trace_run_id = trace_runs.id)
 `);
+const pruneOrphanEventsStmt = db.prepare('DELETE FROM trace_events WHERE run_id NOT IN (SELECT id FROM trace_runs)');
 const countAllEventsStmt = db.prepare('SELECT COUNT(*) AS c FROM trace_events');
 const trimEventsStmt = db.prepare(`
     DELETE FROM trace_events WHERE rowid IN (
@@ -270,6 +271,7 @@ export function pruneTraceEvents(retentionDays = 7, maxRows = 50_000): { deleted
         const cutoff = Date.now() - retentionDays * 86_400_000;
         let deletedEvents = pruneEventsStmt.run(cutoff).changes;
         const deletedRuns = pruneRunsStmt.run(cutoff).changes;
+        deletedEvents += pruneOrphanEventsStmt.run().changes;
         const total = Number((countAllEventsStmt.get() as { c: number }).c);
         if (total > maxRows) deletedEvents += trimEventsStmt.run(total - maxRows).changes;
         pruneOrphanTraceDirs();
