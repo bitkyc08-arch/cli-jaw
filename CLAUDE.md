@@ -51,6 +51,8 @@ This repository is a Node.js ESM orchestration runtime for boss/employee dispatc
 
 Backend and frontend are separate builds. **Both must run after source changes.**
 
+> **UI maintenance freeze (2026-07-11)**: vanilla Web UI (`public/js`) and manager (`public/manager`) accept only regression/crash/security/data-loss bugfixes — no new UI features. New UI work follows the dashboard2 plan (`devlog/_plan/260711_manager_redesign_feature_migration/000_master_plan.md`).
+
 ```bash
 npm run build            # backend only (tsc → dist/)
 npm run build:frontend   # frontend only (vite → public/dist/)

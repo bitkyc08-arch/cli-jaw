@@ -240,6 +240,8 @@ Check everything at once: `jaw doctor`
 The dashboard is your command center. `jaw dashboard` starts the manager at `http://localhost:24576`; individual agent Web UIs are served by `jaw serve` from `http://localhost:3457` and nearby managed ports.
 Live Web/TUI updates use the SSE-first `GET /api/events` channel, with legacy WebSocket fallback only for older servers where SSE never opens.
 
+> **Maintenance freeze**: the current vanilla Web UI (3457) and manager dashboard (24576) are feature-frozen — only regression, crash, security, and data-loss fixes land there. New UI work targets the upcoming next-generation dashboard entry (see `devlog/_plan/260711_manager_redesign_feature_migration/`).
+
 ### Instance Manager
 
 See every running AI instance — start, stop, restart with one click. Preview live Web UIs directly in the dashboard.

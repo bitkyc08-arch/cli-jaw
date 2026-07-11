@@ -10,6 +10,8 @@ aliases: [CLI-JAW Frontend, public architecture, frontend.md]
 
 > Web UI 본체는 Vanilla HTML + CSS + TypeScript ES Modules로 구성된다. Manager 대시보드는 `public/manager/`의 React 19 + TSX 앱이다.
 > 빌드는 Vite 8 기준이며, `vite.config.ts`는 `public/index.html`과 `public/manager/index.html`을 multi-entry로 빌드한다.
+>
+> **유지보수 동결 (2026-07-11, D4)**: vanilla Web UI(`public/js`, 3457)와 manager(`public/manager`, 24576)는 신규 기능 개발이 동결됐다. 허용 변경 = 회귀/크래시/보안/데이터 손상 버그픽스만. 모든 신규 UI 기능은 차기 dashboard2 엔트리로 간다 — 계획: `devlog/_plan/260711_manager_redesign_feature_migration/000_master_plan.md` (phase 실행 문서 010~080).
 > 메인 UI는 `index.html`에서 Google Fonts `Chakra Petch` + `Outfit`을 불러오고, 로컬 `public/assets/fonts/GeistVF.woff2`와 `JetBrainsMono-Variable.woff2`는 자산으로 보관 중이다.
 > PWA는 `manifest.json` + `sw.js` + `icons/`로 구성된다. 오프라인 메시지 캐시, virtual scroll, markdown/KaTeX/Mermaid 렌더링, sandboxed diagram widget, avatar emoji/image 커스터마이즈, voice recording, SSE-first event-channel, PABCD roadmap, subagent-aware ProcessBlock 렌더링, slash command 복구 액션, 반응형 사이드바, theme toggle, chat search, workflow cockpit이 현재 런타임의 핵심이다.
 
