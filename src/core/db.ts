@@ -47,6 +47,7 @@ db.exec(`
         cli         TEXT,
         model       TEXT,
         trace       TEXT DEFAULT NULL,
+        turn_id     TEXT DEFAULT NULL,
         cost_usd    REAL,
         duration_ms INTEGER,
         created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -181,8 +182,13 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS turn_segments (
         turn_id TEXT NOT NULL,
         turn_seq INTEGER NOT NULL CHECK (turn_seq > 0),
+        segment_id TEXT NOT NULL DEFAULT '',
         session_id TEXT NOT NULL DEFAULT 'default',
         created_at INTEGER NOT NULL,
+        observed_at INTEGER NOT NULL DEFAULT 0,
+        provider_at INTEGER,
+        fidelity TEXT,
+        thinking_marker TEXT,
         type TEXT NOT NULL,
         status TEXT NOT NULL,
         trace_run_id TEXT,
@@ -216,6 +222,23 @@ if (!turnSegmentCols.some(c => c["name"] === 'created_at')) {
     db.exec('ALTER TABLE turn_segments ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0');
     db.prepare('UPDATE turn_segments SET created_at = ? WHERE created_at = 0').run(Date.now());
 }
+if (!turnSegmentCols.some(c => c["name"] === 'segment_id')) {
+    db.exec("ALTER TABLE turn_segments ADD COLUMN segment_id TEXT NOT NULL DEFAULT ''");
+    db.exec("UPDATE turn_segments SET segment_id = turn_id || ':' || turn_seq WHERE segment_id = ''");
+}
+if (!turnSegmentCols.some(c => c["name"] === 'observed_at')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN observed_at INTEGER NOT NULL DEFAULT 0');
+    db.exec('UPDATE turn_segments SET observed_at = created_at WHERE observed_at = 0');
+}
+if (!turnSegmentCols.some(c => c["name"] === 'provider_at')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN provider_at INTEGER DEFAULT NULL');
+}
+if (!turnSegmentCols.some(c => c["name"] === 'fidelity')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN fidelity TEXT DEFAULT NULL');
+}
+if (!turnSegmentCols.some(c => c["name"] === 'thinking_marker')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN thinking_marker TEXT DEFAULT NULL');
+}
 db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_turn_segments_turn_seq
         ON turn_segments(turn_id, turn_seq);
@@ -225,6 +248,8 @@ db.exec(`
         ON turn_segments(session_id, created_at);
     CREATE INDEX IF NOT EXISTS idx_turn_segments_created
         ON turn_segments(created_at);
+    CREATE INDEX IF NOT EXISTS idx_turn_segments_lifecycle
+        ON turn_segments(turn_id, segment_id, turn_seq);
 `);
 
 // Lightweight migration for existing DBs created before `trace` column existed.
@@ -243,8 +268,12 @@ if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'working
 if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'trace_run_id')) {
     db.exec('ALTER TABLE messages ADD COLUMN trace_run_id TEXT DEFAULT NULL');
 }
+if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'turn_id')) {
+    db.exec('ALTER TABLE messages ADD COLUMN turn_id TEXT DEFAULT NULL');
+}
 db.exec('CREATE INDEX IF NOT EXISTS idx_messages_wd ON messages(working_dir)');
 db.exec('CREATE INDEX IF NOT EXISTS idx_messages_trace_run ON messages(trace_run_id)');
+db.exec('CREATE INDEX IF NOT EXISTS idx_messages_turn ON messages(turn_id)');
 
 // Migration: add session_id column for multi-session message isolation
 if (!(messageCols as Record<string, unknown>[]).some(c => c["name"] === 'session_id')) {
@@ -313,8 +342,8 @@ db.exec(`
 
 export const insertMessage = db.prepare('INSERT INTO messages (role, content, cli, model, trace, working_dir, session_id) VALUES (?, ?, ?, ?, NULL, ?, ?)');
 export const insertMessageWithTrace = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
-export const insertMessageWithTraceRun = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, trace_run_id, session_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)');
-export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? ORDER BY id ASC');
+export const insertMessageWithTraceRun = db.prepare('INSERT INTO messages (role, content, cli, model, trace, tool_log, working_dir, trace_run_id, session_id, turn_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+export const getMessages = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, turn_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? ORDER BY id ASC');
 export const searchMessages = db.prepare(`
     SELECT id, role, content, cli, tool_log, created_at,
            CASE WHEN content LIKE '%' || $q || '%' THEN 'content' ELSE 'tool_log' END AS match_field
@@ -348,8 +377,11 @@ export const searchMessagesByTimeWindow = db.prepare(`
 export const getMessagesWithTrace = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id ASC');
 // Recent-window variants: fetch the most recent N rows (DESC + LIMIT) to keep the
 // chat boot payload bounded. Callers reverse the result back to ascending order.
-export const getRecentMessagesAll = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?');
+export const getRecentMessagesAll = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, turn_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?');
 export const getRecentMessagesAllWithTrace = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id DESC LIMIT ?');
+export const getRecentMessagesBefore = db.prepare('SELECT id, role, content, cli, model, tool_log, trace_run_id, turn_id, cost_usd, duration_ms, working_dir, created_at FROM messages WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?');
+export const getRecentMessagesBeforeWithTrace = db.prepare('SELECT * FROM messages WHERE session_id = ? AND id < ? ORDER BY id DESC LIMIT ?');
+export const hasMessagesBefore = db.prepare('SELECT EXISTS(SELECT 1 FROM messages WHERE session_id = ? AND id < ?) AS present');
 export const getMessageCount = db.prepare('SELECT COUNT(*) AS count FROM messages WHERE session_id = ?');
 export const getLatestAssistantMessage = db.prepare("SELECT id, role, content, created_at FROM messages WHERE role = 'assistant' AND session_id = ? ORDER BY id DESC LIMIT 1");
 export const getLatestDashboardActivityMessage = db.prepare("SELECT id, role, substr(content, 1, 240) AS excerpt, created_at FROM messages WHERE role IN ('user', 'assistant') AND session_id = ? ORDER BY id DESC LIMIT 1");

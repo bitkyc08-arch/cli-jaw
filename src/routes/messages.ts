@@ -4,9 +4,11 @@
 // (Not to be confused with routes/messaging.ts — channel transport routes.)
 
 import type { Router } from 'express';
-import { ok } from '../http/response.js';
+import { fail, ok } from '../http/response.js';
 import {
     getMessages, getMessagesWithTrace, getRecentMessagesAll, getRecentMessagesAllWithTrace,
+    getRecentMessagesBefore, getRecentMessagesBeforeWithTrace,
+    hasMessagesBefore,
     searchMessages, getMessageContext, getMessageCount,
     getLatestAssistantMessage, getLatestDashboardActivityMessage,
 } from '../core/db.js';
@@ -16,6 +18,17 @@ import { sanitizeSerializedToolLog, serializeSanitizedToolLog, parseToolLogBound
 import { isAgentBusy } from '../agent/spawn.js';
 import { listToolEntriesForMessage } from '../trace/store.js';
 import { HYDRATE_TOOL_CARDS_FROM_TRACE } from '../core/config.js';
+import { readTurnSegmentsForTurnIds } from '../core/turn-segments.js';
+import { currentSeq } from '../core/event-bus.js';
+
+const HISTORY_DEFAULT_LIMIT = 200;
+const HISTORY_MAX_LIMIT = 200;
+
+function parseMessageCursor(value: unknown): number | null {
+    if (typeof value !== 'string' || !/^\d+$/.test(value)) return null;
+    const cursor = Number(value);
+    return Number.isSafeInteger(cursor) && cursor > 0 ? cursor : null;
+}
 
 // Option D (devlog 260620 Phase 3): tool cards for a finished message come from
 // trace_events (durable, uncapped) when the rollout flag is on AND the message has a
@@ -53,23 +66,63 @@ export function resolveToolLog(
 export function registerMessageRoutes(app: Router): void {
     app.get('/api/messages', (req, res) => {
         const includeTrace = ['1', 'true', 'yes'].includes(String(req.query["includeTrace"] || '').toLowerCase());
-        // Optional recent-window: `?limit=N` returns only the most recent N messages
-        // (still ascending) so the chat boot/instance-switch payload stays small.
-        // Absent/invalid limit preserves the legacy full-history behavior.
+        const includeSegments = ['1', 'true', 'yes'].includes(String(req.query["includeSegments"] || '').toLowerCase());
+        const hasBefore = Object.prototype.hasOwnProperty.call(req.query, 'before');
+        const cursorMode = includeSegments || hasBefore;
+        // Legacy `?limit=N` keeps its 5000 cap. Segment/cursor history is a distinct
+        // bounded mode: default and hard maximum are both 200 rows.
         const limitRaw = Number(req.query["limit"]);
-        const limit = Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 5000) : 0;
+        const limit = cursorMode
+            ? (Number.isFinite(limitRaw) && limitRaw > 0
+                ? Math.min(Math.floor(limitRaw), HISTORY_MAX_LIMIT)
+                : HISTORY_DEFAULT_LIMIT)
+            : (Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(Math.floor(limitRaw), 5000) : 0);
         const sessionId = getActiveChatSession();
+        const cursor = hasBefore ? parseMessageCursor(req.query["before"]) : null;
+        if (hasBefore && cursor === null) {
+            fail(res, 400, 'invalid_message_cursor');
+            return;
+        }
         let rows: unknown[];
-        if (limit > 0) {
+        if (cursor !== null) {
+            rows = (includeTrace
+                ? getRecentMessagesBeforeWithTrace.all(sessionId, cursor, limit)
+                : getRecentMessagesBefore.all(sessionId, cursor, limit)).reverse();
+        } else if (limit > 0) {
             rows = (includeTrace ? getRecentMessagesAllWithTrace.all(sessionId, limit) : getRecentMessagesAll.all(sessionId, limit)).reverse();
         } else {
             rows = includeTrace ? getMessagesWithTrace.all(sessionId) : getMessages.all(sessionId);
         }
-        const safeRows = (rows as Record<string, unknown>[]).map(row => ({
-            ...row,
-            tool_log: resolveToolLog(row["id"], row["tool_log"] as string | null | undefined),
-        }));
-        ok(res, safeRows);
+        const rowRecords = rows as Record<string, unknown>[];
+        const segmentsByTurn = includeSegments
+            ? readTurnSegmentsForTurnIds(rowRecords.map(row => String(row["turn_id"] || '')))
+            : null;
+        const safeRows: Record<string, unknown>[] = rowRecords.map(row => {
+            const turnId = typeof row["turn_id"] === 'string' ? row["turn_id"] : null;
+            const { turn_id: _turnId, ...legacyRow } = row;
+            return {
+                ...(includeSegments ? row : legacyRow),
+                tool_log: resolveToolLog(row["id"], row["tool_log"] as string | null | undefined),
+                ...(segmentsByTurn ? { turn_segments: turnId ? segmentsByTurn.get(turnId) ?? [] : [] } : {}),
+            };
+        });
+        if (!cursorMode) {
+            ok(res, safeRows);
+            return;
+        }
+        const oldestId = safeRows.length ? Number(safeRows[0]!["id"]) : null;
+        const newestId = safeRows.length ? Number(safeRows[safeRows.length - 1]!["id"]) : null;
+        const hasMoreBefore = oldestId !== null
+            && Boolean((hasMessagesBefore.get(sessionId, oldestId) as { present?: number } | undefined)?.present);
+        ok(res, safeRows, {
+            pageInfo: {
+                oldestCursor: oldestId,
+                newestCursor: newestId,
+                hasMoreBefore,
+                limit,
+            },
+            snapshotEventSeq: currentSeq(),
+        });
     });
 
     app.get('/api/messages/count', (_req, res) => {

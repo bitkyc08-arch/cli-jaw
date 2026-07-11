@@ -22,7 +22,7 @@ import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
 import type { ToolEntry } from '../types/agent.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import { finishTurnLifecycle, resolveSpawnOutputText } from './events/helpers.js';
+import { finishTurnLifecycle, getTurnId, resolveSpawnOutputText } from './events/helpers.js';
 import { isKiroPlainTextCli, isKiroResumeDegradedOutput } from './kiro-runtime.js';
 import {
     incrementMemoryFlush,
@@ -567,7 +567,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             const info = insertMessageWithTraceRun.run(
                 'assistant', finalContent, cli, model,
                 traceText || null, toolLogJson, settings["workingDir"] || null,
-                ctx.traceRunId || null, getActiveChatSession(),
+                ctx.traceRunId || null, getActiveChatSession(), getTurnId(ctx, 'public'),
             );
             const messageId = Number(info.lastInsertRowid || 0);
             if (ctx.traceRunId && Number.isInteger(messageId) && messageId > 0) linkTraceRunToMessage(ctx.traceRunId, messageId);

@@ -71,6 +71,8 @@ export interface SpawnContext {
   hasActiveSubAgent?: boolean;
   showReasoning?: boolean;
   outputTextStarted?: boolean;
+  /** Selected CLI before provider-specific parsing; used by turn fidelity normalization. */
+  runtimeCli?: string;
   effectiveProvider?: string;
   thinkingBuf?: string;
   liveScope?: string | null;

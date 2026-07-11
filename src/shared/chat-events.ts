@@ -54,6 +54,9 @@ export type KnownTurnSegmentType = 'assistant_text' | 'thinking' | 'tool';
 export type TurnSegmentType = KnownTurnSegmentType | (string & Record<never, never>);
 export type KnownTurnSegmentStatus = 'running' | 'done' | 'error';
 export type TurnSegmentStatus = KnownTurnSegmentStatus | (string & Record<never, never>);
+export type TurnFidelity = 'full' | 'coarse' | 'text_only';
+export type KnownThinkingMarker = 'streaming' | 'plaintext' | 'encrypted' | 'token_fallback' | 'pre_tool_text' | 'plan' | 'planner';
+export type ThinkingMarker = KnownThinkingMarker | (string & Record<never, never>);
 
 export interface TurnSegmentDetailRef {
     traceRunId: string;
@@ -63,8 +66,13 @@ export interface TurnSegmentDetailRef {
 export interface TurnSegment {
     turnId: string;
     turnSeq: number;
+    segmentId: string;
     sessionId: string;
     createdAt: number;
+    observedAt: number;
+    providerAt: number | null;
+    fidelity: TurnFidelity | null;
+    thinkingMarker: ThinkingMarker | null;
     type: TurnSegmentType;
     status: TurnSegmentStatus;
     detailRef: TurnSegmentDetailRef | null;

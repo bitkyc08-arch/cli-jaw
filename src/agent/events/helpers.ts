@@ -5,7 +5,13 @@ import { broadcast } from '../../core/bus.js';
 import { getActiveChatSession } from '../../core/chat-sessions.js';
 import { publish } from '../../core/event-bus.js';
 import { appendTurnSegment } from '../../core/turn-segments.js';
-import type { TurnSegment, TurnSegmentStatus, TurnSegmentType } from '../../shared/chat-events.js';
+import type {
+    ThinkingMarker,
+    TurnFidelity,
+    TurnSegment,
+    TurnSegmentStatus,
+    TurnSegmentType,
+} from '../../shared/chat-events.js';
 import {
     asCliEventArray,
     asCliEventRecord,
@@ -23,15 +29,30 @@ import { sanitizeWorkerProgressTools } from '../../orchestrator/worker-progress.
 
 // ─── Core utilities (used by ALL adapters) ───────────
 
-type TurnCarrier = object & { traceAudience?: 'public' | 'internal' };
+type TurnCarrier = object & {
+    traceAudience?: 'public' | 'internal';
+    runtimeCli?: string;
+    effectiveProvider?: string;
+};
 
 interface TurnState {
     turnId: string;
     nextSeq: number;
     sessionId: string;
     createdAt: number;
+    fidelity: TurnFidelity;
+    fidelityRuntime: string;
+    thinkingIds: Map<string, string>;
+    thinkingDurability: Map<string, { running: boolean; terminal: boolean }>;
     ended: boolean;
 }
+
+type TurnRecordHints = {
+    segmentId?: string;
+    fidelity?: TurnFidelity | null;
+    thinkingMarker?: ThinkingMarker | null;
+    providerAt?: number | null;
+};
 
 const turnStates = new WeakMap<object, TurnState>();
 
@@ -44,7 +65,33 @@ function publishTurnRecord(
     if (audience === 'public') publish('agent', event, durable as unknown as Record<string, unknown>);
 }
 
-function ensureTurn(ctx: TurnCarrier, audience: 'public' | 'internal'): TurnState {
+function fidelityRuntime(ctx: TurnCarrier): string {
+    const cli = String(ctx.runtimeCli || '').toLowerCase();
+    return cli === 'ai-e'
+        ? String(ctx.effectiveProvider || '').toLowerCase()
+        : cli || String(ctx.effectiveProvider || '').toLowerCase();
+}
+
+function resolveTurnFidelity(ctx: TurnCarrier, hint?: TurnFidelity): TurnFidelity {
+    const runtime = fidelityRuntime(ctx);
+    if (runtime === 'opencode') return hint || 'coarse';
+    if (runtime === 'agy') return 'coarse';
+    if (runtime === 'cursor' || runtime === 'kiro' || runtime === 'kiro-code') return 'text_only';
+    if ([
+        'claude', 'claude-e', 'codex', 'grok', 'acp', 'copilot', 'pi', 'codex-app',
+    ].includes(runtime)) return 'full';
+    return hint || 'coarse';
+}
+
+function createSegmentId(prefix = 'seg'): string {
+    return `${prefix}_${randomUUID().replaceAll('-', '')}`;
+}
+
+function ensureTurn(
+    ctx: TurnCarrier,
+    audience: 'public' | 'internal',
+    fidelityHint?: TurnFidelity,
+): TurnState {
     const prior = turnStates.get(ctx);
     if (prior) return prior;
 
@@ -53,10 +100,17 @@ function ensureTurn(ctx: TurnCarrier, audience: 'public' | 'internal'): TurnStat
         nextSeq: 1,
         sessionId: getActiveChatSession(),
         createdAt: Date.now(),
+        fidelity: resolveTurnFidelity(ctx, fidelityHint),
+        fidelityRuntime: fidelityRuntime(ctx),
+        thinkingIds: new Map(),
+        thinkingDurability: new Map(),
         ended: false,
     };
     turnStates.set(ctx, state);
-    appendTurnRecord(ctx, 'turn_start', 'running', null, 'turn_start', audience);
+    appendTurnRecord(ctx, 'turn_start', 'running', null, 'turn_start', audience, {
+        segmentId: `${state.turnId}:lifecycle`,
+        fidelity: state.fidelity,
+    });
     return state;
 }
 
@@ -67,16 +121,27 @@ function appendTurnRecord(
     detailRef: TurnSegment['detailRef'],
     event: 'turn_start' | 'turn_segment' | 'turn_end' = 'turn_segment',
     audience: 'public' | 'internal' = ctx.traceAudience === 'internal' ? 'internal' : 'public',
+    hints: TurnRecordHints = {},
 ): TurnSegment | null {
-    const state = turnStates.get(ctx) ?? ensureTurn(ctx, audience);
+    const state = turnStates.get(ctx) ?? ensureTurn(ctx, audience, hints.fidelity || undefined);
     if (state.ended) return null;
+    const resolvedRuntime = fidelityRuntime(ctx);
+    if (!state.fidelityRuntime && resolvedRuntime) {
+        state.fidelityRuntime = resolvedRuntime;
+        state.fidelity = resolveTurnFidelity(ctx, hints.fidelity || undefined);
+    }
     const segment: TurnSegment = {
         turnId: state.turnId,
         // appendTurnSegment is synchronous; publish sees this exact durable record
         // before any later caller can allocate the next sequence.
         turnSeq: state.nextSeq++,
+        segmentId: hints.segmentId || createSegmentId(),
         sessionId: state.sessionId,
         createdAt: state.createdAt,
+        observedAt: Date.now(),
+        providerAt: hints.providerAt ?? null,
+        fidelity: state.fidelity,
+        thinkingMarker: hints.thinkingMarker ?? null,
         type,
         status,
         detailRef,
@@ -104,13 +169,91 @@ export function finishTurnLifecycle(
 ): TurnSegment | null {
     const state = turnStates.get(ctx) ?? ensureTurn(ctx, audience);
     if (state.ended) return null;
-    const segment = appendTurnRecord(ctx, 'turn_end', status, null, 'turn_end', audience);
+    const segment = appendTurnRecord(ctx, 'turn_end', status, null, 'turn_end', audience, {
+        segmentId: `${state.turnId}:lifecycle`,
+    });
     state.ended = true;
     return segment;
 }
 
+export function getTurnId(
+    ctx: TurnCarrier,
+    audience: 'public' | 'internal' = ctx.traceAudience === 'internal' ? 'internal' : 'public',
+): string {
+    return (turnStates.get(ctx) ?? ensureTurn(ctx, audience)).turnId;
+}
+
 function appendAssistantTurnSegment(ctx: SpawnContext): void {
     appendTurnRecord(ctx, 'assistant_text', 'running', null);
+}
+
+function thinkingMarker(ctx: SpawnContext, entry: Partial<ToolEntry>): ThinkingMarker {
+    const label = String(entry.label || '').toLowerCase();
+    const detail = String(entry.detail || '').toLowerCase();
+    const combined = `${label}\n${detail}`;
+    if (combined.includes('encrypted thinking') || combined.includes('plaintext withheld') || entry.icon === '🔒') {
+        return 'encrypted';
+    }
+    if (combined.includes('reasoning used:') || combined.includes('did not emit plaintext reasoning')) {
+        return 'token_fallback';
+    }
+    const runtime = fidelityRuntime(ctx);
+    if ((runtime === 'acp' || runtime === 'copilot') && label.includes('planning')) return 'plan';
+    if (runtime === 'agy') return 'planner';
+    if (runtime === 'opencode' && entry.status == null) return 'pre_tool_text';
+    return 'plaintext';
+}
+
+function providerTimestamp(entry: Partial<ToolEntry>): number | null {
+    const record = entry as Record<string, unknown>;
+    const value = record['providerAt'] ?? record['provider_at'];
+    return Number.isSafeInteger(value) && Number(value) >= 0 ? Number(value) : null;
+}
+
+function appendThinkingTurnSegment(ctx: SpawnContext, entry: Partial<ToolEntry>, detailRef: TurnSegment['detailRef']): void {
+    const marker = thinkingMarker(ctx, entry);
+    const fidelityHint: TurnFidelity | undefined = fidelityRuntime(ctx) === 'opencode'
+        ? marker === 'plaintext' ? 'full' : 'coarse'
+        : undefined;
+    const state = turnStates.get(ctx) ?? ensureTurn(
+        ctx,
+        ctx.traceAudience === 'internal' ? 'internal' : 'public',
+        fidelityHint,
+    );
+    if (fidelityRuntime(ctx) === 'opencode' && fidelityHint === 'full') {
+        state.fidelity = 'full';
+    }
+    const stableRef = typeof entry.stepRef === 'string' && entry.stepRef.trim()
+        ? entry.stepRef.trim()
+        : null;
+    let segmentId = createSegmentId('thinking');
+    if (stableRef) {
+        segmentId = state.thinkingIds.get(stableRef) || segmentId;
+        state.thinkingIds.set(stableRef, segmentId);
+        const durability = state.thinkingDurability.get(stableRef) || { running: false, terminal: false };
+        const status = entry.status ?? 'done';
+        const terminal = status === 'done' || status === 'error' || status === 'continued';
+        if (terminal ? durability.terminal : durability.running) return;
+        if (terminal) durability.terminal = true;
+        else durability.running = true;
+        state.thinkingDurability.set(stableRef, durability);
+    }
+    const status = entry.status ?? 'done';
+    appendTurnRecord(
+        ctx,
+        'thinking',
+        status,
+        detailRef,
+        'turn_segment',
+        ctx.traceAudience === 'internal' ? 'internal' : 'public',
+        {
+            segmentId,
+            thinkingMarker: stableRef && status !== 'done' && status !== 'error' && status !== 'continued'
+                ? 'streaming'
+                : marker,
+            providerAt: providerTimestamp(entry),
+        },
+    );
 }
 
 export function liveScopeOf(ctx: SpawnContext): string | null {
@@ -151,12 +294,8 @@ export function emitAgentTool(
         && Number(entry.traceSeq) > 0
         ? { traceRunId: entry.traceRunId, traceSeq: Number(entry.traceSeq) }
         : null;
-    appendTurnRecord(
-        ctx,
-        entry.toolType === 'thinking' ? 'thinking' : 'tool',
-        entry.status ?? 'running',
-        detailRef,
-    );
+    if (entry.toolType === 'thinking') appendThinkingTurnSegment(ctx, entry, detailRef);
+    else appendTurnRecord(ctx, 'tool', entry.status ?? 'running', detailRef);
     if (agentLabel && empTag["isEmployee"] === true) {
         updateWorkerTools(agentLabel, ctx.toolLog);
     }

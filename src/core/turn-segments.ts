@@ -1,11 +1,16 @@
-import type { TurnSegment, TurnSegmentDetailRef } from '../shared/chat-events.js';
+import type { ThinkingMarker, TurnFidelity, TurnSegment, TurnSegmentDetailRef } from '../shared/chat-events.js';
 import { db } from './db.js';
 
 type TurnSegmentRow = {
     turn_id: string;
     turn_seq: number;
+    segment_id: string;
     session_id: string;
     created_at: number;
+    observed_at: number;
+    provider_at: number | null;
+    fidelity: TurnFidelity | null;
+    thinking_marker: ThinkingMarker | null;
     type: string;
     status: string;
     trace_run_id: string | null;
@@ -14,15 +19,28 @@ type TurnSegmentRow = {
 
 const insertTurnSegment = db.prepare(`
     INSERT INTO turn_segments (
-        turn_id, turn_seq, session_id, created_at, type, status, trace_run_id, trace_seq
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        turn_id, turn_seq, segment_id, session_id, created_at,
+        observed_at, provider_at, fidelity, thinking_marker,
+        type, status, trace_run_id, trace_seq
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `);
 
 const selectTurnSegments = db.prepare(`
-    SELECT turn_id, turn_seq, session_id, created_at, type, status, trace_run_id, trace_seq
+    SELECT turn_id, turn_seq, segment_id, session_id, created_at,
+           observed_at, provider_at, fidelity, thinking_marker,
+           type, status, trace_run_id, trace_seq
     FROM turn_segments
     WHERE turn_id = ?
     ORDER BY turn_seq ASC
+`);
+
+const selectTurnSegmentsForTurnIds = db.prepare(`
+    SELECT turn_id, turn_seq, segment_id, session_id, created_at,
+           observed_at, provider_at, fidelity, thinking_marker,
+           type, status, trace_run_id, trace_seq
+    FROM turn_segments
+    WHERE turn_id IN (SELECT value FROM json_each(?))
+    ORDER BY turn_id ASC, turn_seq ASC
 `);
 
 const pruneOrphanTurnSegments = db.prepare(`
@@ -55,8 +73,13 @@ function fromRow(row: TurnSegmentRow): TurnSegment {
     return {
         turnId: row.turn_id,
         turnSeq: row.turn_seq,
+        segmentId: row.segment_id,
         sessionId: row.session_id,
         createdAt: row.created_at,
+        observedAt: row.observed_at,
+        providerAt: row.provider_at,
+        fidelity: row.fidelity,
+        thinkingMarker: row.thinking_marker,
         type: row.type,
         status: row.status,
         detailRef: row.trace_run_id !== null && row.trace_seq !== null
@@ -67,6 +90,7 @@ function fromRow(row: TurnSegmentRow): TurnSegment {
 
 export function appendTurnSegment(segment: TurnSegment): TurnSegment {
     requireNonEmpty(segment.turnId, 'turnId');
+    requireNonEmpty(segment.segmentId, 'segmentId');
     requireNonEmpty(segment.sessionId, 'sessionId');
     requireNonEmpty(segment.type, 'type');
     requireNonEmpty(segment.status, 'status');
@@ -76,13 +100,24 @@ export function appendTurnSegment(segment: TurnSegment): TurnSegment {
     if (!Number.isSafeInteger(segment.createdAt) || segment.createdAt < 0) {
         throw new TypeError('createdAt must be a non-negative safe integer');
     }
+    if (!Number.isSafeInteger(segment.observedAt) || segment.observedAt < 0) {
+        throw new TypeError('observedAt must be a non-negative safe integer');
+    }
+    if (segment.providerAt !== null && (!Number.isSafeInteger(segment.providerAt) || segment.providerAt < 0)) {
+        throw new TypeError('providerAt must be null or a non-negative safe integer');
+    }
     validateDetailRef(segment.detailRef);
 
     insertTurnSegment.run(
         segment.turnId,
         segment.turnSeq,
+        segment.segmentId,
         segment.sessionId,
         segment.createdAt,
+        segment.observedAt,
+        segment.providerAt,
+        segment.fidelity,
+        segment.thinkingMarker,
         segment.type,
         segment.status,
         segment.detailRef?.traceRunId ?? null,
@@ -105,4 +140,17 @@ export function pruneTurnSegments(retentionDays = 7): { deletedSegments: number 
 export function readTurnSegments(turnId: string): TurnSegment[] {
     requireNonEmpty(turnId, 'turnId');
     return (selectTurnSegments.all(turnId) as TurnSegmentRow[]).map(fromRow);
+}
+
+export function readTurnSegmentsForTurnIds(turnIds: readonly string[]): Map<string, TurnSegment[]> {
+    const ids = [...new Set(turnIds.map(id => id.trim()).filter(Boolean))];
+    if (!ids.length) return new Map();
+    const result = new Map<string, TurnSegment[]>();
+    const rows = selectTurnSegmentsForTurnIds.all(JSON.stringify(ids)) as TurnSegmentRow[];
+    for (const row of rows) {
+        const segments = result.get(row.turn_id) ?? [];
+        segments.push(fromRow(row));
+        result.set(row.turn_id, segments);
+    }
+    return result;
 }

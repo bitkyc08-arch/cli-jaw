@@ -80,7 +80,7 @@ static → employees → heartbeat → skills → jaw-memory → orchestrate
 | `GET` | `/` | `public/dist/index.html`이 있으면 Vite build를 서빙, 없으면 static fallback |
 | `GET` | `/api/health` | `{ ok, version, uptime }` |
 | `GET` | `/api/session` | 현재 main session row 반환 |
-| `GET` | `/api/messages` | `includeTrace=1|true|yes`면 trace 포함 메시지 조회. `?limit=N`(1–5000)이면 최근 N개만 ascending 반환; 생략 시 전체 history |
+| `GET` | `/api/messages` | `includeTrace=1|true|yes`면 trace 포함 메시지 조회. legacy `?limit=N`(1–5000)은 최근 N개 ascending, 생략 시 전체 history. `includeSegments=1`은 `messages.turn_id`로 연결한 `turn_segments`를 추가하고 cursor mode(default/hard cap 200)를 활성화; `before=<messageId>`는 삭제 내성 `id < before` page이며 `pageInfo`/`snapshotEventSeq`를 추가. detail 원문은 `/api/traces/:runId/events/:seq` |
 | `GET` | `/api/messages/search` | 메시지 본문 검색 결과 반환. `?q=`, `?days=N`(1-365), `?recent=N`(1-5000), `?context=N`(0-5), `?limit=N`(1-50) |
 | `GET` | `/api/messages/latest` | 가장 최근 메시지 스냅샷 반환 |
 | `GET` | `/api/runtime` | uptime, activeAgent, queuePending |

@@ -23,6 +23,7 @@ function fakeClaudeContext(): SpawnContext {
         duration: null,
         tokens: null,
         stderrBuf: '',
+        runtimeCli: 'claude',
         traceAudience: 'public',
     };
 }
@@ -70,6 +71,8 @@ test('claude funnel durably appends lifecycle and segments in published turnSeq 
     assert.ok(turnId.startsWith('turn_'));
     assert.equal(turnRecords.every(record => record['sessionId'] === 'default'), true);
     assert.equal(turnRecords.every(record => Number.isSafeInteger(record['createdAt'])), true);
+    assert.equal(turnRecords.every(record => Number.isSafeInteger(record['observedAt'])), true);
+    assert.equal(turnRecords[0]?.['fidelity'], 'full');
     assert.deepEqual(published.map(entry => entry.event), [
         'turn_start',
         'turn_segment',
@@ -103,6 +106,7 @@ test('lifecycle handler closes the turn from finally without changing agent stat
     const { readFile } = await import('node:fs/promises');
     const source = await readFile(new URL('../../src/agent/lifecycle-handler.ts', import.meta.url), 'utf8');
     assert.match(source, /finally\s*{\s*finishTurnLifecycle\(/);
+    assert.match(source, /getTurnId\(ctx, 'public'\)/);
     assert.match(source, /broadcast\('agent_status', \{\s*status:/);
     assert.equal(source.match(/turnStatus = 'continued';/g)?.length, 8);
 });
