@@ -12,6 +12,7 @@ import type { HeartbeatRuntimeState, OrcStateName, ResolvedSelectionState } from
 import { notifyUnreadResponse } from './features/attention-badge.js';
 import { shouldApplyOrcStateEvent } from './features/orchestrate-scope.js';
 import { providerLabel } from './provider-icons.js';
+import { classifyMessageDisplayRole } from './features/message-taxonomy.js';
 
 const ROADMAP_PHASES = ['I', 'P', 'A', 'B', 'C'] as const;
 
@@ -75,6 +76,7 @@ interface WsMessage {
     from?: string;
     to?: string;
     source?: string;
+    kind?: string;
     role?: string;
     content?: string;
     cli?: string;
@@ -1088,8 +1090,8 @@ function handleServerEvent(msg: WsMessage): void {
         markRunFinalized(null); // killed run — drop its replayed stream too
         finalizeAgent('');
         setStatus('steering');
-    } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.source === 'bgtask' || msg.source === 'cli' || msg.source === 'goal' || msg.external === true || msg.fromQueue === true)) {
-        const newMessageRole = msg.role === 'assistant' ? 'agent' : (msg.role || 'user');
+    } else if (msg.type === 'new_message' && (msg.source === 'telegram' || msg.source === 'discord' || msg.source === 'bgtask' || msg.source === 'cli' || msg.source === 'goal' || msg.source === 'system' || msg.role === 'system' || classifyMessageDisplayRole(msg) === 'system' || msg.external === true || msg.fromQueue === true)) {
+        const newMessageRole = classifyMessageDisplayRole(msg);
         const newMessageContent = msg.content || '';
         const newMessageCli = msg.cli;
         void import('./features/message-history.js').then(m => {

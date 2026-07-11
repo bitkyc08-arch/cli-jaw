@@ -116,12 +116,13 @@ export function addMessage(role: string, text: string, cli?: string | null): HTM
     if (role === 'agent') {
         div.className = 'msg msg-agent';
         div.innerHTML = `<div class="agent-icon" aria-hidden="true">${getAgentIcon(cli)}</div><div class="agent-body"><div class="msg-content">${rendered}</div>${actions}</div>`;
+    } else if (role === 'system') {
+        const isGoalBoundary = cli === 'goal_continuation';
+        div.className = `msg msg-system${isGoalBoundary ? ' msg-goal-boundary' : ''}`;
+        if (isGoalBoundary) div.setAttribute('data-run-boundary', 'user');
+        div.innerHTML = `<div class="msg-content">${rendered}</div>`;
     } else {
-        // Goal-continuation boundary rows stay .msg-user (the class is the
-        // run-boundary signal for hasFollowingUserMessage) but get a modifier
-        // class so they render as a slim marker, not a full user bubble.
-        const isGoalBoundary = role === 'user' && cli === 'goal_continuation';
-        div.className = `msg msg-${role}${isGoalBoundary ? ' msg-goal-boundary' : ''}`;
+        div.className = `msg msg-${role}`;
         div.innerHTML = `<div class="user-body"><div class="msg-label">${label}</div><div class="msg-content">${rendered}</div>${actions}</div><div class="user-icon" aria-hidden="true">${getUserAvatarMarkup()}</div>`;
     }
     const contentEl = div.querySelector('.msg-content');

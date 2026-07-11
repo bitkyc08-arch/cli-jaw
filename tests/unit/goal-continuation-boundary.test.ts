@@ -57,11 +57,16 @@ test('GCB-003: history block skips goal_continuation marker rows', () => {
     assert.ok(block.includes("row.cli === 'goal_continuation'"), 'buildHistoryBlock must skip goal_continuation rows');
 });
 
-test('GCB-004: boundary rows render as slim markers but keep .msg-user boundary semantics', () => {
+test('GCB-004: boundary rows render as slim system markers but keep run-boundary semantics', () => {
     assert.ok(chatMessagesSrc.includes("cli === 'goal_continuation'"), 'addMessage must detect boundary rows');
     assert.ok(chatMessagesSrc.includes('msg-goal-boundary'), 'addMessage must add the modifier class');
-    // The class list must still contain msg-user (boundary signal for hasFollowingUserMessage).
-    assert.ok(chatMessagesSrc.includes('msg msg-${role}${isGoalBoundary'), 'msg-user base class must be preserved');
+    // Boundary semantics moved from the msg-user class to an explicit attribute (2026-07-11
+    // taxonomy split, devlog 011): boundary rows render as msg-system but must still carry
+    // data-run-boundary="user" so hasFollowingUserMessage treats them as run boundaries.
+    assert.ok(chatMessagesSrc.includes("setAttribute('data-run-boundary', 'user')"), 'boundary rows must carry data-run-boundary="user"');
+    const uiSrc = readFileSync(join(root, 'public/js/ui.ts'), 'utf8');
+    assert.ok(uiSrc.includes('[data-run-boundary="user"]'), 'hasFollowingUserMessage must honor the boundary attribute');
+    assert.ok(uiSrc.includes('.msg-user'), 'hasFollowingUserMessage must still match legacy .msg-user markup');
     const cssSrc = readFileSync(join(root, 'public/css/chat.css'), 'utf8');
     assert.ok(cssSrc.includes('.msg-goal-boundary'), 'boundary style must exist');
 });

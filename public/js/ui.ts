@@ -82,7 +82,9 @@ export function clearSteer(): void { lastSteerTs = 0; }
 export function isRecentSteer(): boolean { return Date.now() - lastSteerTs < 8000; }
 
 function hasFollowingUserMessage(el: HTMLElement): boolean {
-    for (const user of document.querySelectorAll<HTMLElement>('.msg-user')) {
+    // Match live markup (data attributes) AND legacy/history markup (.msg-user class only,
+    // e.g. message-item-html rows and pre-migration virtual-scroll snapshots).
+    for (const user of document.querySelectorAll<HTMLElement>('.msg-user, [data-message-role="user"], [data-run-boundary="user"]')) {
         if (el.compareDocumentPosition(user) & Node.DOCUMENT_POSITION_FOLLOWING) return true;
     }
     return false;

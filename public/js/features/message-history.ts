@@ -21,6 +21,7 @@ import { normalizeMessageToolLog, parseToolLog, toProcessSteps, type MessageItem
 import { canFollowAfterRestore, ensureScrollTracking, markFollowingBottom, settleChatBottomAfterInitialLoad } from './chat-scroll.js';
 import { updateStatMsgs } from './ui-status.js';
 import { seedCompletedElicitationsFromMessages } from './elicitation-state.js';
+import { classifyMessageDisplayRole } from './message-taxonomy.js';
 
 export function buildVirtualHistoryItems(msgs: MessageItem[]): VirtualItem[] {
     return msgs.map((m, index) => buildLazyVirtualMessageItem(normalizeMessageToolLog(m), index));
@@ -132,7 +133,7 @@ export function makeBootstrapDeps(
 
 function hydrateSmallHistory(messages: MessageItem[]): void {
     messages.forEach(m => {
-        const div = addMessage(m.role === 'assistant' ? 'agent' : m.role, m.content, m.cli);
+        const div = addMessage(classifyMessageDisplayRole(m), m.content, m.cli);
         if (m.role === 'assistant' && m.tool_log) {
             const tools = parseToolLog(m.tool_log);
             if (tools.length > 0) {

@@ -12,7 +12,7 @@ import {
 import type { ProcessStep } from './process-block.js';
 import type { ToolLogEntry } from './tool-ui.js';
 
-export interface MessageItem { id?: number | string; role: string; content: string; tool_log?: string | null; trace_run_id?: string | null; cli?: string | null; }
+export interface MessageItem { id?: number | string; role: string; content: string; source?: string | null; kind?: string | null; tool_log?: string | null; trace_run_id?: string | null; cli?: string | null; }
 export interface QueuedOverlayItem { id: string; prompt: string; source?: string; ts?: number; }
 export interface ActiveRunSnapshot { running?: boolean; cli?: string; text?: string; toolLog?: ToolLogEntry[]; startedAt?: number; traceRunId?: string; }
 
