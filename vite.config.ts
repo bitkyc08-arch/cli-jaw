@@ -43,7 +43,11 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    host: '127.0.0.1',
     proxy: {
+      // dashboard2 dev: manager API + instance proxy (jaw dashboard, 기본 24576)
+      '/api/dashboard': 'http://localhost:24576',
+      '/i': 'http://localhost:24576',
       '/api': 'http://localhost:3458',
     },
     hmr: { overlay: true },
