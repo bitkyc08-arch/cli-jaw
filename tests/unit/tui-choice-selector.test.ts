@@ -198,6 +198,26 @@ test('CS-014: cliHandler with explicit args still returns success', async () => 
     assert.ok(result.text.includes('codex'));
 });
 
+test('CS-014b: cliHandler excludes retired JWC from stale perCli settings', async () => {
+    const { cliHandler } = await import('../../src/cli/handlers.ts');
+    let updateCalled = false;
+    const ctx = {
+        locale: 'ko',
+        interface: 'cli',
+        getSettings: async () => ({ cli: 'claude', perCli: { claude: {}, jwc: {} } }),
+        getSession: async () => ({}),
+        updateSettings: async () => { updateCalled = true; return { ok: true }; },
+    };
+
+    const current = await cliHandler([], ctx);
+    const select = await cliHandler(['jwc'], ctx);
+
+    assert.equal(current.ok, true);
+    assert.doesNotMatch(current.text, /\bjwc\b/i);
+    assert.equal(select.ok, false);
+    assert.equal(updateCalled, false);
+});
+
 // ─── Remote surface regression: handlers still return text for no-arg ──
 
 test('CS-015: modelHandler no-arg returns readable text (Telegram/Discord contract)', async () => {

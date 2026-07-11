@@ -1,12 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
 import { buildPromptForArgs } from '../../src/agent/prompt-context.ts';
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
 
 test('Kiro fresh prompt includes operational context and bounded history', () => {
     const prompt = buildPromptForArgs({
@@ -48,17 +42,4 @@ test('ai-e Kiro resume follows the same current-turn-only rule', () => {
     });
 
     assert.equal(prompt, 'next ai-e kiro turn');
-});
-
-test('JWC resident branch passes the current prompt directly', () => {
-    const src = fs.readFileSync(join(__dirname, '../../src/agent/spawn.ts'), 'utf8');
-    const branchStart = src.indexOf("if (cli === 'jwc' && mainManaged && !opts.internal)");
-    const branchEnd = src.indexOf('const permissions =', branchStart);
-
-    assert.ok(branchStart > 0, 'jwc branch should exist before normal CLI spawn path');
-    assert.ok(branchEnd > branchStart, 'jwc branch should end before normal permissions setup');
-
-    const branch = src.slice(branchStart, branchEnd);
-    assert.match(branch, /jawRuntime\.prompt\(jwcCwd,\s*prompt\)/);
-    assert.doesNotMatch(branch, /withHistoryPrompt|buildPromptForArgs/);
 });

@@ -112,6 +112,6 @@ test('docs commands extractor tracks hidden slash commands and runtime keys', as
 
     assert.ok(fileCommand, '/file should be present in command inventory');
     assert.equal(fileCommand.hidden, true, '/file should stay hidden');
-    assert.ok(inventory.runtimes.keys.includes('jwc'), 'runtime keys should include jwc');
+    assert.equal(inventory.runtimes.keys.includes('jwc'), false, 'Jaw chat runtime keys must exclude retired jwc');
     assert.equal(inventory.runtimes.count, inventory.runtimes.keys.length, 'runtime count should match keys length');
 });

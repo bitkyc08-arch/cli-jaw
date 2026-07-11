@@ -17,8 +17,8 @@ const __dirname = dirname(__filename);
 
 // ─── Structure validation ────────────────────────────
 
-test('CLI_KEYS contains exactly 13 known entries', () => {
-    assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'grok', 'jwc', 'kiro-code', 'opencode', 'pi']);
+test('CLI_KEYS contains exactly 12 known Jaw chat runtimes', () => {
+    assert.deepEqual([...CLI_KEYS].sort(), ['agy', 'ai-e', 'claude', 'claude-e', 'codex', 'codex-app', 'copilot', 'cursor', 'grok', 'kiro-code', 'opencode', 'pi']);
 });
 
 test('DEFAULT_CLI is claude', () => {
@@ -53,17 +53,7 @@ test('registry defaults for opencode are updated', () => {
     assert.equal(CLI_REGISTRY.opencode.defaultModel, 'opencode-go/kimi-k2.6');
 });
 
-test('JWC registry exposes package-backed runtime metadata', () => {
-    assert.equal(CLI_REGISTRY.jwc.label, 'JWC');
-    assert.equal(CLI_REGISTRY.jwc.binary, 'jwc');
-    assert.equal(CLI_REGISTRY.jwc.experimental, true);
-    assert.equal(CLI_REGISTRY.jwc.defaultModel, 'claude-sonnet-4-6');
-    assert.equal(CLI_REGISTRY.jwc.defaultEffort, 'high');
-    assert.ok(CLI_REGISTRY.jwc.models.includes('claude-fable-5'));
-    assert.ok(CLI_REGISTRY.jwc.efforts.includes('high'));
-});
-
-test('live CLI registry preserves JWC runtime metadata', async () => {
+test('live CLI registry does not expose JWC as a Jaw chat runtime', async () => {
     const kiroModelsPath = resolve(__dirname, '../../src/agent/kiro-models.js');
     mock.module(kiroModelsPath, {
         namedExports: {
@@ -74,11 +64,7 @@ test('live CLI registry preserves JWC runtime metadata', async () => {
     const { buildLiveCliRegistry } = await import('../../src/cli/registry-live.ts');
     const registry = await buildLiveCliRegistry();
 
-    assert.equal(registry.jwc.label, 'JWC');
-    assert.equal(registry.jwc.binary, 'jwc');
-    assert.equal(registry.jwc.experimental, true);
-    assert.equal(registry.jwc.defaultModel, 'claude-sonnet-4-6');
-    assert.equal(registry.jwc.defaultEffort, 'high');
+    assert.equal('jwc' in registry, false);
 });
 
 test('Antigravity registry exposes AGY as a top-level runtime, not an ai-e provider', () => {
@@ -139,6 +125,12 @@ test('Codex registry defaults expose only the curated inactive ocx model set', (
     assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.3-codex'), false);
     assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.2-codex'), false);
     assert.equal(CLI_REGISTRY.codex.models.includes('gpt-5.1-codex-mini'), false);
+});
+
+test('Codex registry exposes max and ultra reasoning efforts', () => {
+    assert.deepEqual(CLI_REGISTRY.codex.efforts, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    assert.deepEqual(CLI_REGISTRY['codex-app'].efforts, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    assert.deepEqual(CLI_REGISTRY['ai-e'].effortsByProvider?.codex, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 });
 
 test('ai-e detection checks AI_E_BIN, local package candidates, then PATH', () => {
@@ -253,16 +245,11 @@ test('doctor CLI checks are driven by canonical registry keys', () => {
     assert.doesNotMatch(doctorSrc, /for \(const cli of \['claude', 'codex', 'gemini', 'opencode', 'copilot'\]\)/);
 });
 
-test('readiness default order covers existing non-JWC canonical CLIs and keeps JWC out for slice 270', () => {
+test('readiness default order covers every canonical Jaw chat CLI', () => {
     const readinessSrc = fs.readFileSync(join(__dirname, '../../src/cli/readiness.ts'), 'utf8');
     const order = readinessSrc.split('\n').find(line => line.includes('const DEFAULT_ORDER')) || '';
-    for (const key of CLI_KEYS) {
-        if (key === 'jwc') {
-            assert.doesNotMatch(order, /'jwc'/, 'jwc remains out of DEFAULT_ORDER until slice 280 explicitly switches defaults');
-            continue;
-        }
-        assert.match(order, new RegExp(`'${key}'`), `DEFAULT_ORDER must include ${key}`);
-    }
+    for (const key of CLI_KEYS) assert.match(order, new RegExp(`'${key}'`), `DEFAULT_ORDER must include ${key}`);
+    assert.doesNotMatch(order, /'jwc'/);
 });
 
 test('AGY readiness is installed-only and does not run a prompt', () => {

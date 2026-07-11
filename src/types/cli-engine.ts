@@ -25,7 +25,6 @@ export type CliEngine =
     | 'copilot'
     | 'cursor'
     | 'grok'
-    | 'jwc'
     | 'kiro-code'
     | 'opencode'
     | 'pi';
@@ -47,7 +46,6 @@ export const CLI_ENGINES = [
     'copilot',
     'cursor',
     'grok',
-    'jwc',
     'kiro-code',
     'opencode',
     'pi',

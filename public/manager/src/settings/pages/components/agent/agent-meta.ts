@@ -28,7 +28,7 @@ export type ActiveOverride = {
 
 const CODEX_MODELS: ReadonlyArray<string> = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 
-export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'jwc', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
+export const PRIMARY_CLIS: ReadonlyArray<string> = ['pi', 'claude', 'claude-e', 'agy', 'codex', 'cursor', 'kiro-code', 'gemini'];
 
 export const CLI_META: Record<string, CliMeta> = {
     agy: {
@@ -62,7 +62,7 @@ export const CLI_META: Record<string, CliMeta> = {
         },
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-            codex: ['low', 'medium', 'high', 'xhigh'],
+            codex: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
@@ -108,36 +108,15 @@ export const CLI_META: Record<string, CliMeta> = {
         ],
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
     },
-    jwc: {
-        label: 'JWC',
-        defaultProvider: 'anthropic',
-        providers: ['anthropic'],
-        models: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
-        efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-        modelsByProvider: {
-            anthropic: [
-                'claude-fable-5',
-                'claude-sonnet-5',
-                'claude-opus-4-8',
-                'claude-opus-4-7',
-                'claude-opus-4-6',
-                'claude-sonnet-4-6',
-                'claude-haiku-4-5',
-            ],
-        },
-        effortsByProvider: {
-            anthropic: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-        },
-    },
     codex: {
         label: 'Codex',
         models: CODEX_MODELS,
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     },
     'codex-app': {
         label: 'Codex App',
         models: CODEX_MODELS,
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
     },
     cursor: {
         label: 'Cursor',

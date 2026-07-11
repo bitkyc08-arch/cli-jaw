@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = dirname(fileURLToPath(new URL('../package.json', import.meta.url)));
@@ -16,7 +16,12 @@ const globalJwc = spawnSync('sh', ['-c', 'command -v jwc'], {
 });
 assert.notEqual(globalJwc.status, 0, `expected no global jwc in smoke PATH, got ${globalJwc.stdout.trim()}`);
 
-const runtimeSource = readFileSync(join(repoRoot, 'src/agent/jwc-runtime.ts'), 'utf8');
+// 2026-07-11: the JWC Jaw-chat runtime was retired (devlog 012). The former
+// src/agent/jwc-runtime.ts assertions are replaced by a retirement guard: the
+// chat runtime must NOT come back, while packaging exclusions below still hold
+// for the opt-in Code-mode/external JWC (`jaw jwc install`, JWC_SDK_PATH).
+assert.ok(!existsSync(join(repoRoot, 'src/agent/jwc-runtime.ts')), 'retired jwc chat runtime must not reappear in src/agent');
+assert.ok(!existsSync(join(repoRoot, 'src/agent/jwc-event-mapper.ts')), 'retired jwc event mapper must not reappear in src/agent');
 assert.equal(packageJson.dependencies?.jawcode, undefined, 'cli-jaw npm installs must not pull jawcode by default');
 assert.equal(packageJson.optionalDependencies?.jawcode, undefined, 'jawcode must not be an npm optional dependency because optional deps install by default');
 assert.equal(packageLock.packages?.['']?.dependencies?.jawcode, undefined, 'package-lock root must not pull jawcode by default');
@@ -24,10 +29,6 @@ assert.equal(packageLock.packages?.['']?.optionalDependencies?.jawcode, undefine
 assert.equal(packageLock.packages?.['node_modules/jawcode'], undefined, 'package-lock must not include jawcode in the default install tree');
 assert.equal(packageLock.packages?.['node_modules/@jawcode-dev/natives'], undefined, 'package-lock must not include @jawcode-dev/natives in the default install tree');
 assert.equal(packageLock.packages?.['node_modules/bun'], undefined, 'package-lock must not include bun from JWC in the default install tree');
-assert.ok(runtimeSource.includes("'jawcode/sdk'"), 'jwc runtime must default to jawcode/sdk');
-assert.ok(!runtimeSource.includes("'jwc/sdk'"), 'jwc runtime must not default to jwc/sdk');
-assert.ok(runtimeSource.includes('does not bundle JWC'), 'jwc runtime must explain that JWC is not bundled');
-assert.ok(runtimeSource.includes('JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js'), 'jwc runtime must show the install path env override');
 
 // ai-e must also be excluded from default install (jaw provider install ai-e instead)
 assert.equal(packageJson.dependencies?.['@bitkyc08/ai-e'], undefined, 'ai-e must not be a hard dependency');

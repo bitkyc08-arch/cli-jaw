@@ -12,7 +12,8 @@ type QuotaSetupHint = {
 };
 
 export const QUOTA_HIDDEN_CLIS = new Set(['ai-e', 'codex-app']);
-export const SIDEBAR_HIDDEN_CLIS = new Set(['ai-e', 'claude-e', 'jwc', 'pi', 'codex-app', 'gemini']);
+export const RETIRED_CHAT_CLIS = new Set(['jwc']);
+export const SIDEBAR_HIDDEN_CLIS = new Set(['ai-e', 'claude-e', 'pi', 'codex-app', 'gemini', ...RETIRED_CHAT_CLIS]);
 export const QUOTA_CUSTOM_MSG: Record<string, string> = {};
 
 export const QUOTA_SETUP_HINTS: Record<string, QuotaSetupHint> = {

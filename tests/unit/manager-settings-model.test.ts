@@ -11,11 +11,10 @@ import { dirname, join } from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { CLI_REGISTRY } from '../../src/cli/registry.ts';
 import { createDirtyStore } from '../../public/manager/src/settings/dirty-store';
 import { expandPatch } from '../../public/manager/src/settings/pages/path-utils';
 import { buildResetOverridesPatch, orderModelCliKeys } from '../../public/manager/src/settings/pages/ModelProvider';
-import { metaFor, normalizeCliMetaRegistry, orderRuntimeCliOptions, PRIMARY_CLIS, runtimeModelFor } from '../../public/manager/src/settings/pages/components/agent/agent-meta';
+import { metaFor, normalizeCliMetaRegistry, PRIMARY_CLIS, runtimeModelFor } from '../../public/manager/src/settings/pages/components/agent/agent-meta';
 import { piModelOptions } from '../../public/manager/src/settings/pages/components/pi-profile';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -134,17 +133,6 @@ test('Model defaults imports canonical CLI metadata from agent-meta', () => {
     assert.equal(metaFor('kiro-code').label, 'Kiro');
     assert.equal(metaFor('kiro-code').models.includes('auto'), true);
     assert.equal(PRIMARY_CLIS.includes('kiro-code'), true);
-    const jwcMeta = metaFor('jwc');
-    assert.equal(PRIMARY_CLIS.includes('jwc'), true);
-    assert.equal(jwcMeta.label, 'JWC');
-    assert.deepEqual(jwcMeta.models, ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5']);
-    assert.deepEqual(jwcMeta.efforts, CLI_REGISTRY.jwc.efforts);
-    assert.equal(PRIMARY_CLIS.indexOf('claude-e') < PRIMARY_CLIS.indexOf('jwc'), true);
-    assert.equal(PRIMARY_CLIS.indexOf('jwc') < PRIMARY_CLIS.indexOf('agy'), true);
-    assert.deepEqual(
-        orderRuntimeCliOptions(['gemini', 'jwc', 'claude-e', 'agy', 'custom-cli']),
-        ['claude-e', 'jwc', 'agy', 'gemini', 'custom-cli'],
-    );
     const runtimeHeaderSource = readFileSync(
         join(__dirname, '../../public/manager/src/settings/pages/components/agent/RuntimeHeader.tsx'),
         'utf8',

@@ -51,20 +51,13 @@ test('jaw jwc clean removes only the checked external prefix', () => {
 
 test('JWC guidance shows install doctor clean and cross-shell SDK setup', () => {
     const command = read('bin/commands/jwc.ts');
-    const runtime = read('src/agent/jwc-runtime.ts');
-    const handlers = read('src/cli/handlers.ts');
 
-    for (const source of [command, runtime, handlers]) {
-        assert.ok(source.includes('jaw jwc install'), 'guidance must mention jaw jwc install');
-        assert.ok(source.includes('jaw jwc doctor'), 'guidance must mention jaw jwc doctor');
-        assert.ok(source.includes('jaw jwc clean'), 'guidance must mention jaw jwc clean');
-    }
+    assert.ok(command.includes('jaw jwc install'), 'guidance must mention jaw jwc install');
+    assert.ok(command.includes('jaw jwc doctor'), 'guidance must mention jaw jwc doctor');
+    assert.ok(command.includes('jaw jwc clean'), 'guidance must mention jaw jwc clean');
 
     assert.ok(command.includes('export JWC_SDK_PATH='), 'POSIX export guidance must be printed');
     assert.ok(command.includes('$env:JWC_SDK_PATH='), 'PowerShell guidance must be printed');
-    assert.ok(runtime.includes('does not bundle JWC'), 'runtime load failures must preserve no-bundled-JWC wording');
-    assert.ok(runtime.includes('JWC_SDK_PATH=/absolute/path/to/jawcode/packages/jwc/dist-node/sdk.js'), 'runtime hint must preserve source-build override path');
-    assert.ok(handlers.includes("nextCli === 'jwc'"), '/cli jwc must append the external runtime reminder');
 });
 
 test('docs advertise JWC as optional external runtime only', () => {
