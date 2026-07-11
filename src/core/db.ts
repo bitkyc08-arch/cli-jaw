@@ -177,6 +177,41 @@ db.exec(`
         FOREIGN KEY (run_id) REFERENCES trace_runs(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_trace_events_run_seq ON trace_events(run_id, seq);
+
+    CREATE TABLE IF NOT EXISTS turn_segments (
+        turn_id TEXT NOT NULL,
+        turn_seq INTEGER NOT NULL CHECK (turn_seq > 0),
+        type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        trace_run_id TEXT,
+        trace_seq INTEGER,
+        PRIMARY KEY (turn_id, turn_seq),
+        CHECK (
+            (trace_run_id IS NULL AND trace_seq IS NULL)
+            OR (trace_run_id IS NOT NULL AND trace_seq > 0)
+        )
+    );
+`);
+
+// Keep additive upgrades compatible with any pre-release turn_segments schema.
+const turnSegmentCols = db.prepare('PRAGMA table_info(turn_segments)').all() as Record<string, unknown>[];
+if (!turnSegmentCols.some(c => c["name"] === 'type')) {
+    db.exec("ALTER TABLE turn_segments ADD COLUMN type TEXT NOT NULL DEFAULT 'assistant_text'");
+}
+if (!turnSegmentCols.some(c => c["name"] === 'status')) {
+    db.exec("ALTER TABLE turn_segments ADD COLUMN status TEXT NOT NULL DEFAULT 'done'");
+}
+if (!turnSegmentCols.some(c => c["name"] === 'trace_run_id')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN trace_run_id TEXT DEFAULT NULL');
+}
+if (!turnSegmentCols.some(c => c["name"] === 'trace_seq')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN trace_seq INTEGER DEFAULT NULL');
+}
+db.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_turn_segments_turn_seq
+        ON turn_segments(turn_id, turn_seq);
+    CREATE INDEX IF NOT EXISTS idx_turn_segments_trace_ref
+        ON turn_segments(trace_run_id, trace_seq);
 `);
 
 // Lightweight migration for existing DBs created before `trace` column existed.
