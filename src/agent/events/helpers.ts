@@ -1,6 +1,11 @@
 // Cross-adapter shared utilities used by 2+ event adapter modules.
 
+import { randomUUID } from 'node:crypto';
 import { broadcast } from '../../core/bus.js';
+import { getActiveChatSession } from '../../core/chat-sessions.js';
+import { publish } from '../../core/event-bus.js';
+import { appendTurnSegment } from '../../core/turn-segments.js';
+import type { TurnSegment, TurnSegmentStatus, TurnSegmentType } from '../../shared/chat-events.js';
 import {
     asCliEventArray,
     asCliEventRecord,
@@ -17,6 +22,96 @@ import { updateWorkerTools } from '../../orchestrator/worker-registry.js';
 import { sanitizeWorkerProgressTools } from '../../orchestrator/worker-progress.js';
 
 // ─── Core utilities (used by ALL adapters) ───────────
+
+type TurnCarrier = object & { traceAudience?: 'public' | 'internal' };
+
+interface TurnState {
+    turnId: string;
+    nextSeq: number;
+    sessionId: string;
+    createdAt: number;
+    ended: boolean;
+}
+
+const turnStates = new WeakMap<object, TurnState>();
+
+function publishTurnRecord(
+    event: 'turn_start' | 'turn_segment' | 'turn_end',
+    segment: TurnSegment,
+    audience: 'public' | 'internal',
+): void {
+    const durable = appendTurnSegment(segment);
+    if (audience === 'public') publish('agent', event, durable as unknown as Record<string, unknown>);
+}
+
+function ensureTurn(ctx: TurnCarrier, audience: 'public' | 'internal'): TurnState {
+    const prior = turnStates.get(ctx);
+    if (prior) return prior;
+
+    const state: TurnState = {
+        turnId: `turn_${randomUUID().replaceAll('-', '')}`,
+        nextSeq: 1,
+        sessionId: getActiveChatSession(),
+        createdAt: Date.now(),
+        ended: false,
+    };
+    turnStates.set(ctx, state);
+    appendTurnRecord(ctx, 'turn_start', 'running', null, 'turn_start', audience);
+    return state;
+}
+
+function appendTurnRecord(
+    ctx: TurnCarrier,
+    type: TurnSegmentType,
+    status: TurnSegmentStatus,
+    detailRef: TurnSegment['detailRef'],
+    event: 'turn_start' | 'turn_segment' | 'turn_end' = 'turn_segment',
+    audience: 'public' | 'internal' = ctx.traceAudience === 'internal' ? 'internal' : 'public',
+): TurnSegment | null {
+    const state = turnStates.get(ctx) ?? ensureTurn(ctx, audience);
+    if (state.ended) return null;
+    const segment: TurnSegment = {
+        turnId: state.turnId,
+        // appendTurnSegment is synchronous; publish sees this exact durable record
+        // before any later caller can allocate the next sequence.
+        turnSeq: state.nextSeq++,
+        sessionId: state.sessionId,
+        createdAt: state.createdAt,
+        type,
+        status,
+        detailRef,
+    };
+    try {
+        publishTurnRecord(event, segment, audience);
+        return segment;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[turn-segment] append failed:', message);
+        publish('system', 'turn_segment_error', {
+            turnId: segment.turnId,
+            turnSeq: segment.turnSeq,
+            type: segment.type,
+            error: message,
+        });
+        return null;
+    }
+}
+
+export function finishTurnLifecycle(
+    ctx: TurnCarrier,
+    status: TurnSegmentStatus,
+    audience: 'public' | 'internal' = ctx.traceAudience === 'internal' ? 'internal' : 'public',
+): TurnSegment | null {
+    const state = turnStates.get(ctx) ?? ensureTurn(ctx, audience);
+    if (state.ended) return null;
+    const segment = appendTurnRecord(ctx, 'turn_end', status, null, 'turn_end', audience);
+    state.ended = true;
+    return segment;
+}
+
+function appendAssistantTurnSegment(ctx: SpawnContext): void {
+    appendTurnRecord(ctx, 'assistant_text', 'running', null);
+}
 
 export function liveScopeOf(ctx: SpawnContext): string | null {
     return ctx.liveScope ?? null;
@@ -50,6 +145,18 @@ export function emitAgentTool(
     empTag: Record<string, unknown>,
 ): void {
     const payload = { agentId: agentLabel, ...tool, ...empTag, startedAt: ctx.runStartedAt };
+    const entry = tool as Partial<ToolEntry>;
+    const detailRef = typeof entry.traceRunId === 'string'
+        && Number.isSafeInteger(entry.traceSeq)
+        && Number(entry.traceSeq) > 0
+        ? { traceRunId: entry.traceRunId, traceSeq: Number(entry.traceSeq) }
+        : null;
+    appendTurnRecord(
+        ctx,
+        entry.toolType === 'thinking' ? 'thinking' : 'tool',
+        entry.status ?? 'running',
+        detailRef,
+    );
     if (agentLabel && empTag["isEmployee"] === true) {
         updateWorkerTools(agentLabel, ctx.toolLog);
     }
@@ -148,6 +255,7 @@ export function formatPostToolAssistantLead(text: unknown): string {
 export function appendPostToolAssistantLead(ctx: SpawnContext, text: unknown): string {
     const segment = formatPostToolAssistantLead(text);
     if (!segment) return '';
+    appendAssistantTurnSegment(ctx);
     if (!ctx.outputTextStarted) ctx.outputTextStarted = true;
     appendAssistantStreamText(ctx, segment);
     return segment;
@@ -156,6 +264,7 @@ export function appendPostToolAssistantLead(ctx: SpawnContext, text: unknown): s
 export function appendAssistantTextSegment(ctx: SpawnContext, text: unknown): string {
     const segment = formatAssistantTextSegment(ctx, text);
     if (!segment) return '';
+    appendAssistantTurnSegment(ctx);
     appendAssistantStreamText(ctx, segment);
     return segment;
 }
@@ -167,6 +276,7 @@ export function appendAssistantTextSegment(ctx: SpawnContext, text: unknown): st
  *  claude-e snapshot path raw-appends fullText (claude.ts) rather than re-formatting. */
 export function appendAssistantRawText(ctx: SpawnContext, text: string): string {
     if (!text) return '';
+    appendAssistantTurnSegment(ctx);
     if (!ctx.outputTextStarted) ctx.outputTextStarted = true;
     appendAssistantStreamText(ctx, text);
     return text;

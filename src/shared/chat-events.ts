@@ -63,6 +63,8 @@ export interface TurnSegmentDetailRef {
 export interface TurnSegment {
     turnId: string;
     turnSeq: number;
+    sessionId: string;
+    createdAt: number;
     type: TurnSegmentType;
     status: TurnSegmentStatus;
     detailRef: TurnSegmentDetailRef | null;

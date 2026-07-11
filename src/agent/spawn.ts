@@ -83,6 +83,7 @@ import {
     type AgyBootstrapEnvelope,
 } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
+import { finishTurnLifecycle } from './events/helpers.js';
 import { appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import { listKiroConversationIdsForCwd } from './kiro-auth.js';
 import {
@@ -1202,6 +1203,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
             resolve!({ text: '', code: 1 });
+            finishTurnLifecycle(ctx, 'error', traceAudience);
             if (mainManaged) processQueue();
         });
 
@@ -1666,6 +1668,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
             resolve!({ text: '', code: 1 });
+            finishTurnLifecycle(ctx, 'error', traceAudience);
             if (mainManaged) processQueue();
         });
 
@@ -1966,6 +1969,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
         resolve!({ text: '', code: 127 });
+        finishTurnLifecycle(ctx, 'error', traceAudience);
         if (mainManaged) processQueue();
     });
 

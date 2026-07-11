@@ -181,6 +181,8 @@ db.exec(`
     CREATE TABLE IF NOT EXISTS turn_segments (
         turn_id TEXT NOT NULL,
         turn_seq INTEGER NOT NULL CHECK (turn_seq > 0),
+        session_id TEXT NOT NULL DEFAULT 'default',
+        created_at INTEGER NOT NULL,
         type TEXT NOT NULL,
         status TEXT NOT NULL,
         trace_run_id TEXT,
@@ -207,11 +209,22 @@ if (!turnSegmentCols.some(c => c["name"] === 'trace_run_id')) {
 if (!turnSegmentCols.some(c => c["name"] === 'trace_seq')) {
     db.exec('ALTER TABLE turn_segments ADD COLUMN trace_seq INTEGER DEFAULT NULL');
 }
+if (!turnSegmentCols.some(c => c["name"] === 'session_id')) {
+    db.exec("ALTER TABLE turn_segments ADD COLUMN session_id TEXT NOT NULL DEFAULT 'default'");
+}
+if (!turnSegmentCols.some(c => c["name"] === 'created_at')) {
+    db.exec('ALTER TABLE turn_segments ADD COLUMN created_at INTEGER NOT NULL DEFAULT 0');
+    db.prepare('UPDATE turn_segments SET created_at = ? WHERE created_at = 0').run(Date.now());
+}
 db.exec(`
     CREATE UNIQUE INDEX IF NOT EXISTS idx_turn_segments_turn_seq
         ON turn_segments(turn_id, turn_seq);
     CREATE INDEX IF NOT EXISTS idx_turn_segments_trace_ref
         ON turn_segments(trace_run_id, trace_seq);
+    CREATE INDEX IF NOT EXISTS idx_turn_segments_session_created
+        ON turn_segments(session_id, created_at);
+    CREATE INDEX IF NOT EXISTS idx_turn_segments_created
+        ON turn_segments(created_at);
 `);
 
 // Lightweight migration for existing DBs created before `trace` column existed.

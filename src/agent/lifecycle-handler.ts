@@ -22,7 +22,7 @@ import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
 import type { ToolEntry } from '../types/agent.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import { resolveSpawnOutputText } from './events/helpers.js';
+import { finishTurnLifecycle, resolveSpawnOutputText } from './events/helpers.js';
 import { isKiroPlainTextCli, isKiroResumeDegradedOutput } from './kiro-runtime.js';
 import {
     incrementMemoryFlush,
@@ -275,6 +275,9 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     const empTag = isEmployee ? { isEmployee: true } : {};
     const liveScope = ctx.liveScope || 'default';
     const traceStatus = code === 0 ? 'done' : wasKilled ? 'interrupted' : 'error';
+    let turnStatus = wasKilled ? 'interrupted' : (code === 0 || code === null) ? 'done' : 'error';
+
+    try {
 
     // ─── Smoke response auto-continuation ───
     if (
@@ -311,6 +314,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         broadcast('agent_status', { running: false, agentId: agentLabel, ...empTag });
         finalizeTraceRun(ctx.traceRunId, 'done');
 
+        turnStatus = 'continued';
         const contPrompt = buildContinuationPrompt(prompt, ctx.fullText);
         const { promise: contPromise } = _spawnAgent(contPrompt, {
             ...opts, _isSmokeContinuation: true, _skipInsert: true,
@@ -487,6 +491,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             ...empTag,
         }, isEmployee ? 'internal' : 'public');
         finalizeTraceRun(ctx.traceRunId, 'error', 'kiro stale resume');
+        turnStatus = 'continued';
         const { promise: retryP } = _spawnAgent(prompt, {
             ...opts,
             _skipResume: true,
@@ -658,6 +663,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 ...empTag,
             }, isEmployee ? 'internal' : 'public');
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+            turnStatus = 'continued';
             const { promise: retryP } = _spawnAgent(prompt, {
                 ...opts,
                 _skipResume: true,
@@ -698,6 +704,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             console.log(`[jaw:retry] ${cli} 429 detected — waiting ${delaySec}s before retry (attempt ${mainAttempt + 1}/${MAIN_MAX_RETRIES})`);
             broadcast('agent_retry', { cli, delay: delaySec, reason: errMsg, attempt: mainAttempt + 1, maxRetries: MAIN_MAX_RETRIES, ...empTag }, isEmployee ? 'internal' : 'public');
             finalizeTraceRun(ctx.traceRunId, 'error', errMsg);
+            turnStatus = 'continued';
             retryState.setIsEmployee(isEmployee);
             retryState.setResolve(resolve);
             retryState.setOrigin(origin);
@@ -739,6 +746,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                         await autoCompactRefresh({ workDir: settings["workingDir"] || null, instructions: '', cli, model });
                     }
                 } catch {}
+                turnStatus = 'continued';
                 const { promise: retryP } = _spawnAgent(prompt, {
                     ...opts, cli: fallbackCli, _isFallback: true, _skipInsert: true,
                 });
@@ -780,6 +788,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
                 maxRetries: 1,
             }, 'internal');
             finalizeTraceRun(ctx.traceRunId, 'error', cls.message);
+            turnStatus = 'continued';
             const { promise: retryP } = _spawnAgent(prompt, {
                 ...opts,
                 _skipInsert: true,
@@ -801,6 +810,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             console.log(`[jaw:retry] employee ${cli} transient exit — retry in ${empDelaySec}s (attempt ${empAttempt + 1}/${EMP_MAX_RETRIES}, ${cls.message})`);
             broadcast('agent_retry', { cli, delay: empDelaySec, reason: cls.message, isEmployee: true, attempt: empAttempt + 1 }, 'internal');
             finalizeTraceRun(ctx.traceRunId, 'error', cls.message);
+            turnStatus = 'continued';
             retryState.setIsEmployee(true);
             retryState.setResolve(resolve);
             retryState.setOrigin(origin);
@@ -847,6 +857,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             ...empTag,
         }, isEmployee ? 'internal' : 'public');
         finalizeTraceRun(ctx.traceRunId, 'error', 'kiro resume empty');
+        turnStatus = 'continued';
         const { promise: retryP } = _spawnAgent(prompt, {
             ...opts,
             _skipResume: true,
@@ -1048,6 +1059,13 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     }
 
     if (mainManaged && !wasSteer) processQueue();
+    } finally {
+        finishTurnLifecycle(
+            ctx,
+            turnStatus,
+            (opts.internal || isEmployee) ? 'internal' : 'public',
+        );
+    }
 }
 
 // ─── Post-flush reindex (3-C) ────────────────────────
