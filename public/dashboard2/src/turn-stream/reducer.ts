@@ -152,6 +152,21 @@ function commitDraft(state: InternalState, draft: RowDraft): InternalState {
     return next;
 }
 
+/** join-at-finalize: an unjoined run with exactly ONE live turn is
+ *  unambiguous — persist the join so ring evictions can never reclassify
+ *  the retained body as active later (long sessions, steered runs) */
+function joinRunToOnlyLiveTurn(state: InternalState, runId: string): InternalState {
+    if (runId in state.runToTurn) return state;
+    const liveTurnIds = new Set<string>();
+    for (const key of state.rowOrder) {
+        const turnId = state.rows[key].turnId;
+        if (!state.turnStatus[turnId]) liveTurnIds.add(turnId);
+    }
+    if (liveTurnIds.size !== 1) return state;
+    const [only] = liveTurnIds;
+    return { ...state, runToTurn: { ...state.runToTurn, [runId]: only } };
+}
+
 export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnStreamState {
     const s = internal(state);
     switch (action.kind) {
@@ -194,7 +209,14 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
             return afterTool;
         }
         case 'agent_done': {
-            if (action.steered === true) return s;
+            if (action.steered === true) {
+                // suppressed output — but the run is DEAD: finalize + join so
+                // its retained body never poisons the unambiguous fallback
+                if (!action.traceRunId) return s;
+                let steered: InternalState = { ...s, idempotency: markRunFinalized(s.idempotency, action.traceRunId) };
+                steered = joinRunToOnlyLiveTurn(steered, action.traceRunId);
+                return steered;
+            }
             if (!shouldAcceptDone(s.idempotency, action.traceRunId)) {
                 return pushDiagnostic(s, 'replay', 'stale/finalized agent_done');
             }
@@ -202,6 +224,7 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
             if (action.traceRunId) {
                 const liveBodies = { ...next.liveBodies, [action.traceRunId]: action.text };
                 next = { ...next, liveBodies: capLiveBodies(liveBodies, action.traceRunId) };
+                next = joinRunToOnlyLiveTurn(next, action.traceRunId);
             }
             return next;
         }
@@ -248,6 +271,18 @@ export function serializeState(state: TurnStreamState): string {
 /** Batch application: consecutive lifecycle actions share ONE row-table
  *  clone, keeping bulk ingest (042 store fold) O(n log n) instead of O(n^2). */
 export function reduceBatch(state: TurnStreamState, actions: readonly TurnStreamAction[]): TurnStreamState {
+    return reduceBatchImpl(state, actions);
+}
+
+/** live bodies that are neither joined to a turn nor from a finalized run —
+ *  the 042 store's unambiguous-pairing fallback consumes exactly these */
+export function unjoinedActiveLiveBodies(state: TurnStreamState): Array<[string, string]> {
+    const finalized = internal(state).idempotency.finalizedTraceRuns;
+    return Object.entries(state.liveBodies).filter(([runId]) =>
+        !(runId in state.runToTurn) && !finalized.includes(runId));
+}
+
+function reduceBatchImpl(state: TurnStreamState, actions: readonly TurnStreamAction[]): TurnStreamState {
     let s = state;
     let i = 0;
     while (i < actions.length) {

@@ -189,5 +189,5 @@ test('044: source contracts — Icon reuse, no theme writes, css import order, n
     const turnIdx = main.indexOf('styles/turn-stream.css');
     assert.ok(tokenIdx >= 0 && baseIdx > tokenIdx && turnIdx > baseIdx, 'css import order: tokens → base → turn-stream');
     const workbench = readFileSync(join(ROOT, 'public/dashboard2/src/shell/Workbench.tsx'), 'utf8');
-    assert.ok(workbench.includes('TurnStreamPane'), 'turn stream mounts inside the Workbench pane array');
+    assert.ok(workbench.includes('ChatView'), 'turn stream mounts inside the Workbench pane array via ChatView (045 host)');
 });

@@ -1,7 +1,7 @@
 // 044 — virtualized committed turn stream (M3.3 visual core).
 // D12: @tanstack/react-virtual. Rows subscribe per-turn via useTurn; this
 // viewport only consumes the list snapshot (order + versions).
-import { useLayoutEffect, useRef, type JSX } from 'react';
+import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TurnStore } from '../store/turn-store.ts';
 import { useTurnList } from '../store/use-turn.ts';
@@ -15,9 +15,12 @@ const BOTTOM_LOCK_SLACK_PX = 48;
 
 export interface TurnStreamViewportProps {
     store: TurnStore;
+    /** live tail region rendered inside the same scroll container, after the
+     *  committed transcript (045); bottom lock covers auto-follow */
+    tail?: ReactNode;
 }
 
-export function TurnStreamViewport({ store }: TurnStreamViewportProps): JSX.Element {
+export function TurnStreamViewport({ store, tail }: TurnStreamViewportProps): JSX.Element {
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const prevTotalRef = useRef(0);
@@ -110,6 +113,7 @@ export function TurnStreamViewport({ store }: TurnStreamViewportProps): JSX.Elem
                     </div>
                 ))}
             </div>
+            {tail}
         </div>
     );
 }

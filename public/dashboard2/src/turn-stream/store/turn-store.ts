@@ -8,6 +8,7 @@ import {
     createTurnStreamState,
     reduce,
     reduceBatch,
+    unjoinedActiveLiveBodies,
 } from '../reducer.ts';
 import type {
     TurnStreamAction,
@@ -394,6 +395,15 @@ export function createTurnStore(
         getLiveBodyForTurn(turnId) {
             for (const [runId, text] of Object.entries(reducerState.liveBodies)) {
                 if (reducerState.runToTurn[runId] === turnId) return text;
+            }
+            // fallback: assistant turns without trace-bearing rows never join
+            // (server lifecycle rows carry detailRef null) — with exactly ONE
+            // live turn and ONE unjoined live body, the pairing is unambiguous
+            // (finalized runs are excluded, so a previous tool-less turn's
+            // final body cannot make the next pairing ambiguous)
+            if (liveTurns.size === 1 && liveTurns.has(turnId)) {
+                const unjoined = unjoinedActiveLiveBodies(reducerState);
+                if (unjoined.length === 1) return unjoined[0][1];
             }
             return null;
         },

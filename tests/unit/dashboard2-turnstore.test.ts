@@ -295,6 +295,42 @@ test('042/044: post-terminal rows (detached collab) notify the committed turn su
     assert.ok(store.getTurnRows('late-turn').some(r => r.type === 'collab'));
 });
 
+test('045: ten consecutive tool-less turns each keep their streaming body (ring-boundary)', () => {
+    const store = createTurnStore('3457/any');
+    for (let i = 1; i <= 10; i++) {
+        const turnId = `seq-turn-${String(i).padStart(2, '0')}`;
+        store.ingest(lifecycleActions([{
+            topic: 'agent', event: 'turn_start',
+            turnId, turnSeq: 1, segmentId: `${turnId}:start`, sessionId: 'fixture-session-0',
+            createdAt: 1_790_000_000_000 + i, observedAt: 1_790_000_000_000 + i, providerAt: null,
+            fidelity: 'full', thinkingMarker: null, type: 'turn_start', status: 'running', detailRef: null,
+        }]));
+        store.ingest({ kind: 'body_chunk', traceRunId: `seq-run-${i}`, text: `body${i}`, textLen: 5 + String(i).length });
+        assert.equal(store.getLiveBodyForTurn(turnId), `body${i}`, `turn ${i} sees its live body`);
+        store.ingest({ kind: 'agent_done', traceRunId: `seq-run-${i}`, text: `body${i}` });
+        store.ingest(lifecycleActions([syntheticEnd(turnId, 'fixture-session-0', 9)]));
+    }
+});
+
+test('045: steered/interrupted tool-less turn does not poison the next fallback pairing', () => {
+    const store = createTurnStore('3457/any');
+    const startRow = (turnId: string): TurnLifecycleSsePayload => ({
+        topic: 'agent', event: 'turn_start',
+        turnId, turnSeq: 1, segmentId: `${turnId}:start`, sessionId: 'fixture-session-0',
+        createdAt: 1_790_000_000_000, observedAt: 1_790_000_000_000, providerAt: null,
+        fidelity: 'full', thinkingMarker: null, type: 'turn_start', status: 'running', detailRef: null,
+    });
+    // turn 1: body chunk -> steered done -> interrupted turn_end (real ordering)
+    store.ingest(lifecycleActions([startRow('steer-turn-1')]));
+    store.ingest({ kind: 'body_chunk', traceRunId: 'steer-run-1', text: 'body1', textLen: 5 });
+    store.ingest({ kind: 'agent_done', traceRunId: 'steer-run-1', text: '', steered: true });
+    store.ingest(lifecycleActions([{ ...syntheticEnd('steer-turn-1', 'fixture-session-0', 9), status: 'interrupted' }]));
+    // turn 2: tool-less live turn must still see its own body
+    store.ingest(lifecycleActions([startRow('steer-turn-2')]));
+    store.ingest({ kind: 'body_chunk', traceRunId: 'steer-run-2', text: 'body2', textLen: 5 });
+    assert.equal(store.getLiveBodyForTurn('steer-turn-2'), 'body2');
+});
+
 test('042: boundary contracts — no zustand, scope.tsx owns UI only, store owns no pane state', () => {
     const storeDir = join(ROOT, 'public/dashboard2/src/turn-stream/store');
     for (const rel of ['turn-store.ts', 'tier-budget.ts', 'selectors.ts', 'use-turn.ts', 'sync-turn-store.ts']) {

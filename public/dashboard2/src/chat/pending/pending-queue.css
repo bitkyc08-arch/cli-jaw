@@ -1,0 +1,101 @@
+.d2-pending {
+    border-top: 1px solid var(--d2-border, #d7d9dd);
+    padding: 10px 12px;
+}
+
+.d2-pending-header {
+    align-items: center;
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+}
+
+.d2-pending-header h2 {
+    font-size: 12px;
+    font-weight: 650;
+    margin: 0;
+}
+
+.d2-pending-header span,
+.d2-pending-copy > span {
+    color: var(--d2-muted, #686d76);
+    font-size: 11px;
+}
+
+.d2-pending-list {
+    display: grid;
+    gap: 4px;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.d2-pending-row {
+    align-items: center;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) 60px;
+    min-height: 52px;
+    padding: 5px 0;
+}
+
+.d2-pending-copy {
+    min-width: 0;
+}
+
+.d2-pending-copy p {
+    display: -webkit-box;
+    font-size: 12px;
+    line-height: 1.35;
+    margin: 0;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.d2-pending-status {
+    display: block;
+    height: 14px;
+    line-height: 14px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-pending-row[data-phase='armed'] .d2-pending-status,
+.d2-pending-row[data-phase='error'] .d2-pending-status {
+    color: var(--d2-danger, #b42318);
+}
+
+.d2-pending-actions {
+    display: grid;
+    gap: 4px;
+    grid-template-columns: repeat(2, 28px);
+    width: 60px;
+}
+
+.d2-pending-actions button {
+    align-items: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    color: inherit;
+    display: inline-flex;
+    height: 28px;
+    justify-content: center;
+    padding: 0;
+    width: 28px;
+}
+
+.d2-pending-actions button:hover,
+.d2-pending-actions button:focus-visible,
+.d2-pending-actions button[aria-pressed='true'] {
+    background: var(--d2-hover, #eef0f3);
+    border-color: var(--d2-border, #d7d9dd);
+    outline: none;
+}
+
+.d2-pending-actions button:focus-visible {
+    box-shadow: 0 0 0 2px var(--d2-focus, #2f6feb);
+}

@@ -49,6 +49,8 @@ export interface InstanceOriginClient {
     fetchSessions(): Promise<ChatSessionList>;
     fetchMessagesPage(opts: { limit?: number; before?: number }): Promise<MessagesPageResponse>;
     sendMessage(prompt: string, opts?: { signal?: AbortSignal; external?: boolean }): Promise<MessageResponse>;
+    /** stop the active run on this instance (POST /api/stop) */
+    stopAgent(): Promise<{ ok: boolean }>;
     uploadAttachment(file: File, opts?: { signal?: AbortSignal }): Promise<AttachmentUploadResponse>;
     transcribeVoice(blob: Blob, opts?: { signal?: AbortSignal; extension?: string }): Promise<VoiceTranscriptionResponse>;
 }
@@ -137,6 +139,9 @@ function createManagerApiClient(): ManagerApiClient {
                 body: JSON.stringify({ prompt, external: opts?.external }),
                 ...(opts?.signal ? { signal: opts.signal } : {}),
             });
+        },
+        stopAgent() {
+            return fetchJson<{ ok: boolean }>(`/i/${port}/api/stop`, { method: 'POST' });
         },
         uploadAttachment(file, opts) {
             return fetchJson<AttachmentUploadResponse>(`/i/${port}/api/upload`, {

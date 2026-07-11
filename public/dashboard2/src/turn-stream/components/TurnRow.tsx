@@ -8,7 +8,7 @@ import { parseCollabIdentity } from '../adapters/collab-segment.ts';
 import { parseWidgetDescriptor } from '../widgets/widget-segment-adapter.ts';
 import type { TurnStore } from '../store/turn-store.ts';
 import { useTurn, useTurnBody } from '../store/use-turn.ts';
-import { AssistantTextSegment } from './segments/AssistantTextSegment.tsx';
+import { MarkdownSegment } from './MarkdownSegment.tsx';
 import { CollabSegment } from './segments/CollabSegment.tsx';
 import { ThinkingSegment } from './segments/ThinkingSegment.tsx';
 import { ToolLine } from './segments/ToolLine.tsx';
@@ -89,7 +89,9 @@ export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
             );
         } else if (row.type === 'assistant_text') {
             if (lastTextKey && row.turnSeq === lastTextKey.turnSeq) {
-                items.push(<AssistantTextSegment key={key} text={body?.text ?? ''} />);
+                // committed assistant text renders through the full markdown +
+                // sanitize pipeline (streaming preview is the live tail's mode)
+                items.push(<MarkdownSegment key={key} text={body?.text ?? ''} />);
             }
         }
     }
