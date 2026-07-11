@@ -26,7 +26,7 @@ import { clearMainSessionState, resetSessionPreservingHistory } from '../core/ma
 import { applyRuntimeSettingsPatch } from '../core/runtime-settings.js';
 import { resetEmployeeSessions, seedDefaultEmployees } from '../core/employees.js';
 import { handleVoice } from './voice.js';
-import { registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
+import { getLastActiveTarget, registerTransport, setLastActiveTarget, setLatestSeenTarget } from '../messaging/runtime.js';
 import { registerSendTransport, sendChannelOutput } from '../messaging/send.js';
 import type { RemoteTarget } from '../messaging/types.js';
 import type { ChannelSendRequest } from '../messaging/send.js';
@@ -34,6 +34,7 @@ import {
     escapeHtmlTg,
     createForwarderLifecycle,
     createTelegramForwarder,
+    relayTelegramImages,
 } from './forwarder.js';
 import { sendTelegramMarkdown, type RichSendOpts } from './rich-message.js';
 
@@ -74,6 +75,7 @@ const telegramForwarderLifecycle = createForwarderLifecycle({
             const chatIds = Array.from(telegramActiveChatIds);
             return chatIds.length ? (chatIds[chatIds.length - 1] ?? null) : null;
         },
+        getLastTarget: () => getLastActiveTarget('telegram'),
         shouldSkip: (data: Record<string, unknown>) => data["origin"] === 'telegram', // handled by tgOrchestrate already
         log: ({ chatId, preview }: { chatId: string | number; preview: string }) => {
             log.info(`[tg:forward] → chat ${chatId}: ${String(preview).slice(0, 60)}...`);
@@ -481,6 +483,7 @@ async function _initTelegramInner() {
         const chatId = ctx.chat?.id;
         if (!ctx.chat) return;
         const chat = ctx.chat;
+        const responseTarget = buildTelegramTarget(ctx);
         const result = submitMessage(prompt, stripUndefined({ origin: 'telegram' as const, displayText: displayMsg, skipOrchestrate: true, chatId }));
         // Reproduce grammy ctx.reply's auto-injected routing (context.js: thread/business/DM-topic)
         // so the rich-first send helper lands replies exactly where ctx.reply would.
@@ -511,7 +514,10 @@ async function _initTelegramInner() {
                 if (type === 'orchestrate_done' && data["text"] && data["origin"] === 'telegram' && data["requestId"] === requestId) {
                     removeBroadcastListener(queueHandler);
                     sendTelegramMarkdown(ctx.api, chat.id, String(data["text"]), replyOptsOf(ctx))
-                        .then(() => sendElicitationKeyboards(chat.id, data["elicitationSpecs"]))
+                        .then(async () => {
+                            await relayTelegramImages(bot, chat.id, String(data["text"]), responseTarget);
+                            await sendElicitationKeyboards(chat.id, data["elicitationSpecs"]);
+                        })
                         .catch(() => { });
                 }
             };
@@ -627,6 +633,7 @@ async function _initTelegramInner() {
                 ctx.api.deleteMessage(chat.id, statusMsgId).catch(() => { });
             }
             await sendTelegramMarkdown(ctx.api, chat.id, result, replyOptsOf(ctx));
+            await relayTelegramImages(bot, chat.id, result, responseTarget);
             await sendElicitationKeyboards(chat.id, doneData["elicitationSpecs"]);
             log.info(`[tg:out] ${chat.id}: ${result.slice(0, 80)}`);
         } catch (err: unknown) {

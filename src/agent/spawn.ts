@@ -56,6 +56,7 @@ import { asCliEventRecord, discriminate, fieldString, type CliEventRecord } from
 import type { RemoteTarget } from '../messaging/types.js';
 import { isJawRuntimeEvent, handleJawRuntimeEvent } from './claude-e-runtime.js';
 import { jawRuntime } from './jwc-runtime.js';
+import { applyOutputPolicy, runBeforeSpawnChecks, type PolicyVerdict } from '../core/policy-hooks.js';
 import { appendTraceEvent, stampTraceTool, startTraceRun } from '../trace/store.js';
 import {
     AGY_COMPLETE_KILL_REASON,
@@ -64,6 +65,8 @@ import {
     describeAgyFinalSource,
     extractAgyConversationId,
     finalizeAgyFallbackText,
+    AGY_PLANNER_ONLY_NOTICE,
+    isAgyIntermediatePlannerText,
     formatAgyWatchdogContext,
     resolveAgyEmptyCloseError,
     formatAgyTimeoutMessage,
@@ -129,6 +132,7 @@ export interface MainSessionMeta {
     cli?: string;
     model?: string;
     effectiveProvider?: string;
+    policyVerdicts?: PolicyVerdict[];
 }
 let currentMainMeta: MainSessionMeta | null = null;
 export function getCurrentMainMeta(): MainSessionMeta | null {
@@ -180,9 +184,17 @@ interface SessionBucketRow {
     output_len?: number | null;
     memory_snapshot?: string | null;
     updated_at?: string | number | null;
+    last_run_clean?: number | null;
+    last_run_cwd?: string | null;
+    last_run_meta?: string | null;
 }
 
-type SpawnPromiseResult = { text: string; code: number };
+type SpawnPromiseResult = {
+    text: string;
+    code: number;
+    agyCheckpointSeen?: boolean;
+    agyPlannerOnly?: boolean;
+};
 
 interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
@@ -683,8 +695,8 @@ import { AcpClient } from '../cli/acp-client.js';
 import { CodexAppClient } from './codex-app-client.js';
 import { extractFromCodexAppEvent } from './codex-app-events.js';
 
-import { shouldEmitHeartbeat, shouldResumeBucketSession } from './spawn/resume.js';
-export { shouldEmitHeartbeat, shouldResumeBucketSession };
+import { canGuardedAgyResume, resolveAgyNativeResume, shouldEmitHeartbeat, shouldResumeBucketSession } from './spawn/resume.js';
+export { canGuardedAgyResume, resolveAgyNativeResume, shouldEmitHeartbeat, shouldResumeBucketSession };
 import { createQueueController, FALLBACK_MAX_RETRIES } from './spawn/queue.js';
 export type { QueueController } from './spawn/queue.js';
 
@@ -707,6 +719,7 @@ interface SpawnOpts {
     _skipSessionPersist?: boolean;
     _employeeFreshSessionRetry?: boolean;
     _kiroFreshRetry?: boolean;
+    _agyStaleFreshRetry?: boolean;
     forceNew?: boolean;
     agentId?: string;
     sysPrompt?: string;
@@ -857,7 +870,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         jawRuntime.setLiveScope(liveScope);
         const settleJwcTurn = (result: { text: string; code: number }): void => {
             const live = getLiveRun(liveScope);
-            const finalText = result.code === 0 ? live.text : result.text;
+            const rawFinalText = result.code === 0 ? live.text : result.text;
+            const finalText = applyOutputPolicy(rawFinalText, { scope: 'main' }).text;
             // Persist may throw (better-sqlite3 is sync: DB lock / schema). Cleanup MUST
             // still run or mainSpawnStarting sticks true and the jwc queue deadlocks.
             try {
@@ -945,10 +959,22 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const bucketResumeKey = typeof bucketRow?.resume_key === 'string' ? bucketRow.resume_key : null;
     const bucketUpdatedAt = bucketRow?.updated_at ?? null;
     const resumeKey = buildSessionResumeKey(cli, spawnEnv);
+    const agyBinaryForCapabilities = cli === 'agy' ? (detectCli('agy').path || 'agy') : null;
+    const earlyAgyCapabilities = agyBinaryForCapabilities ? detectAgyCapabilities(agyBinaryForCapabilities) : undefined;
+    const agyResumeDecision = canGuardedAgyResume({
+        mode: resolveAgyNativeResume(cfg.nativeResume),
+        conversationSupported: earlyAgyCapabilities?.conversation === true,
+        sessionId: bucketSessionId, bucketUpdatedAt, requestedModel: runtimeModel, bucketModel,
+        cwd: settings['workingDir'] || '', lastRunCwd: bucketRow?.last_run_cwd,
+        lastRunClean: bucketRow?.last_run_clean, lastRunMeta: bucketRow?.last_run_meta,
+        freshBootstrap: forceNew || opts._skipResume === true || Boolean(peekPendingBootstrapPrompt()),
+    });
+    if (cli === 'agy') console.log(`[agy-resume] ${agyResumeDecision.ok ? 'resume' : 'fresh'} reason=${agyResumeDecision.reason}`);
     // AGY native resume can replay prior stdout and continue stale mid-turn planner
-    // state. cli-jaw keeps safer cross-turn context via DB history instead.
+    // state. cli-jaw defaults to DB history; guarded native resume is explicit opt-in.
     const providerSupportsResume = cli !== 'agy'
-        && !(cli === 'ai-e' && effectiveProvider !== 'claude' && effectiveProvider !== 'kiro' && effectiveProvider !== 'codex' && effectiveProvider !== 'grok');
+        ? !(cli === 'ai-e' && effectiveProvider !== 'claude' && effectiveProvider !== 'kiro' && effectiveProvider !== 'codex' && effectiveProvider !== 'grok')
+        : agyResumeDecision.ok;
     const canResumeBucketSession = !bucketSessionId || shouldResumeBucketSession(
         cli,
         runtimeModel,
@@ -1085,12 +1111,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     const agyPrintTimeout = cli === 'agy'
         ? formatAgyPrintTimeout(resolvedAgyPrintTimeoutMs)
         : undefined;
-    const agyBinaryForCapabilities = cli === 'agy'
-        ? (detectCli('agy').path || 'agy')
-        : null;
-    const agyCapabilities = agyBinaryForCapabilities
-        ? detectAgyCapabilities(agyBinaryForCapabilities)
-        : undefined;
+    const agyCapabilities = earlyAgyCapabilities;
     if (agyCapabilities?.usedFallback && agyBinaryForCapabilities && !warnedAgyCapabilityFallbacks.has(agyBinaryForCapabilities)) {
         warnedAgyCapabilityFallbacks.add(agyBinaryForCapabilities);
         console.warn('[agy-capabilities] probe failed; using legacy emit-all argv compatibility');
@@ -1163,6 +1184,13 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         argOptions = { ...argOptions, workingDir: spawnCwd };
         args = buildCurrentArgs(argOptions);
     }
+
+    const policyVerdicts = runBeforeSpawnChecks({
+        cli,
+        promptChars: promptForArgs.length + (sysPrompt?.length || 0),
+        prompt: `${sysPrompt || ''}\n${promptForArgs}`,
+    });
+    if (policyVerdicts.length && currentMainMeta) currentMainMeta.policyVerdicts = policyVerdicts;
 
     // ─── DIFF-A: Preflight — verify CLI binary exists before spawn ───
     const detected = detectCli(cli);
@@ -2044,7 +2072,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         seenToolKeys: new Set<string>(),
         hasClaudeStreamEvents: false,
         runStartedAt: Date.now(),
-        sessionId: (kiroPlainText && isResume && resumeSessionId) ? resumeSessionId : null,
+        sessionId: ((kiroPlainText || cli === 'agy') && isResume && resumeSessionId) ? resumeSessionId : null,
         cost: null as number | null,
         turns: null as number | null,
         duration: null as number | null,
@@ -2075,6 +2103,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(kiroPlainText ? { kiroLastVisibleAt: Date.now(), kiroHeartbeatSent: false } : {}),
     };
     let agyClosing = false;
+    let agyGuardedStaleDetected = false;
     const scheduleAgyQuietCompletion = () => {
         if (cli !== 'agy') return;
         if (agyClosing) return;
@@ -2245,6 +2274,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             // Defensive ANSI strip (belt-and-suspenders with NO_COLOR=1)
             const text = rawText.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, '');
             appendAgyFullText(ctx, text);
+            if (agyResumeDecision.ok && !agyGuardedStaleDetected && isAgyStaleSessionOutput(text)) {
+                agyGuardedStaleDetected = true;
+                console.log('[jaw:agy] stale guarded resume output detected — terminating for fresh retry');
+                if (child.pid) killProcessTree(child.pid, 'SIGTERM');
+                return;
+            }
             if (!ctx.sessionId) ctx.sessionId = extractAgyConversationId(ctx.fullText);
             if (ctx.agyResumeOffset && ctx.agyResumeOffset > 0) {
                 ctx.agyBytesReceived = (ctx.agyBytesReceived ?? 0) + text.length;
@@ -2374,13 +2409,22 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         if (cli === 'agy') {
             ctx.agyTranscriptMode = classifyAgyTranscriptMode(ctx);
         }
-        if (cli === 'agy' && isResume && isAgyStaleSessionOutput(ctx.fullText)) {
+        if (cli === 'agy' && isResume && (agyGuardedStaleDetected || isAgyStaleSessionOutput(ctx.fullText))) {
             console.log(`[jaw:agy] stale session detected (Warning: conversation not found) — clearing bucket`);
             try {
                 const bucket = resolveSessionBucket(cli, runtimeModel, effectiveProvider);
                 clearSessionBucket.run(bucket);
             } catch (e) { console.warn('[jaw:agy] stale bucket clear failed:', (e as Error).message); }
             ctx.sessionId = null;
+            if (agyResumeDecision.ok && !opts._agyStaleFreshRetry) {
+                activeProcesses.delete(agentLabel);
+                if (mainManaged) activeProcess = null;
+                const { promise: freshPromise } = spawnAgent(prompt, {
+                    ...opts, _agyStaleFreshRetry: true, _skipResume: true, _skipInsert: true,
+                });
+                freshPromise.then(resolve!).catch((error: Error) => resolve!({ text: error.message, code: 1 }));
+                return;
+            }
         }
         if (kiroPlainText) {
             const captured = captureKiroSessionIdAfterExit({
@@ -2453,8 +2497,16 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
                 }
             }
             if (ctx.agyFinalPlannerSeen && ctx.agyFinalPlannerText) {
-                ctx.fullText = ctx.agyFinalPlannerText;
-                if (ctx.liveOutputText !== undefined) ctx.liveOutputText = ctx.agyFinalPlannerText;
+                if (isAgyIntermediatePlannerText(ctx.agyFinalPlannerText)) {
+                    ctx.fullText = AGY_PLANNER_ONLY_NOTICE;
+                    if (ctx.liveOutputText !== undefined) ctx.liveOutputText = AGY_PLANNER_ONLY_NOTICE;
+                    ctx.agyFinalPlannerSeen = false;
+                    ctx.agyFinalPlannerText = undefined;
+                    ctx.metadata = { ...ctx.metadata, agyPlannerOnly: true };
+                } else {
+                    ctx.fullText = ctx.agyFinalPlannerText;
+                    if (ctx.liveOutputText !== undefined) ctx.liveOutputText = ctx.agyFinalPlannerText;
+                }
             }
             const normalizedCloseText = normalizeAgyCloseText({
                 fullText: ctx.fullText,
@@ -2483,6 +2535,15 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             finalizeAgyFallbackText(ctx, normalizeAssistantDisplayText(stripInterviewTracker(promotedEcho)));
         }
         if (cli === 'agy') pushTrace(ctx, describeAgyFinalSource(ctx));
+        if (cli === 'agy') {
+            ctx.metadata = {
+                ...ctx.metadata,
+                agyCheckpointSeen: ctx.metadata?.['agyCheckpointSeen'] === true,
+                agyPlannerOnly: ctx.metadata?.['agyPlannerOnly'] === true
+                    && ctx.toolLog.length === 0
+                    && !ctx.agyFinalPlannerSeen,
+            };
+        }
         const effectiveExitCode = agyCompletedByQuietOutput && !agyTranscriptErrorMessage
             ? 0
             : agyTranscriptErrorMessage

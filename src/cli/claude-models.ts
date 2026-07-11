@@ -12,8 +12,8 @@ export type ClaudeCanonicalModel = (typeof CLAUDE_CANONICAL_MODELS)[number];
 // Pinned full IDs Claude Code accepts as `--model`. The `[1m]` suffix is
 // parsed by Claude Code itself (not Anthropic): the CLI strips the suffix
 // before forwarding the clean model ID and enables the 1M-context window.
-// 1M context is supported on Fable 5, Opus 4.8, Opus 4.7, Opus 4.6, and
-// Sonnet 4.6 — Haiku stays at 200k so there is no `claude-haiku-4-5[1m]`
+// 1M context is supported on Fable 5, Sonnet 5, Opus 4.8, Opus 4.7, Opus 4.6,
+// and Sonnet 4.6 — Haiku stays at 200k so there is no `claude-haiku-4-5[1m]`
 // variant.
 //
 // Verified 2026-05-01 via Grok web research (4 rounds, sources cited in
@@ -21,6 +21,8 @@ export type ClaudeCanonicalModel = (typeof CLAUDE_CANONICAL_MODELS)[number];
 export const CLAUDE_PINNED_FULL_IDS = [
   'claude-fable-5',
   'claude-fable-5[1m]',
+  'claude-sonnet-5',
+  'claude-sonnet-5[1m]',
   'claude-opus-4-8',
   'claude-opus-4-8[1m]',
   'claude-opus-4-7',

@@ -58,7 +58,7 @@ export const DEFAULT_PI_SETTINGS: PiSettings = {
     defaultProfileId: DEFAULT_PI_PROFILE.id,
     profiles: [DEFAULT_PI_PROFILE],
     discoveredModels: {
-        [DEFAULT_PI_PROFILE.id]: ['grok-composer-2.5-fast', 'grok-4.3'],
+        [DEFAULT_PI_PROFILE.id]: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
     },
 };
 

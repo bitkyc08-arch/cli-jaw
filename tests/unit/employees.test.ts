@@ -6,7 +6,6 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { CODEX_MODEL_CHOICES } from '../../src/cli/registry.ts';
 import { resetOpenCodexModelCacheForTest } from '../../src/cli/opencodex-models.ts';
 import {
     STATIC_EMPLOYEES,
@@ -32,21 +31,22 @@ async function withInactiveOpenCodex<T>(fn: () => Promise<T>): Promise<T> {
     }
 }
 
-test('P37-CU-001: Control static employee is defined with Codex + darwin hint', () => {
+test('P37-CU-001: Control static employee is defined with Codex + luna + darwin hint', () => {
     const control = findStaticEmployee('Control');
     assert.ok(control, 'Control must be in STATIC_EMPLOYEES');
     assert.equal(control!.cli, 'codex');
+    assert.equal(control!.model, 'gpt-5.6-luna');
     assert.equal(control!.runtimeHints?.requiresDarwin, true);
 });
 
-test('P37-CU-002: Control carries desktop-control + screen-capture (vision-click absorbed)', () => {
+test('P37-CU-002: Control carries desktop-control + screen-capture + codex-imagegen', () => {
     // vision-click is no longer a separate active skill for Control — the
     // desktop-control skill's reference/vision-click.md covers routing, and
     // the `cli-jaw browser vision-click` command encapsulates the
     // low-level recipe. See 37_revisions_and_integration.md §G.
     const control = findStaticEmployee('control'); // case-insensitive
     assert.ok(control);
-    for (const skill of ['desktop-control', 'screen-capture']) {
+    for (const skill of ['desktop-control', 'screen-capture', 'codex-imagegen']) {
         assert.ok(control!.skills.includes(skill), `missing skill: ${skill}`);
     }
     assert.ok(!control!.skills.includes('vision-click'),
@@ -77,7 +77,7 @@ test('P37-CU-006: resolveDispatchableEmployee returns static row with synthetic 
     assert.equal(res!.source, 'static');
     assert.equal(res!.row.name, 'Control');
     assert.equal(res!.row.cli, 'codex');
-    assert.equal(res!.row.model, CODEX_MODEL_CHOICES[0]);
+    assert.equal(res!.row.model, 'gpt-5.6-luna');
     assert.match(String(res!.row.id), /^static:/);
     assert.ok(res!.spec, 'spec must accompany static resolution');
 });

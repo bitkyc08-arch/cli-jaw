@@ -14,6 +14,7 @@ import {
     describeAgyFinalSource,
     extractAgyConversationId,
     finalizeAgyFallbackText,
+    AGY_PLANNER_ONLY_NOTICE,
     formatAgyTimeoutMessage,
     formatAgyTranscriptErrorMessage,
     getAgyQuietCompletionDelayMs,
@@ -581,6 +582,19 @@ test('AGY-RT-022: finalizeAgyFallbackText no-ops for transcript-anchored or unto
         agyFullTextTruncated: undefined as boolean | undefined,
     };
     assert.equal(finalizeAgyFallbackText(untouched, 'same'), false);
+});
+
+test('AGY-RT-023: stdout fallback with an intermediate planner prefix is withheld', () => {
+    const ctx = {
+        fullText: 'my_tool_call_analysis: inspect state',
+        liveOutputText: 'my_tool_call_analysis: inspect',
+        agyFinalPlannerSeen: false,
+        metadata: {},
+    };
+    assert.equal(finalizeAgyFallbackText(ctx, ctx.fullText), true);
+    assert.equal(ctx.fullText, AGY_PLANNER_ONLY_NOTICE);
+    assert.equal(ctx.liveOutputText, AGY_PLANNER_ONLY_NOTICE);
+    assert.equal(ctx.metadata.agyPlannerOnly, true);
 });
 
 test('AGY-RT-023: describeAgyFinalSource reports mode and truncation for diagnosability', () => {

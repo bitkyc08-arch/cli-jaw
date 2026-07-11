@@ -231,6 +231,9 @@ if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'o
 if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'memory_snapshot')) {
     db.exec('ALTER TABLE session_buckets ADD COLUMN memory_snapshot TEXT DEFAULT NULL');
 }
+if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'last_run_clean')) db.exec('ALTER TABLE session_buckets ADD COLUMN last_run_clean INTEGER DEFAULT NULL');
+if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'last_run_cwd')) db.exec('ALTER TABLE session_buckets ADD COLUMN last_run_cwd TEXT DEFAULT NULL');
+if (!(sessionBucketCols as Record<string, unknown>[]).some(c => c["name"] === 'last_run_meta')) db.exec('ALTER TABLE session_buckets ADD COLUMN last_run_meta TEXT DEFAULT NULL');
 
 // ─── Prepared Statements ─────────────────────────────
 
@@ -330,7 +333,7 @@ export const clearEmployeeSession = db.prepare('DELETE FROM employee_sessions WH
 export const clearAllEmployeeSessions = db.prepare('DELETE FROM employee_sessions');
 
 // ─── Session Buckets (per-bucket resume storage) ─────
-export const getSessionBucket = db.prepare('SELECT bucket, session_id, model, resume_key, output_len, memory_snapshot, updated_at FROM session_buckets WHERE bucket = ?');
+export const getSessionBucket = db.prepare('SELECT bucket, session_id, model, resume_key, output_len, memory_snapshot, updated_at, last_run_clean, last_run_cwd, last_run_meta FROM session_buckets WHERE bucket = ?');
 export const upsertSessionBucket = db.prepare(`
     INSERT INTO session_buckets (bucket, session_id, model, resume_key, output_len, updated_at)
     VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -352,6 +355,7 @@ export const setSessionBucketSnapshot = db.prepare(`
     ON CONFLICT(bucket) DO UPDATE SET memory_snapshot=excluded.memory_snapshot
 `);
 export const clearSessionBucket = db.prepare('DELETE FROM session_buckets WHERE bucket = ?');
+export const updateSessionBucketLastRun = db.prepare('UPDATE session_buckets SET last_run_clean=?, last_run_cwd=?, last_run_meta=? WHERE bucket=?');
 
 // ─── Message Queue Persistence ──────────────────────
 export const listQueuedMessages = db.prepare('SELECT id, payload FROM queued_messages ORDER BY created_at ASC');

@@ -96,7 +96,15 @@ function isUserSafeWatchdogDiagnostic(text: string) {
  * Ensures attach/detach idempotency so re-init does not leak listeners.
  */
 import type { Bot } from 'grammy';
+import { settings } from '../core/config.js';
+import { log as appLog } from '../core/logger.js';
+import { stripUndefined } from '../core/strip-undefined.js';
+import { extractLocalImagePaths } from '../messaging/extract-images.js';
+import { threadIdNumber } from '../messaging/thread-target.js';
+import type { RemoteTarget } from '../messaging/types.js';
+import { assertSendFilePath } from '../security/path-guards.js';
 import { sendTelegramMarkdown } from './rich-message.js';
+import { sendTelegramFile, validateFileSize } from './telegram-file.js';
 
 type BroadcastForwarder = (type: string, data: Record<string, unknown>) => void | Promise<void>;
 
@@ -109,9 +117,46 @@ interface ForwarderLifecycleOptions {
 interface TelegramForwarderOptions {
     bot: Bot;
     getLastChatId: () => string | number | null | undefined;
+    getLastTarget?: () => RemoteTarget | null;
     shouldSkip?: (data: Record<string, unknown>) => boolean;
     log?: (info: { chatId: string | number; preview: string }) => void;
     prefix?: string;
+}
+
+export async function relayTelegramImages(
+    bot: Bot,
+    chatId: string | number,
+    text: string,
+    target?: RemoteTarget | null,
+): Promise<void> {
+    for (const candidate of extractLocalImagePaths(text)) {
+        try {
+            const filePath = assertSendFilePath(
+                candidate,
+                settings["workingDir"] || undefined,
+                settings["projectDirs"] || null,
+            );
+            validateFileSize(filePath, 'photo');
+            const result = await sendTelegramFile(
+                bot,
+                chatId,
+                filePath,
+                'photo',
+                stripUndefined({ threadId: threadIdNumber(target ?? undefined) }),
+            );
+            if (!result.ok) {
+                appLog.warn('[tg:image-relay] send failed', {
+                    path: candidate,
+                    error: result.error || 'unknown error',
+                });
+            }
+        } catch (error: unknown) {
+            appLog.warn('[tg:image-relay] skipped', {
+                path: candidate,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
 }
 
 export function createForwarderLifecycle({
@@ -149,22 +194,43 @@ export function createForwarderLifecycle({
 export function createTelegramForwarder({
     bot,
     getLastChatId,
+    getLastTarget,
     shouldSkip = (_data: Record<string, unknown>) => false,
     log = (_info: { chatId: string | number; preview: string }) => { },
     prefix = '📡 ',
 }: TelegramForwarderOptions) {
     return (type: string, data: Record<string, unknown>) => {
-        if (type !== 'agent_done' || !data?.["text"]) return;
-        if (data["error"] && !isUserSafeWatchdogDiagnostic(String(data["text"]))) return;
-        if (shouldSkip(data)) return;
+        void (async () => {
+            try {
+                if (type !== 'agent_done' || !data?.["text"]) return;
+                if (data["error"] && !isUserSafeWatchdogDiagnostic(String(data["text"]))) return;
+                if (shouldSkip(data)) return;
 
-        const chatId = typeof getLastChatId === 'function' ? getLastChatId() : null;
-        if (!chatId) return;
+                const candidateTarget = getLastTarget?.() ?? null;
+                const target = candidateTarget?.channel === 'telegram' ? candidateTarget : null;
+                const chatId = target?.targetId
+                    ?? (typeof getLastChatId === 'function' ? getLastChatId() : null);
+                if (!chatId) return;
 
-        const preview = String(data["text"]).slice(0, 200).replace(/\n/g, ' ');
-        log({ chatId, preview });
+                const text = String(data["text"]);
+                const preview = text.slice(0, 200).replace(/\n/g, ' ');
+                log({ chatId, preview });
 
-        // Rich-first default; helper falls back to HTML then plaintext per chunk.
-        sendTelegramMarkdown(bot.api, chatId, String(data["text"]), { prefix }).catch(() => { });
+                // Rich-first default; helper falls back to HTML then plaintext per chunk.
+                await sendTelegramMarkdown(bot.api, chatId, text, stripUndefined({
+                    prefix,
+                    message_thread_id: threadIdNumber(target ?? undefined),
+                })).catch(() => { });
+                await relayTelegramImages(bot, chatId, text, target);
+            } catch (error: unknown) {
+                appLog.warn('[tg:forward] delivery failed', {
+                    error: error instanceof Error ? error.message : String(error),
+                });
+            }
+        })().catch((error: unknown) => {
+            appLog.warn('[tg:forward] delivery failed', {
+                error: error instanceof Error ? error.message : String(error),
+            });
+        });
     };
 }

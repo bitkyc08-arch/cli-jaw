@@ -12,7 +12,10 @@ import { t } from '../core/i18n.js';
 
 export interface CollectedOrchestrateResult {
     text: string;
-    data: Record<string, any>;
+    data: Record<string, any> & {
+        agyPlannerOnly?: boolean;
+        agyCheckpointSeen?: boolean;
+    };
 }
 
 /** Like orchestrateAndCollect, but resolves the full orchestrate_done payload

@@ -1,5 +1,6 @@
 import type { SpawnContext, ToolEntry } from '../types/agent.js';
 import type { AgyTranscriptMode } from '../types/agent.js';
+import { AGY_INTERMEDIATE_PLANNER_PREFIXES } from './agy-transcript.js';
 
 export const AGY_TIMEOUT_PREFIX = 'Error: timed out waiting for response';
 export const AGY_COMPLETE_KILL_REASON = 'agy-complete';
@@ -12,6 +13,12 @@ export const AGY_FULLTEXT_MAX_CHARS = 8_388_608;
  * accumulation continues to AGY_FULLTEXT_MAX_CHARS and is promoted at close. */
 export const AGY_LIVE_DISPLAY_MAX_CHARS = 262_144;
 export const AGY_FULLTEXT_TRUNCATION_NOTICE = '\n\n[jaw:agy] stdout capture truncated at 8 MiB safety bound';
+export const AGY_PLANNER_ONLY_NOTICE = '[jaw:agy] Intermediate planner output was withheld; no final answer was produced.';
+
+export function isAgyIntermediatePlannerText(text: string): boolean {
+    const trimmed = text.trim();
+    return AGY_INTERMEDIATE_PLANNER_PREFIXES.some((prefix) => trimmed.startsWith(prefix));
+}
 const AGY_CONVERSATION_ID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const AGY_CONVERSATION_ID_RE = new RegExp(
     `(?:\\bagy\\s+)?--conversation(?:=|\\s+)(${AGY_CONVERSATION_ID})\\b|\\b(?:conversation=|Created conversation\\s+)(${AGY_CONVERSATION_ID})\\b`,
@@ -76,10 +83,16 @@ export function shouldFreezeAgyLiveDisplay(
  * is the display-normalized form of ctx.fullText, derived by the caller with the same
  * strip order as the per-chunk display path. Returns true when anything was applied. */
 export function finalizeAgyFallbackText(
-    ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText' | 'agyFinalPlannerSeen' | 'agyFullTextTruncated'>,
+    ctx: Pick<SpawnContext, 'fullText' | 'liveOutputText' | 'agyFinalPlannerSeen' | 'agyFullTextTruncated' | 'metadata'>,
     fullDisplayText: string,
 ): boolean {
     if (ctx.agyFinalPlannerSeen) return false;
+    if (isAgyIntermediatePlannerText(fullDisplayText)) {
+        ctx.fullText = AGY_PLANNER_ONLY_NOTICE;
+        if (ctx.liveOutputText !== undefined) ctx.liveOutputText = AGY_PLANNER_ONLY_NOTICE;
+        ctx.metadata = { ...ctx.metadata, agyPlannerOnly: true };
+        return true;
+    }
     let applied = false;
     if (ctx.liveOutputText !== undefined && fullDisplayText.length > ctx.liveOutputText.length) {
         ctx.liveOutputText = fullDisplayText;

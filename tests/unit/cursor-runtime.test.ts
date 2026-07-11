@@ -14,6 +14,8 @@ test('Cursor effort resolves to model IDs instead of CLI flags', () => {
     assert.equal(resolveCursorModelVariant('gpt-5.3-codex', 'xhigh-fast'), 'gpt-5.3-codex-xhigh-fast');
     assert.equal(resolveCursorModelVariant('gpt-5.2', 'medium-fast'), 'gpt-5.2-fast');
     assert.equal(resolveCursorModelVariant('gpt-5.4-mini', 'high-fast'), 'gpt-5.4-mini-high');
+    assert.equal(resolveCursorModelVariant('grok-4.5', 'medium-fast'), 'grok-4.5-fast');
+    assert.equal(resolveCursorModelVariant('grok-4.5', 'medium'), 'grok-4.5');
     assert.equal(resolveCursorModelVariant('claude-opus-4-7-thinking', 'high'), 'claude-opus-4-7-thinking-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-8-thinking', 'high'), 'claude-opus-4-8-thinking-high');
     assert.equal(resolveCursorModelVariant('claude-opus-4-8', 'max'), 'claude-opus-4-8-max');
@@ -22,17 +24,22 @@ test('Cursor effort resolves to model IDs instead of CLI flags', () => {
 test('Cursor full model IDs stay unchanged', () => {
     assert.equal(isCursorFullModelId('gpt-5.5-medium'), true);
     assert.equal(resolveCursorModelVariant('gpt-5.5-medium', 'high-fast'), 'gpt-5.5-medium');
+    assert.equal(isCursorFullModelId('grok-4.5-fast'), false);
+    assert.equal(resolveCursorModelVariant('grok-4.5-fast', 'high'), 'grok-4.5-fast');
 });
 
 test('Cursor model inventory mirrors observed cursor-agent list-models support', () => {
-    assert.equal(CURSOR_MODEL_IDS.length, 132);
+    assert.equal(CURSOR_MODEL_IDS.length, 135);
     assert.ok(CURSOR_MODEL_IDS.includes('composer-2.5-fast'));
-    assert.ok(CURSOR_MODEL_IDS.includes('grok-composer-2.5-fast'));
+    assert.ok(!CURSOR_MODEL_IDS.includes('grok-composer-2.5-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('gpt-5.5-extra-high-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('claude-opus-4-7-thinking-max-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('claude-opus-4-8-thinking-max-fast'));
     assert.ok(CURSOR_MODEL_IDS.includes('gemini-3.1-pro'));
-    assert.ok(CURSOR_MODEL_IDS.includes('grok-4.3'));
+    assert.ok(!CURSOR_MODEL_IDS.includes('grok-4.3'));
+    for (const model of ['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna', 'claude-sonnet-5', 'glm-5.2', 'kimi-k2.7-code', 'gemini-3-pro']) assert.ok(CURSOR_MODEL_IDS.includes(model));
+    assert.ok(CURSOR_MODEL_IDS.includes('grok-4.5'));
+    assert.ok(CURSOR_MODEL_IDS.includes('grok-4.5-fast'));
 });
 
 test('Cursor args use print mode, trust, stream-json, force only for auto permissions', () => {

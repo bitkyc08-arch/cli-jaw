@@ -2323,7 +2323,32 @@ div.math-placeholder {
 }
 
 /* ── Inline Media + Lightbox ── */
-.chat-inline-img { max-width: 100%; max-height: 360px; border-radius: 8px; margin: 8px 0; cursor: pointer; display: block; }
+.chat-inline-img {
+    max-width: 100%;
+    max-height: 360px;
+    min-height: 120px;
+    border-radius: 8px;
+    margin: 8px 0;
+    cursor: pointer;
+    display: block;
+    object-fit: contain;
+    background: color-mix(in oklch, var(--surface) 75%, var(--border));
+}
+.chat-inline-img-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    max-width: 100%;
+    min-height: 120px;
+    margin: 8px 0;
+    padding: 16px;
+    border: 1px dashed color-mix(in oklch, var(--error) 45%, var(--border));
+    border-radius: 8px;
+    background: var(--error-dim);
+    color: var(--text-dim);
+    font-size: var(--text-sm);
+    text-align: center;
+}
 .chat-inline-video { max-width: 100%; max-height: 360px; border-radius: 8px; margin: 8px 0; display: block; }
 .media-lightbox { position: fixed; inset: 0; z-index: 9999; display: flex; align-items: center; justify-content: center; }
 .media-lightbox.hidden { display: none; }

@@ -81,7 +81,7 @@ public/
 | 파일 | 라인 | 역할 |
 | --- | ---: | --- |
 | `js/render.ts` | 18L | render public API façade |
-| `js/render/markdown.ts` | — | marked pipeline, CJK punctuation fix, math/SVG shielding, sanitize/unshield, post-render scheduling |
+| `js/render/markdown.ts` | — | marked pipeline, CJK punctuation fix, math/SVG shielding, sanitize/unshield, post-render scheduling. `renderer.image`는 `/uploads/` 경로를 `/media/:filename`으로, 그 외 `/` 시작 절대경로를 인증된 `/api/image?path=`로 재작성하고 HTTP(S)/data/relative URL은 그대로 둔다. |
 | `js/render/sanitize.ts` | — | DOMPurify 기반 HTML/SVG sanitizer |
 | `js/render/mermaid.ts` | — | lazy Mermaid load, queued render, observer, rerender, prewarm, unmount release |
 | `js/render/mermaid-preprocess.ts` | — | Mermaid code fence preprocessing |
@@ -93,7 +93,7 @@ public/
 | `js/render/html.ts` | — | HTML rendering helpers |
 | `js/render/math.ts` | — | KaTeX math rendering |
 | `js/render/notes-vault-path.ts` | — | notes vault path resolution |
-| `js/render/delegations.ts` | — | render delegation registry |
+| `js/render/delegations.ts` | — | one-time render delegation registry + document capture-phase `.chat-inline-img` error replacement. non-bubbling `error`와 late/virtual-scroll 노드를 한 listener가 처리한다. |
 | `js/render/search-results.ts` | — | `search-results` fenced JSON placeholder hydration. Final-render only; malformed specs fail closed, unsafe URLs are dropped, and results render as compact native cards. |
 | `js/render/link-preview.ts` | — | External URL link preview lazy hydration. Skips internal/private/media links, fetches `/api/link-preview`, renders proxied images through `/api/link-preview/image`, caps concurrent preview fetches, and renders compact cards with favicon/site/URL metadata on the first line plus clamped title/description text. |
 | `js/render/compose-block.ts` | — | `compose-block` fenced JSON placeholder hydration. Renders editable draft cards with variants, copy/open actions, final-render-only activation, and malformed-spec fail-closed errors. |
@@ -130,7 +130,7 @@ public/
 | `features/chat-messages.ts` | — | message DOM append/finalization helpers |
 | `features/chat-scroll.ts` | — | bottom-follow/scroll intent helpers and initial settle |
 | `features/chat-search.ts` | 226L | in-chat message search UI |
-| `features/media-lightbox.ts` | — | 업로드 이미지/비디오 인라인 렌더링 + 라이트박스 |
+| `features/media-lightbox.ts` | — | 살아 있는 `.chat-inline-img`와 업로드 preview 이미지만 여는 라이트박스. `.chat-inline-img-error` 대체 노드는 대상에서 제외된다. |
 | `features/copy-text.ts` | 39L | clipboard copy utility |
 | `features/employees.ts` | — | employee CRUD + CLI/model/role 조정 |
 | `features/gesture.ts` | — | 모바일 edge swipe sidebar toggle |
@@ -198,7 +198,7 @@ settings.ts (barrel)
 | --- | --- |
 | `css/variables.css` | 컬러/타이포/spacing/easing token, light/dark variables, reveal animations |
 | `css/layout.css` | 전체 grid layout, sidebar width, base UI scaffolding |
-| `css/chat.css` | chat area, message layout, input bar, attachments, voice button, virtual scroll container, slash command workflow chips, unknown-command recovery block, `.file-path-link` open states |
+| `css/chat.css` | chat area, message layout, input bar, attachments, voice button, virtual scroll container, slash command workflow chips, unknown-command recovery block, `.file-path-link` open states, `.chat-inline-img` 최소 높이/`object-fit: contain`, `.chat-inline-img-error` fallback |
 | `css/chat-search.css` | in-chat search overlay styling |
 | `css/orc-state.css` | PABCD roadmap, shark runner, orc glow, state badge, interview panel (known/unknown 트래커, dimension bars, budget panel) |
 | `css/sidebar.css` | left/right sidebar, collapse behavior, status / CLI / app name sections |
@@ -333,7 +333,7 @@ Regression context: `devlog/_plan/260627_process_block_blank_expand/`.
 | 초기화 | `hydrateIcons()` → `hydrateProviderIcons()` → `initI18n()` → `loadCliRegistry()` → `connect()` → `initAvatar()` + pending/help/attention 초기화 |
 | 입력 | slash command dropdown, file attachment, drag/drop, auto-resize, voice record/cancel, STT mic pending state |
 | 전송 | 일반 메시지는 `/api/message`, slash command는 `/api/command`, stop 버튼은 `/api/stop` |
-| 렌더링 | `render.ts` façade → `public/js/render/*` 모듈이 markdown/KaTeX/Mermaid/code copy/diagram widget/file-path click-to-open/external web-link new-tab targeting/post-render 담당 |
+| 렌더링 | `render.ts` façade → `renderMarkdown()`의 marked parse → sanitize/unshield → render delegation 흐름. 인라인 `/uploads/`는 `/media`, 그 외 로컬 절대경로는 인증된 `/api/image`로 보내며, history lazy hydrate/virtual-scroll 재사용도 `renderMarkdown()` 경로를 공유한다. 나머지 `public/js/render/*` 모듈이 KaTeX/Mermaid/code copy/diagram widget/file-path click-to-open/external web-link new-tab targeting/post-render를 담당한다. |
 | 오프라인 | `idb-cache.ts`가 메시지 히스토리를 IndexedDB에 보관 — scope별 캐시, 실시간 upsert |
 | Event channel | `GET /api/events` SSE primary channel handles `agent_tool`→typed ProcessBlock step, `agent_output`→streaming renderer, `agent_done`→finalization; `ws.ts` is the shared dispatcher and legacy WebSocket fallback for pre-X-01 servers. Transient SSE drops are quiet for 8 seconds before the UI posts a disconnected message. |
 | 상태 | `agent_status`, `queue_update`, `orc_state`, `session_reset`, `clear`, Telegram/Discord `new_message` |
@@ -351,6 +351,7 @@ Regression context: `devlog/_plan/260627_process_block_blank_expand/`.
 | ProcessBlock recycle | unmount 시 `releaseProcessBlockDetails()`; expand 복원은 `dataset.processStepIds` + meta store. DOM row만으로 long-block middle 복원 금지 |
 | Released detail UX | `data-had-detail="true"` when `detailLength>0`; empty expand after release shows reload hint |
 | Restore bottom-follow intent | `scrollIntent = unknown/following/pinnedAway` 기준 guarded reconciliation |
+| Inline image failure delegation | `renderMarkdown()`이 설치하는 document-level `error` capture listener는 한 번만 등록된다. `error`가 bubble하지 않아도 현재/late/lazy `.chat-inline-img`를 `.chat-inline-img-error[role="status"]`로 교체한다. |
 | Build output guard | `npm run check:frontend-build-output`가 eager Mermaid reference 차단 |
 | Tool-log memory cap | Server-side `sanitizeToolLog*()` caps before ProcessBlock/Manager hydration |
 

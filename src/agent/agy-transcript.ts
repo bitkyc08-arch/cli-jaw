@@ -235,7 +235,9 @@ export function parseTranscriptLine(line: string): ToolEntry | null {
     return entry;
 }
 
-export type AgyTranscriptRowKind = 'tool' | 'final-planner' | 'planner' | 'provider-error' | 'meta' | 'invalid';
+export const AGY_INTERMEDIATE_PLANNER_PREFIXES = ['my_tool_call_analysis:'];
+
+export type AgyTranscriptRowKind = 'tool' | 'final-planner' | 'planner' | 'checkpoint' | 'provider-error' | 'meta' | 'invalid';
 
 function parseAgyTranscriptError(row: Record<string, unknown>): AgyTranscriptError {
     const rawMessage = typeof row['error'] === 'string'
@@ -281,8 +283,12 @@ export function classifyAgyTranscriptRow(line: string): { kind: AgyTranscriptRow
     }
     if (type === 'PLANNER_RESPONSE') {
         const content = typeof row['content'] === 'string' ? row['content'].trim() : '';
+        if (AGY_INTERMEDIATE_PLANNER_PREFIXES.some((prefix) => content.startsWith(prefix))) {
+            return { kind: 'planner' };
+        }
         return { kind: content && hasEmptyToolCalls(row) ? 'final-planner' : 'planner' };
     }
+    if (type === 'CHECKPOINT') return { kind: 'checkpoint' };
     if (NON_TOOL_TYPES.has(type)) return { kind: 'meta' };
     const tool = parseTranscriptLine(trimmed);
     return tool ? { kind: 'tool', tool } : { kind: 'tool' };

@@ -187,6 +187,11 @@ test('AGY-TR-013: classifyAgyTranscriptRow separates final planner rows from int
     // Meta rows and tools.
     assert.equal(classifyAgyTranscriptRow(JSON.stringify({ type: 'USER_INPUT', content: 'q' })).kind, 'meta');
     assert.equal(classifyAgyTranscriptRow(JSON.stringify({ type: 'SYSTEM_MESSAGE', content: 's' })).kind, 'meta');
+    assert.equal(classifyAgyTranscriptRow(JSON.stringify({ type: 'CHECKPOINT', content: '{{ CHECKPOINT 1 }}' })).kind, 'checkpoint');
+    // Synthesized from the issue report: no real AGY capture with this row shape exists in-repo yet.
+    assert.equal(classifyAgyTranscriptRow(JSON.stringify({
+        type: 'PLANNER_RESPONSE', content: '  my_tool_call_analysis: inspect state', tool_calls: [],
+    })).kind, 'planner');
     const toolRow = classifyAgyTranscriptRow(JSON.stringify({
         step_index: 5, type: 'SEARCH_WEB', status: 'DONE', content: 'results',
     }));

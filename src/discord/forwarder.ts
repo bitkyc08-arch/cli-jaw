@@ -2,9 +2,41 @@
 // Forwards agent_done results to Discord channels.
 
 import type { Client } from 'discord.js';
-import type { RemoteTarget } from '../messaging/types.js';
-import { asSendable } from './channel-types.js';
+import { settings } from '../core/config.js';
 import { log } from '../core/logger.js';
+import { extractLocalImagePaths } from '../messaging/extract-images.js';
+import type { RemoteTarget } from '../messaging/types.js';
+import { assertSendFilePath } from '../security/path-guards.js';
+import { asSendable } from './channel-types.js';
+import { sendDiscordFile } from './discord-file.js';
+
+export async function relayDiscordImages(
+    client: Client,
+    target: RemoteTarget,
+    text: string,
+): Promise<void> {
+    for (const candidate of extractLocalImagePaths(text)) {
+        try {
+            const filePath = assertSendFilePath(
+                candidate,
+                settings["workingDir"] || undefined,
+                settings["projectDirs"] || null,
+            );
+            const result = await sendDiscordFile(client, target, filePath);
+            if (!result.ok) {
+                log.warn('[discord:image-relay] send failed', {
+                    path: candidate,
+                    error: result.error || 'unknown error',
+                });
+            }
+        } catch (error: unknown) {
+            log.warn('[discord:image-relay] skipped', {
+                path: candidate,
+                error: error instanceof Error ? error.message : String(error),
+            });
+        }
+    }
+}
 
 export function chunkDiscordMessage(text: string, limit = 2000): string[] {
     if (text.length <= limit) return [text];
@@ -41,6 +73,7 @@ export function createDiscordForwarder(opts: {
             for (const chunk of chunks) {
                 await sendable.send(chunk);
             }
+            await relayDiscordImages(opts.client, target, text);
             opts.log?.({ channelId: target.targetId, preview: text.slice(0, 60) });
         } catch (e) {
             log.error('[discord:forward]', (e as Error).message);

@@ -6,6 +6,7 @@ import { stripUndefined } from '../core/strip-undefined.js';
 import { assertSendFilePath } from '../security/path-guards.js';
 import type { MessengerChannel, OutboundType, RemoteTarget } from './types.js';
 import { getLastActiveTarget, getLatestSeenTarget, clearTargetState } from './runtime.js';
+import { applyOutputPolicy } from '../core/policy-hooks.js';
 
 // ─── Request Model ──────────────────────────────────
 
@@ -213,5 +214,8 @@ export async function sendChannelOutput(req: ChannelSendRequest): Promise<{ ok: 
         return { ok: false, error: `No send transport registered for ${channel}` };
     }
 
+    if (typeof req.text === 'string') {
+        req.text = applyOutputPolicy(req.text, { scope: 'main', channel }).text;
+    }
     return sendFn(req);
 }

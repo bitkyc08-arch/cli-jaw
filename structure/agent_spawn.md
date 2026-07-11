@@ -41,7 +41,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 | `src/agent/claude-e-runtime.ts` | 46L | `jaw_runtime` helper event → legacy `agent:claude-e:*` runtime broadcast 변환 |
 | `src/agent/error-classifier.ts` | 52L | stderr/result 기반 에러 분류 helper |
 | `src/agent/tool-timeout.ts` | 33L | tool inactivity timeout helper |
-| `src/agent/agy-runtime.ts` | 175L | AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + session id 추출 |
+| `src/agent/agy-runtime.ts` | 175L | AGY timeout stdout/close-text 판별 + 최종 planner 기준 timeout suffix 정규화 + session id 추출 + intermediate planner(`my_tool_call_analysis:`) 최종답 차단 (#251) |
 | `src/agent/cli-helpers.ts` | 9L | Claude-like CLI 판별 helper |
 
 ### src/agent/spawn/ — Extracted Submodules
@@ -144,6 +144,7 @@ aliases: [CLI-JAW Agent Spawn, agent runtime, ACP orchestration]
 - 저장: `cli`, `sessionId`, `model`, `permissions`, `workingDir`, `effort`.
 - `shouldInvalidateResumeSession()`는 `code === 0`이면 무조건 false, 실패 시 generic + CLI별 matcher 검사.
 - Resume 무효화: `claude`, `claude-e`, `agy`, `codex`, `cursor`, `grok`, `opencode`, `copilot`, `kiro-code` 각각 분기.
+- AGY guarded native resume (#261): 기본은 native resume OFF(DB history 유지). `perCli.agy.nativeResume: "guarded"` opt-in 시 `canGuardedAgyResume()`(`src/agent/spawn/resume.ts`) 전 가드 통과에서만 `--conversation` 재개 — capability probe, TTL 72h, model+cwd identity, `session_buckets.last_run_clean=1`(plannerOnly/checkpointSeen false), fresh-bootstrap 아님. stale conversation 출력 감지 시 bucket clear 후 fresh 경로로 1회 재시도. replay stripping은 무조건 유지.
 
 ---
 

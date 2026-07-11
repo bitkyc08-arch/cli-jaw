@@ -359,6 +359,17 @@ test('AG-009h: non-spark codex does NOT pin context_window / auto_compact (let u
     assert.ok(!cVals.some(v => v.includes('model_auto_compact_token_limit')), 'non-spark must not override compact limit');
 });
 
+test('AG-009h2: gpt-5.6-luna keeps supported reasoning flags and the normal codex bucket', () => {
+    const args = buildArgs('codex', 'gpt-5.6-luna', 'high', 'x', '', 'auto');
+    const cVals = args.reduce<string[]>((acc, value, index) => (
+        value === '-c' ? [...acc, args[index + 1]!] : acc
+    ), []);
+    assert.ok(cVals.includes('model_reasoning_effort="high"'));
+    assert.ok(cVals.includes('model_reasoning_summary="detailed"'));
+    assert.ok(!cVals.some(value => value.includes('model_context_window')));
+    assert.equal(resolveSessionBucket('codex', 'gpt-5.6-luna'), 'codex');
+});
+
 test('AG-009i: codex Spark resume also pins context_window + auto_compact', () => {
     const args = buildResumeArgs('codex', 'gpt-5.3-codex-spark', 'high', 'sess-xyz', 'continue', 'auto');
     const cVals = args.reduce<string[]>((acc, v, i) => (v === '-c' ? [...acc, args[i + 1]] : acc), []);

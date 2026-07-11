@@ -192,6 +192,16 @@ cli-jaw orchestrate D --attest '{"from":"C","to":"D","did":"ran checks","checkOu
 - CLI: `cli-jaw hooks` (`bin/commands/hooks.ts`) — inspect config + dry-run report
 - Docs: `docs/dev/pre-prompt-context-hooks.md`
 
+### Runtime policy hooks (output boundary + event flags)
+
+`src/core/policy-hooks.ts` + `src/core/policy-flags.ts` + `~/.cli-jaw/policy-hooks.json` (optional; layer inert without config, kill switch `CLI_JAW_POLICY_HOOKS=0`).
+
+- afterOutput warn/block/redact rules (bounded: 16 rules / 200-char patterns / 256KiB eval) applied before the durable assistant insert (`src/agent/lifecycle-handler.ts`), at the jwc settle path (`src/agent/spawn.ts`), on outbound channel sends (`src/messaging/send.ts`), and on heartbeat results before quiet-check/anchor insert (`src/memory/heartbeat.ts`)
+- Built-in event flags: `record_pending` (tool-log pattern -> `~/.cli-jaw/policy-flags.json` -> next-turn `[POLICY FLAG]` reminder prepended in `src/orchestrator/pipeline.ts`), `heartbeatQuietOk` extra quiet markers alongside `[SILENT]`
+- beforeSpawn deterministic checks (prompt-size warn, forbidden patterns) at the spawn choke point — warn/trace only, never blocking
+- Known v1 limitation: live streaming deltas reach the web UI before final-output policy; only final text is checked
+- CLI: `cli-jaw hooks policy [--json]`
+
 ### Bounded local search contract
 
 `getBoundedLocalSearchContract()` is always appended near the end of `getSystemPrompt()` (boss + employee paths that call it).

@@ -122,15 +122,20 @@ function ensureMarked(): boolean {
         return renderCodeBlock(text, lang);
     };
 
-    // Inline media: rewrite absolute paths to /media/ URL, detect video
+    // Inline media: keep uploads on /media; guard other absolute local paths via /api/image.
     renderer.image = function ({ href, title, text }: { href: string; title?: string | null; text: string }) {
         if (!href) return '';
-        const src = (href.startsWith('/') || href.includes('/uploads/'))
-            ? `${API_BASE}/media/${encodeURIComponent(href.split('/').pop()!)}`
-            : escapeHtml(href);
+        let src: string;
+        if (href.includes('/uploads/')) {
+            src = `${API_BASE}/media/${encodeURIComponent(href.split('/').pop()!)}`;
+        } else if (href.startsWith('/')) {
+            src = `${API_BASE}/api/image?path=${encodeURIComponent(href)}`;
+        } else {
+            src = escapeHtml(href);
+        }
         const alt = escapeHtml(text || '');
         const titleAttr = title ? ` title="${escapeHtml(title)}"` : '';
-        const ext = (src.split('.').pop() || '').toLowerCase().split('?')[0] || '';
+        const ext = (href.split(/[?#]/)[0].split('.').pop() || '').toLowerCase();
         if (['mp4', 'webm', 'mov', 'ogg'].includes(ext)) {
             return `<video src="${src}" controls class="chat-inline-video" preload="metadata"${titleAttr}></video>`;
         }

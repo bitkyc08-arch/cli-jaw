@@ -4,7 +4,7 @@ import { getDefaultClaudeChoices, getDefaultClaudeModel } from './claude-models.
 import { CURSOR_EFFORT_CHOICES, CURSOR_REGISTRY_MODELS } from '../agent/cursor-runtime.js';
 import type { CliEngine } from '../types/cli-engine.js';
 
-export const CODEX_MODEL_CHOICES = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark'];
+export const CODEX_MODEL_CHOICES = ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'];
 
 export const CLI_REGISTRY = {
     agy: {
@@ -34,7 +34,7 @@ export const CLI_REGISTRY = {
         defaultEffort: 'medium',
         efforts: ['low', 'medium', 'high', 'xhigh', 'max'],
         effortNote: 'Pi thinking level via RPC set_thinking_level',
-        models: ['grok-composer-2.5-fast', 'grok-4.3'],
+        models: ['grok-composer-2.5-fast', 'grok-4.5', 'grok-4.3'],
     },
     'ai-e': {
         label: 'AI-E',
@@ -59,6 +59,7 @@ export const CLI_REGISTRY = {
             kiro: [
                 'auto',
                 'claude-fable-5',
+                'claude-sonnet-5',
                 'claude-opus-4.8',
                 'claude-opus-4.7',
                 'claude-opus-4.6',
@@ -146,15 +147,16 @@ export const CLI_REGISTRY = {
         defaultModel: 'claude-sonnet-4-6',
         defaultEffort: 'high',
         efforts: ['off', 'min', 'low', 'medium', 'high', 'xhigh'],
-        models: ['claude-sonnet-4-6', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-haiku-4-5', 'claude-fable-5'],
+        models: ['claude-fable-5', 'claude-sonnet-5', 'claude-opus-4-8', 'claude-opus-4-7', 'claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5'],
         modelsByProvider: {
             anthropic: [
-                'claude-sonnet-4-6',
+                'claude-fable-5',
+                'claude-sonnet-5',
                 'claude-opus-4-8',
                 'claude-opus-4-7',
                 'claude-opus-4-6',
+                'claude-sonnet-4-6',
                 'claude-haiku-4-5',
-                'claude-fable-5',
             ],
         },
         effortsByProvider: {
@@ -171,6 +173,7 @@ export const CLI_REGISTRY = {
         models: [
             'auto',
             'claude-fable-5',
+            'claude-sonnet-5',
             'claude-opus-4.8',
             'claude-opus-4.7',
             'claude-opus-4.6',
@@ -193,11 +196,14 @@ export const CLI_REGISTRY = {
         defaultEffort: '',
         efforts: ['minimal', 'low', 'high', 'max'],
         models: [
+            'opencode-go/kimi-k2.7-code',
+            'opencode-go/glm-5.2',
             'opencode-go/glm-5.1',
             'opencode-go/kimi-k2.6',
             'opencode-go/mimo-v2.5-pro',
             'opencode-go/mimo-v2.5',
             'opencode-go/minimax-m2.7',
+            'opencode-go/qwen3.7-plus',
             'opencode-go/qwen3.6-plus',
             'opencode-go/deepseek-v4-pro',
             'opencode-go/deepseek-v4-flash',

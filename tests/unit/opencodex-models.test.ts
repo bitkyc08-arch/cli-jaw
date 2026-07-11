@@ -34,7 +34,7 @@ test('opencodex runtime port path resolves CLI_JAW_OPENCODEX_DIR lazily', async 
     assert.doesNotMatch(src, /const OPENCODEX_RUNTIME_PORT_PATH/);
 });
 
-test('applyCodexModelsToChoices keeps inactive ocx Codex defaults at four models', () => {
+test('applyCodexModelsToChoices keeps inactive ocx Codex defaults at seven models', () => {
     const choices = applyCodexModelsToChoices(buildModelChoicesByCli(), CODEX_MODEL_CHOICES);
     assert.deepEqual(choices.codex, CODEX_MODEL_CHOICES);
     assert.deepEqual(choices['codex-app'], CODEX_MODEL_CHOICES);

@@ -207,10 +207,11 @@ export const STATIC_EMPLOYEES: StaticEmployee[] = [
     {
         name: 'Control',
         cli: 'codex',
+        model: 'gpt-5.6-luna',
         description: 'Desktop + browser automation specialist (NOT exclusive — Boss-as-codex may self-serve).',
         // vision-click is absorbed into desktop-control (reference/vision-click.md).
         // Keep skills minimal; screen-capture stays for non-Chrome OS capture.
-        skills: ['desktop-control', 'screen-capture'],
+        skills: ['desktop-control', 'screen-capture', 'codex-imagegen'],
         systemPromptPatchFile: 'control-system.md',
         runtimeHints: {
             requiresDarwin: true,
