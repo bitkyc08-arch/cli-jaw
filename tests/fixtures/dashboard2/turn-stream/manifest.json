@@ -1,0 +1,34 @@
+{
+  "seed": 4048,
+  "generator": "tests/fixtures/dashboard2/turn-stream/seed.ts",
+  "fixtureHash": "cf68919c8c2a58bc82efd2f938ce54465f7bd148ac6cb9293220b2369fe7ed6e",
+  "canonicalSegmentHash": "705a9a09599c2be5b1da356242eab20480d3dfe1cb8b56233e0a65daf2e3aed2",
+  "virtualizerPair": {
+    "reactVirtual": "3.13.26",
+    "virtualCore": "3.16.0",
+    "gate": "single deduped @tanstack/virtual-core copy; adapter re-export asserted in tests/unit/dashboard2-virtualizer-calibration.test.ts"
+  },
+  "distributions": {
+    "turnCount": 10000,
+    "messageCount": 10000,
+    "segmentRows": 45634,
+    "lifecycleEvents": 45634,
+    "statusTurns": { "done": 8400, "error": 500, "continued": 500, "interrupted": 500 },
+    "fidelityTurns": { "full": 4000, "coarse": 3000, "text_only": 3000 },
+    "markerRows": {
+      "streaming": 1548,
+      "plaintext": 1549,
+      "encrypted": 1547,
+      "token_fallback": 1548,
+      "pre_tool_text": 1547,
+      "plan": 1547,
+      "planner": 1548
+    },
+    "promotionTurns": 334,
+    "grokPairTurns": 500,
+    "openTurns": 100,
+    "userMessages": 2000,
+    "assistantMessages": 8000
+  },
+  "parityEvidence": "synthetic"
+}
