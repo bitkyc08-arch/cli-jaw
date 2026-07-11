@@ -22,7 +22,7 @@ import { scanStructuredFence } from '../shared/structured-fence.js';
 import { finalizeTraceRun, linkTraceRunToMessage } from '../trace/store.js';
 import type { ToolEntry } from '../types/agent.js';
 import type { RemoteTarget } from '../messaging/types.js';
-import { finishTurnLifecycle, getTurnId, resolveSpawnOutputText } from './events/helpers.js';
+import { appendCollabTurnSegment, finishTurnLifecycle, getTurnId, getWorkerRunId, resolveSpawnOutputText } from './events/helpers.js';
 import { isKiroPlainTextCli, isKiroResumeDegradedOutput } from './kiro-runtime.js';
 import {
     incrementMemoryFlush,
@@ -199,6 +199,8 @@ export interface ExitContext {
     metadata?: Record<string, unknown>;
     liveScope?: string | null;
     traceRunId?: string | null;
+    parentTurnId?: string | null;
+    workerRunId?: string | null;
     liveOutputText?: string;
     kiroDisplayedText?: string;
     cost?: { input?: number; output?: number } | number | null;
@@ -1065,6 +1067,15 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             turnStatus,
             (opts.internal || isEmployee) ? 'internal' : 'public',
         );
+        const workerRunId = getWorkerRunId(ctx);
+        if (turnStatus !== 'continued' && isEmployee && opts.agentId && workerRunId) {
+            appendCollabTurnSegment(
+                ctx,
+                opts.agentId,
+                workerRunId,
+                wasKilled ? 'cancelled' : (code === 0 || code === null) ? 'done' : 'error',
+            );
+        }
     }
 }
 

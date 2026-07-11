@@ -50,9 +50,9 @@ export type PendingItem = PendingItemFields & (
     | { source: 'discord' }
 );
 
-export type KnownTurnSegmentType = 'assistant_text' | 'thinking' | 'tool' | 'turn_start' | 'turn_end';
+export type KnownTurnSegmentType = 'assistant_text' | 'thinking' | 'tool' | 'collab' | 'widget' | 'turn_start' | 'turn_end';
 export type TurnSegmentType = KnownTurnSegmentType | (string & Record<never, never>);
-export type KnownTurnSegmentStatus = 'running' | 'done' | 'error' | 'continued' | 'interrupted';
+export type KnownTurnSegmentStatus = 'running' | 'done' | 'error' | 'cancelled' | 'continued' | 'interrupted';
 export type TurnSegmentStatus = KnownTurnSegmentStatus | (string & Record<never, never>);
 export type TurnFidelity = 'full' | 'coarse' | 'text_only';
 export type KnownThinkingMarker = 'streaming' | 'plaintext' | 'encrypted' | 'token_fallback' | 'pre_tool_text' | 'plan' | 'planner';
@@ -61,6 +61,23 @@ export type ThinkingMarker = KnownThinkingMarker | (string & Record<never, never
 export interface TurnSegmentDetailRef {
     traceRunId: string;
     traceSeq: number;
+}
+
+export interface CollabTurnSegmentIdentity {
+    agentId: string;
+    runId: string;
+}
+
+export type WidgetStorage = 'file' | 'inline';
+export type WidgetCapability = 'interactive' | 'stateful';
+
+export interface WidgetTurnSegmentDescriptor {
+    widgetId: string;
+    storage: WidgetStorage;
+    revision: string;
+    title: string;
+    estimatedHeight: number;
+    capabilities: WidgetCapability[];
 }
 
 export interface TurnSegment {

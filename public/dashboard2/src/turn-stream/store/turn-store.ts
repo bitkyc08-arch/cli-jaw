@@ -76,6 +76,8 @@ export interface TurnStore {
     getTurnSnapshot(turnId: string): CommittedStub | null;
     getBodySnapshot(turnId: string): TurnBodySnapshot | null;
     getLiveTurn(turnId: string): LiveTurnModel | null;
+    /** ordered durable rows for one turn (binary search over canonical order) */
+    getTurnRows(turnId: string): TurnSegment[];
     /** streaming body for a live turn via the traceRunId→turnId join */
     getLiveBodyForTurn(turnId: string): string | null;
     getListSnapshot(): ListSnapshot;
@@ -254,6 +256,18 @@ export function createTurnStore(
                 // canonical committed order derived from rowOrder sequence
                 order = seenTurnIds.filter(turnId => stubs.has(turnId));
             }
+            // post-terminal rows (e.g., detached-worker collab terminals) must
+            // still notify their committed turn. Runs AFTER the membership
+            // recompute so first-hydration turns are already stubs and the
+            // two-pointer diff stays O(N) with no per-row filtering.
+            if (reducerState.rowOrder !== previous.rowOrder) {
+                let oldIdx = 0;
+                for (const key of reducerState.rowOrder) {
+                    if (previous.rowOrder[oldIdx] === key) { oldIdx += 1; continue; }
+                    const turnId = reducerState.rows[key].turnId;
+                    if (stubs.has(turnId)) changedTurns.add(turnId);
+                }
+            }
         }
 
         if (reducerState.bodies !== previous.bodies) {
@@ -357,6 +371,25 @@ export function createTurnStore(
         },
         getLiveTurn(turnId) {
             return liveTurns.get(turnId) ?? null;
+        },
+        getTurnRows(turnId) {
+            const rowOrder = reducerState.rowOrder;
+            const rows = reducerState.rows;
+            // lower bound: first index whose turnId >= target
+            let lo = 0;
+            let hi = rowOrder.length;
+            while (lo < hi) {
+                const mid = (lo + hi) >> 1;
+                if (rows[rowOrder[mid]].turnId < turnId) lo = mid + 1;
+                else hi = mid;
+            }
+            const out: TurnSegment[] = [];
+            for (let i = lo; i < rowOrder.length; i++) {
+                const row = rows[rowOrder[i]];
+                if (row.turnId !== turnId) break;
+                out.push(row);
+            }
+            return out;
         },
         getLiveBodyForTurn(turnId) {
             for (const [runId, text] of Object.entries(reducerState.liveBodies)) {

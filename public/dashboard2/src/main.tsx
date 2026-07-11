@@ -11,6 +11,7 @@ import { TrayRoot } from './shell/TrayRoot.tsx';
 // manager-tokens.css is consumed read-only from the frozen manager tree (033.2).
 import '../../manager/src/manager-tokens.css';
 import './styles/base.css';
+import './styles/turn-stream.css';
 
 const trayMode = new URLSearchParams(window.location.search).get('tray') === '1';
 const rootEl = document.getElementById('dashboard2-root');

@@ -273,6 +273,28 @@ test('042: traceRunId→turnId join maps a streaming body to its live turn', () 
     assert.equal(store.getLiveBodyForTurn('other-turn'), null);
 });
 
+test('042/044: post-terminal rows (detached collab) notify the committed turn subscriber', () => {
+    const store = createTurnStore('3457/any');
+    store.ingest(lifecycleActions(syntheticLive('late-turn')));
+    store.ingest({ kind: 'lifecycle', payload: syntheticEnd('late-turn', 'fixture-session-0', 99) });
+    let calls = 0;
+    store.subscribeTurn('late-turn', () => { calls += 1; });
+    const versionBefore = store.getTurnSnapshot('late-turn')!.version;
+    // collab terminal row lands AFTER the turn already committed
+    store.ingest({
+        kind: 'lifecycle',
+        payload: {
+            topic: 'agent', event: 'turn_segment',
+            turnId: 'late-turn', turnSeq: 50, segmentId: 'collab:sol:run-9', sessionId: 'fixture-session-0',
+            createdAt: 1_790_000_002_000, observedAt: 1_790_000_002_000, providerAt: null,
+            fidelity: null, thinkingMarker: null, type: 'collab', status: 'done', detailRef: null,
+        },
+    });
+    assert.equal(calls, 1, 'committed turn subscriber notified for the post-terminal row');
+    assert.ok(store.getTurnSnapshot('late-turn')!.version > versionBefore, 'turn version bumped');
+    assert.ok(store.getTurnRows('late-turn').some(r => r.type === 'collab'));
+});
+
 test('042: boundary contracts — no zustand, scope.tsx owns UI only, store owns no pane state', () => {
     const storeDir = join(ROOT, 'public/dashboard2/src/turn-stream/store');
     for (const rel of ['turn-store.ts', 'tier-budget.ts', 'selectors.ts', 'use-turn.ts', 'sync-turn-store.ts']) {

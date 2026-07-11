@@ -33,6 +33,11 @@ type TurnCarrier = object & {
     traceAudience?: 'public' | 'internal';
     runtimeCli?: string;
     effectiveProvider?: string;
+    liveScope?: string | null;
+    parentLiveScope?: string | null;
+    traceRunId?: string | null;
+    parentTurnId?: string | null;
+    workerRunId?: string | null;
 };
 
 interface TurnState {
@@ -44,6 +49,7 @@ interface TurnState {
     fidelityRuntime: string;
     thinkingIds: Map<string, string>;
     thinkingDurability: Map<string, { running: boolean; terminal: boolean }>;
+    collabDurability: Map<string, { running: boolean; terminal: boolean }>;
     ended: boolean;
 }
 
@@ -55,6 +61,8 @@ type TurnRecordHints = {
 };
 
 const turnStates = new WeakMap<object, TurnState>();
+const publicTurnStatesByLiveScope = new Map<string, TurnState>();
+const publicTurnStatesByTurnId = new Map<string, TurnState>();
 
 function publishTurnRecord(
     event: 'turn_start' | 'turn_segment' | 'turn_end',
@@ -104,9 +112,14 @@ function ensureTurn(
         fidelityRuntime: fidelityRuntime(ctx),
         thinkingIds: new Map(),
         thinkingDurability: new Map(),
+        collabDurability: new Map(),
         ended: false,
     };
     turnStates.set(ctx, state);
+    if (audience === 'public' && ctx.liveScope && !ctx.parentLiveScope) {
+        publicTurnStatesByLiveScope.set(ctx.liveScope, state);
+    }
+    if (audience === 'public') publicTurnStatesByTurnId.set(state.turnId, state);
     appendTurnRecord(ctx, 'turn_start', 'running', null, 'turn_start', audience, {
         segmentId: `${state.turnId}:lifecycle`,
         fidelity: state.fidelity,
@@ -162,6 +175,136 @@ function appendTurnRecord(
     }
 }
 
+function appendRecordToState(
+    state: TurnState,
+    type: TurnSegmentType,
+    status: TurnSegmentStatus,
+    segmentId: string,
+    detailRef: TurnSegment['detailRef'] = null,
+    allowEnded = false,
+): TurnSegment | null {
+    if (state.ended && !allowEnded) return null;
+    const segment: TurnSegment = {
+        turnId: state.turnId,
+        turnSeq: state.nextSeq++,
+        segmentId,
+        sessionId: state.sessionId,
+        createdAt: state.createdAt,
+        observedAt: Date.now(),
+        providerAt: null,
+        fidelity: state.fidelity,
+        thinkingMarker: null,
+        type,
+        status,
+        detailRef,
+    };
+    try {
+        publishTurnRecord('turn_segment', segment, 'public');
+        return segment;
+    } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        console.error('[turn-segment] append failed:', message);
+        publish('system', 'turn_segment_error', {
+            turnId: segment.turnId,
+            turnSeq: segment.turnSeq,
+            type: segment.type,
+            error: message,
+        });
+        return null;
+    }
+}
+
+function hasPendingCollab(state: TurnState): boolean {
+    return [...state.collabDurability.values()].some(value => value.running && !value.terminal);
+}
+
+function releasePublicTurnState(state: TurnState): void {
+    for (const [liveScope, candidate] of publicTurnStatesByLiveScope) {
+        if (candidate === state) publicTurnStatesByLiveScope.delete(liveScope);
+    }
+    if (publicTurnStatesByTurnId.get(state.turnId) === state) {
+        publicTurnStatesByTurnId.delete(state.turnId);
+    }
+}
+
+function encodedSegmentPart(value: string): string {
+    return encodeURIComponent(value);
+}
+
+export function collabSegmentId(agentId: string, runId: string): string {
+    return `collab:${encodedSegmentPart(agentId)}:${encodedSegmentPart(runId)}`;
+}
+
+export function parseCollabSegmentId(segmentId: string): { agentId: string; runId: string } | null {
+    const match = /^collab:([^:]+):([^:]+)$/.exec(segmentId);
+    if (!match) return null;
+    try {
+        return { agentId: decodeURIComponent(match[1]!), runId: decodeURIComponent(match[2]!) };
+    } catch {
+        return null;
+    }
+}
+
+export function appendCollabTurnSegment(
+    ctx: TurnCarrier,
+    agentId: string,
+    runId: string,
+    status: 'running' | 'done' | 'error' | 'cancelled',
+): TurnSegment[] {
+    const parentState = (ctx.parentTurnId ? publicTurnStatesByTurnId.get(ctx.parentTurnId) : undefined)
+        ?? (ctx.parentLiveScope ? publicTurnStatesByLiveScope.get(ctx.parentLiveScope) : undefined);
+    if (!parentState) return [];
+
+    const segmentId = collabSegmentId(agentId, runId);
+    const durability = parentState.collabDurability.get(segmentId) ?? { running: false, terminal: false };
+    const appended: TurnSegment[] = [];
+    if (!durability.running) {
+        const running = appendRecordToState(parentState, 'collab', 'running', segmentId, null, true);
+        if (running) {
+            appended.push(running);
+            durability.running = true;
+        }
+    }
+    if (status !== 'running' && !durability.terminal) {
+        const terminal = appendRecordToState(parentState, 'collab', status, segmentId, null, true);
+        if (terminal) {
+            appended.push(terminal);
+            durability.terminal = true;
+        }
+    }
+    parentState.collabDurability.set(segmentId, durability);
+    if (parentState.ended && !hasPendingCollab(parentState)) releasePublicTurnState(parentState);
+    return appended;
+}
+
+export function appendTurnMetadataSegment(
+    ctx: TurnCarrier,
+    type: TurnSegmentType,
+    status: TurnSegmentStatus,
+    segmentId: string,
+): TurnSegment | null {
+    const state = turnStates.get(ctx) ?? ensureTurn(ctx, 'public');
+    return appendRecordToState(state, type, status, segmentId);
+}
+
+export function getPublicTurnIdForLiveScope(liveScope: string): string | null {
+    return publicTurnStatesByLiveScope.get(liveScope)?.turnId ?? null;
+}
+
+export function getWorkerRunId(ctx: TurnCarrier): string | null {
+    return ctx.workerRunId || null;
+}
+
+export function finishSpawnErrorCollab(ctx: TurnCarrier, agentId: string): TurnSegment[] {
+    const workerRunId = getWorkerRunId(ctx);
+    return workerRunId ? appendCollabTurnSegment(ctx, agentId, workerRunId, 'error') : [];
+}
+
+export function beginCollabWorkerRun(ctx: TurnCarrier, agentId: string): TurnSegment[] {
+    const workerRunId = getWorkerRunId(ctx);
+    return workerRunId ? appendCollabTurnSegment(ctx, agentId, workerRunId, 'running') : [];
+}
+
 export function finishTurnLifecycle(
     ctx: TurnCarrier,
     status: TurnSegmentStatus,
@@ -173,6 +316,7 @@ export function finishTurnLifecycle(
         segmentId: `${state.turnId}:lifecycle`,
     });
     state.ended = true;
+    if (!hasPendingCollab(state)) releasePublicTurnState(state);
     return segment;
 }
 
@@ -296,6 +440,10 @@ export function emitAgentTool(
         : null;
     if (entry.toolType === 'thinking') appendThinkingTurnSegment(ctx, entry, detailRef);
     else appendTurnRecord(ctx, 'tool', entry.status ?? 'running', detailRef);
+    const workerRunId = getWorkerRunId(ctx);
+    if (agentLabel && empTag["isEmployee"] === true && workerRunId) {
+        appendCollabTurnSegment(ctx, agentLabel, workerRunId, 'running');
+    }
     if (agentLabel && empTag["isEmployee"] === true) {
         updateWorkerTools(agentLabel, ctx.toolLog);
     }

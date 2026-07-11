@@ -1,6 +1,7 @@
 import { PanelRightOpen, X } from '@lucide/icons';
 import type { JSX } from 'react';
 import { useAppScope, type SessionScope } from '../state/scope.tsx';
+import { TurnStreamPane } from '../turn-stream/components/TurnStreamPane.tsx';
 import { Icon } from './Icon.tsx';
 
 interface PaneDescriptor {
@@ -64,7 +65,11 @@ export function Workbench(): JSX.Element {
                             ) : null}
                         </header>
                         <div className="d2-pane-body">
-                            <PaneScope scope={selected} />
+                            {pane.id === 'primary' && selected ? (
+                                <TurnStreamPane scope={selected} />
+                            ) : (
+                                <PaneScope scope={selected} />
+                            )}
                         </div>
                     </article>
                 ))}

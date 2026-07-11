@@ -83,7 +83,12 @@ import {
     type AgyBootstrapEnvelope,
 } from './agy-bootstrap.js';
 import { startAgyTranscriptWatcher, type AgyTranscriptWatcherHandle } from './agy-transcript-watcher.js';
-import { finishTurnLifecycle } from './events/helpers.js';
+import {
+    beginCollabWorkerRun,
+    finishSpawnErrorCollab,
+    finishTurnLifecycle,
+    getPublicTurnIdForLiveScope,
+} from './events/helpers.js';
 import { appendAssistantTextSegment, emitAgentTool, normalizeAssistantDisplayText, pushTrace } from './events/helpers.js';
 import { listKiroConversationIdsForCwd } from './kiro-auth.js';
 import {
@@ -197,6 +202,38 @@ type SpawnPromiseResult = {
 
 interface CopilotSpawnContext extends SpawnContext {
     thinkingBuf: string;
+    parentTurnId?: string | null;
+    workerRunId?: string | null;
+}
+
+type SpawnContextWithParent = SpawnContext & {
+    parentTurnId?: string | null;
+    workerRunId?: string | null;
+};
+
+export function beginSpawnedWorkerCollab(
+    ctx: SpawnContextWithParent,
+    agentLabel: string,
+    isEmployee: boolean,
+): void {
+    if (isEmployee) beginCollabWorkerRun(ctx, agentLabel);
+}
+
+export function finalizeSpawnInitializationError(
+    ctx: SpawnContextWithParent,
+    agentLabel: string,
+    isEmployee: boolean,
+    traceAudience: 'public' | 'internal',
+    branch: 'copilot' | 'codex-app' | 'standard',
+): void {
+    if (branch === 'copilot') {
+        finishTurnLifecycle(ctx, 'error', traceAudience);
+    } else if (branch === 'codex-app') {
+        finishTurnLifecycle(ctx, 'error', traceAudience);
+    } else {
+        finishTurnLifecycle(ctx, 'error', traceAudience);
+    }
+    if (isEmployee) finishSpawnErrorCollab(ctx, agentLabel);
 }
 
 import { killProcessTree } from './spawn/process-kill.js';
@@ -703,6 +740,9 @@ interface SpawnOpts {
     _agyStaleFreshRetry?: boolean;
     forceNew?: boolean;
     agentId?: string;
+    parentTurnId?: string;
+    parentLiveScope?: string;
+    workerRunId?: string;
     sysPrompt?: string;
     origin?: string;
     target?: RemoteTarget;
@@ -1073,7 +1113,14 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
 
     const agentLabel = agentId || 'main';
     const traceAudience: 'public' | 'internal' = (opts.internal || isEmployee) ? 'internal' : 'public';
-    const parentLiveScopeForChild = !opts.internal && isEmployee ? liveScope : null;
+    const parentLiveScopeForChild = !opts.internal && isEmployee
+        ? opts.parentLiveScope || liveScope
+        : null;
+    const parentTurnIdForChild = !opts.internal && isEmployee
+        ? opts.parentTurnId || (parentLiveScopeForChild
+            ? getPublicTurnIdForLiveScope(parentLiveScopeForChild)
+            : null)
+        : null;
 
     // ─── Universal employee isolation ────────────────────
     // All CLIs auto-read AGENTS.md/CLAUDE.md/GEMINI.md from cwd.
@@ -1203,7 +1250,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
             resolve!({ text: '', code: 1 });
-            finishTurnLifecycle(ctx, 'error', traceAudience);
+            finalizeSpawnInitializationError(ctx, agentLabel, isEmployee, traceAudience, 'copilot');
             if (mainManaged) processQueue();
         });
 
@@ -1223,9 +1270,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             runStartedAt: Date.now(),
             liveScope: effectiveLiveScope,
             parentLiveScope: parentLiveScopeForChild,
+            parentTurnId: parentTurnIdForChild,
+            ...(opts.workerRunId ? { workerRunId: opts.workerRunId } : {}),
             traceRunId,
             traceAudience,
         };
+        beginSpawnedWorkerCollab(ctx, agentLabel, isEmployee);
 
         // Flush accumulated 💭 thinking buffer as a single merged event
         function flushThinking() {
@@ -1472,7 +1522,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         console.log(`[jaw:pi] isResume=${isResume}, bucketSessionId=${bucketSessionId || 'none'}, piSessionId=${piSessionId || 'new'}`);
         const piPrompt = piSessionId ? prompt : withHistoryPrompt(prompt, historyBlock);
         const traceRunId = startTraceRun({ cli, model: runtimeModel, workingDir: settings["workingDir"] || null, agentLabel, audience: traceAudience });
-        const ctx: SpawnContext = {
+        const ctx: SpawnContextWithParent = {
             fullText: '',
             traceLog: [],
             toolLog: [],
@@ -1494,9 +1544,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             liveOutputText: '',
             liveScope: effectiveLiveScope,
             parentLiveScope: parentLiveScopeForChild,
+            parentTurnId: parentTurnIdForChild,
+            ...(opts.workerRunId ? { workerRunId: opts.workerRunId } : {}),
             traceRunId,
             traceAudience,
         };
+        beginSpawnedWorkerCollab(ctx, agentLabel, isEmployee);
         function flushPiThinking() {
             if (!ctx.thinkingBuf) return;
             const merged = ctx.thinkingBuf.trim();
@@ -1670,7 +1723,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             }
             broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
             resolve!({ text: '', code: 1 });
-            finishTurnLifecycle(ctx, 'error', traceAudience);
+            finalizeSpawnInitializationError(ctx, agentLabel, isEmployee, traceAudience, 'codex-app');
             if (mainManaged) processQueue();
         });
 
@@ -1690,9 +1743,12 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
             runStartedAt: Date.now(),
             liveScope: effectiveLiveScope,
             parentLiveScope: parentLiveScopeForChild,
+            parentTurnId: parentTurnIdForChild,
+            ...(opts.workerRunId ? { workerRunId: opts.workerRunId } : {}),
             traceRunId,
             traceAudience,
         };
+        beginSpawnedWorkerCollab(ctx, agentLabel, isEmployee);
 
         function flushCodexAppThinking() {
             if (!ctx.thinkingBuf) return;
@@ -1972,7 +2028,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         }
         broadcast('agent_done', { text: `❌ ${msg}`, error: true, origin, ...empTag }, isEmployee ? 'internal' : 'public');
         resolve!({ text: '', code: 127 });
-        finishTurnLifecycle(ctx, 'error', traceAudience);
+        finalizeSpawnInitializationError(ctx, agentLabel, isEmployee, traceAudience, 'standard');
         if (mainManaged) processQueue();
     });
 
@@ -2004,7 +2060,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
     // Native `agy --conversation ... -p` may emit only the current answer.
     // Length-based replay trimming can therefore swallow the whole new answer.
     const agyResumeOffset = 0;
-    const ctx: SpawnContext = {
+    const ctx: SpawnContextWithParent = {
         fullText: '',
         traceLog: [],
         toolLog: [],
@@ -2024,6 +2080,8 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         effectiveProvider,
         liveScope: effectiveLiveScope,
         parentLiveScope: parentLiveScopeForChild,
+        parentTurnId: parentTurnIdForChild,
+        ...(opts.workerRunId ? { workerRunId: opts.workerRunId } : {}),
         traceRunId,
         traceAudience,
         ...(opencodeSpawnAudit ? { opencodeSpawnAudit: opencodeSpawnAudit as Record<string, unknown> } : {}),
@@ -2042,6 +2100,7 @@ export function spawnAgent(prompt: string, opts: SpawnOpts = {}): SpawnResult {
         ...(kiroPlainText || cli === 'agy' || cli === 'pi' ? { liveOutputText: '' } : {}),
         ...(kiroPlainText ? { kiroLastVisibleAt: Date.now(), kiroHeartbeatSent: false } : {}),
     };
+    beginSpawnedWorkerCollab(ctx, agentLabel, isEmployee);
     let agyClosing = false;
     let agyGuardedStaleDetected = false;
     const scheduleAgyQuietCompletion = () => {

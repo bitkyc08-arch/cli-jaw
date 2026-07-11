@@ -16,6 +16,7 @@ import {
     markWorkerDisconnected,
     markWorkerStalled,
     markWorkerTimedOut,
+    getWorkerSlot,
     updateWorkerPhase,
 } from './worker-registry.js';
 import { sanitizeToolLogForDurableStorage } from '../shared/tool-log-sanitize.js';
@@ -371,8 +372,13 @@ ${worklogBlock}`.trim();
 
     const empOutputLenFromDb = canResume && typeof empSession?.["output_len"] === 'number'
         ? empSession["output_len"] as number : 0;
+    const workerSlot = getWorkerSlot(empId);
+    const workerRunId = workerSlot?.runId;
+    const parentLiveScope = text(workerSlot?.replayMeta?.scopeId);
     const { promise } = spawnAgent(taskPrompt, {
         agentId: empId, cli: text(emp["cli"]), model: text(emp["model"]),
+        ...(workerRunId ? { workerRunId } : {}),
+        ...(parentLiveScope ? { parentLiveScope } : {}),
         forceNew: !canResume,
         ...(canResume ? { employeeSessionId: empSessionId, employeeOutputLen: empOutputLenFromDb } : {}),
         sysPrompt: sysPrompt,
