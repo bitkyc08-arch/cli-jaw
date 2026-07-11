@@ -1,0 +1,65 @@
+/* 049 — v4 design tokens (canonical: render_design/010 §6 + design-guide-v4.html :root).
+   Codex-derived 1.25x radii scale; loaded after manager-tokens.css and base.css
+   so v4 values win inside the dashboard2 shell. */
+/* specificity: beat manager-tokens' themed selectors (e.g. :root[data-theme])
+   so §6 values win in the dashboard2 shell for every theme mode */
+:root,
+:root[data-theme='dark'],
+:root[data-theme='light'],
+:root[data-theme='auto'] {
+    --bg: #0d0d0f;
+    --surface: #1a1a1d;
+    --surface-h: #222225;
+    --border: rgba(255, 255, 255, .06);
+    --border-h: rgba(255, 255, 255, .10);
+    --text: #f0f0f2;
+    --text-2: #b0b0b8;
+    --text-3: #707078;
+    --text-4: #4a4a52;
+    --accent: #6ea8fe;
+    --accent-soft: rgba(110, 168, 254, .12);
+    --accent-glow: rgba(110, 168, 254, .25);
+    --positive: #5bd88a;
+    --pos-dim: rgba(91, 216, 138, .15);
+    --warn: #e5b94f;
+    --warn-text: #e89840;
+    --danger: #f87171;
+    --r-sm: 7.5px;
+    --r-md: 10px;
+    --r-lg: 12.5px;
+    --r-xl: 15px;
+    --r-2xl: 20px;
+    --r-3xl: 25px;
+    --r-full: 9999px;
+    --corner-shape: superellipse(1.5);
+    --shadow-hairline: 0 0 0 .5px rgba(0, 0, 0, .1);
+    --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, .08);
+    --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .04) inset;
+    --shimmer-contrast: rgba(255, 255, 255, .52);
+    --div-color: rgba(255, 255, 255, .08);
+}
+
+/* v4 base: dark shell surface, zero letter-spacing (frontend guidance) */
+body {
+    background: var(--bg);
+    color: var(--text);
+    letter-spacing: 0;
+}
+
+/* shell grid (spec 010 §1): sidebar track collapses to 0 */
+.d2-shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    height: 100vh;
+    background: var(--bg);
+    transition: grid-template-columns .18s ease;
+}
+
+.d2-shell.d2-sb-closed {
+    grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.d2-shell.d2-sb-closed > aside {
+    overflow: hidden;
+    min-width: 0;
+}

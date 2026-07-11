@@ -1,0 +1,427 @@
+.d2-sidebar-v4 {
+    position: relative;
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    overflow: hidden;
+    border-right: 1px solid var(--border);
+    background: transparent;
+}
+
+.d2-sidebar-v4::before {
+    position: absolute;
+    z-index: 0;
+    inset: 0;
+    background: linear-gradient(
+        180deg,
+        rgba(28, 28, 32, 0.88) 0%,
+        rgba(22, 22, 25, 0.94) 30%,
+        rgba(21, 21, 23, 0.98) 70%,
+        rgba(21, 21, 23, 1) 100%
+    );
+    backdrop-filter: blur(32px);
+    -webkit-backdrop-filter: blur(32px);
+    content: '';
+}
+
+.d2-sidebar-v4 > * {
+    position: relative;
+    z-index: 1;
+}
+
+.d2-sidebar-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 8px 10px 0;
+}
+
+.d2-sidebar-toggle,
+.d2-sidebar-settings,
+.d2-sidebar-theme {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-4);
+}
+
+.d2-sidebar-toggle {
+    width: 26px;
+    height: 26px;
+    border-radius: var(--r-md);
+    transition: background 150ms, color 150ms;
+}
+
+.d2-sidebar-toggle:hover:not(:disabled) {
+    background: var(--surface-h);
+    color: var(--text-2);
+}
+
+.d2-sidebar-toggle .d2-icon,
+.d2-sidebar-toggle .d2-icon svg {
+    width: 14px;
+    height: 14px;
+}
+
+.d2-sidebar-top {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 4px 10px 6px;
+}
+
+.d2-mode-switcher {
+    display: flex;
+    height: 34px;
+    gap: 2px;
+    padding: 3px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-lg);
+    background: rgba(255, 255, 255, 0.04);
+    corner-shape: var(--corner-shape);
+}
+
+.d2-mode-button {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    border: 0;
+    border-radius: calc(var(--r-lg) - 2px);
+    background: transparent;
+    color: var(--text-3);
+    font-size: 12px;
+    font-weight: 500;
+    transition: background 150ms, color 150ms;
+}
+
+.d2-mode-button:hover {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-2);
+}
+
+.d2-mode-button.is-active {
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: var(--shadow-hairline);
+    color: var(--text);
+}
+
+.d2-mode-button .d2-icon,
+.d2-mode-button .d2-icon svg {
+    width: 13px;
+    height: 13px;
+}
+
+.d2-mode-badge {
+    margin-left: 2px;
+    padding: 0 5px;
+    border-radius: var(--r-full);
+    background: var(--accent);
+    color: var(--bg);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 16px;
+}
+
+.d2-sidebar-list {
+    min-height: 0;
+    flex: 1;
+    padding: 6px 8px;
+    overflow-y: auto;
+}
+
+.d2-sidebar-v4 .d2-instance-node + .d2-instance-node {
+    margin-top: 0;
+}
+
+.d2-sidebar-v4 .d2-instance-row {
+    position: relative;
+    display: flex;
+    min-height: 44px;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 10px;
+    border-radius: var(--r-lg);
+    transition: background 120ms;
+}
+
+.d2-sidebar-v4 .d2-instance-row:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+.d2-sidebar-v4 .d2-instance-row.is-selected {
+    background: var(--accent-soft);
+}
+
+.d2-instance-main {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    align-items: center;
+    gap: 9px;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+}
+
+.d2-instance-main:disabled {
+    cursor: default;
+}
+
+.d2-instance-dot {
+    width: 8px;
+    height: 8px;
+    flex: none;
+    border-radius: 50%;
+}
+
+.d2-instance-dot.is-running {
+    background: var(--positive);
+    box-shadow: 0 0 6px rgba(91, 216, 138, 0.4);
+}
+
+.d2-instance-dot.is-off {
+    background: var(--text-4);
+}
+
+.d2-instance-dot.is-busy {
+    background: var(--warn);
+    box-shadow: 0 0 6px rgba(229, 185, 79, 0.3);
+}
+
+.d2-sidebar-v4 .d2-instance-copy {
+    min-width: 0;
+    flex: 1;
+    gap: 1px;
+}
+
+.d2-sidebar-v4 .d2-instance-copy strong {
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 18px;
+}
+
+.d2-sidebar-v4 .d2-instance-copy > span {
+    color: var(--text-3);
+    font-size: 10.5px;
+    line-height: 15px;
+}
+
+.d2-instance-port {
+    color: var(--text-4);
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+.d2-sidebar-v4 .d2-tree-chevron {
+    width: 12px;
+    color: var(--text-4);
+}
+
+.d2-sidebar-v4 .d2-tree-chevron .d2-icon,
+.d2-sidebar-v4 .d2-tree-chevron .d2-icon svg {
+    width: 12px;
+    height: 12px;
+}
+
+.d2-instance-trail {
+    position: relative;
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 2px;
+    margin-left: auto;
+}
+
+.d2-instance-spinner {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(255, 255, 255, 0.08);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: d2-sidebar-spin 800ms linear infinite;
+}
+
+@keyframes d2-sidebar-spin {
+    to { transform: rotate(360deg); }
+}
+
+.d2-instance-control,
+.d2-instance-more {
+    display: inline-flex;
+    width: 22px;
+    height: 22px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    opacity: 0;
+    pointer-events: none;
+    transition: background 120ms, color 120ms, opacity 120ms, visibility 120ms;
+    visibility: hidden;
+}
+
+.d2-instance-row:hover .d2-instance-control,
+.d2-instance-row:hover .d2-instance-more,
+.d2-instance-row:focus-within .d2-instance-control,
+.d2-instance-row:focus-within .d2-instance-more,
+.d2-instance-trail:focus-within .d2-instance-control,
+.d2-instance-trail:focus-within .d2-instance-more {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+}
+
+.d2-instance-row:hover .d2-instance-spinner,
+.d2-instance-row:focus-within .d2-instance-spinner,
+.d2-instance-trail:focus-within .d2-instance-spinner {
+    display: none;
+}
+
+.d2-instance-control:focus-visible,
+.d2-instance-more:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.d2-instance-control:disabled {
+    cursor: not-allowed;
+    opacity: 0.72;
+}
+
+.d2-instance-control.is-start {
+    border: 1px solid var(--pos-dim);
+    color: var(--positive);
+}
+
+.d2-instance-control.is-stop {
+    border: 1px solid rgba(248, 113, 113, 0.15);
+    color: var(--danger);
+}
+
+.d2-instance-control .d2-icon,
+.d2-instance-control .d2-icon svg {
+    width: 11px;
+    height: 11px;
+}
+
+.d2-instance-more {
+    border: 0;
+    color: var(--text-4);
+}
+
+.d2-instance-more:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--text);
+}
+
+.d2-instance-more .d2-icon,
+.d2-instance-more .d2-icon svg {
+    width: 13px;
+    height: 13px;
+}
+
+.d2-instance-menu {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 5px);
+    right: 0;
+    display: flex;
+    width: 180px;
+    flex-direction: column;
+    gap: 2px;
+    padding: 5px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-elevated, 0 16px 48px rgba(0, 0, 0, 0.5));
+}
+
+.d2-instance-menu button {
+    min-height: 30px;
+    padding: 0 9px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font-size: 11.5px;
+    text-align: left;
+}
+
+.d2-instance-menu button:hover:not(:disabled) {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-instance-menu button:disabled {
+    color: var(--text-4);
+    cursor: not-allowed;
+}
+
+.d2-instance-menu button.is-danger:not(:disabled) {
+    color: var(--danger);
+}
+
+.d2-sidebar-v4 .d2-session-list {
+    margin: 2px 0 6px 27px;
+    border-left-color: var(--border);
+}
+
+.d2-sidebar-v4 .d2-session-row {
+    border-radius: var(--r-sm);
+}
+
+.d2-sidebar-empty {
+    padding: 14px 10px;
+    color: var(--text-3);
+    font-size: 11.5px;
+}
+
+.d2-sidebar-footer-v4 {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 10px 14px;
+    border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.d2-sidebar-brand {
+    min-width: 0;
+    flex: 1;
+    color: var(--text-3);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+
+.d2-sidebar-settings,
+.d2-sidebar-theme {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: var(--r-md);
+}
+
+.d2-sidebar-settings:hover:not(:disabled),
+.d2-sidebar-theme:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text-2);
+}
+
+.d2-sidebar-settings:disabled,
+.d2-sidebar-toggle:disabled {
+    cursor: not-allowed;
+    opacity: 0.55;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .d2-instance-spinner {
+        animation-duration: 1600ms;
+    }
+}

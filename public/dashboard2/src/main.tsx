@@ -1,3 +1,13 @@
+// CSS boot order contract (B-008 §7 + 049): token/style sheets load BEFORE the
+// component tree so component-level css (composer.css, pending css) layers on
+// top of tokens. Import order == injection order in vite.
+// manager-tokens.css is consumed read-only from the frozen manager tree (033.2).
+import '../../manager/src/manager-tokens.css';
+import './styles/base.css';
+import './styles/tokens-v4.css';
+import './styles/sidebar-v4.css';
+import './styles/workbench-v4.css';
+import './styles/turn-stream.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { ManagerApiProvider } from './providers/api-provider.tsx';
@@ -7,11 +17,6 @@ import { ManagerShortcutProvider } from './providers/shortcut-provider.tsx';
 import { ManagerSyncProvider } from './providers/sync-provider.tsx';
 import { AppScopeProvider } from './state/scope.tsx';
 import { TrayRoot } from './shell/TrayRoot.tsx';
-// CSS boot order contract (B-008 §7): theme tokens load before base styles.
-// manager-tokens.css is consumed read-only from the frozen manager tree (033.2).
-import '../../manager/src/manager-tokens.css';
-import './styles/base.css';
-import './styles/turn-stream.css';
 
 const trayMode = new URLSearchParams(window.location.search).get('tray') === '1';
 const rootEl = document.getElementById('dashboard2-root');

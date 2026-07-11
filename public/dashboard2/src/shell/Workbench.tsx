@@ -1,79 +1,90 @@
-import { PanelRightOpen, X } from '@lucide/icons';
-import type { JSX } from 'react';
-import { useAppScope, type SessionScope } from '../state/scope.tsx';
+import { PanelLeft, PanelRight } from '@lucide/icons';
+import { useEffect, useState, type JSX } from 'react';
+import type { DashboardInstance } from '../../../../src/manager/types.ts';
 import { ChatView } from '../chat/ChatView.tsx';
+import { useManagerApi } from '../providers/api-provider.tsx';
+import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
+import { SidePane } from './SidePane.tsx';
 
-interface PaneDescriptor {
-    id: 'primary' | 'side';
-    title: string;
-    closeable: boolean;
+export interface WorkbenchProps {
+    sidebarCollapsed?: boolean;
+    onOpenSidebar?(): void;
 }
 
-function PaneScope({ scope }: { scope: SessionScope | null }): JSX.Element {
-    if (!scope) {
-        return <div className="d2-pane-empty">No session selected</div>;
-    }
-    return (
-        <div className="d2-pane-scope">
-            <span>port {scope.port}</span>
-            <span>/</span>
-            <span>session {scope.sessionId}</span>
-        </div>
-    );
+function instanceName(instance: DashboardInstance): string {
+    const label = instance.label?.trim();
+    if (label) return label;
+    const workingDir = instance.workingDir?.replace(/[\\/]+$/, '');
+    return workingDir?.split(/[\\/]/).pop() || `Instance ${instance.port}`;
 }
 
-export function Workbench(): JSX.Element {
+export function Workbench({
+    sidebarCollapsed = false,
+    onOpenSidebar,
+}: WorkbenchProps): JSX.Element {
+    const api = useManagerApi();
     const { selected, sidePaneOpen, openSidePane, closeSidePane } = useAppScope();
-    const panes: PaneDescriptor[] = [
-        { id: 'primary', title: 'Primary', closeable: false },
-        ...(sidePaneOpen
-            ? [{ id: 'side', title: 'Side pane', closeable: true } as const]
-            : []),
-    ];
+    const [instanceNames, setInstanceNames] = useState<Map<number, string>>(() => new Map());
+    const toggleSidePane = sidePaneOpen ? closeSidePane : openSidePane;
+
+    useEffect(() => {
+        let mounted = true;
+        void api.fetchInstances().then((instances) => {
+            if (!mounted) return;
+            setInstanceNames(new Map(instances.map((instance) => [instance.port, instanceName(instance)])));
+        }).catch(() => {
+            // The port remains a stable fallback when instance discovery is unavailable.
+        });
+        return () => { mounted = false; };
+    }, [api]);
 
     return (
-        <section className="d2-workbench" aria-label="Session workbench">
-            <header className="d2-workbench-header">
-                <div>
-                    <strong>Workbench</strong>
-                    <span>{selected ? `Port ${selected.port}` : 'No active scope'}</span>
-                </div>
-                {!sidePaneOpen ? (
-                    <button type="button" className="d2-command-button" onClick={openSidePane}>
-                        <Icon icon={PanelRightOpen} />
-                        <span>Open side pane</span>
+        <section
+            className={`d2-workbench${sidePaneOpen ? ' d2-workbench-side-open' : ''}`}
+            aria-label="Session workbench"
+        >
+            <div className="d2-workbench-left">
+                <header className="d2-workbench-left-header">
+                    {sidebarCollapsed ? (
+                        <button
+                            className="d2-workbench-header-button"
+                            type="button"
+                            onClick={onOpenSidebar}
+                            aria-label="Open sidebar"
+                            title="Open sidebar"
+                        >
+                            <Icon icon={PanelLeft} />
+                        </button>
+                    ) : null}
+                    <span className="d2-workbench-title">
+                        {selected
+                            ? instanceNames.get(selected.port) ?? `Port ${selected.port}`
+                            : 'No session selected'}
+                    </span>
+                    <button
+                        className="d2-workbench-header-button d2-workbench-side-toggle"
+                        type="button"
+                        onClick={toggleSidePane}
+                        aria-label={sidePaneOpen ? 'Close side pane' : 'Open side pane'}
+                        title={sidePaneOpen ? 'Close side pane' : 'Open side pane'}
+                        aria-pressed={sidePaneOpen}
+                    >
+                        <Icon icon={PanelRight} />
                     </button>
-                ) : null}
-            </header>
+                </header>
 
-            <div className={`d2-pane-grid d2-pane-grid-${panes.length}`}>
-                {panes.map((pane) => (
-                    <article className="d2-pane" key={pane.id} data-pane={pane.id}>
-                        <header className="d2-pane-header">
-                            <span>{pane.title}</span>
-                            {pane.closeable ? (
-                                <button
-                                    className="d2-icon-button"
-                                    type="button"
-                                    onClick={closeSidePane}
-                                    aria-label="Close side pane"
-                                    title="Close side pane"
-                                >
-                                    <Icon icon={X} />
-                                </button>
-                            ) : null}
-                        </header>
-                        <div className="d2-pane-body">
-                            {pane.id === 'primary' && selected ? (
-                                <ChatView scope={selected} />
-                            ) : (
-                                <PaneScope scope={selected} />
-                            )}
-                        </div>
-                    </article>
-                ))}
+                <div className="d2-workbench-chat">
+                    {selected ? (
+                        <ChatView scope={selected} />
+                    ) : (
+                        <div className="d2-pane-empty">No session selected</div>
+                    )}
+                </div>
             </div>
+
+            {sidePaneOpen ? <div className="d2-workbench-divider" aria-hidden="true" /> : null}
+            {sidePaneOpen ? <SidePane onClose={closeSidePane} /> : null}
         </section>
     );
 }

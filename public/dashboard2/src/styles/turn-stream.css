@@ -143,3 +143,80 @@
     overflow-wrap: anywhere;
     white-space: pre-wrap;
 }
+/* 049 — production transcript layout (was harness-only until the v4 skin):
+   700px centered content column (spec 010 §3.2) + virtualized slot geometry */
+.d2-chat-view {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.d2-chat-content {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+}
+
+.d2-turn-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.d2-turn-transcript {
+    max-width: 700px;
+    margin: 0 auto;
+    width: 100%;
+    position: relative;
+}
+
+.d2-turn-slot {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 16px;
+}
+
+.d2-live-tail,
+.d2-history-boundary,
+.d2-chat-echo {
+    max-width: 700px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 16px;
+}
+
+.d2-chat-composer-slot {
+    max-width: 700px;
+    margin: 0 auto 14px;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 0 16px;
+}
+
+/* user prompts: right-aligned surface bubble (spec 010 §3.2) */
+.d2-user-row {
+    display: flex;
+    justify-content: flex-end;
+    padding: 6px 0;
+}
+
+.d2-user-bubble {
+    max-width: 78%;
+    background: var(--surface, #1a1a1d);
+    border-radius: var(--r-2xl, 20px);
+    padding: 10px 14px;
+    font-size: 13.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.d2-legacy-row {
+    padding: 6px 0;
+    color: var(--text-2, #b0b0b8);
+}
