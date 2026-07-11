@@ -69,7 +69,10 @@ export function updateFinalPlannerFlag(ctx: SpawnContext, line: string, minCreat
             ctx.agyFinalPlannerSeen = true;
             ctx.agyFinalPlannerText = rowContent;
             ctx.agyLastTranscriptError = undefined;
-            ctx.metadata = { ...ctx.metadata, agyPlannerOnly: false };
+            // A genuine final answer after CHECKPOINT resolves that compaction
+            // boundary. Keep checkpointSeen=true only when checkpoint is the
+            // last obligation-bearing row of the turn.
+            ctx.metadata = { ...ctx.metadata, agyCheckpointSeen: false, agyPlannerOnly: false };
         }
     } else if (kind === 'checkpoint') {
         ctx.agyFinalPlannerSeen = false;

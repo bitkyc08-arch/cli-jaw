@@ -46,8 +46,17 @@ test('AGY-OB-002: checkpoint disarms stale final and a fresh later final re-arms
     updateFinalPlannerFlag(ctx, row('PLANNER_RESPONSE', 'fresh final', '2026-07-11T00:00:07.000Z'), start);
     assert.equal(ctx.agyFinalPlannerSeen, true);
     assert.equal(ctx.agyFinalPlannerText, 'fresh final');
-    assert.equal(ctx.metadata?.['agyCheckpointSeen'], true);
+    assert.equal(ctx.metadata?.['agyCheckpointSeen'], false);
     assert.equal(ctx.metadata?.['agyPlannerOnly'], false);
+});
+
+test('AGY-OB-002b: checkpoint after final remains unresolved', () => {
+    const ctx = context();
+    const start = Date.parse('2026-07-11T00:00:00.000Z');
+    updateFinalPlannerFlag(ctx, row('PLANNER_RESPONSE', 'final first', '2026-07-11T00:00:05.000Z'), start);
+    updateFinalPlannerFlag(ctx, row('CHECKPOINT', '{{ CHECKPOINT 1 }}', '2026-07-11T00:00:06.000Z'), start);
+    assert.equal(ctx.agyFinalPlannerSeen, false);
+    assert.equal(ctx.metadata?.['agyCheckpointSeen'], true);
 });
 
 test('AGY-OB-003: checkpoint tool evidence activates record_pending', () => {
