@@ -13,6 +13,7 @@ import { buildContinuationPrompt, type SmokeDetectionResult } from './smoke-dete
 import { shouldInvalidateResumeSession } from './resume-classifier.js';
 import { classifyExitError } from './error-classifier.js';
 import { backfillGrokTraceTools } from './grok-trace-backfill.js';
+import { shouldClearHighTurnSessionBucket, shouldUseTurnCountRefresh } from './spawn/resume.js';
 import { recordError, clearErrors } from './alert-escalation.js';
 import { stripInterviewTracker } from '../orchestrator/sanitize.js';
 import { clearLiveRun, getLiveRun } from './live-run-state.js';
@@ -390,11 +391,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
     }
 
     // ─── Phase 54-A: Proactive compact by turn count ───
-    // Non-Claude CLIs lack compact events. Suggest at 25 turns; force refresh at 35.
+    // CLIs without a reliable native compact/resume path get a conservative
+    // turn-count refresh. AGY owns its compaction and keeps its conversation.
     if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
-        const isNonClaude = runtimeCli !== 'claude' && runtimeCli !== 'claude-e';
-        if (isNonClaude && turns >= 35) {
+        const useTurnCountRefresh = shouldUseTurnCountRefresh(runtimeCli);
+        if (useTurnCountRefresh && turns >= 35) {
             console.log(`[jaw:compact] ${cli} reached ${turns} turns — forcing auto-refresh`);
             try {
                 const { autoCompactRefresh } = await import('../core/compact.js');
@@ -407,7 +409,7 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
             } catch (e) {
                 console.warn('[jaw:compact] turn-count auto-refresh failed:', (e as Error).message);
             }
-        } else if (isNonClaude && turns >= 25) {
+        } else if (useTurnCountRefresh && turns >= 25) {
             console.log(`[jaw:compact] ${cli} at ${turns} turns — suggesting compact`);
             broadcast('system_notice', {
                 code: 'compact_suggest',
@@ -416,12 +418,12 @@ export async function handleAgentExit(params: ExitHandlerParams): Promise<void> 
         }
     }
 
-    // ─── Phase 54-C: Codex high-turn auto-compact coordination ───
-    // Codex may internally compact at high turn counts without notifying jaw.
-    // Force a fresh session on next spawn to avoid stale resume.
+    // ─── High-turn native-compaction coordination ───
+    // AGY keeps a native compacted conversation. Other CLIs still use the
+    // conservative fresh-session guard when their compaction is not observable.
     if (mainManaged && !opts.internal && code === 0 && !ctx.cliNativeCompactDetected) {
         const turns = ctx.turns ?? memoryFlushCounter;
-        if ((runtimeCli === 'codex' || runtimeCli === 'opencode' || runtimeCli === 'grok' || runtimeCli === 'agy') && turns > 15) {
+        if (shouldClearHighTurnSessionBucket(runtimeCli, turns)) {
             console.log(`[jaw:compact] ${cli} exited after ${turns} turns — clearing session bucket for fresh start`);
             try {
                 const bucket = resolveSessionBucket(cli, model, effectiveProvider);
