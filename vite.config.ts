@@ -14,6 +14,7 @@ export default defineConfig({
       input: {
         app: 'public/index.html',
         manager: 'public/manager/index.html',
+        dashboard2: 'public/dashboard2/index.html',
       },
       output: {
         manualChunks(id: string) {

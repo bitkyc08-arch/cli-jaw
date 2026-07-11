@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkWebUiBuildOutput } from '../../scripts/check-web-ui-build-output.ts';
@@ -11,6 +11,12 @@ function makeDist(indexHtml: string, appJs: string): string {
     mkdirSync(assets);
     writeFileSync(join(dir, 'index.html'), indexHtml);
     writeFileSync(join(assets, 'app-test.js'), appJs);
+    mkdirSync(join(dir, 'manager'));
+    writeFileSync(join(dir, 'manager', 'index.html'), '<!doctype html>');
+    writeFileSync(join(assets, 'manager-test.js'), 'console.log("manager");');
+    mkdirSync(join(dir, 'dashboard2'));
+    writeFileSync(join(dir, 'dashboard2', 'index.html'), '<!doctype html>');
+    writeFileSync(join(assets, 'dashboard2-test.js'), 'console.log("dashboard2");');
     return dir;
 }
 
@@ -57,4 +63,28 @@ test('build output guard fails nested Vite publicDir artifacts', () => {
     const result = checkWebUiBuildOutput({ distDir: dist });
     assert.equal(result.ok, false);
     assert.match(result.errors.join('\n'), /Forbidden nested build output/);
+});
+
+test('build output guard fails when dashboard2 entry html is missing', () => {
+    const dist = makeDist('<script type="module" src="/assets/app-test.js"></script>', 'console.log("ok");');
+    rmSync(join(dist, 'dashboard2', 'index.html'));
+    const result = checkWebUiBuildOutput({ distDir: dist });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /Missing .*dashboard2.*index\.html/);
+});
+
+test('build output guard fails when dashboard2 entry js is missing', () => {
+    const dist = makeDist('<script type="module" src="/assets/app-test.js"></script>', 'console.log("ok");');
+    rmSync(join(dist, 'assets', 'dashboard2-test.js'));
+    const result = checkWebUiBuildOutput({ distDir: dist });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /No dashboard2-\*\.js entry/);
+});
+
+test('build output guard fails when manager entry html is missing', () => {
+    const dist = makeDist('<script type="module" src="/assets/app-test.js"></script>', 'console.log("ok");');
+    rmSync(join(dist, 'manager', 'index.html'));
+    const result = checkWebUiBuildOutput({ distDir: dist });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /Missing .*manager.*index\.html/);
 });

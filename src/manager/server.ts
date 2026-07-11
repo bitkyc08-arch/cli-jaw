@@ -897,6 +897,26 @@ const noteWsServer = new NoteWsServer({ server, watcher: notesWatcher });
 noteWsServerRef = noteWsServer;
 installDashboardProxy(app, server, { from: scanFrom, count: scanCount });
 
+// dashboard2 (Codex-style turn-stream UI) — dist-only candidate by design
+// (no source fallback: the entry is Vite-built only, see devlog 030 D1/D2).
+const dashboard2HtmlCandidates = [
+    join(distRoot, 'dashboard2', 'index.html'),
+];
+
+function sendDashboard2Html(_req: express.Request, res: express.Response): void {
+    const htmlPath = dashboard2HtmlCandidates.find(candidate => existsSync(candidate));
+    if (!htmlPath) {
+        res.status(500).send('dashboard2 has not been built (run npm run build:frontend)');
+        return;
+    }
+    sendManagerHtml(res, htmlPath);
+}
+
+app.get('/dashboard2', (_req, res) => {
+    res.redirect(308, '/dashboard2/');
+});
+app.get('/dashboard2/{*splat}', sendDashboard2Html);
+
 app.get('/{*splat}', (_req, res) => {
     const htmlPath = managerHtmlCandidates.find(candidate => existsSync(candidate));
     if (!htmlPath) {

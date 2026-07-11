@@ -18,6 +18,7 @@ test('vite config includes manager entry and react plugin', () => {
     assert.ok(vite.includes("@vitejs/plugin-react"), 'Vite must include React plugin');
     assert.ok(vite.includes("manager: 'public/manager/index.html'"), 'Vite must include manager entry');
     assert.ok(vite.includes("app: 'public/index.html'"), 'Vite must preserve existing app entry');
+    assert.ok(vite.includes("dashboard2: 'public/dashboard2/index.html'"), 'Vite must include dashboard2 entry');
 });
 
 test('frontend tsconfig typechecks manager TSX', () => {
@@ -26,6 +27,8 @@ test('frontend tsconfig typechecks manager TSX', () => {
     assert.ok(tsconfig.includes('"jsx": "react-jsx"'), 'frontend tsconfig must enable react-jsx');
     assert.ok(tsconfig.includes('public/manager/src/**/*.tsx'), 'frontend tsconfig must include manager TSX');
     assert.ok(tsconfig.includes('public/manager/src/**/*.ts'), 'frontend tsconfig must include manager TS');
+    assert.ok(tsconfig.includes('public/dashboard2/src/**/*.tsx'), 'frontend tsconfig must include dashboard2 TSX');
+    assert.ok(tsconfig.includes('public/dashboard2/src/**/*.ts'), 'frontend tsconfig must include dashboard2 TS');
 });
 
 test('app icon validation stays scoped to packaged app assets', () => {

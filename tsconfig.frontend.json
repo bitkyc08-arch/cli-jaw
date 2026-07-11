@@ -27,6 +27,8 @@
         "public/js/**/*.ts",
         "public/manager/src/**/*.ts",
         "public/manager/src/**/*.tsx",
+        "public/dashboard2/src/**/*.ts",
+        "public/dashboard2/src/**/*.tsx",
         "types/frontend.d.ts"
     ]
 }

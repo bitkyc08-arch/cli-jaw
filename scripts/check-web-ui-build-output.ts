@@ -4,6 +4,18 @@ import { join } from 'node:path';
 
 const DEFAULT_DIST_DIR = 'public/dist';
 const DEFAULT_ENTRY_BUDGET_BYTES = 600_000;
+// Every Vite entry must ship its HTML shell; assets/<entry>-*.js must exist
+// for each named entry (existence-only — perf budgets stay app-scoped).
+const REQUIRED_ENTRY_HTML = [
+    'index.html',
+    'manager/index.html',
+    'dashboard2/index.html',
+];
+const REQUIRED_ENTRY_JS_PREFIXES = [
+    'app',
+    'manager',
+    'dashboard2',
+];
 const FORBIDDEN_ENTRY_CHUNKS = [
     'vendor-utils',
     'vendor-mermaid',
@@ -34,6 +46,12 @@ function listAppFiles(assetsDir: string): string[] {
     return readdirSync(assetsDir)
         .filter(name => /^app-[\w-]+\.js$/.test(name))
         .map(name => join(assetsDir, name));
+}
+
+function hasEntryJs(assetsDir: string, prefix: string): boolean {
+    if (!existsSync(assetsDir)) return false;
+    const entryRe = new RegExp(`^${prefix}-[\\w-]+\\.js$`);
+    return readdirSync(assetsDir).some(name => entryRe.test(name));
 }
 
 function includesForbiddenChunk(value: string): string | null {
@@ -92,13 +110,22 @@ export function checkWebUiBuildOutput(options: BuildOutputCheckOptions = {}): Bu
             errors.push(`Forbidden nested build output ${nestedPath}; check Vite publicDir and stale public/public artifacts`);
         }
     }
-    if (!existsSync(indexPath)) errors.push(`Missing ${indexPath}`);
+    for (const relHtml of REQUIRED_ENTRY_HTML) {
+        const htmlPath = join(distDir, relHtml);
+        if (!existsSync(htmlPath)) errors.push(`Missing ${htmlPath}`);
+    }
     if (!existsSync(assetsDir)) errors.push(`Missing ${assetsDir}`);
     if (errors.length > 0) return { ok: false, errors, appFiles: [], eagerBytes: 0 };
 
     checkIndexHtml(readText(indexPath), errors);
     const appFiles = listAppFiles(assetsDir);
     if (appFiles.length === 0) errors.push(`No app-*.js files found in ${assetsDir}`);
+    for (const prefix of REQUIRED_ENTRY_JS_PREFIXES) {
+        if (prefix === 'app') continue; // covered by listAppFiles above
+        if (!hasEntryJs(assetsDir, prefix)) {
+            errors.push(`No ${prefix}-*.js entry found in ${assetsDir}`);
+        }
+    }
 
     let eagerBytes = 0;
     for (const appPath of appFiles) {

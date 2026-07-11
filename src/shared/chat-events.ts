@@ -50,9 +50,9 @@ export type PendingItem = PendingItemFields & (
     | { source: 'discord' }
 );
 
-export type KnownTurnSegmentType = 'assistant_text' | 'thinking' | 'tool';
+export type KnownTurnSegmentType = 'assistant_text' | 'thinking' | 'tool' | 'turn_start' | 'turn_end';
 export type TurnSegmentType = KnownTurnSegmentType | (string & Record<never, never>);
-export type KnownTurnSegmentStatus = 'running' | 'done' | 'error';
+export type KnownTurnSegmentStatus = 'running' | 'done' | 'error' | 'continued' | 'interrupted';
 export type TurnSegmentStatus = KnownTurnSegmentStatus | (string & Record<never, never>);
 export type TurnFidelity = 'full' | 'coarse' | 'text_only';
 export type KnownThinkingMarker = 'streaming' | 'plaintext' | 'encrypted' | 'token_fallback' | 'pre_tool_text' | 'plan' | 'planner';
