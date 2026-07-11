@@ -299,7 +299,7 @@ cli-jaw/
 │   │   ├── policy.ts         ← goal-run preflight gates + budget check (56L)
 │   │   └── types.ts          ← GoalRunMode, GoalRunBudget, GoalRunSafetyGate, GoalRunState 타입 (36L)
 │   ├── trace/                ← Trace 이벤트 영속화 (3 files, 279L)
-│   │   ├── store.ts          ← startTraceRun + appendTraceEvent + stampTraceTool + finalizeTraceRun + pruneTraceEvents (336L)
+│   │   ├── store.ts          ← startTraceRun + appendTraceEvent + stampTraceTool + finalizeTraceRun + pruneTraceEvents (352L)
 │   │   ├── types.ts          ← TraceRunInput, TraceEventInput, TracePointer, TraceRunRow 타입 (36L)
 │   │   └── redact.ts         ← trace event redaction helpers (48L)
 │   ├── shared/               ← 공유 유틸리티 (6 files + reminders helper) ✨

@@ -76,10 +76,26 @@ const interruptStaleStmt = db.prepare(`
     UPDATE trace_runs SET status = 'interrupted', finished_at = ?, error = COALESCE(error, 'process exited before finalization')
     WHERE status = 'running'
 `);
-const pruneEventsStmt = db.prepare('DELETE FROM trace_events WHERE created_at < ?');
-const pruneRunsStmt = db.prepare('DELETE FROM trace_runs WHERE started_at < ?');
+const unreferencedRunGuard = `
+    NOT EXISTS (SELECT 1 FROM messages WHERE messages.trace_run_id = trace_events.run_id)
+    AND NOT EXISTS (SELECT 1 FROM turn_segments WHERE turn_segments.trace_run_id = trace_events.run_id)
+`;
+const pruneEventsStmt = db.prepare(`DELETE FROM trace_events WHERE created_at < ? AND ${unreferencedRunGuard}`);
+const pruneRunsStmt = db.prepare(`
+    DELETE FROM trace_runs
+    WHERE started_at < ?
+      AND NOT EXISTS (SELECT 1 FROM messages WHERE messages.trace_run_id = trace_runs.id)
+      AND NOT EXISTS (SELECT 1 FROM turn_segments WHERE turn_segments.trace_run_id = trace_runs.id)
+`);
 const countAllEventsStmt = db.prepare('SELECT COUNT(*) AS c FROM trace_events');
-const trimEventsStmt = db.prepare('DELETE FROM trace_events WHERE rowid IN (SELECT rowid FROM trace_events ORDER BY created_at ASC LIMIT ?)');
+const trimEventsStmt = db.prepare(`
+    DELETE FROM trace_events WHERE rowid IN (
+        SELECT rowid FROM trace_events
+        WHERE ${unreferencedRunGuard}
+        ORDER BY created_at ASC
+        LIMIT ?
+    )
+`);
 const liveRunIdsStmt = db.prepare('SELECT id FROM trace_runs');
 const seqCache = new Map<string, number>();
 

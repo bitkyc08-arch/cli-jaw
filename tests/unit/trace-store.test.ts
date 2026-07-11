@@ -10,10 +10,12 @@ import {
     getTraceRun,
     listToolEntriesForRun,
     listTraceEvents,
+    pruneTraceEvents,
     stampTraceTool,
     startTraceRun,
     updateTraceToolRow,
 } from '../../src/trace/store.ts';
+import { db } from '../../src/core/db.ts';
 import type { ToolEntry } from '../../src/types/agent.ts';
 
 test('trace store records redacted raw events, spills large payloads, and stamps tool pointers', () => {
@@ -122,4 +124,72 @@ test('listToolEntriesForRun keeps the NEWEST rows when over the limit', () => {
     assert.equal(entries.length, 3);
     assert.deepEqual(entries.map(e => e.label), ['tool-3', 'tool-4', 'tool-5']);
     assert.deepEqual(entries.map(e => e.traceSeq), [3, 4, 5]);
+});
+
+test('trace retention preserves message and detailRef runs while deleting an old orphan', () => {
+    const messageRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const segmentRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const orphanRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const createdAt = Date.now() - 30 * 86_400_000;
+
+    for (const runId of [messageRunId, segmentRunId, orphanRunId]) {
+        appendTraceEvent({ runId, source: 'tool', eventType: 'old', raw: { runId } });
+        db.prepare('UPDATE trace_runs SET started_at = ? WHERE id = ?').run(createdAt, runId);
+        db.prepare('UPDATE trace_events SET created_at = ? WHERE run_id = ?').run(createdAt, runId);
+    }
+
+    const message = db.prepare(`
+        INSERT INTO messages (role, content, trace_run_id, session_id)
+        VALUES ('assistant', 'retention fixture', ?, 'trace-retention-test')
+    `).run(messageRunId);
+    db.prepare(`
+        INSERT INTO turn_segments (turn_id, turn_seq, type, status, trace_run_id, trace_seq)
+        VALUES (?, 1, 'tool', 'done', ?, 1)
+    `).run(`turn-retention-${segmentRunId}`, segmentRunId);
+
+    try {
+        const result = pruneTraceEvents(7, 50_000);
+
+        assert.ok(getTraceRun(messageRunId), 'a live message protects its trace run');
+        assert.equal(listTraceEvents(messageRunId).total, 1, 'message-linked trace events survive the time cutoff');
+        assert.ok(getTraceRun(segmentRunId), 'a turn segment detailRef protects its trace run');
+        assert.equal(listTraceEvents(segmentRunId).total, 1, 'detailRef trace events survive the time cutoff');
+        assert.equal(getTraceRun(orphanRunId), null, 'an old unreferenced trace run is pruned');
+        assert.equal(result.deletedRuns, 1);
+
+        const dangling = db.prepare(`
+            SELECT COUNT(*) AS count FROM (
+                SELECT trace_run_id FROM messages WHERE trace_run_id IS NOT NULL
+                UNION
+                SELECT trace_run_id FROM turn_segments WHERE trace_run_id IS NOT NULL
+            ) refs
+            LEFT JOIN trace_runs ON trace_runs.id = refs.trace_run_id
+            WHERE trace_runs.id IS NULL
+        `).get() as { count: number };
+        assert.equal(dangling.count, 0, 'message and detailRef trace references must not dangle');
+    } finally {
+        db.prepare('DELETE FROM messages WHERE id = ?').run(Number(message.lastInsertRowid));
+        db.prepare('DELETE FROM turn_segments WHERE turn_id = ?').run(`turn-retention-${segmentRunId}`);
+        db.prepare('DELETE FROM trace_runs WHERE id IN (?, ?)').run(messageRunId, segmentRunId);
+    }
+});
+
+test('maxRows trimming never removes events from referenced trace runs', () => {
+    const protectedRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    const orphanRunId = startTraceRun({ cli: 'codex', audience: 'public' });
+    appendTraceEvent({ runId: protectedRunId, source: 'tool', eventType: 'protected', raw: 'protected' });
+    appendTraceEvent({ runId: orphanRunId, source: 'tool', eventType: 'orphan', raw: 'orphan' });
+    const message = db.prepare(`
+        INSERT INTO messages (role, content, trace_run_id, session_id)
+        VALUES ('assistant', 'maxRows fixture', ?, 'trace-retention-test')
+    `).run(protectedRunId);
+
+    try {
+        pruneTraceEvents(365_000, 0);
+        assert.equal(listTraceEvents(protectedRunId).total, 1, 'maxRows cap yields to live trace references');
+        assert.equal(listTraceEvents(orphanRunId).total, 0, 'maxRows trims an eligible orphan event');
+    } finally {
+        db.prepare('DELETE FROM messages WHERE id = ?').run(Number(message.lastInsertRowid));
+        db.prepare('DELETE FROM trace_runs WHERE id IN (?, ?)').run(protectedRunId, orphanRunId);
+    }
 });
