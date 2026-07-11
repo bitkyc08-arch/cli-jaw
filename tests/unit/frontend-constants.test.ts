@@ -50,4 +50,7 @@ test('frontend Codex fallback shows only inactive ocx default models', () => {
     assert.deepEqual(codex.models, DEFAULT_CODEX_MODELS);
     assert.deepEqual(codexApp.models, DEFAULT_CODEX_MODELS);
     assert.deepEqual(aiE.modelsByProvider?.codex, DEFAULT_CODEX_MODELS);
+    assert.deepEqual(codex.efforts, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    assert.deepEqual(codexApp.efforts, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
+    assert.deepEqual(aiE.effortsByProvider?.codex, ['low', 'medium', 'high', 'xhigh', 'max', 'ultra']);
 });

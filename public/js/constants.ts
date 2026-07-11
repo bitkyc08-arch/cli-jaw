@@ -44,7 +44,7 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
         },
         effortsByProvider: {
             claude: ['low', 'medium', 'high', 'xhigh', 'max'],
-            codex: ['low', 'medium', 'high', 'xhigh'],
+            codex: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
             gemini: [],
             grok: [],
             copilot: ['low', 'medium', 'high'],
@@ -95,12 +95,12 @@ const FALLBACK_CLI_REGISTRY: CliRegistry = {
     },
     codex: {
         label: 'Codex',
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     },
     'codex-app': {
         label: 'Codex App',
-        efforts: ['low', 'medium', 'high', 'xhigh'],
+        efforts: ['low', 'medium', 'high', 'xhigh', 'max', 'ultra'],
         models: ['gpt-5.5', 'gpt-5.4', 'gpt-5.4-mini', 'gpt-5.3-codex-spark', 'gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna'],
     },
     cursor: {
