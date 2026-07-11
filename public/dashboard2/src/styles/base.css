@@ -405,6 +405,13 @@ button:focus-visible {
     font-size: 13px;
 }
 
+.d2-sidebar-footer {
+    display: flex;
+    justify-content: flex-start;
+    padding: 8px 12px;
+    border-top: 1px solid var(--d2-border);
+}
+
 @media (prefers-reduced-motion: reduce) {
     .d2-spinner {
         animation-duration: 1600ms;

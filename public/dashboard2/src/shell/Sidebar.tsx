@@ -1,10 +1,11 @@
-import { ChevronDown, ChevronRight, RefreshCw } from '@lucide/icons';
+import { ChevronDown, ChevronRight, Moon, MonitorCog, RefreshCw, Sun } from '@lucide/icons';
 import { useCallback, useEffect, useState, type JSX } from 'react';
 import type { DashboardInstance } from '../../../../src/manager/types.ts';
 import {
     useManagerApi,
     type ChatSessionList,
 } from '../providers/api-provider.tsx';
+import { usePreferences } from '../providers/preferences-provider.tsx';
 import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
 
@@ -22,6 +23,25 @@ function instanceName(instance: DashboardInstance): string {
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : 'Request failed';
+}
+
+const THEME_CYCLE = ['auto', 'dark', 'light'] as const;
+
+function ThemeToggle(): JSX.Element {
+    const { theme } = usePreferences();
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(theme.mode as typeof THEME_CYCLE[number]) + 1) % THEME_CYCLE.length]!;
+    const icon = theme.mode === 'auto' ? MonitorCog : theme.mode === 'dark' ? Moon : Sun;
+    return (
+        <button
+            className="d2-icon-button"
+            type="button"
+            onClick={() => theme.setMode(next)}
+            aria-label={`Theme: ${theme.mode} (switch to ${next})`}
+            title={`Theme: ${theme.mode} (switch to ${next})`}
+        >
+            <Icon icon={icon} />
+        </button>
+    );
 }
 
 export function Sidebar(): JSX.Element {
@@ -165,6 +185,10 @@ export function Sidebar(): JSX.Element {
                     );
                 })}
             </div>
+
+            <footer className="d2-sidebar-footer">
+                <ThemeToggle />
+            </footer>
         </aside>
     );
 }

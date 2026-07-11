@@ -195,8 +195,12 @@ export function ManagerPreferencesProvider(
     useEffect(() => {
         const media = matchMedia('(prefers-color-scheme: dark)');
         const applyTheme = () => {
+            const resolvedNow = mode === 'auto' ? systemTheme(media) : mode;
             document.documentElement.setAttribute('data-theme', mode);
-            setResolved(mode === 'auto' ? systemTheme(media) : mode);
+            // Keep CSS color-scheme in sync so base.css light-dark() tokens
+            // follow the user toggle, not only the OS preference (033 F2).
+            document.documentElement.style.colorScheme = resolvedNow;
+            setResolved(resolvedNow);
             try {
                 localStorage.setItem('jaw.uiTheme', mode);
             } catch {

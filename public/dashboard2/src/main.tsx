@@ -7,6 +7,9 @@ import { ManagerShortcutProvider } from './providers/shortcut-provider.tsx';
 import { ManagerSyncProvider } from './providers/sync-provider.tsx';
 import { AppScopeProvider } from './state/scope.tsx';
 import { TrayRoot } from './shell/TrayRoot.tsx';
+// CSS boot order contract (B-008 §7): theme tokens load before base styles.
+// manager-tokens.css is consumed read-only from the frozen manager tree (033.2).
+import '../../manager/src/manager-tokens.css';
 import './styles/base.css';
 
 const trayMode = new URLSearchParams(window.location.search).get('tray') === '1';

@@ -49,6 +49,35 @@ test('dashboard2 source tree does not import zustand', () => {
     assert.deepEqual(offenders, [], 'dashboard2 must keep UI scope in React state');
 });
 
+test('dashboard2 theme boot order: manager tokens load before base styles (033.2)', () => {
+    const main = read('public/dashboard2/src/main.tsx');
+    const tokensImport = main.indexOf("import '../../manager/src/manager-tokens.css'");
+    const baseImport = main.indexOf("import './styles/base.css'");
+
+    assert.ok(tokensImport >= 0, 'main must consume manager-tokens.css (read-only, frozen tree)');
+    assert.ok(baseImport >= 0, 'main must import dashboard2 base styles');
+    assert.ok(tokensImport < baseImport, 'token CSS must load before base CSS (B-008 §7 boot order)');
+});
+
+test('manager token file keeps the data-theme selector contract dashboard2 relies on', () => {
+    const tokens = read('public/manager/src/manager-tokens.css');
+
+    assert.ok(tokens.includes(':root[data-theme="dark"]'), 'tokens must define the dark data-theme selector');
+    assert.ok(tokens.includes(':root[data-theme="light"]'), 'tokens must define the light data-theme selector');
+});
+
+test('dashboard2 theme toggle syncs CSS color-scheme with the resolved theme (033 F2)', () => {
+    const prefs = read('public/dashboard2/src/providers/preferences-provider.tsx');
+    const sidebar = read('public/dashboard2/src/shell/Sidebar.tsx');
+
+    assert.ok(
+        prefs.includes('document.documentElement.style.colorScheme = resolvedNow'),
+        'applyTheme must sync color-scheme so light-dark() tokens follow the toggle',
+    );
+    assert.ok(sidebar.includes('ThemeToggle'), 'shell sidebar must expose the theme toggle');
+    assert.ok(sidebar.includes('theme.setMode(next)'), 'theme toggle must cycle via preferences setMode');
+});
+
 test('dashboard2 API provider imports canonical manager types as type-only', () => {
     const provider = read('public/dashboard2/src/providers/api-provider.tsx');
 
