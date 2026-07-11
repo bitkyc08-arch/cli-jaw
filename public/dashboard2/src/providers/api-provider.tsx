@@ -48,6 +48,30 @@ export interface ManagerOriginClient {
 export interface InstanceOriginClient {
     fetchSessions(): Promise<ChatSessionList>;
     fetchMessagesPage(opts: { limit?: number; before?: number }): Promise<MessagesPageResponse>;
+    sendMessage(prompt: string, opts?: { signal?: AbortSignal; external?: boolean }): Promise<MessageResponse>;
+    uploadAttachment(file: File, opts?: { signal?: AbortSignal }): Promise<AttachmentUploadResponse>;
+    transcribeVoice(blob: Blob, opts?: { signal?: AbortSignal; extension?: string }): Promise<VoiceTranscriptionResponse>;
+}
+
+export interface MessageResponse {
+    ok: boolean;
+    command?: boolean;
+    action?: string;
+    reason?: string;
+    error?: string;
+    [key: string]: unknown;
+}
+
+export interface AttachmentUploadResponse {
+    path: string;
+    filename: string;
+}
+
+export interface VoiceTranscriptionResponse {
+    ok: true;
+    text: string;
+    engine: string;
+    elapsed: number;
 }
 
 interface InstancesResponse {
@@ -105,6 +129,37 @@ function createManagerApiClient(): ManagerApiClient {
             if (opts.limit !== undefined) params.set('limit', String(opts.limit));
             if (opts.before !== undefined) params.set('before', String(opts.before));
             return fetchJson<MessagesPageResponse>(`/i/${port}/api/messages?${params.toString()}`);
+        },
+        sendMessage(prompt, opts) {
+            return fetchJson<MessageResponse>(`/i/${port}/api/message`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ prompt, external: opts?.external }),
+                ...(opts?.signal ? { signal: opts.signal } : {}),
+            });
+        },
+        uploadAttachment(file, opts) {
+            return fetchJson<AttachmentUploadResponse>(`/i/${port}/api/upload`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': file.type || 'application/octet-stream',
+                    'X-Filename': encodeURIComponent(file.name),
+                },
+                body: file,
+                ...(opts?.signal ? { signal: opts.signal } : {}),
+            });
+        },
+        transcribeVoice(blob, opts) {
+            return fetchJson<VoiceTranscriptionResponse>(`/i/${port}/api/voice`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': blob.type || 'audio/webm',
+                    'X-Voice-Ext': opts?.extension || '.webm',
+                    'X-STT-Only': 'true',
+                },
+                body: blob,
+                ...(opts?.signal ? { signal: opts.signal } : {}),
+            });
         },
     });
 
