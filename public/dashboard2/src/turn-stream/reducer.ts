@@ -46,6 +46,7 @@ export function createTurnStreamState(scopeKey: string, sessionFilter: string | 
         bodies: {},
         liveBodies: {},
         runToTurn: {},
+        legacyMessages: {},
         needsBackfill: false,
         diagnostics: { conflictCount: 0, droppedReplayCount: 0, recent: [] },
         idempotency: createIdempotencyState(),
@@ -239,7 +240,14 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
                 bodies[turnId] = mergeBody(bodies[turnId], body);
                 if (body.traceRunId) runToTurn[body.traceRunId] = turnId;
             }
-            return { ...next, bodies: capBodies(bodies), runToTurn };
+            let legacyMessages = next.legacyMessages;
+            if (hydration.legacy.length) {
+                legacyMessages = { ...legacyMessages };
+                for (const row of hydration.legacy) {
+                    legacyMessages[row.id] = { role: row.role, content: row.content, createdAt: row.createdAt };
+                }
+            }
+            return { ...next, bodies: capBodies(bodies), runToTurn, legacyMessages };
         }
         case 'backfill_merged':
             return s.needsBackfill ? { ...s, needsBackfill: false } : s;
@@ -324,7 +332,9 @@ function serializeStateImpl(state: TurnStreamState): string {
         });
     const runToTurn = Object.keys(state.runToTurn).sort()
         .map(runId => [runId, state.runToTurn[runId]]);
-    return JSON.stringify({ scopeKey: state.scopeKey, rows, turnStatus, bodies, runToTurn, needsBackfill: state.needsBackfill });
+    const legacy = Object.keys(state.legacyMessages).map(Number).sort((a, b) => a - b)
+        .map(id => [id, state.legacyMessages[id].role, state.legacyMessages[id].content]);
+    return JSON.stringify({ scopeKey: state.scopeKey, rows, turnStatus, bodies, runToTurn, legacy, needsBackfill: state.needsBackfill });
 }
 function capLiveBodies(liveBodies: Record<string, string>, keep: string | null): Record<string, string> {
     const keys = Object.keys(liveBodies);

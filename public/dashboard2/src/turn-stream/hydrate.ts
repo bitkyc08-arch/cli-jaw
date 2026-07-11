@@ -16,6 +16,8 @@ export interface HydrationResult {
     rows: TurnSegment[];
     /** authoritative completed bodies keyed by turnId (provenance: message) */
     bodies: Record<string, HydratedTurnBody>;
+    /** turn_id=null legacy rows: text is preserved, segments stay empty (048 §4) */
+    legacy: Array<{ id: number; role: string; content: string; createdAt: string }>;
 }
 
 /**
@@ -26,9 +28,14 @@ export interface HydrationResult {
 export function hydrateFromMessages(messages: readonly SegmentedMessageItem[]): HydrationResult {
     const rows: TurnSegment[] = [];
     const bodies: Record<string, HydratedTurnBody> = {};
+    const legacy: Array<{ id: number; role: string; content: string; createdAt: string }> = [];
     for (const message of messages) {
         for (const segment of message.turn_segments) rows.push(segment);
-        if (message.role !== 'assistant' || !message.turn_id) continue;
+        if (!message.turn_id) {
+            legacy.push({ id: message.id, role: message.role, content: message.content, createdAt: message.created_at });
+            continue;
+        }
+        if (message.role !== 'assistant') continue;
         bodies[message.turn_id] = {
             text: message.content,
             toolLog: message.tool_log,
@@ -36,7 +43,7 @@ export function hydrateFromMessages(messages: readonly SegmentedMessageItem[]): 
             traceRunId: message.trace_run_id,
         };
     }
-    return { rows, bodies };
+    return { rows, bodies, legacy };
 }
 
 /**

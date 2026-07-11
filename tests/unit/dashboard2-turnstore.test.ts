@@ -61,12 +61,16 @@ test('042: 10k committed + 1 live — tier caps hold and live key stays out of T
     assert.equal(stats.t0Count, TURN_COUNT);
     assert.equal(stats.liveCount, 1);
     const list = store.getListSnapshot();
-    assert.equal(list.order.length, TURN_COUNT);
+    // union transcript: committed turns + turn-less legacy/user rows (048 §4)
+    const legacyCount = fixture.messages.filter(m => !m.turn_id).length;
+    assert.equal(list.order.length, TURN_COUNT + legacyCount);
+    assert.ok(list.order.some(key => key.startsWith('msg:')), 'legacy rows present in transcript order');
     assert.equal(selectTurnIndex(list, 'live-turn-000'), -1, 'live key not in T0 order');
     assert.ok(store.getLiveTurn('live-turn-000'));
     const window = store.getWindow(5000, 20);
     assert.ok(window.length <= 20 + 2 * T1_OVERSCAN_TURNS, `T1 window ${window.length} <= visible+80`);
-    assert.equal(selectWindowStubs(store, 5000, 20).length, window.length);
+    const turnKeysInWindow = window.filter(key => key.startsWith('turn:')).length;
+    assert.equal(selectWindowStubs(store, 5000, 20).length, turnKeysInWindow, 'stubs cover every turn key in the window');
     // T2 fills lazily; request 300 REAL bodies -> entries capped at 200 turns.
     // Use the newest assistant messages (the reducer keeps the newest 1024
     // hydrated bodies), and verify the bodies actually materialize.
@@ -89,7 +93,7 @@ test('042: notification cardinality — single turn update notifies only its sub
     const store = buildStore10kPlus1();
     const counts = new Map<string, number>();
     const list = store.getListSnapshot();
-    const targets = list.order.slice(100, 150);
+    const targets = list.order.filter(key => key.startsWith('turn:')).slice(100, 150).map(key => key.slice(5));
     // pick a target turn that actually has an assistant history message
     const turnA = targets.find(id => fixture.messages.some(m => m.turn_id === id && m.role === 'assistant'))!;
     assert.ok(turnA, 'target turn with assistant message resolved');
@@ -135,7 +139,7 @@ test('042: turn_end is one transaction — liveTurns -1 and T0 +1 in one notify 
     store.ingest({ kind: 'lifecycle', payload: syntheticEnd('tx-turn', 'fixture-session-0', 99) });
     assert.equal(listCalls, 1);
     assert.equal(liveCalls, 1);
-    assert.equal(store.getListSnapshot().order.includes('tx-turn'), true);
+    assert.equal(store.getListSnapshot().order.includes('turn:tx-turn'), true);
     assert.equal(store.getLiveTurn('tx-turn'), null);
 });
 

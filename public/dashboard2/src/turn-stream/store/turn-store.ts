@@ -11,6 +11,7 @@ import {
     unjoinedActiveLiveBodies,
 } from '../reducer.ts';
 import type {
+    RowKey,
     TurnStreamAction,
     TurnStreamState,
     TurnTerminalStatus,
@@ -38,6 +39,19 @@ export interface CommittedStub {
     terminalStatus: TurnTerminalStatus;
     heightEstimate: number;
     version: number;
+}
+
+/** transcript list keys: committed turns and turn-less legacy/user messages
+ *  interleave in one order — `turn:<turnId>` | `msg:<messageId>` (048 §4) */
+export type ListEntryKey = string;
+export const turnKeyOf = (turnId: string): ListEntryKey => `turn:${turnId}`;
+export const msgKeyOf = (id: number): ListEntryKey => `msg:${id}`;
+
+export interface LegacyMessageModel {
+    id: number;
+    role: string;
+    content: string;
+    createdAt: string;
 }
 
 export interface TurnBodySnapshot {
@@ -75,6 +89,7 @@ export interface TurnStore {
     subscribeList(cb: () => void): Unsubscribe;
     subscribeLive(cb: () => void): Unsubscribe;
     getTurnSnapshot(turnId: string): CommittedStub | null;
+    getLegacyMessage(id: number): LegacyMessageModel | null;
     getBodySnapshot(turnId: string): TurnBodySnapshot | null;
     getLiveTurn(turnId: string): LiveTurnModel | null;
     /** ordered durable rows for one turn (binary search over canonical order) */
@@ -82,6 +97,8 @@ export interface TurnStore {
     /** streaming body for a live turn via the traceRunId→turnId join */
     getLiveBodyForTurn(turnId: string): string | null;
     getListSnapshot(): ListSnapshot;
+    /** canonical durable row keys (048 history overlap diagnosis) */
+    getRowKeys(): readonly RowKey[];
     getLiveSnapshot(): LiveSnapshot;
     /** T1 projection: committed turn ids in viewport ± overscan */
     getWindow(centerIndex: number, visibleCount: number): readonly string[];
@@ -215,9 +232,14 @@ export function createTurnStore(
             // (arrival-order independent), never turn_end arrival order
             const seenTurnIds: string[] = [];
             const seen = new Set<string>();
+            const turnStartMs = new Map<string, number>();
             for (const key of reducerState.rowOrder) {
-                const turnId = reducerState.rows[key].turnId;
-                if (!seen.has(turnId)) { seen.add(turnId); seenTurnIds.push(turnId); }
+                const row = reducerState.rows[key];
+                if (!seen.has(row.turnId)) {
+                    seen.add(row.turnId);
+                    seenTurnIds.push(row.turnId);
+                    turnStartMs.set(row.turnId, row.createdAt);
+                }
             }
             for (const turnId of seenTurnIds) {
                 const terminal = reducerState.turnStatus[turnId];
@@ -253,9 +275,20 @@ export function createTurnStore(
                     }
                 }
             }
+            if (reducerState.legacyMessages !== previous.legacyMessages) listChanged = true;
             if (listChanged) {
-                // canonical committed order derived from rowOrder sequence
-                order = seenTurnIds.filter(turnId => stubs.has(turnId));
+                // union transcript order: committed turns (canonical rowOrder
+                // sequence) interleaved with turn-less legacy/user messages by
+                // timestamp (048 §4 — legacy text must actually render)
+                const entries: Array<{ key: string; ms: number }> = [];
+                for (const turnId of seenTurnIds) {
+                    if (stubs.has(turnId)) entries.push({ key: turnKeyOf(turnId), ms: turnStartMs.get(turnId) ?? 0 });
+                }
+                for (const [idStr, legacy] of Object.entries(reducerState.legacyMessages)) {
+                    entries.push({ key: msgKeyOf(Number(idStr)), ms: Date.parse(legacy.createdAt) || 0 });
+                }
+                entries.sort((a, b) => a.ms - b.ms || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+                order = entries.map(entry => entry.key);
             }
             // post-terminal rows (e.g., detached-worker collab terminals) must
             // still notify their committed turn. Runs AFTER the membership
@@ -356,6 +389,10 @@ export function createTurnStore(
         getTurnSnapshot(turnId) {
             return stubs.get(turnId) ?? null;
         },
+        getLegacyMessage(id) {
+            const legacy = reducerState.legacyMessages[id];
+            return legacy ? { id, role: legacy.role, content: legacy.content, createdAt: legacy.createdAt } : null;
+        },
         getBodySnapshot(turnId) {
             const record = bodyFor(turnId);
             if (!record) return null;
@@ -417,6 +454,9 @@ export function createTurnStore(
                 };
             }
             return listSnapshot;
+        },
+        getRowKeys() {
+            return reducerState.rowOrder;
         },
         getLiveSnapshot() {
             if (!liveSnapshot) {

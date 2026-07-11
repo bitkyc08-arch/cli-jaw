@@ -5,6 +5,7 @@ import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TurnStore } from '../store/turn-store.ts';
 import { useTurnList } from '../store/use-turn.ts';
+import { LegacyMessageRow } from './LegacyMessageRow.tsx';
 import { TurnRow } from './TurnRow.tsx';
 
 // D13 calibration (044 browser gate): the real TurnRow tree carries icon svgs
@@ -15,12 +16,15 @@ const BOTTOM_LOCK_SLACK_PX = 48;
 
 export interface TurnStreamViewportProps {
     store: TurnStore;
+    /** history load boundary rendered inside the scroll container, BEFORE the
+     *  committed transcript (048 top sentinel) */
+    head?: ReactNode;
     /** live tail region rendered inside the same scroll container, after the
      *  committed transcript (045); bottom lock covers auto-follow */
     tail?: ReactNode;
 }
 
-export function TurnStreamViewport({ store, tail }: TurnStreamViewportProps): JSX.Element {
+export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProps): JSX.Element {
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const prevTotalRef = useRef(0);
@@ -36,7 +40,11 @@ export function TurnStreamViewport({ store, tail }: TurnStreamViewportProps): JS
     const virtualizer = useVirtualizer({
         count: list.order.length,
         getScrollElement: () => scrollRef.current,
-        estimateSize: (index) => store.getTurnSnapshot(list.order[index])?.heightEstimate ?? 72,
+        estimateSize: (index) => {
+            const key = list.order[index];
+            if (key.startsWith('msg:')) return 56;
+            return store.getTurnSnapshot(key.slice(5))?.heightEstimate ?? 72;
+        },
         overscan: OVERSCAN,
         getItemKey: (index) => list.order[index],
     });
@@ -96,22 +104,33 @@ export function TurnStreamViewport({ store, tail }: TurnStreamViewportProps): JS
             // misfires on transform-positioned virtual rows
             style={{ overflowAnchor: 'none' }}
         >
+            {head}
             <div
                 className="d2-turn-transcript"
                 data-testid="turn-stream-transcript"
                 style={{ height: `${totalSize}px` }}
             >
-                {virtualizer.getVirtualItems().map(item => (
-                    <div
-                        key={item.key}
-                        className="d2-turn-slot"
-                        data-index={item.index}
-                        ref={virtualizer.measureElement}
-                        style={{ transform: `translateY(${item.start}px)` }}
-                    >
-                        <TurnRow store={store} turnId={list.order[item.index]} />
-                    </div>
-                ))}
+                {virtualizer.getVirtualItems().map(item => {
+                    const key = list.order[item.index];
+                    let content: JSX.Element | null;
+                    if (key.startsWith('msg:')) {
+                        const legacy = store.getLegacyMessage(Number(key.slice(4)));
+                        content = legacy ? <LegacyMessageRow message={legacy} /> : null;
+                    } else {
+                        content = <TurnRow store={store} turnId={key.startsWith('turn:') ? key.slice(5) : key} />;
+                    }
+                    return (
+                        <div
+                            key={item.key}
+                            className="d2-turn-slot"
+                            data-index={item.index}
+                            ref={virtualizer.measureElement}
+                            style={{ transform: `translateY(${item.start}px)` }}
+                        >
+                            {content}
+                        </div>
+                    );
+                })}
             </div>
             {tail}
         </div>

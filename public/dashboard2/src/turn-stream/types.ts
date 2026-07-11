@@ -80,6 +80,9 @@ export interface TurnStreamState {
      *  turn_id) and lifecycle detailRef rows; lets the live tail map a
      *  streaming body to its turn */
     runToTurn: Record<string, string>;
+    /** turn_id=null legacy history rows — text preserved with empty segments
+     *  (048 §4); rendering integration is owned by the 07x cutover */
+    legacyMessages: Record<number, { role: string; content: string; createdAt: string }>;
     needsBackfill: boolean;
     diagnostics: TurnStreamDiagnostics;
 }

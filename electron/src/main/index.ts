@@ -248,6 +248,11 @@ function configureEmbeddedBrowserSession(): void {
 }
 const AUTOMATION_SETTINGS_URL = 'x-apple.systempreferences:com.apple.preference.security?Privacy_Automation';
 
+// Test/dev isolation: an env-scoped userData path lets a packaged smoke build
+// coexist with the production app (single-instance lock keys on userData).
+const userDataOverride = process.env['JAW_ELECTRON_USER_DATA'];
+if (userDataOverride) app.setPath('userData', userDataOverride);
+
 const gotLock = app.requestSingleInstanceLock();
 if (!gotLock) {
   app.quit();

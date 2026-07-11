@@ -9,16 +9,17 @@ export function selectWindowStubs(
     visibleCount: number,
 ): CommittedStub[] {
     const out: CommittedStub[] = [];
-    for (const turnId of store.getWindow(centerIndex, visibleCount)) {
-        const stub = store.getTurnSnapshot(turnId);
+    for (const key of store.getWindow(centerIndex, visibleCount)) {
+        if (key.startsWith('msg:')) continue; // legacy rows carry no stub
+        const stub = store.getTurnSnapshot(key.startsWith('turn:') ? key.slice(5) : key);
         if (stub) out.push(stub);
     }
     return out;
 }
 
-/** index of a turn in the committed order, -1 when absent */
+/** index of a turn in the transcript order, -1 when absent */
 export function selectTurnIndex(list: ListSnapshot, turnId: string): number {
-    return list.order.indexOf(turnId);
+    return list.order.indexOf(`turn:${turnId}`);
 }
 
 /** true when the list needs a 048 history backfill merge */

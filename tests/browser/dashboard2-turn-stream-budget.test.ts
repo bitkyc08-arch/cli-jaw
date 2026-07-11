@@ -237,6 +237,7 @@ test('040 budget: DOM/heap/frame/anchor budgets + v4 shell assertions (synthetic
 
     // Heap baseline after load (post-GC).
     const heapBefore = await collectHeapUsagePostGc(session);
+    const countersBefore = await sampleDomCountersMedian(session, 1);
 
     // Live frame budget: 20Hz streaming appends, p95 <= 50ms, max <= 100ms.
     let streamId = 500_000;
@@ -297,7 +298,16 @@ test('040 budget: DOM/heap/frame/anchor budgets + v4 shell assertions (synthetic
     const growth = heapAfter.usedSizeBytes - heapBefore.usedSizeBytes;
     const heapCap = Math.max(16 * 1024 * 1024, heapBefore.usedSizeBytes * 0.1);
     assert.ok(growth <= heapCap, `heap growth ${growth}B <= ${Math.round(heapCap)}B`);
+    const countersAfter = await sampleDomCountersMedian(session, 1);
     report.heap = { before: heapBefore, after: heapAfter, growth, cap: Math.round(heapCap) };
+    // Gate B resource stability: listener/document counts stay near baseline
+    report.resources = {
+        before: countersBefore,
+        after: countersAfter,
+        listenerDelta: countersAfter.jsEventListeners - countersBefore.jsEventListeners,
+        documentDelta: countersAfter.documents - countersBefore.documents,
+    };
+    assert.ok(Math.abs(countersAfter.documents - countersBefore.documents) <= 1, 'document count stable');
 
     console.log('[040 budget report]', JSON.stringify(report));
 });

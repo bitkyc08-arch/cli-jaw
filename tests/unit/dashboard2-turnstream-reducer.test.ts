@@ -204,3 +204,12 @@ test('041: liveBodies stay bounded across many runs, including agent_done finali
     }
     assert.ok(Object.keys(state.liveBodies).length <= 16, `liveBodies ring bounded: ${Object.keys(state.liveBodies).length}`);
 });
+
+test('048: turn_id=null legacy rows keep their text with empty segments', () => {
+    let state = createTurnStreamState(SCOPE);
+    state = reduce(state, { kind: 'history_page', messages: messageSlice });
+    const legacyUser = messageSlice.find(m => m.turn_id === null || (m.role === 'user' && !m.turn_id));
+    assert.ok(legacyUser, 'fixture carries turn-less rows');
+    assert.equal(state.legacyMessages[legacyUser.id]?.content, legacyUser.content, 'legacy text preserved');
+    assert.equal(legacyUser.turn_segments.length, 0, 'legacy row has empty segments');
+});
