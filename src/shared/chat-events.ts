@@ -78,6 +78,43 @@ export interface TurnSegment {
     detailRef: TurnSegmentDetailRef | null;
 }
 
+// ─── Bounded history page (032.0 / A08) ─────────────────────────────
+// Canonical row shape of GET /api/messages?includeSegments=1 (cursor mode).
+// Field list mirrors the segment/cursor SELECT in src/core/db.ts; the
+// `turn_segments` array carries durable TurnSegment rows keyed (turnId,turnSeq).
+
+export interface SegmentedMessageItem {
+    id: number;
+    role: string;
+    content: string;
+    cli: string | null;
+    model: string | null;
+    tool_log: string | null;
+    trace_run_id: string | null;
+    turn_id: string | null;
+    cost_usd: number | null;
+    duration_ms: number | null;
+    working_dir: string | null;
+    created_at: string;
+    turn_segments: TurnSegment[];
+}
+
+export interface MessagesPageInfo {
+    oldestCursor: number | null;
+    newestCursor: number | null;
+    hasMoreBefore: boolean;
+    limit: number;
+}
+
+// snapshotEventSeq is a non-atomic reconnect diagnostic hint only —
+// consumers must merge idempotently, never treat it as a fence.
+export interface MessagesPageResponse {
+    ok: true;
+    data: SegmentedMessageItem[];
+    pageInfo: MessagesPageInfo;
+    snapshotEventSeq: number;
+}
+
 interface SsePayloadBase {
     topic: string;
     sseReplay?: boolean;
@@ -143,6 +180,18 @@ export type QueueUpdateSsePayload = SsePayloadBase & {
     event: 'queue_update';
     pending: number;
     queued: PendingItem[];
+};
+
+// ─── Turn lifecycle SSE (032.3) ──────────────────────────────────────
+// `agent` topic turn stream: the payload is the durable TurnSegment row
+// spread into the envelope (publishTurnRecord in src/agent/events/helpers.ts).
+// Kept OUT of ChatSsePayload on purpose — legacy consumers dispatch on the
+// closed union; turn-stream consumers (dashboard2) subscribe explicitly.
+
+export type TurnLifecycleSseEvent = 'turn_start' | 'turn_segment' | 'turn_end';
+
+export type TurnLifecycleSsePayload = SsePayloadBase & TurnSegment & {
+    event: TurnLifecycleSseEvent;
 };
 
 export type ChatSsePayload =

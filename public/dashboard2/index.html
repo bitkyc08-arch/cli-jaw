@@ -3,6 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script>
+    (function () {
+      try {
+        var saved = localStorage.getItem('jaw.uiTheme');
+        if (saved !== 'dark' && saved !== 'light' && saved !== 'auto') saved = 'auto';
+        document.documentElement.setAttribute('data-theme', saved);
+      } catch (_) {
+        document.documentElement.setAttribute('data-theme', 'auto');
+      }
+    })();
+  </script>
   <link rel="icon" type="image/png" href="/icons/icon-192.png">
   <title>Jaw</title>
 </head>

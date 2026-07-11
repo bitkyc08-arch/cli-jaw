@@ -303,7 +303,7 @@ cli-jaw/
 │   │   ├── types.ts          ← TraceRunInput, TraceEventInput, TracePointer, TraceRunRow 타입 (36L)
 │   │   └── redact.ts         ← trace event redaction helpers (48L)
 │   ├── shared/               ← 공유 유틸리티 (6 files + reminders helper) ✨
-│   │   ├── chat-events.ts    ← chat/SSE/pending/TurnSegment 공유 타입 계약 (155L)
+│   │   ├── chat-events.ts    ← chat/SSE/pending/TurnSegment 공유 타입 계약 (204L)
 │   │   ├── elicitation-spec.ts ← structured elicitation schema + validation helper (167L)
 │   │   ├── runtime-observability.ts ← worker-run/background-task shared runtime status category vocabulary (40L)
 │   │   ├── shell-command-display.ts ← shell command display sanitization helper (48L)
@@ -353,7 +353,7 @@ cli-jaw/
 │       ├── checkpoint/       ← checkpoint store + types (2 files, 59L) ✨
 │       ├── permissions/      ← permission policy + types (2 files, 80L) ✨
 │       └── context-map/      ← context map builder (1 file, 71L) ✨
-├── public/                   ← Web UI (Vite 8 + ES Modules, 555 files source/assets, ~95349L; generated `public/dist` and `public/public/dist` excluded)
+├── public/                   ← Web UI (Vite 8 + ES Modules, 560 files source/assets, ~96717L; generated `public/dist` and `public/public/dist` excluded)
 │   ├── index.html            ← 뼈대 + header project/git status anchor (1137L)
 │   ├── manifest.json         ← PWA 매니페스트
 │   ├── sw.js                 ← Service Worker 오프라인 캐시
