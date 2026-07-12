@@ -3,7 +3,7 @@
 # structure/ — Sync Guide
 
 - Keep this folder aligned with the live `cli-jaw` tree. The current hub covers 19 Markdown docs plus 5 support files.
-- **UI maintenance freeze (2026-07-11)**: vanilla Web UI (`public/js`) and manager (`public/manager`) accept only regression/crash/security/data-loss bugfixes — no new UI features. New UI work follows the dashboard2 plan (`devlog/_plan/260711_manager_redesign_feature_migration/000_master_plan.md`, phase docs 010~080).
+- **UI maintenance freeze (2026-07-11)**: vanilla Web UI (`public/js`) and manager (`public/manager`) accept only regression/crash/security/data-loss bugfixes — no new UI features. New UI work follows the dashboard2 plan (`devlog/_plan/260711_manager_redesign_feature_migration/000_master_plan.md`, phase docs 010~091 (01x 선행 / 02x 서버 / 03x 셸 / 04x 렌더러+v4 스킨 / 05x side-pane as-built / 06x Code tab / 07x 기능 이관 / 08x 품질 / 09x 전환·안정화) + 2xx 문서 사이드바).
 - Update `INDEX.md` whenever a doc is added, removed, renamed, or re-scoped. Keep the doc map, tier list, and quick links in sync.
 - Update `str_func.md` and `verify-counts.sh` together when source counts, `server.ts`, `src/routes/*`, `src/cli/handlers*.ts`, `src/cli/api-auth.ts`, `src/manager/*` (multi-instance dashboard), `bin/commands/*`, `bin/star-prompt.ts`, `tests/`, `public/`, or generated-dist exclusions change. The verifier now checks every file-tree `(NNNL)` entry in `str_func.md`, not only curated hotspots.
 - `stream-events.md` is the SSE/WS/event-trace companion for `frontend.md`, `server_api.md`, and the ProcessBlock pipeline. Keep `GET /api/events`, replay behavior, fallback WS, and `agent:claude-e:*` naming current.
