@@ -893,6 +893,7 @@ app.get('/favicon.ico', (_req, res) => {
 });
 
 const server = http.createServer(app);
+server.on('clientError', (_err, socket) => { if (socket.writable) socket.end('HTTP/1.1 400 Bad Request\r\n\r\n'); });
 const noteWsServer = new NoteWsServer({ server, watcher: notesWatcher });
 noteWsServerRef = noteWsServer;
 installDashboardProxy(app, server, { from: scanFrom, count: scanCount });
@@ -912,9 +913,7 @@ function sendDashboard2Html(_req: express.Request, res: express.Response): void 
     sendManagerHtml(res, htmlPath);
 }
 
-app.get('/dashboard2', (_req, res) => {
-    res.redirect(308, '/dashboard2/');
-});
+app.get('/dashboard2', sendDashboard2Html);
 app.get('/dashboard2/{*splat}', sendDashboard2Html);
 
 app.get('/{*splat}', (_req, res) => {
