@@ -16,10 +16,10 @@ test('dashboard2 workbench v4 uses the full-height three-column side-pane grid',
 
     assert.match(
         css,
-        /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+1px\s+minmax\(340px,\s*\.45fr\)/,
+        /grid-template-columns:\s*minmax\(0,\s*1fr\)\s+1px\s+var\(--d2-pane-w,\s*380px\)/,
     );
-    assert.match(css, /\.d2-workbench-divider\s*\{[^}]*height:\s*100%/s);
-    assert.match(css, /\.d2-workbench-divider\s*\{[^}]*background:\s*var\(--div-color\)/s);
+    assert.match(css, /\.d2-workbench-divider-drag\s*\{[^}]*height:\s*100%/s);
+    assert.match(css, /\.d2-workbench-divider-drag\s*\{[^}]*background:\s*var\(--div-color\)/s);
 });
 
 test('dashboard2 workbench v4 owns split 48px headers and preserves the ChatView mount', () => {

@@ -25,6 +25,7 @@ import {
 import { usePreferences } from '../providers/preferences-provider.tsx';
 import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
+import { SettingsModal } from './SettingsModal.tsx';
 
 type SessionsCacheEntry =
     | { status: 'loading' }
@@ -84,6 +85,9 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const [sessionsByPort, setSessionsByPort] = useState<Record<number, SessionsCacheEntry>>({});
     const [menuPort, setMenuPort] = useState<number | null>(null);
     const [lifecycleBusyPort, setLifecycleBusyPort] = useState<number | null>(null);
+    const [settingsOpen, setSettingsOpen] = useState(false);
+    const openSettings = useCallback(() => setSettingsOpen(true), []);
+    const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
     const loadInstances = useCallback(async () => {
         setInstancesLoading(true);
@@ -141,6 +145,23 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
         }
     };
 
+    // Single-session auto-select: when sessions load and there's exactly one,
+    // select it automatically without showing the expanded list.
+    useEffect(() => {
+        // Only auto-select if nothing is currently selected, to avoid oscillation
+        // when multiple instances each have exactly one session.
+        if (selected) return;
+        for (const [portStr, entry] of Object.entries(sessionsByPort)) {
+            if (entry.status !== 'ready') continue;
+            const port = Number(portStr);
+            if (entry.data.sessions.length === 1) {
+                const session = entry.data.sessions[0]!;
+                selectSession(port, session.id);
+                return; // select the first match only
+            }
+        }
+    }, [sessionsByPort, selected, selectSession]); // eslint-disable-line react-hooks/exhaustive-deps
+
     const copyPath = async (path: string | null | undefined): Promise<void> => {
         if (!path) return;
         try {
@@ -188,7 +209,8 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const activeInstanceCount = instances.filter((instance) => instanceVisualStatus(instance) !== 'off').length;
 
     return (
-        <aside className="d2-sidebar d2-sidebar-v4" aria-label="Instances and sessions">
+        <>
+            <aside className="d2-sidebar d2-sidebar-v4" aria-label="Instances and sessions">
             <div className="d2-sidebar-topbar">
                 <button
                     className="d2-sidebar-toggle"
@@ -257,6 +279,9 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                             const lifecycleAction: DashboardLifecycleAction = isOnline ? 'stop' : 'start';
                             const lifecycleAllowed = isOnline ? lifecycle?.canStop === true : lifecycle?.canStart === true;
                             const lifecycleBusy = lifecycleBusyPort === instance.port;
+                            const sessionEntry = sessionsByPort[instance.port];
+                            const isSingleSession = sessionEntry?.status === 'ready' && sessionEntry.data.sessions.length === 1;
+                            const showExpanded = isExpanded && !isSingleSession;
                             return (
                                 <div className="d2-instance-node" key={instance.port}>
                                     <div className={`d2-instance-row${selected?.port === instance.port ? ' is-selected' : ''}`}>
@@ -273,7 +298,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                                 <span><span className="d2-instance-port">:{instance.port}</span> &middot; {instance.status}</span>
                                             </span>
                                             <span className="d2-tree-chevron">
-                                                {isOnline ? <Icon icon={isExpanded ? ChevronDown : ChevronRight} /> : null}
+                                                {isOnline && !isSingleSession ? <Icon icon={isExpanded ? ChevronDown : ChevronRight} /> : null}
                                             </span>
                                         </button>
 
@@ -314,7 +339,7 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                         </div>
                                     </div>
 
-                                    {isExpanded ? (
+                                    {showExpanded ? (
                                         <div className="d2-session-list">
                                             {!sessions || sessions.status === 'loading' ? (
                                                 <div className="d2-inline-state"><span className="d2-spinner" />Loading sessions</div>
@@ -358,11 +383,19 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
 
             <footer className="d2-sidebar-footer d2-sidebar-footer-v4">
                 <span className="d2-sidebar-brand">JAW</span>
-                <button className="d2-sidebar-settings" type="button" disabled title="Settings unavailable" aria-label="Settings">
+                <button
+                    className="d2-sidebar-settings"
+                    type="button"
+                    onClick={openSettings}
+                    title="Settings"
+                    aria-label="Settings"
+                >
                     <Icon icon={Settings} />
                 </button>
                 <ThemeToggle />
             </footer>
-        </aside>
+            </aside>
+            <SettingsModal isOpen={settingsOpen} onClose={closeSettings} />
+        </>
     );
 }

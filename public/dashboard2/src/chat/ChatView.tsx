@@ -145,6 +145,17 @@ interface ChatComposerSlotProps {
 function ChatComposerSlot({ store, scopeKey, port, onEcho }: ChatComposerSlotProps): JSX.Element {
     const live = useLiveTurns(store);
     const api = useManagerApi();
+    const sync = useManagerSync();
+    const [orcPhase, setOrcPhase] = useState<string | null>(null);
+
+    useEffect(() => {
+        // Reset phase on scope change to avoid stale cross-instance data
+        setOrcPhase(null);
+        return sync.subscribeOrcState((payload) => {
+            setOrcPhase(payload.state || null);
+        });
+    }, [sync, scopeKey]);
+
     return (
         <div className="d2-chat-composer-slot">
             <Composer
@@ -152,6 +163,7 @@ function ChatComposerSlot({ store, scopeKey, port, onEcho }: ChatComposerSlotPro
                 initialDraft={scopeDrafts.get(scopeKey) ?? ''}
                 onDraftChange={(draft) => scopeDrafts.set(scopeKey, draft)}
                 isRunning={live.turnIds.length > 0}
+                phase={orcPhase}
                 onStop={() => { void api.instance(port).stopAgent().catch(() => { /* snapshot recovers */ }); }}
                 onEcho={onEcho}
             />

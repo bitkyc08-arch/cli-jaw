@@ -47,6 +47,7 @@ interface ComposerProps {
     mentions?: readonly ComposerMention[];
     picker?: ComposerPickerDisplay;
     goalLabel?: string | null;
+    phase?: string | null;
     isRunning?: boolean;
     onStop?(): void;
     onDraftChange?(draft: string): void;
@@ -62,7 +63,7 @@ function mentionQuery(value: string, caret: number): { start: number; query: str
 
 export function Composer({
     initialDraft = '', commands = [], commandError = null, mentions = [], picker,
-    goalLabel, isRunning, onStop, onDraftChange, onEcho,
+    goalLabel, phase, isRunning, onStop, onDraftChange, onEcho,
 }: ComposerProps): JSX.Element {
     const api = useManagerApi();
     const { selected } = useAppScope();
@@ -227,7 +228,7 @@ export function Composer({
                     ))}
                 </div>
             ) : null}
-            <div className="d2-composer-pill">
+            <div className="d2-composer-pill" data-phase={phase && phase !== 'IDLE' ? phase : undefined}>
                 {attachments.length ? (
                     <div className="d2-composer-attachments" aria-label="Attachments">
                         {attachments.map(item => (
@@ -263,6 +264,7 @@ export function Composer({
                 <ComposerFooter
                     picker={{ ...picker, readOnly: true }}
                     goalLabel={goalLabel ?? null}
+                    phase={phase ?? null}
                     disabled={!selected || isSending}
                     canSend={Boolean(draft.trim() || attachments.some(item => item.status !== 'error'))}
                     isRunning={Boolean(isRunning)}

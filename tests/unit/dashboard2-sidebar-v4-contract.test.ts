@@ -15,10 +15,10 @@ test('dashboard2 sidebar v4 keeps the canonical glass material', () => {
     const css = read('public/dashboard2/src/styles/sidebar-v4.css');
 
     assert.ok(css.includes('linear-gradient('), 'sidebar must use the v4 glass gradient');
-    assert.ok(css.includes('rgba(28, 28, 32, 0.88) 0%'));
-    assert.ok(css.includes('rgba(21, 21, 23, 1) 100%'));
-    assert.ok(css.includes('backdrop-filter: blur(32px)'));
-    assert.ok(css.includes('-webkit-backdrop-filter: blur(32px)'));
+    assert.ok(css.includes('rgba(28, 28, 32, 0.72) 0%'));
+    assert.ok(css.includes('rgba(21, 21, 23, 0.90) 100%'));
+    assert.ok(css.includes('backdrop-filter: blur(48px) saturate(1.3)'));
+    assert.ok(css.includes('-webkit-backdrop-filter: blur(48px) saturate(1.3)'));
 });
 
 test('dashboard2 sidebar v4 exposes mode switcher, two-line instances, and footer', () => {

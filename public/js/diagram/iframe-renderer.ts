@@ -232,23 +232,23 @@ function buildCspMeta(htmlCode: string): string {
   // Tone.js creates a blob: Worker for its internal clock
   const workerSrc = /Tone(\.min)?\.js|tone@/.test(htmlCode) ? "worker-src blob:;" : '';
 
-  // Base src lists — start from CDN_ALLOWLIST to prevent drift when allowlist changes
+  // Script sources follow CDN_ALLOWLIST; images default to local and embedded data only.
   const allowlistUrls = CDN_ALLOWLIST.map(h => `https://${h}`);
   const scriptSrc = allowlistUrls.join(' ');
-  const imgSrcs: string[] = ['data:', 'blob:', ...allowlistUrls];
+  const imgSrcs: string[] = ["'self'", 'data:', 'blob:'];
   const styleSrcs: string[] = ["'unsafe-inline'", 'https://fonts.googleapis.com'];
 
   // Leaflet — narrow signal (real API usage, not bare "leaflet" mentions in prose)
-  // Adds OSM tile subdomains (a/b/c, no wildcard) to img-src and Leaflet CSS host to style-src.
-  // Marker icons are already covered by CDN_ALLOWLIST baseline in imgSrcs.
+  // Adds the OSM tile host and Leaflet asset hosts to img-src, plus Leaflet CSS hosts to style-src.
   // Regex covers: L.map(), L.tileLayer, L.marker(), L.geoJSON, L.polyline, L.polygon, L.circle,
   // any leaflet asset file (leaflet.js / leaflet.min.js / leaflet-src.esm.js / leaflet@1.9.4/dist/leaflet.js),
   // and direct OSM tile URLs.
   if (/L\.(map|tileLayer|marker|geoJSON|polyline|polygon|circle)\(|leaflet[\w.@/-]*\.(js|css)|tile\.openstreetmap\.org/.test(htmlCode)) {
     imgSrcs.push(
-      'https://a.tile.openstreetmap.org',
-      'https://b.tile.openstreetmap.org',
-      'https://c.tile.openstreetmap.org',
+      'https://tile.openstreetmap.org',
+      'https://cdnjs.cloudflare.com',
+      'https://cdn.jsdelivr.net',
+      'https://unpkg.com',
     );
     styleSrcs.push('https://cdnjs.cloudflare.com', 'https://cdn.jsdelivr.net');
   }

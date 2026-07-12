@@ -1,6 +1,10 @@
 import { File, Globe, Plus, Terminal, X } from '@lucide/icons';
-import { useState, type JSX } from 'react';
+import { useEffect, useState, type JSX } from 'react';
+import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
+import { BrowserPanel } from './panels/BrowserPanel.tsx';
+import { FileTreePanel } from './panels/FileTreePanel.tsx';
+import { TerminalPanel } from './panels/TerminalPanel.tsx';
 
 type SidePaneTab = 'terminal' | 'browser' | 'files';
 
@@ -20,23 +24,52 @@ const tabs: Array<{
 ];
 
 export function SidePane({ onClose }: SidePaneProps): JSX.Element {
+    const { selected } = useAppScope();
     const [activeTab, setActiveTab] = useState<SidePaneTab | null>(null);
     const activeDescriptor = tabs.find((tab) => tab.id === activeTab) ?? null;
+
+    // Cmd+W / Ctrl+W closes the active tab, or the entire pane if no tab is active
+    useEffect(() => {
+        const handleKeyDown = (e: KeyboardEvent): void => {
+            if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+                e.preventDefault();
+                e.stopPropagation();
+                if (activeTab) {
+                    setActiveTab(null);
+                } else {
+                    onClose();
+                }
+            }
+        };
+        document.addEventListener('keydown', handleKeyDown);
+        return () => document.removeEventListener('keydown', handleKeyDown);
+    }, [activeTab, onClose]);
 
     return (
         <aside className="d2-side-pane" aria-label="Side pane">
             <header className="d2-side-pane-header">
                 {activeDescriptor ? (
-                    <button
-                        className="d2-side-pane-pill"
-                        type="button"
-                        onClick={() => setActiveTab(null)}
-                        aria-label="Choose another tab"
-                        title="Choose another tab"
-                    >
-                        <Icon icon={activeDescriptor.icon} size={14} />
-                        <span>{activeDescriptor.label}</span>
-                    </button>
+                    <div className="d2-side-pane-tab-group">
+                        <button
+                            className="d2-side-pane-pill"
+                            type="button"
+                            onClick={() => setActiveTab(null)}
+                            aria-label="Choose another tab"
+                            title="Choose another tab"
+                        >
+                            <Icon icon={activeDescriptor.icon} size={14} />
+                            <span>{activeDescriptor.label}</span>
+                        </button>
+                        <button
+                            className="d2-side-pane-tab-close"
+                            type="button"
+                            onClick={() => setActiveTab(null)}
+                            aria-label={`Close ${activeDescriptor.label} (⌘W)`}
+                            title={`Close ${activeDescriptor.label} (⌘W)`}
+                        >
+                            <Icon icon={X} size={12} />
+                        </button>
+                    </div>
                 ) : null}
                 <span className="d2-side-pane-header-spacer" />
                 <button
@@ -60,7 +93,13 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
             </header>
 
             <div className="d2-side-pane-body">
-                {activeDescriptor ? (
+                {activeTab === 'terminal' ? (
+                    <TerminalPanel port={selected?.port ?? null} />
+                ) : activeTab === 'browser' ? (
+                    <BrowserPanel />
+                ) : activeTab === 'files' ? (
+                    <FileTreePanel />
+                ) : activeDescriptor ? (
                     <div className="d2-side-pane-placeholder" data-tab={activeDescriptor.id}>
                         <Icon icon={activeDescriptor.icon} size={36} />
                         <span>{activeDescriptor.placeholder}</span>

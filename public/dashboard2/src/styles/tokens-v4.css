@@ -49,14 +49,15 @@ body {
 /* shell grid (spec 010 §1): sidebar track collapses to 0 */
 .d2-shell {
     display: grid;
-    grid-template-columns: 260px minmax(0, 1fr);
+    position: relative;
+    grid-template-columns: var(--d2-sidebar-w, 260px) minmax(0, 1fr);
     height: 100vh;
     background: var(--bg);
     transition: grid-template-columns .18s ease;
 }
 
 .d2-shell.d2-sb-closed {
-    grid-template-columns: 0 minmax(0, 1fr);
+    grid-template-columns: 0px minmax(0, 1fr);
 }
 
 .d2-shell.d2-sb-closed > aside {

@@ -225,7 +225,6 @@ button:focus-visible {
 
 .d2-session-row.is-selected {
     background: var(--d2-accent-soft);
-    box-shadow: inset 2px 0 0 var(--d2-accent);
 }
 
 .d2-active-mark {

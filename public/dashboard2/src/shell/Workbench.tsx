@@ -1,5 +1,5 @@
 import { PanelLeft, PanelRight } from '@lucide/icons';
-import { useEffect, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import type { DashboardInstance } from '../../../../src/manager/types.ts';
 import { ChatView } from '../chat/ChatView.tsx';
 import { useManagerApi } from '../providers/api-provider.tsx';
@@ -26,7 +26,32 @@ export function Workbench({
     const api = useManagerApi();
     const { selected, sidePaneOpen, openSidePane, closeSidePane } = useAppScope();
     const [instanceNames, setInstanceNames] = useState<Map<number, string>>(() => new Map());
+    const PANE_MIN = 280;
+    const PANE_MAX_RATIO = 0.55;
     const toggleSidePane = sidePaneOpen ? closeSidePane : openSidePane;
+    const wbRef = useRef<HTMLElement>(null);
+
+    const onDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+        e.preventDefault();
+        const handle = e.currentTarget;
+        handle.classList.add('is-dragging');
+        handle.setPointerCapture(e.pointerId);
+
+        const move = (ev: PointerEvent) => {
+            const wb = wbRef.current;
+            if (!wb) return;
+            const rect = wb.getBoundingClientRect();
+            const paneWidth = Math.max(PANE_MIN, Math.min(rect.width * PANE_MAX_RATIO, rect.right - ev.clientX));
+            wb.style.setProperty('--d2-pane-w', `${paneWidth}px`);
+        };
+        const up = () => {
+            handle.classList.remove('is-dragging');
+            document.removeEventListener('pointermove', move);
+            document.removeEventListener('pointerup', up);
+        };
+        document.addEventListener('pointermove', move);
+        document.addEventListener('pointerup', up);
+    }, []);
 
     useEffect(() => {
         let mounted = true;
@@ -41,6 +66,7 @@ export function Workbench({
 
     return (
         <section
+            ref={wbRef}
             className={`d2-workbench${sidePaneOpen ? ' d2-workbench-side-open' : ''}`}
             aria-label="Session workbench"
         >
@@ -83,7 +109,7 @@ export function Workbench({
                 </div>
             </div>
 
-            {sidePaneOpen ? <div className="d2-workbench-divider" aria-hidden="true" /> : null}
+            {sidePaneOpen ? <div className="d2-workbench-divider-drag" aria-hidden="true" onPointerDown={onDividerDown} /> : null}
             {sidePaneOpen ? <SidePane onClose={closeSidePane} /> : null}
         </section>
     );

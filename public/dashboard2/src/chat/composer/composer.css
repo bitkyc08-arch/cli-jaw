@@ -18,6 +18,58 @@
     box-shadow: 0 8px 28px light-dark(rgb(27 38 51 / 10%), rgb(0 0 0 / 24%));
 }
 
+/* ── PABCD phase glow on composer pill ────────────────
+   Color codes (canonical):
+     IDLE  — none (no glow)
+     I     — #c084fc  (violet-400, interview/discovery)
+     P     — #7aa2f7  (blue, plan)
+     A     — #fbbf24  (amber-400, audit)
+     B     — #4ade80  (green-400, build)
+     C     — #fb923c  (orange-400, check/verify)
+     D     — #22d3ee  (cyan-400, deliver)
+   Glow = subtle animated border + box-shadow pulse.
+   Activated via data-phase attribute on .d2-composer-pill.
+*/
+.d2-composer-pill[data-phase="I"] {
+    border-color: rgba(192, 132, 252, .45);
+    box-shadow: 0 0 16px rgba(192, 132, 252, .12), 0 8px 28px rgb(0 0 0 / 24%);
+}
+.d2-composer-pill[data-phase="P"] {
+    border-color: rgba(122, 162, 247, .45);
+    box-shadow: 0 0 16px rgba(122, 162, 247, .12), 0 8px 28px rgb(0 0 0 / 24%);
+}
+.d2-composer-pill[data-phase="A"] {
+    border-color: rgba(251, 191, 36, .45);
+    box-shadow: 0 0 16px rgba(251, 191, 36, .12), 0 8px 28px rgb(0 0 0 / 24%);
+}
+.d2-composer-pill[data-phase="B"] {
+    border-color: rgba(74, 222, 128, .45);
+    box-shadow: 0 0 16px rgba(74, 222, 128, .12), 0 8px 28px rgb(0 0 0 / 24%);
+}
+.d2-composer-pill[data-phase="C"] {
+    border-color: rgba(251, 146, 60, .45);
+    box-shadow: 0 0 16px rgba(251, 146, 60, .12), 0 8px 28px rgb(0 0 0 / 24%);
+}
+.d2-composer-pill[data-phase="D"] {
+    border-color: rgba(34, 211, 238, .45);
+    box-shadow: 0 0 16px rgba(34, 211, 238, .12), 0 8px 28px rgb(0 0 0 / 24%);
+}
+
+/* phase badge next to goal label */
+.d2-composer-phase {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 7px;
+    border-radius: 7px;
+    font-size: 10px;
+    font-weight: 600;
+    white-space: nowrap;
+    border: 1px solid var(--phase-color, var(--d2-border));
+    color: var(--phase-color, var(--d2-muted));
+    background: color-mix(in srgb, var(--phase-color, transparent) 8%, transparent);
+}
+
 .d2-composer-pill textarea {
     width: 100%;
     min-height: 42px;

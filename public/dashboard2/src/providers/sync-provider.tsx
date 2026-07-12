@@ -35,6 +35,16 @@ export interface ManagerSyncContextValue {
     subscribeQueueUpdate(cb: (payload: QueueUpdateSsePayload) => void): () => void;
     subscribeSystem(cb: (payload: SystemSsePayload) => void): () => void;
     subscribeInvalidation(cb: (reason: SyncInvalidationReason) => void): () => void;
+    subscribeOrcState(cb: (payload: OrcStateSsePayload) => void): () => void;
+}
+
+export interface OrcStateSsePayload {
+    topic: 'orchestrate';
+    event: 'orc_state';
+    state: string;
+    title?: string;
+    scope?: string;
+    [key: string]: unknown;
 }
 
 type SseEnvelope = {
@@ -48,11 +58,14 @@ export interface SyncPayloadDispatchers {
     body(payload: AgentBodySsePayload): void;
     queue(payload: QueueUpdateSsePayload): void;
     system(payload: SystemSsePayload): void;
+    orcState?(payload: OrcStateSsePayload): void;
 }
 
 const TURN_LIFECYCLE_EVENTS = new Set(['turn_start', 'turn_segment', 'turn_end']);
 const AGENT_BODY_EVENTS = new Set(['agent_output', 'agent_chunk', 'agent_tool', 'agent_done']);
 const SYSTEM_EVENTS = new Set(['replay_gap', 'turn_segment_error']);
+const ORC_STATE_EVENTS = new Set(['orc_state']);
+
 const ManagerSyncContext = createContext<ManagerSyncContextValue | null>(null);
 
 function subscribe<T>(subscribers: Set<(value: T) => void>, cb: (value: T) => void): () => void {
@@ -68,6 +81,12 @@ export function dispatchSelectedSyncPayload(
     payload: SseEnvelope,
     dispatchers: SyncPayloadDispatchers,
 ): 'turn' | 'body' | 'queue' | 'system' | null {
+    if (payload.topic === 'orchestrate'
+        && typeof payload.event === 'string'
+        && ORC_STATE_EVENTS.has(payload.event)) {
+        dispatchers.orcState?.(payload as unknown as OrcStateSsePayload);
+        return 'system';
+    }
     if (payload.topic === 'agent'
         && typeof payload.event === 'string'
         && TURN_LIFECYCLE_EVENTS.has(payload.event)) {
@@ -106,12 +125,15 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
     const lastEventIdByPortRef = useRef(new Map<number, string>());
     const previousPortRef = useRef<number | null | undefined>(undefined);
 
+    const orcStateSubscribersRef = useRef(new Set<(payload: OrcStateSsePayload) => void>());
+
     const value = useMemo<ManagerSyncContextValue>(() => ({
         subscribeTurnLifecycle: (cb) => subscribe(turnSubscribersRef.current, cb),
         subscribeAgentBody: (cb) => subscribe(bodySubscribersRef.current, cb),
         subscribeQueueUpdate: (cb) => subscribe(queueSubscribersRef.current, cb),
         subscribeSystem: (cb) => subscribe(systemSubscribersRef.current, cb),
         subscribeInvalidation: (cb) => subscribe(invalidationSubscribersRef.current, cb),
+        subscribeOrcState: (cb) => subscribe(orcStateSubscribersRef.current, cb),
     }), []);
 
     useEffect(() => {
@@ -163,6 +185,7 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
                             publish(invalidationSubscribersRef.current, 'replay_gap');
                         }
                     },
+                    orcState: value => publish(orcStateSubscribersRef.current, value),
                 });
             };
         };

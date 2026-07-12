@@ -71,8 +71,12 @@ export const WIDE_MERMAID_TYPES = new Set([
     'xychart',
     'xychart-beta',
     'packet',
+    'kanban',
     'radar-beta',
     'treemap-beta',
+    'swimlane-beta',
+    'venn-beta',
+    'eventmodeling',
     'mindmap',
 ]);
 
