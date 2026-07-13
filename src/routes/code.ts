@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process';
 import { realpathSync } from 'node:fs';
 import { isAbsolute, relative } from 'node:path';
 import { Router, type RequestHandler } from 'express';
-import { acpHost } from '../code-mode/acp-host.js';
+import { acpHost, probeCodeCapabilities } from '../code-mode/acp-host.js';
 import {
     buildJwcModelRole,
     clearJwcModelAssignment,
@@ -35,6 +35,20 @@ function realOrOriginal(path: string): string {
 }
 
 export function registerCodeRoutes(app: Router, requireAuth: RequestHandler): void {
+    // 061 — capability gate probe. Bounded reason enum only: never binary
+    // paths, tokens, or stderr. `?refresh=1` bypasses the TTL cache (retry).
+    app.get('/api/code/capabilities', requireAuth, (req, res) => {
+        void (async () => {
+            try {
+                const refresh = req.query['refresh'] === '1' || req.query['refresh'] === 'true';
+                const result = await probeCodeCapabilities({ refresh });
+                res.json({ ok: true, ...result });
+            } catch {
+                res.status(500).json({ ok: false, error: 'capability probe failed' });
+            }
+        })();
+    });
+
     // Workspace metadata for the picker (112.1 G1/G2).
     app.get('/api/code/git-info', requireAuth, (req, res) => {
         void (async () => {

@@ -32,13 +32,15 @@ interface Deferred {
     reject: (err: Error) => void;
 }
 
-function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
+export type CodeCommandSource = 'env' | 'package' | 'path';
+
+function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string; source: CodeCommandSource } {
     // Override for dev checkouts, e.g. JWC_ACP_CMD="bun /path/jawcode/packages/jwc/bin/jwc.js --mode acp"
     const override = process.env['JWC_ACP_CMD'];
     if (override && override.trim()) {
         const parts = override.trim().split(/\s+/);
         const cmd = parts[0];
-        if (cmd) return { cmd, args: parts.slice(1) };
+        if (cmd) return { cmd, args: parts.slice(1), source: 'env' };
     }
     const candidates = [
         // External JWC runtime: prefer an explicitly installed package-local jawcode .bin before any stale global jwc shim. cli-jaw never bundles JWC.
@@ -47,9 +49,9 @@ function resolveAcpCommand(): { cmd: string; args: string[]; binDir?: string } {
         join(process.cwd(), 'node_modules', '.bin', 'jwc'),
     ];
     for (const candidate of candidates) {
-        if (existsSync(candidate)) return { cmd: candidate, args: ['--mode', 'acp'], binDir: dirname(candidate) };
+        if (existsSync(candidate)) return { cmd: candidate, args: ['--mode', 'acp'], binDir: dirname(candidate), source: 'package' };
     }
-    return { cmd: 'jwc', args: ['--mode', 'acp'] };
+    return { cmd: 'jwc', args: ['--mode', 'acp'], source: 'path' };
 }
 
 function stringField(value: unknown): string | undefined {
@@ -95,11 +97,16 @@ class AcpHost implements CodeSessionTransport {
     #replayCaptures = new Map<string, Set<CodeSessionReplayEvent[]>>();
     #initialized: Promise<void> | null = null;
     #idleReaper: ReturnType<typeof setInterval> | null = null;
+    /** true only after #handshake() RESOLVED; cleared on exit/respawn (061) */
+    #ready = false;
+    #commandSource: CodeCommandSource | null = null;
 
     // ── child lifecycle ───────────────────────────────────────────────
     async #ensureChild(): Promise<void> {
         if (this.#child && this.#child.exitCode === null && this.#initialized) return this.#initialized;
-        const { cmd, args, binDir } = resolveAcpCommand();
+        const { cmd, args, binDir, source } = resolveAcpCommand();
+        this.#ready = false;
+        this.#commandSource = source;
         const child = spawn(cmd, args, {
             stdio: ['pipe', 'pipe', 'inherit'],
             env: {
@@ -120,6 +127,7 @@ class AcpHost implements CodeSessionTransport {
             this.#child = null;
             throw err;
         });
+        void this.#initialized.then(() => { this.#ready = true; }, () => { /* handled above */ });
         this.#startIdleReaper();
         return this.#initialized;
     }
@@ -133,6 +141,7 @@ class AcpHost implements CodeSessionTransport {
     }
 
     #onChildExit(code: number | null): void {
+        this.#ready = false;
         for (const [, d] of this.#pendingRpc) d.reject(new Error(`acp child exited (code ${code})`));
         this.#pendingRpc.clear();
         for (const s of this.#sessions.values()) s.status = 'closed';
@@ -377,12 +386,126 @@ class AcpHost implements CodeSessionTransport {
     }
 
     async dispose(): Promise<void> {
+        this.#ready = false;
         if (this.#idleReaper) { clearInterval(this.#idleReaper); this.#idleReaper = null; }
         for (const sessionId of [...this.#sessions.keys()]) await this.closeSession(sessionId).catch(() => {});
         this.#child?.stdin?.end();
         this.#child?.kill('SIGTERM');
         this.#child = null;
     }
+
+    /** 061 — resident readiness snapshot for the capability fast-path. */
+    capabilitySnapshot(): { ready: boolean; commandSource: CodeCommandSource | null } {
+        const alive = this.#child !== null && this.#child.exitCode === null;
+        return { ready: alive && this.#ready, commandSource: this.#commandSource };
+    }
 }
 
-export const acpHost: CodeSessionTransport = new AcpHost();
+const acpHostInstance = new AcpHost();
+export const acpHost: CodeSessionTransport = acpHostInstance;
+
+// ── 061 — side-effect-free capability probe ─────────────────────────
+// No persistent child, no session: a throwaway `--mode acp` child performs the
+// initialize handshake and is terminated. The response NEVER carries binary
+// paths, tokens, or stderr text (bounded reasons only).
+
+export type CodeCapabilityReason = 'ok' | 'missing_binary' | 'acp_unsupported' | 'temporarily_unavailable';
+
+export interface CodeCapabilityProbe {
+    available: boolean;
+    reason: CodeCapabilityReason;
+    commandSource: CodeCommandSource;
+    acpProtocolVersion?: number;
+}
+
+const PROBE_TTL_MS = 30_000;
+const PROBE_TIMEOUT_MS = 5_000;
+let probeCache: { at: number; result: CodeCapabilityProbe } | null = null;
+let probeInFlight: Promise<CodeCapabilityProbe> | null = null;
+
+function runThrowawayProbe(): Promise<CodeCapabilityProbe> {
+    const { cmd, args, binDir, source } = resolveAcpCommand();
+    return new Promise<CodeCapabilityProbe>(resolve => {
+        let settled = false;
+        let child: ChildProcess | null = null;
+        const finish = (result: CodeCapabilityProbe): void => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            try { child?.kill('SIGTERM'); } catch { /* already gone */ }
+            resolve(result);
+        };
+        const timer = setTimeout(() => {
+            finish({ available: false, reason: 'temporarily_unavailable', commandSource: source });
+        }, PROBE_TIMEOUT_MS);
+        try {
+            child = spawn(cmd, args, {
+                stdio: ['pipe', 'pipe', 'ignore'],
+                env: {
+                    ...process.env,
+                    JWC_BRAND_NAME: 'jwc',
+                    PATH: binDir ? `${binDir}:${process.env['PATH'] ?? ''}` : process.env['PATH'],
+                },
+            });
+        } catch {
+            finish({ available: false, reason: 'temporarily_unavailable', commandSource: source });
+            return;
+        }
+        child.on('error', (err: NodeJS.ErrnoException) => {
+            finish({
+                available: false,
+                reason: err.code === 'ENOENT' ? 'missing_binary' : 'temporarily_unavailable',
+                commandSource: source,
+            });
+        });
+        child.on('exit', () => {
+            // exited before the handshake answered — a resolvable but broken or
+            // pre-ACP binary dies immediately
+            finish({ available: false, reason: 'acp_unsupported', commandSource: source });
+        });
+        const rl = createInterface({ input: child.stdout! });
+        rl.on('line', line => {
+            try {
+                const msg = JSON.parse(line) as JsonRpcMessage;
+                if (msg.id !== 'probe') return;
+                if (msg.error) {
+                    finish({ available: false, reason: 'acp_unsupported', commandSource: source });
+                    return;
+                }
+                const version = numberField(msg.result?.['protocolVersion']);
+                finish({
+                    available: true,
+                    reason: 'ok',
+                    commandSource: source,
+                    ...(version !== undefined ? { acpProtocolVersion: version } : {}),
+                });
+            } catch { /* non-JSON banner noise — keep waiting until timeout */ }
+        });
+        const request: JsonRpcMessage = {
+            jsonrpc: '2.0',
+            id: 'probe',
+            method: 'initialize',
+            params: { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} },
+        };
+        child.stdin?.write(`${JSON.stringify(request)}\n`);
+    });
+}
+
+export async function probeCodeCapabilities(opts: { refresh?: boolean } = {}): Promise<CodeCapabilityProbe> {
+    // fast-path BEFORE the cache: a live initialized resident child is proof
+    const snapshot = acpHostInstance.capabilitySnapshot();
+    if (snapshot.ready) {
+        return { available: true, reason: 'ok', commandSource: snapshot.commandSource ?? 'path' };
+    }
+    if (!opts.refresh && probeCache && Date.now() - probeCache.at < PROBE_TTL_MS) {
+        return probeCache.result;
+    }
+    if (!probeInFlight) {
+        probeInFlight = runThrowawayProbe().then(result => {
+            probeCache = { at: Date.now(), result };
+            probeInFlight = null;
+            return result;
+        });
+    }
+    return probeInFlight;
+}

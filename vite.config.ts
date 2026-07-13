@@ -10,6 +10,9 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     modulePreload: false,
+    // 061 — emitted so the bundle-gate test can assert the Code lazy boundary
+    // from the real import graph (entry chunk must not import code/ modules).
+    manifest: true,
     rolldownOptions: {
       input: {
         app: 'public/index.html',

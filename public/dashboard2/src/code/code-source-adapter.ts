@@ -80,6 +80,8 @@ interface ActiveTurn {
     runId: string;
     nextSeq: number;
     startedAt: number;
+    /** who opened the turn — sseReplay terminals may only close 'replay' turns */
+    origin: 'local' | 'live' | 'replay';
     assistant: OpenSegmentRun | null;
     thought: OpenSegmentRun | null;
     planSeen: boolean;
@@ -111,6 +113,14 @@ export function createCodeSourceAdapter(
     // re-emit a running row after the replay drain closed its turn (D5
     // messageId/toolCallId-first dedupe with restart fallback)
     const seenToolKeys = new Set<string>();
+    // 061 D6 — bounded post-load overlap fence: session/load regenerates chunk
+    // messageIds, so id-keyed dedupe cannot match SSE-ring replays of the same
+    // historical events. During the overlap phase (drain end → first NON-replay
+    // frame of any class, or exhaustion) sseReplay chunks/plans matching a
+    // consumable content fingerprint are dropped. notePromptAccepted does NOT
+    // close the phase (an accepted prompt can outrun queued replay frames).
+    let overlapActive = false;
+    const overlapFingerprints = new Map<string, number>();
     const telemetry: CodeAdapterTelemetry = {
         unknownUpdateKinds: {},
         unknownToolStatuses: {},
@@ -126,6 +136,20 @@ export function createCodeSourceAdapter(
 
     function count(map: Record<string, number>, key: string): void {
         map[key] = (map[key] ?? 0) + 1;
+    }
+
+    function overlapFingerprintOf(update: AcpSessionUpdate, event: `code_${string}`): string | null {
+        const kind = update.sessionUpdate;
+        if (kind === 'user_message_chunk' || kind === 'agent_message_chunk' || kind === 'agent_thought_chunk') {
+            return `${sessionId}:${event}:${chunkText(update.content)}`;
+        }
+        if (kind === 'plan') return `${sessionId}:code_plan`;
+        return null;
+    }
+
+    function closeOverlapPhase(): void {
+        overlapActive = false;
+        overlapFingerprints.clear();
     }
 
     function row(
@@ -156,7 +180,7 @@ export function createCodeSourceAdapter(
         return { kind: 'lifecycle', payload };
     }
 
-    function openTurn(): { turn: ActiveTurn; actions: TurnStreamAction[] } {
+    function openTurn(origin: ActiveTurn['origin']): { turn: ActiveTurn; actions: TurnStreamAction[] } {
         const actions: TurnStreamAction[] = [];
         if (active) return { turn: active, actions };
         turnOrdinal += 1;
@@ -166,6 +190,7 @@ export function createCodeSourceAdapter(
             runId: `codeturn:${turnId}`,
             nextSeq: 0,
             startedAt: 0,
+            origin,
             assistant: null,
             thought: null,
             planSeen: false,
@@ -226,7 +251,7 @@ export function createCodeSourceAdapter(
         userRun = null;
     }
 
-    function emitUserMessage(text: string, replay: boolean, key: string | null): TurnStreamAction[] {
+    function emitUserMessage(text: string, replay: boolean, key: string | null, origin: ActiveTurn['origin']): TurnStreamAction[] {
         const actions: TurnStreamAction[] = [];
         const runKey = key ?? 'contiguous';
         if (userRun && userRun.key === runKey && key !== null) {
@@ -261,7 +286,7 @@ export function createCodeSourceAdapter(
                 turn_segments: [],
             }],
         });
-        if (!active) actions.push(...openTurn().actions);
+        if (!active) actions.push(...openTurn(origin).actions);
         return actions;
     }
 
@@ -282,7 +307,7 @@ export function createCodeSourceAdapter(
         return record['agent_type'] === 'task' || record['agentType'] === 'task';
     }
 
-    function applySessionUpdate(event: JwcSessionUpdateEvent, replay: boolean): TurnStreamAction[] {
+    function applySessionUpdate(event: JwcSessionUpdateEvent, replay: boolean, origin: ActiveTurn['origin']): TurnStreamAction[] {
         const update = event.update;
         const kind = update.sessionUpdate;
         const actions: TurnStreamAction[] = [];
@@ -306,10 +331,10 @@ export function createCodeSourceAdapter(
 
         switch (kind) {
             case 'user_message_chunk': {
-                return emitUserMessage(chunkText(update.content), replay, update.messageId ?? null);
+                return emitUserMessage(chunkText(update.content), replay, update.messageId ?? null, origin);
             }
             case 'agent_thought_chunk': {
-                const { turn, actions: opened } = openTurn();
+                const { turn, actions: opened } = openTurn(origin);
                 actions.push(...opened);
                 const key = update.messageId ?? 'thought:contiguous';
                 if (!turn.thought || turn.thought.key !== key) {
@@ -324,7 +349,7 @@ export function createCodeSourceAdapter(
                 return actions;
             }
             case 'plan': {
-                const { turn, actions: opened } = openTurn();
+                const { turn, actions: opened } = openTurn(origin);
                 actions.push(...opened);
                 if (!turn.planSeen) {
                     turn.planSeen = true;
@@ -336,7 +361,7 @@ export function createCodeSourceAdapter(
                 return actions;
             }
             case 'agent_message_chunk': {
-                const { turn, actions: opened } = openTurn();
+                const { turn, actions: opened } = openTurn(origin);
                 actions.push(...opened);
                 closeThought(turn, actions);
                 const key = update.messageId ?? 'assistant:contiguous';
@@ -373,7 +398,7 @@ export function createCodeSourceAdapter(
                     telemetry.droppedDuplicates += 1;
                     return actions;
                 }
-                const { turn, actions: opened } = openTurn();
+                const { turn, actions: opened } = openTurn(origin);
                 actions.push(...opened);
                 closeThought(turn, actions);
                 const toolKey = toolKeyOf(update) ?? `tool:${turn.toolOrdinal}`;
@@ -427,10 +452,31 @@ export function createCodeSourceAdapter(
     }
 
     function applyEvent(event: JwcCodeEvent, replay: boolean): TurnStreamAction[] {
+        const sseReplay = event.class !== 'permission' && event.sseReplay === true;
+        // overlap-phase lifecycle (061 D6): the first NON-replay frame of any
+        // class proves the SSE replay prefix ended — close the fence BEFORE
+        // applying the frame. sseReplay chunks/plans matching a seeded
+        // fingerprint are consumed (dropped) while the phase is open.
+        if (overlapActive && !replay) {
+            if (!sseReplay) {
+                closeOverlapPhase();
+            } else if (event.class === 'session_update') {
+                const fingerprint = overlapFingerprintOf(event.update, event.event);
+                const remaining = fingerprint ? overlapFingerprints.get(fingerprint) ?? 0 : 0;
+                if (fingerprint && remaining > 0) {
+                    if (remaining === 1) overlapFingerprints.delete(fingerprint);
+                    else overlapFingerprints.set(fingerprint, remaining - 1);
+                    if (overlapFingerprints.size === 0) closeOverlapPhase();
+                    telemetry.droppedDuplicates += 1;
+                    return [];
+                }
+            }
+        }
         if (event.class === 'permission') {
             options.onPermission?.(event);
             return [];
         }
+        const origin: ActiveTurn['origin'] = replay || sseReplay ? 'replay' : 'live';
         if (event.class === 'lifecycle') {
             if (event.sessionId && event.sessionId !== sessionId && event.event !== 'code_child_exit') {
                 telemetry.ignoredPayloads += 1;
@@ -440,6 +486,13 @@ export function createCodeSourceAdapter(
             if (terminal !== undefined) {
                 if (!active) {
                     // duplicate terminals converge to the FIRST terminal row
+                    telemetry.droppedDuplicates += 1;
+                    return [];
+                }
+                // stale-terminal fence: an sseReplay terminal may only close a
+                // turn that was itself opened by replayed events — never a
+                // local prompt turn or a live-origin turn
+                if (sseReplay && active.origin !== 'replay') {
                     telemetry.droppedDuplicates += 1;
                     return [];
                 }
@@ -454,7 +507,7 @@ export function createCodeSourceAdapter(
             telemetry.ignoredPayloads += 1;
             return [];
         }
-        return applySessionUpdate(event, replay);
+        return applySessionUpdate(event, replay, origin);
     }
 
     return {
@@ -474,6 +527,12 @@ export function createCodeSourceAdapter(
                     telemetry.ignoredPayloads += 1;
                     continue;
                 }
+                if (event.class === 'session_update') {
+                    const fingerprint = overlapFingerprintOf(event.update, event.event);
+                    if (fingerprint) {
+                        overlapFingerprints.set(fingerprint, (overlapFingerprints.get(fingerprint) ?? 0) + 1);
+                    }
+                }
                 actions.push(...applyEvent(event, true));
             }
             // drain end: close a still-open turn ONLY with not-running
@@ -482,12 +541,13 @@ export function createCodeSourceAdapter(
             if (active && info && info.status !== 'streaming' && info.status !== 'busy') {
                 closeTurn('interrupted', actions);
             }
+            if (overlapFingerprints.size > 0) overlapActive = true;
             return actions;
         },
         notePromptAccepted(promptText) {
             const actions: TurnStreamAction[] = [];
             if (active) closeTurn('done', actions);
-            actions.push(...emitUserMessage(promptText, false, `local:${legacyId}`));
+            actions.push(...emitUserMessage(promptText, false, `local:${legacyId}`, 'local'));
             return actions;
         },
         telemetry() {
