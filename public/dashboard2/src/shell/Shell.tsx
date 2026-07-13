@@ -35,10 +35,12 @@ export function Shell(): JSX.Element {
 
     return (
         <main
+            id="d2-workbench-main"
             ref={shellRef}
             className={sidebarCollapsed ? 'd2-shell d2-sb-closed' : 'd2-shell'}
             style={!sidebarCollapsed ? { '--d2-sidebar-w': `${sidebarWidth}px` } as React.CSSProperties : undefined}
         >
+            <a href="#d2-workbench-main" className="d2-skip-nav">Skip to main content</a>
             <Sidebar onClose={() => setSidebarCollapsed(true)} />
             {!sidebarCollapsed ? (
                 <div className="d2-sidebar-resize" onPointerDown={onResizeStart} />

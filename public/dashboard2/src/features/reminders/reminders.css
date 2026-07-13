@@ -253,13 +253,13 @@
 }
 
 .d2-reminders-card[data-priority='normal'] .d2-reminders-priority {
-    border-color: var(--amber, var(--warn));
-    background: var(--amber, var(--warn));
+    border-color: var(--warn);
+    background: var(--warn);
 }
 
 .d2-reminders-card[data-priority='high'] .d2-reminders-priority {
-    border-color: var(--red, var(--danger));
-    background: var(--red, var(--danger));
+    border-color: var(--danger);
+    background: var(--danger);
 }
 
 .d2-reminders-card-copy {
@@ -290,7 +290,7 @@
 }
 
 .d2-reminders-card[data-overdue='true'] .d2-reminders-card-copy time {
-    color: var(--red, var(--danger));
+    color: var(--danger);
 }
 
 .d2-reminders-card-actions {
@@ -306,7 +306,7 @@
 }
 
 .d2-reminders-card-actions .d2-reminders-delete:hover:not(:disabled) {
-    color: var(--red, var(--danger));
+    color: var(--danger);
 }
 
 .d2-reminders-schedule-row {
@@ -324,8 +324,8 @@
     align-items: center;
     justify-content: center;
     border-radius: var(--r-sm);
-    background: color-mix(in srgb, var(--green, var(--positive)) 12%, transparent);
-    color: var(--green, var(--positive));
+    background: color-mix(in srgb, var(--positive) 12%, transparent);
+    color: var(--positive);
 }
 
 .d2-reminders-schedule-row > time {
@@ -364,10 +364,10 @@
     gap: 7px;
     margin-bottom: 8px;
     padding: 8px 9px;
-    border: 1px solid color-mix(in srgb, var(--red, var(--danger)) 38%, transparent);
+    border: 1px solid color-mix(in srgb, var(--danger) 38%, transparent);
     border-radius: var(--r-sm);
     background: var(--surface);
-    color: var(--red, var(--danger));
+    color: var(--danger);
     font-size: 10px;
     line-height: 14px;
 }

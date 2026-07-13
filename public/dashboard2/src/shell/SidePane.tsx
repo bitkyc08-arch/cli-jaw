@@ -105,10 +105,10 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
     const { activeSidePaneTab, mountedTabs, setActiveSidePaneTab } = useAppScope();
     const activeDescriptor = activeSidePaneTab ? TAB_MAP.get(activeSidePaneTab) ?? null : null;
 
-    // Cmd+W / Ctrl+W closes the active tab, or the entire pane if no tab is active
+    // Cmd+W / Ctrl+W or Escape closes the active tab, or the entire pane if no tab is active
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent): void => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 'w') {
+            if (((e.metaKey || e.ctrlKey) && e.key === 'w') || e.key === 'Escape') {
                 e.preventDefault();
                 e.stopPropagation();
                 if (activeSidePaneTab) {

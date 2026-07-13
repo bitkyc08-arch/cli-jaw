@@ -107,6 +107,7 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
                     className={`d2-notes-tree-item${selectedPath === entry.path ? ' active' : ''}`}
                     style={{ paddingLeft: `${12 + depth * 16}px` }}
                     type="button"
+                    role="treeitem"
                     onClick={() => {
                         if (entry.type === 'directory') toggleDir(entry.path);
                         else setSelectedPath(entry.path);
@@ -152,7 +153,7 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
                         <Icon icon={FilePlus} size={14} />
                     </button>
                 </div>
-                <div className="d2-notes-tree">
+                <div className="d2-notes-tree" role="tree">
                     {tree.length > 0 ? renderTree(tree) : (
                         <div className="d2-notes-tree-empty">No notes yet</div>
                     )}
@@ -195,6 +196,7 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
                                 <textarea
                                     ref={textareaRef}
                                     className="d2-notes-textarea"
+                                    aria-label="Notes editor"
                                     value={content}
                                     onChange={(e) => { setContent(e.target.value); setDirty(true); }}
                                     spellCheck={false}

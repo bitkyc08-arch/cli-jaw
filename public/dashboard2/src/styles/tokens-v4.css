@@ -37,6 +37,8 @@
     --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .04) inset;
     --shimmer-contrast: rgba(255, 255, 255, .52);
     --div-color: rgba(255, 255, 255, .08);
+    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Pretendard', sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
 }
 
 /* v4 base: dark shell surface, zero letter-spacing (frontend guidance) */
