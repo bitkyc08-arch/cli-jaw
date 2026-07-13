@@ -48,13 +48,15 @@ export function Workbench({
             const paneWidth = Math.max(PANE_MIN, Math.min(rect.width * PANE_MAX_RATIO, rect.right - ev.clientX));
             wb.style.setProperty('--d2-pane-w', `${paneWidth}px`);
         };
-        const up = () => {
+        const up = (): void => {
             handle.classList.remove('is-dragging');
             document.removeEventListener('pointermove', move);
             document.removeEventListener('pointerup', up);
+            document.removeEventListener('pointercancel', up);
         };
         document.addEventListener('pointermove', move);
         document.addEventListener('pointerup', up);
+        document.addEventListener('pointercancel', up);
     }, []);
 
     useEffect(() => {

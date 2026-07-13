@@ -32,13 +32,16 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
     const fetchTree = useCallback(async () => {
         if (!port || !active) return;
         try {
-            const res = await fetch(`/i/${port}/api/notes/tree`);
+            const res = await fetch(`/i/${port}/api/notes/tree`, { signal: abortRef.current?.signal });
             if (res.ok) {
                 const data = await res.json() as { tree?: NoteEntry[] };
                 setTree(data.tree ?? []);
             }
         } catch { /* offline */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- abortRef is stable
     }, [port, active]);
+
+    const abortRef = useRef<AbortController | null>(null);
 
     // Fetch note content
     const fetchNote = useCallback(async (path: string) => {
@@ -70,7 +73,10 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
 
     // Load tree on mount / port change (only when active)
     useEffect(() => {
+        abortRef.current?.abort();
+        abortRef.current = new AbortController();
         if (active && port) void fetchTree();
+        return () => { abortRef.current?.abort(); };
     }, [active, port, fetchTree]);
 
     // Load note on selection change
