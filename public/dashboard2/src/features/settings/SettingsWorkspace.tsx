@@ -40,7 +40,8 @@ export function SettingsWorkspace(): JSX.Element {
         // Use the manager status endpoint directly
         fetch('/api/dashboard/status')
             .then(async (res) => {
-                if (!res.ok || cancelled) return;
+                if (cancelled) return;
+                if (!res.ok) { setLoadError(true); return; }
                 const data = await res.json() as Record<string, unknown>;
                 if (cancelled) return;
                 setServerInfo({
@@ -50,7 +51,9 @@ export function SettingsWorkspace(): JSX.Element {
                     nodeVersion: String(data['nodeVersion'] ?? ''),
                 });
             })
-            .catch(() => { if (!cancelled) setLoadError(true); });
+            .catch(() => {
+                if (!cancelled) setLoadError(true);
+            });
         return () => { cancelled = true; };
     }, []);
 
@@ -92,6 +95,9 @@ export function SettingsWorkspace(): JSX.Element {
                 {section === 'general' && (
                     <div className="d2-settings-section">
                         <h2>General</h2>
+                        {loadError ? (
+                            <p className="d2-settings-error-text">Could not load server info.</p>
+                        ) : (
                         <div className="d2-settings-group">
                             <div className="d2-settings-row">
                                 <span className="d2-settings-label">Version</span>
@@ -110,6 +116,7 @@ export function SettingsWorkspace(): JSX.Element {
                                 <span className="d2-settings-value">{serverInfo.nodeVersion || '...'}</span>
                             </div>
                         </div>
+                        )}
                     </div>
                 )}
 

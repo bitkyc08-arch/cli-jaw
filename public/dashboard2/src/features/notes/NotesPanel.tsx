@@ -38,7 +38,7 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
                 setTree(data.tree ?? []);
             }
         } catch { /* offline */ }
-    }, [port]);
+    }, [port, active]);
 
     // Fetch note content
     const fetchNote = useCallback(async (path: string) => {
