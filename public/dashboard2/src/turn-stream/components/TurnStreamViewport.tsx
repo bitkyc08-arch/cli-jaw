@@ -1,6 +1,7 @@
-// 044 — virtualized committed turn stream (M3.3 visual core).
-// D12: @tanstack/react-virtual. Rows subscribe per-turn via useTurn; this
-// viewport only consumes the list snapshot (order + versions).
+// 044/086 — virtualized committed turn stream with stable scroll.
+// Uses TanStack Virtual's built-in anchorTo:'end' + followOnAppend for
+// chat-style bottom-anchored scrolling. NO custom scrollTop manipulation —
+// the virtualizer owns scroll position entirely.
 import { useEffect, useRef, type JSX, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TurnStore } from '../store/turn-store.ts';
@@ -8,30 +9,18 @@ import { useTurnList } from '../store/use-turn.ts';
 import { LegacyMessageRow } from './LegacyMessageRow.tsx';
 import { TurnRow } from './TurnRow.tsx';
 
-// D13 calibration (044 browser gate): the real TurnRow tree carries icon svgs
-// and segment lines, so overscan 8 blew the 2,000-node budget (4,078 nodes at
-// 1440x900). Overscan 4 keeps scroll headroom within budget.
 const OVERSCAN = 4;
-const BOTTOM_LOCK_SLACK_PX = 48;
 
 export interface TurnStreamViewportProps {
     store: TurnStore;
-    /** history load boundary rendered inside the scroll container, BEFORE the
-     *  committed transcript (048 top sentinel) */
     head?: ReactNode;
-    /** live tail region rendered inside the same scroll container, after the
-     *  committed transcript (045); bottom lock covers auto-follow */
     tail?: ReactNode;
 }
 
 export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProps): JSX.Element {
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
-    const wasAtBottomRef = useRef(true);
-    const programmaticScrollRef = useRef(false);
-    // Stable height: never shrinks — prevents scroll-position jumps from
-    // measurement corrections that reduce totalSize between renders.
-    const stableHeightRef = useRef(0);
+    const didInitialScroll = useRef(false);
 
     const virtualizer = useVirtualizer({
         count: list.order.length,
@@ -43,59 +32,43 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
         },
         overscan: OVERSCAN,
         getItemKey: (index) => list.order[index],
+        // 086 — virtualizer-native chat scroll:
+        // anchorTo:'end' anchors from the bottom, so measurement corrections
+        // don't shift the visible content. followOnAppend auto-scrolls to end
+        // when new items arrive while already at the bottom.
+        anchorTo: 'end',
+        followOnAppend: 'smooth',
     });
 
     const totalSize = virtualizer.getTotalSize();
-    // Only let height grow; reset when the list itself changes (new session, etc.)
-    if (totalSize > stableHeightRef.current) {
-        stableHeightRef.current = totalSize;
-    }
-    const renderHeight = stableHeightRef.current;
 
-    // Reset stable height when the list identity changes (session switch)
-    const prevVersionRef = useRef(list.version);
-    if (list.version !== prevVersionRef.current) {
-        prevVersionRef.current = list.version;
-        // Allow height to re-calibrate on list change
-        stableHeightRef.current = totalSize;
-    }
-
-    const onScroll = (): void => {
-        if (programmaticScrollRef.current) return;
-        const el = scrollRef.current;
-        if (!el) return;
-        wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_LOCK_SLACK_PX;
-    };
-
-    // Bottom-lock: when the LIST changes (new items) and user was at bottom, scroll down.
-    // This fires only on list.version changes, NOT on measurement-driven totalSize changes.
+    // Scroll to bottom on initial load (once items are present)
     useEffect(() => {
-        if (!wasAtBottomRef.current) return;
-        const el = scrollRef.current;
-        if (!el) return;
-        // Use rAF to wait for the DOM to settle after the virtualizer re-renders
-        const raf = requestAnimationFrame(() => {
-            programmaticScrollRef.current = true;
-            el.scrollTop = el.scrollHeight;
-            // Reset after the browser processes the scroll
-            requestAnimationFrame(() => { programmaticScrollRef.current = false; });
+        if (didInitialScroll.current || list.order.length === 0) return;
+        didInitialScroll.current = true;
+        // Give the virtualizer one frame to measure, then scroll to end
+        requestAnimationFrame(() => {
+            virtualizer.scrollToEnd();
         });
-        return () => cancelAnimationFrame(raf);
-    }, [list.version]);
+    }, [list.order.length, virtualizer]);
+
+    // Reset initial-scroll flag on session/scope change
+    useEffect(() => {
+        didInitialScroll.current = false;
+    }, [store]);
 
     return (
         <div
             ref={scrollRef}
             className="d2-turn-scroll"
             data-testid="turn-stream-viewport"
-            onScroll={onScroll}
             style={{ overflowAnchor: 'none' }}
         >
             {head}
             <div
                 className="d2-turn-transcript"
                 data-testid="turn-stream-transcript"
-                style={{ height: `${renderHeight}px` }}
+                style={{ height: `${totalSize}px` }}
             >
                 {virtualizer.getVirtualItems().map(item => {
                     const key = list.order[item.index];
