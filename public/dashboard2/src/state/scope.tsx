@@ -7,6 +7,16 @@ import {
     type PropsWithChildren,
 } from 'react';
 
+// 075 — SidePane tab types live at AppScope so the active tab survives pane close/open
+export type SidePaneTab =
+    | 'terminal'
+    | 'browser'
+    | 'files'
+    | 'code'
+    | 'notes'
+    | 'board'
+    | 'reminders';
+
 export interface SessionScope {
     port: number;
     sessionId: string;
@@ -16,6 +26,11 @@ interface AppScopeState {
     selected: SessionScope | null;
     sidePaneOpen: boolean;
     expandedPorts: number[];
+    activeSidePaneTab: SidePaneTab | null;
+    /** Tabs that have been mounted at least once — used for keep-alive */
+    mountedTabs: Set<SidePaneTab>;
+    /** Central workspace mode: 'chat' (default) or 'settings' */
+    workspaceMode: 'chat' | 'settings';
 }
 
 interface AppScopeValue extends AppScopeState {
@@ -23,18 +38,25 @@ interface AppScopeValue extends AppScopeState {
     toggleInstance(port: number): void;
     openSidePane(): void;
     closeSidePane(): void;
+    setActiveSidePaneTab(tab: SidePaneTab | null): void;
+    setWorkspaceMode(mode: 'chat' | 'settings'): void;
 }
 
 type AppScopeAction =
     | { type: 'select-session'; selected: SessionScope }
     | { type: 'toggle-instance'; port: number }
     | { type: 'open-side-pane' }
-    | { type: 'close-side-pane' };
+    | { type: 'close-side-pane' }
+    | { type: 'set-active-side-pane-tab'; tab: SidePaneTab | null }
+    | { type: 'set-workspace-mode'; mode: 'chat' | 'settings' };
 
 const initialState: AppScopeState = {
     selected: null,
     sidePaneOpen: false,
     expandedPorts: [],
+    activeSidePaneTab: null,
+    mountedTabs: new Set(),
+    workspaceMode: 'chat',
 };
 
 const AppScopeContext = createContext<AppScopeValue | null>(null);
@@ -53,7 +75,22 @@ function scopeReducer(state: AppScopeState, action: AppScopeAction): AppScopeSta
         case 'open-side-pane':
             return { ...state, sidePaneOpen: true };
         case 'close-side-pane':
+            // Keep activeSidePaneTab so it restores on reopen
             return { ...state, sidePaneOpen: false };
+        case 'set-active-side-pane-tab': {
+            if (action.tab === null) {
+                return { ...state, activeSidePaneTab: null };
+            }
+            const nextMounted = new Set(state.mountedTabs);
+            nextMounted.add(action.tab);
+            return {
+                ...state,
+                activeSidePaneTab: action.tab,
+                mountedTabs: nextMounted,
+            };
+        }
+        case 'set-workspace-mode':
+            return { ...state, workspaceMode: action.mode };
     }
 }
 
@@ -68,6 +105,8 @@ export function AppScopeProvider(props: PropsWithChildren): JSX.Element {
         toggleInstance: (port) => dispatch({ type: 'toggle-instance', port }),
         openSidePane: () => dispatch({ type: 'open-side-pane' }),
         closeSidePane: () => dispatch({ type: 'close-side-pane' }),
+        setActiveSidePaneTab: (tab) => dispatch({ type: 'set-active-side-pane-tab', tab }),
+        setWorkspaceMode: (mode) => dispatch({ type: 'set-workspace-mode', mode }),
     };
 
     return <AppScopeContext.Provider value={value}>{props.children}</AppScopeContext.Provider>;
