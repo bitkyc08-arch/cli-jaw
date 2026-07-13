@@ -648,3 +648,70 @@
     display: block;
     margin-bottom: 4px;
 }
+
+/* ── Light-mode overrides ── */
+:root[data-theme='light'] .d2-sidebar-v4::before,
+:root[data-theme='auto'] .d2-sidebar-v4::before {
+    background: linear-gradient(
+        180deg,
+        rgba(238, 241, 245, 0.82) 0%,
+        rgba(235, 238, 243, 0.88) 30%,
+        rgba(232, 236, 241, 0.92) 70%,
+        rgba(230, 234, 239, 0.95) 100%
+    );
+}
+
+@media (prefers-color-scheme: dark) {
+    :root[data-theme='auto'] .d2-sidebar-v4::before {
+        background: linear-gradient(
+            180deg,
+            rgba(28, 28, 32, 0.72) 0%,
+            rgba(22, 22, 25, 0.78) 30%,
+            rgba(21, 21, 23, 0.84) 70%,
+            rgba(21, 21, 23, 0.90) 100%
+        );
+    }
+}
+
+:root[data-theme='light'] .d2-mode-switcher {
+    background: rgba(0, 0, 0, 0.03);
+}
+
+:root[data-theme='light'] .d2-mode-button:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme='light'] .d2-mode-button.is-active {
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+:root[data-theme='light'] .d2-sidebar-v4 .d2-instance-row:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+:root[data-theme='light'] .d2-sidebar-v4 .d2-instance-row.is-selected {
+    background: var(--accent-soft);
+}
+
+:root[data-theme='light'] .d2-instance-spinner {
+    border-color: rgba(0, 0, 0, 0.08);
+    border-top-color: var(--accent);
+}
+
+:root[data-theme='light'] .d2-instance-menu {
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme='light'] .d2-instance-more:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme='light'] .d2-sidebar-footer-v4 {
+    border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+:root[data-theme='light'] .d2-sidebar-settings:hover:not(:disabled),
+:root[data-theme='light'] .d2-sidebar-theme:hover {
+    background: rgba(0, 0, 0, 0.06);
+}
