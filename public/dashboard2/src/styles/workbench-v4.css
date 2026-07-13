@@ -155,7 +155,6 @@
 .d2-side-pane-tab-group {
     display: flex;
     align-items: center;
-    gap: 0;
     position: relative;
 }
 
@@ -163,17 +162,25 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     padding: 0;
     border: 0;
-    border-radius: var(--r-sm);
+    border-radius: 50%;
     background: transparent;
     color: var(--text-4);
     cursor: pointer;
     opacity: 0;
-    margin-left: -2px;
+    position: absolute;
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
     transition: opacity 120ms, background 120ms, color 120ms;
+    z-index: 1;
+}
+
+.d2-side-pane-tab-group:hover .d2-side-pane-pill {
+    padding-right: 24px;
 }
 
 .d2-side-pane-tab-group:hover .d2-side-pane-tab-close,
@@ -188,8 +195,8 @@
 
 .d2-side-pane-tab-close .d2-icon,
 .d2-side-pane-tab-close .d2-icon svg {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
 }
 
 .d2-side-pane-header-button {
