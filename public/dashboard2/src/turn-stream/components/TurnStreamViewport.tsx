@@ -1,7 +1,7 @@
 // 044 — virtualized committed turn stream (M3.3 visual core).
 // D12: @tanstack/react-virtual. Rows subscribe per-turn via useTurn; this
 // viewport only consumes the list snapshot (order + versions).
-import { useLayoutEffect, useRef, type JSX, type ReactNode } from 'react';
+import { useEffect, useRef, type JSX, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TurnStore } from '../store/turn-store.ts';
 import { useTurnList } from '../store/use-turn.ts';
@@ -27,15 +27,10 @@ export interface TurnStreamViewportProps {
 export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProps): JSX.Element {
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
-    const prevTotalRef = useRef(0);
-    // anchor capture/restore (port of public/js/virtual-scroll.ts:337-351):
-    // remember the first visible item + its visual offset per list version;
-    // when the list changes (insertions above), restore its visual position.
-    const anchorRef = useRef<{ key: string; visualOffset: number } | null>(null);
-    // scroll events inside this window after a data commit are programmatic
-    // (our restore, virtualizer adjustments) — they must not steal the anchor
-    const commitTsRef = useRef(0);
-    const SETTLE_WINDOW_MS = 150;
+    // Was the user at the bottom before the last list change?
+    const wasAtBottomRef = useRef(true);
+    // Suppress user-scroll capture during programmatic scrolls
+    const programmaticScrollRef = useRef(false);
 
     const virtualizer = useVirtualizer({
         count: list.order.length,
@@ -51,60 +46,36 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
 
     const totalSize = virtualizer.getTotalSize();
 
-    // USER scrolling owns the position: every scroll event re-captures the
-    // anchor so the layout-effect restore below becomes a no-op for scrolls
-    // and only corrects data/measurement-driven shifts.
-    const captureAnchor = () => {
-        const scroller = scrollRef.current;
-        if (!scroller) return;
-        const first = virtualizer.getVirtualItems().find(item => item.end > scroller.scrollTop);
-        anchorRef.current = first
-            ? { key: String(first.key), visualOffset: first.start - scroller.scrollTop }
-            : null;
+    // Track whether user is at the bottom via scroll events (not layout effects)
+    const onScroll = (): void => {
+        if (programmaticScrollRef.current) return;
+        const el = scrollRef.current;
+        if (!el) return;
+        wasAtBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= BOTTOM_LOCK_SLACK_PX;
     };
 
-    const onUserScroll = () => {
-        if (performance.now() - commitTsRef.current < SETTLE_WINDOW_MS) return;
-        captureAnchor();
-    };
-
-    useLayoutEffect(() => {
-        const scroller = scrollRef.current;
-        if (!scroller) { prevTotalRef.current = totalSize; return; }
-        const anchor = anchorRef.current;
-        // bottom lock first: growth while pinned at the end keeps the end pinned
-        const distance = scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight;
-        const atBottom = distance <= BOTTOM_LOCK_SLACK_PX;
-        if (atBottom && totalSize > prevTotalRef.current) {
-            scroller.scrollTop = scroller.scrollHeight;
-        } else if (anchor) {
-            // restore the anchor's visual offset against data/measurement
-            // shifts (prepends, remeasures, native anchoring interference)
-            const index = list.order.indexOf(anchor.key);
-            if (index >= 0) {
-                const offset = virtualizer.getOffsetForIndex(index, 'start');
-                if (offset) {
-                    const target = offset[0] - anchor.visualOffset;
-                    // Only write if the difference is meaningful (> 1px)
-                    // to avoid triggering re-render loops near the bottom
-                    if (Math.abs(target - scroller.scrollTop) > 1) scroller.scrollTop = target;
-                }
-            }
-        }
-        prevTotalRef.current = totalSize;
-        commitTsRef.current = performance.now();
-        if (!anchorRef.current) captureAnchor();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on data changes only
-    }, [totalSize, list.version]);
+    // Bottom-lock: when the LIST changes (new items) and user was at bottom, scroll down.
+    // This fires only on list.version changes, NOT on measurement-driven totalSize changes.
+    useEffect(() => {
+        if (!wasAtBottomRef.current) return;
+        const el = scrollRef.current;
+        if (!el) return;
+        // Use rAF to wait for the DOM to settle after the virtualizer re-renders
+        const raf = requestAnimationFrame(() => {
+            programmaticScrollRef.current = true;
+            el.scrollTop = el.scrollHeight;
+            // Reset after the browser processes the scroll
+            requestAnimationFrame(() => { programmaticScrollRef.current = false; });
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [list.version]);
 
     return (
         <div
             ref={scrollRef}
             className="d2-turn-scroll"
             data-testid="turn-stream-viewport"
-            onScroll={onUserScroll}
-            // manual anchor restore owns the position; native scroll anchoring
-            // misfires on transform-positioned virtual rows
+            onScroll={onScroll}
             style={{ overflowAnchor: 'none' }}
         >
             {head}
