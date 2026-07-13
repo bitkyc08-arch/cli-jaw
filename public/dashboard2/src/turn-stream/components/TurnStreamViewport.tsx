@@ -27,10 +27,11 @@ export interface TurnStreamViewportProps {
 export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProps): JSX.Element {
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
-    // Was the user at the bottom before the last list change?
     const wasAtBottomRef = useRef(true);
-    // Suppress user-scroll capture during programmatic scrolls
     const programmaticScrollRef = useRef(false);
+    // Stable height: never shrinks — prevents scroll-position jumps from
+    // measurement corrections that reduce totalSize between renders.
+    const stableHeightRef = useRef(0);
 
     const virtualizer = useVirtualizer({
         count: list.order.length,
@@ -45,8 +46,20 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
     });
 
     const totalSize = virtualizer.getTotalSize();
+    // Only let height grow; reset when the list itself changes (new session, etc.)
+    if (totalSize > stableHeightRef.current) {
+        stableHeightRef.current = totalSize;
+    }
+    const renderHeight = stableHeightRef.current;
 
-    // Track whether user is at the bottom via scroll events (not layout effects)
+    // Reset stable height when the list identity changes (session switch)
+    const prevVersionRef = useRef(list.version);
+    if (list.version !== prevVersionRef.current) {
+        prevVersionRef.current = list.version;
+        // Allow height to re-calibrate on list change
+        stableHeightRef.current = totalSize;
+    }
+
     const onScroll = (): void => {
         if (programmaticScrollRef.current) return;
         const el = scrollRef.current;
@@ -82,7 +95,7 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
             <div
                 className="d2-turn-transcript"
                 data-testid="turn-stream-transcript"
-                style={{ height: `${totalSize}px` }}
+                style={{ height: `${renderHeight}px` }}
             >
                 {virtualizer.getVirtualItems().map(item => {
                     const key = list.order[item.index];
