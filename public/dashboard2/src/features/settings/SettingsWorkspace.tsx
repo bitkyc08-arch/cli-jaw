@@ -1,7 +1,6 @@
 // 074 — Settings central workspace (replaces chat area when active)
-import { ArrowLeft, Info, Moon, Palette, Sun } from '@lucide/icons';
-import { useEffect, useState, type JSX } from 'react';
-import { useManagerApi } from '../../providers/api-provider.tsx';
+import { ArrowLeft, Moon, Sun } from '@lucide/icons';
+import { useEffect, useRef, useState, type JSX } from 'react';
 import { useAppScope } from '../../state/scope.tsx';
 import { Icon } from '../../shell/Icon.tsx';
 import './settings.css';
@@ -15,33 +14,45 @@ const SECTIONS: Array<{ id: SettingsSection; label: string }> = [
 ];
 
 interface ServerInfo {
-    version?: string;
-    port?: number;
-    dataDir?: string;
-    nodeVersion?: string;
+    version: string;
+    port: string;
+    dataDir: string;
+    nodeVersion: string;
 }
+
+const EMPTY_INFO: ServerInfo = { version: '...', port: '...', dataDir: '...', nodeVersion: '...' };
 
 export function SettingsWorkspace(): JSX.Element {
     const { setWorkspaceMode } = useAppScope();
-    const api = useManagerApi();
     const [section, setSection] = useState<SettingsSection>('general');
-    const [serverInfo, setServerInfo] = useState<ServerInfo>({});
+    const [serverInfo, setServerInfo] = useState<ServerInfo>(EMPTY_INFO);
+    const [loadError, setLoadError] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
     const [theme, setTheme] = useState<'dark' | 'light'>(() =>
         document.documentElement.style.colorScheme === 'light' ? 'light' : 'dark',
     );
 
+    // Focus the container on mount for keyboard accessibility
+    useEffect(() => { containerRef.current?.focus(); }, []);
+
     useEffect(() => {
-        void api.fetchManagerStatus?.()
-            .then((status: Record<string, unknown>) => {
+        let cancelled = false;
+        // Use the manager status endpoint directly
+        fetch('/api/dashboard/status')
+            .then(async (res) => {
+                if (!res.ok || cancelled) return;
+                const data = await res.json() as Record<string, unknown>;
+                if (cancelled) return;
                 setServerInfo({
-                    version: String(status.version ?? ''),
-                    port: Number(status.port ?? 0),
-                    dataDir: String(status.dataDir ?? status.home ?? ''),
-                    nodeVersion: String(status.nodeVersion ?? ''),
+                    version: String(data['version'] ?? ''),
+                    port: String(data['port'] ?? ''),
+                    dataDir: String(data['dataDir'] ?? data['home'] ?? ''),
+                    nodeVersion: String(data['nodeVersion'] ?? ''),
                 });
             })
-            .catch(() => {});
-    }, [api]);
+            .catch(() => { if (!cancelled) setLoadError(true); });
+        return () => { cancelled = true; };
+    }, []);
 
     const toggleTheme = (): void => {
         const next = theme === 'dark' ? 'light' : 'dark';
@@ -51,7 +62,7 @@ export function SettingsWorkspace(): JSX.Element {
     };
 
     return (
-        <div className="d2-settings-workspace">
+        <div className="d2-settings-workspace" ref={containerRef} tabIndex={-1}>
             <aside className="d2-settings-nav">
                 <button
                     className="d2-settings-back"
@@ -69,6 +80,7 @@ export function SettingsWorkspace(): JSX.Element {
                             className={`d2-settings-nav-item${section === s.id ? ' active' : ''}`}
                             type="button"
                             onClick={() => setSection(s.id)}
+                            aria-current={section === s.id ? 'true' : undefined}
                         >
                             {s.label}
                         </button>

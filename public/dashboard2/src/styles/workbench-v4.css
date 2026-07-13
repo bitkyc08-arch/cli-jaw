@@ -227,9 +227,11 @@
     height: 100%;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 8px;
     padding: 32px 24px;
+    min-height: 0;
+    overflow-y: auto;
 }
 
 .d2-side-pane-picker h2 {

@@ -468,11 +468,14 @@
     background: rgba(6, 6, 8, 0.68);
     backdrop-filter: blur(10px);
     -webkit-backdrop-filter: blur(10px);
+    overflow-y: auto;
 }
 
 .d2-settings-modal > [role='dialog'] {
     position: relative;
     width: min(100%, 420px);
+    max-height: calc(100dvh - 40px);
+    overflow-y: auto;
 }
 
 .d2-settings-panel {

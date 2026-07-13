@@ -1,16 +1,170 @@
-/* 072 — Board/Kanban panel */
+/* 072 — Board/Kanban panel (class names aligned with BoardPanel.tsx) */
 .d2-board-panel {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
     overflow: hidden;
+}
+
+.d2-board-toolbar {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    flex: none;
+    padding: 0 12px;
+    border-bottom: 1px solid var(--border);
+    gap: 8px;
+}
+
+.d2-board-summary {
+    flex: 1;
+    color: var(--text-3);
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.d2-board-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.d2-board-icon-button {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-4);
+    cursor: pointer;
+    transition: color 100ms, background 100ms;
+}
+
+.d2-board-icon-button:hover:not(:disabled) {
+    background: var(--surface-h);
+    color: var(--text-2);
+}
+
+.d2-board-icon-button:disabled { opacity: .4; cursor: default; }
+
+.d2-board-composer {
+    display: flex;
+    flex: none;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.d2-board-field {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    flex: 1;
+    min-width: 120px;
+}
+
+.d2-board-title-field { flex-basis: 100%; }
+
+.d2-board-field > span {
+    color: var(--text-3);
+    font-size: 10.5px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.d2-board-field > input,
+.d2-board-field > select {
+    height: 30px;
+    padding: 0 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    outline: none;
+}
+
+.d2-board-field > input:focus,
+.d2-board-field > select:focus { border-color: var(--accent); }
+
+.d2-board-field > input::placeholder { color: var(--text-4); }
+
+.d2-board-submit {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-end;
+    gap: 5px;
+    height: 30px;
+    padding: 0 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: var(--accent);
+    color: var(--bg);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    transition: opacity 120ms;
+}
+
+.d2-board-submit:disabled { opacity: .5; cursor: default; }
+
+.d2-board-status-region {
+    position: absolute;
+    width: 1px; height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+}
+
+.d2-board-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    background: rgba(248, 113, 113, .08);
+    color: var(--danger);
+    font-size: 12px;
+}
+
+.d2-board-error button {
+    margin-left: auto;
+    padding: 3px 10px;
+    border: 1px solid var(--danger);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--danger);
+    cursor: pointer;
+    font-size: 11px;
+}
+
+.d2-board-state {
+    display: grid;
+    width: 100%;
+    flex: 1;
+    place-content: center;
+    justify-items: center;
+    gap: 8px;
+    color: var(--text-4);
+    font-size: 13px;
+}
+
+.d2-board-canvas {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
 }
 
 .d2-board-lanes {
     display: flex;
     gap: 8px;
-    width: 100%;
-    height: 100%;
-    padding: 12px;
-    overflow-x: auto;
-    overflow-y: hidden;
+    min-height: 100%;
+    padding: 10px;
 }
 
 .d2-board-lane {
@@ -24,7 +178,7 @@
     overflow: hidden;
 }
 
-.d2-board-lane-droppable {
+.d2-board-lane.is-drop-target {
     outline: 2px dashed var(--accent);
     outline-offset: -2px;
 }
@@ -39,21 +193,21 @@
     border-bottom: 1px solid var(--border);
 }
 
-.d2-board-lane-title {
+.d2-board-lane-header h2 {
     flex: 1;
+    margin: 0;
     font-size: 11.5px;
     font-weight: 600;
     color: var(--text-2);
     text-transform: uppercase;
 }
 
-.d2-board-lane-count {
+.d2-board-lane-header > span {
     flex: none;
-    min-width: 18px;
-    height: 18px;
+    min-width: 18px; height: 18px;
     padding: 0 5px;
-    border-radius: 9px;
-    background: rgba(255, 255, 255, .06);
+    border-radius: var(--r-full);
+    background: var(--surface-h);
     color: var(--text-4);
     font-size: 10px;
     font-weight: 600;
@@ -61,10 +215,62 @@
     text-align: center;
 }
 
-.d2-board-lane-add {
+.d2-board-card-list {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    overflow-y: auto;
+}
+
+.d2-board-lane-empty {
+    display: grid;
+    min-height: 60px;
+    place-content: center;
+    color: var(--text-4);
+    font-size: 11px;
+}
+
+.d2-board-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    cursor: grab;
+    transition: border-color 100ms, box-shadow 100ms, opacity 100ms;
+}
+
+.d2-board-card:hover { border-color: var(--border-h); }
+
+.d2-board-card.is-dragging {
+    opacity: .5;
+    box-shadow: var(--shadow-md);
+}
+
+.d2-board-card-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+}
+
+.d2-board-card-heading h3 {
+    flex: 1;
+    min-width: 0;
+    margin: 0;
+    color: var(--text);
+    font-size: 12.5px;
+    font-weight: 500;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+.d2-board-card-delete {
     display: inline-flex;
-    width: 22px;
-    height: 22px;
+    width: 20px; height: 20px;
     flex: none;
     align-items: center;
     justify-content: center;
@@ -74,84 +280,47 @@
     background: transparent;
     color: var(--text-4);
     cursor: pointer;
-    transition: color 100ms, background 100ms;
+    opacity: 0;
+    transition: opacity 100ms, color 100ms, background 100ms;
 }
 
-.d2-board-lane-add:hover {
-    background: var(--surface-h);
-    color: var(--text-2);
+.d2-board-card:hover .d2-board-card-delete { opacity: 1; }
+
+.d2-board-card-delete:hover {
+    background: rgba(248, 113, 113, .12);
+    color: var(--danger);
 }
 
-.d2-board-lane-body {
+.d2-board-card-meta {
     display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: 4px;
-    padding: 6px;
-    overflow-y: auto;
-}
-
-.d2-board-card {
-    display: flex;
-    align-items: flex-start;
+    align-items: center;
+    justify-content: space-between;
     gap: 6px;
-    padding: 8px 10px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    background: var(--bg);
-    cursor: grab;
-    transition: border-color 100ms, box-shadow 100ms;
 }
 
-.d2-board-card:hover {
-    border-color: var(--border-h);
+.d2-board-assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-3);
+    font-size: 10.5px;
 }
 
-.d2-board-card:active {
-    cursor: grabbing;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, .2);
-}
-
-.d2-board-card-grip {
-    flex: none;
-    margin-top: 2px;
-    color: var(--text-4);
-    opacity: .5;
-}
-
-.d2-board-card-title {
-    flex: 1;
-    min-width: 0;
-    color: var(--text);
-    font-size: 12.5px;
-    line-height: 1.4;
-    word-break: break-word;
-}
-
-.d2-board-card-assignee {
-    flex: none;
+.d2-board-status-chip {
     padding: 1px 6px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, .06);
-    color: var(--text-4);
+    border-radius: var(--r-full);
+    background: var(--surface-h);
+    color: var(--text-3);
     font-size: 10px;
+    font-weight: 600;
 }
 
-.d2-board-card-new {
-    cursor: default;
+.d2-board-status-chip[data-status="done"] {
+    background: var(--pos-dim);
+    color: var(--positive);
 }
 
-.d2-board-new-input {
-    flex: 1;
-    min-width: 0;
-    padding: 0;
-    border: 0;
-    background: transparent;
-    color: var(--text);
-    font-size: 12.5px;
-    outline: none;
-}
-
-.d2-board-new-input::placeholder {
-    color: var(--text-4);
+.d2-board-status-chip[data-status="in_progress"] {
+    background: var(--accent-soft);
+    color: var(--accent);
 }

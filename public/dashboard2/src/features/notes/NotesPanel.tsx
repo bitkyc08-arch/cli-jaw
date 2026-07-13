@@ -1,5 +1,5 @@
 // 071 — Notes SidePane tab with file tree + editor
-import { ChevronDown, ChevronRight, FilePlus, FolderPlus, Save, Trash2 } from '@lucide/icons';
+import { ChevronDown, ChevronRight, FilePlus, Save } from '@lucide/icons';
 import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import { useAppScope } from '../../state/scope.tsx';
 import { Icon } from '../../shell/Icon.tsx';
@@ -30,7 +30,7 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
 
     // Fetch note tree
     const fetchTree = useCallback(async () => {
-        if (!port) return;
+        if (!port || !active) return;
         try {
             const res = await fetch(`/i/${port}/api/notes/tree`);
             if (res.ok) {
@@ -59,12 +59,12 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
     const saveNote = useCallback(async () => {
         if (!port || !selectedPath) return;
         try {
-            await fetch(`/i/${port}/api/notes/${encodeURIComponent(selectedPath)}`, {
+            const res = await fetch(`/i/${port}/api/notes/${encodeURIComponent(selectedPath)}`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ content }),
             });
-            setDirty(false);
+            if (res.ok) setDirty(false);
         } catch { /* offline */ }
     }, [port, selectedPath, content]);
 
@@ -75,8 +75,8 @@ export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
 
     // Load note on selection change
     useEffect(() => {
-        if (selectedPath) void fetchNote(selectedPath);
-    }, [selectedPath, fetchNote]);
+        if (active && selectedPath) void fetchNote(selectedPath);
+    }, [active, selectedPath, fetchNote]);
 
     // Keyboard: Cmd+S to save
     useEffect(() => {
