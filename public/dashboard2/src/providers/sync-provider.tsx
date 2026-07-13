@@ -23,6 +23,21 @@ export interface SystemSsePayload {
     [key: string]: unknown;
 }
 
+// 060 — Code ('jwc' topic) SSE envelope. The provider owns the transport and
+// connection-local `sseEventId` injection (MessageEvent.lastEventId); all
+// semantic mapping stays inside the lazy code/ chunk. This type carries no
+// Code module import — it is the wire boundary only.
+export interface JwcSsePayload {
+    topic: 'jwc';
+    event: `code_${string}`;
+    sessionId?: string;
+    update?: Record<string, unknown>;
+    sseReplay?: boolean;
+    /** connection-local dedupe/cursor hint — never a durable identity */
+    sseEventId?: string;
+    [key: string]: unknown;
+}
+
 export type SyncInvalidationReason = 'replay_gap' | 'reconnect' | 'port_change';
 
 // legacy body channels (041 §2.1): bodies only — turn order/status stay with
@@ -36,6 +51,7 @@ export interface ManagerSyncContextValue {
     subscribeSystem(cb: (payload: SystemSsePayload) => void): () => void;
     subscribeInvalidation(cb: (reason: SyncInvalidationReason) => void): () => void;
     subscribeOrcState(cb: (payload: OrcStateSsePayload) => void): () => void;
+    subscribeJwc(cb: (payload: JwcSsePayload) => void): () => void;
 }
 
 export interface OrcStateSsePayload {
@@ -59,6 +75,7 @@ export interface SyncPayloadDispatchers {
     queue(payload: QueueUpdateSsePayload): void;
     system(payload: SystemSsePayload): void;
     orcState?(payload: OrcStateSsePayload): void;
+    jwc?(payload: JwcSsePayload): void;
 }
 
 const TURN_LIFECYCLE_EVENTS = new Set(['turn_start', 'turn_segment', 'turn_end']);
@@ -80,7 +97,17 @@ function publish<T>(subscribers: Set<(value: T) => void>, value: T): void {
 export function dispatchSelectedSyncPayload(
     payload: SseEnvelope,
     dispatchers: SyncPayloadDispatchers,
+    sseEventId?: string,
 ): 'turn' | 'body' | 'queue' | 'system' | null {
+    if (payload.topic === 'jwc'
+        && typeof payload.event === 'string'
+        && payload.event.startsWith('code_')) {
+        const jwcPayload = sseEventId
+            ? { ...payload, sseEventId } as unknown as JwcSsePayload
+            : payload as unknown as JwcSsePayload;
+        dispatchers.jwc?.(jwcPayload);
+        return 'system';
+    }
     if (payload.topic === 'orchestrate'
         && typeof payload.event === 'string'
         && ORC_STATE_EVENTS.has(payload.event)) {
@@ -126,6 +153,7 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
     const previousPortRef = useRef<number | null | undefined>(undefined);
 
     const orcStateSubscribersRef = useRef(new Set<(payload: OrcStateSsePayload) => void>());
+    const jwcSubscribersRef = useRef(new Set<(payload: JwcSsePayload) => void>());
 
     const value = useMemo<ManagerSyncContextValue>(() => ({
         subscribeTurnLifecycle: (cb) => subscribe(turnSubscribersRef.current, cb),
@@ -134,6 +162,7 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
         subscribeSystem: (cb) => subscribe(systemSubscribersRef.current, cb),
         subscribeInvalidation: (cb) => subscribe(invalidationSubscribersRef.current, cb),
         subscribeOrcState: (cb) => subscribe(orcStateSubscribersRef.current, cb),
+        subscribeJwc: (cb) => subscribe(jwcSubscribersRef.current, cb),
     }), []);
 
     useEffect(() => {
@@ -186,7 +215,8 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
                         }
                     },
                     orcState: value => publish(orcStateSubscribersRef.current, value),
-                });
+                    jwc: value => publish(jwcSubscribersRef.current, value),
+                }, message.lastEventId || undefined);
             };
         };
 

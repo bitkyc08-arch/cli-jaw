@@ -1,0 +1,18 @@
+{
+  "jwcVersion": "jwc/1.1.2",
+  "capturedAt": "2026-07-13T02:16:26.176Z",
+  "promptStopReason": "end_turn",
+  "load1Hash": "b1ed1e61e275c03aba23d93edc8305b8fae00ee8afccde84fb8b426491e8fc77",
+  "load2Hash": "cbb06088f648f4efe278d20550d63d1b94eea2d27ebf02b96e10b4a9a4c234de",
+  "deterministic": false,
+  "sessionId": "019f5942-d725-7000-abbf-7014994ab555",
+  "updateKindCounts": {
+    "available_commands_update": 1,
+    "session_info_update": 2,
+    "agent_thought_chunk": 2,
+    "tool_call": 1,
+    "tool_call_update": 2,
+    "agent_message_chunk": 2,
+    "usage_update": 1
+  }
+}

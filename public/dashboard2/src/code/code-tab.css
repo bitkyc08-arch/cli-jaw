@@ -1,0 +1,111 @@
+/* 060 — Code tab surface (lazy chunk owns this sheet; tokens come from the
+   shared manager-tokens import in main.tsx) */
+.d2-code-tab {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
+}
+
+.d2-code-stream {
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.d2-code-session-picker {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 16px;
+    overflow-y: auto;
+}
+
+.d2-code-new-session,
+.d2-code-session-row {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 10px 12px;
+    border: 1px solid var(--d2-border, rgba(255, 255, 255, 0.08));
+    border-radius: 8px;
+    background: var(--d2-surface-2, rgba(255, 255, 255, 0.03));
+    color: inherit;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+}
+
+.d2-code-new-session:hover,
+.d2-code-session-row:hover {
+    background: var(--d2-surface-3, rgba(255, 255, 255, 0.06));
+}
+
+.d2-code-session-row span {
+    font-size: 11px;
+    opacity: 0.6;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 100%;
+}
+
+.d2-code-permission {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 16px 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--d2-border, rgba(255, 255, 255, 0.12));
+    border-radius: 8px;
+    font-size: 12px;
+}
+
+.d2-code-composer {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 16px 16px;
+    border-top: 1px solid var(--d2-border, rgba(255, 255, 255, 0.08));
+}
+
+.d2-code-composer textarea {
+    resize: none;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid var(--d2-border, rgba(255, 255, 255, 0.1));
+    background: var(--d2-surface-2, rgba(255, 255, 255, 0.04));
+    color: inherit;
+    font: inherit;
+}
+
+.d2-code-composer-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
+
+.d2-code-composer-actions button {
+    padding: 4px 12px;
+    border-radius: 6px;
+    border: 1px solid var(--d2-border, rgba(255, 255, 255, 0.12));
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font: inherit;
+    font-size: 12px;
+}
+
+.d2-code-composer-actions button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.d2-code-error {
+    margin: 4px 16px 12px;
+    font-size: 12px;
+    color: var(--d2-danger, #f87171);
+}
