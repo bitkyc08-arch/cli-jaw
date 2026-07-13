@@ -1,11 +1,15 @@
-import { PanelLeft, PanelRight } from '@lucide/icons';
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
+import { PanelLeft, PanelRight, Settings } from '@lucide/icons';
+import { Suspense, lazy, useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import type { DashboardInstance } from '../../../../src/manager/types.ts';
 import { ChatView } from '../chat/ChatView.tsx';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useAppScope } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
 import { SidePane } from './SidePane.tsx';
+
+const LazySettingsWorkspace = lazy(() =>
+    import('../features/settings/SettingsWorkspace.tsx').then((m) => ({ default: m.SettingsWorkspace })),
+);
 
 export interface WorkbenchProps {
     sidebarCollapsed?: boolean;
@@ -24,7 +28,7 @@ export function Workbench({
     onOpenSidebar,
 }: WorkbenchProps): JSX.Element {
     const api = useManagerApi();
-    const { selected, sidePaneOpen, openSidePane, closeSidePane } = useAppScope();
+    const { selected, sidePaneOpen, openSidePane, closeSidePane, workspaceMode, setWorkspaceMode } = useAppScope();
     const [instanceNames, setInstanceNames] = useState<Map<number, string>>(() => new Map());
     const PANE_MIN = 280;
     const PANE_MAX_RATIO = 0.55;
@@ -84,10 +88,23 @@ export function Workbench({
                         </button>
                     ) : null}
                     <span className="d2-workbench-title">
-                        {selected
+                        {workspaceMode === 'settings'
+                            ? 'Settings'
+                            : selected
                             ? instanceNames.get(selected.port) ?? `Port ${selected.port}`
                             : 'No session selected'}
                     </span>
+                    {workspaceMode === 'chat' ? (
+                        <button
+                            className="d2-workbench-header-button"
+                            type="button"
+                            onClick={() => setWorkspaceMode('settings')}
+                            aria-label="Open settings"
+                            title="Settings"
+                        >
+                            <Icon icon={Settings} />
+                        </button>
+                    ) : null}
                     <button
                         className="d2-workbench-header-button d2-workbench-side-toggle"
                         type="button"
@@ -101,7 +118,11 @@ export function Workbench({
                 </header>
 
                 <div className="d2-workbench-chat">
-                    {selected ? (
+                    {workspaceMode === 'settings' ? (
+                        <Suspense fallback={<div className="d2-pane-empty">Loading settings...</div>}>
+                            <LazySettingsWorkspace />
+                        </Suspense>
+                    ) : selected ? (
                         <ChatView scope={selected} />
                     ) : (
                         <div className="d2-pane-empty">No session selected</div>

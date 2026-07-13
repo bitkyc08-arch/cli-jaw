@@ -1,0 +1,454 @@
+.d2-reminders-panel {
+    container-type: inline-size;
+    grid-template-rows: auto minmax(0, 1fr);
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--text);
+}
+
+.d2-reminders-toolbar {
+    display: flex;
+    min-width: 0;
+    min-height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 10px 8px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.d2-reminders-toolbar > div {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.d2-reminders-toolbar strong {
+    overflow: hidden;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 18px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-reminders-toolbar span {
+    color: var(--text-3);
+    font-size: 10px;
+    line-height: 14px;
+}
+
+.d2-reminders-toolbar > button,
+.d2-reminders-card-actions button,
+.d2-reminders-error button {
+    display: inline-flex;
+    width: 30px;
+    height: 30px;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+}
+
+.d2-reminders-toolbar > button:hover,
+.d2-reminders-card-actions button:hover:not(:disabled),
+.d2-reminders-error button:hover {
+    border-color: var(--border-h);
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-reminders-toolbar button:focus-visible,
+.d2-reminders-form button:focus-visible,
+.d2-reminders-form input:focus-visible,
+.d2-reminders-form select:focus-visible,
+.d2-reminders-card-actions button:focus-visible,
+.d2-reminders-completed-toggle:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.d2-reminders-scroll {
+    min-width: 0;
+    min-height: 0;
+    padding: 12px;
+    overflow: auto;
+    scrollbar-gutter: stable;
+}
+
+.d2-reminders-form {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 16px;
+    padding: 12px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface);
+}
+
+.d2-reminders-form label {
+    display: grid;
+    min-width: 0;
+    gap: 4px;
+}
+
+.d2-reminders-form label > span {
+    color: var(--text-3);
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 14px;
+    text-transform: uppercase;
+}
+
+.d2-reminders-form input,
+.d2-reminders-form select {
+    width: 100%;
+    min-width: 0;
+    height: 34px;
+    padding: 0 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    outline: 0;
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 12px;
+}
+
+.d2-reminders-form input:hover,
+.d2-reminders-form select:hover {
+    border-color: var(--border-h);
+}
+
+.d2-reminders-form input:focus,
+.d2-reminders-form select:focus {
+    border-color: var(--accent);
+}
+
+.d2-reminders-form-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1.6fr) minmax(88px, .8fr);
+    gap: 8px;
+}
+
+.d2-reminders-form-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 6px;
+}
+
+.d2-reminders-form-actions button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.d2-reminders-form-actions button:hover:not(:disabled) {
+    border-color: var(--border-h);
+    background: var(--surface-h);
+}
+
+.d2-reminders-form-actions .d2-reminders-primary {
+    border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--accent);
+}
+
+.d2-reminders-form button:disabled,
+.d2-reminders-card-actions button:disabled {
+    cursor: wait;
+    opacity: .45;
+}
+
+.d2-reminders-section + .d2-reminders-section {
+    margin-top: 18px;
+}
+
+.d2-reminders-section-heading {
+    display: flex;
+    min-height: 24px;
+    align-items: center;
+    gap: 7px;
+    padding: 0 2px 6px;
+}
+
+.d2-reminders-section-heading h2,
+.d2-reminders-completed-toggle h2 {
+    margin: 0;
+    color: var(--text-2);
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 16px;
+    text-transform: uppercase;
+}
+
+.d2-reminders-section-heading > span,
+.d2-reminders-completed-toggle > span:last-child {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: var(--r-full, 9999px);
+    background: var(--surface-h);
+    color: var(--text-3);
+    font-size: 9px;
+    line-height: 18px;
+    text-align: center;
+}
+
+.d2-reminders-list {
+    display: grid;
+    gap: 5px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.d2-reminders-card,
+.d2-reminders-schedule-row {
+    display: grid;
+    min-width: 0;
+    min-height: 52px;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 8px 8px 10px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+}
+
+.d2-reminders-card {
+    grid-template-columns: 7px minmax(0, 1fr) auto;
+}
+
+.d2-reminders-card:hover,
+.d2-reminders-schedule-row:hover {
+    border-color: var(--border-h);
+    background: var(--surface-h);
+}
+
+.d2-reminders-priority {
+    width: 7px;
+    height: 7px;
+    align-self: start;
+    margin-top: 7px;
+    border: 1px solid var(--text-4);
+    border-radius: 50%;
+    background: transparent;
+}
+
+.d2-reminders-card[data-priority='normal'] .d2-reminders-priority {
+    border-color: var(--amber, var(--warn));
+    background: var(--amber, var(--warn));
+}
+
+.d2-reminders-card[data-priority='high'] .d2-reminders-priority {
+    border-color: var(--red, var(--danger));
+    background: var(--red, var(--danger));
+}
+
+.d2-reminders-card-copy {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.d2-reminders-card-copy strong {
+    display: -webkit-box;
+    overflow: hidden;
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 16px;
+    overflow-wrap: anywhere;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.d2-reminders-card-copy time,
+.d2-reminders-card-copy > span,
+.d2-reminders-schedule-row > time {
+    color: var(--text-3);
+    font-size: 10px;
+    line-height: 14px;
+}
+
+.d2-reminders-card[data-overdue='true'] .d2-reminders-card-copy time {
+    color: var(--red, var(--danger));
+}
+
+.d2-reminders-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 3px;
+}
+
+.d2-reminders-card-actions button {
+    width: 26px;
+    height: 26px;
+    border-color: transparent;
+}
+
+.d2-reminders-card-actions .d2-reminders-delete:hover:not(:disabled) {
+    color: var(--red, var(--danger));
+}
+
+.d2-reminders-schedule-row {
+    grid-template-columns: 26px minmax(0, 1fr) auto;
+}
+
+.d2-reminders-schedule-row[data-disabled='true'] {
+    opacity: .6;
+}
+
+.d2-reminders-schedule-icon {
+    display: inline-flex;
+    width: 26px;
+    height: 26px;
+    align-items: center;
+    justify-content: center;
+    border-radius: var(--r-sm);
+    background: color-mix(in srgb, var(--green, var(--positive)) 12%, transparent);
+    color: var(--green, var(--positive));
+}
+
+.d2-reminders-schedule-row > time {
+    max-width: 58px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-reminders-empty,
+.d2-reminders-loading {
+    margin: 0;
+    padding: 14px 10px;
+    color: var(--text-3);
+    font-size: 11px;
+    line-height: 16px;
+}
+
+.d2-reminders-loading {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 12px;
+}
+
+.d2-reminders-spinner {
+    display: inline-flex;
+    color: var(--accent);
+    animation: d2-reminders-spin 800ms linear infinite;
+}
+
+.d2-reminders-error {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 7px;
+    margin-bottom: 8px;
+    padding: 8px 9px;
+    border: 1px solid color-mix(in srgb, var(--red, var(--danger)) 38%, transparent);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--red, var(--danger));
+    font-size: 10px;
+    line-height: 14px;
+}
+
+.d2-reminders-error > span {
+    min-width: 0;
+    flex: 1;
+    overflow-wrap: anywhere;
+}
+
+.d2-reminders-error button {
+    width: 25px;
+    height: 25px;
+}
+
+.d2-reminders-completed-toggle {
+    display: flex;
+    width: 100%;
+    min-height: 34px;
+    align-items: center;
+    gap: 7px;
+    padding: 4px 2px;
+    border: 0;
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+    text-align: left;
+}
+
+.d2-reminders-completed-toggle:hover h2 {
+    color: var(--text);
+}
+
+.d2-reminders-chevron {
+    display: inline-flex;
+    color: var(--text-4);
+    transition: transform 140ms ease;
+}
+
+.d2-reminders-chevron.is-open {
+    transform: rotate(180deg);
+}
+
+.d2-reminders-completed .d2-reminders-card-copy strong {
+    color: var(--text-3);
+    text-decoration: line-through;
+}
+
+@container (max-width: 360px) {
+    .d2-reminders-form-row {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .d2-reminders-card {
+        grid-template-columns: 7px minmax(0, 1fr);
+    }
+
+    .d2-reminders-card-actions {
+        grid-column: 2;
+        justify-content: flex-end;
+    }
+
+    .d2-reminders-schedule-row {
+        grid-template-columns: 26px minmax(0, 1fr);
+    }
+
+    .d2-reminders-schedule-row > time {
+        display: none;
+    }
+}
+
+@keyframes d2-reminders-spin {
+    to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .d2-reminders-spinner {
+        animation-duration: 1600ms;
+    }
+
+    .d2-reminders-chevron {
+        transition: none;
+    }
+}

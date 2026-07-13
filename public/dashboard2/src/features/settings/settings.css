@@ -1,0 +1,148 @@
+/* 074 — Settings workspace */
+.d2-settings-workspace {
+    display: grid;
+    width: 100%;
+    height: 100%;
+    min-height: 0;
+    grid-template-columns: 200px minmax(0, 1fr);
+    overflow: hidden;
+}
+
+.d2-settings-nav {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 16px 12px;
+    border-right: 1px solid var(--border);
+    background: var(--surface);
+    overflow-y: auto;
+}
+
+.d2-settings-back {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--r-md);
+    margin-bottom: 12px;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    font-size: 13px;
+    transition: color 120ms ease, background 120ms ease;
+}
+
+.d2-settings-back:hover {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-settings-nav-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.d2-settings-nav-item {
+    padding: 8px 12px;
+    border: 0;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    transition: color 120ms ease, background 120ms ease;
+}
+
+.d2-settings-nav-item:hover {
+    background: var(--surface-h);
+    color: var(--text);
+}
+
+.d2-settings-nav-item.active {
+    background: var(--surface-h);
+    color: var(--text);
+    font-weight: 600;
+}
+
+.d2-settings-content {
+    padding: 32px 40px;
+    overflow-y: auto;
+}
+
+.d2-settings-section h2 {
+    margin: 0 0 20px;
+    color: var(--text);
+    font-size: 18px;
+    font-weight: 600;
+}
+
+.d2-settings-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    overflow: hidden;
+}
+
+.d2-settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 44px;
+    padding: 10px 16px;
+    background: var(--surface);
+}
+
+.d2-settings-row + .d2-settings-row {
+    border-top: 1px solid var(--border);
+}
+
+.d2-settings-label {
+    color: var(--text-2);
+    font-size: 13px;
+    font-weight: 500;
+}
+
+.d2-settings-value {
+    color: var(--text-3);
+    font-size: 13px;
+}
+
+.d2-settings-mono {
+    font-family: 'SF Mono', 'Fira Code', monospace;
+    font-size: 12px;
+}
+
+.d2-settings-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 500;
+    transition: border-color 120ms ease, background 120ms ease;
+}
+
+.d2-settings-toggle:hover {
+    border-color: var(--border-h);
+    background: var(--surface-h);
+}
+
+.d2-settings-about-text {
+    margin: 0;
+    padding: 12px 16px;
+    background: var(--surface);
+    color: var(--text-3);
+    font-size: 13px;
+    line-height: 1.5;
+}
