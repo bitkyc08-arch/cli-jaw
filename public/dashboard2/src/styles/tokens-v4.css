@@ -1,12 +1,25 @@
 /* 049 — v4 design tokens (canonical: render_design/010 §6 + design-guide-v4.html :root).
    Codex-derived 1.25x radii scale; loaded after manager-tokens.css and base.css
-   so v4 values win inside the dashboard2 shell. */
-/* specificity: beat manager-tokens' themed selectors (e.g. :root[data-theme])
-   so §6 values win in the dashboard2 shell for every theme mode */
+   so v4 values win inside the dashboard2 shell.
+   085 — split into dark (default) + light palettes. */
+
+/* ── shared shape/motion tokens (theme-invariant) ── */
+:root {
+    --r-sm: 7.5px;
+    --r-md: 10px;
+    --r-lg: 12.5px;
+    --r-xl: 15px;
+    --r-2xl: 20px;
+    --r-3xl: 25px;
+    --r-full: 9999px;
+    --corner-shape: superellipse(1.5);
+    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Pretendard', sans-serif;
+    --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* ── dark palette (default) ── */
 :root,
-:root[data-theme='dark'],
-:root[data-theme='light'],
-:root[data-theme='auto'] {
+:root[data-theme='dark'] {
     --bg: #0d0d0f;
     --surface: #1a1a1d;
     --surface-h: #222225;
@@ -24,21 +37,65 @@
     --warn: #e5b94f;
     --warn-text: #e89840;
     --danger: #f87171;
-    --r-sm: 7.5px;
-    --r-md: 10px;
-    --r-lg: 12.5px;
-    --r-xl: 15px;
-    --r-2xl: 20px;
-    --r-3xl: 25px;
-    --r-full: 9999px;
-    --corner-shape: superellipse(1.5);
     --shadow-hairline: 0 0 0 .5px rgba(0, 0, 0, .1);
     --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, .08);
     --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .04) inset;
     --shimmer-contrast: rgba(255, 255, 255, .52);
     --div-color: rgba(255, 255, 255, .08);
-    --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Pretendard', sans-serif;
-    --font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+}
+
+/* ── light palette ── */
+:root[data-theme='light'] {
+    --bg: #f5f7fa;
+    --surface: #ffffff;
+    --surface-h: #eef1f5;
+    --border: rgba(0, 0, 0, .08);
+    --border-h: rgba(0, 0, 0, .14);
+    --text: #18202a;
+    --text-2: #3d4854;
+    --text-3: #657180;
+    --text-4: #9ba7b5;
+    --accent: #0969da;
+    --accent-soft: rgba(9, 105, 218, .10);
+    --accent-glow: rgba(9, 105, 218, .20);
+    --positive: #16794b;
+    --pos-dim: rgba(22, 121, 75, .10);
+    --warn: #9a6700;
+    --warn-text: #7d5200;
+    --danger: #b42318;
+    --shadow-hairline: 0 0 0 .5px rgba(0, 0, 0, .06);
+    --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, .06);
+    --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .12), 0 0 0 1px rgba(0, 0, 0, .06) inset;
+    --shimmer-contrast: rgba(0, 0, 0, .35);
+    --div-color: rgba(0, 0, 0, .06);
+}
+
+/* ── auto: follow system preference ── */
+@media (prefers-color-scheme: light) {
+    :root[data-theme='auto'] {
+        --bg: #f5f7fa;
+        --surface: #ffffff;
+        --surface-h: #eef1f5;
+        --border: rgba(0, 0, 0, .08);
+        --border-h: rgba(0, 0, 0, .14);
+        --text: #18202a;
+        --text-2: #3d4854;
+        --text-3: #657180;
+        --text-4: #9ba7b5;
+        --accent: #0969da;
+        --accent-soft: rgba(9, 105, 218, .10);
+        --accent-glow: rgba(9, 105, 218, .20);
+        --positive: #16794b;
+        --pos-dim: rgba(22, 121, 75, .10);
+        --warn: #9a6700;
+        --warn-text: #7d5200;
+        --danger: #b42318;
+        --shadow-hairline: 0 0 0 .5px rgba(0, 0, 0, .06);
+        --shadow-md: 0 2px 4px -1px rgba(0, 0, 0, .06);
+        --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .12), 0 0 0 1px rgba(0, 0, 0, .06) inset;
+        --shimmer-contrast: rgba(0, 0, 0, .35);
+        --div-color: rgba(0, 0, 0, .06);
+    }
 }
 
 /* v4 base: dark shell surface, zero letter-spacing (frontend guidance) */

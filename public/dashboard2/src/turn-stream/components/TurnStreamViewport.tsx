@@ -85,14 +85,17 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
                 const offset = virtualizer.getOffsetForIndex(index, 'start');
                 if (offset) {
                     const target = offset[0] - anchor.visualOffset;
-                    if (Math.abs(target - scroller.scrollTop) > 0.5) scroller.scrollTop = target;
+                    // Only write if the difference is meaningful (> 1px)
+                    // to avoid triggering re-render loops near the bottom
+                    if (Math.abs(target - scroller.scrollTop) > 1) scroller.scrollTop = target;
                 }
             }
         }
         prevTotalRef.current = totalSize;
         commitTsRef.current = performance.now();
         if (!anchorRef.current) captureAnchor();
-    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- fires on data changes only
+    }, [totalSize, list.version]);
 
     return (
         <div
