@@ -609,3 +609,39 @@
         width: 100%;
     }
 }
+/* 062 — jwc conversation rows reuse the jaw instance row vocabulary.
+   Only sidebar-specific overrides live here; shared row CSS is above. */
+.d2-jwc-conv-row {
+    border: 0;
+    width: 100%;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    color: inherit;
+}
+
+.d2-jwc-conv-row .d2-instance-copy span {
+    font-size: 11px;
+    opacity: 0.55;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-sidebar-retry {
+    margin-top: 6px;
+    padding: 4px 12px;
+    border: 1px solid var(--panel-line, rgba(255, 255, 255, 0.08));
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    font-size: 11px;
+    cursor: pointer;
+}
+
+.d2-sidebar-empty strong {
+    display: block;
+    margin-bottom: 4px;
+}

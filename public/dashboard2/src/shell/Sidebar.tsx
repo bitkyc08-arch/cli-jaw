@@ -35,6 +35,53 @@ type SessionsCacheEntry =
 type SidebarMode = 'jaw' | 'jwc';
 type InstanceVisualStatus = 'running' | 'off' | 'busy';
 
+// 062 — lightweight jwc sidebar types. These mirror code-history-adapter's
+// CodeHistorySummary but are defined inline to avoid importing code/ modules
+// (lazy boundary). The sidebar uses raw fetch against the same REST endpoints.
+interface JwcConversation {
+    sessionId: string;
+    title: string;
+    cwd: string;
+    updatedAt?: string;
+}
+
+type JwcCapabilityReason = 'ok' | 'missing_binary' | 'acp_unsupported' | 'temporarily_unavailable';
+
+interface JwcSidebarState {
+    capability: JwcCapabilityReason | 'loading' | 'error';
+    conversations: JwcConversation[];
+    loading: boolean;
+}
+
+const JWC_CAPABILITY_REASONS = new Set<JwcCapabilityReason>(['ok', 'missing_binary', 'acp_unsupported', 'temporarily_unavailable']);
+
+async function fetchJwcCapability(port: number): Promise<JwcCapabilityReason> {
+    try {
+        const res = await fetch(`/i/${port}/api/code/capabilities`, { headers: { Accept: 'application/json' } });
+        if (!res.ok) return 'temporarily_unavailable';
+        const body = await res.json() as Record<string, unknown>;
+        const reason = body['reason'] as JwcCapabilityReason;
+        return JWC_CAPABILITY_REASONS.has(reason) ? reason : 'temporarily_unavailable';
+    } catch {
+        return 'temporarily_unavailable';
+    }
+}
+
+async function fetchJwcConversations(port: number): Promise<JwcConversation[]> {
+    const res = await fetch(`/i/${port}/api/code/sessions/stored?scope=all`, { headers: { Accept: 'application/json' } });
+    if (!res.ok) return [];
+    const body = await res.json() as Record<string, unknown>;
+    const sessions = Array.isArray(body['sessions']) ? body['sessions'] as Array<Record<string, unknown>> : [];
+    return sessions
+        .filter((s): s is Record<string, unknown> => typeof s['sessionId'] === 'string' && typeof s['cwd'] === 'string')
+        .map(s => ({
+            sessionId: String(s['sessionId']),
+            title: String(s['title'] || s['firstMessage'] || String(s['sessionId']).slice(0, 8)),
+            cwd: String(s['cwd']),
+            ...(typeof s['updatedAt'] === 'string' ? { updatedAt: s['updatedAt'] } : {}),
+        }));
+}
+
 export interface SidebarProps {
     onClose?: () => void;
 }
@@ -77,7 +124,7 @@ function ThemeToggle(): JSX.Element {
 
 export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const api = useManagerApi();
-    const { selected, expandedPorts, selectSession, toggleInstance } = useAppScope();
+    const { selected, expandedPorts, selectSession, toggleInstance, openSidePane } = useAppScope();
     const [mode, setMode] = useState<SidebarMode>('jaw');
     const [instances, setInstances] = useState<DashboardInstance[]>([]);
     const [instancesLoading, setInstancesLoading] = useState(true);
@@ -86,6 +133,13 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const [menuPort, setMenuPort] = useState<number | null>(null);
     const [lifecycleBusyPort, setLifecycleBusyPort] = useState<number | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
+    // 062 — jwc sidebar state (raw fetch, no code/ import)
+    const [jwcState, setJwcState] = useState<JwcSidebarState>({
+        capability: 'loading',
+        conversations: [],
+        loading: true,
+    });
+    const [jwcRefresh, setJwcRefresh] = useState(0);
     const openSettings = useCallback(() => setSettingsOpen(true), []);
     const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
@@ -117,6 +171,32 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     useEffect(() => {
         void loadInstances();
     }, [loadInstances]);
+
+    // 062 — fetch jwc capability + stored sessions when jwc mode is active.
+    // Uses the first online instance port (or selected port) since Code
+    // sessions are served by the per-instance ACP host.
+    useEffect(() => {
+        if (mode !== 'jwc') return;
+        const port = selected?.port ?? instances.find(i => i.status === 'online')?.port;
+        if (!port) {
+            setJwcState({ capability: 'temporarily_unavailable', conversations: [], loading: false });
+            return;
+        }
+        let mounted = true;
+        setJwcState(prev => ({ ...prev, loading: true }));
+        void (async () => {
+            const capability = await fetchJwcCapability(port);
+            if (!mounted) return;
+            if (capability !== 'ok') {
+                setJwcState({ capability, conversations: [], loading: false });
+                return;
+            }
+            const conversations = await fetchJwcConversations(port);
+            if (!mounted) return;
+            setJwcState({ capability: 'ok', conversations, loading: false });
+        })();
+        return () => { mounted = false; };
+    }, [mode, selected?.port, instances, jwcRefresh]);
 
     useEffect(() => {
         if (menuPort === null) return;
@@ -251,8 +331,54 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
             </div>
 
             <div className="d2-sidebar-list" aria-live="polite">
-                {mode === 'jwc' ? (
-                    <div className="d2-sidebar-empty">No jwc conversations</div>
+               {mode === 'jwc' ? (
+                    jwcState.loading ? (
+                        <div className="d2-inline-state"><span className="d2-spinner" aria-hidden="true" />Loading Code sessions</div>
+                    ) : jwcState.capability === 'missing_binary' ? (
+                        <div className="d2-sidebar-empty" data-jwc-state="missing_binary">
+                            <strong>jwc is not installed</strong>
+                            <span>Install the JWC runtime to use Code sessions.</span>
+                        </div>
+                    ) : jwcState.capability === 'acp_unsupported' ? (
+                        <div className="d2-sidebar-empty" data-jwc-state="acp_unsupported">
+                            <strong>jwc version not supported</strong>
+                            <span>Update jwc to a build that supports ACP mode.</span>
+                        </div>
+                    ) : jwcState.capability === 'temporarily_unavailable' ? (
+                        <div className="d2-sidebar-empty" data-jwc-state="temporarily_unavailable">
+                            <span>Code runtime temporarily unavailable</span>
+                            <button type="button" className="d2-sidebar-retry" onClick={() => setJwcRefresh(n => n + 1)}>
+                                Retry
+                            </button>
+                        </div>
+                    ) : jwcState.capability === 'error' ? (
+                        <div className="d2-sidebar-empty" data-jwc-state="error">
+                            <span>Failed to check Code availability</span>
+                            <button type="button" className="d2-sidebar-retry" onClick={() => setJwcRefresh(n => n + 1)}>
+                                Retry
+                            </button>
+                        </div>
+                    ) : jwcState.conversations.length === 0 ? (
+                        <div className="d2-sidebar-empty">No jwc conversations</div>
+                    ) : (
+                        jwcState.conversations.map(conv => (
+                            <button
+                                key={conv.sessionId}
+                                className="d2-instance-row d2-jwc-conv-row"
+                                type="button"
+                                onClick={() => openSidePane()}
+                                title={conv.title}
+                            >
+                                <div className="d2-instance-main">
+                                    <span className="d2-instance-dot is-off" aria-hidden="true" />
+                                    <div className="d2-instance-copy">
+                                        <strong>{conv.title}</strong>
+                                        <span>{conv.cwd}</span>
+                                    </div>
+                                </div>
+                            </button>
+                        ))
+                    )
                 ) : (
                     <>
                         {instancesLoading && instances.length === 0 ? (
