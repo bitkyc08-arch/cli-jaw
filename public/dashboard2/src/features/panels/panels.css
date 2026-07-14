@@ -1,0 +1,173 @@
+.d2-doc-panel,
+.d2-design-panel,
+.d2-diff-panel {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    height: 100%;
+    grid-template-rows: 40px minmax(0, 1fr);
+    background: var(--surface);
+    color: var(--text);
+}
+
+.d2-doc-panel[hidden],
+.d2-design-panel[hidden],
+.d2-diff-panel[hidden] {
+    display: none;
+}
+
+.d2-panel-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    padding: 0 8px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.d2-panel-toolbar button {
+    min-height: 28px;
+    padding: 0 9px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: var(--text-2);
+    font: 500 11px var(--font-sans);
+    cursor: pointer;
+}
+
+.d2-panel-toolbar button:hover:not(:disabled),
+.d2-panel-toolbar button.is-active {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+    color: var(--text);
+}
+
+.d2-panel-toolbar button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+}
+
+.d2-panel-toolbar button:disabled {
+    color: var(--text-4);
+    cursor: default;
+}
+
+.d2-panel-path {
+    min-width: 0;
+    flex: 1;
+    overflow: hidden;
+    color: var(--text-3);
+    font: 11px var(--font-mono);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-panel-state {
+    place-self: center;
+    padding: 24px;
+    color: var(--text-3);
+    font-size: 12px;
+    text-align: center;
+}
+
+.d2-panel-state.is-error { color: var(--danger); }
+
+.d2-doc-content,
+.d2-diff-content {
+    min-width: 0;
+    min-height: 0;
+    overflow: auto;
+}
+
+.d2-doc-prose {
+    max-width: 76ch;
+    margin: 0 auto;
+    padding: 24px 28px 48px;
+    color: var(--text-2);
+    font-size: 13px;
+    line-height: 1.65;
+}
+
+.d2-doc-prose :is(h1, h2, h3, h4) { color: var(--text); line-height: 1.25; }
+.d2-doc-prose a { color: var(--accent); }
+.d2-doc-prose blockquote { margin-inline: 0; padding-left: 14px; border-left: 3px solid var(--border-h); color: var(--text-3); }
+.d2-doc-prose table { width: 100%; border-collapse: collapse; }
+.d2-doc-prose :is(th, td) { padding: 6px 8px; border: 1px solid var(--border); text-align: left; }
+.d2-doc-prose img { max-width: 100%; }
+
+.d2-doc-code,
+.d2-diff-lines {
+    min-width: max-content;
+    min-height: 100%;
+    margin: 0;
+    padding: 16px;
+    background: var(--bg);
+    color: var(--text-2);
+    font: 12px/1.6 var(--font-mono);
+    tab-size: 4;
+}
+
+.d2-doc-code code { font: inherit; }
+.d2-doc-code .hljs-keyword,
+.d2-doc-code .hljs-selector-tag { color: var(--accent); }
+.d2-doc-code .hljs-string,
+.d2-doc-code .hljs-attr { color: var(--positive); }
+.d2-doc-code .hljs-comment { color: var(--text-4); font-style: italic; }
+.d2-doc-code .hljs-number,
+.d2-doc-code .hljs-literal { color: var(--warn); }
+
+.d2-design-size {
+    flex: 1;
+    color: var(--text-3);
+    font: 11px var(--font-mono);
+}
+
+.d2-design-viewport {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+    background: var(--bg);
+}
+
+.d2-design-viewport iframe {
+    width: 100%;
+    height: 100%;
+    border: 0;
+    background: #fff;
+}
+
+.d2-diff-toggle { display: flex; gap: 2px; margin-right: auto; }
+.d2-diff-toggle button { text-transform: capitalize; }
+.d2-diff-lines { display: table; width: 100%; padding: 8px 0 24px; }
+.d2-diff-line { display: table-row; }
+.d2-diff-line > * { display: table-cell; }
+.d2-diff-line code { padding: 0 16px 0 10px; white-space: pre; }
+.d2-diff-line-number {
+    width: 1%;
+    min-width: 42px;
+    padding: 0 8px;
+    border-right: 1px solid var(--border);
+    color: var(--text-4);
+    text-align: right;
+    user-select: none;
+}
+
+.d2-diff-line.is-add { background: var(--pos-dim); color: var(--positive); }
+.d2-diff-line.is-del { background: color-mix(in srgb, var(--danger) 13%, transparent); color: var(--danger); }
+.d2-diff-line.is-hunk { background: var(--accent-soft); color: var(--accent); }
+.d2-diff-line.is-meta { color: var(--text-3); }
+.d2-diff-line.is-context { color: var(--text-2); }
+
+@media (max-width: 520px) {
+    .d2-panel-toolbar { padding-inline: 6px; }
+    .d2-panel-toolbar button { padding-inline: 7px; }
+    .d2-doc-prose { padding: 18px 16px 36px; }
+    .d2-diff-line-number { min-width: 34px; padding-inline: 5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .d2-panel-toolbar button { transition: none; }
+}
