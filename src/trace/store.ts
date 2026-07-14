@@ -4,6 +4,7 @@ import { join, relative, resolve } from 'path';
 import { JAW_HOME } from '../core/config.js';
 import { db } from '../core/db.js';
 import type { ToolEntry } from '../types/agent.js';
+import { evictDetailRangeIndex } from './detail-range.js';
 import { stringifyTraceValue, tracePreview } from './redact.js';
 import type { TraceAudience, TraceCarrier, TraceEventInput, TracePointer, TraceRetentionStatus, TraceRunInput, TraceRunStatus } from './types.js';
 
@@ -200,6 +201,8 @@ export function updateTraceToolRow(tool: ToolEntry): void {
             const stale = safeRawPath(prior.raw_path);
             if (stale && fs.existsSync(stale)) fs.rmSync(stale, { force: true });
         }
+        // 026: a rewritten payload invalidates any cached range/line index.
+        evictDetailRangeIndex(runId, seq);
     } catch (error) {
         console.error('[trace] tool row update failed:', error instanceof Error ? error.message : String(error));
     }
@@ -261,7 +264,10 @@ function pruneOrphanTraceDirs(): void {
     if (!fs.existsSync(TRACE_DIR)) return;
     const live = new Set((liveRunIdsStmt.all() as { id: string }[]).map((r) => r.id));
     for (const name of fs.readdirSync(TRACE_DIR)) {
-        if (TRACE_ID_RE.test(name) && !live.has(name)) fs.rmSync(join(TRACE_DIR, name), { recursive: true, force: true });
+        if (TRACE_ID_RE.test(name) && !live.has(name)) {
+            fs.rmSync(join(TRACE_DIR, name), { recursive: true, force: true });
+            evictDetailRangeIndex(name);
+        }
     }
 }
 
@@ -351,4 +357,39 @@ export function getTraceEvent(runId: string, seq: number): (TraceEventRow & { ra
         raw = fs.readFileSync(path, 'utf8');
     }
     return { ...row, raw };
+}
+
+export type TraceDetailPayloadState = 'inline' | 'spilled' | 'gone';
+
+export interface TraceEventMeta {
+    row: TraceEventRow;
+    totalBytes: number;
+    payloadState: TraceDetailPayloadState;
+    /** absolute validated spill path when payloadState === 'spilled' */
+    spillPath: string | null;
+}
+
+/**
+ * 026 — metadata-only lookup for the detail range API. Never reads payload
+ * bytes; distinguishes a pruned/missing spill (`gone`) from an inline payload
+ * so the route can answer 410 instead of a silent empty string.
+ */
+export function getTraceEventMeta(runId: string, seq: number): TraceEventMeta | null {
+    if (!TRACE_ID_RE.test(runId) || !Number.isInteger(seq) || seq < 1) return null;
+    const row = getEventStmt.get(runId, seq) as TraceEventRow | undefined;
+    if (!row) return null;
+    if (row.raw_json != null && row.raw_json !== '') {
+        return { row, totalBytes: Buffer.byteLength(row.raw_json, 'utf8'), payloadState: 'inline', spillPath: null };
+    }
+    if (row.raw_path) {
+        const path = safeRawPath(row.raw_path);
+        if (!path) return { row, totalBytes: 0, payloadState: 'gone', spillPath: null };
+        try {
+            const st = fs.statSync(path);
+            return { row, totalBytes: st.size, payloadState: 'spilled', spillPath: path };
+        } catch {
+            return { row, totalBytes: 0, payloadState: 'gone', spillPath: null };
+        }
+    }
+    return { row, totalBytes: 0, payloadState: 'inline', spillPath: null };
 }

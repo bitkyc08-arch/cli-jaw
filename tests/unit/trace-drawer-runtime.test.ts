@@ -25,6 +25,13 @@ function apiData(data: unknown): Response {
     return jsonResponse({ ok: true, data });
 }
 
+function errorResponse(status: number, data: unknown): Response {
+    return new Response(JSON.stringify(data), {
+        status,
+        headers: { 'content-type': 'application/json' },
+    });
+}
+
 function installScrollIntoView(): void {
     Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
         configurable: true,
@@ -175,4 +182,49 @@ test('stale trace open responses cannot overwrite the newer clicked trace', asyn
     assert.equal(document.getElementById('traceEventRaw')?.textContent, 'RAW-B');
     assert.equal(document.querySelector<HTMLElement>('.trace-event-row')?.dataset['runId'], 'tr_b');
     assert.equal(calls.includes('/api/traces/tr_a/events?offset=0&limit=80'), false);
+});
+
+test('413 trace detail is assembled from at most 16 range chunks and marked truncated', async () => {
+    setupWebUiDom();
+    installScrollIntoView();
+    const rangeCalls: string[] = [];
+    globalThis.fetch = (async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url === '/api/auth/token') return jsonResponse({ token: '' });
+        if (url === '/api/traces/tr_large') {
+            return apiData({
+                id: 'tr_large', cli: 'codex', model: 'gpt-test', agentLabel: 'agent', status: 'done',
+                rawRetentionStatus: 'available', eventCount: 1, byteCount: 5 * 1024 * 1024, startedAt: 1,
+            });
+        }
+        if (url === '/api/traces/tr_large/events?offset=0&limit=80') {
+            return apiData({ total: 1, events: [{ seq: 1, source: 'tool', eventType: 'tool', preview: 'large' }] });
+        }
+        if (url === '/api/traces/tr_large/events/1') {
+            return errorResponse(413, {
+                ok: false, error: 'trace_detail_range_required', totalBytes: 5 * 1024 * 1024,
+                rangeAvailable: true, chunkSize: 262144,
+            });
+        }
+        if (url.startsWith('/api/traces/tr_large/events/1?offset=')) {
+            rangeCalls.push(url);
+            const offset = Number(new URL(url, 'http://localhost').searchParams.get('offset'));
+            return apiData({
+                runId: 'tr_large', seq: 1, source: 'tool', text: `chunk-${offset};`,
+                nextOffset: offset + 262144, eof: false, totalBytes: 5 * 1024 * 1024,
+            });
+        }
+        throw new Error(`unexpected fetch ${url}`);
+    }) as typeof fetch;
+
+    const { openTraceDrawer } = await import('../../public/js/features/trace-drawer.ts');
+    await openTraceDrawer('tr_large', 1);
+    await nextTick();
+
+    assert.equal(rangeCalls.length, 16);
+    assert.equal(rangeCalls[0], '/api/traces/tr_large/events/1?offset=0&limit=262144');
+    assert.equal(rangeCalls[15], '/api/traces/tr_large/events/1?offset=3932160&limit=262144');
+    assert.match(document.getElementById('traceEventRaw')?.textContent || '', /^chunk-0;/);
+    assert.equal(document.getElementById('traceEventNotice')?.textContent, '출력이 잘렸습니다 — 전체 5 MiB 중 4 MiB 표시');
+    assert.equal(document.getElementById('traceEventNotice')?.hidden, false);
 });

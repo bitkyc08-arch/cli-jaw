@@ -1,4 +1,4 @@
-import { api } from '../api.js';
+import { api, API_BASE, getAuthToken } from '../api.js';
 import { providerLabel } from '../provider-icons.js';
 import { escapeHtml } from '../render.js';
 
@@ -11,9 +11,18 @@ interface TraceEventListItem {
     bytes?: number; retention_status?: string; retentionStatus?: string; created_at?: number; createdAt?: number;
 }
 interface TraceEventDetail extends TraceEventListItem { runId: string; raw: string; }
+interface TraceEventRange extends TraceEventListItem {
+    runId: string; text: string; nextOffset: number; eof: boolean; totalBytes: number;
+}
+interface TraceDetailResponse<T> {
+    ok: boolean; data?: T; error?: string; totalBytes?: number; rangeAvailable?: boolean; chunkSize?: number;
+}
 interface TraceEventsPage { total: number; events: TraceEventListItem[]; }
 
 const PAGE_SIZE = 80;
+const RANGE_CHUNK_BYTES = 262_144;
+const RANGE_CHUNK_LIMIT = 16;
+const RANGE_DISPLAY_BYTES = RANGE_CHUNK_BYTES * RANGE_CHUNK_LIMIT;
 let currentRunId = '';
 let loadedCount = 0;
 let totalCount = 0;
@@ -74,6 +83,12 @@ function setRaw(text: string): void {
     const raw = document.getElementById('traceEventRaw');
     if (raw) raw.textContent = text;
 }
+function setNotice(text = ''): void {
+    const notice = document.getElementById('traceEventNotice');
+    if (!notice) return;
+    notice.textContent = text;
+    notice.hidden = !text;
+}
 function closeTraceDrawer(): void { document.getElementById('traceDrawerOverlay')?.classList.remove('open'); }
 
 function renderSummary(summary: TraceSummary): void {
@@ -85,7 +100,8 @@ function renderSummary(summary: TraceSummary): void {
         ['run', summary.id], ['model', summary.model || '-'], ['agent', summary.agentLabel || '-'],
         ['status', summary.status], ['events', `${summary.eventCount}`], ['bytes', `${summary.byteCount}`],
         ['retention', summary.rawRetentionStatus],
-    ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join('');
+    ].map(([label, value]) => `<span><b>${escapeHtml(label)}</b>${escapeHtml(value)}</span>`).join('')
+        + '<span id="traceEventNotice" hidden></span>';
 }
 
 function markSelectedRow(seq: number | null): void {
@@ -138,10 +154,71 @@ async function loadNextPage(requestId = openRequestId, runId = currentRunId, off
 async function loadEventDetail(runId: string, seq: number, requestId = openRequestId): Promise<void> {
     if (!runId || !Number.isInteger(seq) || seq < 1) return;
     if (!isCurrentRequest(requestId, runId)) return;
+    setNotice();
     setRaw('Loading event...');
-    const detail = await api<TraceEventDetail>(`/api/traces/${encodeURIComponent(runId)}/events/${seq}`);
+    const path = `/api/traces/${encodeURIComponent(runId)}/events/${seq}`;
+    const token = await getAuthToken();
+    let response: Response;
+    try {
+        response = await fetch(`${API_BASE}${path}`, {
+            headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+    } catch (error) {
+        console.warn(`[trace-drawer] ${path} failed:`, (error as Error).message);
+        if (isCurrentRequest(requestId, runId) && selectedSeq === seq) setRaw('Trace event could not be loaded.');
+        return;
+    }
     if (!isCurrentRequest(requestId, runId) || selectedSeq !== seq) return;
-    setRaw(detail?.raw || (detail ? '(empty trace event)' : 'Trace event could not be loaded.'));
+    const body = await response.json().catch(() => null) as TraceDetailResponse<TraceEventDetail> | TraceEventDetail | null;
+    if (!isCurrentRequest(requestId, runId) || selectedSeq !== seq) return;
+    if (response.ok) {
+        const detail = body && 'ok' in body ? (body.ok ? body.data || null : null) : body;
+        setRaw(detail?.raw || (detail ? '(empty trace event)' : 'Trace event could not be loaded.'));
+        return;
+    }
+    if (response.status !== 413 || !body || !('rangeAvailable' in body) || !body.rangeAvailable) {
+        setRaw('Trace event could not be loaded.');
+        return;
+    }
+
+    let offset = 0;
+    let text = '';
+    let eof = false;
+    let totalBytes = Number(body.totalBytes) || 0;
+    const advertisedChunkSize = Number(body.chunkSize);
+    const chunkLimit = advertisedChunkSize > 0 ? Math.min(advertisedChunkSize, RANGE_CHUNK_BYTES) : RANGE_CHUNK_BYTES;
+    for (let chunk = 0; chunk < RANGE_CHUNK_LIMIT && !eof; chunk++) {
+        const rangePath = `${path}?offset=${offset}&limit=${chunkLimit}`;
+        let rangeResponse: Response;
+        try {
+            rangeResponse = await fetch(`${API_BASE}${rangePath}`, {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+            });
+        } catch (error) {
+            console.warn(`[trace-drawer] ${rangePath} failed:`, (error as Error).message);
+            setRaw('Trace event could not be loaded.');
+            return;
+        }
+        if (!isCurrentRequest(requestId, runId) || selectedSeq !== seq) return;
+        const rangeBody = await rangeResponse.json().catch(() => null) as TraceDetailResponse<TraceEventRange> | null;
+        if (!isCurrentRequest(requestId, runId) || selectedSeq !== seq) return;
+        const range = rangeResponse.ok && rangeBody?.ok ? rangeBody.data : null;
+        // nextOffset is null on the final (eof) chunk — only non-eof chunks must advance.
+        if (!range || (!range.eof && (!Number.isFinite(range.nextOffset) || range.nextOffset <= offset))) {
+            setRaw('Trace event could not be loaded.');
+            return;
+        }
+        text += range.text || '';
+        if (!range.eof && Number.isFinite(range.nextOffset)) offset = range.nextOffset;
+        eof = range.eof;
+        totalBytes = Number(range.totalBytes) || totalBytes;
+    }
+    setRaw(text || '(empty trace event)');
+    if (!eof) {
+        const totalMiB = totalBytes / (1024 * 1024);
+        const formattedTotal = Number.isInteger(totalMiB) ? `${totalMiB}` : totalMiB.toFixed(1);
+        setNotice(`출력이 잘렸습니다 — 전체 ${formattedTotal} MiB 중 ${RANGE_DISPLAY_BYTES / (1024 * 1024)} MiB 표시`);
+    }
 }
 
 export async function openTraceDrawer(runId: string, seq?: number): Promise<void> {
@@ -155,6 +232,7 @@ export async function openTraceDrawer(runId: string, seq?: number): Promise<void
     selectedSeq = seq && Number.isInteger(seq) && seq > 0 ? seq : null;
     const list = document.getElementById('traceEventList');
     if (list) list.innerHTML = '';
+    setNotice();
     setRaw('Loading trace...');
     overlay.classList.add('open');
     const summary = await api<TraceSummary>(`/api/traces/${encodeURIComponent(runId)}`);
