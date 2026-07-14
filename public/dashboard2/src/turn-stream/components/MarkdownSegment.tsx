@@ -1,6 +1,6 @@
 import { memo, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
 import { createPortal } from 'react-dom';
-import { usePreferences } from '../../providers/preferences-provider.tsx';
+import { useOptionalPreferences, usePreferences } from '../../providers/preferences-provider.tsx';
 import { renderCopy } from '../render/copy-catalog.ts';
 import {
     createParseCoalescer,
@@ -16,8 +16,24 @@ import { MermaidSegment } from '../render/embeds/MermaidSegment.tsx';
 import { UnifiedDiffSegment } from '../render/embeds/UnifiedDiffSegment.tsx';
 import { ImageSegment } from '../render/embeds/ImageSegment.tsx';
 import { FilePathLinkLayer } from '../render/links/FilePathLinkLayer.tsx';
+import { LinkPreviewLayer } from '../render/links/LinkPreviewCard.tsx';
+import { resolveStructuredFence } from '../render/fences/structured-fence-registry.ts';
+import type { WidgetDescriptor } from '../widgets/widget-segment-adapter.ts';
+import { normalizeWidgetSlot } from '../widgets/widget-segment-adapter.ts';
+import { WidgetSegment } from './segments/WidgetSegment.tsx';
 
 const OVERSIZE_BYTES = 1024 * 1024;
+
+function StructuredSlot({ slot }: { slot: Extract<MarkdownSlot, { kind: 'structured' }> }): ReactElement {
+    const resolved = resolveStructuredFence({ fenceKind: slot.fenceKind, rawSpec: slot.rawSpec, ordinal: slot.ordinal });
+    if (resolved.kind === 'fallback') return <CodeBlockSegment code={resolved.escapedSource} language={slot.fenceKind} openFence={false} />;
+    const Adapter = resolved.component;
+    return <Adapter spec={resolved.spec as never} />;
+}
+function WidgetSlot({ descriptor, identity }: { descriptor: WidgetDescriptor; identity: RenderIdentity }): ReactElement {
+    const [expanded, setExpanded] = useState(false);
+    return <WidgetSegment descriptor={descriptor} expanded={expanded} onToggle={() => setExpanded(value => !value)} identity={identity} chatId={identity.scopeKey} />;
+}
 
 export interface MarkdownSegmentProps {
     text: string;
@@ -26,6 +42,7 @@ export interface MarkdownSegmentProps {
 }
 
 function MarkdownWithSlots({ result, identity }: { result: MarkdownRenderResult; identity: RenderIdentity }): ReactElement {
+    const preferences = useOptionalPreferences();
     const container = useRef<HTMLDivElement>(null);
     const [targets, setTargets] = useState(new Map<string, Element>());
     useEffect(() => {
@@ -45,13 +62,15 @@ function MarkdownWithSlots({ result, identity }: { result: MarkdownRenderResult;
         () => <div ref={container} className="markdown-segment" dangerouslySetInnerHTML={sanitizedHtmlProps(result.html)} />,
         [result.html],
     );
-    return <>{sink}<FilePathLinkLayer host={container.current} revision={result.cacheKey} />{result.slots.map((slot: MarkdownSlot) => {
+    return <>{sink}<FilePathLinkLayer host={container.current} revision={result.cacheKey} /><LinkPreviewLayer enabled={preferences?.hydrated === true && preferences.linkPreviews.enabled} host={container.current} revision={result.cacheKey} identity={identity} />{result.slots.map((slot: MarkdownSlot) => {
         const target = targets.get(slot.id); if (!target) return null;
         let content: ReactElement;
         if (slot.kind === 'code') content = <CodeBlockSegment code={slot.code} language={slot.language} openFence={slot.openFence} />;
         else if (slot.kind === 'math') content = <MathSlot slot={slot} scrollRoot={scrollRoot} />;
         else if (slot.kind === 'mermaid') content = <MermaidSegment source={slot.source} identity={identity} scrollRoot={scrollRoot} />;
         else if (slot.kind === 'diff') content = <UnifiedDiffSegment source={slot.source} identity={identity} />;
+        else if (slot.kind === 'structured') content = <StructuredSlot slot={slot} />;
+        else if (slot.kind === 'widget') { const descriptor = normalizeWidgetSlot({ kind: 'widget', ...slot.widget }); content = descriptor ? <WidgetSlot descriptor={descriptor} identity={identity} /> : <CodeBlockSegment code={slot.widget.storage === 'inline' ? slot.widget.source : slot.widget.widgetId} language="text" openFence={false} />; }
         else content = <ImageSegment src={slot.src} alt={slot.alt} title={slot.title} identity={identity} />;
         return createPortal(content, target, slot.id);
     })}</>;

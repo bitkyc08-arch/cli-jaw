@@ -238,6 +238,7 @@ export type DashboardRegistryUi = {
     showSidebarRuntimeLine: boolean;
     showSelectedRowActions: boolean;
     dashboardShortcutsEnabled: boolean;
+    chatLinkPreviewsEnabled: boolean;
     dashboardShortcutKeymap: DashboardShortcutKeymap;
     diffRootPolicy: DashboardDiffRootPolicy;
     diffPinnedRootByPort: Record<string, string>;

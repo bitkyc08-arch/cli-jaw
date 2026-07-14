@@ -6,7 +6,9 @@ export type MarkdownSlot =
     | { id: string; kind: 'math'; tex: string; displayMode: boolean; ordinal: number }
     | { id: string; kind: 'mermaid'; source: string }
     | { id: string; kind: 'diff'; source: string }
-    | { id: string; kind: 'image'; src: string; alt: string; title?: string };
+    | { id: string; kind: 'image'; src: string; alt: string; title?: string }
+    | { id: string; kind: 'structured'; fenceKind: 'elicitation' | 'choice-buttons' | 'search-results' | 'compose-block' | 'dataframe' | 'chart-json'; rawSpec: string; ordinal: number }
+    | { id: string; kind: 'widget'; widget: { storage: 'inline'; source: string; capabilities: ['interactive'] } | { storage: 'file'; widgetId: string }; ordinal: number };
 export interface ExtractedMarkdownSlots { source: string; slots: readonly MarkdownSlot[] }
 
 function placeholder(id: string, block: boolean): string {
@@ -32,14 +34,25 @@ function wrapMarkdownTables(source: string): string {
 export function extractMarkdownSlots(source: string, nonce = contentHash(source), finalized = true): ExtractedMarkdownSlots {
     const slots: MarkdownSlot[] = [];
     let ordinal = 0;
-    let processed = source.replace(/```([^\n`]*)\n([\s\S]*?)(```|$)/g, (whole, info: string, code: string, close: string) => {
-        const openFence = close !== '```';
+    const structuredKinds = new Set(['elicitation', 'choice-buttons', 'search-results', 'compose-block', 'dataframe', 'chart-json']);
+    const normalized = source.replace(/^([ \t]{0,3})(?:[-*+]|\d+[.)])[ \t]+(`{3,}|~{3,})([^\n]*)$/gm, '$1$2$3');
+    let processed = normalized.replace(/^([ \t]{0,3})(`{3,}|~{3,})([^\n]*)\n([\s\S]*?)(?:^\1\2[ \t]*$|$(?![\s\S]))/gm, (whole, _indent: string, fence: string, info: string, code: string) => {
+        const closed = new RegExp(`^${fence[0]}{${fence.length},}[ \\t]*$`, 'm').test(whole.slice(whole.indexOf('\n') + 1));
+        const openFence = !closed;
         if (!finalized && openFence) return whole;
         const language = info.trim().split(/\s+/)[0]?.toLowerCase() ?? '';
-        const kind = language === 'mermaid' ? 'mermaid' : language === 'diff' || (!language && hasUnifiedDiffSignature(code)) ? 'diff' : 'code';
+        if (!finalized && (structuredKinds.has(language) || language === 'diagram-html' || language === 'diagram-file')) return whole;
+        const kind = language === 'mermaid' ? 'mermaid' : language === 'diff' || (!language && hasUnifiedDiffSignature(code)) ? 'diff' : structuredKinds.has(language) ? 'structured' : language === 'diagram-html' || language === 'diagram-file' ? 'widget' : 'code';
         const id = `${nonce}-${kind}-${slots.length}`;
         if (kind === 'mermaid') slots.push(Object.freeze({ id, kind, source: code }));
         else if (kind === 'diff') slots.push(Object.freeze({ id, kind, source: code }));
+        else if (kind === 'structured') slots.push(Object.freeze({ id, kind, fenceKind: language as Extract<MarkdownSlot, { kind: 'structured' }>['fenceKind'], rawSpec: code, ordinal: ordinal++ }));
+        else if (kind === 'widget') {
+            const widget: Extract<MarkdownSlot, { kind: 'widget' }>['widget'] = language === 'diagram-file'
+                ? { storage: 'file', widgetId: code.trim() }
+                : { storage: 'inline', source: code, capabilities: ['interactive'] };
+            slots.push(Object.freeze({ id, kind, widget, ordinal: ordinal++ }));
+        }
         else slots.push(Object.freeze({ id, kind, code, language, openFence }));
         return placeholder(id, true);
     });

@@ -87,3 +87,21 @@
 .d2-ansi-b { font-weight: 700; } .d2-ansi-dim { opacity: .7; } .d2-ansi-i { font-style: italic; } .d2-ansi-u { text-decoration: underline; }
 .d2-ansi-fg-0 { color: var(--syntax-fg); } .d2-ansi-fg-1 { color: var(--syntax-delete); } .d2-ansi-fg-2 { color: var(--syntax-insert); } .d2-ansi-fg-3 { color: var(--syntax-keyword); } .d2-ansi-fg-4 { color: var(--syntax-link); } .d2-ansi-fg-5 { color: var(--syntax-string); } .d2-ansi-fg-6 { color: var(--syntax-number); } .d2-ansi-fg-7 { color: var(--text); }
 @media (prefers-reduced-motion: reduce) { .d2-tool-detail__skeleton span { animation: none; } }
+
+.elicitation-block,.search-results-block,.dataframe-block,.chart-json-block,.compose-block,.d2-widget-segment,.d2-link-preview { margin: 10px 0; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text); }
+.elicitation-block,.dataframe-block,.chart-json-block,.compose-block { padding: 12px; }
+.search-results-block { display: grid; overflow: hidden; }
+.search-results-block>header,.dataframe-block>header,.compose-block>header { padding: 8px 10px; font: 600 13px/20px var(--font-sans); }
+.search-results-block>a { display: grid; grid-template-columns: 24px 1fr; gap: 3px 8px; padding: 9px 10px; border-top: 1px solid var(--border); color: inherit; text-decoration: none; }
+.search-results-block>a:hover { background: var(--surface-h); }
+.dataframe-block input { width: 100%; min-height: 32px; border: 1px solid var(--border-h); border-radius: var(--r-sm); background: var(--bg); color: var(--text); }
+.dataframe-block footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.d2-link-preview-host { display: block; }
+.d2-link-preview { display: grid; grid-template-columns: minmax(0,1fr); overflow: hidden; text-decoration: none; }
+.d2-link-preview>img { width: 100%; max-height: 180px; object-fit: cover; }
+.d2-link-preview>span { display: grid; gap: 3px; padding: 10px 12px; }
+.d2-link-preview small { color: var(--text-3); }
+.d2-link-preview strong { color: var(--text); font: 600 14px/20px var(--font-sans); }
+.d2-link-preview span span { color: var(--text-2); font: 400 13px/19px var(--font-sans); }
+.d2-widget-frame { min-height: var(--d2-widget-estimated-height,160px); overflow: hidden; border-top: 1px solid var(--border); }
+.d2-widget-frame iframe { display: block; width: 100%; min-height: inherit; border: 0; background: var(--bg); }

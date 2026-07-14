@@ -202,7 +202,7 @@ function checkDashboard2Bundle(distDir: string, errors: string[]): Dashboard2Bun
     const lazyGraph = collectGraph(manifest, dynamicRoots, true);
     const lazyFiles = [...new Set([...lazyGraph]
         .map(key => manifest[key]?.file)
-        .filter((file): file is string => Boolean(file) && file.endsWith('.js')))]
+        .filter((file): file is string => typeof file === 'string' && file.endsWith('.js')))]
         .sort();
     if (serviceExpected && lazyFiles.every(file => !/shiki/i.test(file))) {
         errors.push('Highlight service exists but no render-shiki lazy chunk was found');

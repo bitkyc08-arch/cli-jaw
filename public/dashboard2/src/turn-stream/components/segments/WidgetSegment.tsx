@@ -3,17 +3,15 @@ import type { CSSProperties, JSX, ReactNode } from 'react';
 import { Icon } from '../../../shell/Icon.tsx';
 import { usePreferences } from '../../../providers/preferences-provider.tsx';
 import { renderCopy } from '../../render/copy-catalog.ts';
-
-export interface WidgetDescriptor {
-    widgetId: string;
-    title: string;
-    estimatedHeight: number;
-}
+import type { WidgetDescriptor } from '../../widgets/widget-segment-adapter.ts';
+import { WidgetRuntime } from '../../widgets/WidgetRuntime.tsx';
 
 export interface WidgetSegmentProps {
-    descriptor: WidgetDescriptor;
+    descriptor: Pick<WidgetDescriptor, 'title' | 'estimatedHeight'> & Partial<WidgetDescriptor>;
     expanded: boolean;
     onToggle(): void;
+    chatId?: string;
+    identity?: { scopeKey: string; turnId: string; segmentId: string };
     children?: ReactNode;
 }
 
@@ -23,6 +21,8 @@ export function WidgetSegment({
     descriptor,
     expanded,
     onToggle,
+    chatId,
+    identity,
     children,
 }: WidgetSegmentProps): JSX.Element {
     const { locale } = usePreferences();
@@ -33,7 +33,7 @@ export function WidgetSegment({
     return (
         <div
             className={`d2-widget-segment${expanded ? ' is-expanded' : ''}`}
-            data-widget-id={descriptor.widgetId}
+            data-widget-id={descriptor.widgetId ?? identity?.segmentId ?? 'inline'}
             style={style}
         >
             <button
@@ -48,7 +48,10 @@ export function WidgetSegment({
                 <span className="d2-widget-state">{renderCopy(renderLocale, expanded ? 'widget.state.expanded' : 'widget.state.collapsed')}</span>
                 <Icon icon={expanded ? ChevronDown : ChevronRight} size={13} />
             </button>
-            {expanded ? <div className="d2-widget-frame" data-widget-frame>{children}</div> : null}
+            {expanded ? <div className="d2-widget-frame" data-widget-frame>
+                {children ?? (chatId && identity && descriptor.storage && descriptor.revision && descriptor.capabilities
+                    ? <WidgetRuntime descriptor={descriptor as WidgetDescriptor} chatId={chatId} identity={identity} /> : null)}
+            </div> : null}
         </div>
     );
 }

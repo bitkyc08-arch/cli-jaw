@@ -151,6 +151,8 @@ export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
                     descriptor={descriptor}
                     expanded={expandedWidget === key}
                     onToggle={() => setExpandedWidget(current => (current === key ? null : key))}
+                    chatId={row.sessionId}
+                    identity={{ scopeKey: store.getScopeKey(), turnId: row.turnId, segmentId: row.segmentId }}
                 />,
             );
         } else if (row.type === 'assistant_text') {

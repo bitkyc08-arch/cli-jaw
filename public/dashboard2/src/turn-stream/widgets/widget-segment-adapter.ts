@@ -5,7 +5,11 @@ import type {
     WidgetTurnSegmentDescriptor,
 } from '../../../../../src/shared/chat-events.ts';
 
-export type WidgetDescriptor = WidgetTurnSegmentDescriptor;
+export type WidgetDescriptor = Omit<WidgetTurnSegmentDescriptor, 'widgetId' | 'title'> & {
+    widgetId?: string;
+    title: string;
+    source?: string;
+};
 
 export interface AdaptedWidgetSegment {
     segment: TurnSegment;
@@ -62,6 +66,7 @@ export function parseWidgetDescriptor(segment: TurnSegment, hydrationSource?: un
 
     return {
         widgetId: text(value['widgetId']) ?? segment.segmentId,
+        ...(storage === 'inline' && text(value['source']) ? { source: text(value['source'])! } : {}),
         storage,
         revision: text(value['revision']) ?? 'legacy',
         title: text(value['title']) ?? 'Widget',
@@ -72,5 +77,24 @@ export function parseWidgetDescriptor(segment: TurnSegment, hydrationSource?: un
 
 export function adaptWidgetSegment(segment: TurnSegment, hydrationSource?: unknown): AdaptedWidgetSegment | null {
     if (segment.type !== 'widget') return null;
+    const candidate = descriptorCandidate(hydrationSource);
+    if (candidate?.['kind'] === 'mermaid') return null;
     return { segment, descriptor: parseWidgetDescriptor(segment, hydrationSource) };
+}
+
+export function normalizeWidgetSlot(slot: unknown): WidgetDescriptor | null {
+    const value = record(slot);
+    if (!value || value['kind'] === 'mermaid' || value['kind'] !== 'widget') return null;
+    const storage = value['storage'] === 'file' ? 'file' : 'inline';
+    const capabilities = Array.isArray(value['capabilities'])
+        ? value['capabilities'].filter((item): item is WidgetCapability => item === 'interactive' || item === 'stateful')
+        : [];
+    if (storage === 'file' && !text(value['widgetId'])) return null;
+    if (storage === 'inline' && !text(value['source'])) return null;
+    return {
+        ...(storage === 'file' ? { widgetId: text(value['widgetId'])! } : { source: text(value['source'])! }),
+        storage, revision: text(value['revision']) ?? 'manifest', title: text(value['title']) ?? 'Widget',
+        estimatedHeight: typeof value['estimatedHeight'] === 'number' && value['estimatedHeight'] > 0 ? value['estimatedHeight'] : FALLBACK_HEIGHT,
+        capabilities: [...new Set(capabilities)],
+    };
 }

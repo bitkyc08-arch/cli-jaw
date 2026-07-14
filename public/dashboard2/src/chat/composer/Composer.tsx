@@ -40,6 +40,7 @@ export interface ComposerEcho {
     error?: string;
 }
 
+export interface ComposerRegistration { submitMessage(prompt: string): Promise<void> }
 interface ComposerProps {
     initialDraft?: string;
     commands?: readonly SlashCommand[];
@@ -52,6 +53,7 @@ interface ComposerProps {
     onStop?(): void;
     onDraftChange?(draft: string): void;
     onEcho?(echo: ComposerEcho): void;
+    onRegister?(registration: ComposerRegistration | null): void;
 }
 
 function mentionQuery(value: string, caret: number): { start: number; query: string } | null {
@@ -63,7 +65,7 @@ function mentionQuery(value: string, caret: number): { start: number; query: str
 
 export function Composer({
     initialDraft = '', commands = [], commandError = null, mentions = [], picker,
-    goalLabel, phase, isRunning, onStop, onDraftChange, onEcho,
+    goalLabel, phase, isRunning, onStop, onDraftChange, onEcho, onRegister,
 }: ComposerProps): JSX.Element {
     const api = useManagerApi();
     const { selected } = useAppScope();
@@ -155,6 +157,11 @@ export function Composer({
             setIsSending(false);
         }
     }, [attachments, controller, draft, onDraftChange, onEcho, setControlledDraft]);
+    useEffect(() => {
+        if (!onRegister) return;
+        onRegister({ submitMessage: (prompt) => performSend('command', prompt) });
+        return () => onRegister(null);
+    }, [onRegister, performSend]);
 
     const applyCommand = useCallback((command: SlashCommand) => {
         if (!slash) return;

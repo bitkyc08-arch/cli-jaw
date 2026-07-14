@@ -8,13 +8,17 @@ const THEME_OPTIONS = [
 ] as const;
 
 export function SettingsPanel(): JSX.Element {
-    const { hydrated, locale, shortcuts, theme } = usePreferences();
+    const { hydrated, linkPreviews, locale, shortcuts, theme } = usePreferences();
 
     return (
         <section className="d2-settings-panel" aria-labelledby="d2-settings-title">
             <h2 id="d2-settings-title">Settings</h2>
 
             <form className="d2-settings-form">
+                <label className="d2-settings-row">
+                    <span><span className="d2-settings-label">Link previews</span><small>When enabled, the server fetches external URL metadata and images.</small></span>
+                    <input type="checkbox" checked={linkPreviews.enabled} disabled={!hydrated} onChange={event => linkPreviews.setEnabled(event.target.checked)} />
+                </label>
                 <div className="d2-settings-row">
                     <span className="d2-settings-label">Theme</span>
                     <div className="d2-settings-segmented" role="group" aria-label="Theme">

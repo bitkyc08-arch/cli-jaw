@@ -68,6 +68,7 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
     const live = useLiveTurns(store);
     const [manualExpanded, setManualExpanded] = useState<string | null>(null);
     const [manualCollapseLatches, setManualCollapseLatches] = useState<ReadonlySet<string>>(() => new Set());
+    const [widgetCollapseLatches, setWidgetCollapseLatches] = useState<ReadonlySet<string>>(() => new Set());
     if (!live.turnIds.length) return null;
     const latest = live.turnIds[live.turnIds.length - 1];
     const latestModel = store.getLiveTurn(latest);
@@ -141,12 +142,21 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
                                 // 016 policy: only the LATEST active turn may
                                 // auto-inflate its widget; older live turns
                                 // show the fixed placeholder
+                                const descriptor = parseWidgetDescriptor(row);
+                                const latchKey = `${row.turnId}|${row.segmentId}|${descriptor.revision}`;
+                                const expanded = isLatest && !widgetCollapseLatches.has(latchKey);
                                 return (
                                     <WidgetSegment
                                         key={key}
-                                        descriptor={parseWidgetDescriptor(row)}
-                                        expanded={isLatest}
-                                        onToggle={() => {}}
+                                        descriptor={descriptor}
+                                        expanded={expanded}
+                                        onToggle={() => setWidgetCollapseLatches(current => {
+                                            const next = new Set(current);
+                                            if (expanded) next.add(latchKey); else next.delete(latchKey);
+                                            return next;
+                                        })}
+                                        chatId={row.sessionId}
+                                        identity={{ scopeKey: store.getScopeKey(), turnId: row.turnId, segmentId: row.segmentId }}
                                     />
                                 );
                             }

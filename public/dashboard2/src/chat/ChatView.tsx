@@ -23,7 +23,8 @@ import { LiveTurnTail } from '../turn-stream/live/LiveTurnTail.tsx';
 import { createMessagesPageClient } from '../turn-stream/history/messages-page-client.ts';
 import { createHistoryController } from '../turn-stream/history/history-controller.ts';
 import { HistoryLoadBoundary } from '../turn-stream/history/HistoryLoadBoundary.tsx';
-import { Composer, type ComposerEcho } from './composer/Composer.tsx';
+import { Composer, type ComposerEcho, type ComposerRegistration } from './composer/Composer.tsx';
+import { RenderActionPortsProvider } from '../providers/render-action-ports.tsx';
 import { createPendingQueueApi } from './pending/pending-queue-api.ts';
 import { PendingQueueMachine } from './pending/pending-queue-machine.ts';
 import { createPendingQueueStore } from './pending/pending-queue-store.ts';
@@ -160,9 +161,18 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
     }, [store, pendingStore, historyController, sync, api, scope.port, scopeKey]);
 
     const [echoes, setEchoes] = useState<ComposerEcho[]>([]);
+    const composer = useRef<ComposerRegistration | null>(null);
+    const [announcement, setAnnouncement] = useState('');
+    const ports = useMemo(() => ({
+        submitMessage: (prompt: string) => composer.current ? composer.current.submitMessage(prompt) : Promise.reject(new Error('No composer is registered for this chat.')),
+        copyText: (text: string) => navigator.clipboard?.writeText(text) ?? Promise.resolve(),
+        openExternal: (url: string) => { window.open(url, '_blank', 'noopener,noreferrer'); },
+        openProtocol: (url: string) => { if (/^(?:mailto|sms):/i.test(url)) window.location.href = url; },
+        announce: setAnnouncement,
+    }), []);
 
     return (
-        <div className="d2-chat-view" data-testid="chat-view">
+        <RenderActionPortsProvider ports={ports}><div className="d2-chat-view" data-testid="chat-view">
             <div className="d2-chat-content">
                 <TurnStreamViewport
                     store={store}
@@ -176,13 +186,14 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
                 ))}
             </div>
             <PendingQueueView store={pendingStore} />
-            <ChatComposerSlot store={store} scopeKey={scopeKey} port={scope.port} onEcho={(echo) => {
+            <ChatComposerSlot store={store} scopeKey={scopeKey} port={scope.port} onRegister={registration => { composer.current = registration; }} onEcho={(echo) => {
                 setEchoes(current => {
                     const rest = current.filter(item => item.id !== echo.id);
                     return [...rest.slice(-9), echo];
                 });
             }} />
-        </div>
+            <div className="d2-sr-only" aria-live="polite">{announcement}</div>
+        </div></RenderActionPortsProvider>
     );
 }
 
@@ -191,9 +202,10 @@ interface ChatComposerSlotProps {
     scopeKey: string;
     port: number;
     onEcho(echo: ComposerEcho): void;
+    onRegister(registration: ComposerRegistration | null): void;
 }
 
-function ChatComposerSlot({ store, scopeKey, port, onEcho }: ChatComposerSlotProps): JSX.Element {
+function ChatComposerSlot({ store, scopeKey, port, onEcho, onRegister }: ChatComposerSlotProps): JSX.Element {
     const live = useLiveTurns(store);
     const api = useManagerApi();
     const sync = useManagerSync();
@@ -217,6 +229,7 @@ function ChatComposerSlot({ store, scopeKey, port, onEcho }: ChatComposerSlotPro
                 phase={orcPhase}
                 onStop={() => { void api.instance(port).stopAgent().catch(() => { /* snapshot recovers */ }); }}
                 onEcho={onEcho}
+                onRegister={onRegister}
             />
         </div>
     );

@@ -91,12 +91,14 @@ interface ShortcutPreferences {
     setShortcutsEnabled(enabled: boolean): void;
     setKeymap(keymap: ShortcutKeymap): void;
 }
+interface LinkPreviewPreferences { enabled: boolean; setEnabled(enabled: boolean): void }
 
 export interface ManagerPreferences {
     hydrated: boolean;
     theme: ThemePreferences;
     locale: LocalePreferences;
     shortcuts: ShortcutPreferences;
+    linkPreviews: LinkPreviewPreferences;
 }
 
 type ManagerPreferencesProviderProps = PropsWithChildren<{
@@ -155,6 +157,7 @@ export function ManagerPreferencesProvider(
     const [locale, setLocaleState] = useState<DashboardLocale>('ko');
     const [shortcutsEnabled, setShortcutsEnabledState] = useState(true);
     const [keymap, setKeymapState] = useState<ShortcutKeymap>(DEFAULT_SHORTCUT_KEYMAP);
+    const [linkPreviewsEnabled, setLinkPreviewsEnabledState] = useState(false);
 
     const saveRegistry = useCallback((patch: DashboardRegistryPatch): void => {
         if (!hydratedRef.current) {
@@ -178,6 +181,7 @@ export function ManagerPreferencesProvider(
                 setLocaleState(ui.locale ?? 'ko');
                 setShortcutsEnabledState(ui.dashboardShortcutsEnabled);
                 setKeymapState(normalizeKeymap(ui.dashboardShortcutKeymap));
+                setLinkPreviewsEnabledState(ui.chatLinkPreviewsEnabled === true);
             })
             .catch((error: unknown) => {
                 if (!cancelled) console.error('Failed to hydrate dashboard preferences', error);
@@ -238,20 +242,27 @@ export function ManagerPreferencesProvider(
         setKeymapState(normalized);
         saveRegistry({ ui: { dashboardShortcutKeymap: normalized } });
     }, [saveRegistry]);
+    const setLinkPreviewsEnabled = useCallback((enabled: boolean) => {
+        setLinkPreviewsEnabledState(enabled);
+        saveRegistry({ ui: { chatLinkPreviewsEnabled: enabled } });
+    }, [saveRegistry]);
 
     const value = useMemo<ManagerPreferences>(() => ({
         hydrated,
         theme: { mode, resolved, setMode },
         locale: { locale, setLocale },
         shortcuts: { shortcutsEnabled, keymap, setShortcutsEnabled, setKeymap },
+        linkPreviews: { enabled: linkPreviewsEnabled, setEnabled: setLinkPreviewsEnabled },
     }), [
         hydrated,
         keymap,
         locale,
+        linkPreviewsEnabled,
         mode,
         resolved,
         setKeymap,
         setLocale,
+        setLinkPreviewsEnabled,
         setMode,
         setShortcutsEnabled,
         shortcutsEnabled,
@@ -270,4 +281,8 @@ export function usePreferences(): ManagerPreferences {
         throw new Error('usePreferences must be used inside ManagerPreferencesProvider');
     }
     return preferences;
+}
+
+export function useOptionalPreferences(): ManagerPreferences | null {
+    return useContext(PreferencesContext);
 }
