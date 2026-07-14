@@ -8,6 +8,7 @@ import './styles/tokens-v4.css';
 import './styles/sidebar-v4.css';
 import './styles/workbench-v4.css';
 import './styles/turn-stream.css';
+import './styles/render-content.css';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { ManagerApiProvider } from './providers/api-provider.tsx';

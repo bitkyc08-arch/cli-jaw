@@ -141,6 +141,10 @@ function isKatex(value: string): boolean {
     return /(?:(?:^|[/_-])katex(?:[/_.-]|$)|render-katex)/i.test(value);
 }
 
+function isMermaid(value: string): boolean {
+    return /(?:^|[/_.-])mermaid(?:[/_.-]|$)/i.test(value);
+}
+
 function findWorkerFile(distDir: string, serviceFiles: string[]): string | null {
     const assetsDir = join(distDir, 'assets');
     if (!existsSync(assetsDir)) return null;
@@ -175,8 +179,13 @@ function checkDashboard2Bundle(distDir: string, errors: string[]): Dashboard2Bun
         const node = manifest[key];
         return isKatex(key) || isKatex(node?.file ?? '');
     });
+    const staticMermaid = [...staticGraph].filter(key => {
+        const node = manifest[key];
+        return isMermaid(key) || isMermaid(node?.file ?? '');
+    });
     if (staticShiki.length > 0) errors.push(`Dashboard2 static import closure contains Shiki: ${staticShiki.join(', ')}`);
     if (staticKatex.length > 0) errors.push(`Dashboard2 static import closure contains KaTeX: ${staticKatex.join(', ')}`);
+    if (staticMermaid.length > 0) errors.push(`Dashboard2 static import closure contains Mermaid: ${staticMermaid.join(', ')}`);
 
     const serviceKeys = Object.keys(manifest).filter(key => {
         if (/turn-stream\/render\/highlight-service\.ts$/.test(key)) return true;

@@ -162,6 +162,15 @@ test('build output guard fails KaTeX in dashboard2 static graph', () => {
     assert.match(result.errors.join('\n'), /static import closure contains KaTeX/);
 });
 
+test('build output guard fails Mermaid in dashboard2 static graph', () => {
+    const bundle = renderManifest();
+    bundle.manifest!['dashboard2/index.html'].imports = ['node_modules/mermaid/dist/mermaid.esm.mjs'];
+    bundle.manifest!['node_modules/mermaid/dist/mermaid.esm.mjs'] = { file: 'assets/mermaid-test.js' };
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', bundle) });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /static import closure contains Mermaid/);
+});
+
 test('build output guard passes valid dynamic Shiki graph with emitted worker', () => {
     const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', renderManifest()) });
     assert.equal(result.ok, true, result.errors.join('\n'));

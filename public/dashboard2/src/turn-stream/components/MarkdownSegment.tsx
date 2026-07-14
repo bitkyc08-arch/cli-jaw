@@ -12,6 +12,10 @@ import { sanitizedHtmlProps } from '../render/sanitize-policy.ts';
 import type { MarkdownSlot } from '../render/markdown-slot-manifest.ts';
 import { CodeBlockSegment } from './segments/CodeBlockSegment.tsx';
 import { MathSlot } from './segments/MathSlot.tsx';
+import { MermaidSegment } from '../render/embeds/MermaidSegment.tsx';
+import { UnifiedDiffSegment } from '../render/embeds/UnifiedDiffSegment.tsx';
+import { ImageSegment } from '../render/embeds/ImageSegment.tsx';
+import { FilePathLinkLayer } from '../render/links/FilePathLinkLayer.tsx';
 
 const OVERSIZE_BYTES = 1024 * 1024;
 
@@ -21,7 +25,7 @@ export interface MarkdownSegmentProps {
     mode?: 'final' | 'streaming';
 }
 
-function MarkdownWithSlots({ result }: { result: MarkdownRenderResult }): ReactElement {
+function MarkdownWithSlots({ result, identity }: { result: MarkdownRenderResult; identity: RenderIdentity }): ReactElement {
     const container = useRef<HTMLDivElement>(null);
     const [targets, setTargets] = useState(new Map<string, Element>());
     useEffect(() => {
@@ -41,15 +45,21 @@ function MarkdownWithSlots({ result }: { result: MarkdownRenderResult }): ReactE
         () => <div ref={container} className="markdown-segment" dangerouslySetInnerHTML={sanitizedHtmlProps(result.html)} />,
         [result.html],
     );
-    return <>{sink}{result.slots.map((slot: MarkdownSlot) => {
+    return <>{sink}<FilePathLinkLayer host={container.current} revision={result.cacheKey} />{result.slots.map((slot: MarkdownSlot) => {
         const target = targets.get(slot.id); if (!target) return null;
-        return createPortal(slot.kind === 'code' ? <CodeBlockSegment code={slot.code} language={slot.language} openFence={slot.openFence} /> : <MathSlot slot={slot} scrollRoot={scrollRoot} />, target, slot.id);
+        let content: ReactElement;
+        if (slot.kind === 'code') content = <CodeBlockSegment code={slot.code} language={slot.language} openFence={slot.openFence} />;
+        else if (slot.kind === 'math') content = <MathSlot slot={slot} scrollRoot={scrollRoot} />;
+        else if (slot.kind === 'mermaid') content = <MermaidSegment source={slot.source} identity={identity} scrollRoot={scrollRoot} />;
+        else if (slot.kind === 'diff') content = <UnifiedDiffSegment source={slot.source} identity={identity} />;
+        else content = <ImageSegment src={slot.src} alt={slot.alt} title={slot.title} identity={identity} />;
+        return createPortal(content, target, slot.id);
     })}</>;
 }
 
-function FinalMarkdown({ text }: { text: string }): ReactElement {
+function FinalMarkdown({ text, identity }: { text: string; identity: RenderIdentity }): ReactElement {
     const result = useMemo(() => renderFinalMarkdown(text), [text]);
-    return <MarkdownWithSlots result={result} />;
+    return <MarkdownWithSlots result={result} identity={identity} />;
 }
 
 function StreamingMarkdown({ text, identity }: { text: string; identity: RenderIdentity }): ReactElement {
@@ -94,11 +104,11 @@ export const MarkdownSegment = memo(function MarkdownSegment({
     mode = 'final',
 }: MarkdownSegmentProps): ReactElement {
     const localId = useId();
-    if (mode === 'final') return <FinalMarkdown text={text} />;
     const resolvedIdentity = identity ?? {
         scopeKey: 'markdown-segment',
         turnId: localId,
         segmentId: `${localId}:body`,
     };
+    if (mode === 'final') return <FinalMarkdown text={text} identity={resolvedIdentity} />;
     return <StreamingMarkdown text={text} identity={resolvedIdentity} />;
 });

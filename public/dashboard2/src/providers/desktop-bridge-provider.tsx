@@ -293,3 +293,9 @@ export function useDesktopBridge(): DesktopBridgeContextValue {
     }
     return value;
 }
+
+/** Optional variant for renderer components that degrade gracefully (web
+ *  clipboard fallback) when no bridge provider is mounted (tests/harnesses). */
+export function useOptionalDesktopBridge(): DesktopBridgeContextValue | null {
+    return useContext(DesktopBridgeContext);
+}

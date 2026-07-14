@@ -7,10 +7,12 @@ import { MathSlot } from '../turn-stream/components/segments/MathSlot.tsx';
 import { ToolLine } from '../turn-stream/components/segments/ToolLine.tsx';
 import { WidgetSegment } from '../turn-stream/components/segments/WidgetSegment.tsx';
 import { getRenderCache } from '../turn-stream/render/render-cache.ts';
+import { DesktopBridgeProvider } from '../providers/desktop-bridge-provider.tsx';
 
 if (import.meta.env.PROD) throw new Error('render-foundation-harness is dev/test-only');
 
 export interface RenderFoundationHarness {
+    ready(): boolean;
     feed(text: string): void;
     feedMath(tex: string, offsetPx: number): void;
     mountXss(role: 'user' | 'assistant', text: string): void;
@@ -22,13 +24,17 @@ let setStreamText: (text: string) => void = () => {};
 let setFixture: (fixture: { role: 'user' | 'assistant'; text: string }) => void = () => {};
 let setHarnessLocale: (locale: 'ko' | 'en') => void = () => {};
 let setMathFixture: (fixture: { tex: string; offsetPx: number }) => void = () => {};
+let harnessReady = false;
 
 function FixtureApp(): JSX.Element {
     const [stream, updateStream] = useState('');
     const [fixture, updateFixture] = useState<{ role: 'user' | 'assistant'; text: string }>({ role: 'assistant', text: '' });
     const [mathFixture, updateMathFixture] = useState({ tex: '', offsetPx: 0 });
     const { locale } = usePreferences();
-    useEffect(() => { setStreamText = updateStream; setFixture = updateFixture; setHarnessLocale = locale.setLocale; setMathFixture = updateMathFixture; }, [locale.setLocale]);
+    useEffect(() => {
+        setStreamText = updateStream; setFixture = updateFixture; setHarnessLocale = locale.setLocale; setMathFixture = updateMathFixture; harnessReady = true;
+        return () => { harnessReady = false; };
+    }, [locale.setLocale]);
     const segment = { segmentId: 'harness-tool' } as never;
     const mathSlot = { id: 'harness-math', kind: 'math' as const, tex: mathFixture.tex, displayMode: true, ordinal: 0 };
     return (
@@ -62,9 +68,14 @@ export function mountRenderFoundationHarness(): RenderFoundationHarness {
     const host = document.createElement('div');
     host.id = 'render-foundation-host';
     document.body.replaceChildren(host);
-    createRoot(host).render(<ManagerPreferencesProvider client={client}><FixtureApp /></ManagerPreferencesProvider>);
+    createRoot(host).render(
+        <ManagerPreferencesProvider client={client}>
+            <DesktopBridgeProvider><FixtureApp /></DesktopBridgeProvider>
+        </ManagerPreferencesProvider>,
+    );
     const cache = getRenderCache();
     const harness: RenderFoundationHarness = {
+        ready: () => harnessReady,
         feed: (text) => setStreamText(text),
         feedMath: (tex, offsetPx) => setMathFixture({ tex, offsetPx }),
         mountXss: (role, text) => setFixture({ role, text }),

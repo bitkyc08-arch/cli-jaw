@@ -80,6 +80,7 @@ test('dashboard2 HTML sinks stay on the approved allowlist', () => {
         'turn-stream/components/MarkdownSegment.tsx',
         'turn-stream/components/segments/CodeBlockSegment.tsx',
         'turn-stream/components/segments/MathSlot.tsx',
+        'turn-stream/render/embeds/MermaidSegment.tsx',
         'features/panels/DocPanel.tsx',
         'features/notes/rendering/CodeBlock.tsx',
         'shell/Icon.tsx',
