@@ -24,9 +24,14 @@ export default defineConfig({
           if (id.includes('node_modules/@lucide/icons/')) {
             return 'vendor-icons';
           }
+          if (/@shikijs\//.test(id) || id.includes('node_modules/shiki/')) {
+            return 'render-shiki';
+          }
+          if (id.includes('node_modules/katex/')) {
+            return 'render-katex';
+          }
           if (id.includes('node_modules/marked/') ||
               id.includes('node_modules/highlight.js/') ||
-              id.includes('node_modules/katex/') ||
               id.includes('node_modules/dompurify/') ||
               id.includes('dompurify')) {
             return 'vendor-render';

@@ -2,6 +2,10 @@ import type { SanitizedHtml } from './sanitize-policy.js';
 import { sanitizePolicyVersion } from './sanitize-policy.js';
 
 export const rendererVersion = 'r1.1';
+export const shikiVersion = '4.3.1';
+export const grammarBundle = 'bash,cpp,css,diff,go,html,java,javascript,json,jsx,markdown,plaintext,python,rust,sql,tsx,typescript,yaml@4.3.1';
+export const transformerVersion = 'semantic-v1';
+export const katexVersion = '0.16.44';
 
 type PoolName = 'markdown' | 'embed' | 'highlight' | 'height';
 type CacheValue = string | number | SanitizedHtml;
@@ -60,6 +64,9 @@ export class RenderCacheManager {
         if (this.estimatedBytes() + (bytes ?? estimateBytes(value)) > 32 * 1024 * 1024) return false;
         return this.pools[pool].set(key, value, bytes);
     }
+    setIfGenerationCurrent(pool: PoolName, key: string, value: CacheValue, generation: number, currentGeneration: () => number, bytes?: number): boolean {
+        return generation === currentGeneration() && this.set(pool, key, value, bytes);
+    }
     pin(pool: PoolName, key: string): void { if (this.scopeKey) this.pools[pool].pin(key, this.scopeKey); }
     unpin(pool: PoolName, key: string): void {
         const entry = this.pools[pool].entries.get(key);
@@ -93,6 +100,12 @@ export function contentHash(source: string): string {
     return (hash >>> 0).toString(36);
 }
 export function markdownCacheKey(hash: string): string { return `${hash}:${rendererVersion}:${sanitizePolicyVersion}`; }
+export function highlightCacheKey(codeHash: string, language: string): string {
+    return `${codeHash}:${language}:${shikiVersion}:${grammarBundle}:${transformerVersion}`;
+}
+export function embedCacheKey(texHash: string, displayMode: boolean): string {
+    return `${texHash}:${displayMode}:${katexVersion}`;
+}
 export function heightCacheKey(parts: { threadId: string; turnId: string; contentRevision: number; widthPx: number; fontMetricsVersion: string; fontScale: number; expansionFingerprint: string }): string {
     const widthBucket = Math.floor(parts.widthPx / 64) * 64;
     return [parts.threadId, parts.turnId, parts.contentRevision, widthBucket, parts.fontMetricsVersion,

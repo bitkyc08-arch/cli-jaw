@@ -42,6 +42,17 @@
     --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .5), 0 0 0 1px rgba(255, 255, 255, .04) inset;
     --shimmer-contrast: rgba(255, 255, 255, .52);
     --div-color: rgba(255, 255, 255, .08);
+    --syntax-fg: #d6d9df;
+    --syntax-comment: #9399a5;
+    --syntax-keyword: #ff8f9b;
+    --syntax-string: #a8d78f;
+    --syntax-number: #e8bd78;
+    --syntax-type: #78c7d4;
+    --syntax-function: #8fb7ff;
+    --syntax-operator: #d7a6ef;
+    --syntax-punctuation: #b9bec8;
+    --syntax-insert: #72d49b;
+    --syntax-delete: #ff8585;
 }
 
 /* ── light palette ── */
@@ -68,6 +79,17 @@
     --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .12), 0 0 0 1px rgba(0, 0, 0, .06) inset;
     --shimmer-contrast: rgba(0, 0, 0, .35);
     --div-color: rgba(0, 0, 0, .06);
+    --syntax-fg: #26313d;
+    --syntax-comment: #596778;
+    --syntax-keyword: #a31545;
+    --syntax-string: #246b35;
+    --syntax-number: #885500;
+    --syntax-type: #006b72;
+    --syntax-function: #185abd;
+    --syntax-operator: #713b92;
+    --syntax-punctuation: #475463;
+    --syntax-insert: #157347;
+    --syntax-delete: #b42318;
 }
 
 /* ── auto: follow system preference ── */
@@ -95,6 +117,17 @@
         --shadow-elevated: 0 16px 48px rgba(0, 0, 0, .12), 0 0 0 1px rgba(0, 0, 0, .06) inset;
         --shimmer-contrast: rgba(0, 0, 0, .35);
         --div-color: rgba(0, 0, 0, .06);
+        --syntax-fg: #26313d;
+        --syntax-comment: #596778;
+        --syntax-keyword: #a31545;
+        --syntax-string: #246b35;
+        --syntax-number: #885500;
+        --syntax-type: #006b72;
+        --syntax-function: #185abd;
+        --syntax-operator: #713b92;
+        --syntax-punctuation: #475463;
+        --syntax-insert: #157347;
+        --syntax-delete: #b42318;
     }
 }
 

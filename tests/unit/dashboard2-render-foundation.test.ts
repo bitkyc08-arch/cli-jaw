@@ -74,6 +74,15 @@ test('dashboard2 HTML sinks stay on the approved allowlist', () => {
     const root = join(process.cwd(), 'public/dashboard2/src'); const found: string[] = [];
     const walk = (dir: string): void => { for (const name of readdirSync(dir)) { const path = join(dir, name); if (statSync(path).isDirectory()) walk(path); else if (/\.tsx?$/.test(path) && readFileSync(path, 'utf8').includes('dangerouslySetInnerHTML')) found.push(path.slice(root.length + 1)); } };
     walk(root);
-    const allowed = new Set(['turn-stream/components/MarkdownSegment.tsx', 'features/panels/DocPanel.tsx', 'features/notes/rendering/CodeBlock.tsx', 'shell/Icon.tsx']);
+    // R2 additions: CodeBlockSegment (highlight-profile sink) and MathSlot
+    // (katex-profile sink) render SanitizedHtml via sanitizedHtmlProps only.
+    const allowed = new Set([
+        'turn-stream/components/MarkdownSegment.tsx',
+        'turn-stream/components/segments/CodeBlockSegment.tsx',
+        'turn-stream/components/segments/MathSlot.tsx',
+        'features/panels/DocPanel.tsx',
+        'features/notes/rendering/CodeBlock.tsx',
+        'shell/Icon.tsx',
+    ]);
     assert.deepEqual(found.filter(path => !allowed.has(path)), [], 'New HTML sinks must use turn-stream/render/sanitize-policy.ts and be explicitly allowlisted');
 });

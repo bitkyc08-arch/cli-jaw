@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { checkWebUiBuildOutput } from '../../scripts/check-web-ui-build-output.ts';
 
-function makeDist(indexHtml: string, appJs: string): string {
+interface SyntheticBundle {
+    manifest?: Record<string, { file: string; imports?: string[]; dynamicImports?: string[] }>;
+    files?: Record<string, string | Uint8Array>;
+}
+
+function makeDist(indexHtml: string, appJs: string, bundle: SyntheticBundle = {}): string {
     const dir = mkdtempSync(join(tmpdir(), 'cli-jaw-build-output-'));
     const assets = join(dir, 'assets');
     mkdirSync(assets);
@@ -17,7 +23,34 @@ function makeDist(indexHtml: string, appJs: string): string {
     mkdirSync(join(dir, 'dashboard2'));
     writeFileSync(join(dir, 'dashboard2', 'index.html'), '<!doctype html>');
     writeFileSync(join(assets, 'dashboard2-test.js'), 'console.log("dashboard2");');
+    mkdirSync(join(dir, '.vite'));
+    const manifest = bundle.manifest ?? {
+        'dashboard2/index.html': { file: 'assets/dashboard2-test.js' },
+    };
+    writeFileSync(join(dir, '.vite', 'manifest.json'), JSON.stringify(manifest));
+    for (const [relativePath, content] of Object.entries(bundle.files ?? {})) {
+        const target = join(dir, relativePath);
+        mkdirSync(join(target, '..'), { recursive: true });
+        writeFileSync(target, content);
+    }
     return dir;
+}
+
+function renderManifest(overrides: SyntheticBundle = {}): SyntheticBundle {
+    return {
+        manifest: {
+            'dashboard2/index.html': { file: 'assets/dashboard2-test.js', dynamicImports: ['dashboard2/src/turn-stream/render/highlight-service.ts'] },
+            'dashboard2/src/turn-stream/render/highlight-service.ts': { file: 'assets/highlight-service-test.js', dynamicImports: ['node_modules/@shikijs/core/dist/index.mjs'] },
+            'node_modules/@shikijs/core/dist/index.mjs': { file: 'assets/render-shiki-test.js' },
+            ...overrides.manifest,
+        },
+        files: {
+            'assets/highlight-service-test.js': 'new Worker(new URL("./highlight-worker-test.js", import.meta.url),{type:"module"});',
+            'assets/render-shiki-test.js': 'export const shiki = true;',
+            'assets/highlight-worker-test.js': 'self.onmessage = () => {};',
+            ...overrides.files,
+        },
+    };
 }
 
 test('build output guard passes dynamic mermaid-loader import', () => {
@@ -87,4 +120,51 @@ test('build output guard fails when manager entry html is missing', () => {
     const result = checkWebUiBuildOutput({ distDir: dist });
     assert.equal(result.ok, false);
     assert.match(result.errors.join('\n'), /Missing .*manager.*index\.html/);
+});
+
+test('build output guard fails eager Shiki in dashboard2 static graph', () => {
+    const bundle = renderManifest();
+    bundle.manifest!['dashboard2/index.html'].imports = ['node_modules/@shikijs/core/dist/index.mjs'];
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', bundle) });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /static import closure contains Shiki/);
+});
+
+test('build output guard fails oversized Shiki lazy aggregate', () => {
+    const bundle = renderManifest({ files: { 'assets/render-shiki-test.js': randomBytes(451 * 1024) } });
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', bundle) });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /lazy aggregate gzip .* exceeds/);
+});
+
+test('build output guard fails when highlight service has no render-shiki lazy chunk', () => {
+    const bundle = renderManifest();
+    bundle.manifest!['dashboard2/src/turn-stream/render/highlight-service.ts'].dynamicImports = [];
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', bundle) });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /no render-shiki lazy chunk/);
+});
+
+test('build output guard fails when emitted highlight worker is missing', () => {
+    const bundle = renderManifest({ files: { 'assets/highlight-service-test.js': 'export const service = true;' } });
+    delete bundle.files!['assets/highlight-worker-test.js'];
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', bundle) });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /worker file was not found/);
+});
+
+test('build output guard fails KaTeX in dashboard2 static graph', () => {
+    const bundle = renderManifest();
+    bundle.manifest!['dashboard2/index.html'].imports = ['node_modules/katex/dist/katex.mjs'];
+    bundle.manifest!['node_modules/katex/dist/katex.mjs'] = { file: 'assets/render-katex-test.js' };
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', bundle) });
+    assert.equal(result.ok, false);
+    assert.match(result.errors.join('\n'), /static import closure contains KaTeX/);
+});
+
+test('build output guard passes valid dynamic Shiki graph with emitted worker', () => {
+    const result = checkWebUiBuildOutput({ distDir: makeDist('<!doctype html>', '', renderManifest()) });
+    assert.equal(result.ok, true, result.errors.join('\n'));
+    assert.equal(result.dashboard2Bundle?.staticShikiCount, 0);
+    assert.deepEqual(result.dashboard2Bundle?.lazyFiles.sort(), ['assets/highlight-worker-test.js', 'assets/render-shiki-test.js']);
 });

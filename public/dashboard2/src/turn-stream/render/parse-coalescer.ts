@@ -3,9 +3,10 @@ import { renderCopy } from './copy-catalog.js';
 import { preParseMarkdown } from './pre-parse.js';
 import { contentHash, getRenderCache, markdownCacheKey } from './render-cache.js';
 import { sanitizeHtml, type SanitizedHtml } from './sanitize-policy.js';
+import { extractMarkdownSlots, type MarkdownSlot } from './markdown-slot-manifest.js';
 
 export interface RenderIdentity { scopeKey: string; turnId: string; segmentId: string }
-export interface MarkdownRenderResult { html: SanitizedHtml; normalizedSource: string; cacheKey: string; finalized: boolean }
+export interface MarkdownRenderResult { html: SanitizedHtml; normalizedSource: string; cacheKey: string; finalized: boolean; readonly slots: readonly MarkdownSlot[] }
 export interface ParseCoalescer { update(source: string): void; flushFinal(source?: string): MarkdownRenderResult; snapshot(): MarkdownRenderResult | null; dispose(): void }
 
 const MEDIUM = 256 * 1024;
@@ -27,12 +28,21 @@ function parse(raw: string, finalized: boolean): MarkdownRenderResult {
     const cache = getRenderCache();
     if (finalized) {
         const cached = cache.get('markdown', cacheKey);
-        if (typeof cached === 'string') return { html: cached as SanitizedHtml, normalizedSource, cacheKey, finalized: true };
+        if (typeof cached === 'string') {
+            const extracted = extractMarkdownSlots(normalizedSource, contentHash(normalizedSource), true);
+            return { html: cached as SanitizedHtml, normalizedSource, cacheKey, finalized: true, slots: extracted.slots };
+        }
     }
     const parseSource = !finalized && normalizedSource.length > MEDIUM ? inertOpenConstructs(normalizedSource) : normalizedSource;
-    const unsafe = marked.parse(parseSource, { async: false });
+    // streaming parses stay slot-free: closed fences render as plain
+    // pre/code via marked and raw TeX stays text — portals/highlight/KaTeX
+    // are final-only per 082 §3.1/§3.5. Slot extraction runs only at finalize.
+    const extracted = finalized
+        ? extractMarkdownSlots(parseSource, contentHash(normalizedSource), true)
+        : { source: parseSource, slots: [] as readonly MarkdownSlot[] };
+    const unsafe = marked.parse(extracted.source, { async: false });
     const html = sanitizeHtml(unsafe, 'markdown');
-    const result = { html, normalizedSource, cacheKey, finalized };
+    const result = { html, normalizedSource, cacheKey, finalized, slots: extracted.slots };
     if (finalized) cache.set('markdown', cacheKey, html);
     return result;
 }

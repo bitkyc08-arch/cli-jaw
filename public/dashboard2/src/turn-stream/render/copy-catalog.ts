@@ -4,7 +4,9 @@ export type RenderCopyKey =
     | 'tool.status.error' | 'tool.label' | 'tool.labelPlain' | 'widget.expand'
     | 'widget.collapse' | 'widget.state.expanded' | 'widget.state.collapsed'
     | 'turn.title' | 'stream.oversizeNotice' | 'stream.renderFully'
-    | 'stream.fencePlaceholder' | 'stream.mathPlaceholder';
+    | 'stream.fencePlaceholder' | 'stream.mathPlaceholder'
+    | 'code.copy' | 'code.copied' | 'code.wrap' | 'code.nowrap' | 'code.highlight'
+    | 'code.highlighting' | 'code.plain' | 'code.oversize' | 'math.error' | 'math.oversize';
 
 export const renderCopyCatalog: Record<RenderLocale, Record<RenderCopyKey, string>> = {
     ko: {
@@ -16,6 +18,10 @@ export const renderCopyCatalog: Record<RenderLocale, Record<RenderCopyKey, strin
         'turn.title': '턴', 'stream.oversizeNotice': '큰 응답({sizeKiB} KiB)은 안정된 부분까지만 표시합니다.',
         'stream.renderFully': '전체 렌더링', 'stream.fencePlaceholder': '열린 코드 블록',
         'stream.mathPlaceholder': '열린 수식',
+        'code.copy': '코드 복사', 'code.copied': '복사됨', 'code.wrap': '줄 바꿈', 'code.nowrap': '줄 바꿈 해제',
+        'code.highlight': '구문 강조', 'code.highlighting': '강조 중', 'code.plain': '일반 텍스트',
+        'code.oversize': '큰 코드 블록({sizeKiB} KiB)', 'math.error': '수식을 표시할 수 없습니다',
+        'math.oversize': '큰 수식({sizeKiB} KiB)',
     },
     en: {
         'tool.expand': 'Expand tool', 'tool.collapse': 'Collapse tool',
@@ -26,6 +32,10 @@ export const renderCopyCatalog: Record<RenderLocale, Record<RenderCopyKey, strin
         'turn.title': 'Turn', 'stream.oversizeNotice': 'Large response ({sizeKiB} KiB) is showing its last stable render.',
         'stream.renderFully': 'Render fully', 'stream.fencePlaceholder': 'Open code block',
         'stream.mathPlaceholder': 'Open math block',
+        'code.copy': 'Copy code', 'code.copied': 'Copied', 'code.wrap': 'Wrap lines', 'code.nowrap': 'Do not wrap lines',
+        'code.highlight': 'Highlight', 'code.highlighting': 'Highlighting', 'code.plain': 'Plain text',
+        'code.oversize': 'Large code block ({sizeKiB} KiB)', 'math.error': 'Unable to render math',
+        'math.oversize': 'Large formula ({sizeKiB} KiB)',
     },
 };
 

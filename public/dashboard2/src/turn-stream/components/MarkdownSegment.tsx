@@ -1,4 +1,5 @@
 import { memo, useEffect, useId, useMemo, useRef, useState, type ReactElement } from 'react';
+import { createPortal } from 'react-dom';
 import { usePreferences } from '../../providers/preferences-provider.tsx';
 import { renderCopy } from '../render/copy-catalog.ts';
 import {
@@ -8,6 +9,9 @@ import {
     type RenderIdentity,
 } from '../render/parse-coalescer.ts';
 import { sanitizedHtmlProps } from '../render/sanitize-policy.ts';
+import type { MarkdownSlot } from '../render/markdown-slot-manifest.ts';
+import { CodeBlockSegment } from './segments/CodeBlockSegment.tsx';
+import { MathSlot } from './segments/MathSlot.tsx';
 
 const OVERSIZE_BYTES = 1024 * 1024;
 
@@ -17,9 +21,35 @@ export interface MarkdownSegmentProps {
     mode?: 'final' | 'streaming';
 }
 
+function MarkdownWithSlots({ result }: { result: MarkdownRenderResult }): ReactElement {
+    const container = useRef<HTMLDivElement>(null);
+    const [targets, setTargets] = useState(new Map<string, Element>());
+    useEffect(() => {
+        const next = new Map<string, Element>();
+        container.current?.querySelectorAll('[data-render-slot]').forEach(element => {
+            const id = element.getAttribute('data-render-slot'); if (id) next.set(id, element);
+        });
+        setTargets(next);
+    }, [result.cacheKey, result.html]);
+    const scrollRoot = container.current?.closest('.d2-turn-scroll') ?? null;
+    // react-dom 19 re-sets innerHTML whenever the dangerouslySetInnerHTML
+    // prop object identity changes, replacing the children and detaching the
+    // captured portal targets. Memoizing the sink ELEMENT makes React bail
+    // out of reconciling it entirely while the html value is unchanged, so
+    // the placeholder nodes (and mounted portals) survive re-renders.
+    const sink = useMemo(
+        () => <div ref={container} className="markdown-segment" dangerouslySetInnerHTML={sanitizedHtmlProps(result.html)} />,
+        [result.html],
+    );
+    return <>{sink}{result.slots.map((slot: MarkdownSlot) => {
+        const target = targets.get(slot.id); if (!target) return null;
+        return createPortal(slot.kind === 'code' ? <CodeBlockSegment code={slot.code} language={slot.language} openFence={slot.openFence} /> : <MathSlot slot={slot} scrollRoot={scrollRoot} />, target, slot.id);
+    })}</>;
+}
+
 function FinalMarkdown({ text }: { text: string }): ReactElement {
     const result = useMemo(() => renderFinalMarkdown(text), [text]);
-    return <div className="markdown-segment" dangerouslySetInnerHTML={sanitizedHtmlProps(result.html)} />;
+    return <MarkdownWithSlots result={result} />;
 }
 
 function StreamingMarkdown({ text, identity }: { text: string; identity: RenderIdentity }): ReactElement {

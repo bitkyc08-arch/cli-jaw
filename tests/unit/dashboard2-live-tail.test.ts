@@ -193,7 +193,9 @@ test('MarkdownSegment enforces URL, CSS, tag, and event-handler sanitization', (
     assert.match(html, /href="https:\/\/safe\.test\/path"/);
     assert.match(html, /href="mailto:safe@example\.com"/);
     assert.match(html, /href="\/relative\/path"/);
-    assert.match(html, /<pre><code class="language-ts">/);
+    // R2: fenced code becomes an inert slot placeholder; CodeBlockSegment
+    // mounts via portal (portal content does not appear in static markup)
+    assert.match(html, /data-render-slot="[^"]*-code-0"/);
     dom.window.close();
     delete (globalThis as any).window;
 });
