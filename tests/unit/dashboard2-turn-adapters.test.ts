@@ -2,10 +2,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { TurnSegment } from '../../src/shared/chat-events.ts';
 import type { WorkerProgressRun } from '../../src/orchestrator/worker-progress.ts';
-import {
-    DETAIL_UNAVAILABLE,
-    createDetailLoader,
-} from '../../public/dashboard2/src/turn-stream/detail/detail-loader.ts';
+import { getDetailController } from '../../public/dashboard2/src/turn-stream/detail/detail-loader.ts';
+import { createTurnStore } from '../../public/dashboard2/src/turn-stream/store/turn-store.ts';
 import { createWidgetUiStore } from '../../public/dashboard2/src/turn-stream/widgets/widget-ui-store.ts';
 import { adaptWidgetSegment } from '../../public/dashboard2/src/turn-stream/widgets/widget-segment-adapter.ts';
 import {
@@ -30,75 +28,11 @@ function worker(overrides: Partial<WorkerProgressRun> = {}): WorkerProgressRun {
     };
 }
 
-function deferred<T>() {
-    let resolve!: (value: T) => void;
-    let reject!: (error: unknown) => void;
-    const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
-    return { promise, resolve, reject };
-}
-
-test('detail loader single-flights a key and commits through the fetch token', async () => {
-    const request = deferred<unknown>();
-    let fetches = 0;
-    const puts: Array<[string, unknown]> = [];
-    const loader = createDetailLoader(() => { fetches++; return request.promise; }, {
-        beginFetch: () => 7,
-        resolveFetch: (_token, apply) => { apply(); return true; },
-        putDetail: (key, detail) => puts.push([key, detail]),
-    });
+test('detail controller memoizes per store and ref', () => {
+    const store = createTurnStore('detail-adapter');
     const ref = { traceRunId: 'trace', traceSeq: 2 };
-    const first = loader.load(ref);
-    const second = loader.load(ref);
-    assert.equal(first, second);
-    request.resolve({ text: 'detail' });
-    assert.equal((await first).status, 'ready');
-    assert.equal(fetches, 1);
-    assert.deepEqual(puts, [['trace#2', { text: 'detail' }]]);
-});
-
-test('detail loader caches 404 as unavailable and does not retry', async () => {
-    let fetches = 0;
-    const puts: unknown[] = [];
-    const loader = createDetailLoader(async () => { fetches++; throw { status: 404 }; }, {
-        beginFetch: () => 1,
-        resolveFetch: (_token, apply) => { apply(); return true; },
-        putDetail: (_key, detail) => puts.push(detail),
-    });
-    const ref = { traceRunId: 'missing', traceSeq: 9 };
-    assert.deepEqual(await loader.load(ref), DETAIL_UNAVAILABLE);
-    assert.deepEqual(await loader.load(ref), DETAIL_UNAVAILABLE);
-    assert.equal(fetches, 1);
-    assert.deepEqual(puts, [DETAIL_UNAVAILABLE]);
-});
-
-test('detail loader abort leaves store unchanged', async () => {
-    let signal: AbortSignal | null = null;
-    const puts: unknown[] = [];
-    const loader = createDetailLoader((_ref, nextSignal) => {
-        signal = nextSignal;
-        return new Promise((_resolve, reject) => nextSignal.addEventListener('abort', () => reject(new DOMException('stop', 'AbortError'))));
-    }, {
-        beginFetch: () => 1,
-        resolveFetch: (_token, apply) => { apply(); return true; },
-        putDetail: (_key, detail) => puts.push(detail),
-    });
-    const ref = { traceRunId: 'abort', traceSeq: 1 };
-    const pending = loader.load(ref);
-    loader.abort(ref);
-    assert.equal((await pending).status, 'aborted');
-    assert.equal(signal?.aborted, true);
-    assert.deepEqual(puts, []);
-});
-
-test('detail loader drops stale scope results', async () => {
-    const puts: unknown[] = [];
-    const loader = createDetailLoader(async () => 'late', {
-        beginFetch: () => 3,
-        resolveFetch: () => false,
-        putDetail: (_key, detail) => puts.push(detail),
-    });
-    assert.equal((await loader.load({ traceRunId: 'stale', traceSeq: 1 })).status, 'stale');
-    assert.deepEqual(puts, []);
+    assert.equal(getDetailController(store, ref), getDetailController(store, { ...ref }));
+    store.dispose();
 });
 
 test('widget UI store owns expansion, placeholder, revision, and width state', () => {

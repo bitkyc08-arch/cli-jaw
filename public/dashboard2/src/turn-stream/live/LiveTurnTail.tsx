@@ -3,7 +3,8 @@
 // policy auto-inflates at most the LATEST active turn. Fold-in to committed
 // is the 042 store's single transaction — this component just stops
 // rendering the turn in the same snapshot the committed list mounts it.
-import { type JSX } from 'react';
+import { useState, useSyncExternalStore, type JSX } from 'react';
+import type { TurnSegment } from '../../../../../src/shared/chat-events.ts';
 import { rowKey } from '../types.ts';
 import type { TurnStore } from '../store/turn-store.ts';
 import { useLiveTurns } from '../store/use-turn.ts';
@@ -13,15 +14,66 @@ import { ToolLine } from '../components/segments/ToolLine.tsx';
 import { WidgetSegment } from '../components/segments/WidgetSegment.tsx';
 import { parseWidgetDescriptor } from '../widgets/widget-segment-adapter.ts';
 import { prepareFoldSnapshot } from './fold-live-turn.ts';
+import { getDetailController, type DetailController } from '../detail/detail-loader.ts';
+import { ToolDetailPane } from '../detail/ToolDetailPane.tsx';
+
+const EMPTY_DETAIL_SNAPSHOT = {
+    phase: 'idle', resolvedRevision: null, totalBytes: null, lineCount: null,
+    inlineText: null, chunks: [], error: null,
+} as const;
+const subscribeToNothing = (): (() => void) => () => {};
+const emptyDetailSnapshot = () => EMPTY_DETAIL_SNAPSHOT;
 
 export interface LiveTurnTailProps {
     store: TurnStore;
 }
 
+function detailKey(row: TurnSegment, revision: string | null): string {
+    return `${row.turnId}|${row.segmentId}|${revision ?? 'pending'}`;
+}
+
+function LiveToolLine({
+    store,
+    row,
+    expanded,
+    onToggle,
+}: {
+    store: TurnStore;
+    row: TurnSegment;
+    expanded: boolean;
+    onToggle(revision: string | null): void;
+}): JSX.Element {
+    const controller: DetailController | null = row.detailRef ? getDetailController(store, row.detailRef) : null;
+    const snapshot = useSyncExternalStore(
+        controller?.subscribe ?? subscribeToNothing,
+        controller?.snapshot ?? emptyDetailSnapshot,
+        controller?.snapshot ?? emptyDetailSnapshot,
+    );
+    const id = `live-tool-detail-${row.turnId}-${row.segmentId}`.replace(/[^a-zA-Z0-9_-]/g, '-');
+    const label = row.detailRef ? `Tool #${row.detailRef.traceSeq}` : 'Tool';
+    return <ToolLine
+        segment={row}
+        traceSeq={row.detailRef?.traceSeq}
+        status={row.status === 'running' ? 'running' : row.status === 'error' ? 'error' : 'done'}
+        expanded={expanded}
+        onToggle={() => onToggle(snapshot.resolvedRevision ?? null)}
+        controller={controller ?? undefined}
+        detailId={id}
+        busy={['opening', 'loading-inline', 'loading-range'].includes(snapshot.phase)}
+        detail={controller && expanded ? <ToolDetailPane controller={controller} summaryLabel={label} detailId={id} /> : undefined}
+    />;
+}
+
 export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
     const live = useLiveTurns(store);
+    const [manualExpanded, setManualExpanded] = useState<string | null>(null);
+    const [manualCollapseLatches, setManualCollapseLatches] = useState<ReadonlySet<string>>(() => new Set());
     if (!live.turnIds.length) return null;
     const latest = live.turnIds[live.turnIds.length - 1];
+    const latestModel = store.getLiveTurn(latest);
+    const autoTarget = latestModel?.rows
+        .filter(row => row.type === 'tool' && row.status === 'running' && row.detailRef)
+        .sort((a, b) => b.turnSeq - a.turnSeq)[0] ?? null;
     return (
         <div className="d2-live-tail" data-testid="live-turn-tail" data-live-count={live.turnIds.length}>
             {live.turnIds.map(turnId => {
@@ -55,14 +107,33 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
                                 );
                             }
                             if (row.type === 'tool') {
+                                const controller = row.detailRef ? getDetailController(store, row.detailRef) : null;
+                                const revision = controller?.snapshot().resolvedRevision ?? null;
+                                const key = detailKey(row, revision);
+                                const pendingKey = detailKey(row, null);
+                                const autoExpanded = autoTarget?.turnId === row.turnId
+                                    && autoTarget.segmentId === row.segmentId
+                                    && !manualCollapseLatches.has(key)
+                                    && !manualCollapseLatches.has(pendingKey);
+                                const expanded = manualExpanded === key || manualExpanded === pendingKey
+                                    || (manualExpanded === null && autoExpanded);
                                 return (
-                                    <ToolLine
+                                    <LiveToolLine
                                         key={key}
-                                        segment={row}
-                                        traceSeq={row.detailRef?.traceSeq}
-                                        status={row.status === 'running' ? 'running' : row.status === 'error' ? 'error' : 'done'}
-                                        expanded={false}
-                                        onToggle={() => {}}
+                                        store={store}
+                                        row={row}
+                                        expanded={expanded}
+                                        onToggle={resolvedRevision => {
+                                            const resolvedKey = detailKey(row, resolvedRevision);
+                                            if (expanded) {
+                                                setManualExpanded(null);
+                                                if (autoTarget?.turnId === row.turnId && autoTarget.segmentId === row.segmentId) {
+                                                    setManualCollapseLatches(current => new Set(current).add(resolvedKey));
+                                                }
+                                            } else {
+                                                setManualExpanded(resolvedKey);
+                                            }
+                                        }}
                                     />
                                 );
                             }

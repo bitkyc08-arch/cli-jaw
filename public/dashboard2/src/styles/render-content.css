@@ -67,3 +67,23 @@
 @keyframes d2-render-content-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
 @media (prefers-reduced-motion: reduce) { .d2-mermaid::after, .d2-image-segment::after { animation: none; } }
 @media (max-width: 640px) { .markdown-segment { font-size: 15px; line-height: 24px; } }
+
+.d2-tool-detail { margin-top: 6px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); }
+.d2-tool-detail__skeleton { display: grid; gap: 6px; min-height: 80px; padding: 10px 12px; }
+.d2-tool-detail__skeleton span { height: 14px; border-radius: var(--r-sm); background: var(--surface-h); }
+.d2-tool-detail__skeleton span:nth-child(2) { width: 82%; }
+.d2-tool-detail__skeleton span:nth-child(3) { width: 68%; }
+.d2-tool-detail__viewport { position: relative; max-height: 320px; overflow: auto; font: 400 12.5px/20px var(--font-mono); }
+.d2-tool-detail__viewport:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.d2-tool-detail__spacer { position: relative; min-width: max-content; }
+.d2-tool-detail__line { position: absolute; left: 0; display: grid; grid-template-columns: 52px minmax(0, 1fr); width: 100%; min-width: max-content; height: 20px; white-space: pre; }
+.d2-tool-detail__line::selection, .d2-tool-detail__text::selection { background: var(--accent-soft); }
+.d2-tool-detail__gutter { padding-right: 10px; color: var(--text-3); text-align: right; user-select: none; }
+.d2-tool-detail__text { padding-right: 14px; color: var(--syntax-fg); }
+.d2-tool-detail__state { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 48px; padding: 8px 12px; border-left: 2px solid var(--danger); }
+.d2-tool-detail__state button { border: 1px solid var(--border); border-radius: var(--r-sm); background: var(--surface-h); color: var(--text); }
+.d2-tool-detail.is-gone .d2-tool-detail__state, .d2-tool-detail.is-unavailable .d2-tool-detail__state { color: var(--text-3); }
+.d2-detail-progress, .d2-copy-progress { accent-color: var(--accent); color: var(--text-3); }
+.d2-ansi-b { font-weight: 700; } .d2-ansi-dim { opacity: .7; } .d2-ansi-i { font-style: italic; } .d2-ansi-u { text-decoration: underline; }
+.d2-ansi-fg-0 { color: var(--syntax-fg); } .d2-ansi-fg-1 { color: var(--syntax-delete); } .d2-ansi-fg-2 { color: var(--syntax-insert); } .d2-ansi-fg-3 { color: var(--syntax-keyword); } .d2-ansi-fg-4 { color: var(--syntax-link); } .d2-ansi-fg-5 { color: var(--syntax-string); } .d2-ansi-fg-6 { color: var(--syntax-number); } .d2-ansi-fg-7 { color: var(--text); }
+@media (prefers-reduced-motion: reduce) { .d2-tool-detail__skeleton span { animation: none; } }

@@ -107,7 +107,13 @@ export interface TurnStore {
     pinTurn(turnId: string, pinned: boolean): void;
     /** T3 expanded detail cache */
     putDetail(key: string, detail: unknown, pinned?: boolean): void;
-    collapseDetail(key: string): void;
+    getDetail(key: string): unknown | null;
+    touchDetail(key: string): void;
+    collapseDetail(key: string, graceUntil?: number): void;
+    sweepDetails(now: number): void;
+    pinDetail(key: string, reason: 'expanded' | 'copy' | 'search'): void;
+    unpinDetail(key: string, reason: 'expanded' | 'copy' | 'search'): void;
+    registerDetailDisposer(disposer: () => void): Unsubscribe;
     hasDetail(key: string): boolean;
     detailBytes(): number;
     /** scope-generation fetch guard: resolve callbacks from stale scopes drop */
@@ -138,6 +144,7 @@ export function createTurnStore(
         t2MaxBytes?: number;
         t2MaxTurns?: number;
         t3MaxBytes?: number;
+        now?: () => number;
     } = {},
 ): TurnStore {
     let reducerState: TurnStreamState = createTurnStreamState(scopeKey, options.sessionFilter ?? null);
@@ -163,6 +170,10 @@ export function createTurnStore(
     });
     const t3: TierBudget = createTierBudget(options.t3MaxBytes ?? T3_MAX_BYTES, { mode: 'evict' });
     const details = new Map<string, unknown>();
+    const detailGrace = new Map<string, number>();
+    const detailPins = new Map<string, Set<'expanded' | 'copy' | 'search'>>();
+    const detailDisposers = new Set<() => void>();
+    const now = options.now ?? Date.now;
 
     const turnSubscribers = new Map<string, Set<() => void>>();
     const listSubscribers = new Set<() => void>();
@@ -216,6 +227,8 @@ export function createTurnStore(
     function enforceT3(): void {
         enforceBudget(t3, step => {
             details.delete(step.key);
+            detailGrace.delete(step.key);
+            detailPins.delete(step.key);
             removeEntry(t3, step.key);
         });
     }
@@ -364,7 +377,7 @@ export function createTurnStore(
             if (portChange) {
                 stubs.clear(); order = []; liveTurns.clear(); bodies.clear();
                 t2.entries.clear(); t2.totalBytes = 0;
-                t3.entries.clear(); t3.totalBytes = 0; details.clear();
+                t3.entries.clear(); t3.totalBytes = 0; details.clear(); detailGrace.clear(); detailPins.clear();
                 generation += 1;
                 listVersion += 1; listSnapshot = null;
                 liveVersion += 1; liveSnapshot = null;
@@ -486,12 +499,51 @@ export function createTurnStore(
         putDetail(key, detail, pinned = false) {
             details.set(key, detail);
             touchEntry(t3, key, estimateBytes(detail), { pinned });
+            if (pinned) detailPins.set(key, new Set(['expanded']));
             enforceT3();
         },
-        collapseDetail(key) {
-            // collapse/unpin marks the entry as the preferred eviction victim
-            setPinned(t3, key, false);
+        getDetail(key) {
+            return details.get(key) ?? null;
+        },
+        touchDetail(key) {
+            const entry = t3.entries.get(key);
+            if (entry) touchEntry(t3, key, entry.bytes);
+        },
+        collapseDetail(key, graceUntil = now() + 60_000) {
+            detailPins.get(key)?.delete('expanded');
+            detailGrace.set(key, graceUntil);
+            setPinned(t3, key, Boolean(detailPins.get(key)?.size));
             enforceT3();
+        },
+        sweepDetails(at) {
+            for (const [key, graceUntil] of detailGrace) {
+                if (graceUntil > at || detailPins.get(key)?.size) continue;
+                detailGrace.delete(key);
+                detailPins.delete(key);
+                details.delete(key);
+                removeEntry(t3, key);
+            }
+        },
+        pinDetail(key, reason) {
+            if (!details.has(key)) return;
+            let reasons = detailPins.get(key);
+            if (!reasons) { reasons = new Set(); detailPins.set(key, reasons); }
+            reasons.add(reason);
+            detailGrace.delete(key);
+            setPinned(t3, key, true);
+            const entry = t3.entries.get(key);
+            if (entry) touchEntry(t3, key, entry.bytes, { pinned: true });
+        },
+        unpinDetail(key, reason) {
+            const reasons = detailPins.get(key);
+            reasons?.delete(reason);
+            if (reasons && !reasons.size) detailPins.delete(key);
+            setPinned(t3, key, Boolean(reasons?.size));
+            enforceT3();
+        },
+        registerDetailDisposer(disposer) {
+            detailDisposers.add(disposer);
+            return () => detailDisposers.delete(disposer);
         },
         hasDetail(key) {
             return details.has(key);
@@ -510,9 +562,12 @@ export function createTurnStore(
         dispose() {
             disposed = true;
             generation += 1;
+            for (const disposer of detailDisposers) disposer();
+            detailDisposers.clear();
             stubs.clear(); order = []; liveTurns.clear(); bodies.clear();
-            details.clear();
+            details.clear(); detailGrace.clear(); detailPins.clear();
             t2.entries.clear(); t3.entries.clear();
+            t2.totalBytes = 0; t3.totalBytes = 0;
             turnSubscribers.clear(); listSubscribers.clear(); liveSubscribers.clear();
         },
         stats() {
