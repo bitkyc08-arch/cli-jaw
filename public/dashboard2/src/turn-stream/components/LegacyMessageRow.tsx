@@ -13,7 +13,7 @@ export function LegacyMessageRow({ message }: { message: LegacyMessageModel }): 
             data-role={message.role}
         >
             {isUser ? (
-                <div className="d2-user-bubble">{message.content}</div>
+                <div className="d2-user-bubble"><MarkdownSegment text={message.content} /></div>
             ) : (
                 <MarkdownSegment text={message.content} />
             )}

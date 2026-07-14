@@ -13,6 +13,8 @@ import { CollabSegment } from './segments/CollabSegment.tsx';
 import { ThinkingSegment } from './segments/ThinkingSegment.tsx';
 import { ToolLine } from './segments/ToolLine.tsx';
 import { WidgetSegment } from './segments/WidgetSegment.tsx';
+import { usePreferences } from '../../providers/preferences-provider.tsx';
+import { renderCopy } from '../render/copy-catalog.ts';
 
 export interface TurnRowProps {
     store: TurnStore;
@@ -34,6 +36,8 @@ function formatDuration(ms: number): string {
 }
 
 export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
+    const { locale } = usePreferences();
+    const renderLocale = locale.locale === 'ko' ? 'ko' : 'en';
     const stub = useTurn(store, turnId);
     const body = useTurnBody(store, turnId);
     const [expandedTool, setExpandedTool] = useState<string | null>(null);
@@ -69,7 +73,7 @@ export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
                 <ToolLine
                     key={key}
                     segment={row}
-                    label={row.detailRef ? `Tool #${row.detailRef.traceSeq}` : 'Tool'}
+                    traceSeq={row.detailRef?.traceSeq}
                     status={row.status === 'running' ? 'running' : row.status === 'error' ? 'error' : 'done'}
                     expanded={expandedTool === key}
                     onToggle={() => setExpandedTool(current => (current === key ? null : key))}
@@ -111,7 +115,7 @@ export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
     return (
         <article className="d2-turn-row" data-turn-id={turnId} data-terminal={stub.terminalStatus}>
             <header className="d2-turn-header">
-                <span className="d2-turn-title">Turn</span>
+                <span className="d2-turn-title">{renderCopy(renderLocale, 'turn.title')}</span>
                 {durationMs !== null ? (
                     <span className="d2-turn-duration" data-testid="turn-duration" data-duration-ms={durationMs}>
                         {formatDuration(durationMs)}

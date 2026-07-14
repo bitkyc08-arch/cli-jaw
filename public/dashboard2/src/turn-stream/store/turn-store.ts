@@ -96,6 +96,8 @@ export interface TurnStore {
     getTurnRows(turnId: string): TurnSegment[];
     /** streaming body for a live turn via the traceRunId→turnId join */
     getLiveBodyForTurn(turnId: string): string | null;
+    resolveTurnIdForTrace(traceRunId: string): string | null;
+    getScopeKey(): string;
     getListSnapshot(): ListSnapshot;
     /** canonical durable row keys (048 history overlap diagnosis) */
     getRowKeys(): readonly RowKey[];
@@ -443,6 +445,12 @@ export function createTurnStore(
                 if (unjoined.length === 1) return unjoined[0][1];
             }
             return null;
+        },
+        resolveTurnIdForTrace(traceRunId) {
+            return reducerState.runToTurn[traceRunId] ?? null;
+        },
+        getScopeKey() {
+            return reducerState.scopeKey;
         },
         getListSnapshot() {
             if (!listSnapshot) {

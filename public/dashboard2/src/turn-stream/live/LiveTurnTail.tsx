@@ -59,7 +59,7 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
                                     <ToolLine
                                         key={key}
                                         segment={row}
-                                        label={row.detailRef ? `Tool #${row.detailRef.traceSeq}` : 'Tool'}
+                                        traceSeq={row.detailRef?.traceSeq}
                                         status={row.status === 'running' ? 'running' : row.status === 'error' ? 'error' : 'done'}
                                         expanded={false}
                                         onToggle={() => {}}
@@ -81,7 +81,13 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
                             }
                             return null;
                         })}
-                        {body ? <MarkdownSegment text={body} streaming /> : null}
+                        {body ? (
+                            <MarkdownSegment
+                                text={body}
+                                mode="streaming"
+                                identity={{ scopeKey: store.getScopeKey(), turnId, segmentId: `${turnId}:body` }}
+                            />
+                        ) : null}
                     </article>
                 );
             })}

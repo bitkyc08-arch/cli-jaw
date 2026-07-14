@@ -3,11 +3,20 @@ export interface StreamSchedulerOptions {
     now?: () => number;
 }
 
+export type StreamTurnKey = string;
+
 export interface StreamScheduler {
-    push(chunk: string): void;
-    flushNow(): void;
+    beginTurn(key: StreamTurnKey): void;
+    push(key: StreamTurnKey, chunk: string): void;
+    flushTurn(key: StreamTurnKey): void;
+    resetTurn(key: StreamTurnKey): void;
+    resetAll(): void;
+    stats(key: StreamTurnKey): {
+        receivedChars: number;
+        flushCount: number;
+        maxBatch: number;
+    } | null;
     dispose(): void;
-    stats(): { flushCount: number; maxBatch: number };
 }
 
 const FULL_SPEED_CHARS = 2_000;
@@ -23,59 +32,96 @@ function throttleMsFor(charCount: number): number {
 }
 
 export function createStreamScheduler(
-    onFlush: (chunks: string[]) => void,
+    onFlush: (key: StreamTurnKey, chunks: readonly string[]) => void,
     options: StreamSchedulerOptions = {},
 ): StreamScheduler {
     const raf = options.raf ?? ((callback) => requestAnimationFrame(callback));
     const now = options.now ?? (() => performance.now());
-    let buffered: string[] = [];
-    let receivedChars = 0;
-    let pendingFrame: number | null = null;
-    let lastFlushAt = Number.NEGATIVE_INFINITY;
-    let disposed = false;
-    let flushCount = 0;
-    let maxBatch = 0;
+    interface TurnState {
+        buffered: string[];
+        receivedChars: number;
+        lastFlushAt: number;
+        flushCount: number;
+        maxBatch: number;
+    }
 
-    function flush(): void {
-        if (buffered.length === 0) return;
-        const batch = buffered;
-        buffered = [];
-        flushCount++;
-        maxBatch = Math.max(maxBatch, batch.length);
-        lastFlushAt = now();
-        onFlush(batch);
+    const turns = new Map<StreamTurnKey, TurnState>();
+    let pendingFrame: number | null = null;
+    let disposed = false;
+
+    function begin(key: StreamTurnKey): void {
+        if (disposed || turns.has(key)) return;
+        turns.set(key, {
+            buffered: [], receivedChars: 0,
+            lastFlushAt: Number.NEGATIVE_INFINITY,
+            flushCount: 0, maxBatch: 0,
+        });
+    }
+
+    function flush(key: StreamTurnKey, state: TurnState): void {
+        if (state.buffered.length === 0) return;
+        const batch = state.buffered;
+        state.buffered = [];
+        state.flushCount++;
+        state.maxBatch = Math.max(state.maxBatch, batch.length);
+        state.lastFlushAt = now();
+        onFlush(key, batch);
     }
 
     function schedule(): void {
-        if (disposed || pendingFrame !== null || buffered.length === 0) return;
+        if (disposed || pendingFrame !== null
+            || ![...turns.values()].some(state => state.buffered.length > 0)) return;
         pendingFrame = raf(() => {
             pendingFrame = null;
-            if (disposed || buffered.length === 0) return;
-            if (now() - lastFlushAt >= throttleMsFor(receivedChars)) {
-                flush();
+            if (disposed) return;
+            const timestamp = now();
+            for (const [key, state] of turns) {
+                if (state.buffered.length > 0
+                    && timestamp - state.lastFlushAt >= throttleMsFor(state.receivedChars)) {
+                    flush(key, state);
+                }
             }
             schedule();
         });
     }
 
     return {
-        push(chunk) {
+        beginTurn(key) {
+            begin(key);
+        },
+        push(key, chunk) {
             if (disposed) return;
-            buffered.push(chunk);
-            receivedChars += chunk.length;
+            begin(key);
+            const state = turns.get(key)!;
+            state.buffered.push(chunk);
+            state.receivedChars += chunk.length;
             schedule();
         },
-        flushNow() {
+        flushTurn(key) {
             if (disposed) return;
-            flush();
+            const state = turns.get(key);
+            if (state) flush(key, state);
+        },
+        resetTurn(key) {
+            if (disposed) return;
+            turns.delete(key);
+        },
+        resetAll() {
+            if (disposed) return;
+            turns.clear();
         },
         dispose() {
             disposed = true;
-            buffered = [];
+            turns.clear();
             pendingFrame = null;
         },
-        stats() {
-            return { flushCount, maxBatch };
+        stats(key) {
+            const state = turns.get(key);
+            return state ? {
+                receivedChars: state.receivedChars,
+                flushCount: state.flushCount,
+                maxBatch: state.maxBatch,
+            } : null;
         },
     };
 }

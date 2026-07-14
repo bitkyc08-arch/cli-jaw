@@ -62,27 +62,77 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
     useEffect(() => {
         // lifecycle + body + invalidation + replay_gap backfill wiring
         // (single-owner subscriptions; disposed with the scope)
-        const offLifecycle = sync.subscribeTurnLifecycle(payload => {
-            store.ingest({ kind: 'lifecycle', payload });
-        });
         // body chunks batch at most once per animation frame (045 §5): the
         // scheduler owns frame pacing, the pending array owns the actions
-        const pendingBody: TurnStreamAction[] = [];
-        const scheduler = createStreamScheduler(() => {
-            if (!pendingBody.length) return;
-            store.ingest(pendingBody.splice(0, pendingBody.length));
+        const pendingBody = new Map<string, TurnStreamAction[]>();
+        const traceKeys = new Map<string, string>();
+        const turnTraces = new Map<string, Set<string>>();
+        const scheduler = createStreamScheduler((key) => {
+            const actions = pendingBody.get(key);
+            if (!actions?.length) return;
+            store.ingest(actions.splice(0, actions.length));
+            pendingBody.delete(key);
+        });
+        const schedulerKeyForTrace = (traceRunId: string): string => {
+            const fallbackKey = `trace:${traceRunId}`;
+            const resolvedTurnId = store.resolveTurnIdForTrace(traceRunId);
+            const previousKey = traceKeys.get(traceRunId);
+            if (resolvedTurnId) {
+                if (previousKey === fallbackKey) {
+                    scheduler.flushTurn(fallbackKey);
+                    scheduler.resetTurn(fallbackKey);
+                }
+                scheduler.beginTurn(resolvedTurnId);
+                traceKeys.set(traceRunId, resolvedTurnId);
+                const traces = turnTraces.get(resolvedTurnId) ?? new Set<string>();
+                traces.add(traceRunId);
+                turnTraces.set(resolvedTurnId, traces);
+                return resolvedTurnId;
+            }
+            const key = previousKey ?? fallbackKey;
+            traceKeys.set(traceRunId, key);
+            scheduler.beginTurn(key);
+            return key;
+        };
+        const queueBody = (key: string, action: TurnStreamAction, chunk: string): void => {
+            const actions = pendingBody.get(key) ?? [];
+            if (!pendingBody.has(key)) pendingBody.set(key, actions);
+            actions.push(action);
+            scheduler.push(key, chunk);
+        };
+        const offLifecycle = sync.subscribeTurnLifecycle(payload => {
+            store.ingest({ kind: 'lifecycle', payload });
+            if (payload.event === 'turn_start') scheduler.beginTurn(payload.turnId);
         });
         const offBody = sync.subscribeAgentBody(payload => {
+            const traceRunId = typeof payload.traceRunId === 'string' && payload.traceRunId
+                ? payload.traceRunId
+                : 'unknown';
             if (payload.event === 'agent_output' || payload.event === 'agent_chunk') {
-                pendingBody.push(normalizeAgentOutput(payload));
-                scheduler.push(payload.text ?? '');
+                queueBody(schedulerKeyForTrace(traceRunId), normalizeAgentOutput(payload), payload.text ?? '');
             } else if (payload.event === 'agent_tool') {
-                pendingBody.push(normalizeAgentTool(payload));
-                scheduler.push('');
+                queueBody(schedulerKeyForTrace(traceRunId), normalizeAgentTool(payload), '');
             } else {
                 // agent_done finalizes immediately: flush pending then ingest
-                scheduler.flushNow();
+                const activeKey = schedulerKeyForTrace(traceRunId);
+                scheduler.flushTurn(activeKey);
                 store.ingest(normalizeAgentDone(payload as AgentDoneSsePayload));
+                const turnId = store.resolveTurnIdForTrace(traceRunId);
+                if (turnId) {
+                    scheduler.flushTurn(turnId);
+                    scheduler.resetTurn(turnId);
+                    const traces = turnTraces.get(turnId) ?? new Set([traceRunId]);
+                    for (const trace of traces) {
+                        const fallbackKey = `trace:${trace}`;
+                        scheduler.flushTurn(fallbackKey);
+                        scheduler.resetTurn(fallbackKey);
+                        traceKeys.delete(trace);
+                    }
+                    turnTraces.delete(turnId);
+                } else {
+                    scheduler.resetTurn(activeKey);
+                    traceKeys.delete(traceRunId);
+                }
             }
         });
         const offInvalidation = attachSyncInvalidation(store, sync.subscribeInvalidation);
@@ -99,6 +149,7 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
         return () => {
             offLifecycle();
             offBody();
+            scheduler.resetAll();
             scheduler.dispose();
             offInvalidation();
             offSystem();

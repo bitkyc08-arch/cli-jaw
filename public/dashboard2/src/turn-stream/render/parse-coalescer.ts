@@ -1,0 +1,77 @@
+import { marked } from 'marked';
+import { renderCopy } from './copy-catalog.js';
+import { preParseMarkdown } from './pre-parse.js';
+import { contentHash, getRenderCache, markdownCacheKey } from './render-cache.js';
+import { sanitizeHtml, type SanitizedHtml } from './sanitize-policy.js';
+
+export interface RenderIdentity { scopeKey: string; turnId: string; segmentId: string }
+export interface MarkdownRenderResult { html: SanitizedHtml; normalizedSource: string; cacheKey: string; finalized: boolean }
+export interface ParseCoalescer { update(source: string): void; flushFinal(source?: string): MarkdownRenderResult; snapshot(): MarkdownRenderResult | null; dispose(): void }
+
+const MEDIUM = 256 * 1024;
+const OVERSIZE = 1024 * 1024;
+
+function escapedPlaceholder(label: string, ordinal: number): string { return `\n\n> ${label} #${ordinal}\n\n`; }
+function inertOpenConstructs(source: string): string {
+    let result = source;
+    const fences = [...source.matchAll(/^```/gm)];
+    if (fences.length % 2) result = result.slice(0, fences.at(-1)?.index) + escapedPlaceholder(renderCopy('en', 'stream.fencePlaceholder'), fences.length);
+    const math = [...result.matchAll(/\$\$/g)];
+    if (math.length % 2) result = result.slice(0, math.at(-1)?.index) + escapedPlaceholder(renderCopy('en', 'stream.mathPlaceholder'), math.length);
+    return result;
+}
+
+function parse(raw: string, finalized: boolean): MarkdownRenderResult {
+    const normalizedSource = preParseMarkdown(raw).source;
+    const cacheKey = markdownCacheKey(contentHash(normalizedSource));
+    const cache = getRenderCache();
+    if (finalized) {
+        const cached = cache.get('markdown', cacheKey);
+        if (typeof cached === 'string') return { html: cached as SanitizedHtml, normalizedSource, cacheKey, finalized: true };
+    }
+    const parseSource = !finalized && normalizedSource.length > MEDIUM ? inertOpenConstructs(normalizedSource) : normalizedSource;
+    const unsafe = marked.parse(parseSource, { async: false });
+    const html = sanitizeHtml(unsafe, 'markdown');
+    const result = { html, normalizedSource, cacheKey, finalized };
+    if (finalized) cache.set('markdown', cacheKey, html);
+    return result;
+}
+
+export function renderFinalMarkdown(raw: string): MarkdownRenderResult { return parse(raw, true); }
+
+export function createParseCoalescer(options: { identity: RenderIdentity; onPublish(result: MarkdownRenderResult): void; now?: () => number; schedule?: (delayMs: number, callback: () => void) => unknown; cancel?: (handle: unknown) => void }): ParseCoalescer {
+    const schedule = options.schedule ?? ((delay, callback) => setTimeout(callback, delay));
+    const cancel = options.cancel ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
+    let source = ''; let latest: MarkdownRenderResult | null = null; let handle: unknown = null;
+    let generation = 0; let disposed = false;
+    const publish = (result: MarkdownRenderResult): void => {
+        latest = result;
+        if (!result.finalized) getRenderCache().setLiveMarkdown(options.identity.scopeKey, result.cacheKey, result.html);
+        options.onPublish(result);
+    };
+    const update = (next: string): void => {
+        if (disposed) return;
+        source = next; generation += 1;
+        if (handle !== null) cancel(handle);
+        const mine = generation; const delay = next.length <= MEDIUM ? 40 : 100;
+        handle = schedule(delay, () => {
+            handle = null;
+            if (disposed || mine !== generation) return;
+            if (source.length > OVERSIZE) {
+                if (latest) publish(latest);
+                return;
+            }
+            publish(parse(source, false));
+        });
+    };
+    const flushFinal = (next?: string): MarkdownRenderResult => {
+        if (next !== undefined) source = next;
+        generation += 1; if (handle !== null) { cancel(handle); handle = null; }
+        const result = renderFinalMarkdown(source);
+        getRenderCache().clearLiveMarkdown(options.identity.scopeKey);
+        if (latest?.finalized && latest.cacheKey === result.cacheKey) return latest;
+        if (!disposed) publish(result);
+        return result;
+    };
+    return { update, flushFinal, snapshot: () => latest, dispose: () => { disposed = true; generation += 1; if (handle !== null) cancel(handle); handle = null; } };
+}

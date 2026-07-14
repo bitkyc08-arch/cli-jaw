@@ -2,12 +2,13 @@
 // Uses TanStack Virtual's built-in anchorTo:'end' + followOnAppend for
 // chat-style bottom-anchored scrolling. NO custom scrollTop manipulation —
 // the virtualizer owns scroll position entirely.
-import { useEffect, useRef, type JSX, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, type JSX, type ReactNode } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { TurnStore } from '../store/turn-store.ts';
 import { useTurnList } from '../store/use-turn.ts';
 import { LegacyMessageRow } from './LegacyMessageRow.tsx';
 import { TurnRow } from './TurnRow.tsx';
+import { getRenderCache, heightCacheKey } from '../render/render-cache.ts';
 
 const OVERSCAN = 4;
 
@@ -21,6 +22,24 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
     const list = useTurnList(store);
     const scrollRef = useRef<HTMLDivElement | null>(null);
     const didInitialScroll = useRef(false);
+    const pendingHeights = useRef(new Map<string, number>());
+    const heightFlushFrame = useRef<number | null>(null);
+    const cache = getRenderCache();
+    cache.setScope(store.getScopeKey());
+
+    const cacheKeyFor = (turnId: string, widthPx: number, expansionFingerprint = 'collapsed'): string | null => {
+        const stub = store.getTurnSnapshot(turnId);
+        if (!stub) return null;
+        return heightCacheKey({
+            threadId: store.getScopeKey(),
+            turnId,
+            contentRevision: stub.version,
+            widthPx,
+            fontMetricsVersion: 'dashboard2-v1',
+            fontScale: 1,
+            expansionFingerprint,
+        });
+    };
 
     const virtualizer = useVirtualizer({
         count: list.order.length,
@@ -28,7 +47,12 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
         estimateSize: (index) => {
             const key = list.order[index];
             if (key.startsWith('msg:')) return 56;
-            return store.getTurnSnapshot(key.slice(5))?.heightEstimate ?? 72;
+            const turnId = key.startsWith('turn:') ? key.slice(5) : key;
+            const cacheKey = cacheKeyFor(turnId, scrollRef.current?.clientWidth ?? 0);
+            const seeded = cacheKey ? cache.get('height', cacheKey) : undefined;
+            return typeof seeded === 'number'
+                ? seeded
+                : store.getTurnSnapshot(turnId)?.heightEstimate ?? 72;
         },
         overscan: OVERSCAN,
         getItemKey: (index) => list.order[index],
@@ -39,6 +63,25 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
         anchorTo: 'end',
         followOnAppend: 'smooth',
     });
+
+    const measureAndPersist = useCallback((node: HTMLDivElement | null): void => {
+        virtualizer.measureElement(node);
+        if (!node) return;
+        const index = Number(node.dataset['index']);
+        const listKey = list.order[index];
+        if (!listKey || listKey.startsWith('msg:')) return;
+        const turnId = listKey.startsWith('turn:') ? listKey.slice(5) : listKey;
+        const expansionFingerprint = node.querySelector('[aria-expanded="true"]') ? 'expanded' : 'collapsed';
+        const cacheKey = cacheKeyFor(turnId, scrollRef.current?.clientWidth ?? node.clientWidth, expansionFingerprint);
+        if (!cacheKey) return;
+        pendingHeights.current.set(cacheKey, node.getBoundingClientRect().height);
+        if (heightFlushFrame.current !== null) return;
+        heightFlushFrame.current = requestAnimationFrame(() => {
+            heightFlushFrame.current = null;
+            for (const [key, height] of pendingHeights.current) cache.set('height', key, height);
+            pendingHeights.current.clear();
+        });
+    }, [cache, list.order, store, virtualizer]);
 
     const totalSize = virtualizer.getTotalSize();
 
@@ -84,7 +127,7 @@ export function TurnStreamViewport({ store, head, tail }: TurnStreamViewportProp
                             key={item.key}
                             className="d2-turn-slot"
                             data-index={item.index}
-                            ref={virtualizer.measureElement}
+                            ref={measureAndPersist}
                             style={{ transform: `translateY(${item.start}px)` }}
                         >
                             {content}

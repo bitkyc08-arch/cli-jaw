@@ -4,6 +4,7 @@
 import { createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { SegmentedMessageItem, TurnLifecycleSsePayload } from '../../../../src/shared/chat-events.ts';
+import { ManagerPreferencesProvider, type PreferencesRegistryClient } from '../providers/preferences-provider.tsx';
 import { TurnStreamViewport } from '../turn-stream/components/TurnStreamViewport.tsx';
 import { createTurnStore, type TurnStore } from '../turn-stream/store/turn-store.ts';
 
@@ -37,7 +38,17 @@ export function mountTurnVirtualizationHarness(): VirtualizationHarness {
     host.id = 'd2virt-host';
     document.body.appendChild(host);
     const store = createTurnStore('3457/harness');
-    createRoot(host).render(h(TurnStreamViewport, { store }));
+    // R1: viewport subtree now consumes usePreferences() (locale copy) — the
+    // harness must provide the provider with a stub registry client
+    const client: PreferencesRegistryClient = {
+        async load() {
+            return { registry: { ui: { uiTheme: 'auto', locale: 'ko', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: 'default' } } as never, status: {} };
+        },
+        async patch() {
+            return { registry: { ui: { uiTheme: 'auto', locale: 'ko', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: 'default' } } as never, status: {} };
+        },
+    };
+    createRoot(host).render(h(ManagerPreferencesProvider, { client }, h(TurnStreamViewport, { store })));
     const harness: VirtualizationHarness = {
         store,
         ingestLifecycle(events) {

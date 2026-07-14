@@ -5,6 +5,7 @@
 import { createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
 import type { AgentOutputSsePayload, TurnLifecycleSsePayload } from '../../../../src/shared/chat-events.ts';
+import { ManagerPreferencesProvider, type PreferencesRegistryClient } from '../providers/preferences-provider.tsx';
 import { TurnStreamViewport } from '../turn-stream/components/TurnStreamViewport.tsx';
 import { LiveTurnTail } from '../turn-stream/live/LiveTurnTail.tsx';
 import { createStreamScheduler } from '../turn-stream/live/stream-scheduler.ts';
@@ -42,24 +43,52 @@ export function mountChatViewLiveHarness(): LiveHarness {
     host.id = 'd2live-host';
     document.body.appendChild(host);
     const store = createTurnStore('3457/live-harness');
+    // R1: the viewport/live-tail subtree consumes usePreferences() (locale
+    // copy) — the harness must supply the provider with a stub client
+    const client: PreferencesRegistryClient = {
+        async load() {
+            return { registry: { ui: { uiTheme: 'auto', locale: 'ko', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: 'default' } } as never, status: {} };
+        },
+        async patch() {
+            return { registry: { ui: { uiTheme: 'auto', locale: 'ko', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: 'default' } } as never, status: {} };
+        },
+    };
     createRoot(host).render(
-        h(TurnStreamViewport, { store, tail: h(LiveTurnTail, { store }) }),
+        h(ManagerPreferencesProvider, { client }, h(TurnStreamViewport, { store, tail: h(LiveTurnTail, { store }) })),
     );
-    const pending: TurnStreamAction[] = [];
-    const scheduler = createStreamScheduler(() => {
-        if (pending.length) store.ingest(pending.splice(0, pending.length));
+    const pending = new Map<string, TurnStreamAction[]>();
+    const traceKeys = new Map<string, string>();
+    const scheduler = createStreamScheduler((key) => {
+        const actions = pending.get(key);
+        if (actions?.length) store.ingest(actions.splice(0, actions.length));
+        pending.delete(key);
     });
     const harness: LiveHarness = {
         store,
         ingestLifecycle(events) {
             store.ingest(events.map(payload => ({ kind: 'lifecycle', payload })));
+            for (const payload of events) {
+                if (payload.event === 'turn_start') scheduler.beginTurn(payload.turnId);
+            }
         },
         pushBody(traceRunId, text, textLen) {
             const payload: AgentOutputSsePayload = {
                 topic: 'agent', event: 'agent_output', traceRunId, text, textLen,
             };
-            pending.push(normalizeAgentOutput(payload));
-            scheduler.push(text);
+            const fallbackKey = `trace:${traceRunId}`;
+            const resolvedTurnId = store.resolveTurnIdForTrace(traceRunId);
+            const previousKey = traceKeys.get(traceRunId);
+            if (resolvedTurnId && previousKey === fallbackKey) {
+                scheduler.flushTurn(fallbackKey);
+                scheduler.resetTurn(fallbackKey);
+            }
+            const key = resolvedTurnId ?? previousKey ?? fallbackKey;
+            traceKeys.set(traceRunId, key);
+            scheduler.beginTurn(key);
+            const actions = pending.get(key) ?? [];
+            if (!pending.has(key)) pending.set(key, actions);
+            actions.push(normalizeAgentOutput(payload));
+            scheduler.push(key, text);
         },
         counts() {
             return {

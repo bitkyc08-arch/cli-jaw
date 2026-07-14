@@ -8,10 +8,25 @@ import * as ReactNamespace from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { JSDOM } from 'jsdom';
 import type { ThinkingMarker, TurnFidelity, TurnLifecycleSsePayload } from '../../src/shared/chat-events.ts';
+import { ManagerPreferencesProvider, type PreferencesRegistryClient } from '../../public/dashboard2/src/providers/preferences-provider.tsx';
 import { ThinkingSegment } from '../../public/dashboard2/src/turn-stream/components/segments/ThinkingSegment.tsx';
 import { ToolLine } from '../../public/dashboard2/src/turn-stream/components/segments/ToolLine.tsx';
 import { WidgetSegment } from '../../public/dashboard2/src/turn-stream/components/segments/WidgetSegment.tsx';
 import { createTurnStore } from '../../public/dashboard2/src/turn-stream/store/turn-store.ts';
+
+// R1: renderer copy consumers read usePreferences().locale — tests wrap
+// components in the provider with a stub registry client
+const prefsClient: PreferencesRegistryClient = {
+    async load() {
+        return { registry: { ui: { uiTheme: 'auto', locale: 'en', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: 'default' } } as never, status: {} };
+    },
+    async patch() {
+        return { registry: { ui: { uiTheme: 'auto', locale: 'en', dashboardShortcutsEnabled: true, dashboardShortcutKeymap: 'default' } } as never, status: {} };
+    },
+};
+function withPrefs(element: ReturnType<typeof h>): ReturnType<typeof h> {
+    return h(ManagerPreferencesProvider, { client: prefsClient }, element);
+}
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 // tsx compiles repo .tsx with the classic JSX transform (root tsconfig only
@@ -77,22 +92,22 @@ test('044: collapsed tool has zero detail DOM/iframe; expanded exposes exactly o
         onToggle: () => {},
         detail: h('div', { className: 'probe-detail' }, 'detail body'),
     };
-    const collapsed = renderToStaticMarkup(h(ToolLine, { ...base, expanded: false }));
+    const collapsed = renderToStaticMarkup(withPrefs(h(ToolLine, { ...base, expanded: false })));
     assert.equal((collapsed.match(/data-tool-detail/g) ?? []).length, 0, 'collapsed: no detail DOM');
     assert.equal((collapsed.match(/<iframe/g) ?? []).length, 0, 'collapsed: no iframe');
     assert.match(collapsed, /aria-expanded="false"/);
-    const expanded = renderToStaticMarkup(h(ToolLine, { ...base, expanded: true }));
+    const expanded = renderToStaticMarkup(withPrefs(h(ToolLine, { ...base, expanded: true })));
     assert.ok((expanded.match(/data-tool-detail/g) ?? []).length >= 1, 'expanded: detail region present');
     assert.equal((expanded.match(/probe-detail/g) ?? []).length, 1, 'expanded: passed detail mounted once');
     assert.match(expanded, /aria-expanded="true"/);
 });
 
 test('044: widget collapsed placeholder is fixed-height and iframe-free', () => {
-    const html = renderToStaticMarkup(h(WidgetSegment, {
+    const html = renderToStaticMarkup(withPrefs(h(WidgetSegment, {
         descriptor: { widgetId: 'w1', title: 'Chart', estimatedHeight: 240 },
         expanded: false,
         onToggle: () => {},
-    }));
+    })));
     assert.equal((html.match(/<iframe/g) ?? []).length, 0, 'collapsed widget mounts no iframe');
     assert.match(html, /240/, 'placeholder carries the estimated height');
 });
@@ -106,6 +121,11 @@ async function renderTurnRow(rows: TurnLifecycleSsePayload[], turnId: string) {
         window: dom.window,
         document: dom.window.document,
         navigator: dom.window.navigator,
+        matchMedia: (() => ({
+            matches: false,
+            addEventListener() {},
+            removeEventListener() {},
+        })) as unknown,
     })) {
         Object.defineProperty(globalThis, name, { configurable: true, value });
     }
@@ -115,8 +135,8 @@ async function renderTurnRow(rows: TurnLifecycleSsePayload[], turnId: string) {
     store.ingest(rows.map(payload => ({ kind: 'lifecycle', payload })));
     const container = dom.window.document.getElementById('root')!;
     const root = createRoot(container);
-    await act(async () => { root.render(h(TurnRow, { store, turnId })); });
-    return { container, root, store, act, render: async () => act(async () => { root.render(h(TurnRow, { store, turnId })); }) };
+    await act(async () => { root.render(withPrefs(h(TurnRow, { store, turnId }))); });
+    return { container, root, store, act, render: async () => act(async () => { root.render(withPrefs(h(TurnRow, { store, turnId }))); }) };
 }
 
 function turnFixture(turnId: string): TurnLifecycleSsePayload[] {
