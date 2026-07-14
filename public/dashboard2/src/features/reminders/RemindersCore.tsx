@@ -13,8 +13,9 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent, type JSX } f
 import { Icon } from '../../shell/Icon.tsx';
 import { useAppScope } from '../../state/scope.tsx';
 import { createReminder, listReminders, updateReminder } from './reminders-api-adapter.ts';
+import { ReminderEditPopover } from './ReminderEditPopover.tsx';
 import { dateScore, fullDate, relativeTime } from './reminders-time.ts';
-import type { Reminder, ReminderPriority } from './reminders-types.ts';
+import type { Reminder, ReminderPriority, UpdateReminderInput } from './reminders-types.ts';
 import './reminders.css';
 
 export interface RemindersCoreProps {
@@ -53,14 +54,34 @@ interface ReminderCardProps {
     variant: RemindersCoreProps['variant'];
     onComplete(item: Reminder): void;
     onSnooze(item: Reminder): void;
+    onEdit(item: Reminder): void;
+    onDragStart(item: Reminder): void;
+    onDragEnter(item: Reminder): void;
+    onDragEnd(): void;
+    onDrop(item: Reminder): void;
+    dragging: boolean;
+    dropTarget: boolean;
 }
 
-function ReminderCard({ item, busy, variant, onComplete, onSnooze }: ReminderCardProps): JSX.Element {
+function ReminderCard({ item, busy, variant, onComplete, onSnooze, onEdit, onDragStart, onDragEnter, onDragEnd, onDrop, dragging, dropTarget }: ReminderCardProps): JSX.Element {
     const due = reminderTime(item);
     const overdue = item.status !== 'done' && dateScore(due) < Date.now();
     const className = variant === 'tray' ? 'd2-reminders-card d2-tray-reminder-card' : 'd2-reminders-card';
     return (
-        <li className={className} data-priority={item.priority} data-overdue={overdue}>
+        <li
+            className={className}
+            data-priority={item.priority}
+            data-overdue={overdue}
+            data-dragging={dragging}
+            data-drop-target={dropTarget}
+            draggable={variant === 'panel' && item.status !== 'done' && !busy}
+            onClick={() => onEdit(item)}
+            onDragStart={() => onDragStart(item)}
+            onDragEnter={() => onDragEnter(item)}
+            onDragEnd={onDragEnd}
+            onDragOver={(event) => { if (variant === 'panel') event.preventDefault(); }}
+            onDrop={(event) => { event.preventDefault(); onDrop(item); }}
+        >
             <span className="d2-reminders-priority" aria-label={`${item.priority} priority`} title={`${item.priority} priority`} />
             <span className="d2-reminders-card-copy">
                 <strong title={item.title}>{item.title}</strong>
@@ -68,11 +89,11 @@ function ReminderCard({ item, busy, variant, onComplete, onSnooze }: ReminderCar
             </span>
             {item.status !== 'done' ? (
                 <span className="d2-reminders-card-actions">
-                    <button type="button" onClick={() => onComplete(item)} disabled={busy} aria-label={`Complete ${item.title}`} title="Complete">
+                    <button type="button" onClick={(event) => { event.stopPropagation(); onComplete(item); }} disabled={busy} aria-label={`Complete ${item.title}`} title="Complete">
                         <Icon icon={Check} size={14} />
                     </button>
                     {variant === 'panel' ? (
-                        <button type="button" onClick={() => onSnooze(item)} disabled={busy} aria-label={`Snooze ${item.title} for one hour`} title="Snooze 1 hour">
+                        <button type="button" onClick={(event) => { event.stopPropagation(); onSnooze(item); }} disabled={busy} aria-label={`Snooze ${item.title} for one hour`} title="Snooze 1 hour">
                             <Icon icon={Clock3} size={14} />
                         </button>
                     ) : null}
@@ -94,6 +115,9 @@ function RemindersCoreState({ variant, active, linkedInstance }: RemindersCoreSt
     const [priority, setPriority] = useState<ReminderPriority>('normal');
     const [creating, setCreating] = useState(false);
     const [busyIds, setBusyIds] = useState<Set<string>>(() => new Set());
+    const [editingItem, setEditingItem] = useState<Reminder | null>(null);
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    const [dropTargetId, setDropTargetId] = useState<string | null>(null);
 
     const load = useCallback(async (showLoading: boolean, signal?: AbortSignal): Promise<void> => {
         if (showLoading) setLoading(true);
@@ -142,9 +166,12 @@ function RemindersCoreState({ variant, active, linkedInstance }: RemindersCoreSt
         };
     }, [active, load]);
 
-    const activeReminders = useMemo(() => reminders
-        .filter((item) => item.status !== 'done')
-        .sort((left, right) => dateScore(reminderTime(left)) - dateScore(reminderTime(right))), [reminders]);
+    const activeReminders = useMemo(() => {
+        const activeItems = reminders.filter((item) => item.status !== 'done');
+        const byTime = [...activeItems].sort((left, right) => dateScore(reminderTime(left)) - dateScore(reminderTime(right)));
+        const fallbackRank = new Map(byTime.map((item, index) => [item.id, (index + 1) * 1000]));
+        return activeItems.sort((left, right) => (left.manualRank ?? fallbackRank.get(left.id)!) - (right.manualRank ?? fallbackRank.get(right.id)!));
+    }, [reminders]);
     const completedReminders = useMemo(() => reminders
         .filter((item) => item.status === 'done')
         .sort((left, right) => dateScore(right.sourceUpdatedAt) - dateScore(left.sourceUpdatedAt)), [reminders]);
@@ -211,6 +238,38 @@ function RemindersCoreState({ variant, active, linkedInstance }: RemindersCoreSt
         });
     };
 
+    const handleSave = (id: string, patch: UpdateReminderInput): void => {
+        void withBusyItem(id, async () => {
+            const updated = await updateReminder(id, patch);
+            setReminders((current) => current.map((entry) => entry.id === id ? updated : entry));
+            setEditingItem(null);
+        });
+    };
+
+    const handleDrop = (target: Reminder): void => {
+        const draggedId = draggingId;
+        setDraggingId(null);
+        setDropTargetId(null);
+        if (!draggedId || draggedId === target.id) return;
+        const dragged = activeReminders.find((item) => item.id === draggedId);
+        if (!dragged) return;
+        const withoutDragged = activeReminders.filter((item) => item.id !== draggedId);
+        const targetIndex = withoutDragged.findIndex((item) => item.id === target.id);
+        if (targetIndex < 0) return;
+        const previous = withoutDragged[targetIndex - 1];
+        const previousRank = previous ? previous.manualRank ?? (targetIndex * 1000) : 0;
+        const nextRank = target.manualRank ?? ((targetIndex + 1) * 1000);
+        const manualRank = (previousRank + nextRank) / 2;
+        const oldRank = dragged.manualRank;
+        setReminders((current) => current.map((item) => item.id === draggedId ? { ...item, manualRank } : item));
+        void updateReminder(draggedId, { manualRank }).then((updated) => {
+            setReminders((current) => current.map((item) => item.id === draggedId ? updated : item));
+        }).catch((error) => {
+            setReminders((current) => current.map((item) => item.id === draggedId ? { ...item, manualRank: oldRank } : item));
+            setMutationError(errorMessage(error));
+        });
+    };
+
     const renderReminderList = (items: Reminder[]): JSX.Element => (
         <ul className="d2-reminders-list">
             {items.map((item) => (
@@ -221,6 +280,13 @@ function RemindersCoreState({ variant, active, linkedInstance }: RemindersCoreSt
                     variant={variant}
                     onComplete={handleComplete}
                     onSnooze={handleSnooze}
+                    onEdit={setEditingItem}
+                    onDragStart={(dragged) => { setDraggingId(dragged.id); setDropTargetId(null); }}
+                    onDragEnter={(target) => { if (draggingId && draggingId !== target.id) setDropTargetId(target.id); }}
+                    onDragEnd={() => { setDraggingId(null); setDropTargetId(null); }}
+                    onDrop={handleDrop}
+                    dragging={draggingId === item.id}
+                    dropTarget={dropTargetId === item.id}
                 />
             ))}
         </ul>
@@ -321,6 +387,9 @@ function RemindersCoreState({ variant, active, linkedInstance }: RemindersCoreSt
                         </div>
                     ) : null}
                 </section>
+            ) : null}
+            {variant === 'panel' && editingItem ? (
+                <ReminderEditPopover item={editingItem} busy={busyIds.has(editingItem.id)} onClose={() => setEditingItem(null)} onSave={handleSave} />
             ) : null}
         </div>
     );
