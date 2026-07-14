@@ -9,9 +9,9 @@ interface RequestOptions {
     signal?: AbortSignal;
 }
 
-function taskBase(port: number): string {
-    return `/i/${port}/api/tasks`;
-}
+type ServerBoardLane = 'backlog' | 'ready' | 'active' | 'review' | 'done';
+
+const TASK_BASE = '/api/dashboard/board/tasks';
 
 function record(value: unknown): Record<string, unknown> | null {
     return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -23,25 +23,17 @@ function optionalString(value: unknown): string | null {
     return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function normalizeStatus(value: unknown): BoardLaneId {
+function statusFromApi(value: unknown): BoardLaneId {
     switch (value) {
         case 'backlog':
-        case 'inbox':
             return 'backlog';
-        case 'todo':
         case 'ready':
-        case 'pending':
             return 'todo';
-        case 'in_progress':
         case 'active':
-        case 'doing':
-        case 'review':
-        case 'blocked':
             return 'in_progress';
+        case 'review':
+            return 'review';
         case 'done':
-        case 'complete':
-        case 'completed':
-        case 'cancelled':
             return 'done';
         default:
             return 'backlog';
@@ -57,22 +49,32 @@ function normalizeTask(value: unknown): BoardTask | null {
     return {
         id: item['id'],
         title,
-        assignee: optionalString(item['assignee']) ?? optionalString(item['owner']),
-        status: normalizeStatus(item['lane'] ?? item['status']),
-        createdAt: optionalString(item['createdAt']) ?? optionalString(item['created_at']),
+        summary: optionalString(item['summary']),
+        detail: optionalString(item['detail']),
+        status: statusFromApi(item['lane']),
+        port: typeof item['port'] === 'number' ? item['port'] : null,
+        threadKey: optionalString(item['threadKey']),
+        notePath: optionalString(item['notePath']),
+        source: optionalString(item['source']) ?? 'user',
+        createdAt: optionalString(item['createdAt']),
+        updatedAt: optionalString(item['updatedAt']),
     };
 }
 
-function statusForApi(status: BoardLaneId): string {
-    if (status === 'in_progress') return 'in_progress';
-    if (status === 'done') return 'done';
-    return 'pending';
+function statusForApi(status: BoardLaneId): ServerBoardLane {
+    switch (status) {
+        case 'backlog': return 'backlog';
+        case 'todo': return 'ready';
+        case 'in_progress': return 'active';
+        case 'review': return 'review';
+        case 'done': return 'done';
+    }
 }
 
 async function responseJson(response: Response): Promise<unknown> {
     if (!response.ok) {
-        const body = await response.text().catch(() => '');
-        throw new Error(body || `Task request failed (${response.status})`);
+        const body = await response.json().catch(() => null) as { error?: unknown } | null;
+        throw new Error(typeof body?.error === 'string' ? body.error : `Task request failed (${response.status})`);
     }
     if (response.status === 204) return null;
     return await response.json() as unknown;
@@ -80,71 +82,67 @@ async function responseJson(response: Response): Promise<unknown> {
 
 function taskFromPayload(payload: unknown): BoardTask {
     const body = record(payload);
-    const task = normalizeTask(body?.['task'] ?? payload);
+    const task = body?.['ok'] === true ? normalizeTask(body['task']) : null;
     if (!task) throw new Error('Task response was missing a valid task');
     return task;
 }
 
-export async function listBoardTasks(port: number, options: RequestOptions = {}): Promise<BoardTask[]> {
-    const response = await fetch(taskBase(port), {
+export async function listBoardTasks(options: RequestOptions = {}): Promise<BoardTask[]> {
+    const response = await fetch(TASK_BASE, {
         cache: 'no-store',
         credentials: 'same-origin',
         ...(options.signal ? { signal: options.signal } : {}),
     });
     const payload = await responseJson(response);
     const body = record(payload);
-    const items = Array.isArray(payload)
-        ? payload
-        : Array.isArray(body?.['tasks'])
-            ? body['tasks']
-            : [];
+    if (body?.['ok'] !== true || !Array.isArray(body['tasks'])) {
+        throw new Error('Task response was missing a valid task list');
+    }
+    const items = body['tasks'];
     return items.flatMap((item) => {
         const task = normalizeTask(item);
         return task ? [task] : [];
     });
 }
 
-export async function createBoardTask(port: number, input: CreateBoardTaskInput): Promise<BoardTask> {
-    const response = await fetch(taskBase(port), {
+export async function createBoardTask(input: CreateBoardTaskInput): Promise<BoardTask> {
+    const response = await fetch(TASK_BASE, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
             title: input.title,
-            content: input.title,
-            assignee: input.assignee || undefined,
-            owner: input.assignee || undefined,
-            lane: input.status,
-            status: statusForApi(input.status),
+            ...(input.summary !== undefined ? { summary: input.summary } : {}),
+            ...(input.detail !== undefined ? { detail: input.detail } : {}),
+            lane: statusForApi(input.status),
         }),
     });
     return taskFromPayload(await responseJson(response));
 }
 
 export async function updateBoardTask(
-    port: number,
     id: string,
     input: UpdateBoardTaskInput,
 ): Promise<BoardTask> {
-    const response = await fetch(`${taskBase(port)}/${encodeURIComponent(id)}`, {
+    const response = await fetch(`${TASK_BASE}/${encodeURIComponent(id)}`, {
         method: 'PATCH',
         headers: { 'content-type': 'application/json' },
         credentials: 'same-origin',
         body: JSON.stringify({
-            ...(input.title !== undefined ? { title: input.title, content: input.title } : {}),
-            ...(input.assignee !== undefined ? { assignee: input.assignee, owner: input.assignee } : {}),
-            ...(input.status !== undefined
-                ? { lane: input.status, status: statusForApi(input.status) }
-                : {}),
+            ...(input.title !== undefined ? { title: input.title } : {}),
+            ...(input.summary !== undefined ? { summary: input.summary } : {}),
+            ...(input.detail !== undefined ? { detail: input.detail } : {}),
+            ...(input.status !== undefined ? { lane: statusForApi(input.status) } : {}),
         }),
     });
     return taskFromPayload(await responseJson(response));
 }
 
-export async function deleteBoardTask(port: number, id: string): Promise<void> {
-    const response = await fetch(`${taskBase(port)}/${encodeURIComponent(id)}`, {
+export async function deleteBoardTask(id: string): Promise<void> {
+    const response = await fetch(`${TASK_BASE}/${encodeURIComponent(id)}`, {
         method: 'DELETE',
         credentials: 'same-origin',
     });
-    await responseJson(response);
+    const payload = record(await responseJson(response));
+    if (payload?.['ok'] !== true) throw new Error('Task response did not confirm deletion');
 }

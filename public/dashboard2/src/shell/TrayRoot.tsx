@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
+import { TrayRemindersRoot } from '../features/reminders/TrayRemindersRoot.tsx';
 
 export function TrayRoot(): JSX.Element {
-    return <main className="d2-tray-root">Tray mode — reminders migrate in 063</main>;
+    return <TrayRemindersRoot />;
 }

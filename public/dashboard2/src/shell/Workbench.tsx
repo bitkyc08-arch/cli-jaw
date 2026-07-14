@@ -11,6 +11,10 @@ const LazySettingsWorkspace = lazy(() =>
     import('../features/settings/SettingsWorkspace.tsx').then((m) => ({ default: m.SettingsWorkspace })),
 );
 
+const PANE_MIN = 280;
+const CHAT_MIN = 280;
+const DIVIDER_WIDTH = 1;
+
 export interface WorkbenchProps {
     sidebarCollapsed?: boolean;
     onOpenSidebar?(): void;
@@ -30,10 +34,20 @@ export function Workbench({
     const api = useManagerApi();
     const { selected, sidePaneOpen, openSidePane, closeSidePane, workspaceMode, setWorkspaceMode } = useAppScope();
     const [instanceNames, setInstanceNames] = useState<Map<number, string>>(() => new Map());
-    const PANE_MIN = 280;
-    const PANE_MAX_RATIO = 0.55;
-    const toggleSidePane = sidePaneOpen ? closeSidePane : openSidePane;
     const wbRef = useRef<HTMLElement>(null);
+    const toggleButtonRef = useRef<HTMLButtonElement>(null);
+
+    const closeSidePaneWithFocusRestore = useCallback(() => {
+        const focusWasInsidePane = Boolean(
+            wbRef.current?.querySelector('.d2-side-pane')?.contains(document.activeElement),
+        );
+        closeSidePane();
+        if (focusWasInsidePane) {
+            requestAnimationFrame(() => toggleButtonRef.current?.focus());
+        }
+    }, [closeSidePane]);
+
+    const toggleSidePane = sidePaneOpen ? closeSidePaneWithFocusRestore : openSidePane;
 
     const onDividerDown = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
         e.preventDefault();
@@ -45,7 +59,8 @@ export function Workbench({
             const wb = wbRef.current;
             if (!wb) return;
             const rect = wb.getBoundingClientRect();
-            const paneWidth = Math.max(PANE_MIN, Math.min(rect.width * PANE_MAX_RATIO, rect.right - ev.clientX));
+            const paneMax = rect.width - CHAT_MIN - DIVIDER_WIDTH;
+            const paneWidth = Math.max(0, Math.min(paneMax, Math.max(PANE_MIN, rect.right - ev.clientX)));
             wb.style.setProperty('--d2-pane-w', `${paneWidth}px`);
         };
         const up = (): void => {
@@ -108,6 +123,7 @@ export function Workbench({
                         </button>
                     ) : null}
                     <button
+                        ref={toggleButtonRef}
                         className="d2-workbench-header-button d2-workbench-side-toggle"
                         type="button"
                         onClick={toggleSidePane}
@@ -133,7 +149,14 @@ export function Workbench({
             </div>
 
             {sidePaneOpen ? <div className="d2-workbench-divider-drag" aria-hidden="true" onPointerDown={onDividerDown} /> : null}
-            {sidePaneOpen ? <SidePane onClose={closeSidePane} /> : null}
+            <div
+                className="d2-workbench-side-pane-slot"
+                style={{ display: sidePaneOpen ? undefined : 'none' }}
+                inert={!sidePaneOpen}
+                aria-hidden={!sidePaneOpen}
+            >
+                <SidePane open={sidePaneOpen} onClose={closeSidePaneWithFocusRestore} />
+            </div>
         </section>
     );
 }

@@ -147,6 +147,44 @@
     flex: none;
 }
 
+.d2-notes-conflict,
+.d2-notes-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.d2-notes-conflict {
+    background: color-mix(in srgb, var(--warn) 10%, transparent);
+    color: var(--warn-text);
+}
+
+.d2-notes-error {
+    background: color-mix(in srgb, var(--danger) 8%, transparent);
+    color: var(--danger);
+}
+
+.d2-notes-conflict > span,
+.d2-notes-error > span {
+    min-width: 0;
+    flex: 1;
+}
+
+.d2-notes-conflict button,
+.d2-notes-error button {
+    flex: none;
+    padding: 3px 10px;
+    border: 1px solid currentColor;
+    border-radius: var(--r-sm);
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
+    font-size: 11px;
+}
+
 .d2-notes-mode-btn {
     padding: 3px 8px;
     border: 1px solid transparent;

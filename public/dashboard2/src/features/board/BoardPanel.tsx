@@ -1,4 +1,4 @@
-import { AlertCircle, LoaderCircle, Plus, RefreshCw, Trash2, UserRound, X } from '@lucide/icons';
+import { AlertCircle, LoaderCircle, Plus, RefreshCw, Trash2, X } from '@lucide/icons';
 import {
     useCallback,
     useEffect,
@@ -10,7 +10,6 @@ import {
     type JSX,
 } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
-import { useAppScope } from '../../state/scope.tsx';
 import {
     createBoardTask,
     deleteBoardTask,
@@ -36,9 +35,6 @@ function errorMessage(error: unknown): string {
 }
 
 export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
-    const { selected } = useAppScope();
-    const port = selected?.port ?? null;
-    const currentPortRef = useRef(port);
     const loadGenerationRef = useRef(0);
     const [tasks, setTasks] = useState<BoardTask[]>([]);
     const [loading, setLoading] = useState(false);
@@ -46,51 +42,36 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
     const [announcement, setAnnouncement] = useState('');
     const [composerOpen, setComposerOpen] = useState(false);
     const [title, setTitle] = useState('');
-    const [assignee, setAssignee] = useState('');
     const [createLane, setCreateLane] = useState<BoardLaneId>('backlog');
     const [creating, setCreating] = useState(false);
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [dropLane, setDropLane] = useState<BoardLaneId | null>(null);
     const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
 
-    currentPortRef.current = port;
-
     const loadTasks = useCallback(async (signal?: AbortSignal): Promise<void> => {
-        if (port === null) return;
-        const requestPort = port;
         const generation = ++loadGenerationRef.current;
         setLoading(true);
         setError(null);
         try {
-            const nextTasks = await listBoardTasks(requestPort, signal ? { signal } : {});
-            if (signal?.aborted || currentPortRef.current !== requestPort || generation !== loadGenerationRef.current) return;
+            const nextTasks = await listBoardTasks(signal ? { signal } : {});
+            if (signal?.aborted || generation !== loadGenerationRef.current) return;
             setTasks(nextTasks);
         } catch (loadError) {
-            if (signal?.aborted || currentPortRef.current !== requestPort || generation !== loadGenerationRef.current) return;
+            if (signal?.aborted || generation !== loadGenerationRef.current) return;
             setError(errorMessage(loadError));
         } finally {
-            if (!signal?.aborted && currentPortRef.current === requestPort && generation === loadGenerationRef.current) {
+            if (!signal?.aborted && generation === loadGenerationRef.current) {
                 setLoading(false);
             }
         }
-    }, [port]);
+    }, []);
 
     useEffect(() => {
-        if (!active || port === null) return;
+        if (!active) return;
         const controller = new AbortController();
         void loadTasks(controller.signal);
         return () => controller.abort();
-    }, [active, loadTasks, port]);
-
-    useEffect(() => {
-        setComposerOpen(false);
-        setTitle('');
-        setAssignee('');
-        setCreateLane('backlog');
-        setDraggingId(null);
-        setDropLane(null);
-        setAnnouncement('');
-    }, [port]);
+    }, [active, loadTasks]);
 
     const tasksByLane = useMemo(() => {
         const grouped = new Map<BoardLaneId, BoardTask[]>(BOARD_LANES.map((lane) => [lane.id, []]));
@@ -101,80 +82,67 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
     const handleCreate = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
         event.preventDefault();
         const trimmedTitle = title.trim();
-        if (!trimmedTitle || creating || port === null) return;
-        const requestPort = port;
+        if (!trimmedTitle || creating) return;
         setCreating(true);
         setError(null);
         try {
-            const task = await createBoardTask(requestPort, {
+            const task = await createBoardTask({
                 title: trimmedTitle,
                 status: createLane,
-                ...(assignee.trim() ? { assignee: assignee.trim() } : {}),
             });
-            if (currentPortRef.current !== requestPort) return;
             setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
             setTitle('');
-            setAssignee('');
             setComposerOpen(false);
             setAnnouncement(`${task.title} created in ${boardLaneLabel(task.status)}`);
         } catch (createError) {
-            if (currentPortRef.current === requestPort) setError(errorMessage(createError));
+            setError(errorMessage(createError));
         } finally {
-            if (currentPortRef.current === requestPort) setCreating(false);
+            setCreating(false);
         }
     };
 
     const moveTask = useCallback(async (id: string, status: BoardLaneId): Promise<void> => {
-        if (port === null || busyIds.has(id)) return;
+        if (busyIds.has(id)) return;
         const task = tasks.find((item) => item.id === id);
         if (!task || task.status === status) return;
-        const requestPort = port;
         const previousStatus = task.status;
         setBusyIds((current) => new Set(current).add(id));
         setTasks((current) => current.map((item) => item.id === id ? { ...item, status } : item));
         setError(null);
         setAnnouncement(`${task.title} moved to ${boardLaneLabel(status)}`);
         try {
-            const updated = await updateBoardTask(requestPort, id, { status });
-            if (currentPortRef.current !== requestPort) return;
+            const updated = await updateBoardTask(id, { status });
             setTasks((current) => current.map((item) => item.id === id ? updated : item));
         } catch (moveError) {
-            if (currentPortRef.current !== requestPort) return;
             setTasks((current) => current.map((item) => item.id === id ? { ...item, status: previousStatus } : item));
             setError(errorMessage(moveError));
             setAnnouncement(`${task.title} returned to ${boardLaneLabel(previousStatus)}`);
         } finally {
-            if (currentPortRef.current === requestPort) {
-                setBusyIds((current) => {
-                    const next = new Set(current);
-                    next.delete(id);
-                    return next;
-                });
-            }
+            setBusyIds((current) => {
+                const next = new Set(current);
+                next.delete(id);
+                return next;
+            });
         }
-    }, [busyIds, port, tasks]);
+    }, [busyIds, tasks]);
 
     const handleDelete = async (task: BoardTask): Promise<void> => {
-        if (port === null || busyIds.has(task.id)) return;
+        if (busyIds.has(task.id)) return;
         if (!window.confirm(`Delete "${task.title}"?`)) return;
-        const requestPort = port;
         setBusyIds((current) => new Set(current).add(task.id));
         setError(null);
         try {
-            await deleteBoardTask(requestPort, task.id);
-            if (currentPortRef.current !== requestPort) return;
+            await deleteBoardTask(task.id);
             setTasks((current) => current.filter((item) => item.id !== task.id));
             setAnnouncement(`${task.title} deleted`);
         } catch (deleteError) {
-            if (currentPortRef.current === requestPort) setError(errorMessage(deleteError));
+            setError(errorMessage(deleteError));
         } finally {
-            if (currentPortRef.current === requestPort) {
-                setBusyIds((current) => {
-                    const next = new Set(current);
-                    next.delete(task.id);
-                    return next;
-                });
-            }
+            setBusyIds((current) => {
+                const next = new Set(current);
+                next.delete(task.id);
+                return next;
+            });
         }
     };
 
@@ -198,7 +166,7 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
                         type="button"
                         className="d2-board-icon-button"
                         onClick={() => void loadTasks()}
-                        disabled={loading || port === null}
+                        disabled={loading}
                         aria-label="Refresh board"
                         title="Refresh board"
                     >
@@ -230,16 +198,6 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
                             maxLength={500}
                             disabled={creating}
                             placeholder="Task title"
-                        />
-                    </label>
-                    <label className="d2-board-field">
-                        <span>Assignee</span>
-                        <input
-                            type="text"
-                            value={assignee}
-                            onChange={(event) => setAssignee(event.target.value)}
-                            disabled={creating}
-                            placeholder="Optional"
                         />
                     </label>
                     <label className="d2-board-field">
@@ -344,12 +302,6 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
                                                         </button>
                                                     </div>
                                                     <div className="d2-board-card-meta">
-                                                        {task.assignee ? (
-                                                            <span className="d2-board-assignee" title={`Assigned to ${task.assignee}`}>
-                                                                <Icon icon={UserRound} size={12} />
-                                                                <span>{task.assignee}</span>
-                                                            </span>
-                                                        ) : <span />}
                                                         <span className="d2-board-status-chip" data-status={task.status}>
                                                             {boardLaneLabel(task.status)}
                                                         </span>

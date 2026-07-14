@@ -2,7 +2,7 @@
     display: grid;
     min-width: 0;
     min-height: 0;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) 0 0;
     grid-template-rows: 100%;
     overflow: hidden;
     transition: grid-template-columns 200ms ease;
@@ -10,6 +10,18 @@
 
 .d2-workbench.d2-workbench-side-open {
     grid-template-columns: minmax(0, 1fr) 1px var(--d2-pane-w, 380px);
+}
+
+.d2-workbench-side-pane-slot {
+    display: grid;
+    min-width: 0;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.d2-workbench-side-pane-slot > .d2-side-pane {
+    width: 100%;
+    height: 100%;
 }
 
 .d2-workbench-left,

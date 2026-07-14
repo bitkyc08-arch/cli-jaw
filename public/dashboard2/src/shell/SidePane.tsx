@@ -98,16 +98,19 @@ function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }):
 // ── SidePane ──────────────────────────────────────────────────────────
 
 interface SidePaneProps {
+    open: boolean;
     onClose(): void;
 }
 
-export function SidePane({ onClose }: SidePaneProps): JSX.Element {
+export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
     const { activeSidePaneTab, mountedTabs, setActiveSidePaneTab } = useAppScope();
     const activeDescriptor = activeSidePaneTab ? TAB_MAP.get(activeSidePaneTab) ?? null : null;
 
-   // Cmd+W / Ctrl+W or Escape closes the active tab, or the entire pane if no tab is active
-   useEffect(() => {
-       const handleKeyDown = (e: KeyboardEvent): void => {
+    // Cmd+W / Ctrl+W or Escape closes the active tab, or the entire pane if no tab is active
+    useEffect(() => {
+        if (!open) return;
+
+        const handleKeyDown = (e: KeyboardEvent): void => {
             const isCmdW = (e.metaKey || e.ctrlKey) && e.key === 'w';
             // Escape only when focus is inside the side pane (avoid conflict with composer menus)
             const isEscape = e.key === 'Escape' && !e.defaultPrevented
@@ -124,7 +127,7 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activeSidePaneTab, onClose, setActiveSidePaneTab]);
+    }, [activeSidePaneTab, onClose, open, setActiveSidePaneTab]);
 
     // ── Keep-alive rendering ──────────────────────────────────────────
     // Tabs marked keepAlive=true stay mounted (hidden) once activated.
@@ -133,6 +136,7 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
         const elements: JSX.Element[] = [];
         for (const desc of TAB_REGISTRY) {
             const isActive = activeSidePaneTab === desc.id;
+            const isVisible = open && isActive;
             if (desc.keepAlive) {
                 // Keep-alive: render if ever mounted, hide if not active
                 if (mountedTabs.has(desc.id)) {
@@ -141,18 +145,26 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
                             key={desc.id}
                             className="d2-side-pane-tab-slot"
                             data-tab={desc.id}
-                            style={{ display: isActive ? undefined : 'none' }}
-                            aria-hidden={!isActive}
+                            style={{ display: isVisible ? undefined : 'none' }}
+                            inert={!isVisible}
+                            aria-hidden={!isVisible}
                         >
-                            <TabContent tabId={desc.id} active={isActive} />
+                            <TabContent tabId={desc.id} active={isVisible} />
                         </div>,
                     );
                 }
             } else if (isActive) {
                 // Non-keepAlive: render only when active
                 elements.push(
-                    <div key={desc.id} className="d2-side-pane-tab-slot" data-tab={desc.id}>
-                        <TabContent tabId={desc.id} active={true} />
+                    <div
+                        key={desc.id}
+                        className="d2-side-pane-tab-slot"
+                        data-tab={desc.id}
+                        style={{ display: isVisible ? undefined : 'none' }}
+                        inert={!isVisible}
+                        aria-hidden={!isVisible}
+                    >
+                        <TabContent tabId={desc.id} active={isVisible} />
                     </div>,
                 );
             }
@@ -214,9 +226,8 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
             </header>
 
             <div className="d2-side-pane-body">
-                {activeSidePaneTab !== null ? (
-                    renderTabs()
-                ) : (
+                {renderTabs()}
+                {activeSidePaneTab === null ? (
                     <div className="d2-side-pane-picker">
                         <h2>Open tab</h2>
                         <p>Choose a tab to open in the side pane.</p>
@@ -251,7 +262,7 @@ export function SidePane({ onClose }: SidePaneProps): JSX.Element {
                             ))}
                         </div>
                     </div>
-                )}
+                ) : null}
             </div>
         </aside>
     );
