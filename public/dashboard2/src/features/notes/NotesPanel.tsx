@@ -1,315 +1,162 @@
-// 071 — Notes SidePane tab with file tree + editor
-import { ChevronDown, ChevronRight, FilePlus, Save } from '@lucide/icons';
-import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
-import { Icon } from '../../shell/Icon.tsx';
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type JSX, type PointerEvent as ReactPointerEvent } from 'react';
+import { NotesCommandPalette } from './NotesCommandPalette';
+import { NotesEmptyState } from './NotesEmptyState';
+import { NotesFileTree } from './NotesFileTree';
+import { NotesFrontmatterStrip } from './NotesFrontmatterStrip';
+import { NotesQuickSwitcher } from './NotesQuickSwitcher';
+import { NotesToolbar } from './NotesToolbar';
+import { NotesCommandProvider, useRegisterNoteCommands, type NoteCommand } from './notes-command-registry';
+import type { NotesViewMode } from './notes-types';
+import { MarkdownRenderer } from './rendering/MarkdownRenderer';
+import { useNoteDocument } from './useNoteDocument';
+import { useNoteSync } from './useNoteSync';
+import { useNotesModel } from './useNotesModel';
+import { createNoteFile, createNoteFolder, renameNotePath, trashNotePath } from './notes-api';
 import './notes.css';
 
-interface NotesPanelProps {
-    active: boolean;
+interface NotesPanelProps { active: boolean }
+type SidebarMode = 'files' | 'search';
+type EditorViewMode = 'edit' | 'split' | 'preview';
+
+function wordCount(content: string): number {
+    return content.trim() ? content.trim().split(/\s+/u).length : 0;
 }
 
-interface NoteEntry {
-    name: string;
-    path: string;
-    kind: 'file' | 'folder';
-    mtimeMs: number;
-    size: number;
-    children?: NoteEntry[];
-}
-
-interface NoteFile {
-    path: string;
-    name: string;
-    content: string;
-    revision: string;
-    mtimeMs: number;
-    size: number;
-}
-
-interface NoteRequestError {
-    message: string;
-    action: 'tree' | 'load' | 'save' | 'create';
-}
-
-const NOTES_API = '/api/dashboard/notes';
-
-async function responseError(response: Response, fallback: string): Promise<Error> {
-    const payload = await response.json().catch(() => null) as { error?: unknown } | null;
-    return new Error(typeof payload?.error === 'string' ? payload.error : fallback);
-}
-
-export function NotesPanel({ active }: NotesPanelProps): JSX.Element {
-    const [tree, setTree] = useState<NoteEntry[]>([]);
+function NotesPanelContent({ active }: NotesPanelProps): JSX.Element {
     const [selectedPath, setSelectedPath] = useState<string | null>(null);
-    const [content, setContent] = useState('');
-    const [revision, setRevision] = useState<string | null>(null);
-    const [dirty, setDirty] = useState(false);
+    const [viewMode, setViewMode] = useState<EditorViewMode>('edit');
+    const [dirtyPath, setDirtyPath] = useState<string | null>(null);
+    const [sidebarMode, setSidebarMode] = useState<SidebarMode>('files');
     const [expandedDirs, setExpandedDirs] = useState<Set<string>>(() => new Set());
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<NoteRequestError | null>(null);
-    const [conflict, setConflict] = useState(false);
-    const [mode, setMode] = useState<'edit' | 'preview'>('edit');
-    const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const abortRef = useRef<AbortController | null>(null);
+    const [treeWidth, setTreeWidth] = useState(184);
+    const [compactEditorOpen, setCompactEditorOpen] = useState(false);
+    const [quickSwitcherOpen, setQuickSwitcherOpen] = useState(false);
+    const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+    const noteDocument = useNoteDocument();
 
-    // Fetch note tree
-    const fetchTree = useCallback(async () => {
-        if (!active) return;
-        try {
-            const signal = abortRef.current?.signal;
-            const response = await fetch(`${NOTES_API}/tree`, {
-                cache: 'no-store',
-                credentials: 'same-origin',
-                ...(signal ? { signal } : {}),
-            });
-            if (!response.ok) throw await responseError(response, `Unable to load notes (${response.status})`);
-            setTree(await response.json() as NoteEntry[]);
-            setError((current) => current?.action === 'tree' ? null : current);
-        } catch (treeError) {
-            if (treeError instanceof DOMException && treeError.name === 'AbortError') return;
-            setError({
-                message: treeError instanceof Error ? treeError.message : 'Unable to load notes',
-                action: 'tree',
-            });
-        }
-    }, [active]);
+    const confirmDirtyLeave = useCallback((nextPath?: string | null): boolean => {
+        return !noteDocument.dirty || nextPath === selectedPath || window.confirm('Discard unsaved changes and leave this note?');
+    }, [noteDocument.dirty, selectedPath]);
+    const selectPath = useCallback((path: string): void => {
+        if (!confirmDirtyLeave(path)) return;
+        setSelectedPath(path);
+        setCompactEditorOpen(true);
+    }, [confirmDirtyLeave]);
 
-    // Fetch note content
-    const fetchNote = useCallback(async (path: string) => {
-        setLoading(true);
-        setError(null);
-        try {
-            const response = await fetch(`${NOTES_API}/file?path=${encodeURIComponent(path)}`, {
-                cache: 'no-store',
-                credentials: 'same-origin',
-            });
-            if (!response.ok) throw await responseError(response, `Unable to load note (${response.status})`);
-            const note = await response.json() as NoteFile;
-            setContent(note.content);
-            setRevision(note.revision);
-            setDirty(false);
-            setConflict(false);
-        } catch (noteError) {
-            setError({
-                message: noteError instanceof Error ? noteError.message : 'Unable to load note',
-                action: 'load',
-            });
-        } finally {
-            setLoading(false);
-        }
-    }, []);
+    const model = useNotesModel({
+        active,
+        selectedPath,
+        onSelectedPathChange: path => { if (!path || confirmDirtyLeave(path)) setSelectedPath(path); },
+    });
 
-    // Save note
-    const saveNote = useCallback(async () => {
-        if (!selectedPath || !revision || conflict) return;
-        setError(null);
-        try {
-            const response = await fetch(`${NOTES_API}/file`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ path: selectedPath, content, baseRevision: revision }),
-            });
-            if (response.status === 409) {
-                setConflict(true);
-                return;
-            }
-            if (!response.ok) throw await responseError(response, `Unable to save note (${response.status})`);
-            const note = await response.json() as NoteFile;
-            setRevision(note.revision);
-            setDirty(false);
-        } catch (saveError) {
-            setError({
-                message: saveError instanceof Error ? saveError.message : 'Unable to save note',
-                action: 'save',
-            });
-        }
-    }, [conflict, content, revision, selectedPath]);
-
-    const createNote = useCallback(async (): Promise<void> => {
+    const handleCreateFile = useCallback(async () => {
         const name = prompt('Note name:');
         if (!name) return;
         const path = name.endsWith('.md') ? name : `${name}.md`;
-        setError(null);
-        try {
-            const response = await fetch(`${NOTES_API}/file`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'same-origin',
-                body: JSON.stringify({ path, content: '' }),
-            });
-            if (!response.ok) throw await responseError(response, `Unable to create note (${response.status})`);
-            const note = await response.json() as NoteFile;
-            setSelectedPath(note.path);
-            setContent(note.content);
-            setRevision(note.revision);
-            setDirty(false);
-            setConflict(false);
-            await fetchTree();
-        } catch (createError) {
-            setError({
-                message: createError instanceof Error ? createError.message : 'Unable to create note',
-                action: 'create',
-            });
-        }
-    }, [fetchTree]);
+        await createNoteFile(path);
+        setSelectedPath(path);
+        void model.refresh(path);
+    }, [model]);
 
-    // Load tree on mount (only when active)
-    useEffect(() => {
-        abortRef.current?.abort();
-        abortRef.current = new AbortController();
-        if (active) void fetchTree();
-        return () => { abortRef.current?.abort(); };
-    }, [active, fetchTree]);
+    const handleCreateFolder = useCallback(async () => {
+        const name = prompt('Folder name:');
+        if (!name) return;
+        await createNoteFolder(name);
+        void model.refresh(selectedPath);
+    }, [model, selectedPath]);
 
-    // Load note on selection change
-    useEffect(() => {
-        if (active && selectedPath) void fetchNote(selectedPath);
-    }, [active, selectedPath, fetchNote]);
+    const handleRename = useCallback(async (path: string) => {
+        const parts = path.split('/');
+        const current = parts[parts.length - 1] ?? path;
+        const newName = prompt('Rename to:', current);
+        if (!newName || newName === current) return;
+        const newPath = parts.length > 1 ? [...parts.slice(0, -1), newName].join('/') : newName;
+        await renameNotePath(path, newPath);
+        if (selectedPath === path) setSelectedPath(newPath);
+        void model.refresh(selectedPath === path ? newPath : selectedPath);
+    }, [model, selectedPath]);
 
-    // Keyboard: Cmd+S to save
+    const handleTrash = useCallback(async (path: string) => {
+        if (!confirm(`Delete "${path.split('/').pop()}"?`)) return;
+        await trashNotePath(path);
+        if (selectedPath === path) setSelectedPath(null);
+        void model.refresh(null);
+    }, [model, selectedPath]);
+
+    useEffect(() => { if (active && selectedPath) void noteDocument.load(selectedPath); }, [active, selectedPath, noteDocument.load]);
+    useEffect(() => { setDirtyPath(noteDocument.dirty ? selectedPath : null); }, [noteDocument.dirty, selectedPath]);
     useEffect(() => {
         if (!active) return;
-        const handler = (e: KeyboardEvent): void => {
-            if ((e.metaKey || e.ctrlKey) && e.key === 's' && dirty && revision && !conflict) {
-                e.preventDefault();
-                void saveNote();
+        const handler = (event: BeforeUnloadEvent): void => {
+            if (!noteDocument.dirty) return;
+            event.preventDefault(); event.returnValue = '';
+        };
+        window.addEventListener('beforeunload', handler);
+        return () => window.removeEventListener('beforeunload', handler);
+    }, [active, noteDocument.dirty]);
+    useEffect(() => {
+        if (!active) return;
+        const handler = (event: KeyboardEvent): void => {
+            if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === 'o') {
+                event.preventDefault(); setQuickSwitcherOpen(open => !open);
             }
         };
-        document.addEventListener('keydown', handler);
-        return () => document.removeEventListener('keydown', handler);
-    }, [active, conflict, dirty, revision, saveNote]);
+        window.addEventListener('keydown', handler);
+        return () => window.removeEventListener('keydown', handler);
+    }, [active]);
 
-    const toggleDir = (path: string): void => {
-        setExpandedDirs((prev) => {
-            const next = new Set(prev);
-            if (next.has(path)) next.delete(path);
-            else next.add(path);
-            return next;
-        });
-    };
+    useNoteSync({
+        active,
+        onTreeChanged: () => void model.refresh(selectedPath),
+        onFileChanged: path => {
+            if (path === selectedPath && !noteDocument.dirty) void noteDocument.reloadFromDisk();
+            void model.refresh(selectedPath);
+        },
+    });
 
-    const renderTree = (entries: NoteEntry[], depth = 0): JSX.Element[] =>
-        entries.map((entry) => (
-            <div key={entry.path}>
-                <button
-                    className={`d2-notes-tree-item${selectedPath === entry.path ? ' active' : ''}`}
-                    style={{ paddingLeft: `${12 + depth * 16}px` }}
-                    type="button"
-                    role="treeitem"
-                    onClick={() => {
-                        if (entry.kind === 'folder') toggleDir(entry.path);
-                        else {
-                            setConflict(false);
-                            setError(null);
-                            setSelectedPath(entry.path);
-                        }
-                    }}
-                >
-                    {entry.kind === 'folder' ? (
-                        <Icon icon={expandedDirs.has(entry.path) ? ChevronDown : ChevronRight} size={12} />
-                    ) : (
-                        <span className="d2-notes-tree-dot" />
-                    )}
-                    <span className="d2-notes-tree-name">{entry.name}</span>
-                </button>
-                {entry.kind === 'folder' && expandedDirs.has(entry.path) && entry.children
-                    ? renderTree(entry.children, depth + 1)
-                    : null}
-            </div>
-        ));
+    const commands = useMemo<NoteCommand[]>(() => [
+        { id: 'notes:save', section: 'File', label: 'Save note', shortcut: 'Cmd+S', disabled: !selectedPath || !noteDocument.dirty || noteDocument.saving, run: () => void noteDocument.save() },
+        { id: 'notes:open', section: 'File', label: 'Open note…', shortcut: 'Cmd+O', run: () => setQuickSwitcherOpen(true) },
+        ...(['edit', 'split', 'preview'] as const).map<NoteCommand>(mode => ({ id: `notes:view-${mode}`, section: 'View', label: `Switch to ${mode} view`, disabled: !selectedPath, run: () => setViewMode(mode) })),
+        { id: 'notes:refresh', section: 'File', label: 'Refresh notes', run: () => void model.refresh(selectedPath) },
+    ], [model.refresh, noteDocument.dirty, noteDocument.save, noteDocument.saving, selectedPath]);
+    useRegisterNoteCommands(commands, active);
 
-    const retryError = (): void => {
-        if (!error) return;
-        if (error.action === 'tree') void fetchTree();
-        else if (error.action === 'load' && selectedPath) void fetchNote(selectedPath);
-        else if (error.action === 'save') void saveNote();
-        else if (error.action === 'create') void createNote();
+    const metadata = model.index?.notes.find(note => note.path === selectedPath) ?? null;
+    const preview = <MarkdownRenderer markdown={noteDocument.content} outgoing={selectedPath ? model.index?.outgoingLinks[selectedPath] : undefined} notes={model.index?.notes} onWikiLinkNavigate={selectPath} />;
+    const resizeTree = (event: ReactPointerEvent<HTMLDivElement>): void => {
+        const startX = event.clientX; const startWidth = treeWidth;
+        event.currentTarget.setPointerCapture(event.pointerId);
+        const move = (next: PointerEvent): void => setTreeWidth(Math.max(144, Math.min(280, startWidth + next.clientX - startX)));
+        const up = (): void => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); };
+        window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     };
 
     return (
-        <div className="d2-feature-panel d2-notes-panel">
-            <div className="d2-notes-sidebar">
-                <div className="d2-notes-sidebar-header">
-                    <span className="d2-notes-sidebar-title">Notes</span>
-                    <button className="d2-notes-icon-btn" type="button" title="New note" onClick={() => void createNote()}>
-                        <Icon icon={FilePlus} size={14} />
-                    </button>
-                </div>
-                <div className="d2-notes-tree" role="tree">
-                    {tree.length > 0 ? renderTree(tree) : (
-                        <div className="d2-notes-tree-empty">No notes yet</div>
-                    )}
-                </div>
-            </div>
-
-            <div className="d2-notes-editor-area">
-                {conflict && selectedPath ? (
-                    <div className="d2-notes-conflict" role="alert">
-                        <span>다른 곳에서 수정됨 — 다시 불러오기</span>
-                        <button type="button" onClick={() => void fetchNote(selectedPath)}>Reload</button>
+        <section className={`d2-feature-panel d2-notes-panel${compactEditorOpen ? ' is-compact-editor-open' : ''}`} style={{ '--notes-tree-width': `${treeWidth}px` } as CSSProperties} aria-label="Notes workspace">
+            <aside className="d2-notes-sidebar" aria-label="Notes browser">
+                <NotesFileTree tree={model.filteredTree} selectedPath={selectedPath} expandedDirs={expandedDirs} loading={model.loading} onSelect={selectPath} onToggleDir={path => setExpandedDirs(prev => { const n = new Set(prev); if (n.has(path)) n.delete(path); else n.add(path); return n; })} onCreateFile={() => void handleCreateFile()} onCreateFolder={() => void handleCreateFolder()} onRename={path => void handleRename(path)} onTrash={path => void handleTrash(path)} onRefresh={() => void model.refresh(selectedPath)} />
+            </aside>
+            <div className="d2-notes-divider" role="separator" aria-orientation="vertical" onPointerDown={resizeTree} />
+            <main className="d2-notes-workspace">
+                {selectedPath ? <>
+                    <NotesToolbar selectedPath={selectedPath} viewMode={viewMode} dirty={noteDocument.dirty} saving={noteDocument.saving} wordCount={wordCount(noteDocument.content)} onViewModeChange={setViewMode} onSave={() => void noteDocument.save()} />
+                    <NotesFrontmatterStrip content={noteDocument.content} />
+                    {(noteDocument.error || model.error) ? <div className="d2-notes-notice is-error" role="alert"><span>{noteDocument.error || model.error}</span><button type="button" onClick={() => void (noteDocument.error ? noteDocument.reloadFromDisk() : model.refresh(selectedPath))}>Retry</button></div> : null}
+                    {noteDocument.conflict ? <div className="d2-notes-notice is-conflict" role="alert"><span>This note changed on disk.</span><button type="button" onClick={() => void noteDocument.reloadFromDisk()}>Reload</button><button type="button" onClick={() => void noteDocument.overwrite()}>Overwrite</button></div> : null}
+                    <div className={`d2-notes-content is-${viewMode}`} aria-busy={noteDocument.loading}>
+                        {noteDocument.loading ? <div className="d2-notes-loading">Loading note…</div> : null}
+                        {!noteDocument.loading && viewMode !== 'preview' ? <textarea className="d2-notes-textarea" aria-label={`Edit ${selectedPath}`} value={noteDocument.content} onChange={event => noteDocument.setContent(event.currentTarget.value)} spellCheck={false} /> : null}
+                        {!noteDocument.loading && viewMode !== 'edit' ? <article className="d2-notes-preview" aria-label={`Preview ${selectedPath}`}>{preview}</article> : null}
                     </div>
-                ) : error ? (
-                    <div className="d2-notes-error" role="alert">
-                        <span>{error.message}</span>
-                        <button type="button" onClick={retryError}>Retry</button>
-                    </div>
-                ) : null}
-                {selectedPath ? (
-                    <>
-                        <div className="d2-notes-toolbar">
-                            <span className="d2-notes-filename">
-                                {selectedPath}{dirty ? ' *' : ''}
-                            </span>
-                            <div className="d2-notes-toolbar-actions">
-                                <button
-                                    className={`d2-notes-mode-btn${mode === 'edit' ? ' active' : ''}`}
-                                    type="button"
-                                    onClick={() => setMode('edit')}
-                                >Edit</button>
-                                <button
-                                    className={`d2-notes-mode-btn${mode === 'preview' ? ' active' : ''}`}
-                                    type="button"
-                                    onClick={() => setMode('preview')}
-                                >Preview</button>
-                                <button
-                                    className="d2-notes-icon-btn"
-                                    type="button"
-                                    title="Save (⌘S)"
-                                    disabled={!dirty || conflict || revision === null}
-                                    onClick={() => void saveNote()}
-                                >
-                                    <Icon icon={Save} size={14} />
-                                </button>
-                            </div>
-                        </div>
-                        <div className="d2-notes-content">
-                            {loading ? (
-                                <div className="d2-notes-loading">Loading...</div>
-                            ) : mode === 'edit' ? (
-                                <textarea
-                                    ref={textareaRef}
-                                    className="d2-notes-textarea"
-                                    aria-label="Notes editor"
-                                    value={content}
-                                    onChange={(e) => { setContent(e.target.value); setDirty(true); }}
-                                    spellCheck={false}
-                                    placeholder="Start writing..."
-                                />
-                            ) : (
-                                <div className="d2-notes-preview">
-                                    <pre className="d2-notes-preview-text">{content}</pre>
-                                </div>
-                            )}
-                        </div>
-                    </>
-                ) : (
-                    <div className="d2-feature-panel-placeholder">
-                        <h3>Select a note</h3>
-                        <p>Choose a note from the sidebar or create a new one</p>
-                    </div>
-                )}
-            </div>
-        </div>
+                </> : <NotesEmptyState onCreateNote={() => void handleCreateFile()} />}
+            </main>
+            <NotesQuickSwitcher open={quickSwitcherOpen} notes={model.index?.notes ?? null} onClose={() => setQuickSwitcherOpen(false)} onSelect={path => { selectPath(path); setQuickSwitcherOpen(false); }} />
+            <NotesCommandPalette open={commandPaletteOpen} onClose={() => setCommandPaletteOpen(false)} />
+        </section>
     );
+}
+
+export function NotesPanel(props: NotesPanelProps): JSX.Element {
+    return <NotesCommandProvider><NotesPanelContent {...props} /></NotesCommandProvider>;
 }
