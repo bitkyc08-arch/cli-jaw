@@ -1,155 +1,87 @@
 // 074 — Settings central workspace (replaces chat area when active)
-import { ArrowLeft, Moon, Sun } from '@lucide/icons';
-import { useEffect, useRef, useState, type JSX } from 'react';
-import { useAppScope } from '../../state/scope.tsx';
+import { ArrowLeft } from '@lucide/icons';
+import { useEffect, useMemo, useState, type JSX } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
+import { useAppScope } from '../../state/scope.tsx';
+import { SettingsSidebar } from './SettingsSidebar.tsx';
+import { useDirtyStore } from './settings-dirty-store.ts';
+import type { SettingsCategory, SettingsPageId } from './settings-types.ts';
+import { AgentPage } from './pages/AgentPage.tsx';
+import { BrowserPage } from './pages/BrowserPage.tsx';
+import { DisplayPage } from './pages/DisplayPage.tsx';
+import { McpPage } from './pages/McpPage.tsx';
+import { MemoryPage } from './pages/MemoryPage.tsx';
+import { ModelProviderPage } from './pages/ModelProviderPage.tsx';
+import { NetworkPage } from './pages/NetworkPage.tsx';
+import { ProfilePage } from './pages/ProfilePage.tsx';
 import './settings.css';
 
-type SettingsSection = 'general' | 'appearance' | 'about';
-
-const SECTIONS: Array<{ id: SettingsSection; label: string }> = [
-    { id: 'general', label: 'General' },
-    { id: 'appearance', label: 'Appearance' },
-    { id: 'about', label: 'About' },
+const CATEGORIES: SettingsCategory[] = [
+    { id: 'display', label: 'Display', description: 'Theme, language, and type', source: 'dashboard', page: DisplayPage },
+    { id: 'profile', label: 'Profile', description: 'Identity and reasoning display', source: 'dashboard', page: ProfilePage },
+    { id: 'agent', label: 'Agent', description: 'Model and prompt defaults', source: 'instance', page: AgentPage },
+    { id: 'model-provider', label: 'Model providers', description: 'Providers and API keys', source: 'instance', page: ModelProviderPage },
+    { id: 'memory', label: 'Memory', description: 'Recall and retention', source: 'instance', page: MemoryPage },
+    { id: 'mcp', label: 'MCP servers', description: 'Tool server connections', source: 'instance', page: McpPage },
+    { id: 'network', label: 'Network', description: 'Proxy and TLS', source: 'instance', page: NetworkPage },
+    { id: 'browser', label: 'Browser', description: 'Panel and session behavior', source: 'dashboard', page: BrowserPage },
 ];
 
-interface ServerInfo {
-    version: string;
-    port: string;
-    dataDir: string;
-    nodeVersion: string;
-}
-
-const EMPTY_INFO: ServerInfo = { version: '...', port: '...', dataDir: '...', nodeVersion: '...' };
-
 export function SettingsWorkspace(): JSX.Element {
-    const { setWorkspaceMode } = useAppScope();
-    const [section, setSection] = useState<SettingsSection>('general');
-    const [serverInfo, setServerInfo] = useState<ServerInfo>(EMPTY_INFO);
-    const [loadError, setLoadError] = useState(false);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const [theme, setTheme] = useState<'dark' | 'light'>(() =>
-        document.documentElement.style.colorScheme === 'light' ? 'light' : 'dark',
-    );
+    const { selected, setWorkspaceMode } = useAppScope();
+    const [activeId, setActiveId] = useState<SettingsPageId>('display');
+    const dirty = useDirtyStore();
+    const active = useMemo(() => CATEGORIES.find((category) => category.id === activeId) ?? CATEGORIES[0]!, [activeId]);
+    const ActivePage = active.page;
 
-    // Focus the container on mount for keyboard accessibility
-    useEffect(() => { containerRef.current?.focus(); }, []);
-
-    useEffect(() => {
-        let cancelled = false;
-        // Use the manager status endpoint directly
-        fetch('/api/dashboard/status')
-            .then(async (res) => {
-                if (cancelled) return;
-                if (!res.ok) { setLoadError(true); return; }
-                const data = await res.json() as Record<string, unknown>;
-                if (cancelled) return;
-                setServerInfo({
-                    version: String(data['version'] ?? ''),
-                    port: String(data['port'] ?? ''),
-                    dataDir: String(data['dataDir'] ?? data['home'] ?? ''),
-                    nodeVersion: String(data['nodeVersion'] ?? ''),
-                });
-            })
-            .catch(() => {
-                if (!cancelled) setLoadError(true);
-            });
-        return () => { cancelled = true; };
-    }, []);
-
-    const toggleTheme = (): void => {
-        const next = theme === 'dark' ? 'light' : 'dark';
-        setTheme(next);
-        document.documentElement.style.colorScheme = next;
-        document.documentElement.setAttribute('data-theme', next);
+    const leave = (): void => {
+        if (!dirty.confirmLeave()) return;
+        dirty.markClean();
+        setWorkspaceMode('chat');
     };
 
+    const selectPage = (next: SettingsPageId): void => {
+        if (next === activeId || !dirty.confirmLeave()) return;
+        dirty.markClean();
+        setActiveId(next);
+    };
+
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent): void => {
+            if ((event.metaKey || event.ctrlKey) && event.key.toLocaleLowerCase() === 's') {
+                event.preventDefault();
+                if (dirty.isDirty) void dirty.triggerSave();
+            }
+        };
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [dirty]);
+
+    useEffect(() => {
+        const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+            if (!dirty.isDirty) return;
+            event.preventDefault();
+        };
+        window.addEventListener('beforeunload', onBeforeUnload);
+        return () => window.removeEventListener('beforeunload', onBeforeUnload);
+    }, [dirty.isDirty]);
+
     return (
-        <div className="d2-settings-workspace" ref={containerRef} tabIndex={-1}>
-            <aside className="d2-settings-nav">
-                <button
-                    className="d2-settings-back"
-                    type="button"
-                    onClick={() => setWorkspaceMode('chat')}
-                    title="Back to chat"
-                >
+        <div className="d2-settings-workspace">
+            <aside className="d2-settings-rail">
+                <button className="d2-settings-back" type="button" onClick={leave}>
                     <Icon icon={ArrowLeft} size={16} />
-                    <span>Back</span>
+                    <span>Back to chat</span>
                 </button>
-                <div className="d2-settings-nav-list">
-                    {SECTIONS.map((s) => (
-                        <button
-                            key={s.id}
-                            className={`d2-settings-nav-item${section === s.id ? ' active' : ''}`}
-                            type="button"
-                            onClick={() => setSection(s.id)}
-                            aria-current={section === s.id ? 'true' : undefined}
-                        >
-                            {s.label}
-                        </button>
-                    ))}
+                <div className="d2-settings-rail-heading">
+                    <strong>Settings</strong>
+                    <span>{selected ? `Instance :${selected.port}` : 'Dashboard preferences'}</span>
                 </div>
+                <SettingsSidebar categories={CATEGORIES} activeId={activeId} onSelect={selectPage} />
             </aside>
-
-            <div className="d2-settings-content">
-                {section === 'general' && (
-                    <div className="d2-settings-section">
-                        <h2>General</h2>
-                        {loadError ? (
-                            <p className="d2-settings-error-text">Could not load server info.</p>
-                        ) : (
-                        <div className="d2-settings-group">
-                            <div className="d2-settings-row">
-                                <span className="d2-settings-label">Version</span>
-                                <span className="d2-settings-value">{serverInfo.version || '...'}</span>
-                            </div>
-                            <div className="d2-settings-row">
-                                <span className="d2-settings-label">Port</span>
-                                <span className="d2-settings-value">{serverInfo.port || '...'}</span>
-                            </div>
-                            <div className="d2-settings-row">
-                                <span className="d2-settings-label">Data directory</span>
-                                <span className="d2-settings-value d2-settings-mono">{serverInfo.dataDir || '...'}</span>
-                            </div>
-                            <div className="d2-settings-row">
-                                <span className="d2-settings-label">Node</span>
-                                <span className="d2-settings-value">{serverInfo.nodeVersion || '...'}</span>
-                            </div>
-                        </div>
-                        )}
-                    </div>
-                )}
-
-                {section === 'appearance' && (
-                    <div className="d2-settings-section">
-                        <h2>Appearance</h2>
-                        <div className="d2-settings-group">
-                            <div className="d2-settings-row d2-settings-row-action">
-                                <span className="d2-settings-label">Theme</span>
-                                <button className="d2-settings-toggle" type="button" onClick={toggleTheme}>
-                                    <Icon icon={theme === 'dark' ? Moon : Sun} size={14} />
-                                    <span>{theme === 'dark' ? 'Dark' : 'Light'}</span>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                )}
-
-                {section === 'about' && (
-                    <div className="d2-settings-section">
-                        <h2>About</h2>
-                        <div className="d2-settings-group">
-                            <p className="d2-settings-about-text">
-                                cli-jaw is an AI agent orchestration platform.
-                            </p>
-                            <div className="d2-settings-row">
-                                <span className="d2-settings-label">Version</span>
-                                <span className="d2-settings-value">{serverInfo.version || '...'}</span>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            <main className="d2-settings-content">
+                <ActivePage key={`${active.id}:${selected?.port ?? 'manager'}`} port={selected?.port ?? null} dirty={dirty} />
+            </main>
         </div>
     );
 }

@@ -1,158 +1,58 @@
-/* 074 — Settings workspace */
-.d2-settings-workspace {
-    display: grid;
-    width: 100%;
-    height: 100%;
-    min-height: 0;
-    grid-template-columns: 200px minmax(0, 1fr);
-    overflow: hidden;
-}
-
-.d2-settings-nav {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    padding: 16px 12px;
-    border-right: 1px solid var(--border);
-    background: var(--surface);
-    overflow-y: auto;
-}
-
-.d2-settings-back {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border: 0;
-    border-radius: var(--r-md);
-    margin-bottom: 12px;
-    background: transparent;
-    color: var(--text-3);
-    cursor: pointer;
-    font-size: 13px;
-    transition: color 120ms ease, background 120ms ease;
-}
-
-.d2-settings-back:hover {
-    background: var(--surface-h);
-    color: var(--text);
-}
-
-.d2-settings-nav-list {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-}
-
-.d2-settings-nav-item {
-    padding: 8px 12px;
-    border: 0;
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text-3);
-    cursor: pointer;
-    font-size: 13px;
-    font-weight: 500;
-    text-align: left;
-    transition: color 120ms ease, background 120ms ease;
-}
-
-.d2-settings-nav-item:hover {
-    background: var(--surface-h);
-    color: var(--text);
-}
-
-.d2-settings-nav-item.active {
-    background: var(--surface-h);
-    color: var(--text);
-    font-weight: 600;
-}
-
-.d2-settings-content {
-    padding: 32px 40px;
-    overflow-y: auto;
-}
-
-.d2-settings-section h2 {
-    margin: 0 0 20px;
-    color: var(--text);
-    font-size: 18px;
-    font-weight: 600;
-}
-
-.d2-settings-group {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    overflow: hidden;
-}
-
-.d2-settings-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 44px;
-    padding: 10px 16px;
-    background: var(--surface);
-}
-
-.d2-settings-row + .d2-settings-row {
-    border-top: 1px solid var(--border);
-}
-
-.d2-settings-label {
-    color: var(--text-2);
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.d2-settings-value {
-    color: var(--text-3);
-    font-size: 13px;
-}
-
-.d2-settings-mono {
-    font-family: 'SF Mono', 'Fira Code', monospace;
-    font-size: 12px;
-}
-
-.d2-settings-toggle {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-sm);
-    background: transparent;
-    color: var(--text-2);
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    transition: border-color 120ms ease, background 120ms ease;
-}
-
-.d2-settings-toggle:hover {
-    border-color: var(--border-h);
-    background: var(--surface-h);
-}
-
-.d2-settings-about-text {
-    margin: 0;
-    padding: 12px 16px;
-    background: var(--surface);
-    color: var(--text-3);
-    font-size: 13px;
-    line-height: 1.5;
-}
-
-.d2-settings-error-text {
-    margin: 0;
-    padding: 14px 16px;
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    background: var(--surface);
-    color: var(--text-3);
-    font-size: 13px;
+/* 074 — Settings master/detail workspace */
+.d2-settings-workspace { display: grid; grid-template-columns: 248px minmax(0, 1fr); width: 100%; height: 100%; min-height: 0; overflow: hidden; background: var(--bg); color: var(--text); }
+.d2-settings-rail { display: flex; min-height: 0; flex-direction: column; border-right: 1px solid var(--border); background: var(--surface); }
+.d2-settings-back { display: flex; align-items: center; gap: 8px; min-height: 38px; margin: 12px 12px 4px; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; font: inherit; font-size: 13px; }
+.d2-settings-back:hover { background: var(--surface-h); color: var(--text); }
+.d2-settings-rail-heading { display: flex; flex-direction: column; gap: 3px; padding: 12px 20px 16px; }
+.d2-settings-rail-heading strong { font-size: 16px; }
+.d2-settings-rail-heading span { overflow: hidden; color: var(--text-3); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.d2-settings-sidebar { display: flex; min-height: 0; flex: 1; flex-direction: column; gap: 12px; padding: 0 12px 16px; }
+.d2-settings-search { display: flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: var(--r-md); background: var(--bg); color: var(--text-3); }
+.d2-settings-search:focus-within { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.d2-settings-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; font-size: 12px; }
+.d2-settings-nav-list { display: flex; min-height: 0; flex-direction: column; gap: 2px; overflow-y: auto; }
+.d2-settings-nav-item { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; border: 0; border-radius: var(--r-md); background: transparent; color: var(--text-2); cursor: pointer; text-align: left; }
+.d2-settings-nav-item > span { font-size: 13px; font-weight: 550; }
+.d2-settings-nav-item small { color: var(--text-3); font-size: 10px; line-height: 1.35; }
+.d2-settings-nav-item:hover { background: var(--surface-h); color: var(--text); }
+.d2-settings-nav-item.active { background: var(--accent-soft); color: var(--accent); }
+.d2-settings-nav-item.active small { color: currentColor; opacity: .75; }
+.d2-settings-empty { padding: 14px 8px; color: var(--text-3); font-size: 12px; }
+.d2-settings-content { min-width: 0; overflow-y: auto; }
+.d2-settings-page { position: relative; width: min(760px, calc(100% - 64px)); min-height: 100%; margin: 0 auto; padding: 48px 0 112px; }
+.d2-settings-page-header { margin-bottom: 28px; }
+.d2-settings-page-header h1 { margin: 0 0 7px; font-size: 22px; font-weight: 650; letter-spacing: -.02em; text-wrap: balance; }
+.d2-settings-page-header p { margin: 0; color: var(--text-3); font-size: 13px; line-height: 1.5; text-wrap: balance; }
+.d2-settings-fields { overflow: hidden; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); }
+.d2-settings-field { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(220px, 1fr); align-items: center; gap: 24px; min-height: 72px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.d2-settings-field:last-child { border-bottom: 0; }
+.d2-settings-field label { display: flex; flex-direction: column; gap: 4px; color: var(--text); font-size: 13px; font-weight: 550; }
+.d2-settings-field label small { color: var(--text-3); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.d2-settings-field input, .d2-settings-field select, .d2-settings-field textarea { box-sizing: border-box; width: 100%; min-height: 36px; padding: 8px 10px; border: 1px solid var(--border-h); border-radius: var(--r-md); outline: 0; background: var(--bg); color: var(--text); font: inherit; font-size: 12px; }
+.d2-settings-field textarea { resize: vertical; line-height: 1.5; }
+.d2-settings-field input:focus, .d2-settings-field select:focus, .d2-settings-field textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.d2-settings-switch { justify-self: end; width: 38px; height: 22px; padding: 2px; border: 0; border-radius: var(--r-full); background: var(--text-4); cursor: pointer; transition: background .15s ease; }
+.d2-settings-switch span { display: block; width: 18px; height: 18px; border-radius: 50%; background: white; box-shadow: var(--shadow-md); transition: transform .15s ease; }
+.d2-settings-switch.on { background: var(--accent); }
+.d2-settings-switch.on span { transform: translateX(16px); }
+.d2-settings-state { display: flex; align-items: center; gap: 9px; padding: 18px; border: 1px solid var(--border); border-radius: var(--r-lg); background: var(--surface); color: var(--text-3); font-size: 13px; }
+.d2-settings-state.error { justify-content: space-between; color: var(--danger); }
+.d2-settings-state button, .d2-settings-button { min-height: 34px; padding: 7px 12px; border: 1px solid var(--border-h); border-radius: var(--r-md); background: var(--surface); color: var(--text-2); cursor: pointer; font: inherit; font-size: 12px; font-weight: 550; }
+.d2-settings-button.primary { border-color: transparent; background: var(--accent); color: white; }
+.d2-settings-button:disabled { cursor: default; opacity: .55; }
+.d2-settings-save-bar { position: fixed; z-index: 20; right: 28px; bottom: 24px; left: calc(var(--d2-sidebar-w, 260px) + 276px); display: flex; align-items: center; justify-content: space-between; gap: 20px; max-width: 720px; min-height: 54px; margin: auto; padding: 9px 11px 9px 16px; border: 1px solid var(--border-h); border-radius: var(--r-lg); background: var(--surface); box-shadow: var(--shadow-elevated); color: var(--text-2); font-size: 12px; }
+.d2-settings-save-actions { display: flex; gap: 7px; }
+.d2-settings-spinner { display: inline-block; width: 13px; height: 13px; margin-right: 6px; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; vertical-align: -2px; animation: d2-settings-spin .7s linear infinite; }
+.d2-settings-toast { position: fixed; z-index: 30; top: 18px; right: 20px; display: flex; align-items: center; gap: 14px; max-width: 380px; padding: 11px 12px 11px 14px; border: 1px solid var(--border-h); border-radius: var(--r-md); background: var(--surface); box-shadow: var(--shadow-elevated); color: var(--text); font-size: 12px; }
+.d2-settings-toast.success { border-left: 3px solid var(--positive); }
+.d2-settings-toast.error { border-left: 3px solid var(--danger); }
+.d2-settings-toast button { border: 0; background: transparent; color: var(--text-3); cursor: pointer; font-size: 18px; line-height: 1; }
+.d2-settings-sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+@keyframes d2-settings-spin { to { transform: rotate(360deg); } }
+@media (max-width: 760px) {
+    .d2-settings-workspace { grid-template-columns: 188px minmax(0, 1fr); }
+    .d2-settings-page { width: calc(100% - 32px); padding-top: 28px; }
+    .d2-settings-field { grid-template-columns: 1fr; gap: 10px; }
+    .d2-settings-switch { justify-self: start; }
+    .d2-settings-save-bar { left: 204px; }
 }
