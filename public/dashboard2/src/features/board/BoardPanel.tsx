@@ -8,6 +8,7 @@ import {
     type DragEvent,
     type FormEvent,
     type JSX,
+    type KeyboardEvent,
 } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
 import {
@@ -21,7 +22,9 @@ import {
     boardLaneLabel,
     type BoardLaneId,
     type BoardTask,
+    type UpdateBoardTaskInput,
 } from './board-types.ts';
+import { BoardTaskDialog } from './BoardTaskDialog.tsx';
 import './board.css';
 
 interface BoardPanelProps {
@@ -29,12 +32,20 @@ interface BoardPanelProps {
 }
 
 const BOARD_TASK_MIME = 'application/x-cli-jaw-board-task';
+type ContainerMode = 'compact' | 'medium' | 'wide';
+
+type KeyboardDrag = {
+    id: string;
+    originalTasks: BoardTask[];
+    originalStatus: BoardLaneId;
+};
 
 function errorMessage(error: unknown): string {
     return error instanceof Error ? error.message : 'Unable to update the board';
 }
 
 export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
+    const panelRef = useRef<HTMLElement>(null);
     const loadGenerationRef = useRef(0);
     const [tasks, setTasks] = useState<BoardTask[]>([]);
     const [loading, setLoading] = useState(false);
@@ -47,6 +58,10 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
     const [draggingId, setDraggingId] = useState<string | null>(null);
     const [dropLane, setDropLane] = useState<BoardLaneId | null>(null);
     const [busyIds, setBusyIds] = useState<Set<string>>(new Set());
+    const [editingTask, setEditingTask] = useState<BoardTask | null>(null);
+    const [containerMode, setContainerMode] = useState<ContainerMode>('wide');
+    const [selectedLane, setSelectedLane] = useState<BoardLaneId>('backlog');
+    const [keyboardDrag, setKeyboardDrag] = useState<KeyboardDrag | null>(null);
 
     const loadTasks = useCallback(async (signal?: AbortSignal): Promise<void> => {
         const generation = ++loadGenerationRef.current;
@@ -72,6 +87,22 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
         void loadTasks(controller.signal);
         return () => controller.abort();
     }, [active, loadTasks]);
+
+    useEffect(() => {
+        const panel = panelRef.current;
+        if (!panel || typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(([entry]) => {
+            const width = entry?.contentRect.width ?? panel.clientWidth;
+            setContainerMode(width < 420 ? 'compact' : width < 620 ? 'medium' : 'wide');
+        });
+        observer.observe(panel);
+        return () => observer.disconnect();
+    }, []);
+
+    useEffect(() => {
+        if (!keyboardDrag) return;
+        panelRef.current?.querySelector<HTMLElement>(`[data-board-task-id="${CSS.escape(keyboardDrag.id)}"]`)?.focus();
+    }, [keyboardDrag, selectedLane, tasks]);
 
     const tasksByLane = useMemo(() => {
         const grouped = new Map<BoardLaneId, BoardTask[]>(BOARD_LANES.map((lane) => [lane.id, []]));
@@ -101,11 +132,11 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
         }
     };
 
-    const moveTask = useCallback(async (id: string, status: BoardLaneId): Promise<void> => {
+    const moveTask = useCallback(async (id: string, status: BoardLaneId, originalStatus?: BoardLaneId): Promise<void> => {
         if (busyIds.has(id)) return;
         const task = tasks.find((item) => item.id === id);
-        if (!task || task.status === status) return;
-        const previousStatus = task.status;
+        if (!task || (task.status === status && originalStatus === undefined)) return;
+        const previousStatus = originalStatus ?? task.status;
         setBusyIds((current) => new Set(current).add(id));
         setTasks((current) => current.map((item) => item.id === id ? { ...item, status } : item));
         setError(null);
@@ -126,14 +157,15 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
         }
     }, [busyIds, tasks]);
 
-    const handleDelete = async (task: BoardTask): Promise<void> => {
+    const handleDelete = async (task: BoardTask, confirmed = false): Promise<void> => {
         if (busyIds.has(task.id)) return;
-        if (!window.confirm(`Delete "${task.title}"?`)) return;
+        if (!confirmed && !window.confirm(`Delete "${task.title}"?`)) return;
         setBusyIds((current) => new Set(current).add(task.id));
         setError(null);
         try {
             await deleteBoardTask(task.id);
             setTasks((current) => current.filter((item) => item.id !== task.id));
+            setEditingTask((current) => current?.id === task.id ? null : current);
             setAnnouncement(`${task.title} deleted`);
         } catch (deleteError) {
             setError(errorMessage(deleteError));
@@ -141,6 +173,82 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
             setBusyIds((current) => {
                 const next = new Set(current);
                 next.delete(task.id);
+                return next;
+            });
+        }
+    };
+
+    const handleDialogSave = async (id: string, input: UpdateBoardTaskInput): Promise<void> => {
+        if (busyIds.has(id)) return;
+        setBusyIds((current) => new Set(current).add(id));
+        setError(null);
+        try {
+            const updated = await updateBoardTask(id, input);
+            setTasks((current) => current.map((item) => item.id === id ? updated : item));
+            setEditingTask(null);
+            setAnnouncement(`${updated.title} updated`);
+        } catch (saveError) {
+            setError(errorMessage(saveError));
+        } finally {
+            setBusyIds((current) => {
+                const next = new Set(current);
+                next.delete(id);
+                return next;
+            });
+        }
+    };
+
+    const handleKeyboardDrag = (task: BoardTask, event: KeyboardEvent<HTMLElement>): void => {
+        const grabbed = keyboardDrag?.id === task.id;
+        if (event.key === ' ' && !keyboardDrag) {
+            event.preventDefault();
+            setKeyboardDrag({ id: task.id, originalTasks: tasks, originalStatus: task.status });
+            setDraggingId(task.id);
+            setSelectedLane(task.status);
+            setAnnouncement(`${task.title} grabbed. Use arrow keys to move, Enter to drop, or Escape to cancel.`);
+            return;
+        }
+        if (!grabbed) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            setTasks(keyboardDrag.originalTasks);
+            setKeyboardDrag(null);
+            setDraggingId(null);
+            setAnnouncement(`${task.title} move cancelled`);
+            return;
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            const originalStatus = keyboardDrag.originalStatus;
+            setKeyboardDrag(null);
+            setDraggingId(null);
+            setAnnouncement(`${task.title} dropped in ${boardLaneLabel(task.status)}`);
+            void moveTask(task.id, task.status, originalStatus);
+            return;
+        }
+        if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            const currentIndex = BOARD_LANES.findIndex((lane) => lane.id === task.status);
+            const nextIndex = Math.max(0, Math.min(BOARD_LANES.length - 1, currentIndex + (event.key === 'ArrowLeft' ? -1 : 1)));
+            const nextStatus = BOARD_LANES[nextIndex]?.id ?? task.status;
+            if (nextStatus === task.status) return;
+            setTasks((current) => current.map((item) => item.id === task.id ? { ...item, status: nextStatus } : item));
+            setSelectedLane(nextStatus);
+            setAnnouncement(`${task.title} moved to ${boardLaneLabel(nextStatus)}`);
+            return;
+        }
+        if (event.key === 'ArrowUp' || event.key === 'ArrowDown') {
+            event.preventDefault();
+            setTasks((current) => {
+                const laneIndexes = current.flatMap((item, index) => item.status === task.status ? [index] : []);
+                const index = current.findIndex((item) => item.id === task.id);
+                const lanePosition = laneIndexes.indexOf(index);
+                const targetPosition = lanePosition + (event.key === 'ArrowUp' ? -1 : 1);
+                const targetIndex = laneIndexes[targetPosition];
+                if (targetIndex === undefined) return current;
+                const next = [...current];
+                [next[index], next[targetIndex]] = [next[targetIndex]!, next[index]!];
+                setAnnouncement(`${task.title} moved to position ${targetPosition + 1} in ${boardLaneLabel(task.status)}`);
                 return next;
             });
         }
@@ -155,12 +263,28 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
 
     return (
         <section
-            className="d2-feature-panel d2-board-panel"
+            ref={panelRef}
+            className={`d2-feature-panel d2-board-panel is-${containerMode}`}
             style={{ display: active ? undefined : 'none' }}
             aria-hidden={!active}
         >
             <div className="d2-board-toolbar">
                 <span className="d2-board-summary">{tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}</span>
+                {containerMode === 'compact' ? (
+                    <label className="d2-board-lane-picker">
+                        <span>Lane</span>
+                        <select value={selectedLane} onChange={(event) => {
+                            const lane = event.currentTarget.value as BoardLaneId;
+                            if (keyboardDrag) {
+                                setTasks((current) => current.map((item) => item.id === keyboardDrag.id ? { ...item, status: lane } : item));
+                                setAnnouncement(`Target lane ${boardLaneLabel(lane)}`);
+                            }
+                            setSelectedLane(lane);
+                        }}>
+                            {BOARD_LANES.map((lane) => <option key={lane.id} value={lane.id}>{lane.label}</option>)}
+                        </select>
+                    </label>
+                ) : null}
                 <span className="d2-board-toolbar-actions">
                     <button
                         type="button"
@@ -237,7 +361,7 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
             ) : (
                 <div className="d2-board-canvas" aria-label="Task board">
                     <div className="d2-board-lanes">
-                        {BOARD_LANES.map((lane) => {
+                        {BOARD_LANES.filter((lane) => containerMode !== 'compact' || lane.id === selectedLane).map((lane) => {
                             const laneTasks = tasksByLane.get(lane.id) ?? [];
                             const isDropTarget = dropLane === lane.id;
                             return (
@@ -288,8 +412,22 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
                                                         setDropLane(null);
                                                     }}
                                                 >
-                                                    <div className="d2-board-card-heading">
-                                                        <h3>{task.title}</h3>
+                                                    <div
+                                                        className="d2-board-card-body"
+                                                        role="button"
+                                                        data-board-task-id={task.id}
+                                                        tabIndex={isBusy ? -1 : 0}
+                                                        aria-pressed={keyboardDrag?.id === task.id}
+                                                        onClick={() => { if (!keyboardDrag) setEditingTask(task); }}
+                                                        onKeyDown={(event) => handleKeyboardDrag(task, event)}
+                                                    >
+                                                        <div className="d2-board-card-heading"><h3>{task.title}</h3></div>
+                                                        {task.summary ? <p className="d2-board-card-summary">{task.summary}</p> : null}
+                                                        <div className="d2-board-card-meta">
+                                                            <span className="d2-board-status-chip" data-status={task.status}>{boardLaneLabel(task.status)}</span>
+                                                        </div>
+                                                    </div>
+                                                    <div className="d2-board-card-actions">
                                                         <button
                                                             type="button"
                                                             className="d2-board-card-delete"
@@ -301,11 +439,6 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
                                                             <Icon icon={Trash2} size={13} />
                                                         </button>
                                                     </div>
-                                                    <div className="d2-board-card-meta">
-                                                        <span className="d2-board-status-chip" data-status={task.status}>
-                                                            {boardLaneLabel(task.status)}
-                                                        </span>
-                                                    </div>
                                                 </article>
                                             );
                                         })}
@@ -316,6 +449,13 @@ export function BoardPanel({ active }: BoardPanelProps): JSX.Element {
                     </div>
                 </div>
             )}
+            <BoardTaskDialog
+                task={editingTask}
+                onClose={() => setEditingTask(null)}
+                onSave={handleDialogSave}
+                onDelete={(task) => handleDelete(task, true)}
+                saving={editingTask ? busyIds.has(editingTask.id) : false}
+            />
         </section>
     );
 }

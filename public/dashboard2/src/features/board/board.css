@@ -1,5 +1,6 @@
 /* 072 — Board/Kanban panel (class names aligned with BoardPanel.tsx) */
 .d2-board-panel {
+    container-type: inline-size;
     display: flex;
     flex-direction: column;
     min-height: 0;
@@ -27,6 +28,25 @@
     display: flex;
     align-items: center;
     gap: 4px;
+}
+
+.d2-board-lane-picker {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-3);
+    font-size: 11px;
+}
+
+.d2-board-lane-picker select {
+    min-width: 0;
+    height: 26px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--surface);
+    color: var(--text);
+    font: inherit;
 }
 
 .d2-board-icon-button {
@@ -233,15 +253,53 @@
 }
 
 .d2-board-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 6px;
-    padding: 8px 10px;
+    padding: 0;
     border: 1px solid var(--border);
     border-radius: var(--r-sm);
     background: var(--bg);
     cursor: grab;
     transition: border-color 100ms, box-shadow 100ms, opacity 100ms;
+}
+
+.d2-board-card-body {
+    display: flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 34px 8px 10px;
+    border-radius: inherit;
+    cursor: pointer;
+    outline: none;
+}
+
+.d2-board-card-body:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.d2-board-card-body[aria-pressed="true"] {
+    background: var(--accent-soft);
+    box-shadow: inset 0 0 0 2px var(--accent);
+    cursor: grabbing;
+}
+
+.d2-board-card-summary {
+    margin: 0;
+    color: var(--text-3);
+    font-size: 11px;
+    line-height: 1.4;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.d2-board-card-actions {
+    position: absolute;
+    top: 6px;
+    right: 6px;
 }
 
 .d2-board-card:hover { border-color: var(--border-h); }
@@ -285,6 +343,7 @@
 }
 
 .d2-board-card:hover .d2-board-card-delete { opacity: 1; }
+.d2-board-card:focus-within .d2-board-card-delete { opacity: 1; }
 
 .d2-board-card-delete:hover {
     background: rgba(248, 113, 113, .12);
@@ -315,4 +374,118 @@
 .d2-board-status-chip[data-status="in_progress"] {
     background: var(--accent-soft);
     color: var(--accent);
+}
+
+.d2-board-panel.is-wide .d2-board-lanes {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.d2-board-panel.is-wide .d2-board-lane {
+    width: auto;
+    min-width: 0;
+}
+
+.d2-board-panel.is-medium .d2-board-lane {
+    width: clamp(180px, 42cqw, 240px);
+}
+
+.d2-board-panel.is-compact .d2-board-summary { display: none; }
+
+.d2-board-panel.is-compact .d2-board-lane-picker { flex: 1; }
+
+.d2-board-panel.is-compact .d2-board-lane-picker select { flex: 1; }
+
+.d2-board-panel.is-compact .d2-board-lanes { display: block; }
+
+.d2-board-panel.is-compact .d2-board-lane {
+    width: 100%;
+    min-width: 0;
+    min-height: 100%;
+}
+
+.d2-board-dialog-backdrop {
+    position: fixed;
+    z-index: 80;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 20px;
+    background: rgba(0, 0, 0, .48);
+}
+
+.d2-board-dialog {
+    display: flex;
+    width: min(520px, 100%);
+    max-height: min(720px, calc(100dvh - 40px));
+    flex-direction: column;
+    gap: 14px;
+    overflow-y: auto;
+    padding: 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-md);
+    color: var(--text);
+}
+
+.d2-board-dialog-header,
+.d2-board-dialog-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.d2-board-dialog-header h2 { margin: 0; font-size: 16px; }
+
+.d2-board-dialog-header button,
+.d2-board-dialog-footer button {
+    display: inline-flex;
+    min-height: 32px;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 0 11px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.d2-board-dialog-header button { width: 32px; padding: 0; }
+.d2-board-dialog-header button:disabled,
+.d2-board-dialog-footer button:disabled { opacity: .45; cursor: default; }
+
+.d2-board-dialog-field { display: flex; flex-direction: column; gap: 5px; }
+.d2-board-dialog-field > span { color: var(--text-3); font-size: 11px; font-weight: 600; }
+
+.d2-board-dialog-field input,
+.d2-board-dialog-field textarea,
+.d2-board-dialog-field select {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 9px;
+    border: 1px solid var(--border);
+    border-radius: var(--r-sm);
+    background: var(--bg);
+    color: var(--text);
+    font: inherit;
+    font-size: 12.5px;
+    outline: none;
+}
+
+.d2-board-dialog-field textarea { resize: vertical; line-height: 1.45; }
+.d2-board-dialog-field input:focus,
+.d2-board-dialog-field textarea:focus,
+.d2-board-dialog-field select:focus { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+
+.d2-board-dialog-footer { padding-top: 2px; }
+.d2-board-dialog-footer .d2-board-dialog-delete { color: var(--danger); }
+.d2-board-dialog-footer .d2-board-dialog-save { margin-left: auto; border-color: var(--accent); background: var(--accent); color: var(--bg); }
+
+@media (max-width: 420px) {
+    .d2-board-dialog-backdrop { align-items: end; padding: 0; }
+    .d2-board-dialog { width: 100%; max-height: 92dvh; border-radius: var(--r-md) var(--r-md) 0 0; }
 }
