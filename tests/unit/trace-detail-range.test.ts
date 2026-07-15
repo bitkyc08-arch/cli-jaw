@@ -1,3 +1,6 @@
+// 089.08 verification invokes this file directly with `tsx --test`; preload the
+// repository's guarded temp home before config/db modules resolve.
+import '../setup/test-home.ts';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import nodeFs from 'node:fs';

@@ -17,6 +17,8 @@ import { usePreferences } from '../../providers/preferences-provider.tsx';
 import { renderCopy } from '../render/copy-catalog.ts';
 import { getDetailController, type DetailController } from '../detail/detail-loader.ts';
 import { ToolDetailPane } from '../detail/ToolDetailPane.tsx';
+import { useRenderActionPorts } from '../../providers/render-action-ports.tsx';
+import { workerApiBase } from '../detail/detail-client.ts';
 
 const EMPTY_DETAIL_SNAPSHOT = {
     phase: 'idle', resolvedRevision: null, totalBytes: null, lineCount: null,
@@ -50,7 +52,10 @@ function WiredToolLine({
     expandedKey: ExpandedToolKey | null;
     onExpandedKey(next: ExpandedToolKey | null): void;
 }): JSX.Element {
-    const controller: DetailController | null = row.detailRef ? getDetailController(store, row.detailRef) : null;
+    const { workerPort } = useRenderActionPorts();
+    const controller: DetailController | null = row.detailRef && workerPort !== null
+        ? getDetailController(store, row.detailRef, { apiBase: workerApiBase(workerPort) })
+        : null;
     const snapshot = useSyncExternalStore(
         controller?.subscribe ?? subscribeToNothing,
         controller?.snapshot ?? emptyDetailSnapshot,

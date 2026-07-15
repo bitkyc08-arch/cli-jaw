@@ -1,6 +1,7 @@
 import { createContext, useContext, useMemo, type JSX, type ReactNode } from 'react';
 
 export interface RenderActionPorts {
+    workerPort: number | null;
     submitMessage(prompt: string): Promise<void>;
     copyText(text: string): Promise<void>;
     openExternal(url: string): void;
@@ -9,6 +10,7 @@ export interface RenderActionPorts {
 }
 
 const defaults: RenderActionPorts = {
+    workerPort: null,
     submitMessage: async () => { throw new Error('No composer is registered for this chat.'); },
     copyText: async () => {}, openExternal: () => {}, openProtocol: () => {}, announce: () => {},
 };

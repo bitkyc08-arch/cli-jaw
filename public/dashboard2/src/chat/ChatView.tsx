@@ -164,12 +164,13 @@ export function ChatView({ scope }: ChatViewProps): JSX.Element {
     const composer = useRef<ComposerRegistration | null>(null);
     const [announcement, setAnnouncement] = useState('');
     const ports = useMemo(() => ({
+        workerPort: scope.port,
         submitMessage: (prompt: string) => composer.current ? composer.current.submitMessage(prompt) : Promise.reject(new Error('No composer is registered for this chat.')),
         copyText: (text: string) => navigator.clipboard?.writeText(text) ?? Promise.resolve(),
         openExternal: (url: string) => { window.open(url, '_blank', 'noopener,noreferrer'); },
         openProtocol: (url: string) => { if (/^(?:mailto|sms):/i.test(url)) window.location.href = url; },
         announce: setAnnouncement,
-    }), []);
+    }), [scope.port]);
 
     return (
         <RenderActionPortsProvider ports={ports}><div className="d2-chat-view" data-testid="chat-view">

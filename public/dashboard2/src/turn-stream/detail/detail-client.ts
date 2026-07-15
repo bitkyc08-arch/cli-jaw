@@ -45,7 +45,18 @@ export type DetailClientResult =
 
 type FetchLike = typeof fetch;
 
+export function workerApiBase(port: number): string {
+    if (!Number.isInteger(port) || port < 1 || port > 65_535) throw new Error('Invalid worker port');
+    return `/i/${port}`;
+}
+
+export function workerApiUrl(port: number, path: string): string {
+    if (!path.startsWith('/api/')) throw new Error('Worker API path must start with /api/');
+    return `${workerApiBase(port)}${path}`;
+}
+
 function endpoint(apiBase: string, runId: string, seq: number, offset?: number, limit?: number): string {
+    if (!apiBase) throw new Error('Worker API base is required');
     const base = `${apiBase.replace(/\/$/, '')}/api/traces/${encodeURIComponent(runId)}/events/${seq}`;
     if (offset === undefined) return base;
     const query = new URLSearchParams({ offset: String(offset) });
@@ -62,9 +73,10 @@ export async function fetchTraceDetail(
     seq: number,
     options: { offset?: number; limit?: number; signal?: AbortSignal; fetcher?: FetchLike; apiBase?: string } = {},
 ): Promise<DetailClientResult> {
+    if (!options.apiBase) throw new Error('Worker API base is required');
     const init: RequestInit = options.signal ? { signal: options.signal } : {};
     const response = await (options.fetcher ?? fetch)(
-        endpoint(options.apiBase ?? '', runId, seq, options.offset, options.limit), init,
+        endpoint(options.apiBase, runId, seq, options.offset, options.limit), init,
     );
     const body = record(await response.json().catch(() => ({})));
     if (response.ok) {

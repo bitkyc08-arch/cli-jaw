@@ -12,6 +12,9 @@ import {
     sliceToolDetailUtf8,
 } from '../fixtures/dashboard2/render-parity/tool-detail-10mb.ts';
 
+// 089.08: detail-client no longer permits an implicit manager-origin base.
+const TEST_API_BASE = '/i/3457';
+
 function response(status: number, body: unknown): Response {
     return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
@@ -38,14 +41,14 @@ test('detail client preserves typed 400/404/409/410/413 variants and metadata', 
         [413, { ok: false, error: 'trace_detail_range_required', totalBytes: 10_000_000, rangeAvailable: true, chunkSize: 262_144 }, 'range-required'],
     ] as const;
     for (const [status, body, kind] of cases) {
-        const result = await fetchTraceDetail('run', 1, { fetcher: fetcher([response(status, body)]) });
+        const result = await fetchTraceDetail('run', 1, { apiBase: TEST_API_BASE, fetcher: fetcher([response(status, body)]) });
         assert.equal(result.kind, kind);
         if (result.kind === 'range-required') assert.deepEqual({ totalBytes: result.totalBytes, chunkSize: result.chunkSize }, { totalBytes: 10_000_000, chunkSize: 262_144 });
     }
 });
 
 test('range client preserves exact server cursor and boundary fields', async () => {
-    const result = await fetchTraceDetail('run', 1, { offset: 7, fetcher: fetcher([response(200, { ok: true, data: {
+    const result = await fetchTraceDetail('run', 1, { apiBase: TEST_API_BASE, offset: 7, fetcher: fetcher([response(200, { ok: true, data: {
         runId: 'run', seq: 1, totalBytes: 20, requestedOffset: 7, requestedLimit: 8,
         actualStart: 5, actualEndExclusive: 13, nextOffset: 17, eof: false, text: '한글', contentEncoding: 'utf-8',
         line: { first: 3, last: 4, indexStrideBytes: 65536 },
@@ -118,7 +121,7 @@ test('T3 grace reuses entries, pressure evicts grace, pins survive, and dispose 
 
 test('loader migrates pending identity to deterministic full-content hash', async () => {
     const store = createTurnStore('loader-hash');
-    const controller = getDetailController(store, { traceRunId: 'run', traceSeq: 1 }, { fetcher: fetcher([full('한글🙂\nbody')]) });
+    const controller = getDetailController(store, { traceRunId: 'run', traceSeq: 1 }, { apiBase: TEST_API_BASE, fetcher: fetcher([full('한글🙂\nbody')]) });
     const snapshot = await controller.open();
     assert.equal(snapshot.phase, 'ready-inline');
     assert.match(snapshot.resolvedRevision ?? '', /^fnv1a-[0-9a-f]{8}-\d+$/);
@@ -132,11 +135,11 @@ test('loader keeps 404, 410, and repeated 409 distinct', async () => {
         [410, 'trace_payload_gone', 'gone'],
     ] as const) {
         const store = createTurnStore(`loader-${status}`);
-        const controller = getDetailController(store, { traceRunId: `run-${status}`, traceSeq: 1 }, { fetcher: fetcher([response(status, { ok: false, error })]) });
+        const controller = getDetailController(store, { traceRunId: `run-${status}`, traceSeq: 1 }, { apiBase: TEST_API_BASE, fetcher: fetcher([response(status, { ok: false, error })]) });
         assert.equal((await controller.open()).phase, phase);
     }
     const store = createTurnStore('loader-409');
-    const controller = getDetailController(store, { traceRunId: 'run-409', traceSeq: 1 }, { fetcher: fetcher([
+    const controller = getDetailController(store, { traceRunId: 'run-409', traceSeq: 1 }, { apiBase: TEST_API_BASE, fetcher: fetcher([
         response(413, { ok: false, error: 'trace_detail_range_required', totalBytes: 99, rangeAvailable: true, chunkSize: 10 }),
         response(409, { ok: false, error: 'trace_payload_revision_changed' }),
         response(413, { ok: false, error: 'trace_detail_range_required', totalBytes: 100, rangeAvailable: true, chunkSize: 10 }),
@@ -149,6 +152,7 @@ test('abort and generation guard prevent stale commits', async () => {
     const delayed = new Promise<Response>(yes => { resolve = yes; });
     const store = createTurnStore('loader-abort');
     const controller = getDetailController(store, { traceRunId: 'abort', traceSeq: 1 }, {
+        apiBase: TEST_API_BASE,
         fetcher: fetcher([async () => delayed]),
     });
     const pending = controller.open();

@@ -16,6 +16,8 @@ import { parseWidgetDescriptor } from '../widgets/widget-segment-adapter.ts';
 import { prepareFoldSnapshot } from './fold-live-turn.ts';
 import { getDetailController, type DetailController } from '../detail/detail-loader.ts';
 import { ToolDetailPane } from '../detail/ToolDetailPane.tsx';
+import { useRenderActionPorts } from '../../providers/render-action-ports.tsx';
+import { workerApiBase } from '../detail/detail-client.ts';
 
 const EMPTY_DETAIL_SNAPSHOT = {
     phase: 'idle', resolvedRevision: null, totalBytes: null, lineCount: null,
@@ -43,7 +45,10 @@ function LiveToolLine({
     expanded: boolean;
     onToggle(revision: string | null): void;
 }): JSX.Element {
-    const controller: DetailController | null = row.detailRef ? getDetailController(store, row.detailRef) : null;
+    const { workerPort } = useRenderActionPorts();
+    const controller: DetailController | null = row.detailRef && workerPort !== null
+        ? getDetailController(store, row.detailRef, { apiBase: workerApiBase(workerPort) })
+        : null;
     const snapshot = useSyncExternalStore(
         controller?.subscribe ?? subscribeToNothing,
         controller?.snapshot ?? emptyDetailSnapshot,
@@ -65,6 +70,7 @@ function LiveToolLine({
 }
 
 export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
+    const { workerPort } = useRenderActionPorts();
     const live = useLiveTurns(store);
     const [manualExpanded, setManualExpanded] = useState<string | null>(null);
     const [manualCollapseLatches, setManualCollapseLatches] = useState<ReadonlySet<string>>(() => new Set());
@@ -108,7 +114,9 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
                                 );
                             }
                             if (row.type === 'tool') {
-                                const controller = row.detailRef ? getDetailController(store, row.detailRef) : null;
+                                const controller = row.detailRef && workerPort !== null
+                                    ? getDetailController(store, row.detailRef, { apiBase: workerApiBase(workerPort) })
+                                    : null;
                                 const revision = controller?.snapshot().resolvedRevision ?? null;
                                 const key = detailKey(row, revision);
                                 const pendingKey = detailKey(row, null);
