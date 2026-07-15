@@ -58,6 +58,7 @@ type ExposedBrowserApi = Pick<
     | 'onOpenUrl'
     | 'registerWebview'
     | 'unregisterWebview'
+    | 'controlWebview'
     | 'performWebviewAction'
     | 'getWebviewTabs'
     | 'onWebviewState'
@@ -228,7 +229,7 @@ export function createDesktopBridgeValue(): DesktopBridgeContextValue {
     const browserAvailable = hasFunctions(
         raw?.browser,
         [
-            'onOpenUrl', 'registerWebview', 'unregisterWebview', 'performWebviewAction',
+            'onOpenUrl', 'registerWebview', 'unregisterWebview', 'controlWebview', 'performWebviewAction',
             'getWebviewTabs', 'onWebviewState', 'onElementPicked',
         ],
     );
@@ -241,6 +242,7 @@ export function createDesktopBridgeValue(): DesktopBridgeContextValue {
             onOpenUrl: rawBrowser.onOpenUrl.bind(rawBrowser),
             registerWebview: rawBrowser.registerWebview.bind(rawBrowser),
             unregisterWebview: rawBrowser.unregisterWebview.bind(rawBrowser),
+            controlWebview: rawBrowser.controlWebview.bind(rawBrowser),
             performWebviewAction: rawBrowser.performWebviewAction.bind(rawBrowser),
             getWebviewTabs: rawBrowser.getWebviewTabs.bind(rawBrowser),
             onWebviewState: rawBrowser.onWebviewState.bind(rawBrowser),

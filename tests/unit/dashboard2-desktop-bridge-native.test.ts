@@ -119,6 +119,7 @@ test('native adapters pass calls, args, and unsubscribes through to the preload'
         await bridge.sourceControl.diff.native!.getRepoRoot('/repo');
         await bridge.sourceControl.git.native!.getStatusMap('/repo');
         await bridge.browser.native!.getWebviewTabs();
+        await bridge.browser.native!.controlWebview({ kind: 'reload', tabId: 'browser:side-panel-1:1' });
         const offAction = bridge.shell.shortcuts.native!.onAction(() => {});
         offAction();
         bridge.shell.tray.native!.openDashboard();
@@ -127,7 +128,7 @@ test('native adapters pass calls, args, and unsubscribes through to the preload'
         for (const expected of [
             'terminal.create', 'terminal.onData', 'terminal.onData:unsubscribe',
             'folder.getDefaultRoot', 'folder.listDir', 'dragDrop.resolveDroppedItems',
-            'diff.getRepoRoot', 'git.getStatusMap', 'browser.getWebviewTabs',
+            'diff.getRepoRoot', 'git.getStatusMap', 'browser.getWebviewTabs', 'browser.controlWebview',
             'shortcuts.onAction', 'shortcuts.onAction:unsubscribe', 'trayReminders.openDashboard',
         ]) {
             assert.ok(methods.includes(expected), `expected preload call ${expected}`);
@@ -138,7 +139,8 @@ test('native adapters pass calls, args, and unsubscribes through to the preload'
         const listDirCall = calls.find((call) => call.method === 'folder.listDir');
         assert.deepEqual(listDirCall?.args, ['/root']);
 
-        assert.ok(!('controlWebview' in (bridge.browser.native as object)), 'browser adapter must omit controlWebview');
+        // 089.06 §7-1 evolves the minimal adapter to allow navigation commands only.
+        assert.equal(typeof bridge.browser.native!.controlWebview, 'function');
     } finally {
         delete (globalThis as Record<string, unknown>)['window'];
     }

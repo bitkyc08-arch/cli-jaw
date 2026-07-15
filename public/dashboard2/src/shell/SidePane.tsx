@@ -96,7 +96,7 @@ function TabContent({ panel, active }: { panel: SidePanePanelInstance; active: b
         case 'terminal':
             return <TerminalPanel port={port} workingDir={terminalWorkingDir} workingDirError={terminalWorkingDirError} />;
         case 'browser':
-            return <BrowserPanel />;
+            return <BrowserPanel panelId={panel.id} />;
         case 'files':
             return <FileTreePanel />;
         case 'code':

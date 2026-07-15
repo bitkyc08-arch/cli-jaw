@@ -358,7 +358,11 @@ export interface BrowserWebviewScreenshot {
 }
 
 export interface BrowserBridgeApi {
-    onOpenUrl(callback: (payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => void): () => void;
+    onOpenUrl(callback: (payload: {
+        url: string;
+        disposition: 'current-tab' | 'new-tab';
+        sourceWebContentsId?: number;
+    }) => void): () => void;
     registerWebview(input: { tabId: string; webContentsId: number }): Promise<{
         ok: boolean;
         state?: BrowserWebviewTabState;

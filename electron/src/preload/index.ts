@@ -152,8 +152,8 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
     openDashboard: () => ipcRenderer.send('tray:open-dashboard'),
   },
   browser: {
-    onOpenUrl: (cb: (payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => void) => {
-      const handler = (_e: unknown, payload: { url: string; disposition: 'current-tab' | 'new-tab' }) => cb(payload);
+    onOpenUrl: (cb: (payload: { url: string; disposition: 'current-tab' | 'new-tab'; sourceWebContentsId?: number }) => void) => {
+      const handler = (_e: unknown, payload: { url: string; disposition: 'current-tab' | 'new-tab'; sourceWebContentsId?: number }) => cb(payload);
       ipcRenderer.on('browser:open-url', handler);
       return () => { ipcRenderer.removeListener('browser:open-url', handler); };
     },

@@ -64,11 +64,14 @@ test('desktop capabilities inject native adapters with a single availability jud
     );
 });
 
-test('provider omits diagnostics and direct webview control from its surface', () => {
+test('provider omits diagnostics while allowing the audited navigation-only webview control', () => {
     const provider = read(providerPath);
 
     assert.doesNotMatch(provider, /\bgetMetrics\b/, 'metrics diagnostics must not enter the provider surface');
-    assert.doesNotMatch(provider, /\bcontrolWebview\b/, 'direct webview control must not enter the provider surface');
+    // 089.06 §7-1: controlWebview is intentionally exposed for navigate/reload/back/forward/stop;
+    // broader diagnostics such as getMetrics remain outside the dashboard2 provider.
+    assert.match(provider, /\| 'controlWebview'/, 'navigation control must be part of ExposedBrowserApi');
+    assert.match(provider, /controlWebview:\s*rawBrowser\.controlWebview\.bind\(rawBrowser\)/);
 });
 
 test('raw desktop contract is independent from the frozen manager renderer', () => {
