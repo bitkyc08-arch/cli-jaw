@@ -1,0 +1,12 @@
+.d2-employees-panel { height: 100%; overflow: auto; color: var(--text-1); }
+.d2-employees-header { min-height: 48px; padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--div-color); }
+.d2-employees-header div { display: grid; gap: 2px; }
+.d2-employees-header span, .d2-employee-meta, .d2-employee-progress { color: var(--text-3); font-size: 12px; }
+.d2-employees-list { list-style: none; margin: 0; padding: 8px; display: grid; gap: 6px; }
+.d2-employee-row { padding: 10px; border: 1px solid var(--div-color); border-radius: 8px; background: var(--surface-1); display: grid; gap: 6px; }
+.d2-employee-row-main, .d2-employee-progress { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.d2-employee-state { padding: 2px 7px; border-radius: 999px; color: var(--text-3); background: var(--surface-2); font-size: 11px; text-transform: capitalize; }
+.d2-employee-state.is-active { color: var(--accent); }
+.d2-employee-task { font-size: 13px; line-height: 1.4; }
+.d2-employee-progress .is-attention, .d2-employees-warning, .d2-employees-state.is-error { color: var(--danger, #d65c5c); }
+.d2-employees-state, .d2-employees-warning { padding: 16px; color: var(--text-3); }

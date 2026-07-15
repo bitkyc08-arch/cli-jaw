@@ -15,6 +15,7 @@ export type SidePanePanelType =
     | 'notes'
     | 'board'
     | 'reminders'
+    | 'employees'
     | 'doc'
     | 'design'
     | 'diff';

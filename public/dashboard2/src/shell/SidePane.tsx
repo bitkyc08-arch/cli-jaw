@@ -1,5 +1,5 @@
 // 089.04 — instance-based SidePane with explicit-close lifecycle.
-import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, X } from '@lucide/icons';
+import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, Users, X } from '@lucide/icons';
 import { Suspense, lazy, useEffect, useRef, useState, type JSX } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import {
@@ -16,6 +16,7 @@ const LazyCodeTab = lazy(() => import('../code/index.ts'));
 const LazyNotesPanel = lazy(() => import('../features/notes/NotesPanel.tsx').then((m) => ({ default: m.NotesPanel })));
 const LazyBoardPanel = lazy(() => import('../features/board/BoardPanel.tsx').then((m) => ({ default: m.BoardPanel })));
 const LazyRemindersPanel = lazy(() => import('../features/reminders/RemindersPanel.tsx').then((m) => ({ default: m.RemindersPanel })));
+const LazyEmployeesPanel = lazy(() => import('../features/employees/EmployeesPanel.tsx').then((m) => ({ default: m.EmployeesPanel })));
 const LazyDocPanel = lazy(() => import('../features/panels/DocPanel.tsx').then((m) => ({ default: m.DocPanel })));
 const LazyDesignPanel = lazy(() => import('../features/panels/DesignPanel.tsx').then((m) => ({ default: m.DesignPanel })));
 const LazyDiffPanel = lazy(() => import('../features/panels/DiffPanel.tsx').then((m) => ({ default: m.DiffPanel })));
@@ -40,6 +41,7 @@ const TAB_REGISTRY: TabDescriptor[] = [
     { id: 'notes', label: 'Notes', icon: NotebookPen, category: 'feature', keepAlive: true, needsSession: true },
     { id: 'board', label: 'Board', icon: ClipboardList, category: 'feature', keepAlive: true, needsSession: true },
     { id: 'reminders', label: 'Reminders', icon: Bell, category: 'feature', keepAlive: false, needsSession: true },
+    { id: 'employees', label: 'Employees', icon: Users, category: 'feature', keepAlive: false, needsSession: true },
 ];
 
 const TAB_MAP = new Map(TAB_REGISTRY.map((tab) => [tab.id, tab]));
@@ -131,6 +133,8 @@ function TabContent({ panel, active }: { panel: SidePanePanelInstance; active: b
             return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Board...</div>}><LazyBoardPanel active={active} /></Suspense>;
         case 'reminders':
             return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Reminders...</div>}><LazyRemindersPanel active={active} /></Suspense>;
+        case 'employees':
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Employees...</div>}><LazyEmployeesPanel active={active} port={port!} /></Suspense>;
     }
 }
 
