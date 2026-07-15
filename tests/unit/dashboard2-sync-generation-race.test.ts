@@ -87,4 +87,8 @@ test('D2: stale-generation EventSource messages never reach subscribers; port_ch
     // live emit on the new source still works
     await act(async () => { second.emit({ ...row, turnSeq: 3 }, '3'); });
     assert.deepEqual(received, ['race-turn#1', 'race-turn#3'], 'new generation delivers');
+
+    // 089.10 adds per-source watchdog timers; unmount proves provider cleanup
+    // and prevents a passed contract test from retaining live transport work.
+    await act(async () => { root.unmount(); });
 });

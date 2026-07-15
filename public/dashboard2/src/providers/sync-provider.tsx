@@ -15,10 +15,11 @@ import type {
 } from '../../../../src/shared/chat-events.ts';
 import type { TurnLifecycleSsePayload } from '../../../../src/shared/chat-events.ts';
 import { useAppScope } from '../state/scope.tsx';
+import { SseConnection } from './sse-connection.ts';
 
 export interface SystemSsePayload {
     topic: 'system';
-    event: 'replay_gap' | 'turn_segment_error';
+    event: 'replay_gap' | 'turn_segment_error' | 'ping';
     sseReplay?: boolean;
     [key: string]: unknown;
 }
@@ -52,6 +53,13 @@ export interface ManagerSyncContextValue {
     subscribeInvalidation(cb: (reason: SyncInvalidationReason) => void): () => void;
     subscribeOrcState(cb: (payload: OrcStateSsePayload) => void): () => void;
     subscribeJwc(cb: (payload: JwcSsePayload) => void): () => void;
+    subscribeManagerWorker(cb: (payload: ManagerWorkerSsePayload) => void): () => void;
+}
+
+export interface ManagerWorkerSsePayload {
+    topic: 'worker';
+    event: 'instance-status-changed' | 'worker_settings_change';
+    [key: string]: unknown;
 }
 
 export interface OrcStateSsePayload {
@@ -76,12 +84,14 @@ export interface SyncPayloadDispatchers {
     system(payload: SystemSsePayload): void;
     orcState?(payload: OrcStateSsePayload): void;
     jwc?(payload: JwcSsePayload): void;
+    managerWorker?(payload: ManagerWorkerSsePayload): void;
 }
 
 const TURN_LIFECYCLE_EVENTS = new Set(['turn_start', 'turn_segment', 'turn_end']);
 const AGENT_BODY_EVENTS = new Set(['agent_output', 'agent_chunk', 'agent_tool', 'agent_done']);
-const SYSTEM_EVENTS = new Set(['replay_gap', 'turn_segment_error']);
+const SYSTEM_EVENTS = new Set(['replay_gap', 'turn_segment_error', 'ping']);
 const ORC_STATE_EVENTS = new Set(['orc_state']);
+const MANAGER_WORKER_EVENTS = new Set(['instance-status-changed', 'worker_settings_change']);
 
 const ManagerSyncContext = createContext<ManagerSyncContextValue | null>(null);
 
@@ -139,7 +149,25 @@ export function dispatchSelectedSyncPayload(
     return null;
 }
 
-// Mounted once per app root so one selected instance owns one EventSource.
+export function dispatchSyncPayloadForSource(
+    source: 'manager' | 'worker',
+    payload: SseEnvelope,
+    dispatchers: SyncPayloadDispatchers,
+    sseEventId?: string,
+): ReturnType<typeof dispatchSelectedSyncPayload> | 'manager-worker' {
+    if (source === 'worker') return dispatchSelectedSyncPayload(payload, dispatchers, sseEventId);
+    if (payload.topic === 'worker'
+        && typeof payload.event === 'string'
+        && MANAGER_WORKER_EVENTS.has(payload.event)) {
+        dispatchers.managerWorker?.(payload as unknown as ManagerWorkerSsePayload);
+        return 'manager-worker';
+    }
+    // Manager system frames are transport health/replay annotations only. JWC,
+    // agent, turn, body, queue, orchestrate, and unknown topics are worker-owned.
+    return null;
+}
+
+// Mounted once per app root: one manager source plus one selected-worker source.
 export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
     const { selected } = useAppScope();
     const selectedPort = selected?.port ?? null;
@@ -148,12 +176,13 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
     const systemSubscribersRef = useRef(new Set<(payload: SystemSsePayload) => void>());
     const queueSubscribersRef = useRef(new Set<(payload: QueueUpdateSsePayload) => void>());
     const invalidationSubscribersRef = useRef(new Set<(reason: SyncInvalidationReason) => void>());
-    const generationRef = useRef(0);
-    const lastEventIdByPortRef = useRef(new Map<number, string>());
+    const cursorsRef = useRef(new Map<string, string>());
+    const connectionsRef = useRef(new Map<string, SseConnection>());
     const previousPortRef = useRef<number | null | undefined>(undefined);
 
     const orcStateSubscribersRef = useRef(new Set<(payload: OrcStateSsePayload) => void>());
     const jwcSubscribersRef = useRef(new Set<(payload: JwcSsePayload) => void>());
+    const managerWorkerSubscribersRef = useRef(new Set<(payload: ManagerWorkerSsePayload) => void>());
 
     const value = useMemo<ManagerSyncContextValue>(() => ({
         subscribeTurnLifecycle: (cb) => subscribe(turnSubscribersRef.current, cb),
@@ -163,48 +192,20 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
         subscribeInvalidation: (cb) => subscribe(invalidationSubscribersRef.current, cb),
         subscribeOrcState: (cb) => subscribe(orcStateSubscribersRef.current, cb),
         subscribeJwc: (cb) => subscribe(jwcSubscribersRef.current, cb),
+        subscribeManagerWorker: (cb) => subscribe(managerWorkerSubscribersRef.current, cb),
     }), []);
 
-    useEffect(() => {
-        const previousPort = previousPortRef.current;
-        previousPortRef.current = selectedPort;
-        if (previousPort !== undefined && previousPort !== selectedPort) {
-            publish(invalidationSubscribersRef.current, 'port_change');
-        }
-        if (selectedPort === null) return;
-
-        let source: EventSource | null = null;
-
-        const close = (): void => {
-            generationRef.current += 1;
-            source?.close();
-            source = null;
-        };
-
-        const open = (): void => {
-            if (source || document.hidden) return;
-            const generation = ++generationRef.current;
-            const lastEventId = lastEventIdByPortRef.current.get(selectedPort);
-            const suffix = lastEventId
-                ? `?lastEventId=${encodeURIComponent(lastEventId)}`
-                : '';
-            const nextSource = new EventSource(`/i/${selectedPort}/api/events${suffix}`);
-            source = nextSource;
-
-            nextSource.onmessage = (message: MessageEvent<string>) => {
-                if (generation !== generationRef.current || source !== nextSource) return;
-                if (message.lastEventId) {
-                    lastEventIdByPortRef.current.set(selectedPort, message.lastEventId);
-                }
-
-                let payload: SseEnvelope;
-                try {
-                    payload = JSON.parse(String(message.data)) as SseEnvelope;
-                } catch {
-                    return;
-                }
-
-                dispatchSelectedSyncPayload(payload, {
+    const createConnection = (key: string, url: string, source: 'manager' | 'worker'): SseConnection => {
+        const connection = new SseConnection({
+            key,
+            url,
+            createSource: sourceUrl => new EventSource(sourceUrl),
+            getCursor: () => cursorsRef.current.get(key),
+            setCursor: cursor => cursorsRef.current.set(key, cursor),
+            onReconnect: () => publish(invalidationSubscribersRef.current, 'reconnect'),
+            onPayload: (payload, eventId) => {
+                if (payload.topic === 'system' && payload.event === 'ping') return;
+                dispatchSyncPayloadForSource(source, payload, {
                     turn: value => publish(turnSubscribersRef.current, value),
                     body: value => publish(bodySubscribersRef.current, value),
                     queue: value => publish(queueSubscribersRef.current, value),
@@ -216,26 +217,48 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
                     },
                     orcState: value => publish(orcStateSubscribersRef.current, value),
                     jwc: value => publish(jwcSubscribersRef.current, value),
-                }, message.lastEventId || undefined);
-            };
-        };
+                    managerWorker: value => publish(managerWorkerSubscribersRef.current, value),
+                }, eventId);
+            },
+        });
+        connection.setVisible(!document.hidden);
+        connectionsRef.current.set(key, connection);
+        connection.start();
+        return connection;
+    };
 
-        const onVisibilityChange = (): void => {
-            if (document.hidden) {
-                close();
-                return;
-            }
-            publish(invalidationSubscribersRef.current, 'reconnect');
-            open();
-        };
-
-        open();
-        document.addEventListener('visibilitychange', onVisibilityChange);
+    useEffect(() => {
+        const connection = createConnection('manager', '/api/events', 'manager');
         return () => {
-            document.removeEventListener('visibilitychange', onVisibilityChange);
-            close();
+            connection.stop();
+            if (connectionsRef.current.get('manager') === connection) connectionsRef.current.delete('manager');
+        };
+    }, []);
+
+    useEffect(() => {
+        const previousPort = previousPortRef.current;
+        previousPortRef.current = selectedPort;
+        if (previousPort !== undefined && previousPort !== selectedPort) {
+            publish(invalidationSubscribersRef.current, 'port_change');
+        }
+        if (selectedPort === null) return;
+        const key = `worker:${selectedPort}`;
+        const connection = createConnection(key, `/i/${selectedPort}/api/events`, 'worker');
+        return () => {
+            connection.stop();
+            if (connectionsRef.current.get(key) === connection) connectionsRef.current.delete(key);
         };
     }, [selectedPort]);
+
+    useEffect(() => {
+        const onVisibilityChange = (): void => {
+            for (const connection of connectionsRef.current.values()) {
+                connection.setVisible(!document.hidden);
+            }
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => document.removeEventListener('visibilitychange', onVisibilityChange);
+    }, []);
 
     return (
         <ManagerSyncContext.Provider value={value}>

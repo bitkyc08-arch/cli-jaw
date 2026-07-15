@@ -13,8 +13,13 @@ function read(path: string): string {
 
 test('dashboard2 sync provider consumes the proxied data-only turn stream', () => {
     const provider = read('public/dashboard2/src/providers/sync-provider.tsx');
+    const connection = read('public/dashboard2/src/providers/sse-connection.ts');
 
-    assert.ok(provider.includes('new EventSource(`/i/${selectedPort}/api/events${suffix}`)'),
+    // 089.10 replaces the single inline EventSource with keyed manager/worker
+    // connections; assert both canonical origins instead of weakening URL coverage.
+    assert.ok(provider.includes("createConnection('manager', '/api/events', 'manager')"),
+        'manager-local events must use the manager origin');
+    assert.ok(provider.includes("createConnection(key, `/i/${selectedPort}/api/events`, 'worker')"),
         'selected instance SSE must use the /i/ proxy and /api/events');
     for (const event of ['turn_start', 'turn_segment', 'turn_end', 'replay_gap', 'turn_segment_error']) {
         assert.ok(provider.includes(`'${event}'`), `sync provider must dispatch ${event}`);
@@ -25,8 +30,8 @@ test('dashboard2 sync provider consumes the proxied data-only turn stream', () =
     assert.doesNotMatch(provider,
         /import\s+(?!type\b)[^;]*TurnLifecycleSsePayload[^;]*from/,
         'TurnLifecycleSsePayload must not be imported at runtime');
-    assert.ok(provider.includes('generationRef'), 'sync provider must guard EventSource generations');
-    assert.ok(provider.includes('generation !== generationRef.current'),
+    assert.ok(connection.includes('private generation = 0'), 'each source must own an independent generation');
+    assert.ok(connection.includes('this.generation !== generation'),
         'late events from an old generation must be ignored');
 });
 

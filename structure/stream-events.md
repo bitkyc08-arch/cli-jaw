@@ -55,7 +55,7 @@ SSE behavior:
 | Listener cap | `MAX_SSE_LISTENERS = 256`, overflow returns `503 { error: "SSE_CAPACITY" }` |
 | Heartbeat | `data: {"topic":"system","event":"ping"}` every 15 seconds; no `id`, so it does not advance replay cursors |
 | Replay gap | `data: {"topic":"system","event":"replay_gap"}` |
-| Client fallback | `public/js/event-channel.ts` fires unavailable once when SSE errors before first open, then `public/js/ws.ts` uses legacy WebSocket fallback |
+| Client fallback | `public/js/event-channel.ts` fires unavailable once when SSE errors before first open, then `public/js/ws.ts` uses legacy WebSocket fallback. **dashboard2에는 WebSocket fallback이 없다** — SSE 전용이며, 089.10부터 manager `/api/events`(instance-status/settings/system)와 worker `/i/:port/api/events`(turn/jwc 등)를 이중 구독하고 `system:ping` 기반 45s per-source stale watchdog을 가진다 (`public/dashboard2/src/providers/sse-connection.ts`) |
 | Transient drop UX | `public/js/ws.ts` waits `CHANNEL_DOWN_TOAST_GRACE_MS = 8000` before showing a disconnected system message; fast SSE reconnects stay silent |
 
 ### Manager worker SSE bridge

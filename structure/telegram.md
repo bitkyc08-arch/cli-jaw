@@ -210,7 +210,7 @@ bot.ts on("message:voice"):
 | --- | --- |
 | `resolveHubCallback(configured?)` | hub-member outbound의 callback origin 결정; loopback `http`만 허용 |
 
-- Default: `http://127.0.0.1:24576` (`DASHBOARD_DEFAULT_PORT`)
+- Default: `http://127.0.0.1:24576` (`DASHBOARD_DEFAULT_PORT`) — 일반 dashboard 기본값. Electron 암시 spawn은 충돌 회피용 동적 범위 `24577–24590`을 쓴다(`electron/src/main/index.ts:68`).
 - Path/query는 strip; origin만 반환
 
 ---
