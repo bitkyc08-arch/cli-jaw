@@ -7,10 +7,10 @@ import {
     fetchInstanceSettings,
     saveDashboardSettings,
     saveInstanceSettings,
-    unwrapSettings,
 } from './settings-api.ts';
+import { getInstanceSettingsAdapter } from './settings-category-adapters.ts';
 import type { DirtyStore } from './settings-dirty-store.ts';
-import type { SettingsFieldDefinition, SettingsRecord, SettingsSource, SettingsToastState } from './settings-types.ts';
+import type { InstanceSettingsAdapterId, SettingsFieldDefinition, SettingsRecord, SettingsSource, SettingsToastState } from './settings-types.ts';
 
 interface Props {
     title: string;
@@ -20,6 +20,7 @@ interface Props {
     fields: SettingsFieldDefinition[];
     port: number | null;
     dirty: DirtyStore;
+    adapterId?: InstanceSettingsAdapterId;
 }
 
 function readPath(record: SettingsRecord, path: string): unknown {
@@ -41,17 +42,28 @@ function writePath(target: SettingsRecord, path: string, value: unknown): void {
     });
 }
 
-export function SettingsPageShell({ title, description, source, slice, fields, port, dirty }: Props): JSX.Element {
+export function SettingsPageShell({ title, description, source, slice, fields, port, dirty, adapterId }: Props): JSX.Element {
     const scope = `${source}:${port ?? 'manager'}:${slice ?? title}`;
     const { markClean, markDirty, registerActions } = dirty;
     const { theme, locale } = usePreferences();
     const [initial, setInitial] = useState<SettingsRecord>({});
     const [draft, setDraft] = useState<SettingsRecord>({});
+    const [root, setRoot] = useState<SettingsRecord>({});
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [saving, setSaving] = useState(false);
     const [toast, setToast] = useState<SettingsToastState | null>(null);
     const mounted = useRef(true);
+    const adapter = useMemo(() => adapterId ? getInstanceSettingsAdapter(adapterId) : null, [adapterId]);
+
+    const decode = useCallback((nextRoot: SettingsRecord): SettingsRecord => {
+        if (source === 'instance') {
+            if (!adapter) throw new Error('Instance settings adapter is required');
+            return adapter.decode(nextRoot);
+        }
+        const selected = slice ? readPath(nextRoot, slice) : nextRoot;
+        return selected && typeof selected === 'object' ? selected as SettingsRecord : {};
+    }, [adapter, slice, source]);
 
     const load = useCallback(async () => {
         if (source === 'instance' && port === null) {
@@ -66,9 +78,8 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
                 ? await fetchDashboardSettings()
                 : await fetchInstanceSettings(port!);
             if (!mounted.current) return;
-            const root = unwrapSettings(response);
-            const selected = slice ? readPath(root, slice) : root;
-            const data = selected && typeof selected === 'object' ? selected as SettingsRecord : {};
+            const data = decode(response);
+            setRoot(response);
             setInitial(data);
             setDraft(data);
             markClean(scope);
@@ -77,7 +88,7 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
         } finally {
             if (mounted.current) setLoading(false);
         }
-    }, [markClean, port, scope, slice, source]);
+    }, [decode, markClean, port, scope, source]);
 
     useEffect(() => {
         mounted.current = true;
@@ -103,11 +114,18 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
         setToast(null);
         try {
             const patch: SettingsRecord = {};
-            if (slice) writePath(patch, slice, draft);
+            if (source === 'instance') {
+                if (!adapter) throw new Error('Instance settings adapter is required');
+                Object.assign(patch, adapter.encode(draft, initial, root));
+            } else if (slice) writePath(patch, slice, draft);
             else Object.assign(patch, draft);
-            await (source === 'dashboard' ? saveDashboardSettings(patch) : saveInstanceSettings(port!, patch));
+            if (Object.keys(patch).length === 0) throw new Error('No supported settings changed');
+            const response = await (source === 'dashboard' ? saveDashboardSettings(patch) : saveInstanceSettings(port!, patch));
             if (!mounted.current) return;
-            setInitial(draft);
+            const saved = decode(response);
+            setRoot(response);
+            setInitial(saved);
+            setDraft(saved);
             markClean(scope);
             if (source === 'dashboard') {
                 const nextTheme = readPath(patch, 'ui.uiTheme');
@@ -121,7 +139,7 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
         } finally {
             if (mounted.current) setSaving(false);
         }
-    }, [changed, draft, locale, markClean, port, saving, scope, slice, source, theme, title]);
+    }, [adapter, changed, decode, draft, initial, locale, markClean, port, root, saving, scope, slice, source, theme, title]);
 
     useEffect(() => {
         registerActions(save, discard);
@@ -153,6 +171,7 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
                             <div className={`d2-settings-field${field.kind === 'toggle' ? ' toggle' : ''}`} key={field.key}>
                                 <label htmlFor={id}><span>{field.label}</span>{field.description ? <small>{field.description}</small> : null}</label>
                                 <FieldControl id={id} field={field} value={value} onChange={(next) => setField(field, next)} />
+                                {field.unsupported ? <small id={`${id}-unsupported`} role="note">Unsupported: {field.unsupported}</small> : null}
                             </div>
                         );
                     })}
@@ -165,14 +184,16 @@ export function SettingsPageShell({ title, description, source, slice, fields, p
 }
 
 function FieldControl({ id, field, value, onChange }: { id: string; field: SettingsFieldDefinition; value: unknown; onChange(value: unknown): void }): JSX.Element {
+    const disabled = Boolean(field.unsupported);
+    const describedBy = disabled ? `${id}-unsupported` : undefined;
     if (field.kind === 'toggle') {
-        return <button id={id} type="button" className={`d2-settings-switch${value === true ? ' on' : ''}`} role="switch" aria-checked={value === true} onClick={() => onChange(value !== true)}><span /></button>;
+        return <button id={id} type="button" className={`d2-settings-switch${value === true ? ' on' : ''}`} role="switch" aria-checked={value === true} aria-describedby={describedBy} disabled={disabled} onClick={() => onChange(value !== true)}><span /></button>;
     }
     if (field.kind === 'select') {
-        return <select id={id} value={String(value ?? '')} onChange={(event) => onChange(event.target.value)}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
+        return <select id={id} value={String(value ?? '')} aria-describedby={describedBy} disabled={disabled} onChange={(event) => onChange(event.target.value)}>{field.options?.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select>;
     }
     if (field.kind === 'textarea') {
-        return <textarea id={id} rows={5} value={String(value ?? '')} placeholder={field.placeholder} onChange={(event) => onChange(event.target.value)} />;
+        return <textarea id={id} rows={5} value={String(value ?? '')} placeholder={field.placeholder} aria-describedby={describedBy} disabled={disabled} onChange={(event) => onChange(event.target.value)} />;
     }
-    return <input id={id} type={field.kind === 'secret' ? 'password' : field.kind} value={value === undefined ? '' : String(value)} placeholder={field.placeholder} min={field.min} max={field.max} step={field.step} onChange={(event) => onChange(field.kind === 'number' ? event.target.valueAsNumber : event.target.value)} />;
+    return <input id={id} type={field.kind === 'secret' ? 'password' : field.kind} value={value === undefined ? '' : String(value)} placeholder={field.placeholder} min={field.min} max={field.max} step={field.step} aria-describedby={describedBy} disabled={disabled} onChange={(event) => onChange(field.kind === 'number' ? event.target.valueAsNumber : event.target.value)} />;
 }

@@ -13,6 +13,7 @@ export type SettingsPageId =
 
 export type SettingsSource = 'dashboard' | 'instance';
 export type SettingsRecord = Record<string, unknown>;
+export type InstanceSettingsAdapterId = 'agent' | 'memory' | 'unsupported';
 
 export interface SettingsPageProps {
     port: number | null;
@@ -39,6 +40,7 @@ export interface SettingsFieldDefinition {
     max?: number;
     step?: number;
     options?: Array<{ label: string; value: string }>;
+    unsupported?: string;
 }
 
 export interface SettingsToastState {

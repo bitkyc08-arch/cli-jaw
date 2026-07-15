@@ -6,6 +6,24 @@ class SettingsRequestError extends Error {
     }
 }
 
+function isRecord(value: unknown): value is SettingsRecord {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function normalizeSettingsResponse(response: unknown): SettingsRecord {
+    if (!isRecord(response)) throw new Error('Malformed settings response');
+    if (response['ok'] === false) {
+        throw new Error(typeof response['error'] === 'string' ? response['error'] : 'Settings request failed');
+    }
+    for (const key of ['registry', 'preferences', 'data'] as const) {
+        if (!(key in response)) continue;
+        const nested = response[key];
+        if (!isRecord(nested)) throw new Error(`Malformed settings response: ${key}`);
+        return nested;
+    }
+    return response;
+}
+
 async function request(path: string, init?: RequestInit): Promise<SettingsRecord> {
     const headers = new Headers(init?.headers);
     headers.set('Accept', 'application/json');
@@ -15,7 +33,7 @@ async function request(path: string, init?: RequestInit): Promise<SettingsRecord
         const detail = await response.text().catch(() => '');
         throw new SettingsRequestError(response.status, detail || `Settings request failed (${response.status})`);
     }
-    return response.json() as Promise<SettingsRecord>;
+    return normalizeSettingsResponse(await response.json() as unknown);
 }
 
 export async function fetchDashboardSettings(): Promise<SettingsRecord> {
@@ -43,12 +61,11 @@ export function fetchInstanceSettings(port: number): Promise<SettingsRecord> {
 
 export function saveInstanceSettings(port: number, patch: SettingsRecord): Promise<SettingsRecord> {
     return request(`/i/${port}/api/settings`, {
-        method: 'PATCH',
+        method: 'PUT',
         body: JSON.stringify(patch),
     });
 }
 
 export function unwrapSettings(response: SettingsRecord): SettingsRecord {
-    const nested = response['registry'] ?? response['preferences'] ?? response['data'];
-    return nested && typeof nested === 'object' ? nested as SettingsRecord : response;
+    return normalizeSettingsResponse(response);
 }
