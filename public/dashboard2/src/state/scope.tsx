@@ -16,7 +16,8 @@ export type SidePanePanelType =
     | 'board'
     | 'reminders'
     | 'doc'
-    | 'design';
+    | 'design'
+    | 'diff';
 
 export interface SidePanePanelInstance {
     id: string;

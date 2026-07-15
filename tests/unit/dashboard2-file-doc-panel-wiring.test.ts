@@ -24,9 +24,10 @@ test('DocPanel treats native shell payload as canonical and reports binary/trunc
     assert.match(sidePane, /<LazyDocPanel active=\{active\} source="native-file" payload=\{payload\}/);
 });
 
-test('089.04 mounts doc and design but leaves diff to 089.05', () => {
+test('089.05 adds diff without changing the 089.04 doc/design wiring', () => {
     assert.match(sidePane, /id: 'doc'/);
     assert.match(sidePane, /id: 'design'/);
-    assert.doesNotMatch(sidePane, /id: 'diff'/);
-    assert.doesNotMatch(sidePane, /LazyDiffPanel|features\/panels\/DiffPanel/);
+    // 089.05 now owns the previously forbidden descriptor and lazy mount.
+    assert.match(sidePane, /id: 'diff'/);
+    assert.match(sidePane, /LazyDiffPanel/);
 });

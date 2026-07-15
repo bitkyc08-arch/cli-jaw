@@ -18,6 +18,7 @@ const LazyBoardPanel = lazy(() => import('../features/board/BoardPanel.tsx').the
 const LazyRemindersPanel = lazy(() => import('../features/reminders/RemindersPanel.tsx').then((m) => ({ default: m.RemindersPanel })));
 const LazyDocPanel = lazy(() => import('../features/panels/DocPanel.tsx').then((m) => ({ default: m.DocPanel })));
 const LazyDesignPanel = lazy(() => import('../features/panels/DesignPanel.tsx').then((m) => ({ default: m.DesignPanel })));
+const LazyDiffPanel = lazy(() => import('../features/panels/DiffPanel.tsx').then((m) => ({ default: m.DiffPanel })));
 
 interface TabDescriptor {
     id: SidePanePanelType;
@@ -35,6 +36,7 @@ const TAB_REGISTRY: TabDescriptor[] = [
     { id: 'code', label: 'Code', icon: Code, category: 'tool', keepAlive: false, needsSession: true },
     { id: 'doc', label: 'Document', icon: FileText, category: 'tool', keepAlive: false, needsSession: false },
     { id: 'design', label: 'Design', icon: Globe, category: 'tool', keepAlive: false, needsSession: false },
+    { id: 'diff', label: 'Diff', icon: Code, category: 'tool', keepAlive: false, needsSession: true },
     { id: 'notes', label: 'Notes', icon: NotebookPen, category: 'feature', keepAlive: true, needsSession: true },
     { id: 'board', label: 'Board', icon: ClipboardList, category: 'feature', keepAlive: true, needsSession: true },
     { id: 'reminders', label: 'Reminders', icon: Bell, category: 'feature', keepAlive: false, needsSession: true },
@@ -113,6 +115,15 @@ function TabContent({ panel, active }: { panel: SidePanePanelInstance; active: b
             const raw = payloadObject(panel.payload);
             const payload: DesignPayload = typeof raw['url'] === 'string' ? { url: raw['url'] } : {};
             return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading design...</div>}><LazyDesignPanel active={active} url={payload.url} /></Suspense>;
+        }
+        case 'diff': {
+            const raw = payloadObject(panel.payload);
+            const payload = {
+                ...(typeof raw['repoRoot'] === 'string' ? { repoRoot: raw['repoRoot'] } : {}),
+                ...(typeof raw['filePath'] === 'string' ? { filePath: raw['filePath'] } : {}),
+                ...(raw['mode'] === 'staged' || raw['mode'] === 'unstaged' ? { mode: raw['mode'] } : {}),
+            };
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading diff...</div>}><LazyDiffPanel active={active} payload={payload} /></Suspense>;
         }
         case 'notes':
             return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Notes...</div>}><LazyNotesPanel active={active} /></Suspense>;
