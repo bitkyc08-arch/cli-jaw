@@ -33,16 +33,16 @@ export function mergeSettingsPatch(current: Record<string, any>, patch: Record<s
     // Deep merge nested objects (heartbeat, telegram, telegramHub, memory, stt, jawCeo, pi, tui, network)
     for (const key of ['heartbeat', 'telegram', 'telegramHub', 'discord', 'memory', 'stt', 'jawCeo', 'pi', 'tui', 'messaging', 'network']) {
         if (remaining[key] && typeof remaining[key] === 'object') {
-            result[key] = { ...result[key], ...remaining[key] };
+            if (key === 'network') {
+                const isRecord = (value: unknown): value is Record<string, any> => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+                const networkPatch = remaining[key], currentRemoteAccess = isRecord(result[key]) ? result[key]["remoteAccess"] : undefined;
+                const remoteAccessPatch = isRecord(networkPatch) ? networkPatch["remoteAccess"] : undefined;
+                result[key] = { ...result[key], ...networkPatch };
+                if (isRecord(remoteAccessPatch)) result[key]["remoteAccess"] =
+                    { ...(isRecord(currentRemoteAccess) ? currentRemoteAccess : {}), ...remoteAccessPatch };
+            } else result[key] = { ...result[key], ...remaining[key] };
             delete remaining[key];
         }
-    }
-
-    // Deep merge nested network.remoteAccess
-    if (remaining["network"]?.remoteAccess && typeof remaining["network"].remoteAccess === 'object') {
-        result["network"] = result["network"] || {};
-        result["network"].remoteAccess = { ...result["network"].remoteAccess, ...remaining["network"].remoteAccess };
-        delete remaining["network"].remoteAccess;
     }
 
     // Top-level scalar fields

@@ -13,7 +13,7 @@ export type SettingsPageId =
 
 export type SettingsSource = 'dashboard' | 'instance';
 export type SettingsRecord = Record<string, unknown>;
-export type InstanceSettingsAdapterId = 'agent' | 'memory' | 'unsupported';
+export type InstanceSettingsAdapterId = 'agent' | 'memory' | 'network' | 'unsupported';
 
 export interface SettingsPageProps {
     port: number | null;

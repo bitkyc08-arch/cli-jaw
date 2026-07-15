@@ -78,9 +78,109 @@ test('Memory adapter maps the four allowlisted canonical keys and changed fields
     assert.throws(() => adapter.encode({ ...initial, retentionDays: 0 }, initial, root), /1 to 3650/);
 });
 
+test('Network adapter maps the canonical allowlist and sends complete remoteAccess objects', () => {
+    const adapter = getInstanceSettingsAdapter('network');
+    const root = {
+        network: {
+            bindHost: '127.0.0.1',
+            lanBypass: false,
+            remoteAccess: {
+                mode: 'off',
+                trustProxies: false,
+                trustForwardedFor: false,
+                publicOriginHint: '',
+                requireAuth: true,
+                privateField: 'must not round-trip',
+            },
+            privateField: 'must not round-trip',
+        },
+        apiKeys: { openai: 'must not round-trip' },
+    };
+    const initial = adapter.decode(root);
+    assert.deepEqual(initial, {
+        bindHost: '127.0.0.1',
+        lanBypass: false,
+        remoteAccess: {
+            mode: 'off',
+            trustProxies: false,
+            trustForwardedFor: false,
+            publicOriginHint: '',
+            requireAuth: true,
+        },
+    });
+
+    assert.deepEqual(adapter.encode(initial, initial, root), {});
+    assert.deepEqual(
+        adapter.encode({
+            ...initial,
+            remoteAccess: { ...initial['remoteAccess'] as Record<string, unknown>, mode: 'full' },
+        }, initial, root),
+        {
+            network: {
+                remoteAccess: {
+                    mode: 'full',
+                    trustProxies: false,
+                    trustForwardedFor: false,
+                    publicOriginHint: '',
+                    requireAuth: true,
+                },
+            },
+        },
+    );
+    assert.deepEqual(
+        adapter.encode({ ...initial, bindHost: '0.0.0.0' }, initial, root),
+        {
+            network: {
+                bindHost: '0.0.0.0',
+                remoteAccess: {
+                    mode: 'off',
+                    trustProxies: false,
+                    trustForwardedFor: false,
+                    publicOriginHint: '',
+                    requireAuth: true,
+                },
+            },
+        },
+    );
+});
+
+test('Network adapter rejects values outside the persistence allowlist', () => {
+    const adapter = getInstanceSettingsAdapter('network');
+    const initial = adapter.decode({ network: {} });
+    const remoteAccess = initial['remoteAccess'] as Record<string, unknown>;
+
+    assert.throws(
+        () => adapter.encode({ ...initial, remoteAccess: { ...remoteAccess, mode: 'reverse-proxy' } }, initial, {}),
+        /Remote access mode/,
+    );
+    assert.throws(
+        () => adapter.encode({ ...initial, remoteAccess: { ...remoteAccess, publicOriginHint: 'ws:\/\/bad' } }, initial, {}),
+        /Public origin hint/,
+    );
+    assert.throws(() => adapter.encode({ ...initial, lanBypass: 'yes' }, initial, {}), /LAN bypass/);
+});
+
+test('Network page exposes only canonical persistent fields and restart guidance', () => {
+    const source = readSource(join(projectRoot, 'public/dashboard2/src/features/settings/pages/NetworkPage.tsx'), 'utf8');
+    const keys = [...source.matchAll(/\{ key: '([^']+)'/g)].map((match) => match[1]);
+    assert.deepEqual(keys, [
+        'bindHost',
+        'lanBypass',
+        'remoteAccess.mode',
+        'remoteAccess.trustProxies',
+        'remoteAccess.trustForwardedFor',
+        'remoteAccess.publicOriginHint',
+        'remoteAccess.requireAuth',
+    ]);
+    assert.match(source, /adapterId="network"/);
+    assert.doesNotMatch(source, /proxyUrl|tlsVerify|key: 'trustProxy'/);
+    assert.equal((source.match(/restart the instance/gi) ?? []).length, 4,
+        'bindHost and startup-captured mode/trust fields must be marked restart-required');
+});
+
 test('unsupported categories cannot encode settings and render disabled guidance', () => {
     assert.deepEqual(getInstanceSettingsAdapter('unsupported').encode({ apiKeys: { openai: 'secret' } }, {}, {}), {});
-    const pagePaths = ['AgentPage', 'McpPage', 'ModelProviderPage', 'NetworkPage'];
+    const pagePaths = ['AgentPage', 'McpPage', 'ModelProviderPage'];
     for (const page of pagePaths) {
         const source = readSource(join(projectRoot, `public/dashboard2/src/features/settings/pages/${page}.tsx`), 'utf8');
         assert.match(source, /unsupported:/, `${page} must mark unsupported controls`);

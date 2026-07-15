@@ -69,6 +69,91 @@ const memoryAdapter: InstanceSettingsAdapter = {
     },
 };
 
+const remoteAccessModes = ['off', 'http-only', 'full'] as const;
+const remoteAccessFields = [
+    'mode',
+    'trustProxies',
+    'trustForwardedFor',
+    'publicOriginHint',
+    'requireAuth',
+] as const;
+
+function remoteAccessMode(value: unknown): typeof remoteAccessModes[number] {
+    if (typeof value !== 'string' || !remoteAccessModes.includes(value as typeof remoteAccessModes[number])) {
+        throw new Error('Remote access mode must be off, http-only, or full');
+    }
+    return value as typeof remoteAccessModes[number];
+}
+
+function booleanValue(value: unknown, label: string): boolean {
+    if (typeof value !== 'boolean') throw new Error(`${label} must be boolean`);
+    return value;
+}
+
+function publicOriginHint(value: unknown): string {
+    if (typeof value !== 'string') throw new Error('Public origin hint must be a string');
+    const trimmed = value.trim();
+    if (!trimmed) return '';
+    let url: URL;
+    try {
+        url = new URL(trimmed);
+    } catch {
+        throw new Error('Public origin hint must be an absolute HTTP(S) origin');
+    }
+    if ((url.protocol !== 'http:' && url.protocol !== 'https:') || url.pathname !== '/' || url.search || url.hash) {
+        throw new Error('Public origin hint must be an absolute HTTP(S) origin without a path, query, or hash');
+    }
+    return url.origin;
+}
+
+const networkAdapter: InstanceSettingsAdapter = {
+    decode(root) {
+        const network = record(root['network']);
+        const remoteAccess = record(network['remoteAccess']);
+        return {
+            bindHost: typeof network['bindHost'] === 'string' ? network['bindHost'] : '127.0.0.1',
+            lanBypass: typeof network['lanBypass'] === 'boolean' ? network['lanBypass'] : false,
+            remoteAccess: {
+                mode: typeof remoteAccess['mode'] === 'string' && remoteAccessModes.includes(remoteAccess['mode'] as typeof remoteAccessModes[number])
+                    ? remoteAccess['mode']
+                    : 'off',
+                trustProxies: typeof remoteAccess['trustProxies'] === 'boolean' ? remoteAccess['trustProxies'] : false,
+                trustForwardedFor: typeof remoteAccess['trustForwardedFor'] === 'boolean' ? remoteAccess['trustForwardedFor'] : false,
+                publicOriginHint: typeof remoteAccess['publicOriginHint'] === 'string' ? remoteAccess['publicOriginHint'] : '',
+                requireAuth: typeof remoteAccess['requireAuth'] === 'boolean' ? remoteAccess['requireAuth'] : true,
+            },
+        };
+    },
+    encode(draft, initial) {
+        const draftRemoteAccess = record(draft['remoteAccess']);
+        const initialRemoteAccess = record(initial['remoteAccess']);
+        const bindHostChanged = changed(draft, initial, 'bindHost');
+        const lanBypassChanged = changed(draft, initial, 'lanBypass');
+        const remoteAccessChanged = remoteAccessFields.some((key) =>
+            !Object.is(draftRemoteAccess[key], initialRemoteAccess[key]));
+        if (!bindHostChanged && !lanBypassChanged && !remoteAccessChanged) return {};
+
+        const network: SettingsRecord = {};
+        if (bindHostChanged) {
+            if (typeof draft['bindHost'] !== 'string' || !draft['bindHost'].trim()) {
+                throw new Error('Bind host must be a non-empty string');
+            }
+            network['bindHost'] = draft['bindHost'].trim();
+        }
+        if (lanBypassChanged) {
+            network['lanBypass'] = booleanValue(draft['lanBypass'], 'LAN bypass');
+        }
+        network['remoteAccess'] = {
+            mode: remoteAccessMode(draftRemoteAccess['mode']),
+            trustProxies: booleanValue(draftRemoteAccess['trustProxies'], 'Trust proxies'),
+            trustForwardedFor: booleanValue(draftRemoteAccess['trustForwardedFor'], 'Trust forwarded-for'),
+            publicOriginHint: publicOriginHint(draftRemoteAccess['publicOriginHint']),
+            requireAuth: booleanValue(draftRemoteAccess['requireAuth'], 'Require authentication'),
+        };
+        return { network };
+    },
+};
+
 const unsupportedAdapter: InstanceSettingsAdapter = {
     decode: () => ({}),
     encode: () => ({}),
@@ -77,5 +162,6 @@ const unsupportedAdapter: InstanceSettingsAdapter = {
 export function getInstanceSettingsAdapter(id: InstanceSettingsAdapterId): InstanceSettingsAdapter {
     if (id === 'agent') return agentAdapter;
     if (id === 'memory') return memoryAdapter;
+    if (id === 'network') return networkAdapter;
     return unsupportedAdapter;
 }

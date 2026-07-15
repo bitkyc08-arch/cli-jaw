@@ -72,3 +72,54 @@ test('SM-008: telegramHub deep merge preserves callback siblings', () => {
     const next = mergeSettingsPatch(current, { telegramHub: { mode: 'standalone' } });
     assert.deepEqual(next.telegramHub, { mode: 'standalone', hubCallbackUrl: 'http://127.0.0.1:24576' });
 });
+
+test('SM-009: network remoteAccess patch preserves siblings without mutating network inputs', () => {
+    const current = {
+        network: {
+            bindHost: '127.0.0.1',
+            lanBypass: false,
+            remoteAccess: {
+                mode: 'off',
+                trustProxies: true,
+                trustForwardedFor: true,
+                publicOriginHint: 'https://jaw.example.com',
+                requireAuth: true,
+            },
+        },
+    };
+    const patch = { network: { remoteAccess: { mode: 'full' } } };
+    const currentBefore = structuredClone(current);
+    const patchBefore = structuredClone(patch);
+
+    const next = mergeSettingsPatch(current, patch);
+
+    assert.deepEqual(next.network, {
+        bindHost: '127.0.0.1',
+        lanBypass: false,
+        remoteAccess: {
+            mode: 'full',
+            trustProxies: true,
+            trustForwardedFor: true,
+            publicOriginHint: 'https://jaw.example.com',
+            requireAuth: true,
+        },
+    });
+    assert.deepEqual(current, currentBefore, 'network branch must not mutate current');
+    assert.deepEqual(patch, patchBefore, 'network branch must not mutate patch');
+    assert.notStrictEqual(next.network, current.network);
+    assert.notStrictEqual(next.network.remoteAccess, current.network.remoteAccess);
+});
+
+test('SM-010: network keeps outer array and non-object replacement semantics', () => {
+    const current = { network: { bindHost: '127.0.0.1', remoteAccess: { mode: 'off' } } };
+
+    assert.deepEqual(
+        mergeSettingsPatch(current, { network: ['first'] }),
+        { network: { 0: 'first', bindHost: '127.0.0.1', remoteAccess: { mode: 'off' } } },
+    );
+    assert.deepEqual(
+        mergeSettingsPatch(current, { network: { remoteAccess: ['full'] } }),
+        { network: { bindHost: '127.0.0.1', remoteAccess: ['full'] } },
+    );
+    assert.deepEqual(mergeSettingsPatch(current, { network: null }), { network: null });
+});
