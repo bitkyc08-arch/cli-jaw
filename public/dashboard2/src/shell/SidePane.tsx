@@ -1,7 +1,8 @@
 // 089.04 — instance-based SidePane with explicit-close lifecycle.
 import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, Users, X } from '@lucide/icons';
-import { Suspense, lazy, useEffect, useRef, useState, type JSX } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState, type JSX } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
+import { useDesktopBridge } from '../providers/desktop-bridge-provider.tsx';
 import {
     useAppScope,
     type SidePanePanelInstance,
@@ -11,6 +12,12 @@ import { Icon } from './Icon.tsx';
 import { BrowserPanel } from './panels/BrowserPanel.tsx';
 import { FileTreePanel } from './panels/FileTreePanel.tsx';
 import { TerminalPanel } from './panels/TerminalPanel.tsx';
+import {
+    initialTerminalRequestLedger,
+    terminalRequestLedgerReducer,
+    type TerminalRequestLedger,
+} from './panels/terminal-session-requests.ts';
+import type { TerminalTarget } from './panels/terminal-session-state.ts';
 
 const LazyCodeTab = lazy(() => import('../code/index.ts'));
 const LazyNotesPanel = lazy(() => import('../features/notes/NotesPanel.tsx').then((m) => ({ default: m.NotesPanel })));
@@ -55,28 +62,36 @@ function payloadObject(payload: unknown): Record<string, unknown> {
         : {};
 }
 
-function TabContent({ panel, active }: { panel: SidePanePanelInstance; active: boolean }): JSX.Element | null {
+interface TabContentProps {
+    panel: SidePanePanelInstance;
+    active: boolean;
+    terminalRequests: TerminalRequestLedger;
+    consumeTerminalRequests(token: number): void;
+}
+
+function TabContent({ panel, active, terminalRequests, consumeTerminalRequests }: TabContentProps): JSX.Element | null {
     const { selected } = useAppScope();
     const api = useManagerApi();
-    const [terminalWorkingDir, setTerminalWorkingDir] = useState<string | null>(null);
+    const [terminalWorkingDirectory, setTerminalWorkingDirectory] = useState<TerminalTarget | null>(null);
     const [terminalWorkingDirError, setTerminalWorkingDirError] = useState<string | null>(null);
     const cwdRequestGeneration = useRef(0);
     const desc = TAB_MAP.get(panel.type);
 
     useEffect(() => {
         const generation = ++cwdRequestGeneration.current;
-        setTerminalWorkingDir(null);
+        setTerminalWorkingDirectory(null);
         setTerminalWorkingDirError(null);
         if (panel.type !== 'terminal' || !selected) return;
+        const requestedPort = selected.port;
 
         void api.fetchInstances().then((instances) => {
             if (cwdRequestGeneration.current !== generation) return;
-            const instance = instances.find((candidate) => candidate.port === selected.port);
+            const instance = instances.find((candidate) => candidate.port === requestedPort);
             if (!instance?.workingDir) {
                 setTerminalWorkingDirError('No working directory for this instance');
                 return;
             }
-            setTerminalWorkingDir(instance.workingDir);
+            setTerminalWorkingDirectory({ port: requestedPort, cwd: instance.workingDir });
         }).catch((error: unknown) => {
             if (cwdRequestGeneration.current !== generation) return;
             setTerminalWorkingDirError(error instanceof Error ? error.message : 'Unable to load instance working directory');
@@ -96,7 +111,15 @@ function TabContent({ panel, active }: { panel: SidePanePanelInstance; active: b
     const port = selected?.port ?? null;
     switch (panel.type) {
         case 'terminal':
-            return <TerminalPanel port={port} workingDir={terminalWorkingDir} workingDirError={terminalWorkingDirError} />;
+            return (
+                <TerminalPanel
+                    port={port}
+                    workingDirectory={terminalWorkingDirectory}
+                    workingDirectoryError={terminalWorkingDirError}
+                    terminalRequests={terminalRequests}
+                    consumeTerminalRequests={consumeTerminalRequests}
+                />
+            );
         case 'browser':
             return <BrowserPanel panelId={panel.id} />;
         case 'files':
@@ -144,6 +167,7 @@ interface SidePaneProps {
 }
 
 export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
+    const bridge = useDesktopBridge();
     const {
         panelInstances,
         activePanelId,
@@ -154,6 +178,23 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         closeActivePanel,
         showPanelPicker,
     } = useAppScope();
+    const [terminalRequests, dispatchTerminalRequest] = useReducer(
+        terminalRequestLedgerReducer,
+        initialTerminalRequestLedger,
+    );
+    const consumeTerminalRequests = useCallback((token: number) => {
+        dispatchTerminalRequest({ type: 'consume-through', token });
+    }, []);
+
+    useEffect(() => {
+        const shortcuts = bridge.shell.shortcuts.nativeAvailable ? bridge.shell.shortcuts.native : null;
+        if (!shortcuts) return;
+        return shortcuts.onAction((action) => {
+            if (action !== 'terminalNewTab') return;
+            dispatchTerminalRequest({ type: 'issue' });
+            openPanel({ type: 'terminal', key: 'terminal', title: 'Terminal', keepAlive: true });
+        });
+    }, [bridge.shell.shortcuts.native, bridge.shell.shortcuts.nativeAvailable, openPanel]);
 
     useEffect(() => {
         if (!open) return;
@@ -203,7 +244,12 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
                     const active = open && panel.id === activePanelId;
                     return (
                         <div key={panel.id} className="d2-side-pane-tab-slot" data-tab={panel.type} style={{ display: active ? undefined : 'none' }} inert={!active} aria-hidden={!active}>
-                            <TabContent panel={panel} active={active} />
+                            <TabContent
+                                panel={panel}
+                                active={active}
+                                terminalRequests={terminalRequests}
+                                consumeTerminalRequests={consumeTerminalRequests}
+                            />
                         </div>
                     );
                 })}
