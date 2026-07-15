@@ -4,7 +4,18 @@ import { MarkdownRenderer } from '../notes/rendering/MarkdownRenderer.tsx';
 import { highlightCode } from '../notes/rendering/highlight-languages.ts';
 import './panels.css';
 
-export type DocPanelProps = { active: boolean; path?: string };
+export type DocPanelPayload = {
+    path?: string;
+    content?: string;
+    truncated?: boolean;
+    binary?: boolean;
+};
+
+export type DocPanelProps = {
+    active: boolean;
+    source: 'native-file' | 'notes';
+    payload?: DocPanelPayload;
+};
 
 const EXT_LANG: Record<string, string> = {
     c: 'c', cpp: 'cpp', css: 'css', go: 'go', h: 'c', html: 'html', java: 'java',
@@ -18,19 +29,23 @@ function languageForPath(path: string): string {
     return EXT_LANG[extension] ?? 'text';
 }
 
-export function DocPanel({ active, path }: DocPanelProps): JSX.Element {
+export function DocPanel({ active, source, payload = {} }: DocPanelProps): JSX.Element {
     const [content, setContent] = useState('');
     const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
     const [message, setMessage] = useState('');
     const [copied, setCopied] = useState(false);
+    const path = payload.path;
+    const renderedContent = source === 'native-file' ? payload.content ?? '' : content;
+    const nativeReady = source === 'native-file' && Boolean(path) && payload.binary !== true;
+    const effectiveStatus = source === 'native-file' ? (nativeReady ? 'ready' : 'idle') : status;
     const markdown = Boolean(path && /\.mdx?$/i.test(path));
     const highlighted = useMemo(
-        () => markdown || !path ? null : highlightCode(content, languageForPath(path)),
-        [content, markdown, path],
+        () => markdown || !path || payload.binary ? null : highlightCode(renderedContent, languageForPath(path)),
+        [markdown, path, payload.binary, renderedContent],
     );
 
     useEffect(() => {
-        if (!active || !path) return;
+        if (source !== 'notes' || !active || !path) return;
         const controller = new AbortController();
         setStatus('loading');
         setMessage('');
@@ -44,11 +59,11 @@ export function DocPanel({ active, path }: DocPanelProps): JSX.Element {
             setStatus('error');
         });
         return () => controller.abort();
-    }, [active, path]);
+    }, [active, path, source]);
 
     async function copyDocument(): Promise<void> {
         try {
-            await navigator.clipboard.writeText(content);
+            await navigator.clipboard.writeText(renderedContent);
             setCopied(true);
             window.setTimeout(() => setCopied(false), 1200);
         } catch (error) {
@@ -60,16 +75,18 @@ export function DocPanel({ active, path }: DocPanelProps): JSX.Element {
         <section className="d2-doc-panel" hidden={!active} aria-label="Document viewer">
             <header className="d2-panel-toolbar">
                 <span className="d2-panel-path" title={path}>{path ?? 'No document selected'}</span>
-                <button type="button" onClick={() => void copyDocument()} disabled={status !== 'ready'}>
+                {payload.truncated ? <span className="d2-panel-state" role="status">Truncated preview</span> : null}
+                <button type="button" onClick={() => void copyDocument()} disabled={effectiveStatus !== 'ready'}>
                     {copied ? 'Copied' : 'Copy'}
                 </button>
             </header>
             <div className="d2-doc-content">
                 {!path ? <div className="d2-panel-state">Open a document to preview it.</div> : null}
-                {status === 'loading' ? <div className="d2-panel-state" role="status">Loading document...</div> : null}
-                {status === 'error' ? <div className="d2-panel-state is-error" role="alert">{message}</div> : null}
-                {status === 'ready' && markdown ? <div className="d2-doc-prose"><MarkdownRenderer markdown={content} /></div> : null}
-                {status === 'ready' && highlighted ? (
+                {payload.binary ? <div className="d2-panel-state" role="status">Binary preview is not supported.</div> : null}
+                {effectiveStatus === 'loading' ? <div className="d2-panel-state" role="status">Loading document...</div> : null}
+                {effectiveStatus === 'error' ? <div className="d2-panel-state is-error" role="alert">{message}</div> : null}
+                {effectiveStatus === 'ready' && markdown ? <div className="d2-doc-prose"><MarkdownRenderer markdown={renderedContent} /></div> : null}
+                {effectiveStatus === 'ready' && highlighted ? (
                     <pre className="d2-doc-code"><code className={`hljs language-${highlighted.language}`} dangerouslySetInnerHTML={{ __html: highlighted.html }} /></pre>
                 ) : null}
             </div>

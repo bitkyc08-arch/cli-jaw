@@ -1,63 +1,69 @@
-// 075 — SidePane with tab-registry, keep-alive, and 7-tab support
-import { Bell, Calendar, ClipboardList, Code, File, Globe, NotebookPen, Plus, Terminal, X } from '@lucide/icons';
+// 089.04 — instance-based SidePane with explicit-close lifecycle.
+import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, X } from '@lucide/icons';
 import { Suspense, lazy, useEffect, useRef, useState, type JSX } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
-import { useAppScope, type SidePaneTab } from '../state/scope.tsx';
+import {
+    useAppScope,
+    type SidePanePanelInstance,
+    type SidePanePanelType,
+} from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
 import { BrowserPanel } from './panels/BrowserPanel.tsx';
 import { FileTreePanel } from './panels/FileTreePanel.tsx';
 import { TerminalPanel } from './panels/TerminalPanel.tsx';
 
-// Lazy boundaries — these chunks load only when first selected
 const LazyCodeTab = lazy(() => import('../code/index.ts'));
 const LazyNotesPanel = lazy(() => import('../features/notes/NotesPanel.tsx').then((m) => ({ default: m.NotesPanel })));
 const LazyBoardPanel = lazy(() => import('../features/board/BoardPanel.tsx').then((m) => ({ default: m.BoardPanel })));
 const LazyRemindersPanel = lazy(() => import('../features/reminders/RemindersPanel.tsx').then((m) => ({ default: m.RemindersPanel })));
-
-// ── Tab Registry ──────────────────────────────────────────────────────
-// Declarative config for all SidePane tabs. `keepAlive` tabs stay mounted
-// (display:none) when inactive; others unmount on tab switch.
+const LazyDocPanel = lazy(() => import('../features/panels/DocPanel.tsx').then((m) => ({ default: m.DocPanel })));
+const LazyDesignPanel = lazy(() => import('../features/panels/DesignPanel.tsx').then((m) => ({ default: m.DesignPanel })));
 
 interface TabDescriptor {
-    id: SidePaneTab;
+    id: SidePanePanelType;
     label: string;
     icon: typeof Terminal;
-    placeholder: string;
-    /** Category for picker grouping */
     category: 'tool' | 'feature';
-    /** Keep-alive: render hidden instead of unmounting */
     keepAlive: boolean;
-    /** Requires a selected session to render content */
     needsSession: boolean;
 }
 
 const TAB_REGISTRY: TabDescriptor[] = [
-    { id: 'terminal', label: 'Terminal', icon: Terminal, placeholder: 'Terminal output will appear here', category: 'tool', keepAlive: true, needsSession: true },
-    { id: 'browser', label: 'Browser', icon: Globe, placeholder: 'Browser will appear here', category: 'tool', keepAlive: false, needsSession: false },
-    { id: 'files', label: 'Files', icon: File, placeholder: 'Files will appear here', category: 'tool', keepAlive: false, needsSession: false },
-    { id: 'code', label: 'Code', icon: Code, placeholder: 'Code conversation will appear here', category: 'tool', keepAlive: false, needsSession: true },
-    { id: 'notes', label: 'Notes', icon: NotebookPen, placeholder: 'Notes will appear here', category: 'feature', keepAlive: true, needsSession: true },
-    { id: 'board', label: 'Board', icon: ClipboardList, placeholder: 'Board will appear here', category: 'feature', keepAlive: true, needsSession: true },
-    { id: 'reminders', label: 'Reminders', icon: Bell, placeholder: 'Reminders will appear here', category: 'feature', keepAlive: false, needsSession: true },
+    { id: 'terminal', label: 'Terminal', icon: Terminal, category: 'tool', keepAlive: true, needsSession: true },
+    { id: 'browser', label: 'Browser', icon: Globe, category: 'tool', keepAlive: true, needsSession: false },
+    { id: 'files', label: 'Files', icon: File, category: 'tool', keepAlive: false, needsSession: false },
+    { id: 'code', label: 'Code', icon: Code, category: 'tool', keepAlive: false, needsSession: true },
+    { id: 'doc', label: 'Document', icon: FileText, category: 'tool', keepAlive: false, needsSession: false },
+    { id: 'design', label: 'Design', icon: Globe, category: 'tool', keepAlive: false, needsSession: false },
+    { id: 'notes', label: 'Notes', icon: NotebookPen, category: 'feature', keepAlive: true, needsSession: true },
+    { id: 'board', label: 'Board', icon: ClipboardList, category: 'feature', keepAlive: true, needsSession: true },
+    { id: 'reminders', label: 'Reminders', icon: Bell, category: 'feature', keepAlive: false, needsSession: true },
 ];
 
-const TAB_MAP = new Map(TAB_REGISTRY.map((t) => [t.id, t]));
+const TAB_MAP = new Map(TAB_REGISTRY.map((tab) => [tab.id, tab]));
 
-// ── Tab Content Renderer ──────────────────────────────────────────────
+type DocPayload = { path?: string; content?: string; truncated?: boolean; binary?: boolean };
+type DesignPayload = { url?: string };
 
-function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }): JSX.Element | null {
+function payloadObject(payload: unknown): Record<string, unknown> {
+    return payload && typeof payload === 'object' && !Array.isArray(payload)
+        ? payload as Record<string, unknown>
+        : {};
+}
+
+function TabContent({ panel, active }: { panel: SidePanePanelInstance; active: boolean }): JSX.Element | null {
     const { selected } = useAppScope();
     const api = useManagerApi();
     const [terminalWorkingDir, setTerminalWorkingDir] = useState<string | null>(null);
     const [terminalWorkingDirError, setTerminalWorkingDirError] = useState<string | null>(null);
     const cwdRequestGeneration = useRef(0);
-    const desc = TAB_MAP.get(tabId);
+    const desc = TAB_MAP.get(panel.type);
 
     useEffect(() => {
         const generation = ++cwdRequestGeneration.current;
         setTerminalWorkingDir(null);
         setTerminalWorkingDirError(null);
-        if (tabId !== 'terminal' || !selected) return;
+        if (panel.type !== 'terminal' || !selected) return;
 
         void api.fetchInstances().then((instances) => {
             if (cwdRequestGeneration.current !== generation) return;
@@ -71,14 +77,12 @@ function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }):
             if (cwdRequestGeneration.current !== generation) return;
             setTerminalWorkingDirError(error instanceof Error ? error.message : 'Unable to load instance working directory');
         });
-    }, [api, selected?.port, tabId]);
+    }, [api, panel.type, selected?.port]);
 
     if (!desc) return null;
-
-    // Session guard for tabs that need one
     if (desc.needsSession && !selected) {
         return active ? (
-            <div className="d2-side-pane-placeholder" data-tab={tabId}>
+            <div className="d2-side-pane-placeholder" data-tab={panel.type}>
                 <Icon icon={desc.icon} size={36} />
                 <span>Select a session first</span>
             </div>
@@ -86,8 +90,7 @@ function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }):
     }
 
     const port = selected?.port ?? null;
-
-    switch (tabId) {
+    switch (panel.type) {
         case 'terminal':
             return <TerminalPanel port={port} workingDir={terminalWorkingDir} workingDirError={terminalWorkingDirError} />;
         case 'browser':
@@ -95,33 +98,30 @@ function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }):
         case 'files':
             return <FileTreePanel />;
         case 'code':
-            return (
-                <Suspense fallback={<div className="d2-side-pane-placeholder" data-tab="code"><Icon icon={Code} size={36} /><span>Loading Code...</span></div>}>
-                    <LazyCodeTab port={port!} />
-                </Suspense>
-            );
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Code...</div>}><LazyCodeTab port={port!} /></Suspense>;
+        case 'doc': {
+            const raw = payloadObject(panel.payload);
+            const payload: DocPayload = {
+                ...(typeof raw['path'] === 'string' ? { path: raw['path'] } : {}),
+                ...(typeof raw['content'] === 'string' ? { content: raw['content'] } : {}),
+                ...(typeof raw['truncated'] === 'boolean' ? { truncated: raw['truncated'] } : {}),
+                ...(typeof raw['binary'] === 'boolean' ? { binary: raw['binary'] } : {}),
+            };
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading document...</div>}><LazyDocPanel active={active} source="native-file" payload={payload} /></Suspense>;
+        }
+        case 'design': {
+            const raw = payloadObject(panel.payload);
+            const payload: DesignPayload = typeof raw['url'] === 'string' ? { url: raw['url'] } : {};
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading design...</div>}><LazyDesignPanel active={active} url={payload.url} /></Suspense>;
+        }
         case 'notes':
-            return (
-                <Suspense fallback={<div className="d2-side-pane-placeholder" data-tab="notes"><Icon icon={NotebookPen} size={36} /><span>Loading Notes...</span></div>}>
-                    <LazyNotesPanel active={active} />
-                </Suspense>
-            );
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Notes...</div>}><LazyNotesPanel active={active} /></Suspense>;
         case 'board':
-            return (
-                <Suspense fallback={<div className="d2-side-pane-placeholder" data-tab="board"><Icon icon={ClipboardList} size={36} /><span>Loading Board...</span></div>}>
-                    <LazyBoardPanel active={active} />
-                </Suspense>
-            );
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Board...</div>}><LazyBoardPanel active={active} /></Suspense>;
         case 'reminders':
-            return (
-                <Suspense fallback={<div className="d2-side-pane-placeholder" data-tab="reminders"><Icon icon={Bell} size={36} /><span>Loading Reminders...</span></div>}>
-                    <LazyRemindersPanel active={active} />
-                </Suspense>
-            );
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading Reminders...</div>}><LazyRemindersPanel active={active} /></Suspense>;
     }
 }
-
-// ── SidePane ──────────────────────────────────────────────────────────
 
 interface SidePaneProps {
     open: boolean;
@@ -129,163 +129,80 @@ interface SidePaneProps {
 }
 
 export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
-    const { activeSidePaneTab, mountedTabs, setActiveSidePaneTab } = useAppScope();
-    const activeDescriptor = activeSidePaneTab ? TAB_MAP.get(activeSidePaneTab) ?? null : null;
+    const {
+        panelInstances,
+        activePanelId,
+        panelOpenError,
+        openPanel,
+        activatePanel,
+        closePanel,
+        closeActivePanel,
+        showPanelPicker,
+    } = useAppScope();
 
-    // Cmd+W / Ctrl+W or Escape closes the active tab, or the entire pane if no tab is active
     useEffect(() => {
         if (!open) return;
-
-        const handleKeyDown = (e: KeyboardEvent): void => {
-            const isCmdW = (e.metaKey || e.ctrlKey) && e.key === 'w';
-            // Escape only when focus is inside the side pane (avoid conflict with composer menus)
-            const isEscape = e.key === 'Escape' && !e.defaultPrevented
+        const handleKeyDown = (event: KeyboardEvent): void => {
+            const isCmdW = (event.metaKey || event.ctrlKey) && event.key === 'w';
+            const isEscape = event.key === 'Escape' && !event.defaultPrevented
                 && document.querySelector('.d2-side-pane')?.contains(document.activeElement);
-            if (isCmdW || isEscape) {
-                e.preventDefault();
-                e.stopPropagation();
-                if (activeSidePaneTab) {
-                    setActiveSidePaneTab(null);
-                } else {
-                    onClose();
-                }
-            }
+            if (!isCmdW && !isEscape) return;
+            event.preventDefault();
+            event.stopPropagation();
+            if (activePanelId) closeActivePanel();
+            else onClose();
         };
         document.addEventListener('keydown', handleKeyDown);
         return () => document.removeEventListener('keydown', handleKeyDown);
-    }, [activeSidePaneTab, onClose, open, setActiveSidePaneTab]);
+    }, [activePanelId, closeActivePanel, onClose, open]);
 
-    // ── Keep-alive rendering ──────────────────────────────────────────
-    // Tabs marked keepAlive=true stay mounted (hidden) once activated.
-    // Non-keepAlive tabs render only when active.
-    const renderTabs = (): JSX.Element[] => {
-        const elements: JSX.Element[] = [];
-        for (const desc of TAB_REGISTRY) {
-            const isActive = activeSidePaneTab === desc.id;
-            const isVisible = open && isActive;
-            if (desc.keepAlive) {
-                // Keep-alive: render if ever mounted, hide if not active
-                if (mountedTabs.has(desc.id)) {
-                    elements.push(
-                        <div
-                            key={desc.id}
-                            className="d2-side-pane-tab-slot"
-                            data-tab={desc.id}
-                            style={{ display: isVisible ? undefined : 'none' }}
-                            inert={!isVisible}
-                            aria-hidden={!isVisible}
-                        >
-                            <TabContent tabId={desc.id} active={isVisible} />
-                        </div>,
-                    );
-                }
-            } else if (isActive) {
-                // Non-keepAlive: render only when active
-                elements.push(
-                    <div
-                        key={desc.id}
-                        className="d2-side-pane-tab-slot"
-                        data-tab={desc.id}
-                        style={{ display: isVisible ? undefined : 'none' }}
-                        inert={!isVisible}
-                        aria-hidden={!isVisible}
-                    >
-                        <TabContent tabId={desc.id} active={isVisible} />
-                    </div>,
-                );
-            }
-        }
-        return elements;
+    const toolTabs = TAB_REGISTRY.filter((tab) => tab.category === 'tool');
+    const featureTabs = TAB_REGISTRY.filter((tab) => tab.category === 'feature');
+    const openDescriptor = (tab: TabDescriptor): void => {
+        openPanel({ type: tab.id, key: tab.id, title: tab.label, keepAlive: tab.keepAlive });
     };
-
-    // ── Picker (no active tab) ────────────────────────────────────────
-    const toolTabs = TAB_REGISTRY.filter((t) => t.category === 'tool');
-    const featureTabs = TAB_REGISTRY.filter((t) => t.category === 'feature');
 
     return (
         <aside className="d2-side-pane" aria-label="Side pane">
             <header className="d2-side-pane-header">
-                {activeDescriptor ? (
-                    <div className="d2-side-pane-tab-group">
-                        <button
-                            className="d2-side-pane-pill"
-                            type="button"
-                            onClick={() => setActiveSidePaneTab(null)}
-                            aria-label="Choose another tab"
-                            title="Choose another tab"
-                        >
-                            <Icon icon={activeDescriptor.icon} size={14} />
-                            <span>{activeDescriptor.label}</span>
-                        </button>
-                        <span
-                            className="d2-side-pane-tab-close"
-                            role="button"
-                            tabIndex={0}
-                            onClick={(e) => { e.stopPropagation(); setActiveSidePaneTab(null); }}
-                            onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setActiveSidePaneTab(null); } }}
-                            aria-label={`Close ${activeDescriptor.label}`}
-                            title={`Close ${activeDescriptor.label}`}
-                        >
-                            <Icon icon={X} size={10} />
+                <div className="d2-side-pane-tab-group" role="tablist" aria-label="Open side panels">
+                    {panelInstances.map((panel) => (
+                        <span key={panel.id} className="d2-side-pane-pill">
+                            <button type="button" role="tab" aria-selected={panel.id === activePanelId} onClick={() => activatePanel(panel.id)} title={panel.title}>
+                                {panel.title}
+                            </button>
+                            <button type="button" className="d2-side-pane-tab-close" onClick={() => closePanel(panel.id)} aria-label={`Close ${panel.title}`} title={`Close ${panel.title}`}>
+                                <Icon icon={X} size={10} />
+                            </button>
                         </span>
-                    </div>
-                ) : null}
+                    ))}
+                </div>
                 <span className="d2-side-pane-header-spacer" />
-                <button
-                    className="d2-side-pane-header-button"
-                    type="button"
-                    onClick={() => setActiveSidePaneTab(null)}
-                    aria-label="Open tab"
-                    title="Open tab"
-                >
-                    <Icon icon={Plus} size={14} />
-                </button>
-                <button
-                    className="d2-side-pane-header-button"
-                    type="button"
-                    onClick={onClose}
-                    aria-label="Close side pane"
-                    title="Close side pane"
-                >
-                    <Icon icon={X} size={14} />
-                </button>
+                <button className="d2-side-pane-header-button" type="button" onClick={showPanelPicker} aria-label="Open panel" title="Open panel"><Icon icon={Plus} size={14} /></button>
+                <button className="d2-side-pane-header-button" type="button" onClick={onClose} aria-label="Close side pane" title="Close side pane"><Icon icon={X} size={14} /></button>
             </header>
 
             <div className="d2-side-pane-body">
-                {renderTabs()}
-                {activeSidePaneTab === null ? (
+                {panelOpenError ? <div className="d2-side-pane-placeholder" role="alert">{panelOpenError}</div> : null}
+                {panelInstances.map((panel) => {
+                    const active = open && panel.id === activePanelId;
+                    return (
+                        <div key={panel.id} className="d2-side-pane-tab-slot" data-tab={panel.type} style={{ display: active ? undefined : 'none' }} inert={!active} aria-hidden={!active}>
+                            <TabContent panel={panel} active={active} />
+                        </div>
+                    );
+                })}
+                {activePanelId === null ? (
                     <div className="d2-side-pane-picker">
-                        <h2>Open tab</h2>
-                        <p>Choose a tab to open in the side pane.</p>
+                        <h2>Open panel</h2>
+                        <p>Choose a panel to open in the side pane.</p>
                         <div className="d2-side-pane-picker-section">
                             <span className="d2-side-pane-picker-label">Tools</span>
-                            {toolTabs.map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    className="d2-side-pane-picker-button"
-                                    type="button"
-                                    onClick={() => setActiveSidePaneTab(tab.id)}
-                                    data-tab={tab.id}
-                                >
-                                    <Icon icon={tab.icon} size={18} />
-                                    <span>{tab.label}</span>
-                                </button>
-                            ))}
+                            {toolTabs.map((tab) => <button key={tab.id} className="d2-side-pane-picker-button" type="button" onClick={() => openDescriptor(tab)} data-tab={tab.id}><Icon icon={tab.icon} size={18} /><span>{tab.label}</span></button>)}
                         </div>
                         <div className="d2-side-pane-picker-section">
                             <span className="d2-side-pane-picker-label">Features</span>
-                            {featureTabs.map((tab) => (
-                                <button
-                                    key={tab.id}
-                                    className="d2-side-pane-picker-button"
-                                    type="button"
-                                    onClick={() => setActiveSidePaneTab(tab.id)}
-                                    data-tab={tab.id}
-                                >
-                                    <Icon icon={tab.icon} size={18} />
-                                    <span>{tab.label}</span>
-                                </button>
-                            ))}
+                            {featureTabs.map((tab) => <button key={tab.id} className="d2-side-pane-picker-button" type="button" onClick={() => openDescriptor(tab)} data-tab={tab.id}><Icon icon={tab.icon} size={18} /><span>{tab.label}</span></button>)}
                         </div>
                     </div>
                 ) : null}

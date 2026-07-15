@@ -48,20 +48,21 @@ test('dashboard2 workbench header resolves the selected instance name with a por
     assert.ok(workbench.includes('instanceNames.get(selected.port) ?? `Port ${selected.port}`'));
 });
 
-test('dashboard2 side pane keeps all seven registry tabs and hidden keep-alive slots', () => {
+test('dashboard2 side pane keeps core registry panels and hidden panel-instance slots', () => {
     const sidePane = read('public/dashboard2/src/shell/SidePane.tsx');
     const css = read('public/dashboard2/src/styles/workbench-v4.css');
 
-    assert.ok(sidePane.includes('<h2>Open tab</h2>'));
+    assert.ok(sidePane.includes('<h2>Open panel</h2>'));
     assert.deepEqual(
         [...sidePane.matchAll(/id:\s*'(terminal|browser|files|code|notes|board|reminders)'/g)].map((match) => match[1]),
         ['terminal', 'browser', 'files', 'code', 'notes', 'board', 'reminders'],
     );
-    assert.ok(sidePane.includes('mountedTabs.has(desc.id)'));
-    assert.ok(sidePane.includes("style={{ display: isVisible ? undefined : 'none' }}"));
-    assert.ok(sidePane.includes('inert={!isVisible}'));
-    assert.ok(sidePane.includes('aria-hidden={!isVisible}'));
-    assert.match(sidePane, /\{renderTabs\(\)\}\s*\{activeSidePaneTab === null \? \(/s);
+    // 089.04 intentionally replaces the old type-level mountedTabs contract.
+    assert.ok(sidePane.includes('panelInstances.map((panel) =>'));
+    assert.ok(sidePane.includes("style={{ display: active ? undefined : 'none' }}"));
+    assert.ok(sidePane.includes('inert={!active}'));
+    assert.ok(sidePane.includes('aria-hidden={!active}'));
+    assert.ok(sidePane.includes('activePanelId === null'));
     assert.match(css, /\.d2-side-pane-picker-button\s*\{[^}]*height:\s*52px/s);
 });
 
@@ -70,7 +71,7 @@ test('dashboard2 side pane gates lifecycle, restores focus, and preserves the ch
     const sidePane = read('public/dashboard2/src/shell/SidePane.tsx');
 
     assert.ok(sidePane.includes('if (!open) return;'));
-    assert.ok(sidePane.includes('<TabContent tabId={desc.id} active={isVisible} />'));
+    assert.ok(sidePane.includes('<TabContent panel={panel} active={active} />'));
     assert.ok(workbench.includes('toggleButtonRef.current?.focus()'));
     assert.ok(workbench.includes('const CHAT_MIN = 280;'));
     assert.ok(workbench.includes('const DIVIDER_WIDTH = 1;'));

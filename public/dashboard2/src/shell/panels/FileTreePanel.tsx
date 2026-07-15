@@ -88,7 +88,7 @@ function flattenTree(
 
 export function FileTreePanel(): JSX.Element {
     const bridge = useDesktopBridge();
-    const { selected } = useAppScope();
+    const { selected, openPanel } = useAppScope();
     const port = selected?.port ?? null;
     const nativeFolder = bridge.filesystem.folder.nativeAvailable
         ? bridge.filesystem.folder.native
@@ -96,11 +96,13 @@ export function FileTreePanel(): JSX.Element {
     const currentPortRef = useRef(port);
     currentPortRef.current = port;
     const mountedRef = useRef(true);
+    const fileRequestGeneration = useRef(0);
     const scrollerRef = useRef<HTMLDivElement>(null);
     const [directories, setDirectories] = useState<Map<string, DirectoryState>>(new Map());
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [isUnavailable, setIsUnavailable] = useState(false);
     const [rootPath, setRootPath] = useState('.');
+    const [fileError, setFileError] = useState<{ entry: FileEntry; message: string } | null>(null);
 
     const loadDirectory = useCallback(async (path: string): Promise<void> => {
         if (port === null) return;
@@ -184,6 +186,34 @@ export function FileTreePanel(): JSX.Element {
         if (!isOpen && !directories.has(entry.path)) void loadDirectory(entry.path);
     };
 
+    const openFile = useCallback(async (entry: FileEntry): Promise<void> => {
+        const generation = ++fileRequestGeneration.current;
+        setFileError(null);
+        if (!nativeFolder) {
+            setFileError({ entry, message: 'File preview requires the cli-jaw Electron app' });
+            return;
+        }
+        try {
+            const result = await nativeFolder.readFile(entry.path);
+            if (!mountedRef.current || fileRequestGeneration.current !== generation) return;
+            if (!result.ok) throw new Error(result.error ?? 'Unable to read file');
+            openPanel({
+                type: 'doc',
+                key: entry.path,
+                title: entry.name,
+                payload: {
+                    path: entry.path,
+                    content: result.content ?? '',
+                    truncated: result.truncated === true,
+                    binary: result.binary === true,
+                },
+            });
+        } catch (error) {
+            if (!mountedRef.current || fileRequestGeneration.current !== generation) return;
+            setFileError({ entry, message: error instanceof Error ? error.message : 'Unable to read file' });
+        }
+    }, [nativeFolder, openPanel]);
+
     const rootState = directories.get(rootPath);
     if (port === null) {
         return <div className="d2-file-tree d2-file-tree-message">Select an instance to browse files</div>;
@@ -208,6 +238,12 @@ export function FileTreePanel(): JSX.Element {
 
     return (
         <div ref={scrollerRef} className="d2-file-tree" role="tree" aria-label="Files">
+            {fileError ? (
+                <div className="d2-file-tree-message" role="alert">
+                    <span>{fileError.message}</span>
+                    <button type="button" onClick={() => void openFile(fileError.entry)}>Retry</button>
+                </div>
+            ) : null}
             <div className="d2-file-tree-virtual" style={{ height: virtualizer.getTotalSize() }}>
                 {virtualizer.getVirtualItems().map((virtualRow) => {
                     const entry = rows[virtualRow.index];
@@ -224,7 +260,7 @@ export function FileTreePanel(): JSX.Element {
                             role="treeitem"
                             aria-expanded={entry.isDirectory ? isOpen : undefined}
                             title={entry.path}
-                            onClick={() => entry.isDirectory && toggleDirectory(entry)}
+                            onClick={() => entry.isDirectory ? toggleDirectory(entry) : void openFile(entry)}
                             style={{
                                 paddingLeft: 8 + entry.depth * 16,
                                 transform: `translateY(${virtualRow.start}px)`,

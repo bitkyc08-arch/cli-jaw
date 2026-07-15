@@ -43,7 +43,9 @@ test('dashboard2 terminal handles exit, restart, cwd mismatch, and shortcuts wit
 
 test('terminal survives tab and pane hiding but is killed on actual unmount', () => {
     assert.match(sidePane, /id: 'terminal'[\s\S]*keepAlive: true/);
-    assert.match(sidePane, /if \(desc\.keepAlive\)[\s\S]*mountedTabs\.has\(desc\.id\)/);
-    assert.match(sidePane, /style=\{\{ display: isVisible \? undefined : 'none' \}\}/);
+    // 089.04 replaces type-mountedTabs with persistent panel instances; every open
+    // instance stays rendered and hidden until explicit close.
+    assert.match(sidePane, /panelInstances\.map\(\(panel\) =>/);
+    assert.match(sidePane, /style=\{\{ display: active \? undefined : 'none' \}\}/);
     assert.match(terminal, /return \(\) => \{[\s\S]*if \(id\) void nativeTerminal\.kill\(id\)/);
 });
