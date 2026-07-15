@@ -94,11 +94,16 @@ function hasFunctions(value: unknown, names: string[]): boolean {
     return names.every((name) => typeof record[name] === 'function');
 }
 
-function unavailable<NativeApi>(transport: 'stub' | 'none' = 'none'): CapabilitySurface<NativeApi> {
+function wired<NativeApi>(
+    available: boolean,
+    api: NativeApi | null | undefined,
+    transport: 'stub' | 'none' = 'none',
+): CapabilitySurface<NativeApi> {
+    const native = available && api ? api : null;
     return {
-        nativeAvailable: false,
-        nativeWired: false,
-        native: null,
+        nativeAvailable: available,
+        nativeWired: native !== null,
+        native,
         fallback: { available: false, transport, adapter: null },
     };
 }
@@ -151,7 +156,7 @@ function detectDesktop(raw: DesktopPreloadApi | null): {
     };
 }
 
-function createDesktopBridgeValue(): DesktopBridgeContextValue {
+export function createDesktopBridgeValue(): DesktopBridgeContextValue {
     const raw = typeof window === 'undefined'
         ? null
         : (window as unknown as { cliJawDesktop?: DesktopPreloadApi }).cliJawDesktop ?? null;
@@ -230,6 +235,19 @@ function createDesktopBridgeValue(): DesktopBridgeContextValue {
     const shortcutsAvailable = hasFunctions(raw?.shortcuts, ['onAction']);
     const trayAvailable = hasFunctions(raw?.trayReminders, ['popUpMenu', 'openDashboard']);
 
+    const rawBrowser = raw?.browser;
+    const browserNative: ExposedBrowserApi | null = browserAvailable && rawBrowser
+        ? {
+            onOpenUrl: rawBrowser.onOpenUrl.bind(rawBrowser),
+            registerWebview: rawBrowser.registerWebview.bind(rawBrowser),
+            unregisterWebview: rawBrowser.unregisterWebview.bind(rawBrowser),
+            performWebviewAction: rawBrowser.performWebviewAction.bind(rawBrowser),
+            getWebviewTabs: rawBrowser.getWebviewTabs.bind(rawBrowser),
+            onWebviewState: rawBrowser.onWebviewState.bind(rawBrowser),
+            onElementPicked: rawBrowser.onElementPicked.bind(rawBrowser),
+        }
+        : null;
+
     return {
         environment: detected.environment,
         getAuthHeader: () => authHeader ? { ...authHeader } : null,
@@ -240,8 +258,8 @@ function createDesktopBridgeValue(): DesktopBridgeContextValue {
             fallback: { available: false, transport: 'none', adapter: null },
         },
         filesystem: {
-            folder: { ...unavailable<FolderBridgeApi>(), nativeAvailable: folderAvailable },
-            dragDrop: { ...unavailable<DragDropBridgeApi>(), nativeAvailable: dragDropAvailable },
+            folder: wired<FolderBridgeApi>(folderAvailable, raw?.folder),
+            dragDrop: wired<DragDropBridgeApi>(dragDropAvailable, raw?.dragDrop),
             clipboard: {
                 nativeAvailable: nativeClipboardAvailable,
                 nativeWired: true,
@@ -253,15 +271,20 @@ function createDesktopBridgeValue(): DesktopBridgeContextValue {
                 },
             },
         },
-        terminal: { ...unavailable<TerminalBridgeApi>(), nativeAvailable: terminalAvailable },
+        terminal: wired<TerminalBridgeApi>(terminalAvailable, raw?.terminal),
         sourceControl: {
-            // HTTP adapters are injected here when dashboard2 source-control migration lands.
-            diff: { ...unavailable<DiffBridgeApi>('stub'), nativeAvailable: diffAvailable },
-            git: { ...unavailable<GitBridgeApi>('stub'), nativeAvailable: gitAvailable },
+            // HTTP fallback adapters land with the dashboard2 source-control migration (089.05).
+            diff: wired<DiffBridgeApi>(diffAvailable, raw?.diff, 'stub'),
+            git: wired<GitBridgeApi>(gitAvailable, raw?.git, 'stub'),
         },
-        browser: { ...unavailable<ExposedBrowserApi>(), nativeAvailable: browserAvailable },
+        browser: {
+            nativeAvailable: browserAvailable,
+            nativeWired: browserNative !== null,
+            native: browserNative,
+            fallback: { available: false, transport: 'none', adapter: null },
+        },
         shell: {
-            shortcuts: { ...unavailable<ShortcutsBridgeApi>(), nativeAvailable: shortcutsAvailable },
+            shortcuts: wired<ShortcutsBridgeApi>(shortcutsAvailable, raw?.shortcuts),
             reload: {
                 nativeAvailable: nativeReloadAvailable,
                 nativeWired: true,
@@ -272,7 +295,7 @@ function createDesktopBridgeValue(): DesktopBridgeContextValue {
                     adapter: webReload,
                 },
             },
-            tray: { ...unavailable<TrayBridgeApi>(), nativeAvailable: trayAvailable },
+            tray: wired<TrayBridgeApi>(trayAvailable, raw?.trayReminders),
         },
     };
 }

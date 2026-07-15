@@ -100,6 +100,7 @@ export function FileTreePanel(): JSX.Element {
     const [directories, setDirectories] = useState<Map<string, DirectoryState>>(new Map());
     const [expanded, setExpanded] = useState<Set<string>>(new Set());
     const [isUnavailable, setIsUnavailable] = useState(false);
+    const [rootPath, setRootPath] = useState('.');
 
     const loadDirectory = useCallback(async (path: string): Promise<void> => {
         if (port === null) return;
@@ -136,13 +137,34 @@ export function FileTreePanel(): JSX.Element {
         setDirectories(new Map());
         setExpanded(new Set());
         setIsUnavailable(false);
-        if (port !== null) void loadDirectory('.');
+        setRootPath('.');
+        if (port !== null) {
+            if (nativeFolder) {
+                // Native listing requires an authorized absolute root; '.' would fail (089.01 §3.2b).
+                void (async () => {
+                    try {
+                        const root = await nativeFolder.getDefaultRoot();
+                        if (!mountedRef.current) return;
+                        if (!root.ok || !root.path) {
+                            setIsUnavailable(true);
+                            return;
+                        }
+                        setRootPath(root.path);
+                        void loadDirectory(root.path);
+                    } catch {
+                        if (mountedRef.current) setIsUnavailable(true);
+                    }
+                })();
+            } else {
+                void loadDirectory('.');
+            }
+        }
         return () => { mountedRef.current = false; };
-    }, [loadDirectory, port]);
+    }, [loadDirectory, nativeFolder, port]);
 
     const rows = useMemo(
-        () => flattenTree('.', 0, directories, expanded),
-        [directories, expanded],
+        () => flattenTree(rootPath, 0, directories, expanded),
+        [directories, expanded, rootPath],
     );
     const virtualizer = useVirtualizer({
         count: rows.length,
@@ -162,7 +184,7 @@ export function FileTreePanel(): JSX.Element {
         if (!isOpen && !directories.has(entry.path)) void loadDirectory(entry.path);
     };
 
-    const rootState = directories.get('.');
+    const rootState = directories.get(rootPath);
     if (port === null) {
         return <div className="d2-file-tree d2-file-tree-message">Select an instance to browse files</div>;
     }

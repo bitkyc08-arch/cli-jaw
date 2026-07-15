@@ -40,13 +40,28 @@ test('desktop environment records the four ordered detection outcomes', () => {
     assert.deepEqual([...positions].sort((a, b) => a - b), positions, 'detection outcomes must remain ordered');
 });
 
-test('desktop capabilities distinguish native presence from v1 wiring', () => {
+test('desktop capabilities inject native adapters with a single availability judgment', () => {
     const provider = read(providerPath);
 
     assert.ok(provider.includes('nativeAvailable: boolean'));
     assert.ok(provider.includes('nativeWired: boolean'));
-    assert.match(provider, /terminal:\s*\{[^\n]*nativeAvailable:\s*terminalAvailable/s);
-    assert.match(provider, /nativeWired:\s*false/);
+    assert.match(provider, /terminal:\s*wired<TerminalBridgeApi>\(terminalAvailable,\s*raw\?\.terminal\)/);
+    assert.match(provider, /folder:\s*wired<FolderBridgeApi>\(folderAvailable,\s*raw\?\.folder\)/);
+    assert.match(provider, /dragDrop:\s*wired<DragDropBridgeApi>\(dragDropAvailable,\s*raw\?\.dragDrop\)/);
+    assert.match(provider, /diff:\s*wired<DiffBridgeApi>\(diffAvailable,\s*raw\?\.diff,\s*'stub'\)/);
+    assert.match(provider, /git:\s*wired<GitBridgeApi>\(gitAvailable,\s*raw\?\.git,\s*'stub'\)/);
+    assert.match(provider, /shortcuts:\s*wired<ShortcutsBridgeApi>\(shortcutsAvailable,\s*raw\?\.shortcuts\)/);
+    assert.match(provider, /tray:\s*wired<TrayBridgeApi>\(trayAvailable,\s*raw\?\.trayReminders\)/);
+    assert.match(
+        provider,
+        /nativeWired:\s*native !== null/,
+        'wired() must derive nativeWired from the same availability judgment that gates native injection',
+    );
+    assert.match(
+        provider,
+        /nativeWired:\s*browserNative !== null/,
+        'browser surface must wire through the minimal ExposedBrowserApi adapter',
+    );
 });
 
 test('provider omits diagnostics and direct webview control from its surface', () => {
