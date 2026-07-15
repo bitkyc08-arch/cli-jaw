@@ -143,6 +143,7 @@ const MIN_VISIBLE_WINDOW_WIDTH = 960;
 const MIN_VISIBLE_WINDOW_HEIGHT = 640;
 const QUIT_WINDOW_HIDE_DELAY_MS = 600;
 const TRAY_REMINDERS_ACCELERATOR = 'CommandOrControl+Shift+M';
+const METRICS_ERROR_LOG_INTERVAL_MS = 30_000;
 
 type ManagerShortcutAction =
   | 'toggleBottomPanel'
@@ -194,6 +195,7 @@ let windowCreating = false;
 let bootstrapPromise: Promise<void> | null = null;
 let managerReadyPromise: Promise<void> | null = null;
 let metricsCollector: MetricsCollectorHandle | null = null;
+let lastMetricsErrorAt = 0;
 let webContentsHardeningRegistered = false;
 let reminderPopover: ReminderPopover | null = null;
 let reminderBadgePoller: ReminderBadgePoller | null = null;
@@ -208,6 +210,34 @@ const EMBEDDED_BROWSER_PARTITION = 'persist:cli-jaw-browser';
 const ELECTRON_RENDERER_TOKEN = randomBytes(32).toString('hex');
 
 process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN = ELECTRON_RENDERER_TOKEN;
+
+function startMetricsCollector(errorLabel: 'start' | 'restart'): void {
+  if (metricsCollector) return;
+  try {
+    metricsCollector = startAppMetricsCollector({
+      managerUrlProvider: () => MANAGER_URL,
+      tokenProvider: () => ELECTRON_RENDERER_TOKEN,
+      onError: (error) => {
+        const now = Date.now();
+        if (now - lastMetricsErrorAt < METRICS_ERROR_LOG_INTERVAL_MS) return;
+        lastMetricsErrorAt = now;
+        ringBuffer.append(`[metrics transport error] ${error.message}\n`);
+      },
+    });
+  } catch (err) {
+    ringBuffer.append(`[metrics ${errorLabel} error] ${(err as Error)?.message ?? err}\n`);
+  }
+}
+
+function stopMetricsCollector(): void {
+  if (!metricsCollector) return;
+  try {
+    metricsCollector.stop();
+  } catch {
+    // Best-effort cleanup: application shutdown must continue.
+  }
+  metricsCollector = null;
+}
 
 // #229: the webview tag sets a clean per-webview UA, but service workers and other
 // background requests in the partition fall back to the session UA, which carries the
@@ -282,13 +312,7 @@ if (!gotLock) {
     configureEmbeddedBrowserSession();
     await bootstrapOnce();
     promptInstallCli().catch(() => {});
-    if (!metricsCollector) {
-      try {
-        metricsCollector = startAppMetricsCollector();
-      } catch (err) {
-        ringBuffer.append(`[metrics start error] ${(err as Error)?.message ?? err}\n`);
-      }
-    }
+    startMetricsCollector('start');
     if (pendingDeepLinkUrl) {
       const pending = pendingDeepLinkUrl;
       pendingDeepLinkUrl = null;
@@ -352,14 +376,7 @@ async function requestApplicationQuit(reason: string): Promise<void> {
     if (!mainWindow || mainWindow.isDestroyed() || shutdownComplete) return;
     mainWindow.hide();
   }, QUIT_WINDOW_HIDE_DELAY_MS);
-  if (metricsCollector) {
-    try {
-      metricsCollector.stop();
-    } catch {
-      // ignore
-    }
-    metricsCollector = null;
-  }
+  stopMetricsCollector();
   cleanupTerminals();
   cleanupFolderWatchers();
   try {
@@ -498,13 +515,7 @@ async function createManagerWindow(): Promise<void> {
   try {
     await createWindow();
     markManagerRunning();
-    if (!metricsCollector) {
-      try {
-        metricsCollector = startAppMetricsCollector();
-      } catch (err) {
-        ringBuffer.append(`[metrics restart error] ${(err as Error)?.message ?? err}\n`);
-      }
-    }
+    startMetricsCollector('restart');
   } catch (err) {
     ringBuffer.append(`[createManagerWindow error] ${(err as Error)?.message ?? err}\n`);
     updateServerStatus('Server: Unreachable');
@@ -1279,10 +1290,7 @@ async function createWindow(): Promise<void> {
   mainWindow.on('close', (event) => {
     if (shutdownComplete || shuttingDown) return;
     if (isKeepRunning()) {
-      if (metricsCollector) {
-        metricsCollector.stop();
-        metricsCollector = null;
-      }
+      stopMetricsCollector();
       cleanupTerminals();
       cleanupFolderWatchers();
       markManagerRunning('Server: Running (background)');

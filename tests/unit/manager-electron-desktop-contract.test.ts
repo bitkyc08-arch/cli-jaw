@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeStrictPropertyAccess } from './source-normalize';
@@ -197,6 +197,25 @@ test('Electron quit path shows progress and exits after manager cleanup', () => 
     assert.ok(quitProgress.includes('cli-jaw-quit-overlay'), 'quit overlay must be injected into the renderer');
     assert.ok(quitProgress.includes('Quitting cli-jaw...'), 'quit overlay must tell the user shutdown is in progress');
     assert.ok(quitProgress.includes('animation: cliJawQuitSpin'), 'quit overlay must include a visible spinner');
+});
+
+test('Electron metrics transport is main-owned and lifecycle-scoped', () => {
+    const main = read('electron/src/main/index.ts');
+    const collector = read('electron/src/main/lib/app-metrics.ts');
+    const preload = read('electron/src/preload/index.ts');
+
+    assert.ok(main.includes('function startMetricsCollector('), 'main must own one collector start factory');
+    assert.ok(main.includes('function stopMetricsCollector('), 'main must own one deterministic collector stop path');
+    assert.ok(main.includes('managerUrlProvider: () => MANAGER_URL'), 'collector must read the current mutable manager URL on every tick');
+    assert.ok(main.includes('tokenProvider: () => ELECTRON_RENDERER_TOKEN'), 'collector must read the per-launch token from main');
+    assert.doesNotMatch(collector, /\bipcMain\b|cli-jaw:metrics:get-latest/, 'main metrics must not expose an IPC pull route');
+    // 089.11 §7-4 intentionally removes the old preload getMetrics contract; this is not a compatibility regression.
+    assert.doesNotMatch(preload, /\bgetMetrics\b|setupMetricsBridge|\.\/metrics\.js/, 'preload must not expose or start metrics transport');
+    assert.equal(
+        existsSync(join(projectRoot, 'electron/src/preload/metrics.ts')),
+        false,
+        'the obsolete preload timer/fetch module must be removed',
+    );
 });
 
 test('Electron default launch owns its manager server instead of attaching to web UI', () => {

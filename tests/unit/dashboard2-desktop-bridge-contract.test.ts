@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readSource } from './source-normalize.js';
@@ -72,6 +73,14 @@ test('provider omits diagnostics while allowing the audited navigation-only webv
     // broader diagnostics such as getMetrics remain outside the dashboard2 provider.
     assert.match(provider, /\| 'controlWebview'/, 'navigation control must be part of ExposedBrowserApi');
     assert.match(provider, /controlWebview:\s*rawBrowser\.controlWebview\.bind\(rawBrowser\)/);
+});
+
+test('preload intentionally omits the retired metrics pull contract', () => {
+    const preload = read('electron/src/preload/index.ts');
+
+    // 089.11 §7-4 is an intentional contract removal: no consumer may revive preload polling or getMetrics.
+    assert.doesNotMatch(preload, /\bgetMetrics\b|setupMetricsBridge|\.\/metrics\.js/);
+    assert.equal(existsSync(join(projectRoot, 'electron/src/preload/metrics.ts')), false);
 });
 
 test('raw desktop contract is independent from the frozen manager renderer', () => {

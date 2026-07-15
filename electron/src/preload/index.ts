@@ -1,5 +1,4 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
-import { getLatestMetrics, setupMetricsBridge } from './metrics.js';
 
 const DESKTOP_IDENTITY = {
   name: 'cli-jaw-desktop',
@@ -61,7 +60,6 @@ function getHomePath(): string {
 
 contextBridge.exposeInMainWorld('cliJawDesktop', {
   identify: () => DESKTOP_IDENTITY,
-  getMetrics: () => getLatestMetrics(),
   getHomePath,
   terminal: {
     list: () => ipcRenderer.invoke('terminal:list'),
@@ -179,4 +177,3 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
 
 markDesktopDocument();
 installDesktopFetchHeader();
-setupMetricsBridge();

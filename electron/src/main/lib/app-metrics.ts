@@ -1,8 +1,15 @@
-import { app, ipcMain } from 'electron';
-
-export const METRICS_IPC_CHANNEL = 'cli-jaw:metrics:get-latest';
-const SAMPLE_INTERVAL_MS = 5000;
+const SAMPLE_INTERVAL_MS = 5_000;
 const BUFFER_LENGTH = 60;
+const METRICS_POST_PATH = '/api/dashboard/electron-metrics';
+const ELECTRON_HEADER = 'x-cli-jaw-electron';
+
+export interface RawAppMetric {
+  type: string;
+  name?: string;
+  pid: number;
+  memory?: { workingSetSize?: number };
+  cpu?: { percentCPUUsage?: number };
+}
 
 export interface MetricsProcessSample {
   type: string;
@@ -29,25 +36,65 @@ export interface MetricsCollectorHandle {
   buffer(): readonly MetricsSnapshot[];
 }
 
-function takeSample(): MetricsSnapshot {
-  const raw = app.getAppMetrics();
-  const processes: MetricsProcessSample[] = raw.map((m) => ({
-    type: m.type,
-    name: m.name,
-    pid: m.pid,
-    rssKb: m.memory?.workingSetSize ?? 0,
-    cpu: m.cpu?.percentCPUUsage ?? 0,
+type MaybePromise<T> = T | Promise<T>;
+
+export interface AppMetricsCollectorOptions {
+  sampleAppMetrics?: () => MaybePromise<readonly RawAppMetric[]>;
+  now?: () => number;
+  scheduleTick?: (callback: () => void, intervalMs: number) => unknown;
+  clearTick?: (handle: unknown) => void;
+  fetchImpl?: typeof fetch;
+  managerUrlProvider: () => string;
+  tokenProvider: () => string;
+  intervalMs?: number;
+  onError?: (error: Error) => void;
+}
+
+async function defaultSampleAppMetrics(): Promise<readonly RawAppMetric[]> {
+  // Keep the factory importable in Node unit tests; Electron is loaded only by the
+  // production default sampler. Tests inject sampleAppMetrics without module mocks.
+  const { app } = await import('electron');
+  return app.getAppMetrics();
+}
+
+function defaultScheduleTick(callback: () => void, intervalMs: number): unknown {
+  return setInterval(callback, intervalMs);
+}
+
+function defaultClearTick(handle: unknown): void {
+  // Timer handles are opaque at the injection boundary; the production scheduler
+  // and clearer are paired, while tests may use any deterministic fake handle.
+  clearInterval(handle as ReturnType<typeof setInterval>);
+}
+
+function unrefTick(handle: unknown): void {
+  if (!handle || (typeof handle !== 'object' && typeof handle !== 'function')) return;
+  const unref = (handle as { unref?: unknown }).unref;
+  if (typeof unref === 'function') unref.call(handle);
+}
+
+function asError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+function takeSample(raw: readonly RawAppMetric[], now: number): MetricsSnapshot {
+  const processes: MetricsProcessSample[] = raw.map((metric) => ({
+    type: metric.type,
+    name: metric.name,
+    pid: metric.pid,
+    rssKb: metric.memory?.workingSetSize ?? 0,
+    cpu: metric.cpu?.percentCPUUsage ?? 0,
   }));
   let rendererCount = 0;
   let mainCount = 0;
   let rssTotalKb = 0;
-  for (const p of processes) {
-    rssTotalKb += p.rssKb;
-    if (p.type === 'Tab') rendererCount += 1;
-    if (p.type === 'Browser') mainCount += 1;
+  for (const process of processes) {
+    rssTotalKb += process.rssKb;
+    if (process.type === 'Tab') rendererCount += 1;
+    if (process.type === 'Browser') mainCount += 1;
   }
   return {
-    ts: Date.now(),
+    ts: now,
     rendererCount,
     mainCount,
     rssTotalKb,
@@ -55,37 +102,74 @@ function takeSample(): MetricsSnapshot {
   };
 }
 
-export function startAppMetricsCollector(): MetricsCollectorHandle {
+export function startAppMetricsCollector(
+  options: AppMetricsCollectorOptions,
+): MetricsCollectorHandle {
+  const sampleAppMetrics = options.sampleAppMetrics ?? defaultSampleAppMetrics;
+  const now = options.now ?? Date.now;
+  const scheduleTick = options.scheduleTick ?? defaultScheduleTick;
+  const clearTick = options.clearTick ?? defaultClearTick;
+  const fetchImpl = options.fetchImpl ?? globalThis.fetch;
+  const intervalMs = options.intervalMs ?? SAMPLE_INTERVAL_MS;
   const buffer: MetricsSnapshot[] = [];
+  let stopped = false;
+  let tickInFlight = false;
+  let requestController: AbortController | null = null;
 
-  function pushSample(): void {
+  const runTick = async (): Promise<void> => {
+    if (stopped || tickInFlight) return;
+    tickInFlight = true;
+    let controller: AbortController | null = null;
     try {
-      const snap = takeSample();
-      buffer.push(snap);
-      while (buffer.length > BUFFER_LENGTH) buffer.shift();
-    } catch {
-      // app.getAppMetrics can throw before app is ready; ignore.
-    }
-  }
+      const raw = await sampleAppMetrics();
+      if (stopped) return;
 
-  pushSample();
-  const handle = setInterval(pushSample, SAMPLE_INTERVAL_MS);
-  // Don't keep the event loop alive on this timer alone.
-  if (typeof handle.unref === 'function') handle.unref();
+      const snapshot = takeSample(raw, now());
+      buffer.push(snapshot);
+      while (buffer.length > BUFFER_LENGTH) buffer.shift();
+
+      const managerUrl = options.managerUrlProvider().trim();
+      const token = options.tokenProvider().trim();
+      if (!managerUrl || !token) return;
+
+      controller = new AbortController();
+      requestController = controller;
+      const response = await fetchImpl(new URL(METRICS_POST_PATH, managerUrl), {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          [ELECTRON_HEADER]: token,
+        },
+        body: JSON.stringify(snapshot),
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(`metrics POST failed with status ${response.status}`);
+      }
+    } catch (error) {
+      if (!stopped) options.onError?.(asError(error));
+    } finally {
+      if (requestController === controller) requestController = null;
+      tickInFlight = false;
+    }
+  };
+
+  const tickHandle = scheduleTick(() => {
+    void runTick();
+  }, intervalMs);
+  unrefTick(tickHandle);
+  void runTick();
 
   const latest = (): MetricsSnapshot | null =>
     buffer.length > 0 ? buffer[buffer.length - 1] ?? null : null;
 
-  ipcMain.handle(METRICS_IPC_CHANNEL, () => latest());
-
   return {
     stop(): void {
-      clearInterval(handle);
-      try {
-        ipcMain.removeHandler(METRICS_IPC_CHANNEL);
-      } catch {
-        // already removed
-      }
+      if (stopped) return;
+      stopped = true;
+      clearTick(tickHandle);
+      requestController?.abort();
+      requestController = null;
     },
     snapshot: latest,
     buffer: () => buffer,
