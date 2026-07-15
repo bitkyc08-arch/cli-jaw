@@ -19,11 +19,14 @@ test('adapter decodes durable descriptors, normalizes manifest widgets, rejects 
 
 test('widget UI store keeps a serializable manual-collapse revision latch', () => {
     const store = createWidgetUiStore();
-    store.expand('w');
-    assert.equal(store.getSnapshot()['w']?.mode, 'inline');
-    store.collapse('w', 't|s|r1');
-    assert.equal(store.isManuallyCollapsed('w', 't|s|r1'), true);
+    const panelKey = 'widget:chat:w';
+    const rowKey = 'widget-row:scope:t:s';
+    store.expand(panelKey, rowKey);
+    assert.equal(store.getSnapshot()[panelKey]?.mode, 'inline');
+    store.collapse(panelKey, rowKey, 't|s|r1');
+    assert.equal(store.isManuallyCollapsed(rowKey, 't|s|r1'), true);
     assert.doesNotThrow(() => JSON.stringify(store.getSnapshot()));
+    assert.doesNotThrow(() => JSON.stringify(store.getRowSnapshot()));
 });
 
 test('source client uses explicit chatId and cancellation generations', async () => {

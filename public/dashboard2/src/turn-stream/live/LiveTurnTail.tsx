@@ -165,6 +165,7 @@ export function LiveTurnTail({ store }: LiveTurnTailProps): JSX.Element | null {
                                         })}
                                         chatId={row.sessionId}
                                         identity={{ scopeKey: store.getScopeKey(), turnId: row.turnId, segmentId: row.segmentId }}
+                                        promotionSource="turn-widget"
                                     />
                                 );
                             }

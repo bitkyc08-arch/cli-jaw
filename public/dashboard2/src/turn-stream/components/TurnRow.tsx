@@ -158,6 +158,7 @@ export function TurnRow({ store, turnId }: TurnRowProps): JSX.Element | null {
                     onToggle={() => setExpandedWidget(current => (current === key ? null : key))}
                     chatId={row.sessionId}
                     identity={{ scopeKey: store.getScopeKey(), turnId: row.turnId, segmentId: row.segmentId }}
+                    promotionSource="turn-widget"
                 />,
             );
         } else if (row.type === 'assistant_text') {

@@ -1,6 +1,6 @@
 // 089.04 — instance-based SidePane with explicit-close lifecycle.
 import { Bell, ClipboardList, Code, File, FileText, Globe, NotebookPen, Plus, Terminal, Users, X } from '@lucide/icons';
-import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState, type JSX } from 'react';
+import { Suspense, lazy, useCallback, useEffect, useReducer, useRef, useState, useSyncExternalStore, type JSX } from 'react';
 import { useManagerApi } from '../providers/api-provider.tsx';
 import { useDesktopBridge } from '../providers/desktop-bridge-provider.tsx';
 import {
@@ -18,6 +18,8 @@ import {
     type TerminalRequestLedger,
 } from './panels/terminal-session-requests.ts';
 import type { TerminalTarget } from './panels/terminal-session-state.ts';
+import { isWidgetPanelPayload, type WidgetPanelPayload } from '../turn-stream/widgets/widget-panel-key.ts';
+import { widgetUiStore } from '../turn-stream/widgets/widget-ui-store.ts';
 
 const LazyCodeTab = lazy(() => import('../code/index.ts'));
 const LazyNotesPanel = lazy(() => import('../features/notes/NotesPanel.tsx').then((m) => ({ default: m.NotesPanel })));
@@ -54,7 +56,7 @@ const TAB_REGISTRY: TabDescriptor[] = [
 const TAB_MAP = new Map(TAB_REGISTRY.map((tab) => [tab.id, tab]));
 
 type DocPayload = { path?: string; content?: string; truncated?: boolean; binary?: boolean };
-type DesignPayload = { url?: string };
+type DesignPayload = { kind: 'url'; url: string } | WidgetPanelPayload;
 
 function payloadObject(payload: unknown): Record<string, unknown> {
     return payload && typeof payload === 'object' && !Array.isArray(payload)
@@ -138,8 +140,12 @@ function TabContent({ panel, active, terminalRequests, consumeTerminalRequests }
         }
         case 'design': {
             const raw = payloadObject(panel.payload);
-            const payload: DesignPayload = typeof raw['url'] === 'string' ? { url: raw['url'] } : {};
-            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading design...</div>}><LazyDesignPanel active={active} url={payload.url} /></Suspense>;
+            const widgetPayload = isWidgetPanelPayload(panel.payload) && panel.key === panel.payload.panelKey
+                ? panel.payload
+                : null;
+            const payload: DesignPayload | undefined = widgetPayload
+                ?? (typeof raw['url'] === 'string' ? { kind: 'url', url: raw['url'] } : undefined);
+            return <Suspense fallback={<div className="d2-side-pane-placeholder">Loading design...</div>}><LazyDesignPanel active={active} payload={payload} /></Suspense>;
         }
         case 'diff': {
             const raw = payloadObject(panel.payload);
@@ -182,9 +188,40 @@ export function SidePane({ open, onClose }: SidePaneProps): JSX.Element {
         terminalRequestLedgerReducer,
         initialTerminalRequestLedger,
     );
+    const widgetSnapshot = useSyncExternalStore(
+        widgetUiStore.subscribe,
+        widgetUiStore.getSnapshot,
+        widgetUiStore.getSnapshot,
+    );
     const consumeTerminalRequests = useCallback((token: number) => {
         dispatchTerminalRequest({ type: 'consume-through', token });
     }, []);
+
+    useEffect(() => {
+        for (const state of Object.values(widgetSnapshot)) {
+            if (state.handoff !== 'queued' || !state.request) continue;
+            const request = state.request;
+            openPanel({
+                type: 'design',
+                key: request.panelKey,
+                title: request.descriptor.title,
+                payload: request,
+                keepAlive: true,
+            });
+            widgetUiStore.markPromotionDispatched(request.panelKey);
+        }
+    }, [openPanel, widgetSnapshot]);
+
+    useEffect(() => {
+        const mountedWidgetKeys = new Set(panelInstances.flatMap(panel => (
+            panel.type === 'design'
+            && isWidgetPanelPayload(panel.payload)
+            && panel.key === panel.payload.panelKey
+                ? [panel.key]
+                : []
+        )));
+        widgetUiStore.reconcilePanelInstances(mountedWidgetKeys, panelOpenError);
+    }, [panelInstances, panelOpenError, widgetSnapshot]);
 
     useEffect(() => {
         const shortcuts = bridge.shell.shortcuts.nativeAvailable ? bridge.shell.shortcuts.native : null;

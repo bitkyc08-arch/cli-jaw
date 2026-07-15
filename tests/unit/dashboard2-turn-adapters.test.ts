@@ -37,14 +37,20 @@ test('detail controller memoizes per store and ref', () => {
 
 test('widget UI store owns expansion, placeholder, revision, and width state', () => {
     const store = createWidgetUiStore();
+    const panelKey = 'widget:session-1:widget-1';
+    const rowKey = 'widget-row:scope-1:turn-1:segment-1';
     let notifications = 0;
     const unsubscribe = store.subscribe(() => notifications++);
-    store.expand('widget-1');
-    store.setRevision('widget-1', 'rev-2');
-    store.setWidthBucket('widget-1', 'wide');
-    assert.deepEqual(store.getSnapshot()['widget-1'], { mode: 'expanded', revision: 'rev-2', widthBucket: 'wide' });
-    store.collapse('widget-1');
-    assert.equal(store.getSnapshot()['widget-1']?.mode, 'placeholder');
+    store.expand(panelKey, rowKey);
+    store.setRevision(panelKey, 'rev-2');
+    store.setWidthBucket(panelKey, 'wide');
+    // Pre-existing red (085 ca69b6df): this used to expect the removed
+    // `expanded` mode. The canonical contract is placeholder|inline|panel.
+    assert.equal(store.getSnapshot()[panelKey]?.mode, 'inline');
+    assert.equal(store.getSnapshot()[panelKey]?.revision, 'rev-2');
+    assert.equal(store.getSnapshot()[panelKey]?.widthBucket, 'wide');
+    store.collapse(panelKey, rowKey);
+    assert.equal(store.getSnapshot()[panelKey]?.mode, 'placeholder');
     unsubscribe();
     assert.equal(notifications, 4);
 });
