@@ -1,6 +1,7 @@
 // 075 — SidePane with tab-registry, keep-alive, and 7-tab support
 import { Bell, Calendar, ClipboardList, Code, File, Globe, NotebookPen, Plus, Terminal, X } from '@lucide/icons';
-import { Suspense, lazy, useEffect, type JSX } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState, type JSX } from 'react';
+import { useManagerApi } from '../providers/api-provider.tsx';
 import { useAppScope, type SidePaneTab } from '../state/scope.tsx';
 import { Icon } from './Icon.tsx';
 import { BrowserPanel } from './panels/BrowserPanel.tsx';
@@ -31,7 +32,7 @@ interface TabDescriptor {
 }
 
 const TAB_REGISTRY: TabDescriptor[] = [
-    { id: 'terminal', label: 'Terminal', icon: Terminal, placeholder: 'Terminal output will appear here', category: 'tool', keepAlive: false, needsSession: true },
+    { id: 'terminal', label: 'Terminal', icon: Terminal, placeholder: 'Terminal output will appear here', category: 'tool', keepAlive: true, needsSession: true },
     { id: 'browser', label: 'Browser', icon: Globe, placeholder: 'Browser will appear here', category: 'tool', keepAlive: false, needsSession: false },
     { id: 'files', label: 'Files', icon: File, placeholder: 'Files will appear here', category: 'tool', keepAlive: false, needsSession: false },
     { id: 'code', label: 'Code', icon: Code, placeholder: 'Code conversation will appear here', category: 'tool', keepAlive: false, needsSession: true },
@@ -46,7 +47,32 @@ const TAB_MAP = new Map(TAB_REGISTRY.map((t) => [t.id, t]));
 
 function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }): JSX.Element | null {
     const { selected } = useAppScope();
+    const api = useManagerApi();
+    const [terminalWorkingDir, setTerminalWorkingDir] = useState<string | null>(null);
+    const [terminalWorkingDirError, setTerminalWorkingDirError] = useState<string | null>(null);
+    const cwdRequestGeneration = useRef(0);
     const desc = TAB_MAP.get(tabId);
+
+    useEffect(() => {
+        const generation = ++cwdRequestGeneration.current;
+        setTerminalWorkingDir(null);
+        setTerminalWorkingDirError(null);
+        if (tabId !== 'terminal' || !selected) return;
+
+        void api.fetchInstances().then((instances) => {
+            if (cwdRequestGeneration.current !== generation) return;
+            const instance = instances.find((candidate) => candidate.port === selected.port);
+            if (!instance?.workingDir) {
+                setTerminalWorkingDirError('No working directory for this instance');
+                return;
+            }
+            setTerminalWorkingDir(instance.workingDir);
+        }).catch((error: unknown) => {
+            if (cwdRequestGeneration.current !== generation) return;
+            setTerminalWorkingDirError(error instanceof Error ? error.message : 'Unable to load instance working directory');
+        });
+    }, [api, selected?.port, tabId]);
+
     if (!desc) return null;
 
     // Session guard for tabs that need one
@@ -63,7 +89,7 @@ function TabContent({ tabId, active }: { tabId: SidePaneTab; active: boolean }):
 
     switch (tabId) {
         case 'terminal':
-            return <TerminalPanel port={port} />;
+            return <TerminalPanel port={port} workingDir={terminalWorkingDir} workingDirError={terminalWorkingDirError} />;
         case 'browser':
             return <BrowserPanel />;
         case 'files':

@@ -3,7 +3,7 @@ import type { IPty } from 'node-pty';
 import { spawn as spawnPty } from 'node-pty';
 import { resolve } from 'node:path';
 import { homedir } from 'node:os';
-import { existsSync, statSync } from 'node:fs';
+import { statSync } from 'node:fs';
 import { discoverShell } from './shell-discovery.js';
 import { sanitizeEnv } from './env-sanitize.js';
 import { isWithinHome } from '../path-security.js';
@@ -63,8 +63,11 @@ export function registerTerminalIpc(getWindow: () => BrowserWindow | null): void
         }
         const id = `term_${++counter}`;
         const shell = discoverShell();
-        let cwd = opts?.cwd ?? homedir();
-        if (!isAllowedCwd(cwd) || !existsSync(cwd)) cwd = homedir();
+        const requestedCwd = opts?.cwd;
+        if (requestedCwd !== undefined && !isAllowedCwd(requestedCwd)) {
+            return { ok: false, error: 'cwd not allowed' };
+        }
+        const cwd = requestedCwd ?? homedir();
         const env = sanitizeEnv();
         const cols = clampDimension(opts?.cols, 80, 20, 500);
         const rows = clampDimension(opts?.rows, 24, 4, 200);
