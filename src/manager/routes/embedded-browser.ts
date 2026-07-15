@@ -1,10 +1,11 @@
 import express from 'express';
-import type { Express, NextFunction, Request, Response } from 'express';
+import type { Express, Request, Response } from 'express';
 import { randomBytes } from 'node:crypto';
 import { mkdirSync, readdirSync, statSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AuthMiddleware } from '../../routes/types.js';
+import { requireElectronRenderer } from '../electron-renderer-identity.js';
 
 /**
  * Embedded Browser agent surface (030 v2/v3/v4/v5).
@@ -388,21 +389,6 @@ function sanitizeSnapshot(input: unknown): SnapshotResultNode[] {
  * endpoints (list/screenshot request) by design, but only the Manager renderer
  * may push registry state or settle commands.
  */
-const DESKTOP_IDENTITY_HEADER = 'x-cli-jaw-electron';
-
-// Read lazily: the Electron-spawned manager receives the per-launch secret via
-// env; reading at call time keeps module-import order (and tests) simple.
-function desktopRendererToken(): string {
-    return process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] ?? '';
-}
-
-function requireDesktopRenderer(req: Request, res: Response): boolean {
-    const token = desktopRendererToken();
-    if (token && req.get(DESKTOP_IDENTITY_HEADER) === token) return true;
-    res.status(403).json({ ok: false, error: 'desktop renderer only' });
-    return false;
-}
-
 export function registerEmbeddedBrowserRoutes(app: Express, requireAuth: AuthMiddleware, options: EmbeddedBrowserRouteOptions): void {
     const { scanFrom, scanCount, managerPort } = options;
 
@@ -412,8 +398,7 @@ export function registerEmbeddedBrowserRoutes(app: Express, requireAuth: AuthMid
 
     // ---- v2: read-only shared-target registry ----
 
-    app.post('/api/manager/embedded-browser/targets', requireAuth, (req: Request, res: Response) => {
-        if (!requireDesktopRenderer(req, res)) return;
+    app.post('/api/manager/embedded-browser/targets', requireAuth, requireElectronRenderer, (req: Request, res: Response) => {
         const body = req.body as { targets?: unknown } | undefined;
         const rawTargets = Array.isArray(body?.targets) ? body.targets : [];
         const now = new Date().toISOString();
@@ -445,8 +430,7 @@ export function registerEmbeddedBrowserRoutes(app: Express, requireAuth: AuthMid
 
     // ---- v2.1: deliver shares to the selected instance's runtime-context ----
 
-    app.post('/api/dashboard/instances/:port/embedded-browser/targets', requireAuth, async (req: Request, res: Response) => {
-        if (!requireDesktopRenderer(req, res)) return;
+    app.post('/api/dashboard/instances/:port/embedded-browser/targets', requireAuth, requireElectronRenderer, async (req: Request, res: Response) => {
         const portValue = Number(req.params['port']);
         if (!isValidInstancePort(portValue)) {
             res.status(400).json({ ok: false, error: 'port out of configured scan range' });
@@ -529,8 +513,7 @@ export function registerEmbeddedBrowserRoutes(app: Express, requireAuth: AuthMid
         res.status(result.ok ? 200 : 504).json(result);
     });
 
-    app.get('/api/manager/embedded-browser/commands', requireAuth, async (req: Request, res: Response) => {
-        if (!requireDesktopRenderer(req, res)) return;
+    app.get('/api/manager/embedded-browser/commands', requireAuth, requireElectronRenderer, async (req: Request, res: Response) => {
         const waitMs = Math.min(Number(req.query['wait']) || 0, COMMAND_POLL_MAX_WAIT_MS);
         let commands = takeLeasableCommands();
         if (commands.length === 0 && waitMs > 0) {
@@ -546,11 +529,7 @@ export function registerEmbeddedBrowserRoutes(app: Express, requireAuth: AuthMid
     // Gate BEFORE the 24mb parser so non-renderer requests never buffer a
     // large body; then verify the command + settle token BEFORE decoding or
     // writing anything to disk.
-    const rendererGate = (req: Request, res: Response, next: NextFunction): void => {
-        if (!requireDesktopRenderer(req, res)) return;
-        next();
-    };
-    app.post('/api/manager/embedded-browser/commands/:id/result', requireAuth, rendererGate, resultJsonParser, (req: Request, res: Response) => {
+    app.post('/api/manager/embedded-browser/commands/:id/result', requireAuth, requireElectronRenderer, resultJsonParser, (req: Request, res: Response) => {
         const id = String(req.params['id'] ?? '');
         const body = req.body as {
             ok?: unknown;

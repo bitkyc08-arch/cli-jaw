@@ -2,7 +2,6 @@ import { ipcRenderer } from 'electron';
 
 const METRICS_IPC_CHANNEL = 'cli-jaw:metrics:get-latest';
 const POST_PATH = '/api/dashboard/electron-metrics';
-const HEADER = 'X-CLI-Jaw-Electron';
 const POLL_INTERVAL_MS = 5000;
 
 interface MetricsProcessSample {
@@ -39,7 +38,6 @@ async function pullAndPost(): Promise<void> {
       method: 'POST',
       headers: {
         'content-type': 'application/json',
-        [HEADER]: '1',
       },
       body: JSON.stringify(snap),
     });

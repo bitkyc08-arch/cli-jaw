@@ -24,7 +24,11 @@ function installDesktopFetchHeader(): void {
     if (!isSameOrigin(input)) return nativeFetch(input, init);
 
     const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-    if (DESKTOP_IDENTITY.token) headers.set(DESKTOP_IDENTITY.header, DESKTOP_IDENTITY.token);
+    if (DESKTOP_IDENTITY.token) {
+      headers.set(DESKTOP_IDENTITY.header, DESKTOP_IDENTITY.token);
+    } else {
+      headers.delete(DESKTOP_IDENTITY.header);
+    }
     return nativeFetch(input, { ...init, headers });
   };
 }

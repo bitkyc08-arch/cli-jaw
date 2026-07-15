@@ -15,7 +15,7 @@
  * - act requests are allowed for visible targets and still use strict payload validation
  * - surface stays bounded: no evaluate/script-execution endpoints
  */
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import type { Express, RequestHandler } from 'express';
@@ -69,7 +69,12 @@ function makeRes(): { res: FakeResponse; get: () => { code: number; body: unknow
 // The renderer gate requires exact equality with the per-launch secret the
 // Electron main process passes via env; simulate that launch wiring here.
 const RENDERER_TOKEN = 'test-renderer-token';
+const ORIGINAL_RENDERER_TOKEN = process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'];
 process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] = RENDERER_TOKEN;
+after(() => {
+    if (ORIGINAL_RENDERER_TOKEN === undefined) delete process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'];
+    else process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] = ORIGINAL_RENDERER_TOKEN;
+});
 
 /** Fake request from the Electron Manager renderer (desktop identity token present). */
 function rendererReq(req: Record<string, unknown>): Record<string, unknown> {

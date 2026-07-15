@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import http from 'node:http';
@@ -9,6 +9,14 @@ import {
     validateMetricsSnapshot,
     type MetricsSnapshot,
 } from '../../src/manager/routes/electron-metrics.js';
+
+const RENDERER_TOKEN = 'test-renderer-token';
+const ORIGINAL_RENDERER_TOKEN = process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'];
+process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] = RENDERER_TOKEN;
+after(() => {
+    if (ORIGINAL_RENDERER_TOKEN === undefined) delete process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'];
+    else process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] = ORIGINAL_RENDERER_TOKEN;
+});
 
 function sampleSnapshot(overrides: Partial<MetricsSnapshot> = {}): MetricsSnapshot {
     return {
@@ -66,6 +74,19 @@ test('POST without electron header is rejected with 403', async () => {
             body: JSON.stringify(sampleSnapshot()),
         });
         assert.equal(res.status, 403);
+        assert.deepEqual(await res.json(), { ok: false, error: 'desktop renderer only' });
+    });
+});
+
+test('legacy marker is rejected as renderer identity', async () => {
+    await withServer(async (baseUrl) => {
+        const res = await fetch(`${baseUrl}/api/dashboard/electron-metrics`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json', [CLI_JAW_ELECTRON_HEADER]: '1' },
+            body: JSON.stringify(sampleSnapshot()),
+        });
+        assert.equal(res.status, 403);
+        assert.deepEqual(await res.json(), { ok: false, error: 'desktop renderer only' });
     });
 });
 
@@ -75,7 +96,7 @@ test('POST with invalid body is rejected with 400', async () => {
             method: 'POST',
             headers: {
                 'content-type': 'application/json',
-                [CLI_JAW_ELECTRON_HEADER]: '1',
+                [CLI_JAW_ELECTRON_HEADER]: RENDERER_TOKEN,
             },
             body: JSON.stringify({ ts: 'not-a-number' }),
         });
@@ -90,14 +111,14 @@ test('POST then GET returns the stored snapshot', async () => {
             method: 'POST',
             headers: {
                 'content-type': 'application/json',
-                [CLI_JAW_ELECTRON_HEADER]: '1',
+                [CLI_JAW_ELECTRON_HEADER]: RENDERER_TOKEN,
             },
             body: JSON.stringify(snap),
         });
         assert.equal(post.status, 200);
 
         const get = await fetch(`${baseUrl}/api/dashboard/electron-metrics`, {
-            headers: { [CLI_JAW_ELECTRON_HEADER]: '1' },
+            headers: { [CLI_JAW_ELECTRON_HEADER]: RENDERER_TOKEN },
         });
         assert.equal(get.status, 200);
         const body = await get.json() as Record<string, unknown>;
@@ -116,13 +137,13 @@ test('GET after TTL expiry returns null snapshot', async () => {
             method: 'POST',
             headers: {
                 'content-type': 'application/json',
-                [CLI_JAW_ELECTRON_HEADER]: '1',
+                [CLI_JAW_ELECTRON_HEADER]: RENDERER_TOKEN,
             },
             body: JSON.stringify(snap),
         });
         await new Promise((resolve) => setTimeout(resolve, 60));
         const get = await fetch(`${baseUrl}/api/dashboard/electron-metrics`, {
-            headers: { [CLI_JAW_ELECTRON_HEADER]: '1' },
+            headers: { [CLI_JAW_ELECTRON_HEADER]: RENDERER_TOKEN },
         });
         const body = await get.json() as Record<string, unknown>;
         assert.equal(body.available, true);

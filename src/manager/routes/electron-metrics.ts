@@ -1,7 +1,11 @@
 import type { Request, Response, Router } from 'express';
 import { Router as createRouter } from 'express';
+import {
+    isElectronRenderer,
+    requireElectronRenderer,
+} from '../electron-renderer-identity.js';
 
-export const CLI_JAW_ELECTRON_HEADER = 'x-cli-jaw-electron';
+export { CLI_JAW_ELECTRON_HEADER } from '../electron-renderer-identity.js';
 export const ELECTRON_METRICS_TTL_MS = 30_000;
 
 export interface MetricsProcessSample {
@@ -129,7 +133,7 @@ export function createElectronMetricsRouter(
     const router = createRouter();
 
     router.get('/', (req: Request, res: Response<GetMetricsResponse>) => {
-        if (req.header(CLI_JAW_ELECTRON_HEADER) !== '1') {
+        if (!isElectronRenderer(req)) {
             res.json({ available: false, reason: 'not-in-electron' });
             return;
         }
@@ -137,11 +141,7 @@ export function createElectronMetricsRouter(
         res.json({ available: true, snapshot });
     });
 
-    router.post('/', (req: Request, res: Response) => {
-        if (req.header(CLI_JAW_ELECTRON_HEADER) !== '1') {
-            res.status(403).json({ error: 'forbidden' });
-            return;
-        }
+    router.post('/', requireElectronRenderer, (req: Request, res: Response) => {
         const snapshot = validateMetricsSnapshot(req.body);
         if (!snapshot) {
             res.status(400).json({ error: 'invalid-body' });

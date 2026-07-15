@@ -7,23 +7,31 @@
  * - 409 conflict surfaces for stale baseRevision
  * - preview responds with HTML + locked CSP (script-src 'none')
  */
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 process.env['CLI_JAW_DASHBOARD_HOME'] = mkdtempSync(join(tmpdir(), 'jaw-design-routes-'));
+const RENDERER_TOKEN = 'test-renderer-token';
+const ORIGINAL_RENDERER_TOKEN = process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'];
+process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] = RENDERER_TOKEN;
+after(() => {
+    if (ORIGINAL_RENDERER_TOKEN === undefined) delete process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'];
+    else process.env['CLI_JAW_ELECTRON_RENDERER_TOKEN'] = ORIGINAL_RENDERER_TOKEN;
+});
 
 const { createDashboardDesignRouter } = await import('../../src/manager/routes/dashboard-design.js');
 const router = createDashboardDesignRouter();
 
 type FakeResult = { code: number; body: unknown; headers: Record<string, string>; raw: string | null };
 
-function request(method: string, url: string, options: { body?: unknown; desktop?: boolean } = {}): Promise<FakeResult> {
+function request(method: string, url: string, options: { body?: unknown; desktop?: boolean; identity?: string } = {}): Promise<FakeResult> {
     return new Promise((resolve, reject) => {
         const headers: Record<string, string> = {};
-        if (options.desktop) headers['x-cli-jaw-electron'] = '1';
+        if (options.desktop) headers['x-cli-jaw-electron'] = RENDERER_TOKEN;
+        if (options.identity !== undefined) headers['x-cli-jaw-electron'] = options.identity;
         const req = {
             method,
             url,
@@ -59,6 +67,10 @@ test('list starts empty and create requires the desktop header', async () => {
 
     const forbidden = await request('POST', '/pages', { body: { title: 'X' } });
     assert.equal(forbidden.code, 403);
+    assert.deepEqual(forbidden.body, { ok: false, error: 'desktop renderer only' });
+
+    const spoofed = await request('POST', '/pages', { body: { title: 'X' }, identity: '1' });
+    assert.equal(spoofed.code, 403);
 
     const created = await request('POST', '/pages', { body: { title: 'Routed Page' }, desktop: true });
     assert.equal(created.code, 201);

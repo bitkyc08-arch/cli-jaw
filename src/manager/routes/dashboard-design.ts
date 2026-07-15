@@ -1,4 +1,4 @@
-import express, { Router, type NextFunction, type Request, type Response } from 'express';
+import express, { Router, type Request, type Response } from 'express';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
@@ -16,6 +16,7 @@ import {
     writeDesignPageFile,
 } from '../design/store.js';
 import { bumpDesignStoreVersion, designStoreVersion, startDesignWatcher } from '../design/watcher.js';
+import { requireElectronRenderer } from '../electron-renderer-identity.js';
 
 /**
  * `/api/dashboard/design` (186 Phase 3).
@@ -31,16 +32,7 @@ import { bumpDesignStoreVersion, designStoreVersion, startDesignWatcher } from '
  *   parser.
  */
 
-const DESKTOP_IDENTITY_HEADER = 'x-cli-jaw-electron';
 const PREVIEW_CSP = "default-src 'none'; style-src 'unsafe-inline'; img-src 'self' data:; font-src data:; script-src 'none'";
-
-function requireDesktopRenderer(req: Request, res: Response, next: NextFunction): void {
-    if (req.get(DESKTOP_IDENTITY_HEADER)) {
-        next();
-        return;
-    }
-    res.status(403).json({ ok: false, error: 'desktop renderer only (agents use the jaw design CLI / direct file writes)' });
-}
 
 function fail(res: Response, error: unknown, code = 400): void {
     const message = (error as Error).message ?? String(error);
@@ -70,7 +62,7 @@ export function createDashboardDesignRouter(): Router {
         }
     });
 
-    router.post('/pages', requireDesktopRenderer, jsonParser, (req, res) => {
+    router.post('/pages', requireElectronRenderer, jsonParser, (req, res) => {
         try {
             const body = req.body as { title?: unknown; projectKey?: unknown } | undefined;
             const page = createDesignPage({
@@ -101,7 +93,7 @@ export function createDashboardDesignRouter(): Router {
         }
     });
 
-    router.patch('/pages/:pageId', requireDesktopRenderer, jsonParser, (req, res) => {
+    router.patch('/pages/:pageId', requireElectronRenderer, jsonParser, (req, res) => {
         try {
             const body = req.body as { title?: string; exportTarget?: string | null; baseRevision?: unknown } | undefined;
             if (typeof body?.baseRevision !== 'number') {
@@ -136,7 +128,7 @@ export function createDashboardDesignRouter(): Router {
         }
     });
 
-    router.put('/pages/:pageId/files/{*filePath}', requireDesktopRenderer, jsonParser, (req, res) => {
+    router.put('/pages/:pageId/files/{*filePath}', requireElectronRenderer, jsonParser, (req, res) => {
         try {
             const rel = Array.isArray(req.params['filePath']) ? (req.params['filePath'] as string[]).join('/') : String(req.params['filePath'] ?? '');
             const body = req.body as { content?: unknown; baseRevision?: unknown } | undefined;
@@ -177,7 +169,7 @@ export function createDashboardDesignRouter(): Router {
         }
     });
 
-    router.post('/pages/:pageId/export', requireDesktopRenderer, jsonParser, (req, res) => {
+    router.post('/pages/:pageId/export', requireElectronRenderer, jsonParser, (req, res) => {
         try {
             const pageId = String(req.params['pageId']);
             const body = req.body as { target?: unknown; overwrite?: unknown } | undefined;
@@ -199,7 +191,7 @@ export function createDashboardDesignRouter(): Router {
         }
     });
 
-    router.post('/pages/:pageId/snapshots', requireDesktopRenderer, jsonParser, (req, res) => {
+    router.post('/pages/:pageId/snapshots', requireElectronRenderer, jsonParser, (req, res) => {
         try {
             const body = req.body as { label?: unknown } | undefined;
             const label = body?.label === 'before' || body?.label === 'after' || body?.label === 'manual' ? body.label : 'manual';
@@ -218,7 +210,7 @@ export function createDashboardDesignRouter(): Router {
         }
     });
 
-    router.post('/pages/:pageId/snapshots/:snapshotId/restore', requireDesktopRenderer, (req, res) => {
+    router.post('/pages/:pageId/snapshots/:snapshotId/restore', requireElectronRenderer, (req, res) => {
         try {
             const result = restoreDesignPageSnapshot(String(req.params['pageId']), String(req.params['snapshotId']));
             if (!result.ok) {
