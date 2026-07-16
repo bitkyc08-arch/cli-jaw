@@ -368,7 +368,7 @@ cli-jaw/
 │   ├── package.json / electron-builder.yml / electron.vite.config.ts
 │   └── src/
 │       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1359L)
-│       ├── main/lib/         ← 33 helper modules, 3569L (jaw-spawn 233L, manager-url 29L, renderer-request-identity 70L, stream-redactor 56L, install-cli 147L, tray-manager 185L, terminal/ 185L, navigation-policy 113L, app-metrics 177L, health-check 78L, deep-link 79L, permissions, path-security, quit-progress, etc.)
+│       ├── main/lib/         ← 33 helper modules, 3569L (jaw-spawn 233L, manager-url 29L, renderer-request-identity 70L, stream-redactor 56L, install-cli 147L, tray-manager 185L, terminal/ 206L, navigation-policy 113L, app-metrics 177L, health-check 78L, deep-link 79L, permissions, path-security, quit-progress, etc.)
 │       └── preload/          ← preload bridge (index 151L)
 ├── native/
 │   └── claude-e/             ← Claude E native helper source (Rust, builds `jaw-claude-i` compatibility binary; 11 src files, 1934L)
