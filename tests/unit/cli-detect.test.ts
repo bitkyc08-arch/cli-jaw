@@ -119,21 +119,30 @@ test('prioritizeCliCandidates moves bun shims behind managed node bins for npm-m
     }
 });
 
-test('detectCli honors an explicit CODEX_BIN without falling through to the service PATH', () => {
+test('detectCli honors an explicit CODEX_BIN for codex and codex-app without falling through to the service PATH', () => {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-codex-bin-'));
     const fake = writeExecutable(dir, 'codex', '#!/usr/bin/env sh\necho fake\n');
     const previous = process.env['CODEX_BIN'];
     try {
         process.env['CODEX_BIN'] = fake;
         assert.deepEqual(detectCli('codex'), { available: true, path: fake });
+        assert.deepEqual(detectCli('codex-app'), { available: true, path: fake });
         process.env['CODEX_BIN'] = path.join(dir, 'missing');
-        const missing = detectCli('codex');
-        assert.equal(missing.available, false);
-        assert.equal(missing.path, null);
-        assert.match(missing.rejected?.[0]?.reason ?? '', /ENOENT/);
+        for (const cli of ['codex', 'codex-app']) {
+            const missing = detectCli(cli);
+            assert.equal(missing.available, false, `${cli} must fail closed`);
+            assert.equal(missing.path, null);
+            assert.match(missing.rejected?.[0]?.reason ?? '', /ENOENT/);
+        }
     } finally {
         if (previous === undefined) delete process.env['CODEX_BIN'];
         else process.env['CODEX_BIN'] = previous;
         fs.rmSync(dir, { recursive: true, force: true });
     }
+});
+
+test('Windows spawnability preflight rejects a nonexistent explicit path', () => {
+    const missing = path.join(os.tmpdir(), `jaw-missing-${process.pid}-${Date.now()}.cmd`);
+    assert.deepEqual(isSpawnableCliFile(missing, 'win32'), { ok: false, reason: 'ENOENT' });
+    assert.equal(selectSpawnableCliPath([missing], 'win32').available, false);
 });

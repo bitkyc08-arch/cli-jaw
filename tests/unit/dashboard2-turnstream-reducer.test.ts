@@ -164,6 +164,84 @@ test('041: history message body is authoritative — live replay cannot overwrit
     assert.equal(state.bodies[turnId].provenance, 'message');
 });
 
+test('041: turn_end before agent_done retains a tool-less final response', () => {
+    const base = {
+        topic: 'agent' as const, sessionId: 'fixture-session-0',
+        createdAt: 1_790_000_000_000, observedAt: 1_790_000_000_000,
+        providerAt: null, fidelity: 'full' as const, thinkingMarker: null,
+        detailRef: null,
+    };
+    let state = createTurnStreamState(SCOPE);
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_start', turnId: 'late-done-turn', turnSeq: 1,
+        segmentId: 'late-done-turn:start', type: 'turn_start', status: 'running',
+    } });
+    state = reduce(state, { kind: 'body_chunk', traceRunId: 'late-done-run', text: 'final text', textLen: 10 });
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_end', turnId: 'late-done-turn', turnSeq: 2,
+        segmentId: 'late-done-turn:end', type: 'turn_end', status: 'done',
+    } });
+    assert.equal(state.bodies['late-done-turn'], undefined);
+    state = reduce(state, { kind: 'agent_done', traceRunId: 'late-done-run', text: 'final text' });
+    assert.equal(state.runToTurn['late-done-run'], 'late-done-turn');
+    assert.equal(state.bodies['late-done-turn']?.text, 'final text');
+    assert.equal(state.bodies['late-done-turn']?.provenance, 'live');
+});
+
+test('041: late done for terminal A never attaches its body to newly live B', () => {
+    const base = {
+        topic: 'agent' as const, sessionId: 'fixture-session-0',
+        createdAt: 1_790_000_000_000, observedAt: 1_790_000_000_000,
+        providerAt: null, fidelity: 'full' as const, thinkingMarker: null,
+        detailRef: null,
+    };
+    let state = createTurnStreamState(SCOPE);
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_start', turnId: 'turn-A', turnSeq: 1,
+        segmentId: 'turn-A:start', type: 'turn_start', status: 'running',
+    } });
+    state = reduce(state, { kind: 'body_chunk', traceRunId: 'run-A', text: 'A body', textLen: 6 });
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_end', turnId: 'turn-A', turnSeq: 2,
+        segmentId: 'turn-A:end', type: 'turn_end', status: 'done',
+    } });
+    assert.equal(state.runToTurn['run-A'], 'turn-A', 'turn_end captures the active run before the next turn starts');
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_start', turnId: 'turn-B', turnSeq: 1,
+        segmentId: 'turn-B:start', type: 'turn_start', status: 'running',
+    } });
+    state = reduce(state, { kind: 'agent_done', traceRunId: 'run-A', text: 'A final' });
+    assert.equal(state.bodies['turn-A']?.text, 'A final');
+    assert.equal(state.bodies['turn-B'], undefined);
+    assert.equal(state.runToTurn['run-A'], 'turn-A');
+});
+
+test('041: no-body pending A and live B remain unjoined instead of cross-linking B to A', () => {
+    const base = {
+        topic: 'agent' as const, sessionId: 'fixture-session-0',
+        createdAt: 1_790_000_000_000, observedAt: 1_790_000_000_000,
+        providerAt: null, fidelity: 'full' as const, thinkingMarker: null,
+        detailRef: null,
+    };
+    let state = createTurnStreamState(SCOPE);
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_start', turnId: 'empty-A', turnSeq: 1,
+        segmentId: 'empty-A:start', type: 'turn_start', status: 'running',
+    } });
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_end', turnId: 'empty-A', turnSeq: 2,
+        segmentId: 'empty-A:end', type: 'turn_end', status: 'done',
+    } });
+    state = reduce(state, { kind: 'lifecycle', payload: {
+        ...base, event: 'turn_start', turnId: 'live-B', turnSeq: 1,
+        segmentId: 'live-B:start', type: 'turn_start', status: 'running',
+    } });
+    state = reduce(state, { kind: 'agent_done', traceRunId: 'run-B', text: 'B final' });
+    assert.equal(state.runToTurn['run-B'], undefined, 'ambiguous pending/live candidates fail closed');
+    assert.equal(state.bodies['empty-A'], undefined);
+    assert.equal(state.bodies['live-B'], undefined);
+});
+
 test('041: pure boundary — no window/document/fetch/react imports in pure modules', () => {
     for (const rel of ['reducer.ts', 'idempotency.ts', 'hydrate.ts', 'types.ts']) {
         const text = readFileSync(join(ROOT, 'public/dashboard2/src/turn-stream', rel), 'utf8');

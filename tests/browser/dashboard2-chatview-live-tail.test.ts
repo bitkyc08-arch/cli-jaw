@@ -129,5 +129,22 @@ test('045 browser: live tail streams, folds atomically on turn_end, follows bott
     await page.waitForFunction(() => window.__jawLiveHarness!.counts().liveArticles === 1);
     await page.evaluate(() => window.__jawLiveHarness!.pushBody('unjoined-run', 'fallback body', 13));
     await page.waitForFunction(() => window.__jawLiveHarness!.counts().liveTailText.includes('fallback body'));
+
+    // Reverse fast-completion order: the durable turn closes before the
+    // tool-less agent_done supplies its run id. The bounded terminal fallback
+    // must retain and promote the final text into the already committed row.
+    await page.evaluate(() => window.__jawLiveHarness!.ingestLifecycle([{
+        topic: 'agent', event: 'turn_end',
+        turnId: 'live-b', turnSeq: 9, segmentId: 'live-b:end', sessionId: 'live-harness',
+        createdAt: 1_790_000_002_000, observedAt: 1_790_000_002_000, providerAt: null,
+        fidelity: 'full', thinkingMarker: null, type: 'turn_end', status: 'done', detailRef: null,
+    }] as never));
+    await page.waitForFunction(() => window.__jawLiveHarness!.counts().committedRows === 2);
+    await page.evaluate(() => window.__jawLiveHarness!.finishRun('unjoined-run', 'fallback body'));
+    assert.equal(
+        await page.evaluate(() => window.__jawLiveHarness!.store.getBodySnapshot('live-b')?.text ?? null),
+        'fallback body',
+        'turn_end before agent_done retains the tool-less final body',
+    );
     console.log('[045 live-tail report]', JSON.stringify({ counts, parityEvidence: 'synthetic' }));
 });

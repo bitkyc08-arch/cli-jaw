@@ -23,7 +23,7 @@ function getProjectDir(): string {
 
 export function detectCli(name: string): CliDetection {
     const binary = (CLI_REGISTRY as Record<string, any>)[name]?.binary || name;
-    if (name === 'codex' && process.env['CODEX_BIN']) {
+    if ((name === 'codex' || name === 'codex-app') && process.env['CODEX_BIN']) {
         return selectSpawnableCliPath([
             resolveHomePath(process.env['CODEX_BIN'], homedir()),
         ]);

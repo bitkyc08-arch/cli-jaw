@@ -142,11 +142,15 @@ function hasKnownExecutableMagic(head: Buffer, platform: NodeJS.Platform = proce
 }
 
 export function isSpawnableCliFile(filePath: string, platform: NodeJS.Platform = process.platform): { ok: boolean; reason?: string } {
-    if (platform === 'win32') return { ok: true };
-
     try {
         const stat = fs.statSync(filePath);
         if (!stat.isFile()) return { ok: false, reason: 'not a regular file' };
+        // Windows PATH shims can be .cmd/.bat text files, so do not apply the
+        // POSIX executable-bit/shebang rules. Still fail closed for missing,
+        // non-file, and empty explicit overrides before spawn.
+        if (platform === 'win32') {
+            return stat.size > 0 ? { ok: true } : { ok: false, reason: 'empty file' };
+        }
         if ((stat.mode & 0o111) === 0) return { ok: false, reason: 'not executable' };
         const head = readHead(filePath);
         if (head.length === 0) return { ok: false, reason: 'empty file' };

@@ -31,9 +31,13 @@ const TERMINAL_STATUSES = new Set(['done', 'error', 'continued', 'interrupted'])
 // the real T2/T3 budgets; these caps only stop unbounded reducer growth
 const LIVE_BODY_RUNS = 16;
 const HYDRATED_BODY_TURNS = 1024;
+const PENDING_TERMINAL_TURNS = 16;
 
 interface InternalState extends TurnStreamState {
     idempotency: IdempotencyState;
+    /** Tool-less runs may emit turn_end before agent_done. Keep a bounded,
+     * unambiguous fallback until the late run id can be joined. */
+    pendingUnjoinedTerminalTurns: string[];
 }
 
 export function createTurnStreamState(scopeKey: string, sessionFilter: string | null = null): TurnStreamState {
@@ -50,6 +54,7 @@ export function createTurnStreamState(scopeKey: string, sessionFilter: string | 
         needsBackfill: false,
         diagnostics: { conflictCount: 0, droppedReplayCount: 0, recent: [] },
         idempotency: createIdempotencyState(),
+        pendingUnjoinedTerminalTurns: [],
     };
     return state;
 }
@@ -144,11 +149,28 @@ function commitDraft(state: InternalState, draft: RowDraft): InternalState {
         rowOrder: draft.rowOrder,
         turnStatus: draft.turnStatus,
     };
+    let runToTurn = state.runToTurn;
     if (draft.joins.length) {
-        const runToTurn = { ...state.runToTurn };
+        runToTurn = { ...state.runToTurn };
         for (const [runId, turnId] of draft.joins) runToTurn[runId] = turnId;
         next = { ...next, runToTurn };
     }
+    const newlyTerminal = Object.keys(draft.turnStatus).filter(turnId => !state.turnStatus[turnId]);
+    const liveRunId = state.idempotency.liveTraceRunId;
+    if (newlyTerminal.length === 1 && liveRunId && !(liveRunId in runToTurn)
+        && !isFinalizedRun(state.idempotency, liveRunId)) {
+        runToTurn = { ...runToTurn, [liveRunId]: newlyTerminal[0] };
+        next = { ...next, runToTurn };
+    }
+    const joinedTurns = new Set(Object.values(next.runToTurn));
+    let pending = state.pendingUnjoinedTerminalTurns.filter(turnId =>
+        !joinedTurns.has(turnId) && !next.bodies[turnId]);
+    for (const turnId of Object.keys(draft.turnStatus)) {
+        if (state.turnStatus[turnId] || joinedTurns.has(turnId) || next.bodies[turnId]) continue;
+        if (!pending.includes(turnId)) pending.push(turnId);
+    }
+    if (pending.length > PENDING_TERMINAL_TURNS) pending = pending.slice(-PENDING_TERMINAL_TURNS);
+    next = { ...next, pendingUnjoinedTerminalTurns: pending };
     for (const note of draft.conflicts) next = pushDiagnostic(next, 'conflict', note);
     return next;
 }
@@ -163,9 +185,22 @@ function joinRunToOnlyLiveTurn(state: InternalState, runId: string): InternalSta
         const turnId = state.rows[key].turnId;
         if (!state.turnStatus[turnId]) liveTurnIds.add(turnId);
     }
-    if (liveTurnIds.size !== 1) return state;
-    const [only] = liveTurnIds;
-    return { ...state, runToTurn: { ...state.runToTurn, [runId]: only } };
+    const pending = state.pendingUnjoinedTerminalTurns.filter(turnId =>
+        !state.bodies[turnId] && !Object.values(state.runToTurn).includes(turnId));
+    let only: string | undefined;
+    if (state.idempotency.liveTraceRunId === runId && liveTurnIds.size === 1) {
+        [only] = liveTurnIds;
+    } else if (pending.length === 1 && liveTurnIds.size === 0) {
+        [only] = pending;
+    } else if (pending.length === 0 && liveTurnIds.size === 1) {
+        [only] = liveTurnIds;
+    }
+    if (!only) return state;
+    return {
+        ...state,
+        runToTurn: { ...state.runToTurn, [runId]: only },
+        pendingUnjoinedTerminalTurns: state.pendingUnjoinedTerminalTurns.filter(turnId => turnId !== only),
+    };
 }
 
 function promoteFinalizedRunBody(state: InternalState, runId: string, text: string): InternalState {
