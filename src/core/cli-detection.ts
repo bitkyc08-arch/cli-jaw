@@ -23,6 +23,11 @@ function getProjectDir(): string {
 
 export function detectCli(name: string): CliDetection {
     const binary = (CLI_REGISTRY as Record<string, any>)[name]?.binary || name;
+    if (name === 'codex' && process.env['CODEX_BIN']) {
+        return selectSpawnableCliPath([
+            resolveHomePath(process.env['CODEX_BIN'], homedir()),
+        ]);
+    }
     if (name === 'kiro-code') return detectKiroCode();
     if (name === 'pi') return detectPi();
     if (name === 'ai-e' || binary === 'ai-e') return detectAiE();

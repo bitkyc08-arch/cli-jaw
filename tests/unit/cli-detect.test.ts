@@ -12,6 +12,7 @@ import {
     readProcessPath,
     selectSpawnableCliPath,
 } from '../../src/core/cli-detect.ts';
+import { detectCli } from '../../src/core/cli-detection.ts';
 
 function writeExecutable(dir: string, name: string, content: string): string {
     const filePath = path.join(dir, name);
@@ -115,5 +116,24 @@ test('prioritizeCliCandidates moves bun shims behind managed node bins for npm-m
         const nvmPath = path.join(home, '.nvm', 'versions', 'node', 'v22.18.0', 'bin', cli);
         const result = prioritizeCliCandidates(cli, [bunPath, nvmPath], home);
         assert.deepEqual(result, [nvmPath, bunPath], `${cli} should prefer npm-managed binary over bun shim`);
+    }
+});
+
+test('detectCli honors an explicit CODEX_BIN without falling through to the service PATH', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jaw-codex-bin-'));
+    const fake = writeExecutable(dir, 'codex', '#!/usr/bin/env sh\necho fake\n');
+    const previous = process.env['CODEX_BIN'];
+    try {
+        process.env['CODEX_BIN'] = fake;
+        assert.deepEqual(detectCli('codex'), { available: true, path: fake });
+        process.env['CODEX_BIN'] = path.join(dir, 'missing');
+        const missing = detectCli('codex');
+        assert.equal(missing.available, false);
+        assert.equal(missing.path, null);
+        assert.match(missing.rejected?.[0]?.reason ?? '', /ENOENT/);
+    } finally {
+        if (previous === undefined) delete process.env['CODEX_BIN'];
+        else process.env['CODEX_BIN'] = previous;
+        fs.rmSync(dir, { recursive: true, force: true });
     }
 });
