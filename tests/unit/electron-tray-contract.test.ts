@@ -38,7 +38,7 @@ test('main process wires reminder popover, typed IPC bridge, and origin guard', 
     assert.ok(index.includes("ipcMain.on('tray:popup-menu'"));
     assert.ok(index.includes("ipcMain.on('tray:open-dashboard'"));
     assert.ok(index.includes('if (!isAllowedSender(event)) return;'));
-    assert.ok(index.includes("new URL('/?sidebar=reminders', MANAGER_URL)"));
+    assert.ok(index.includes("resolveManagerRouteUrl(MANAGER_URL, '/?sidebar=reminders')"));
     assert.ok(index.includes('reminderPopover?.hide()'));
     assert.ok(index.includes('installTrayReminders();'));
     assert.ok(index.includes('destroyTrayReminders();'));

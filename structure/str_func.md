@@ -364,12 +364,12 @@ cli-jaw/
 │       └── render/
 │           ├── markdown.ts   ← marked/sanitize pipeline + `/media`/guarded `/api/image` inline media rewrite (193L)
 │           └── delegations.ts ← one-time document capture image-error delegation + render delegation registry (41L)
-├── electron/                 ← Electron tray background app (27 TS/TSX files, 3096L) ✨
+├── electron/                 ← Electron tray background app (35 TS/TSX files, 5079L) ✨
 │   ├── package.json / electron-builder.yml / electron.vite.config.ts
 │   └── src/
-│       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1308L)
-│       ├── main/lib/         ← 24 helper modules (jaw-spawn 207L, install-cli 91L, tray-manager 168L, terminal/ 185L, navigation-policy 113L, app-metrics 93L, health-check 78L, deep-link 78L, permissions, path-security, quit-progress, etc.)
-│       └── preload/          ← preload scripts (index 126L + metrics 68L)
+│       ├── main/index.ts     ← Electron main process — BrowserWindow + tray + jaw server spawn + deep-link + IPC (1359L)
+│       ├── main/lib/         ← 33 helper modules, 3569L (jaw-spawn 233L, manager-url 29L, renderer-request-identity 70L, stream-redactor 56L, install-cli 147L, tray-manager 185L, terminal/ 185L, navigation-policy 113L, app-metrics 177L, health-check 78L, deep-link 79L, permissions, path-security, quit-progress, etc.)
+│       └── preload/          ← preload bridge (index 151L)
 ├── native/
 │   └── claude-e/             ← Claude E native helper source (Rust, builds `jaw-claude-i` compatibility binary; 11 src files, 1934L)
 │       ├── Cargo.toml        ← Rust package/dependency/test profile
@@ -448,7 +448,7 @@ cli-jaw/
 
 npm 의존성: 라이브 버전은 `package.json`의 `dependencies`를 source of truth로 본다. 주요 축은 Express/WS/SQLite, Telegram/Discord, browser automation, React Manager, markdown/math/diagram rendering stack이다.
 
-dev 의존성: 라이브 버전은 `package.json`의 `devDependencies`를 source of truth로 본다. TypeScript/tsx/Vite/React plugin/jsdom/concurrently/types packages are tracked there.
+dev 의존성: 라이브 버전은 `package.json`의 `devDependencies`를 source of truth로 본다. TypeScript/tsx/Vite/React plugin/jsdom/types packages are tracked there.
 
 ---
 

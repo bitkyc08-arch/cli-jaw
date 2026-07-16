@@ -6,6 +6,17 @@ import { createServer } from 'node:net';
 import { randomBytes } from 'node:crypto';
 import type { ChildProcess } from 'node:child_process';
 import { findJawBinary, spawnJawDashboard, gracefulShutdown } from './lib/jaw-spawn.js';
+import {
+  buildImplicitManagerUrl,
+  resolveManagerRouteUrl,
+  resolveManagerUrl,
+} from './lib/manager-url.js';
+import {
+  isCurrentLiveOwnedManagerGeneration,
+  releaseOwnedManagerGeneration,
+  rendererRequestHeaders,
+  shouldInjectRendererRequestIdentity,
+} from './lib/renderer-request-identity.js';
 import { promptInstallCli } from './lib/install-cli.js';
 import {
   createTray, isKeepRunning, destroyTray,
@@ -122,8 +133,7 @@ function parseArgs(argv: string[]): CliFlags {
     }
   }
   if (!Number.isFinite(port) || port <= 0) port = DEFAULT_MANAGER_PORT;
-  if (!managerUrl) managerUrl = `http://127.0.0.1:${port}/`;
-  if (!managerUrl.endsWith('/')) managerUrl = `${managerUrl}/`;
+  managerUrl = resolveManagerUrl(managerUrl, port);
   assertLoopbackManagerUrl(managerUrl);
   return { port, attachOnly, spawn, background, managerUrl, managerUrlExplicit };
 }
@@ -195,6 +205,7 @@ let windowCreating = false;
 let bootstrapPromise: Promise<void> | null = null;
 let managerReadyPromise: Promise<void> | null = null;
 let metricsCollector: MetricsCollectorHandle | null = null;
+let metricsCollectorOwner: ChildProcess | null = null;
 let lastMetricsErrorAt = 0;
 let webContentsHardeningRegistered = false;
 let reminderPopover: ReminderPopover | null = null;
@@ -209,14 +220,21 @@ const DESKTOP_USER_AGENT_TOKEN = 'cli-jaw-desktop';
 const EMBEDDED_BROWSER_PARTITION = 'persist:cli-jaw-browser';
 const ELECTRON_RENDERER_TOKEN = randomBytes(32).toString('hex');
 
-process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN = ELECTRON_RENDERER_TOKEN;
-
 function startMetricsCollector(errorLabel: 'start' | 'restart'): void {
-  if (metricsCollector) return;
+  const ownedGeneration = managerProcess;
+  if (!isCurrentLiveOwnedManagerGeneration(managerProcess, ownedGeneration)) {
+    stopMetricsCollector();
+    return;
+  }
+  if (metricsCollector && metricsCollectorOwner === ownedGeneration) return;
+  stopMetricsCollector();
+  metricsCollectorOwner = ownedGeneration;
   try {
     metricsCollector = startAppMetricsCollector({
       managerUrlProvider: () => MANAGER_URL,
-      tokenProvider: () => ELECTRON_RENDERER_TOKEN,
+      tokenProvider: () => isCurrentLiveOwnedManagerGeneration(managerProcess, ownedGeneration)
+        ? ELECTRON_RENDERER_TOKEN
+        : '',
       onError: (error) => {
         const now = Date.now();
         if (now - lastMetricsErrorAt < METRICS_ERROR_LOG_INTERVAL_MS) return;
@@ -225,6 +243,7 @@ function startMetricsCollector(errorLabel: 'start' | 'restart'): void {
       },
     });
   } catch (err) {
+    metricsCollectorOwner = null;
     ringBuffer.append(`[metrics ${errorLabel} error] ${(err as Error)?.message ?? err}\n`);
   }
 }
@@ -237,6 +256,7 @@ function stopMetricsCollector(): void {
     // Best-effort cleanup: application shutdown must continue.
   }
   metricsCollector = null;
+  metricsCollectorOwner = null;
 }
 
 // #229: the webview tag sets a clean per-webview UA, but service workers and other
@@ -312,7 +332,6 @@ if (!gotLock) {
     configureEmbeddedBrowserSession();
     await bootstrapOnce();
     promptInstallCli().catch(() => {});
-    startMetricsCollector('start');
     if (pendingDeepLinkUrl) {
       const pending = pendingDeepLinkUrl;
       pendingDeepLinkUrl = null;
@@ -475,7 +494,7 @@ function refreshTrayReminderBadge(): void {
 }
 
 function trayRemindersDashboardUrl(): string {
-  return new URL('/?sidebar=reminders', MANAGER_URL).toString();
+  return resolveManagerRouteUrl(MANAGER_URL, '/?sidebar=reminders');
 }
 
 async function openTrayRemindersDashboard(): Promise<void> {
@@ -530,12 +549,14 @@ async function restartManagerServer(): Promise<void> {
   updateServerStatus('Server: Restarting...');
   const child = managerProcess;
   managerProcess = null;
+  stopMetricsCollector();
   try {
     if (child) {
       child.removeAllListeners('exit');
       await gracefulShutdown(child, 5000);
     }
     await ensureManagerRunning();
+    startMetricsCollector('restart');
     markManagerRunning();
     if (mainWindow && !mainWindow.isDestroyed()) {
       await mainWindow.loadURL(MANAGER_URL);
@@ -553,6 +574,7 @@ async function restartManagerServer(): Promise<void> {
 async function bootstrap(): Promise<void> {
   installManagerApplicationMenu();
   installSecurityHeaders(MANAGER_ORIGIN);
+  installRendererRequestIdentity();
   installDefaultSessionPermissionHandlers();
 
   registerTerminalIpc(() => mainWindow);
@@ -582,6 +604,7 @@ async function bootstrap(): Promise<void> {
   });
 
   await ensureManagerRunning();
+  startMetricsCollector('start');
   installTrayReminders();
   markManagerRunning();
   if (FLAGS.background) {
@@ -664,6 +687,26 @@ function installSecurityHeaders(managerOrigin: string): void {
     headers['Content-Security-Policy'] = [csp];
     headers['X-Content-Type-Options'] = ['nosniff'];
     callback({ responseHeaders: headers });
+  });
+}
+
+function installRendererRequestIdentity(): void {
+  session.defaultSession.webRequest.onBeforeSendHeaders((details, callback) => {
+    const mainWindowWebContentsId = mainWindow && !mainWindow.isDestroyed()
+      ? mainWindow.webContents.id
+      : null;
+    const injectIdentity = shouldInjectRendererRequestIdentity(details, {
+      managerProcess,
+      managerOrigin: MANAGER_ORIGIN,
+      mainWindowWebContentsId,
+    });
+    callback({
+      requestHeaders: rendererRequestHeaders(
+        details.requestHeaders,
+        ELECTRON_RENDERER_TOKEN,
+        injectIdentity,
+      ),
+    });
   });
 }
 
@@ -1042,7 +1085,7 @@ async function findAvailableManagerPort(preferredPort: number): Promise<number> 
 async function prepareSpawnManagerUrl(): Promise<void> {
   if (FLAGS.managerUrlExplicit) return;
   const port = await findAvailableManagerPort(FLAGS.port);
-  const url = `http://127.0.0.1:${port}/`;
+  const url = buildImplicitManagerUrl(port);
   if (url === MANAGER_URL) return;
   ringBuffer.append(`[manager port] ${MANAGER_URL} is busy; spawning dashboard at ${url}\n`);
   switchManagerUrl(url);
@@ -1096,7 +1139,7 @@ async function spawnAndWait(): Promise<void> {
 
   const managerPort = getManagerUrlPort(MANAGER_URL);
   PREVIEW_FRAME_POLICY = resolvePreviewFramePolicyForManager(managerPort);
-  managerProcess = spawnJawDashboard(found.path, {
+  const spawnedChild = spawnJawDashboard(found.path, {
     port: managerPort,
     ringBuffer,
     env: {
@@ -1104,9 +1147,16 @@ async function spawnAndWait(): Promise<void> {
       CLI_JAW_ELECTRON_RENDERER_TOKEN: ELECTRON_RENDERER_TOKEN,
     },
   });
+  managerProcess = spawnedChild;
 
-  managerProcess.on('exit', handleManagerExit);
-  managerProcess.on('error', (err) => {
+  spawnedChild.on('exit', (code, signal) => {
+    const wasCurrentGeneration = managerProcess === spawnedChild;
+    managerProcess = releaseOwnedManagerGeneration(managerProcess, spawnedChild);
+    if (!wasCurrentGeneration) return;
+    stopMetricsCollector();
+    handleManagerExit(code, signal);
+  });
+  spawnedChild.on('error', (err) => {
     ringBuffer.append(`[spawn error] ${err.message}\n`);
   });
 
@@ -1132,6 +1182,7 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
     void (async () => {
       try {
         await ensureManagerRunning();
+        startMetricsCollector('restart');
         markManagerRunning();
         if (mainWindow && !mainWindow.isDestroyed()) {
           try {
@@ -1150,7 +1201,6 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
   void (async () => {
     if (shouldAttachToExistingManager() && await probeOnce(MANAGER_URL)) {
       ringBuffer.append(`[manager exit] another instance owns ${MANAGER_URL}; attaching\n`);
-      managerProcess = null;
       if (mainWindow) {
         try {
           await mainWindow.loadURL(MANAGER_URL);
@@ -1178,6 +1228,7 @@ function handleManagerExit(code: number | null, signal: NodeJS.Signals | null): 
     }
     try {
       await ensureManagerRunning();
+      startMetricsCollector('restart');
       markManagerRunning();
       if (await probeOnce(MANAGER_URL)) {
         if (mainWindow && !mainWindow.isDestroyed()) {

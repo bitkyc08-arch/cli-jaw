@@ -1,5 +1,6 @@
 import type { App, BrowserWindow } from 'electron';
 import { URL } from 'node:url';
+import { resolveManagerRouteUrl } from './manager-url.js';
 
 export const JAW_PROTOCOL = 'jaw';
 
@@ -69,7 +70,7 @@ export async function routeJawDeepLink(
   const targetWindow = options.getWindow();
   if (!targetWindow || !focusWindow(targetWindow)) return false;
 
-  const target = new URL(link.path, options.managerUrl);
+  const target = new URL(resolveManagerRouteUrl(options.managerUrl, link.path));
   const managerOrigin = new URL(options.managerUrl).origin;
   if (target.origin !== managerOrigin) return false;
 

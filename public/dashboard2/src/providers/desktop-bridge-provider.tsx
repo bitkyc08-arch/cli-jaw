@@ -35,7 +35,6 @@ export interface DesktopEnvironment {
     identity: {
         name: string;
         electron: boolean;
-        header: string;
     } | null;
 }
 
@@ -67,7 +66,6 @@ type ExposedBrowserApi = Pick<
 
 export interface DesktopBridgeContextValue {
     environment: DesktopEnvironment;
-    getAuthHeader(): { name: string; value: string } | null;
     envelope: CapabilitySurface<EnvelopeAdapter>;
     filesystem: {
         folder: CapabilitySurface<FolderBridgeApi>;
@@ -111,7 +109,6 @@ function wired<NativeApi>(
 
 function detectDesktop(raw: DesktopPreloadApi | null): {
     environment: DesktopEnvironment;
-    token: string | null;
 } {
     try {
         const identified = raw?.identify?.();
@@ -123,10 +120,8 @@ function detectDesktop(raw: DesktopPreloadApi | null): {
                     identity: {
                         name: identified.name,
                         electron: identified.electron,
-                        header: identified.header,
                     },
                 },
-                token: identified.token || null,
             };
         }
     } catch {
@@ -139,7 +134,6 @@ function detectDesktop(raw: DesktopPreloadApi | null): {
     ) {
         return {
             environment: { isElectron: true, detection: 'document-marker', identity: null },
-            token: null,
         };
     }
     if (
@@ -148,12 +142,10 @@ function detectDesktop(raw: DesktopPreloadApi | null): {
     ) {
         return {
             environment: { isElectron: true, detection: 'user-agent', identity: null },
-            token: null,
         };
     }
     return {
         environment: { isElectron: false, detection: 'web', identity: null },
-        token: null,
     };
 }
 
@@ -162,9 +154,6 @@ export function createDesktopBridgeValue(): DesktopBridgeContextValue {
         ? null
         : (window as unknown as { cliJawDesktop?: DesktopPreloadApi }).cliJawDesktop ?? null;
     const detected = detectDesktop(raw);
-    const authHeader = detected.environment.identity && detected.token
-        ? { name: detected.environment.identity.header, value: detected.token }
-        : null;
 
     const envelopeAvailable = hasFunctions(raw, ['identify', 'getHomePath']);
     const envelopeNative: EnvelopeAdapter | null = envelopeAvailable && raw?.identify && raw.getHomePath
@@ -252,7 +241,6 @@ export function createDesktopBridgeValue(): DesktopBridgeContextValue {
 
     return {
         environment: detected.environment,
-        getAuthHeader: () => authHeader ? { ...authHeader } : null,
         envelope: {
             nativeAvailable: envelopeAvailable,
             nativeWired: true,

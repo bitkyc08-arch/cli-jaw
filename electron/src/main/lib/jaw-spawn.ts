@@ -3,6 +3,7 @@ import { existsSync, statSync, readdirSync, accessSync, constants, readFileSync 
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { RingBuffer } from './ring-buffer.js';
+import { createStreamRedactor } from './stream-redactor.js';
 
 let pathFixed = false;
 async function ensureFixedPath(): Promise<void> {
@@ -183,14 +184,20 @@ export function spawnJawDashboard(
   opts: SpawnOptions,
 ): ChildProcess {
   const invocation = shellScriptInvocation(binary, ['dashboard', 'serve', '--port', String(opts.port), '--no-open']);
+  const env = { ...process.env, ...(opts.env ?? {}) };
   const child = spawn(invocation.command, invocation.args, {
     stdio: ['ignore', 'pipe', 'pipe'],
-    env: { ...process.env, ...(opts.env ?? {}) },
+    env,
     detached: false,
     ...(invocation.shell ? { shell: true } : {}),
   });
-  child.stdout?.on('data', (d) => opts.ringBuffer.append(d));
-  child.stderr?.on('data', (d) => opts.ringBuffer.append(d));
+  const rendererToken = env.CLI_JAW_ELECTRON_RENDERER_TOKEN ?? '';
+  for (const stream of [child.stdout, child.stderr]) {
+    if (!stream) continue;
+    const redactor = createStreamRedactor([rendererToken], (chunk) => opts.ringBuffer.append(chunk));
+    stream.on('data', (chunk: Buffer) => redactor.write(chunk));
+    stream.once('end', () => redactor.end());
+  }
   return child;
 }
 

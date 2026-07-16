@@ -32,6 +32,7 @@ test('electron frame navigation allows only manager or configured loopback previ
     const policy = { previewFrom: 24602, previewCount: 50 };
 
     assert.equal(isManagerNavigation('http://127.0.0.1:24576/', 'http://127.0.0.1:24576'), true);
+    assert.equal(isManagerNavigation('http://127.0.0.1:24577/dashboard2/projects/demo', 'http://127.0.0.1:24577'), true);
     assert.equal(isPreviewFrameNavigation('http://127.0.0.1:24602/', policy), true);
     assert.equal(isPreviewFrameNavigation('http://localhost:24651/', policy), true);
     assert.equal(isPreviewFrameNavigation('http://127.0.0.1:24652/', policy), false);

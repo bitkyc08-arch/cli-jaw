@@ -15,21 +15,20 @@ function read(path: string): string {
 const providerPath = 'public/dashboard2/src/providers/desktop-bridge-provider.tsx';
 const contractPath = 'public/dashboard2/src/providers/desktop-bridge-contract.ts';
 
-test('desktop bridge keeps the renderer token behind an auth-header accessor', () => {
+test('desktop bridge exposes detection metadata without renderer auth material', () => {
     const provider = read(providerPath);
+    const contract = read(contractPath);
+    const preload = read('electron/src/preload/index.ts');
 
-    assert.ok(provider.includes('getAuthHeader()'), 'context must expose an auth-header accessor');
-    assert.ok(provider.includes('getAuthHeader: () =>'), 'provider value must implement the accessor');
+    assert.equal(provider.includes('getAuthHeader'), false, 'context must not expose an auth-header accessor');
     assert.match(
         provider,
-        /identity:\s*\{\s*name:\s*identified\.name,\s*electron:\s*identified\.electron,\s*header:\s*identified\.header,?\s*\}/s,
-        'public identity must be reconstructed without the token',
+        /identity:\s*\{\s*name:\s*identified\.name,\s*electron:\s*identified\.electron,?\s*\}/s,
+        'public identity must contain detection metadata only',
     );
-    assert.doesNotMatch(
-        provider,
-        /identity:\s*\{[^}]*token\s*:/s,
-        'context identity must not contain token',
-    );
+    assert.doesNotMatch(provider, /\btoken\b|identified\.header/, 'provider must not read renderer auth material');
+    assert.doesNotMatch(contract, /\btoken\s*:|\bheader\s*:/, 'raw dashboard2 contract must not declare renderer auth material');
+    assert.doesNotMatch(preload, /CLI_JAW_ELECTRON_RENDERER_TOKEN|installDesktopFetchHeader|window\.fetch/, 'preload must not receive or inject renderer auth material');
 });
 
 test('desktop environment records the four ordered detection outcomes', () => {
@@ -87,7 +86,9 @@ test('raw desktop contract is independent from the frozen manager renderer', () 
     const contract = read(contractPath);
 
     assert.doesNotMatch(contract, /public\/manager\/src|from\s+['"][^'"]*manager\/src/);
-    assert.match(contract, /token:\s*string/);
+    assert.match(contract, /name:\s*'cli-jaw-desktop'/);
+    assert.match(contract, /electron:\s*true/);
+    assert.doesNotMatch(contract, /token:\s*string|header:\s*'X-CLI-Jaw-Electron'/);
     assert.match(contract, /reloadWindow\?:\s*\(\)\s*=>\s*Promise<void>/);
     assert.match(contract, /hardReloadWindow\?:\s*\(\)\s*=>\s*Promise<void>/);
     assert.match(contract, /stale\?:\s*true/);

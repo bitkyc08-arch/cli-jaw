@@ -206,8 +206,10 @@ test('Electron metrics transport is main-owned and lifecycle-scoped', () => {
 
     assert.ok(main.includes('function startMetricsCollector('), 'main must own one collector start factory');
     assert.ok(main.includes('function stopMetricsCollector('), 'main must own one deterministic collector stop path');
+    assert.ok(main.includes('let metricsCollectorOwner: ChildProcess | null = null'), 'collector ownership must be bound to one child object generation');
     assert.ok(main.includes('managerUrlProvider: () => MANAGER_URL'), 'collector must read the current mutable manager URL on every tick');
-    assert.ok(main.includes('tokenProvider: () => ELECTRON_RENDERER_TOKEN'), 'collector must read the per-launch token from main');
+    assert.ok(main.includes('isCurrentLiveOwnedManagerGeneration(managerProcess, ownedGeneration)'), 'collector must verify its child generation before every authenticated tick');
+    assert.match(main, /tokenProvider:\s*\(\)\s*=>\s*isCurrentLiveOwnedManagerGeneration[\s\S]*?\? ELECTRON_RENDERER_TOKEN\s*:\s*''/, 'collector token access must fail closed after generation loss');
     assert.doesNotMatch(collector, /\bipcMain\b|cli-jaw:metrics:get-latest/, 'main metrics must not expose an IPC pull route');
     // 089.11 §7-4 intentionally removes the old preload getMetrics contract; this is not a compatibility regression.
     assert.doesNotMatch(preload, /\bgetMetrics\b|setupMetricsBridge|\.\/metrics\.js/, 'preload must not expose or start metrics transport');
@@ -220,7 +222,11 @@ test('Electron metrics transport is main-owned and lifecycle-scoped', () => {
 
 test('Electron default launch owns its manager server instead of attaching to web UI', () => {
     const main = read('electron/src/main/index.ts');
+    const pkg = read('package.json');
 
+    assert.ok(pkg.includes('"electron:dev": "npm --prefix electron run dev"'), 'the canonical dev command must have one Electron lifecycle owner');
+    assert.equal(pkg.includes('concurrently'), false, 'the retired sibling launcher dependency must be removed');
+    assert.equal(existsSync(join(projectRoot, 'scripts/electron-dev-manager.mjs')), false, 'the retired sibling manager helper must be deleted');
     assert.ok(main.includes('const ELECTRON_MANAGER_PORT_START = 24577'), 'Electron implicit manager lane must start at 24577, leaving web/CLI dashboard on 24576');
     assert.ok(main.includes('const ELECTRON_MANAGER_PORT_END = 24590'), 'Electron fallback manager lane must reuse the dashboard fallback upper bound 24590');
     assert.ok(main.includes('const DEFAULT_MANAGER_PORT = ELECTRON_MANAGER_PORT_START'), 'Electron default port must be 24577 through the named lane constant');
@@ -251,6 +257,29 @@ test('Electron default launch owns its manager server instead of attaching to we
         'Electron must log when it avoids a busy web dashboard port',
     );
     assert.ok(!main.includes('const PROBE_PORTS'), 'Electron must not probe and attach to arbitrary web dashboard ports by default');
+    assert.ok(main.includes('buildImplicitManagerUrl(port)'), 'dynamic manager ports must retain the dashboard2 route');
+    assert.ok(main.includes('CLI_JAW_ELECTRON_RENDERER_TOKEN: ELECTRON_RENDERER_TOKEN'), 'the owned manager spawn must receive the renderer token');
+    assert.equal(main.includes('process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN ='), false, 'main must not publish the per-launch token through its global environment');
+    assert.equal(read('electron/src/preload/index.ts').includes('CLI_JAW_ELECTRON_RENDERER_TOKEN'), false, 'preload must never receive the per-launch token');
+});
+
+test('Electron renderer identity is main-owned, request-scoped, and generation-safe', () => {
+    const main = read('electron/src/main/index.ts');
+    const identity = read('electron/src/main/lib/renderer-request-identity.ts');
+
+    assert.ok(main.includes('session.defaultSession.webRequest.onBeforeSendHeaders'), 'default session must own renderer header injection');
+    assert.ok(main.includes('shouldInjectRendererRequestIdentity(details'), 'every default-session request must pass the narrow predicate');
+    assert.ok(identity.includes("details.resourceType === 'xhr'"), 'only XHR requests may receive renderer identity');
+    assert.ok(identity.includes('details.webContentsId === context.mainWindowWebContentsId'), 'only the main manager window may receive renderer identity');
+    assert.ok(identity.includes('details.frame?.parent === null'), 'preview subframes must remain outside renderer identity even when same-origin');
+    assert.ok(identity.includes('hasOrigin(details.url, context.managerOrigin)'), 'request URL must match the current manager origin');
+    assert.ok(identity.includes('hasOrigin(details.frame.url, context.managerOrigin)'), 'requesting top-level frame URL must match the current manager origin even under no-referrer policy');
+    assert.equal(identity.includes('hasOrigin(details.referrer'), false, 'no-referrer policy means referrer cannot be an identity prerequisite');
+    assert.ok(main.includes('const spawnedChild = spawnJawDashboard'), 'each spawn must retain its child object identity');
+    assert.ok(main.includes('const wasCurrentGeneration = managerProcess === spawnedChild'), 'exit handling must compare the exiting child to current ownership synchronously');
+    assert.ok(main.includes('managerProcess = releaseOwnedManagerGeneration(managerProcess, spawnedChild)'), 'matching exit must clear ownership before restart work');
+    assert.ok(main.includes('if (!wasCurrentGeneration) return'), 'stale old-child exits must not restart or clear the new generation');
+    assert.ok(main.includes('stopMetricsCollector();\n    handleManagerExit(code, signal);'), 'matching exit must stop metrics before asynchronous restart handling');
 });
 
 test('Electron window fits within the visible display work area', () => {

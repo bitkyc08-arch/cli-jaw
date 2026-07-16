@@ -4,6 +4,10 @@ import {
     startAppMetricsCollector,
     type AppMetricsCollectorOptions,
 } from '../../electron/src/main/lib/app-metrics.js';
+import {
+    isCurrentLiveOwnedManagerGeneration,
+    type OwnedManagerProcessState,
+} from '../../electron/src/main/lib/renderer-request-identity.js';
 
 const METRICS_PATH = '/api/dashboard/electron-metrics';
 const ELECTRON_HEADER = 'x-cli-jaw-electron';
@@ -91,6 +95,37 @@ test('main collector posts the sampled snapshot to the normalized manager route 
     });
     assert.equal(collector.snapshot()?.ts, 1_234);
     assert.equal(collector.buffer().length, 1);
+    collector.stop();
+});
+
+test('metrics transport stops authenticating when its owned child generation is no longer current', async () => {
+    let tick!: () => void;
+    let fetchCount = 0;
+    const ownedGeneration: OwnedManagerProcessState = { exitCode: null, signalCode: null, killed: false };
+    const replacementGeneration: OwnedManagerProcessState = { exitCode: null, signalCode: null, killed: false };
+    let currentGeneration: OwnedManagerProcessState | null = ownedGeneration;
+    const firstPost = deferred<void>();
+    const collector = startAppMetricsCollector(baseOptions(async () => {
+        fetchCount += 1;
+        firstPost.resolve();
+        return new Response(null, { status: 200 });
+    }, {
+        scheduleTick: (callback) => {
+            tick = callback;
+            return { fakeTimer: true };
+        },
+        tokenProvider: () => isCurrentLiveOwnedManagerGeneration(currentGeneration, ownedGeneration)
+            ? RENDERER_TOKEN
+            : '',
+    }));
+
+    await firstPost.promise;
+    await nextTurn();
+    currentGeneration = replacementGeneration;
+    tick();
+    await nextTurn();
+
+    assert.equal(fetchCount, 1, 'a stale collector may sample but cannot POST with the new generation');
     collector.stop();
 });
 

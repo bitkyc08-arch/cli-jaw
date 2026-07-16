@@ -3,34 +3,7 @@ import { contextBridge, ipcRenderer, webUtils } from 'electron';
 const DESKTOP_IDENTITY = {
   name: 'cli-jaw-desktop',
   electron: true,
-  header: 'X-CLI-Jaw-Electron',
-  token: process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN ?? '',
 } as const;
-
-function isSameOrigin(input: RequestInfo | URL): boolean {
-  try {
-    const rawUrl = input instanceof Request ? input.url : input.toString();
-    const url = new URL(rawUrl, window.location.href);
-    return url.origin === window.location.origin;
-  } catch {
-    return false;
-  }
-}
-
-function installDesktopFetchHeader(): void {
-  const nativeFetch = window.fetch.bind(window);
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-    if (!isSameOrigin(input)) return nativeFetch(input, init);
-
-    const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
-    if (DESKTOP_IDENTITY.token) {
-      headers.set(DESKTOP_IDENTITY.header, DESKTOP_IDENTITY.token);
-    } else {
-      headers.delete(DESKTOP_IDENTITY.header);
-    }
-    return nativeFetch(input, { ...init, headers });
-  };
-}
 
 function markDesktopDocument(): void {
   try {
@@ -176,4 +149,3 @@ contextBridge.exposeInMainWorld('cliJawDesktop', {
 });
 
 markDesktopDocument();
-installDesktopFetchHeader();

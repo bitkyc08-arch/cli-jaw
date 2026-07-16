@@ -75,3 +75,40 @@ exit 0
         rmSync(dir, { recursive: true, force: true });
     }
 });
+
+test('electron jaw spawn passes and redacts its renderer token on both output streams', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'jaw-electron-spawn-'));
+    const token = 'renderer-token-that-must-never-reach-the-ring-buffer';
+    try {
+        const currentJaw = writeExecutable(dir, 'jaw-current', `#!/usr/bin/env node
+const token = process.env.CLI_JAW_ELECTRON_RENDERER_TOKEN || '';
+process.stdout.write('stdout:' + token.slice(0, 17));
+setTimeout(() => {
+  process.stdout.write(token.slice(17) + ':done\\n');
+  process.stderr.write('stderr:' + token.slice(0, 11));
+  setTimeout(() => {
+    process.stderr.write(token.slice(11) + ':done\\n');
+  }, 10);
+}, 10);
+`);
+        const ringBuffer = new RingBuffer();
+        const child = spawnJawDashboard(currentJaw, {
+            port: 24577,
+            ringBuffer,
+            env: { CLI_JAW_ELECTRON_RENDERER_TOKEN: token },
+        });
+        const result = await new Promise<{ code: number | null; signal: NodeJS.Signals | null }>((resolve, reject) => {
+            child.once('error', reject);
+            child.once('close', (code, signal) => resolve({ code, signal }));
+        });
+
+        const output = ringBuffer.read();
+        assert.equal(result.code, 0);
+        assert.equal(result.signal, null);
+        assert.equal(output.includes(token), false);
+        assert.match(output, /stdout:\[REDACTED\]:done/);
+        assert.match(output, /stderr:\[REDACTED\]:done/);
+    } finally {
+        rmSync(dir, { recursive: true, force: true });
+    }
+});

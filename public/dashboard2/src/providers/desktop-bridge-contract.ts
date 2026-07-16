@@ -1,8 +1,6 @@
 export interface DesktopIdentityEnvelope {
     name: 'cli-jaw-desktop';
     electron: true;
-    header: 'X-CLI-Jaw-Electron';
-    token: string;
 }
 
 export interface TerminalSessionSnapshot {

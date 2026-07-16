@@ -23,17 +23,22 @@ npm --prefix electron install
 
 ## Develop
 
-From the repo root, run the dashboard server and Electron with hot reload:
+From the repo root, run the canonical Electron development entry point:
 
 ```bash
 npm run electron:dev
 ```
 
-If an Electron manager server is already running on `24577`:
+Electron main is the single lifecycle owner. It selects an available port from
+`24577-24590`, spawns its own manager, loads `/dashboard2/`, and tears down only
+that owned child. To attach to an existing manager instead, provide its full URL:
 
 ```bash
-npm --prefix electron run dev
+JAW_MANAGER_URL='http://127.0.0.1:24576/dashboard2/?qa=manual' npm --prefix electron run dev
 ```
+
+An explicit URL keeps its path and query unchanged and is never replaced with an
+implicit manager spawn unless `--spawn` is also supplied.
 
 ## Build The Shell
 
@@ -142,8 +147,8 @@ Recent desktop surfaces include:
 
 | Var | Default | Description |
 |---|---|---|
-| `JAW_MANAGER_URL` | `http://127.0.0.1:24577/` | Manager URL to attach to |
-| `JAW_MANAGER_PORT` | `24577` | Port used when URL is not set; implicit spawn falls back through `24590` |
+| `JAW_MANAGER_URL` | unset | Explicit manager URL to attach to; path and query are preserved |
+| `JAW_MANAGER_PORT` | `24577` | Port used when URL is not set; implicit `/dashboard2/` spawn falls back through `24590` |
 | `JAW_BIN` | auto-detected | Path to a `jaw` CLI binary when not using the bundled sidecar |
 | `JAW_ELECTRON_DEVTOOLS` | unset | Set to `1` to open DevTools |
 | `NODE_ENV` | unset | `development` enables DevTools |
@@ -159,11 +164,14 @@ Recent desktop surfaces include:
 
 ## Lifecycle
 
-1. Health-check `${MANAGER_URL}api/dashboard/health` with backoff
+1. An explicit manager URL enters attach mode and is health-checked with backoff
    `200/400/800/1600/3000/5000ms` for up to 60 seconds.
-2. Healthy manager loads immediately.
-3. Unhealthy and not `--attach-only`: discover sidecar/global `jaw`, spawn
-   `jaw dashboard serve --port <port> --no-open`, then re-check.
+2. An implicit launch selects a free owned port in `24577-24590`, constructs the
+   manager URL below `/dashboard2/`, and never attaches to an occupied port.
+3. Discover sidecar/global `jaw`, spawn
+   `jaw dashboard serve --port <port> --no-open`, pass the per-launch renderer
+   token only to that owned manager, redact the token from chunked child output,
+   then health-check and load the selected URL.
 4. Binary missing: show native install/pick-path/quit dialog.
 5. Crash loop guard: more than 3 manager exits within 60 seconds stops
    auto-restart and shows a dialog.

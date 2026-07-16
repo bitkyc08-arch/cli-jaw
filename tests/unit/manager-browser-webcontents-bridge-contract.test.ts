@@ -54,8 +54,8 @@ test('preload invokes the browser:* webview IPC channels', () => {
     ]) {
         assert.ok(preloadSource.includes(channel), `preload wires ${channel}`);
     }
-    assert.ok(preloadSource.includes('CLI_JAW_ELECTRON_RENDERER_TOKEN'), 'renderer-only HTTP routes must use the per-launch Electron token');
-    assert.ok(preloadSource.includes('headers.set(DESKTOP_IDENTITY.header, DESKTOP_IDENTITY.token)'), 'preload must send the token value, not only a spoofable marker');
+    assert.equal(preloadSource.includes('CLI_JAW_ELECTRON_RENDERER_TOKEN'), false, 'preload must not receive the renderer token');
+    assert.equal(preloadSource.includes('window.fetch'), false, 'preload must not patch isolated-world fetch');
 });
 
 test('BrowserPanel prefers native CDP inspect and exposes full-permission actions without an action toggle', () => {

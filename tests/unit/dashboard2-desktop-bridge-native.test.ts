@@ -17,7 +17,7 @@ function makeFakePreload(calls: Call[]): Record<string, unknown> {
         return () => { calls.push({ method: `${method}:unsubscribe`, args: [] }); };
     };
     return {
-        identify: () => ({ name: 'cli-jaw-desktop', electron: true, header: 'x-cli-jaw-electron', token: 'tok' }),
+        identify: () => ({ name: 'cli-jaw-desktop', electron: true }),
         getHomePath: () => '/home/fake',
         terminal: {
             list: record('terminal.list', Promise.resolve({ ok: true, sessions: [] })),
@@ -91,6 +91,9 @@ test('native adapters pass calls, args, and unsubscribes through to the preload'
             '../../public/dashboard2/src/providers/desktop-bridge-provider.tsx'
         );
         const bridge = createDesktopBridgeValue();
+
+        assert.deepEqual(bridge.environment.identity, { name: 'cli-jaw-desktop', electron: true });
+        assert.equal('getAuthHeader' in bridge, false, 'renderer context must not expose auth material');
 
         for (const [label, surface] of Object.entries({
             terminal: bridge.terminal,

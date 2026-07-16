@@ -75,7 +75,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `gate:typecheck` / `gate:tests` / `gate:*` | `node scripts/release-gates.mjs <gate>` |
 | `gate:all` | `node scripts/release-gates.mjs` |
 | `prepublishOnly` | `npm run build && npm run build:frontend && npm run check:frontend-build-output` |
-| `electron:dev` | `concurrently -k -n jaw,electron "node scripts/electron-dev-manager.mjs" "npm --prefix electron run dev"` |
+| `electron:dev` | `npm --prefix electron run dev` — Electron main이 manager spawn/token/teardown을 단독 소유 |
 | `electron:build` | `npm --prefix electron run build` |
 | `sidecar:bundle` | `bash scripts/bundle-sidecar.sh darwin arm64` |
 | `electron:dist:mac` | `npm run build:frontend && npm run sidecar:bundle && npm --prefix electron run build && CSC_IDENTITY_AUTO_DISCOVERY=false npm --prefix electron run dist:mac && npm run electron:resign:mac && npm run check:electron-dist-mac-no-jwc && npm run check:app-icons` |
@@ -108,7 +108,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | Frontend dev | `npm run dev:frontend` | Vite dev server port `5173`, `/api` proxy는 `http://localhost:3458` |
 | Frontend build | `npm run build:frontend` | Vite가 `public/index.html` + `public/manager/index.html`을 `public/dist`로 빌드 |
 | Manager dashboard | `jaw dashboard serve` | `src/manager/server.ts` 또는 `dist/src/manager/server.js` 실행, 기본 port `24576` |
-| Electron manager dashboard | Electron implicit spawn | Web/CLI lane `24576`과 분리된 manager port `24577` 기본값, fallback `24578-24590`; packaged app prefers bundled sidecar `server/bin/jaw` |
+| Electron manager dashboard | Electron implicit spawn | Web/CLI lane `24576`과 분리된 manager port `24577` 기본값, fallback `24578-24590`; implicit URL은 `/dashboard2/`, explicit URL은 path/query 보존; packaged app prefers bundled sidecar `server/bin/jaw` |
 | Docker local source | `Dockerfile` | local source copy → `npm run build` + `npm run build:frontend` → `node dist/server.js` |
 | Docker npm image | `Dockerfile.dev` | `npm install -g cli-jaw@${CLI_JAW_VERSION}` → `jaw serve --no-open` |
 | Compose | `docker-compose.yml` | 단일 `jaw` service, `${PORT:-3457}:3457`, `.env`, named volume `jaw-data` |
@@ -121,6 +121,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 | `PORT` | `server.ts`, `bin/commands/serve.ts`, CLI API commands | server port. 기본 `3457` |
 | `HOST` | `bin/commands/serve.ts` | serve child env로 전달 |
 | `JAW_OPEN_BROWSER` | `server.ts`, `serve.ts` | `serve` 실행 후 브라우저 open 여부 |
+| `JAW_MANAGER_URL`, `JAW_MANAGER_PORT` | `electron/src/main/index.ts`, `electron/src/main/lib/manager-url.ts` | Electron explicit attach URL(path/query 보존) 또는 implicit `/dashboard2/` owned spawn port (`24577-24590`) |
 | `JAW_LAN_MODE` | `server.ts`, `serve.ts` | LAN host/origin bypass 활성화 |
 | `JAW_REMOTE_ACCESS_MODE` | `serve.ts` | `--remote`에서 `direct`로 주입 |
 | `JAW_TRUST_PROXY` | `server.ts`, `serve.ts` | Express trust proxy 설정 |
@@ -148,7 +149,7 @@ aliases: [CLI-JAW Infra, infrastructure modules, core runtime]
 
 ### `scripts/` 실제 파일
 
-`atomic-build.sh`, `bundle-sidecar.sh`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `collect-fresh-install-evidence.sh`, `audit-fresh-install-evidence.mjs`, `verify-release-evidence.mjs`, `require-release-evidence.mjs`, `electron-dev-manager.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-wsl.sh`, `install.sh`, `link-current-nvm-bin.cjs`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-gates.mjs`, `release-preview.sh`, `release.sh`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`.
+`atomic-build.sh`, `bundle-sidecar.sh`, `check-app-icon-assets.cjs`, `check-cli-bin-links.cjs`, `check-copilot-gap.ts`, `check-deps-offline.ts`, `check-deps-online.sh`, `check-electron-no-native.cjs`, `check-electron-sidecar-no-jwc.cjs`, `check-strict-baseline.mjs`, `check-web-ui-build-output.ts`, `collect-fresh-install-evidence.sh`, `audit-fresh-install-evidence.mjs`, `verify-release-evidence.mjs`, `require-release-evidence.mjs`, `ensure-native-modules.cjs`, `fresh-install-smoke.ts`, `i18n-registry.ts`, `install-officecli.ps1`, `install-officecli.sh`, `install-wsl.sh`, `install.sh`, `link-current-nvm-bin.cjs`, `postinstall-guard.cjs`, `prepare-sidecar-package-json.cjs`, `release-gates.mjs`, `release-preview.sh`, `release.sh`, `smoke/opencode-external-dir-smoke.ts`, `smoke/tui-frame-resize-stress.ts`.
 
 ---
 
