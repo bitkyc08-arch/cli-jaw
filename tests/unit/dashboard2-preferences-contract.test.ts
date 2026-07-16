@@ -42,12 +42,18 @@ test('dashboard2 keymap matches the server navigation shortcut action set', () =
 
 test('dashboard2 boots the saved theme before the application module', () => {
     const html = read('public/dashboard2/index.html');
-    const themeReadIndex = html.indexOf("localStorage.getItem('jaw.uiTheme')");
+    const bootstrap = read('public/dashboard2/src/theme-bootstrap.ts');
+    const themeModuleIndex = html.indexOf('src="/dashboard2/src/theme-bootstrap.ts"');
     const appModuleIndex = html.indexOf('src="/dashboard2/src/main.tsx"');
 
-    assert.ok(themeReadIndex >= 0, 'inline theme boot must read jaw.uiTheme');
-    assert.ok(themeReadIndex < appModuleIndex, 'theme boot must run before the application module');
-    assert.ok(html.includes("setAttribute('data-theme', saved)"));
+    assert.ok(themeModuleIndex >= 0, 'dashboard2 must load the self-hosted theme bootstrap module');
+    assert.ok(themeModuleIndex < appModuleIndex, 'theme bootstrap must run before the application module');
+    assert.ok(bootstrap.includes("localStorage.getItem('jaw.uiTheme')"));
+    assert.ok(bootstrap.includes("saved === 'dark'"));
+    assert.ok(bootstrap.includes("saved === 'light'"));
+    assert.ok(bootstrap.includes("saved === 'auto'"));
+    assert.ok(bootstrap.includes("setAttribute('data-theme', theme)"));
+    assert.ok(bootstrap.includes("setAttribute('data-theme', 'auto')"));
 });
 
 test('dashboard2 shortcuts expose the source-aware dispatch entry point', () => {

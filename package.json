@@ -119,6 +119,7 @@
     "electron:start": "npm --prefix electron run start",
     "check:cli-bin-links": "node scripts/check-cli-bin-links.cjs",
     "check:electron-sidecar-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs",
+    "check:electron-runtime-parity": "node scripts/check-electron-runtime-parity.mjs",
     "check:electron-dist-mac-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs --server-root electron/dist/mac-arm64/cli-jaw.app/Contents/Resources/server",
     "check:electron-dist-win-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs --server-root electron/dist/win-unpacked/resources/server",
     "check:electron-dist-linux-no-jwc": "node scripts/check-electron-sidecar-no-jwc.cjs --server-root electron/dist/linux-unpacked/resources/server",
@@ -186,6 +187,7 @@
     "claude-e": "latest"
   },
   "devDependencies": {
+    "@electron/asar": "3.4.1",
     "@types/better-sqlite3": "^7.6.13",
     "@types/d3": "^7.4.3",
     "@types/dompurify": "^3.0.5",

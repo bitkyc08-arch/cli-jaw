@@ -19,6 +19,8 @@ extraResources:
       - "!**/*.map"
       - "!**/test*"
       - "!**/.cache"
+      - "!**/.DS_Store"
+      - "!**/.gitkeep"
   - from: build/icon.png
     to: icon.png
   - from: build/trayTemplate.png
