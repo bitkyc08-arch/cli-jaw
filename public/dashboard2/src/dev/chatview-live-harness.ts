@@ -4,12 +4,12 @@
 // the 045 stream scheduler, exactly like ChatView's subscribeAgentBody wiring)
 import { createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
-import type { AgentOutputSsePayload, TurnLifecycleSsePayload } from '../../../../src/shared/chat-events.ts';
+import type { AgentDoneSsePayload, AgentOutputSsePayload, TurnLifecycleSsePayload } from '../../../../src/shared/chat-events.ts';
 import { ManagerPreferencesProvider, type PreferencesRegistryClient } from '../providers/preferences-provider.tsx';
 import { TurnStreamViewport } from '../turn-stream/components/TurnStreamViewport.tsx';
 import { LiveTurnTail } from '../turn-stream/live/LiveTurnTail.tsx';
 import { createStreamScheduler } from '../turn-stream/live/stream-scheduler.ts';
-import { normalizeAgentOutput } from '../turn-stream/hydrate.ts';
+import { normalizeAgentDone, normalizeAgentOutput } from '../turn-stream/hydrate.ts';
 import type { TurnStreamAction } from '../turn-stream/types.ts';
 import { createTurnStore, type TurnStore } from '../turn-stream/store/turn-store.ts';
 
@@ -21,6 +21,7 @@ export interface LiveHarness {
     store: TurnStore;
     ingestLifecycle(events: TurnLifecycleSsePayload[]): void;
     pushBody(traceRunId: string, text: string, textLen: number): void;
+    finishRun(traceRunId: string, text: string): void;
     counts(): { liveArticles: number; committedRows: number; liveTailText: string };
 }
 
@@ -89,6 +90,16 @@ export function mountChatViewLiveHarness(): LiveHarness {
             if (!pending.has(key)) pending.set(key, actions);
             actions.push(normalizeAgentOutput(payload));
             scheduler.push(key, text);
+        },
+        finishRun(traceRunId, text) {
+            const key = store.resolveTurnIdForTrace(traceRunId)
+                ?? traceKeys.get(traceRunId)
+                ?? `trace:${traceRunId}`;
+            scheduler.flushTurn(key);
+            const payload: AgentDoneSsePayload = {
+                topic: 'agent', event: 'agent_done', traceRunId, text,
+            };
+            store.ingest(normalizeAgentDone(payload));
         },
         counts() {
             return {

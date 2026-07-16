@@ -168,6 +168,21 @@ function joinRunToOnlyLiveTurn(state: InternalState, runId: string): InternalSta
     return { ...state, runToTurn: { ...state.runToTurn, [runId]: only } };
 }
 
+function promoteFinalizedRunBody(state: InternalState, runId: string, text: string): InternalState {
+    const turnId = state.runToTurn[runId];
+    if (!turnId) return state;
+    const bodies = {
+        ...state.bodies,
+        [turnId]: mergeBody(state.bodies[turnId], {
+            text,
+            toolLog: null,
+            provenance: 'live',
+            traceRunId: runId,
+        }),
+    };
+    return { ...state, bodies: capBodies(bodies) };
+}
+
 export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnStreamState {
     const s = internal(state);
     switch (action.kind) {
@@ -226,6 +241,7 @@ export function reduce(state: TurnStreamState, action: TurnStreamAction): TurnSt
                 const liveBodies = { ...next.liveBodies, [action.traceRunId]: action.text };
                 next = { ...next, liveBodies: capLiveBodies(liveBodies, action.traceRunId) };
                 next = joinRunToOnlyLiveTurn(next, action.traceRunId);
+                next = promoteFinalizedRunBody(next, action.traceRunId, action.text);
             }
             return next;
         }

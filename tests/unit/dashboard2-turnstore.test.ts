@@ -313,6 +313,7 @@ test('045: ten consecutive tool-less turns each keep their streaming body (ring-
         assert.equal(store.getLiveBodyForTurn(turnId), `body${i}`, `turn ${i} sees its live body`);
         store.ingest({ kind: 'agent_done', traceRunId: `seq-run-${i}`, text: `body${i}` });
         store.ingest(lifecycleActions([syntheticEnd(turnId, 'fixture-session-0', 9)]));
+        assert.equal(store.getBodySnapshot(turnId)?.text, `body${i}`, `turn ${i} promotes its final live body before commit`);
     }
 });
 

@@ -149,6 +149,19 @@ test('041: history message body is authoritative — live replay cannot overwrit
     // re-hydrating the same page keeps the message body (merge precedence)
     state = reduce(state, { kind: 'history_page', messages: messageSlice });
     assert.equal(state.bodies[turnId].text, persisted);
+    state = reduce(state, {
+        kind: 'lifecycle',
+        payload: {
+            topic: 'agent', event: 'turn_segment', turnId, turnSeq: 99,
+            segmentId: `${turnId}:live-detail`, sessionId: 'fixture-session-0',
+            createdAt: 1_790_000_000_000, observedAt: 1_790_000_000_000,
+            providerAt: null, fidelity: 'full', thinkingMarker: null,
+            type: 'tool', status: 'done', detailRef: { traceRunId: 'late-live-run', traceSeq: 1 },
+        },
+    });
+    state = reduce(state, { kind: 'agent_done', traceRunId: 'late-live-run', text: 'must not overwrite persisted' });
+    assert.equal(state.bodies[turnId].text, persisted, 'message provenance beats later live promotion');
+    assert.equal(state.bodies[turnId].provenance, 'message');
 });
 
 test('041: pure boundary — no window/document/fetch/react imports in pure modules', () => {

@@ -86,6 +86,15 @@ test('045 browser: live tail streams, folds atomically on turn_end, follows bott
         document.querySelectorAll('[data-live="1"] .d2-turn-shimmer, [data-live="1"] .is-running').length);
     assert.ok(shimmer >= 1, 'running segment shimmers in the live tail');
 
+    // Real fast-completion order: agent_done lands before turn_end. The final
+    // live body must be promoted so the committed row does not go blank.
+    await page.evaluate(() => window.__jawLiveHarness!.finishRun('live-run-1', 'streaming body text'));
+    assert.equal(
+        await page.evaluate(() => window.__jawLiveHarness!.store.getBodySnapshot('live-a')?.text ?? null),
+        'streaming body text',
+        'agent_done promotes the final body before turn_end',
+    );
+
     // atomic fold: turn_end removes the live article and mounts exactly one
     // committed row in the same observable state (no duplicate, no missing)
     await page.evaluate(() => window.__jawLiveHarness!.ingestLifecycle([{
@@ -100,6 +109,11 @@ test('045 browser: live tail streams, folds atomically on turn_end, follows bott
     });
     counts = await page.evaluate(() => window.__jawLiveHarness!.counts());
     assert.equal(counts.liveArticles + counts.committedRows, 1, 'exactly one representation after fold');
+    assert.equal(
+        await page.evaluate(() => window.__jawLiveHarness!.store.getBodySnapshot('live-a')?.text ?? null),
+        'streaming body text',
+        'committed turn retains the promoted body',
+    );
 
     // bottom-follow: pinned at end + new live turn keeps the tail visible
     const followed = await page.evaluate(() => {
