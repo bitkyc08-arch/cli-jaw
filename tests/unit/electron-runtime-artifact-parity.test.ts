@@ -16,10 +16,13 @@ import {
     GLOBAL_RETIRED_MARKERS,
     PAGE_WORLD_MARKERS,
     PRELOAD_MARKERS,
+    REQUIRED_MAIN_MARKERS,
+    REQUIRED_SERVER_MARKERS,
     checkElectronRuntimeParity,
     compareManifests,
     createTreeManifest,
     findForbiddenMarkers,
+    findMissingMarkers,
     loadBuilderServerExclusions,
     resolveArtifactPaths,
 } from '../../scripts/check-electron-runtime-parity.mjs';
@@ -65,8 +68,9 @@ function makeFixture(t: Parameters<typeof test>[1] extends (t: infer T) => unkno
     write(join(sourcePublic, 'assets', 'app.js'), 'console.log("page world clean");');
     cpSync(sourcePublic, join(sidecar, 'public', 'dist'), { recursive: true });
 
-    const legitimateOwnerText = 'const route = "/api/dashboard/electron-metrics"; const header = "X-CLI-Jaw-Electron"; const token = "CLI_JAW_ELECTRON_RENDERER_TOKEN";';
-    write(join(sidecar, 'dist', 'server.js'), legitimateOwnerText);
+    const legitimateServerOwnerText = 'const route = "/api/dashboard/electron-metrics"; const header = "X-CLI-Jaw-Electron"; const token = "CLI_JAW_ELECTRON_RENDERER_TOKEN";';
+    const legitimateMainOwnerText = `${legitimateServerOwnerText} function startAppMetricsCollector() {}`;
+    write(join(sidecar, 'dist', 'server.js'), legitimateServerOwnerText);
     write(join(sidecar, 'node'), 'node-binary-fixture');
     write(join(sidecar, 'package.json'), '{"name":"sidecar-fixture"}');
     write(join(sidecar, 'src', 'excluded.ts'), 'not packaged');
@@ -82,7 +86,7 @@ function makeFixture(t: Parameters<typeof test>[1] extends (t: infer T) => unkno
     cpSync(join(sidecar, 'node'), join(packagedServer, 'node'));
     cpSync(join(sidecar, 'package.json'), join(packagedServer, 'package.json'));
 
-    write(outMain, legitimateOwnerText);
+    write(outMain, legitimateMainOwnerText);
     write(outPreload, 'contextBridge.exposeInMainWorld("cliJawDesktop", {});');
     write(join(appPath, 'Contents', 'Resources', 'app.asar'), 'fixture placeholder; never packaged by this test');
 
@@ -191,6 +195,37 @@ test('retired poller code fails even when ASAR bytes otherwise match', async (t)
         checkElectronRuntimeParity({ projectRoot: fixture.root, readAsarEntry: fixture.readAsarEntry }),
         /electron\/out\/main\/index\.js: forbidden marker "pullAndPost"/,
     );
+});
+
+test('required main and server owners cannot disappear from synchronized artifacts', async (t) => {
+    const missingMain = makeFixture(t);
+    const mainWithoutCollector = readFileSync(missingMain.outMain, 'utf8')
+        .replace('function startAppMetricsCollector() {}', '');
+    write(missingMain.outMain, mainWithoutCollector);
+    missingMain.asarEntries['out/main/index.js'] = Buffer.from(mainWithoutCollector);
+    await assert.rejects(
+        checkElectronRuntimeParity({ projectRoot: missingMain.root, readAsarEntry: missingMain.readAsarEntry }),
+        /required owner marker missing "main metrics collector"/,
+    );
+
+    const missingServer = makeFixture(t);
+    const sidecarServer = join(missingServer.root, 'electron', 'sidecar', 'server', 'dist', 'server.js');
+    const packagedServer = join(missingServer.appPath, 'Contents', 'Resources', 'server', 'dist', 'server.js');
+    const withoutHeader = readFileSync(sidecarServer, 'utf8').replace('X-CLI-Jaw-Electron', 'removed-header');
+    write(sidecarServer, withoutHeader);
+    write(packagedServer, withoutHeader);
+    await assert.rejects(
+        checkElectronRuntimeParity({ projectRoot: missingServer.root, readAsarEntry: missingServer.readAsarEntry }),
+        /required owner marker missing "Electron identity header"/,
+    );
+});
+
+test('positive owner marker helpers distinguish main and server requirements', () => {
+    const main = '/api/dashboard/electron-metrics x-cli-jaw-electron startAppMetricsCollector';
+    const server = '/api/dashboard/electron-metrics X-CLI-Jaw-Electron';
+    assert.deepEqual(findMissingMarkers(main, REQUIRED_MAIN_MARKERS), []);
+    assert.deepEqual(findMissingMarkers(server, REQUIRED_SERVER_MARKERS), []);
+    assert.deepEqual(findMissingMarkers(server, REQUIRED_MAIN_MARKERS), ['main metrics collector']);
 });
 
 test('default app path, command registration, locked ASAR dependency, and missing-artifact failure are explicit', async (t) => {

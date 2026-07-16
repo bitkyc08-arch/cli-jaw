@@ -37,6 +37,17 @@ const PAGE_WORLD_MARKERS = [
     { name: 'installDesktopFetchHeader', pattern: /\binstallDesktopFetchHeader\b/, sample: 'installDesktopFetchHeader' },
 ];
 
+const REQUIRED_MAIN_MARKERS = [
+    { name: 'metrics route', pattern: /\/api\/dashboard\/electron-metrics/ },
+    { name: 'Electron identity header', pattern: /x-cli-jaw-electron/i },
+    { name: 'main metrics collector', pattern: /\bstartAppMetricsCollector\b/ },
+];
+
+const REQUIRED_SERVER_MARKERS = [
+    { name: 'metrics route', pattern: /\/api\/dashboard\/electron-metrics/ },
+    { name: 'Electron identity header', pattern: /x-cli-jaw-electron/i },
+];
+
 class ArtifactParityError extends Error {
     constructor(issues) {
         const visibleIssues = issues.slice(0, 50);
@@ -182,6 +193,24 @@ function findForbiddenMarkers(content, markers) {
     return markers.filter(({ pattern }) => pattern.test(text)).map(({ name }) => name);
 }
 
+function findMissingMarkers(content, markers) {
+    const text = Buffer.isBuffer(content) ? content.toString('utf8') : String(content);
+    return markers.filter(({ pattern }) => !pattern.test(text)).map(({ name }) => name);
+}
+
+function findMissingTreeMarkers(root, manifest, markers) {
+    const remaining = new Map(markers.map((marker) => [marker.name, marker]));
+    for (const entry of manifest) {
+        if (remaining.size === 0) break;
+        if (entry.type !== 'file' || !SCANNABLE_EXTENSIONS.has(extname(entry.path).toLowerCase())) continue;
+        const text = readFileSync(join(root, entry.path), 'utf8');
+        for (const [name, marker] of remaining) {
+            if (marker.pattern.test(text)) remaining.delete(name);
+        }
+    }
+    return [...remaining.keys()];
+}
+
 function scanBuffer(content, label, markers) {
     return findForbiddenMarkers(content, markers).map((marker) => `${label}: forbidden marker "${marker}"`);
 }
@@ -294,6 +323,16 @@ async function checkElectronRuntimeParity(options = {}) {
 
     for (const [content, label] of [
         [outMain, 'electron/out/main/index.js'],
+        [asarMain, 'app.asar:out/main/index.js'],
+    ]) {
+        if (!content) continue;
+        for (const marker of findMissingMarkers(content, REQUIRED_MAIN_MARKERS)) {
+            issues.push(`${label}: required owner marker missing "${marker}"`);
+        }
+    }
+
+    for (const [content, label] of [
+        [outMain, 'electron/out/main/index.js'],
         [outPreload, 'electron/out/preload/index.js'],
         [asarMain, 'app.asar:out/main/index.js'],
         [asarPreload, 'app.asar:out/preload/index.js'],
@@ -321,7 +360,12 @@ async function checkElectronRuntimeParity(options = {}) {
         [paths.sidecarServerDist, sidecarDist, 'sidecar/server/dist'],
         [paths.packagedServerDist, packagedDist, 'packaged/server/dist'],
     ]) {
-        if (manifest) issues.push(...scanTree(root, manifest, label, GLOBAL_RETIRED_MARKERS));
+        if (manifest) {
+            issues.push(...scanTree(root, manifest, label, GLOBAL_RETIRED_MARKERS));
+            for (const marker of findMissingTreeMarkers(root, manifest, REQUIRED_SERVER_MARKERS)) {
+                issues.push(`${label}: required owner marker missing "${marker}"`);
+            }
+        }
     }
 
     if (issues.length > 0) throw new ArtifactParityError(issues);
@@ -375,10 +419,14 @@ export {
     GLOBAL_RETIRED_MARKERS,
     PAGE_WORLD_MARKERS,
     PRELOAD_MARKERS,
+    REQUIRED_MAIN_MARKERS,
+    REQUIRED_SERVER_MARKERS,
     checkElectronRuntimeParity,
     compareManifests,
     createTreeManifest,
     findForbiddenMarkers,
+    findMissingMarkers,
+    findMissingTreeMarkers,
     globToRegExp,
     loadBuilderServerExclusions,
     parseArgs,
