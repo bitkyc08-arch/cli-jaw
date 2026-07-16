@@ -54,10 +54,13 @@ test('dashboard2 sidebar v4 stays independent from jwc and theme resolution inte
 
 test('dashboard2 sidebar v4 wires lifecycle actions through the manager origin', () => {
     const sidebar = read('public/dashboard2/src/shell/Sidebar.tsx');
+    const api = read('public/dashboard2/src/providers/api-provider.tsx');
 
-    assert.ok(sidebar.includes('`/api/dashboard/lifecycle/${action}`'));
-    assert.ok(sidebar.includes("method: 'POST'"));
-    assert.ok(sidebar.includes('body: JSON.stringify({ port: instance.port })'));
+    assert.ok(sidebar.includes('useInstanceLifecycle'));
+    assert.ok(sidebar.includes('lifecycleControl.run(action, instance)'));
+    assert.ok(api.includes('`/api/dashboard/lifecycle/${action}`'));
+    assert.ok(api.includes("method: 'POST'"));
+    assert.ok(api.includes('body: JSON.stringify({ port, ...(home !== undefined ? { home } : {}) })'));
     assert.ok(sidebar.includes('lifecycle?.canStart'));
     assert.ok(sidebar.includes('lifecycle?.canStop'));
     assert.equal(sidebar.includes('`/i/${instance.port}'), false, 'lifecycle actions must not bypass the manager origin');
@@ -72,5 +75,18 @@ test('dashboard2 sidebar v4 hover actions remain keyboard reachable', () => {
     assert.ok(css.includes('.d2-instance-row:focus-within .d2-instance-control'));
     assert.ok(css.includes('.d2-instance-row:focus-within .d2-instance-more'));
     assert.ok(css.includes('.d2-instance-control:focus-visible'));
+    assert.ok(css.includes('.d2-instance-control.is-always-visible'));
+    assert.ok(css.includes('pointer-events: auto'));
     assert.equal(css.includes('display: none;\n    width: 22px'), false);
+});
+
+test('dashboard2 lifecycle rows expose progress and retry semantics to assistive technology', () => {
+    const sidebar = read('public/dashboard2/src/shell/Sidebar.tsx');
+
+    assert.ok(sidebar.includes('aria-busy={lifecycleBusy || undefined}'));
+    assert.ok(sidebar.includes('aria-hidden="true"'));
+    assert.ok(sidebar.includes('role="status"'));
+    assert.ok(sidebar.includes('role="alert"'));
+    assert.ok(sidebar.includes("lifecycleError ? 'Retry'"));
+    assert.ok(sidebar.includes('disabled={!lifecycleAllowed || lifecycleBlocked}'));
 });

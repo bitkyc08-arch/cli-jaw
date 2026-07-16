@@ -5,7 +5,12 @@ import {
     type JSX,
     type PropsWithChildren,
 } from 'react';
-import type { DashboardInstance } from '../../../../src/manager/types.ts';
+import type {
+    DashboardInstance,
+    DashboardLifecycleAction,
+    DashboardLifecycleResult,
+    DashboardScanResult,
+} from '../../../../src/manager/types.ts';
 import type {
     DashboardRegistry,
     DashboardRegistryPatch,
@@ -30,7 +35,7 @@ export interface ChatSessionList {
 export interface ManagerApiClient {
     manager: ManagerOriginClient;
     instance(port: number): InstanceOriginClient;
-    fetchInstances(): Promise<DashboardInstance[]>;
+    fetchInstances(opts?: { signal?: AbortSignal }): Promise<DashboardInstance[]>;
     fetchSessions(port: number): Promise<ChatSessionList>;
 }
 
@@ -40,7 +45,14 @@ export interface DashboardRegistryResponse {
 }
 
 export interface ManagerOriginClient {
-    fetchInstances(): Promise<DashboardInstance[]>;
+    fetchInstances(opts?: { signal?: AbortSignal }): Promise<DashboardInstance[]>;
+    fetchInstance(port: number, opts?: { signal?: AbortSignal }): Promise<DashboardInstanceResponse>;
+    runLifecycleAction(
+        action: DashboardLifecycleAction,
+        port: number,
+        home?: string,
+        opts?: { signal?: AbortSignal },
+    ): Promise<DashboardLifecycleResult>;
     fetchRegistry(): Promise<DashboardRegistryResponse>;
     patchRegistry(patch: DashboardRegistryPatch): Promise<DashboardRegistryResponse>;
 }
@@ -83,12 +95,99 @@ interface InstancesResponse {
     platform: string;
 }
 
+export interface DashboardInstanceResponse {
+    ok: true;
+    instance: DashboardInstance | null;
+    manager?: DashboardScanResult['manager'];
+    platform: string;
+}
+
+export interface ManagerApiErrorResponse {
+    ok: false;
+    error: string;
+}
+
+interface ManagerApiErrorOptions {
+    status: number | null;
+    retryable: boolean;
+    envelope?: ManagerApiErrorResponse;
+    result?: DashboardLifecycleResult;
+}
+
+export class ManagerApiError extends Error {
+    readonly status: number | null;
+    readonly retryable: boolean;
+    readonly envelope?: ManagerApiErrorResponse;
+    readonly result?: DashboardLifecycleResult;
+
+    constructor(message: string, options: ManagerApiErrorOptions) {
+        super(message);
+        this.name = 'ManagerApiError';
+        this.status = options.status;
+        this.retryable = options.retryable;
+        if (options.envelope) this.envelope = options.envelope;
+        if (options.result) this.result = options.result;
+    }
+}
+
 interface SessionsResponse {
     ok: true;
     data: ChatSessionList;
 }
 
 const ManagerApiContext = createContext<ManagerApiClient | null>(null);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isErrorEnvelope(value: unknown): value is ManagerApiErrorResponse {
+    return isRecord(value) && value['ok'] === false && typeof value['error'] === 'string';
+}
+
+function isInstanceResponse(value: unknown, expectedPort: number): value is DashboardInstanceResponse {
+    if (!isRecord(value)
+        || value['ok'] !== true
+        || !('instance' in value)
+        || (value['instance'] !== null && !isRecord(value['instance']))
+        || typeof value['platform'] !== 'string') return false;
+    if (value['instance'] !== null && value['instance']['port'] !== expectedPort) return false;
+    return !('manager' in value) || isRecord(value['manager']);
+}
+
+function isLifecycleResult(value: unknown): value is DashboardLifecycleResult {
+    if (!isRecord(value)) return false;
+    const action = value['action'];
+    const status = value['status'];
+    return typeof value['ok'] === 'boolean'
+        && ['start', 'stop', 'restart', 'perm', 'unperm'].includes(String(action))
+        && Number.isInteger(value['port'])
+        && ['started', 'stopped', 'restarted', 'permed', 'unpermed', 'rejected', 'error', 'skipped'].includes(String(status))
+        && typeof value['message'] === 'string'
+        && (value['home'] === null || typeof value['home'] === 'string')
+        && (value['pid'] === null || typeof value['pid'] === 'number')
+        && Array.isArray(value['command'])
+        && value['command'].every(part => typeof part === 'string');
+}
+
+function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+async function fetchManagerResponse(path: string, init?: RequestInit): Promise<Response> {
+    const headers = new Headers(init?.headers);
+    headers.set('Accept', 'application/json');
+    try {
+        return await fetch(path, { ...init, headers });
+    } catch (error) {
+        if (init?.signal?.aborted || (error instanceof DOMException && error.name === 'AbortError')) throw error;
+        throw new ManagerApiError(errorMessage(error), { status: null, retryable: true });
+    }
+}
+
+async function parseJson(response: Response): Promise<unknown> {
+    return response.json().catch(() => null) as Promise<unknown>;
+}
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
     const headers = new Headers(init?.headers);
@@ -102,9 +201,58 @@ async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
 
 function createManagerApiClient(): ManagerApiClient {
     const manager: ManagerOriginClient = {
-        async fetchInstances() {
-            const response = await fetchJson<InstancesResponse>('/api/dashboard/instances');
+        async fetchInstances(opts) {
+            const response = await fetchJson<InstancesResponse>('/api/dashboard/instances', {
+                ...(opts?.signal ? { signal: opts.signal } : {}),
+            });
             return response.instances;
+        },
+        async fetchInstance(port, opts) {
+            const response = await fetchManagerResponse(`/api/dashboard/instances/${port}`, {
+                ...(opts?.signal ? { signal: opts.signal } : {}),
+            });
+            const body = await parseJson(response);
+            if (!response.ok) {
+                const envelope = isErrorEnvelope(body) ? body : undefined;
+                throw new ManagerApiError(
+                    envelope?.error || `Request failed (${response.status})`,
+                    {
+                        status: response.status,
+                        retryable: response.status >= 500,
+                        ...(envelope ? { envelope } : {}),
+                    },
+                );
+            }
+            if (!isInstanceResponse(body, port)) {
+                throw new ManagerApiError('Instance returned an invalid response', {
+                    status: response.status,
+                    retryable: false,
+                });
+            }
+            return body;
+        },
+        async runLifecycleAction(action, port, home, opts) {
+            const response = await fetchManagerResponse(`/api/dashboard/lifecycle/${action}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ port, ...(home !== undefined ? { home } : {}) }),
+                ...(opts?.signal ? { signal: opts.signal } : {}),
+            });
+            const body = await parseJson(response);
+            if (!isLifecycleResult(body) || body.action !== action || body.port !== port) {
+                throw new ManagerApiError(`Lifecycle ${action} returned an invalid response`, {
+                    status: response.status,
+                    retryable: false,
+                });
+            }
+            if (!response.ok || body.ok !== true) {
+                throw new ManagerApiError(body.message, {
+                    status: response.status,
+                    retryable: false,
+                    result: body,
+                });
+            }
+            return body;
         },
         fetchRegistry() {
             return fetchJson<DashboardRegistryResponse>('/api/dashboard/registry');
@@ -171,7 +319,7 @@ function createManagerApiClient(): ManagerApiClient {
     return {
         manager,
         instance,
-        fetchInstances: () => manager.fetchInstances(),
+        fetchInstances: opts => manager.fetchInstances(opts),
         fetchSessions: (port) => instance(port).fetchSessions(),
     };
 }

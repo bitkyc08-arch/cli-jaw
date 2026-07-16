@@ -279,6 +279,12 @@
     visibility: visible;
 }
 
+.d2-instance-control.is-always-visible {
+    opacity: 1;
+    pointer-events: auto;
+    visibility: visible;
+}
+
 .d2-instance-row:hover .d2-instance-spinner,
 .d2-instance-row:focus-within .d2-instance-spinner,
 .d2-instance-trail:focus-within .d2-instance-spinner {
@@ -303,6 +309,17 @@
 
 .d2-instance-control.is-stop {
     border: 1px solid rgba(248, 113, 113, 0.15);
+    color: var(--danger);
+}
+
+.d2-instance-lifecycle-message {
+    margin: 2px 30px 5px 40px;
+    color: var(--text-3);
+    font-size: 11px;
+    line-height: 1.35;
+}
+
+.d2-instance-lifecycle-message.is-error {
     color: var(--danger);
 }
 

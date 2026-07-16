@@ -15,7 +15,7 @@ import type {
 } from '../../../../src/shared/chat-events.ts';
 import type { TurnLifecycleSsePayload } from '../../../../src/shared/chat-events.ts';
 import { useAppScope } from '../state/scope.tsx';
-import { SseConnection } from './sse-connection.ts';
+import { SseConnection, type SseSourceLike } from './sse-connection.ts';
 
 export interface SystemSsePayload {
     topic: 'system';
@@ -56,11 +56,27 @@ export interface ManagerSyncContextValue {
     subscribeManagerWorker(cb: (payload: ManagerWorkerSsePayload) => void): () => void;
 }
 
-export interface ManagerWorkerSsePayload {
+export interface ManagerInstanceStatusChangedSsePayload {
     topic: 'worker';
-    event: 'instance-status-changed' | 'worker_settings_change';
-    [key: string]: unknown;
+    event: 'instance-status-changed';
+    port: number;
+    change: 'appeared' | 'disappeared' | 'status' | 'version';
+    prev?: { status: string; version: string | null };
+    next?: { status: string; version: string | null };
+    sseReplay?: boolean;
 }
+
+export interface ManagerWorkerSettingsChangedSsePayload {
+    topic: 'worker';
+    event: 'worker_settings_change';
+    port: number;
+    changedKeys: string[] | null;
+    sseReplay?: boolean;
+}
+
+export type ManagerWorkerSsePayload =
+    | ManagerInstanceStatusChangedSsePayload
+    | ManagerWorkerSettingsChangedSsePayload;
 
 export interface OrcStateSsePayload {
     topic: 'orchestrate';
@@ -91,9 +107,80 @@ const TURN_LIFECYCLE_EVENTS = new Set(['turn_start', 'turn_segment', 'turn_end']
 const AGENT_BODY_EVENTS = new Set(['agent_output', 'agent_chunk', 'agent_tool', 'agent_done']);
 const SYSTEM_EVENTS = new Set(['replay_gap', 'turn_segment_error', 'ping']);
 const ORC_STATE_EVENTS = new Set(['orc_state']);
-const MANAGER_WORKER_EVENTS = new Set(['instance-status-changed', 'worker_settings_change']);
-
 const ManagerSyncContext = createContext<ManagerSyncContextValue | null>(null);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+function isPort(value: unknown): value is number {
+    return Number.isInteger(value) && Number(value) > 0 && Number(value) <= 65_535;
+}
+
+function createBrowserSseSource(url: string): SseSourceLike {
+    const nativeSource = new EventSource(url);
+    const source: SseSourceLike = {
+        onmessage: null,
+        onerror: null,
+        close: () => nativeSource.close(),
+    };
+    nativeSource.onmessage = event => source.onmessage?.({
+        data: String(event.data),
+        ...(event.lastEventId ? { lastEventId: event.lastEventId } : {}),
+    });
+    nativeSource.onerror = () => source.onerror?.();
+    return source;
+}
+
+function isInstanceState(value: unknown): value is { status: string; version: string | null } {
+    return isRecord(value)
+        && typeof value['status'] === 'string'
+        && (value['version'] === null || typeof value['version'] === 'string');
+}
+
+function replayField(payload: Record<string, unknown>): { sseReplay?: boolean } | null {
+    if (!('sseReplay' in payload)) return {};
+    return typeof payload['sseReplay'] === 'boolean'
+        ? { sseReplay: payload['sseReplay'] }
+        : null;
+}
+
+function parseManagerWorkerPayload(value: unknown): ManagerWorkerSsePayload | null {
+    if (!isRecord(value) || value['topic'] !== 'worker' || !isPort(value['port'])) return null;
+    const replay = replayField(value);
+    if (!replay) return null;
+
+    if (value['event'] === 'worker_settings_change') {
+        const changedKeys = value['changedKeys'];
+        if (changedKeys !== null
+            && (!Array.isArray(changedKeys) || !changedKeys.every(key => typeof key === 'string'))) return null;
+        return {
+            topic: 'worker',
+            event: 'worker_settings_change',
+            port: value['port'],
+            changedKeys: changedKeys === null ? null : [...changedKeys],
+            ...replay,
+        };
+    }
+
+    if (value['event'] !== 'instance-status-changed'
+        || !['appeared', 'disappeared', 'status', 'version'].includes(String(value['change']))) return null;
+    const change = value['change'] as ManagerInstanceStatusChangedSsePayload['change'];
+    const hasPrev = 'prev' in value;
+    const hasNext = 'next' in value;
+    const prev = value['prev'];
+    const next = value['next'];
+    if (change === 'appeared') {
+        if (hasPrev || !hasNext || !isInstanceState(next)) return null;
+        return { topic: 'worker', event: 'instance-status-changed', port: value['port'], change, next, ...replay };
+    }
+    if (change === 'disappeared') {
+        if (!hasPrev || hasNext || !isInstanceState(prev)) return null;
+        return { topic: 'worker', event: 'instance-status-changed', port: value['port'], change, prev, ...replay };
+    }
+    if (!hasPrev || !hasNext || !isInstanceState(prev) || !isInstanceState(next)) return null;
+    return { topic: 'worker', event: 'instance-status-changed', port: value['port'], change, prev, next, ...replay };
+}
 
 function subscribe<T>(subscribers: Set<(value: T) => void>, cb: (value: T) => void): () => void {
     subscribers.add(cb);
@@ -105,10 +192,12 @@ function publish<T>(subscribers: Set<(value: T) => void>, value: T): void {
 }
 
 export function dispatchSelectedSyncPayload(
-    payload: SseEnvelope,
+    value: unknown,
     dispatchers: SyncPayloadDispatchers,
     sseEventId?: string,
 ): 'turn' | 'body' | 'queue' | 'system' | null {
+    if (!isRecord(value)) return null;
+    const payload: SseEnvelope = value;
     if (payload.topic === 'jwc'
         && typeof payload.event === 'string'
         && payload.event.startsWith('code_')) {
@@ -151,15 +240,14 @@ export function dispatchSelectedSyncPayload(
 
 export function dispatchSyncPayloadForSource(
     source: 'manager' | 'worker',
-    payload: SseEnvelope,
+    payload: unknown,
     dispatchers: SyncPayloadDispatchers,
     sseEventId?: string,
 ): ReturnType<typeof dispatchSelectedSyncPayload> | 'manager-worker' {
     if (source === 'worker') return dispatchSelectedSyncPayload(payload, dispatchers, sseEventId);
-    if (payload.topic === 'worker'
-        && typeof payload.event === 'string'
-        && MANAGER_WORKER_EVENTS.has(payload.event)) {
-        dispatchers.managerWorker?.(payload as unknown as ManagerWorkerSsePayload);
+    const managerWorkerPayload = parseManagerWorkerPayload(payload);
+    if (managerWorkerPayload) {
+        dispatchers.managerWorker?.(managerWorkerPayload);
         return 'manager-worker';
     }
     // Manager system frames are transport health/replay annotations only. JWC,
@@ -199,12 +287,12 @@ export function ManagerSyncProvider(props: PropsWithChildren): JSX.Element {
         const connection = new SseConnection({
             key,
             url,
-            createSource: sourceUrl => new EventSource(sourceUrl),
+            createSource: createBrowserSseSource,
             getCursor: () => cursorsRef.current.get(key),
             setCursor: cursor => cursorsRef.current.set(key, cursor),
             onReconnect: () => publish(invalidationSubscribersRef.current, 'reconnect'),
             onPayload: (payload, eventId) => {
-                if (payload.topic === 'system' && payload.event === 'ping') return;
+                if (payload['topic'] === 'system' && payload['event'] === 'ping') return;
                 dispatchSyncPayloadForSource(source, payload, {
                     turn: value => publish(turnSubscribersRef.current, value),
                     body: value => publish(bodySubscribersRef.current, value),

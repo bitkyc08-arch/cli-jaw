@@ -12,12 +12,12 @@ import {
     Sun,
     Terminal,
 } from '@lucide/icons';
-import { useCallback, useEffect, useState, type JSX } from 'react';
+import { useCallback, useEffect, useRef, useState, type JSX } from 'react';
 import type {
     DashboardInstance,
     DashboardLifecycleAction,
-    DashboardLifecycleResult,
 } from '../../../../src/manager/types.ts';
+import { useInstanceLifecycle } from '../lifecycle/use-instance-lifecycle.ts';
 import {
     useManagerApi,
     type ChatSessionList,
@@ -131,7 +131,6 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
     const [instancesError, setInstancesError] = useState<string | null>(null);
     const [sessionsByPort, setSessionsByPort] = useState<Record<number, SessionsCacheEntry>>({});
     const [menuPort, setMenuPort] = useState<number | null>(null);
-    const [lifecycleBusyPort, setLifecycleBusyPort] = useState<number | null>(null);
     const [settingsOpen, setSettingsOpen] = useState(false);
     // 062 — jwc sidebar state (raw fetch, no code/ import)
     const [jwcState, setJwcState] = useState<JwcSidebarState>({
@@ -140,20 +139,53 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
         loading: true,
     });
     const [jwcRefresh, setJwcRefresh] = useState(0);
+    const instancesRequestRef = useRef<{ generation: number; controller: AbortController | null }>({
+        generation: 0,
+        controller: null,
+    });
     const openSettings = useCallback(() => setSettingsOpen(true), []);
     const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
+    const patchInstance = useCallback((next: DashboardInstance) => {
+        const activeRequest = instancesRequestRef.current;
+        activeRequest.controller?.abort();
+        instancesRequestRef.current = {
+            generation: activeRequest.generation + 1,
+            controller: null,
+        };
+        setInstances(current => current.map(instance => (
+            instance.port === next.port ? next : instance
+        )));
+        setInstancesLoading(false);
+    }, []);
+
     const loadInstances = useCallback(async () => {
+        const previous = instancesRequestRef.current;
+        previous.controller?.abort();
+        const generation = previous.generation + 1;
+        const controller = new AbortController();
+        instancesRequestRef.current = { generation, controller };
         setInstancesLoading(true);
         setInstancesError(null);
         try {
-            setInstances(await api.fetchInstances());
+            const next = await api.fetchInstances({ signal: controller.signal });
+            if (instancesRequestRef.current.generation !== generation || controller.signal.aborted) return;
+            setInstances(next);
         } catch (error) {
+            if (instancesRequestRef.current.generation !== generation || controller.signal.aborted) return;
             setInstancesError(errorMessage(error));
         } finally {
-            setInstancesLoading(false);
+            if (instancesRequestRef.current.generation === generation) {
+                instancesRequestRef.current = { generation, controller: null };
+                setInstancesLoading(false);
+            }
         }
     }, [api]);
+
+    const lifecycleControl = useInstanceLifecycle({
+        patchInstance,
+        refreshInstances: loadInstances,
+    });
 
     const loadSessions = useCallback(async (port: number) => {
         setSessionsByPort((cache) => ({ ...cache, [port]: { status: 'loading' } }));
@@ -170,6 +202,14 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
 
     useEffect(() => {
         void loadInstances();
+        return () => {
+            const activeRequest = instancesRequestRef.current;
+            activeRequest.controller?.abort();
+            instancesRequestRef.current = {
+                generation: activeRequest.generation + 1,
+                controller: null,
+            };
+        };
     }, [loadInstances]);
 
     // 062 — fetch jwc capability + stored sessions when jwc mode is active.
@@ -265,25 +305,9 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
             return;
         }
 
-        setLifecycleBusyPort(instance.port);
         setInstancesError(null);
         setMenuPort(null);
-        try {
-            const response = await fetch(`/api/dashboard/lifecycle/${action}`, {
-                method: 'POST',
-                headers: { 'content-type': 'application/json' },
-                body: JSON.stringify({ port: instance.port }),
-            });
-            const result = await response.json().catch(() => ({})) as Partial<DashboardLifecycleResult>;
-            if (!response.ok || result.ok !== true) {
-                throw new Error(result.message || `${action} failed (${response.status})`);
-            }
-            await loadInstances();
-        } catch (error) {
-            setInstancesError(errorMessage(error));
-        } finally {
-            setLifecycleBusyPort(null);
-        }
+        await lifecycleControl.run(action, instance);
     };
 
     const activeInstanceCount = instances.filter((instance) => instanceVisualStatus(instance) !== 'off').length;
@@ -404,13 +428,20 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                             const lifecycle = instance.lifecycle;
                             const lifecycleAction: DashboardLifecycleAction = isOnline ? 'stop' : 'start';
                             const lifecycleAllowed = isOnline ? lifecycle?.canStop === true : lifecycle?.canStart === true;
-                            const lifecycleBusy = lifecycleBusyPort === instance.port;
+                            const lifecycleBusy = lifecycleControl.busyPort === instance.port && lifecycleControl.busy;
+                            const lifecycleError = lifecycleControl.ui.port === instance.port && lifecycleControl.ui.phase === 'error'
+                                ? lifecycleControl.ui.message
+                                : null;
+                            const lifecycleBlocked = lifecycleControl.busy;
                             const sessionEntry = sessionsByPort[instance.port];
                             const isSingleSession = sessionEntry?.status === 'ready' && sessionEntry.data.sessions.length === 1;
                             const showExpanded = isExpanded && !isSingleSession;
                             return (
                                 <div className="d2-instance-node" key={instance.port}>
-                                    <div className={`d2-instance-row${selected?.port === instance.port ? ' is-selected' : ''}`}>
+                                    <div
+                                        className={`d2-instance-row${selected?.port === instance.port ? ' is-selected' : ''}`}
+                                        aria-busy={lifecycleBusy || undefined}
+                                    >
                                         <button
                                             className="d2-instance-main"
                                             type="button"
@@ -429,20 +460,21 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                         </button>
 
                                         <div className="d2-instance-trail" data-sidebar-instance-menu>
-                                            {visualStatus === 'busy' || lifecycleBusy ? <span className="d2-instance-spinner" /> : null}
+                                            {visualStatus === 'busy' || lifecycleBusy ? <span className="d2-instance-spinner" aria-hidden="true" /> : null}
                                             <button
-                                                className={`d2-instance-control is-${isOnline ? 'stop' : 'start'}`}
+                                                className={`d2-instance-control is-${isOnline ? 'stop' : 'start'} is-always-visible`}
                                                 type="button"
-                                                disabled={!lifecycleAllowed || lifecycleBusy}
+                                                disabled={!lifecycleAllowed || lifecycleBlocked}
                                                 onClick={() => void runLifecycleAction(lifecycleAction, instance)}
-                                                title={lifecycleAllowed ? `${isOnline ? 'Stop' : 'Start'} :${instance.port}` : lifecycle?.reason || `${isOnline ? 'Stop' : 'Start'} unavailable`}
-                                                aria-label={`${isOnline ? 'Stop' : 'Start'} ${instanceName(instance)}`}
+                                                title={lifecycleAllowed ? `${lifecycleError ? 'Retry' : isOnline ? 'Stop' : 'Start'} :${instance.port}` : lifecycle?.reason || `${isOnline ? 'Stop' : 'Start'} unavailable`}
+                                                aria-label={`${lifecycleError ? 'Retry' : isOnline ? 'Stop' : 'Start'} ${instanceName(instance)}`}
                                             >
                                                 <Icon icon={isOnline ? Square : Play} />
                                             </button>
                                             <button
                                                 className="d2-instance-more"
                                                 type="button"
+                                                disabled={lifecycleBlocked}
                                                 onClick={() => setMenuPort(isMenuOpen ? null : instance.port)}
                                                 aria-haspopup="menu"
                                                 aria-expanded={isMenuOpen}
@@ -454,16 +486,27 @@ export function Sidebar({ onClose }: SidebarProps): JSX.Element {
                                             {isMenuOpen ? (
                                                 <div className="d2-instance-menu" role="menu">
                                                     <button type="button" role="menuitem" disabled title="Rename API unavailable">Rename</button>
-                                                    <button type="button" role="menuitem" disabled={!lifecycle?.canRestart || lifecycleBusy} onClick={() => void runLifecycleAction('restart', instance)}>Restart</button>
-                                                    <button type="button" role="menuitem" disabled={!lifecycle?.canPerm || lifecycleBusy} onClick={() => void runLifecycleAction('perm', instance)}>Set as permanent</button>
+                                                    <button type="button" role="menuitem" disabled={!lifecycle?.canRestart || lifecycleBlocked} onClick={() => void runLifecycleAction('restart', instance)}>Restart</button>
+                                                    <button type="button" role="menuitem" disabled={!lifecycle?.canPerm || lifecycleBlocked} onClick={() => void runLifecycleAction('perm', instance)}>Set as permanent</button>
                                                     <button type="button" role="menuitem" disabled={!projectDir} onClick={() => void copyPath(projectDir)}>Copy project dir</button>
                                                     <button type="button" role="menuitem" disabled={!instance.workingDir} onClick={() => void copyPath(instance.workingDir)}>Copy working dir</button>
                                                     <button type="button" role="menuitem" disabled title="Terminal bridge unavailable">Open in terminal</button>
-                                                    <button className="is-danger" type="button" role="menuitem" disabled={!lifecycle?.canStop || lifecycleBusy} onClick={() => void runLifecycleAction('stop', instance)}>Stop</button>
+                                                    <button className="is-danger" type="button" role="menuitem" disabled={!lifecycle?.canStop || lifecycleBlocked} onClick={() => void runLifecycleAction('stop', instance)}>Stop</button>
                                                 </div>
                                             ) : null}
                                         </div>
                                     </div>
+
+                                    {lifecycleBusy ? (
+                                        <div className="d2-instance-lifecycle-message" role="status">
+                                            {lifecycleControl.ui.message || `${lifecycleAction === 'start' ? 'Starting' : 'Stopping'}…`}
+                                        </div>
+                                    ) : null}
+                                    {lifecycleError ? (
+                                        <div className="d2-instance-lifecycle-message is-error" role="alert">
+                                            {lifecycleError}
+                                        </div>
+                                    ) : null}
 
                                     {showExpanded ? (
                                         <div className="d2-session-list">

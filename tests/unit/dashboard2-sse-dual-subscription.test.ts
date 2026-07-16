@@ -76,14 +76,70 @@ test('source policy keeps JWC worker-canonical and drops non-allowlisted manager
         managerWorker: (payload: { event: string }) => seen.push(payload.event),
     };
 
-    dispatchSyncPayloadForSource('manager', { topic: 'worker', event: 'instance-status-changed' }, dispatchers);
-    dispatchSyncPayloadForSource('manager', { topic: 'worker', event: 'worker_settings_change' }, dispatchers);
+    dispatchSyncPayloadForSource('manager', {
+        topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'status',
+        prev: { status: 'offline', version: null }, next: { status: 'online', version: '2.2.7' },
+    }, dispatchers);
+    dispatchSyncPayloadForSource('manager', {
+        topic: 'worker', event: 'worker_settings_change', port: 3457, changedKeys: ['currentModel'],
+    }, dispatchers);
     dispatchSyncPayloadForSource('manager', { topic: 'jwc', event: 'code_delta' }, dispatchers);
     dispatchSyncPayloadForSource('manager', { topic: 'agent', event: 'turn_start' }, dispatchers);
     dispatchSyncPayloadForSource('manager', { topic: 'unknown', event: 'anything' }, dispatchers);
     dispatchSyncPayloadForSource('worker', { topic: 'jwc', event: 'code_delta' }, dispatchers, 'w-9');
 
     assert.deepEqual(seen, ['instance-status-changed', 'worker_settings_change', 'jwc']);
+});
+
+test('manager worker frames are normalized as a validated discriminated union', () => {
+    const seen: unknown[] = [];
+    const dispatchers = {
+        turn: () => {}, body: () => {}, queue: () => {}, system: () => {},
+        managerWorker: (payload: unknown) => seen.push(payload),
+    };
+    const dispatch = (payload: unknown) => dispatchSyncPayloadForSource('manager', payload, dispatchers);
+
+    assert.equal(dispatch({
+        topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'appeared',
+        next: { status: 'online', version: '2.2.7' }, sseReplay: true, ignored: 'not forwarded',
+    }), 'manager-worker');
+    assert.equal(dispatch({
+        topic: 'worker', event: 'instance-status-changed', port: 3458, change: 'disappeared',
+        prev: { status: 'offline', version: null },
+    }), 'manager-worker');
+    assert.equal(dispatch({
+        topic: 'worker', event: 'worker_settings_change', port: 3459, changedKeys: null,
+    }), 'manager-worker');
+
+    const malformed = [
+        null,
+        [],
+        { topic: 'worker', event: 'instance-status-changed', change: 'appeared', next: { status: 'online', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: '3457', change: 'appeared', next: { status: 'online', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: 65_536, change: 'appeared', next: { status: 'online', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'appeared', prev: { status: 'offline', version: null }, next: { status: 'online', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'disappeared', prev: { status: 'offline', version: null }, next: { status: 'online', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'status', prev: { status: 'offline', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'version', prev: { status: 'online' }, next: { status: 'online', version: '2.2.7' } },
+        { topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'other', prev: { status: 'offline', version: null }, next: { status: 'online', version: null } },
+        { topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'appeared', next: { status: 'online', version: null }, sseReplay: 'yes' },
+        { topic: 'worker', event: 'worker_settings_change', port: 3457 },
+        { topic: 'worker', event: 'worker_settings_change', port: 3457, changedKeys: ['currentCli', 2] },
+        { topic: 'agent', event: 'worker_settings_change', port: 3457, changedKeys: null },
+    ];
+    for (const payload of malformed) assert.equal(dispatch(payload), null);
+
+    assert.deepEqual(seen, [
+        {
+            topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'appeared',
+            next: { status: 'online', version: '2.2.7' }, sseReplay: true,
+        },
+        {
+            topic: 'worker', event: 'instance-status-changed', port: 3458, change: 'disappeared',
+            prev: { status: 'offline', version: null },
+        },
+        { topic: 'worker', event: 'worker_settings_change', port: 3459, changedKeys: null },
+    ]);
 });
 
 test('connection owns cursor, close-before-backoff, ping health, and stale restart per source', () => {
@@ -164,7 +220,10 @@ test('provider keeps manager source across worker port changes and reconnects bo
     const manager = FakeEventSource.instances[0];
     await act(async () => selectSession!(3457, 'main'));
     const worker3457 = FakeEventSource.instances.at(-1)!;
-    manager.emit({ topic: 'worker', event: 'instance-status-changed' }, '5');
+    manager.emit({
+        topic: 'worker', event: 'instance-status-changed', port: 3457, change: 'status',
+        prev: { status: 'offline', version: null }, next: { status: 'online', version: '2.2.7' },
+    }, '5');
     manager.emit({ topic: 'jwc', event: 'code_delta' }, '6');
     worker3457.emit({ topic: 'jwc', event: 'code_delta' }, '5');
     assert.deepEqual(managerEvents, ['instance-status-changed']);
