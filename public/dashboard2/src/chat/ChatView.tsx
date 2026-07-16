@@ -29,6 +29,8 @@ import { createPendingQueueApi } from './pending/pending-queue-api.ts';
 import { PendingQueueMachine } from './pending/pending-queue-machine.ts';
 import { createPendingQueueStore } from './pending/pending-queue-store.ts';
 import { PendingQueueView } from './pending/PendingQueue.tsx';
+import { modelPickerOptions } from '../models/ModelPicker.tsx';
+import { useInstanceModelSettings } from '../models/use-instance-model-settings.ts';
 
 // per-scope draft preservation across pane/tab round-trips (045 §5)
 const scopeDrafts = new Map<string, string>();
@@ -211,6 +213,15 @@ function ChatComposerSlot({ store, scopeKey, port, onEcho, onRegister }: ChatCom
     const api = useManagerApi();
     const sync = useManagerSync();
     const [orcPhase, setOrcPhase] = useState<string | null>(null);
+    const modelSettings = useInstanceModelSettings({ port, mode: 'active' });
+    const pickerOptions = useMemo(
+        () => modelPickerOptions(modelSettings.snapshot.catalog, modelSettings.snapshot.selection),
+        [modelSettings.snapshot.catalog, modelSettings.snapshot.selection],
+    );
+    const pickerValue = pickerOptions.find(option => (
+        option.provider === modelSettings.snapshot.selection?.provider
+        && option.model === modelSettings.snapshot.selection?.model
+    )) ?? null;
 
     useEffect(() => {
         // Reset phase on scope change to avoid stale cross-instance data
@@ -224,8 +235,28 @@ function ChatComposerSlot({ store, scopeKey, port, onEcho, onRegister }: ChatCom
         <div className="d2-chat-composer-slot">
             <Composer
                 key={scopeKey}
+                port={port}
                 initialDraft={scopeDrafts.get(scopeKey) ?? ''}
                 onDraftChange={(draft) => scopeDrafts.set(scopeKey, draft)}
+                picker={{
+                    value: pickerValue,
+                    options: pickerOptions,
+                    effort: modelSettings.snapshot.selection?.effort ?? '',
+                    loading: modelSettings.snapshot.status === 'loading',
+                    pending: modelSettings.snapshot.status === 'saving',
+                    disabled: !modelSettings.snapshot.catalog?.mutationEnabled,
+                    error: modelSettings.snapshot.error?.message ?? null,
+                    workerWide: true,
+                    onSelect: option => {
+                        const selection = modelSettings.snapshot.selection;
+                        if (!selection) return;
+                        void modelSettings.actions.save({
+                            ...selection,
+                            provider: option.provider,
+                            model: option.model,
+                        });
+                    },
+                }}
                 isRunning={live.turnIds.length > 0}
                 phase={orcPhase}
                 onStop={() => { void api.instance(port).stopAgent().catch(() => { /* snapshot recovers */ }); }}

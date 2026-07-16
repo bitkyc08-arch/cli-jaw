@@ -1,0 +1,162 @@
+.d2-model-picker {
+    position: relative;
+    display: grid;
+    min-width: 220px;
+    gap: 6px;
+}
+
+.d2-model-picker-label {
+    color: var(--text-3);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.d2-model-picker-trigger {
+    display: flex;
+    min-width: 0;
+    min-height: 34px;
+    align-items: center;
+    gap: 7px;
+    justify-content: space-between;
+    padding: 7px 10px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface-raised);
+    color: var(--text-2);
+    text-align: left;
+}
+
+.d2-model-picker-trigger > span {
+    overflow: hidden;
+    flex: 1;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-model-picker-trigger:hover:not(:disabled),
+.d2-model-picker.is-open .d2-model-picker-trigger {
+    border-color: var(--accent-dim);
+    color: var(--text);
+}
+
+.d2-model-picker-trigger:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.d2-model-picker-trigger:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+
+.d2-model-picker-menu {
+    position: absolute;
+    z-index: 80;
+    right: 0;
+    bottom: calc(100% + 7px);
+    display: none;
+    width: min(360px, calc(100vw - 24px));
+    max-height: min(360px, 52vh);
+    margin: 0;
+    padding: 5px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-elevated);
+    list-style: none;
+    overflow-y: auto;
+}
+
+.d2-model-picker-menu:not(:empty) {
+    display: grid;
+    gap: 2px;
+}
+
+.d2-model-picker-option {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 9px;
+    border-radius: var(--r-md);
+    color: var(--text-2);
+    cursor: pointer;
+}
+
+.d2-model-picker-option.is-highlighted {
+    background: var(--surface-hover);
+    color: var(--text);
+}
+
+.d2-model-picker-option.is-selected {
+    color: var(--accent);
+}
+
+.d2-model-picker-check {
+    display: grid;
+    width: 16px;
+    flex: none;
+    place-items: center;
+}
+
+.d2-model-picker-check .d2-icon,
+.d2-model-picker-check svg {
+    width: 13px;
+    height: 13px;
+}
+
+.d2-model-picker-option-copy {
+    display: grid;
+    min-width: 0;
+    gap: 2px;
+}
+
+.d2-model-picker-option-copy strong,
+.d2-model-picker-option-copy small {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.d2-model-picker-option-copy strong {
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.d2-model-picker-option-copy small,
+.d2-model-picker-scope {
+    color: var(--text-4);
+    font-size: 10.5px;
+}
+
+.d2-model-picker-error {
+    color: var(--danger);
+    font-size: 11px;
+}
+
+.d2-model-picker-spinner {
+    animation: d2-model-picker-spin 900ms linear infinite;
+}
+
+@keyframes d2-model-picker-spin {
+    to { transform: rotate(360deg); }
+}
+
+.d2-model-picker.is-compact {
+    min-width: 0;
+    max-width: 250px;
+}
+
+.d2-model-picker.is-compact .d2-model-picker-label,
+.d2-model-picker.is-compact .d2-model-picker-scope,
+.d2-model-picker.is-compact .d2-model-picker-error {
+    display: none;
+}
+
+.d2-model-picker.is-compact .d2-model-picker-trigger {
+    min-height: 28px;
+    padding: 4px 8px;
+    border-color: transparent;
+    background: transparent;
+    font-size: 11px;
+}

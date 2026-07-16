@@ -1,12 +1,18 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { join, resolve } from 'node:path';
 import { after, test, type TestContext } from 'node:test';
-import { chromium, type Browser } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext } from 'playwright-core';
 
 const ROOT = resolve(import.meta.dirname, '..', '..');
 const browsers: Browser[] = [];
-after(async () => Promise.allSettled(browsers.map(browser => browser.close())));
+const contexts: BrowserContext[] = [];
+const servers: { close(): Promise<void> }[] = [];
+after(async () => {
+    await Promise.allSettled(contexts.map(context => context.close()));
+    await Promise.allSettled(browsers.map(browser => browser.close()));
+    await Promise.allSettled(servers.map(server => server.close()));
+});
 
 async function launchChromium(t: TestContext): Promise<Browser | null> {
     const attempts = [
@@ -46,4 +52,57 @@ test('046 browser structure: one 25px squircle and ordered controls', async t =>
     assert.equal(metrics.radius, '25px');
     assert.ok(metrics.width <= 700);
     assert.equal(metrics.overflow, false);
+});
+
+test('WP4 real React composer enables model selection and sends through its explicit worker port', { timeout: 120_000 }, async t => {
+    const browser = await launchChromium(t);
+    if (!browser) return;
+    const { createServer } = await import('vite');
+    const server = await createServer({
+        configFile: join(ROOT, 'vite.config.ts'),
+        root: join(ROOT, 'public'),
+        logLevel: 'silent',
+        server: { port: 0, host: '127.0.0.1', hmr: false },
+    });
+    await server.listen();
+    servers.push({ close: () => server.close() });
+    const address = server.httpServer?.address();
+    if (!address || typeof address !== 'object') throw new Error('vite bind failed');
+    const context = await browser.newContext({ viewport: { width: 900, height: 520 } });
+    contexts.push(context);
+    const page = await context.newPage();
+    const sent: Array<{ url: string; body: unknown }> = [];
+    await page.route('**/i/**', async route => {
+        const request = route.request();
+        sent.push({ url: request.url(), body: request.postDataJSON() as unknown });
+        await route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ ok: true, action: 'started' }),
+        });
+    });
+    await page.route('**/dashboard2/src/main.tsx*', route => route.fulfill({ contentType: 'application/javascript', body: '' }));
+    await page.goto(`http://127.0.0.1:${address.port}/dist/dashboard2/index.html`, { waitUntil: 'domcontentloaded' });
+    await page.evaluate('window.__name = window.__name || ((fn) => fn)');
+    await page.evaluate(async () => {
+        const target = document.querySelector<HTMLElement>('#dashboard2-root')!;
+        const module = await import('/dist/dashboard2/src/dev/composer-harness.tsx');
+        module.mountComposerHarness(target);
+    });
+
+    const picker = page.getByRole('combobox', { name: /Provider and model/ });
+    await picker.waitFor();
+    assert.equal(await picker.isEnabled(), true);
+    assert.match(await picker.getAttribute('title') ?? '', /every Chat session/);
+    await picker.click();
+    await page.getByRole('option', { name: /gpt-5\.6-sol/ }).click();
+    await page.waitForFunction(() => document.querySelector('main[data-selected]')?.getAttribute('data-selected') === 'codex:gpt-5.6-sol');
+    assert.equal(await page.locator('main[data-selected]').getAttribute('data-selected'), 'codex:gpt-5.6-sol');
+
+    await page.getByRole('textbox', { name: 'Message' }).fill('WP4 composer send');
+    await page.getByRole('button', { name: 'Send message' }).click();
+    await page.waitForFunction(() => document.querySelector('main')?.getAttribute('data-echo-status') === 'sent');
+    assert.equal(sent.length, 1);
+    assert.match(sent[0]!.url, /\/i\/3506\/api\/message$/);
+    assert.deepEqual(sent[0]!.body, { prompt: 'WP4 composer send' });
 });

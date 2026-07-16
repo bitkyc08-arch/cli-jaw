@@ -29,6 +29,31 @@ test('SM-003: activeOverrides deep merge preserves sibling keys', () => {
     assert.equal(next.activeOverrides.codex.effort, 'medium');
 });
 
+test('SM-003b: perCli and activeOverrides merge without aliasing current settings', () => {
+    const current = {
+        perCli: {
+            codex: { model: 'gpt-5.4', effort: 'medium' },
+            claude: { model: 'opus', effort: 'high' },
+        },
+        activeOverrides: {
+            codex: { model: 'gpt-5.5', effort: 'high' },
+        },
+    };
+    const currentBefore = structuredClone(current);
+
+    const next = mergeSettingsPatch(current, {
+        perCli: { codex: { model: 'gpt-5.6' } },
+        activeOverrides: { codex: { effort: 'xhigh' } },
+    });
+
+    assert.deepEqual(current, currentBefore);
+    assert.notStrictEqual(next.perCli, current.perCli);
+    assert.notStrictEqual(next.perCli.codex, current.perCli.codex);
+    assert.notStrictEqual(next.perCli.claude, current.perCli.claude);
+    assert.notStrictEqual(next.activeOverrides, current.activeOverrides);
+    assert.notStrictEqual(next.activeOverrides.codex, current.activeOverrides.codex);
+});
+
 // ─── top-level fields ────────────────────────────────
 
 test('SM-004: top-level scalar fields are replaced', () => {

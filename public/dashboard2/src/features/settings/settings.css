@@ -56,3 +56,20 @@
     .d2-settings-switch { justify-self: start; }
     .d2-settings-save-bar { left: 204px; }
 }
+.d2-model-settings-panel .d2-settings-fields {
+    max-width: 680px;
+}
+
+.d2-model-settings-note,
+.d2-model-settings-status {
+    padding: 10px 12px;
+    border: 1px solid var(--border-h);
+    border-radius: var(--r-md);
+    background: var(--surface-raised);
+    color: var(--text-3);
+    font-size: 11.5px;
+}
+
+.d2-model-settings-status {
+    color: var(--accent);
+}

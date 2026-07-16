@@ -1,14 +1,10 @@
 import { ChevronDown, Mic, Plus, Send, Shield, Square } from '@lucide/icons';
 import type { JSX } from 'react';
 import { Icon } from '../../shell/Icon.tsx';
+import { ModelPicker, type ModelPickerProps } from '../../models/ModelPicker.tsx';
 import type { VoiceState } from './useVoiceRecorder.ts';
 
-export interface ComposerPickerDisplay {
-    provider?: string;
-    model?: string;
-    effort?: string;
-    readOnly?: boolean;
-}
+export type ComposerPickerDisplay = Omit<ModelPickerProps, 'compact'>;
 
 interface ComposerFooterProps {
     picker?: ComposerPickerDisplay;
@@ -34,8 +30,6 @@ const PHASE_COLORS: Record<string, string> = {
 };
 
 export function ComposerFooter(props: ComposerFooterProps): JSX.Element {
-    const pickerLabel = [props.picker?.provider, props.picker?.model, props.picker?.effort]
-        .filter(Boolean).join(' · ') || 'Instance defaults';
     const recording = props.voiceState === 'recording';
     const voiceBusy = props.voiceState === 'requesting' || props.voiceState === 'transcribing';
     return (
@@ -58,15 +52,11 @@ export function ComposerFooter(props: ComposerFooterProps): JSX.Element {
                 ) : null}
             </div>
             <div className="d2-composer-controls d2-composer-controls-right">
-                <button
-                    type="button"
-                    className="d2-composer-picker"
-                    aria-label={`Provider and model: ${pickerLabel}`}
-                    title={props.picker?.readOnly !== false ? 'Instance settings are read-only here' : pickerLabel}
-                    disabled={props.picker?.readOnly !== false}
-                >
-                    <span>{pickerLabel}</span><Icon icon={ChevronDown} size={14} />
-                </button>
+                {props.picker ? <ModelPicker {...props.picker} compact /> : (
+                    <button type="button" className="d2-composer-picker" disabled aria-label="Provider and model unavailable">
+                        <span>Instance defaults</span><Icon icon={ChevronDown} size={14} />
+                    </button>
+                )}
                 <button type="button" className={recording ? 'd2-composer-icon is-recording' : 'd2-composer-icon'} aria-label={recording ? 'Stop recording' : 'Start voice input'} title="Voice input" onClick={props.onVoice} disabled={props.disabled || voiceBusy}>
                     <Icon icon={recording ? Square : Mic} />
                 </button>

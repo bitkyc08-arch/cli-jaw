@@ -4,7 +4,9 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getInstanceSettingsAdapter } from '../../public/dashboard2/src/features/settings/settings-category-adapters.ts';
 import {
-    normalizeSettingsResponse,
+    decodeCliRegistryResponse,
+    decodeDashboardRegistryResponse,
+    decodeWorkerSettingsResponse,
     saveInstanceSettings,
 } from '../../public/dashboard2/src/features/settings/settings-api.ts';
 import { readSource } from './source-normalize.js';
@@ -33,14 +35,18 @@ test('instance settings use PUT with a partial patch body', async () => {
     }
 });
 
-test('settings response normalization accepts real envelopes and rejects malformed success', () => {
-    assert.deepEqual(normalizeSettingsResponse({ cli: 'codex' }), { cli: 'codex' });
-    assert.deepEqual(normalizeSettingsResponse({ ok: true, data: { cli: 'codex' } }), { cli: 'codex' });
-    assert.deepEqual(normalizeSettingsResponse({ registry: { ui: { locale: 'ko' } } }), { ui: { locale: 'ko' } });
-    assert.deepEqual(normalizeSettingsResponse({ preferences: { ui: { locale: 'en' } } }), { ui: { locale: 'en' } });
-    assert.throws(() => normalizeSettingsResponse({ ok: false, error: 'denied' }), /denied/);
-    assert.throws(() => normalizeSettingsResponse({ ok: true, data: 'not-an-object' }), /Malformed settings response/);
-    assert.throws(() => normalizeSettingsResponse(null), /Malformed settings response/);
+test('settings API uses three exact response decoders', () => {
+    assert.deepEqual(
+        decodeDashboardRegistryResponse({ registry: { ui: {} }, status: { source: 'disk' } }),
+        { registry: { ui: {} }, status: { source: 'disk' } },
+    );
+    assert.deepEqual(decodeWorkerSettingsResponse({ ok: true, data: { cli: 'codex' } }), { cli: 'codex' });
+    assert.deepEqual(decodeCliRegistryResponse({ ok: true, data: { codex: { models: ['gpt-5.5'] } } }), {
+        codex: { models: ['gpt-5.5'] },
+    });
+    assert.throws(() => decodeWorkerSettingsResponse({ cli: 'codex' }), /invalid response/);
+    assert.throws(() => decodeCliRegistryResponse({ ok: false, data: {} }), /invalid response/);
+    assert.throws(() => decodeDashboardRegistryResponse({ ok: true, data: {} }), /invalid response/);
 });
 
 test('Agent adapter maps only the selected CLI model', () => {
@@ -178,14 +184,20 @@ test('Network page exposes only canonical persistent fields and restart guidance
         'bindHost and startup-captured mode/trust fields must be marked restart-required');
 });
 
-test('unsupported categories cannot encode settings and render disabled guidance', () => {
+test('unsupported categories cannot encode settings and MCP renders disabled guidance', () => {
     assert.deepEqual(getInstanceSettingsAdapter('unsupported').encode({ apiKeys: { openai: 'secret' } }, {}, {}), {});
-    const pagePaths = ['AgentPage', 'McpPage', 'ModelProviderPage'];
-    for (const page of pagePaths) {
-        const source = readSource(join(projectRoot, `public/dashboard2/src/features/settings/pages/${page}.tsx`), 'utf8');
-        assert.match(source, /unsupported:/, `${page} must mark unsupported controls`);
-    }
+    const mcp = readSource(join(projectRoot, 'public/dashboard2/src/features/settings/pages/McpPage.tsx'), 'utf8');
+    assert.match(mcp, /unsupported:/, 'McpPage must mark unsupported controls');
     const shell = readSource(join(projectRoot, 'public/dashboard2/src/features/settings/SettingsPageShell.tsx'), 'utf8');
     assert.match(shell, /disabled=\{disabled\}/, 'unsupported controls must be disabled');
     assert.match(shell, /Unsupported: \{field\.unsupported\}/, 'unsupported reason must be visible');
+});
+
+test('Agent and Model Provider pages expose the controlled default model settings panel', () => {
+    for (const page of ['AgentPage', 'ModelProviderPage']) {
+        const source = readSource(join(projectRoot, `public/dashboard2/src/features/settings/pages/${page}.tsx`), 'utf8');
+        assert.match(source, /ModelSettingsPanel/);
+        assert.match(source, /mode="default"/);
+        assert.doesNotMatch(source, /unsupported:/);
+    }
 });

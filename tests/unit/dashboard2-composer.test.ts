@@ -151,6 +151,9 @@ test('046 source contracts: provider-owned transport, IME guard, STT abort, no w
     const voice = readFileSync(resolve(root, 'public/dashboard2/src/chat/composer/useVoiceRecorder.ts'), 'utf8');
     const bridge = readFileSync(resolve(root, 'public/dashboard2/src/chat/composer/composer-bridge.ts'), 'utf8');
     assert.doesNotMatch(composer + sender + voice, /\bfetch\s*\(/);
+    assert.match(composer, /port:\s*number/);
+    assert.match(composer, /api\.instance\(port\)/);
+    assert.doesNotMatch(composer, /useAppScope/);
     assert.match(composer, /nativeEvent\.isComposing/);
     assert.match(voice, /abortRef\.current\?\.abort\(\)/);
     assert.doesNotMatch(bridge, /postMessage\([^\n]+['"]\*['"]/);

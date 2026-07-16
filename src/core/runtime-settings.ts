@@ -85,7 +85,7 @@ export async function applyRuntimeSettingsPatch(
     const finishSettingsMutation = beginRuntimeSettingsMutation();
     const prevCli = settings["cli"];
     const prevWorkingDir = settings["workingDir"];
-    const prevSnapshot = { ...settings };
+    const prevSnapshot = structuredClone(settings);
     const prevAiEProvider = selectedAiEProvider(prevSnapshot);
 
     try {

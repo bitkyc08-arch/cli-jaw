@@ -12,7 +12,6 @@ import {
 } from 'react';
 import { useManagerApi } from '../../providers/api-provider.tsx';
 import { Icon } from '../../shell/Icon.tsx';
-import { useAppScope } from '../../state/scope.tsx';
 import { ComposerFooter, type ComposerPickerDisplay } from './ComposerFooter.tsx';
 import { SlashCommandMenu } from './SlashCommandMenu.tsx';
 import { filesFromTransfer, intakeAttachments, type ComposerAttachment } from './attachments.ts';
@@ -42,6 +41,7 @@ export interface ComposerEcho {
 
 export interface ComposerRegistration { submitMessage(prompt: string): Promise<void> }
 interface ComposerProps {
+    port: number;
     initialDraft?: string;
     commands?: readonly SlashCommand[];
     commandError?: string | null;
@@ -64,11 +64,10 @@ function mentionQuery(value: string, caret: number): { start: number; query: str
 }
 
 export function Composer({
-    initialDraft = '', commands = [], commandError = null, mentions = [], picker,
+    port, initialDraft = '', commands = [], commandError = null, mentions = [], picker,
     goalLabel, phase, isRunning, onStop, onDraftChange, onEcho, onRegister,
 }: ComposerProps): JSX.Element {
     const api = useManagerApi();
-    const { selected } = useAppScope();
     const [draft, setDraft] = useState(initialDraft);
     const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
     const [sendError, setSendError] = useState<string | null>(null);
@@ -80,7 +79,7 @@ export function Composer({
     const fileRef = useRef<HTMLInputElement>(null);
     const resizeFrameRef = useRef<number | null>(null);
 
-    const client = useMemo(() => selected ? api.instance(selected.port) : null, [api, selected?.port]);
+    const client = useMemo(() => api.instance(port), [api, port]);
     const controller = useMemo(() => client ? createSendController(client) : null, [client]);
     useEffect(() => () => controller?.abort(), [controller]);
     useEffect(() => {
@@ -89,7 +88,7 @@ export function Composer({
         // scope switch resets any stuck in-flight state (blob/recorder cleanup
         // happens in their own effects); footer controls must re-enable.
         setIsSending(false);
-    }, [selected?.port, selected?.sessionId]);
+    }, [port]);
 
     const setControlledDraft = useCallback((next: string) => {
         setDraft(next);
@@ -252,8 +251,7 @@ export function Composer({
                     value={draft}
                     rows={1}
                     aria-label="Message"
-                    placeholder={selected ? 'Message cli-jaw' : 'Select a session to start'}
-                    disabled={!selected}
+                    placeholder="Message cli-jaw"
                     onChange={event => {
                         setControlledDraft(event.target.value);
                         setCaret(event.target.selectionStart);
@@ -269,16 +267,16 @@ export function Composer({
                     </div>
                 ) : null}
                 <ComposerFooter
-                    picker={{ ...picker, readOnly: true }}
                     goalLabel={goalLabel ?? null}
                     phase={phase ?? null}
-                    disabled={!selected || isSending}
+                    disabled={isSending}
                     canSend={Boolean(draft.trim() || attachments.some(item => item.status !== 'error'))}
                     isRunning={Boolean(isRunning)}
                     voiceState={voice.state}
                     onAttach={() => fileRef.current?.click()}
                     onVoice={() => voice.state === 'recording' ? void voice.stop() : void voice.start()}
                     onSend={() => void performSend('button')}
+                    {...(picker ? { picker } : {})}
                     {...(onStop ? { onStop } : {})}
                 />
                 <input ref={fileRef} type="file" multiple hidden onChange={event => { addFiles(event.target.files ?? []); event.target.value = ''; }} />

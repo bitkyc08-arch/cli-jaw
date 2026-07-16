@@ -1,6 +1,14 @@
 // ─── Settings Merge Logic ────────────────────────────
 // Phase 9.4 — server.js의 applySettingsPatch에서 추출한 deep merge 로직
 
+function cloneCliSettingsMap(value: unknown): Record<string, any> {
+    if (!value || typeof value !== 'object') return {};
+    return Object.fromEntries(Object.entries(value).map(([cli, cfg]) => [
+        cli,
+        cfg && typeof cfg === 'object' ? { ...cfg } : cfg,
+    ]));
+}
+
 /**
  * settings 객체에 patch를 deep merge
  * perCli와 activeOverrides는 CLI별로 개별 merge (기존 effort/model 보존)
@@ -11,6 +19,13 @@
 export function mergeSettingsPatch(current: Record<string, any>, patch: Record<string, any>) {
     const result = { ...current };
     const remaining = { ...patch };
+
+    if (result["perCli"] && typeof result["perCli"] === 'object') {
+        result["perCli"] = cloneCliSettingsMap(result["perCli"]);
+    }
+    if (result["activeOverrides"] && typeof result["activeOverrides"] === 'object') {
+        result["activeOverrides"] = cloneCliSettingsMap(result["activeOverrides"]);
+    }
 
     // Deep merge perCli at per-CLI level
     if (remaining["perCli"] && typeof remaining["perCli"] === 'object') {
