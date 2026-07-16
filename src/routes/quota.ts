@@ -287,7 +287,7 @@ interface GrokBillingData {
 
 const GROK_BILLING_URL = 'https://cli-chat-proxy.grok.com/v1/billing';
 const GROK_USER_URL = 'https://cli-chat-proxy.grok.com/v1/user';
-const GROK_WEB_CREDITS_URL = 'https://grok.com/grok_api_v2.GrokBuildBilling/GetGrokCreditsConfig';
+const GROK_CREDITS_URL = 'https://cli-chat-proxy.grok.com/v1/billing?format=credits';
 
 function grokTierFromLimit(val: number): string {
     if (val >= 150_000) return 'SuperGrok Heavy';
@@ -298,7 +298,10 @@ function grokTierFromLimit(val: number): string {
 interface GrokTokenCandidate {
     token: string;
     source: string;
-    email?: string | null;
+    email: string | null;
+    authMode: string | null;
+    issuer: string | null;
+    userId: string | null;
 }
 
 function readGrokTokenCandidates(homeDir = os.homedir()): GrokTokenCandidate[] {
@@ -314,17 +317,34 @@ function readGrokTokenCandidates(homeDir = os.homedir()): GrokTokenCandidate[] {
                     token: obj['key'] as string,
                     source: scope.startsWith('https://auth.x.ai::') ? 'grok:auth-json-oidc' : 'grok:auth-json',
                     email: typeof obj['email'] === 'string' ? obj['email'] as string : null,
+                    authMode: typeof obj['auth_mode'] === 'string' ? obj['auth_mode'] as string : null,
+                    issuer: typeof obj['oidc_issuer'] === 'string' ? obj['oidc_issuer'] as string : null,
+                    userId: typeof obj['user_id'] === 'string' ? obj['user_id'] as string : null,
                     priority: scope.startsWith('https://auth.x.ai::') ? 0 : 1,
                 };
             })
             .sort((a, b) => a.priority - b.priority);
-        for (const entry of entries) candidates.push({ token: entry.token, source: entry.source, email: entry.email });
+        for (const entry of entries) candidates.push({
+            token: entry.token,
+            source: entry.source,
+            email: entry.email,
+            authMode: entry.authMode,
+            issuer: entry.issuer,
+            userId: entry.userId,
+        });
     } catch { /* best effort */ }
     try {
         const authPath = join(homeDir, '.progrok', 'auth.json');
         const data = JSON.parse(fs.readFileSync(authPath, 'utf8')) as { accessToken?: string };
         if (typeof data.accessToken === 'string' && data.accessToken.trim()) {
-            candidates.push({ token: data.accessToken, source: 'progrok:auth-json', email: null });
+            candidates.push({
+                token: data.accessToken,
+                source: 'progrok:auth-json',
+                email: null,
+                authMode: null,
+                issuer: null,
+                userId: null,
+            });
         }
     } catch { /* best effort */ }
     const seen = new Set<string>();
@@ -335,130 +355,92 @@ function readGrokTokenCandidates(homeDir = os.homedir()): GrokTokenCandidate[] {
     });
 }
 
-interface ProtoField {
-    path: number[];
-    wireType: number;
-    value: number;
-    order: number;
+function isGrokWeeklyCandidate(candidate: GrokTokenCandidate): boolean {
+    return (candidate.authMode === 'oidc' || candidate.authMode === 'external')
+        && candidate.issuer === 'https://auth.x.ai'
+        && Boolean(candidate.userId?.trim());
 }
 
-function readGrpcWebPayloads(buf: Buffer): Buffer[] {
-    const frames: Buffer[] = [];
-    let offset = 0;
-    while (offset + 5 <= buf.length) {
-        const flags = buf[offset] ?? 0;
-        const len = buf.readUInt32BE(offset + 1);
-        const start = offset + 5;
-        const end = start + len;
-        if (end > buf.length) return [];
-        if ((flags & 0x80) === 0) frames.push(buf.subarray(start, end));
-        offset = end;
+function readGrokClientVersion(homeDir = os.homedir(), grokBinary = 'grok'): string | null {
+    for (const [file, field] of [['version.json', 'version'], ['models_cache.json', 'grok_version']] as const) {
+        try {
+            const data = JSON.parse(fs.readFileSync(join(homeDir, '.grok', file), 'utf8')) as Record<string, unknown>;
+            const value = data[field];
+            if (typeof value === 'string' && value.trim()) return value.trim();
+        } catch { /* best effort */ }
     }
-    if (frames.length) return frames;
-    const first = buf[0] ?? 0;
-    const wireType = first & 0x07;
-    return first >> 3 > 0 && [0, 1, 2, 5].includes(wireType) ? [buf] : [];
-}
-
-function scanProtoFields(buf: Buffer, path: number[] = [], depth = 0, order = { value: 0 }): ProtoField[] {
-    if (depth > 8) return [];
-    const fields: ProtoField[] = [];
-    let offset = 0;
-    const readVarint = (): number | null => {
-        let result = 0;
-        let shift = 0;
-        while (offset < buf.length && shift < 53) {
-            const byte = buf[offset++] ?? 0;
-            result += (byte & 0x7f) * (2 ** shift);
-            if ((byte & 0x80) === 0) return result;
-            shift += 7;
-        }
-        return null;
-    };
-    while (offset < buf.length) {
-        const tag = readVarint();
-        if (tag == null || tag === 0) break;
-        const fieldNumber = tag >> 3;
-        const wireType = tag & 0x07;
-        const fieldPath = [...path, fieldNumber];
-        if (wireType === 0) {
-            const value = readVarint();
-            if (value == null) break;
-            fields.push({ path: fieldPath, wireType, value, order: order.value++ });
-        } else if (wireType === 1) {
-            if (offset + 8 > buf.length) break;
-            offset += 8;
-        } else if (wireType === 2) {
-            const len = readVarint();
-            if (len == null || offset + len > buf.length) break;
-            const child = buf.subarray(offset, offset + len);
-            offset += len;
-            fields.push(...scanProtoFields(child, fieldPath, depth + 1, order));
-        } else if (wireType === 5) {
-            if (offset + 4 > buf.length) break;
-            fields.push({ path: fieldPath, wireType, value: buf.readFloatLE(offset), order: order.value++ });
-            offset += 4;
-        } else {
-            break;
-        }
-    }
-    return fields;
-}
-
-export function parseGrokCreditsGrpcWeb(buf: Buffer, now = new Date()): Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null {
-    const fields = readGrpcWebPayloads(buf).flatMap((payload) => scanProtoFields(payload));
-    const percentField = fields
-        .filter((field) => field.wireType === 5 && field.path.at(-1) === 1 && Number.isFinite(field.value) && field.value >= 0 && field.value <= 100)
-        .sort((a, b) => (a.path.length - b.path.length) || (a.order - b.order))[0];
-    const futureResets = fields
-        .filter((field) => field.wireType === 0 && field.value >= 1_700_000_000 && field.value <= 2_100_000_000)
-        .map((field) => ({ field, date: new Date(field.value * 1000) }))
-        .filter((entry) => entry.date > now)
-        .sort((a, b) => {
-            const aPreferred = a.field.path.join('.') === '1.5.1' ? 0 : 1;
-            const bPreferred = b.field.path.join('.') === '1.5.1' ? 0 : 1;
-            return (aPreferred - bPreferred) || (a.date.getTime() - b.date.getTime());
-        });
-    const reset = futureResets[0]?.date;
-    const hasUsagePeriod = fields.some((field) =>
-        field.wireType === 0 && (field.path.slice(0, 2).join('.') === '1.6' || (field.path.join('.') === '1.8.1' && (field.value === 1 || field.value === 2)))
-    );
-    const percent = percentField?.value ?? (reset && hasUsagePeriod ? 0 : null);
-    if (percent == null || !reset) return null;
-    return {
-        percent: Math.round(percent),
-        periodEnd: reset.toISOString(),
-        periodLabel: 'weekly',
-        source: 'grok:grok-build-billing-grpc-web',
-    };
-}
-
-async function fetchGrokWeeklyCredits(token: string): Promise<Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null> {
-    const resp = await fetch(GROK_WEB_CREDITS_URL, {
-        method: 'POST',
-        headers: {
-            'Authorization': `Bearer ${token}`,
-            'X-XAI-Token-Auth': 'xai-grok-cli',
-            'Origin': 'https://grok.com',
-            'Referer': 'https://grok.com/?_s=usage',
-            'Accept': 'application/grpc-web+proto',
-            'Content-Type': 'application/grpc-web+proto',
-            'x-grpc-web': '1',
-            'x-user-agent': 'connect-es/2.1.1',
-        },
-        body: Buffer.from([0, 0, 0, 0, 0]),
-        signal: AbortSignal.timeout(8000),
-    });
-    if (!resp.ok) return null;
-    return parseGrokCreditsGrpcWeb(Buffer.from(await resp.arrayBuffer()));
-}
-
-async function fetchGrokBilling(): Promise<GrokBillingData | null> {
-    const tokens = readGrokTokenCandidates();
-    if (!tokens.length) return null;
     try {
-        for (const candidate of tokens) {
-            const weekly = await fetchGrokWeeklyCredits(candidate.token);
+        const output = execFileSync(grokBinary, ['version'], {
+            encoding: 'utf8', timeout: 3000, stdio: ['ignore', 'pipe', 'ignore'],
+        });
+        return output.match(/\b\d+\.\d+\.\d+\b/)?.[0] ?? null;
+    } catch { return null; }
+}
+
+export function inspectGrokWeeklyEligibility(homeDir = os.homedir(), grokBinary = 'grok') {
+    const candidates = readGrokTokenCandidates(homeDir);
+    const xaiCandidates = candidates.filter((candidate) =>
+        (candidate.authMode === 'oidc' || candidate.authMode === 'external')
+        && candidate.issuer === 'https://auth.x.ai');
+    const eligibleCandidates = xaiCandidates.filter(isGrokWeeklyCandidate);
+    const clientVersion = readGrokClientVersion(homeDir, grokBinary);
+    const reason = candidates.length === 0 ? 'no-auth'
+        : xaiCandidates.length === 0 ? 'no-xai-auth'
+            : eligibleCandidates.length === 0 ? 'missing-user-id'
+                : !clientVersion ? 'no-version'
+                    : 'ok';
+    return {
+        eligible: reason === 'ok',
+        reason,
+        candidateCount: eligibleCandidates.length,
+        clientVersion,
+    };
+}
+
+export function parseGrokCreditsResponse(value: unknown): Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null {
+    if (!value || typeof value !== 'object') return null;
+    const config = (value as Record<string, unknown>)['config'];
+    if (!config || typeof config !== 'object') return null;
+    const currentPeriod = (config as Record<string, unknown>)['currentPeriod'];
+    if (!currentPeriod || typeof currentPeriod !== 'object') return null;
+    const period = currentPeriod as Record<string, unknown>;
+    const end = period['end'];
+    if (period['type'] !== 'USAGE_PERIOD_TYPE_WEEKLY' || typeof end !== 'string' || !Number.isFinite(Date.parse(end))) return null;
+    const rawPercent = (config as Record<string, unknown>)['creditUsagePercent'];
+    if (rawPercent !== undefined && (typeof rawPercent !== 'number' || !Number.isFinite(rawPercent))) return null;
+    return {
+        percent: Math.round(Math.min(100, Math.max(0, rawPercent as number | undefined ?? 0))),
+        periodEnd: end,
+        periodLabel: 'weekly',
+        source: 'grok:grok-build-billing-credits-rest',
+    };
+}
+
+async function fetchGrokWeeklyCredits(candidate: GrokTokenCandidate, clientVersion: string): Promise<Pick<GrokBillingData, 'percent' | 'periodEnd' | 'periodLabel' | 'source'> | null> {
+    try {
+        const resp = await fetch(GROK_CREDITS_URL, {
+            headers: {
+                'Authorization': `Bearer ${candidate.token}`,
+                'X-XAI-Token-Auth': 'xai-grok-cli',
+                'x-authenticateresponse': 'authenticate-response',
+                'x-userid': candidate.userId!,
+                'x-grok-client-version': clientVersion,
+                'x-grok-client-mode': 'headless',
+            },
+            signal: AbortSignal.timeout(8000),
+        });
+        if (!resp.ok) return null;
+        return parseGrokCreditsResponse(await resp.json());
+    } catch { return null; }
+}
+
+export async function fetchGrokBilling(homeDir = os.homedir(), grokBinary = 'grok'): Promise<GrokBillingData | null> {
+    const tokens = readGrokTokenCandidates(homeDir);
+    if (!tokens.length) return null;
+    const clientVersion = readGrokClientVersion(homeDir, grokBinary);
+    if (clientVersion) {
+        for (const candidate of tokens.filter(isGrokWeeklyCandidate)) {
+            const weekly = await fetchGrokWeeklyCredits(candidate, clientVersion);
             if (weekly) {
                 return {
                     tier: 'SuperGrok',
@@ -474,7 +456,9 @@ async function fetchGrokBilling(): Promise<GrokBillingData | null> {
                 };
             }
         }
-        for (const candidate of tokens) {
+    }
+    for (const candidate of tokens) {
+        try {
             const headers = { Authorization: `Bearer ${candidate.token}` };
             const [billingRes, userRes] = await Promise.allSettled([
                 fetch(GROK_BILLING_URL, { headers, signal: AbortSignal.timeout(8000) }),
@@ -503,9 +487,9 @@ async function fetchGrokBilling(): Promise<GrokBillingData | null> {
                 email,
                 source: candidate.source === 'progrok:auth-json' ? 'progrok:billing-api' : 'grok:cli-chat-proxy-billing-api',
             };
-        }
-        return null;
-    } catch { return null; }
+        } catch { /* try the next credential */ }
+    }
+    return null;
 }
 
 export async function fetchGrokStatus(binary = 'grok') {

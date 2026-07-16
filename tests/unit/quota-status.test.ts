@@ -5,7 +5,14 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { readClaudeCreds, getClaudeCredentialsPath, readLatestGrokSessionUsage, parseGrokCreditsGrpcWeb } from '../../src/routes/quota.ts';
+import {
+    fetchGrokBilling,
+    getClaudeCredentialsPath,
+    inspectGrokWeeklyEligibility,
+    parseGrokCreditsResponse,
+    readClaudeCreds,
+    readLatestGrokSessionUsage,
+} from '../../src/routes/quota.ts';
 
 // Read source for structural verification
 const quotaSrc = readSource(
@@ -118,8 +125,8 @@ test('QS-004b: Grok quota prefers ~/.grok weekly credits before legacy billing f
         'Grok quota should read the current Grok CLI OIDC auth file before legacy progrok auth',
     );
     assert.ok(
-        quotaSrc.includes('GrokBuildBilling/GetGrokCreditsConfig') && quotaSrc.includes('application/grpc-web+proto'),
-        'Grok quota should call the weekly credits gRPC-web endpoint',
+        quotaSrc.includes('/billing?format=credits') && quotaSrc.includes('x-grok-client-version'),
+        'Grok quota should call the source-backed weekly credits REST endpoint with proxy headers',
     );
     assert.ok(
         quotaSrc.includes("periodLabel: 'weekly'") && quotaSrc.includes("periodLabel: 'monthly'"),
@@ -135,15 +142,129 @@ test('QS-004b: Grok quota prefers ~/.grok weekly credits before legacy billing f
     );
 });
 
-test('QS-004b2: parseGrokCreditsGrpcWeb handles zero-use weekly usage period frames', () => {
-    const raw = Buffer.from(
-        '00000000480a4612001a00220c08b0ada9d20610a8bf9784012a0c08b0a2ced20610a8bf978401421e0802120c08b0ada9d20610a8bf9784011a0c08b0a2ced20610a8bf978401580162006801800000',
-        'hex',
-    );
-    const parsed = parseGrokCreditsGrpcWeb(raw, new Date('2026-07-09T00:00:00.000Z'));
-    assert.equal(parsed?.periodLabel, 'weekly');
-    assert.equal(parsed?.percent, 0);
-    assert.equal(parsed?.periodEnd, '2026-07-12T13:05:52.000Z');
+test('QS-004b2: parseGrokCreditsResponse handles nested non-zero and omitted-zero weekly data', () => {
+    const end = '2026-07-19T13:05:52.277209+00:00';
+    assert.deepEqual(parseGrokCreditsResponse({
+        config: {
+            creditUsagePercent: 57,
+            currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', end },
+        },
+    }), { percent: 57, periodEnd: end, periodLabel: 'weekly', source: 'grok:grok-build-billing-credits-rest' });
+    assert.deepEqual(parseGrokCreditsResponse({
+        config: { currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', end } },
+    }), { percent: 0, periodEnd: end, periodLabel: 'weekly', source: 'grok:grok-build-billing-credits-rest' });
+    assert.equal(parseGrokCreditsResponse({
+        config: { currentPeriod: { type: 'USAGE_PERIOD_TYPE_MONTHLY', end } },
+    }), null);
+});
+
+test('QS-004b3: Grok weekly fetch uses eligible auth headers and falls back across failure classes', async () => {
+    const originalFetch = globalThis.fetch;
+    for (const mode of ['success', 'rejection', 'malformed', 'non-2xx'] as const) {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `jaw-grok-${mode}-`));
+        try {
+            const grokDir = path.join(tmp, '.grok');
+            fs.mkdirSync(grokDir, { recursive: true });
+            fs.writeFileSync(path.join(grokDir, 'version.json'), JSON.stringify({ version: '0.2.101' }));
+            fs.writeFileSync(path.join(grokDir, 'auth.json'), JSON.stringify({
+                'https://example.test::other': {
+                    key: 'not-xai-token', auth_mode: 'external', oidc_issuer: 'https://example.test', user_id: 'other-user',
+                },
+                'https://auth.x.ai::client': {
+                    key: 'xai-token', auth_mode: 'external', oidc_issuer: 'https://auth.x.ai', user_id: 'xai-user', email: 'person@example.test',
+                },
+            }));
+            const seen: Array<{ url: string; headers: Headers }> = [];
+            globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = String(input);
+                seen.push({ url, headers: new Headers(init?.headers) });
+                if (url.endsWith('/billing?format=credits')) {
+                    if (mode === 'rejection') throw new DOMException('timeout', 'TimeoutError');
+                    if (mode === 'malformed') return new Response('{', { status: 200 });
+                    if (mode === 'non-2xx') return Response.json({ error: 'unavailable' }, { status: 503 });
+                    return Response.json({
+                        config: {
+                            creditUsagePercent: 57,
+                            currentPeriod: { type: 'USAGE_PERIOD_TYPE_WEEKLY', end: '2026-07-19T13:05:52.277209+00:00' },
+                        },
+                    });
+                }
+                if (url.endsWith('/billing')) {
+                    return Response.json({
+                        config: {
+                            monthlyLimit: { val: 10_000 }, used: { val: 2_500 }, billingPeriodEnd: '2026-08-01T00:00:00Z',
+                        },
+                    });
+                }
+                if (url.endsWith('/user')) return Response.json({ email: 'legacy@example.test' });
+                return new Response('not found', { status: 404 });
+            }) as typeof fetch;
+
+            assert.deepEqual(inspectGrokWeeklyEligibility(tmp), {
+                eligible: true, reason: 'ok', candidateCount: 1, clientVersion: '0.2.101',
+            });
+            const result = await fetchGrokBilling(tmp);
+            assert.equal(result?.periodLabel, mode === 'success' ? 'weekly' : 'monthly', mode);
+            assert.equal(result?.percent, mode === 'success' ? 57 : 25, mode);
+            const weekly = seen.find((entry) => entry.url.endsWith('/billing?format=credits'))!;
+            assert.equal(weekly.headers.get('authorization'), 'Bearer xai-token');
+            assert.equal(weekly.headers.get('x-xai-token-auth'), 'xai-grok-cli');
+            assert.equal(weekly.headers.get('x-authenticateresponse'), 'authenticate-response');
+            assert.equal(weekly.headers.get('x-userid'), 'xai-user');
+            assert.equal(weekly.headers.get('x-grok-client-version'), '0.2.101');
+            assert.equal(weekly.headers.get('x-grok-client-mode'), 'headless');
+        } finally {
+            globalThis.fetch = originalFetch;
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    }
+});
+
+test('QS-004b4: Grok weekly fetch requires user ID and client version before calling credits REST', async () => {
+    const originalFetch = globalThis.fetch;
+    for (const mode of ['missing-user-id', 'missing-version'] as const) {
+        const tmp = fs.mkdtempSync(path.join(os.tmpdir(), `jaw-grok-${mode}-`));
+        try {
+            const grokDir = path.join(tmp, '.grok');
+            fs.mkdirSync(grokDir, { recursive: true });
+            fs.writeFileSync(path.join(grokDir, 'auth.json'), JSON.stringify({
+                'https://auth.x.ai::client': {
+                    key: 'xai-token',
+                    auth_mode: 'external',
+                    oidc_issuer: 'https://auth.x.ai',
+                    ...(mode === 'missing-user-id' ? {} : { user_id: 'xai-user' }),
+                },
+            }));
+            if (mode !== 'missing-version') {
+                fs.writeFileSync(path.join(grokDir, 'version.json'), JSON.stringify({ version: '0.2.101' }));
+            }
+            const seen: string[] = [];
+            globalThis.fetch = (async (input: RequestInfo | URL) => {
+                const url = String(input);
+                seen.push(url);
+                if (url.endsWith('/billing')) {
+                    return Response.json({
+                        config: {
+                            monthlyLimit: { val: 10_000 }, used: { val: 2_500 }, billingPeriodEnd: '2026-08-01T00:00:00Z',
+                        },
+                    });
+                }
+                if (url.endsWith('/user')) return Response.json({});
+                return new Response('not found', { status: 404 });
+            }) as typeof fetch;
+
+            const binary = mode === 'missing-version' ? 'definitely-missing-grok-test-binary' : 'grok';
+            const preflight = inspectGrokWeeklyEligibility(tmp, binary);
+            assert.equal(preflight.eligible, false, mode);
+            assert.equal(preflight.reason, mode === 'missing-version' ? 'no-version' : 'missing-user-id', mode);
+            const result = await fetchGrokBilling(tmp, binary);
+            assert.equal(result?.periodLabel, 'monthly', mode);
+            assert.ok(!seen.some((url) => url.includes('format=credits')), mode);
+        } finally {
+            globalThis.fetch = originalFetch;
+            fs.rmSync(tmp, { recursive: true, force: true });
+        }
+    }
 });
 
 test('QS-004c: readLatestGrokSessionUsage reads newest signals.json without fake quota windows', () => {
